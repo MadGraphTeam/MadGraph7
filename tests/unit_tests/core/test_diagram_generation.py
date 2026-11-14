@@ -30,7 +30,7 @@ import madgraph.various.misc as misc
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 from madgraph import MadGraph5Error, InvalidCmd
 #===============================================================================
 # AmplitudeTest
@@ -57,7 +57,8 @@ class AmplitudeTest(unittest.TestCase):
     def setUp(self):
 
         self.mydict = {'diagrams':self.mydiaglist, 'process':self.myprocess,
-                       'has_mirror_process': False}
+                       'has_mirror_process': False,
+                       'crossed_processes': []}
 
         self.myamplitude = diagram_generation.Amplitude(self.mydict)
 
@@ -128,7 +129,8 @@ class AmplitudeTest(unittest.TestCase):
         goal = "{\n"
         goal = goal + "    \'process\': %s,\n" % repr(self.myprocess)
         goal = goal + "    \'diagrams\': %s,\n" % repr(self.mydiaglist)
-        goal = goal + "    \'has_mirror_process\': False\n}"
+        goal = goal + "    \'has_mirror_process\': False,\n"
+        goal = goal + "    \'crossed_processes\': []\n}"
 
         self.assertEqual(goal, str(self.myamplitude))
 

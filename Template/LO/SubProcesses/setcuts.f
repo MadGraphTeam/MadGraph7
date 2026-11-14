@@ -13,6 +13,7 @@ c
       include 'coupl.inc' ! needs VECSIZE_MEMMAX (defined in vector.inc)
       include 'run.inc'
       include 'cuts.inc'
+      include 'ldme.inc'
 c
 c     Constants
 c
@@ -209,7 +210,7 @@ c
          is_a_nu(i)=.false.
 
 
-c-do not apply cuts to these. CAREFULL: PDG_CUT do not consider do_cuts (they simply check the cut_decays)
+c-do not apply cuts to these. CAREFUL: PDG_CUT do not consider do_cuts (they simply check the cut_decays)
          if (pmass(i).gt.20d0)     do_cuts(i)=.false.  ! no cuts on top,W,Z,H
          if (abs(idup(i,1,iproc)).eq.12) do_cuts(i)=.false.  ! no cuts on ve ve~
          if (abs(idup(i,1,iproc)).eq.14) do_cuts(i)=.false.  ! no cuts on vm vm~
@@ -425,7 +426,15 @@ c     detect if mmnl is used for exactly 2 lepton
                      do j = i+1, nexternal
                         if (is_a_l(j).or.is_a_nu(j)) then
                              s_min(j,i) = max(s_min(j,i), mmnl*dabs(mmnl))
-                             s_max(j,i) = min(s_max(j,i), mmnlmax*dabs(mmnlmax))
+                             ! s_max < 0 means no upper bound: a plain min()
+                             ! would let mmnlmax=-1 erase e.g. mmllmax
+                             if (mmnlmax.ge.0d0) then
+                                if (s_max(j,i).lt.0d0) then
+                                   s_max(j,i) = mmnlmax**2
+                                else
+                                   s_max(j,i) = min(s_max(j,i), mmnlmax**2)
+                                endif
+                             endif
                              exit
                         endif
                      enddo
@@ -941,8 +950,8 @@ c**************************************************
                   foundpartner=.true.
                   if(iabs(idup(iforest(2,k,j),1,1)).le.maxjetflavor.or.
      $                 idup(iforest(2,k,j),1,1).eq.21.or.
-     $                 iabs(idup(iforest(2,k,j),1,1)).le.maxjetflavor.or.
-     $                 idup(iforest(2,k,j),1,1).eq.21)then
+     $                 iabs(idup(iforest(1,k,j),1,1)).le.maxjetflavor.or.
+     $                 idup(iforest(1,k,j),1,1).eq.21)then
                      if (do_cuts(iforest(2,k,j)).and. do_cuts(iforest(1,k,j)))then
                         xqcutij(iforest(2,k,j),iforest(1,k,j))=xqcut
                         xqcutij(iforest(1,k,j),iforest(2,k,j))=xqcut

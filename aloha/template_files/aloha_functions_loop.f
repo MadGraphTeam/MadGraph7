@@ -139,7 +139,12 @@ c     Convention for loop computations
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -156,7 +161,12 @@ c     Convention for loop computations
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsf
@@ -290,7 +300,12 @@ c$$$      fi(4) = dcmplx(p(3),0.D0)*(-nsf)
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -307,7 +322,12 @@ c$$$      fi(4) = dcmplx(p(3),0.D0)*(-nsf)
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsf
@@ -394,7 +414,12 @@ c     Convention for loop computations
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = cmplx( sqrt(pp3*rHalf/pp), KIND=16 )
             if ( pp3.eq.rZero ) then
                chi(2) = cmplx(-nh ,KIND=16)
@@ -411,7 +436,12 @@ c     Convention for loop computations
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = sqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = sqrt(max(p(0)+p(3),rZero))*nsf
@@ -541,7 +571,12 @@ c            pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -558,7 +593,12 @@ c            pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsf
@@ -656,7 +696,12 @@ c$$$      fo(4) = dcmplx(p(3),0.D0)*(nsf)
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -673,7 +718,12 @@ c$$$      fo(4) = dcmplx(p(3),0.D0)*(nsf)
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsf
@@ -762,7 +812,12 @@ c            pp = min(p(0),sqrt(p(1)**2+p(2)**2+p(3)**2))
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = cmplx( sqrt(pp3*rHalf/pp) ,KIND=16)
             if ( pp3.eq.rZero ) then
                chi(2) = cmplx(-nh ,KIND=16)
@@ -780,7 +835,12 @@ c            pp = min(p(0),sqrt(p(1)**2+p(2)**2+p(3)**2))
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = sqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = sqrt(max(p(0)+p(3),rZero))*nsf

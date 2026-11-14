@@ -214,14 +214,14 @@ class MECmdShell(IOTests.IOTestManager):
         self.assertEqual(info_html_this.count('<TR class=second>'), 8)
 
 
-    def test_raise_invalid_path_hwpp(self):
-        """test that an exception is raised when trying to shower with hwpp without
-        having set the corresponding pahts"""
+    def test_raise_invalid_path_hw7(self):
+        """test that an exception is raised when trying to shower with hw7 without
+        having set the corresponding paths"""
         cmd = os.getcwd()
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD] '], 'sm')
         card = open('%s/Cards/run_card_default.dat' % self.path).read()
         self.assertIn('PYTHIA8   = parton_shower', card)
-        card = card.replace('PYTHIA8   = parton_shower', 'HERWIGPP   = parton_shower')
+        card = card.replace('PYTHIA8   = parton_shower', 'HERWIG7   = parton_shower')
         open('%s/Cards/run_card.dat' % self.path, 'w').write(card)
         self.cmd_line.exec_cmd('set  cluster_temp_path /tmp/ --no_save')
         self.do('generate_events -pf')
@@ -241,7 +241,7 @@ class MECmdShell(IOTests.IOTestManager):
 
     def test_raise_invalid_path_py8(self):
         """test that an exception is raised when trying to shower with py8 without
-        having set the corresponding pahts"""
+        having set the corresponding paths"""
         cmd = os.getcwd()
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD] '], 'sm')
         card = open('%s/Cards/run_card_default.dat' % self.path).read()
@@ -596,62 +596,78 @@ class MECmdShell(IOTests.IOTestManager):
         self.assertTrue(os.path.exists('%s/Events/run_02/alllogs_2.html' % self.path))
 
 
-    def notest_eft_running_nlo(self):
-        """check that  gives the correct result"""
-        
+    def test_eft_running_nlo(self):
+        """aMC@NLO output of a model with running Wilson coefficients (running.py):
+        run-card keys, generated code, and the effect of the extra scale on the
+        Born interference (fixed extra scale, then dynamical extra scale)"""
+
         mg_cmd = MGCmd.MasterCmd()
         mg_cmd.no_notification()
-        mg_cmd.run_cmd('set automatic_html_opening False --save')
+        mg_cmd.run_cmd('set automatic_html_opening False --no_save')
         mg_cmd.run_cmd('import model %s/tests/input_files/SMEFTatNLO_running-NLO' % madgraph.MG5DIR)
-        mg_cmd.run_cmd('generate p p > t t~ NP=2 NP^2==2 QCD=2 QED=0 [QCD]')
-        mg_cmd.run_cmd('output %s/'% self.path)
-        #self.cmd_line = MECmd.MadEventCmdShell(me_dir=  self.path)
-        #self.cmd_line.no_notification()
-        #self.cmd_line.exec_cmd('set automatic_html_opening False')
-        
-        #check validity of the default run_card
-        run_card = banner.RunCardNLO(pjoin(self.path, 'Cards','run_card.dat'))
+        mg_cmd.run_cmd('generate p p > t t~ QED=0 NP^2<=2 [QCD]')
+        mg_cmd.run_cmd('output %s/' % self.path)
 
-        #f = open(pjoin(self.path, 'Cards','run_card.dat'),'r')
-        #print(f.read())
-        self.assertTrue('fixed_extra_scale' not in run_card.user_set)
-        self.assertTrue('mue_ref_fixed' in run_card.user_set)
-        self.assertTrue('mue_over_ref' not in  run_card.user_set)
+        # the three keys of the extra scale are in the run_card and editable
+        run_card = banner.RunCardNLO(pjoin(self.path, 'Cards', 'run_card.dat'))
+        for key in ['fixed_extra_scale', 'mue_ref_fixed', 'mue_over_ref']:
+            self.assertIn(key, run_card.user_set)
+            self.assertNotIn(key, run_card.system_only)
         self.assertTrue(run_card['fixed_extra_scale'])
-        
-        
+        self.assertEqual(run_card['mue_over_ref'], 1.)
 
-        cwd = os.getcwd()
-        import subprocess
-        if logging.getLogger('madgraph').level <= 20:
-            stdout=None
-            stderr=None
-        else:
-            devnull =open(os.devnull,'w')
-            stdout=devnull
-            stderr=devnull
+        # generated code: the running routines must not include the vector.inc
+        # of the madevent output, the multiple precision routine follows the
+        # extra scale of the double precision one, and muR is passed to the model
+        couplings = open(pjoin(self.path, 'Source', 'MODEL', 'couplings.f')).read()
+        self.assertNotIn('vector.inc', couplings)
+        self.assertIn('C_RUNNING_1', couplings)
+        self.assertIn('GOTHER_MP', couplings)
+        self.assertIn('CALL MP_C_RUNNING_1(GOTHER_EFF)', couplings)
+        setscales = open(pjoin(self.path, 'SubProcesses', 'setscales.f')).read()
+        self.assertIn('model_scale=muR', setscales)
 
-        if logging.getLogger('madgraph').level > 20:
-            stdout = devnull
-        else:
-            stdout= None
+        # Born interference of the four-fermion operators only: select the
+        # squared orders (NP, QCD, QED) = (2, 2, 0) in FKS_params.dat
+        fks = open(pjoin(self.path, 'Cards', 'FKS_params.dat')).read()
+        fks = re.sub(r'(?m)^#SelectedCouplingOrders\n0\n-1 -1\n',
+                     '#SelectedCouplingOrders\n1\n2 2 0\n', fks)
+        self.assertIn('#SelectedCouplingOrders\n1\n2 2 0\n', fks)
+        open(pjoin(self.path, 'Cards', 'FKS_params.dat'), 'w').write(fks)
 
+        def set_run_card(**options):
+            card = open(pjoin(self.path, 'Cards', 'run_card.dat')).read()
+            for key, value in options.items():
+                card, nb = re.subn(r'(?mi)^(\s*)\S+(\s*=\s*%s\b)' % key,
+                                   lambda m: '%s%s%s' % (m.group(1), value, m.group(2)), card)
+                self.assertEqual(nb, 1, key)
+            open(pjoin(self.path, 'Cards', 'run_card.dat'), 'w').write(card)
 
-        subprocess.call([pjoin(self.path, 'bin','generate_events'),'aMC@LO', '-p', '-f'],            
-                         cwd=pjoin(self.path),
-                         stdout=stdout,stderr=stdout)
+        def run_lo(name):
+            out = subprocess.run([pjoin(self.path, 'bin', 'generate_events'), 'LO', '-f',
+                                  '--name=%s' % name], cwd=self.path,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 text=True).stdout
+            found = re.findall(r'Total cross section:\s+(\S+)\s+\+-\s+(\S+)\s+pb', out)
+            self.assertTrue(found, out[-2000:])
+            return float(found[-1][0]), float(found[-1][1])
 
+        # the Wilson coefficients of the param_card are given at Q = 172.5 GeV:
+        # no running for mue = 172.5, running up to 2 TeV otherwise
+        set_run_card(dynamical_scale_choice=3, fixed_extra_scale='True',
+                     mue_ref_fixed=172.5, req_acc_FO=0.005)
+        norun, norun_err = run_lo('norun')
+        set_run_card(mue_ref_fixed=2000.)
+        fixed, fixed_err = run_lo('fixed')
+        set_run_card(fixed_extra_scale='False', mue_over_ref=1.0)
+        dyn, dyn_err = run_lo('dyn')
 
-
-        results = self.load_result('run_01_LO')[0]
-
-
-        val1 = results['cross']
-        err1 = results['error']
-
-        target = 617.7542699925228 # THIS IS NOT PURE INTERFERENCE...
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large diference between %s and %s +- %s'%
-                        (target, val1, err1))
+        for val, err in [(norun, norun_err), (fixed, fixed_err), (dyn, dyn_err)]:
+            self.assertTrue(val != 0. and err < 0.02 * abs(val), (val, err))
+        # the extra scale matters: running from 172.5 GeV up to 2 TeV changes the interference
+        # (the dynamical scale, H_T/2 ~ 0.3 TeV here, runs little and is only required to work)
+        self.assertTrue(abs(norun - fixed) > 5 * (norun_err ** 2 + fixed_err ** 2) ** 0.5,
+                        (norun, fixed))
 
 
     def test_generate_events_lo_hw6_stdhep(self):
@@ -777,6 +793,246 @@ class MECmdShell(IOTests.IOTestManager):
         self.assertTrue(os.path.exists('%s/Events/run_01_LO/alllogs_1.html' % self.path))
 
     
+    @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
+    def test_real_helicity_sum_survives_a_boost(self):
+        """Compare a generated real-emission sum with every helicity evaluated
+        explicitly after learning the zero mask in the real c.m. frame.
+
+        In u d~ > w+ g g, two longitudinal-W helicities accidentally agree
+        in that frame, but differ after the longitudinal boost used by an
+        initial-state FKS sector. The branch removes equal-helicity reuse
+        during export; this checks that rewrite on the physical process
+        from PR #478, together with the generated model-state capture.
+        """
+        # Keep loop-reduction dependencies local and unbuilt: this driver only
+        # needs the tree amplitudes, the model and BornSupport.
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        for command in ('set automatic_html_opening False --no_save',
+                        'set output_dependencies internal --no_save',
+                        'import model sm',
+                        'generate u d~ > w+ g [real=QCD]',
+                        'output %s -f -nojpeg' % self.path):
+            interface.exec_cmd(command, errorhandling=False, printcmd=False,
+                               precmd=True, postcmd=True)
+        proc_dir = pjoin(self.path, 'SubProcesses', 'P0_udx_wpg')
+        mfile = [f for f in sorted(os.listdir(proc_dir))
+                 if re.match(r'matrix_\d+\.f$', f) and
+                 'Process: u d~ > w+ g g ' in open(pjoin(proc_dir, f)).read()]
+        self.assertEqual(len(mfile), 1, 'no matrix file for u d~ > w+ g g')
+        mfile = mfile[0]
+        pfx = mfile[len('matrix_'):-len('.f')]
+        body = open(pjoin(proc_dir, mfile)).read()
+        body = body.split('SUBROUTINE SMATRIX%s_SPLITORDERS' % pfx)[1]
+        body = body.split('\n      END\n')[0]
+
+        driver = open(pjoin(_pickle_path, 'fks_real_helicity_frame_driver.f')).read()
+        for key, value in (
+                ('__NCOMB__', re.search(r'NCOMB=(\d+)', body).group(1)),
+                ('__NSQAMPSO__', re.search(r'NSQAMPSO=(\d+)', body).group(1)),
+                ('__IDEN__', re.search(r'DATA IDEN/(\d+)/', body).group(1)),
+                ('__NHEL__', '\n'.join(l for l in body.split('\n')
+                                       if 'DATA (NHEL(I,' in l)),
+                ('__PFX__', pfx)):
+            driver = driver.replace(key, value)
+        open(pjoin(proc_dir, 'real_tie_frame.f'), 'w').write(driver)
+
+        # The generated helicity loop captures the model through BornSupport.
+        build = subprocess.run(['make', '../lib/libdhelas.a', '../lib/libmodel.a',
+                                'born_support'],
+                               cwd=pjoin(self.path, 'Source'),
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(build.returncode, 0, build.stdout.decode())
+        build = subprocess.run(
+            ['gfortran', '-O', '-ffixed-line-length-none', '-I.', '-I../../lib',
+             'real_tie_frame.f', mfile, 'born_support.f', '../../Source/timing.f',
+             '-o', 'real_tie_frame', '-L../../lib', '-lmc_born_support',
+             '-ldhelas', '-lmodel', '-Wl,-rpath,' + pjoin(self.path, 'lib')],
+            cwd=proc_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(build.returncode, 0,
+                         'could not build the driver:\n%s' % build.stdout.decode())
+
+        # A generic event in its partonic c.m. frame (sqrt(s) = 400 GeV, the
+        # g g system of mass 150 GeV), with the W on its mass shell.
+        card = open(pjoin(self.path, 'Cards', 'param_card.dat')).read()
+        mass_block = re.split(r'(?im)^\s*block\s+mass\b', card)[1]
+        mw = float(re.search(r'(?m)^\s*24\s+(\S+)', mass_block).group(1))
+
+        def boost(p, b):
+            b2 = sum(x * x for x in b)
+            gamma = 1. / math.sqrt(1. - b2)
+            bp = sum(b[i] * p[i + 1] for i in range(3))
+            f = (gamma - 1.) * bp / b2 + gamma * p[0]
+            return [gamma * (p[0] + bp)] + [p[i + 1] + f * b[i] for i in range(3)]
+
+        def direction(theta, phi):
+            return [math.sin(theta) * math.cos(phi),
+                    math.sin(theta) * math.sin(phi), math.cos(theta)]
+
+        sqrts, mgg = 400., 150.
+        e_w = (sqrts**2 + mw**2 - mgg**2) / (2. * sqrts)
+        p_w = math.sqrt(e_w**2 - mw**2)
+        d_w = direction(0.7, 0.3)
+        w = [e_w] + [p_w * x for x in d_w]
+        q = [sqrts - e_w] + [-p_w * x for x in d_w]
+        d_g = direction(1.9, 2.1)
+        to_cm = [x / q[0] for x in q[1:]]
+        g1 = boost([mgg / 2.] + [mgg / 2. * x for x in d_g], to_cm)
+        g2 = boost([mgg / 2.] + [-mgg / 2. * x for x in d_g], to_cm)
+        cm = [[sqrts / 2., 0., 0., sqrts / 2.], [sqrts / 2., 0., 0., -sqrts / 2.],
+              w, g1, g2]
+        boosted = [boost(p, [0., 0., 0.4]) for p in cm]
+
+        momenta = '\n'.join(' '.join('%.17e' % x for p in event for x in p)
+                            for event in (cm, boosted)) + '\n'
+        run = subprocess.run([pjoin(proc_dir, 'real_tie_frame')],
+                             input=momenta.encode(),
+                             cwd=pjoin(self.path, 'Cards'),
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        out = run.stdout.decode()
+        self.assertEqual(run.returncode, 0, out)
+        result = [l.split() for l in out.split('\n') if l.startswith('RESULT')]
+        self.assertEqual(len(result), 1, out)
+        smatrix, helsum = float(result[0][1]), float(result[0][2])
+        self.assertGreater(helsum, 0., out)
+        self.assertLess(abs(smatrix / helsum - 1.), 1e-10,
+                        'the real emission after a first point in the c.m. '
+                        'frame is %.16e, its helicity sum %.16e'
+                        % (smatrix, helsum))
+
+
+    @set_global()
+    def test_polarised_nlo_me_frame(self):
+        """Polarised fixed-order NLO in a chosen rest frame.
+
+        p p > z{0} z{0} j [QCD] with me_frame = [3,4], i.e. the matrix
+        elements evaluated in the ZZ rest frame. The Born, the real, every FKS
+        counterterm and the virtual all have to be boosted to the *same*
+        frame, rebuilt from each configuration's own momenta.
+
+        What is actually being tested is check_poles and test_soft_col_limits,
+        which the launch runs on its own and which fail the run if they do not
+        pass. They are the only checks sensitive to this:
+
+          - the infrared poles are proportional to the Born, so any frame
+            mismatch between the Born and the virtual shows up as a per-point
+            constant ratio between the MadFKS and the OLP poles;
+          - the collinear Q term is the same order as the AP term, so a wrong
+            azimuthal phase does not cancel and the soft/collinear ratios
+            plateau off 1.
+
+        A cross-section comparison would not catch either: both were wrong at
+        some point during development while the total stayed plausible.
+        """
+        self.generate('p p > z{0} z{0} j [QCD]', 'loop_sm')
+
+        # Ask for the ZZ rest frame. nn23lo1 rather than lhapdf, since the
+        # python lhapdf bindings are broken under some interpreters and would
+        # fail this test for an unrelated reason; scales fixed so the run is
+        # reproducible; req_acc_fo loose because the assertion is on the
+        # checks, not on the precision of the cross-section.
+        card_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(card_path)
+        run_card.set('me_frame', [3, 4], user=True)
+        run_card.set('pdlabel', 'nn23lo1', user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('mur_ref_fixed', 91.188, user=True)
+        run_card.set('muf_ref_fixed', 91.188, user=True)
+        run_card.set('ptj', 30.0, user=True)
+        run_card.set('etaj', 4.0, user=True)
+        run_card.set('req_acc_fo', 0.05, user=True)
+        run_card.write(card_path)
+
+        self.do('calculate_xsect NLO -f')
+
+        self.assertTrue(os.path.exists('%s/Events/run_01/summary.txt' % self.path))
+
+        # check_poles writes one log per P directory; none may report a
+        # miscancellation. This is the assertion that the frame handling is
+        # consistent between the Born and the virtual.
+        pole_logs = misc.glob(pjoin(self.path, 'SubProcesses', 'P*',
+                                    'check_poles.log'))
+        self.assertTrue(pole_logs, 'check_poles did not run')
+        for log in pole_logs:
+            self.assertNotIn('MISCANCELLATION', open(log).read(),
+                             'poles do not cancel in %s' % log)
+
+    @set_global()
+    def test_polarised_nlo_ps_me_frame(self):
+        """Polarised NLO+PS (MC@NLO matching) in a chosen rest frame.
+
+        p p > z{0} j [QCD] with me_frame = [3], generating events rather than
+        only a cross-section. On top of what the fixed-order test covers this
+        exercises the MC counterterms and the LHE writing, both of which
+        evaluate the Born and must do so in the same frame as everything else.
+
+        Two assertions carry the physics:
+
+          - the total cross-section must stay the fixed-order one, because the
+            MC counterterm cancels between the S and the H event;
+          - the ratio of the *absolute* cross-section to it must not, because
+            that ratio measures how well the MC subtraction cancels locally,
+            which is exactly what the azimuthal phase of the counterterm
+            controls. With the phase left in the partonic c.m. the ratio was
+            2.23; with it in the me_frame it is 2.00.
+
+        p p > z j is the discriminating channel: the azimuthal term is
+        non-zero only for a gluon-mother ISR configuration, so a process whose
+        ISR mothers are all quarks passes with a completely wrong azimuth.
+        """
+        self.generate('p p > z{0} j [QCD]', 'loop_sm')
+
+        # Ask for the Z rest frame. nn23lo1 rather than lhapdf, scales fixed
+        # and the seed pinned so the run is reproducible.
+        card_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(card_path)
+        run_card.set('me_frame', [3], user=True)
+        run_card.set('pdlabel', 'nn23lo1', user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('mur_ref_fixed', 91.188, user=True)
+        run_card.set('muf_ref_fixed', 91.188, user=True)
+        run_card.set('ptj', 30.0, user=True)
+        run_card.set('etaj', 4.0, user=True)
+        run_card.set('nevents', 1000, user=True)
+        run_card.set('req_acc', 0.05, user=True)
+        run_card.set('iseed', 33, user=True)
+        run_card.set('parton_shower', 'PYTHIA8', user=True)
+        run_card.write(card_path)
+
+        # --parton stops before the shower: the shower knows nothing about the
+        # frame, everything under test happens before it.
+        self.do('generate_events aMC@NLO --parton -f')
+
+        # The frame reached the matrix elements: bit 3 set, nothing else.
+        run_inc = open(pjoin(self.path, 'Source', 'run_card.inc')).read()
+        self.assertIn('FRAME_ID = 8', run_inc)
+
+        self.assertTrue(os.path.exists('%s/Events/run_01/events.lhe.gz' % self.path))
+
+        # check_poles and test_ME/test_MC run as part of the launch and would
+        # abort it; assert on the logs anyway so a silent pass is visible.
+        pole_logs = misc.glob(pjoin(self.path, 'SubProcesses', 'P*',
+                                    'check_poles.log'))
+        self.assertTrue(pole_logs, 'check_poles did not run')
+        for log in pole_logs:
+            self.assertNotIn('MISCANCELLATION', open(log).read(),
+                             'poles do not cancel in %s' % log)
+
+        # res_1.txt ends with the absolute cross-section and the cross-section.
+        res = open(pjoin(self.path, 'Events', 'run_01', 'res_1.txt')).read()
+        totals = re.findall(r'([-\d.eE+]+)\s+\+-', res.split('Total ABS')[-1])
+        self.assertEqual(len(totals), 2, 'cannot read the totals from res_1.txt')
+        xsec_abs, xsec = float(totals[0]), float(totals[1])
+        # 2.19e3 while the Z rest frame was reached by a single boost from
+        # the FKS frame, which depended on the FKS sector; reached along the
+        # beam first (Collins-Soper, get_me_frame_boosts) it is 2.50e3
+        self.assertAlmostEqual(xsec, 2.50e3, delta=1.0e2)
+        self.assertLess(xsec_abs / xsec, 2.15,
+                        'the MC counterterm does not cancel locally enough; '
+                        'its azimuthal phase is probably not in the me_frame')
+
     def test_amcatnlo_from_file(self):
         """ """
         
@@ -810,7 +1066,7 @@ class MECmdShell(IOTests.IOTestManager):
                 break
         #      Run at p-p collider (6500.0 + 6500.0 GeV)
         self.assertIn('Run at p-p collider (6500.0 + 6500.0 GeV)', data[i+2])
-        #      Total cross-section: 1.249e+03 +- 3.2e+00 pb        
+        #      Total cross section: 6.936e+03 +- ... pb
         cross_section = data[i+4]
         cross_section = float(cross_section.split(':')[1].split('+-')[0])
         # previously PDF was nn23nlo (lhaid 244600) with this reference value 6675.0
@@ -820,9 +1076,9 @@ class MECmdShell(IOTests.IOTestManager):
         try:
             self.assertAlmostEqual(6936.0, cross_section,delta=50)
         except TypeError:
-            self.assertTrue(cross_section < 7011.0 and cross_section > 6911.0)
+            self.assertTrue(abs(cross_section - 6936.0) <= 50)
 
-        #      Number of events generated: 10000        
+        #      Number of events generated: 100
         self.assertIn('Number of events generated: 100', data[i+3])
 
 

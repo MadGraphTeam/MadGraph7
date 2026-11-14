@@ -10,11 +10,9 @@ c        argument
 
 c timing statistics
          include "timing_variables.inc"
-
-         call cpu_time(tbefore)
+         if(timing_sampled)call timing_enter(timing_pdf)
          pdg2pdf_timed = pdg2pdf(ih,ipdg,ibeam,x,xmu)
-         call cpu_time(tAfter)
-         tPDF = tPDF + (tAfter-tBefore)
+         if(timing_sampled)call timing_leave(timing_pdf)
          return
 
       end
@@ -28,7 +26,7 @@ c     and the sign of ipdg flipped accordingly.
 c      
 c     ibeam is the beam identity 1/2
 c      if set to -1/-2 it meand that ipdg should not be flipped even if ih<0
-c      usefull for re-weighting
+c      useful for re-weighting
 c***************************************************************************
       implicit none
 c

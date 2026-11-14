@@ -83,7 +83,7 @@ c      virt_wgt=virt_wgt+conversion*born_wgt*ao2pi
 c======================================================================
 
 c======================================================================
-c example for checking the cancelation of the poles
+c example for checking the cancellation of the poles
       if (firsttime_pole) then
          tolerance=IRPoleCheckThreshold  ! set in FKS_params.dat
          call getpoles(pin,QES2,madfks_double,madfks_single,fksprefact)
@@ -153,9 +153,10 @@ c      include "fks.inc"
       include "coupl.inc"
 
 c Particle types (=color) of i_fks, j_fks and fks_mother
-      integer i_type,j_type,m_type
-      common/cparticle_types/i_type,j_type,m_type
-
+      double precision       ch_i,ch_j,ch_m
+      integer                i_type,j_type,m_type,j_pdg
+      common/cparticle_types/ch_i,ch_j,ch_m,
+     &                       i_type,j_type,m_type,j_pdg
       double precision pmass(nexternal),zero
       parameter (zero=0d0)
       include "pmass.inc"

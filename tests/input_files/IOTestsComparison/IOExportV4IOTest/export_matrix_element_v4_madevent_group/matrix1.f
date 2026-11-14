@@ -47,7 +47,7 @@ C     output argument
 C     
       INTEGER IHEL, ICOL
 C     
-C     global (due to reading writting) 
+C     global (due to reading writing)
 C     
 C     Good-helicity filter is per (helicity, flavor, subprocess): a
 C      helicity
@@ -55,8 +55,15 @@ C     that is zero for one merged flavor but non-zero for another must
 C      not be
 C     dropped, so GOODHEL/NTRY carry an extra MAXFLAVPERPROC (IFLAV)
 C      dimension.
+C     NTRY is also kept per beam orientation (IM = IMIRROR), so that
+C      each
+C     orientation gets its own MAXTRIES scan: a helicity can vanish in
+C      one
+C     orientation only (e.g. q q~ > z with the Z at rest), and in
+C      vector mode
+C     the first MAXTRIES events can all share one orientation.
       LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC, MAXSPROC)
-      INTEGER NTRY(MAXFLAVPERPROC, MAXSPROC)
+      INTEGER NTRY(2, MAXFLAVPERPROC, MAXSPROC)
       COMMON/BLOCK_GOODHEL/NTRY,GOODHEL
 
 C     
@@ -71,6 +78,8 @@ C
       INTEGER I,IDEN
       INTEGER FLAVOR(NEXTERNAL)
       INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
+C     Generated without crossing symmetry: IFLAV is a plain
+C     flavor index, there is no crossing to decode.
 C     Per-row FLAVOR lookup used by BROKEN_SYM. The IFLAV-indexed
 C      FLAVOR
 C     table above can collapse distinct same-flavor / different-flavor
@@ -84,12 +93,41 @@ C     row-level information to apply the identical-particle correction.
       COMMON /SUBPROC/ IPSEL
       REAL*8 HWGT, XTOT, XTRY, XREJ, XR, YFRAC(0:NCOMB)
       INTEGER NGOOD
-      INTEGER J, JJ
+      INTEGER J, JJ, JB
       INTEGER NB_FAIL
       SAVE NB_FAIL
       DATA NB_FAIL /0/
       DOUBLE PRECISION GET_CHANNEL_CUT
       EXTERNAL GET_CHANNEL_CUT
+C     C-parity helicity de-duplication of the init full-sum loop
+C     (uncrossed base process only): FLIP(I) is the helicity row
+C     with every helicity negated (an involution built once).
+C     The reuse is ALL-OR-NOTHING per (flavor,subprocess):
+C     CSYMBAD latches 1 as soon as ANY row fails to pair up (a
+C     self-paired row, FLIP(I)=I, has no distinct partner) or
+C     ANY pair shows |M(I)|^2 != |M(FLIP(I))|^2 at a scan point.
+C     Only then is exactly half the loop skipped, each survivor
+C     counted twice. That uniformity is what keeps the
+C     multi-channel weight exact: halving every row scales
+C     AMP2(J) and XTOT by the same 1/2, so AMP2(config)/XTOT is
+C     unchanged, whereas a partial (per-row) de-duplication
+C     would rescale AMP2 non-uniformly across diagrams. NCSCAN
+C     counts only the passes that really ran the scan -- NTRY
+C     alone is not enough, since read_good_hel restores it above
+C     the threshold without ever scanning. CSYMBAD/NCSCAN sit in
+C     a COMMON block (zero-initialised, like NTRY) so the
+C     good-hel file can carry the verdict across jobs.
+      INTEGER FLIP(NCOMB), JHEL
+      REAL*8 TSMAX
+      LOGICAL DEDUP, CSYM_DONE
+      INTEGER CSYMBAD(MAXFLAVPERPROC,MAXSPROC)
+      INTEGER NCSCAN(MAXFLAVPERPROC,MAXSPROC)
+      COMMON/BLOCK_CSYM/CSYMBAD,NCSCAN
+      SAVE CSYM_DONE
+      DATA CSYM_DONE/.FALSE./
+      DATA FLIP /
+     & 16,15,14,13,12,11,10,9,8,7,
+     & 6,5,4,3,2,1/
 
 C     
 C     This is just to temporarily store the reference grid for
@@ -104,11 +142,13 @@ C
       DOUBLE PRECISION AMP2(MAXAMPS), JAMP2(0:MAXFLOW)
 
 
+
       INTEGER NB_SPIN_STATE_IN(2)
       COMMON /NB_HEL_STATE/ NB_SPIN_STATE_IN
 
       INTEGER IMIRROR, IPROC
       COMMON/TO_MIRROR/ IMIRROR,IPROC
+      INTEGER IM
 
 C     included vi run.inc    
 C     double precision tmin_for_channel	
@@ -158,9 +198,32 @@ C
 C     ----------
 C     BEGIN CODE
 C     ----------
-      CALL GET_FLAVOR1(IFLAV, FLAVOR)
-      NTRY(IFLAV,1)=NTRY(IFLAV,1)+1
+C     beam orientation of this event (1 if the caller did not set
+C      TO_MIRROR);
+C     a crossed call scans in the orientation of the event it serves
+      IM = IMIRROR
+      IF (IM.NE.2) IM = 1
 
+      CALL GET_FLAVOR1(IFLAV, FLAVOR)
+      NTRY(IM,IFLAV,1)=NTRY(IM,IFLAV,1)+1
+      IF (.NOT.CSYM_DONE) THEN
+C       A self-paired row (FLIP(I)=I, every helicity 0) has no
+C       distinct partner, so the loop could not be halved
+C       uniformly: refuse the reuse outright, for every flavor of
+C       THIS subprocess only. BLOCK_CSYM spans the whole group,
+C       and every other subprocess runs its own latch against its
+C       own FLIP table (CSYM_DONE is local to each SMATRIX<i>).
+        DO I=1,NCOMB
+          IF (FLIP(I).EQ.I) THEN
+            DO JHEL=1,MAXFLAVPERPROC
+              CSYMBAD(JHEL,1)=1
+            ENDDO
+          ENDIF
+        ENDDO
+        CSYM_DONE = .TRUE.
+      ENDIF
+      DEDUP = NCSCAN(IFLAV,1).GE.20 .AND. CSYMBAD(IFLAV,1).EQ.0 .AND.
+     $  (.TRUE.)
       IF (MULTI_CHANNEL) THEN
         DO I=1,NDIAGS
           AMP2(I)=0D0
@@ -183,18 +246,23 @@ C      where in initialization mode as well for the helicity.
      $ .OR.(DS_GET_DIM_STATUS('Helicity').EQ.0).OR.(HEL_PICKED.EQ.-1))
      $  THEN
         DO I=1,NCOMB
-          IF (GOODHEL(I,IFLAV,1) .OR. NTRY(IFLAV,1)
+          IF (GOODHEL(I,IFLAV,1) .OR. NTRY(IM,IFLAV,1)
      $     .LE.MAXTRIES.OR.(ISUM_HEL.NE.0)) THEN
+C           Fast phase: skip the higher-index C-parity partner
+C           (computed once at the lower index, counted twice below).
+            IF (DEDUP.AND.I.GT.FLIP(I)) CYCLE
             T=MATRIX1(P ,NHEL(1,I),IFLAV,I,AMP2, JAMP2, IVEC)
 
             DO JJ=1,NINCOMING
+              JB = JJ
+              IF (IM.EQ.2) JB = 3-JJ
 C             NB_SPIN_STATE_IN/2 avoids a double counting
 C             of an explicit polarisation in the process
-              IF(POL(JJ).NE.1D0.AND.NHEL(JJ,I).EQ.INT(SIGN(1D0,POL(JJ))
+              IF(POL(JB).NE.1D0.AND.NHEL(JJ,I).EQ.INT(SIGN(1D0,POL(JB))
      $         )) THEN
-                T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2D0
-              ELSE IF(POL(JJ).NE.1D0)THEN
-                T=T*(2D0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2D0
+                T=T*ABS(POL(JB))*NB_SPIN_STATE_IN(JJ)/2D0
+              ELSE IF(POL(JB).NE.1D0)THEN
+                T=T*(2D0-ABS(POL(JB)))*NB_SPIN_STATE_IN(JJ)/2D0
               ENDIF
             ENDDO
 
@@ -204,9 +272,68 @@ C             of an explicit polarisation in the process
             ENDIF
             ANS=ANS+DABS(T)
             TS(I)=T
+C           The representative carries its skipped partner's identical
+C           |M|^2: copy TS(FLIP) (so the event-helicity CDF/DS grid
+C           pick both) and count it once more in ANS.
+            IF (DEDUP.AND.I.LT.FLIP(I)) THEN
+              ANS=ANS+DABS(T)
+              TS(FLIP(I))=T
+              IF (ISUM_HEL.NE.0.AND.DS_GET_DIM_STATUS('Helicity')
+     $         .EQ.0.AND.ALLOW_HELICITY_GRID_ENTRIES)
+     &          call DS_add_entry('Helicity',FLIP(I),T)
+            ENDIF
           ENDIF
         ENDDO
-        IF(NTRY(IFLAV,1).EQ.(MAXTRIES+1)
+C       Scan phase: drop the C-parity pairing of any row whose
+C       fully flipped partner gave a different |M|^2
+C       (parity/C/polarization breaking). One mismatch at any scan
+C       point permanently invalidates the pair.
+C       A pair of rows that are BOTH numerically zero differ only
+C       by roundoff, and a purely RELATIVE test on that noise
+C       fails at random -- one such pair then vetoes every real
+C       pair, because the verdict is all-or-nothing. Measured on g
+C       g > t t~: rows 1/16 and 4/13 sit at |M|^2 ~ 1e-30 while
+C       the scan maximum is ~1.5e+02, and the de-duplication never
+C       engaged. So also require the difference to be significant
+C       against TSMAX, the largest |M|^2 of this scan point: a row
+C       that far down cannot bias the helicity sum whichever way
+C       it is paired, while a genuine parity violation still shows
+C       up at the relative level.
+        IF (.TRUE..AND.NCSCAN(IFLAV,1).LT.20) THEN
+          NCSCAN(IFLAV,1)=NCSCAN(IFLAV,1)+1
+          TSMAX=0D0
+          DO I=1,NCOMB
+            IF (DABS(TS(I)).GT.TSMAX) TSMAX=DABS(TS(I))
+          ENDDO
+          DO I=1,NCOMB
+            IF (FLIP(I).GT.I) THEN
+              IF (DABS(TS(I)-TS(FLIP(I))).GT.1D-6*(DABS(TS(I))
+     $         +DABS(TS(FLIP(I))))
+     &          .AND.DABS(TS(I)-TS(FLIP(I))).GT.1D-12*TSMAX) THEN
+              CSYMBAD(IFLAV,1)=1
+            ENDIF
+            ENDIF
+          ENDDO
+        ENDIF
+C       Report the surviving C-parity pairs to the
+C       helicity-recycling optimizer (parsed by gen_ximprove):
+C       once the scan has settled (NTRY=20), each representative
+C       I<FLIP(I) with a non-zero |M|^2 whose flipped partner is
+C       C-symmetric. The optimizer drops the partner's amplitudes
+C       from matrix<i>_optim.f and reuses TS(rep) for it. NTRY
+C       (not NCSCAN, which saturates at 20) provides the one-shot
+C       trigger; in init_mode the full-sum branch runs every call,
+C       so the two coincide.
+        IF (INIT_MODE.AND..TRUE..AND.CSYMBAD(IFLAV,1)
+     $   .EQ.0.AND.NCSCAN(IFLAV,1).GE.20.AND.NTRY(IM,IFLAV,1).EQ.20)
+     $    THEN
+          DO I=1,NCOMB
+            IF (I.LT.FLIP(I).AND.DABS(TS(I)).GT.ANS*LIMHEL/NCOMB) THEN
+              PRINT *, 'CSYM PAIR: 1 ', I, FLIP(I)
+            ENDIF
+          ENDDO
+        ENDIF
+        IF(NTRY(IM,IFLAV,1).EQ.(MAXTRIES+1)
      $   .AND.DS_GET_DIM_STATUS('Helicity').NE.-1) THEN
           CALL RESET_CUMULATIVE_VARIABLE()  ! avoid biais of the initialization
         ENDIF
@@ -236,7 +363,7 @@ C            update.
             CALL DS_SET_GRID_MODE('Helicity','init')
           ENDIF
         ELSE
-          IF(NTRY(IFLAV,1).LE.MAXTRIES)THEN
+          IF(NTRY(IM,IFLAV,1).LE.MAXTRIES)THEN
             DO I=1,NCOMB
               IF(INIT_MODE) THEN
                 IF (DABS(TS(I)).GT.ANS*LIMHEL/NCOMB) THEN
@@ -248,12 +375,12 @@ C            update.
                 GOODHEL(I,IFLAV,1)=.TRUE.
                 NGOOD = NGOOD +1
                 PRINT *,'Added good helicity ',I, 'for process 1'
-     $           //' flavor ',IFLAV,TS(I)*NCOMB/ANS,' in event '
-     $           ,NTRY(IFLAV,1)
+     $           //' flavor ',IFLAV,' mirror ',IM,TS(I)*NCOMB/ANS,' in'
+     $           //' event ',NTRY(IM,IFLAV,1)
               ENDIF
             ENDDO
           ENDIF
-          IF(NTRY(IFLAV,1).EQ.MAXTRIES)THEN
+          IF(NTRY(IM,IFLAV,1).EQ.MAXTRIES)THEN
             ISHEL=MIN(ISUM_HEL,NGOOD)
           ENDIF
         ENDIF
@@ -266,13 +393,15 @@ C        in a common block defined in genps.inc.
 
 
         DO JJ=1,NINCOMING
+          JB = JJ
+          IF (IM.EQ.2) JB = 3-JJ
 C         NB_SPIN_STATE_IN/2 avoids a double counting
 C         of an explicit polarisation in the process
-          IF(POL(JJ).NE.1D0.AND.NHEL(JJ,I).EQ.INT(SIGN(1D0,POL(JJ))))
+          IF(POL(JB).NE.1D0.AND.NHEL(JJ,I).EQ.INT(SIGN(1D0,POL(JB))))
      $      THEN
-            T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2D0
-          ELSE IF(POL(JJ).NE.1D0)THEN
-            T=T*(2D0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2D0
+            T=T*ABS(POL(JB))*NB_SPIN_STATE_IN(JJ)/2D0
+          ELSE IF(POL(JB).NE.1D0)THEN
+            T=T*(2D0-ABS(POL(JB)))*NB_SPIN_STATE_IN(JJ)/2D0
           ENDIF
         ENDDO
 
@@ -333,9 +462,11 @@ C           Set right sign for ANS, based on sign of chosen helicity
       ENDIF
       ANS=ANS/DBLE(IDEN)*BROKEN_SYM1(FLAVOR_FOR_SYM)
 
+
       CALL SELECT_COLOR(RCOL, JAMP2, ICONFIG,1,  ICOL, IVEC)
 
       END
+
 
 
       SUBROUTINE GET_FLAVOR1(IFLAV, FLAVOR_OUT)
@@ -396,6 +527,7 @@ C     ARGUMENTS
 C     
       REAL*8 P(0:3,NEXTERNAL)
       INTEGER IFLAV
+
       INTEGER NHEL(NEXTERNAL), FLAVOR(NEXTERNAL)
       INTEGER IHEL
       INTEGER IVEC
@@ -444,6 +576,14 @@ C
 
       LOGICAL ZEROAMP_1(NCOMB,NGRAPHS)
       COMMON/TO_ZEROAMP_1/ZEROAMP_1
+      DOUBLE PRECISION AMPMAX_ZERO
+C     A cancelling amplitude is only zero to the rounding of the
+C     cancellation that produced it, so zeroamp has to be decided on a
+C     relative scale.  Exact zeros come from the diagram structure;
+C     an axial gauge reference vector instead makes whole diagrams
+C     cancel to about 1d-18 of the largest amplitude.
+      DOUBLE PRECISION ZEROAMP_TOL
+      PARAMETER (ZEROAMP_TOL=1D-12)
 
       DOUBLE PRECISION TMIN_FOR_CHANNEL
       INTEGER SDE_STRAT  ! 1 means standard single diagram enhancement strategy,
@@ -501,7 +641,7 @@ C     Amplitude(s) for diagram number 4
       CALL FFV1_3(W(1),W(3),GQED,ZERO, FK_ZERO,W(5))
 C     Amplitude(s) for diagram number 5
       CALL FFV1_0(W(4),W(2),W(5),GQED,AMP(5))
-      CALL FFV1_2_3(W(1),W(3),GUZ1,GUZ2,MZ, ZERO,W(5))
+      CALL FFV1_2_3(W(1),W(3),GUZ1,GUZ2,MZ, FK_WZ,W(5))
 C     Amplitude(s) for diagram number 6
       CALL FFV1_2_0(W(4),W(2),W(5),GUZ1,GUZ2,AMP(6))
 
@@ -515,8 +655,12 @@ C     JAMPs contributing to orders ALL_ORDERS=1
 
 
       IF(INIT_MODE)THEN
+        AMPMAX_ZERO = 0D0
         DO I=1, NGRAPHS
-          IF (AMP(I).NE.0) THEN
+          AMPMAX_ZERO = MAX(AMPMAX_ZERO, ABS(AMP(I)))
+        ENDDO
+        DO I=1, NGRAPHS
+          IF (ABS(AMP(I)).GT.ZEROAMP_TOL*AMPMAX_ZERO) THEN
             ZEROAMP_1(IHEL,I) = .FALSE.
           ENDIF
         ENDDO
@@ -720,7 +864,7 @@ C
       INTEGER I,J
       INTEGER SQSPLITORDERS(NSQSO,NSO)
       DATA (SQSPLITORDERS(  1,I),I=  1,  1) /    2/
-      COMMON/SQPLITORDERS1/SQPLITORDERS
+      COMMON/SQPLITORDERS1/SQSPLITORDERS
 C     
 C     BEGIN CODE
 C     
@@ -776,14 +920,14 @@ C
 C     LOCAL VARIABLES
 C     
       INTEGER I
-      INTEGER SQPLITORDERS(NSQSO,NSO)
-      COMMON/SQPLITORDERS1/SQPLITORDERS
+      INTEGER SQSPLITORDERS(NSQSO,NSO)
+      COMMON/SQPLITORDERS1/SQSPLITORDERS
 C     
 C     BEGIN CODE
 C     
       IF (SOINDEX.GT.0.AND.SOINDEX.LE.NSQSO) THEN
         DO I=1,NSO
-          ORDERS(I) =  SQPLITORDERS(SOINDEX,I)
+          ORDERS(I) =  SQSPLITORDERS(SOINDEX,I)
         ENDDO
         RETURN
       ENDIF

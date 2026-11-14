@@ -11,7 +11,7 @@
 !
 ! This threshold sets the limiting value for the comparison of the
 ! relative difference of the IR pole from the OLP and the one computed
-! internaly by MadFKS.  The value below is used for the first PS
+! internally by MadFKS.  The value below is used for the first PS
 ! points to assess the sanity of the computation. A value ten times
 ! smaller will be used for the systematic check of IR poles at
 ! runtime.
@@ -56,7 +56,7 @@
 ! Default :: -1
 !
 ! Alternatively the user can defined a list of squared orders to select
-! The first entry is the number of specifed squared orders, and the ordering
+! The first entry is the number of specified squared orders, and the ordering
 ! is indicated in orders.inc with typically QCD first, followed by QED
 ! This is just the generalization of the short-hand above.
 !
@@ -84,7 +84,6 @@
 !     type=4 : soft counter-term
 !     type=5 : collinear counter-term
 !     type=6 : soft-collinear counter-term
-!     type=7 : O(alphaS) expansion of Sudakov factor for NNLL+NLO
 !     type=8 : soft counter-term (with n+1-body kin.)
 !     type=9 : collinear counter-term (with n+1-body kin.)
 !     type=10: soft-collinear counter-term (with n+1-body kin.)
@@ -154,17 +153,34 @@
 ! Default :: 0.005d0
 !
 ! Use a polynomial fit for the virtual corrections. Gets a better accuracy,
-! but uses more memmory and disk space.
+! but uses more memory and disk space.
 #UsePolyVirtual
 .False.
 ! Default :: .True.
+!
+! Surrogate of the virtual used by the virt-trick, which computes the
+! virtual only at a fraction of the points and reweights the difference.
+! 0 = the grid (or the polynomial fit above) in the Born phase space.
+! 1 = colour-dipole surrogate fitted per integration channel during the
+!     grid setup: A = t1 B + t2 sum B_kl L_kl + t3 sum B_kl L_kl^2
+!     + t4 sum B_kk, with B_kl the colour-linked Borns and
+!     L_kl = log(|2 p_k.p_l|/Q_ES^2).
+! 2 = 1 plus B L_kl and B L_kl^2 for every pair of Born particles,
+!     coloured or not.
+! For 1 and 2 a channel keeps the grid when the fit does worse: in event
+! generation the fit is kept if its residual makes fewer negative virtual
+! events, in fixed order if its residual variance is smaller. Exact for
+! any choice.
+#VirtTrickSurrogate
+2
+! Default :: 2
 !
 ! ==========================================================================
 ! Combination of matrix elements
 ! ==========================================================================
 !
 ! For fixed order calculations only (ignored for (N)LO+PS runs): This
-! parameter determines if parton flavour configurations with idential
+! parameter determines if parton flavour configurations with identical
 ! matrix elements should be separated at the level of the analysis or
 ! not (these contributions are typically added together in
 ! parton_lum_?.f files and only the PDG info of the first contribution
@@ -176,6 +192,107 @@
 ! scales and PDFs sets, since they have to be done for each flavour
 ! configuration separately.
 #SeparateFlavourConfigurations
+.false.
+! Default :: .false.
+!
+! ==========================================================================
+! Mapping for initial-state FKS emitters
+! ==========================================================================
+!
+! 0: automatic (currently the asymmetric mapping in all run modes).
+! 1: the original symmetric mapping, available without shower matching.
+! 2: the asymmetric, Pythia-like mapping (only the emitting Bjorken x changes).
+! A forced symmetric mapping with shower matching is rejected. The same
+! choice is used for the real point, its counterevents, inverse projection,
+! and the lepton recoil chart without event projection.
+! At fixed order and NLO+PS the asymmetric mapping samples log(1-xi)
+! for the outer real contribution and its counterterms to resolve the
+! ISR tail of light systems at small tau (e.g. M=3 GeV at 13 TeV).
+! The Born auxiliary measure and native shower-history maps are unchanged.
+! This changes only the sampling, not the physical FKS-to-shower mapping.
+#FKSISRMapping
+0
+! Default :: 0
+!
+! ==========================================================================
+! Recoil choice for final-state FKS emitters
+! ==========================================================================
+!
+! 0: use the resonance's final-state decay system when available, or
+!    the complete final-state recoil system otherwise (default).
+! 1: use incoming particle 1 as the local recoiler.
+! 2: use incoming particle 2 as the local recoiler.
+! Initial-state recoil requires two incoming particles and a massless
+! selected parton from a hadron beam (abs(lpp)=1 or 2). Its Bjorken x
+! increases during radiation; the other final-state spectators keep
+! their momenta. This option is supported for fixed-order calculations.
+! Initial-state emitters keep their ordinary FKS map.
+#FKSFinalRecoil
+0
+! Default :: 0
+!
+! ==========================================================================
+! MC@NLO construction
+! ==========================================================================
+!
+! Upper photon-conversion mass in PYTHIA8 QED MC subtraction (GeV).
+! The shower launch script uses the same value for TimeShower:mMaxGamma.
+! Rerun integration/grid setup after changing this setting.
+#Pythia8MMaxGamma
+10d0
+! Default :: 10d0
+!
+! Use the refactored MC@NLO construction.  In this mode the complete
+! explicit sum over native (kl) histories is formed before multiplying
+! H-event subtraction terms by the outer S_ij function.
+! Set .false. to use the standard native-sector MC@NLO matching.
+#MCExplicitKLSum
+.false.
+! Default :: .false.
+!
+! Choose how Born colour flows enter the MC@NLO subtraction in both
+! H and S events. With .true., evaluate at a sampled Born flow and apply
+! its sampling weight (the current prescription). With .false., explicitly
+! sum the MC counterterms over Born flows before combining event weights.
+! The flow sum uses this branch's matching kernels and phase-space maps;
+! it does not restore all matching choices of the 3.x series.
+! Event colours and shower scales use this branch's sampled Born owner;
+! the sum includes each flow's soft replacement and MC@NLO-Delta factor.
+! Summed mode costs one native evaluation per leading Born flow.
+! Independent of MCExplicitKLSum and FKSExplicitSum. Ignored at fixed order.
+! Rerun integration/grid setup after changing this setting.
+#MCSubtractionAtFixedFlow
+.true.
+! Default :: .true.
+!
+! Explicitly sum the outer FKS configurations at each integration point
+! in NLO+PS runs, instead of sampling a group of configurations. The Born
+! contribution is included once; S-event terms are combined before taking
+! absolute values for unweighting. This can reduce negative weights at the
+! cost of more matrix-element evaluations per point. Uses a common Born
+! sampling chart so that the S events have identical underlying momenta.
+! Any separate initial/final-state integration channels remain separate.
+! Independent of MCExplicitKLSum (the inner matching-history sum).
+! Requires event projection. Ignored at fixed order.
+! Rerun integration/grid setup after changing this setting.
+#FKSExplicitSum
+.true.
+! Default :: .true.
+!
+! ==========================================================================
+! FxFx analytic Sudakov finite terms (ickkw=3 only).
+! Always enabled for FxFx with PYTHIA8 matching, regardless of this flag.
+! Other modes default to .false.; fixed-order runs do not enable them
+! automatically, even when parton_shower=PYTHIA8 in the run card.
+! .false.: the standard logarithmic NLL kernels, unless enabled above.
+! .true.: massless forward splitting kernels integrated with Pythia8's
+! momentum tagging and global ISR z bound, identifying the upper FxFx
+! scale with the dipole mass. Retains A1, B1, A2 and the existing massive
+! terms. Includes the same finite terms in the NLO expansion subtraction.
+! This universal prescription omits event-dependent PDFs, dipole recoil
+! and matrix-element corrections; it is not a Pythia no-emission weight.
+! Rerun integration/grid setup and event generation after changing it.
+#FxFxPythia8FiniteTerms
 .false.
 ! Default :: .false.
 !

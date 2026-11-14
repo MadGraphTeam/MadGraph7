@@ -78,6 +78,9 @@ C      track correctly
       LOGICAL SET_CM_RAP
       COMMON/TO_CM_RAP/SET_CM_RAP,CM_RAP
       INTEGER IFLAV
+C     Cuts result for both beam orientations (set in passcuts)
+      LOGICAL MIRROR_CUTS, CUTS_ORIENT(2)
+      COMMON/TO_MIRROR_CUTS/MIRROR_CUTS, CUTS_ORIENT
 
 C     Select among the subprocesses based on PDF weight
       IF(INIT)THEN
@@ -95,6 +98,8 @@ C     Turn caching on in dsigproc to avoid too many calls to switchmom
 C                 Calculate PDF weight for all subprocesses
                   XSDUM =  DSIGPROC(PP,J,IPROC,IFLAV, IMIRROR,SYMCONF
      $             ,CONFSUB,DUM,4)
+C                 An orientation failing the cuts cannot be selected
+                  IF(.NOT.CUTS_ORIENT(IMIRROR)) XSDUM=0D0
                   SELPROC(IMIRROR,IFLAV,IPROC,J)= SELPROC(IMIRROR
      $             ,IFLAV,IPROC,J) + XSDUM
                   IF(MC_GROUPED_SUBPROC) THEN
@@ -109,7 +114,7 @@ C                   Need to flip back x values
                     XDUM=XBK(1)
                     XBK(1)=XBK(2)
                     XBK(2)=XDUM
-                    CM_RAP=-CM_RAP
+                    CM_RAP=DLOG(EBEAM(1)/EBEAM(2))-CM_RAP
                   ENDIF
                 ENDIF
               ENDDO
@@ -177,7 +182,7 @@ C
       INCLUDE 'config_subproc_map.inc'
 
 C     
-C     VARIABLE FOR THE MC over proccess with importance sampling
+C     VARIABLE FOR THE MC over process with importance sampling
 C      additional factor
 C     
       LOGICAL INIT_MODE
@@ -223,7 +228,7 @@ C     all, then we pick a point based on PDF only.
           ENDDO
         ENDDO
  50     CONTINUE
-C       Update weigth w.r.t SELPROC normalized to selection probability
+C       Update weight w.r.t SELPROC normalized to selection probability
 
         DO I=1, WARP_SIZE
           IVEC = (IWARP -1) *WARP_SIZE + I
@@ -242,6 +247,216 @@ C       We are using the grouped_processes grid and it is initialized.
         CALL MAP_1_TO_4(LMAPPED,MAXSPROC,MAXFLAVPERPROC,2,ICONF,IPROC
      $   ,IFLAV,IMIRROR)
       ENDIF
+      RETURN
+      END
+
+      SUBROUTINE STORE_GROUPING_CHOICE(IWARP)
+      IMPLICIT NONE
+C     
+C     Keep a copy of SELPROC/SUMPROB (set by prepare_grouping_choice
+C     for the events of warp IWARP) such that the subprocess can be
+C     selected once the full vector is known (see select_grouping_vec)
+C     
+      INTEGER IWARP
+      INCLUDE 'genps.inc'
+      INCLUDE 'maxconfigs.inc'
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'maxamps.inc'
+      INCLUDE 'vector.inc'
+      DOUBLE PRECISION SELPROC(2, MAXFLAVPERPROC, MAXSPROC,
+     $  LMAXCONFIGS)
+      DOUBLE PRECISION SUMPROB
+      COMMON /TO_GROUPING_SELECTION/SUMPROB,SELPROC
+      DOUBLE PRECISION SELPROC_WARP(2, MAXFLAVPERPROC, MAXSPROC,
+     &     LMAXCONFIGS, NB_WARP)
+      DOUBLE PRECISION SUMPROB_WARP(NB_WARP)
+      COMMON /TO_GROUPING_SELECTION_WARP/SELPROC_WARP, SUMPROB_WARP
+
+      SELPROC_WARP(:,:,:,:,IWARP) = SELPROC(:,:,:,:)
+      SUMPROB_WARP(IWARP) = SUMPROB
+      RETURN
+      END
+
+      SUBROUTINE SELECT_GROUPING_VEC(IMIRROR_VEC, IFLAV_VEC, IPROC,
+     &     ICONF_VEC, WGT, VECSIZE_USED)
+      USE DISCRETESAMPLER
+      IMPLICIT NONE
+C     
+C     Select the subprocess (IPROC), the configuration, the flavour and
+C     the beam orientation for all the warps of a vector.
+C     All the warps of a vector are evaluated with the same matrix
+C     element, so they must share IPROC, while ICONF/IFLAV/IMIRROR are
+C     per warp. With a single warp, this is the same as
+C      select_grouping.
+C     Otherwise IPROC is drawn according to the PDF weights of the
+C     subprocesses averaged over the warps:
+C     P(I) = 1/NWARP sum_w SUM_{J,F,K} SELPROC_w(K,F,I,J)/SUMPROB_w
+C     and (ICONF,IFLAV,IMIRROR) of warp w conditionally to IPROC:
+C     P_w(J,F,K|I) = SELPROC_w(K,F,I,J) / SUM_{J,F,K}
+C      SELPROC_w(K,F,I,J)
+C     the weights of warp w being divided by P(I)*P_w(J,F,K|I)
+C     
+C     INPUT (via common block): SELPROC_WARP, SUMPROB_WARP
+C     INPUT/OUTPUT: WGT(VECSIZE_USED) multiplied by the jacobian
+C     OUTPUT: IMIRROR_VEC(NB_WARP), IFLAV_VEC(NB_WARP), IPROC,
+C     ICONF_VEC(NB_WARP)
+C     
+      INCLUDE 'genps.inc'
+      INCLUDE 'maxconfigs.inc'
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'maxamps.inc'
+      INCLUDE 'vector.inc'
+      INCLUDE 'run.inc'
+      INTEGER VECSIZE_USED
+      INTEGER IMIRROR_VEC(NB_WARP), IFLAV_VEC(NB_WARP), IPROC
+      INTEGER ICONF_VEC(NB_WARP)
+      DOUBLE PRECISION WGT(*)
+
+      DOUBLE PRECISION SELPROC(2, MAXFLAVPERPROC, MAXSPROC,
+     $  LMAXCONFIGS)
+      DOUBLE PRECISION SUMPROB
+      COMMON /TO_GROUPING_SELECTION/SUMPROB,SELPROC
+      DOUBLE PRECISION SELPROC_WARP(2, MAXFLAVPERPROC, MAXSPROC,
+     &     LMAXCONFIGS, NB_WARP)
+      DOUBLE PRECISION SUMPROB_WARP(NB_WARP)
+      COMMON /TO_GROUPING_SELECTION_WARP/SELPROC_WARP, SUMPROB_WARP
+
+      INTEGER SYMCONF(0:LMAXCONFIGS)
+      COMMON /TO_SYMCONF/ SYMCONF
+      INTEGER CONFSUB(MAXSPROC,LMAXCONFIGS)
+      INCLUDE 'config_subproc_map.inc'
+      LOGICAL INIT_MODE
+      COMMON/TO_DETERMINE_ZERO_HEL/INIT_MODE
+      INTEGER NB_FLAV(MAXSPROC)
+      COMMON /FLAVOR_INFORMATION/NB_FLAV
+C     
+C     LOCAL
+C     
+      INTEGER I, J, K, L, IW, IVEC, NB_WARP_USED, NWARP_NONZERO
+      DOUBLE PRECISION R, TOTWGT, PROCPROB(MAXSPROC), SUMPROC, JAC
+
+      NB_WARP_USED = VECSIZE_USED / WARP_SIZE
+      IF (MAXSPROC.EQ.1.OR.NB_WARP_USED.EQ.1) THEN
+C       the subprocess choice of the warps cannot differ
+        DO IW=1, NB_WARP_USED
+          SELPROC(:,:,:,:) = SELPROC_WARP(:,:,:,:,IW)
+          SUMPROB = SUMPROB_WARP(IW)
+          CALL SELECT_GROUPING(IMIRROR_VEC(IW), IFLAV_VEC(IW), IPROC,
+     &         ICONF_VEC(IW), WGT, IW)
+        ENDDO
+        RETURN
+      ENDIF
+
+      IF (MC_GROUPED_SUBPROC) THEN
+        WRITE(*,*) 'ERROR: MC over grouped subprocesses not '//
+     &       'supported with several warps'
+        STOP 1
+      ENDIF
+C     
+C     Probability to select each subprocess (averaged over the warps)
+C     
+      PROCPROB(:) = 0D0
+      NWARP_NONZERO = 0
+      DO IW=1, NB_WARP_USED
+        IF (SUMPROB_WARP(IW).EQ.0D0) CYCLE
+        NWARP_NONZERO = NWARP_NONZERO + 1
+        DO I=1,MAXSPROC
+          SUMPROC = 0D0
+          DO J=1,SYMCONF(0)
+            IF(INIT_MODE.OR.CONFSUB(I,SYMCONF(J)).NE.0) THEN
+              DO L=1,NB_FLAV(I)
+                SUMPROC = SUMPROC + SELPROC_WARP(1,L,I,J,IW)
+     &               + SELPROC_WARP(2,L,I,J,IW)
+              ENDDO
+            ENDIF
+          ENDDO
+          PROCPROB(I) = PROCPROB(I) + SUMPROC/SUMPROB_WARP(IW)
+        ENDDO
+      ENDDO
+C     
+C     Select the subprocess
+C     
+      IPROC = 0
+      IF (NWARP_NONZERO.GT.0) THEN
+        PROCPROB(:) = PROCPROB(:) / NWARP_NONZERO
+        CALL RANMAR(R)
+        TOTWGT = 0D0
+        DO I=1,MAXSPROC
+          TOTWGT = TOTWGT + PROCPROB(I)
+          IF (R.LT.TOTWGT.AND.PROCPROB(I).GT.0D0) THEN
+            IPROC = I
+            EXIT
+          ENDIF
+        ENDDO
+C       protection against rounding (R close to 1)
+        IF (IPROC.EQ.0) THEN
+          DO I=MAXSPROC,1,-1
+            IF (PROCPROB(I).GT.0D0) THEN
+              IPROC = I
+              EXIT
+            ENDIF
+          ENDDO
+        ENDIF
+      ENDIF
+      IF (IPROC.EQ.0) IPROC = 1
+C     
+C     Select the configuration and orientation of each warp
+C     
+      DO IW=1, NB_WARP_USED
+        SUMPROC = 0D0
+        DO J=1,SYMCONF(0)
+          IF(INIT_MODE.OR.CONFSUB(IPROC,SYMCONF(J)).NE.0) THEN
+            DO L=1,NB_FLAV(IPROC)
+              SUMPROC = SUMPROC + SELPROC_WARP(1,L,IPROC,J,IW)
+     &             + SELPROC_WARP(2,L,IPROC,J,IW)
+            ENDDO
+          ENDIF
+        ENDDO
+        ICONF_VEC(IW) = 0
+        IF (SUMPROC.GT.0D0) THEN
+          CALL RANMAR(R)
+          R = R*SUMPROC
+          TOTWGT = 0D0
+          DO J=1,SYMCONF(0)
+            IF(INIT_MODE.OR.CONFSUB(IPROC,SYMCONF(J)).NE.0) THEN
+              DO L=1,NB_FLAV(IPROC)
+                DO K=1,2
+                  TOTWGT = TOTWGT + SELPROC_WARP(K,L,IPROC,J,IW)
+                  IF (R.LT.TOTWGT) THEN
+                    ICONF_VEC(IW) = J
+                    IFLAV_VEC(IW) = L
+                    IMIRROR_VEC(IW) = K
+                    GOTO 60
+                  ENDIF
+                ENDDO
+              ENDDO
+            ENDIF
+          ENDDO
+ 60       CONTINUE
+        ENDIF
+        IF (ICONF_VEC(IW).NE.0) THEN
+          JAC = SUMPROC / PROCPROB(IPROC)
+     &         / SELPROC_WARP(IMIRROR_VEC(IW),IFLAV_VEC(IW),IPROC,
+     &         ICONF_VEC(IW),IW)
+        ELSE
+C         this subprocess does not contribute for this warp: keep a
+C         valid configuration (needed for clustering) with zero weight
+          JAC = 0D0
+          IMIRROR_VEC(IW) = 1
+          IFLAV_VEC(IW) = 1
+          DO J=1,SYMCONF(0)
+            IF(INIT_MODE.OR.CONFSUB(IPROC,SYMCONF(J)).NE.0) THEN
+              ICONF_VEC(IW) = J
+              EXIT
+            ENDIF
+          ENDDO
+          IF (ICONF_VEC(IW).EQ.0) ICONF_VEC(IW) = 1
+        ENDIF
+        DO I=1, WARP_SIZE
+          IVEC = (IW-1)*WARP_SIZE + I
+          WGT(IVEC) = WGT(IVEC)*JAC
+        ENDDO
+      ENDDO
       RETURN
       END
 
@@ -266,8 +481,8 @@ C     ******************************************************
       DOUBLE PRECISION ALL_XBK(2,*)
       DOUBLE PRECISION ALL_Q2FACT(2,*)
       DOUBLE PRECISION ALL_CM_RAP(*)
-      INTEGER ICONF_VEC(NB_WARP), IPROC, IFLAV(NB_WARP),
-     $  IMIRROR_VEC(NB_WARP)
+C     configuration, flavor and orientation are chosen per warp
+      INTEGER ICONF_VEC(NB_WARP), IPROC, IMIRROR_VEC(NB_WARP)
       INTEGER IFLAV_VEC(NB_WARP)
       DOUBLE PRECISION ALL_OUT(*)
       INCLUDE 'maxconfigs.inc'
@@ -325,7 +540,6 @@ C      entries to the grid for the MC over helicity configuration
       COMMON/TO_ALLOW_HELICITY_GRID_ENTRIES/ALLOW_HELICITY_GRID_ENTRIES
 
       INCLUDE 'nexternal.inc'
-      INTEGER FLAVOR_VEC(NEXTERNAL, VECSIZE_MEMMAX)
 
       GROUPED_MC_GRID_STATUS = DS_GET_DIM_STATUS('grouped_processes')
       IMIRROR_GLOBAL = IMIRROR_VEC(1)
@@ -335,19 +549,8 @@ C     DO I=1,MAXSPROC
 C     SUBDIAG(I) = CONFSUB(I,SYMCONF(ICONF_VEC(1)))
 C     ENDDO
 
-C     Build flavor_vec from iflav_vec using the per-process get_flavor
-C      dispatch
-      NB_WARP_USED = VECSIZE_USED / WARP_SIZE
-      DO CURR_WARP = 1, NB_WARP_USED
-        DO I = (CURR_WARP-1)*WARP_SIZE+1, CURR_WARP*WARP_SIZE
-          CALL GET_FLAVOR(IFLAV_VEC(CURR_WARP), IPROC, FLAVOR_VEC(1,I))
-        ENDDO
-      ENDDO
-
-C     set the running scale
-C     and update the couplings accordingly
-      CALL UPDATE_SCALE_COUPLING_VEC(ALL_P, ALL_WGT, ALL_Q2FACT,
-     $  VECSIZE_USED, FLAVOR_VEC)
+C     the running scale and the couplings are set in DSIGPROC_VEC
+C     (on the permuted/mirrored momenta seen by the matrix element)
 
       IF(GROUPED_MC_GRID_STATUS.EQ.0) THEN
 C       If we were in the initialization phase of the grid for MC over
@@ -524,6 +727,9 @@ C     CM_RAP has parton-parton system rapidity
 C     Keep track of whether cuts already calculated for this event
       LOGICAL CUTSDONE,CUTSPASSED
       COMMON/TO_CUTSDONE/CUTSDONE,CUTSPASSED
+C     Cuts result for both beam orientations (set in passcuts)
+      LOGICAL MIRROR_CUTS, CUTS_ORIENT(2)
+      COMMON/TO_MIRROR_CUTS/MIRROR_CUTS, CUTS_ORIENT
 C     To be able to control when the matrix<i> subroutine can add
 C      entries to the grid for the MC over helicity configuration
       LOGICAL ALLOW_HELICITY_GRID_ENTRIES
@@ -565,6 +771,8 @@ C       ! set both mode 1: resonances, 2: no resonances to 50-50
 
 
       IF(IMODE.EQ.1)THEN
+C       With mirror processes passcuts checks both beam orientations
+        MIRROR_CUTS=ANY(MIRRORPROCS)
 C       Set up process information from file symfact
         LUN=NEXTUNOPEN()
         IPROC=1
@@ -730,6 +938,8 @@ C     Turn caching on in dsigproc to avoid too many calls to switchmom
 C                 Calculate PDF weight for all subprocesses
                   SELPROC(IMIRROR,IFLAV,IPROC,J)=DSIGPROC(PP,J,IPROC
      $             ,IFLAV, IMIRROR,SYMCONF,CONFSUB,DUM,4)
+                  IF(.NOT.CUTS_ORIENT(IMIRROR)) SELPROC(IMIRROR,IFLAV
+     $             ,IPROC,J)=0D0
                   IF(MC_GROUPED_SUBPROC) THEN
                     CALL MAP_4_TO_1(J,IPROC,IFLAV,IMIRROR,MAXSPROC
      $               ,MAXFLAVPERPROC,2,LMAPPED)
@@ -742,7 +952,7 @@ C                   Need to flip back x values
                     XDUM=XBK(1)
                     XBK(1)=XBK(2)
                     XBK(2)=XDUM
-                    CM_RAP=-CM_RAP
+                    CM_RAP=DLOG(EBEAM(1)/EBEAM(2))-CM_RAP
                   ENDIF
                 ENDIF
               ENDDO  ! end loop on imirror
@@ -798,7 +1008,7 @@ C                     Need to flip back x values
                       XDUM=XBK(1)
                       XBK(1)=XBK(2)
                       XBK(2)=XDUM
-                      CM_RAP=-CM_RAP
+                      CM_RAP=DLOG(EBEAM(1)/EBEAM(2))-CM_RAP
                     ENDIF
                     IF(INIT_MODE) THEN
                       SELPROC(L,K,I,J) = 1D0
@@ -815,7 +1025,7 @@ C                     Need to flip back x values
 C       Turn caching in dsigproc back off to avoid side effects.
         LAST_ICONF=-1
 C       If these additional entries were enough to initialize the
-C        gird, then update it
+C        grid, then update it
 C       To do this check we must *not* used the cached varianble
 C        grouped_MC_grid_status
         IF(DS_GET_DIM_STATUS('grouped_processes').GE.1) THEN
@@ -854,7 +1064,7 @@ C      all, then we pick a point based on PDF only.
         IF(IPROC.EQ.0) RETURN
 
 
-C       Update weigth w.r.t SELPROC normalized to selection probability
+C       Update weight w.r.t SELPROC normalized to selection probability
 
         WGT=WGT*(SUMPROB/SELPROC(IMIRROR,IFLAV,IPROC,ICONF))
 
@@ -866,6 +1076,9 @@ C       We are using the grouped_processes grid and it is initialized.
         CALL MAP_1_TO_4(LMAPPED,MAXSPROC,MAXFLAVPERPROC,2,ICONF,IPROC
      $   ,IFLAV,IMIRROR)
       ENDIF
+
+C     The selected orientation must pass the cuts
+      IF(.NOT.CUTS_ORIENT(IMIRROR)) RETURN
 
 C     Redo clustering to ensure consistent with final IPROC
       CUTSDONE=.FALSE.
@@ -1007,7 +1220,7 @@ C       Flip x values (to get boost right)
         XBK(1)=XBK(2)
         XBK(2)=XDUM
 C       Flip CM_RAP (to get rapidity right)
-        CM_RAP=-CM_RAP
+        CM_RAP=DLOG(EBEAM(1)/EBEAM(2))-CM_RAP
       ENDIF
 
       DSIGPROC=0D0
@@ -1021,9 +1234,11 @@ C     endif
 C     set the running scale
 C     and update the couplings accordingly (but deactivate for
 C      discrete sampler(imode=5) and
+C     use P1 (permuted/mirrored momenta) to be consistent with the
+C      matrix element
       IF (VECSIZE_MEMMAX.LE.1.AND.IMODE.NE.5) THEN  ! no-vector (NB not VECSIZE_USED!)
         CALL GET_FLAVOR(IFLAV, IPROC, FLAVOR)
-        CALL UPDATE_SCALE_COUPLING(PP, FLAVOR,  WGT)
+        CALL UPDATE_SCALE_COUPLING(P1, FLAVOR,  WGT)
       ENDIF
 
 
@@ -1115,6 +1330,9 @@ C      called from elsewhere) and when set to 0, it resets the cache.
       DATA LAST_ICONF/-1/
       COMMON/TO_LAST_ICONF/LAST_ICONF
       INTEGER IVEC
+      INTEGER IMIRROR_GLOBAL, IPROC_GLOBAL
+      COMMON/TO_MIRROR/ IMIRROR_GLOBAL, IPROC_GLOBAL
+      INTEGER FLAVOR(NEXTERNAL)
 C     
 C     EXTERNAL FUNCTIONS
 C     
@@ -1181,13 +1399,32 @@ C         Flip momenta (rotate around x axis)
             XDUM=ALL_XBK(1, IVEC)
             ALL_XBK(1, IVEC) = ALL_XBK(2, IVEC)
             ALL_XBK(2, IVEC) = XDUM
-            ALL_CM_RAP(IVEC) = - ALL_CM_RAP(IVEC)
+            ALL_CM_RAP(IVEC) = DLOG(EBEAM(1)/EBEAM(2)) -
+     $        ALL_CM_RAP(IVEC)
             IB(1) = 0
             IB(2) = 0
 C           Flip beam identity -> moved to auto_dsigX (since depend of
 C            the warp)
           ENDDO
 
+        ENDIF
+C       set the running scale and update the couplings accordingly,
+C       using the momenta/config/mirror of this warp (as the matrix
+C        element)
+        IF (IMODE.NE.5) THEN
+          ICONFIG=SYMCONF(ICONF_VEC(CURR_WARP))
+          DO I=1,MAXSPROC
+            SUBDIAG(I) = CONFSUB(I,ICONFIG)
+          ENDDO
+          IMIRROR_GLOBAL = IMIRROR
+          IPROC_GLOBAL = IPROC
+          CALL GET_FLAVOR(IFLAV, IPROC, FLAVOR)
+          DO IVEC = (CURR_WARP-1)*WARP_SIZE+1,CURR_WARP*WARP_SIZE
+            XBK(:) = ALL_XBK(:,IVEC)
+            CM_RAP = ALL_CM_RAP(IVEC)
+            CALL UPDATE_SCALE_COUPLING_IVEC(ALL_P1(0,1,IVEC), FLAVOR,
+     &              ALL_WGT(IVEC), ALL_Q2FACT(1,IVEC), IVEC)
+          ENDDO
         ENDIF
       ENDDO
 
@@ -1309,7 +1546,7 @@ C
       INTEGER                 NCOMB
       PARAMETER (             NCOMB=16)
       LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC, MAXSPROC)
-      INTEGER NTRY(MAXFLAVPERPROC, MAXSPROC)
+      INTEGER NTRY(2, MAXFLAVPERPROC, MAXSPROC)
       COMMON/BLOCK_GOODHEL/NTRY,GOODHEL
       WRITE(STREAM_ID,*) GOODHEL
       RETURN
@@ -1324,10 +1561,10 @@ C
       INTEGER                 NCOMB
       PARAMETER (             NCOMB=16)
       LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC, MAXSPROC)
-      INTEGER NTRY(MAXFLAVPERPROC, MAXSPROC)
+      INTEGER NTRY(2, MAXFLAVPERPROC, MAXSPROC)
       COMMON/BLOCK_GOODHEL/NTRY,GOODHEL
       READ(STREAM_ID,*) GOODHEL
-      NTRY(:,:) = MAXTRIES + 1
+      NTRY = MAXTRIES + 1
       RETURN
       END
 
@@ -1337,11 +1574,11 @@ C
       INTEGER                 NCOMB
       PARAMETER (             NCOMB=16)
       LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC, MAXSPROC)
-      INTEGER NTRY(MAXFLAVPERPROC, MAXSPROC)
+      INTEGER NTRY(2, MAXFLAVPERPROC, MAXSPROC)
       INTEGER I,J
 
-      GOODHEL(:,:,:) = .FALSE.
-      NTRY(:,:) = 0
+      GOODHEL = .FALSE.
+      NTRY = 0
       END
 
       INTEGER FUNCTION GET_MAXSPROC()
@@ -1357,8 +1594,8 @@ C
 
       SUBROUTINE PRINT_ZERO_AMP()
 
-      CALL PRINT_ZERO_AMP1()
-      CALL PRINT_ZERO_AMP2()
+      CALL PRINT_ZERO_AMP_1()
+      CALL PRINT_ZERO_AMP_2()
       RETURN
       END
 

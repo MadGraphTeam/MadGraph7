@@ -121,6 +121,7 @@ backward_kernel_reduce_product(FIn<T, 1> in, FIn<T, 0> out_grad, FOut<T, 1> in_g
         FVal<T> val = in[i];
         auto zero_val = val == 0.;
         product = product * where(zero_val & (zero_count == 0), 1., val);
+        zero_count = zero_count + where(zero_val, IVal<T>(1), IVal<T>(0));
     }
     auto zero_product = where(zero_count == 0, product, 0.);
     for (std::size_t i = 0; i < in.size(); ++i) {
@@ -138,7 +139,7 @@ KERNELSPEC void kernel_sqrt(FIn<T, 0> in, FOut<T, 0> out) {
 template <typename T>
 KERNELSPEC void
 backward_kernel_sqrt(FIn<T, 0> in, FIn<T, 0> out_grad, FOut<T, 0> in_grad) {
-    in_grad += where(in > 0., -0.5 * out_grad / sqrt(in), 0.);
+    in_grad += where(in > 0., 0.5 * out_grad / sqrt(in), 0.);
 }
 
 template <typename T>
@@ -150,6 +151,40 @@ template <typename T>
 KERNELSPEC void
 backward_kernel_square(FIn<T, 0> in, FIn<T, 0> out_grad, FOut<T, 0> in_grad) {
     in_grad += 2. * in * out_grad;
+}
+
+template <typename T>
+KERNELSPEC void kernel_log(FIn<T, 0> in, FOut<T, 0> out) {
+    out = log(where(in > 0., in, 1.));
+}
+
+template <typename T>
+KERNELSPEC void
+backward_kernel_log(FIn<T, 0> in, FIn<T, 0> out_grad, FOut<T, 0> in_grad) {
+    in_grad += where(in > 0., out_grad / in, 0.);
+}
+
+template <typename T>
+KERNELSPEC void kernel_pow(FIn<T, 0> in1, FIn<T, 0> in2, FOut<T, 0> out) {
+    // A non-positive base is clamped away rather than handed to pow(): with a
+    // fractional exponent that is a NaN, and one NaN in a SIMD lane is enough
+    // to spoil the whole batch. Same convention as kernel_sqrt above.
+    out = where(in1 > 0., pow(where(in1 > 0., in1, 1.), in2), 0.);
+}
+
+template <typename T>
+KERNELSPEC void backward_kernel_pow(
+    FIn<T, 0> in1,
+    FIn<T, 0> in2,
+    FIn<T, 0> out_grad,
+    FOut<T, 0> in1_grad,
+    FOut<T, 0> in2_grad
+) {
+    auto positive = in1 > 0.;
+    auto base = where(positive, in1, 1.);
+    auto value = pow(base, in2);
+    in1_grad += where(positive, out_grad * in2 * value / base, 0.);
+    in2_grad += where(positive, out_grad * value * log(base), 0.);
 }
 
 template <typename T>

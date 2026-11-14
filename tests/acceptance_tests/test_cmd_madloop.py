@@ -52,7 +52,6 @@ path = os.path
 class TestCmdLoop(unittest.TestCase):
     """this treats all the command not related to MG_ME"""
     logger_saved_info = {}
-    debugging = True
     def setUp(self):
         """ Initialize the test """
         self.interface = MGCmd.MasterCmd()
@@ -61,6 +60,10 @@ class TestCmdLoop(unittest.TestCase):
         # first the handlers and second the level.
         self.logger_saved_info = {}
 
+        # Only test_manager --debug keeps the output, in the shared
+        # <MG5DIR>/TEST_AMC; otherwise each test gets its own directory so
+        # that concurrent test runs in one checkout do not wipe each other.
+        self.debugging = getattr(unittest, "debug", False)
         if not self.debugging:
             self.tmpdir = tempfile.mkdtemp(prefix='amc')
         else:
@@ -70,7 +73,11 @@ class TestCmdLoop(unittest.TestCase):
             self.tmpdir = pjoin(MG5DIR, 'TEST_AMC')
             
         self.out_dir = pjoin(self.tmpdir,'MGProcess')
-    
+
+    def tearDown(self):
+        if not self.debugging:
+            shutil.rmtree(self.tmpdir, ignore_errors=True)
+
     def generate(self, process, model):
         """Create a process"""
         try:
@@ -257,6 +264,124 @@ class TestCmdLoop(unittest.TestCase):
                     'improve_ps moved leg %s off rest (%s, entry %s, '
                     'ImprovePSPoint=%s): %s = %s'
                     % (leg, label, entry, mode, label, value))
+
+    def test_polarised_rotation_stability_leg_at_rest(self):
+        """MadLoop's rotation stability test must remain a symmetry when a
+        polarised massive particle is exactly at rest.
+
+        A one-leg me_frame puts the selected particle at rest, and HELAS then
+        takes its spin axis from the frame z axis instead of its momentum.
+        NRotations_DP/QP used to re-evaluate the loop after axis permutations
+        that move z, i.e. in a different polarisation state. On
+        u u~ > z{0} z{0} [virt=QCD] with leg 3 at rest this returned code 420
+        (EPS), a relative accuracy of 6.1, and a finite part 56%% off.
+        ROTATE_PS now rotates about z whenever a leg is exactly at rest.
+
+        The point is the boost_to_frame configuration: a c.m. point boosted
+        into the rest frame of leg 3, its three-momentum then set to exactly
+        zero.
+        """
+        import math
+        out_dir = pjoin(self.tmpdir, 'ML_rotation_at_rest')
+        self.do('import model loop_sm')
+        self.do('generate u u~ > z{0} z{0} [virt=QCD]')
+        self.do('output standalone %s -f' % out_dir)
+        proc_dir = pjoin(out_dir, 'SubProcesses', 'P0_uux_z0z0')
+
+        # check reads PS.input only when READPS is set
+        check_sa = pjoin(proc_dir, 'check_sa.f')
+        text = open(check_sa).read()
+        self.assertIn('PARAMETER (READPS = .FALSE.)', text)
+        open(check_sa, 'w').write(text.replace('PARAMETER (READPS = .FALSE.)',
+                                               'PARAMETER (READPS = .TRUE.)'))
+        make = subprocess.Popen(['make', 'check'], stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, cwd=proc_dir)
+        (out, _) = make.communicate()
+        self.assertEqual(make.returncode, 0, out.decode())
+
+        mz = None
+        in_mass = False
+        for line in open(pjoin(out_dir, 'Cards', 'param_card.dat')):
+            fields = line.split()
+            if line.lower().startswith('block'):
+                in_mass = fields[1].lower() == 'mass'
+            elif in_mass and fields and fields[0] == '23':
+                mz = float(fields[1])
+        self.assertIsNotNone(mz)
+
+        energy = 250.0
+        k = math.sqrt(energy**2 - mz**2)
+        theta, phi = 0.7, 0.3
+        p3 = [energy, k*math.sin(theta)*math.cos(phi),
+              k*math.sin(theta)*math.sin(phi), k*math.cos(theta)]
+        ps = [[energy, 0., 0., energy], [energy, 0., 0., -energy],
+              p3, [energy, -p3[1], -p3[2], -p3[3]]]
+        beta = [p3[i]/p3[0] for i in (1, 2, 3)]
+        beta2 = sum(b*b for b in beta)
+        gamma = 1.0/math.sqrt(1.0 - beta2)
+        def boost(p):
+            bp = sum(beta[i]*p[i+1] for i in range(3))
+            shift = (gamma - 1.0)*bp/beta2 - gamma*p[0]
+            return [gamma*(p[0] - bp)] + [p[i+1] + shift*beta[i]
+                                          for i in range(3)]
+        at_rest = [boost(p) for p in ps]
+        at_rest[2] = [mz, 0.0, 0.0, 0.0]
+
+        def write_point(point):
+            with open(pjoin(proc_dir, 'PS.input'), 'w') as handle:
+                for p in point:
+                    handle.write(' '.join('%.17E' % x for x in p) + '\n')
+
+        params = [f for f in glob.glob(pjoin(out_dir, '**', 'MadLoopParams.dat'),
+                                       recursive=True)
+                  if 'default' not in os.path.basename(f)]
+        self.assertTrue(params)
+
+        def evaluate(nrot):
+            for path_ in params:
+                lines = open(path_).read().split('\n')
+                for key in ('#NRotations_DP', '#NRotations_QP'):
+                    lines[lines.index(key) + 1] = str(nrot)
+                open(path_, 'w').write('\n'.join(lines))
+            run = subprocess.Popen(['./check'], stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT, cwd=proc_dir)
+            (out, _) = run.communicate()
+            out = out.decode()
+            self.assertEqual(run.returncode, 0, out)
+            # check evaluates the point NPSPOINTS times; the last one is
+            # past MadLoop's initialisation
+            finite = [float(l.split()[4]) for l in out.split('\n')
+                      if 'Matrix element finite' in l][-1]
+            # no accuracy line while MadLoop is still initialising
+            accuracy = ([float(l.split()[3]) for l in out.split('\n')
+                         if 'Relative accuracy' in l] or [None])[-1]
+            code = [int(l.split()[-1]) for l in out.split('\n')
+                    if 'MadLoop return code' in l][-1]
+            return finite, accuracy, code
+
+        # Leave MadLoop's initialisation stage (return code 1xx, filters not
+        # yet written) on an ordinary point, so both measured evaluations
+        # below run the real stability test.
+        write_point(ps)
+        for attempt in range(6):
+            code = evaluate(0)[2]
+            if code // 100 != 1:
+                break
+        self.assertNotEqual(code // 100, 1,
+            'MadLoop did not leave its initialisation stage: code %d' % code)
+
+        write_point(at_rest)
+        finite0, _, code0 = evaluate(0)
+        finite2, accuracy2, code2 = evaluate(2)
+        self.assertEqual(code0 // 100, 2,
+            'reference evaluation not stable: return code %d' % code0)
+        self.assertEqual(code2 // 100, 2,
+            'rotations flagged the at-rest point: return code %d, relative '
+            'accuracy %.2e' % (code2, accuracy2))
+        self.assertLess(accuracy2, 1e-6)
+        self.assertLess(abs(finite2/finite0 - 1.0), 1e-8,
+            'rotations changed the finite part: %.16e vs %.16e'
+            % (finite2, finite0))
 
     def test_generate_output_semicolon_preserves_loop_process(self):
         """Regression test for combined generate/output in one command line."""
@@ -907,13 +1032,28 @@ class TestCmdLoop(unittest.TestCase):
         def propagator(Q2, mz, gammaz):
             return 1/((Q2 - mz**2)**2 + mz**2 * gammaz**2)
 
-    #We check that the mass, the decay and the transfered mommentum of the z are the same in the decay and the production for each of the 5 events
+    #We check that the mass, the decay and the transferred momentum of the z are the same in the decay and the production for each of the 5 events
         for i in range(5):
             self.assertAlmostEqual(p2_decay[i], p2_production[i], places=7)
             comparison = 3 * propagator(p2_decay[i], 9.118800e+01, gammaz_decay) * convolution(rho_production[i], rho_decay[i])
             self.assertAlmostEqual(comparison.imag, 0., places=12)
             self.assertAlmostEqual(matrix_element_prod_and_decay[i], comparison.real)
 
+
+    def test_standalone_rw_tree_then_virt(self):
+        """The calls of a tree standalone_rw output (fk_ tag of the widths)
+        must not leak into the next MadLoop output (NLO reweighting)"""
+
+        self.do('import model loop_sm')
+        self.do('generate u u~ > e+ e-')
+        self.do('output standalone_rw %s -f' % pjoin(self.tmpdir, 'TREE'))
+        self.do('generate u u~ > e+ e- [virt=QCD]')
+        self.do('output standalone_rw %s -f' % pjoin(self.tmpdir, 'VIRT'))
+
+        born = open(pjoin(self.tmpdir, 'VIRT', 'SubProcesses', 'P0_uux_epem',
+                          'born_matrix.f')).read()
+        self.assertEqual([l.strip() for l in born.split('\n') if 'FK_' in l.upper()], [])
+        self.assertIn('MDL_MZ,MDL_WZ,', born)
 
     def test_density_mode_loop_induced_standalone1(self):
         """ Testing the density mode in standalone mode for loop induced.
@@ -1200,7 +1340,7 @@ class TestCmdLoop(unittest.TestCase):
                     set run_card use_syst False
                 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -1220,7 +1360,7 @@ set reweight_card particle_in_density_matrix [24, -24]
 set reweight_card order_helicities [-1, 1, -1, 0, -1, -1, 0, 1, 0, 0, 0, -1, 1, 1, 1, 0, 1, -1]
 set matrix_normalisation False
 """
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd_rwgt.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd_rwgt.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -1313,6 +1453,7 @@ class TestCmdMatchBox(IOTests.IOTestManager):
         cmd = """
         set apply_flavor_grouping False
         import model sm
+        set gauge unitary
         generate w+ w- > w+ w- @0
         output matchbox %(path)s/TEST --postpone_model
         generate u u~ > u u~ [virt=QCD] @1
@@ -1345,6 +1486,9 @@ class IOTestMadLoopOutputFromInterface(IOTests.IOTestManager):
         misc.deactivate_dependence('samurai', cmd = interface, log='stdout')        
         misc.deactivate_dependence('golem', cmd = interface, log='stdout')
         misc.activate_dependence('ninja', cmd = interface, log='stdout',MG5dir=MG5DIR)
+
+        # The reference includes COLLIER interfaces on every runner.
+        misc.activate_dependence('collier', cmd = interface, log='stdout',MG5dir=MG5DIR)
 
         run_cmd('generate g g > t t~ [virt=QCD]')
         interface.onecmd('output %s -f' % str(pjoin(self.IOpath,'ggttx_IOTest')))

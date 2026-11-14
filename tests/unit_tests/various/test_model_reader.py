@@ -23,8 +23,8 @@ import time
 
 import tests.unit_tests as unittest
 import madgraph.core.base_objects as base_objects
-import models.import_ufo as import_ufo
-import models.model_reader as model_reader
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.model_reader as model_reader
 
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
 

@@ -909,7 +909,7 @@ class C(aloha_lib.FactoryLorentz):
 #===============================================================================
 # EPSILON  
 #===============================================================================
-#Helpfull function
+#Helpful function
 def give_sign_perm(perm0, perm1):
     """Check if 2 permutations are of equal parity.
 
@@ -1086,7 +1086,7 @@ class IdentityL(aloha_lib.FactoryLorentz):
 # ProjM 
 #===============================================================================    
 class L_ProjM(aloha_lib.LorentzObject):
-    """ A object for (1-gamma5)/2 """
+    """ An object for (1-gamma5)/2 """
     
     #projm = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
     projm= {(0,0): 1, (0,1): 0, (0,2): 0, (0,3): 0,\
@@ -1114,7 +1114,7 @@ class ProjM(aloha_lib.FactoryLorentz):
 # ProjP 
 #===============================================================================    
 class L_ProjP(aloha_lib.LorentzObject):
-    """A object for (1+gamma5)/2 """
+    """An object for (1+gamma5)/2 """
     
     #projp = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
     projp = {(0,0): 0, (0,1): 0, (0,2): 0, (0,3): 0,\

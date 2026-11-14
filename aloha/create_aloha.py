@@ -36,7 +36,7 @@ import aloha.aloha_lib as aloha_lib
 import aloha.aloha_object as aloha_object
 import aloha.aloha_parsers as aloha_parsers
 import aloha.aloha_fct as aloha_fct
-import models
+import madgraph.models as models
 try:
     import madgraph.iolibs.files as files
     import madgraph.various.misc as misc
@@ -141,8 +141,9 @@ class AbstractRoutine(object):
 
         conjg = tuple(int(t[1:]) for t in self.tag if t.startswith('C'))
         # the model is part of the key: two models can define different
-        # structures under the same Lorentz name
-        key = (self.model, tuple(lor.name for lor in l_lorentz), conjg)
+        # structures under the same Lorentz name; so is the gauge
+        key = (self.model, tuple(lor.name for lor in l_lorentz), conjg,
+               aloha.unitary_gauge)
         if key in self.combined_builder:
             builder = self.combined_builder[key]
         else:
@@ -204,7 +205,7 @@ class AbstractRoutine(object):
             if len(lorentz.spins) != len(self.spins):
                 # not the same legs: nothing to assemble them into
                 return None
-            key = (self.model, name, conjg)
+            key = (self.model, name, conjg, aloha.unitary_gauge)
             if key in self.combined_builder:
                 builder = self.combined_builder[key]
             else:
@@ -389,7 +390,24 @@ in presence of majorana particle/flow violation"""
             expr = self.lorentz_expr
         
         if need_P_sign:
-            expr = re.sub(r'\b(P|PSlash)\(', r'-\1(', expr)
+            # (-P)**n = (-1)**n * P**n. The sign is added as a bare '-', which
+            # binds looser than '**' (-P(-1,id)**2 is -(P^2)), so a momentum
+            # raised to an even integer power is left unsigned. Before this,
+            # p^2 changed sign in the $ veto (P1D) of every outgoing fermion
+            # propagator, which switched the veto off.
+            # An even exponent is recognised as a number, bare or in
+            # parentheses (2, 2.0, 2e0, (2)); any other exponent (an
+            # expression, an odd number) gets the sign. ALOHA's parser has no
+            # signed exponent.
+            def flip_sign(match):
+                power = match.group(3) or match.group(4)
+                if power is not None and float(power).is_integer() \
+                                     and int(float(power)) % 2 == 0:
+                    return match.group(0)
+                return '-' + match.group(0)
+            number = r'\d+(?:\.\d*)?(?:[eE][+-]?\d+)?'
+            expr = re.sub(r'\b(P|PSlash)\(([^()]*)\)(?:\s*\*\*\s*(?:\(\s*(%s)\s*\)|(%s)(?![\w.])))?'
+                          % (number, number), flip_sign, expr)
 
         calc = aloha_parsers.ALOHAExpressionParser()
         lorentz_expr = calc.parse(expr)
@@ -447,8 +465,28 @@ in presence of majorana particle/flow violation"""
                     else:
                         massless = True
                         self.denominator = None
-                # 1D is a multiplication of standar propagator -> later
+                # 1D is a multiplication of standard propagator -> later
                 elif propa in [[],['1D']]:
+                    massless = False
+                    self.denominator = None
+                elif aloha.unitary_gauge == 3 and spin in [1, 3] and \
+                        any(p in aloha_writers.UNITARY_ONLY_PROPAGATORS for p in propa):
+                    # a piece of the unitary numerator: projecting it on the FD
+                    # gauge (the generic branch below) gives a wrong result
+                    raise ALOHAERROR('The polarised propagator %s is a piece of the '
+                                     'unitary-gauge numerator and has no FD-gauge '
+                                     'counterpart.' % ','.join(propa))
+                elif aloha.unitary_gauge == 3 and spin in [1, 3] and \
+                        aloha_writers.fd_polarized_propagator(propa) is not None:
+                    # FD gauge, polarised propagator of a massive vector (and
+                    # of its Goldstone boson, the fifth component of the same
+                    # line): the ordinary FD wavefunction is built here, and
+                    # the writer projects it on the requested piece instead of
+                    # applying the full FD projector
+                    # (aloha_writers.FD_POLARIZED_PROPAGATORS).
+                    if aloha.complex_mass:
+                        raise ALOHAERROR('Polarised propagators are not '
+                                 'supported in the complex-mass scheme.')
                     massless = False
                     self.denominator = None
                 else:
@@ -817,7 +855,7 @@ in presence of majorana particle/flow violation"""
 
 class CombineRoutineBuilder(AbstractRoutineBuilder):
     """A special builder for combine routine if needed to write those
-        explicitely.
+        explicitly.
     """
     def __init__(self, l_lorentz, model=None):
         """ initialize the run
@@ -894,7 +932,22 @@ class AbstractALOHAModel(dict):
         
         if write_dir:
             self.main(write_dir,format=format)
-            
+
+    @classmethod
+    def from_model(cls, model, **opts):
+        """Build the AbstractALOHAModel associated to an already loaded
+        madgraph.core.base_objects.Model. The model name alone is not enough:
+        it can carry a restriction suffix ('sm-no_b_mass') and it does not say
+        where the model was imported from, so a model outside of MG5DIR/models
+        would not be found at all. Use the directory the model was loaded from
+        whenever it is still available."""
+
+        try:
+            model_name = model.get('modelpath')
+        except Exception:
+            model_name = model.get('name')
+        return cls(model_name, **opts)
+
     def main(self, output_dir, format='Fortran'):
         """ Compute if not already compute. 
             Write file in models/MY_MODEL/MY_FORMAT.
@@ -1201,7 +1254,7 @@ class AbstractALOHAModel(dict):
                                          routines=routines)
             
         
-        # Build mutiple lorentz call
+        # Build multiple lorentz call
         for list_l_name, tag, outgoing in data:
             if len(list_l_name) ==1:
                 continue
@@ -1255,7 +1308,7 @@ class AbstractALOHAModel(dict):
                             
     def compute_aloha(self, builder, symmetry=None, routines=None, tag=[]):
         """ define all the AbstractRoutine linked to a given lorentz structure
-        symmetry authorizes to use the symmetry of anoter lorentz structure.
+        symmetry authorizes to use the symmetry of another lorentz structure.
         routines to define only a subset of the routines."""
 
         name = builder.name
@@ -1287,7 +1340,7 @@ class AbstractALOHAModel(dict):
 
     def compute_aloha_without_kernel(self, builder, symmetry=None, routines=None):
         """define all the AbstractRoutine linked to a given lorentz structure
-        symmetry authorizes to use the symmetry of anoter lorentz structure.
+        symmetry authorizes to use the symmetry of another lorentz structure.
         routines to define only a subset of the routines. 
         Compare to compute_aloha, each routines are computed independently.
         """
@@ -1326,7 +1379,7 @@ class AbstractALOHAModel(dict):
 #               pjoin(output_dir, 'additional_aloha_function.f') )
 #            else:
 #                logger.warning('''Some function present in the lorentz structure are 
-#                not recognized. Please edit the code to add the defnition of such function.''')
+#                not recognized. Please edit the code to add the definition of such a function.''')
 #                logger.info('list of missing fct: %s .' % \
 #                            ','.join([a[0] for a in aloha_lib.KERNEL.unknow_fct]))
 #        

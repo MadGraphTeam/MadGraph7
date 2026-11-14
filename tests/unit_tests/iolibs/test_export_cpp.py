@@ -19,6 +19,8 @@ import copy
 import fractions
 import os
 import re
+import shutil
+import tempfile
 import tests.IOTests as IOTests
 from tests import test_manager
 
@@ -32,7 +34,7 @@ import madgraph.iolibs.export_mg7 as export_mg7
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.helas_call_writers as helas_call_writer
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import madgraph.iolibs.save_load_object as save_load_object
 import madgraph.iolibs.group_subprocs as group_subprocs
 
@@ -909,6 +911,7 @@ class BrokenSymmetryCPPExportTest(unittest.TestCase):
             'process_lines': '',
             'model_name': 'sm',
             'initProc_lines': '',
+            'refreshMasses_lines': '',
             'reset_jamp_lines': '',
             'sigmaKin_lines': '',
             'sigmaHat_lines': 'return 0.;',
@@ -922,7 +925,8 @@ class BrokenSymmetryCPPExportTest(unittest.TestCase):
             'broken_sym_component_old_factors': ",".join(str(v) for v in sym_data['component_old_factors']),
             'broken_sym_pid_list': ",".join(str(v) for v in sym_data['pid_list']),
             'broken_sym_block_starts': ",".join(str(v) for v in sym_data['block_starts']),
-            'broken_sym_block_lengths': ",".join(str(v) for v in sym_data['block_lengths'])
+            'broken_sym_block_lengths': ",".join(str(v) for v in sym_data['block_lengths']),
+            'ident_cross_function': ''
         }
         template_path = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
                               'cpp_process_function_definitions.inc')
@@ -943,10 +947,12 @@ class DDMColorFlowMG7Test(unittest.TestCase):
     basis changes how the jamps are computed, never which color flows exist,
     so none of it may depend on the mode."""
 
-    def get_exporter(self, ids, ddm):
+    def get_exporter(self, ids, ddm, cls=None):
         """The mg7 exporter for the all-gluon process with npar = len(ids),
-        built with or without the DDM color basis."""
+        built with or without the DDM color basis. `cls` selects a subclass
+        (the madmatrix one shares this constructor)."""
 
+        cls = cls if cls else export_mg7.OneProcessExporterMG7
         color_amp.set_ddm_basis(ddm, with_flow=ddm)
         try:
             model = import_ufo.import_model('sm')
@@ -956,7 +962,7 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             amplitude = diagram_generation.Amplitude(
                 base_objects.Process({'legs': legs, 'model': model}))
             matrix_element = helas_objects.HelasMatrixElement(amplitude)
-            return export_mg7.OneProcessExporterMG7(
+            return cls(
                 matrix_element, helas_call_writer.CPPUFOHelasCallWriter(model))
         finally:
             color_amp.set_ddm_basis(False)
@@ -984,3 +990,244 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             for active_colors in ddm.active_color_map:
                 self.assertTrue(active_colors)
                 self.assertLess(max(active_colors), nflow)
+
+    def test_ddm_colordata_is_written_and_mode_independent(self):
+        """ColorData.h bakes the canonical color flow code of each flow, which
+        has to be decomposed on the flow basis: asking the DDM basis itself
+        raises (its elements are products of f's and have no single flow
+        each). That left a 0 byte header and no CPPProcess.cc at all for
+        every all-gluon process, silently and with a zero exit code."""
+
+        import madmatrix.model_handling as model_handling
+
+        written = {}
+        for npar in (4, 5):
+            for ddm in (False, True):
+                exporter = self.get_exporter(
+                    [21] * npar, ddm=ddm,
+                    cls=model_handling.OneProcessExporterMadMatrix)
+                exporter.path = tempfile.mkdtemp()
+                try:
+                    exporter.edit_colordata()
+                    with open(pjoin(exporter.path, 'ColorData.h')) as stream:
+                        # the color flow half: the color matrix before it is
+                        # the one of the basis the color sum runs on
+                        text = stream.read()
+                        written[(npar, ddm)] = text[text.index('namespace mgOnGpu'):]
+                finally:
+                    shutil.rmtree(exporter.path)
+                self.assertTrue(written[(npar, ddm)])
+                self.assertIn('colorflowcode_valid = true',
+                              written[(npar, ddm)])
+            # switching the color basis changes how the jamps are computed,
+            # never which color flows exist
+            self.assertEqual(written[(npar, True)], written[(npar, False)])
+
+
+#===============================================================================
+# AlohaModelPathTest
+#===============================================================================
+class AlohaModelPathTest(unittest.TestCase):
+    """The ALOHA model has to be located from the directory the model was
+    imported from, never from its name: the name can carry a restriction
+    suffix ('SMEFTatNLO-NLO') and it says nothing at all about a model
+    living outside of MG5DIR/models."""
+
+    def get_model(self, name, modeldir):
+        model = base_objects.Model()
+        model.set('name', name)
+        model.set('version_tag', '%s##1' % modeldir)
+        return model
+
+    def get_aloha_model(self, model):
+        """Build the aloha model, recording which name reaches load_model
+        (and faking the UFO module, so that nothing is imported here)."""
+
+        recorded = []
+        class FakeUFO(object):
+            pass
+        def fake_load_model(name, decay=False):
+            recorded.append(name)
+            ufo = FakeUFO()
+            ufo.__file__ = os.path.join(name, '__init__.py')
+            return ufo
+
+        real_load_model = create_aloha.models.load_model
+        create_aloha.models.load_model = fake_load_model
+        try:
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(model)
+        finally:
+            create_aloha.models.load_model = real_load_model
+        return aloha_model, recorded
+
+    def test_aloha_model_of_a_model_outside_of_mg5dir(self):
+        """A restricted model outside of MG5DIR/models used to be looked for
+        by name ('SMEFTatNLO-NLO'), which is neither a directory we know of
+        nor an importable module."""
+
+        modeldir = tempfile.mkdtemp(prefix='aloha_model_path')
+        try:
+            model = self.get_model('SMEFTatNLO-NLO',
+                                   os.path.join(modeldir, 'SMEFTatNLO'))
+            os.mkdir(os.path.join(modeldir, 'SMEFTatNLO'))
+            aloha_model, recorded = self.get_aloha_model(model)
+        finally:
+            shutil.rmtree(modeldir)
+
+        self.assertEqual(recorded, [os.path.join(modeldir, 'SMEFTatNLO')])
+        self.assertEqual(aloha_model.model_pos,
+                         os.path.join(modeldir, 'SMEFTatNLO'))
+
+    def test_aloha_model_of_a_restricted_model_of_mg5dir(self):
+        """The restriction is dropped for a model of MG5DIR/models as well."""
+
+        model = self.get_model('sm-no_b_mass', os.path.join(MG5DIR, 'models', 'sm'))
+        aloha_model, recorded = self.get_aloha_model(model)
+        self.assertEqual(recorded, [os.path.join(MG5DIR, 'models', 'sm')])
+        self.assertEqual(aloha_model.model_pos,
+                         os.path.join(MG5DIR, 'models', 'sm'))
+
+
+#===============================================================================
+# MG7LeptonDensityShippingTest
+#===============================================================================
+class MG7LeptonDensityShippingTest(unittest.TestCase):
+    """Source/PDF/lep_densities ships only for beams that can use it.
+
+    A dressed-lepton run resolves beam.lepton_density against that directory,
+    so without it the run stops at startup; a hadronic output has no business
+    carrying 3.5 MB of e+ e- tables.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def exporter(self, ninitial, pdg1, pdg2):
+        # the method only needs dir_path and proc_characteristic, and
+        # ProcessExporterMG7.__init__ wants a full set of export arguments
+        exporter = export_cpp.ProcessExporterMG7.__new__(
+            export_cpp.ProcessExporterMG7)
+        exporter.dir_path = self.tmpdir
+        exporter.proc_characteristic = {'ninitial': ninitial,
+                                        'pdg_initial1': pdg1,
+                                        'pdg_initial2': pdg2}
+        return exporter
+
+    def shipped(self):
+        return os.path.isdir(os.path.join(self.tmpdir, 'Source', 'PDF',
+                                          'lep_densities', 'fcce240ll'))
+
+    def test_shipped_for_electron_beams(self):
+        self.exporter(2, [-11], [11]).copy_lepton_densities()
+        self.assertTrue(self.shipped())
+
+    def test_shipped_for_muon_beams(self):
+        self.exporter(2, [-13], [13]).copy_lepton_densities()
+        self.assertTrue(self.shipped())
+
+    def test_not_shipped_for_hadronic_beams(self):
+        self.exporter(2, [2, 21], [-2, 21]).copy_lepton_densities()
+        self.assertFalse(self.shipped())
+
+    def test_not_shipped_for_photon_beams(self):
+        # beam.leptonic is true for these too, so gating on that flag rather
+        # than on the beam PDGs would ship tables they cannot use
+        self.exporter(2, [22], [22]).copy_lepton_densities()
+        self.assertFalse(self.shipped())
+
+    def test_not_shipped_for_a_decay(self):
+        self.exporter(1, [6], []).copy_lepton_densities()
+        self.assertFalse(self.shipped())
+
+    def test_existing_directory_is_left_alone(self):
+        target = os.path.join(self.tmpdir, 'Source', 'PDF', 'lep_densities')
+        os.makedirs(target)
+        self.exporter(2, [-11], [11]).copy_lepton_densities()
+        self.assertEqual(os.listdir(target), [])
+
+
+class TestFlavorTableGuard(unittest.TestCase):
+    """The C++ output refuses a flavored coupling whose table cannot hold its
+    keys (FLV_Coupling.assert_table_representable), fixed or running: it
+    would lose all its keys but one, with no error."""
+
+    def test_a_coupling_the_table_cannot_hold_is_refused(self):
+        import madgraph.core.base_objects as base_objects
+        from madgraph import InvalidCmd
+        FLV = base_objects.FLV_Coupling
+        # one heavy quark coupled to two merged quarks sitting second
+        lossy = FLV(name='FLV_TEST', flavors={(0, 1, 0): 'GC_XD',
+                                               (0, 3, 0): 'GC_XS'})
+        # through the guard of the fixed couplings (write_flv_couplings)
+        converter = export_cpp.UFOModelConverterCPP.__new__(
+                                            export_cpp.UFOModelConverterCPP)
+        self.assertRaises(InvalidCmd,
+                          converter._assert_flv_couplings_supported, [lossy])
+        # the tables that can be written pass, the merged leg first included
+        for flavors in ({(2, 1, 0): 'GC_100', (4, 3, 0): 'GC_100'},
+                        {(1, 0, 0): 'GC_XD', (3, 0, 0): 'GC_XS'},
+                        {(0, 2, 0): 'GC_1'}):
+            converter._assert_flv_couplings_supported([FLV(flavors=flavors)])
+
+
+#===============================================================================
+# MG7MergedChannelsTest
+#===============================================================================
+class MG7MergedChannelsTest(unittest.TestCase):
+    """get_merged_info when the diagrams of one channel sit in several merged
+    channels.
+
+    A crossed subprocess folded into its base keeps, per crossing-table row,
+    only the diagrams that row needs (export_mg7.crossed_entries_of), so the
+    diagrams of one of its channels can land in two merged channels. A later
+    subprocess whose channel holds both used to take the merged channel of the
+    last match with the diagram index of another one: an IndexError in the
+    output of p p > l+ l- + 0-4 jets, or a diagram filed under the wrong
+    channel.
+    """
+
+    @staticmethod
+    def merged(subprocesses):
+        # get_merged_info only reads merged_subprocesses and process_info;
+        # ProcessExporterMG7.__init__ wants a full set of export arguments
+        exporter = export_cpp.ProcessExporterMG7.__new__(
+            export_cpp.ProcessExporterMG7)
+        exporter.process_info = []
+        group = []
+        for index, channels in enumerate(subprocesses):
+            exporter.process_info.append({
+                'incoming': [21, 21], 'outgoing': [21, 21],
+                'flavors': [{'options': [[21, 21, 21, 21]]}],
+                'channels': [{'diagrams': [
+                    {'diagram': diagram, 'permutation': [0, 1, 2, 3],
+                     'active_flavors': [0]}
+                    for diagram, _ in channel]} for channel in channels]})
+            group.append((index, [[tag for _, tag in channel]
+                                  for channel in channels]))
+        exporter.merged_subprocesses = {'class': group}
+        (info,) = exporter.get_merged_info()
+        return info['channels']
+
+    def test_channel_split_over_two_merged_channels(self):
+        channels = self.merged([
+            # the first subprocess: tags a, b in one channel, c in another
+            [[(1, 'a'), (2, 'b')], [(3, 'c')]],
+            # the second one: b and c together, and a new d
+            [[(10, 'b'), (11, 'c'), (12, 'd')]]])
+        self.assertEqual(len(channels), 2)
+        # each diagram stays in the merged channel that holds its tag
+        self.assertEqual([d['diagram'] for d in channels[0]['diagrams']],
+                         [[1, -1], [2, 10], [-1, 12]])
+        self.assertEqual([d['diagram'] for d in channels[1]['diagrams']],
+                         [[3, 11]])
+        # the flavours of the second subprocess follow the first one's
+        self.assertEqual(channels[0]['diagrams'][1]['active_flavors'], [0, 1])
+        self.assertEqual(channels[1]['diagrams'][0]['active_flavors'], [0, 1])
+
+    def test_new_channel_when_nothing_matches(self):
+        channels = self.merged([[[(1, 'a')]], [[(5, 'z')]]])
+        self.assertEqual([c['subprocess'] for c in channels], [0, 1])
+        self.assertEqual(channels[1]['diagrams'][0]['diagram'], [-1, 5])

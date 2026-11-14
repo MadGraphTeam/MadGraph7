@@ -67,9 +67,15 @@ c
       logical clusinfo
       double precision lhe_version
       COMMON/TO_LHEFORMAT/lhe_version,clusinfo
+c
+c     MLM: start the shower of the non-jet particles from the hardest scale
+c     of the event, not sqrt(s) (run_card mlm_shower_start = hardest_scale)
+c
+      logical mlm_hardest_shower
+      common/to_mlm_shower/mlm_hardest_shower
 
 c     
-C     Controls wheter to perform Monte-Carlo sampling over grouped subprocesses
+C     Controls whether to perform Monte-Carlo sampling over grouped subprocesses
 C
       logical MC_grouped_subproc
       common/to_MC_grouped_subproc/MC_grouped_subproc
@@ -81,6 +87,12 @@ C
       common/to_heavyion_pdg/ nb_proton, nb_neutron
       double precision mass_ion(2)
       common/to_heavyion_mass/mass_ion
+
+C
+C     block for onia reshuffling
+C
+      integer mom_resh_type
+      common/to_mom_resh_type/mom_resh_type
 
 C
 C Controls what are the PDGs included in the CKKWl merging procedure, i.e. what
@@ -105,6 +117,11 @@ c
 
        double precision small_width_treatment
        common/narrow_width/small_width_treatment
+
+c      fraction of the cross-section the overweight events of the refine may
+c      carry (negative: maximum weight from the 99% quantile, see store_events)
+       double precision max_overweight_truncation
+       common/to_overweight/max_overweight_truncation
 
        double precision tmin_for_channel
        integer sde_strat ! 1 means standard single diagram enhancement strategy,

@@ -17,6 +17,7 @@ c
       include 'cuts.inc'
       include '../../Source/vector.inc'
       include '../../Source/run.inc'
+      include '../../Source/ldme.inc'
       
       double precision ZERO
       parameter       (ZERO = 0d0)
@@ -31,9 +32,9 @@ c
       integer use_config(0:lmaxconfigs)
       integer i,j, npara, nhel_survey
       double precision xdum
-      double precision prmass(-max_branch:-1,lmaxconfigs)   !Propagotor mass
-      double precision prwidth(-max_branch:-1,lmaxconfigs)  !Propagotor width
-      integer pow(-max_branch:-1,lmaxconfigs)
+      double precision prmass(-nexternal:0,lmaxconfigs)   !Propagotor mass
+      double precision prwidth(-nexternal:0,lmaxconfigs)  !Propagotor width
+      integer pow(-nexternal:0,lmaxconfigs)
       character*20 param(maxpara),value(maxpara)
       double precision pmass(nexternal)   !External particle mass
       double precision pi1(0:3),pi2(0:3),m1,m2
@@ -297,6 +298,7 @@ c
       include 'maxconfigs.inc'
       include 'maxamps.inc'
       include 'nexternal.inc'
+      include '../../Source/ldme.inc'
       double precision zero
       parameter       (zero=0d0)
 c      include 'run_config.inc'
@@ -447,6 +449,7 @@ c
       include 'maxconfigs.inc'
       include 'maxamps.inc'
       include 'nexternal.inc'
+      include '../../Source/ldme.inc'
       double precision zero
       parameter       (zero=0d0)
       integer    imax

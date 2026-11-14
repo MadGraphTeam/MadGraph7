@@ -23,8 +23,14 @@ import madgraph.interface.master_interface as master_cmd
 import madgraph.interface.madgraph_interface  as mg_cmd
 import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.interface.amcatnlo_interface as mecmd
+import madgraph.interface.amcatnlo_run_interface as run_interface
+import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
 import madgraph.various.misc as misc
 import os
+import re
+import shutil
+import tempfile
+from pathlib import Path
 from io import StringIO
 import logging
 
@@ -34,6 +40,77 @@ root_path = os.path.dirname(root_path)
 pjoin = os.path.join
 
 class MGerror(Exception): pass
+
+class TestPythia8FxFxPlugin(unittest.TestCase):
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.plugins = self.root / 'include' / 'Pythia8Plugins'
+        self.plugins.mkdir(parents=True)
+        self.reference = self.root / 'MG5JetMatching.h'
+        self.reference.write_text('MG5 legacy matching plugin\n')
+
+    def check_plugin(self):
+        run_interface.check_pythia8_fxfx_plugin(str(self.root),
+                                               str(self.reference))
+
+    def native_plugin(self):
+        (self.plugins / 'CombineMatchingInput.h').write_text(
+            '#include "Pythia8Plugins/JetMatchingHooks.h"\n')
+        (self.plugins / 'JetMatchingHooks.h').write_text(
+            'class JetMatchingMadgraph {};\n'
+            'bool doFxFx = flag("JetMatching:doFxFx");\n')
+
+    def test_native_fxfx_without_legacy_header(self):
+        self.native_plugin()
+        self.check_plugin()
+
+    def test_native_header_must_support_fxfx(self):
+        self.native_plugin()
+        (self.plugins / 'JetMatchingHooks.h').write_text(
+            'class JetMatchingMadgraph {};\n')
+        with self.assertRaisesRegex(run_interface.aMCatNLOError,
+                                    'does not provide'):
+            self.check_plugin()
+
+    def test_native_header_must_exist(self):
+        self.native_plugin()
+        (self.plugins / 'JetMatchingHooks.h').unlink()
+        with self.assertRaisesRegex(run_interface.aMCatNLOError, 'missing'):
+            self.check_plugin()
+
+    def test_legacy_plugin_matches_reference(self):
+        (self.plugins / 'JetMatching.h').write_text(self.reference.read_text())
+        self.check_plugin()
+
+    def test_legacy_plugin_accepts_comment_only_changes(self):
+        self.reference.write_text('// MadGraph7 input\nint n = 1;\n')
+        (self.plugins / 'JetMatching.h').write_text(
+            '// MadGraph 5 input\nint n = 1; /* multiplicity */\n')
+        self.check_plugin()
+
+    def test_legacy_plugin_mismatch_is_rejected(self):
+        (self.plugins / 'JetMatching.h').write_text('Different matching plugin\n')
+        with self.assertRaisesRegex(run_interface.aMCatNLOError,
+                                    'Incorrect plugin detected'):
+            self.check_plugin()
+
+    def test_missing_legacy_plugin_is_rejected(self):
+        with self.assertRaisesRegex(run_interface.aMCatNLOError,
+                                    'dedicated plugin'):
+            self.check_plugin()
+
+    def test_unused_native_header_does_not_bypass_legacy_check(self):
+        self.native_plugin()
+        (self.plugins / 'CombineMatchingInput.h').write_text(
+            '#include "Pythia8Plugins/JetMatching.h"\n')
+        (self.plugins / 'JetMatching.h').write_text('Different matching plugin\n')
+        with self.assertRaisesRegex(run_interface.aMCatNLOError,
+                                    'Incorrect plugin detected'):
+            self.check_plugin()
+
 
 class TestMadEventCmd(unittest.TestCase):
     """ check if the ValidCmd works correctly """
@@ -108,3 +185,91 @@ class TestMadEventCmd(unittest.TestCase):
         self.assertFalse(check_message("p p > t t~ QCD=1 QED=0 [QCD]"))
         self.assertFalse(check_message("p p > t t~ QED=98 [QCD]"))
         self.assertFalse(check_message("p p > t t~ QED=99 QCD=1 [QCD]"))
+
+
+class TestNoFileOutsideOutputDir(unittest.TestCase):
+    """Running NLO from the prompt must not write in the directory MG was
+    started from: only the output directory belongs to MG."""
+
+    def setUp(self):
+        self.old_cwd = os.getcwd()
+        self.tmpdir = tempfile.mkdtemp()
+        self.startdir = pjoin(self.tmpdir, 'start')
+        os.mkdir(self.startdir)
+        os.chdir(self.startdir)
+
+    def tearDown(self):
+        os.chdir(self.old_cwd)
+        shutil.rmtree(self.tmpdir)
+
+    @staticmethod
+    def bare_cmd():
+        """an aMCatNLOCmd with just what run_exe needs"""
+        cmd = amcatnlo_run.aMCatNLOCmd.__new__(amcatnlo_run.aMCatNLOCmd)
+        # no RunWeb to remove when the bare instance is deleted
+        cmd.stop_for_runweb = True
+        cmd.cluster_mode = 2
+        return cmd
+
+    def test_missing_executable_names_job_directory(self):
+        """The error names the directory where the executable was looked
+        for, not the one MG was started from."""
+
+        jobdir = pjoin(self.tmpdir, 'SubProcesses', 'P0_gg_ttx', 'GF1')
+        os.makedirs(jobdir)
+        self.assertRaisesRegex(amcatnlo_run.aMCatNLOError,
+            'Cannot find executable reweight_xsec_events.local in %s$'
+                                                     % re.escape(jobdir),
+            self.bare_cmd().run_exe, 'reweight_xsec_events.local',
+            ['events.lhe', '1'], 'Running reweight', cwd=jobdir)
+
+    def test_reweight_job_files_in_job_directory(self):
+        """The files of a reweight job (multicore/cluster) are relative to the
+        job directory, so they must be created there."""
+
+        class FakeCluster(object):
+            def submit2(self, prog, argument=[], cwd=None, **opts):
+                self.submitted = dict(opts, prog=prog, cwd=cwd)
+
+        jobdir = pjoin(self.tmpdir, 'SubProcesses', 'P0_gg_ttx', 'GF1')
+        os.makedirs(jobdir)
+        open(pjoin(jobdir, 'reweight_xsec_events.local'), 'w').close()
+        # complete output of a previous reweighting of this directory
+        with open(pjoin(jobdir, 'events.lhe.rwgt'), 'w') as stale:
+            stale.write('</LesHouchesEvents>\n')
+
+        cmd = self.bare_cmd()
+        cmd.me_dir = self.tmpdir
+        libdir = pjoin(self.tmpdir, 'lib')
+        os.mkdir(libdir)
+        born_library = pjoin(libdir, 'libmc_born_support.so')
+        open(born_library, 'w').close()
+        cmd.cluster = FakeCluster()
+        cmd.get_pdf_input_filename = lambda: ''
+        cmd.run_exe('reweight_xsec_events.local', ['events.lhe', '1'],
+                    'Running reweight', cwd=jobdir)
+
+        self.assertEqual(os.listdir(self.startdir), [])
+        job_files = ['events.lhe.rwgt', 'reweight_xsec_events.output',
+                     'scale_pdf_dependence.dat']
+        for name in job_files:
+            # present (for the transfer to the node) but empty: a job that
+            # fails cannot leave the stale events in place
+            self.assertEqual(os.path.getsize(pjoin(jobdir, name)), 0, name)
+        submitted = cmd.cluster.submitted
+        self.assertEqual(submitted['cwd'], jobdir)
+        self.assertIn(born_library, submitted['input_files'])
+        # copied back from the node into cwd, so relative to it
+        self.assertEqual(submitted['output_files'], job_files)
+        self.assertEqual(submitted['required_output'], job_files)
+
+    def test_switch_interface_leaves_no_file(self):
+        """Switching to the NLO interface checks the command dispatch and
+        must only write 'additional_command' when a command is missing."""
+
+        interface = master_cmd.MasterCmd()
+        interface.no_notification()
+        interface.change_principal_cmd('aMC@NLO')
+        interface.change_principal_cmd('MadGraph')
+
+        self.assertEqual(os.listdir(self.startdir), [])

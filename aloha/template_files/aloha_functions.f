@@ -125,7 +125,12 @@ c#endif
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -142,7 +147,12 @@ c#endif
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(dabs(p(0))+p(3),rZero))*nsf
@@ -274,7 +284,7 @@ c#endif
             fo % W(4)  = ip     * sqm(abs(im))
          else
 
-c            pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
+            pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
             sf(1) = dble(1+nsf+(1-nsf)*nh)*rHalf
             sf(2) = dble(1+nsf-(1-nsf)*nh)*rHalf
             omega(1) = dsqrt(p(0)+pp)
@@ -283,7 +293,12 @@ c            pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -300,7 +315,12 @@ c            pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(dabs(p(0))+p(3),rZero))*nsf
@@ -760,6 +780,340 @@ c#endif
 
       endif
 c
+      return
+      end
+
+
+      subroutine vxxxxxr(p,vmass,nhel,nsv,r , vc)
+c
+c This subroutine computes a VECTOR wavefunction in the axial gauge
+c defined by the reference momentum r, i.e. such that r.epsilon = 0.
+c
+c It is vxxxxx followed by the residual gauge transformation
+c
+c     eps'^mu = eps^mu - (r.eps)/(r.p) p^mu
+c
+c which, for a massless p, preserves eps'.p = 0, eps'.eps' = 0 and
+c eps'.eps'* = -1 exactly, and therefore returns the same helicity
+c state up to a little-group phase (which cancels in |M|^2).
+c
+c Choosing r to be the (lightlike) momentum of another external leg
+c makes eps.r vanish -- and, when several legs share the same r, makes
+c eps_i.eps_j vanish for same-chirality pairs -- so that whole HELAS
+c currents and amplitudes become identically zero.  See
+c arXiv:2312.07447.
+c
+c r is ignored for a massive vector, where p^2 /= 0 spoils the
+c normalisation, and whenever r.p vanishes (in particular when r is p
+c itself, which is how a leg with no useful reference is written out).
+c
+c input:
+c       real    p(0:3)         : four-momentum of vector boson
+c       real    vmass          : mass          of vector boson
+c       integer nhel = -1, 0, 1: helicity      of vector boson
+c                                (0 is forbidden if vmass=0.0)
+c       integer nsv  = -1 or 1 : +1 for final, -1 for initial
+c       real    r(0:3)         : gauge reference momentum
+c
+c output:
+c       complex vc % W(4)      : vector wavefunction       epsilon^mu(v)
+c
+      use aloha_object
+      implicit none
+      double precision p(0:3), r(0:3), vmass
+      integer nhel, nsv
+      type(aloha) vc
+
+      double precision rdotp
+      double complex rdote, cfac
+
+      call vxxxxx(p,vmass,nhel,nsv , vc)
+
+      if ( vmass.ne.0d0 ) return
+      if ( abs(nhel).ne.1 ) return
+
+      rdotp = r(0)*vc % P(0) - r(1)*vc % P(1)
+     &      - r(2)*vc % P(2) - r(3)*vc % P(3)
+      if ( rdotp.eq.0d0 ) return
+
+      rdote = r(0)*vc % W(1) - r(1)*vc % W(2)
+     &      - r(2)*vc % W(3) - r(3)*vc % W(4)
+      if ( rdote.eq.(0d0,0d0) ) return
+
+      cfac = rdote/rdotp
+      vc % W(1) = vc % W(1) - cfac*vc % P(0)
+      vc % W(2) = vc % W(2) - cfac*vc % P(1)
+      vc % W(3) = vc % W(3) - cfac*vc % P(2)
+      vc % W(4) = vc % W(4) - cfac*vc % P(3)
+c
+      return
+      end
+
+      subroutine ixxxxxr(p,fmass,nhel,nsf,flavor,r , fi)
+c
+c This subroutine computes a MASSIVE fermion wavefunction with the
+c flowing-IN fermion number, with its spin quantised along the axis
+c fixed by the reference momentum r instead of along its own momentum
+c (Kleiss-Stirling spinors):
+c
+c     u(p,h;r) = (pslash + m) u0(r,-h) / sqrt(2 p.r)      (nsf = +1)
+c     v(p,h;r) = (pslash - m) v0(r,-h) / sqrt(2 p.r)      (nsf = -1)
+c
+c with u0(r,h), v0(r,h) the massless spinors of momentum r. Writing
+c p = pflat + m^2/(2 p.r) r, with pflat lightlike, one of the two
+c chiral components is the massless spinor of pflat and the other the
+c massless spinor of r times m/<pflat r> (or m/[pflat r]). The spin
+c axis is s = p/m - m r/(p.r); the helicity states of ixxxxx are
+c recovered, up to a phase, for r = (|p|,-p).
+c
+c The two states h = +-1 still satisfy the Dirac equation and
+c sum_h u ubar = pslash + m: the sum over the helicities of the squared
+c amplitude is unchanged, an amplitude for a given h is NOT a helicity
+c amplitude. Choosing r among the momenta entering the polarisation
+c vectors of the massless vectors (see vxxxxxr) makes the fermion-vector
+c couplings, and hence whole currents and amplitudes, vanish for given
+c h. See arXiv:2011.10075 and arXiv:2312.07447.
+c
+c Only the direction of r matters, so that r need not be exactly
+c lightlike. r is ignored (ixxxxx) for a massless fermion, whose
+c spinor is fixed up to a phase, and for a vanishing r.
+c
+c pslash u0(r) is not evaluated as such: for r close to the direction
+c of p it is the difference of two numbers of order E, while the result
+c is of order m^2/E. With xi(+-) and rho(+-) the two-component spinors
+c of helicity +-1 along p and along r, (E -+ pvec.sigma) rho is
+c expanded on the xi, which are its eigenvectors with the eigenvalues
+c E+|p| and E-|p| = m^2/(E+|p|):
+c     c = <xi+|rho+> ,  d = <xi-|rho+> ,  rho- = c* xi- - d* xi+ .
+c The two states are then orthonormal to rounding for any p and r, and
+c the spin axis is the one of r to a relative accuracy epsilon*E/m.
+c
+c input:
+c       real    p(0:3)         : four-momentum of fermion
+c       real    fmass          : mass          of fermion
+c       integer nhel = -1 or 1 : spin state    of fermion along s
+c       integer nsf  = -1 or 1 : +1 for particle, -1 for anti-particle
+c       real    r(0:3)         : reference momentum
+c
+c output:
+c       complex fi % W(4)      : fermion wavefunction               |fi>
+c
+      use ALOHA_OBJECT
+      implicit none
+      type(aloha) fi
+      integer flavor, nhel, nsf
+      double precision p(0:3), r(0:3), fmass
+
+      double complex xi(2), rho(2), c, d
+      double precision pp, rr, omp2, omm2, rn, fm
+      double precision rZero
+      parameter( rZero = 0.0d0 )
+
+      rr = dsqrt(r(1)**2+r(2)**2+r(3)**2)
+      if ( fmass.eq.rZero .or. rr.eq.rZero ) then
+         call ixxxxx(p,fmass,nhel,nsf,flavor , fi)
+         return
+      endif
+      pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
+c
+c     xi(+) = (xi(1),xi(2)) and xi(-) = (-conjg(xi(2)),xi(1)), with a
+c     real xi(1); the same for rho
+      call hlspxx(p,pp , xi)
+      call hlspxx(r,rr , rho)
+      c = xi(1)*rho(1) + dconjg(xi(2))*rho(2)
+      d = xi(1)*rho(2) - xi(2)*rho(1)
+      omp2 = p(0)+pp
+      omm2 = fmass**2/omp2
+c     omp2*|d|^2 + omm2*|c|^2 = p.r/|r| > 0
+      rn = 1d0/dsqrt( omp2*dble(d*dconjg(d)) + omm2*dble(c*dconjg(c)) )
+      fm = nsf*fmass*rn
+      omp2 = omp2*rn
+      omm2 = omm2*rn
+
+      if ( nhel*nsf.eq.1 ) then
+c        +-m rho(-) above, (E + pvec.sigma) rho(-) below
+         fi % W(1) = -fm*dconjg(rho(2))
+         fi % W(2) = fm*rho(1)
+         fi % W(3) = -omm2*dconjg(c*xi(2)) - omp2*dconjg(d)*xi(1)
+         fi % W(4) = omm2*dconjg(c)*xi(1) - omp2*dconjg(d)*xi(2)
+      else
+c        (E - pvec.sigma) rho(+) above, +-m rho(+) below
+         fi % W(1) = omm2*c*xi(1) - omp2*d*dconjg(xi(2))
+         fi % W(2) = omm2*c*xi(2) + omp2*d*xi(1)
+         fi % W(3) = fm*rho(1)
+         fi % W(4) = fm*rho(2)
+      endif
+
+      fi % P(0)  = p(0)*nsf*-1
+      fi % P(1)  = p(1)*nsf*-1
+      fi % P(2)  = p(2)*nsf*-1
+      fi % P(3)  = p(3)*nsf*-1
+      fi % flv_index = flavor
+c
+      return
+      end
+
+
+      subroutine oxxxxxr(p,fmass,nhel,nsf,flavor,r , fo)
+c
+c This subroutine computes a MASSIVE fermion wavefunction with the
+c flowing-OUT fermion number, with its spin quantised along the axis
+c fixed by the reference momentum r: the Dirac conjugate of the spinor
+c of ixxxxxr (see there),
+c
+c     ubar(p,h;r) = ubar0(r,-h) (pslash + m) / sqrt(2 p.r)   (nsf = +1)
+c     vbar(p,h;r) = vbar0(r,-h) (pslash - m) / sqrt(2 p.r)   (nsf = -1)
+c
+c r is ignored (oxxxxx) for a massless fermion and for a vanishing r.
+c
+c input:
+c       real    p(0:3)         : four-momentum of fermion
+c       real    fmass          : mass          of fermion
+c       integer nhel = -1 or 1 : spin state    of fermion along s
+c       integer nsf  = -1 or 1 : +1 for particle, -1 for anti-particle
+c       real    r(0:3)         : reference momentum
+c
+c output:
+c       complex fo % W(4)      : fermion wavefunction               <fo|
+c
+      use ALOHA_OBJECT
+      implicit none
+      type(aloha) fo
+      integer flavor, nhel, nsf
+      double precision p(0:3), r(0:3), fmass
+
+      double complex w(4)
+      double precision rZero
+      parameter( rZero = 0.0d0 )
+
+      if ( fmass.eq.rZero .or.
+     &     (r(1).eq.rZero.and.r(2).eq.rZero.and.r(3).eq.rZero) ) then
+         call oxxxxx(p,fmass,nhel,nsf,flavor , fo)
+         return
+      endif
+
+c     fo = fi^dagger gamma0: the complex conjugate of the spinor, with
+c     its upper and its lower two components exchanged
+      call ixxxxxr(p,fmass,nhel,nsf,flavor,r , fo)
+      w(1) = dconjg(fo % W(3))
+      w(2) = dconjg(fo % W(4))
+      w(3) = dconjg(fo % W(1))
+      w(4) = dconjg(fo % W(2))
+      fo % W(1) = w(1)
+      fo % W(2) = w(2)
+      fo % W(3) = w(3)
+      fo % W(4) = w(4)
+
+      fo % P(0)  = p(0)*nsf
+      fo % P(1)  = p(1)*nsf
+      fo % P(2)  = p(2)*nsf
+      fo % P(3)  = p(3)*nsf
+c
+      return
+      end
+
+
+      subroutine hlspxx(p,pp , chi)
+c
+c This subroutine computes the two-component spinor of helicity +1
+c along the three-momentum of p, normalised to one and with a real
+c first component; the one of helicity -1 is (-conjg(chi(2)),chi(1)).
+c
+c input:
+c       real    p(0:3)         : four-momentum (p(0) is not used)
+c       real    pp             : norm of its three-momentum
+c
+c output:
+c       complex chi(2)         : spinor
+c
+      implicit none
+      double precision p(0:3), pp, pp3
+      double complex chi(2)
+      double precision rZero, rHalf, rOne, rTwo
+      parameter( rZero = 0.0d0, rHalf = 0.5d0 )
+      parameter( rOne = 1.0d0, rTwo = 2.0d0 )
+
+      if ( pp.eq.rZero ) then
+c        no direction: quantised along +z
+         chi(1) = dcmplx( rOne )
+         chi(2) = dcmplx( rZero )
+         return
+      endif
+c     light-cone identity, as in ixxxxx: no |p|+p3 cancellation
+      if ( p(3).lt.rZero ) then
+         pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+      else
+         pp3 = max(pp+p(3),rZero)
+      endif
+      if ( pp3.eq.rZero ) then
+c        along -z
+         chi(1) = dcmplx( rZero )
+         chi(2) = dcmplx( rOne )
+      else
+         chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
+         chi(2) = dcmplx( p(1), p(2) )/dsqrt(rTwo*pp*pp3)
+      endif
+c
+      return
+      end
+
+      subroutine onia_proj(p1, m1, nhel1, p2, m2, nhel2, p3, m3, nhel3,
+     $       spin, proj)
+c
+c This subroutine computes the spin projector for an onium states.
+c
+c input:
+c       real    p1(0:3)        : four-momentum of constituent particle
+c       real    p2(0:3)        : four-momentum of constituent anti-particle
+c       real    p3(0:3)        : four-momentum of onium state
+c       real    m1(0:3)        : mass          of constituent particle
+c       real    m2(0:3)        : mass          of constituent anti-particle
+c       real    m3(0:3)        : mass          of onium state
+c       integer nhel1          : helicity      of constituent particle
+c       integer nhel2          : helicity      of constituent anti-particle
+c       integer nhel3          : helicity      of onium state
+c       integer spin           : spin          of onium state
+c
+c output:
+c       complex proj           : value of the projector
+c
+      use ALOHA_OBJECT
+      implicit none
+      double precision p1(0:3), p2(0:3), p3(0:3)
+      double precision m1, m2, m3
+      integer nhel1, nhel2, nhel3
+      integer spin
+      double complex proj
+
+      type(aloha) fi,fo,vc
+      double complex ci, tmp
+      parameter( ci = dcmplx(0.0d0,1.0d0) )
+
+c     the constituents of a bound state are never flavour grouped
+      call ixxxxx(p1,m1,nhel1,+1,1,fi)
+      call oxxxxx(p2,m2,nhel2,-1,1,fo)
+      
+      if (spin.eq.0) then
+c     spin singlet    
+
+         tmp = -fi%W(1)*fo%W(1)-fi%W(2)*fo%W(2)+fi%W(3)*fo%W(3)
+     &         +fi%W(4)*fo%W(4)
+
+      elseif (spin.eq.1) then
+c     spin triplet
+         call vxxxxx(p3,m3,nhel3,+1,vc)
+
+         tmp = (fi%W(1)*fo%W(4)-fi%W(3)*fo%W(2))*(vc%W(2)+ci*vc%W(3))+
+     &         (fi%W(2)*fo%W(3)-fi%W(4)*fo%W(1))*(vc%W(2)-ci*vc%W(3))+
+     &         (fi%W(1)*fo%W(3)+fi%W(4)*fo%W(2))*(vc%W(1)+vc%W(4))+
+     &         (fi%W(2)*fo%W(4)+fi%W(3)*fo%W(1))*(vc%W(1)-vc%W(4))
+      else
+         print *,"spin projector not yet implemented"
+         stop
+      endif
+
+      proj = 0.5d0/SQRT(2d0*m1*m2)*tmp
+
       return
       end
 
@@ -1311,7 +1665,7 @@ c construct eps0
       end if
 
       if ( nhel.ge.-1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = nsr
        if ( rmass.ne.rZero ) then
          pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
@@ -1345,7 +1699,16 @@ c constract spinor+
               fip(4) = sfomeg(2)*chi(ip)
          endif
        else
-         sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsr
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+            sqp0p3 = 0d0
+         else
+            sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr
+         endif
          chi(1) = dcmplx( sqp0p3 )
          if ( sqp0p3.eq.rZero ) then
             chi(2) = dcmplx(-nhel )*dsqrt(rTwo*p(0))
@@ -1367,7 +1730,7 @@ c constract spinor+
       end if
 
       if ( nhel.le.1 ) then
-c constract spinor-
+c contract spinor-
        nh = -nsr
        if ( rmass.ne.rZero ) then
          pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
@@ -1401,7 +1764,16 @@ c constract spinor-
               fim(4) = sfomeg(2)*chi(ip)
          endif
        else
-         sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsr
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+            sqp0p3 = 0d0
+         else
+            sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr
+         endif
          chi(1) = dcmplx( sqp0p3 )
          if ( sqp0p3.eq.rZero ) then
             chi(2) = dcmplx(-nhel )*dsqrt(rTwo*p(0))
@@ -1639,7 +2011,7 @@ c construct eps0
       end if
 
       if ( nhel.ge.-1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = nsr
 
        if ( rmass.ne.rZero ) then
@@ -1686,7 +2058,12 @@ c constract spinor+
          
       else
          
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsr
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr
@@ -1712,7 +2089,7 @@ c constract spinor+
       endif
 
       if ( nhel.le.1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = -nsr
 
       if ( rmass.ne.rZero ) then
@@ -1759,7 +2136,12 @@ c constract spinor+
          
       else
          
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsr
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr

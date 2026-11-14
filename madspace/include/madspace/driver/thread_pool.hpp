@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <exception>
@@ -48,26 +50,52 @@ private:
     std::vector<std::size_t> _done_buffer;
     std::size_t _busy_threads = 0;
     // The first exception thrown by a job, rethrown by wait()/wait_multiple().
-    // Without it an exception escaping a job would leave std::thread with no
-    // handler, i.e. terminate the process.
     std::exception_ptr _exception;
     std::size_t _listener_id = 0;
     std::unordered_map<std::size_t, std::function<void(std::size_t)>> _listeners;
 };
 
+// Collects the results of jobs run on a ThreadPool by a caller that counts its
+// jobs in flight and waits for exactly that many results. Every job submitted
+// through submit() posts exactly one result -- its id, or the exception it threw
+// -- so such a caller can never block on a job that died.
 class ResultQueue {
 public:
-    void push(std::size_t result);
-    std::size_t wait();
-    std::vector<std::size_t> wait_multiple();
+    struct Result {
+        std::size_t id;
+        // Set if the job threw instead of completing
+        std::exception_ptr exception;
+    };
+
+    // Runs *job* on *pool*, then posts *id*, or the exception *job* threw.
+    void submit(ThreadPool& pool, std::size_t id, std::function<void()> job);
+    void push(std::size_t id);
+    void push_exception(std::size_t id, std::exception_ptr exception);
+    // Blocks until a result is available, calling *poll* (e.g. a check for a
+    // requested abort, which may throw) every *poll_interval* while waiting.
+    Result wait(
+        const std::function<void()>& poll = {},
+        std::chrono::milliseconds poll_interval = std::chrono::milliseconds(100)
+    );
+    // Cancels the jobs submitted but not started yet, waits for *count* further
+    // results and drops them, exceptions included. A running job checks
+    // cancelled() between its steps to stop early. The wait cannot be cut short
+    // -- the jobs still write into their caller's state -- but *poll* keeps
+    // being called, and the first exception it throws (an abort requested
+    // during the drain) is returned instead of being lost.
+    std::exception_ptr discard(
+        std::size_t count,
+        const std::function<void()>& poll = {},
+        std::chrono::milliseconds poll_interval = std::chrono::milliseconds(100)
+    );
+    bool cancelled() const { return _cancelled; }
 
 private:
-    void fill_done_cache();
-
+    std::atomic<bool> _cancelled = false;
     std::mutex _mutex;
     std::condition_variable _cv;
-    std::deque<std::size_t> _queue;
-    std::vector<std::size_t> _buffer;
+    std::deque<Result> _queue;
+    std::vector<Result> _buffer;
 };
 
 template <typename T>
@@ -77,59 +105,103 @@ public:
     ThreadResource(
         ThreadPool& pool,
         std::function<T()> constructor,
-        std::optional<std::function<void(T&)>> destructor = std::nullopt
+        std::optional<std::function<void(T&)>> destructor = std::nullopt,
+        bool lazy = true
     ) :
         _pool(&pool),
+        _constructor(std::move(constructor)),
         _destructor(destructor),
-        _listener_id(pool.add_listener([this, constructor](std::size_t thread_count) {
-            while (_resources.size() < thread_count) {
-                _resources.push_back(constructor());
-            }
-        })) {
+        _lazy(lazy) {
         for (std::size_t i = 0; i == 0 || i < pool.thread_count(); ++i) {
-            _resources.push_back(constructor());
+            _resources.emplace_back();
+            if (!lazy || i == 0) {
+                construct(_resources.back());
+            }
         }
+        _listener_id = add_listener();
     }
-    ~ThreadResource() {
-        reset();
-    }
+    ~ThreadResource() { reset(); }
+    // The pool listener captures `this`, so a move registers a new one: the
+    // moved-from object's listener would otherwise dangle, and crash the next
+    // ThreadPool::set_thread_count().
     ThreadResource(ThreadResource&& other) noexcept :
-        _pool(std::move(other._pool)),
+        _pool(other._pool),
         _resources(std::move(other._resources)),
-        _listener_id(std::move(other._listener_id)),
-        _destructor(std::move(other._destructor)) {
-        other._pool = nullptr;
+        _constructor(std::move(other._constructor)),
+        _destructor(std::move(other._destructor)),
+        _lazy(other._lazy) {
+        if (_pool) {
+            _pool->remove_listener(other._listener_id);
+            other._pool = nullptr;
+            _listener_id = add_listener();
+        }
     }
 
     ThreadResource& operator=(ThreadResource&& other) noexcept {
         reset();
-        _pool = std::move(other._pool);
+        _pool = other._pool;
         _resources = std::move(other._resources);
-        _listener_id = std::move(other._listener_id);
+        _constructor = std::move(other._constructor);
         _destructor = std::move(other._destructor);
-        other._pool = nullptr;
+        _lazy = other._lazy;
+        if (_pool) {
+            _pool->remove_listener(other._listener_id);
+            other._pool = nullptr;
+            _listener_id = add_listener();
+        }
         return *this;
     }
     ThreadResource(const ThreadResource&) = delete;
     ThreadResource& operator=(const ThreadResource&) = delete;
-    T& get() { return _resources.at(ThreadPool::thread_index()); }
-    const T& get() const { return _resources.at(ThreadPool::thread_index()); }
+    T& get() { return construct(_resources.at(ThreadPool::thread_index())); }
+    const T& get() const {
+        return construct(_resources.at(ThreadPool::thread_index()));
+    }
     void reset() {
         if (_pool) {
             if (_destructor) {
-                for (auto& item : _resources) {
-                    _destructor.value()(item);
+                for (auto& [flag, item] : _resources) {
+                    if (item) {
+                        _destructor.value()(*item);
+                    }
                 }
             }
             _pool->remove_listener(_listener_id);
+            _pool = nullptr;
         }
     }
 
 private:
+    std::size_t add_listener() {
+        return _pool->add_listener([this](std::size_t thread_count) {
+            while (_resources.size() < thread_count) {
+                _resources.emplace_back();
+                if (!_lazy) {
+                    construct(_resources.back());
+                }
+            }
+        });
+    }
+
+    T& construct(std::pair<std::once_flag, std::optional<T>>& slot) const {
+        auto& [flag, item] = slot;
+        std::call_once(flag, [&] {
+            std::unique_lock<std::mutex> lock(construction_mutex());
+            item.emplace(_constructor());
+        });
+        return *item;
+    }
+    static std::mutex& construction_mutex() {
+        static std::mutex mutex;
+        return mutex;
+    }
+
     ThreadPool* _pool = nullptr;
-    std::vector<T> _resources;
-    std::size_t _listener_id;
+    mutable std::deque<std::pair<std::once_flag, std::optional<T>>> _resources;
+    std::function<T()> _constructor;
+    std::size_t _listener_id = 0;
     std::optional<std::function<void(T&)>> _destructor;
+    bool _lazy = true;
 };
 
 inline ThreadPool& default_thread_pool() {

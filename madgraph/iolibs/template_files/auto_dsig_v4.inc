@@ -106,7 +106,7 @@ c
        double precision P1(0:3, nexternal)
       integer channel
       double precision rwgt_value
-C  
+%(dsig_xg_decl)sC
 C DATA
 C  
 %(pdf_data)s
@@ -166,7 +166,7 @@ C     Continue only if IMODE is 0, 4 or 5
           WGT = WGT * %(maxflavor)d
         endif
       endif
-      CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
+%(dsig_getflavor)s
 %(passcuts_begin)s
 ## if( nogrouping) {
       ! for no grouping update the scale here (done in main autodsig for grouping
@@ -202,6 +202,14 @@ C     keeps R>0 after the last valid flavor entry.
              IPSEL=IPSEL+1
              R=R-DABS(PD(IPSEL))/PD(0)
           ENDDO
+C     RANMAR returns exactly 0d0 about once in 2**24 draws -- that is why
+C     ntuple() in Source/ranmar.f redraws while x < 1d-16. R = 0 (or a NaN
+C     PD, which compares false as well) leaves the loop above without ever
+C     entering it, i.e. with IPSEL = 0; write_leshouche then evaluates
+C     idup(i,0,numproc), reads past the start of the array, and writes an
+C     event carrying whatever integers precede it (for a 1 -> 2 decay, the
+C     tail of mothup). R = 0 means "the first flavour", so say so.
+          IF (IPSEL.LT.1) IPSEL = 1
 
       %(start_ipsel_for_IFLAV)s
       IPSEL = IPSEL + IPSEL_SHIFT
@@ -214,7 +222,7 @@ C     and IFLAV are still set above so SMATRIX gets valid arguments.
          rwgt_value=1d0
       endif
 
-     CALL SMATRIX%(proc_id)s(P1, IFLAV, RHEL, RCOL,channel,1, DSIGUU, selected_hel(1), selected_col(1))
+%(dsig_smatrix_call)s
 
      DSIGUU = DSIGUU* rwgt_value
 
@@ -310,6 +318,7 @@ C
       DOUBLE PRECISION ALL_CM_RAP(VECSIZE_MEMMAX)
       INTEGER IMODE
       DOUBLE PRECISION ALL_OUT(VECSIZE_MEMMAX)
+C     IMIRROR_VEC, ICONF_VEC and IFLAV_VEC have one entry per warp
       INTEGER IMIRROR_VEC(*)
       INTEGER ICONF_VEC(*)
       INTEGER IFLAV_VEC(*)
@@ -361,6 +370,8 @@ C     MINCFIG has this config number
       common/to_configs/mincfig, maxcfig
       INTEGER MAPCONFIG(0:LMAXCONFIGS), ICONFIG
       COMMON/TO_MCONFIGS/MAPCONFIG, ICONFIG
+      INTEGER IMIRROR_GLOBAL, IPROC_GLOBAL
+      COMMON/TO_MIRROR/ IMIRROR_GLOBAL, IPROC_GLOBAL
 C     Keep track of whether cuts already calculated for this event
       LOGICAL cutsdone,cutspassed
       COMMON/TO_CUTSDONE/cutsdone,cutspassed
@@ -386,12 +397,26 @@ c
 	   double precision P1(0:3, nexternal)
 	   integer ivec, curr_warp, iwarp, NB_WARP_USED
 	   integer channels(VECSIZE_MEMMAX)
+C     Per-event flavor index and leshouche row passed to SMATRIX_MULTI;
+C     NB_PSEL_WARP(w) is the number of ALL_PD rows of the flavor of warp w
+	   integer all_iflav(VECSIZE_MEMMAX), all_ipsel(VECSIZE_MEMMAX)
+C     Per-event beam orientation (IMIRROR of the warp), set in TO_MIRROR
+C     for each SMATRIX call (its good-helicity filter is per orientation)
+	   integer all_imirror(VECSIZE_MEMMAX)
+	   integer NB_PSEL_WARP(NB_WARP)
+	   integer IFLAV, IPSEL_SHIFT
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
 	   integer igraph(VECSIZE_MEMMAX)
 	   common/vec_igraph/igraph
+%(dsig_xg_decl_vec)sC     1-x of each beam: OMX_EE is what PDG2PDF reads for a dressed-lepton
+C     density, ALL_OMX_EE its value per lane (filled in dsample.f)
+      DOUBLE PRECISION OMX_EE(2)
+      COMMON /TO_EE_OMX1/ OMX_EE
+      DOUBLE PRECISION ALL_OMX_EE(2, VECSIZE_MEMMAX)
+      COMMON /TO_EE_OMX_VEC/ ALL_OMX_EE
 C  
 C DATA
-C  
+C
 %(pdf_data_vec)s
 C ----------
 C BEGIN CODE
@@ -424,25 +449,39 @@ C     Continue only if IMODE is 0, 4 or 5
          IB(1) = 2
          IB(2) = 1     
        endif
+c      config and mirror of this warp (used by the clustering in REWGT and by UNWGT)
+       ICONFIG = SYMCONF(ICONF_VEC(CURR_WARP))
+       IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
+c      flavor of this warp (ALL_PD only holds the rows of that flavor)
+       IFLAV = IFLAV_VEC(CURR_WARP)
+%(dsig_getflavor_vec)s
+       %(start_ipsel_for_IFLAV)s
        DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
 c        Do not need those three here. do I?     
           XBK(:) = ALL_XBK(:,IVEC)
 c         CM_RAP = ALL_CM_RAP(IVEC)
           Q2FACT(:) = ALL_Q2FACT(:, IVEC)
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
 
 
 C     Select a flavor combination (need to do here for right sign)
        CALL RANMAR(R)
        IPSEL=0
-       DO WHILE (R.GE.0D0 .AND. IPSEL.LT.IPROC)
+       DO WHILE (R.GE.0D0 .AND. IPSEL.LT.NB_PSEL_WARP(CURR_WARP))
           IPSEL=IPSEL+1
           R=R-DABS(ALl_PD(IPSEL,IVEC))/ALL_PD(0,IVEC)
        ENDDO
+C     .GE. above already covers R = 0; this catches a NaN R (every
+C     comparison false) and a flavor without rows. See the scalar branch.
+       IF (IPSEL.LT.1) IPSEL = 1
+C     leshouche row (IPSEL is used by REWGT, SMATRIX and UNWGT)
+       IPSEL = IPSEL + IPSEL_SHIFT
+       ALL_IPSEL(IVEC) = IPSEL
+       ALL_IFLAV(IVEC) = IFLAV
+       ALL_IMIRROR(IVEC) = IMIRROR_VEC(CURR_WARP)
        %(get_channel_vec)s
 
-
-       CALL GET_FLAVOR%(proc_id)s(IFLAV_VEC(IVEC), FLAVOR)
        if (IMODE.eq.0) then
          ALL_RWGT(IVEC) = REWGT(all_PP(0,1,IVEC),FLAVOR,ivec)
        else
@@ -458,7 +497,7 @@ C     Select a flavor combination (need to do here for right sign)
 	 CALL RANMAR(col_rand(IVEC))
 	 ENDDO ! end loop on IWARP/IVEC	 
 	 ENDDO ! end loop on the CURR_WARP
-         call SMATRIX%(proc_id)s_MULTI(p_multi, iflav_vec, hel_rand, col_rand, channels, igraph, ALL_OUT , selected_hel, selected_col, VECSIZE_USED)
+         call SMATRIX%(proc_id)s_MULTI(p_multi, all_iflav, all_ipsel, all_imirror, hel_rand, col_rand, channels, igraph, ALL_OUT , selected_hel, selected_col, VECSIZE_USED)
 
 
 	 DO CURR_WARP=1, NB_WARP_USED
@@ -469,8 +508,14 @@ C     Select a flavor combination (need to do here for right sign)
 	     IB(1) = 2
 	     IB(2) = 1	   
 	   endif
+c          config and mirror of this warp (used by the clustering in REWGT and by UNWGT)
+	   ICONFIG = SYMCONF(ICONF_VEC(CURR_WARP))
+	   IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
+	   IFLAV = IFLAV_VEC(CURR_WARP)
+	   %(start_ipsel_for_IFLAV)s
 	   DO IWARP=1, WARP_SIZE
        IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+	 IPSEL = ALL_IPSEL(IVEC)
 	 DSIGUU = ALL_OUT(IVEC)
 	 IF (IMODE.EQ.5) THEN
             IF (DSIGUU.LT.1D199) THEN		 
@@ -478,12 +523,14 @@ C     Select a flavor combination (need to do here for right sign)
 			else
 		      ALL_OUT(IVEC) = 0.0d0
 			endif
-			RETURN
+			CYCLE
 		 ENDIF
 
      XBK(:) = ALL_XBK(:,IVEC)
 c    CM_RAP = ALL_CM_RAP(IVEC)
      Q2FACT(:) = ALL_Q2FACT(:, IVEC)
+C    UNWGT samples the beamstrahlung split from it
+     OMX_EE(:) = ALL_OMX_EE(:,IVEC)
 
      if(frame_id.ne.6)then
            call boost_to_frame(ALL_PP(0,1,IVEC), frame_id, P1)
@@ -501,7 +548,7 @@ C        Apply the bias weight specified in the run card (default is 1.0)
 
          IF (DSIGUU.LT.1D199) THEN
 c           Set sign of dsig based on sign of PDF and matrix element
-            ALL_OUT(IVEC)=DSIGN(%(conv)sall_pd(0,IVEC)*dsiguu,DSIGUU*ALL_PD(IPSEL,IVEC))
+            ALL_OUT(IVEC)=DSIGN(%(conv)sall_pd(0,IVEC)*dsiguu,DSIGUU*ALL_PD(IPSEL-IPSEL_SHIFT,IVEC))
          ELSE
              write(*,*) "Error in matrix element"
              DSIGUU=0D0
@@ -527,7 +574,7 @@ C       Call UNWGT to unweight and store events
      end
 
 
-     SUBROUTINE SMATRIX%(proc_id)s_MULTI(p_multi, IFLAV_VEC, hel_rand, col_rand, channels, igraph, out, selected_hel, selected_col, VECSIZE_USED)
+     SUBROUTINE SMATRIX%(proc_id)s_MULTI(p_multi, IFLAV_VEC, IPSEL_VEC, IMIRROR_VEC, hel_rand, col_rand, channels, igraph, out, selected_hel, selected_col, VECSIZE_USED)
 %(OMP_LIB)s
      implicit none
 
@@ -539,7 +586,11 @@ C       Call UNWGT to unweight and store events
      double precision p_multi(0:3, nexternal, VECSIZE_MEMMAX)
      double precision hel_rand(VECSIZE_MEMMAX)
      double precision col_rand(VECSIZE_MEMMAX)
+C    Per-event flavor index and leshouche row (IPSEL, used for BROKEN_SYM)
      integer IFLAV_VEC(VECSIZE_MEMMAX)
+     integer IPSEL_VEC(VECSIZE_MEMMAX)
+C    Per-event beam orientation (IMIRROR, used by the good-helicity filter)
+     integer IMIRROR_VEC(VECSIZE_MEMMAX)
      integer channels(VECSIZE_MEMMAX)
 C    Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
      integer igraph(VECSIZE_MEMMAX)
@@ -549,22 +600,28 @@ C    Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
      INTEGER VECSIZE_USED
 
      integer ivec
-
+%(dsig_xg_decl_multi)s
+     INTEGER          IPSEL
+     COMMON /SubProc/ IPSEL
+     INTEGER IMIRROR, IPROC
+     COMMON/TO_MIRROR/ IMIRROR, IPROC
 %(additional_header)s
 
 
 %(OMP_PREFIX)s
       DO IVEC=1, VECSIZE_USED
-         call SMATRIX%(proc_id)s(p_multi(0,1,IVEC),
-     &                           IFLAV_VEC(IVEC), 
+         IPSEL = IPSEL_VEC(IVEC)
+         IMIRROR = IMIRROR_VEC(IVEC)
+         call %(dsig_smatrix_vec_name)s(p_multi(0,1,IVEC),
+     &                           %(dsig_smatrix_vec_flav)s, 
      &                           hel_rand(IVEC),
      &                           col_rand(IVEC),
-     &               channels(IVEC),
+     &               %(dsig_smatrix_vec_chan)s,
      &                           IVEC,
      &               out(IVEC),
      &               selected_hel(IVEC),
      &               selected_col(IVEC)
-     &               )
+     &               )%(dsig_smatrix_vec_post)s
       ENDDO
 %(OMP_POSTFIX)s
 
@@ -572,20 +629,36 @@ C    Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
      end
 
     integer FUNCTION GET_NHEL%(proc_id)s(hel, ipart)
-c         if hel>0 return the helicity of particule ipart for the selected helicity configuration
-c         if hel=0 return the number of helicity state possible for that particle 
+c         if hel>0 return the helicity of particule ipart for the
+c         selected helicity configuration
+c         if hel=0 return the number of helicity state possible for
+c         that particle
       implicit none
-      integer hel,i, ipart
+      integer hel, i, ipart
       Include 'nexternal.inc'
-      integer one_nhel(nexternal)
-      INTEGER                 NCOMB
-      PARAMETER (             NCOMB=%(ncomb)d)
-      INTEGER NHEL(NEXTERNAL,0:NCOMB)
-      %(helicity_lines)s
-
-      get_nhel%(proc_id)s = nhel(ipart, iabs(hel))
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+      %(nhstate_data)s
+      %(states_data)s
+      INTEGER XGW, XGD, XGK
+      IF (hel.EQ.0) THEN
+c        Number of helicity states for particle ipart.
+         get_nhel%(proc_id)s = NHSTATE(ipart)
+      ELSE
+c        Decode the canonical mixed-radix helicity code into
+c        particle ipart's helicity value (last external leg =
+c        least-significant digit).
+         XGW = 1
+         DO XGK = ipart+1, NEXTERNAL
+            XGW = XGW * NHSTATE(XGK)
+         ENDDO
+         XGD = MOD((IABS(hel)-1)/XGW, NHSTATE(ipart))
+         get_nhel%(proc_id)s = STATES(XGD+1, ipart)
+      ENDIF
       return
       end
 
+%(dsig_xg_helper)s
 
 %(ADDITIONAL_FCT)s

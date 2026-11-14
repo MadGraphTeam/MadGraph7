@@ -38,7 +38,8 @@ void define_gauge_dir(const complex<double> q[5], double n[5]) {
   }
 }
 
-void multiply_propagator_factor(const ALOHAOBJ &win, double m, ALOHAOBJ &wout) {
+void multiply_propagator_factor(const ALOHAOBJ &win, std::complex<double> m,
+                                ALOHAOBJ &wout) {
   static const complex<double> cI(0., 1.);
   complex<double> q[5], w0[5], w1[5], js1, js2;
   double n[5], nq;
@@ -59,13 +60,67 @@ void multiply_propagator_factor(const ALOHAOBJ &win, double m, ALOHAOBJ &wout) {
        n[3] * real(q[3]);
 
   js1 = (n[0] * w0[0] - n[1] * w0[1] - n[2] * w0[2] - n[3] * w0[3]) / nq;
-  js2 = (q[0] * w0[0] - q[1] * w0[1] - q[2] * w0[2] - q[3] * w0[3] -
-         conj(q[4]) * w0[4]) / nq;
+  // q[4] = -i*m enters as +i*m, not as its conjugate: the two only agree for
+  // a real mass, and the complex-mass scheme needs the analytic form
+  js2 = (q[0] * w0[0] - q[1] * w0[1] - q[2] * w0[2] - q[3] * w0[3] +
+         q[4] * w0[4]) / nq;
 
   for (int i = 0; i < 5; ++i) {
     wout.W[i] = w0[i] - q[i] * js1 - n[i] * js2;
   }
   wout.flv_index = win.flv_index;
+}
+
+// FD gauge: polarised propagator of a massive vector (see
+// fd_polarized_propagator in aloha_functions_fd.f): w, built with the ordinary
+// FD numerator, is projected on one piece of it instead of the full projector.
+// ipol = 0 {0}, 1 {T}, 2 {+}, 3 {-}, 4 {A}, 5 {S}, 6 {0S}
+void fd_polarized_propagator(ALOHAOBJ &w, double m, double width, int ipol) {
+  static const complex<double> cI(0., 1.);
+  complex<double> q[5], w0[5], w1[5], nw, c, sca, cross[3];
+  double n[5], nq, q2, qh[3];
+
+  for (int i = 0; i < 4; ++i) q[i] = -w.p[i];
+  // a line at rest (|q| below 1e-10 q0, rounding): pin the axis of the
+  // helicities to +z, as the unitary-gauge polarised routines do
+  const double pinned[3] = {1e-30, 0., 1e-15};
+  for (int i = 1; i < 4; ++i)
+    if (abs(real(q[0])) * 1e-10 > abs(real(q[i]))) q[i] = pinned[i - 1];
+  q[4] = -cI * m;
+  define_gauge_dir(q, n);
+  for (int i = 0; i < 5; ++i) { w0[i] = w.W[i]; w1[i] = 0.; }
+
+  nq = n[0] * real(q[0]) - n[1] * real(q[1]) - n[2] * real(q[2]) - n[3] * real(q[3]);
+  q2 = real(q[0]) * real(q[0]) - real(q[1]) * real(q[1]) - real(q[2]) * real(q[2]) -
+       real(q[3]) * real(q[3]);
+  nw = n[0] * w0[0] - n[1] * w0[1] - n[2] * w0[2] - n[3] * w0[3];
+  for (int i = 0; i < 3; ++i) qh[i] = -n[i + 1];
+
+  if (ipol >= 1 && ipol <= 3) {
+    sca = qh[0] * w0[1] + qh[1] * w0[2] + qh[2] * w0[3];
+    for (int i = 0; i < 3; ++i) w1[i + 1] = w0[i + 1] - qh[i] * sca;
+    if (ipol != 1) {
+      cross[0] = qh[1] * w0[3] - qh[2] * w0[2];
+      cross[1] = qh[2] * w0[1] - qh[0] * w0[3];
+      cross[2] = qh[0] * w0[2] - qh[1] * w0[1];
+      // helicity +1: (T - i qh x w)/2, -1: (T + i qh x w)/2
+      double s = (ipol == 2) ? -1. : 1.;
+      for (int i = 0; i < 3; ++i) w1[i + 1] = 0.5 * (w1[i + 1] + s * cI * cross[i]);
+    }
+  }
+  if (ipol == 0 || ipol == 6) {
+    c = m / nq * nw - cI * w0[4];
+    for (int i = 0; i < 4; ++i) w1[i] -= m / nq * n[i] * c;
+    w1[4] += cI * c;
+  }
+  if (ipol == 4) {
+    for (int i = 0; i < 4; ++i) w1[i] -= (q2 - m * m) / (nq * nq) * n[i] * nw;
+  }
+  if (ipol == 5 || ipol == 6) {
+    for (int i = 0; i < 4; ++i)
+      w1[i] -= (q2 - m * m + cI * m * width) / (nq * nq) * n[i] * nw;
+  }
+  for (int i = 0; i < 5; ++i) w.W[i] = w1[i];
 }
 
 #include <complex>
@@ -127,7 +182,14 @@ void ixxxxx(double p[4], double fmass, int nhel, int nsf, int flv, ALOHAOBJ &fi)
   }
   else
   {
-    if (p[1] == 0.0 and p[2] == 0.0 and p[3] < 0.0)
+    if (p[3] < 0.0 and (p[1] != 0.0 or p[2] != 0.0) and (p[0] - p[3]) > 0.0)
+    {
+      // p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
+      // backward-moving massless fermion, and everything below divides by
+      // it. Take it from the light-cone identity p+ p- = pT^2 instead.
+      sqp0p3 = sqrt((p[1] * p[1] + p[2] * p[2])/(p[0] - p[3])) * nsf;
+    }
+    else if (p[1] == 0.0 and p[2] == 0.0 and p[3] < 0.0)
     {
       sqp0p3 = 0.0;
     }
@@ -223,7 +285,14 @@ void oxxxxx(double p[4], double fmass, int nhel, int nsf, int flv, ALOHAOBJ &fo)
   }
   else
   {
-    if((p[1] == 0.00) and (p[2] == 0.00) and (p[3] < 0.00))
+    if (p[3] < 0.0 and (p[1] != 0.0 or p[2] != 0.0) and (p[0] - p[3]) > 0.0)
+    {
+      // p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
+      // backward-moving massless fermion, and everything below divides by
+      // it. Take it from the light-cone identity p+ p- = pT^2 instead.
+      sqp0p3 = sqrt((p[1] * p[1] + p[2] * p[2])/(p[0] - p[3])) * nsf;
+    }
+    else if((p[1] == 0.00) and (p[2] == 0.00) and (p[3] < 0.00))
     {
       sqp0p3 = 0.00;
     }
@@ -479,11 +548,38 @@ void vxxxxx(double p[4],double vmass,int nhel,int nsv, ALOHAOBJ &vc){
       }
       else{
         vc.W[1] = complex<double>(-hel*sqh,0.0);
-        vc.W[2] = complex<double>(0.0,nsvahl*Sgn(sqh,p[3])); 
+        vc.W[2] = complex<double>(0.0,nsvahl*Sgn(sqh,p[3]));
       }
+    }
+    // FD gauge, as vxxxxx of aloha_functions_fd.f: the longitudinal vector
+    // is eps_L - k/M = -M/(n.k) n, with the goldstone in the fifth component
+    // (the full eps_L with no goldstone is only equivalent at zero width)
+    if (nhel == 0){
+      double n[4];
+      if (pp > 0.0){
+        n[0] = Sgn(1.0, p[0]);
+        n[1] = -p[1]/pp;
+        n[2] = -p[2]/pp;
+        n[3] = -p[3]/pp;
+      }
+      else{
+        n[0] = Sgn(1.0, p[0]);
+        n[1] = 0.0;
+        n[2] = 0.0;
+        n[3] = -Sgn(1.0, p[0]);
+      }
+      double nk = n[0]*p[0]-n[1]*p[1]-n[2]*p[2]-n[3]*p[3];
+      for (int i = 0; i < 4; i++){
+        vc.W[i] = complex<double>(-vmass/nk*n[i], 0.0);
+      }
+      vc.W[4] = complex<double>(0.0, -nsv);
+    }
+    else{
+      vc.W[4] = complex<double>(0.0, 0.0);
     }
   }
   else{
+    vc.W[4] = complex<double>(0.0, 0.0);
     pp = p[0];
     pt = sqrt((p[1]*p[1])+(p[2]*p[2]));
     vc.W[0] = complex<double>(0.0,0.0);

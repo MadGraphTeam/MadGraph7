@@ -27,10 +27,11 @@ import json
 import math
 import os
 
-import madgraph
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
                                                   describe_applied_orders,
+                                                  is_vi, last_run_info,
+                                                  text_editor,
                                                   lhapdf_configured,
                                                   output_name,
                                                   total_diagrams)
@@ -39,19 +40,62 @@ P = 'MG7>'
 RUN = 'MY_FIRST_LO_RUN'
 
 
-def madspace_is_installed():
-    """True if this MG7 already has a usable madspace build.
+def _mg7_bootstrap():
+    """The mg7 bootstrap module, or None if it cannot be imported.
 
-    Mirrors what the generated bin/generate_events checks before bootstrapping
-    one for itself (see iolibs/template_files/mg7/launch.py).
+    Everything the tutorial wants to know about madspace goes through it, so
+    the tutorial cannot disagree with the launcher about where madspace is or
+    whether it is there (see madgraph/mg7/bootstrap.py).
     """
 
     try:
-        root = os.path.dirname(os.path.dirname(os.path.abspath(
-            madgraph.__file__)))
+        from madgraph.mg7 import bootstrap
+    except Exception:
+        return None
+    return bootstrap
+
+
+def madspace_is_installed():
+    """True if this MG7 already has a usable madspace build."""
+
+    bootstrap = _mg7_bootstrap()
+    if bootstrap is None:
+        return False
+    try:
+        return bootstrap.madspace_is_installed()
     except Exception:
         return False
-    return os.path.isdir(os.path.join(root, 'madspace', 'install', 'madspace'))
+
+
+def _import_madspace():
+    """This MG7's own compiled madspace, or None if it has none.
+
+    A bare ``import madspace`` here would resolve against whatever happens to
+    be importable -- a system-wide copy, or the repo's own madspace/ source
+    directory as a namespace package -- and cache that wrong module in
+    sys.modules, where mg7/launch.py's ``import madspace as ms`` would then
+    pick it up and fail on the first attribute the real package has. So only
+    import when the bundled build is actually installed, and with its install
+    prefix on sys.path, exactly as the launcher does.
+    """
+
+    bootstrap = _mg7_bootstrap()
+    if bootstrap is None or not madspace_is_installed():
+        return None
+    try:
+        # Already installed, so this only prepends the install directory.
+        bootstrap.ensure_madspace()
+        import madspace
+    except Exception:
+        return None
+    finally:
+        # Same reason launch.py drops it: the install directory also carries
+        # madspace's build dependencies and would shadow the caller's.
+        try:
+            bootstrap.drop_install_path()
+        except Exception:
+            pass
+    return madspace
 
 
 # Shown under the card question `launch` asks, in place of the generic
@@ -65,9 +109,45 @@ The two cards worth knowing here:
 
 The rest belong to whichever programs are switched on above them.
 `tutorial mg7` goes through the run card properly.
-
+%(editor)s
 **For this tutorial the defaults are fine -- just press Enter.**
 """
+
+
+def _editor_at_question(interface=None):
+    """Which editor a card opens in -- said before the reader opens one."""
+
+    editor, source = text_editor(interface)
+    if not editor:
+        return ("\nNo text editor was found, so a card cannot be opened from "
+                "here;\n`set text_editor nano` (or emacs, code, ...) at the "
+                "MG7 prompt fixes that.\n")
+    text = "\nA card you open comes up in **%s** -- that is %s." % (
+        editor, source)
+    if is_vi(editor):
+        text += ("\nIf vi is new to you, type `help vi` here first: it lists "
+                 "the handful of\nkeys it takes to edit a card and get out "
+                 "again.")
+    return text + "\n"
+
+
+def _launch_question_hint(interface=None):
+    return LAUNCH_QUESTION_HINT % {'editor': _editor_at_question(interface)}
+
+
+def _editor_back_at_the_prompt(interface=None):
+    """How to change the editor, once the run is over."""
+
+    editor, source = text_editor(interface)
+    opened = ("Cards open in **%s** here -- that is %s." % (editor, source)
+              if editor else "No text editor was found for opening cards.")
+    return """
+%s For another
+editor:
+
+  set text_editor nano         for this session (or emacs, code, ...)
+  save options text_editor     to keep it for the next ones
+""" % opened
 
 
 def _detour_text(interface=None):
@@ -108,27 +188,8 @@ That is the detour. Back to the main line:
 """ % {'count': count, 'p': P}
 
 
-def _last_run_info(interface=None):
-    """The info.json of the most recent run in the output directory, or None.
-
-    Lets the step show the reader their own numbers instead of invented ones.
-    None means there is nothing to read -- no output yet, or a run that made no
-    events -- and the illustrative values are used instead.
-    """
-
-    try:
-        done = getattr(interface, '_done_export', None)
-        if not done:
-            return None
-        events = os.path.join(done[0], 'Events')
-        runs = [os.path.join(events, name) for name in os.listdir(events)]
-        runs = [d for d in runs if os.path.isfile(os.path.join(d, 'info.json'))]
-        if not runs:
-            return None
-        with open(os.path.join(max(runs, key=os.path.getmtime), 'info.json')) as f:
-            return json.load(f)
-    except Exception:
-        return None
+# shared with the other tutorials that run something
+_last_run_info = last_run_info
 
 
 def _result_row(info):
@@ -149,13 +210,14 @@ def _result_row(info):
         return '503.1(1.4)'
     if not mean:
         return '503.1(1.4)'
-    try:
-        import madspace
-
-        return madspace.format_with_error(mean, error)
-    except Exception:
-        # madspace not importable here: say the same thing the long way
-        return '%.4g +- %.2g' % (mean, error)
+    madspace = _import_madspace()
+    if madspace is not None:
+        try:
+            return madspace.format_with_error(mean, error)
+        except Exception:
+            pass
+    # madspace not importable here: say the same thing the long way
+    return '%.4g +- %.2g' % (mean, error)
 
 
 def _systematics_rows(info):
@@ -171,7 +233,7 @@ def _systematics_rows(info):
     if not info:
         return illustrative
     try:
-        from madgraph.iolibs.template_files.mg7 import systematics_summary
+        from madgraph.mg7 import systematics_summary
     except Exception:
         return illustrative
 
@@ -266,6 +328,7 @@ madspace is in place. Now pick a process:
 between particle names is mandatory.
 """ % {'p': P},
      title='install madspace',
+     entry='install madspace',
      solution='generate p p > t t~'),
 
 Step('generate', lambda interface: """
@@ -293,6 +356,7 @@ The typical next step is to inspect the generated diagrams to check them:
 
 Step('generate', lambda interface: _detour_text(interface),
      title='the electroweak diagrams (detour)',
+     entry='generate p p > t t~ QED<=2',
      hint="Nothing to do here -- `display diagrams` picks the main line back up.",
      solution='display diagrams'),
 
@@ -337,7 +401,7 @@ the first run takes longer than the ones after it.
 """ % {'p': P, 'run': output_name(interface, RUN)},
      title='produce the output',
      hint="`output NAME` with no format gives you the default MG7 output.",
-     question_hint=LAUNCH_QUESTION_HINT,
+     question_hint=_launch_question_hint,
      solution=lambda interface: 'launch %s' % output_name(interface, RUN)),
 
 Step('launch', lambda interface: """
@@ -355,14 +419,15 @@ The **theoretical** uncertainty gets its own box at the end:
 %(systematics)s
 
 `tutorial mg7` covers how it is computed and how to change what is varied.
-%(lhapdf)s
+%(lhapdf)s%(editor)s
 Save what you typed, so you can do this again without remembering it:
 
 %(p)s history my_first_run.dat
 """ % {'p': P, 'run': output_name(interface, RUN),
        'result': _result_row(_last_run_info(interface)),
        'systematics': _systematics_rows(_last_run_info(interface)),
-       'lhapdf': _lhapdf_note(interface)},
+       'lhapdf': _lhapdf_note(interface),
+       'editor': _editor_back_at_the_prompt(interface)},
      title='run it',
      hint="`history FILE` saves the session; `open FILE` shows a file from the output.",
      solution='history my_first_run.dat'),

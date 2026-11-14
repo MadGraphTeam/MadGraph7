@@ -14,6 +14,7 @@
 ################################################################################
 from __future__ import division
 from __future__ import absolute_import
+import collections
 import subprocess
 import unittest
 import json
@@ -31,6 +32,7 @@ import madgraph
 
 logger = logging.getLogger('test_cmd')
 
+import tests
 import tests.unit_tests.iolibs.test_file_writers as test_file_writers
 
 import madgraph.interface.master_interface as MGCmd
@@ -64,7 +66,7 @@ def check_html_page(cls, link):
     with misc.chdir(cwd):
         for path in pattern.findall(text):
             if not path:
-                continue # means is just a linke starting with #
+                continue # means is just a line starting with #
             cls.assertTrue(os.path.exists(path), '%s/%s' %(cwd,path))
     return True
     
@@ -77,30 +79,31 @@ def _mg7_datadir_or_skip(test):
     """Return a usable LHAPDF data dir for mg7 runs, or skipTest (on *test*) if
     the mg7 runtime stack (madspace + LHAPDF + the run_card.toml default PDF) is
     not available."""
-    import glob
-    try:
-        import madspace
-        has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-    except ImportError:
-        has_mg7 = False
-    datadir = os.environ.get('LHAPDF_DATA_PATH')
+    madspace = tests.import_madspace()
+    if not hasattr(madspace, 'ChannelEventGenerator'):
+        test.skipTest('mg7 runtime stack (madspace) unavailable')
+    datadir = tests.lhapdf_data_path('NNPDF40_lo_as_01180')
     if not datadir:
-        mg = MGCmd.MasterCmd()
-        lhapdf = mg.options['lhapdf']
-        if not lhapdf:
-            lhapdf = 'lhapdf-config'
-        try:
-            datadir = subprocess.check_output(
-            [lhapdf, '--datadir']).decode().strip()
-        except Exception:
-            datadir = None 
-        
-    misc.sprint(datadir)
-    if not has_mg7 or not datadir or not os.path.isdir(datadir):
-        test.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-    if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
-        test.skipTest('NNPDF40_lo_as_01180 PDF set not available')
+        test.skipTest('NNPDF40_lo_as_01180 LHAPDF data not found (set the '
+                      'lhapdf option or $LHAPDF_DATA_PATH)')
     return datadir
+
+
+def _set_toml_key(text, section, key, value):
+    """`text` (a run_card.toml) with `key` of the table `[section]` set to
+    `value`, whatever it was; the same key of any other table (the `enable`
+    of [vegas] next to the one of [systematics]) is left alone. A regex
+    spanning from the section header to the next `key = ...` would not stop
+    at the end of the table."""
+    lines, current = text.split('\n'), None
+    for i, line in enumerate(lines):
+        header = re.match(r'^\s*\[+\s*([^\]]+?)\s*\]+\s*(#.*)?$', line)
+        if header:
+            current = header.group(1)
+        elif current == section and \
+                re.match(r'^\s*%s\s*=' % re.escape(key), line):
+            lines[i] = '%s = %s' % (key, value)
+    return '\n'.join(lines)
 
 
 def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
@@ -137,7 +140,7 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     # defaults to true and is the one that actually costs the time here. The
     # cross-section these callers read does not depend on either.
     t = re.sub(r'^systematics = true$', 'systematics = false', t, flags=re.M)
-    t = re.sub(r'(?ms)^(\[systematics\].*?^enable = )true$', r'\1false', t)
+    t = _set_toml_key(t, 'systematics', 'enable', 'false')
     open(toml, 'w').write(t)
     env = dict(os.environ)
     env['LHAPDF_DATA_PATH'] = datadir
@@ -169,19 +172,30 @@ _MG7_DEFAULT_CARDS = {
 
 def _mg7_tool_or_skip(test, cmd, *option_keys):
     """skipTest unless every configured tool path in *option_keys* (e.g.
-    'pythia8_path', 'delphes_path', 'rivet_path') is available; otherwise the
-    post-processing driver would silently skip the tool and the output-file
-    assertions would fail for an unrelated (missing-tool) reason."""
+    'pythia8_path', 'delphes_path', 'rivet_path', or 'fastjet' for the
+    fastjet-config executable) is available; otherwise the post-processing
+    driver would skip or fail on the tool and the output-file assertions would
+    fail for an unrelated (missing-tool) reason. Used by the madevent
+    post-processing tests too."""
     for key in option_keys:
         path = cmd.options.get(key)
+        if path and key == 'fastjet':
+            # fastjet-config may be given by name and found on the PATH
+            path = misc.which(path) or path
         if not path or path in ('None', 'NA') or not os.path.exists(path):
-            test.skipTest('mg7 post-processing tool %s not configured (%s)'
+            test.skipTest('post-processing tool %s not configured (%s)'
                           % (key, path))
+
+
+# Rivet runs need rivet, yoda and a full fastjet (fastjet-config) next to the
+# Pythia8 shower; contur adds its own installation on top.
+_RIVET_TOOLS = ('pythia8_path', 'rivet_path', 'yoda_path', 'fastjet')
 
 
 def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
                       toml_edits=None, precopy_cards=None, extra_cards=None,
-                      events=100, require_tools=(), timeout=1800):
+                      events=100, require_tools=(), timeout=1800,
+                      tolerated_crashes=()):
     """Drive an mg7 post-processing chain through the command interface.
 
     Runs *setup_cmds* (MG5 lines ending with the ``generate``) + ``output mg7
@@ -198,8 +212,12 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
 
     Returns the run directory (``Events/run_01``). Assertions/skips are made on
     *test*; the run self-skips when the mg7 runtime stack or a *require_tools*
-    program is unavailable.
+    program is unavailable. A tool failure (a ``*_crash.log`` in the run) fails
+    the test, unless its name matches one of the *tolerated_crashes* patterns:
+    the tools' output is otherwise easy to mistake for a success (a glob on
+    ``*delphes*`` matched ``Delphes_crash.log``).
     """
+    import fnmatch
     import glob
     if os.path.isdir(run_dir):
         shutil.rmtree(run_dir)
@@ -242,7 +260,9 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     log = pjoin(run_dir, 'mg7_postproc.log')
     if switch_lines:
         stdin_text = '\n'.join(list(switch_lines) + ['done']) + '\n'
-        args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events')]
+        # the switches are answered through stdin on purpose
+        args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events'),
+                '--allow-stdin']
     else:
         stdin_text = None
         args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events'), '-f']
@@ -253,24 +273,50 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     # Surface any per-tool *_crash.log written by run_selected_tools when a
     # post-processing tool fails *without* failing generate_events (rc stays 0),
     # so a silently-swallowed tool failure is visible in CI.
+    crashes = []
     for cl in sorted(glob.glob(pjoin(run_dir, '**', '*_crash.log'), recursive=True)):
         try:
             print('\n----- %s -----\n%s' % (cl, open(cl).read()),
                   file=sys.stderr, flush=True)
         except Exception:
             pass
+        if not any(fnmatch.fnmatch(os.path.basename(cl), pattern)
+                   for pattern in tolerated_crashes):
+            crashes.append(cl)
     if proc.returncode != 0:
         # surface the generate_events output (the log lives in a tmp dir that CI
         # does not upload) so the real crash is visible in the test failure.
-        try:
-            tail = ''.join(open(log).readlines()[-120:])
-        except Exception as err:
-            tail = '(could not read %s: %s)' % (log, err)
-        test.fail('mg7 generate_events failed (rc=%s)\n'
-                  '----- %s (last 120 lines) -----\n%s' % (proc.returncode, log, tail))
+        test.fail('mg7 generate_events failed (rc=%s)\n%s'
+                  % (proc.returncode, _mg7_postproc_report(run_dir)))
+    if crashes:
+        test.fail('mg7 post-processing tool(s) failed: %s\n%s'
+                  % (', '.join(crashes), _mg7_postproc_report(run_dir)))
     runs = sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*')))
     test.assertTrue(runs, 'no mg7 run directory under %s' % run_dir)
     return runs[0]
+
+
+def _mg7_postproc_report(run_dir, nlines=120):
+    """The content of the Events run directories and the end of the
+    generate_events log of _run_mg7_postproc, for a failure message: both live
+    in a tmp dir that CI does not upload."""
+    import glob
+    def tail(path):
+        try:
+            text = ''.join(open(path).readlines()[-nlines:])
+        except Exception as err:
+            text = '(could not read %s: %s)' % (path, err)
+        return '----- %s (last %d lines) -----\n%s' % (path, nlines, text)
+
+    out = []
+    for run in sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*'))):
+        out.append('----- %s -----\n%s' % (run, '\n'.join(sorted(os.listdir(run)))))
+        # the logs and scripts of the post-processing tools (Pythia8 shower, ...)
+        for path in sorted(glob.glob(pjoin(run, '*.log')) + glob.glob(pjoin(run, '*.sh'))):
+            if not os.path.basename(path).startswith('compile_'):
+                out.append(tail(path))
+    out.append(tail(pjoin(run_dir, 'mg7_postproc.log')))
+    return '\n'.join(out)
 
 
 #===============================================================================
@@ -340,18 +386,9 @@ class TestMECmdShell(unittest.TestCase):
             stdout=devnull
             stderr=devnull
 
-        #if not os.path.exists(pjoin(MG5DIR, 'MadAnalysis')):
-        #    print("install MadAnalysis")
-        #    p = subprocess.Popen([pjoin(MG5DIR,'bin','madgraph')],
-        #                     stdin=subprocess.PIPE,
-        #                     stdout=stdout,stderr=stderr)
-        #    out = p.communicate('install MadAnalysis4'.encode())
-        #misc.compile(cwd=pjoin(MG5DIR,'MadAnalysis'))
-
         #if not misc.which('root'):
         #    raise Exception('root is require for this test')
         #interface.exec_cmd('set pythia-pgs_path %s --no_save' % pjoin(MG5DIR, 'pythia-pgs'))
-        interface.exec_cmd('set madanalysis_path %s --no_save' % pjoin(MG5DIR, 'MadAnalysis'))
         interface.onecmd('output madevent %s -f' % self.run_dir)            
         
         if os.path.exists(pjoin(interface.options['syscalc_path'],'sys_calc')):
@@ -472,8 +509,19 @@ class TestMECmdShell(unittest.TestCase):
         self.assertGreater(len(set(biased_events_wgts)),1)
         # Make sure that there is significantly more events in the ptj tail
         self.assertGreater(biased_median_ptj,5.0*unbiased_median_ptj)
-        # Make sure that the cross-section is close enough for the bias and unbiased samples
-        self.assertLess((abs(biased_events.cross-unbiased_events.cross)/abs(unbiased_events.cross)),0.1)
+        # Make sure that the cross-section is close enough for the bias and
+        # unbiased samples. The biased sample estimates it from its event
+        # weights, which have a long tail (low ptj events carry large
+        # weights): its statistical error is ~4.5% for 10k events, so a
+        # fixed 10% (~2 sigma) tolerance fails for some seeds.
+        nb = len(biased_events_wgts)
+        mean_wgt = sum(biased_events_wgts) / nb
+        stat_err = math.sqrt(sum((w - mean_wgt)**2 for w in biased_events_wgts)
+                             / (nb - 1) / nb)
+        self.assertLess(abs(biased_events.cross-unbiased_events.cross),
+                        4 * stat_err,
+                        'biased %s +- %s vs unbiased %s' % (biased_events.cross,
+                                                stat_err, unbiased_events.cross))
 
     def test_madspin_gridpack(self):
 
@@ -521,6 +569,121 @@ class TestMECmdShell(unittest.TestCase):
         self.do('launch -f')
         
         self.check_parton_output('run_02_decayed_1', 100)           
+        
+    def _setup_madspin_ww_wz(self, *card_lines):
+        """p p > w+ w- plus p p > w+ z, decayed by madspin_v1.
+
+        The two productions have different total branching ratios -- W+W-
+        0.67 x 0.22, W+Z 0.67 x 0.07 -- so add_loose_decay gives W+Z a null
+        decay (decay_struct None) for the events that must be dropped. Both
+        are quark-initiated, so all_ME is keyed by flavour-grouped tags
+        ((-81, 81), (-24, 24)), and every decay product is a merged class
+        (j, l, vl)."""
+        self.out_dir = self.run_dir
+        self.generate(['p p > w+ w-', 'p p > w+ z'], 'sm')
+        with open(pjoin(self.out_dir, 'Cards', 'madspin_card.dat'), 'w') as ff:
+            for line in card_lines + ('set spinmode madspin_v1',
+                                      'set seed 11',
+                                      'decay w+ > j j',
+                                      'decay w- > l- vl~',
+                                      'decay z > l+ l-',
+                                      'launch'):
+                ff.write(line + '\n')
+        run_card = banner.RunCardLO(pjoin(self.out_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 300)
+        run_card.set('use_syst', False)
+        run_card.write(pjoin(self.out_dir, 'Cards', 'run_card.dat'))
+
+    def _check_madspin_ww_wz(self, run):
+        """The decayed events of `run` (see _setup_madspin_ww_wz): flavour
+        consistent decays, no merged PDG code, and the null decay applied to
+        W+Z only."""
+        allowed = {24: [{2, -1}, {4, -3}], -24: [{11, -12}, {13, -14}],
+                   23: [{11, -11}, {13, -13}]}
+        def production(event):
+            return tuple(sorted(p.pid for p in event
+                                if p.status in (1, 2) and p.mother1
+                                and p.mother1.status == -1))
+
+        undecayed = collections.Counter(
+            production(e) for e in lhe_parser.EventFile(pjoin(
+                self.out_dir, 'Events', run, 'unweighted_events.lhe.gz')))
+        decayed = pjoin(self.out_dir, 'Events', run + '_decayed_1',
+                        'unweighted_events.lhe.gz')
+        # madevent logs a MadSpin crash and carries on: say so here
+        self.assertTrue(os.path.exists(decayed),
+                        'MadSpin wrote no decayed events for %s' % run)
+        written = collections.Counter()
+        for event in lhe_parser.EventFile(decayed):
+            written[production(event)] += 1
+            for p in event:
+                self.assertFalse(80 < abs(p.pid) < 90,
+                                 'merged PDG code %s written' % p.pid)
+                if p.pid in allowed:
+                    daughters = {d.pid for d in event if d.mother1 is p}
+                    self.assertIn(daughters, allowed[p.pid])
+        ww, wz = (-24, 24), (23, 24)
+        self.assertEqual(set(undecayed), {ww, wz})
+        # the larger total BR: every W+W- event is written
+        self.assertEqual(written[ww], undecayed[ww])
+        # the smaller one: kept with probability 0.07/0.22, so some but
+        # not all of the ~50 W+Z events (0 kept: ~1e-8)
+        self.assertGreater(written[wz], 0)
+        self.assertLess(written[wz], undecayed[wz])
+
+    def test_madspin_gridpack_unequal_br(self):
+        """Reuse an ms_dir in madspin_v1 mode, down to the decayed events.
+
+        Saving madspin.pkl used to crash on the null decay of W+Z
+        (switch_all_model_instance iterated its decay_struct, None). The
+        second launch reuses the directory: run_from_pickle used to restore
+        no model, so the production tags were looked up unmerged,
+        ((-2, 2), (-24, 24)), and load_event died with a KeyError.
+        """
+        ms_dir = pjoin(self.run_dir, 'MSDIR')
+        self._setup_madspin_ww_wz('set ms_dir %s' % ms_dir)
+
+        # build the directory
+        self.do('launch -f')
+        pkl = pjoin(ms_dir, 'madspin.pkl')
+        self.assertTrue(os.path.exists(pkl),
+                        'the first launch did not build the ms_dir')
+        built = os.stat(pkl).st_mtime_ns
+
+        # reuse it on a new sample
+        self.do('launch -f')
+        self.assertEqual(os.stat(pkl).st_mtime_ns, built,
+                         'the second launch should reuse madspin.pkl')
+
+        for run in ('run_01', 'run_02'):
+            self._check_madspin_ww_wz(run)
+
+    def test_madspin_use_old_dir(self):
+        """use_old_dir reruns madspin_v1 on the matrix elements the previous
+        run left in the same directory (production_me/all_ME.pkl).
+
+        That file is written by save_status_to_pickle: all_decay and the
+        decay structures as their repr, no model. The reload took it as it
+        was -- all_decay a string, the decay branches plain dicts, the tags
+        unmerged -- and a successful run deleted production_me anyway, so
+        there was nothing to reload in the first place.
+        """
+        self._setup_madspin_ww_wz('set use_old_dir True')
+
+        self.do('launch -f')
+        # MadSpin works in the process directory (the events are in Events/)
+        pkl = pjoin(self.out_dir, 'production_me', 'all_ME.pkl')
+        self.assertTrue(os.path.exists(pkl),
+                        'the first launch did not keep production_me')
+        built = os.stat(pkl).st_mtime_ns
+
+        self.do('launch -f')
+        # a reload that fails falls back to regenerating, which rewrites it
+        self.assertEqual(os.stat(pkl).st_mtime_ns, built,
+                         'the second launch should reload all_ME.pkl')
+
+        for run in ('run_01', 'run_02'):
+            self._check_madspin_ww_wz(run)
         
         
     def test_width_computation(self):
@@ -638,8 +801,6 @@ class TestMECmdShell(unittest.TestCase):
                     '%s/Cards/run_card.dat' % self.run_dir)
         shutil.copy('%s/Cards/pythia_card_default.dat' % self.run_dir,
                     '%s/Cards/pythia_card.dat' % self.run_dir)
-        shutil.copy('%s/Cards/plot_card_default.dat' % self.run_dir,
-                    '%s/Cards/plot_card.dat' % self.run_dir)        
         try:
             os.remove(pjoin(self.run_dir, 'Cards',  'madanalysis5_parton_card.dat'))
             os.remove(pjoin(self.run_dir, 'Cards',  'madanalysis5_hadron_card.dat'))
@@ -647,10 +808,6 @@ class TestMECmdShell(unittest.TestCase):
             pass
         self.do('generate_events -f')     
 
-
-        f1 = self.check_matched_plot(tag='fermi')         
-        start = time.time()
-        
         #modify the run_card
         run_card = self.cmd_line.run_card
         run_card['nevents'] = 44
@@ -661,7 +818,6 @@ class TestMECmdShell(unittest.TestCase):
         self.assertEqual(cmd, os.getcwd())        
         self.do('generate_events -f')
         self.assertEqual(int(self.cmd_line.run_card['nevents']), 44)
-        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Cards', 'plot_card.dat')))
         self.do('pythia run_01 -f')
         self.do('quit')
         
@@ -670,11 +826,6 @@ class TestMECmdShell(unittest.TestCase):
         self.check_parton_output(syst=False)
         self.check_parton_output('run_02', target_event=44, syst=False)
         self.check_pythia_output(syst=False)        
-        f2 = self.check_matched_plot(mintime=start, tag='tag_1')        
-        
-        self.assertNotEqual(f1.split('\n'), f2.split('\n'))
-        
-        
         self.assertEqual(cmd, os.getcwd())
 
         
@@ -742,23 +893,7 @@ class TestMECmdShell(unittest.TestCase):
         import glob, json
         # The mg7 cross-section run needs the madspace runtime and a resolvable
         # LHAPDF data path; skip cleanly where that stack is unavailable.
-        try:
-            import madspace
-            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-        except ImportError:
-            has_mg7 = False
-        datadir = os.environ.get('LHAPDF_DATA_PATH')
-        if not datadir:
-            try:
-                datadir = subprocess.check_output(
-                    ['lhapdf-config', '--datadir']).decode().strip()
-            except Exception:
-                datadir = None
-        if not has_mg7 or not datadir or not os.path.isdir(datadir):
-            self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-        # the mg7 run_card.toml default PDF must be present in the data dir
-        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
-            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
+        datadir = _mg7_datadir_or_skip(self)
 
         def run_mg7(group):
             run_dir = pjoin(self.path, 'MG7_%s' % ('grp' if group else 'ungrp'))
@@ -1085,24 +1220,16 @@ class TestMECmdShell(unittest.TestCase):
         if a color flow doesn't close. Exercises the real C++ code directly
         against every (channel, diagram, active color) in subprocesses.json."""
         import json
-        # Prefer the locally-built module (madspace/install) over whatever
-        # madspace happens to be on the system path, since this test exercises
-        # local C++ source changes (diagram_propagator_pdgs).
-        local_install = pjoin(MG5DIR, 'madspace', 'install')
-        if os.path.isdir(local_install):
-            if local_install not in sys.path:
-                sys.path.insert(0, local_install)
-            for mod_name in [m for m in sys.modules if m.startswith('madspace')]:
-                mod_file = getattr(sys.modules[mod_name], '__file__', '') or ''
-                if not mod_file.startswith(local_install):
-                    del sys.modules[mod_name]
-        try:
-            import madspace as ms
-            has_mg7 = hasattr(ms.SubprocArgs(), 'diagram_propagator_pdgs')
-        except ImportError:
-            has_mg7 = False
-        if not has_mg7:
+        # This exercises local C++ source changes (diagram_propagator_pdgs),
+        # so it needs the locally-built module (madspace/install). It cannot
+        # be swapped in once another madspace is loaded: the second
+        # extension fails to load and breaks madspace for every later test.
+        ms = tests.import_madspace()
+        if ms is None:
             self.skipTest('mg7 runtime stack (madspace) unavailable')
+        if not hasattr(ms.SubprocArgs(), 'diagram_propagator_pdgs'):
+            self.skipTest('madspace loaded from %s lacks '
+                          'diagram_propagator_pdgs' % ms.__file__)
 
         mg = MGCmd.MasterCmd()
         mg.no_notification()
@@ -1258,10 +1385,13 @@ class TestMECmdShell(unittest.TestCase):
             switch_lines=None,
             toml_edits=[(r'\npdf = \[[^\]]*\]', '\npdf = %s' % pdf_entry),
                         # one histogram, to get the event-sample histograms
-                        # with their variation bands in info.json
-                        (r'\[histograms\]\n',
+                        # with their variation bands in info.json. The whole
+                        # section is replaced, not appended to: the output
+                        # writes process-specific defaults there (sqrt_s among
+                        # them), and a second sqrt_s.min is a TOML error.
+                        (r'\[histograms\]\n(?:(?!\[).*\n)*',
                          '[histograms]\nsqrt_s.min = 0.0\nsqrt_s.max = 2000.0\n'
-                         'sqrt_s.bin_count = 10\n')],
+                         'sqrt_s.bin_count = 10\n\n')],
             events=100)
 
         lhe_path = pjoin(run, 'events.lhe')
@@ -1362,7 +1492,7 @@ class TestMECmdShell(unittest.TestCase):
                         (r'\nsystematics = false\n', '\nsystematics = true\n'),
                         (r'systematics_pdf = \[[^\]]*\]',
                          'systematics_pdf = ["central"]')],
-            events=100)
+            events=100, tolerated_crashes=('*systematics*',))
 
         lhe_path = pjoin(run, 'events.lhe')
         if not os.path.exists(lhe_path):
@@ -1395,7 +1525,7 @@ class TestMECmdShell(unittest.TestCase):
         mg.exec_cmd('output mg7 %s' % out_dir)
 
         launcher = importlib.import_module(
-            'madgraph.iolibs.template_files.mg7.launch')
+            'madgraph.mg7.launch')
         tool_cards = ('pythia8_card.dat', 'madspin_card.dat', 'delphes_card.dat',
                       'reweight_card.dat', 'rivet_card.dat',
                       'madanalysis5_parton_card.dat',
@@ -1451,22 +1581,7 @@ class TestMECmdShell(unittest.TestCase):
         Self-skips where the mg7 runtime stack is unavailable.
         """
         import glob, json
-        try:
-            import madspace
-            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-        except ImportError:
-            has_mg7 = False
-        datadir = os.environ.get('LHAPDF_DATA_PATH')
-        if not datadir:
-            try:
-                datadir = subprocess.check_output(
-                    ['lhapdf-config', '--datadir']).decode().strip()
-            except Exception:
-                datadir = None
-        if not has_mg7 or not datadir or not os.path.isdir(datadir):
-            self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
-            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
+        datadir = _mg7_datadir_or_skip(self)
 
         run_dir = pjoin(self.path, 'MG7_uq')
         if os.path.isdir(run_dir):
@@ -1522,16 +1637,12 @@ class TestMECmdShell(unittest.TestCase):
         events.
         """
         import glob, re as _re
-        try:
-            import madspace
-            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-        except ImportError:
-            has_mg7 = False
-        if not has_mg7:
+        if not hasattr(tests.import_madspace(), 'ChannelEventGenerator'):
             self.skipTest('mg7 runtime stack (madspace) unavailable')
         # e+ e- > mu+ mu- is leptonic, so no parton density is ever evaluated
-        # and the [systematics] PDF variations are empty -- but alpha_s still
-        # comes from the nominal set, and the mu_R/mu_F weights are computed.
+        # and the [systematics] PDF variations are empty -- but alpha_s comes
+        # from the param-card grid the launcher writes (fixed_alphas.info), and
+        # the mu_R/mu_F weights are computed.
         # They are deliberately left enabled: the gridpack has to reproduce the
         # calculator the launcher built, and used to die doing so.
         datadir = os.environ.get('LHAPDF_DATA_PATH')
@@ -1583,6 +1694,11 @@ class TestMECmdShell(unittest.TestCase):
             'gridpack names backend %r but ships no matching library: %s'
             % (backend, os.listdir(libdir)))
 
+        # the launch wrote npy events (the mg7 default), but a gridpack feeds
+        # a shower/detector chain: its card has to default to LHE
+        self.assertRegex(card, r'(?m)^output_format\s*=\s*"lhe"',
+                         'the gridpack card does not default to LHE')
+
         # and it has to run
         gplog = pjoin(self.run_dir, 'mg7_gridpack_run.log')
         ret = subprocess.call(
@@ -1591,9 +1707,18 @@ class TestMECmdShell(unittest.TestCase):
             cwd=gridpack, env=env,
             stdout=open(gplog, 'w'), stderr=subprocess.STDOUT)
         self.assertEqual(ret, 0, 'mg7 gridpack run failed (see %s)' % gplog)
-        self.assertTrue(
-            glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe*')),
-            'gridpack run produced no events (see %s)' % gplog)
+        lhe = glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe.gz'))
+        self.assertTrue(lhe, 'gridpack run produced no LHE events (see %s)' % gplog)
+        # and its LHE header has to be complete: the cards, the beams and the
+        # cross section of this gridpack run, not an empty <init> block
+        import gzip as _gzip
+        with _gzip.open(lhe[0], 'rt') as stream:
+            header = stream.read().split('<event>', 1)[0]
+        for block in ('<MG5ProcCard>', '<slha>', '<MG7RunCard>', '<MG7Seed>'):
+            self.assertIn(block, header)
+        init = header.split('<init>', 1)[1].split('</init>', 1)[0].split()
+        self.assertEqual(init[:2], ['-11', '11'])
+        self.assertGreater(float(init[10]), 0., 'no cross section in <init>')
         # and it has to reweight: without a nominal alpha_s grid the gridpack
         # either crashed or dropped the weights it was configured to write.
         self.assertTrue(
@@ -1941,6 +2066,335 @@ class TestMECmdShell(unittest.TestCase):
                 )
 
 
+    def test_mlm_pdfrwt_flavour(self):
+        """With MLM (ickkw=1) and use_syst, the <pdfrwt> information must carry
+        the event's flavours. A grouped
+        subprocess (q q~ > z with q = d s / u c) clusters with the
+        representative of its coupling class: s s~ > z was booked as 1 and
+        c c~ > z as 2, so the systematics of every s/c-initiated event used
+        the d/u PDF."""
+
+        import gzip
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm')
+        mg_cmd.exec_cmd('generate p p > z @0')
+        mg_cmd.exec_cmd('add process p p > z j @1')
+        # scalar mode only: vector_size>1 with grouped flavours does not run
+        # (DSIG_VEC reads the per-warp IFLAV_VEC per event)
+        for vector_size in [1]:
+            run_dir = pjoin(self.path, 'MGPROC_pdfrwt_%d' % vector_size)
+            mg_cmd.exec_cmd('output madevent %s' % run_dir)
+
+            run_card = banner.RunCardLO(pjoin(run_dir, 'Cards', 'run_card.dat'))
+            run_card.set('nevents', 2000, user=True)
+            run_card.set('iseed', 7, user=True)
+            run_card.set('ickkw', 1, user=True)
+            run_card.set('xqcut', 20.0, user=True)
+            run_card.set('use_syst', True, user=True)
+            run_card.set('systematics_program', 'none', user=True)
+            if vector_size > 1:
+                run_card.set('vector_size', vector_size, user=True)
+            run_card.write(pjoin(run_dir, 'Cards', 'run_card.dat'))
+
+            self.cmd_line = MECmd.MadEventCmdShell(me_dir=run_dir)
+            self.cmd_line.no_notification()
+            self.cmd_line.exec_cmd('set automatic_html_opening False')
+            self.do('generate_events -f')
+
+            path = pjoin(run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+            text = gzip.open(path, 'rt').read()
+            checked = collections.Counter()
+            for event in re.findall(r'<event[^>]*>(.*?)</event>', text, re.S):
+                lines = [l.split() for l in event.split('<')[0].strip().splitlines()]
+                partons = [(int(l[0]), int(l[1]), float(l[8])) for l in lines[1:]]
+                # beam 1 moves along +z, beam 2 along -z
+                beam = dict((1 if pz > 0 else 2, pdg)
+                            for pdg, status, pz in partons if status == -1)
+                flavours = set(abs(pdg) for pdg, status, pz in partons
+                               if abs(pdg) <= 6)
+                pdfrwt = dict((int(b), [int(x) for x in body.split()[1:1+int(body.split()[0])]])
+                              for b, body in re.findall(
+                                  r'<pdfrwt beam="(\d)">(.*?)</pdfrwt>', event))
+                self.assertEqual(sorted(pdfrwt), [1, 2], event)
+                for b in (1, 2):
+                    # leading entry: the incoming parton of this beam
+                    self.assertEqual(pdfrwt[b][0], beam[b],
+                        'vector_size=%s: leading pdfrwt entry of beam %s is '
+                        'not the incoming parton:\n%s' % (vector_size, b, event))
+                    # ladder: only quark flavours present in the event
+                    for pdg in pdfrwt[b][1:]:
+                        if abs(pdg) <= 6:
+                            self.assertIn(abs(pdg), flavours,
+                                'vector_size=%s: pdfrwt ladder of beam %s has a '
+                                'flavour absent from the event:\n%s'
+                                % (vector_size, b, event))
+                quarks = [abs(pdg) for pdg in beam.values() if pdg != 21]
+                checked[max(quarks) if quarks else 21] += 1
+            # the check is only meaningful with s and c initiated events
+            self.assertGreater(checked[3], 0, checked)
+            self.assertGreater(checked[4], 0, checked)
+
+    def test_mlm_top_is_not_a_jet(self):
+        """With MLM (ickkw=1) a top is never a jet. cluster() mapped every
+        quark leg up to pdg 6 to the coupling class of the event, which is
+        1 on a leg that is not merged: the tops were clustered as d quarks
+        and got their own finite pt_clust in ~20% of the p p > t t~ + 0,1j
+        events (sigma of t t~ + 0,1,2j 6.7% low, 2-jet MLM acceptance 14.4%
+        instead of 12.1%).
+
+        A top that no clustering booked a scale onto gets pt_clust = sqrt(s)
+        from setclscales. With the default mlm_shower_start = hardest_scale,
+        unwgt.f (mlm_hardest_shower_scale) then rewrites it to the event's
+        hardest scale, max(SCALUP, pt_clust of the light partons below
+        sqrt(s)), the same value for both tops. A top clustered as a jet
+        keeps its own clustering scale (the rewrite only touches sqrt(s)),
+        so every top must carry exactly that hardest scale. With cluster.f
+        before the fix, 281 of the 1000 tops fail this, the same tops that
+        sit below sqrt(s) with mlm_shower_start = collider_energy."""
+
+        import gzip
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm')
+        mg_cmd.exec_cmd('generate p p > t t~ @0')
+        mg_cmd.exec_cmd('add process p p > t t~ j @1')
+        mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 500, user=True)
+        run_card.set('iseed', 31337, user=True)
+        run_card.set('ickkw', 1, user=True)
+        run_card.set('xqcut', 20.0, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        self.do('generate_events -f')
+
+        self.assertEqual(run_card['mlm_shower_start'], 'hardest_scale')
+        sqrts = run_card['ebeam1'] + run_card['ebeam2']
+        maxjetflavor = run_card['maxjetflavor']
+        path = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        text = gzip.open(path, 'rt').read()
+        ntops, njets, clustered_tops = 0, 0, []
+        for event in re.findall(r'<event[^>]*>(.*?)</event>', text, re.S):
+            body = event.split('<')[0].strip().splitlines()
+            scalup = float(body[0].split()[3])
+            pdgs = [int(l.split()[0]) for l in body[1:]]
+            scales = dict((int(i), float(v)) for i, v in
+                          re.findall(r'pt_clust_(\d+)="([^"]+)"', event))
+            self.assertEqual(sorted(scales), list(range(3, len(pdgs) + 1)), event)
+            light = [ptclust for i, ptclust in scales.items()
+                     if (pdgs[i-1] == 21 or 1 <= abs(pdgs[i-1]) <= maxjetflavor)
+                     and ptclust < 0.999 * sqrts]
+            njets += len(light)
+            hardest = max([scalup] + light)
+            for i, ptclust in scales.items():
+                if abs(pdgs[i-1]) == 6:
+                    ntops += 1
+                    if abs(ptclust - hardest) > 1e-5 * hardest:
+                        clustered_tops.append(event)
+        # the tops of every event, and some clustered jets
+        self.assertGreater(ntops, 900)
+        self.assertGreater(njets, 50)
+        self.assertEqual(len(clustered_tops), 0,
+            '%d tops (of %d) do not carry the hardest scale of the event '
+            '(clustered as a jet?), e.g.:\n%s'
+            % (len(clustered_tops), ntops,
+               clustered_tops[0] if clustered_tops else ''))
+
+    def test_t_channel_survey_grid(self):
+        """check that refining on the survey grid is not biased for
+        u q > z u q (all channels pure t-channel chains). With the grid
+        defined on [-1,1] while the variables are in [0,1], the survey grid
+        starved the regions close to the kinematic end-points (below the
+        lowest x seen): the rare huge weights from there biased the refine
+        low (96.6 pb, -2.3%, averaged over 4 seeds).
+        Reference (fixed scale 91.188, default PDF) from high statistics
+        (8 iterations up to 2.5M points per channel, pooled over seeds):
+        98.840 +- 0.017 pb; madspace gives 98.78 +- 0.02 pb.
+        Only the grouped output is checked here (the non-grouped one is
+        test_madevent_merged_flavor_nogroup_symmetry)."""
+
+        from unittest import mock
+        gen_ximprove = MECmd.gen_ximprove
+
+        target = 98.84
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('define q = u d')
+        mg_cmd.exec_cmd('generate u q > z u q')
+        mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 10000, user=True)
+        run_card.set('iseed', 21, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('scale', 91.188, user=True)
+        run_card.set('dsqrt_q2fact1', 91.188, user=True)
+        run_card.set('dsqrt_q2fact2', 91.188, user=True)
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        # never split the refine jobs: they then restart from the
+        # survey grid (with a fixed grid)
+        with mock.patch.object(gen_ximprove.gen_ximprove_v4, 'max_request_event', 10**9):
+            self.do('generate_events -f')
+        val = self.cmd_line.results.current['cross']
+        err = self.cmd_line.results.current['error']
+        self.assertLess(abs(val - target) / target, 0.012,
+                        '%s +- %s vs %s' % (val, err, target))
+
+    def test_madevent_merged_flavor_nogroup_symmetry(self):
+        """u q > z u q (q = u d) without subprocess grouping: one
+        flavor-merged P dir (rows u u and u d). The identical-particle swap
+        of the final quarks is a symmetry of the u u row only; symfact.dat
+        used it to fold channel 2 onto channel 1 with weight 2, which made
+        the cross-section ~4.5% high (103.4 pb).
+        Reference (fixed scale 91.188, default PDF): 98.840 +- 0.017 pb
+        from the grouped output at high statistics; madspace 98.78 +- 0.02.
+        The tolerance leaves room for the low bias of the survey grid on
+        t-channel chains (see test_t_channel_survey_grid)."""
+
+        target = 98.84
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('set group_subprocesses False')
+        mg_cmd.exec_cmd('define q = u d')
+        mg_cmd.exec_cmd('generate u q > z u q')
+        mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+        pdirs = [d for d in glob.glob(pjoin(self.run_dir, 'SubProcesses', 'P*'))
+                 if os.path.isdir(d)]
+        self.assertEqual(len(pdirs), 1, pdirs)
+        symfact = open(pjoin(pdirs[0], 'symfact_orig.dat')).read().split()
+        self.assertEqual(symfact[1::2], ['1'] * (len(symfact) // 2))
+
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 10000, user=True)
+        run_card.set('iseed', 21, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('scale', 91.188, user=True)
+        run_card.set('dsqrt_q2fact1', 91.188, user=True)
+        run_card.set('dsqrt_q2fact2', 91.188, user=True)
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        self.do('generate_events -f')
+        val = self.cmd_line.results.current['cross']
+        err = self.cmd_line.results.current['error']
+        self.assertLess(abs(val - target) / target, 0.02,
+                        '%s +- %s vs %s' % (val, err, target))
+
+
+    def test_group_subprocess_permuted_scale(self):
+        """check that grouped (scalar and vector) and non-grouped output agree
+        when the grouped channels use a symmetry permutation of the momenta
+        and the scales depend on the clustering (MLM). see issue #453"""
+
+        from unittest import mock
+        gen_ximprove = MECmd.gen_ximprove
+
+        results = {}
+        for name, group, vector_size in [('grouped', True, 1),
+                                         ('grouped_vec', True, 16),
+                                         ('nongrouped', False, 1)]:
+            self.run_dir = pjoin(self.path, 'MGPROC_%s' % name)
+            mg_cmd = MGCmd.MasterCmd()
+            mg_cmd.no_notification()
+            mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+            mg_cmd.exec_cmd('set group_subprocesses %s' % group)
+            mg_cmd.exec_cmd('define q = u d')
+            mg_cmd.exec_cmd('generate u q > z u q')
+            mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+            run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+            run_card.set('nevents', 10000, user=True)
+            run_card.set('iseed', 11, user=True)
+            run_card.set('use_syst', False, user=True)
+            run_card.set('ickkw', 1, user=True)
+            run_card.set('xqcut', 40.0, user=True)
+            run_card.set('drjj', 0.0, user=True)
+            if vector_size > 1:
+                run_card.set('vector_size', vector_size, user=True)
+            run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+            self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+            self.cmd_line.no_notification()
+            self.cmd_line.exec_cmd('set automatic_html_opening False')
+            # use the same refine setup (survey grid kept) for grouped and
+            # non-grouped: whether a job is split depends on the output
+            # mode and changes the refine grid, which is independent of #453
+            with mock.patch.object(gen_ximprove.gen_ximprove, 'keep_grid_for_refine', True), \
+                 mock.patch.object(gen_ximprove.gen_ximprove_v4, 'keep_grid_for_refine', True):
+                self.do('generate_events -f')
+            results[name] = (self.cmd_line.results.current['cross'],
+                             self.cmd_line.results.current['error'])
+
+        val0, err0 = results['nongrouped']
+        self.assertGreater(val0, 0)
+        for name in ['grouped', 'grouped_vec']:
+            val, err = results[name]
+            # without the fix, grouped is ~3% low (about 8 sigma)
+            self.assertLess(abs(val - val0) / math.hypot(err, err0), 4,
+                            '%s: %s +- %s vs nongrouped %s +- %s' % (name, val, err, val0, err0))
+
+    def test_vector_mode_helicity_both_orientations(self):
+        """check that scalar and vector (vector_size 16) madevent agree for
+        p p > z, with and without helicity recycling. q q~ > z with the Z at
+        rest has helicities that vanish in one beam orientation only, and in
+        vector mode the first events of the good-helicity scan share one
+        orientation: without the fix, vector mode was 10-50% low."""
+
+        results = {}
+        for name, hel_recycling, vector_size in [('hel_scalar', True, 1),
+                                                 ('hel_vec', True, 16),
+                                                 ('nohel_scalar', False, 1),
+                                                 ('nohel_vec', False, 16)]:
+            self.run_dir = pjoin(self.path, 'MGPROC_%s' % name)
+            mg_cmd = MGCmd.MasterCmd()
+            mg_cmd.no_notification()
+            mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+            mg_cmd.exec_cmd('generate p p > z')
+            mg_cmd.exec_cmd('output madevent %s --hel_recycling=%s' % (self.run_dir, hel_recycling))
+
+            run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+            run_card.set('nevents', 2000, user=True)
+            run_card.set('iseed', 31, user=True)
+            run_card.set('use_syst', False, user=True)
+            if vector_size > 1:
+                run_card.set('vector_size', vector_size, user=True)
+            run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+            self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+            self.cmd_line.no_notification()
+            self.cmd_line.exec_cmd('set automatic_html_opening False')
+            self.do('generate_events -f')
+            results[name] = (self.cmd_line.results.current['cross'],
+                             self.cmd_line.results.current['error'])
+
+        val0, err0 = results['hel_scalar']
+        self.assertGreater(val0, 0)
+        for name in ['hel_vec', 'nohel_scalar', 'nohel_vec']:
+            val, err = results[name]
+            self.assertLess(abs(val - val0) / math.hypot(err, err0), 4,
+                            '%s: %s +- %s vs hel_scalar %s +- %s' % (name, val, err, val0, err0))
+
     def test_e_p_collision(self):
         """check that e p > e j gives the correct result"""
         
@@ -1978,7 +2432,7 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(
             abs(val1 - target) / (err1+1.7),
             2.,
-            'large diference between %s and %s +- %s'%
+            'large difference between %s and %s +- %s'%
                         (target, val1, err1)
         )
 
@@ -2071,7 +2525,7 @@ class TestMECmdShell(unittest.TestCase):
         err1 = self.cmd_line.results.current['error']
         
         target = 0.01118182
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large diference between %s and %s +- %s (%s sigma)'%
+        self.assertTrue(abs(val1 - target) / err1 < 2., 'large difference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))
 
     def test_eva_oldrelease_collision(self):
@@ -2117,7 +2571,7 @@ class TestMECmdShell(unittest.TestCase):
         err1 = self.cmd_line.results.current['error']
         
         target = 0.02187245
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large diference between %s and %s +- %s (%s sigma)'%
+        self.assertTrue(abs(val1 - target) / err1 < 2., 'large difference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))    
 
         
@@ -2165,14 +2619,87 @@ class TestMECmdShell(unittest.TestCase):
         
         #target = 0.003795
         target =0.003837 # value from v3.7.2 for 250k events
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large diference between %s and %s +- %s (%s sigma)'%
+        # a single sample against a fixed reference: a 2 sigma window fails ~5%
+        # of the random sequences, so any change of the event generation (not of
+        # the cross-section) can trip it; 3 sigma keeps the check meaningful
+        self.assertTrue(abs(val1 - target) / err1 < 3., 'large difference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))
+
+
+    def test_quarkonium_production(self):
+        """check that e e > etab(3S) etab(3S) gives the correct result"""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia')
+        mg_cmd.exec_cmd(' generate e+ e- > etab(3s) etab(3S)')
+        mg_cmd.exec_cmd('output madevent %s/'% self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=  self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+
+        #check validity of the default run_card
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards','run_card.dat'))
+        self.assertIn('mom_resh_type', run_card.user_set)
+
+        shutil.copy(os.path.join(_file_path, 'input_files', 'run_card_quarkonium.dat'),
+                    '%s/Cards/run_card.dat' % self.run_dir)
+        shutil.copy(os.path.join(_file_path, 'input_files', 'onia_card_quarkonium.dat'),
+                    '%s/Cards/onia_card.dat' % self.run_dir)
+
+        self.do('generate_events -f')
+        val1 = self.cmd_line.results.current['cross']
+        err1 = self.cmd_line.results.current['error']
+        # 10k value is 6.227e-17 +- 2e-20
+        target = 6.227e-17
+        self.assertLess(
+            abs(val1 - target) / (err1+1.4e-20),
+            2.,
+            'large difference between %s and %s +- %s'%
+                        (target, val1, err1)
+        )
+
+
+    def test_leptonium_production(self):
+        """check that p p > j mumu(1|3S1) gives the correct result"""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-lepton_masses')
+        mg_cmd.exec_cmd(' define p = g u d s u~ d~ s~')
+        mg_cmd.exec_cmd(' define j = g u d s u~ d~ s~')
+        mg_cmd.exec_cmd(' generate p p > j mumu(1|3S1)')
+        mg_cmd.exec_cmd('output madevent %s/'% self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=  self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+
+        #check validity of the default run_card
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards','run_card.dat'))
+        self.assertIn('mom_resh_type', run_card.user_set)
+
+        shutil.copy(os.path.join(_file_path, 'input_files', 'run_card_leptonium.dat'),
+                    '%s/Cards/run_card.dat' % self.run_dir)
+        shutil.copy(os.path.join(_file_path, 'input_files', 'onia_card_leptonium.dat'),
+                    '%s/Cards/onia_card.dat' % self.run_dir)
+
+        self.do('generate_events -f')
+        val1 = self.cmd_line.results.current['cross']
+        err1 = self.cmd_line.results.current['error']
+        # 1M value is 0.01668020 +- 7.24e-6
+        target = 0.01668020
+        self.assertLess(
+            abs(val1 - target) / (err1+3e-6),
+            2.,
+            'large difference between %s and %s +- %s'%
+                        (target, val1, err1)
+        )
 
 
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat
-           - check that unknow entry can be added to the run_card.dat
+           - check that unknown entry can be added to the run_card.dat
            - check that custom cuts can be defined via the run_card.dat
            - check that those custom cuts can use custom entry
            - check that the cross-section is the expected one 
@@ -2260,7 +2787,7 @@ C
 
         # previously PDF was nn23lo1 (lhaid 230000) with this reference value 361.7
         target = 289.50 #+- 0.52 pb
-        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large diference between %s and %s +- %s'%
+        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large difference between %s and %s +- %s'%
                         (target, val1, err1))
 
         self.assertIn('MY_PARAM', open(pjoin(self.run_dir,'Source','run.inc')).read())
@@ -2273,7 +2800,7 @@ C
     def test_customised_madevent_via_run_card(self):
         """checking various advanced functionality of customization
            - set run_card entry via input/default_run_card_lo.dat
-           - check that unknow entry can be added to the run_card.dat
+           - check that unknown entry can be added to the run_card.dat
            - check that custom cuts can be defined via the run_card.dat
            - check that those custom cuts can use custom entry
            - check that the cross-section is the expected one 
@@ -2361,7 +2888,7 @@ C
 
         # previously PDF was nn23lo1 (lhaid 230000) with this reference value 361.7
         target = 289.50 #+- 0.52 pb
-        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large diference between %s and %s +- %s'%
+        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large difference between %s and %s +- %s'%
                         (target, val1, err1))
 
         self.assertIn('MY_PARAM', open(pjoin(self.run_dir,'Source','run.inc')).read())
@@ -2407,13 +2934,14 @@ C
         #target = 166.36114 # value used as reference before changing sde_strategy
         # previously PDF was nn23lo1 (lhaid 230000) with this reference value
         # 165.84 (a 100k run, +- 0.05)
-        # NNPDF40_lo_as_01180: 124.4459 +- 0.1349 from a single 10k CI run --
-        # the dev machine cannot run this (its lhapdf python module is broken),
-        # so unlike the old number this one is NOT a 100k measurement and the
-        # 1-sigma tolerance below is correspondingly tight.
-        target = 124.45
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large diference between %s and %s +- %s'%
-                        (target, val1, err1))
+        # NNPDF40_lo_as_01180: 124.39 +- 0.033 from two 100k runs (124.389 and
+        # 124.395 +- 0.046, with and without the last-iteration normalisation of
+        # the reported cross-section); the former target 124.45 was a single 10k
+        # run. A 10k run is compared within 3 sigma (its error combined with
+        # the target's): 1 sigma fails a third of unbiased runs.
+        target, target_err = 124.39, 0.033
+        self.assertTrue(abs(val1 - target) / math.sqrt(err1**2 + target_err**2) < 3.,
+                        'large difference between %s and %s +- %s'% (target, val1, err1))
 
         
         # edit run_card -> fix scale
@@ -2426,10 +2954,11 @@ C
         err1 = self.cmd_line.results.current['error']
         # previously PDF was nn23lo1 (lhaid 230000) with this reference value
         # 165.71 (a 100k run, +- 0.06)
-        # NNPDF40_lo_as_01180: 124.3625 +- 0.1355 from a single 10k CI run
-        target = 124.36
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large diference between %s and %s +- %s'%
-                        (target, val1, err1))
+        # NNPDF40_lo_as_01180: 124.37 +- 0.033 from two 100k runs (124.377 and
+        # 124.367 +- 0.047); the former target 124.36 was a single 10k run
+        target, target_err = 124.37, 0.033
+        self.assertTrue(abs(val1 - target) / math.sqrt(err1**2 + target_err**2) < 3.,
+                        'large difference between %s and %s +- %s'% (target, val1, err1))
 
 
 
@@ -2459,7 +2988,7 @@ C
         self.cmd_line.exec_cmd('compute_widths 6 -f')
 
         # check value for the width    
-        import models.check_param_card as check_param_card    
+        import madgraph.models.check_param_card as check_param_card    
         param_card = check_param_card.ParamCard(pjoin(self.run_dir, 'Cards', 'param_card.dat'))
         # NB: the trailing 3 in the original call was assertTrue's *msg*
         # argument, not a precision -- misc.equal's default sig_fig=6 is what
@@ -2485,6 +3014,13 @@ C
         fsock.close()
         
         self.cmd_line.exec_cmd('decay_events run_01 -f')
+        # the matrix elements came from madmatrix (the default density_backend),
+        # not from the Fortran output it falls back to when it cannot build:
+        # it used to be forced to Fortran in the complex-mass scheme, where
+        # madmatrix did not compile. Both give byte-identical decayed events.
+        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'madspin_me', 'SubProcesses',
+                                             'madmatrix_processes.json')),
+                        'MadSpin did not use madmatrix in the complex-mass scheme')
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
         # Not the production 440.779 any more. BR(t -> w+ b) is 1 to seven
@@ -2508,10 +3044,76 @@ C
         self.assertTrue(misc.equal(target, val1, 4*err1),
             'MadSpin-decayed cross-section %s +- %s far from reference %s'
             % (val1, err1, target))
-             
-        
-        
-        
+
+    def test_complex_mass_scheme_mg7_compile(self):
+        """`output mg7` of a complex-mass-scheme process compiles.
+
+        Under the complex-mass scheme Parameters.cc takes the sqrt of complex
+        parameters (CMASS_mdl_MT = sqrt(MT^2 - i*MT*WT), mdl_cw = sqrt(1 -
+        mdl_sw2), ...), which did not compile for want of a sqrt(cxsmpl). That
+        broke MadSpin's mg7 decay generator in test_complex_mass_scheme, but
+        only where madspace is built -- elsewhere MadSpin falls back to
+        madevent -- so this checks the compile directly, without madspace.
+        """
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('set complex_mass_scheme', precmd=True)
+        mg_cmd.exec_cmd('generate t > w+ b', precmd=True)
+        mg_cmd.exec_cmd('output mg7 %s' % self.run_dir, precmd=True)
+
+        sub_root = pjoin(self.run_dir, 'SubProcesses')
+        proc_dirs = sorted(d for d in os.listdir(sub_root)
+                           if d.startswith('P') and
+                           os.path.isdir(pjoin(sub_root, d)))
+        self.assertTrue(proc_dirs, 'no subprocess generated for t > w+ b')
+        with open(pjoin(self.run_dir, 'src', 'Parameters.cc')) as fsock:
+            self.assertIn('CMASS_mdl_MT = sqrt(', fsock.read())
+        for d in proc_dirs:
+            proc = subprocess.run(['make', 'bldnone'], cwd=pjoin(sub_root, d),
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(proc.returncode, 0,
+                             'CMS mg7 subprocess %s did not compile:\n%s'
+                             % (d, proc.stdout[-3000:]))
+
+    def test_complex_mass_scheme_qcd_mg7_compile(self):
+        """`output mg7` of a complex-mass-scheme QCD process compiles.
+
+        Under the complex-mass scheme the alphaS-dependent parameters are
+        complex (mdl_sqrt__aS = sqrt(aS), G, mdl_G__exp__2), and they were
+        left as constexpr cxsmpl lines reading the undeclared aS inside
+        computeDependentCouplings_fromG; the HelAmps propagator denominators
+        also cast the complex mass to a real. g g > t t~ g has both: the
+        four-gluon coupling GC_12 (from mdl_G__exp__2) and top propagators.
+        """
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('set complex_mass_scheme', precmd=True)
+        mg_cmd.exec_cmd('generate g g > t t~ g', precmd=True)
+        mg_cmd.exec_cmd('output mg7 %s' % self.run_dir, precmd=True)
+
+        with open(pjoin(self.run_dir, 'src', 'Parameters.h')) as fsock:
+            text = fsock.read()
+        self.assertIn('const cxtype_sv mdl_G__exp__2 =', text)
+        # no live (uncommented) constexpr assignment from aS is left
+        self.assertFalse(re.search(r'^\s*constexpr cxsmpl<double> '
+                                   r'(G|mdl_sqrt__aS|mdl_G__exp__2) =',
+                                   text, re.M))
+        sub_root = pjoin(self.run_dir, 'SubProcesses')
+        proc_dirs = sorted(d for d in os.listdir(sub_root)
+                           if d.startswith('P') and
+                           os.path.isdir(pjoin(sub_root, d)))
+        self.assertTrue(proc_dirs, 'no subprocess generated for g g > t t~ g')
+        for d in proc_dirs:
+            proc = subprocess.run(['make', 'bldnone'], cwd=pjoin(sub_root, d),
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(proc.returncode, 0,
+                             'CMS mg7 subprocess %s did not compile:\n%s'
+                             % (d, proc.stdout[-3000:]))
+
     def test_width_scan(self):
         """check that the width settings works on a scan based.
            and check that MW is updated."""
@@ -2660,6 +3262,56 @@ C
 
         self.assertAlmostEqual(cross, 40.3, delta=max(1.0, 5 * error))
 
+    def test_decay_1to3_mg7(self):
+        """mg7 partial width of a 1 -> 3 decay: t > b e+ ve.
+
+        A process with one incoming particle is the special case of the mg7
+        chain, and it went unnoticed because the madevent fallback is what runs
+        without madspace:
+          - the default [histograms] are scaled by the mass of the decaying
+            particle, which used to be read from a 'parameter_dict' that only
+            a ModelReader has (a LoopModel crashed `output`);
+          - madspace's observables take the first two momenta to be the beams,
+            so the first decay product (the b here) dropped out of every
+            selection, and `z > mu+ mu-` asking for lepton_2 crashed the run.
+        So on top of the width (madevent: 0.1636 +- 0.0002 GeV, i.e.
+        Gamma(t > b w+) x BR(w+ > e+ ve)) the default histograms are checked:
+        no sqrt_s (madspace's adds up two beams), every momentum histogram
+        filled with the full width, and the e+ ve pair mass peaking at MW.
+        Self-skips where the mg7 runtime stack is unavailable.
+        """
+        import glob, json
+        datadir = _mg7_datadir_or_skip(self)
+        run_dir = pjoin(self.path, 'MG7_t_decay')
+        width, error = _run_mg7_xsec(self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate t > b e+ ve'],
+            run_dir, datadir)
+        self.assertAlmostEqual(width, 0.1636, delta=max(0.002, 5 * error))
+
+        info = json.load(open(sorted(glob.glob(
+            pjoin(run_dir, 'Events', '*', 'info.json')))[-1]))
+        hists = dict((h['name'], h) for h in info['event_histograms'])
+        self.assertNotIn('sqrt_s', list(hists))
+        momentum = [name for name in hists if name != 'weight']
+        for group in ('bottom', 'lepton', 'missing'):
+            self.assertIn('%s-pt' % group, momentum)
+        for name in momentum:
+            values = hists[name]['bin_values']
+            # the decay products of a 173 GeV top fit in the ranges, which
+            # are built from the top mass: nothing in under- or overflow
+            self.assertAlmostEqual(sum(values[1:-1]), width,
+                                   delta=0.01 * width, msg=name)
+            if name.endswith('-pt'):
+                # a particle left out of the selection is histogrammed at 0
+                self.assertLess(values[1], 0.5 * width, msg=name)
+        mll = hists['lepton-missing-pair_mass']
+        bin_width = (mll['max'] - mll['min']) / mll['bin_count']
+        peak = mll['bin_values'].index(max(mll['bin_values'])) - 1
+        self.assertLessEqual(mll['min'] + peak * bin_width, 80.419)
+        self.assertGreater(mll['min'] + (peak + 1) * bin_width, 80.419)
+
     def load_result(self, run_name):
         
         import madgraph.iolibs.save_load_object as save_load_object
@@ -2679,7 +3331,7 @@ C
         if syst:
             # check that the html has the information
             self.assertIn('syst', data[0].parton)
-            # check that the code was runned correctly
+            # check that the code was run correctly
             fsock = open('%s/Events/%s/parton_systematics.log' % \
                   (self.run_dir, data[0]['run_name']),'r')
             text = fsock.read()
@@ -2703,17 +3355,6 @@ C
 #            # check that the html has the information
 #            self.assertTrue('rwt' in data[0].pythia)
 
-    def check_matched_plot(self, run_name='run_01', mintime=None, tag='fermi'):
-        """ """
-        path = '%(path)s/HTML/%(run)s/plots_pythia_%(tag)s/DJR1.ps' % \
-                                {'path':self.run_dir,'run': run_name, 'tag': tag}
-
-        self.assertTrue(os.path.exists(path))
-        
-        if mintime:
-            self.assertGreater(os.path.getctime(path), mintime)
-        
-        return open(path).read()
 #===============================================================================
 # TestCmd
 #===============================================================================
@@ -3128,7 +3769,7 @@ class TestMEfromfile(unittest.TestCase):
         """
         This test is checking that the scale in auto_dsig are correctly assigned
         in 3.6.2, a wrong Q2FACT(IB(1)) was used instead of Q2FACT(1).
-        Leading to an assymetry in the DY +1j process.
+        Leading to an asymmetry in the DY +1j process.
         This acceptance test is there to prevent such type of error
         """
 
@@ -3162,7 +3803,6 @@ class TestMEfromfile(unittest.TestCase):
         set ickkw 1
         set xqcut 10
         set mmll 50
-        set auto_ptj_mmjj False
         set ptj 0.01
         """ % {'path':self.run_dir})
         command.close()
@@ -3186,8 +3826,12 @@ class TestMEfromfile(unittest.TestCase):
                         count[1] += 1
                     break 
 
-        self.assertTrue(0.49<count[0]/10000.<0.51)       
-        self.assertTrue(0.49<count[1]/10000.<0.51)
+        # forward/backward balance of the muon: with 10000 events one fraction
+        # has a statistical error of 0.005, so the window is 4 sigma (0.49-0.51
+        # was 2 sigma and failed on the random stream alone; 100k events of the
+        # same run card give 0.5002 +- 0.0016)
+        self.assertTrue(0.48<count[0]/10000.<0.52)
+        self.assertTrue(0.48<count[1]/10000.<0.52)
 
 
         self.assertEqual(cwd, os.getcwd())
@@ -3223,8 +3867,8 @@ class TestMEfromfile(unittest.TestCase):
         generate g g > b b~ HIW<=1
         output madevent %(path)s
         launch 
+        shower=OFF
         set nevents 1000
-        set shower none
         """ % {'path':self.run_dir})
         command.close()
         
@@ -3256,8 +3900,10 @@ class TestMEfromfile(unittest.TestCase):
         # alpha_s^2 (-22% at the ~20 GeV dynamical scale).
         # Spread over 6 runs: 2.0872e+08-2.0901e+08, mean 2.089e+08.
         # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 1.820e+08
+        # The tolerance is well above that spread but below the 11% the good-
+        # helicity scan once lost by dropping the b-mass-suppressed rows.
         target = 2.089e+08
-        self.assertLess(abs(cross - target) / target, 0.10,
+        self.assertLess(abs(cross - target) / target, 0.03,
             'mg7 HEFT cross-section %s far from physical reference %s'
             % (cross, target))
 
@@ -3347,8 +3993,13 @@ class TestMEfromfile(unittest.TestCase):
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
 
-        # Width : 1.3303e-05 ± 2.1e-08 (GeV) for 40k events
-        self.check_parton_output(cross= 1.3303e-05, error=tolerance*2.1e-08,target_event=40000)
+        # Width : 1.3760e-05 (GeV) for 40k events: mean of 8 seeds. The former
+        # 1.3303e-05 +- 2.1e-08 was the (x/sigma)^2 average of the refine
+        # iterations, biased low by ~3.5% (the reported cross-section is now the
+        # last iteration's mean). The error is the one a run reports (~7.5e-08):
+        # the 8 seeds lie within 2.5 sigma, the old estimator 4.4-5.8 sigma away.
+        # (The seed-to-seed spread, 1.6e-07, would let the old value pass.)
+        self.check_parton_output(cross= 1.3760e-05, error=tolerance*7.5e-08,target_event=40000)
 
         #
         #  START REAL CODE (3/3)
@@ -3378,8 +4029,10 @@ class TestMEfromfile(unittest.TestCase):
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
 
-        # Width : 3.9311e-12 ± 6.86e-15  (GeV) for 40k events
-        self.check_parton_output(cross=3.9311e-12, error=tolerance*6.86e-15,target_event=40000)
+        # Width : 3.9369e-12 (GeV) for 40k events, mean of 6 seeds (spread
+        # 1.7e-15); the former 3.9311e-12 was the (x/sigma)^2 average of the
+        # refine iterations (0.15% low). The error is kept as before.
+        self.check_parton_output(cross=3.9369e-12, error=tolerance*6.86e-15,target_event=40000)
 
     def test_generation_from_file_1(self):
         """ """
@@ -3474,6 +4127,8 @@ class TestMEfromfile(unittest.TestCase):
     def test_contur_from_file(self):
         """check that contur runs as expected"""
 
+        _mg7_tool_or_skip(self, MGCmd.MasterCmd(),
+                          *(_RIVET_TOOLS + ('contur_path',)))
         cwd = os.getcwd()
         import subprocess
         if logging.getLogger('madgraph').level <= 20:
@@ -3506,8 +4161,9 @@ class TestMEfromfile(unittest.TestCase):
 
 
     def test_rivet_from_file(self):
-        """check that contur runs as expected"""
+        """check that rivet runs as expected"""
 
+        _mg7_tool_or_skip(self, MGCmd.MasterCmd(), *_RIVET_TOOLS)
         cwd = os.getcwd()
         import subprocess
         if logging.getLogger('madgraph').level <= 20:
@@ -3554,7 +4210,12 @@ set draw_rivet_plots True
                          stdout=stdout, stderr=stderr)
 
         self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'run_01',  'rivet_result.yoda')))
-        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'run_01',  'rivet-plots','index.html')))
+        # rivet-mkhtml writes its errors to rivet-plots.log, which tearDown
+        # deletes: show its end in the failure message
+        log = pjoin(self.run_dir, 'Events', 'run_01', 'rivet-plots.log')
+        tail = open(log).read()[-3000:] if os.path.exists(log) else 'no %s' % log
+        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'run_01',  'rivet-plots','index.html')),
+                        'rivet-mkhtml made no index.html; rivet-plots.log ends with:\n%s' % tail)
 
 
     #==========================================================================
@@ -3621,14 +4282,33 @@ set draw_rivet_plots True
             precopy_cards=['pythia8'],
             require_tools=('pythia8_path',),
             events=100)
+        report = _mg7_postproc_report(pjoin(self.path, 'MG7_py8'))
 
-        self.assertTrue(glob.glob(pjoin(run, '*hepmc*')),
-                        'mg7 Pythia8 shower produced no HepMC output in %s' % run)
+        hepmc = glob.glob(pjoin(run, '*hepmc*'))
+        self.assertTrue(hepmc, 'mg7 Pythia8 shower produced no HepMC output in %s\n%s'
+                        % (run, report))
+        # a file is not enough: an empty shower leaves one too. Both HepMC2
+        # and HepMC3 ascii start each event with an 'E ' line.
+        import gzip
+        opener = gzip.open if hepmc[0].endswith('.gz') else open
+        with opener(hepmc[0], 'rt') as fsock:
+            nb_showered = sum(1 for line in fsock if line.startswith('E '))
+        self.assertGreater(nb_showered, 0, 'no event in %s\n%s' % (hepmc[0], report))
+
+        # the Results Summary printed after the shower reports the generated
+        # sample (it read 0 events and 0 pb when the mg7 run was booked
+        # without them)
+        log = open(pjoin(self.path, 'MG7_py8', 'mg7_postproc.log')).read()
+        summary = log[log.rfind('Results Summary'):]
+        nb_event = re.search(r'Nb of events :\s+(\d+)', summary)
+        cross = re.search(r'Cross-section :\s+(\S+)', summary)
+        self.assertTrue(nb_event and cross, 'no Results Summary\n%s' % report)
+        self.assertEqual(int(nb_event.group(1)), 100, report)
+        self.assertGreater(float(cross.group(1)), 0., report)
 
     def test_delphes_mg7(self):
         """Delphes detector simulation chained on the mg7 output (Pythia8 shower
         + Delphes) through the command interface."""
-        import glob
         datadir = _mg7_datadir_or_skip(self)
         run = _run_mg7_postproc(
             self,
@@ -3641,8 +4321,11 @@ set draw_rivet_plots True
             require_tools=('pythia8_path', 'delphes_path'),
             events=100)
 
-        self.assertTrue(glob.glob(pjoin(run, '*delphes*')),
-                        'mg7 Delphes run produced no output in %s' % run)
+        # the ROOT file itself: a glob on '*delphes*' also matched the
+        # Delphes_crash.log of a run where Delphes could not start
+        self.assertTrue(os.path.exists(pjoin(run, 'tag_1_delphes_events.root')),
+                        'mg7 Delphes run produced no ROOT file in %s\n%s'
+                        % (run, _mg7_postproc_report(pjoin(self.path, 'MG7_delphes'))))
 
     def test_rivet_from_file_mg7(self):
         """Rivet analysis chained on the mg7 output (Pythia8 shower + Rivet)
@@ -3667,7 +4350,7 @@ set draw_rivet_plots True
             pjoin(self.path, 'MG7_rivet'), datadir,
             switch_lines=['shower=Pythia8', 'analysis=Rivet'],
             precopy_cards=['pythia8', 'rivet'],
-            require_tools=('pythia8_path', 'rivet_path'),
+            require_tools=_RIVET_TOOLS,
             events=100)
 
         self.assertTrue(os.path.exists(pjoin(run, 'rivet_result.yoda')),
@@ -3755,6 +4438,13 @@ set draw_rivet_plots True
         self.assertTrue(any(abs(pdg) in (1, 2, 3, 4) for pdg in counts),
                         'no light quarks among the MadSpin decay products: %s'
                         % counts)
+        # store_result used to save the madevent results database to
+        # HTML/results.pkl, which the mg7 output does not have
+        proc_dir = pjoin(self.path, 'MG7_madspin')
+        with open(pjoin(proc_dir, 'mg7_postproc.log')) as fsock:
+            self.assertEqual(
+                [line for line in fsock if 'I/O error' in line], [])
+        self.assertFalse(os.path.exists(pjoin(proc_dir, 'crossx.html')))
 
 
 

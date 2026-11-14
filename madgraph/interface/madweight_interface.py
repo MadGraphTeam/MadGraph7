@@ -407,8 +407,8 @@ class MadWeightCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunC
         
         
     def check_launch_jobs(self, args):
-        """format the argument to retrun a list with two argument,
-        The first corresponding to the fact if we need te create the output dir
+        """format the argument to return a list with two argument,
+        The first corresponding to the fact whether we need to create the output directory
         The second if we can launch the job on the cluster."""
         
         if not args:
@@ -730,7 +730,7 @@ class MadWeightCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunC
         cards = ['param_card.dat', 'run_card.dat', 'madweight_card.dat', 
                  'transfer_card.dat', 'input.lhco']
         if not self.force:
-            self.ask_edit_cards(cards, mode='fixed', plot=False)
+            self.ask_edit_cards(cards, mode='fixed')
         else:
             self.configured = 0
             self.configure()
@@ -798,7 +798,7 @@ class MadWeightCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunC
         self.clean_old_run(keep_event=True)     
         if not self.force:
             cards = ['madweight_card.dat'] 
-            self.ask_edit_cards(cards, mode='fixed', plot=False)
+            self.ask_edit_cards(cards, mode='fixed')
             self.exec_cmd("treatcards")
             self.do_compile('', refine=True) # force re-compilation
         
@@ -822,7 +822,7 @@ class MadWeightCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunC
                 continue
             if float(value) * precision < float(error):
                 allow_refine.append((int(card_nb), lhco_nb))
-        logger.info("%s selected jobs for the refinment." % len(allow_refine))
+        logger.info("%s selected jobs for the refinement." % len(allow_refine))
         for MWdir in self.MWparam.MW_listdir:
             # We need to know in which file are written all the relevant event
             event_to_file = {}
@@ -941,7 +941,7 @@ class CollectObj(dict):
 
 #1 ################################################################################# 
 class MWParserXML(xml.sax.handler.ContentHandler):
-    """ This class will organize in python obect the TF_param.dat file 
+    """ This class will organize in python object the TF_param.dat file
         (written in xml) 
     """
 

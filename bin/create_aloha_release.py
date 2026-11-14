@@ -69,12 +69,12 @@ if len(args) == 0:
 logging.basicConfig(level=vars(logging)[options.logging],
                     format="%(message)s")
 
-# 0. check that all modification are commited in this directory
+# 0. check that all modification are committed in this directory
 #    and that the date is up-to-date
 diff_result = subprocess.Popen(["bzr", "diff"], stdout=subprocess.PIPE).communicate()[0] 
 
 if diff_result:
-    logging.warning("Directory is not up-to-date. The release follow the last commited version.")
+    logging.warning("Directory is not up-to-date. The release follows the last committed version.")
     answer = input('Do you want to continue anyway? (y/n)')
     if answer != 'y':
         exit()
@@ -106,7 +106,7 @@ if status:
     logging.error("bzr branch failed. Script stopped")
     exit()
 
-# 2. Copy MG5 files needed by ALOHA + remove pointless direcoty
+# 2. Copy MG5 files needed by ALOHA + remove pointless directory
 devnull = os.open(os.devnull, os.O_RDWR)
 logging.info("copying files")
 requested_files=['madgraph/iolibs/files.py','madgraph/iolibs/file_writers.py']

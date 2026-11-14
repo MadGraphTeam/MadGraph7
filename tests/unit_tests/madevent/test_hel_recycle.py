@@ -12,12 +12,172 @@
 # For more information, please visit: http://madgraph.phys.ucl.ac.be
 #
 ################################################################################
-""" Fixed-form line wrapping of the helicity recycled matrix element """
+"""How the helicity-recycled color stage reads the amplitudes.
+
+AMP is helicity major in the recycled matrix element, so a color flow line
+either indexes it in place, AMP(K,i), or reads a row that has been gathered out
+of it contiguously, AMPK(i,HRL). Which one it is has to be the same decision in
+the rewritten lines and in the loop the driver template opens around them, so
+both come from set_gather_lines and are checked together here.
+
+Also the fixed-form line wrapping the recycled matrix element is emitted
+through, which is what decides whether those lines are legal fortran at all."""
 
 from __future__ import absolute_import
+import os
+import re
+import shutil
+import tempfile
 import unittest
 
 import madgraph.madevent.hel_recycle as hel_recycle
+
+
+class TestAmpGather(unittest.TestCase):
+    """The size gate of the contiguous amplitude gather, and the two shapes of
+    generated code that hang off it."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='hr_gather')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def recycler(self, ngraphs, ncomb):
+        """A recycler whose template announces ngraphs amplitudes and whose
+        good helicity list is ncomb long -- the two the gate is a function
+        of."""
+
+        template = os.path.join(self.tmpdir, 'template_matrix1.f')
+        with open(template, 'w') as fsock:
+            fsock.write('      PARAMETER (NGRAPHS=%d) \n' % ngraphs)
+        obj = hel_recycle.HelicityRecycler(
+            [str(i + 1) for i in range(ncomb)])
+        obj.set_template(template)
+        return obj
+
+    def test_template_ngraphs(self):
+        self.assertEqual(self.recycler(510, 8).template_ngraphs(), 510)
+        # no template to read: the gate has nothing to decide on
+        obj = self.recycler(510, 8)
+        obj.set_template(os.path.join(self.tmpdir, 'absent.f'))
+        self.assertEqual(obj.template_ngraphs(), 0)
+
+    def test_gate_is_on_the_size_of_amp(self):
+        """AMP is NCOMB x NGRAPHS complex*16, and only its total size decides:
+        either factor can be the large one."""
+
+        limit = hel_recycle.GATHER_MIN_BYTES // 16
+        for ngraphs, ncomb in [(limit // 8, 8), (8, limit // 8)]:
+            obj = self.recycler(ngraphs, ncomb)
+            obj.set_gather_lines()
+            self.assertTrue(obj.amp_gather, (ngraphs, ncomb))
+            obj = self.recycler(ngraphs, ncomb - 1)
+            obj.set_gather_lines()
+            self.assertFalse(obj.amp_gather, (ngraphs, ncomb - 1))
+
+    def test_no_template_never_gathers(self):
+        obj = self.recycler(0, 4096)
+        obj.set_gather_lines()
+        self.assertFalse(obj.amp_gather)
+
+    def test_plain_loop_reads_amp_in_place(self):
+        """Below the gate nothing changes: the holes render the very loop the
+        template used to carry, and the color flows index AMP by helicity."""
+
+        obj = self.recycler(45, 20)
+        obj.set_gather_lines()
+        self.assertEqual(obj.template_dict['hr_gather_decl'], '')
+        self.assertEqual(obj.template_dict['hr_gather_open'], 'K = 1, NCOMB')
+        self.assertEqual(obj.template_dict['hr_gather_close'], 'K')
+        self.assertEqual(obj.add_indices('JAMP(1,1) = AMP(31) - AMP(1)'),
+                         'JAMP(1,1) = AMP( K,31) - AMP( K,1)')
+
+    def test_gathered_loop_reads_the_lane(self):
+        """Above it the block loop wraps a row loop, and every amplitude read
+        moves to the gathered lane -- the color flows and the AMP2 lines
+        alike."""
+
+        obj = self.recycler(4096, 128)
+        obj.set_gather_lines()
+        decl = obj.template_dict['hr_gather_decl']
+        self.assertIn('PARAMETER (NHRBLK=%d)' % hel_recycle.GATHER_BLOCK, decl)
+        self.assertIn('COMPLEX*16 AMPK(NGRAPHS,NHRBLK)', decl)
+        # same storage class as AMP, so that it stays thread private if the
+        # !$OMP PARALLEL of SMATRIX1_MULTI is ever compiled in
+        self.assertNotIn('SAVE', decl)
+        opened = obj.template_dict['hr_gather_open']
+        self.assertTrue(opened.startswith('KB = 1, NCOMB, NHRBLK'))
+        self.assertIn('AMPK(I,HRL) = AMP(KB+HRL-1,I)', opened)
+        # K is no longer a loop variable but still what every rewritten line
+        # uses, so the row loop has to assign it
+        self.assertIn('K = KB + HRL - 1', opened)
+        # one ENDDO is the template's own, closing the row loop
+        self.assertEqual(obj.template_dict['hr_gather_close'],
+                         'HRL\n      ENDDO ! KB')
+        self.assertEqual(obj.add_indices('JAMP(1,1) = AMP(31) - AMP(1)'),
+                         'JAMP(1,1) = AMPK(31,HRL) - AMPK(1,HRL)')
+        self.assertEqual(
+            obj.add_indices('AMP2(1)=AMP2(1)+AMP(1)*DCONJG(AMP(1))'),
+            'AMP2(1)=AMP2(1)+AMPK(1,HRL)*DCONJG(AMPK(1,HRL))')
+
+    def test_amp2_of_a_shared_matrix_element(self):
+        """A matrix element shared by a crossing fills AMP2 after the helicity
+        loop, from the rows above the good-helicity cut of the point only: a
+        row dead for the caller is a rounding zero of diagrams that cancel,
+        and those diagrams must not weight the channels (p p > w+ j). The
+        pass reads AMP in place, the loop's gathered lane being gone by
+        then; any other matrix element keeps AMP2 inside the loop."""
+
+        amp2 = '      AMP2(1)=AMP2(1)+AMP(1)*DCONJG(AMP(1))\n'
+        for ngraphs, ncomb in [(45, 20), (4096, 128)]:
+            obj = self.recycler(ngraphs, ncomb)
+            obj.set_gather_lines()
+            obj.get_amp2_lines(amp2)
+            blocks = obj.amp2_blocks()
+            self.assertIn(obj.template_dict['amp2_lines'],
+                          blocks['amp2_row_lines'])
+            self.assertEqual(blocks['amp2_cut_lines'].strip(), '')
+            self.assertEqual(blocks['dead_row_decl'].strip(), '')
+            self.assertNotIn('dead_row_if', blocks)
+
+            obj.shared_rows = True
+            blocks = obj.amp2_blocks()
+            self.assertEqual(blocks['amp2_row_lines'].strip(), '')
+            cut = blocks['amp2_cut_lines']
+            self.assertIn('AMP2(1)=AMP2(1)+AMP( K,1)*DCONJG(AMP( K,1))', cut)
+            self.assertNotIn('AMPK', cut)
+            self.assertIn('IF (DABS(TS(K)).GT.TSSUM*LIMHEL/NCOMB) THEN', cut)
+            # comments must start in column 1 of their own line
+            self.assertTrue(cut.startswith('\nC '))
+            self.assertIn('COMMON/TO_LIMHEL/LIMHEL', blocks['dead_row_decl'])
+            # the colour weights keep the exact-zero gate
+            self.assertEqual(blocks['dead_row_if'], 'IF (TS(K).NE.0D0) THEN')
+
+    def test_only_amp_is_rewritten(self):
+        """TMP_JAMP, JAMP and the AMPBUF of the table-emitted color flows all
+        contain the three letters, and none of them is the amplitude array."""
+
+        for obj in (self.recycler(45, 20), self.recycler(4096, 128)):
+            obj.set_gather_lines()
+            for line in ['TMP_JAMP(3) = TMP_JAMP(1) + TMP_JAMP(2)',
+                         'JAMP(1,1) = JAMP(2,1)',
+                         'AMPBUF(NGRAPHS+ITMP) = AMPBUF(TMP_JAMP_A(ITMP))']:
+                self.assertEqual(obj.add_indices(line), line)
+
+    def test_a_bracketed_index_survives(self):
+        """With the color flow definitions emitted as operand tables, the
+        gather the exporter writes into matrix<i>_orig.f reads AMP at a table
+        lookup rather than at a literal."""
+
+        obj = self.recycler(45, 20)
+        obj.set_gather_lines()
+        self.assertEqual(obj.add_indices('AMPBUF(ITMP) = AMP(IDX(ITMP))'),
+                         'AMPBUF(ITMP) = AMP( K,IDX(ITMP))')
+        obj = self.recycler(4096, 128)
+        obj.set_gather_lines()
+        self.assertEqual(obj.add_indices('AMPBUF(ITMP) = AMP(IDX(ITMP))'),
+                         'AMPBUF(ITMP) = AMPK(IDX(ITMP),HRL)')
 
 
 class TestDoMultiline(unittest.TestCase):
@@ -79,3 +239,1801 @@ class TestDoMultiline(unittest.TestCase):
         for pad in range(40):
             line = '        JAMPF(2,1)=+2D0*(' + 'X' * pad + ')'
             self.assertWrapIsValid(line)
+
+
+class TestFortranDialectExternals(unittest.TestCase):
+    """The external wavefunctions with a reference momentum (--axial_gauge):
+    VXXXXXR, a massless vector in the axial gauge of the reference, and
+    IXXXXXR / OXXXXXR, a massive fermion whose spin is quantised along it.
+    The reference is appended after the arguments the recycler reads, and is
+    the same for every helicity row."""
+
+    VECTOR = '      CALL VXXXXXR(P(0,5),ZERO,NHEL(5),+1,P(0,1),W(5))'
+    FERMION = '      CALL OXXXXXR(P(0,3),MDL_MT,NHEL(3),+1, FLAVOR(3),P(0,1),W(3))'
+    ANTIFERMION = '      CALL IXXXXXR(P(0,4),MDL_MT,NHEL(4),-1, FLAVOR(4),P(0,1),W(4))'
+
+    def setUp(self):
+        self.dialect = hel_recycle.Dialect()
+
+    def test_they_are_external_wavefunctions(self):
+        for line, name in ((self.VECTOR, 'VXXXXXR'), (self.FERMION, 'OXXXXXR'),
+                           (self.ANTIFERMION, 'IXXXXXR')):
+            self.assertEqual(self.dialect.called_function(line).upper(), name)
+            self.assertIn(name, self.dialect.external_routines)
+
+    def test_the_leg_is_the_one_of_the_momentum_not_of_the_reference(self):
+        for line, leg in ((self.VECTOR, 5), (self.FERMION, 3),
+                          (self.ANTIFERMION, 4)):
+            args = self.dialect.arguments(line)
+            self.assertEqual(self.dialect.external_leg(args), leg)
+            self.assertEqual(self.dialect.external_helicity_leg(args), leg)
+            self.assertEqual(self.dialect.output_name(args), 'W(%d)' % leg)
+
+    def test_fixing_the_helicity_keeps_the_reference(self):
+        args = self.dialect.arguments(self.FERMION)
+        fixed = self.dialect.set_external_helicity(list(args), -1)
+        self.assertEqual(fixed[2].strip(), '-1')
+        self.assertEqual([a.replace(' ', '') for a in fixed[:2] + fixed[3:]],
+                         ['P(0,3)', 'MDL_MT', '+1', 'FLAVOR(3)', 'P(0,1)',
+                          'W(3)'])
+
+
+class TestCppDialect(unittest.TestCase):
+    """Reading and re-writing the C++ the madmatrix backend emits.
+
+    The recycler's algorithm is language independent; what a dialect owns is
+    only how a call is taken apart and put back together. The C++ one has to
+    cope with three things fortran never shows it: a template argument list
+    before the real one, a result that is not the last argument, and an
+    amplitude whose name cannot say which diagram it belongs to."""
+
+    EXTERNAL = ('      ixxxxx<M_ACCESS, W_ACCESS>( momenta, m_pars->MT,'
+                ' cHel[ihel][2], -1, cFlavors[iflavor][2], aloha_obj[5], 2 );')
+    SCALAR = ('      sxxxxx<M_ACCESS, W_ACCESS>( momenta, +1,'
+              ' cFlavors[iflavor][3], aloha_obj[6], 3 );')
+    CURRENT = ('      FFV1P0_3<W_ACCESS, CD_ACCESS>( aloha_obj[0],'
+               ' aloha_obj[1], COUPs[0], 1.0, 0., 0., aloha_obj[4] );')
+    AMPLITUDE = ('      FFV1_0<W_ACCESS, A_ACCESS, CD_ACCESS>( aloha_obj[2],'
+                 ' aloha_obj[3], aloha_obj[4], COUPs[0], 1.0,'
+                 ' &amp_fp[0] ); //HRAMP 7')
+
+    def setUp(self):
+        self.dialect = hel_recycle.CppDialect()
+        self.tmpdir = tempfile.mkdtemp(prefix='hr_cpp')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_the_template_arguments_are_not_arguments(self):
+        """A call's arguments start after the <...>, and the commas inside it
+        are not separators"""
+
+        self.assertEqual(self.dialect.called_function(self.CURRENT), 'FFV1P0_3')
+        self.assertEqual(self.dialect.arguments(self.CURRENT),
+                         ['aloha_obj[0]', 'aloha_obj[1]', 'COUPs[0]', '1.0',
+                          '0.', '0.', 'aloha_obj[4]'])
+
+    def test_an_arrow_is_not_a_closing_bracket(self):
+        """m_pars->MT would end the template argument list if '>' were read
+        without looking at what precedes it"""
+
+        self.assertEqual(self.dialect.called_function(self.EXTERNAL), 'ixxxxx')
+        self.assertEqual(self.dialect.arguments(self.EXTERNAL)[1], 'm_pars->MT')
+
+    def test_the_result_is_not_the_last_argument(self):
+        """An external ends with its leg index, a current with its output"""
+
+        external = self.dialect.arguments(self.EXTERNAL)
+        self.assertEqual(self.dialect.output_name(external), 'aloha_obj[5]')
+        self.assertEqual(self.dialect.output_position(external),
+                         len(external) - 2)
+        current = self.dialect.arguments(self.CURRENT)
+        self.assertEqual(self.dialect.output_name(current), 'aloha_obj[4]')
+
+    def test_the_leg_a_call_builds(self):
+        """Read off the trailing index, and 1-based like the fortran one"""
+
+        self.assertEqual(self.dialect.external_leg(
+                                    self.dialect.arguments(self.EXTERNAL)), 3)
+        self.assertEqual(self.dialect.external_helicity_leg(
+                                    self.dialect.arguments(self.EXTERNAL)), 3)
+
+    def test_an_axial_gauge_external_ends_with_its_reference(self):
+        """vxxxxxr carries its reference leg after its own: the leg it builds
+        is the argument after the output slot, not the last one"""
+
+        line = ('      vxxxxxr<M_ACCESS, W_ACCESS>( momenta, 0., cHel[ihel][2],'
+                ' +1, cFlavors[iflavor][2], aloha_obj[2], 2, 0 );')
+        args = self.dialect.arguments(line)
+        self.assertEqual(self.dialect.called_function(line).upper(), 'VXXXXXR')
+        self.assertIn('VXXXXXR', self.dialect.external_routines)
+        self.assertEqual(self.dialect.external_leg(args), 3)
+        self.assertEqual(self.dialect.external_helicity_leg(args), 3)
+        self.assertEqual(self.dialect.output_name(args), 'aloha_obj[2]')
+
+    def test_a_spin_reference_external_ends_with_its_reference(self):
+        """ixxxxxr / oxxxxxr, a massive fermion whose spin axis is fixed by a
+        reference leg, are externals like vxxxxxr: the leg they build is the
+        argument after the output slot, their helicity the one of that leg"""
+
+        for name in ('ixxxxxr', 'oxxxxxr'):
+            line = ('      %s<M_ACCESS, W_ACCESS>( momenta, cIPD[0],'
+                    ' cHel[ihel][3], -1, cFlavors[iflavor][3], aloha_obj[3],'
+                    ' 3, 0 );' % name)
+            args = self.dialect.arguments(line)
+            self.assertEqual(self.dialect.called_function(line), name)
+            self.assertIn(name.upper(), self.dialect.external_routines)
+            self.assertEqual(self.dialect.external_leg(args), 4)
+            self.assertEqual(self.dialect.external_helicity_leg(args), 4)
+            self.assertEqual(self.dialect.output_name(args), 'aloha_obj[3]')
+            fixed = self.dialect.set_external_helicity(list(args), 1)
+            self.assertEqual(fixed[2], '( fptype_amp_sv{} + 1 )')
+            # the reference leg is untouched: the same for every helicity
+            self.assertEqual(fixed[-1], '0')
+
+    def test_a_scalar_has_no_helicity_to_fix(self):
+        """Unlike fortran, where the slot exists and is overwritten anyway"""
+
+        args = self.dialect.arguments(self.SCALAR)
+        self.assertIsNone(self.dialect.external_helicity_leg(args))
+        self.assertEqual(self.dialect.set_external_helicity(list(args), 0),
+                         args)
+
+    def test_fixing_a_helicity_replaces_the_table_read(self):
+        """The external wavefunctions take a helicity per SIMD lane: the row's
+        own goes in every lane"""
+        args = self.dialect.arguments(self.EXTERNAL)
+        fixed = self.dialect.set_external_helicity(list(args), -1)
+        self.assertEqual(fixed[2], '( fptype_amp_sv{} + -1 )')
+        self.assertEqual(fixed[:2] + fixed[3:], args[:2] + args[3:])
+        # the per-lane helicity of the plain code is the same slot
+        lane = self.EXTERNAL.replace('cHel[ihel][2]', 'hel_sv[2]')
+        self.assertNotEqual(lane, self.EXTERNAL)
+        lane_args = self.dialect.arguments(lane)
+        self.assertEqual(self.dialect.external_helicity_leg(lane_args),
+                         self.dialect.external_helicity_leg(args))
+        self.assertEqual(self.dialect.set_external_helicity(list(lane_args), -1), fixed)
+
+    def test_an_amplitude_says_which_diagram_it_is(self):
+        """Every amplitude writes the same scratch, so the name cannot"""
+
+        self.assertTrue(self.dialect.is_amplitude(
+                            self.dialect.called_function(self.AMPLITUDE)))
+        self.assertEqual(self.dialect.amplitude_diagram(
+            self.AMPLITUDE, self.dialect.arguments(self.AMPLITUDE)), 7)
+
+    def test_a_fold_is_stamped_out_once_per_row(self):
+        """The exporter writes what an amplitude contributes with a ${row}
+        hole; the dialect fills it, once per row the amplitude survives in"""
+
+        self.dialect.folds = {7: ['      jampAll_sv[${row} * ncolor] += amp_sv[0];']}
+
+        class FakeAmp(object):
+            def __init__(self, row, args):
+                self.numbers, self.diag_num, self.args = (row,), 7, args
+
+        args = self.dialect.arguments(self.AMPLITUDE)
+        rendered = self.dialect.render_amplitudes(
+            self.AMPLITUDE, [FakeAmp(1, args), FakeAmp(4, args)],
+            gauge='U', amp_splt=False)
+        self.assertEqual(rendered.count('FFV1_0'), 2)
+        self.assertIn('jampAll_sv[0 * ncolor]', rendered)
+        self.assertIn('jampAll_sv[3 * ncolor]', rendered)
+
+    def test_a_masked_amplitude_is_guarded_every_copy(self):
+        """An amplitude only some merged flavours have carries their mask on
+        its tag (flv=0x...), and every copy of it, call and fold, is under
+        the guard the plain calls use (the recycled build skips it at the
+        other flavours, as the plain one does)."""
+
+        self.dialect.folds = {7: ['      jampAll_sv[${row} * ncolor] += amp_sv[0];']}
+
+        class FakeAmp(object):
+            def __init__(self, row, args):
+                self.numbers, self.diag_num, self.args = (row,), 7, args
+
+        line = self.AMPLITUDE + ' 2,2,3 flv=0x10800'
+        self.assertEqual(self.dialect.amplitude_flavour_mask(line), 0x10800)
+        self.assertEqual(self.dialect.amplitude_spins(line), (2, 2, 3))
+        self.assertEqual(self.dialect.amplitude_diagram(line, []), 7)
+        self.assertIsNone(self.dialect.amplitude_flavour_mask(self.AMPLITUDE))
+        args = self.dialect.arguments(line)
+        rendered = self.dialect.render_amplitudes(
+            line, [FakeAmp(1, args), FakeAmp(4, args)], gauge='U', amp_splt=False)
+        lines = rendered.rstrip('\n').split('\n')
+        self.assertEqual(lines[0].strip(),
+                         'if( ( 0x10800ULL >> iflavor ) & 0x1ULL ) {')
+        self.assertEqual(lines[-1].strip(), '}')
+        self.assertEqual(rendered.count('{'), rendered.count('}'))
+        self.assertEqual(''.join(lines[1:-1]).count('FFV1_0'), 2)
+        self.assertIn('jampAll_sv[3 * ncolor]', ''.join(lines[1:-1]))
+        # and without a mask, no guard
+        plain = self.dialect.render_amplitudes(
+            self.AMPLITUDE, [FakeAmp(1, args)], gauge='U', amp_splt=False)
+        self.assertNotIn('iflavor', plain)
+
+    def test_a_mask_of_more_than_64_flavour_groups_is_several_words(self):
+        """A subprocess of more than 64 flavour groups (p p > j j j j QCD=0:
+        116 in q q~ > q q q~ q~) has masks of several 64-bit words: the tag
+        pads them to 16 hex digits a word, which is how the recycler reads
+        the number of words back, and the guard picks the word of iflavor
+        before it shifts (a shift by 64 or more is undefined)."""
+
+        dialect = hel_recycle.CppDialect
+        # one word: the guard of old, the tag unpadded
+        self.assertEqual(dialect.flavour_guard(0x10800),
+                         'if( ( 0x10800ULL >> iflavor ) & 0x1ULL ) {')
+        self.assertEqual(dialect.flavour_mask_text(0x5), '0x5')
+        # bits 0, 64 and 129 of a three-word mask
+        mask = (1 << 0) | (1 << 64) | (1 << 129)
+        text = dialect.flavour_mask_text(mask, 3)
+        self.assertEqual(len(text), 2 + 48)
+        self.assertEqual(int(text, 16), mask)
+        guard = dialect.flavour_guard(mask, 3)
+        self.assertEqual(guard,
+            'if( ( iflavor < 64 ? ( 0x1ULL >> iflavor ) : iflavor < 128 ?'
+            ' ( 0x1ULL >> ( iflavor - 64 ) ) : ( 0x2ULL >> ( iflavor - 128 ) )'
+            ' ) & 0x1ULL ) {')
+
+        def bit(iflavor):
+            # the guard's expression, as C++ evaluates it
+            expr = guard[len('if( '):-len(' ) {')].replace('ULL', '')
+            expr = re.sub(r'(\S+) < (\d+) \? (.*?) :', r'(\3) if \1 < \2 else', expr)
+            return bool(eval(expr, {'iflavor': iflavor}))
+        self.assertEqual([i for i in range(192) if bit(i)], [0, 64, 129])
+
+        line = self.AMPLITUDE + ' 2,2,3 flv=%s' % text
+        self.assertEqual(self.dialect.amplitude_flavour_mask(line), mask)
+        self.assertEqual(self.dialect.amplitude_flavour_words(line), 3)
+        self.assertEqual(self.dialect.amplitude_flavour_words(
+            self.AMPLITUDE + ' 2,2,3 flv=0x10800'), 1)
+        self.assertEqual(self.dialect.amplitude_flavour_words(self.AMPLITUDE), 1)
+
+        class FakeAmp(object):
+            def __init__(self, row, args):
+                self.numbers, self.diag_num, self.args = (row,), 7, args
+
+        self.dialect.folds = {7: ['      jampAll_sv[${row} * ncolor] += amp_sv[0];']}
+        rendered = self.dialect.render_amplitudes(
+            line, [FakeAmp(1, self.dialect.arguments(line))], gauge='U',
+            amp_splt=False)
+        self.assertEqual(rendered.split('\n')[0].strip(), guard)
+
+    def test_a_line_that_is_not_a_call_is_not_one(self):
+        for line in ('      // Amplitude(s) for diagram number 2',
+                     '//HRFOLD 7',
+                     '      jampAll_sv[( 0 * nParity + iParity ) * ncolor + 1]'
+                     ' += amp_sv[0];',
+                     '      if( storeChannelWeights )'):
+            self.assertIsNone(self.dialect.called_function(line), line)
+
+    def test_the_fold_block_is_read_out_and_then_skipped(self):
+        """It is not a call and must not reach the unfolding, but it is needed
+        before the pass that has to skip it -- hence the separate read"""
+
+        path = os.path.join(self.tmpdir, 'orig.cc')
+        with open(path, 'w') as fsock:
+            fsock.write('\n'.join([self.AMPLITUDE, '//HRFOLD 7',
+                                   '      jampAll_sv[${row}] += amp_sv[0];',
+                                   '//HRENDFOLD']) + '\n')
+        self.assertEqual(self.dialect.read_folds(path),
+                         {7: ['      jampAll_sv[${row}] += amp_sv[0];']})
+        skipped = [line for line in open(path)
+                   if self.dialect.skip_line(line)]
+        self.assertEqual(len(skipped), 3)
+
+
+class TestCppCrossedExternal(unittest.TestCase):
+    """A crossed external of a madmatrix output with crossing, in the form the
+    recycler reads (MadMatrixUFOHelasCallWriter._crossing_external_orig).
+
+    Every lane evaluates the BASE helicity row; a lane whose leg changed side
+    takes the opposite helicity with the opposite NSF flag (the all-outgoing
+    configuration). So each unfolded copy of helicity h is the head call
+    (+nsf, h) followed by the tail call (-nsf, -h) and the icsign blend into
+    the copy's own slot."""
+
+    def setUp(self):
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter
+        self.dialect = hel_recycle.CppDialect()
+        self.tmpdir = tempfile.mkdtemp(prefix='hr_cpp_x')
+
+        def one_call(sign, obj, hel=None):
+            return ('ixxxxx<M_ACCESS, W_ACCESS>( xmom, m_pars->MT, %s, %+d,'
+                    ' cFlavors[iflavor][2], %s, 2 );' % (hel, sign, obj))
+        self.text = MadMatrixUFOHelasCallWriter._crossing_external_orig(
+            None, one_call, 2, 2, 5, -1)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_the_head_is_an_ordinary_external(self):
+        head = self.text.split('\n')[0]
+        args = self.dialect.arguments(head)
+        self.assertEqual(self.dialect.called_function(head), 'ixxxxx')
+        self.assertEqual(self.dialect.external_leg(args), 3)
+        self.assertEqual(self.dialect.external_helicity_leg(args), 3)
+        self.assertEqual(self.dialect.output_name(args), 'aloha_obj[5]')
+
+    def test_each_copy_gets_the_opposite_helicity_and_its_own_slot(self):
+        path = os.path.join(self.tmpdir, 'orig.cc')
+        with open(path, 'w') as fsock:
+            fsock.write(self.text + '\n')
+        self.dialect.read_folds(path)
+        self.assertEqual(sorted(self.dialect.externals), [2])
+        streamed = [line for line in open(path)
+                    if not self.dialect.skip_line(line)]
+        self.assertEqual(len(streamed), 1)  # the head only
+
+        class FakeExternal(object):
+            def __init__(self, hel, slot):
+                self.mg, self.hel, self.numbers = 3, hel, (slot,)
+                self.args = None
+        head = streamed[0].rstrip('\n')
+        for hel, slot in ((-1, 7), (1, 8)):
+            wav = FakeExternal(hel, slot)
+            wav.args = self.dialect.set_external_helicity(
+                self.dialect.arguments(head), hel)
+            wav.args[self.dialect.output_position(wav.args)] = 'aloha_obj[%d]' % (slot - 1)
+            text = self.dialect.render_external(head, wav)
+            # the helicity per SIMD lane (CppDialect.helicity_literal)
+            lit = '( fptype_amp_sv{} + %d )' % hel
+            self.assertIn('m_pars->MT, %s, -1,' % lit, text)
+            self.assertIn('m_pars->MT, -( %s ), +1,' % lit, text)
+            self.assertIn('aloha_obj[%d].pvec[_k]' % (slot - 1), text)
+            self.assertIn('icsign[2]', text)
+            self.assertNotIn('$', text)
+
+
+class TestCppAmplitudeSplit(unittest.TestCase):
+    """The P1N amplitude split, rendered for C++.
+
+    The decision -- which leg to peel, and which unfolded amplitudes then share
+    a partial contraction -- is the fortran one (plan_amp_split); what is
+    checked here is what the C++ dialect makes of it, and in particular the
+    flavour test, which is NOT uniform across peel positions and whose failure
+    mode is silent."""
+
+    LINE = ('      FFV1_0<W_ACCESS, A_ACCESS, CD_ACCESS>( aloha_obj[0],'
+            ' aloha_obj[1], aloha_obj[2], COUPs[0], 1.0,'
+            ' &amp_fp[0] ); //HRAMP 1 2,2,3')
+
+    class FakeAmp(object):
+        def __init__(self, row, args):
+            self.numbers, self.diag_num, self.args = (row,), 1, list(args)
+
+    def setUp(self):
+        self.dialect = hel_recycle.CppDialect()
+        self.dialect.folds = {1: ['      jamp[${row}] += amp_sv[0];']}
+
+    def amplitudes(self, peeled_slots, shared=('aloha_obj[1]', 'aloha_obj[2]')):
+        """One amplitude per peeled wavefunction, all sharing the other legs"""
+        return [self.FakeAmp(row + 1, [slot, shared[0], shared[1],
+                                       'COUPs[0]', '1.0', '&amp_fp[0]'])
+                for row, slot in enumerate(peeled_slots)]
+
+    def render(self, amps, **env):
+        old = hel_recycle.CppDialect.P1N_MIN_SHARING
+        hel_recycle.CppDialect.P1N_MIN_SHARING = env.get('minshare', 2)
+        try:
+            return self.dialect.render_amplitudes(env.get('line', self.LINE), amps,
+                                                  gauge='U', amp_splt=True)
+        finally:
+            hel_recycle.CppDialect.P1N_MIN_SHARING = old
+
+    def test_the_column_with_most_wavefunctions_is_peeled(self):
+        """Column 0 varies, the others do not, so column 0 is the one to peel
+        and P1N_1 is the routine that leaves it off"""
+
+        out = self.render(self.amplitudes(['aloha_obj[%d]' % i
+                                           for i in (10, 11, 12, 13)]))
+        self.assertIn('FFV1P1N_1<W_ACCESS, CD_ACCESS>( aloha_obj[1],'
+                      ' aloha_obj[2], COUPs[0], 1.0, _p1n );', out)
+        # one partial contraction for the four amplitudes, four contractions
+        self.assertEqual(out.count('P1N_1<'), 1)
+        self.assertEqual(out.count('amp_sv[0] ='), 4)
+
+    def test_a_fermion_peel_re_applies_the_flavour_test(self):
+        """A P1N whose output is a fermion propagates the partner's flv_index
+        and defers the test, so the contraction has to make it"""
+
+        out = self.render(self.amplitudes(['aloha_obj[%d]' % i
+                                           for i in (10, 11, 12, 13)]))
+        self.assertIn('_p1n.flv_index != aloha_obj[10].flv_index', out)
+        self.assertIn('_p1n.flv_index == -1 ) ? cxzero_sv()', out)
+
+    def test_a_boson_peel_does_not(self):
+        """A P1N whose output is a boson applies the test itself and zeroes the
+        current; testing again would read an flv_index it never set"""
+
+        amps = [self.FakeAmp(row + 1, ['aloha_obj[0]', 'aloha_obj[1]', slot,
+                                       'COUPs[0]', '1.0', '&amp_fp[0]'])
+                for row, slot in enumerate('aloha_obj[%d]' % i
+                                           for i in (10, 11, 12, 13))]
+        out = self.render(amps)
+        self.assertIn('FFV1P1N_3<W_ACCESS, CD_ACCESS>( aloha_obj[0],'
+                      ' aloha_obj[1], COUPs[0], 1.0, _p1n );', out)
+        self.assertNotIn('flv_index', out)
+
+    def test_a_flavour_table_with_two_partners_is_not_split(self):
+        """A P1N current with a fermion output gives its output ONE flavour,
+        resolved from its input through the coupling's table (partner1 for
+        an F1 input, partner2 for an F2 one, each keeping one partner per
+        flavour). A table in which a flavour has two partners, or,
+        for a vertex with several couplings, is not symmetric, cannot be
+        followed: the group is evaluated whole instead."""
+
+        line = self.LINE.replace('FFV1_0', 'FFS2M_0').replace(
+            'CD_ACCESS', 'CDPF_ACCESS').replace('COUPs[0]', 'flvCOUPs_dep[4]')
+        amps = [self.FakeAmp(row + 1, [slot, 'aloha_obj[1]', 'aloha_obj[2]',
+                                       'flvCOUPs_dep[4]', '1.0', '&amp_fp[0]'])
+                for row, slot in enumerate('aloha_obj[%d]' % i
+                                           for i in (10, 11, 12, 13))]
+        safe = hel_recycle.CppDialect.p1n_flavour_safe
+        # the gluino-squark-quark vertex of MSSM_SLHA2: merged quark flavour 2
+        # and gluino (flavour 0) -- one partner each way
+        self.assertTrue(safe([(2, 0)]))
+        self.assertTrue(safe([(0, 0)], several=True))
+        self.assertTrue(safe([(0, 1), (1, 0)], several=True))
+        # flavour 0 is the partner of 0 and of 2
+        self.assertFalse(safe([(0, 0), (2, 0)]))
+        # 1 -> 2 one way, 1 -> 0 the other
+        self.assertFalse(safe([(0, 1), (1, 2)]))
+        # not symmetric: fine alone, not with several couplings
+        self.assertFalse(safe([(2, 0)], several=True))
+
+        self.dialect.p1n_flavour_tables = {'flvCOUPs_dep[4]': [(2, 0)]}
+        self.assertIn('FFS2MP1N_1<W_ACCESS, CDPF_ACCESS>', self.render(amps, line=line))
+        for table in ([(0, 0), (2, 0)], None):
+            self.dialect.p1n_flavour_tables = {'flvCOUPs_dep[4]': table}
+            self.assertNotIn('P1N', self.render(amps, line=line))
+        # a boson output takes both flavours from its inputs: still split
+        boson = [self.FakeAmp(row + 1, ['aloha_obj[0]', 'aloha_obj[1]', slot,
+                                        'flvCOUPs_dep[4]', '1.0', '&amp_fp[0]'])
+                 for row, slot in enumerate('aloha_obj[%d]' % i
+                                            for i in (10, 11, 12, 13))]
+        self.assertIn('FFS2MP1N_3<', self.render(boson, line=line))
+
+    def test_each_amplitude_still_gets_its_own_row_fold(self):
+        out = self.render(self.amplitudes(['aloha_obj[%d]' % i
+                                           for i in (10, 11, 12, 13)]))
+        for row in range(4):
+            self.assertIn('jamp[%d] += amp_sv[0];' % row, out)
+
+    def test_a_group_below_the_threshold_is_not_split(self):
+        """Shallow grouping is a measured net loss, so it falls back to
+        evaluating the whole vertex per row"""
+
+        amps = self.amplitudes(['aloha_obj[10]', 'aloha_obj[11]'])
+        self.assertNotIn('P1N', self.render(amps, minshare=4))
+        self.assertIn('P1N', self.render(amps, minshare=2))
+
+    def test_the_split_is_declined_rather_than_guessed(self):
+        """A spin the fortran renderer refuses too (spin 2, whatever the
+        routine is called), a call the exporter did not tag with its spins, and
+        a name ALOHA hashed (its P1N is another hash, not <name>P1N_)"""
+
+        amps = self.amplitudes(['aloha_obj[10]', 'aloha_obj[11]',
+                                'aloha_obj[12]', 'aloha_obj[13]'])
+        for line in (self.LINE.replace('//HRAMP 1 2,2,3', '//HRAMP 1 5,5,5'),
+                     self.LINE.replace('//HRAMP 1 2,2,3', '//HRAMP 1'),
+                     self.LINE.replace('FFV1_0', 'ALOHA_1234m56_0')):
+            self.assertIsNone(self.dialect._p1n_group(line, amps, 0))
+
+    def test_the_spins_are_the_tag_not_the_name(self):
+        """The letters of a Lorentz name are a convention of the UFO
+        generators, not part of the format: the exporter tags each amplitude
+        with the spins of its wavefunctions, and that is what is read"""
+
+        self.assertEqual(self.dialect.amplitude_spins(self.LINE), (2, 2, 3))
+        self.assertEqual(self.dialect.amplitude_diagram(self.LINE, []), 1)
+        self.assertIsNone(self.dialect.amplitude_spins(
+            self.LINE.replace('//HRAMP 1 2,2,3', '//HRAMP 1')))
+        # a routine whose name says three vectors, on two fermions and a vector
+        line = self.LINE.replace('FFV1_0', 'VVV9_0')
+        out = self.render(self.amplitudes(['aloha_obj[%d]' % i
+                                           for i in (10, 11, 12, 13)]), line=line)
+        self.assertIn('VVV9P1N_1<', out)
+        self.assertIn('_p1n.flv_index != aloha_obj[10].flv_index', out)
+
+
+class TestCppTabulatedSplit(unittest.TestCase):
+    """The P1N groups written as tables (CppDialect._p1n_table) rather than as
+    one dot product and one fold per member: what the tables say has to be
+    exactly what the straight-line fold says, entry by entry."""
+
+    LINE = TestCppAmplitudeSplit.LINE
+    FakeAmp = TestCppAmplitudeSplit.FakeAmp
+    SLOT = '( ${row} * nParity + iParity )'
+    FOLD = ['if( storeChannelWeights )', '{',
+            '  numAll_sv[%s * ndiagrams + 3] += cxabs2( amp_sv[0] );' % SLOT, '}',
+            'jampTmpAll_sv[%s * 7 + 2] += amp_sv[0];' % SLOT,
+            'jampTmpAll_sv[%s * 7 + 5] += -amp_sv[0];' % SLOT,
+            'jampAll_sv[%s * njampso + 1] -= 1. / 3. * amp_sv[0];' % SLOT,
+            'jampAll_sv[%s * njampso + 4] += 2. * cxtype( 0, 1 ) * amp_sv[0];' % SLOT,
+            'jampAll_sv[%s * njampso + 0] -= amp_sv[0];' % SLOT]
+    # (kind, index, value) of the fold above; None for the numerator
+    EXPECTED = [(2, 3, None), (1, 2, 1), (1, 5, -1), (0, 1, -1. / 3.),
+                (0, 4, 2j), (0, 0, -1)]
+
+    def setUp(self):
+        self.dialect = hel_recycle.CppDialect()
+        self.dialect.TABLES = True
+        self.dialect.folds = {1: list(self.FOLD)}
+
+    def amplitudes(self, peeled=(10, 11, 12, 13)):
+        return [self.FakeAmp(row + 1, ['aloha_obj[%d]' % slot, 'aloha_obj[1]',
+                                       'aloha_obj[2]', 'COUPs[0]', '1.0', '&amp_fp[0]'])
+                for row, slot in enumerate(peeled)]
+
+    def render(self, amps):
+        old = hel_recycle.CppDialect.P1N_MIN_SHARING
+        hel_recycle.CppDialect.P1N_MIN_SHARING = 2
+        try:
+            return self.dialect.render_amplitudes(self.LINE, amps, gauge='U',
+                                                  amp_splt=True)
+        finally:
+            hel_recycle.CppDialect.P1N_MIN_SHARING = old
+
+    @staticmethod
+    def table(out, name):
+        line = [l for l in out.split('\n') if ' %s[] = {' % name in l][0]
+        return line.split('{', 1)[1].rsplit('}', 1)[0]
+
+    def test_the_members_are_tables_and_one_call(self):
+        out = self.render(self.amplitudes())
+        self.assertEqual(out.count('FFV1P1N_1<'), 1)
+        self.assertNotIn('amp_sv[0] =', out)
+        self.assertNotIn('jampAll_sv[(', out)
+        self.assertIn('hr_p1n_fold<W_ACCESS, 4, true>( _p1n, aloha_obj, hrM, 4,'
+                      ' hrF, hrC, 7,', out)
+        # slot of the peeled leg, row, fold entries
+        self.assertIn('hrM[] = { { 10, 0, 6 }, { 11, 1, 6 }, { 12, 2, 6 },'
+                      ' { 13, 3, 6 } };', out)
+
+    def test_the_entries_decode_to_the_fold(self):
+        out = self.render(self.amplitudes())
+        entries = [int(e.strip().rstrip('u'), 16)
+                   for e in self.table(out, 'hrF').split(',')]
+        coefs = [float(c) for c in self.table(out, 'hrC').split(',')]
+        self.assertEqual(len(entries), 4 * len(self.EXPECTED))
+        for k, entry in enumerate(entries):
+            kind, index, value = self.EXPECTED[k % len(self.EXPECTED)]
+            self.assertEqual(entry >> 30, kind)
+            self.assertEqual(entry & 0xfffff, index)
+            if value is None:
+                continue
+            op, coef = (entry >> 28) & 3, (entry >> 20) & 0xff
+            got = {0: 1, 1: -1}.get(op, complex(coefs[2 * coef], coefs[2 * coef + 1]))
+            self.assertEqual(complex(got), complex(value))
+            # +-1 adds or subtracts, a real factor is not multiplied as a complex
+            self.assertEqual(op, {1: 0, -1: 1}.get(value, 2 if not complex(value).imag else 3))
+
+    def test_a_boson_peel_says_so(self):
+        amps = [self.FakeAmp(row + 1, ['aloha_obj[0]', 'aloha_obj[1]',
+                                       'aloha_obj[%d]' % slot, 'COUPs[0]', '1.0',
+                                       '&amp_fp[0]'])
+                for row, slot in enumerate((10, 11, 12, 13))]
+        out = self.render(amps)
+        self.assertIn('hr_p1n_fold<W_ACCESS, 4, false>', out)
+        self.assertEqual(self.table(out, 'hrM').split(',')[0].strip(), '{ 10')
+
+    def test_a_masked_group_is_guarded_whole(self):
+        """The members of a P1N group are rows of one amplitude, so they have
+        its flavour mask: the group, partial contraction and tables, goes
+        under one guard, and no chunk cut falls inside it."""
+        from madmatrix.model_handling import OneProcessExporterMadMatrix as exporter
+        line = self.LINE + ' flv=0x5'
+        old = hel_recycle.CppDialect.P1N_MIN_SHARING
+        hel_recycle.CppDialect.P1N_MIN_SHARING = 2
+        try:
+            out = self.dialect.render_amplitudes(line, self.amplitudes(), gauge='U',
+                                                 amp_splt=True)
+        finally:
+            hel_recycle.CppDialect.P1N_MIN_SHARING = old
+        lines = out.rstrip('\n').split('\n')
+        self.assertEqual(lines[0].strip(), 'if( ( 0x5ULL >> iflavor ) & 0x1ULL ) {')
+        self.assertEqual(lines[-1].strip(), '}')
+        body = '\n'.join(lines[1:-1])
+        self.assertIn('FFV1P1N_1<', body)
+        self.assertIn('hr_p1n_fold<W_ACCESS, 4, true>', body)
+        for size in range(1, len(lines) + 1):
+            chunks = exporter.hr_split_statements(lines, size)
+            self.assertEqual(len(chunks), 1, size)
+
+    def test_an_unknown_fold_keeps_the_straight_form(self):
+        self.dialect.folds = {1: self.FOLD + ['jamp[${row}] += amp_sv[0];']}
+        out = self.render(self.amplitudes())
+        self.assertNotIn('hr_p1n_fold', out)
+        self.assertEqual(out.count('amp_sv[0] ='), 4)
+
+    def test_off_keeps_the_straight_form(self):
+        self.dialect.TABLES = False
+        out = self.render(self.amplitudes())
+        self.assertNotIn('hr_p1n_fold', out)
+        self.assertIn('jampAll_sv[( 3 * nParity + iParity ) * njampso + 4]', out)
+
+    def test_a_store_is_its_own_kind(self):
+        self.dialect.folds = {1: ['ampAll_sv[%s * 40 + 6] = amp_sv[0];' % self.SLOT]}
+        out = self.render(self.amplitudes())
+        self.assertIn('hrC, 40, jampAll_sv, ampAll_sv, numAll_sv,', out)
+        entries = [int(e.strip().rstrip('u'), 16) for e in self.table(out, 'hrF').split(',')]
+        self.assertEqual(entries, [(3 << 30) | 6] * 4)
+        # a store with a factor, or an addition into the amplitude table, is not one
+        for bad in ('ampAll_sv[%s * 40 + 6] += amp_sv[0];',
+                    'ampAll_sv[%s * 40 + 6] = 2. * amp_sv[0];'):
+            self.dialect.folds = {1: [bad % self.SLOT]}
+            self.assertNotIn('hr_p1n_fold', self.render(self.amplitudes()))
+
+    def test_coefficients(self):
+        value = hel_recycle.CppDialect.fold_coefficient
+        self.assertEqual(value(''), 1)
+        self.assertEqual(value('-'), -1)
+        self.assertEqual(value('1. / 3. * '), 1. / 3.)
+        self.assertEqual(value('-2. * cxtype( 0, 1 ) * '), -2j)
+        self.assertEqual(value('cxtype_amp( 0, 1 ) * '), 1j)
+        self.assertIsNone(value('cI * '))
+        self.assertIsNone(value('__import__( "os" ) * '))
+
+
+class TestCppFDGauge(unittest.TestCase):
+    """The C++ dialect on FD gauge calls (set gauge FD).
+
+    A vector wavefunction has five components there, the fifth its Goldstone,
+    and a vertex coupling a vector and its Goldstone is ONE assembled routine
+    named after all its structures (VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0), with one
+    coupling and coefficient per structure. Unfolding such a call is the same
+    as any other; what FD changes is the amplitude split: the current a P1N
+    leaves on a vector leg has five components, and a four-component dot
+    product drops the Goldstone part of every amplitude of the group (25% of
+    |M|^2 on u u~ > w+ w-); and a scalar keeps its value in that fifth
+    component, so a scalar peel reading component 0 gets nothing (|M|^2
+    off by up to 2.2 relative on t t~ > w+ w- z)."""
+
+    # as in the EvaluateDiagrams.inc of u u~ > w+ w- in FD gauge
+    CURRENT = ('      FFV6_2M_3<W_ACCESS, CI_ACCESS>( aloha_obj[0], aloha_obj[1],'
+               ' flvCOUPs[1], 1.0, flvCOUPs[2], 1.0, cIPD[1], cIPD[2],'
+               ' aloha_obj[4] );')
+    LINE = ('      VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0<W_ACCESS, A_ACCESS, CI_ACCESS>('
+            ' aloha_obj[3], aloha_obj[2], aloha_obj[4], COUPs[ndcoup + 4], 1.0,'
+            ' COUPs[ndcoup + 5], 1.0, COUPs[ndcoup + 6], 1.0, COUPs[ndcoup + 7],'
+            ' 1.0, COUPs[ndcoup + 8], 1.0, COUPs[ndcoup + 9], 1.0, &amp_fp[0] );'
+            ' //HRAMP 2 3,3,3')
+    FakeAmp = TestCppAmplitudeSplit.FakeAmp
+
+    def setUp(self):
+        self.dialect = hel_recycle.CppDialect()
+        self.dialect.folds = {2: ['      jamp[${row}] += amp_sv[0];']}
+
+    def amplitudes(self):
+        """four rows sharing legs 2 and 3, each with its own W on leg 1"""
+        args = self.dialect.arguments(self.LINE)
+        amps = []
+        for row, slot in enumerate((10, 11, 12, 13)):
+            amp = self.FakeAmp(row + 1, ['aloha_obj[%d]' % slot] + args[1:])
+            amp.diag_num = 2
+            amps.append(amp)
+        return amps
+
+    def render(self, gauge, tables):
+        old = hel_recycle.CppDialect.P1N_MIN_SHARING
+        hel_recycle.CppDialect.P1N_MIN_SHARING = 2
+        self.dialect.TABLES = tables
+        try:
+            return self.dialect.render_amplitudes(self.LINE, self.amplitudes(),
+                                                  gauge=gauge, amp_splt=True)
+        finally:
+            hel_recycle.CppDialect.P1N_MIN_SHARING = old
+
+    def test_a_combined_call_is_taken_apart(self):
+        """the result and the wavefunctions of a multi-coupling call, and a
+        current whose masses come after its couplings"""
+
+        args = self.dialect.arguments(self.LINE)
+        self.assertEqual(len(args), 3 + 2 * 6 + 1)
+        self.assertEqual(self.dialect.output_position(args), len(args) - 1)
+        self.assertEqual([a for a in args if self.dialect.is_wavefunction(a)],
+                         ['aloha_obj[3]', 'aloha_obj[2]', 'aloha_obj[4]'])
+        self.assertEqual(self.dialect.amplitude_diagram(self.LINE, args), 2)
+        args = self.dialect.arguments(self.CURRENT)
+        self.assertEqual(self.dialect.output_position(args), 8)
+        self.assertEqual(args[6:8], ['cIPD[1]', 'cIPD[2]'])
+
+    def test_the_components_of_a_peeled_leg(self):
+        comps = hel_recycle.CppDialect.peel_components
+        self.assertEqual(comps(2), (True, (0, 1, 2, 3)))
+        self.assertEqual(comps(2, 'FD'), (True, (0, 1, 2, 3)))
+        self.assertEqual(comps(3), (False, (0, 1, 2, 3)))
+        self.assertEqual(comps(3, 'FD'), (False, (0, 1, 2, 3, 4)))
+        self.assertEqual(comps(1), (False, (0,)))
+        self.assertEqual(comps(1, 'FD'), (False, (4,)))
+        # spin 3/2 and 2 are not split, as in fortran
+        self.assertIsNone(comps(4))
+        self.assertIsNone(comps(5, 'FD'))
+
+    def test_the_tag_is_the_spin_not_the_name(self):
+        """VVV1_VSV2_..._0 has S letters on every leg, the tag says three
+        vectors: each leg is split as the vector it is"""
+
+        self.assertEqual(self.dialect.amplitude_spins(self.LINE), (3, 3, 3))
+        old = hel_recycle.CppDialect.P1N_MIN_SHARING
+        hel_recycle.CppDialect.P1N_MIN_SHARING = 2
+        self.dialect.TABLES = False
+        try:
+            # leg 3 varies here: its P1N is the one written
+            amps = []
+            args = self.dialect.arguments(self.LINE)
+            for row, slot in enumerate((10, 11, 12, 13)):
+                amp = self.FakeAmp(row + 1, args[:2] + ['aloha_obj[%d]' % slot]
+                                   + args[3:])
+                amp.diag_num = 2
+                amps.append(amp)
+            out = self.dialect.render_amplitudes(self.LINE, amps, gauge='FD',
+                                                 amp_splt=True)
+        finally:
+            hel_recycle.CppDialect.P1N_MIN_SHARING = old
+        self.assertIn('VVV1_VSV2_VSS2_SVV2_SVS2_SSV3P1N_3<', out)
+        self.assertEqual(out.count('_pt[4] * _pw[4]'), 4)
+        self.assertEqual(out.count('_pt[0] * _pw[0]'), 4)
+
+    def test_a_scalar_peel_reads_the_fifth_component(self):
+        """FFS4_0 (a top Yukawa) peeled on the Higgs, as in t t~ > w+ w- z:
+        the scalar value is component 4 in FD, component 0 otherwise"""
+
+        line = ('      FFS4_0<W_ACCESS, A_ACCESS, CI_ACCESS>( aloha_obj[0],'
+                ' aloha_obj[1], aloha_obj[2], COUPs[ndcoup + 1], 1.0,'
+                ' &amp_fp[0] ); //HRAMP 2 2,2,1')
+        amps = [self.FakeAmp(row + 1, ['aloha_obj[0]', 'aloha_obj[1]',
+                                       'aloha_obj[%d]' % slot,
+                                       'COUPs[ndcoup+1]', '1.0', '&amp_fp[0]'])
+                for row, slot in enumerate((10, 11, 12, 13))]
+        for amp in amps:
+            amp.diag_num = 2
+        old = hel_recycle.CppDialect.P1N_MIN_SHARING
+        hel_recycle.CppDialect.P1N_MIN_SHARING = 2
+        try:
+            for tables, gauge, expected in (
+                    (False, 'FD', 'amp_sv[0] = _pt[4] * _pw[4]; }'),
+                    (False, 'U', 'amp_sv[0] = _pt[0] * _pw[0]; }'),
+                    (True, 'FD', 'hr_p1n_fold<W_ACCESS, 1, false, 4>( _p1n,'),
+                    (True, 'U', 'hr_p1n_fold<W_ACCESS, 1, false>( _p1n,')):
+                self.dialect.TABLES = tables
+                self.dialect.folds = {2: ['jampAll_sv[( ${row} * nParity + iParity )'
+                                          ' * njampso + 0] += amp_sv[0];']}
+                out = self.dialect.render_amplitudes(line, amps, gauge=gauge,
+                                                     amp_splt=True)
+                self.assertIn('FFS4P1N_3<W_ACCESS, CI_ACCESS>( aloha_obj[0],'
+                              ' aloha_obj[1], COUPs[ndcoup+1], 1.0, _p1n );', out)
+                self.assertIn(expected, out)
+        finally:
+            hel_recycle.CppDialect.P1N_MIN_SHARING = old
+
+    def test_a_vector_peel_dots_five_components(self):
+        out = self.render('FD', tables=False)
+        self.assertIn('VVV1_VSV2_VSS2_SVV2_SVS2_SSV3P1N_1<W_ACCESS, CI_ACCESS>('
+                      ' aloha_obj[2], aloha_obj[4], COUPs[ndcoup+4], 1.0,', out)
+        self.assertEqual(out.count('P1N_1<'), 1)
+        self.assertEqual(out.count('_pt[4] * _pw[4]'), 4)
+        self.assertNotIn('flv_index', out)
+        for row in range(4):
+            self.assertIn('jamp[%d] += amp_sv[0];' % row, out)
+
+    def test_the_tables_say_five_components(self):
+        self.dialect.folds = {2: ['jampAll_sv[( ${row} * nParity + iParity )'
+                                  ' * njampso + 0] += amp_sv[0];']}
+        out = self.render('FD', tables=True)
+        self.assertIn('hr_p1n_fold<W_ACCESS, 5, false>( _p1n, aloha_obj, hrM, 4,', out)
+
+    def test_four_components_without_the_gauge(self):
+        """the same vectors outside FD: no fifth component"""
+
+        out = self.render('U', tables=False)
+        self.assertEqual(out.count('P1N_1<'), 1)
+        self.assertNotIn('_pt[4]', out)
+        self.assertEqual(out.count('_pt[3] * _pw[3]'), 4)
+
+
+class TestRecycledChunkBoundaries(unittest.TestCase):
+    """Where the recycled call block may be cut.
+
+    The block goes into ordinary functions so that the compiler is not handed
+    one body of a hundred thousand lines. A cut in the wrong place is not a
+    subtle problem -- it does not compile -- but WHERE the wrong places are is
+    subtle: brace depth alone says nothing about `if( x )`, whose body opens on
+    the next line."""
+
+    def setUp(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix
+        self.split = OneProcessExporterMadMatrix.hr_split_statements
+
+    @staticmethod
+    def fold(i):
+        """What one amplitude turns into: the call, a guarded multichannel
+        block, then the color flows"""
+        return ['      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP %d' % i,
+                '      if( storeChannelWeights )',
+                '      {',
+                '        numAll_sv[%d] += cxabs2( amp_sv[0] );' % i,
+                '      }',
+                '      jampAll_sv[%d] += amp_sv[0];' % i]
+
+    def assertChunksAreWholeStatements(self, lines, per_chunk):
+        chunks = self.split(lines, per_chunk)
+        self.assertEqual([l for c in chunks for l in c], lines,
+                         'the block must come back out unchanged')
+        for n, chunk in enumerate(chunks):
+            depth = sum(l.count('{') - l.count('}') for l in chunk)
+            self.assertEqual(depth, 0, 'chunk %d leaves a brace open' % n)
+            last = chunk[-1].split('//')[0].rstrip()
+            self.assertTrue(last.endswith(';') or last.endswith('}'),
+                            'chunk %d ends mid-statement: %r' % (n, last))
+        return chunks
+
+    def test_a_guard_is_never_split_from_its_body(self):
+        """`if( storeChannelWeights )` leaves the brace depth at zero, so depth
+        alone would allow a cut between it and the block it guards"""
+
+        lines = sum((self.fold(i) for i in range(6)), [])
+        for per_chunk in range(1, 8):
+            self.assertChunksAreWholeStatements(lines, per_chunk)
+
+    def test_a_braced_group_is_never_split(self):
+        """A P1N group holds declarations its contractions read"""
+
+        lines = ['      {',
+                 '        FFV1P1N_1<W_ACCESS>( a, b, _p1n );',
+                 '        const cxtype_sv* _pt = access( _p1n.w );',
+                 '        { const cxtype_sv* _pw = access( w.w );',
+                 '          amp_sv[0] = _pt[0] * _pw[0]; }',
+                 '      }'] * 4
+        for per_chunk in (1, 2, 3, 5):
+            chunks = self.assertChunksAreWholeStatements(lines, per_chunk)
+            for chunk in chunks:
+                opens = ''.join(chunk).count('{')
+                self.assertEqual(opens, ''.join(chunk).count('}'))
+
+    def test_the_whole_block_survives_every_chunk_size(self):
+        lines = sum((self.fold(i) for i in range(10)), [])
+        for per_chunk in range(1, 30):
+            self.assertChunksAreWholeStatements(lines, per_chunk)
+
+class TestRecycledChunkPolicy(unittest.TestCase):
+    """When the recycled block is cut up at all. Chunks cost run time on a small
+    block and save the build of a big one, so a block stays inline up to
+    HR_INLINE_MAX statements unless --hel_recycling_chunk says otherwise."""
+
+    def setUp(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix
+        self.cls = OneProcessExporterMadMatrix
+
+    def exporter(self, options):
+        class Writer(object):
+            cmd_options = options
+        exporter = self.cls.__new__(self.cls)
+        exporter.helas_call_writer = Writer()
+        return exporter
+
+    def test_a_small_block_stays_inline(self):
+        exporter = self.exporter({})
+        self.assertEqual(exporter.hel_recycling_chunk_size(self.cls.HR_INLINE_MAX), 0)
+        self.assertEqual(exporter.hel_recycling_chunk_size(self.cls.HR_INLINE_MAX + 1),
+                         self.cls.HR_CHUNK_STMTS)
+
+    def test_the_option_wins(self):
+        self.assertEqual(self.exporter({'hel_recycling_chunk': '50'})
+                         .hel_recycling_chunk_size(10), 50)
+        self.assertEqual(self.exporter({'hel_recycling_chunk': '0'})
+                         .hel_recycling_chunk_size(10**6), 0)
+
+    def test_the_size_limit_and_its_option(self):
+        self.assertEqual(self.exporter({}).hel_recycling_max_stmts(),
+                         self.cls.HR_MAX_STMTS)
+        self.assertEqual(self.exporter({'hel_recycling_max': '0'})
+                         .hel_recycling_max_stmts(), 0)
+        self.assertEqual(self.exporter({'hel_recycling_max': '12'})
+                         .hel_recycling_max_stmts(), 12)
+        self.assertEqual(self.exporter({'hel_recycling_max': 'x'})
+                         .hel_recycling_max_stmts(), self.cls.HR_MAX_STMTS)
+        # what is counted is what hr_chunk_calls counts: no comment, no blank
+        calls = ('      // recycled row 0\n\n'
+                 '      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP 1\n'
+                 '      if( storeChannelWeights )\n      {\n'
+                 '        numAll_sv[0] += cxabs2( amp_sv[0] );\n      }\n')
+        self.assertEqual(self.cls.hr_count_statements(calls), 5)
+        # the tables of a tabulated P1N group are data, not code
+        calls += ('      {\n        static constexpr HrMember hrM[] = { { 1, 0, 1 } };\n'
+                  '        hr_p1n_fold<W_ACCESS, 4, false>( _p1n );\n      }\n')
+        self.assertEqual(self.cls.hr_count_statements(calls), 8)
+
+    def test_chunks_take_the_state_and_are_called_in_order(self):
+        exporter = self.exporter({'hel_recycling_chunk': '2'})
+        calls = '\n'.join('      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP %d' % i
+                          for i in range(5)) + '\n'
+        decls, units, body = exporter.hr_chunk_calls(calls)
+        self.assertEqual(len(units), 1)
+        defs = units[0]
+        self.assertEqual(defs.count('static void'), 3)
+        unit = defs[defs.index('hr_unit_0'):]
+        self.assertEqual([line.split('(')[0].strip() for line in unit.split('\n')
+                          if line.startswith('    hr_chunk_')],
+                         ['hr_chunk_0', 'hr_chunk_1', 'hr_chunk_2'])
+        self.assertEqual([line.split('(')[0].strip() for line in body.split('\n') if line],
+                         ['hr_unit_0'])
+        for decl, name in self.cls.HR_CHUNK_STATE:
+            self.assertIn(decl, defs)
+            self.assertIn(name, body)
+        self.assertEqual(self.exporter({}).hr_chunk_calls(calls), ('', [], calls))
+
+    def test_chunks_are_declared_without_names_and_spread_over_files(self):
+        exporter = self.exporter({'hel_recycling_chunk': '2'})
+        exporter.HR_FILE_STMTS = 4
+        calls = '\n'.join('      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP %d' % i
+                          for i in range(9)) + '\n'
+        decls, units, body = exporter.hr_chunk_calls(calls)
+        # chunks of 2 statements, files of 4: 2 + 2 + 1 chunks, one unit each
+        self.assertEqual([unit.count('static void') for unit in units], [2, 2, 1])
+        for k, unit in enumerate(units):
+            self.assertIn('#include "HelRecyclingChunks.h"', unit)
+            self.assertIn('visibility( "hidden" ) ) ) void\n  hr_unit_%d(' % k, unit)
+        self.assertEqual(decls.count('visibility( "hidden" )'), 3)
+        self.assertEqual(body.count('hr_unit_'), 3)
+        # SigmaKin.cc's own tables are passed, but not named in its declarations
+        for name in ('cIPD', 'cFlavors', 'cBWCUTOFF'):
+            self.assertNotIn(name, decls)
+            self.assertIn(name, body)
+        self.assertIn('const short ( * )[npar]', decls)
+
+
+class TestRecycledColourSubExpressions(unittest.TestCase):
+    """The recycled folds keep the shared sub-expressions of the color flows
+    (build_jamp_plan) that the plain build writes, one set per helicity row:
+    each amplitude is added into its row's sub-expressions, and hr_post_lines
+    then makes the row's color flows out of them. Checked by running the
+    emitted statements -- they are valid Python as well as C++ -- against the
+    color flows written out term by term, with some amplitudes left out of the
+    row (the ones that vanish there are never folded in)."""
+
+    def setUp(self):
+        from fractions import Fraction
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter
+        writer = MadMatrixUFOHelasCallWriter.__new__(MadMatrixUFOHelasCallWriter)
+        writer.cmd_options = {'jamp_optim': True}
+        writer.jamp_orbit = False
+        writer.split_order_index = lambda matrix_element: None
+        self.writer = writer
+        # six color flows over eight amplitudes, sharing the obvious partial
+        # sums; coefficients (sign, fraction, imaginary, power of Nc)
+        self.color_amplitudes = [
+            [((1, Fraction(1), False, 0), 1), ((1, Fraction(1), False, 0), 2),
+             ((-1, Fraction(1), False, 0), 3)],
+            [((1, Fraction(1), False, 0), 1), ((1, Fraction(1), False, 0), 2),
+             ((1, Fraction(1, 3), False, 0), 4)],
+            [((1, Fraction(1), False, 0), 1), ((1, Fraction(1), False, 0), 2),
+             ((-1, Fraction(1), False, 0), 3), ((1, Fraction(1), True, 0), 5)],
+            [((1, Fraction(1), False, 0), 6), ((1, Fraction(1), False, 0), 7),
+             ((1, Fraction(1), False, 0), 1), ((1, Fraction(1), False, 0), 2)],
+            [((1, Fraction(1), False, 0), 6), ((1, Fraction(1), False, 0), 7),
+             ((-1, Fraction(2), False, 0), 8)],
+            [((1, Fraction(1), False, 0), 6), ((1, Fraction(1), False, 0), 7),
+             ((1, Fraction(1), False, 0), 8), ((-1, Fraction(1), False, 0), 3)],
+        ]
+        self.color = {}
+        for njamp, coeff_list in enumerate(self.color_amplitudes):
+            for coeff, namp in coeff_list:
+                self.color.setdefault(namp, {})[njamp] = coeff
+
+    def run_row(self, plan, amps, row=2, nrows=4):
+        ntmp, post = self.writer.hr_post_lines(plan)
+        njamp = len(self.color_amplitudes)
+        scope = {'nParity': 1, 'iParity': 0, 'hrNtmp': ntmp, 'njampso': njamp,
+                 'cxtype': complex, 'cxtype_amp': complex, 'fptype': float,
+                 'jampAll_sv': [0j] * (nrows * njamp),
+                 'jampTmpAll_sv': [0j] * (nrows * max(ntmp, 1))}
+
+        class Diagram(object):
+            def get(self, key):
+                return 1
+
+        class Amplitude(object):
+            def get(self, key):
+                return []
+
+        from string import Template
+        self.writer.nb_tmp_jamp = ntmp
+        for namp, value in amps.items():
+            captures = plan[1].get(namp, []) if plan is not None else None
+            fold = self.writer._hr_orig_amplitude('FFV1_0( a ); ', namp, Amplitude(),
+                                                  Diagram(), False, self.color, captures)
+            self.assertEqual(fold[-1], '//HRENDFOLD')
+            scope['amp_sv'] = [value]
+            for line in fold[2:-1]:
+                exec(Template(line).substitute(row=row).rstrip(';'), scope)
+        # the per-row post lines run in place on the row's slice of the tables
+        tmp = scope['jampTmpAll_sv'][row * ntmp:(row + 1) * ntmp]
+        jamp = scope['jampAll_sv'][row * njamp:(row + 1) * njamp]
+        post_scope = {'jampTmp_sv': tmp, 'jamp_sv': jamp, 'cxtype': complex}
+        for line in post:
+            exec(line.strip().rstrip(';'), post_scope)
+        return jamp
+
+    def expected(self, amps):
+        jamp = [0j] * len(self.color_amplitudes)
+        for njamp, coeff_list in enumerate(self.color_amplitudes):
+            for (sign, frac, imag, ncp), namp in coeff_list:
+                jamp[njamp] += sign * float(frac) * (1j if imag else 1) * \
+                               3**ncp * amps.get(namp, 0)
+        return jamp
+
+    def check(self, amps):
+        plan = self.writer.build_jamp_plan(None, self.color_amplitudes)
+        self.assertIsNotNone(plan)
+        self.assertGreater(plan[0], 0)
+        for got, want in zip(self.run_row(plan, amps), self.expected(amps)):
+            self.assertAlmostEqual(got, want, places=12)
+        # and the expanded fold (no plan) agrees with it
+        for got, want in zip(self.run_row(None, amps), self.expected(amps)):
+            self.assertAlmostEqual(got, want, places=12)
+
+    def test_every_amplitude_in_the_row(self):
+        self.check({n: complex(n, 0.5 * n - 1) for n in range(1, 9)})
+
+    def test_amplitudes_missing_from_the_row(self):
+        # the first amplitude of a sub-expression, which the plain build
+        # assigns rather than adds, is among the ones left out
+        self.check({n: complex(n, -n) for n in (2, 4, 5, 7)})
+
+    def run_rows(self, plan, amps):
+        """The rows mode: every amplitude of the row in ampRow (0 where it
+        vanishes), then the plain build's color code once, reading it."""
+        class Diagram(object):
+            def get(self, key):
+                return 1
+        ncolor = len(self.color_amplitudes)
+        lines = []
+        for namp in range(1, 9):
+            lines += self.writer._hr_row_lines(
+                namp, Diagram(), True, self.color,
+                plan[1].get(namp, []) if plan else None,
+                plan[2].get(namp, []) if plan else [])
+        if plan:
+            lines += plan[3]
+        scope = {'ampRow': [amps.get(n, 0j) for n in range(1, 9)],
+                 'jamp_sv': [0j] * ncolor, 'jampTmp_sv': [0j] * max(plan[0] if plan else 0, 1),
+                 'numerators_sv': [0.] * 2, 'storeChannelWeights': False,
+                 'cxabs2': lambda z: abs(z) ** 2,
+                 'cxtype': complex, 'cxtype_amp': complex, 'fptype': float}
+        for line in lines:
+            line = line.strip().rstrip(';')
+            if line.startswith('if( storeChannelWeights ) '):
+                line = line[len('if( storeChannelWeights ) '):]
+            exec(line, scope)
+        return scope['jamp_sv']
+
+    def test_rows_mode(self):
+        plan = self.writer.build_jamp_plan(None, self.color_amplitudes)
+        for amps in ({n: complex(n, 0.5 * n - 1) for n in range(1, 9)},
+                     {n: complex(n, -n) for n in (2, 4, 5, 7)}):
+            for p in (plan, None):
+                for got, want in zip(self.run_rows(p, amps), self.expected(amps)):
+                    self.assertAlmostEqual(got, want, places=12)
+        # the colour code reads the row's table, never the scratch amplitude
+        rows = self.writer._hr_row_lines(1, None, False, self.color, plan[1][1], [])
+        self.assertTrue(rows)
+        self.assertTrue(all('amp_sv' not in l and 'ampRow[0]' in l for l in rows))
+
+    def test_rows_store(self):
+        class Mother(object):
+            def __init__(self, spin):
+                self.spin = spin
+            def get(self, key):
+                return {'spin': self.spin}[key]
+
+        class Amplitude(object):
+            def get(self, key):
+                return {'mothers': [Mother(2), Mother(2), Mother(3)]}[key]
+
+        fold = self.writer._hr_orig_store('FFV1_0( a ); ', 7, 40, Amplitude())
+        # the number, and the spin of each argument's wavefunction
+        self.assertTrue(fold[0].endswith(' //HRAMP 7 2,2,3'), fold[0])
+        self.assertEqual(fold[1:], ['//HRFOLD 7',
+            'ampAll_sv[( ${row} * nParity + iParity ) * 40 + 6] = amp_sv[0];',
+            '//HRENDFOLD'])
+        # an amplitude only some merged flavours have: their mask on the tag,
+        # for the recycler to guard the call and its store with
+        masked = self.writer._hr_orig_store('FFV1_0( a ); ', 7, 40, Amplitude(), 0x5)
+        self.assertTrue(masked[0].endswith(' //HRAMP 7 2,2,3 flv=0x5'), masked[0])
+        self.assertEqual(masked[1:], fold[1:])
+        # the fold and expanded modes tag it the same way
+        for captures in (None, []):
+            amp = self.writer._hr_orig_amplitude('FFV1_0( a ); ', 1, Amplitude(),
+                                                 Amplitude(), False, self.color,
+                                                 captures, 0x5)
+            self.assertTrue(amp[0].endswith(' //HRAMP 1 2,2,3 flv=0x5'), amp[0])
+            self.assertNotIn('iflavor', '\n'.join(amp))
+
+    @staticmethod
+    def run_cpp(lines, scope):
+        """Run statements of the row loop as Python: the flavour guards
+        (if( ( 0x..ULL >> iflavor ) & 0x1ULL ) { ... }) become if-blocks."""
+        program, depth = [], 0
+        for line in lines:
+            line = line.strip().rstrip(';')
+            if line == '}':
+                depth -= 1
+                continue
+            if line.startswith('if( storeChannelWeights ) '):
+                line = 'if storeChannelWeights: ' + line[len('if( storeChannelWeights ) '):]
+            elif line.startswith('if( (') and line.endswith('{'):
+                line = 'if %s:' % line[2:-1].replace('ULL', '').strip()
+                program.append('    ' * depth + line)
+                depth += 1
+                continue
+            program.append('    ' * depth + line)
+        exec('\n'.join(program), scope)
+
+    def test_rows_mode_flavour_masks(self):
+        """In the rows mode a masked amplitude is neither made nor stored at
+        the flavours it is masked for (the recycler guards it, see
+        CppDialect.render_amplitudes), so what its slot of the amplitude table
+        holds there is another page's: the row loop has to read it under the
+        same guard. Amplitudes 1 and 6 open shared sub-expressions of the
+        color flows (the plain build assigns them), so a skipped one must not
+        leave those uninitialised either."""
+        plan = self.writer.build_jamp_plan(None, self.color_amplitudes)
+        class Diagram(object):
+            def get(self, key):
+                return 1
+        masks = {1: 0x1, 3: 0x3, 6: 0x1, 8: 0x2}   # 2 grouped flavours
+        amps = {n: complex(n, 0.5 * n - 1) for n in range(1, 9)}
+        stale = 1e6 + 7j
+        ncolor = len(self.color_amplitudes)
+        for p in (plan, None):
+            lines = []
+            for namp in range(1, 9):
+                lines += self.writer._hr_row_lines(
+                    namp, Diagram(), True, self.color,
+                    p[1].get(namp, []) if p else None,
+                    p[2].get(namp, []) if p else [], masks.get(namp))
+            if p:
+                lines += p[3]
+            for iflavor in (0, 1):
+                live = dict((n, a) for n, a in amps.items()
+                            if (masks.get(n, 0x3) >> iflavor) & 1)
+                scope = {'ampRow': [live.get(n, stale) for n in range(1, 9)],
+                         'jamp_sv': [0j] * ncolor,
+                         # garbage: the rows mode does not clear them either
+                         'jampTmp_sv': [stale] * max(p[0] if p else 0, 1),
+                         'numerators_sv': [0.] * 2, 'storeChannelWeights': True,
+                         'cxabs2': lambda z: abs(z) ** 2, 'cxzero_sv': lambda: 0j,
+                         'iflavor': iflavor,
+                         'cxtype': complex, 'cxtype_amp': complex, 'fptype': float}
+                self.run_cpp(lines, scope)
+                for got, want in zip(scope['jamp_sv'], self.expected(live)):
+                    self.assertAlmostEqual(got, want, places=12)
+                self.assertAlmostEqual(scope['numerators_sv'][0],
+                                       sum(abs(a) ** 2 for a in live.values()))
+
+    def test_post_lines_only_ever_add(self):
+        plan = self.writer.build_jamp_plan(None, self.color_amplitudes)
+        _ntmp, post = self.writer.hr_post_lines(plan)
+        self.assertTrue(post)
+        for line in post:
+            self.assertIn(' += ', line)
+        self.assertEqual(self.writer.hr_post_lines(None), (0, []))
+
+
+class TestRecycledOptions(unittest.TestCase):
+    """--hel_recycling_jamp / --hel_recycling_tables, and the per-row include
+    HelRecyclingJamps.inc each mode writes."""
+
+    def test_jamp_mode(self):
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter as W
+        writer = W.__new__(W)
+        for options, mode in (({}, 'rows'), ({'hel_recycling_jamp': 'fold'}, 'fold'),
+                              ({'hel_recycling_jamp': 'EXPANDED'}, 'expanded'),
+                              ({'hel_recycling_jamp': 'bogus'}, 'rows')):
+            writer.cmd_options = options
+            self.assertEqual(writer.hr_jamp_mode(), mode)
+
+    def test_tables(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix as E
+        class Writer(object):
+            cmd_options = {}
+        exporter = E.__new__(E)
+        exporter.helas_call_writer = Writer()
+        self.assertTrue(exporter.hel_recycling_tables())
+        for off in ('False', 'false', '0', 'no'):
+            Writer.cmd_options = {'hel_recycling_tables': off}
+            self.assertFalse(exporter.hel_recycling_tables())
+        Writer.cmd_options = {'hel_recycling_tables': 'True'}
+        self.assertTrue(exporter.hel_recycling_tables())
+
+    def test_jamps_include(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix as E
+        rows = E.hr_jamps_inc({'mode': 'rows', 'ntmp': 7, 'namp': 159,
+                               'lines': ['jamp_sv[0] += ampRow[3];']})
+        self.assertIn('const cxtype_amp_sv* ampRow = ampAll_sv + slot * 159;', rows)
+        self.assertIn('cxtype_amp_sv jampTmp_sv[7];', rows)
+        self.assertIn('jamp_sv[0] += ampRow[3];', rows)
+        # no table of every row's numerators in the rows mode: hr_row hands the
+        # event's own numerators_sv
+        self.assertNotIn('numAll_sv', rows)
+        fold = E.hr_jamps_inc({'mode': 'fold', 'ntmp': 7, 'namp': 0,
+                               'lines': ['jampTmp_sv[1] += jampTmp_sv[0];']})
+        self.assertIn('cxtype_amp_sv* jampTmp_sv = jampTmpAll_sv + (size_t)slot * 7;', fold)
+        self.assertNotIn('ampRow', fold)
+        expanded = E.hr_jamps_inc({'mode': 'expanded', 'ntmp': 0, 'namp': 0, 'lines': ()})
+        self.assertTrue(all(l.strip().startswith('//') for l in expanded.splitlines() if l.strip()))
+
+
+class TestHiddenRunCardEntries(unittest.TestCase):
+    """The mg7 run card's hidden entries -- hel_recycling_max_mb among them --
+    are read, and written back once the user set them (not before), so that
+    rewriting the card does not drop them."""
+
+    def test_round_trip(self):
+        import madgraph.various.banner as banner_mod
+        tmpdir = tempfile.mkdtemp()
+        try:
+            path = os.path.join(tmpdir, 'run_card.toml')
+            card = banner_mod.RunCardMG7()
+            self.assertEqual(card['run'].get('hel_recycling_max_mb'), -1)
+            card.write(path)
+            self.assertNotIn('hel_recycling_max_mb', open(path).read())
+            card.set('run.hel_recycling_max_mb', 0, user=True)
+            card.write(path)
+            text = open(path).read()
+            self.assertIn('hel_recycling_max_mb = 0', text)
+            # in its own section, so that the card stays valid TOML
+            try:
+                import tomllib
+            except ImportError:
+                tomllib = None
+            if tomllib:
+                self.assertEqual(tomllib.loads(text)['run']['hel_recycling_max_mb'], 0)
+            again = banner_mod.RunCardMG7(path)
+            self.assertEqual(again['run.hel_recycling_max_mb'], 0)
+            again.write(path)
+            self.assertIn('hel_recycling_max_mb = 0', open(path).read())
+            # a legacy alias is read but never written
+            card.set('generation.systematics', True, user=True)
+            card.write(path)
+            generation = text_section(open(path).read(), 'generation')
+            self.assertFalse(any(l.strip().startswith('systematics =') for l in generation))
+        finally:
+            shutil.rmtree(tmpdir)
+
+
+def text_section(text, name):
+    """The lines of [name] in a TOML text."""
+    out, inside = [], False
+    for line in text.splitlines():
+        if line.startswith('['):
+            inside = line.strip() == '[%s]' % name
+            continue
+        if inside:
+            out.append(line)
+    return out
+
+
+class TestRecyclingMakeArguments(unittest.TestCase):
+    """What the mg7 launcher hands make for a --hel_recycling output, and when a
+    library has to be rebuilt for other settings."""
+
+    def setUp(self):
+        try:
+            import madgraph.mg7.launch as launch
+        except Exception as error:      # needs the mg7 runtime (madspace)
+            self.skipTest('mg7 launch not importable: %s' % error)
+        import madgraph.various.banner as banner_mod
+        self.launch = launch
+        self.process = launch.MadgraphProcess.__new__(launch.MadgraphProcess)
+        self.process.run_card = banner_mod.RunCardMG7()
+
+    def test_make_arguments(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('HRMAXMB', None)
+            os.environ.pop('HRNOBLAS', None)
+            self.assertEqual(self.process.hel_recycling_make_args(), ['HRMAXMB=', 'HRNOBLAS='])
+            os.environ['HRMAXMB'] = '20'
+            self.assertEqual(self.process.hel_recycling_make_args()[0], 'HRMAXMB=20')
+            # the run card wins over the environment
+            self.process.run_card.set('run.hel_recycling_max_mb', 0, user=True)
+            self.process.run_card.set('run.hel_recycling_row_color_sum', True, user=True)
+            self.assertEqual(self.process.hel_recycling_make_args(), ['HRMAXMB=0', 'HRNOBLAS=1'])
+
+    def test_rebuild_when_the_settings_change(self):
+        changed = self.launch.MadgraphProcess.hel_recycling_flags_changed
+        tmpdir = tempfile.mkdtemp()
+        try:
+            self.assertFalse(changed(tmpdir, 'simd_128', ':'))      # not recycled
+            open(os.path.join(tmpdir, 'HelRecycling.inc'), 'w').close()
+            self.assertFalse(changed(tmpdir, 'simd_128', ':'))      # never built
+            os.mkdir(os.path.join(tmpdir, 'build.simd_128'))
+            with open(os.path.join(tmpdir, 'build.simd_128', '.hrflags'), 'w') as fsock:
+                fsock.write(':\n')
+            self.assertFalse(changed(tmpdir, 'simd_128', ':'))
+            self.assertTrue(changed(tmpdir, 'simd_128', '0:'))
+            self.assertFalse(changed(tmpdir, 'cuda', '0:'))           # gpu: plain anyway
+        finally:
+            shutil.rmtree(tmpdir)
+
+
+class TestHelRecyclingWarmup(unittest.TestCase):
+    """What the probe prints, read back: madevent's helicity-filter protocol."""
+
+    def test_parse(self):
+        from madmatrix.output import ProcessExporterMadMatrixStandalone
+        output = '\n'.join(['Matrix Element/Good Helicity: 1 3',
+                            'Matrix Element/Good Helicity: 1 1',
+                            'HEL/ZEROAMP: 1 3 7',
+                            'HEL/ZEROAMP: 1 1 2',
+                            'Matrix element = 1.0 GeV^-2'])
+        self.assertEqual(ProcessExporterMadMatrixStandalone._parse_hel_warmup(output),
+                         ([1, 3], [(1, 2), (3, 7)], []))
+        # a crossing the probe could only scan off shell is reported
+        self.assertEqual(ProcessExporterMadMatrixStandalone._parse_hel_warmup(
+                             output + '\nHEL/OFFSHELL: 4\nHEL/OFFSHELL: 2')[2],
+                         [2, 4])
+
+
+class TestCrossingHelicityFactor(unittest.TestCase):
+    """The helicity baked into an external of a crossing-aware fortran matrix
+    element keeps the IC(i) factor of its NSF flag.
+
+    A crossed call evaluates the base row with every leg that changed side
+    negated together with its NSF flag (APPLY_CROSSING_ROWS), so one optim
+    serves every crossing only if the baked value is h*IC(i). The C++ dialect
+    has no IC: its crossed external carries the sign through its //HREXT tail."""
+
+    FERMION = '      CALL IXXXXX(P(0,2),ZERO,NHEL(2),+1*IC(2), FLAVOR(2),W(2))'
+    VECTOR = '      CALL VXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))'
+    SCALAR = '      CALL SXXXXX(P(0,3),+1*IC(3),W(3))'
+
+    def setUp(self):
+        hel_recycle.HelicityRecycler(['1'])  # resets the shared class state
+
+    def fortran_args(self, line, hel):
+        dialect = hel_recycle.Dialect()
+        return dialect.set_external_helicity(dialect.arguments(line), hel)
+
+    def test_the_ic_factor_follows_the_helicity(self):
+        """NHEL(2) with +1*IC(2) as its NSF becomes -1*IC(2)"""
+
+        self.assertEqual(self.fortran_args(self.FERMION, -1)[2], '-1*IC(2)')
+        self.assertEqual(self.fortran_args(self.FERMION, 1)[2], '+1*IC(2)')
+
+    def test_no_ic_no_factor(self):
+        """A leg whose NSF carries no IC gets the bare value"""
+
+        self.assertEqual(self.fortran_args(self.VECTOR, -1)[2], '-1')
+
+    def test_a_scalar_takes_no_factor(self):
+        """A scalar has no helicity: the slot is its output, renamed later"""
+
+        self.assertEqual(self.fortran_args(self.SCALAR, 0)[2], ' 0')
+
+    def test_the_unfolded_copies_carry_it(self):
+        """generate_wavfuncs writes one copy per helicity, each h*IC(i)"""
+
+        hel_recycle.External.hel_ranges = [set(), {-1, 1}]
+        dag = hel_recycle.DAG()
+        copies = hel_recycle.External.generate_wavfuncs(self.FERMION + '\n', dag)
+        self.assertEqual(sorted(copy.args[2] for copy in copies),
+                         ['+1*IC(2)', '-1*IC(2)'])
+        self.assertEqual(sorted(copy.hel for copy in copies), [-1, 1])
+
+    def test_cpp_takes_no_factor(self):
+        """The C++ dialect writes the bare value (one per SIMD lane)"""
+
+        dialect = hel_recycle.CppDialect()
+        line = ('      ixxxxx<M_ACCESS, W_ACCESS>( xmom, m_pars->MT, cHel[ihel][2],'
+                ' -1, cFlavors[iflavor][2], aloha_obj[5], 2 );')
+        args = dialect.set_external_helicity(dialect.arguments(line), -1)
+        self.assertEqual(args[2], '( fptype_amp_sv{} + -1 )')
+
+
+class TestHelRecyclingWarmupDispatch(unittest.TestCase):
+    """Which directories an output warms up: an mg7 output its own (it has no
+    check_sa.exe of its own, so it is lent one for the probe), and never the
+    directory another output left registered."""
+
+    def setUp(self):
+        from madmatrix import output, model_handling
+        self.output = output
+        self.warmups = model_handling.OneProcessExporterMadMatrix._hr_warmups
+        del self.warmups[:]
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.addCleanup(self.warmups.__delitem__, slice(None))
+
+    def exporter(self, cls, name):
+        exporter = cls.__new__(cls)
+        exporter.dir_path = os.path.join(self.tmp, name)
+        exporter._p_makefile_replace = {}
+        return exporter
+
+    def pdir(self, output_dir):
+        path = os.path.join(output_dir, 'SubProcesses', 'P1_gg_ggg')
+        os.makedirs(path)
+        class Registered(object):
+            def write_hr_recipe(self):
+                return {'helicities': []}
+        registered = Registered()
+        registered.path = path
+        self.warmups.append(registered)
+        return path
+
+    def test_mg7_finalize_calls_the_warmup(self):
+        from unittest import mock
+        import madgraph.iolibs.export_cpp as export_cpp
+        exporter = self.exporter(self.output.ProcessExporterMadMatrix, 'mg7')
+        with mock.patch.object(export_cpp.ProcessExporterMG7, 'finalize') as base, \
+             mock.patch.object(self.output.ProcessExporterMadMatrix,
+                               '_run_hel_recycling_warmups') as warmup:
+            exporter.finalize()
+        base.assert_called_once_with()
+        warmup.assert_called_once_with()
+
+    def test_mg7_finalize_clears_the_list_and_builds_only_its_own(self):
+        from unittest import mock
+        import subprocess
+        import madgraph.iolibs.export_cpp as export_cpp
+        from madmatrix import hel_recycling_filter as hrf
+        exporter = self.exporter(self.output.ProcessExporterMadMatrix, 'mg7')
+        own = self.pdir(exporter.dir_path)
+        foreign = self.pdir(os.path.join(self.tmp, 'other'))
+        os.makedirs(os.path.join(exporter.dir_path, 'Cards'))
+        open(os.path.join(exporter.dir_path, 'Cards', 'param_card.dat'), 'w').close()
+        calls = []
+        def run(cmd, cwd=None, **opts):
+            calls.append((cmd, cwd, sorted(os.listdir(cwd))))
+            return subprocess.CompletedProcess(cmd, 1, stdout=b'')
+        with mock.patch.object(export_cpp.ProcessExporterMG7, 'finalize'), \
+             mock.patch.object(hrf.subprocess, 'run', side_effect=run):
+            exporter.finalize()
+        self.assertEqual(self.warmups, [])
+        probe = os.path.join(os.path.realpath(exporter.dir_path), hrf.PROBE_TREE,
+                             'SubProcesses', 'P1_gg_ggg')
+        self.assertEqual(set(cwd for _cmd, cwd, _ls in calls), set([probe]))
+        # the probe build ran in the probe tree, on the lent standalone driver
+        build, _cwd, listing = calls[0]
+        self.assertEqual(build[:3], ['make', '-f', 'hrprobe.mk'])
+        self.assertIn('HRPROBE=1', build)
+        for name in ['check_sa.cc', 'hrprobe.mk', 'madmatrix.mk', 'timer.h']:
+            self.assertIn(name, listing)
+        # which the output keeps for the launch
+        self.assertEqual(sorted(os.listdir(os.path.join(exporter.dir_path, 'SubProcesses',
+                                                        hrf.PROBE_SOURCES))),
+                         ['check_sa.cc', 'hrprobe.mk', 'nvtx.h', 'timer.h', 'timermap.h'])
+        # nothing was lent to, or built in, the P* directory itself: it only
+        # records that it is the plain code (the probe failed)
+        self.assertEqual(os.listdir(own), [hrf.STATE])
+        self.assertEqual(hrf.read_state(own)['recycled'], False)
+        self.assertEqual(hrf.read_state(own)['output'], {'recycled': False})
+        self.assertEqual(os.listdir(foreign), [])
+
+    def test_a_new_output_drops_what_an_earlier_one_left(self):
+        self.pdir(os.path.join(self.tmp, 'earlier'))
+        self.output.ProcessExporterMadMatrix(os.path.join(self.tmp, 'new'),
+                                             {'output_options': {}})
+        self.assertEqual(self.warmups, [])
+
+
+class TestHelRecyclingFilter(unittest.TestCase):
+    """madmatrix/hel_recycling_filter.py: the filter of a recycled build
+    measured again at the parameters a run is launched at -- what is
+    measured, when, and when the build is rewritten (the probe is mocked
+    here; test_madmatrix_hel_recycling_launch_parameters builds it)."""
+
+    def setUp(self):
+        from madmatrix import hel_recycling_filter
+        self.hrf = hel_recycling_filter
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def test_combine_keeps_what_holds_at_every_card(self):
+        combine = self.hrf.combine
+        # one card: as measured
+        self.assertEqual(combine([([1, 2], [(1, 3), (2, 3)])]), ([1, 2], [[1, 3], [2, 3]]))
+        # the good helicities of any card; an amplitude dropped only where it
+        # vanishes at every card that has its helicity
+        self.assertEqual(combine([([1, 2], [(1, 3), (2, 3), (2, 4)]),
+                                  ([1, 2, 5], [(1, 3), (5, 3)])]),
+                         ([1, 2, 5], [[1, 3], [5, 3]]))
+        # a helicity that is not good at a card does not keep its amplitudes
+        # alive there: that card never evaluates it
+        self.assertEqual(combine([([1], [(1, 3)]), ([2], [(2, 3)])]),
+                         ([1, 2], [[1, 3], [2, 3]]))
+
+    def test_the_output_build_has_no_tag(self):
+        state = {'recycled': True, 'good_hels': [1, 2], 'zero_perhel': [[1, 3]]}
+        state['output'] = self.hrf.signature(state)
+        self.assertEqual(self.hrf.tag_of(state), '')
+        other = dict(state, zero_perhel=[[1, 3], [2, 3]])
+        tag = self.hrf.tag_of(other)
+        self.assertRegex(tag, r'^_hr[0-9a-f]{8}$')
+        self.assertEqual(self.hrf.tag_of(dict(other)), tag)       # a name per filter
+        plain = {'recycled': False, 'output': state['output']}
+        self.assertNotIn(self.hrf.tag_of(plain), ('', tag))
+
+    def test_library_names(self):
+        me_path = 'lib/libmadmatrix_sm_P1_bbx_ttx_{device}_{fptype}.so'
+        tagged = self.hrf.tagged_me_path(me_path, '_hr0123abcd')
+        self.assertEqual(tagged, 'lib/libmadmatrix_sm_P1_bbx_ttx_hr0123abcd_{device}_{fptype}.so')
+        self.assertEqual(self.hrf.tagged_me_path(tagged, '_hrffffffff'),
+                         'lib/libmadmatrix_sm_P1_bbx_ttx_hrffffffff_{device}_{fptype}.so')
+        self.assertEqual(self.hrf.tagged_me_path(tagged, ''), me_path)
+        # a LIBTAG (MadtRex's regenerated directories) comes first
+        self.assertEqual(self.hrf.tagged_me_path(
+            'lib/libmadmatrix_rw1_sm_P1_x_{device}_{fptype}.so', '_hr0123abcd'),
+            'lib/libmadmatrix_rw1_sm_P1_x_hr0123abcd_{device}_{fptype}.so')
+
+    def test_card_digest_is_the_values(self):
+        card = os.path.join(self.tmp, 'a.dat')
+        with open(card, 'w') as fsock:
+            fsock.write('BLOCK MASS # masses\n    6 1.730000e+02 # MT\n'
+                        'BLOCK YUKAWA\n    5 4.700000e+00 # ymb\n')
+        other = os.path.join(self.tmp, 'b.dat')
+        with open(other, 'w') as fsock:
+            fsock.write('# another comment\nBlock yukawa\n 5 4.7\nBlock mass\n 6 173.\n')
+        changed = os.path.join(self.tmp, 'c.dat')
+        with open(changed, 'w') as fsock:
+            fsock.write('Block yukawa\n 5 0.\nBlock mass\n 6 173.\n')
+        self.assertEqual(self.hrf.card_digest(card), self.hrf.card_digest(other))
+        self.assertNotEqual(self.hrf.card_digest(card), self.hrf.card_digest(changed))
+
+    def output(self):
+        """An output with one recycled P* directory, built at card 'a'."""
+        root = os.path.join(self.tmp, 'out')
+        pdir = os.path.join(root, 'SubProcesses', 'P1_x')
+        os.makedirs(pdir)
+        os.makedirs(os.path.join(root, 'SubProcesses', self.hrf.PROBE_SOURCES))
+        open(os.path.join(root, 'SubProcesses', self.hrf.PROBE_SOURCES,
+                          self.hrf.PROBE_MAKEFILE), 'w').close()
+        with open(os.path.join(pdir, self.hrf.RECIPE), 'w') as fsock:
+            fsock.write('{"helicities": [[1], [2]]}')
+        for name in self.hrf.GENERATED:
+            open(os.path.join(pdir, name), 'w').close()
+        os.makedirs(os.path.join(pdir, 'build.simd_128_d'))
+        self.cards = {}
+        for name, value in (('a', 1), ('b', 2), ('c', 3)):
+            self.cards[name] = os.path.join(self.tmp, name + '.dat')
+            with open(self.cards[name], 'w') as fsock:
+                fsock.write('Block mass\n 6 %d\n' % value)
+        state = {'cards': self.hrf.cards_key([self.cards['a']]), 'recycled': True,
+                 'good_hels': [1, 2], 'zero_perhel': [[1, 3]]}
+        state['output'] = self.hrf.signature(state)
+        self.hrf.write_state(pdir, state)
+        with open(os.path.join(root, 'SubProcesses', 'subprocesses.json'), 'w') as fsock:
+            fsock.write('[{"path": "SubProcesses/P1_x", '
+                        '"me_path": "lib/libmadmatrix_sm_P1_x_{device}_{fptype}.so"}]')
+        return root, pdir
+
+    def update(self, root, cards, measured):
+        """update() with the probe answering `measured`; (result, number of
+        probe measurements, rewrites)."""
+        from unittest import mock
+        written = []
+        def write_build(pdir, recipe, good, zeros):
+            written.append((good, zeros))
+            return None if good is None else len(good)
+        with mock.patch.object(self.hrf.ProbeTree, 'measure',
+                               return_value=measured) as measure, \
+             mock.patch.object(self.hrf, 'write_build', side_effect=write_build):
+            result = self.hrf.update(
+                root, cards, ['SubProcesses/P1_x'],
+                subprocesses_json=os.path.join(root, 'SubProcesses', 'subprocesses.json'))
+        return result, measure.call_count, written
+
+    def me_path(self, root):
+        import json
+        with open(os.path.join(root, 'SubProcesses', 'subprocesses.json')) as fsock:
+            return json.load(fsock)[0]['me_path']
+
+    def test_the_same_cards_measure_nothing(self):
+        root, pdir = self.output()
+        self.assertEqual(self.update(root, [self.cards['a']], None), ({}, 0, []))
+        self.assertTrue(os.path.isdir(os.path.join(pdir, 'build.simd_128_d')))
+
+    def test_the_same_filter_rewrites_nothing(self):
+        root, pdir = self.output()
+        result, measured, written = self.update(root, [self.cards['b']],
+                                                ([1, 2], [[1, 3]]))
+        self.assertEqual((result, measured, written), ({}, 1, []))
+        # the objects are still right, and the cards are recorded
+        self.assertTrue(os.path.isdir(os.path.join(pdir, 'build.simd_128_d')))
+        self.assertEqual(self.update(root, [self.cards['b']], None), ({}, 0, []))
+
+    def test_another_filter_has_its_own_library(self):
+        root, pdir = self.output()
+        result, measured, written = self.update(root, [self.cards['b']],
+                                                ([1, 2], [[1, 3], [2, 3]]))
+        self.assertEqual(written, [([1, 2], [[1, 3], [2, 3]])])
+        tag = self.hrf.tag_of(self.hrf.read_state(pdir))
+        self.assertRegex(tag, r'^_hr[0-9a-f]{8}$')
+        self.assertEqual(result, {'SubProcesses/P1_x':
+                                  'lib/libmadmatrix_sm_P1_x%s_{device}_{fptype}.so' % tag})
+        self.assertEqual(self.me_path(root), result['SubProcesses/P1_x'])
+        with open(os.path.join(pdir, self.hrf.TAG_MK)) as fsock:
+            self.assertIn('HRTAG = %s' % tag, fsock.read())
+        # the objects of the other filter must not be linked into this library
+        self.assertFalse(os.path.isdir(os.path.join(pdir, 'build.simd_128_d')))
+        # and back to the output's own filter: its own name again
+        result, _, written = self.update(root, [self.cards['c']], ([1, 2], [[1, 3]]))
+        self.assertEqual(written, [([1, 2], [[1, 3]])])
+        self.assertEqual(self.me_path(root), 'lib/libmadmatrix_sm_P1_x_{device}_{fptype}.so')
+        self.assertFalse(os.path.exists(os.path.join(pdir, self.hrf.TAG_MK)))
+
+    def test_unmeasurable_parameters_build_the_plain_code(self):
+        root, pdir = self.output()
+        result, measured, written = self.update(root, None, None)
+        self.assertEqual((measured, written), (0, [(None, None)]))
+        self.assertEqual(self.hrf.read_state(pdir)['recycled'], False)
+        self.assertIn('SubProcesses/P1_x', result)
+        # a failed measurement too
+        root2 = os.path.join(self.tmp, 'out')
+        from unittest import mock
+        self.hrf.write_state(pdir, dict(self.hrf.read_state(pdir), cards=['x']))
+        with mock.patch.object(self.hrf.ProbeTree, 'measure',
+                               side_effect=RuntimeError('no build')), \
+             mock.patch.object(self.hrf, 'write_build', return_value=None) as write:
+            self.hrf.update(root2, [self.cards['b']], ['SubProcesses/P1_x'])
+        write.assert_called_once()
+        self.assertIsNone(write.call_args[0][2])
+
+    def test_launch_param_cards(self):
+        # what mg7/madtrex.py hands update() for a MadtRex reweighting. Not
+        # through that module: it imports madspace, which must not be imported
+        # before the mg7 bootstrap has installed it (later tests need it)
+        class Launch(object):
+            def __init__(self, sets):
+                self.sets = sets
+        base = os.path.join(self.tmp, 'param_card.dat')
+        with open(base, 'w') as fsock:
+            fsock.write('Block mass\n 6 1.73e2 # MT\nBlock yukawa\n 5 4.7 # ymb\n'
+                        'DECAY 6 1.5 # WT\n')
+        launches = [Launch([('yukawa', '5', '0.0')]),
+                    Launch([('MASS', '6', '175'), ('DECAY', '6', '1.4')])]
+        paths = self.hrf.launch_param_cards(base, launches, self.tmp)
+        from madgraph.models.check_param_card import ParamCard
+        first, second = (ParamCard(path) for path in paths)
+        self.assertEqual(first['yukawa'].get((5,)).value, 0.0)
+        self.assertEqual(first['mass'].get((6,)).value, 173.0)
+        self.assertEqual(second['mass'].get((6,)).value, 175.0)
+        self.assertEqual(second['decay'].get((6,)).value, 1.4)
+        # not a param_card value: no card for it
+        self.assertIsNone(self.hrf.launch_param_cards(
+            base, [Launch([('yukawa', '5', 'auto')])], self.tmp))
+
+    def test_recipe_hands_the_flavour_tables_to_the_dialect(self):
+        # a build rewritten at launch is written from the recipe read back
+        # from its JSON file: the P1N flavour tables (hr_recipe's dialect) must
+        # reach the recycler's dialect from there, their (k1, k2) pairs lists
+        import json
+        from unittest import mock
+        from madmatrix.model_handling import OneProcessExporterMadMatrix
+        tables = {'flvCOUPs[0]': [(0, 1), (1, 0)], 'flvCOUPs[1]': [(0, 1), (0, 2)],
+                  'flvCOUPs_dep[0]': None}
+        recipe = json.loads(json.dumps({
+            'version': 1, 'calls': [], 'helicities': [[1, 1], [1, -1]],
+            'post': None, 'gauge': 'U', 'tables': {}, 'max_stmts': 0,
+            'chunk': None, 'dialect': {'p1n_flavour_tables': tables}}))
+        seen = []
+
+        class Stop(Exception):
+            pass
+
+        class Recycler(object):
+            def __init__(self, *args, **opts):
+                seen.append(opts['dialect'])
+
+            def set_input(self, path):
+                raise Stop()
+
+        with mock.patch.object(hel_recycle, 'HelicityRecycler', Recycler):
+            with self.assertRaises(Stop):
+                OneProcessExporterMadMatrix.write_recycled_recipe(
+                    self.tmp, recipe, [1, 2], [])
+        dialect, = seen
+        self.assertEqual(dialect.p1n_flavour_tables,
+                         {'flvCOUPs[0]': [[0, 1], [1, 0]],
+                          'flvCOUPs[1]': [[0, 1], [0, 2]], 'flvCOUPs_dep[0]': None})
+        # and the dialect reads them as it reads the exporter's tuples
+        self.assertTrue(dialect.p1n_follows_flavour(['flvCOUPs[0]', 'COUPs[3]']))
+        self.assertFalse(dialect.p1n_follows_flavour(['flvCOUPs[1]']))
+        self.assertFalse(dialect.p1n_follows_flavour(['flvCOUPs_dep[0]']))
+        self.assertTrue(dialect.p1n_follows_flavour(['COUPs[3]']))
+
+
+class TestGoodHelIds(unittest.TestCase):
+    """NHEL(0,k) of the recycled matrix element is the 1-based id of that
+    helicity in the original NHEL table.
+
+    SMATRIX returns it as the selected helicity and get_nhel reads the LHE
+    spin column back from it, where row 0 is the number of spin states: a
+    0-based id puts every event on the previous combination."""
+
+    # e+ e- > mu+ mu- ordering, only the four helicity conserving ones survive
+    ALL_HEL = [(-1, 1, 1, -1), (-1, 1, 1, 1), (-1, 1, -1, -1), (-1, 1, -1, 1),
+               (1, -1, 1, -1), (1, -1, 1, 1), (1, -1, -1, -1), (1, -1, -1, 1)]
+    GOOD = ['1', '4', '5', '8']
+
+    def recycled_nhel_lines(self, hel_filt):
+        recycler = hel_recycle.HelicityRecycler(self.GOOD)
+        recycler.hel_filt = hel_filt
+        recycler.prepare_bools()
+        for i, hel in enumerate(self.ALL_HEL, 1):
+            recycler.get_good_hel('      DATA (NHEL(I,%4d),I=1,4) /%s/\n'
+                                  % (i, ','.join('%2d' % h for h in hel)))
+        recycler.get_good_hel('C     ----------\n')
+        lines = recycler.template_dict['helicity_lines'].split('\n')
+        return dict((tuple(int(h) for h in l.split('/')[1].split(',')[1:]),
+                     int(l.split('/')[1].split(',')[0]))
+                    for l in lines if 'NHEL' in l)
+
+    def assertOriginalIds(self, nhel, expected_hel):
+        self.assertEqual(sorted(nhel), sorted(expected_hel))
+        for hel, old_id in nhel.items():
+            self.assertEqual(self.ALL_HEL[old_id - 1], hel)
+
+    def test_hel_recycling_ids_with_filtering(self):
+        """hel_filtering = True keeps the good helicities with their own id"""
+
+        nhel = self.recycled_nhel_lines(True)
+        self.assertOriginalIds(nhel,
+                               [self.ALL_HEL[int(i) - 1] for i in self.GOOD])
+
+    def test_hel_recycling_ids_without_filtering(self):
+        """hel_filtering = False keeps them all, ids still start at 1"""
+
+        nhel = self.recycled_nhel_lines(False)
+        self.assertOriginalIds(nhel, self.ALL_HEL)
+        self.assertEqual(min(nhel.values()), 1)
+
+
+class TestFortranRecyclerRegression(unittest.TestCase):
+    """madevent's own recycler (the Fortran output, on by default in every
+    madevent run) shares its algorithm with the C++ dialect: the DAG, the good-
+    helicity and vanishing-amplitude filters and the P1N split plan. Its output
+    must not change with that sharing. Each case is a matrix1_orig.f and
+    template_matrix1.f of a madevent output, the arguments gen_ximprove passes
+    (good helicities, vanishing amplitudes, vanishing (helicity, amplitude)
+    pairs, gauge) and the matrix1_optim.f that main's recycler wrote for them
+    before the C++ work (tests/input_files/hel_recycle_fortran); the cases run
+    one after the other in this process, as the P directories of one output
+    do in gen_ximprove."""
+
+    CASES = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
+                         os.pardir, 'input_files', 'hel_recycle_fortran')
+
+    def test_the_fortran_output_is_unchanged(self):
+        import json
+        cases = sorted(os.listdir(self.CASES))
+        self.assertEqual(len(cases), 5)
+        tmpdir = tempfile.mkdtemp()
+        try:
+            for case in cases:
+                src = os.path.join(self.CASES, case)
+                args = json.load(open(os.path.join(src, 'recycler_args.json')))
+                recycler = hel_recycle.HelicityRecycler(
+                    args['good_hels'], args['bad_amps'],
+                    [tuple(pair) for pair in args['bad_amps_perhel']],
+                    gauge=args['gauge'])
+                recycler.hel_filt = True
+                recycler.amp_splt = True
+                recycler.amp_filt = True
+                out = os.path.join(tmpdir, case + '_optim.f')
+                recycler.set_input(os.path.join(src, 'matrix1_orig.f'))
+                recycler.set_output(out)
+                recycler.set_template(os.path.join(src, 'template_matrix1.f'))
+                recycler.generate_output_file()
+                del recycler
+                with open(os.path.join(src, 'matrix1_optim.f')) as fsock:
+                    expected = fsock.read()
+                with open(out) as fsock:
+                    got = fsock.read()
+                self.assertEqual(got, expected, 'the recycled Fortran of %s changed' % case)
+        finally:
+            shutil.rmtree(tmpdir)

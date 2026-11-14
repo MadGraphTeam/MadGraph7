@@ -13,14 +13,19 @@
 #
 ################################################################################
 from __future__ import absolute_import
+import array
+import random
+import glob
 import subprocess
 import unittest
 import os
 import re
+import shlex
 import shutil
 import sys
 import logging
 import tempfile
+import glob
 
 pjoin = os.path.join
 
@@ -42,6 +47,44 @@ from madgraph import MG4DIR, MG5DIR, MadGraph5Error, InvalidCmd
 from tests import test_manager
 
 _v4_model_path = os.path.join(MG5DIR, 'tests', 'input_files', 'full_sm')
+
+# test_madmatrix_hel_recycling_several_libraries: |M|^2 (helicity sum) through
+# umami of a sequence of madmatrix subprocess libraries, in one process.
+# usage: <param_card> '[[library, momenta (check_sa --dump-momenta), npar], ...]'
+# prints the |M|^2 of every call as one JSON list.
+_UMAMI_SEQUENCE_DRIVER = '''
+import ctypes, json, os, sys
+card = sys.argv[1].encode()
+libs = {}
+out = []
+for path, momenta, npar in json.loads(sys.argv[2]):
+    if path not in libs:
+        # madspace loads them with dlopen(RTLD_NOW): RTLD_GLOBAL on macOS
+        lib = ctypes.CDLL(path, mode=os.RTLD_NOW)
+        handle = ctypes.c_void_p()
+        assert lib.umami_initialize(ctypes.byref(handle), card) == 0
+        libs[path] = (lib, handle)
+    lib, handle = libs[path]
+    raw = open(momenta, 'rb').read()
+    count = len(raw) // (8 * 4 * npar)
+    point = (ctypes.c_double * (4 * npar * count)).from_buffer_copy(raw)
+    mom = (ctypes.c_double * (4 * npar * count))()
+    for ievt in range(count):  # (E,px,py,pz) per leg per event -> momenta[mu][leg][event]
+        for ipart in range(npar):
+            for mu in range(4):
+                mom[count * (npar * mu + ipart) + ievt] = point[(ievt * npar + ipart) * 4 + mu]
+    me = (ctypes.c_double * count)()
+    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_OUT_MATRIX_ELEMENT = 0
+    status = lib.umami_matrix_element(
+        handle, ctypes.c_size_t(count), ctypes.c_size_t(count), ctypes.c_size_t(0),
+        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+        (ctypes.c_void_p * 1)(ctypes.addressof(mom)),
+        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+        (ctypes.c_void_p * 1)(ctypes.addressof(me)))
+    assert status == 0, status
+    out.append(list(me))
+print(json.dumps(out))
+'''
 
 #===============================================================================
 # TestCmd
@@ -177,7 +220,6 @@ class TestCmdShell1(unittest.TestCase):
                     'golem': 'auto',
                     'run_mode': 2,
                     'pythia-pgs_path': './pythia-pgs', 
-                    'td_path': './td', 
                     'delphes_path': './Delphes', 
                     'default_unset_couplings': 99,
                     'checkpointing': False,
@@ -186,7 +228,6 @@ class TestCmdShell1(unittest.TestCase):
                     'cluster_vacatetime': '120',
                     'enforce_shared_disk': False,
                     'cluster_status_update': (600, 30),
-                    'madanalysis_path': './MadAnalysis', 
                     'cluster_temp_path': None, 
                     'fortran_compiler': None, 
                     'cpp_compiler': None,
@@ -194,7 +235,6 @@ class TestCmdShell1(unittest.TestCase):
                     'eps_viewer': None, 
                     'automatic_html_opening': True, 
                     'pythia8_path': './HEPTools/pythia8',
-                    'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                     'madanalysis5_path': './HEPTools/madanalysis5/madanalysis5',
                     'group_subprocesses': 'Auto',
                     'complex_mass_scheme': False,
@@ -203,6 +243,7 @@ class TestCmdShell1(unittest.TestCase):
                     'color_basis': 'auto',
                     'gauge': 'unitary',
                     'output_dependencies': 'external',
+                    'plain': False,
                     'dmtcp': None,
                     'lhapdf': 'lhapdf-config',
                     'lhapdf_py2': None,
@@ -224,7 +265,8 @@ class TestCmdShell1(unittest.TestCase):
                     'syscalc_path':'./SysCalc',
                     'collier':'./HEPTools/lib',
                     'hepmc_path': './hepmc',
-                    'hwpp_path': './herwigPP',
+                    'hepmc3_path': './HEPTools/hepmc3',
+                    'herwig7_path': './herwig7',
                     'thepeg_path': './thepeg',
                     #'applgrid': 'applgrid-config',
                     'pineappl': 'pineappl',
@@ -239,7 +281,9 @@ class TestCmdShell1(unittest.TestCase):
                     'samurai': None,
                     'max_t_for_channel': 99,
                     'zerowidth_tchannel': True,
+                    'zerowidth_external': True,
                     'auto_convert_model': True,
+                    'auto_gauge': True,
                     'nlo_mixed_expansion': True,
                     'acknowledged_v3.1_syntax': True,
                     'contur_path': './HEPTools/contur',
@@ -348,7 +392,6 @@ class TestCmdShell2(unittest.TestCase,
         self.cmd.do_import('model sm', force=True)
         self.do('set group_subprocesses False')
         self.do('generate e+ e- > e+ e-')
-#        self.do('load processes %s' % self.join_path(_pickle_path,'e+e-_e+e-.pkl'))
         self.do('output madevent %s -nojpeg' % self.out_dir)
 
         self.assertTrue(os.path.exists(self.out_dir))
@@ -362,8 +405,6 @@ class TestCmdShell2(unittest.TestCase,
         #                                            'ident_card.dat')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                  'Cards', 'run_card_default.dat')))
-        self.assertTrue(os.path.exists(os.path.join(self.out_dir,
-                                                 'Cards', 'plot_card_default.dat')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                     'Source',
                                                     'maxconfigs.inc')))
@@ -577,7 +618,33 @@ class TestCmdShell2(unittest.TestCase,
                                                'SubProcesses', 'P0_epem_epem')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                'Cards', 'proc_card_mg5.dat')))
-    
+
+    def test_output_standalone_fortran_make_all_subprocesses(self):
+        """A plain 'make' in the SubProcesses directory of a standalone_fortran
+        output (without --prefix) must build the python module of every P
+        directory. The per-directory rules used to come before 'all', so the
+        default goal was the module of the first P directory only."""
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+
+        self.do('import model sm')
+        self.do('generate p p > t t~')
+        self.do('output standalone_fortran %s' % self.out_dir)
+
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = sorted(d for d in os.listdir(proc_root)
+                      if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertGreaterEqual(len(dirs), 2, dirs)
+
+        # a dry run is enough: the per-directory rules call a plain 'make'
+        # (not $(MAKE)), so -n prints them without needing f2py
+        dry_run = subprocess.run(['make', '-n'], cwd=proc_root,
+                                 capture_output=True, text=True)
+        self.assertEqual(dry_run.returncode, 0, dry_run.stderr)
+        for d in dirs:
+            self.assertIn('cd %s;make matrix2py.so' % d, dry_run.stdout)
+
     def test_custom_propa(self):
         """check that using custom propagator is working"""
         
@@ -631,7 +698,9 @@ class TestCmdShell2(unittest.TestCase,
                            re.IGNORECASE)
         me_groups = me_re.search(log_output)
         self.assertTrue(me_groups)
-        self.assertAlmostEqual(float(me_groups.group('value')), 0.592626100)
+        # value shifted at the 7th digit by the NHEL helicity-summation reorder
+        # (MG7 --crossing branch); physics unchanged.
+        self.assertAlmostEqual(float(me_groups.group('value')), 0.5926263)
         
     def test_ufo_aloha_merged(self):
         """Test the import of models and the export of Helas Routine """
@@ -821,7 +890,12 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
-        self.do('generate p p  > w+ w- j j  QCD=0')
+        # --use_crossing=False pins the UNFOLDED subprocess layout: this test
+        # opens the q q~ > w+ w- q q~ directory itself, which a crossing-on
+        # output would fold into a base directory. Crossing is off by default,
+        # so this only states the choice explicitly; the folded matrix element
+        # is checked by the crossing and consistency suites.
+        self.do('generate p p  > w+ w- j j  QCD=0 --use_crossing=False')
         self.do('output standalone_fortran %s ' % self.out_dir)
 
         sub_root = os.path.join(self.out_dir, 'SubProcesses')
@@ -861,10 +935,11 @@ class TestCmdShell2(unittest.TestCase,
         mixes a fixed u leg with a merged-quark leg, and asserts that the
         standalone matrix elements for the two surviving flavor
         assignments match the reference values obtained by running each
-        flavor as its own explicit process:
+        flavor as its own explicit process (see the note by ``references``
+        below: these were bumped ~0.1% by the ALOHA t-channel width drop):
 
-            u d > Z u d  ->  1.4704291881825141E-006
-            u u > Z u u  ->  3.5590322244693227E-008
+            u d > Z u d  ->  1.4718113670817815E-006
+            u u > Z u u  ->  3.5626573789048226E-008
 
         The same checks are repeated with ``--mask=False`` so the
         regression is guarded both with and without the per-flavor
@@ -878,9 +953,23 @@ class TestCmdShell2(unittest.TestCase,
         unaffected.
         """
 
+        # Reference matrix elements for u d > Z u d and u u > Z u u.
+        #
+        # Updated on the MG7 crossing branch (claude/fortran-cross-symmetry-3f13f3)
+        # after commit 4ec2ae7d5 "aloha: drop the T-channel (spacelike)
+        # propagator width at runtime". u q > Z u q proceeds through a spacelike
+        # (t-channel) electroweak propagator, and ALOHA now drops the width of a
+        # spacelike propagator: a spacelike momentum can never reach the pole, so
+        # the Breit-Wigner width term there is spurious. This shifts the matrix
+        # element by ~0.1%; it is independent of crossing and of the per-flavor
+        # mask (verified: identical for --use_crossing on/off and --mask on/off).
+        #
+        # Previous values (t-channel width kept), for reference:
+        #     (2, 1, 23, 2, 1): 1.4704291881825141e-06
+        #     (2, 2, 23, 2, 2): 3.5590322244693227e-08
         references = {
-            (2, 1, 23, 2, 1): 1.4704291881825141e-06,
-            (2, 2, 23, 2, 2): 3.5590322244693227e-08,
+            (2, 1, 23, 2, 1): 1.4718113670817815e-06,
+            (2, 2, 23, 2, 2): 3.5626573789048226e-08,
         }
 
         me_re = re.compile(
@@ -897,6 +986,9 @@ class TestCmdShell2(unittest.TestCase,
             # starts from a clean process list.
             self.cmd = Cmd.MasterCmd()
             self.do('import model sm')
+            # the references are unitary-gauge values (the process picks the
+            # FD gauge by default, which differs at the width level)
+            self.do('set gauge unitary')
             self.do('define q = u d')
             self.do('generate u q > Z u q QCD=0')
             output_cmd = 'output standalone_fortran %s' % self.out_dir
@@ -943,6 +1035,75 @@ class TestCmdShell2(unittest.TestCase,
                          'expected %s' % (label, pdg,
                                           results[pdg], expected)))
 
+    def test_standalone_crossing_folds_qqx_subprocess(self):
+        """The crossing (--use_crossing=True) counterpart of the tests below.
+
+        test_standalone_flavor_mask and test_standalone_wwjj both pass
+        --use_crossing=False because they open one specific subprocess directory,
+        which a crossing-on standalone output folds away. That leaves
+        the folded layout of this very process untested here, so cover it: with
+        crossing on the q q~ > q q~ directory must be *gone*, the output must be
+        strictly smaller, and the base subprocess that absorbed it must carry the
+        crossing machinery plus a PDG entry for the folded initial state -- i.e.
+        the subprocess is folded, not dropped.
+        """
+        def build(options, name):
+            out = pjoin(self.out_dir, name)
+            if os.path.isdir(out):
+                shutil.rmtree(out)
+            self.do('generate p p > j j QCD=0 %s' % options)
+            self.do('output standalone_fortran %s -f' % out)
+            sub = pjoin(out, 'SubProcesses')
+            return sorted(d for d in os.listdir(sub) if d.startswith('P'))
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        os.makedirs(self.out_dir)
+
+        # Both states are pinned: this test is precisely about the difference
+        # between the two, so neither arm may inherit the shipped default
+        # (TestCrossingProductDefault tests that one).
+        crossed = build('--use_crossing=True', 'crossed')
+        plain = build('--use_crossing=False', 'plain')
+
+        # Folding really happened: fewer directories, and the one the sibling
+        # tests inspect is not among them any more.
+        self.assertLess(len(crossed), len(plain),
+                        'crossing did not fold anything: %s vs %s'
+                        % (crossed, plain))
+        qqx_plain = [d for d in plain if 'QQx' in d and d.endswith('QQx')]
+        self.assertTrue(qqx_plain, 'uncrossed build lost q q~ > q q~: %s' % plain)
+        self.assertEqual([d for d in crossed if 'QQx' in d and d.endswith('QQx')],
+                         [], 'q q~ > q q~ should be folded away: %s' % crossed)
+
+        # ... and it is reachable from a surviving base rather than dropped: some
+        # base emits the crossing machinery and declares the q q~ initial state.
+        sub = pjoin(self.out_dir, 'crossed', 'SubProcesses')
+        with_machinery = []
+        for d in crossed:
+            matrix = pjoin(sub, d, 'matrix.f')
+            if not os.path.exists(matrix):
+                continue
+            text = open(matrix).read()
+            if 'APPLY_CROSSING' in text:
+                with_machinery.append(d)
+        self.assertTrue(with_machinery,
+                        'no crossed base emits the crossing machinery: %s'
+                        % crossed)
+        # GET_PDG_FOR_FLAVOR is what a caller uses to reach a folded crossing;
+        # check_sa demoes it, so the folded quark initial state must show up.
+        demoed = set()
+        for d in with_machinery:
+            check_sa = pjoin(sub, d, 'check_sa.f')
+            if not os.path.exists(check_sa):
+                continue
+            for m in re.finditer(r'PDG_FOR_FLAVOR\(\s*\d+\s*,\s*\d+\s*\)\s*=\s*'
+                                 r'(-?\d+)', open(check_sa).read()):
+                demoed.add(int(m.group(1)))
+        self.assertTrue(demoed & {1, 2, 3, 4, -1, -2, -3, -4},
+                        'no quark initial state demoed by the folded bases: %s'
+                        % sorted(demoed))
+
     def test_standalone_flavor_mask(self):
         """Acceptance test for the per-flavor masking optimization.
 
@@ -967,7 +1128,12 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
-        self.do('generate p p > j j QCD=0')
+        # --use_crossing=False pins the UNFOLDED subprocess layout: this test
+        # inspects the q q~ > q q~ directory and its per-flavor mask, and the
+        # standalone output does support crossing, so by default that subprocess
+        # is folded into a base directory. The mask of the folded matrix element
+        # is covered by the crossing suite; this one is about the plain layout.
+        self.do('generate p p > j j QCD=0 --use_crossing=False')
         devnull = open(os.devnull, 'w')
 
         def find_qqx(sub_root):
@@ -1336,6 +1502,240 @@ class TestCmdShell2(unittest.TestCase,
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
 
+    def _openmp_compile_base(self, proc_dir, source='CPPProcess.cc'):
+        """(base command, OpenMP flags) for compiling `source` in proc_dir.
+
+        `source` is matched by its file name, so a backend-owned file compiled
+        from backend/<variant>/ (SigmaKin.cc) is found as well; the path the
+        makefile gives it is appended to the base command.
+
+        The base command is the one the generated makefile itself would run,
+        read back from ``make -n`` with the ``-c <src>`` and ``-o <obj>`` pairs
+        stripped, so this test keeps following the real build flags (backend,
+        fptype, include paths, ...) instead of duplicating them.
+
+        The OpenMP flags are probed rather than assumed: gcc and a full clang
+        take plain -fopenmp, while Apple clang only understands
+        ``-Xpreprocessor -fopenmp`` together with the homebrew libomp headers.
+        Returns ``(base, None)`` when no OpenMP-capable C++ compiler is found.
+        """
+        make = subprocess.Popen(['make', '-n'], cwd=proc_dir,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        dry_run = make.communicate()[0].decode('utf-8', 'replace')
+        compile_line = [l for l in dry_run.splitlines()
+                        if re.search(r'-c \S*%s\b' % re.escape(source), l)]
+        self.assertTrue(compile_line,
+                        'make -n did not show how to compile %s:\n%s'
+                        % (source, dry_run))
+        base = shlex.split(compile_line[0])
+        self._openmp_source = base[base.index('-c') + 1]
+        for flag in ('-o', '-c'):
+            pos = base.index(flag)
+            del base[pos:pos + 2]
+
+        probe = pjoin(self.tmpdir, 'omp_probe.cc')
+        with open(probe, 'w') as fsock:
+            fsock.write('#ifndef _OPENMP\n'
+                        '#error OpenMP is not enabled\n'
+                        '#endif\n'
+                        'int main() { int s = 0;\n'
+                        '#pragma omp parallel for reduction(+:s)\n'
+                        '  for (int i = 0; i < 8; ++i) s += i;\n'
+                        '  return s == 28 ? 0 : 1; }\n')
+        candidates = [['-fopenmp'], ['-Xpreprocessor', '-fopenmp']]
+        for prefix in ('/opt/homebrew/opt/libomp', '/usr/local/opt/libomp'):
+            candidates.append(['-Xpreprocessor', '-fopenmp',
+                               '-I%s/include' % prefix])
+        devnull = open(os.devnull, 'w')
+        for flags in candidates:
+            cmd = base + flags + ['-c', probe, '-o', probe + '.o']
+            if subprocess.call(cmd, cwd=proc_dir,
+                               stdout=devnull, stderr=devnull) == 0:
+                return base, flags
+        return base, None
+
+    def test_standalone_mg7_openmp(self):
+        """The standalone (madmatrix) sigmaKin must compile with OpenMP.
+
+        sigmaKin is backend-owned (backend/<variant>/SigmaKin.cc, compiled in
+        every P* directory). The CPU branch of sigmaKin runs the event-page loop under
+        ``#pragma omp parallel for default( none )``, so *every* variable the
+        loop body touches has to be named in the shared() clause -- anything
+        missing is a hard compile error, not a warning. Three sigmaKin
+        arguments used inside the loop (iflavorVec, allrnddiagram and
+        allDiagramIdsOut) were absent from it, so the generated code did not
+        build at all once OpenMP was on.
+
+        Nothing caught that, because nothing ever builds this path: OpenMP is
+        opt-in via USEOPENMP=1 (#758), madmatrix.mk force-disables it on Darwin,
+        and no CI job sets it. This test therefore does not go through
+        USEOPENMP: it compiles the generated file directly with whatever OpenMP
+        flags this compiler accepts, which keeps it meaningful on macOS too.
+        """
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model sm')
+        self.do('generate g g > t t~')
+        self.do('output standalone %s -f' % self.out_dir)
+
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = sorted(d for d in os.listdir(proc_root)
+                      if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertTrue(dirs, 'standalone produced no subprocess directory')
+        proc_dir = pjoin(proc_root, dirs[0])
+
+        base, omp_flags = self._openmp_compile_base(proc_dir, 'SigmaKin.cc')
+        if omp_flags is None:
+            self.skipTest('no OpenMP-capable C++ compiler on this machine')
+
+        obj = pjoin(self.tmpdir, 'SigmaKin_omp.o')
+        build = subprocess.Popen(base + omp_flags +
+                                 ['-c', self._openmp_source, '-o', obj],
+                                 cwd=proc_dir, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT)
+        log = build.communicate()[0].decode('utf-8', 'replace')
+        self.assertEqual(build.returncode, 0,
+                         'SigmaKin.cc does not compile with OpenMP (%s):\n%s'
+                         % (' '.join(omp_flags), log))
+
+        # Guard against the test going vacuous: if the parallel region were ever
+        # compiled out, the object would carry no OpenMP runtime call and the
+        # shared() clause above would no longer be exercised.
+        try:
+            symbols = subprocess.check_output(['nm', obj],
+                                              stderr=subprocess.STDOUT)
+            symbols = symbols.decode('utf-8', 'replace')
+        except (OSError, subprocess.CalledProcessError):
+            symbols = None    # no usable nm: keep the compile check only
+        if symbols is not None:
+            self.assertTrue('GOMP_parallel' in symbols or
+                            'kmpc_fork_call' in symbols,
+                            'SigmaKin.o has no OpenMP runtime call, so the '
+                            'parallel sigmaKin loop was not compiled')
+
+    def _standalone_me(self, output_format, make_args=()):
+        """Output the current process as `output_format` ('standalone', the
+        madmatrix one, or 'standalone_fortran'), build its check driver and
+        return the matrix element it prints at its RAMBO point (1000 GeV)."""
+        devnull = open(os.devnull, 'w')
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('output %s %s -f' % (output_format, self.out_dir))
+        fortran = output_format == 'standalone_fortran'
+        if fortran:
+            subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                            cwd=pjoin(self.out_dir, 'Source'))
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = sorted(d for d in os.listdir(proc_root)
+                      if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertEqual(len(dirs), 1, 'one subprocess expected for %s'
+                         % output_format)
+        proc_dir = pjoin(proc_root, dirs[0])
+        target = ['make', 'check'] if fortran else ['make'] + list(make_args)
+        self.assertEqual(0, subprocess.call(target, stdout=devnull,
+                                            stderr=devnull, cwd=proc_dir),
+                         '%s did not build' % output_format)
+        log = pjoin(proc_dir, 'check.log')
+        subprocess.call('%s 1000' % ('./check' if fortran else './check_sa.exe'),
+                        stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                        cwd=proc_dir, shell=True)
+        found = me_re.findall(open(log).read())
+        self.assertEqual(len(found), 1, '%s produced no matrix element '
+                         '(see %s)' % (output_format, log))
+        return float(found[0])
+
+    def test_polarised_propagator_madmatrix_vs_fortran(self):
+        """A polarised propagator of a massive vector -- 'w+{0}' decayed
+        further, the P1L form of aloha/create_aloha.py, and the auxiliary
+        'w+{A}' -- builds and gives the Fortran value in the standalone
+        (madmatrix) output, which is what the mg7 output runs. Its custom
+        denominator carries the width term i M Gamma, which madmatrix used to
+        write as the Python literal '(-0+1j)': the output did not compile.
+        Both drivers evaluate the same RAMBO point, and the mixed-precision
+        madmatrix build is within 1e-6 of the double-precision Fortran one."""
+        self.do('import model sm')
+        for proc in ('e+ e- > w+{0} w-, w+ > mu+ vm',
+                     't > w+{A} b, w+ > ta+ vt'):
+            self.do('generate %s' % proc)
+            madmatrix = self._standalone_me('standalone')
+            fortran = self._standalone_me('standalone_fortran')
+            self.assertNotEqual(fortran, 0., proc)
+            self.assertAlmostEqual(madmatrix / fortran, 1., delta=1e-6,
+                                   msg='%s: madmatrix %r vs Fortran %r'
+                                   % (proc, madmatrix, fortran))
+
+    def test_fd_polarised_propagator_madmatrix_vs_fortran(self):
+        """FD gauge: the polarised propagators (the ordinary FD wavefunction
+        projected on one piece of the five-component numerator instead of the
+        full projector) give the same value in the Fortran standalone (library
+        routine fd_polarized_propagator) and in madmatrix (inlined), here built
+        in double precision, for every brace. Before, the Fortran output
+        crashed at run time (SIGBUS) and the madmatrix one did not compile.
+
+        The transverse pieces are the same in the FD and unitary gauges, so
+        {T}, {+}, {-} must also equal their unitary-gauge values at this
+        (off-shell) point.
+
+        The madmatrix comparison runs without flavour grouping: with the
+        leptons merged the FD madmatrix output of a top decay into a tau
+        returns 0 even without polarisation, a separate bug
+        (test_fd_polarised_propagator_madmatrix_flavour_grouping). The default
+        configuration, flavour grouping on, is checked with the Fortran output,
+        which must give the same values."""
+        braces = ('0', 'T', '+', '-', 'A', 'S', '0S')
+        try:
+            self.do('import model sm')
+            self.do('set gauge FD')
+            grouped = {}
+            for brace in braces:
+                self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                grouped[brace] = self._standalone_me('standalone_fortran')
+
+            self.do('set apply_flavor_grouping False')
+            self.do('import model sm')
+            self.do('set gauge FD')
+            for brace in braces:
+                proc = 't > w+{%s} b, w+ > ta+ vt' % brace
+                self.do('generate %s' % proc)
+                madmatrix = self._standalone_me('standalone', ['FPTYPE=d'])
+                fortran = self._standalone_me('standalone_fortran')
+                self.assertNotEqual(fortran, 0., proc)
+                self.assertAlmostEqual(madmatrix / fortran, 1., delta=1e-12,
+                                       msg='%s: madmatrix %r vs Fortran %r'
+                                       % (proc, madmatrix, fortran))
+                self.assertAlmostEqual(grouped[brace] / fortran, 1., delta=1e-12,
+                                       msg='%s: flavour grouping %r vs none %r'
+                                       % (proc, grouped[brace], fortran))
+            self.do('set gauge unitary')
+            for brace in ('T', '+', '-'):
+                self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                unitary = self._standalone_me('standalone_fortran')
+                self.assertAlmostEqual(grouped[brace] / unitary, 1., delta=1e-12,
+                                       msg='{%s}: FD %r vs unitary %r'
+                                       % (brace, grouped[brace], unitary))
+        finally:
+            self.do('set gauge unitary')
+            self.do('set apply_flavor_grouping True')
+
+    def test_fd_polarised_propagator_madmatrix_flavour_grouping(self):
+        """The default configuration of the mg7 output: FD gauge, flavour
+        grouping on, madmatrix. With the leptons merged the FD madmatrix output
+        of a top decay into a tau used to return 0, polarised or not (the
+        merged W/Goldstone couplings of an off-diagonal lepton pair, fixed in
+        madmatrix/model_handling.py); it now equals the Fortran output."""
+        try:
+            self.do('import model sm')
+            self.do('set gauge FD')
+            self.do('generate t > w+{0} b, w+ > ta+ vt')
+            madmatrix = self._standalone_me('standalone', ['FPTYPE=d'])
+            fortran = self._standalone_me('standalone_fortran')
+            self.assertNotEqual(fortran, 0.)
+            self.assertAlmostEqual(madmatrix / fortran, 1., delta=1e-12)
+        finally:
+            self.do('set gauge unitary')
+
     def test_standalone_split_orders_interference(self):
         """standalone (madmatrix) must return the squared-order contribution asked for.
 
@@ -1398,6 +1798,618 @@ class TestCmdShell2(unittest.TestCase,
                                msg='the squared-order components do not add up '
                                    'to the total this backend computes')
 
+    def test_standalone_interference_helicity_choice(self):
+        """the helicity drawn for an interference |M|^2 follows madevent.
+
+        A helicity can contribute negatively to an interference, so choosing it
+        on the signed running sum over the helicities (the positive case)
+        picks it with no meaningful probability. madmatrix follows madevent
+        instead when the caller draws the helicity (umami's random helicity
+        input, i.e. event generation): helicity i with probability
+        |T_i| / sum_j |T_j|, and the event gets sign(T_i) * sum_j |T_j|. That
+        averages back to the helicity sum sum_j T_j, which is what is returned
+        when no random number is given.
+
+        ``u u~ > t t~ g QED^2==2`` (the QCD-EW interference behind the tt~
+        charge asymmetry) has helicities of both signs at almost every RAMBO
+        point. Each point is evaluated on a uniform grid of helicity random
+        numbers, through the umami interface of the library:
+
+        * |M|^2 is the same, sum_j |T_j|, for every draw;
+        * every helicity always comes with the same sign;
+        * the average over the grid is the helicity sum, to the grid step;
+        * the points with mixed signs give both signs, with
+          sum_j |T_j| > |sum_j T_j|: the signed choice gives a constant |M|^2,
+          and would fail here.
+        """
+        import ctypes
+        import glob
+        import struct
+
+        self.do('import model sm')
+        self.do('generate u u~ > t t~ g QED^2==2')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        devnull = open(os.devnull, 'w')
+        self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'], stdout=devnull,
+                                            stderr=devnull, cwd=proc_dir))
+        npar, npoints, ngrid = 5, 16, 4000
+        momfile = pjoin(proc_dir, 'momenta.bin')
+        subprocess.call(['./check_sa.exe', 'perf', '--dump-momenta', momfile,
+                         '1', str(npoints), '1'], cwd=proc_dir,
+                        stdout=devnull, stderr=devnull)
+        raw = open(momfile, 'rb').read()
+        momenta = struct.unpack('%dd' % (len(raw) // 8), raw)
+        self.assertEqual(len(momenta), npoints * npar * 4)
+
+        # The process library finds its common library through its own
+        # loader-relative rpath: no RTLD_GLOBAL preload, which would leak this
+        # process's symbols into every library loaded later in this (shared)
+        # test process.
+        libdir = pjoin(self.out_dir, 'lib')
+        # libmadmatrix_<model>_<Pdir>_<backend>_<fptype>.so
+        lib = ctypes.CDLL([path for path in glob.glob(pjoin(libdir, 'libmadmatrix_*_P*.so'))
+                           if 'libmadmatrix_common' not in path][0])
+        handle = ctypes.c_void_p()
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat').encode()
+        self.assertEqual(0, lib.umami_initialize(ctypes.byref(handle), card))
+        self.addCleanup(lib.umami_free, handle)
+        # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_RANDOM_HELICITY = 4,
+        # UMAMI_OUT_MATRIX_ELEMENT = 0, UMAMI_OUT_HELICITY_INDEX = 3
+        IN_MOMENTA, IN_RANDOM_HELICITY = 0, 4
+        OUT_MATRIX_ELEMENT, OUT_HELICITY_INDEX = 0, 3
+
+        def evaluate(point, draw):
+            count = ngrid if draw else 1
+            mom = (ctypes.c_double * (4 * npar * count))()
+            for ipart in range(npar):  # momenta[count * (npar * mu + ipart) + ievt]
+                for mu in range(4):
+                    start = count * (npar * mu + ipart)
+                    mom[start:start + count] = [point[ipart * 4 + mu]] * count
+            me = (ctypes.c_double * count)()
+            hel = (ctypes.c_int * count)()
+            rnd = (ctypes.c_double * count)(
+                *[(k + 0.5) / count for k in range(count)])
+            in_keys = [IN_MOMENTA] + ([IN_RANDOM_HELICITY] if draw else [])
+            inputs = [mom] + ([rnd] if draw else [])
+            out_keys = [OUT_MATRIX_ELEMENT] + ([OUT_HELICITY_INDEX] if draw else [])
+            outputs = [me] + ([hel] if draw else [])
+            status = lib.umami_matrix_element(
+                handle, ctypes.c_size_t(count), ctypes.c_size_t(count),
+                ctypes.c_size_t(0), ctypes.c_size_t(len(in_keys)),
+                (ctypes.c_int * len(in_keys))(*in_keys),
+                (ctypes.c_void_p * len(inputs))(
+                    *[ctypes.addressof(a) for a in inputs]),
+                ctypes.c_size_t(len(out_keys)),
+                (ctypes.c_int * len(out_keys))(*out_keys),
+                (ctypes.c_void_p * len(outputs))(
+                    *[ctypes.addressof(a) for a in outputs]))
+            self.assertEqual(status, 0)
+            return list(me), list(hel)
+
+        mixed = 0
+        for ipoint in range(npoints):
+            point = momenta[ipoint * npar * 4:(ipoint + 1) * npar * 4]
+            (helicity_sum,), _ = evaluate(point, False)
+            me, hel = evaluate(point, True)
+            abs_sum = abs(me[0])
+            signs = {}
+            for value, ihel in zip(me, hel):
+                self.assertAlmostEqual(abs(value), abs_sum, delta=1e-12 * abs_sum)
+                self.assertEqual(signs.setdefault(ihel, value > 0), value > 0,
+                                 'helicity %d came with both signs' % ihel)
+            # the grid step bounds the error of each helicity's interval
+            self.assertAlmostEqual(sum(me) / ngrid, helicity_sum,
+                                   delta=len(signs) * abs_sum / ngrid)
+            if len(set(signs.values())) == 2:
+                mixed += 1
+                self.assertGreater(abs_sum, abs(helicity_sum) * (1 + 1e-6))
+        # 15 of the 16 points when this test was written
+        self.assertGreater(mixed, npoints // 2)
+
+        # run card [generation] interference_helicity = "summed": the instance
+        # keeps the helicity sum as the |M|^2 of every draw (mg7 then writes the
+        # helicities as 9)
+        lib.umami_set_parameter.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
+                                            ctypes.c_double, ctypes.c_double]
+        self.assertEqual(0, lib.umami_set_parameter(
+            handle, b'interference_helicity_summed', 1., 0.))
+        for ipoint in range(4):
+            point = momenta[ipoint * npar * 4:(ipoint + 1) * npar * 4]
+            (helicity_sum,), _ = evaluate(point, False)
+            me, _hel = evaluate(point, True)
+            for value in me:
+                self.assertAlmostEqual(value, helicity_sum,
+                                       delta=1e-12 * abs(helicity_sum))
+
+    def test_standalone_umami_first_call(self):
+        """the helicities kept, and the |M|^2, do not depend on the first umami call.
+
+        The good helicities of an instance are chosen at run time, as in the
+        Fortran standalone output: every helicity is evaluated on the first 16
+        events, and a helicity is kept if it contributes to one of them. They
+        were once chosen on the first umami_matrix_element call alone, so that
+        * a first call of special points dropped, for the rest of the run, the
+          helicities that vanish there: after one event in the exact forward
+          direction, u u~ > e+ e- came out wrong by factors 5 to 100;
+        * a first call shorter than a SIMD page was padded with zero events,
+          which evaluate to nan, and every helicity was kept (twice the work
+          for a q q~ initial state).
+        A first call is now one of the 16 events, and the padding lanes of a
+        batch are copies of real events, which do not count among them.
+
+        p p > e+ e- has two flavor indices (d and u type) and only 4 of its 16
+        helicities do not vanish. For the scalar backend and simd_128 in double
+        and in mixed precision (one and two SIMD pages at a time), with a first
+        call of one generic event, of 16 events, or of one forward event, then
+        16 generic events (the choice is made):
+        * the same helicities are kept, fewer than 16
+          (madmatrix_good_helicity_count);
+        * the same |M|^2 come out afterwards, and a batch whose flavors
+          alternate, leaving partial pages, gives the |M|^2 of single-event
+          calls, event by event.
+
+        The helicities are chosen per instance, so each first call runs in its
+        own process, with an instance of its own. The choice of an mg7 run (see
+        test_madmatrix_helicity_choice_every_thread) is checked too:
+        madmatrix_get_helicity_choice says -1 while an instance is still
+        choosing; madmatrix_choose_good_helicities chooses the same helicities
+        on RAMBO points of a collider; an instance given a choice
+        (madmatrix_set_helicity_choice) keeps it, here that of 16 forward
+        events, on generic events; a choice of a helicity the process does not
+        have is refused.
+        """
+        self._check_umami_first_call([('scalar', 'd', 1e-12),
+                                      ('simd_128', 'd', 1e-12),
+                                      ('simd_128', 'm', 1e-6)])
+
+    def test_standalone_umami_two_to_one(self):
+        """a 2 > 1 keeps the helicities of every frame, whatever the first call.
+
+        RAMBO has no phase space for a 2 > 1, so its good helicities were still
+        chosen at the first umami_matrix_element call. For u d~ > w+ with the
+        beams along z, the W at rest has one J_z: two of its three rows vanish.
+        After a first call there, |M|^2 with the beams along x was 4 times too
+        small. The scan at initialization now draws the beam axis at random.
+        For the scalar backend, after a first call with the beams along z:
+        3 helicities are kept, and |M|^2 is the same with the beams along z, x,
+        y and in a boosted frame.
+        """
+        import glob
+        import json
+        import textwrap
+
+        self.do('import model sm')
+        self.do('generate u d~ > w+')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        make = subprocess.run(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              cwd=proc_dir)
+        self.assertEqual(0, make.returncode, make.stdout.decode(errors='replace')[-3000:])
+        lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_P*_scalar.so'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        helper = pjoin(self.out_dir, 'umami_two_to_one.py')
+        with open(helper, 'w') as fsock:
+            fsock.write(textwrap.dedent('''\
+                import ctypes, json, math, sys
+                lib = ctypes.CDLL(sys.argv[1])
+                handle = ctypes.c_void_p()
+                assert lib.umami_initialize(ctypes.byref(handle), sys.argv[2].encode()) == 0
+                npar = 3
+                masses = (ctypes.c_double * npar)()
+                assert lib.umami_get_meta(5, masses) == 0  # umami.h: UMAMI_META_MASSES = 5
+                mw = masses[2]
+
+                def point(axis, beta=0.):  # beams along axis at sqrt(s) = mw, boosted along x
+                    e = mw / 2
+                    p = [[e] + [e * x for x in axis], [e] + [-e * x for x in axis], [mw, 0, 0, 0]]
+                    g = 1 / math.sqrt(1 - beta * beta)
+                    return [[g * (q[0] + beta * q[1]), g * (q[1] + beta * q[0]), q[2], q[3]] for q in p]
+
+                def evaluate(p):
+                    mom = (ctypes.c_double * (4 * npar))()
+                    for ipart in range(npar):  # momenta[npar * mu + ipart]
+                        for mu in range(4):
+                            mom[npar * mu + ipart] = p[ipart][mu]
+                    me = (ctypes.c_double * 1)()
+                    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_OUT_MATRIX_ELEMENT = 0
+                    assert lib.umami_matrix_element(
+                        handle, ctypes.c_size_t(1), ctypes.c_size_t(1), ctypes.c_size_t(0),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(mom)),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(me))) == 0
+                    return me[0]
+
+                first = evaluate(point((0, 0, 1)))
+                print(json.dumps({
+                    'good': lib.madmatrix_good_helicity_count(),
+                    'me': [first] + [evaluate(point(a, b)) for a, b in
+                                     (((1, 0, 0), 0.), ((0, 1, 0), 0.), ((0, 0, 1), 0.6))]}))
+                '''))
+        out = subprocess.check_output([sys.executable, helper, lib, card])
+        run = json.loads(out.decode().strip().splitlines()[-1])
+        self.assertEqual(run['good'], 3)
+        for me in run['me'][1:]:
+            self.assertAlmostEqual(me, run['me'][0], delta=1e-10 * run['me'][0])
+
+    def test_standalone_umami_below_threshold(self):
+        """a decay below threshold keeps every helicity, whatever the first call.
+
+        RAMBO has no phase space for h > w+ w- (mh < 2 mW), so the good
+        helicities were chosen at the first umami_matrix_element call, on off
+        shell W momenta. At rest only the 3 rows of equal W helicities are
+        above rounding, but the others are not 0 in a boosted frame: after a
+        first call at rest, |M|^2 there was 8.5 times too small. For the scalar
+        backend, every one of the 9 rows is now kept, and the boosted |M|^2
+        is the same after a first call at rest or in the boosted frame.
+        """
+        import glob
+        import json
+        import textwrap
+
+        self.do('import model sm')
+        self.do('generate h > w+ w-')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        make = subprocess.run(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              cwd=proc_dir)
+        self.assertEqual(0, make.returncode, make.stdout.decode(errors='replace')[-3000:])
+        lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_P*_scalar.so'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        helper = pjoin(self.out_dir, 'umami_below_threshold.py')
+        with open(helper, 'w') as fsock:
+            fsock.write(textwrap.dedent('''\
+                import ctypes, json, math, sys
+                lib = ctypes.CDLL(sys.argv[1])
+                handle = ctypes.c_void_p()
+                assert lib.umami_initialize(ctypes.byref(handle), sys.argv[2].encode()) == 0
+                npar = 3
+                masses = (ctypes.c_double * npar)()
+                assert lib.umami_get_meta(5, masses) == 0  # umami.h: UMAMI_META_MASSES = 5
+                mh, mv = masses[0], 0.4 * masses[0]  # two W of virtuality 0.4 mh
+
+                def point(beta):  # at rest, W+ along (0.3, 0.4, ...), boosted along x
+                    q = math.sqrt(mh * mh / 4 - mv * mv)
+                    n = [0.3, 0.4, math.sqrt(0.75)]
+                    p = [[mh, 0, 0, 0], [mh / 2] + [q * x for x in n],
+                         [mh / 2] + [-q * x for x in n]]
+                    g = 1 / math.sqrt(1 - beta * beta)
+                    return [[g * (k[0] + beta * k[1]), g * (k[1] + beta * k[0]), k[2], k[3]] for k in p]
+
+                def evaluate(p):
+                    mom = (ctypes.c_double * (4 * npar))()
+                    for ipart in range(npar):  # momenta[npar * mu + ipart]
+                        for mu in range(4):
+                            mom[npar * mu + ipart] = p[ipart][mu]
+                    me = (ctypes.c_double * 1)()
+                    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_OUT_MATRIX_ELEMENT = 0
+                    assert lib.umami_matrix_element(
+                        handle, ctypes.c_size_t(1), ctypes.c_size_t(1), ctypes.c_size_t(0),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(mom)),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(me))) == 0
+                    return me[0]
+
+                evaluate(point(float(sys.argv[3])))
+                print(json.dumps({'good': lib.madmatrix_good_helicity_count(),
+                                  'me': evaluate(point(0.6))}))
+                '''))
+        runs = []
+        for first in ('0', '0.6'):  # the helicities are chosen once per library
+            out = subprocess.check_output([sys.executable, helper, lib, card, first])
+            runs.append(json.loads(out.decode().strip().splitlines()[-1]))
+        for run in runs:
+            self.assertEqual(run['good'], 9)
+            self.assertAlmostEqual(run['me'], runs[1]['me'], delta=1e-10 * runs[1]['me'])
+
+    def test_standalone_umami_first_call_gpu(self):
+        """test_standalone_umami_first_call on GPUs (BACKEND=cuda, hip).
+
+        There, umami_matrix_element takes device buffers, on which the good
+        helicities are chosen (sigmaKin_getGoodHel on the device). Skipped
+        without nvcc and hipcc on the PATH, or without a device.
+        """
+        builds = [(backend, fptype, rtol)
+                  for backend, compiler in (('cuda', 'nvcc'), ('hip', 'hipcc'))
+                  if misc.which(compiler)
+                  for fptype, rtol in (('d', 1e-12), ('m', 1e-6))]
+        if not builds:
+            raise unittest.SkipTest('neither nvcc nor hipcc on the PATH')
+        self._check_umami_first_call(builds)
+
+    def test_madmatrix_helicity_choice_every_thread(self):
+        """every thread of madspace evaluates the helicities chosen from the cards.
+
+        A MadMatrix instance left to itself chooses its good helicities on the
+        first 16 events it evaluates, and madspace calls a matrix element
+        through one instance per thread: each thread would choose on the
+        events it happens to get first. An mg7 run instead chooses them before
+        the run, from its cards, on 16 RAMBO points on a CPU build
+        (madgraph/mg7/helicity_choice.py), and madspace gives that choice to
+        every instance (Context.load_matrix_element(helicity_choice=...)).
+
+        u u~ > e+ e- at 1 TeV: the choice of a scalar build for e+ e- beams
+        without PDFs, given to a madspace context of 4 threads that evaluates a
+        batch cut into 4 jobs of 256 events, each opening with 16 events in the
+        exact forward direction, where the (1 - cos theta) helicities vanish,
+        then generic events. A thread that chose on its own first events would
+        drop those helicities and get its generic events wrong, as a
+        single-thread context whose first events are forward does (checked).
+        Every |M|^2 of the batch is that of a single-thread context whose first
+        events are generic.
+        """
+        import glob
+        import json
+        import textwrap
+        from madgraph.mg7 import bootstrap
+        if not bootstrap.madspace_is_installed():
+            raise unittest.SkipTest('madspace is not installed (madspace/install)')
+
+        self.do('import model sm')
+        self.do('generate u u~ > e+ e-')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        make = subprocess.run(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              cwd=proc_dir)
+        self.assertEqual(0, make.returncode, 'the library did not build:\n%s'
+                         % make.stdout.decode(errors='replace')[-3000:])
+        lib = glob.glob(pjoin(self.out_dir, 'lib',
+                              'libmadmatrix_*_P*_scalar_d.so'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        helper = pjoin(self.out_dir, 'madspace_threads.py')
+        with open(helper, 'w') as fsock:
+            fsock.write(textwrap.dedent('''\
+                import json, math, sys
+                import numpy as np
+                import madspace as ms
+                from madgraph.mg7 import helicity_choice
+
+                def point(k):  # u u~ > e+ e- at sqrt(s) = 1 TeV: k-th direction, or forward
+                    e = 500.
+                    ct, phi = (1., 0.) if k == 'forward' else (math.cos(0.3 + 0.37 * k), 0.7 * k)
+                    st = math.sqrt(1 - ct * ct)
+                    p3 = [e * st * math.cos(phi), e * st * math.sin(phi), e * ct]
+                    return [[e, 0, 0, e], [e, 0, 0, -e], [e] + p3, [e] + [-x for x in p3]]
+
+                # 4 jobs of 256 events with 4 threads, each opening with 16 forward events
+                batch = ['forward' if k % 256 < 16 else k for k in range(1024)]
+
+                def run(threads, first, choice=()):
+                    context = ms.Context(ms.cpu_device(), threads)
+                    api = context.load_matrix_element(sys.argv[1], sys.argv[2], {}, list(choice))
+                    me = ms.MatrixElement(
+                        api.index(), 4,
+                        [ms.MatrixElement.momenta_in, ms.MatrixElement.flavor_in],
+                        [ms.MatrixElement.matrix_element_out])
+                    runtime = ms.FunctionRuntime(me.function(), context)
+                    def evaluate(ks):
+                        momenta = np.array([point(k) for k in ks])
+                        flavors = np.zeros(len(ks), dtype=np.int32)
+                        return np.asarray(runtime(momenta, flavors)).ravel().tolist()
+                    if first:
+                        evaluate(first)
+                    return evaluate(batch)
+
+                choice = helicity_choice.choose(sys.argv[1], sys.argv[2], {}, 1000., 0., False)
+                print(json.dumps({
+                    'choice': choice,
+                    'threads': run(4, [], choice),
+                    'reference': run(1, list(range(16))),
+                    'forward_first': run(1, ['forward'] * 16),
+                    'generic': [k != 'forward' for k in batch]}))
+                '''))
+        env = dict(os.environ)
+        env['PYTHONPATH'] = os.pathsep.join(
+            [str(bootstrap.INSTALL_DIR), MG5DIR]
+            + ([env['PYTHONPATH']] if env.get('PYTHONPATH') else []))
+        out = subprocess.run([sys.executable, helper, lib, card], env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(0, out.returncode, out.stdout.decode(errors='replace')[-3000:])
+        run = json.loads(out.stdout.decode().strip().splitlines()[-1])
+        self.assertTrue(run['choice'], 'no helicity choice from the cards')
+        # (not all: the dropped helicities are small for directions near the beam)
+        wrong = [abs(f - r) > 1e-3 * r for f, r, g in
+                 zip(run['forward_first'], run['reference'], run['generic']) if g]
+        self.assertGreater(sum(wrong), len(wrong) // 2, 'choosing on forward '
+                           'events alone keeps the helicities: the test cannot '
+                           'see a thread do so')
+        for k, (value, ref) in enumerate(zip(run['threads'], run['reference'])):
+            self.assertGreater(ref, 0)
+            self.assertAlmostEqual(value, ref, delta=1e-12 * ref,
+                                   msg='event %d: a thread did not evaluate the '
+                                       'helicities chosen from the cards' % k)
+
+    def _check_umami_first_call(self, builds):
+        """test_standalone_umami_first_call for these (backend, fptype, rtol)"""
+        import glob
+        import json
+        import textwrap
+
+        self.do('import model sm')
+        self.do('generate p p > e+ e-')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        helper = pjoin(self.out_dir, 'umami_first_call.py')
+        with open(helper, 'w') as fsock:
+            fsock.write(textwrap.dedent('''\
+                import ctypes, ctypes.util, json, math, subprocess, sys
+                lib = ctypes.CDLL(sys.argv[1])
+                gpu = sys.argv[4] if sys.argv[4] in ('cuda', 'hip') else None
+                if gpu:
+                    # umami takes device buffers: the CUDA/HIP runtime of the library, or
+                    # (cudart is linked statically by default) one sharing its device context
+                    name = 'cudart' if gpu == 'cuda' else 'amdhip64'
+                    ldd = subprocess.run(['ldd', sys.argv[1]], capture_output=True, text=True).stdout
+                    paths = [line.split('=>')[1].split()[0] for line in ldd.splitlines()
+                             if 'lib%s' % name in line and '=>' in line]
+                    runtime = ctypes.CDLL(paths[0] if paths else
+                                          ctypes.util.find_library(name) or 'lib%s.so' % name)
+                    ndevice = ctypes.c_int(0)
+                    if runtime[gpu + 'GetDeviceCount'](ctypes.byref(ndevice)) != 0 or not ndevice.value:
+                        print(json.dumps({'skip': 'no %s device' % gpu}))
+                        sys.exit(0)
+
+                def buffer(host):  # what umami reads or writes: host, or a device copy
+                    if not gpu:
+                        return ctypes.addressof(host)
+                    pointer = ctypes.c_void_p()
+                    size = ctypes.c_size_t(ctypes.sizeof(host))
+                    assert runtime[gpu + 'Malloc'](ctypes.byref(pointer), size) == 0
+                    # cudaMemcpyHostToDevice == hipMemcpyHostToDevice == 1
+                    assert runtime[gpu + 'Memcpy'](pointer, ctypes.c_void_p(ctypes.addressof(host)), size, 1) == 0
+                    return pointer.value
+
+                def release(pointers, output, host):  # output back into host, the device copies freed
+                    if gpu:
+                        assert runtime[gpu + 'DeviceSynchronize']() == 0
+                        # cudaMemcpyDeviceToHost == hipMemcpyDeviceToHost == 2
+                        assert runtime[gpu + 'Memcpy'](ctypes.c_void_p(ctypes.addressof(host)), ctypes.c_void_p(output),
+                                                       ctypes.c_size_t(ctypes.sizeof(host)), 2) == 0
+                        for pointer in pointers:
+                            assert runtime[gpu + 'Free'](ctypes.c_void_p(pointer)) == 0
+
+                handle = ctypes.c_void_p()
+                assert lib.umami_initialize(ctypes.byref(handle), sys.argv[2].encode()) == 0
+                npar = 4
+
+                def point(k):  # q q~ > e+ e- at sqrt(s) = 1 TeV: k-th direction, or forward
+                    e = 500.
+                    ct, phi = (1., 0.) if k == 'forward' else (math.cos(0.3 + 0.37 * k), 0.7 * k)
+                    st = math.sqrt(1 - ct * ct)
+                    p3 = [e * st * math.cos(phi), e * st * math.sin(phi), e * ct]
+                    return [[e, 0, 0, e], [e, 0, 0, -e], [e] + p3, [e] + [-x for x in p3]]
+
+                def evaluate(ks, flavors, instance=None):
+                    n = len(ks)
+                    mom = (ctypes.c_double * (4 * npar * n))()
+                    for i, k in enumerate(ks):  # momenta[n * (npar * mu + ipart) + i]
+                        for ipart, p in enumerate(point(k)):
+                            for mu in range(4):
+                                mom[n * (npar * mu + ipart) + i] = p[mu]
+                    flav = (ctypes.c_uint * n)(*flavors)
+                    me = (ctypes.c_double * n)()
+                    pointers = [buffer(mom), buffer(flav), buffer(me)]
+                    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_FLAVOR_INDEX = 2,
+                    # UMAMI_OUT_MATRIX_ELEMENT = 0
+                    status = lib.umami_matrix_element(
+                        handle if instance is None else instance,
+                        ctypes.c_size_t(n), ctypes.c_size_t(n), ctypes.c_size_t(0),
+                        ctypes.c_size_t(2), (ctypes.c_int * 2)(0, 2),
+                        (ctypes.c_void_p * 2)(pointers[0], pointers[1]),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(pointers[2]))
+                    assert status == 0, status
+                    release(pointers, pointers[2], me)
+                    return list(me)
+
+                first = {'single': [0], 'batch': list(range(16)), 'forward': ['forward']}[sys.argv[3]]
+                evaluate(first, [k % 2 if k != 'forward' else 1 for k in first])
+                # 16 more events: the good helicities are chosen on the first 16 (nlearn)
+                evaluate(range(16, 32), [k % 2 for k in range(16, 32)])
+                flavors = [0, 1, 1, 0, 1, 0, 0]
+                batch = evaluate(range(7), flavors)
+                single = [evaluate([k], [f])[0] for k, f in enumerate(flavors)]
+
+                # the choice of an mg7 run: made on RAMBO points of a collider, read
+                # off one instance and given to another, which keeps it
+                def instance():
+                    new = ctypes.c_void_p()
+                    assert lib.umami_initialize(ctypes.byref(new), sys.argv[2].encode()) == 0
+                    return new
+                def get(source):
+                    size = lib.madmatrix_get_helicity_choice(source, None, 0)
+                    if size < 0:
+                        return None
+                    choice = (ctypes.c_int * size)()
+                    lib.madmatrix_get_helicity_choice(source, choice, size)
+                    return list(choice)
+                def given(choice):
+                    taker = instance()
+                    status = lib.madmatrix_set_helicity_choice(
+                        taker, (ctypes.c_int * len(choice))(*choice), len(choice))
+                    return taker, status
+                rambo, forward = instance(), instance()
+                choosing = get(rambo)
+                choose = lib.madmatrix_choose_good_helicities
+                choose.argtypes = [ctypes.c_void_p, ctypes.c_double, ctypes.c_double, ctypes.c_int]
+                assert choose(rambo, 1000., 0., 0) == 0
+                evaluate(['forward'] * 16, [1] * 16, forward)
+                taker, status = given(get(forward))
+                assert status == 0
+                evaluate(range(16, 32), [k % 2 for k in range(16, 32)], taker)
+                refused = given([0, 1 << 20])[1]
+                print(json.dumps({
+                    'good': lib.madmatrix_good_helicity_count(handle),
+                    'batch': batch, 'single': single,
+                    'choice': {'choosing': choosing, 'rambo': get(rambo),
+                               'mine': get(handle), 'forward': get(forward),
+                               'taker': get(taker), 'refused': refused}}))
+                '''))
+
+        devnull = open(os.devnull, 'w')
+        for backend, fptype, rtol in builds:
+            build = 'BACKEND=%s FPTYPE=%s' % (backend, fptype)
+            subprocess.call(['make', 'cleanall'], stdout=devnull,
+                            stderr=devnull, cwd=proc_dir)
+            # the end of the build log in the message (the GPU CI has nothing else)
+            make = subprocess.run(['make', 'BACKEND=' + backend, 'FPTYPE=' + fptype],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  cwd=proc_dir)
+            self.assertEqual(0, make.returncode, 'the %s library did not build:\n%s'
+                             % (build, make.stdout.decode(errors='replace')[-3000:]))
+            lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_*_P*_%s_%s.so'
+                                  % (backend, fptype)))[0]
+            runs = {}
+            for first in ('single', 'batch', 'forward'):
+                out = subprocess.check_output(
+                    [sys.executable, helper, lib, card, first, backend])
+                runs[first] = json.loads(out.decode().strip().splitlines()[-1])
+                if 'skip' in runs[first]:
+                    raise unittest.SkipTest(runs[first]['skip'])
+            reference = runs['single']
+            self.assertGreater(reference['good'], 0, build)
+            self.assertLess(reference['good'], 16,
+                            '%s: no helicity was filtered out' % build)
+            choice = reference['choice']
+            self.assertIsNone(choice['choosing'], build)
+            self.assertEqual(choice['rambo'], choice['mine'], '%s: RAMBO points '
+                             'choose other helicities than generic events' % build)
+            self.assertEqual(len(choice['mine']), reference['good'] + 1, build)
+            self.assertLess(len(choice['forward']), len(choice['mine']),
+                            '%s: the forward events keep every helicity' % build)
+            self.assertEqual(choice['taker'], choice['forward'], '%s: an instance '
+                             'given a choice did not keep it' % build)
+            self.assertNotEqual(choice['refused'], 0, build)
+            for first, run in runs.items():
+                self.assertEqual(run['good'], reference['good'],
+                                 '%s: a first call of %s events keeps other '
+                                 'helicities' % (build, first))
+                for batch, single, ref in zip(run['batch'], run['single'],
+                                              reference['single']):
+                    self.assertGreater(single, 0, build)
+                    self.assertAlmostEqual(single, ref, delta=rtol * ref,
+                                           msg='%s: the |M|^2 depend on the first '
+                                               'call (%s)' % (build, first))
+                    self.assertAlmostEqual(batch, single, delta=rtol * single,
+                                           msg='%s: batch and single-event '
+                                               '|M|^2 differ' % build)
+
     def test_standalone_cpp(self):
         """test that the scalar C++ standalone exporter is working
 
@@ -1441,7 +2453,11 @@ class TestCmdShell2(unittest.TestCase,
         me_groups = me_re.search(log_output)
 
         self.assertTrue(me_groups)
-        self.assertAlmostEqual(float(me_groups.group('value')), 6.4739191,5)
+        # g g > go go: the gluino exchanged in the t/u channels carries no
+        # width -- it is an external field (zerowidth_external) and its momentum
+        # is spacelike (zerowidth_tchannel), either rule alone drops it. With
+        # both set to False this reads 6.4739191, the value that keeps it.
+        self.assertAlmostEqual(float(me_groups.group('value')), 6.4739329,5)
 
         # Cross-check standalone (madmatrix) against standalone_fortran for
         # this massive BSM process. The Fortran ./check auto-bumps the CM energy
@@ -1471,7 +2487,8 @@ class TestCmdShell2(unittest.TestCase,
         f_default = me_re.search(open(f_log).read())
         self.assertTrue(f_default,
                         'standalone_fortran produced no matrix element')
-        self.assertAlmostEqual(float(f_default.group('value')), 6.4739191, 5)
+        # same value as the C++ one above, gluino propagator width dropped
+        self.assertAlmostEqual(float(f_default.group('value')), 6.4739329, 5)
         # Reference value at the explicit above-threshold energy.
         f_e_log = os.path.join(f_dir, 'check_e.log')
         subprocess.call('./check %s' % energy,
@@ -1500,6 +2517,78 @@ class TestCmdShell2(unittest.TestCase,
                                     [float(f_me.group('value'))])
 
     
+    def test_standalone_axial_gauge_massive_fermions(self):
+        """output --axial_gauge=True builds the massless vectors in the axial
+        gauge of a reference momentum (VXXXXXR) and quantises the spin of the
+        massive final-state fermions along one (IXXXXXR / OXXXXXR): the
+        matrix element summed over the helicities is the one of the default
+        gauge and of the helicity basis, in the standalone_fortran and in the
+        standalone (madmatrix) output, for Dirac (g g > t t~ g) and for
+        Majorana (g g > go go g) fermions.
+
+        The widths are set to zero: a fixed width breaks gauge invariance, and
+        with it the independence of the references of the gluons.
+        """
+
+        me_re = re.compile(r'Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)\s*GeV',
+                           re.IGNORECASE)
+        devnull = open(os.devnull, 'w')
+
+        def matrix_element(fmt, options, routines):
+            """The matrix element of the single subprocess of this output at
+            the phase-space point of its check driver; *routines* are the
+            external wavefunctions the code has to call."""
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f %s' % (fmt, self.out_dir, options))
+            card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+            text = open(card).read()
+            zero = re.sub(r'(?mi)^(DECAY +\d+) +\S+', r'\1 0.000000e+00', text)
+            self.assertNotEqual(text, zero)
+            open(card, 'w').write(zero)
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            proc_dirs = [d for d in os.listdir(proc_root) if d.startswith('P')
+                         and os.path.isdir(pjoin(proc_root, d))]
+            self.assertEqual(len(proc_dirs), 1, proc_dirs)
+            proc_dir = pjoin(proc_root, proc_dirs[0])
+            if fmt == 'standalone_fortran':
+                source = open(pjoin(proc_dir, 'matrix.f')).read().upper()
+                build, run = ['make', 'check'], './check 2000'
+            else:
+                source = open(pjoin(proc_dir,
+                                    'EvaluateDiagrams.inc')).read().upper()
+                # FPTYPE=d: the default mixed precision rounds |M|^2 to a float
+                build, run = ['make', 'FPTYPE=d'], './check_sa.exe 2000'
+            called = set(re.findall(r'\b([IOV]XXXXXR?)\b', source))
+            self.assertEqual(called, set(routines), '%s %s' % (fmt, options))
+            self.assertEqual(0, subprocess.call(build, stdout=devnull,
+                                                stderr=devnull, cwd=proc_dir))
+            log = pjoin(proc_dir, 'check.log')
+            subprocess.call(run, stdout=open(log, 'w'),
+                            stderr=subprocess.STDOUT, cwd=proc_dir, shell=True)
+            found = me_re.search(open(log).read())
+            self.assertTrue(found, '%s %s: no matrix element' % (fmt, options))
+            return float(found.group('value'))
+
+        fermions = ['IXXXXX', 'OXXXXX']
+        cases = (('sm', 'g g > t t~ g', fermions + ['VXXXXX'],
+                  fermions + ['VXXXXXR'], ['VXXXXXR', 'IXXXXXR', 'OXXXXXR']),
+                 ('MSSM_SLHA2-full', 'g g > go go g', fermions + ['VXXXXX'],
+                  fermions + ['VXXXXXR'], ['VXXXXXR', 'IXXXXXR', 'OXXXXXR']))
+        for model, process, plain, gauged, quantised in cases:
+            self.do('import model %s' % model)
+            self.do('generate %s' % process)
+            for fmt in ('standalone_fortran', 'standalone'):
+                default = matrix_element(fmt, '', plain)
+                self.assertGreater(default, 0.)
+                vectors = matrix_element(
+                    fmt, '--axial_gauge=True --fermion_reference=False',
+                    gauged)
+                both = matrix_element(fmt, '--axial_gauge=True', quantised)
+                for value in (vectors, both):
+                    self.assertAlmostEqual(value / default, 1., delta=1e-10,
+                        msg='%s %s: %s vs %s' % (fmt, process, value, default))
+
     def test_standalone_cpp_output_consistency(self):
         """test that standalone cpp is working"""
 
@@ -1552,7 +2641,208 @@ class TestCmdShell2(unittest.TestCase,
         for i,_ in enumerate(original):
             self.assertEqual(original[i], new[i])
 
-    def _output_standalone_cpp(self, out_dir, force=False):
+    def test_standalone_cpp_cparity_dedup(self):
+        """The scalar C++ C-parity helicity de-duplication must engage, stay
+        exact, and keep the good-helicity lists inside their rows.
+
+        sigmaKin validates the pairing of every helicity row with its fully
+        flipped partner on the first 19 calls of a flavor, then computes only
+        the lower-index row of each pair and counts it twice. That reuse used
+        to sit in the helicity-sampling branch, which the default sum_hel == 0
+        mode never takes, so it never ran; and igood was filled 1-based into an
+        ncomb-long row, which for g g > t t~ (all 16 helicities good) wrote one
+        past the row and left igood[0] unset.
+
+        check_sa.cpp is replaced by a driver that counts the
+        calculate_wavefunctions calls of every sigmaKin call and dumps the
+        good-helicity bookkeeping (the header's private section is opened for
+        it). Both with and without the crossing machinery:
+          * g g > t t~: 16 rows per call while scanning, 8 once settled, the
+            same |M|^2 throughout, igood[0..ngood-1] the 16 good rows; a
+            crossed flavor_id (t t~ > g g) too: it evaluates the base rows
+            with the legs that changed side negated, so the base mirror is
+            its C-parity partner, and it scans the verdict on its own calls;
+          * u u~ > e+ e- (parity violating through the Z): the pairing is
+            refused, every call keeps the full sum.
+        The helicity-sampling mode (sum_hel > 0, set by the driver) must
+        average to the full sum, also when crossed calls of the same flavor
+        are interleaved: they used to rewind the shared sampling cursor, so
+        every uncrossed call redrew the same first representatives.
+        """
+        driver = r'''
+#include <iostream>
+#include <iomanip>
+#include <cstdlib>
+#include <cstdio>
+#include "CPPProcess.h"
+#include "rambo.h"
+
+extern long cw_count;
+
+int main(int argc, char** argv){
+  CPPProcess seed("../../Cards/param_card.dat");
+  double weight;
+  vector<double*> p = get_momenta(seed.ninitial, 1000., seed.getMasses(),
+                                  weight);
+  std::cout << std::setprecision(17);
+  for (int a = 1; a < argc; a++){
+    int nhel, fa, fb;
+    if (sscanf(argv[a], "s%d:%d:%d", &nhel, &fa, &fb) == 3){
+      // Helicity sampling (sum_hel = nhel) on one process, alternating the
+      // calls of fa and fb (fb == fa: fa alone). 19 full-sum calls validate
+      // the pairing, the 400 sampling ones then cycle nhel*400 times through
+      // the representatives, a whole number of rounds for the 8 (or 4) of
+      // the tests: the averages are the full sums up to roundoff.
+      CPPProcess process("../../Cards/param_card.dat");
+      process.setMomenta(p);
+      process.sum_hel[fa % CPPProcess::nflavors] = nhel;
+      process.sum_hel[fb % CPPProcess::nflavors] = nhel;
+      double suma = 0., sumb = 0.;
+      const int ncall = 19 + 400;
+      for (int i = 0; i < ncall; i++){
+        suma += process.sigmaKin(fa);
+        if (fb != fa)
+          sumb += process.sigmaKin(fb);
+      }
+      std::cout << "AVG " << argv[a] << " " << fa << " " << suma / ncall
+                << std::endl;
+      if (fb != fa)
+        std::cout << "AVG " << argv[a] << " " << fb << " " << sumb / ncall
+                  << std::endl;
+      continue;
+    }
+    int fid = atoi(argv[a]);
+    CPPProcess process("../../Cards/param_card.dat");
+    process.setMomenta(p);
+    for (int i = 1; i <= 30; i++){
+      long before = cw_count;
+      double me = process.sigmaKin(fid);
+      std::cout << "CALL " << fid << " " << i << " " << cw_count - before
+                << " " << me << std::endl;
+    }
+    int f = fid % CPPProcess::nflavors;
+    std::cout << "GOOD " << fid << " " << process.csym_bad[f];
+    for (int i = 0; i < CPPProcess::ncomb; i++)
+      if (process.goodhel[f][i]) std::cout << " " << i;
+    std::cout << std::endl << "IGOOD " << fid;
+    for (int g = 0; g < process.ngood[f]; g++)
+      std::cout << " " << process.igood[f][g];
+    std::cout << std::endl;
+  }
+  return 0;
+}
+'''
+
+        def run(proc_dir, fids):
+            cc = pjoin(proc_dir, 'CPPProcess.cc')
+            src = open(cc).read()
+            marker = '// Calculate wavefunctions for all processes'
+            self.assertIn(marker, src)
+            src = src.replace(marker, marker + '\n  cw_count++;', 1)
+            open(cc, 'w').write('long cw_count = 0;\n' + src)
+            header = pjoin(proc_dir, 'CPPProcess.h')
+            src = open(header).read()
+            self.assertIn('private:', src)
+            open(header, 'w').write(src.replace('private:', 'public:'))
+            open(pjoin(proc_dir, 'check_sa.cpp'), 'w').write(driver)
+            with open(os.devnull, 'w') as devnull:
+                subprocess.call(['make'], stdout=devnull,
+                                stderr=subprocess.STDOUT, cwd=proc_dir)
+            self.assertTrue(os.path.isfile(pjoin(proc_dir, 'check')),
+                            'the driver did not build in %s' % proc_dir)
+            out = subprocess.check_output(['./check'] + [str(f) for f in fids],
+                                          cwd=proc_dir).decode()
+            res = {}
+            for line in out.splitlines():
+                toks = line.split()
+                if toks[:1] == ['CALL']:
+                    res.setdefault(int(toks[1]), {}).setdefault(
+                        'calls', []).append((int(toks[3]), float(toks[4])))
+                elif toks[:1] == ['GOOD']:
+                    res[int(toks[1])]['csym_bad'] = int(toks[2])
+                    res[int(toks[1])]['good'] = [int(x) for x in toks[3:]]
+                elif toks[:1] == ['IGOOD']:
+                    res[int(toks[1])]['igood'] = [int(x) for x in toks[2:]]
+                elif toks[:1] == ['AVG']:
+                    res.setdefault(toks[1], {})[int(toks[2])] = float(toks[3])
+            return res
+
+        def check_sampling(res, mode, fid):
+            # the sampled average is the full sum of the plain calls
+            full = res[fid]['calls'][0][1]
+            self.assertAlmostEqual(res[mode][fid], full, delta=1e-12 * full,
+                                   msg='%s: fid %d sampled average %r, full sum'
+                                       ' %r' % (mode, fid, res[mode][fid], full))
+
+        def check(res, fid, nfull, deduped, scanned=True):
+            calls = res[fid]['calls']
+            self.assertEqual(len(calls), 30)
+            first = calls[0][1]
+            self.assertGreater(first, 0.)
+            for i, (ncw, me) in enumerate(calls):
+                # Call 1 is the plain full sum: every call must reproduce it.
+                self.assertAlmostEqual(me, first, delta=1e-12 * first,
+                                       msg='fid %d call %d' % (fid, i + 1))
+                # call 1 visits every row (16 for both processes) to find the
+                # good ones, the scan the nfull good ones, the reuse half.
+                expected = 16 if i == 0 else nfull
+                if deduped and i >= 19:
+                    expected = nfull // 2
+                self.assertEqual(ncw, expected,
+                                 'fid %d call %d: %d wavefunction evaluations,'
+                                 ' expected %d' % (fid, i + 1, ncw, expected))
+            if scanned:
+                self.assertEqual(res[fid]['csym_bad'], 0 if deduped else 1)
+            # 0-based: igood[0..ngood-1] lists exactly the good rows.
+            self.assertEqual(sorted(res[fid]['igood']), res[fid]['good'])
+            self.assertEqual(len(res[fid]['good']), nfull)
+
+        self.do('import model sm')
+        self.do('generate g g > t t~')
+        self.do('add process u u~ > e+ e-')
+        for use_crossing in (False, True):
+            # a single process records no crossing: its table gets its rows
+            # from --crossing_table=all
+            self._output_standalone_cpp(self.out_dir, force=True,
+                                        use_crossing=use_crossing,
+                                        crossing_table='all')
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            dirs = dict((suffix, pjoin(proc_root, d))
+                        for d in os.listdir(proc_root)
+                        for suffix in ('_gg_ttx', '_uux_epem')
+                        if d.endswith(suffix))
+            self.assertEqual(len(dirs), 2, os.listdir(proc_root))
+            source = open(pjoin(dirs['_gg_ttx'], 'CPPProcess.cc')).read()
+            crossing = 'cross_gather' in source
+            self.assertEqual(crossing, use_crossing)
+            # 1<->4, 2<->3 on g g > t t~ is t t~ > g g: the row of the
+            # crossing table whose input slot k is fed to base slot 3-k.
+            fids = [0]
+            if use_crossing:
+                match = re.search(r'static const int xpinv\[(\d+) \* '
+                                  r'nexternal\] = \{([^}]*)\}', source)
+                pinv = [int(tok) for tok in match.group(2).split(',')]
+                rows = [tuple(pinv[k:k + 4]) for k in range(0, len(pinv), 4)]
+                fids.append(rows.index((3, 2, 1, 0)))
+            # helicity sampling of 2 and 3 of the 8 representatives; with the
+            # crossing, crossed calls interleaved (they share the flavor's
+            # sampling cursor and must not rewind it).
+            modes = ['s2:0:%d' % fids[-1], 's3:0:%d' % fids[-1]]
+            res = run(dirs['_gg_ttx'], fids + modes)
+            check(res, 0, 16, deduped=True)
+            if use_crossing:
+                # a crossed call scans and reuses the C-parity pairing too
+                check(res, fids[1], 16, deduped=True)
+            for mode in modes:
+                for fid in fids:
+                    check_sampling(res, mode, fid)
+            # refused pairing: the sampling draws the 4 good rows, weight 1
+            res = run(dirs['_uux_epem'], [0, 's3:0:0'])
+            check(res, 0, 4, deduped=False)
+            check_sampling(res, 's3:0:0', 0)
+
+    def _output_standalone_cpp(self, out_dir, force=False, use_crossing=False,
+                               crossing_table=None):
         """Write a scalar C++ standalone output for the processes currently
         held by the interface, driving export_cpp.ProcessExporterCPP through
         its internal API.
@@ -1563,6 +2853,10 @@ class TestCmdShell2(unittest.TestCase,
         this way (see madgraph/various/process_checks.py and
         tests/unit_tests/various/test_process_checks.py).  Going through the API
         keeps the scalar-C++ coverage of these tests without the command.
+        use_crossing emits the crossing machinery (the extended flavor_id);
+        crossing_table='all' gives its table every applicable crossing (the
+        --crossing_table=all output option), without which a process that
+        records no crossing gets no machinery at all.
         """
         import madgraph.iolibs.export_cpp as export_cpp
         import madgraph.iolibs.helas_call_writers as helas_call_writers
@@ -1575,9 +2869,11 @@ class TestCmdShell2(unittest.TestCase,
             shutil.rmtree(out_dir)
 
         opt = dict(cmd.options)
-        opt['output_options'] = {}
+        opt['output_options'] = {'crossing_table': crossing_table} \
+            if crossing_table else {}
         opt.update({'sa_symmetry': False, 'export_format': 'standalone_cpp',
-                    'mp': False, 'v5_model': True})
+                    'mp': False, 'v5_model': True,
+                    'use_crossing': use_crossing})
         exporter = export_cpp.ProcessExporterCPP(out_dir, opt)
 
         # Reuse the helas objects the interface already built, exactly like
@@ -1628,6 +2924,92 @@ class TestCmdShell2(unittest.TestCase,
         for x, y in zip(a, b):
             self.assertLessEqual(abs(x - y), atol + rtol * max(abs(x), abs(y)),
                                  'matrix-element mismatch: %s vs %s' % (x, y))
+
+    def standalone_fortran_values(self, lines, out_dir):
+        """Matrix element of check_sa at its default point for every P
+        directory of a standalone_fortran output of `lines`."""
+
+        if os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+        self.cmd = Cmd.MasterCmd()
+        for line in ['set auto_gauge False', 'import model sm'] + lines:
+            self.do(line)
+        self.do('output standalone_fortran %s -f' % out_dir)
+        devnull = open(os.devnull, 'w')
+        subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                        cwd=pjoin(out_dir, 'Source'))
+        values = {}
+        me_re = re.compile(r'Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)')
+        for pdir in sorted(glob.glob(pjoin(out_dir, 'SubProcesses', 'P*'))):
+            subprocess.call(['make', 'check'], stdout=devnull, stderr=devnull,
+                            cwd=pdir)
+            out = subprocess.Popen('./check', stdout=subprocess.PIPE, cwd=pdir,
+                                   shell=True).communicate()[0].decode()
+            values[os.path.basename(pdir).split('_', 1)[1]] = \
+                                        float(me_re.search(out).group('value'))
+        return values
+
+    def test_standalone_fortran_two_gauges(self):
+        """--gauge=FD on one process line: its P directory links the FD
+        HELAS library and gives the FD value, the other the unitary one"""
+
+        mixed = self.standalone_fortran_values(
+            ['generate u u~ > w+ w- --gauge=FD', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'MIXED'))
+        self.assertTrue(os.path.exists(pjoin(self.tmpdir, 'MIXED', 'lib',
+                                             'libdhelas_fd.a')))
+        fd = self.standalone_fortran_values(
+            ['set gauge FD', 'generate u u~ > w+ w-'], pjoin(self.tmpdir, 'FD'))
+        unitary = self.standalone_fortran_values(
+            ['generate u u~ > w+ w-', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'UNITARY'))
+        self.assertEqual(sorted(mixed), ['gg_ttx', 'uux_wpwm'])
+        self.assertAlmostEqual(mixed['uux_wpwm'] / fd['uux_wpwm'], 1., places=12)
+        self.assertAlmostEqual(mixed['gg_ttx'] / unitary['gg_ttx'], 1., places=12)
+        # the two gauges differ at the width level for W pairs: a real check
+        self.assertNotAlmostEqual(mixed['uux_wpwm'] / unitary['uux_wpwm'], 1.,
+                                  places=6)
+
+    def standalone_cpp_values(self, lines, out_dir):
+        """Matrix element of check_sa.exe at 1 TeV for every P directory of a
+        standalone (madmatrix) output of `lines`."""
+
+        if os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+        self.cmd = Cmd.MasterCmd()
+        for line in ['set auto_gauge False', 'import model sm'] + lines:
+            self.do(line)
+        self.do('output standalone %s -f' % out_dir)
+        devnull = open(os.devnull, 'w')
+        values = {}
+        me_re = re.compile(r'Matrix element\s*=\s*(?P<value>[\d\.eE\+-]+)')
+        for pdir in sorted(glob.glob(pjoin(out_dir, 'SubProcesses', 'P*'))):
+            subprocess.call(['make'], stdout=devnull, stderr=devnull, cwd=pdir)
+            out = subprocess.Popen('./check_sa.exe 1000', stdout=subprocess.PIPE,
+                                   cwd=pdir, shell=True).communicate()[0].decode()
+            values[os.path.basename(pdir).split('_', 1)[1]] = \
+                                        float(me_re.search(out).group('value'))
+        return values
+
+    def test_standalone_cpp_two_gauges(self):
+        """the madmatrix version of test_standalone_fortran_two_gauges: the FD
+        P directory includes HelAmps_sm_fd.h and gives the FD value"""
+
+        mixed = self.standalone_cpp_values(
+            ['generate u u~ > w+ w- --gauge=FD', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'MIXED'))
+        self.assertTrue(os.path.exists(pjoin(self.tmpdir, 'MIXED', 'src',
+                                             'HelAmps_sm_fd.h')))
+        fd = self.standalone_cpp_values(
+            ['set gauge FD', 'generate u u~ > w+ w-'], pjoin(self.tmpdir, 'FD'))
+        unitary = self.standalone_cpp_values(
+            ['generate u u~ > w+ w-', 'add process g g > t t~'],
+            pjoin(self.tmpdir, 'UNITARY'))
+        self.assertEqual(sorted(mixed), ['gg_ttx', 'uux_wpwm'])
+        self.assertAlmostEqual(mixed['uux_wpwm'] / fd['uux_wpwm'], 1., places=12)
+        self.assertAlmostEqual(mixed['gg_ttx'] / unitary['gg_ttx'], 1., places=12)
+        self.assertNotAlmostEqual(mixed['uux_wpwm'] / unitary['uux_wpwm'], 1.,
+                                  places=6)
 
     def test_standalone_cpp_fd_output_consistency(self):
         """test the standalone (madmatrix) output in FD gauge against standalone_fortran
@@ -1793,6 +3175,131 @@ class TestCmdShell2(unittest.TestCase,
             # -ffast-math on the C++ side puts the backends ~3e-8 apart
             self._assert_me_lists_close(values, standalone, rtol=1e-6)
 
+    def test_madmatrix_complex_mass_scheme_vs_fortran(self):
+        """Complex-mass scheme: madmatrix compiles and agrees with the Fortran
+        standalone, in the unitary and in the FD gauge.
+
+        It did not compile: Parameters.cc takes the sqrt of a cxsmpl (the
+        complex masses), the real cIPD table held the complex CMASS_* of the
+        propagators, and the unitary propagator wrote 1/M^2 into a real OM.
+        u u~ > w+ w- has a Z propagator (a complex mass, and OM in the unitary
+        gauge) and the two drivers evaluate the same RAMBO point (massless
+        initial state). The default mixed-precision build puts the backends
+        ~1e-7 apart; in double precision they agree to 1e-15."""
+
+        import aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV', re.IGNORECASE)
+        devnull = open(os.devnull, 'w')
+        self.addCleanup(devnull.close)
+
+        def get_value(output_format, check_exe):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if output_format == 'standalone_fortran':
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+                target = ['make', 'check']
+            else:
+                target = ['make']
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            proc_dir = pjoin(proc_root, [d for d in sorted(os.listdir(proc_root))
+                                         if d.startswith('P')][0])
+            self.assertEqual(subprocess.call(target, stdout=devnull, stderr=devnull,
+                                             cwd=proc_dir), 0,
+                             '%s does not compile in the complex-mass scheme' % output_format)
+            out = subprocess.check_output('%s 1000' % check_exe, shell=True,
+                                          cwd=proc_dir).decode()
+            found = me_re.findall(out)
+            self.assertTrue(found, '%s produced no matrix element' % output_format)
+            return [float(v) for v in found]
+
+        self.do('set auto_gauge False')
+        self.do('set complex_mass_scheme True')
+        try:
+            # g g > t t~ g: the running coupling GC_12 = i G^2 goes through
+            # mdl_G__exp__2, complex in the complex-mass scheme (a cxtype_sv
+            # among the dependent parameters, and G itself has to be left out)
+            for gauge, process in (('unitary', 'u u~ > w+ w-'), ('FD', 'u u~ > w+ w-'),
+                                   ('unitary', 'g g > t t~ g')):
+                self.do('set gauge %s' % gauge)
+                self.do('import model sm')
+                self.do('generate %s' % process)
+                fortran = get_value('standalone_fortran', './check')
+                madmatrix = get_value('standalone', './check_sa.exe')
+                self.assertGreater(max(abs(v) for v in fortran), 1e-6, process)
+                self._assert_me_lists_close(madmatrix, fortran, rtol=1e-6)
+        finally:
+            self.do('set complex_mass_scheme False')
+            self.do('set gauge unitary')
+
+    def test_dollar_exclusion_complex_mass_scheme(self):
+        """`$ z` in the complex-mass scheme, Fortran and madmatrix.
+
+        The $ window |sqrt(s) - M| < BWCUTOFF * W was written with a width
+        and a cutoff the routine no longer received: the Fortran routine took
+        one argument less than its call (BWCUTOFF landed in the output
+        wavefunction) and an uninitialised W, madmatrix did not compile. With
+        the real pole mass and width of the complex mass the window is the
+        fixed-width one: inside it (91.5 GeV) the Z diagram is gone and the
+        value is the photon-only one, outside (300 GeV) it is back."""
+
+        import aloha
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV', re.IGNORECASE)
+        devnull = open(os.devnull, 'w')
+        self.addCleanup(devnull.close)
+
+        def values(output_format, energies):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if output_format == 'standalone_fortran':
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+                target, exe = ['make', 'check'], './check'
+            else:
+                target, exe = ['make'], './check_sa.exe'
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            proc_dir = pjoin(proc_root, [d for d in sorted(os.listdir(proc_root))
+                                         if d.startswith('P')][0])
+            self.assertEqual(subprocess.call(target, stdout=devnull, stderr=devnull,
+                                             cwd=proc_dir), 0,
+                             '%s does not compile' % output_format)
+            out = {}
+            for energy in energies:
+                text = subprocess.check_output('%s %s' % (exe, energy), shell=True,
+                                               cwd=proc_dir).decode()
+                out[energy] = float(me_re.findall(text)[0])
+            return out
+
+        energies = ('91.5', '300')
+        self.do('set auto_gauge False')
+        self.do('set complex_mass_scheme True')
+        try:
+            self.do('import model sm')
+            self.do('generate e+ e- > mu+ mu- $ z')
+            fortran = values('standalone_fortran', energies)
+            madmatrix = values('standalone', energies)
+            self.do('generate e+ e- > mu+ mu- / z')
+            photon = values('standalone_fortran', energies)
+        finally:
+            self.do('set complex_mass_scheme False')
+
+        for energy in energies:
+            self.assertAlmostEqual(madmatrix[energy] / fortran[energy], 1., delta=1e-6)
+        # inside the window: no Z; outside: the Z is there (10% and more)
+        self.assertAlmostEqual(fortran['91.5'] / photon['91.5'], 1., delta=1e-12)
+        self.assertGreater(abs(fortran['300'] / photon['300'] - 1.), 0.1)
+
     def test_madmatrix_fd_simd_lanes(self):
         """FD gauge: the scalar and the vectorised madmatrix backends must
         compute the same thing, over many events.
@@ -1866,6 +3373,1118 @@ class TestCmdShell2(unittest.TestCase,
                                  'the scalar and vectorised backends disagree '
                                  'in %s: %s vs %s' % (d, scalar, vector))
 
+    def test_madmatrix_fd_flavor_grouping_goldstone(self):
+        """FD gauge with flavour grouping: a merged W/Goldstone coupling of an
+        off-diagonal (charged-current) lepton pair must not be dropped.
+
+        In FD gauge the W and its Goldstone share one 5 component propagator,
+        so the vector and the scalar couplings of a vertex are summed in one
+        combined routine (FFV2_FFS3M_3 for the W+ current of t > b ta+ vt,
+        FFV2_FFS1M_0 for the amplitude of ta+ vt > t b~). With flavour grouping
+        on (the default) the charged leptons are merged while vt is not, so the
+        vertex pairs flavour 0 (vt) with flavour 2 (tau). The combined
+        multi-coupling routine checked flv_index1 == flv_index2, i.e. it
+        assumed a diagonal coupling, and returned zero: |M|^2 = 0 for both
+        processes, while the single-coupling routines (unitary gauge, or
+        'set apply_flavor_grouping False') resolve the flavour slot from the
+        partner table and were right. The Goldstone coupling also only has an
+        entry for the tau, so each coupling of the sum must resolve its own
+        slot rather than share the one of the first.
+
+        A decay and a scattering cannot share an output, hence two generates.
+        """
+        energy = '1000'
+        devnull = open(os.devnull, 'w')
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
+
+        def get_values(output_format, check_exe, build_source=False):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('output %s %s -f' % (output_format, self.out_dir))
+            if build_source:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(self.out_dir, 'Source'))
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            dirs = sorted(d for d in os.listdir(proc_root)
+                          if d.startswith('P') and
+                          os.path.isdir(pjoin(proc_root, d)))
+            self.assertTrue(dirs, 'no subprocess for %s' % output_format)
+            values = []
+            for d in dirs:
+                proc_dir = pjoin(proc_root, d)
+                target = ['make', 'check'] if output_format == 'standalone_fortran' \
+                    else ['make']
+                subprocess.call(target, stdout=devnull, stderr=devnull,
+                                cwd=proc_dir)
+                log = pjoin(proc_dir, 'check.log')
+                subprocess.call('%s %s' % (check_exe, energy),
+                                stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                                cwd=proc_dir, shell=True)
+                found = me_re.findall(open(log).read())
+                self.assertTrue(found, '%s produced no matrix element (see %s)'
+                                % (output_format, log))
+                values.extend(float(v) for v in found)
+            return values
+
+        self.do('import model sm')
+        self.do('set gauge FD')
+        try:
+            for process in ('t > b ta+ vt', 'ta+ vt > t b~'):
+                self.do('generate %s' % process)
+                fortran = get_values('standalone_fortran', './check',
+                                     build_source=True)
+                mg7 = get_values('standalone', './check_sa.exe')
+                # the bug gave exactly 0: make sure the reference is not
+                self.assertGreater(min(abs(v) for v in fortran), 1e-3,
+                                   'unexpectedly small Fortran matrix element '
+                                   'for %s: %s' % (process, fortran))
+                self._assert_me_lists_close(mg7, fortran, rtol=1e-6)
+        finally:
+            self.do('set gauge unitary')
+
+    def test_madmatrix_hel_recycling_vs_plain(self):
+        """--hel_recycling must not change |M|^2, event by event.
+
+        The recycled build makes every helicity row of a page at once and reads
+        the rows back in the helicity loop; with one helicity per event
+        (UMAMI_IN_HELICITY_INDEX, check_sa --hel-index: what MadTrex and a
+        sampled-helicity run pass) each SIMD lane can have its own, and the
+        recycled build has to take the plain per-lane code instead. Both are
+        compared here to the plain output on the same points, at the scalar
+        and a SIMD backend: the helicity sum, and one random helicity per event.
+
+        g g > t t~ g is small enough to build in seconds and still has helicity
+        rows that share wavefunctions, amplitudes that vanish at some rows and,
+        at simd_128, two events per lane in mixed precision. FPTYPE=d keeps the
+        two builds within rounding of each other (1e-12); the warm-up must have
+        produced the recycled build (HelRecycling.inc), or the test would compare
+        plain with plain. The recycled side is the default output (helicity
+        recycling is on unless --hel_recycling=False).
+        """
+        self._hel_recycling_vs_plain('g g > t t~ g', recycled_flag='')
+
+    def test_madmatrix_fd_hel_recycling_vs_plain(self):
+        """--hel_recycling in the FD gauge must not change |M|^2 either.
+
+        What FD changes for the recycler is the amplitude split (P1N): the
+        current a P1N leaves on a vector leg has five components, the fifth
+        the Goldstone, and a scalar keeps its value in that fifth component.
+        Dotting four components for a vector or component 0 for a scalar
+        silently drops part of every amplitude of a group (|M|^2 off by up to
+        2.2 relative here). t t~ > w+ w- z splits all three kinds at the
+        default threshold: vector legs of the merged vector/Goldstone vertices
+        (VVV1_VSV2_..., VVVV5_VVSS1_...), the Higgs of the top Yukawa (FFS4)
+        and fermion legs; the test checks that each kind is there.
+        """
+        import glob
+        self.do('set gauge FD')
+        try:
+            recycled = self._hel_recycling_vs_plain('t t~ > w+ w- z')
+        finally:
+            self.do('set gauge unitary')
+        calls = ''.join(open(path).read() for path in
+                        glob.glob(pjoin(recycled, 'HelRecycling*.inc')))
+        for kind in ('hr_p1n_fold<W_ACCESS, 5, false>',
+                     'hr_p1n_fold<W_ACCESS, 1, false, 4>',
+                     'hr_p1n_fold<W_ACCESS, 4, true>'):
+            self.assertIn(kind, calls, 'no %s group in the recycled build' % kind)
+
+    # test_madmatrix_hel_recycling_every_flavour: |M|^2 (helicity sum) through
+    # umami for every flavour index of one subprocess library.
+    # usage: <param_card> <library> <momenta (check_sa --dump-momenta)> <npar> <nflavour>
+    # prints [[|M|^2 of each event] for each flavour index] as one JSON list.
+    _UMAMI_FLAVOUR_DRIVER = '''
+import ctypes, json, os, sys
+card, path, momenta = sys.argv[1].encode(), sys.argv[2], sys.argv[3]
+npar, nflavour = int(sys.argv[4]), int(sys.argv[5])
+# madspace loads them with dlopen(RTLD_NOW): RTLD_GLOBAL on macOS
+lib = ctypes.CDLL(path, mode=os.RTLD_NOW)
+handle = ctypes.c_void_p()
+assert lib.umami_initialize(ctypes.byref(handle), card) == 0
+raw = open(momenta, 'rb').read()
+count = len(raw) // (8 * 4 * npar)
+point = (ctypes.c_double * (4 * npar * count)).from_buffer_copy(raw)
+mom = (ctypes.c_double * (4 * npar * count))()
+for ievt in range(count):  # (E,px,py,pz) per leg per event -> momenta[mu][leg][event]
+    for ipart in range(npar):
+        for mu in range(4):
+            mom[count * (npar * mu + ipart) + ievt] = point[(ievt * npar + ipart) * 4 + mu]
+out = []
+for iflavour in range(nflavour):
+    flavour = (ctypes.c_uint * count)(*([iflavour] * count))
+    me = (ctypes.c_double * count)()
+    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_FLAVOR_INDEX = 2, UMAMI_OUT_MATRIX_ELEMENT = 0
+    status = lib.umami_matrix_element(
+        handle, ctypes.c_size_t(count), ctypes.c_size_t(count), ctypes.c_size_t(0),
+        ctypes.c_size_t(2), (ctypes.c_int * 2)(0, 2),
+        (ctypes.c_void_p * 2)(ctypes.addressof(mom), ctypes.addressof(flavour)),
+        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+        (ctypes.c_void_p * 1)(ctypes.addressof(me)))
+    assert status == 0, status
+    out.append(list(me))
+print(json.dumps(out))
+'''
+
+    def test_madmatrix_hel_recycling_every_flavour(self):
+        """--hel_recycling must not change |M|^2 at any flavour index of a
+        subprocess that merges flavours.
+
+        The amplitude split (P1N) evaluates a vertex once with one external
+        leg left off; when that leg is a fermion the current takes its flavour
+        from its fermion input and through the coupling's flavour table. That
+        table is filled with the merged leg as its first fermion (cDPF_partner1/2
+        for a running coupling), while the call can put that leg second: the
+        _0 / _3 routines try both orientations, the P1N currents with a fermion
+        output tried one. In MSSM_SLHA2 p p > go go j the gluino-squark-quark
+        current with the merged (anti)quark as its input then found no partner
+        and was zero, for every flavour but the first, whose table is
+        symmetric: |M|^2 off by up to a factor 2.8 at flavour 1-3 in three of
+        the four subprocesses, and the mg7 run died in its survey.
+
+        check_sa.exe only evaluates flavour 0, which is why the other tests
+        did not see it: here every subprocess is evaluated through umami at
+        every flavour index, plain against recycled, on the same points.
+        """
+        import glob
+        import json
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrflv'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model MSSM_SLHA2')
+        try:
+            self.do('generate p p > go go j')
+            self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+            self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
+        finally:
+            self.do('import model sm')
+        driver = root + '_umami_flavours.py'
+        with open(driver, 'w') as fsock:
+            fsock.write(self._UMAMI_FLAVOUR_DRIVER)
+        card = pjoin(dirs['plain'], 'Cards', 'param_card.dat')
+        info = json.load(open(pjoin(dirs['plain'], 'SubProcesses',
+                                    'madmatrix_processes.json')))
+        compared, merged, split = 0, 0, 0
+        for sub in info['subprocesses']:
+            proc = sub['path']
+            npar, nflavour = len(sub['legs']), len(sub['flavors'])
+            merged += nflavour > 1
+            values = {}
+            for name, path in dirs.items():
+                proc_dir = pjoin(path, 'SubProcesses', proc)
+                if name == 'recycled':
+                    self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                                    'the --hel_recycling warm-up did not produce '
+                                    'the recycled build of %s' % proc)
+                    # HelRecycling*.inc, and HelRecyclingChunks_*.cc when chunked
+                    calls = ''.join(open(f).read() for f in
+                                    glob.glob(pjoin(proc_dir, 'HelRecycling*')))
+                    # a P1N current with a fermion output and a flavoured coupling
+                    split += bool(re.search(r'MP1N_[12]<', calls))
+                self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'], stdout=devnull,
+                                                    stderr=devnull, cwd=proc_dir))
+                momenta = pjoin(dirs['plain'], 'SubProcesses', proc, 'momenta.bin')
+                if name == 'plain':
+                    subprocess.call(['./check_sa.exe', 'perf', '--dump-momenta', momenta,
+                                     '1', '32', '1'], cwd=proc_dir,
+                                    stdout=devnull, stderr=devnull)
+                    self.assertTrue(os.path.exists(momenta), 'no momenta for %s' % proc)
+                # libmadmatrix_<model>_<Pdir>_<backend>_<fptype>.so
+                lib = glob.glob(pjoin(path, 'lib', 'libmadmatrix_*_%s_*.so' % proc))
+                self.assertEqual(len(lib), 1, lib)
+                # in a child process: the library is loaded RTLD_GLOBAL, as
+                # madspace does on macOS, which must not leak into this one
+                out = subprocess.check_output([sys.executable, driver, card, lib[0],
+                                               momenta, str(npar), str(nflavour)])
+                values[name] = json.loads(out.decode().strip().splitlines()[-1])
+            for iflavour in range(nflavour):
+                plain = values['plain'][iflavour]
+                recycled = values['recycled'][iflavour]
+                self.assertEqual(len(plain), len(recycled))
+                self.assertTrue(any(plain), 'all-zero |M|^2 (%s, flavour %d)'
+                                % (proc, iflavour))
+                for i, (a, b) in enumerate(zip(plain, recycled)):
+                    self.assertLessEqual(abs(a - b), 1e-12 * abs(a),
+                                         '%s flavour %d event %d: plain %r, recycled %r'
+                                         % (proc, iflavour, i, a, b))
+                compared += 1
+        self.assertGreater(merged, 0, 'no subprocess merges flavours')
+        self.assertGreater(split, 0, 'no fermion P1N current with a flavoured '
+                           'coupling in the recycled build: nothing was tested')
+        self.assertGreater(compared, len(info['subprocesses']))
+
+    def test_madmatrix_hel_recycling_flavour_masks_vs_fortran(self):
+        """--hel_recycling must keep the flavour masks of a flavour-merged
+        subprocess: |M|^2 of every flavour, against the Fortran standalone.
+
+        In a merged subprocess an amplitude that only some flavours have is
+        guarded with their mask (if( ( 0x...ULL >> iflavor ) & 0x1ULL )). The
+        recycled build left the guards out of the calls it unfolds, and as
+        the flavoured routines then also accepted the opposite orientation of
+        a coupling table (the W of the opposite charge, fixed since, see
+        test_madmatrix_mask_false_vs_fortran), a diagram closed by a bosonic
+        vertex (VVV1_0 of a W and two fermion currents) was not zero at the
+        other flavours: 4 of the 6
+        flavours of q qx > w+ w- q qx QCD=0 (q = u d) were wrong: d d~ > w+
+        w- u u~ x55, u u~ > w+ w- d d~ x14, d u~ > w+ w- d u~ and u d~ > w+
+        w- u d~ x4.8 (8 of 18 for the p p > w+ w- j j QCD=0 of a MadSpace run,
+        83.7 pb against 0.934 pb). check_sa.exe 'matrix' prints every flavour
+        at one RAMBO point, as the Fortran ./check does, so the comparison is
+        flavour by flavour, for the plain build and the recycled one in every
+        --hel_recycling_jamp mode, and once cut into chunks (whose translation
+        units must see ndcoup, which the calls read as COUPs[ndcoup + i]).
+        """
+        import glob
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrmask'
+        variants = {'plain': ' --hel_recycling=False',
+                    'rows': '',
+                    'fold': ' --hel_recycling_jamp=fold',
+                    'expanded': ' --hel_recycling_jamp=expanded',
+                    'chunked': ' --hel_recycling_chunk=50'}
+        dirs = dict((name, '%s_%s' % (root, name)) for name in variants)
+        dirs['fortran'] = root + '_fortran'
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('define q = u d')
+        self.do('define qx = u~ d~')
+        self.do('generate q qx > w+ w- q qx QCD=0')
+        self.do('output standalone_fortran %s -f' % dirs['fortran'])
+        for name, flags in variants.items():
+            self.do('output standalone %s -f%s' % (dirs[name], flags))
+
+        entry_re = re.compile(r'^\s*PDG\s+([-\d\s]+?)\s*\n\s*Matrix element\s*=\s*'
+                              r'([-+\d.eEdD]+)', re.M)
+
+        def values(path, fortran):
+            proc_root = pjoin(path, 'SubProcesses')
+            found = sorted(d for d in os.listdir(proc_root)
+                           if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+            self.assertEqual(len(found), 1, 'one subprocess expected in %s' % path)
+            proc_dir = pjoin(proc_root, found[0])
+            if fortran:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(path, 'Source'))
+                build, run = ['make', 'check'], ['./check']
+            else:
+                build = ['make', 'BACKEND=scalar', 'FPTYPE=d']
+                run = ['./check_sa.exe', 'matrix']
+            self.assertEqual(0, subprocess.call(build, stdout=devnull, stderr=devnull,
+                                                cwd=proc_dir),
+                             'the build of %s failed' % proc_dir)
+            log = pjoin(proc_dir, 'check_flavours.log')
+            subprocess.call(run, stdout=open(log, 'w'), stderr=subprocess.STDOUT,
+                            cwd=proc_dir)
+            out = dict((tuple(int(p) for p in pdg.split()),
+                        float(me.replace('D', 'E').replace('d', 'e')))
+                       for pdg, me in entry_re.findall(open(log).read()))
+            self.assertTrue(out, 'no matrix element in %s' % log)
+            return proc_dir, out
+
+        _, fortran = values(dirs['fortran'], True)
+        # the six flavours, every one of them non-zero
+        self.assertEqual(len(fortran), 6, sorted(fortran))
+        self.assertTrue(all(me > 0 for me in fortran.values()), fortran)
+        guard = '>> iflavor ) & 0x1ULL ) {'
+
+        def text(path):
+            with open(path) as fsock:
+                return fsock.read()
+
+        for name in variants:
+            proc_dir, madmatrix = values(dirs[name], False)
+            self.assertEqual(sorted(madmatrix), sorted(fortran), name)
+            for pdg, me in sorted(fortran.items()):
+                self.assertLessEqual(abs(madmatrix[pdg] - me), 1e-10 * me,
+                                     '%s, flavour %s: madmatrix %r, fortran %r'
+                                     % (name, pdg, madmatrix[pdg], me))
+            # what was compared: the recycled code (not its recipe), with the
+            # flavour guards, and plain code that has masked amplitudes
+            recycled = glob.glob(pjoin(proc_dir, 'HelRecycling*.inc')) + \
+                glob.glob(pjoin(proc_dir, 'HelRecyclingChunks_*.cc'))
+            if name == 'plain':
+                self.assertFalse(recycled, '--hel_recycling=False still recycled')
+                self.assertIn(guard, text(pjoin(proc_dir, 'EvaluateDiagrams.inc')))
+                continue
+            self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                            'the --hel_recycling warm-up did not produce the '
+                            'recycled build (%s)' % name)
+            self.assertIn(guard, ''.join(text(f) for f in recycled),
+                          'no flavour guard in the recycled build (%s)' % name)
+            if name == 'chunked':
+                self.assertTrue(glob.glob(pjoin(proc_dir, 'HelRecyclingChunks_*.cc')),
+                                'the recycled block was not cut into chunks')
+
+    def test_madmatrix_mask_false_vs_fortran(self):
+        """--mask=False (no flavour guard) must give the |M|^2 of every
+        flavour of a flavour-merged subprocess, against the Fortran
+        standalone, for the plain and the recycled build.
+
+        Without the guards an amplitude is evaluated at every flavour, and
+        must vanish at those it does not have: the flavoured routines check
+        each fermion pair against the coupling's table. The C++ ones also
+        accepted the opposite orientation of the table (partner1[flv2] ==
+        flv1, there for the single-merged-leg tables of the running
+        couplings, which were filled with the merged leg first), which for
+        the two merged quarks of a W coupling is the W of the opposite
+        charge: a diagram closed by a VVV vertex fed by two such currents
+        was non-zero at flavours it does not have. q qx > w+ w- q qx and q q
+        > w+ w- q q QCD=0 (q = u d) had 8 of their 12 --mask=False flavours
+        wrong: d d~ > w+ w- u u~ x55, u d > w+ w- u d x25, d u > w+ w- u d
+        x21, u u~ > w+ w- d d~ x14, u d > w+ w- d u x9.5, d u~ > w+ w- d u~
+        and u d~ > w+ w- u d~ x4.8, d u > w+ w- d u x2.8 (p p > w+ w- j j
+        QCD=0: 24 of 54). The routines now read the table in one orientation,
+        as the Fortran ones, and the running couplings' tables are filled F1
+        -> F2, as the others.
+
+        --mask=False also lists every ordering of the merged flavours (12
+        against 9: d u > w+ w- u d, u d > w+ w- d u and u d > w+ w- u d next
+        to d u > w+ w- d u), and keeps the diagrams that only those orderings
+        have: the outputs here follow a masked one in the same session, which
+        used to hand them the matrix elements made for the masked output (its
+        9 flavours only), and must agree with those of a fresh generation
+        (made again from the amplitudes as generated: after an output the
+        session's amplitudes only have the diagrams that output kept, 183 of
+        the 294 of q q > w+ w- q q). So must a --mask=False output of a
+        process added after a masked output (`add process` keeps the
+        session's amplitudes and drops its matrix elements: q q > w+ w- q q
+        was made from its 183 diagrams, 3 of its 6 flavours wrong).
+        """
+        import glob
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_nomask'
+        dirs = {'fortran': root + '_fortran',
+                'fortran_nomask': root + '_fortran_nomask',
+                'fortran_fresh': root + '_fortran_fresh',
+                'fortran_first': root + '_fortran_first',
+                'fortran_added': root + '_fortran_added',
+                'plain': root + '_plain',
+                'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('define q = u d')
+        self.do('define qx = u~ d~')
+
+        def generate():
+            self.do('generate q qx > w+ w- q qx QCD=0')
+            self.do('add process q q > w+ w- q q QCD=0')
+        # the masked output first: the others must not reuse its matrix
+        # elements, nor its diagrams
+        generate()
+        self.do('output standalone_fortran %s -f' % dirs['fortran'])
+        self.do('output standalone_fortran %s -f --mask=False' % dirs['fortran_nomask'])
+        self.do('output standalone %s -f --hel_recycling=False --mask=False' % dirs['plain'])
+        self.do('output standalone %s -f --mask=False' % dirs['recycled'])
+        generate()
+        self.do('output standalone_fortran %s -f --mask=False' % dirs['fortran_fresh'])
+        # a process added after a masked output of the first
+        self.do('generate q q > w+ w- q q QCD=0')
+        self.do('output standalone_fortran %s -f' % dirs['fortran_first'])
+        self.do('add process q qx > w+ w- q qx QCD=0')
+        self.do('output standalone_fortran %s -f --mask=False' % dirs['fortran_added'])
+
+        entry_re = re.compile(r'^\s*PDG\s+([-\d\s]+?)\s*\n\s*Matrix element\s*=\s*'
+                              r'([-+\d.eEdD]+)', re.M)
+
+        def values(path, fortran):
+            # {pdg: |M|^2} of every subprocess (the two do not share a pdg)
+            proc_root = pjoin(path, 'SubProcesses')
+            found = sorted(pjoin(proc_root, d) for d in os.listdir(proc_root)
+                           if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+            self.assertEqual(len(found), 2, 'two subprocesses expected in %s' % path)
+            if fortran:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(path, 'Source'))
+                build, run = ['make', 'check'], ['./check']
+            else:
+                build = ['make', 'BACKEND=scalar', 'FPTYPE=d']
+                run = ['./check_sa.exe', 'matrix']
+            out = {}
+            for proc_dir in found:
+                self.assertEqual(0, subprocess.call(build, stdout=devnull,
+                                                    stderr=devnull, cwd=proc_dir),
+                                 'the build of %s failed' % proc_dir)
+                log = pjoin(proc_dir, 'check_flavours.log')
+                subprocess.call(run, stdout=open(log, 'w'),
+                                stderr=subprocess.STDOUT, cwd=proc_dir)
+                one = dict((tuple(int(p) for p in pdg.split()),
+                            float(me.replace('D', 'E').replace('d', 'e')))
+                           for pdg, me in entry_re.findall(open(log).read()))
+                self.assertTrue(one, 'no matrix element in %s' % log)
+                out.update(one)
+            return found, out
+
+        def text(path):
+            with open(path) as fsock:
+                return fsock.read()
+
+        def assert_close(test, ref, name):
+            wrong = ['%s: %r, fortran %r' % (pdg, test[pdg], me)
+                     for pdg, me in sorted(ref.items())
+                     if abs(test[pdg] - me) > 1e-10 * me]
+            self.assertFalse(wrong, '%s: %d of %d flavours wrong\n%s'
+                             % (name, len(wrong), len(ref), '\n'.join(wrong)))
+
+        _, fortran = values(dirs['fortran'], True)
+        _, fresh = values(dirs['fortran_fresh'], True)
+        _, nomask = values(dirs['fortran_nomask'], True)
+        self.assertEqual(sorted(nomask), sorted(fresh))
+        assert_close(nomask, fresh, 'fortran --mask=False after a masked output')
+        _, added = values(dirs['fortran_added'], True)
+        self.assertEqual(sorted(added), sorted(fresh))
+        assert_close(added, fresh, 'fortran --mask=False after add process')
+        # the flavours of the masked output, and with --mask=False every
+        # ordering of the two merged final-state quarks of q q > w+ w- q q,
+        # all non-zero
+        self.assertEqual(len(fortran), 9, sorted(fortran))
+        self.assertEqual(len(nomask), 12, sorted(nomask))
+        self.assertTrue(set(fortran) < set(nomask))
+        self.assertTrue(all(me > 0 for me in nomask.values()), nomask)
+        assert_close(nomask, fortran, 'fortran --mask=False')
+
+        guard = '>> iflavor ) & 0x1ULL ) {'
+        for name in ('plain', 'recycled'):
+            proc_dirs, madmatrix = values(dirs[name], False)
+            self.assertEqual(sorted(madmatrix), sorted(fresh), name)
+            assert_close(madmatrix, fresh, name)
+            # what was compared: code without a flavour guard, recycled or not
+            for proc_dir in proc_dirs:
+                recycled = glob.glob(pjoin(proc_dir, 'HelRecycling*.inc'))
+                self.assertNotIn(guard, text(pjoin(proc_dir, 'EvaluateDiagrams.inc')))
+                self.assertNotIn(guard, ''.join(text(f) for f in recycled))
+                if name == 'plain':
+                    self.assertFalse(recycled, '--hel_recycling=False still recycled')
+                else:
+                    self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                                    'the --hel_recycling warm-up did not produce '
+                                    'the recycled build of %s' % proc_dir)
+
+    def test_madmatrix_hel_recycling_flavour_masks_crossed(self):
+        """--hel_recycling rows mode keeps the flavour masks of the crossed
+        processes folded into a base: |M|^2 of every crossed flavour id, against
+        the plain build.
+
+        A folded crossing is evaluated under the extended flavour id
+        cross*nmaxflavor + flavour, which JampsPreamble.h reduces to the flavour
+        before anything reads a mask. hr_row, the row loop of the rows mode,
+        read the id itself: at every crossed id the guards of
+        HelRecyclingJamps.inc tested a bit beyond the masks, dropped every
+        masked amplitude, and qa qa > w+ w- qa qa QCD=0 (qa = u d u~ d~, the
+        11 crossings folded into u u > w+ w- u u) came out wrong at all 30
+        crossed ids (by up to x400), p p > t t~ j j at the same-flavour rows,
+        whose survey then failed for lack of points passing the cuts.
+        check_sa.exe 'matrix' evaluates the ids listed in crossing_demo.dat:
+        all the crossed ids are listed there.
+        """
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrxmask'
+        dirs = {'plain': root + '_plain', 'rows': root + '_rows'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('define qa = u d u~ d~')
+        self.do('generate qa qa > w+ w- qa qa QCD=0 --use_crossing=True')
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output standalone %s -f' % dirs['rows'])
+
+        me_re = re.compile(r'Matrix element\s*=\s*([-+\d.eE]+)')
+        nids = None
+        results = {}
+        for name, path in dirs.items():
+            proc_root = pjoin(path, 'SubProcesses')
+            found = sorted(d for d in os.listdir(proc_root)
+                           if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+            self.assertEqual(len(found), 1, 'one subprocess expected in %s' % path)
+            proc_dir = pjoin(proc_root, found[0])
+            ncross = int(re.search(r'constexpr int ncross = (\d+);',
+                                   open(pjoin(proc_dir, 'ProcessTables.h')).read()).group(1))
+            nmaxflavor = int(re.search(r'constexpr int nmaxflavor = (\d+);',
+                                       open(pjoin(proc_dir, 'ProcessData.h')).read()).group(1))
+            self.assertGreater(ncross, 1, 'no crossing folded into %s' % proc_dir)
+            self.assertGreater(nmaxflavor, 1, 'no merged flavours in %s' % proc_dir)
+            nids = ncross * nmaxflavor
+            with open(pjoin(proc_dir, 'crossing_demo.dat'), 'w') as fsock:
+                fsock.write('\n'.join(str(i) for i in range(nmaxflavor, nids)) + '\n')
+            self.assertEqual(0, subprocess.call(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                                                stdout=devnull, stderr=devnull,
+                                                cwd=proc_dir),
+                             'the build of %s failed' % proc_dir)
+            if name == 'rows':
+                self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                                'the --hel_recycling warm-up did not produce the '
+                                'recycled build')
+                self.assertIn('>> iflavor ) & 0x1ULL )',
+                              open(pjoin(proc_dir, 'HelRecyclingJamps.inc')).read(),
+                              'no flavour guard in the row loop')
+            log = pjoin(proc_dir, 'check_crossed.log')
+            subprocess.call(['./check_sa.exe', 'matrix'], stdout=open(log, 'w'),
+                            stderr=subprocess.STDOUT, cwd=proc_dir)
+            results[name] = [float(me) for me in me_re.findall(open(log).read())]
+            # the base flavours, then every crossed id
+            self.assertEqual(len(results[name]), nids, '%s: %s' % (name, log))
+        self.assertTrue(all(me > 0 for me in results['plain']), results['plain'])
+        for fid, (plain, rows) in enumerate(zip(results['plain'], results['rows'])):
+            self.assertLessEqual(abs(rows - plain), 1e-10 * plain,
+                                 'flavour id %d: rows %r, plain %r' % (fid, rows, plain))
+
+    def _hel_recycling_vs_plain(self, process,
+                                recycled_flag=' --hel_recycling=True'):
+        """plain (--hel_recycling=False) and recycled standalone outputs of
+        `process`, |M|^2 compared event by event (see
+        test_madmatrix_hel_recycling_vs_plain); recycled_flag is what the
+        recycled output passes ('' for the default); returns the recycled
+        subprocess directory"""
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hr'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('generate %s' % process)
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output standalone %s -f%s' % (dirs['recycled'], recycled_flag))
+        proc = {}
+        for name, path in dirs.items():
+            proc_root = pjoin(path, 'SubProcesses')
+            found = sorted(d for d in os.listdir(proc_root)
+                           if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+            self.assertEqual(len(found), 1, 'one subprocess expected in %s' % path)
+            proc[name] = pjoin(proc_root, found[0])
+        self.assertTrue(os.path.exists(pjoin(proc['recycled'], 'HelRecycling.inc')),
+                        'the --hel_recycling warm-up did not produce the recycled build')
+        self.assertFalse(os.path.exists(pjoin(proc['plain'], 'HelRecycling.inc')),
+                         '--hel_recycling=False still produced a recycled build')
+        ncomb = int(re.search(r'constexpr int ncomb = (\d+)',
+                              open(pjoin(proc['plain'], 'ProcessData.h')).read()).group(1))
+        nevt = 512
+        random.seed(11)
+        helicities = array.array('i', [random.randrange(0, ncomb) for _ in range(nevt)])
+        hel_file = pjoin(root + '_hel.bin')
+        with open(hel_file, 'wb') as fsock:
+            helicities.tofile(fsock)
+
+        def dump(proc_dir, backend, tag, extra=()):
+            exe = pjoin(proc_dir, 'check_sa.exe')
+            if os.path.exists(exe):
+                os.remove(exe)
+            subprocess.call(['make', 'BACKEND=%s' % backend, 'FPTYPE=d', 'USEBUILDDIR=1'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            if not os.path.exists(exe):
+                return None  # backend not available on this host
+            out = pjoin(proc_dir, 'me_%s_%s.bin' % (backend, tag))
+            subprocess.call(['./check_sa.exe', 'perf'] + list(extra) +
+                            ['--dump-me', out, '16', '32', '1'],
+                            stdout=devnull, stderr=subprocess.STDOUT, cwd=proc_dir)
+            self.assertTrue(os.path.exists(out), 'no |M|^2 dump in %s' % proc_dir)
+            return array.array('d', open(out, 'rb').read())
+
+        compared = 0
+        for backend in ('scalar', 'simd_128'):
+            for tag, extra in (('sum', ()), ('hel', ('--hel-index', hel_file))):
+                plain = dump(proc['plain'], backend, tag, extra)
+                recycled = dump(proc['recycled'], backend, tag, extra)
+                if plain is None or recycled is None:
+                    continue
+                self.assertEqual(len(plain), nevt)
+                self.assertEqual(len(recycled), nevt)
+                self.assertTrue(any(plain), 'all-zero |M|^2 (%s, %s)' % (backend, tag))
+                for i, (a, b) in enumerate(zip(plain, recycled)):
+                    self.assertLessEqual(abs(a - b), 1e-12 * abs(a),
+                                         '%s %s event %d: plain %r, recycled %r'
+                                         % (backend, tag, i, a, b))
+                compared += 1
+        self.assertGreaterEqual(compared, 2, 'the scalar backend did not build')
+        return proc['recycled']
+
+    def test_madmatrix_hel_recycling_several_libraries(self):
+        """--hel_recycling: several subprocess libraries in one process must
+        give the |M|^2 that each gives alone.
+
+        Every subprocess library of an output shares one per-thread scratch
+        area (libmadmatrix_common, hr_thread_scratch), zeroed whenever another
+        library takes it over; each library names itself by an address. That
+        address was a static local of the inline hr_page: a weak symbol, the
+        same in every library, which the macOS loader coalesces when the
+        libraries are loaded as madspace loads them (dlopen RTLD_NOW, i.e.
+        RTLD_GLOBAL there). Every library then passed the same owner, the area
+        was never zeroed, and in the rows mode the (helicity, amplitude) pairs
+        a library drops kept the amplitudes another one left there: mg7
+        p p > z j j came out 300 times too high in its 4-quark classes, while
+        check_sa.exe, which loads one library, saw nothing.
+
+        Three subprocesses of z + 2 partons that drop pairs (u u > z u u and
+        u u~ > z u u~ 48, g g > z u u~ 24) are evaluated through umami, each
+        alone in its own process, then all in one process, in turn and more
+        than once; the results must not change (they were off by up to a
+        factor 48 with the weak owner).
+        """
+        import glob
+        import json
+        devnull = open(os.devnull, 'w')
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model sm')
+        self.do('generate u u > z u u')
+        self.do('add process g g > z u u~')
+        self.do('add process u u~ > z u u~')
+        self.do('output standalone %s -f --hel_recycling=True' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        procs = sorted(d for d in os.listdir(proc_root)
+                       if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+        self.assertEqual(len(procs), 3, procs)
+        calls = {}
+        for proc in procs:
+            proc_dir = pjoin(proc_root, proc)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, 'HelRecycling.inc')),
+                            'the --hel_recycling warm-up did not produce the '
+                            'recycled build of %s' % proc)
+            self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'], stdout=devnull,
+                                                stderr=devnull, cwd=proc_dir))
+            momenta = pjoin(proc_dir, 'momenta.bin')
+            subprocess.call(['./check_sa.exe', 'perf', '--dump-momenta', momenta,
+                             '1', '32', '1'], cwd=proc_dir,
+                            stdout=devnull, stderr=devnull)
+            self.assertTrue(os.path.exists(momenta), 'no momenta for %s' % proc)
+            # libmadmatrix_<model>_<Pdir>_<backend>_<fptype>.so
+            lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_*_%s_*.so' % proc))
+            self.assertEqual(len(lib), 1, lib)
+            calls[proc] = [lib[0], momenta, 5]
+
+        # In a child process: the libraries are loaded RTLD_GLOBAL, as madspace
+        # does on macOS, which would leak their symbols into every library
+        # loaded later in this (shared) test process.
+        driver = pjoin(self.out_dir, 'umami_sequence.py')
+        open(driver, 'w').write(_UMAMI_SEQUENCE_DRIVER)
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+
+        def run(sequence):
+            out = subprocess.check_output(
+                [sys.executable, driver, card, json.dumps([calls[p] for p in sequence])])
+            return json.loads(out.decode().strip().splitlines()[-1])
+
+        alone = dict((proc, run([proc])[0]) for proc in procs)
+        for proc in procs:
+            self.assertTrue(any(alone[proc]), 'all-zero |M|^2 for %s' % proc)
+        sequence = procs + procs[::-1] + procs
+        for ncall, (proc, values) in enumerate(zip(sequence, run(sequence))):
+            for i, (a, b) in enumerate(zip(alone[proc], values)):
+                self.assertLessEqual(abs(a - b), 1e-12 * abs(a),
+                                     'call %d (%s), event %d: alone %r, after the '
+                                     'other libraries %r' % (ncall, proc, i, a, b))
+
+    # b b~ > t t~ QCD=0: the photon, Z, W and Higgs diagrams. The Higgs one is
+    # proportional to ymb, which is a parameter of the card (the b mass is
+    # MB): at ymb = 0 its amplitude vanishes at every helicity, at the
+    # default card only at half of them.
+    _HR_CARD_PROCESS = 'b b~ > t t~ QCD=0'
+
+    @staticmethod
+    def _hr_card_with(card, block, code, value):
+        """The text of param_card `card` with the entry `code` of `block` set to
+        `value` (a number, or a scan:[...] string)."""
+        out, current = [], None
+        for line in open(card).read().split('\n'):
+            words = line.split('#')[0].split()
+            if words and words[0].lower() == 'block':
+                current = words[1].lower()
+            elif current == block and words[:-1] == [str(code)]:
+                line = '    %s %s # changed' % (code, value)
+            out.append(line)
+        return '\n'.join(out)
+
+    def test_madmatrix_hel_recycling_launch_parameters(self):
+        """--hel_recycling: a run at other parameters than the output's must get
+        a recycled build for those (madmatrix/hel_recycling_filter.update, what
+        the mg7 launch runs on its param_card).
+
+        The recycled build drops the amplitudes that vanish at the parameters
+        it is measured at. Measured at ymb = 0 it drops the Higgs diagram at
+        every helicity, which is wrong at the default card: there the build's
+        run-time check (hr_check_stale, what a standalone user who edits the
+        card relies on) must see that a skipped amplitude is alive, say so and
+        use the plain code. Measured again at the default card it recycles
+        again. A card at which the filter comes out the same rewrites nothing,
+        and the card it was measured at measures nothing. Each build is
+        compared with the plain matrix element at its card, event by event, and
+        must say it is stale exactly where its filter does not hold."""
+        import glob
+        from madmatrix import hel_recycling_filter as hrf
+        devnull = open(os.devnull, 'w')
+        root = self.out_dir + '_hrcard'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('generate %s' % self._HR_CARD_PROCESS)
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output standalone %s -f --hel_recycling=True' % dirs['recycled'])
+        found = sorted(d for d in os.listdir(pjoin(dirs['recycled'], 'SubProcesses'))
+                       if re.match(r'P\d+_', d))
+        self.assertEqual(len(found), 1, found)
+        pdir = 'SubProcesses/' + found[0]
+        recycled = pjoin(dirs['recycled'], pdir)
+        self.assertEqual(sorted(d for d in os.listdir(pjoin(dirs['plain'], 'SubProcesses'))
+                                if re.match(r'P\d+_', d)), found)
+        default = root + '_default.dat'
+        shutil.copy(pjoin(dirs['plain'], 'Cards', 'param_card.dat'), default)
+        ymb0 = root + '_ymb0.dat'
+        with open(ymb0, 'w') as fsock:
+            fsock.write(self._hr_card_with(default, 'yukawa', 5, '0.000000e+00'))
+        mt = root + '_mt.dat'
+        with open(mt, 'w') as fsock:
+            fsock.write(self._hr_card_with(default, 'mass', 6, '1.750000e+02'))
+
+        def me(output, card):
+            proc_dir = pjoin(output, pdir)
+            shutil.copy(card, pjoin(output, 'Cards', 'param_card.dat'))
+            exe = pjoin(proc_dir, 'check_sa.exe')
+            if os.path.exists(exe):
+                os.remove(exe)
+            subprocess.call(['make', 'BACKEND=scalar', 'FPTYPE=d', 'USEBUILDDIR=1', '-j4'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(exe), 'no check_sa.exe in %s' % proc_dir)
+            out = pjoin(proc_dir, 'me.bin')
+            run = subprocess.run(['./check_sa.exe', 'perf', '--dump-me', out, '16', '32', '1'],
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 cwd=proc_dir)
+            stale = 'do not vanish at these parameters' in \
+                run.stdout.decode(errors='replace')
+            return array.array('d', open(out, 'rb').read()), stale
+
+        def worst(card, stale=False):
+            (plain, _), (values, said) = me(dirs['plain'], card), me(dirs['recycled'], card)
+            self.assertEqual(len(plain), len(values))
+            self.assertTrue(any(plain))
+            self.assertEqual(said, stale, 'the run-time check %s at %s'
+                             % ('missed the stale build' if stale else
+                                'took a right build for stale', os.path.basename(card)))
+            return max(abs(a - b) / abs(a) for a, b in zip(plain, values))
+
+        def update(card):
+            return hrf.update(dirs['recycled'], [card], [pdir])
+
+        output_zeros = len(hrf.read_state(recycled)['zero_perhel'])
+        self.assertEqual(update(default), {})          # the output's own card
+        self.assertLessEqual(worst(default), 1e-12)
+
+        tags = update(ymb0)
+        self.assertRegex(tags.get(pdir, ''), r'^_hr[0-9a-f]{8}$')
+        self.assertGreater(len(hrf.read_state(recycled)['zero_perhel']), output_zeros)
+        self.assertLessEqual(worst(ymb0), 1e-12)
+        self.assertTrue(glob.glob(pjoin(dirs['recycled'], 'lib',
+                                        'libmadmatrix_*_%s%s_scalar_d.so'
+                                        % (found[0], tags[pdir]))))
+        # that build at the default card skips the Higgs diagram, which is
+        # alive there: the run-time check sees it and the plain code is used
+        self.assertLessEqual(worst(default, stale=True), 1e-12)
+
+        self.assertEqual(update(default), {pdir: ''})  # back to the output's own
+        self.assertEqual(len(hrf.read_state(recycled)['zero_perhel']), output_zeros)
+        self.assertLessEqual(worst(default), 1e-12)
+        stamp = os.path.getmtime(pjoin(recycled, 'HelRecycling.inc'))
+        self.assertEqual(update(default), {})          # measured there already
+        self.assertEqual(update(mt), {})               # the same filter
+        self.assertEqual(os.path.getmtime(pjoin(recycled, 'HelRecycling.inc')), stamp)
+        self.assertLessEqual(worst(mt), 1e-12)
+
+    def test_mg7_hel_recycling_param_scan(self):
+        """--hel_recycling through the mg7 launch: a scan whose points need
+        other recycled builds must give, at every point, the cross section of
+        the plain matrix element.
+
+        ymb = 0, 4.7, 0: the first point drops the Higgs diagram, the second
+        needs it back and the third goes back to the first. The libraries of a
+        point stay loaded in the process while the next one is built, so each
+        build has a library name of its own (the third finds the first's)."""
+        import glob as _glob
+        import json as _json
+        from tests.acceptance_tests.test_cmd_madevent import _mg7_datadir_or_skip
+        _mg7_datadir_or_skip(self)
+        root = self.out_dir + '_hrscan'
+        dirs = {'plain': root + '_plain', 'recycled': root + '_recycled'}
+        for path in dirs.values():
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+        self.do('import model sm')
+        self.do('generate %s' % self._HR_CARD_PROCESS)
+        self.do('output mg7 %s -f --hel_recycling=False' % dirs['plain'])
+        self.do('output mg7 %s -f --hel_recycling=True' % dirs['recycled'])
+        xsec = {}
+        for name, path in dirs.items():
+            toml = pjoin(path, 'Cards', 'run_card.toml')
+            lines, section = [], None
+            settings = {('run', 'seed'): '4242', ('run', 'precision'): '"all64"',
+                        ('generation', 'events'): '2000', ('madnis', 'enable'): 'false'}
+            for line in open(toml).read().split('\n'):
+                found = re.match(r'^\[(\w+)\]', line)
+                if found:
+                    section = found.group(1)
+                key = line.split('=')[0].strip()
+                if (section, key) in settings:
+                    line = '%s = %s' % (key, settings.pop((section, key)))
+                lines.append(line)
+            self.assertEqual(settings, {}, 'not in the run_card')
+            with open(toml, 'w') as fsock:
+                fsock.write('\n'.join(lines))
+            card = pjoin(path, 'Cards', 'param_card.dat')
+            text = self._hr_card_with(card, 'yukawa', 5, 'scan:[0.0, 4.7, 0.0]')
+            with open(card, 'w') as fsock:
+                fsock.write(text)
+            log = pjoin(path, 'generate_events.log')
+            with open(log, 'w') as fsock:
+                status = subprocess.call([sys.executable, pjoin(path, 'bin', 'generate_events'),
+                                          '-f'], cwd=path, stdout=fsock,
+                                         stderr=subprocess.STDOUT)
+            self.assertEqual(status, 0, 'mg7 failed, see %s' % log)
+            infos = sorted(_glob.glob(pjoin(path, 'Events', 'run_*', 'info.json')))
+            self.assertEqual(len(infos), 3, infos)
+            xsec[name] = [float(_json.load(open(info))['process']['mean']) for info in infos]
+        for point, (a, b) in enumerate(zip(xsec['plain'], xsec['recycled'])):
+            self.assertLessEqual(abs(a - b), 1e-10 * abs(a),
+                                 'scan point %d: plain %r, recycled %r' % (point + 1, a, b))
+        # one library per filter: the third point reused the first's
+        libs = [lib for lib in _glob.glob(pjoin(dirs['recycled'], 'lib', 'libmadmatrix_*.so'))
+                if 'common' not in os.path.basename(lib)]
+        self.assertEqual(len(libs), 2, libs)
+
+    def test_standalone_cpp_perf_alpha_s_from_param_card(self):
+        """check_sa.exe 'perf' mode must use the alpha_s of the param card,
+        as the 'matrix' mode does.
+
+        With --momenta (or -e) and --dump-me, perf mode is how the matrix
+        element is evaluated at user-given points. It did not pass alpha_s to
+        umami_matrix_element, so UMAMI fell back to its hard-coded g_s
+        (alpha_s = 0.118) whatever the card said.
+
+        g g > t t~ is compared to the analytic result (Ellis, Stirling, Webber,
+        table 10.2) at the card alpha_s, then at twice that value. The top
+        width in the t-channel propagators moves MadGraph away from it by about
+        3e-6 at this point.
+        """
+        import array
+        import math
+        import madgraph.models.check_param_card as check_param_card
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model sm')
+        self.do('generate g g > t t~')
+        self.do('output standalone %s' % self.out_dir)
+
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = [d for d in os.listdir(proc_root)
+                if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))]
+        self.assertEqual(len(dirs), 1, dirs)
+        proc_dir = pjoin(proc_root, dirs[0])
+        devnull = open(os.devnull, 'w')
+        subprocess.call(['make', 'FPTYPE=d'], stdout=devnull, stderr=devnull,
+                        cwd=proc_dir)
+        self.assertTrue(os.path.exists(pjoin(proc_dir, 'check_sa.exe')),
+                        'check_sa.exe did not build in %s' % proc_dir)
+
+        card_path = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        card = check_param_card.ParamCard(card_path)
+        mt = card['mass'].get(6).value
+
+        # one on-shell point in the partonic centre-of-mass frame
+        energy, theta, phi = 500., 0.7, 0.3
+        pabs = math.sqrt(energy**2 - mt**2)
+        p3 = [energy, pabs * math.sin(theta) * math.cos(phi),
+              pabs * math.sin(theta) * math.sin(phi), pabs * math.cos(theta)]
+        p4 = [energy] + [-x for x in p3[1:]]
+        point = [energy, 0., 0., energy] + [energy, 0., 0., -energy] + p3 + p4
+        # repeated 8 times: perf mode needs a multiple of the SIMD width
+        with open(pjoin(proc_dir, 'pts.bin'), 'wb') as fsock:
+            array.array('d', point * 8).tofile(fsock)
+
+        s = 4 * energy**2
+        tau1 = 2 * energy * (p3[0] - p3[3]) / s   # 2 p1.p3 / s
+        tau2 = 2 * energy * (p3[0] + p3[3]) / s   # 2 p2.p3 / s
+        rho = 4 * mt**2 / s
+        def analytic(alpha_s):
+            return (4 * math.pi * alpha_s)**2 \
+                * (1. / (6 * tau1 * tau2) - 3. / 8.) \
+                * (tau1**2 + tau2**2 + rho - rho**2 / (4 * tau1 * tau2))
+
+        def perf_mes(tag):
+            dump = 'me_%s.bin' % tag
+            subprocess.call(['./check_sa.exe', 'perf', '--momenta', 'pts.bin',
+                             '--dump-me', dump, '1', '8', '1'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, dump)),
+                            'check_sa.exe perf wrote no %s' % dump)
+            mes = array.array('d')
+            with open(pjoin(proc_dir, dump), 'rb') as fsock:
+                mes.frombytes(fsock.read())
+            self.assertEqual(len(mes), 8)
+            return mes
+
+        alpha_s = card['sminputs'].get(3).value
+        for tag, value in (('card', alpha_s), ('doubled', 2 * alpha_s)):
+            card['sminputs'].get(3).value = value
+            card.write(card_path)
+            expected = analytic(value)
+            for me in perf_mes(tag):
+                self.assertLessEqual(abs(me - expected), 1e-4 * expected,
+                                     'alpha_s = %s: %s instead of %s'
+                                     % (value, me, expected))
+
+    def test_madmatrix_heft_ggh_vs_analytic(self):
+        """standalone (madmatrix) g g > h g in the heft model against the analytic result.
+
+        With C = alpha_s P / (6 pi v) the coefficient of H tr(G G)/2 (P the
+        finite-m_t factor of the model's GH), the H + 3 gluon helicity
+        amplitudes (Dixon, Glover, Khoze, hep-th/0411092) give
+
+          |M|^2 = alpha_s^3 P^2 / (24 pi v^2) (m_H^8 + s^4 + t^4 + u^4) / (s t u)
+
+        averaged over the initial helicities and colours. The all-plus
+        helicities (all outgoing) give the m_H^8 term: (m_H^2/s)^4 of the others,
+        1e-9 at sqrt(s) = 1.5 TeV and 42% at 130 GeV. The good helicities were
+        chosen at initialization, on RAMBO points at 1.5 TeV, where they fell
+        under the filter's relative threshold (limhel/ncomb): they were dropped
+        for the whole run, and |M|^2 came out 42% low at 130 GeV, 2% at 200 GeV
+        and 4e-8 at 1 TeV. They are now chosen at run time, on the first events
+        the matrix element is called with (here these points), as in the
+        Fortran standalone output.
+
+        16 points in the partonic centre-of-mass frame, sqrt(s) from 130 GeV to
+        3 TeV, scalar and simd_128 in double precision. Then the choice of an mg7
+        run (madgraph/mg7/helicity_choice.py), made from the cards on 16 RAMBO
+        points on a CPU build before the run and given to every instance: for
+        13 TeV beams with PDFs, the points go down to just above threshold and
+        the same 16 points come out right with it. On points at 13 TeV only
+        (beams without PDFs), where the all-plus helicities are 1e-14 of |M|^2,
+        they are kept too: with a massive external leg (the Higgs) the filter
+        keeps every row that is not exactly 0 (ProcessTables hel_massive), so
+        both choices are the same and both give the analytic |M|^2.
+        """
+        import array
+        import math
+        import madgraph.models.check_param_card as check_param_card
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model heft')
+        self.do('generate g g > h g')
+        self.do('output standalone %s' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = [d for d in os.listdir(proc_root)
+                if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))]
+        self.assertEqual(len(dirs), 1, dirs)
+        proc_dir = pjoin(proc_root, dirs[0])
+
+        card = check_param_card.ParamCard(pjoin(self.out_dir, 'Cards', 'param_card.dat'))
+        alpha_s = card['sminputs'].get(3).value
+        gf = card['sminputs'].get(2).value
+        mt = card['mass'].get(6).value
+        mh = card['mass'].get(25).value
+        vev = 1. / math.sqrt(math.sqrt(2.) * gf)  # = 2 MW sw / ee in the model
+        tau = mh**2 / mt**2
+        poly = 1. + 7. * tau / 120. + tau**2 / 168. + 13. * tau**3 / 16800.
+
+        rng = random.Random(4242)
+        points, expected = [], []
+        for energy in (130., 150., 200., 300., 500., 1000., 1500., 3000.):
+            for _ in range(2):
+                pabs = (energy**2 - mh**2) / (2 * energy)  # the gluon's
+                cth = rng.uniform(-0.95, 0.95)
+                sth = math.sqrt(1. - cth**2)
+                phi = rng.uniform(0., 2 * math.pi)
+                k = [pabs, pabs * sth * math.cos(phi), pabs * sth * math.sin(phi),
+                     pabs * cth]
+                h = [energy - pabs, -k[1], -k[2], -k[3]]
+                points.extend([energy / 2, 0., 0., energy / 2,
+                               energy / 2, 0., 0., -energy / 2] + h + k)
+                s = energy**2
+                t = -energy * (k[0] - k[3])  # (p1 - k)^2
+                u = -energy * (k[0] + k[3])  # (p2 - k)^2
+                expected.append(alpha_s**3 * poly**2 / (24 * math.pi * vev**2)
+                                * (mh**8 + s**4 + t**4 + u**4) / (s * t * u))
+        nevt = len(expected)
+        with open(pjoin(proc_dir, 'pts.bin'), 'wb') as fsock:
+            array.array('d', points).tofile(fsock)
+
+        devnull = open(os.devnull, 'w')
+        for backend in ('scalar', 'simd_128'):
+            subprocess.call(['make', 'BACKEND=%s' % backend, 'FPTYPE=d'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, 'check_sa.exe')),
+                            'check_sa.exe did not build for %s' % backend)
+            dump = 'me_%s.bin' % backend
+            subprocess.call(['./check_sa.exe', 'perf', '--momenta', 'pts.bin',
+                             '--dump-me', dump, '1', str(nevt), '1'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, dump)),
+                            'check_sa.exe perf wrote no %s' % dump)
+            mes = array.array('d')
+            with open(pjoin(proc_dir, dump), 'rb') as fsock:
+                mes.frombytes(fsock.read())
+            self.assertEqual(len(mes), nevt)
+            for ievt, (me, ref) in enumerate(zip(mes, expected)):
+                energy = 2 * points[16 * ievt]  # 2 E of the first gluon
+                self.assertLessEqual(abs(me / ref - 1), 1e-10,
+                                     '%s, sqrt(s) = %g GeV: %r instead of %r'
+                                     % (backend, energy, me, ref))
+
+        # the choice of an mg7 run, on the scalar build
+        import ctypes
+        import glob
+        from madgraph.mg7 import helicity_choice
+        lib_path = glob.glob(pjoin(self.out_dir, 'lib',
+                                   'libmadmatrix_*_P*_scalar_d.so'))[0]
+        param_card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        with_pdfs = helicity_choice.choose(lib_path, param_card, {}, 13000., 0., True)
+        no_pdfs = helicity_choice.choose(lib_path, param_card, {}, 13000., 0., False)
+        self.assertIsNotNone(with_pdfs)
+        self.assertIsNotNone(no_pdfs)
+        self.assertEqual(no_pdfs[1:], with_pdfs[1:],
+                         'with a massive leg, the choice at 13 TeV only keeps '
+                         'the all-plus helicities too')
+        lib = ctypes.CDLL(lib_path)
+        mom = (ctypes.c_double * (16 * nevt))()  # mom[nevt * (4 * mu + ipart) + i]
+        for i in range(nevt):
+            for ipart in range(4):
+                for mu in range(4):
+                    mom[nevt * (4 * mu + ipart) + i] = points[16 * i + 4 * ipart + mu]
+        alphas = (ctypes.c_double * nevt)(*([alpha_s] * nevt))
+
+        def evaluate(choice):
+            handle = ctypes.c_void_p()
+            self.assertEqual(0, lib.umami_initialize(ctypes.byref(handle),
+                                                     param_card.encode()))
+            self.assertEqual(0, lib.madmatrix_set_helicity_choice(
+                handle, (ctypes.c_int * len(choice))(*choice), len(choice)))
+            me = (ctypes.c_double * nevt)()
+            # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_ALPHA_S = 1,
+            # UMAMI_OUT_MATRIX_ELEMENT = 0
+            status = lib.umami_matrix_element(
+                handle, ctypes.c_size_t(nevt), ctypes.c_size_t(nevt),
+                ctypes.c_size_t(0), ctypes.c_size_t(2), (ctypes.c_int * 2)(0, 1),
+                (ctypes.c_void_p * 2)(ctypes.addressof(mom), ctypes.addressof(alphas)),
+                ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                (ctypes.c_void_p * 1)(ctypes.addressof(me)))
+            self.assertEqual(0, status)
+            lib.umami_free(handle)
+            return list(me)
+
+        for tag, choice in (('with PDFs', with_pdfs), ('without PDFs', no_pdfs)):
+            for ievt, (me, ref) in enumerate(zip(evaluate(choice), expected)):
+                self.assertLessEqual(abs(me / ref - 1), 1e-10,
+                                     'the choice for 13 TeV %s, sqrt(s) = %g GeV: '
+                                     '%r instead of %r'
+                                     % (tag, 2 * points[16 * ievt], me, ref))
+
     def test_madmatrix_vs_fortran(self):
         """Cross-check that standalone (madmatrix) reproduces the
         standalone_fortran matrix elements for p p > e+ e- QCD=0.
@@ -1922,6 +4541,148 @@ class TestCmdShell2(unittest.TestCase,
         mg7 = get_values('standalone', './check_sa.exe')
         self._assert_me_lists_close(mg7, fortran)
 
+    # a heavy down-type quark xq (pdg 6000001) coupling to d and s through
+    # the Z, with two couplings: merged, [xq~, q, Z] and [q~, xq, Z] each
+    # become ONE flavored coupling with two keys
+    _XQ_PARTICLES = """
+xq = Particle(pdg_code = 6000001, name = 'xq', antiname = 'xq~', spin = 2,
+              color = 3, mass = Param.MXQ, width = Param.WXQ, texname = 'xq',
+              antitexname = 'xq~', charge = -1/3, GhostNumber = 0,
+              LeptonNumber = 0, Y = 0)
+xq__tilde__ = xq.anti()
+"""
+    _XQ_PARAMETERS = """
+MXQ = Parameter(name = 'MXQ', nature = 'external', type = 'real', value = 1000.,
+                texname = 'MXQ', lhablock = 'MASS', lhacode = [ 6000001 ])
+WXQ = Parameter(name = 'WXQ', nature = 'external', type = 'real', value = 10.,
+                texname = 'WXQ', lhablock = 'DECAY', lhacode = [ 6000001 ])
+KXD = Parameter(name = 'KXD', nature = 'external', type = 'real', value = 0.3,
+                texname = 'KXD', lhablock = 'XQMIX', lhacode = [ 1 ])
+KXS = Parameter(name = 'KXS', nature = 'external', type = 'real', value = 0.5,
+                texname = 'KXS', lhablock = 'XQMIX', lhacode = [ 2 ])
+"""
+    _XQ_COUPLINGS = """
+GC_XD = Coupling(name = 'GC_XD', value = 'ee*complex(0,1)*KXD', order = {'QED':1})
+GC_XS = Coupling(name = 'GC_XS', value = 'ee*complex(0,1)*KXS', order = {'QED':1})
+"""
+    _XQ_VERTICES = """
+V_XQ1 = Vertex(name = 'V_XQ1', particles = [ P.xq__tilde__, P.d, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XD})
+V_XQ2 = Vertex(name = 'V_XQ2', particles = [ P.xq__tilde__, P.s, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XS})
+V_XQ3 = Vertex(name = 'V_XQ3', particles = [ P.d__tilde__, P.xq, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XD})
+V_XQ4 = Vertex(name = 'V_XQ4', particles = [ P.s__tilde__, P.xq, P.Z ],
+               color = [ 'Identity(1,2)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_XS})
+V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
+               color = [ 'T(3,2,1)' ], lorentz = [ L.FFV1 ],
+               couplings = {(0,0):C.GC_11})
+"""
+
+    def _sm_with_mixing_heavy_quark(self):
+        """A copy of the sm UFO with the heavy quark xq of _XQ_* (its
+        restriction card extended with xq's parameters); returns its path.
+        The name is the test's: a model is imported as a Python module of
+        its directory name, and a second test run in the same process could
+        not import its own copy under the first one's name."""
+        path = pjoin(self.tmpdir, 'sm_xq_%s' % self._testMethodName)
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        shutil.copytree(pjoin(MG5DIR, 'models', 'sm'), path,
+                        ignore=shutil.ignore_patterns('*.pkl', '*.log', 'restrict_*'))
+        shutil.copy(pjoin(MG5DIR, 'models', 'sm', 'restrict_default.dat'), path)
+        for name, text in (('particles.py', self._XQ_PARTICLES),
+                           ('parameters.py', self._XQ_PARAMETERS),
+                           ('couplings.py', self._XQ_COUPLINGS),
+                           ('vertices.py', self._XQ_VERTICES)):
+            with open(pjoin(path, name), 'a') as fsock:
+                fsock.write(text)
+        card = open(pjoin(path, 'restrict_default.dat')).read()
+        card = card.replace('   25 1.250000e+02 # MH \n',
+                            '   25 1.250000e+02 # MH \n 6000001 1.000000e+03 # MXQ \n', 1)
+        card += ('\nDECAY 6000001 1.000000e+01\n'
+                 'Block XQMIX \n    1 3.000000e-01 # KXD \n    2 5.000000e-01 # KXS \n')
+        with open(pjoin(path, 'restrict_default.dat'), 'w') as fsock:
+            fsock.write(card)
+        return path
+
+    def test_flavor_coupling_shared_table_slot(self):
+        """A flavored coupling whose table cannot hold its keys is refused by
+        every output, and one that can is written right by both backends.
+
+        The heavy quark xq couples to d and s through the Z. Merged, xq~ q Z
+        is one coupling with keys (0,1,0), (0,3,0): both need PARTNER(1) and
+        VAL(1) of the first fermion, xq, and the table keeps only the s key.
+        The Fortran standalone wrote p p > xq~ z without a word and gave
+        |M|^2 = 0 for g d~ > xq~ z (0.0512 unmerged); the C++ one the same
+        through its own tables. Both refuse it now. q~ xq Z, the merged leg
+        first, shares only PARTNER2(1), which no call reads (generation
+        refuses to build a merged quark from xq alone): p p > xq z is
+        written, and its flavors agree with the unmerged g d > xq z and g s
+        > xq z.
+        """
+        devnull = open(os.devnull, 'w')
+        model = self._sm_with_mixing_heavy_quark()
+        entry_re = re.compile(r'^\s*PDG\s+([-\d\s]+?)\s*\n\s*Matrix element\s*=\s*'
+                              r'([-+\d.eEdD]+)', re.M)
+
+        def values(path, fortran):
+            proc_root = pjoin(path, 'SubProcesses')
+            if fortran:
+                subprocess.call(['make'], stdout=devnull, stderr=devnull,
+                                cwd=pjoin(path, 'Source'))
+                build, run = ['make', 'check'], ['./check', '3000']
+            else:
+                build = ['make', 'BACKEND=scalar', 'FPTYPE=d']
+                run = ['./check_sa.exe', 'matrix', '3000']
+            out = {}
+            for proc_dir in sorted(glob.glob(pjoin(proc_root, 'P*'))):
+                self.assertEqual(0, subprocess.call(build, stdout=devnull,
+                                                    stderr=devnull, cwd=proc_dir),
+                                 'the build of %s failed' % proc_dir)
+                log = pjoin(proc_dir, 'check_flavours.log')
+                subprocess.call(run, stdout=open(log, 'w'),
+                                stderr=subprocess.STDOUT, cwd=proc_dir)
+                out.update((tuple(int(p) for p in pdg.split()),
+                            float(me.replace('D', 'E').replace('d', 'e')))
+                           for pdg, me in entry_re.findall(open(log).read()))
+            self.assertTrue(out, 'no matrix element in %s' % path)
+            return out
+
+        dirs = dict((name, '%s_xq_%s' % (self.out_dir, name))
+                    for name in ('refused', 'fortran', 'cpp', 'reference'))
+        self.do('import model %s' % model)
+        self.do('generate p p > xq~ z')
+        for output in ('standalone_fortran', 'madevent', 'standalone'):
+            self.assertRaises(InvalidCmd, self.do,
+                              'output %s %s -f' % (output, dirs['refused']))
+        self.do('generate p p > xq z')
+        self.do('output standalone_fortran %s -f' % dirs['fortran'])
+        self.do('output standalone %s -f --hel_recycling=False' % dirs['cpp'])
+        self.do('set apply_flavor_grouping False')
+        self.do('import model %s' % model)
+        self.do('generate g d > xq z')
+        self.do('add process g s > xq z')
+        self.do('output standalone_fortran %s -f' % dirs['reference'])
+
+        reference = values(dirs['reference'], True)
+        self.assertEqual(sorted(reference),
+                         [(21, 1, 6000001, 23), (21, 3, 6000001, 23)])
+        # the two couplings of the model, squared: g d at 0.36 of g s
+        self.assertAlmostEqual(reference[(21, 1, 6000001, 23)] /
+                               reference[(21, 3, 6000001, 23)], 0.36, places=6)
+        for name, fortran in (('fortran', True), ('cpp', False)):
+            merged = values(dirs[name], fortran)
+            self.assertEqual(sorted(merged), sorted(reference), name)
+            for pdg, me in reference.items():
+                self.assertLessEqual(abs(merged[pdg] - me), 1e-10 * me,
+                                     '%s, flavour %s: %r, unmerged %r'
+                                     % (name, pdg, merged[pdg], me))
+
     def test_madmatrix_mssm_single_leg(self):
         """Single-merged-leg flavored couplings must give the same per-flavor
         |M|^2 in standalone (madmatrix) as in the Fortran standalone.
@@ -1974,6 +4735,50 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for p p > n1 n1')
         self._assert_me_lists_close(mg7, standalone, rtol=1e-4)
+
+    def test_flavor_merged_from_unmerged_refused(self):
+        """A merged quark built from unmerged particles only, through a
+        flavored coupling with several flavors, is refused by every output
+        with an InvalidCmd naming the coupling and the way out.
+
+        The heavy quark xq couples to d and s through the Z (_XQ_*). In
+        g g > xq z q~ (p p > xq z j) the quark of the diagrams with the Z
+        on the xq line is built from xq and z alone, and its flavor, d or
+        s, is fixed by the other end of the line; in xq xq~ > z z (no merged
+        leg) it is summed over. The outputs give a merged wavefunction the
+        one flavor its mothers fix, so they can do neither: p p > xq z j
+        crashed with a FlavorTagError (and MG's 'report this bug'), xq xq~ >
+        z z only when writing check_sa.f. Without flavor grouping, the way
+        out the message gives, both are generated; p p > xq z, which builds
+        no quark from xq alone, is still written merged.
+        """
+        model = self._sm_with_mixing_heavy_quark()
+        self.do('import model %s' % model)
+        for process in ('p p > xq z j', 'xq xq~ > z z'):
+            self.do('generate %s' % process)
+            for output in ('standalone_fortran', 'madevent', 'standalone'):
+                with self.assertRaises(InvalidCmd) as context:
+                    self.do('output %s %s -f' % (output, self.out_dir))
+                message = str(context.exception)
+                for text in ('GC_XD', 'GC_XS', "'set apply_flavor_grouping False'"):
+                    self.assertIn(text, message, '%s, %s' % (process, output))
+                self.assertEqual(glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*')),
+                                 [], '%s, %s' % (process, output))
+        self.assertIn('xq xq~ > z z', message)
+
+        self.do('generate p p > xq z')
+        self.do('output standalone_fortran %s -f' % self.out_dir)
+        self.assertEqual([os.path.basename(p).split('_', 1)[1] for p in
+                          glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*'))],
+                         ['gQ_xqz'])
+
+        self.do('set apply_flavor_grouping False')
+        self.do('import model %s' % model)
+        for process in ('p p > xq z j', 'xq xq~ > z z'):
+            self.do('generate %s' % process)
+            self.do('output standalone_fortran %s -f' % self.out_dir)
+            self.assertTrue(glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*')),
+                            process)
 
     def test_madmatrix_mssm_gogo(self):
         """Dependent (event-by-event, running-alphas) flavored couplings must
@@ -2056,6 +4861,80 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(proc_dirs,
                         'madevent produced no subprocess for p p > go go')
 
+
+
+    def test_quarkonium_standalone(self):
+        """Standalone test for various quarkonium production matrix elements"""
+
+        import os
+        import re
+        import subprocess
+        import glob
+        import madgraph.interface.master_interface as MGCmd
+
+        # --------------------------------------------------
+        # Create MG5 interface
+        # --------------------------------------------------
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+
+        process_list = [
+            ['g g > chic1(1|3P11) chib0(1|3P01)', 3.132275172481691e-16],
+            ['g g > hc(1|1P11) g', 2.3637208371566567e-12],
+            ['u u~ > a Jpsi(1|3P08) QCD=99 QED=99', 3.6650612158421924e-11],
+            # a t-channel Z: its width is dropped where the momentum is
+            # spacelike (zerowidth_tchannel, the default); keeping it gives
+            # 1.819597262304262e-20
+            ['u a > Upsilon(1|3S11) u chib2(1|3P21) QCD=99 QED=99', 1.81950515062415e-20],
+        ]
+        for process in process_list:
+            mg_cmd.exec_cmd('generate %s ' % process[0])
+
+            # --------------------------------------------------
+            # Generate process
+            # --------------------------------------------------
+            mg_cmd.exec_cmd('output standalone_fortran %s -f' % (self.out_dir))
+
+            self.assertTrue(os.path.isdir(self.out_dir))
+
+            # --------------------------------------------------
+            # Find subprocess directory
+            # --------------------------------------------------
+            proc_dirs = glob.glob(os.path.join(self.out_dir,
+                                            "SubProcesses",
+                                            "P*"))
+
+            self.assertTrue(proc_dirs, "No P* subprocess found")
+
+            # --------------------------------------------------
+            # Compile inside subprocess
+            # --------------------------------------------------
+            proc_dir = proc_dirs[0]
+            subprocess.check_call(['make'], cwd=proc_dir)
+
+            # --------------------------------------------------
+            # Run check
+            # --------------------------------------------------
+            output = subprocess.check_output(
+                ['./check'],
+                cwd=proc_dir
+            ).decode()
+
+            # --------------------------------------------------
+            # Extract matrix element
+            # --------------------------------------------------
+            match = re.search(r'Matrix element\s*=\s*([0-9Ee\+\-\.]+)', output)
+            self.assertIsNotNone(match)
+
+            val1 = float(match.group(1))
+            target =  process[1]  # value to compare to
+            passed = abs(val1-target)/(val1+target) < 1e-08
+
+            self.assertTrue(passed)
+
+         
     def test_standalone_density(self):
         """test that standalone density is working"""
 
@@ -2101,7 +4980,18 @@ class TestCmdShell2(unittest.TestCase,
 
         # We changed the value of the reference by a factor of 256, which is the inclusion of IDEN in get_inter in matrix.
         # original_sol = {(-1, -1, 1, 1): (0.02827952274928987, 0.0), (-1, -1, 1, -1): (-0.0041892876162345, -0.0041923830983622255), (-1, 1, 1, 1): (0.000469685615962711, 0.0006142055733429721), (-1, 1, 1, -1): (-0.01784029173125566, -0.00794999696313525), (-1, -1, -1, -1): (0.02532739017396033, 0.0), (-1, 1, -1, 1): (-0.00028182588524174187, 0.0024162264334765746), (-1, 1, -1, -1): (-0.00048593945847553023, -0.0006039982074415239), (1, 1, 1, 1): (0.025301510150454294, 0.0), (1, 1, 1, -1): (0.004212401136919661, 0.0042167644618831875), (1, 1, -1, -1): (0.028322721746299958, 0.0)}
-        original_sol = {(-1, -1, 1, 1): (0.00011046688573941356, 0.0), (-1, -1, 1, -1): (-1.6364404750916015e-05, -1.6376496477977443e-05), (-1, 1, 1, 1): (1.83470943735434e-06, 2.3992405208709848e-06), (-1, 1, 1, -1): (-6.968863957521743e-05, -3.105467563724707e-05), (-1, -1, -1, -1): (9.893511786703254e-05, 0.0), (-1, 1, -1, 1): (-1.1008823642255542e-06, 9.43838450576787e-06), (-1, 1, -1, -1): (-1.89820100967004e-06, -2.359367997818453e-06), (1, 1, 1, 1): (9.883402402521209e-05, 0.0), (1, 1, 1, -1): (1.6454691941092424e-05, 1.64717361792312e-05), (1, 1, -1, -1): (0.00011063563182148421, 0.0)}
+        # Updated on the MG7 crossing branch (claude/fortran-cross-symmetry-3f13f3).
+        # Two intended changes shifted these ~0.1%: (a) zerowidth_external
+        # (commit 35706c9ae, default on) drops the width of the internal top
+        # propagator because the top is an external final state of p p > j t t~;
+        # (b) the canonical helicity encoder (commit 2b22dd566) fixed a small
+        # C-parity asymmetry the old reference carried -- for QCD g g > g t t~
+        # the t-tbar spin density matrix must obey rho(h,h') = rho(-h,-h'), which
+        # the new values satisfy to float precision (e.g. (1,1,1,1) ==
+        # (-1,-1,-1,-1) and (-1,-1,1,1) == (1,1,-1,-1)) while the old ones did not.
+        # Previous values (width kept, slightly asymmetric):
+        #   original_sol = {(-1, -1, 1, 1): (0.00011046688573941356, 0.0), (-1, -1, 1, -1): (-1.6364404750916015e-05, -1.6376496477977443e-05), (-1, 1, 1, 1): (1.83470943735434e-06, 2.3992405208709848e-06), (-1, 1, 1, -1): (-6.968863957521743e-05, -3.105467563724707e-05), (-1, -1, -1, -1): (9.893511786703254e-05, 0.0), (-1, 1, -1, 1): (-1.1008823642255542e-06, 9.43838450576787e-06), (-1, 1, -1, -1): (-1.89820100967004e-06, -2.359367997818453e-06), (1, 1, 1, 1): (9.883402402521209e-05, 0.0), (1, 1, 1, -1): (1.6454691941092424e-05, 1.64717361792312e-05), (1, 1, -1, -1): (0.00011063563182148421, 0.0)}
+        original_sol = {(-1, -1, 1, 1): (1.1055111552478938e-04, 0.0), (-1, -1, 1, -1): (-1.64093293295174e-05, -1.6423855436270287e-05), (-1, 1, 1, 1): (1.8665871580175305e-06, 2.379192499586592e-06), (-1, 1, 1, -1): (-6.968855681502337e-05, -3.105473609582678e-05), (-1, -1, -1, -1): (9.888413899750238e-05, 0.0), (-1, 1, -1, 1): (-1.1008919387924359e-06, 9.438278745771431e-06), (-1, 1, -1, -1): (-1.8665871580175398e-06, -2.3791924995866025e-06), (1, 1, 1, 1): (9.88841389975024e-05, 0.0), (1, 1, 1, -1): (1.640932932951739e-05, 1.6423855436270293e-05), (1, 1, -1, -1): (1.1055111552478935e-04, 0.0)}
 
         for key in original_sol:
             self.assertIn(key, sol)
@@ -2265,12 +5155,65 @@ class TestCmdShell2(unittest.TestCase,
 
 
         self.assertEqual(len(sol), 10)
-        # I am not sure why for this case I didn't have to introduce the nomalisation term
+        # I am not sure why for this case I didn't have to introduce the normalisation term
         original_sol = sol =  {(-1, -1, 1, 1): (-5.551115123125783e-17, 0.0), (-1, -1, 1, -1): (0.00926133766116009, 0.0), (-1, 1, 1, 1): (-0.009292545047075378, 0.0), (-1, 1, 1, -1): (0.09884700885130696, 0.0), (-1, -1, -1, -1): (-1.6479873021779667e-17, 0.0), (-1, 1, -1, 1): (5.415404411525035e-07, 0.0), (-1, 1, -1, -1): (-0.012877349160785171, 0.0), (1, 1, 1, 1): (-1.734723475976807e-17, 0.0), (1, 1, 1, -1): (0.012880402732054583, 0.0), (1, 1, -1, -1): (-4.85722573273506e-17, 0.0)}
         for key in original_sol:
             self.assertIn(key, sol)
             self.assertAlmostEqual(original_sol[key][0] if abs(original_sol[key][0]) > 1e-12 else 0, sol[key][0])
             self.assertAlmostEqual(original_sol[key][1] if abs(original_sol[key][1]) > 1e-12 else 0, sol[key][1])
+
+    def test_standalone_zerowidth(self):
+        """output standalone_fortran --zerowidth_decay=: in a decay only the decaying
+        particle's propagators get a zero width, in a production the listed
+        final-state particles' ones; nothing changes without the option."""
+
+        def calls(out_dir, pdir):
+            # the P<n>_ numbering depends on the generation, not the suffix
+            sub = os.path.join(out_dir, 'SubProcesses')
+            pdir = [d for d in os.listdir(sub) if d.split('_', 1)[-1] == pdir][0]
+            text = open(os.path.join(sub, pdir, 'matrix.f')).read()
+            # compared without blanks: with the crossing machinery the
+            # written call is ',ZERO,', not the ', ZERO,' of the rewrite
+            return [l.strip().replace(' ', '') for l in text.split('\n')
+                    if l.strip().startswith('CALL') and 'XXXXX' not in l]
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('set group_subprocesses False')
+        # zerowidth_external (on by default) drops the width of any internal
+        # top here, the top being external: switch it off so that only
+        # --zerowidth_decay acts
+        self.do('set zerowidth_external False')
+        self.addCleanup(self.do, 'set zerowidth_external True')
+        # the HELAS calls checked below are the unitary-gauge ones (the FD
+        # gauge, picked by default here, wraps them differently)
+        self.do('set gauge unitary')
+        self.do('generate t > e+ ve b')
+        self.do('add process t > w+ b g')
+        for option in ('True', '6,24'):
+            self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=%s -f'
+                    % (self.out_dir, option))
+            # the internal W of the top decay keeps its width
+            self.assertTrue([c for c in calls(self.out_dir, 't_epveb')
+                             if ',MDL_MW,MDL_WW,' in c])
+            # the internal top of t > w+ b g does not
+            self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
+                             if ',MDL_MT,ZERO,' in c])
+        self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=False -f'
+                % self.out_dir)
+        self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
+                         if ',MDL_MT,MDL_WT,' in c])
+
+        self.do('generate e+ e- > t t~ z')
+        self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=6,24 -f'
+                % self.out_dir)
+        zeroed = [c for c in calls(self.out_dir, 'epem_ttxz') if 'MDL_MT' in c]
+        self.assertEqual(len(zeroed), 2)
+        self.assertTrue(all('MDL_MT,ZERO,' in c for c in zeroed), zeroed)
+
+        self.do('output standalone_fortran %s --prefix=int --density=1 -f' % self.out_dir)
+        kept = [c for c in calls(self.out_dir, 'epem_ttxz') if 'MDL_MT' in c]
+        self.assertTrue(all('MDL_MT,MDL_WT,' in c for c in kept), kept)
 
     def test_standalone_density_uu(self):
         ############################################################################
@@ -2831,6 +5774,101 @@ class TestCmdShell2(unittest.TestCase,
             self.assertAlmostEqual(madspin_report_dict[key].real/(ref_val.real * iden_dec**2), 1, places=4)
                                                                              
                                                                              
+    # Run in a fresh interpreter: every output names its module all_matrix2py,
+    # so it must not share a process with one an earlier test imported.
+    _get_all_inter_script = '''
+import itertools, json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, prefix, outfile, pdgs = sys.argv[1:]
+fct = lambda name: getattr(m, prefix + name)
+fct('initialise')(os.path.join(mdir, 'Cards', 'param_card.dat'))
+E, th, ph = 500., 0.7, 0.3
+k = [E*math.sin(th)*math.cos(ph), E*math.sin(th)*math.sin(ph), E*math.cos(th)]
+p = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + k,
+              [E] + [-x for x in k]]).T.copy()
+kw = dict(pdgs=json.loads(pdgs), procid=-1, p=p, pos=[3, 4],
+          allow_hel=[-1, -1, -1, 1, 1, -1, 1, 1])
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {'density': cplx(fct('py_get_density')(alphas=0., scale2=0., **kw)),
+       'inter': [], 'nhel': []}
+for h1, h2 in itertools.product([-1, 1], repeat=2):
+    # the entries at pos are ignored: 0 shows whether they were written to
+    nhel = np.array([h1, h2, 0, 0], dtype=np.int32)
+    res['inter'].append(cplx(fct('py_get_all_inter')(nhel=nhel, **kw)))
+    res['nhel'].append([nhel.tolist(), [h1, h2, 0, 0]])
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def test_standalone_f2py_get_all_inter(self):
+        """py_get_all_inter, summed over the helicities of the legs not in
+        pos, must give py_get_density.
+
+        It could not be called at all: f2py gave INTER the dimension (*), so
+        every call raised a ValueError; the dispatch in all_matrix.f did not
+        pass the NHEL the per-process GET_ALL_INTER takes; and with
+        --prefixf2py the wrapper called the unprefixed f77_get_all_inter, so
+        the whole module failed to import.
+        """
+        import json
+        self.do('import model sm')
+        self.do('generate p p > e+ e-')
+        prefixed_dir = self.out_dir + '_prefixf2py'
+        self.addCleanup(shutil.rmtree, prefixed_dir, ignore_errors=True)
+        for out_dir, option, prefix in [(self.out_dir, '', ''),
+                                        (prefixed_dir, ' --prefixf2py=1', 'f1_')]:
+            self.do('output standalone_fortran %s --prefix=int -f%s'
+                    % (out_dir, option))
+            self._check_get_all_inter(out_dir, prefix, [2, -2, -11, 11])
+
+        # Split orders: the per-process GET_ALL_INTER fills one INTER per
+        # squared split order (NSQAMPSO=3 here), more than the f2py buffer
+        # holds; the dispatch has to hand back their sum, as the density does.
+        so_dir = self.out_dir + '_splitorders'
+        self.addCleanup(shutil.rmtree, so_dir, ignore_errors=True)
+        self.do('generate u u~ > u u~ QED^2<=4 QCD^2<=4')
+        self.do('output standalone_fortran %s --prefix=int -f' % so_dir)
+        self._check_get_all_inter(so_dir, '', [2, -2, 2, -2])
+
+    def _check_get_all_inter(self, out_dir, prefix, pdgs):
+        """Build out_dir's f2py module and check that py_get_all_inter summed
+        over the helicities of legs 1 and 2 gives py_get_density."""
+        import json
+        subdir = os.path.join(out_dir, 'SubProcesses')
+        build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                               capture_output=True, text=True)
+        self.assertEqual(build.returncode, 0,
+                         'make f2py failed:\n' + build.stdout[-2000:]
+                         + build.stderr[-2000:])
+
+        outfile = os.path.join(out_dir, 'get_all_inter.json')
+        run = subprocess.run([sys.executable, '-c',
+                              self._get_all_inter_script,
+                              out_dir, prefix, outfile, json.dumps(pdgs)],
+                             cwd=subdir, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0,
+                         run.stdout[-2000:] + run.stderr[-2000:])
+        res = json.load(open(outfile))
+
+        # f2py hands the int32 array straight through, and GET_ALL_INTER
+        # writes the pos entries of the NHEL it is given
+        for after, before in res['nhel']:
+            self.assertEqual(after, before)
+
+        dens = res['density']
+        scale = max(abs(complex(*z)) for z in dens)
+        self.assertGreater(scale, 0)
+        # more than one helicity of the other legs contributes, so the
+        # sum below does not reduce to a single call
+        self.assertGreaterEqual(
+            sum(any(re_ or im_ for re_, im_ in inter)
+                for inter in res['inter']), 2)
+        for i, (re_, im_) in enumerate(dens):
+            self.assertAlmostEqual(sum(inter[i][0] for inter in res['inter']),
+                                   re_, delta=1e-12 * scale)
+            self.assertAlmostEqual(sum(inter[i][1] for inter in res['inter']),
+                                   im_, delta=1e-12 * scale)
+
     def test_standalone_density_f2py(self):       
 
         ############################################################################
@@ -2974,6 +6012,510 @@ class TestCmdShell2(unittest.TestCase,
             self.assertAlmostEqual(density_matrix.trace()/fortran_me, 1,4)
             misc.sprint(density_matrix.values[1], fortran_dens[1])
 
+    # Run in a fresh interpreter: every output names its module all_matrix2py,
+    # so it must not share a process with one an earlier test imported.
+    _pdgs_not_modified_script = '''
+import json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, outfile = sys.argv[1:]
+m.initialise(os.path.join(mdir, 'Cards', 'param_card.dat'))
+E, th, ph = 500., 0.7, 0.3
+k = [E*math.sin(th)*math.cos(ph), E*math.sin(th)*math.sin(ph), E*math.cos(th)]
+p = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + k,
+              [E] + [-x for x in k]]).T.copy()
+uu, dd = [2, -2, -11, 11], [1, -1, -11, 11]
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {}
+res['fresh_u'] = m.smatrixhel(uu, -1, p, 0.118, 0., -1)
+res['fresh_d'] = m.smatrixhel(dd, -1, p, 0.118, 0., -1)
+arr = np.array(uu, dtype=np.int32)
+res['reused'] = [m.smatrixhel(arr, -1, p, 0.118, 0., -1) for _ in range(2)]
+res['after'] = arr.tolist()
+kw = dict(procid=-1, p=p, pos=[3], allow_hel=[-1, 1], alphas=0.118, scale2=0.)
+res['dens_fresh_u'] = cplx(m.py_get_density(pdgs=uu, **kw))
+res['dens_fresh_d'] = cplx(m.py_get_density(pdgs=dd, **kw))
+arr = np.array(uu, dtype=np.int32)
+res['dens_reused'] = [cplx(m.py_get_density(pdgs=arr, **kw)) for _ in range(2)]
+res['dens_after'] = arr.tolist()
+batch = np.asfortranarray(np.array([uu, uu], dtype=np.int32).T)
+pb = np.asfortranarray(np.stack([p, p], axis=-1))
+res['batch_reused'] = []
+for _ in range(2):
+    inter = m.py_get_density_batch(pdgs=batch, procid=-1, p=pb, pos=[3],
+                                   allow_hel=[-1, 1], alphas=[0.118]*2,
+                                   scale2=[0.]*2, nbatch=2, next=4)
+    res['batch_reused'] += [cplx(inter[:, 0]), cplx(inter[:, 1])]
+res['batch_after'] = batch.T.tolist()
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def test_standalone_f2py_pdgs_not_modified(self):
+        """all_matrix2py must not write to the pdgs array it is handed.
+
+        all_matrix.f rewrites every pdg to its merged-particle code (u -> 81)
+        before dispatching. f2py passes an int32 numpy array straight through
+        for intent(in), so while that rewrite was done on PDGS itself a reused
+        [2,-2,-11,11] came back as [81,-81,-82,82] and the next call silently
+        answered for d d~. A python list is copied by f2py and never showed it.
+        """
+        import json
+        self.do('import model sm')
+        self.do('generate p p > e+ e-')
+        self.do('output standalone_fortran %s --prefix=int -f' % self.out_dir)
+        subdir = os.path.join(self.out_dir, 'SubProcesses')
+        build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                               capture_output=True, text=True)
+        self.assertEqual(build.returncode, 0,
+                         'make f2py failed:\n' + build.stdout[-2000:]
+                         + build.stderr[-2000:])
+
+        outfile = os.path.join(self.out_dir, 'pdgs_check.json')
+        run = subprocess.run([sys.executable, '-c',
+                              self._pdgs_not_modified_script,
+                              self.out_dir, outfile],
+                             cwd=subdir, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout[-2000:] + run.stderr[-2000:])
+        res = json.load(open(outfile))
+
+        uu = [2, -2, -11, 11]
+        # u u~ and d d~ differ, so a rewritten array would be caught
+        self.assertNotAlmostEqual(res['fresh_d'] / res['fresh_u'], 1, places=3)
+        self.assertEqual(res['after'], uu)
+        for value in res['reused']:
+            self.assertAlmostEqual(value / res['fresh_u'], 1, places=12)
+
+        ref_u = res['dens_fresh_u']
+        self.assertNotAlmostEqual(res['dens_fresh_d'][0][0] / ref_u[0][0], 1, places=3)
+        self.assertEqual(res['dens_after'], uu)
+        self.assertEqual(res['batch_after'], [uu, uu])
+        for dens in res['dens_reused'] + res['batch_reused']:
+            self.assertEqual(len(dens), len(ref_u))
+            for (re_, im_), (ref_re, ref_im) in zip(dens, ref_u):
+                self.assertAlmostEqual(re_, ref_re, delta=1e-12 * abs(ref_u[0][0]))
+                self.assertAlmostEqual(im_, ref_im, delta=1e-12 * abs(ref_u[0][0]))
+
+    # p p > e+ e- j folds g u~ > e+ e- u~ (legs 2 and 5 exchanged across)
+    # and u u~ > e+ e- g (a 3-cycle of legs 1, 2 and 5) onto g u > e+ e- u.
+    # Run in a fresh interpreter: every output names its module all_matrix2py.
+    # mode 'pdg': the PDG-keyed entry points; 'idx': the per-process _IDX ones
+    # at the extended index GET_PDG_FOR_FLAVOR names for those PDG codes.
+    _crossed_f2py_script = '''
+import itertools, json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, outfile, mode = sys.argv[1:]
+m.initialise(os.path.join(mdir, 'Cards', 'param_card.dat'))
+# on shell and momentum conserving: E3=300, E4=400, E5=300 in the partonic
+# rest frame (cos(p3,p4) = -2/3), then boosted along z
+a, f, psi = 0.7, 0.3, 1.1
+n3 = np.array([math.sin(a)*math.cos(f), math.sin(a)*math.sin(f), math.cos(a)])
+u = np.cross(n3, [0., 0., 1.])
+u /= np.linalg.norm(u)
+v = np.cross(n3, u)
+c = -2./3.
+n4 = c*n3 + math.sqrt(1 - c*c)*(math.cos(psi)*u + math.sin(psi)*v)
+k3, k4 = 300*n3, 400*n4
+mom = [[500, 0, 0, 500], [500, 0, 0, -500], [300] + list(k3),
+       [400] + list(k4), [300] + list(-k3 - k4)]
+b = 0.3
+g = 1/math.sqrt(1 - b*b)
+p = np.asfortranarray(np.array(
+    [[g*(q[0] + b*q[3]), q[1], q[2], g*(q[3] + b*q[0])] for q in mom]).T)
+pos, allow = [1, 5], [-1, -1, -1, 1, 1, -1, 1, 1]
+nhels = [[0, h2, h3, h4, 0] for h2, h3, h4 in itertools.product([-1, 1], repeat=3)]
+cases = [[21, 2, -11, 11, 2], [21, -2, -11, 11, -2], [2, -2, -11, 11, 21]]
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {'sm': [], 'dens': [], 'inter': [], 'kept': True, 'idx': []}
+for pdgs in cases:
+    arr = np.array(pdgs, dtype=np.int32)
+    res['sm'].append(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
+    if mode == 'pdg':
+        dens = m.py_get_density(pdgs=arr, procid=-1, p=p, pos=pos,
+                                allow_hel=allow, alphas=0.118, scale2=0.)
+        inter = lambda nh: m.py_get_all_inter(pdgs=arr, procid=-1, p=p,
+                                              nhel=nh, pos=pos, allow_hel=allow)
+    else:
+        nflav, next_, ncross = m.py_m0_get_flavor_layout()
+        idx = [i for i in range(1, nflav*ncross + 1)
+               if list(m.py_m0_get_pdg_for_flavor(i)) == pdgs][0]
+        res['idx'].append([idx, int(nflav)])
+        dens = m.py_m0_get_density_idx(p, pos, 2, allow, 4, idx, 0.118, 0.)
+        inter = lambda nh: m.py_m0_get_all_inter_idx(p, nh, pos, 2, allow, 4, idx)
+    res['dens'].append(cplx(dens))
+    res['inter'].append([])
+    for nhel in nhels:
+        nh = np.array(nhel, dtype=np.int32)
+        res['inter'][-1].append(cplx(inter(nh)))
+        res['kept'] &= nh.tolist() == nhel
+    res['kept'] &= arr.tolist() == pdgs
+if mode == 'pdg':
+    # e- e+ swapped: a leg order no matrix element serves
+    arr = np.array([21, 2, 11, -11, 2], dtype=np.int32)
+    res['nomatch'] = cplx(m.py_get_density(pdgs=arr, procid=-1, p=p, pos=pos,
+                          allow_hel=allow, alphas=0.118, scale2=0.)) + \\
+        cplx(m.py_get_all_inter(pdgs=arr, procid=-1, p=p, nhel=nhels[0],
+                                pos=pos, allow_hel=allow))
+    res['nomatch_sm'] = repr(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def _crossed_eej_outputs(self):
+        """p p > e+ e- j with crossing (folded) and without (expanded), both
+        built with make f2py; returns the two output directories."""
+        self.do('import model sm')
+        dirs = []
+        for tag, flag in (('_folded', ''), ('_expanded', ' --use_crossing=False')):
+            out_dir = self.out_dir + tag
+            self.addCleanup(shutil.rmtree, out_dir, ignore_errors=True)
+            self.do('generate p p > e+ e- j%s' % flag)
+            self.do('output standalone_fortran %s --prefix=int -f' % out_dir)
+            build = subprocess.run(['make', 'f2py'],
+                                   cwd=os.path.join(out_dir, 'SubProcesses'),
+                                   capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0, 'make f2py failed:\n' +
+                             build.stdout[-2000:] + build.stderr[-2000:])
+            dirs.append(out_dir)
+        # the folded output really folds: one matrix element, the crossings
+        # of g u > e+ e- u serve the two other subprocesses
+        self.assertEqual(len(misc.glob('P*', os.path.join(dirs[0], 'SubProcesses'))), 1)
+        self.assertEqual(len(misc.glob('P*', os.path.join(dirs[1], 'SubProcesses'))), 3)
+        return dirs
+
+    def _run_crossed_script(self, out_dir, mode):
+        import json
+        outfile = os.path.join(out_dir, 'crossed_%s.json' % mode)
+        run = subprocess.run([sys.executable, '-c', self._crossed_f2py_script,
+                              out_dir, outfile, mode],
+                             cwd=os.path.join(out_dir, 'SubProcesses'),
+                             capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout[-2000:] + run.stderr[-2000:])
+        return json.load(open(outfile)), run.stdout
+
+    def _assert_same_inter(self, got, ref, scale):
+        self.assertEqual(len(got), len(ref))
+        for (re_, im_), (ref_re, ref_im) in zip(got, ref):
+            self.assertAlmostEqual(re_, ref_re, delta=1e-12 * scale)
+            self.assertAlmostEqual(im_, ref_im, delta=1e-12 * scale)
+
+    def test_standalone_f2py_crossed_pdg_fallback(self):
+        """py_get_density / py_get_all_inter find a FOLDED crossed subprocess
+        by its PDG codes, as smatrixhel does (f77_crossed_density /
+        f77_crossed_get_all_inter), with P, POS and NHEL in the caller's leg
+        order: the folded output must answer what the expanded one does.
+
+        They used to return zeros for it: the PDG dispatch only knew the
+        uncrossed processes. PDG codes that no process matches now give NaN
+        (and an ERROR line) rather than zeros a caller cannot tell from a
+        vanishing density matrix, in smatrixhel as well.
+        """
+        import math
+        folded_dir, expanded_dir = self._crossed_eej_outputs()
+        folded, out = self._run_crossed_script(folded_dir, 'pdg')
+        expanded, _ = self._run_crossed_script(expanded_dir, 'pdg')
+        self.assertTrue(folded['kept'])
+        self.assertTrue(expanded['kept'])
+        for i in range(3):
+            self.assertAlmostEqual(folded['sm'][i] / expanded['sm'][i], 1,
+                                   places=12)
+            scale = max(abs(complex(*z)) for z in expanded['dens'][i])
+            self.assertGreater(scale, 0)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i], scale)
+            for got, ref in zip(folded['inter'][i], expanded['inter'][i]):
+                self._assert_same_inter(got, ref, scale)
+            # summed over the helicities of the legs not in POS, the
+            # interference terms give the density matrix
+            total = [[sum(inter[k][j] for inter in folded['inter'][i])
+                      for j in range(2)] for k in range(len(folded['dens'][i]))]
+            self._assert_same_inter(total, folded['dens'][i], scale)
+        for res in (folded, expanded):
+            # 4 helicity combinations: 10 entries, density then all_inter
+            self.assertEqual(len(res['nomatch']), 20)
+            self.assertTrue(all(math.isnan(x) for z in res['nomatch'] for x in z))
+            self.assertEqual(res['nomatch_sm'], 'nan')
+        self.assertIn('ERROR: py_get_density: no matrix element', out)
+        self.assertIn('ERROR: smatrixhel: no matrix element', out)
+
+    # every ordering of u~ d~ > u~ d~ and d~ u~ > u~ d~ that only exchanges
+    # legs inside the initial or the final state, at one phase-space point
+    # (momenta moved with their leg); u d > u d (uncrossed) as a control
+    _crossed_leg_order_script = '''
+import itertools, json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, outfile = sys.argv[1:]
+m.initialise(os.path.join(mdir, 'Cards', 'param_card.dat'))
+E, th, ph, b = 500., 1.1, 0.4, 0.27
+k = E*np.array([math.sin(th)*math.cos(ph), math.sin(th)*math.sin(ph), math.cos(th)])
+mom = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + list(k), [E] + list(-k)])
+g = 1/math.sqrt(1 - b*b)
+mom = np.array([[g*(q[0] + b*q[3]), q[1], q[2], g*(q[3] + b*q[0])] for q in mom])
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {'sm': [], 'dens': [], 'dens12': [], 'inter12': []}
+allow12 = [-1, -1, -1, 1, 1, -1, 1, 1]
+for pdgs in ([-2, -1, -2, -1], [-1, -2, -2, -1], [2, 1, 2, 1]):
+    for order in ([0, 1, 2, 3], [0, 1, 3, 2], [1, 0, 2, 3], [1, 0, 3, 2]):
+        arr = np.array([pdgs[o] for o in order], dtype=np.int32)
+        p = np.asfortranarray(mom[order].T)
+        res['sm'].append(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
+        # the density of the leg in slot 1, which the repair may move
+        dens = m.py_get_density(pdgs=arr, procid=-1, p=p, pos=[1],
+                                allow_hel=[-1, 1], alphas=0.118, scale2=0.)
+        res['dens'].append(cplx(dens))
+        # the initial legs open, the final ones at fixed helicities
+        res['dens12'].append(cplx(m.py_get_density(
+            pdgs=arr, procid=-1, p=p, pos=[1, 2], allow_hel=allow12,
+            alphas=0.118, scale2=0.)))
+        res['inter12'].append([cplx(m.py_get_all_inter(
+            pdgs=arr, procid=-1, p=p, nhel=np.array([0, 0, h3, h4],
+                                                    dtype=np.int32),
+            pos=[1, 2], allow_hel=allow12))
+            for h3, h4 in itertools.product([-1, 1], repeat=2)])
+# the 81 81 > 81 81 branch matches, but no ordering of the legs is in the
+# table (and no folded crossing serves it): NaN from every entry point
+res['unresolved'] = []
+for pdgs in ([2, 2, 1, 1], [2, 1, 1, 1]):
+    arr = np.array(pdgs, dtype=np.int32)
+    p = np.asfortranarray(mom.T)
+    res['unresolved'].append([
+        repr(m.smatrixhel(arr, -1, p, 0.118, 0., -1)),
+        cplx(m.py_get_density(pdgs=arr, procid=-1, p=p, pos=[1],
+                              allow_hel=[-1, 1], alphas=0.118, scale2=0.))])
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def test_standalone_f2py_crossed_pdg_leg_order(self):
+        """smatrixhel and py_get_density reach a FOLDED crossed subprocess
+        whatever the order of its same-code legs inside the initial or the
+        final state, as the uncrossed entries do with FLAVOR_ORDER_REPAIR.
+
+        In p p > j j the all-antiquark subprocesses are crossings of
+        P1_QQ_QQ, and F77_CROSSED_SMATRIXHEL took them only in the leg order
+        of GET_PDG_FOR_FLAVOR: u~ d~ > u~ d~ came back as a silent 0 while
+        the expanded output (P1_QxQx_QxQx) answers it in every order."""
+        import json
+        import math
+        self.do('import model sm')
+        res = []
+        for tag, flag in (('_folded', ''), ('_expanded', ' --use_crossing=False')):
+            out_dir = self.out_dir + tag
+            self.addCleanup(shutil.rmtree, out_dir, ignore_errors=True)
+            self.do('generate p p > j j%s' % flag)
+            self.do('output standalone_fortran %s --prefix=int -f' % out_dir)
+            subdir = os.path.join(out_dir, 'SubProcesses')
+            build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                                   capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0, 'make f2py failed:\n' +
+                             build.stdout[-2000:] + build.stderr[-2000:])
+            outfile = os.path.join(out_dir, 'leg_order.json')
+            run = subprocess.run([sys.executable, '-c',
+                                  self._crossed_leg_order_script, out_dir,
+                                  outfile], cwd=subdir,
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0,
+                             run.stdout[-2000:] + run.stderr[-2000:])
+            res.append(json.load(open(outfile)))
+        folded, expanded = res
+        # no P1_QxQx_QxQx: the antiquark processes really are folded
+        self.assertFalse(misc.glob('P*_QxQx_QxQx',
+                                   os.path.join(self.out_dir + '_folded',
+                                                'SubProcesses')))
+        for i, (got, ref) in enumerate(zip(folded['sm'], expanded['sm'])):
+            self.assertGreater(ref, 0)
+            self.assertAlmostEqual(got / ref, 1, places=12, msg=i)
+            # a relabelling: the same |M|^2 in every order of a process
+            self.assertAlmostEqual(got / folded['sm'][4 * (i // 4)], 1,
+                                   places=12, msg=i)
+        # the density matrix against smatrixhel through its trace, in every
+        # order: the open leg (POS) moves with its leg when the repair has
+        # to move it, so the expanded output answers too (it used to freeze
+        # it and return a silent 0 for half of these orders)
+        for out in (folded, expanded):
+            for i, dens in enumerate(out['dens']):
+                self.assertFalse(any(math.isnan(x) for z in dens for x in z), i)
+                self.assertAlmostEqual((dens[0][0] + dens[2][0]) /
+                                       out['sm'][i], 1, places=12, msg=i)
+        # py_get_all_inter summed over the final helicities is the density
+        # in every leg order, d u > u d (final legs repaired) included: its
+        # NHEL moves with the legs. It used to give zeros for every order
+        # the table does not hold.
+        for out in (folded, expanded):
+            nonzero = 0
+            for i, dens in enumerate(out['dens12']):
+                scale = max(abs(complex(*z)) for z in dens)
+                self.assertGreater(scale, 0, i)
+                nonzero += 1
+                for k, (re_, im_) in enumerate(dens):
+                    self.assertAlmostEqual(
+                        sum(inter[k][0] for inter in out['inter12'][i]),
+                        re_, delta=1e-12 * scale, msg=i)
+                    self.assertAlmostEqual(
+                        sum(inter[k][1] for inter in out['inter12'][i]),
+                        im_, delta=1e-12 * scale, msg=i)
+            self.assertEqual(nonzero, 12)
+        # folded and expanded: the same numbers, row by row
+        for i in range(12):
+            scale = max(abs(complex(*z)) for z in expanded['dens12'][i])
+            self._assert_same_inter(folded['dens12'][i],
+                                    expanded['dens12'][i], scale)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i],
+                                    max(abs(complex(*z))
+                                        for z in expanded['dens'][i]))
+            for got, ref in zip(folded['inter12'][i], expanded['inter12'][i]):
+                self._assert_same_inter(got, ref, scale)
+        # a PDG branch that matches (81 81 > 81 81) on a flavor combination
+        # no ordering of the table holds: smatrixhel misses like the density
+        # (crossed fallback, then NaN). It used to call SMATRIXHEL with the
+        # 0 flavor index and keep FOUND, answering a silent number.
+        for out in (folded, expanded):
+            self.assertEqual(len(out['unresolved']), 2)
+            for sm, dens in out['unresolved']:
+                self.assertEqual(sm, 'nan')
+                self.assertTrue(all(math.isnan(x) for z in dens for x in z))
+
+    def test_standalone_f2py_crossed_idx_caller_order_nhel(self):
+        """PY_<prefix>GET_ALL_INTER_IDX at a crossed index takes NHEL in the
+        caller's leg order, like P and POS: it must answer what the expanded
+        output's py_get_all_inter does for the same arrays. It used to read
+        NHEL in the base slot order (NHEL(XK) the helicity of caller leg
+        PERM(XK)); an uncrossed index is unaffected."""
+        folded_dir, expanded_dir = self._crossed_eej_outputs()
+        folded, _ = self._run_crossed_script(folded_dir, 'idx')
+        expanded, _ = self._run_crossed_script(expanded_dir, 'pdg')
+        self.assertTrue(folded['kept'])
+        # the first case is uncrossed, the two others carry a crossing
+        (idx0, nflav), (idx1, _), (idx2, _) = folded['idx']
+        self.assertLessEqual(idx0, nflav)
+        self.assertGreater(idx1, nflav)
+        self.assertGreater(idx2, nflav)
+        for i in range(3):
+            scale = max(abs(complex(*z)) for z in expanded['dens'][i])
+            self.assertGreater(scale, 0)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i], scale)
+            for got, ref in zip(folded['inter'][i], expanded['inter'][i]):
+                self._assert_same_inter(got, ref, scale)
+
+    def test_madmatrix_density_matches_fortran(self):
+        """The madmatrix density matrices and |M|^2 (madmatrix.density, what
+        MadSpin uses by default) against the Fortran f2py ones MadSpin used
+        before, on the processes MadSpin generates for p p > t t~ with both tops
+        decayed: off-shell ('*') tops, merged quark and lepton flavors, both
+        quark orderings, on- and off-shell momenta. The production folds its
+        crossings as MadSpin's does (u~ u > t* t~* is the beam swap of
+        u u~ > t* t~*, evaluated by its library at an extended flavor index)."""
+        import importlib.util
+        import math
+        import random
+        import numpy as np
+        import madmatrix.density as madmatrix_density
+
+        os.makedirs(self.out_dir)
+        self.do('set apply_flavor_grouping True')
+        self.do('set group_subprocesses False')
+        dirs = {}
+        for name, process in (('prod', 'generate p p > t* t~*'),
+                              ('dec', 'generate t* > b w+, w+ > l+ vl')):
+            self.do(process)
+            dirs[name] = (pjoin(self.out_dir, 'mm_' + name), pjoin(self.out_dir, 'f_' + name))
+            self.do('output standalone %s -f --noeps=True' % dirs[name][0])
+            self.do('output standalone_fortran %s --prefix=int --density=1 -f' % dirs[name][1])
+
+        libtag = '_acc%d' % os.getpid()
+        fortran, mm = {}, {}
+        for menum, name in ((2, 'prod'), (1, 'dec')):
+            mm_dir, f_dir = dirs[name]
+            misc.compile(madmatrix_density.make_variables(libtag=libtag + name),
+                         cwd=pjoin(mm_dir, 'SubProcesses'), mode='cpp', nb_core=4)
+            mm[name] = madmatrix_density.MadDensityLibrary(mm_dir)
+            mm[name].initialise(pjoin(mm_dir, 'Cards', 'param_card.dat'))
+            misc.compile(cwd=pjoin(f_dir, 'Source'), nb_core=4)
+            misc.compile(['MENUM=%d' % menum, 'all_matrix%dpy.so' % menum],
+                         cwd=pjoin(f_dir, 'SubProcesses'))
+            so = max(misc.glob('all_matrix%dpy*.so' % menum, pjoin(f_dir, 'SubProcesses')),
+                     key=os.path.getsize)
+            spec = importlib.util.spec_from_file_location('all_matrix%dpy' % menum, so)
+            fortran[name] = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(fortran[name])
+            fortran[name].initialise(pjoin(f_dir, 'Cards', 'param_card.dat'))
+        self.assertEqual(mm['prod'].get_idens(), list(fortran['prod'].get_idens()))
+        # u~ u > t* t~* is folded: the u u~ library at an extended flavor index
+        sub, flavor_id, _ = mm['prod'].dispatch([-2, 2, 6, -6])
+        self.assertGreaterEqual(flavor_id, sub.nmaxflavor)
+
+        rng = random.Random(3)
+
+        def boost(p, b):
+            m = math.sqrt(b[0]**2 - b[1]**2 - b[2]**2 - b[3]**2)
+            g, n = b[0] / m, [x / m for x in b[1:]]
+            pb = sum(x * y for x, y in zip(p[1:], n))
+            f = pb / (g + 1) + p[0]
+            return (g * p[0] + pb,) + tuple(x + f * y for x, y in zip(p[1:], n))
+
+        def two_body(M, m1, m2):
+            k = math.sqrt((M**2 - (m1 + m2)**2) * (M**2 - (m1 - m2)**2)) / (2 * M)
+            c, phi = rng.uniform(-1, 1), rng.uniform(0, 2 * math.pi)
+            s = math.sqrt(1 - c * c)
+            v = (k * s * math.cos(phi), k * s * math.sin(phi), k * c)
+            return ((math.sqrt(m1**2 + k * k),) + v,
+                    (math.sqrt(m2**2 + k * k),) + tuple(-x for x in v))
+
+        def production(mt1, mt2):
+            shat = rng.uniform(mt1 + mt2 + 10, 1200.)
+            p3, p4 = two_body(shat, mt1, mt2)
+            beta = rng.uniform(-0.5, 0.5)
+            gamma = 1. / math.sqrt(1 - beta**2)
+            b = (gamma, 0., 0., gamma * beta)
+            return [boost(p, b) for p in ((shat / 2, 0, 0, shat / 2),
+                                          (shat / 2, 0, 0, -shat / 2), p3, p4)]
+
+        def decay(mt, mw):
+            w, b = two_body(mt, mw, 4.7)
+            l, v = (boost(q, w) for q in two_body(mw, 0, 0))
+            top = (math.sqrt(mt**2 + 250.**2), 100., -60., math.sqrt(250.**2 - 100.**2 - 60.**2))
+            return [boost(q, top) for q in ((mt, 0, 0, 0), b, l, v)]
+
+        def check(name, pdgs, p, pos, allow):
+            P = np.array(p).T.copy()
+            ref = np.asarray(fortran[name].py_get_density(pdgs=pdgs, procid=-1, p=P, pos=pos,
+                                                          allow_hel=allow, alphas=0.118, scale2=0.))
+            got = mm[name].density(pdgs, p, pos, allow, 0.118)
+            self.assertLess(abs(ref - got).max(), 1e-10 * abs(ref).max(), (name, pdgs, p))
+            ref = fortran[name].smatrixhel(pdgs, 0, P, 0.118, 0., -1)
+            self.assertLess(abs(mm[name].matrix_element(pdgs, p, 0.118) - ref), 1e-10 * ref)
+
+        two = [1, -1]
+        both = [h for a in two for b in two for h in (a, b)]
+        for mt1, mt2 in ((173., 173.), (168.5, 180.)):
+            p = production(mt1, mt2)
+            for pdgs in ([21, 21, 6, -6], [2, -2, 6, -6], [-1, 1, 6, -6], [3, -3, 6, -6],
+                         [-2, 2, 6, -6]):
+                check('prod', pdgs, p, [3, 4], both)
+                check('prod', pdgs, p, [4], two)
+                # an open initial leg: a crossed one takes its own helicity
+                check('prod', pdgs, p, [1], two)
+        for mt, mw in ((173., 80.419), (176., 78.), (165., 84.)):
+            for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
+                check('dec', pdgs, decay(mt, mw), [1], two)
+        # a decay at rest boosted by the library (MadSpin's decays) is the decay
+        # boosted beforehand
+        self.assertTrue(mm['dec'].supports_boost)
+        w, b = two_body(171., 79., 4.7)
+        l, v = (boost(q, w) for q in two_body(79., 0, 0))
+        at_rest = [(171., 0., 0., 0.), b, l, v]
+        top = (math.sqrt(171.**2 + 300.**2), 120., -80., math.sqrt(300.**2 - 120.**2 - 80.**2))
+        lab = [boost(q, top) for q in at_rest]
+        for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
+            ref = mm['dec'].density(pdgs, lab, [1], two, 0.118)
+            got = mm['dec'].density(pdgs, at_rest, [1], two, 0.118, boost=top)
+            self.assertLess(abs(ref - got).max(), 1e-12 * abs(ref).max())
+        # a batch is the same as the points one by one
+        points = [decay(rng.uniform(165., 180.), rng.uniform(75., 85.)) for _ in range(9)]
+        pdgs = [[6, 5, -11, 12] if k % 2 else [6, 5, -13, 14] for k in range(9)]
+        batch = mm['dec'].density_batch(pdgs, points, [1], two, [0.118] * 9)
+        for k in range(9):
+            np.testing.assert_array_equal(batch[k],
+                                          mm['dec'].density(pdgs[k], points[k], [1], two, 0.118))
+
 
     def test_density_mode_user_interface(self):
         ############################################################################
@@ -2993,7 +6535,7 @@ set particle_in_density_matrix [6, -6]
 set boost_choice [6, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'),'w')
         command_card.write(text)
         command_card.close()
@@ -3039,91 +6581,127 @@ set boost_choice [6, -6]
         msg = 'measured rho_avg = %r' % (rho_avg,)
         for i in range(len(rho_avg)):
             for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
+                # statistical error of a 50k-event average: at most 5e-4 per
+                # element (measured), so 3 digits (+-5e-4) is ~1 sigma and fails for
+                # most changes of the event generation; 2e-3 is 4 sigma
+                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, delta=2e-3, msg=msg)
+                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, delta=2e-3, msg=msg)
 
 
-    def test_density_mode_user_interface(self):
+    @staticmethod
+    def read_average_density_matrix(path):
+        """read a Average_density_matrix_*.txt file and return the square matrix"""
+
+        rho_avg = []
+        with open(path, 'r') as f:
+            for line in f.readlines()[1:]: #the first line is a title
+                aux = line.strip("\t\n[]").split(",")
+                rho_avg.append([complex(elem.strip(" ()")) for elem in aux])
+        return rho_avg
+
+    def test_density_mode_multicore(self):
         ############################################################################
-        # This test checks that the python interface of the density mode works properly ie.
-        # it creates a LHE file with a tag <density> which contains the density matrix with the correct number of elements.
-        # We also check that the average density matrix is stable.
-        # To check if the value of the density matrix itself is correct see the other test_density_mode_* tests.
+        # When the reweighting is not run in process (force_run False, i.e. from
+        # ./bin/madevent), CommonRunCmd.do_reweight either starts a single job on the
+        # full event file or splits the file and starts one job per chunk of events.
+        # In the second case each job writes the average density matrix of its own
+        # chunk, so the mother interface has to recombine them into the canonical
+        # Average_density_matrix_<event file>.txt. This test checks that this file is
+        # created, that it agrees with the single core one and that the per chunk
+        # files are cleaned up.
         ############################################################################
-        
+
+        nevents = 3000 # more than nevt_job (2500) so that the file is really split
+
         text = f"""generate g g > t t~
-output madevent {self.out_dir}_density0
+output madevent {self.out_dir}_density_mc
 launch
-reweight=density
-set run_card nevents 50000
-set helicity_direction [6]
-set particle_in_density_matrix [6, -6]
-set boost_choice [6, -6]
+set run_card nevents {nevents}
+set use_syst False
 """
-
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
-        command_card = open('/tmp/mg5_cmd.txt','w')
+        command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'), 'w')
         command_card.write(text)
         command_card.close()
 
-        
-        logfile = 'test_density_mode_ttbar.log'
-        subprocess.call([sys.executable,pjoin(MG5DIR,'bin','madgraph'), 
-                         '/tmp/mg5_cmd.txt'], stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
+        logfile = pjoin(self.tmpdir, 'test_density_mode_multicore_generation.log')
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'),
+                         pjoin(self.tmpdir, 'mg5_cmd.txt')],
+                        stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
+        me_dir = self.out_dir + '_density_mc'
+        run_dir = pjoin(me_dir, 'Events', 'run_01')
+        events = pjoin(run_dir, 'unweighted_events.lhe.gz')
+        self.assertTrue(os.path.isfile(events), f"File not found {events}")
 
-        
+        # the reweighting rewrites the event file in place: keep a pristine copy so
+        # that both paths reweight exactly the same events.
+        backup = pjoin(self.tmpdir, 'unweighted_events_orig.lhe.gz')
+        shutil.copyfile(events, backup)
 
-        lhe_path = pjoin(self.out_dir + '_density0/Events/run_01/unweighted_events.lhe.gz')
-        rho_mean_path = pjoin(self.out_dir + '_density0/Events/run_01/Average_density_matrix_unweighted_events.txt')
-        
-        self.assertTrue(os.path.isfile(lhe_path), f"File not found {lhe_path}")
-        self.assertTrue(os.path.isfile(rho_mean_path), f"File not found {rho_mean_path}")
+        with open(pjoin(me_dir, 'Cards', 'reweight_card.dat'), 'w') as card:
+            card.write("""change helicity_direction [6]
+change particle_in_density_matrix [6, -6]
+change boost_choice [6, -6]
+change matrix_normalisation True
+""")
 
+        def run_reweight(nb_core):
+            """run 'reweight run_01 --mode=density' the way ./bin/madevent does it
+            (out of process, force_run False) and return the density matrix files
+            present in the run directory afterwards"""
 
-        for event in lhe_parser.EventFile(lhe_path):
-            density_check = event.density
-            break #we only want the first one
-        
-        for elem in density_check:
-            self.assertIsInstance(elem, complex)
-        
-        self.assertEqual(len(density_check), 10, f"The density matrix is not the correct length: {density_check}")
+            #restore the original events and drop any previous density output
+            for path in (events, events[:-3]):
+                if os.path.exists(path):
+                    os.remove(path)
+            shutil.copyfile(backup, events)
+            for name in os.listdir(run_dir):
+                if name.startswith('Average_density_matrix_'):
+                    os.remove(pjoin(run_dir, name))
 
-        # previously PDF was nn23lo1 (lhaid 230000) with this reference matrix
-        # [[0.3670142422790588, 1.7429098337870793e-07-3.933851109770078e-05j, ...],
-        #  ... diag(0.36701424, 0.13298576, 0.13298576, 0.36701424), off-diag 0.11514190 / 0.06344293]
-        rho_avg_ref =  [[(0.3688357054745634+0j), (2.488456321669277e-07+8.149451446891586e-05j), (-2.488456322029901e-07-8.149451420327119e-05j), (0.1177535354898135-0j)],
-                        [(2.488456321669277e-07-8.149451446891586e-05j), (0.13116429452559822+0j), (0.0635907988356563-0j), (-2.488456322029923e-07+8.149451420327103e-05j)],
-                        [(-2.488456322029901e-07+8.149451420327119e-05j), (0.0635907988356563+0j), (0.13116429452559822+0j), (2.488456321669272e-07-8.149451446891567e-05j)],
-                        [(0.1177535354898135+0j), (-2.488456322029923e-07-8.149451420327103e-05j), (2.488456321669272e-07+8.149451446891567e-05j), (0.3688357054745633+0j)]]
+            driver = f"""import sys
+sys.path.insert(0, {MG5DIR!r})
+import madgraph.interface.madevent_interface as me_interface
+cmd = me_interface.MadEventCmd(me_dir={me_dir!r}, force_run=True)
+cmd.use_rawinput = False
+cmd.haspiping = False
+cmd.exec_cmd('set nb_core {nb_core}')
+cmd.exec_cmd('set run_mode 2')
+# force_run True would reweight in process: only with force_run False does
+# do_reweight dispatch the work to single core/multicore child processes.
+cmd.force_run = False
+cmd.exec_cmd('reweight run_01 --mode=density -from_cards')
+"""
+            driver_path = pjoin(self.tmpdir, 'rwgt_driver_%s.py' % nb_core)
+            with open(driver_path, 'w') as fsock:
+                fsock.write(driver)
+            logfile = pjoin(self.tmpdir, 'test_density_mode_multicore_%s.log' % nb_core)
+            subprocess.call([sys.executable, driver_path],
+                            stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
 
-        #now let's read the average density matrix
-        with open(rho_mean_path, 'r') as f:
-            data = f.readlines()[1:]
-            rho_avg = []
-            for i in range(len(data)):
-                aux = data[i].strip("\t\n[]").split(",")
-                try:
-                    rho_avg.append([complex(aux[i].strip(" ()")) for i in range(len(aux))])
-                except: #if the values are like "np.complex128(value)"
-                    print("aux", aux)
-                    aux2 = [aux[i].strip(" ()[]").strip("'").replace("np.complex128(","").strip(" ()") for i in range(len(aux))]
-                    try:
-                        rho_avg.append([complex(aux2[i]) for i in range(len(aux2))])
-                    except:
-                        print("aux2", aux2)
-                        raise ValueError
-            
+            return sorted(name for name in os.listdir(run_dir)
+                                     if name.startswith('Average_density_matrix_'))
 
-        # On a mismatch print the whole measured matrix, not just the first
-        # element that differs: re-referencing this (a PDF change moves every
-        # entry) otherwise needs one run per element.
-        msg = 'measured rho_avg = %r' % (rho_avg,)
-        for i in range(len(rho_avg)):
-            for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
+        #1) reference: one single job on the full event file
+        single = run_reweight(1)
+        self.assertEqual(single, ['Average_density_matrix_unweighted_events.txt'])
+        rho_single = self.read_average_density_matrix(
+                     pjoin(run_dir, 'Average_density_matrix_unweighted_events.txt'))
+        self.assertEqual(len(rho_single), 4)
+
+        #2) one job per chunk of events: same canonical file, no leftover
+        multi = run_reweight(2)
+        self.assertEqual(multi, ['Average_density_matrix_unweighted_events.txt'],
+                         "the multicore density path did not produce the canonical "
+                         "average density matrix (or left per chunk files behind)")
+        rho_multi = self.read_average_density_matrix(
+                    pjoin(run_dir, 'Average_density_matrix_unweighted_events.txt'))
+
+        self.assertEqual(len(rho_multi), len(rho_single))
+        for i in range(len(rho_single)):
+            for j in range(len(rho_single[i])):
+                self.assertAlmostEqual(rho_multi[i][j].real, rho_single[i][j].real, places=10)
+                self.assertAlmostEqual(rho_multi[i][j].imag, rho_single[i][j].imag, places=10)
 
 
     def test_density_mode_ttbar(self):
@@ -3141,7 +6719,7 @@ set run_card nevents 1
 set use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'),'w')
         command_card.write(text)
         command_card.close()
@@ -3162,7 +6740,7 @@ set helicity_direction [6]
 set boost_choice [6, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -3177,9 +6755,13 @@ set boost_choice [6, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.4526973360805629+0j), (-2.1317321205040213e-05+0.0024340905341333923j), (2.13173212052136e-05-0.002434090538628891j),
-                          (0.28550869973262555+0j), (0.04730266391943712+0j), (0.04700262219476668+0j), (2.1317321205213577e-05+0.0024340905386288922j),
-                          (0.04730266391943711+0j), (-2.1317321205040145e-05-0.0024340905341333906j), (0.45269733608056295+0j)]
+        # Regenerated when the reweighting (standalone_rw) started to set the
+        # t-channel widths to zero, as madevent did for the input events
+        # (zerowidth_tchannel): the t-channel top propagator lost MDL_WT.
+        density_ref = [(0.45270438876343766+0.0j), (0.0+0.0024345422714880808j), (-0.0-0.002434542275983678j),
+                       (0.28551318353826904+0.0j), (0.047295611236562354+0.0j), (0.047011148655689436+0.0j),
+                       (0.0+0.0024345422759837264j), (0.047295611236562354+0.0j), (-0.0-0.0024345422714880972j),
+                       (0.45270438876343766+0.0j)]
 
         #1) here we check that the density matrix is computed properly
         for i in range(len(density_ref)):
@@ -3189,17 +6771,17 @@ set boost_choice [6, -6]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the concurrence is computed properly
-        concurrence_ref = 0.47641209333195317
+        concurrence_ref = 0.47643514460330366
         concurrence_check = rho_instance.Get_Concurrence()
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
 
         #3) here we check that purity is computed properly
-        purity_ref = 0.5818411704583635
+        purity_ref = 0.5818593450086657
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         #4) here we check that magic is computed properly
-        magic_ref = 0.4706552252614239
+        magic_ref = 0.4706253424888031
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -3217,7 +6799,7 @@ set run_card nevents 1
 set use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd2.txt','w')
         command_card.write(text)
         command_card.close()
@@ -3242,7 +6824,7 @@ set order_helicities [+1, -1, +1, 0, +1, +1, 0, -1, 0, 0, 0, +1, -1, -1, -1, 0, 
 set axis_referential [-1, -2]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt2.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -3319,7 +6901,7 @@ set run_card use_syst False
 """
 
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -3341,7 +6923,7 @@ set particle_in_density_matrix [5, -6]
 set boost_choice [5, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -3356,10 +6938,17 @@ set boost_choice [5, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.00023359526522495882+0j), (2.9956750131603144e-05+1.3622977588717694e-05j), (-0.00037002831548626185-0.0001606402006384915j),
-                            (0.0013988914248279838+0.0007925330810912253j), (0.0001701973522356173+0j), (-0.0003301297581403585+4.196117432997617e-05j), 
-                            (0.0003588942963018077+0.00015927990509450137j), (0.5380495499305434+0j), (0.03639176740610352+0.01649755017431808j), 
-                            (0.4615466574519961+0j)]
+        # Regenerated when the density mode's boost_choice started summing the
+        # legs it names: it used to count LHE lines, status-2 ones included, so
+        # the status-2 top of this decay chain shifted it onto t (the resonance
+        # line) + W+ instead of b + t~. The previous numbers were in that frame.
+        # and again by the crossing branch: the internal top propagator loses
+        # its width (it is an external field there, zerowidth_external) and the
+        # canonical NHEL encoder removed a small C-parity asymmetry.
+        density_ref = [(0.002572819258503627+0j), (0.00022287625051417933+0.000269373544283043j), (0.034620381554042186-0.0031148240475356633j),
+                            (0.003493349987547038+0.0030943536658021155j), (0.002492794223097223+0j), (0.0022714731159374324-0.0025077711911968975j),
+                            (0.03329882105505325-0.001669052089828375j), (0.5122804070927276+0j), (0.043564252872336236+0.03090169904947277j),
+                            (0.48265397942567173+0j)]
 
 
         event_of_reference = """<event>
@@ -3370,7 +6959,7 @@ set boost_choice [5, -6]
         5  1    3    3  501    0 +4.3637392514e+01 +4.9281743782e+00 -1.3060449857e+01 4.6056207819e+01 4.7000000000e+00 0.0000e+00 -1.0000e+00
        24  1    3    3    0    0 -5.4634276257e+01 +1.8631606795e+02 -1.6969165851e+02 2.7011304345e+02 8.0419002446e+01 0.0000e+00 -1.0000e+00
        -6  1    1    2    0  503 +1.0996883743e+01 -1.9124424233e+02 -3.5723989432e+02 4.4073192960e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
-<density> (0.00023359526522495882+0j) (2.9956750131603144e-05+1.3622977588717694e-05j) (-0.00037002831548626185-0.0001606402006384915j) (0.0013988914248279838+0.0007925330810912253j) (0.0001701973522356173+0j) (-0.0003301297581403585+4.196117432997617e-05j) (0.0003588942963018077+0.00015927990509450137j) (0.5380495499305434+0j) (0.03639176740610352+0.01649755017431808j) (0.4615466574519961+0j) </density>
+<density> (0.002572819258503627+0.0j) (0.00022287625051417933+0.000269373544283043j) (0.034620381554042186-0.0031148240475356633j) (0.003493349987547038+0.0030943536658021155j) (0.002492794223097223+0.0j) (0.0022714731159374324-0.0025077711911968975j) (0.03329882105505325-0.001669052089828375j) (0.5122804070927276+0.0j) (0.043564252872336236+0.03090169904947277j) (0.48265397942567173+0.0j) </density>
 </event>
 """
         
@@ -3387,12 +6976,12 @@ set boost_choice [5, -6]
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
       
         #3) here we check that purity is computed properly
-        purity_ref = 0.5057218059862959
+        purity_ref = 0.505810869888376
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         #4) here we check that magic is computed properly
-        magic_ref = 0.018653388493735004
+        magic_ref = 0.04539434702919854
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -3413,7 +7002,7 @@ set run_card nevents 1
 set run_card use_syst False
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -3435,7 +7024,7 @@ set particle_in_density_matrix [24, -6]
 set boost_choice [24, -6]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -3450,12 +7039,20 @@ set boost_choice [24, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.00021651020376335244+0j), (1.859345759680708e-05+3.319131194668537e-05j), (-8.654700949220674e-06+4.660850889005045e-06j), 
-                            (-5.964620125575636e-06-5.140944580422725e-06j), 0j, 0j, (0.00014764522936272262+0j), (1.2627222190362744e-05-3.412335641445621e-05j), 
-                            (8.443512531745642e-06-4.6314605809771255e-06j), 0j, 0j, (0.4140153688283749+0j), (0.0355514105428883+0.06346306191601571j), 
-                            (-0.033098118766739994+0.01782446293447554j), (-0.022810459480124095-0.019660482239005784j), (0.28234295658745207+0j), 
-                            (0.04829020692948074-0.13049773873783233j), (0.03229047222126599-0.017712065763110893j), (0.12282862506005009+0j), 
-                            (-0.015383774120452564-0.027546742046050884j), (0.18044889409099676+0j)]
+        # Regenerated when the density mode's boost_choice started summing the
+        # legs it names: it used to count LHE lines, status-2 ones included, so
+        # the status-2 top of this decay chain shifted it onto b + W+ instead of
+        # W+ + t~. The previous numbers were in that frame.
+        # and again by the crossing branch: the internal top propagator loses
+        # its width (it is an external field there, zerowidth_external) and the
+        # canonical NHEL encoder removed a small C-parity asymmetry.
+        density_ref = [(0.03462856093584298+0j), (0.004222692552048597-3.914851804525198e-06j), (-0.09315136922763956-0.06424541106056061j),
+                            (-0.012161343076623666-0.007852907982114157j), (-0.0021548339817954705-0.02299216606257348j), (0.004000989959849888+0.0004271687621753295j),
+                            (0.022124992142446936+0j), (-0.004976106543712062-0.007632363502328344j), (-0.05784211938393767-0.041606353301745905j),
+                            (-0.034560622408768275-0.028594347672533223j), (-0.012757048104007053-0.018079926753134273j), (0.374857868204696+0j),
+                            (0.029720084211203073-0.012771984245079535j), (0.03485290974186369+0.0484732992793134j), (-0.01064461469034376+0.0037920989793522506j),
+                            (0.2350541853144974+0j), (0.14918389804980686+0.014260521941388894j), (0.045994627672498976+0.008149821823945263j),
+                            (0.1306812643391364+0j), (0.0037983745012122867+0.02048399076640624j), (0.20265312906338015+0j)]
 
         
         #1) here we check that the density matrix is computed properly
@@ -3465,15 +7062,15 @@ set boost_choice [24, -6]
 
         rho_instance = dens.DensityMatrixObservables(density_check)
 
-        #2) here we check that the smaller eigenvalue of the partialy transposed density matrix is computed properly
-        flag_ref, eigval_ref = False, [1.30764975e-04, 2.33384118e-04, 1.00757194e-01, 1.28026668e-01, 2.55472741e-01, 5.15379248e-01]
+        #2) here we check that the smaller eigenvalue of the partially transposed density matrix is computed properly
+        flag_ref, eigval_ref = False, [0.0001309474273079456, 0.00023369563417047353, 0.10046843670831423, 0.1278389488146789, 0.25565138370380525, 0.5156765877117229]
         flag_check, eigval_check = rho_instance.PeresHorodecki_criterion(['boson', 'fermion'])
         self.assertEqual(flag_ref, flag_check)
         for i in range(len(eigval_ref)):
             self.assertAlmostEqual(eigval_ref[i], eigval_check[i], places=7)
       
         #3) here we check that purity is computed properly
-        purity_ref = 0.3574250017186387
+        purity_ref = 0.35771674847320956
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
@@ -3495,7 +7092,7 @@ set run_card nevents 1
 set run_card use_syst False
 """
         
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card = open('/tmp/mg5_cmd.txt','w')
         command_card.write(text)
         command_card.close()
@@ -3524,7 +7121,7 @@ set particle_in_density_matrix [6, -6] rapidity [0, 1]
 set boost_choice [6, -6] pt [0, 0]
 """
 
-        #This bloc of code launches MadGraph with the commands written in mg5_cmd.txt
+        #This block of code launches MadGraph with the commands written in mg5_cmd.txt
         command_card_rwgt = open('/tmp/mg5_cmd_rwgt.txt','w')
         command_card_rwgt.write(text_rwgt)
         command_card_rwgt.close()
@@ -3543,7 +7140,7 @@ set boost_choice [6, -6] pt [0, 0]
         6  1    1    2  502    0 -3.1599447381e+02 +3.9628896508e+02 +1.0466750690e+02 5.4569381371e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
        -6  1    1    2    0  501 -2.8790168023e+02 -5.3212030280e+01 +2.4116702458e+02 4.1690458307e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
        -6  1    1    2    0  503 +2.3766404453e+02 -1.6598323661e+02 +7.5634541823e+01 3.4595406749e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
-<density> (0.41585128247332614+0j) (-0.03826754879773473-0.08665010160467382j) (0.01819843853040962+0.0694772074195328j) (-0.006036323974019095+0.028318452797874368j) (0.08409384779983874+0j) (-0.051323966834621225-0.010218484907272918j) (-0.018157600093053276-0.06950829298296718j) (0.0841062677380868+0j) (0.0382601151338116+0.08669345314193963j) (0.41594860198874833+0j) </density>
+<density> (0.4158995551694228+0.0j) (-0.038266416707557815-0.08667282347919017j) (0.018177344236518424+0.06949114218724137j) (-0.006036326465490495+0.02831843465941133j) (0.08410102856179515+0.0j) (-0.051324023693436596-0.010218495226221291j) (-0.018178695623423707-0.06949438656775611j) (0.0840990482542204+0.0j) (0.03826126259622656+0.08667076377998419j) (0.4159003680145617+0.0j) </density>
 </event>
 """
 
@@ -3553,10 +7150,7 @@ set boost_choice [6, -6] pt [0, 0]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [(0.41585128247332614+0j), (-0.03826754879773473-0.08665010160467382j), (0.01819843853040962+0.0694772074195328j), 
-                            (-0.006036323974019095+0.028318452797874368j), (0.08409384779983874+0j), (-0.051323966834621225-0.010218484907272918j), 
-                            (-0.018157600093053276-0.06950829298296718j), (0.0841062677380868+0j), (0.0382601151338116+0.08669345314193963j), 
-                            (0.41594860198874833+0j)]
+        density_ref = [complex(0.41589996421540293, 0.0), complex(-0.03826383986149076, -0.08667179401359812), complex(0.018178019897460727, 0.06949276501681549), complex(-0.006036326766945857, 0.028318434038759072), complex(0.0841000357845971, 0.0), complex(-0.05132402629630901, -0.010218495717875446), complex(-0.018178019897460686, -0.06949276501681546), complex(0.08410003578459711, 0.0), complex(0.03826383986149076, 0.0866717940135981), complex(0.41589996421540276, 0.0)]
 
         lhe_path = pjoin(self.out_dir + '_density5/Events/run_01/unweighted_events.lhe.gz')
         for event in lhe_parser.EventFile(lhe_path):
@@ -3570,17 +7164,17 @@ set boost_choice [6, -6] pt [0, 0]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the bounds of concurrence is computed properly
-        concurrence_ref = 0.028913810451469873
+        concurrence_ref = 0.02891388250882494
         concurrence_check = rho_instance.Get_Concurrence()
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
       
         # #3) here we check that purity is computed properly
-        purity_ref = 0.42378825285881117
+        purity_ref = 0.4237883055234033
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         # #4) here we check that magic is computed properly
-        magic_ref = 0.480231580151087
+        magic_ref = 0.48023161639925205
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -3672,6 +7266,9 @@ set boost_choice [6, -6] pt [0, 0]
         self.do('set apply_flavor_grouping False')
         self.do('import model sm')
         self.do('set group_subprocesses False')
+        # pin the gauge: the reference routines below are the unitary-gauge
+        # ones, while a purely electroweak process picks the FD gauge by default
+        self.do('set gauge unitary')
         self.do('generate e+ e- > e+ e-')
         self.do('output madevent %s ' % self.out_dir)
         # Check that the needed ALOHA subroutines are generated
@@ -3694,8 +7291,6 @@ set boost_choice [6, -6] pt [0, 0]
                                                     'ident_card.dat')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                  'Cards', 'run_card_default.dat')))
-        self.assertTrue(os.path.exists(os.path.join(self.out_dir,
-                                                 'Cards', 'plot_card_default.dat')))
         devnull = open(os.devnull,'w')
         # Check that the Source directory compiles
         status = subprocess.call(['make'],
@@ -3850,8 +7445,6 @@ set boost_choice [6, -6] pt [0, 0]
                                                     'ident_card.dat')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                  'Cards', 'run_card_default.dat')))
-        self.assertTrue(os.path.exists(os.path.join(self.out_dir,
-                                                 'Cards', 'plot_card_default.dat')))
         devnull = open(os.devnull,'w')
         # Check that the Source directory compiles
         status = subprocess.call(['make'],
@@ -3905,10 +7498,10 @@ set boost_choice [6, -6] pt [0, 0]
     def check_aloha_file(self):
         """check the content of aloha file FFV1P0_3.f and FFV2_3.f"""
         
-        ffv1p0 = """C     This File is Automatically generated by ALOHA
-C     The process calculated in this file is:
+        ffv1p0 = """C     This File is Automatically generated by ALOHA 
+C     The process calculated in this file is: 
 C     Gamma(3,2,1)
-C
+C     
       SUBROUTINE FFV1P0_3(F1, F2, COUP, M3, W3,V3)
       USE ALOHA_OBJECT
       IMPLICIT NONE
@@ -3932,8 +7525,12 @@ C
         V3%W(:) = (0D0,0D0)
         RETURN
       ENDIF
-      DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI
-     $ * W3))
+      IF (DBLE(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).GT.0D0) THEN
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 
+     $   -CI* W3))
+      ELSE
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+      ENDIF
       V3%W(1)= DENOM*(-CI)*(F1 % W(1)*F2 % W(3)+F1 % W(2)*F2 % W(4)+F1
      $  % W(3)*F2 % W(1)+F1 % W(4)*F2 % W(2))
       V3%W(2)= DENOM*(-CI)*(-F1 % W(1)*F2 % W(4)-F1 % W(2)*F2 % W(3)
@@ -3954,10 +7551,10 @@ C
         text = [l.strip() for l in text.strip().split('\n')]
         self.assertEqual(ffv1p0, text)
         
-        ffv2 = """C     This File is Automatically generated by ALOHA
-C     The process calculated in this file is:
+        ffv2 = """C     This File is Automatically generated by ALOHA 
+C     The process calculated in this file is: 
 C     Gamma(3,2,-1)*ProjM(-1,1)
-C
+C     
       SUBROUTINE FFV2_3(F1, F2, COUP, M3, W3,V3)
       USE ALOHA_OBJECT
       IMPLICIT NONE
@@ -3988,8 +7585,12 @@ C
       TMP2 = (F1 % W(1)*(F2 % W(3)*(P3(0)+P3(3))+F2 % W(4)*(P3(1)+CI
      $ *(P3(2))))+F1 % W(2)*(F2 % W(3)*(P3(1)-CI*(P3(2)))+F2 % W(4)
      $ *(P3(0)-P3(3))))
-      DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI
-     $ * W3))
+      IF (DBLE(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).GT.0D0) THEN
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 
+     $   -CI* W3))
+      ELSE
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+      ENDIF
       V3%W(1)= DENOM*(-CI)*(F1 % W(1)*F2 % W(3)+F1 % W(2)*F2 % W(4)
      $ -P3(0)*OM3*TMP2)
       V3%W(2)= DENOM*(-CI)*(-F1 % W(1)*F2 % W(4)-F1 % W(2)*F2 % W(3)
@@ -4041,8 +7642,12 @@ C
       TMP5 = (F1 % W(3)*(F2 % W(1)*(P3(0)-P3(3))-F2 % W(2)*(P3(1)+CI
      $ *(P3(2))))+F1 % W(4)*(F2 % W(1)*(-P3(1)+CI*(P3(2)))+F2 % W(2)
      $ *(P3(0)+P3(3))))
-      DENOM = 1D0/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI*
-     $  W3))
+      IF (DBLE(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).GT.0D0) THEN
+        DENOM = 1D0/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 
+     $   -CI* W3))
+      ELSE
+        DENOM = 1D0/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+      ENDIF
       V3%W(1)= DENOM*(-2D0 * CI)*(COUP2*(OM3*-1D0/2D0 * P3(0)*(TMP2
      $ +2D0*(TMP5))+(+1D0/2D0*(F1 % W(1)*F2 % W(3)+F1 % W(2)*F2 % W(4))
      $ +F1 % W(3)*F2 % W(1)+F1 % W(4)*F2 % W(2)))+1D0/2D0*(COUP1*(F1 %
@@ -4262,9 +7867,12 @@ C
 
         With apply_flavor_grouping on (the default), the four light-quark
         subprocesses are carried by the single merged matrix element
-        Q Qx > w+ w-, so the gauge block checks one process, not four.  The
-        per-flavor coverage lives in the flavor-grouping block, which compares
-        the merged matrix element against the unmerged one for every flavor.
+        Q Qx > w+ w-, whose flavour is chosen at run time: the gauge,
+        lorentz and permutation blocks evaluate it for each physical flavour
+        (d d~, u u~, s s~, c c~), as without grouping; the charge-violating
+        combinations (d u~, ...) vanish and are skipped. The flavor-grouping
+        block compares the merged matrix element against the unmerged one for
+        every flavor.
         """
 
         self.do('import model sm')
@@ -4273,16 +7881,21 @@ C
 
         log = '\n'.join(cm.output)
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
-        self.assertIn('Q Qx > w+ w-', log)
-        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
-        # the four flavors (both orderings) are still checked, here:
+        for proc in ['d d~ > w+ w-', 'u u~ > w+ w-', 's s~ > w+ w-',
+                     'c c~ > w+ w-']:
+            self.assertIn(proc, log)
+        self.assertNotIn('Q Qx > w+ w-', log)
+        self.assertNotIn('d u~ > w+ w-', log)
+        self.assertNotIn('Not checked processes', log)
+        # gauge, lorentz and permutation blocks
+        self.assertEqual(log.count('Summary: 4/4 passed, 0/4 failed'), 3)
         self.assertIn('Flavor grouping check results:', log)
         self.assertIn('Summary: 8/8 passed, 0/8 failed', log)
 
     def test_check_gauge_pp_wpwm(self):
         """Test `check gauge p p > w+ w-` includes axial and succeeds.
 
-        See test_check_pp_wpwm for why a single merged process is checked.
+        See test_check_pp_wpwm for the flavours that are checked.
         """
 
         self.do('import model sm')
@@ -4291,8 +7904,157 @@ C
 
         log = '\n'.join(cm.output)
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
-        self.assertIn('Q Qx > w+ w-', log)
+        self.assertIn('u u~ > w+ w-', log)
+        self.assertIn('Summary: 4/4 passed, 0/4 failed', log)
+
+    def test_check_charged_current_flavour_grouping(self):
+        """`check` on a charged-current process with flavour grouping on.
+
+        `u d~ > w+ g` is generated as the merged `_quark _anti_quark > w+ g`.
+        The checks used to drop the flavour of the legs and evaluate it as
+        `d d~ > w+ g`, which vanishes: nothing was compared, and `check gauge`
+        printed an empty table ("Summary: 0/0 passed") and `check
+        permutation` a "Passed" 0 = 0. Every check must now evaluate the
+        flavour that was asked for.
+        """
+
+        self.do('import model sm')
+        self.assertTrue(self.cmd._curr_model.get('merged_particles'))
+        four_gauges = 'Gauge results (switching between Unitary/Feynman/Axial/FD gauge):'
+        for proc in ['u d~ > w+ g', 'u d~ > w+{0} g']:
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check gauge %s' % proc)
+            log = '\n'.join(cm.output)
+            self.assertIn(four_gauges, log)
+            self.assertRegex(log, r'\n%s +[1-9]' % re.escape(proc))
+            self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+
+        for mode, header in [('brs', 'Gauge results:'),
+                             ('lorentz', 'Lorentz invariance results:'),
+                             ('permutation', 'Process permutation results:')]:
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check %s u d~ > w+ g' % mode)
+            log = '\n'.join(cm.output)
+            self.assertIn(header, log)
+            self.assertRegex(log, r'\nu d~ > w\+ g +[1-9]')
+            self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+
+        # p p > w+ g: the two flavours with a W coupling (no CKM in sm)
+        with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+            self.do('check gauge p p > w+ g')
+        log = '\n'.join(cm.output)
+        self.assertIn('u d~ > w+ g', log)
+        self.assertIn('c s~ > w+ g', log)
+        self.assertIn('Summary: 2/2 passed, 0/2 failed', log)
+
+    def test_check_flavour_grouping_nothing_checked(self):
+        """A process that cannot be checked is reported as such.
+
+        `d u~ > w+ g` has diagrams as the merged `_quark _anti_quark > w+ g`
+        but a vanishing matrix element for that flavour: no table, and a
+        warning instead of "Summary: 0/0 passed".
+        """
+
+        self.do('import model sm')
+        for mode in ['gauge', 'brs', 'lorentz', 'permutation']:
+            with self.assertLogs('check', level='INFO') as cm_check, \
+                 self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check %s d u~ > w+ g' % mode)
+            log = '\n'.join(cm.output)
+            self.assertNotIn('Summary:', log)
+            self.assertNotIn('Passed', log)
+            check_log = '\n'.join(cm_check.output)
+            self.assertIn('0 check performed', check_log)
+            self.assertIn('WARNING:check:check %s: no process could be checked'
+                          % mode, check_log)
+
+    def test_check_gauge_complex_mass_scheme(self):
+        """`check gauge` in the complex-mass scheme runs its axial step, and
+        the four gauges agree once the external W has a zero width.
+
+        Every ALOHA writer refused a custom denominator with a complex mass,
+        including the axial gauge (P.PBar) P^2 of a massless vector that has
+        none; `check gauge` stopped there. With the width of an external
+        particle the gauges differ by O(width/mass) (docs/auto-fd-gauge.md),
+        so the card sets it to zero."""
+
+        import aloha
+        import madgraph.models.write_param_card as write_param_card
+        import madgraph.models.check_param_card as check_param_card
+
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+
+        self.do('set complex_mass_scheme True')
+        try:
+            self.do('import model sm')
+            card = pjoin(self.tmpdir, 'param_card_cms.dat')
+            write_param_card.ParamCardWriter(self.cmd._curr_model, card)
+            param_card = check_param_card.ParamCard(card)
+            param_card['decay'].get((24,)).value = 0.
+            param_card.write(card)
+
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check gauge %s w+ w- > w+ w-' % card)
+        finally:
+            self.do('set complex_mass_scheme False')
+
+        log = '\n'.join(cm.output)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+
+    def test_check_language_massive_initial_state_and_fd(self):
+        """`check language` compares the backends at one phase-space point.
+
+        Two processes it got wrong:
+        - t t~ > w+ w- (unitary, 0.4%): the Fortran/C++ drivers raise the
+          energy to twice the sum of the external masses (1013.676 GeV), the
+          madmatrix matrix mode and the Python column did not, and madmatrix
+          evaluated a second RAMBO point instead of the one it printed;
+        - w+ w- > w+ w- in the FD gauge (5%): the C++ FD vxxxxx wrote the full
+          longitudinal polarisation and no goldstone component, which equals
+          the FD one only at zero width.
+        """
+        self.do('set auto_gauge False')
+        self.do('import model sm')
+        with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+            self.do('check language t t~ > w+ w-')
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', '\n'.join(cm.output))
+
+        self.do('set gauge FD')
+        try:
+            self.do('import model sm')
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check language w+ w- > w+ w-')
+        finally:
+            self.do('set gauge unitary')
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', '\n'.join(cm.output))
+
+    def test_check_gauge_and_brs_reference_momenta(self):
+        """`check gauge` and `check brs` compare the external wavefunctions of
+        output --axial_gauge=True (column Reference: the gluons in the axial
+        gauge of a reference momentum, the top quarks quantised along it)
+        with the standard ones, for massive and massless fermions."""
+
+        self.do('import model sm')
+        with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+            self.do('check gauge g g > t t~ g')
+        log = '\n'.join(cm.output)
+        self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
+        self.assertIn('Reference: unitary gauge with the reference momenta', log)
+        header = [line for line in log.splitlines() if 'Unitary' in line and 'Feynman' in line
+                  and 'Result' in line][0]
+        self.assertIn('Reference', header)
+        self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
+        for process in ('u u~ > t t~ g g', 'g g > g g g'):
+            with self.assertLogs('madgraph.check_cmd', level='INFO') as cm:
+                self.do('check brs %s' % process)
+            log = '\n'.join(cm.output)
+            header = [line for line in log.splitlines() if 'BRS' in line][0]
+            self.assertIn('Reference', header)
+            self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
 
     def test_check_gauge_epem_aa_includes_axial(self):
         """Test `check gauge e+ e- > a a` includes axial gauge and succeeds."""
@@ -4305,6 +8067,48 @@ C
         self.assertIn('Gauge results (switching between Unitary/Feynman/Axial/FD gauge):', log)
         self.assertIn('Summary: 1/1 passed, 0/1 failed', log)
          
+
+    def test_madevent_dressed_lepton_components(self):
+        """The dressed-lepton luminosity must survive flavor grouping.
+
+        With apply_flavor_grouping on (the default) 'e+ e- > mu+ mu-' is
+        written out as the merged process '_anti_lepton _lepton >
+        _anti_lepton _lepton', whose initial states expand to
+        ([-11,-13],[11,13]). get_pdf_lines used to recognize a dressed-lepton
+        beam by comparing that pair against a hard-coded list of single-flavor
+        pairs, so the grouped process fell through to PD(IPROC)=EP1*EM2 and
+        lost every lepton-density component but the first -- the
+        beamstrahlung ones, 13% of the luminosity at FCC-ee, silently.
+        """
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+
+        self.do('import model sm')
+        self.do('generate e+ e- > mu+ mu-')
+        self.do('output madevent %s -nojpeg' % self.out_dir)
+
+        auto_dsig = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P*',
+                                    'auto_dsig1.f'))
+        self.assertEqual(len(auto_dsig), 1)
+        content = open(auto_dsig[0]).read()
+
+        # the luminosity is the contraction of the two beams' components,
+        # once in the scalar routine and once in the vectorized one
+        self.assertIn('EE_COMP_PROD', content)
+        self.assertEqual(content.count('=EE_COMP_PROD('), 2)
+        # and every PDG2PDF call keeps the components it just filled, since
+        # the next call overwrites the ee_components common block
+        self.assertEqual(content.count('=PDG2PDF('),
+                         content.count('EE_COMPONENTS(1:4)'))
+        # The densities read 1-x from OMX_EE, which genps sets per generated
+        # point: the vectorized routine has to restore each lane's value
+        # before its PDFs (and before UNWGT samples the beamstrahlung split),
+        # or every lane uses the 1-x of the last point -- which doubled the
+        # FCC-ee 240 GeV cross section at vector_size 16.
+        self.assertEqual(
+            content.replace(' ', '').upper().count(
+                'OMX_EE(:)=ALL_OMX_EE(:,IVEC)'), 3)
 
     def test_madevent_subproc_group(self):
         """Test MadEvent output using the SubProcess group functionality"""
@@ -4914,6 +8718,10 @@ P1_qq_wp_wp_lvl
 
         cmd = ['set apply_flavor_grouping False',
                'import model sm ',
+               # the references are unitary-gauge values; a purely electroweak
+               # decay chain picks the FD gauge by default and its diagram subset
+               # is gauge dependent off resonance
+               'set gauge unitary',
                'generate e+ e- > z z, z > e+ e-, z > e+ e-']
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
@@ -4924,7 +8732,7 @@ P1_qq_wp_wp_lvl
 
         #######################################################################
         cmd[0] = 'set apply_flavor_grouping False' 
-        cmd[2] = 'generate e+ e- > z z, z > mu+ mu-, z > e+ e-'
+        cmd[3] = 'generate e+ e- > z z, z > mu+ mu-, z > e+ e-'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -4936,7 +8744,7 @@ P1_qq_wp_wp_lvl
         # the decay-tree fingerprint fix correctly sets COMP_OLD=1 for the
         # no-grouping case (preventing a spurious factor of 2).
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z z, z > u u~, z > e+ e-'
+        cmd[3] = 'generate e+ e- > z z, z > u u~, z > e+ e-'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -4948,7 +8756,7 @@ P1_qq_wp_wp_lvl
         # tests that no-grouping COMP_OLD=1 while grouping COMP_OLD=2 with
         # runtime correction, giving the same physical result.
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z z, z > d d~, z > s s~'
+        cmd[3] = 'generate e+ e- > z z, z > d d~, z > s s~'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -4958,7 +8766,7 @@ P1_qq_wp_wp_lvl
         #######################################################################
         # Two Z bosons decaying to identical quarks (COMP_OLD=2 in both cases).
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z z, z > u u~, z > u u~'
+        cmd[3] = 'generate e+ e- > z z, z > u u~, z > u u~'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -4967,7 +8775,7 @@ P1_qq_wp_wp_lvl
 
         #######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z a, z > e+ e-, a > e+ e-'
+        cmd[3] = 'generate e+ e- > z a, z > e+ e-, a > e+ e-'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -4976,7 +8784,7 @@ P1_qq_wp_wp_lvl
 
         #######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z a, z > mu+ mu-, a > e+ e-'
+        cmd[3] = 'generate e+ e- > z a, z > mu+ mu-, a > e+ e-'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -4984,7 +8792,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/1.9524089070808569e-14, 1.0, places=5)
         #######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z a, z > mu+ mu-, a > u u~'
+        cmd[3] = 'generate e+ e- > z a, z > mu+ mu-, a > u u~'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -4992,7 +8800,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/2.6032118761078096e-14, 1.0, places=5)
         #######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z a, z > mu+ mu-, a > t t~'
+        cmd[3] = 'generate e+ e- > z a, z > mu+ mu-, a > t t~'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -5000,7 +8808,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/3.9704302268721535e-14, 1.0, places=5)
         ######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z z h, z > u u~, z > e+ e-, h > b b~'
+        cmd[3] = 'generate e+ e- > z z h, z > u u~, z > e+ e-, h > b b~'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'   
         unflavor_value = self.run_standalone(cmd)
@@ -5009,7 +8817,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/2.1127915184144537e-27, 1.0, places=5)
         ######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > z z h, h > b b~, z > u u~, z > e+ e-'
+        cmd[3] = 'generate e+ e- > z z h, h > b b~, z > u u~, z > e+ e-'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -5019,7 +8827,7 @@ P1_qq_wp_wp_lvl
         
         ######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > t t~ z, z > e+ e-, (t > z t, z > e+ e- ), (t~ > t~ z, z > e+ e- )'
+        cmd[3] = 'generate e+ e- > t t~ z, z > e+ e-, (t > z t, z > e+ e- ), (t~ > t~ z, z > e+ e- )'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -5027,7 +8835,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/unflavor_value, 1.0, places=5)
         ######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > t t~ z, z > e+ e-, (t > z t, z > e+ e- ), (t~ > t~ z, z > mu+ mu- )'
+        cmd[3] = 'generate e+ e- > t t~ z, z > e+ e-, (t > z t, z > e+ e- ), (t~ > t~ z, z > mu+ mu- )'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -5035,7 +8843,7 @@ P1_qq_wp_wp_lvl
         self.assertAlmostEqual(flavor_value/unflavor_value, 1.0, places=5)
         ######################################################################
         cmd[0] = 'set apply_flavor_grouping False'
-        cmd[2] = 'generate e+ e- > t t~ z, z > d d~, (t > z t, z > e+ e- ), (t~ > t~ z, z > mu+ mu- )'
+        cmd[3] = 'generate e+ e- > t t~ z, z > d d~, (t > z t, z > e+ e- ), (t~ > t~ z, z > mu+ mu- )'
         flavor_value = self.run_standalone(cmd)
         cmd[0] = 'set apply_flavor_grouping True'
         unflavor_value = self.run_standalone(cmd)
@@ -5074,11 +8882,6 @@ P1_qq_wp_wp_lvl
 
 
         #self.assertEqual(self.cmd._curr_amps[0].nice_string().split('\n'), nicestring.split('\n'))
-        #self.do('save processes /tmp/model.pkl')
-        #self.do('generate e+ e- > e+ e-')
-        #self.do('load processes /tmp/model.pkl')
-        #self.assertEqual(len(self.cmd._curr_amps), 1)
-        #self.assertEqual(self.cmd._curr_amps[0].nice_string(), nicestring)
         
         #os.remove('/tmp/model.pkl')
         

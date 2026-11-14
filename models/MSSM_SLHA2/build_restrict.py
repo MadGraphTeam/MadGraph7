@@ -15,7 +15,7 @@
 """ This part is not part of the UFO Model but only of MG5 suite. 
 This files defines how the restrict card can be build automatically """ 
 
-import models.build_restriction_lib as build_restrict_lib
+import madgraph.models.build_restriction_lib as build_restrict_lib
 all_categories = []
 
 

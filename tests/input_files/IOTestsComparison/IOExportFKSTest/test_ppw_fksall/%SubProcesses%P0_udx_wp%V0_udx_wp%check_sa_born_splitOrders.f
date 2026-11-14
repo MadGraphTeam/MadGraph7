@@ -6,6 +6,7 @@ C     IT USES A SIMPLE PHASE SPACE GENERATOR
 C     Fabio Maltoni - 3rd Febraury 2007
 C     *****************************************************************
 C     *********
+      USE MODEL_OBJECT
       IMPLICIT NONE
 C     
 C     CONSTANTS  
@@ -80,7 +81,7 @@ C     in Source/MODEL/couplings.f. The values are stored in common
 C      blocks that are listed
 C     in coupl.inc .
 
-      CALL SETPARA('param_card.dat')  !first call to setup the paramaters
+      CALL SETPARA('param_card.dat')  !first call to set up the parameters
       INCLUDE 'pmass.inc'  !set up masses
 
       TOTALMASS = 0.0D0

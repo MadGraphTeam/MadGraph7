@@ -10,7 +10,20 @@ Non-interactive examples:
   python install.py --bin
   python install.py --source
   python install.py --source --cuda --cuda-arch "75;80;86"
+  python install.py --source -j 8
   python install.py --source --cuda --hip --simd --debug
+  python install.py --source --yes --cuda --cuda-arch 80
+  python install.py --source --clean          # rebuild from scratch
+
+Source-build options (--cuda, --hip, --openblas, --simd, --debug, ...,
+--cuda-arch, --hip-arch) are resolved per option: a flag given on the command
+line always wins; otherwise --yes reuses the value saved by the previous
+source build, else the platform default. Without --yes, compile flags describe
+the whole build: the options they leave out take the platform default.
+
+Rebuilds reuse the CMake tree in build/ and are therefore incremental. --clean
+deletes build/ and install/ first, for the rare cases where that tree is in the
+way; the saved settings live outside both and survive it.
 """
 
 import argparse
@@ -26,12 +39,18 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 INSTALL_DIR = SCRIPT_DIR / "install"
-SETTINGS_FILE = SCRIPT_DIR / "build" / "install_settings.json"
+BUILD_DIR = SCRIPT_DIR / "build"
+# Outside both directories, so --clean resets the build without also forgetting
+# how the user wants madspace built. _LEGACY_SETTINGS_FILE is an older location,
+# still read so an existing installation keeps its choices.
+SETTINGS_FILE = SCRIPT_DIR / "install_settings.json"
+_LEGACY_SETTINGS_FILE = BUILD_DIR / "install_settings.json"
 
 PACKAGE_NAME = "madspace"
 
 DEFAULT_CUDA_ARCH = "75"
 DEFAULT_HIP_ARCH = "gfx900"
+_DEFAULT_GPU_ARCH = {"cuda": DEFAULT_CUDA_ARCH, "hip": DEFAULT_HIP_ARCH}
 
 # Platform-aware defaults for source-build options (mirrors CMakeLists.txt logic)
 _IS_APPLE = platform.system() == "Darwin"
@@ -147,8 +166,8 @@ def ask_compile_options(
 
     *keys*, if given, restricts the menu to entries whose output_key is in
     it (used to split the compile-options prompt into a basic and an expert
-    stage). *show_expert_option* appends a pseudo entry ("_expert") used to
-    let the user opt into seeing the expert stage.
+    stage). *show_expert_option* appends a pseudo entry (output key "_expert")
+    that lets the user opt into the expert stage.
 
     *from_saved* controls the Enter hint wording.
     """
@@ -280,12 +299,52 @@ def ask_build_type(saved: dict) -> str:
         return options[idx - 1][0]
 
 
+# Source-build option resolution
+#
+# Per option, the first of these that applies wins:
+#   1. a flag given on the command line;
+#   2. under --yes, the value saved by the previous source build;
+#   3. the platform default.
+# Without --yes, step 2 is skipped for the compile options: the flags describe
+# the whole build. When neither --yes nor any compile flag is given, the
+# interactive menu decides instead.
+
+COMPILE_OPTIONS = ("cuda", "hip", "openblas", "simd", "build_type")
+
+
+def resolve_compile_options(args: argparse.Namespace, saved: dict) -> dict | None:
+    """Return {option: value} for COMPILE_OPTIONS without prompting, or None
+    when the interactive menu should ask for them."""
+    if not args.yes and all(getattr(args, k) is None for k in COMPILE_OPTIONS):
+        return None
+    fallback = dict(_PLATFORM_SOURCE_DEFAULTS)
+    if args.yes:
+        fallback.update(
+            (k, saved[k]) for k in ("cuda", "hip", "openblas", "simd") if k in saved
+        )
+        fallback["build_type"] = _saved_build_type(saved)
+    return {
+        k: fallback[k] if getattr(args, k) is None else getattr(args, k)
+        for k in COMPILE_OPTIONS
+    }
+
+
+def resolve_gpu_arch(args: argparse.Namespace, saved: dict, backend: str) -> str:
+    """Architectures for *backend* ("cuda" or "hip"): --cuda-arch/--hip-arch,
+    else the saved value, else the default. Without --yes this is only the
+    prompt default when the flag was not given."""
+    cli_value = getattr(args, f"{backend}_arch")
+    if cli_value is not None:
+        return cli_value
+    return saved.get(f"{backend}_arch", _DEFAULT_GPU_ARCH[backend])
+
+
 # CMake discovery
 #
 # The source build (scikit-build-core) needs cmake >= 3.15 on PATH. When it is
 # missing (or too old) we fall back to a cmake installed through MadGraph's
 # HEPTools installer (`install cmake` in MG5), which lives next to this package
-# under <MG5>/HEPTools. An explicit MADGRAPH_CMAKE / CMAKE env var wins.
+# under <MG5>/HEPTools. A cmake on PATH that is recent enough is preferred.
 
 CMAKE_MIN_VERSION = (3, 15)
 
@@ -387,6 +446,38 @@ def add_cmake_to_path(env: dict) -> dict:
     return env
 
 
+def default_jobs() -> int:
+    """Number of compilation jobs to use when none was requested."""
+    try:
+        return len(os.sched_getaffinity(0))  # Linux: respects cgroup/taskset
+    except AttributeError:
+        return os.cpu_count() or 1
+
+
+def set_build_parallelism(env: dict, jobs: int | None) -> dict:
+    """Tell CMake how many compilation jobs it may run in parallel.
+
+    scikit-build-core calls ``cmake --build`` without any ``-j``, so the job
+    count comes entirely from the environment. With the Ninja generator that
+    goes unnoticed (ninja parallelises on its own), but whenever ninja is
+    missing scikit-build-core falls back to "Unix Makefiles", and make without
+    ``-j`` compiles one file at a time.
+
+    ``CMAKE_BUILD_PARALLEL_LEVEL`` is read by ``cmake --build`` itself, so it
+    works for either generator, and being an environment variable it is also
+    inherited by the nested OpenBLAS build.
+    """
+    if jobs is not None and jobs <= 0:
+        jobs = None  # 0 / negative = "as many as there are cores"
+    if jobs is None:
+        if env.get("CMAKE_BUILD_PARALLEL_LEVEL"):
+            return env  # an explicit setting in the caller's environment wins
+        jobs = default_jobs()
+    env["CMAKE_BUILD_PARALLEL_LEVEL"] = str(jobs)
+    print(f"Compiling with {jobs} parallel job(s) (-j to change).")
+    return env
+
+
 # Command execution
 
 
@@ -401,9 +492,9 @@ def run(cmd: list, env: dict | None = None) -> None:
 def install_build_deps(system: bool = False) -> dict:
     """Install build-system dependencies and return an updated env.
 
-    Reads the list from pyproject.toml's [build-system] requires, which now
-    also includes pyyaml and pybind11-stubgen for the CMake-driven code
-    generation (see CMakeLists.txt).
+    Reads the list from pyproject.toml's [build-system] requires, which includes
+    pyyaml and pybind11-stubgen for the CMake-driven code generation (see
+    CMakeLists.txt).
 
     When *system* is False (default) deps are installed into INSTALL_DIR and
     PYTHONPATH is set so the subsequent pip invocation picks them up.
@@ -484,17 +575,21 @@ def _release_wheel_available() -> bool:
 
     python_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
     return any(
-        python_tag in name and all(tag in name for tag in platform_tags)
+        name.startswith(f"{PACKAGE_NAME}-")
+        and python_tag in name
+        and all(tag in name for tag in platform_tags)
         for name in wheels.split(",")
     )
 
 
 def load_settings() -> dict:
-    try:
-        with open(SETTINGS_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    for path in (SETTINGS_FILE, _LEGACY_SETTINGS_FILE):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            continue
+    return {}
 
 
 def save_settings(settings: dict) -> None:
@@ -503,10 +598,29 @@ def save_settings(settings: dict) -> None:
         json.dump(settings, f, indent=2)
 
 
+# Starting over
+#
+# A rebuild is normally incremental: the CMake tree in build/ is what makes it
+# take seconds instead of recompiling madspace and its vendored OpenBLAS from
+# scratch, so it is kept unless the user asks otherwise with --clean.
+
+
+def clean_install_dirs() -> list[Path]:
+    """Delete the CMake build tree and the install directory. Returns the
+    directories that were actually removed."""
+    removed = []
+    for target in (BUILD_DIR, INSTALL_DIR):
+        if target.is_dir():
+            shutil.rmtree(target)
+            print(f"Removed {target}")
+            removed.append(target)
+    return removed
+
+
 # Main
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -518,7 +632,8 @@ def main() -> None:
         "--bin",
         action="store_true",
         default=False,
-        help="Install pre-compiled package (default when interactive).",
+        help="Install pre-compiled package (the interactive default in a release "
+        "tarball whose wheel matches this platform).",
     )
     mode.add_argument(
         "--source",
@@ -532,14 +647,34 @@ def main() -> None:
         "--yes",
         action="store_true",
         default=False,
-        help="Non-interactive: accept defaults / reuse saved settings, no prompts. "
-        "Combine with --source/--bin to force the install mode.",
+        help="Non-interactive, no prompts: compile options given on the command "
+        "line are used, the others reuse the previous source build's settings, "
+        "else the platform defaults. Combine with --source/--bin to force the "
+        "install mode.",
+    )
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Number of parallel compilation jobs for the source build "
+        f"(default: every available core, {default_jobs()} here). MG5's "
+        "'nb_core' option is forwarded here by 'install madspace'.",
     )
     parser.add_argument(
         "--system",
         action="store_true",
         default=False,
         help="Install system-wide instead of into the local install/ directory.",
+    )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        default=False,
+        help="Delete the build/ and install/ directories first, for a rebuild "
+        "from scratch (slow: madspace and its vendored OpenBLAS are recompiled). "
+        "The saved settings are kept.",
     )
 
     # Compile option flags (each defaults to None = not specified via CLI)
@@ -584,6 +719,20 @@ def main() -> None:
         "--no-simd", dest="simd", action="store_false", help="Disable SIMD backend."
     )
 
+    docs_grp = parser.add_mutually_exclusive_group()
+    docs_grp.add_argument(
+        "--docs",
+        dest="docs",
+        action="store_true",
+        help="Generate API docstrings (requires doxygen) and .pyi type stubs.",
+    )
+    docs_grp.add_argument(
+        "--no-docs",
+        dest="docs",
+        action="store_false",
+        help="Skip docstring and .pyi generation (default; no doxygen needed).",
+    )
+
     debug_grp = parser.add_mutually_exclusive_group()
     debug_grp.add_argument(
         "--debug",
@@ -612,24 +761,38 @@ def main() -> None:
         "--cuda-arch",
         default=None,
         metavar="ARCHS",
-        help=f"Semicolon-separated CUDA compute capabilities (default: {DEFAULT_CUDA_ARCH}). "
-        'Example: "75;80;86".',
+        help="Semicolon-separated CUDA compute capabilities (default: the "
+        f"previous source build's, else {DEFAULT_CUDA_ARCH}). Does not enable "
+        'CUDA by itself (add --cuda). Example: "75;80;86".',
     )
     parser.add_argument(
         "--hip-arch",
         default=None,
         metavar="ARCHS",
-        help=f"Semicolon-separated HIP GPU architectures (default: {DEFAULT_HIP_ARCH}). "
-        'Example: "gfx900;gfx906;gfx1100".',
+        help="Semicolon-separated HIP GPU architectures (default: the previous "
+        f"source build's, else {DEFAULT_HIP_ARCH}). Does not enable HIP by "
+        'itself (add --hip). Example: "gfx900;gfx906;gfx1100".',
     )
 
     # None = not provided by user; overridden by set_defaults below
-    parser.set_defaults(cuda=None, hip=None, openblas=None, simd=None, build_type=None)
-    args = parser.parse_args()
+    parser.set_defaults(
+        cuda=None, hip=None, openblas=None, simd=None, docs=None, build_type=None
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = build_parser().parse_args(argv)
     _set_noninteractive(args.yes)
 
-    # Load saved settings when a previous installation is present
-    saved = load_settings() if (INSTALL_DIR / "madspace").is_dir() else {}
+    # The saved settings describe how the user wants madspace built, so they
+    # are read whether or not install/ holds a previous installation: it never
+    # does under --system, nor after a --clean whose rebuild failed. Read
+    # before --clean on purpose, since the legacy location is inside build/.
+    saved = load_settings()
+
+    if args.clean:
+        clean_install_dirs()
 
     # The PyPI wheel is only offered/defaulted-to in an actual release tarball
     # (input/.release, written by bin/create_release.py) that still matches
@@ -668,7 +831,7 @@ def main() -> None:
             from_source = True
 
     # PyPI installation, pinned to this checkout's madspace version so the
-    # wheel matches the bundled source (see SOURCE_HASH check in mg7/launch.py).
+    # wheel matches the bundled source (see SOURCE_HASH check in madgraph/mg7/common.py).
     if not from_source:
         pip_cmd = [
             sys.executable,
@@ -687,28 +850,14 @@ def main() -> None:
             print(f"\nInstalled to: {INSTALL_DIR}")
         return
 
-    # Source build — compile options
-    compile_flags_given = any(
-        getattr(args, attr) is not None
-        for attr in ("cuda", "hip", "openblas", "simd", "build_type")
-    )
-
-    if args.yes:
-        enable_cuda = saved.get("cuda", _PLATFORM_SOURCE_DEFAULTS["cuda"])
-        enable_hip = saved.get("hip", _PLATFORM_SOURCE_DEFAULTS["hip"])
-        enable_openblas = saved.get("openblas", _PLATFORM_SOURCE_DEFAULTS["openblas"])
-        enable_simd = saved.get("simd", _PLATFORM_SOURCE_DEFAULTS["simd"])
-        build_type = _saved_build_type(saved)
-    elif compile_flags_given:
-        enable_cuda = bool(args.cuda)
-        enable_hip = bool(args.hip)
-        enable_openblas = (
-            bool(args.openblas)
-            if args.openblas is not None
-            else _PLATFORM_SOURCE_DEFAULTS["openblas"]
-        )
-        enable_simd = bool(args.simd)
-        build_type = args.build_type or "Release"
+    # Source build — compile options (see resolve_compile_options)
+    options = resolve_compile_options(args, saved)
+    if options is not None:
+        enable_cuda = options["cuda"]
+        enable_hip = options["hip"]
+        enable_openblas = options["openblas"]
+        enable_simd = options["simd"]
+        build_type = options["build_type"]
     else:
         # Show saved source settings if available, else platform-appropriate defaults
         from_saved = saved.get("mode") == "source"
@@ -738,32 +887,39 @@ def main() -> None:
             enable_simd = menu_defaults.get("simd", False)
             build_type = _saved_build_type(menu_defaults)
 
-    # Compute capability prompts
-    cuda_arch = saved.get("cuda_arch", DEFAULT_CUDA_ARCH)
-    hip_arch = saved.get("hip_arch", DEFAULT_HIP_ARCH)
+    # Docs/.pyi generation: explicit flag wins, else reuse saved value under
+    # --yes, else off. Not part of the interactive menu (niche / CI use).
+    if args.docs is not None:
+        enable_docs = args.docs
+    elif args.yes:
+        enable_docs = saved.get("docs", False)
+    else:
+        enable_docs = False
 
-    if enable_cuda:
-        if args.yes:
-            cuda_arch = saved.get("cuda_arch", DEFAULT_CUDA_ARCH)
-        elif args.cuda_arch is not None:
-            cuda_arch = args.cuda_arch
-        else:
-            print()
-            cuda_arch = ask_string(
-                "CUDA compute capabilities (semicolon-separated, e.g. 75;80;86)",
-                default=cuda_arch,
-            )
+    # Compute capabilities (see resolve_gpu_arch); prompt only for an enabled
+    # backend whose architectures were neither given nor fixed by --yes
+    cuda_arch = resolve_gpu_arch(args, saved, "cuda")
+    hip_arch = resolve_gpu_arch(args, saved, "hip")
 
-    if enable_hip:
-        if args.yes:
-            hip_arch = saved.get("hip_arch", DEFAULT_HIP_ARCH)
-        elif args.hip_arch is not None:
-            hip_arch = args.hip_arch
-        else:
-            print()
-            hip_arch = ask_string(
-                "HIP GPU architectures (semicolon-separated, e.g. gfx900;gfx906;gfx1100)",
-                default=hip_arch,
+    if enable_cuda and args.cuda_arch is None and not args.yes:
+        print()
+        cuda_arch = ask_string(
+            "CUDA compute capabilities (semicolon-separated, e.g. 75;80;86)",
+            default=cuda_arch,
+        )
+
+    if enable_hip and args.hip_arch is None and not args.yes:
+        print()
+        hip_arch = ask_string(
+            "HIP GPU architectures (semicolon-separated, e.g. gfx900;gfx906;gfx1100)",
+            default=hip_arch,
+        )
+
+    for backend, enabled in (("cuda", enable_cuda), ("hip", enable_hip)):
+        if not enabled and getattr(args, f"{backend}_arch") is not None:
+            print(
+                f"WARNING: --{backend}-arch has no effect, the {backend.upper()} "
+                f"backend is not enabled (add --{backend})."
             )
 
     # Assemble pip command
@@ -793,9 +949,12 @@ def main() -> None:
     cmd.append(f"-Ccmake.define.ENABLE_OPENBLAS={'ON' if enable_openblas else 'OFF'}")
     if enable_simd:
         cmd.append("-Ccmake.define.ENABLE_SIMD=ON")
+    if enable_docs:
+        cmd.append("-Ccmake.define.ENABLE_DOCS=ON")
     cmd.append(f"-Ccmake.build-type={build_type}")
 
     env = install_build_deps(system=args.system)
+    env = set_build_parallelism(env, args.jobs)
     run(cmd, env=env)
     save_settings(
         {
@@ -806,6 +965,7 @@ def main() -> None:
             "hip_arch": hip_arch,
             "openblas": enable_openblas,
             "simd": enable_simd,
+            "docs": enable_docs,
             "build_type": build_type,
         }
     )

@@ -15,6 +15,7 @@
 """A File for splitting"""
 
 from __future__ import absolute_import
+import ast
 import sys
 import re
 import os
@@ -46,7 +47,8 @@ class ShowerCard(banner.RunCard):
                     'mup_stable', 'mum_stable', 'is_4lep', 'is_bbar', 'combine_td', 
                     'qed_shower', 'primordialkt',
                     'space_shower_me_corrections', 'time_shower_me_corrections',
-                    'time_shower_me_extended', 'time_shower_me_after_first']
+                    'time_shower_me_extended', 'time_shower_me_after_first',
+                    'allow_unsafe_shower_options']
     string_vars = ['extralibs', 'extrapaths', 'includepaths', 'analyse']
     for i in range(1,100):
         string_vars.append('dm_'+str(i))
@@ -54,10 +56,10 @@ class ShowerCard(banner.RunCard):
     float_vars = ['maxerrs', 'lambda_5', 'b_mass', 'qcut']
 
     # names_dict has the following structure:
-    # var : {PYTHIA6: varpy6, HERWIG6: varhw6, HERWIGPP: varhwpp, PYTHIA8: varpy8}
-    # where varpy, varhw6 and varhwpp are mc_dependent names
+    # var : {PYTHIA6: varpy6, HERWIG6: varhw6, HERWIG7: varhw7, PYTHIA8: varpy8}
+    # where varpy, varhw6 and varhw7 are mc_dependent names
     # if a mc is not there, that variable is not supposed to be
-    # used / written for thar mc
+    # used / written for that mc
     names_dict = {}
     stdhep_dict = {'HERWIG6':'mcatnlo_hwan_stdhep.o', 'PYTHIA6':'mcatnlo_pyan_stdhep.o'}
     
@@ -75,7 +77,7 @@ class ShowerCard(banner.RunCard):
         
 
     def add_param(self, name, *args, 
-                  py8='', py6='', hw6='', hwpp='',
+                  py8='', py6='', hw6='', hw7='',
                   all_sh=None, sh_postfix=False,**opts):
         
         if all_sh:
@@ -91,10 +93,10 @@ class ShowerCard(banner.RunCard):
                 hw6 = all_sh
                 if sh_postfix:
                     hw6 = hw6 + "_hw"
-            if hwpp is not None and not hwpp:
-                hwpp = all_sh
+            if hw7 is not None and not hw7:
+                hw7 = all_sh
                 if sh_postfix:
-                    hwpp = hwpp + "_hwpp"
+                    hw7 = hw7 + "_hw7"
 
         name = name.lower()
         self.names_dict[name] = {}
@@ -104,8 +106,8 @@ class ShowerCard(banner.RunCard):
             self.names_dict[name]['PYTHIA6'] = py6
         if hw6:
             self.names_dict[name]['HERWIG6'] = hw6
-        if hwpp:
-            self.names_dict[name]['HERWIGPP'] = hwpp
+        if hw7:
+            self.names_dict[name]['HERWIG7'] = hw7
 
         super().add_param(name,*args, **opts)
 
@@ -135,11 +137,11 @@ class ShowerCard(banner.RunCard):
         self.add_param("pdfcode", 1, comment="0 = internal, 1 = same as NLO, other = lhaglue",
                        all_sh='pdfcode')
         self.add_param("ue_enabled", False, comment="underlying event",
-                       hw6='lhsoft', py6='mstp_81', hwpp='ue_hwpp', py8='ue_py8')
+                       hw6='lhsoft', py6='mstp_81', hw7='ue_hw7', py8='ue_py8')
         self.add_param("hadronize", True, comment=" hadronisation on/off        !IGNORED BY HERWIG6!",
-                       py6='mstp_111', hwpp='hadronize_hwpp', py8='hadronize_py8')
+                       py6='mstp_111', hw7='hadronize_hw7', py8='hadronize_py8')
         self.add_param("lambda_5", -1., comment="Lambda_5 (< 0 = default)    !IGNORED BY PYTHIA8!",
-                       hw6='lambdaherw', hwpp='lambdaherw',
+                       hw6='lambdaherw', hw7='lambdaherw',
                        py6='lambdapyth', py8='lambdapyth')
 
 
@@ -178,7 +180,7 @@ class ShowerCard(banner.RunCard):
         # FxFx merging parameters 
         self.add_param("Qcut",  -1.0, comment="Merging scale", 
                        py8='qcut')
-        self.add_param("njmax", -1, comment="Maximal multiplicity in the merging. -1 means guessed  from the process definition",
+        self.add_param("njmax", -1, comment="Maximal multiplicity in the merging, at least max_n_matched_jets of the generation. -1 uses that value; larger values may cover separately generated samples",
                        py8='njmax')
 
         # DECAY
@@ -190,13 +192,16 @@ class ShowerCard(banner.RunCard):
         self.add_param("EXTRAPATHS", "../lib", comment="Path to the extra-libraries")
         self.add_param("INCLUDEPATHS", "", comment="Path to header files needed by c++. Dir names separated by white spaces")
         self.add_param("ANALYSE", "", comment="User's analysis and histogramming routines; HwU.o should be linked first",
-                       hw6='hwuti', hwpp='hwpputi',py6='pyuti', py8='py8uti')
+                       hw6='hwuti', hw7='hw7uti',py6='pyuti', py8='py8uti')
 
         # Pythia8 specific
-        self.add_param("qed_shower", True, comment="T = enable QED shower for Q and L !ONLY FOR PYTHIA8!",
+        self.add_param("qed_shower", True, comment="T = enable the QED shower (quarks, leptons, W and other charged resonances, photon splittings) !ONLY FOR PYTHIA8!",
                        py8='qed_shower')
         self.add_param("primordialkt", False, comment="T = enable primordial parton k_T  !ONLY FOR PYTHIA8!",
                         py8='primordialkt')
+        # Resolved by amcatnlo_run_interface when building the Pythia8 driver.
+        self.add_param("hepmc_format", "auto", comment="HepMC version of the output: auto, hepmc2 or hepmc3 !ONLY FOR PYTHIA8!",
+                       py8='hepmc_format', allowed=['auto', 'hepmc2', 'hepmc3'])
 
         # ME correction
         self.add_param('space_shower_me_corrections', False, comment= "MECs for ISR",
@@ -214,6 +219,8 @@ class ShowerCard(banner.RunCard):
         #               py8="tune_pp")
         self.add_param("pythia8_options", {'__type__':''}, comment="specify (as dictionary) additional parameters that you want to setup within the pythia8 program",
                        py8='extra_line')
+        self.add_param("allow_unsafe_shower_options", False,
+                       comment="T: allow pythia8_options to change settings required by the MC@NLO matching (the NLO accuracy is lost)")
 
 
     def read(self, input, *opt):
@@ -246,15 +253,77 @@ class ShowerCard(banner.RunCard):
         self.text=content
 
 
+    @staticmethod
+    def parse_pythia8_options(value):
+        """Return pythia8_options as an ordered {setting: value} dictionary.
+
+        Pythia8 setting names and many values contain ':' (for example
+        'PDF:pSet': 'LHAPDF6:NNPDF31_nlo_as_0118'), and string values may be
+        case sensitive. The generic card parser splits on ':' and therefore
+        cannot be used. Accepted inputs are a Python dictionary literal, or
+        'Setting = value' entries separated by ';' or new lines. The case
+        of both names and values is preserved.
+        """
+        if isinstance(value, dict):
+            items = value.items()
+        else:
+            text = str(value).strip()
+            if not text or text.lower() in ['none', '{}', "{'__type__': ''}"]:
+                return {}
+            items = None
+            if text.startswith('{'):
+                try:
+                    parsed = ast.literal_eval(text)
+                except (ValueError, SyntaxError):
+                    raise ShowerCardError(
+                        'pythia8_options must be a dictionary such as '
+                        "{'Tune:pp': 14, 'PDF:pSet': 'LHAPDF6:NNPDF31_nlo_as_0118'}"
+                        ', got: %s' % text)
+                if not isinstance(parsed, dict):
+                    raise ShowerCardError('pythia8_options must be a dictionary')
+                items = parsed.items()
+            else:
+                items = []
+                for entry in re.split(r'[;\n]', text):
+                    if not entry.strip():
+                        continue
+                    if '=' not in entry:
+                        raise ShowerCardError(
+                            "Invalid pythia8_options entry '%s': expected "
+                            "'Setting = value'" % entry.strip())
+                    name, setting = entry.split('=', 1)
+                    items.append((name, setting))
+        options = {}
+        for name, setting in items:
+            name = str(name).strip()
+            if name == '__type__':
+                continue
+            if isinstance(setting, bool):
+                setting = 'on' if setting else 'off'
+            setting = str(setting).strip()
+            if not name or not setting:
+                raise ShowerCardError(
+                    "Invalid pythia8_options entry '%s = %s'" % (name, setting))
+            if any(c in name + setting for c in '\n\r'):
+                raise ShowerCardError(
+                    "pythia8_options entries must fit on one line: '%s'" % name)
+            options[name] = setting
+        return options
+
     def set_param(self, key, value, write_to = ''):
         """set the param key to value.
         if write_to is passed then write the new shower_card:
         if not testing write_to is an input path, if testing the text is
         returned by the function
         """
-        
+
         try:
-            self[key] = value
+            if key.lower() == 'pythia8_options':
+                options = self.parse_pythia8_options(value)
+                dict.__setitem__(self, 'pythia8_options', options)
+                self.user_set.add('pythia8_options')
+            else:
+                self[key] = value
         except InvalidCmd as error:
             raise ShowerCardError(str(error))
 
@@ -327,7 +396,7 @@ class ShowerCard(banner.RunCard):
             output_file.write(self.text)
 
     def create_default_for_process(self, *args, **opts):
-        pass # will be usefull later on
+        pass # will be useful later on
 
     def write_card(self, shower, card_path):
         """write the shower_card for shower in card_path.
@@ -345,6 +414,9 @@ class ShowerCard(banner.RunCard):
         for key in self:
             value = self[key]
             key = key.lower()
+            if key == 'hepmc_format':
+                # passed to the shower script through banner.dat
+                continue
             if isinstance(value, bool): 
                 # deal with special case for pythia:
                 if key in ['ue_enabled', 'hadronize'] and self.shower == 'PYTHIA6':
@@ -383,13 +455,14 @@ class ShowerCard(banner.RunCard):
             elif isinstance(self[key], float):
                 value = '%4.3f' % value
             elif key == 'pythia8_options':
-                if self.shower=='PYTHIA8':
-                    value = '"'
-                    for k, v in self[key].items():
-                        value += " %s = %s \n" % (k,v)
-                    value += '"'
-                else:
-                    value = ''
+                if self.shower == 'PYTHIA8':
+                    # Single quotes keep the shell from expanding $, ` or \.
+                    # The case of Pythia8 values (paths, PDF names) matters.
+                    text = ''.join('%s = %s\n' % (k, v) for k, v in
+                                   self.parse_pythia8_options(value).items())
+                    lines.append('%s=%s' % (self.names_dict[key][self.shower].upper(),
+                                            "'" + text.replace("'", "'\\''") + "'"))
+                continue
             else:
                 raise ShowerCardError('Unknown key: %s = %s' % (key, value))
             try:

@@ -241,6 +241,19 @@ C     keeps R>0 after the last valid flavor entry.
         IPSEL=IPSEL+1
         R=R-DABS(PD(IPSEL))/PD(0)
       ENDDO
+C     RANMAR returns exactly 0d0 about once in 2**24 draws -- that is
+C      why
+C     ntuple() in Source/ranmar.f redraws while x < 1d-16. R = 0 (or a
+C      NaN
+C     PD, which compares false as well) leaves the loop above without
+C      ever
+C     entering it, i.e. with IPSEL = 0; write_leshouche then evaluates
+C     idup(i,0,numproc), reads past the start of the array, and writes
+C      an
+C     event carrying whatever integers precede it (for a 1 -> 2 decay,
+C      the
+C     tail of mothup). R = 0 means "the first flavour", so say so.
+      IF (IPSEL.LT.1) IPSEL = 1
 
 
 C     set minimum ipsel for this IFLAV
@@ -358,6 +371,7 @@ C
       DOUBLE PRECISION ALL_CM_RAP(VECSIZE_MEMMAX)
       INTEGER IMODE
       DOUBLE PRECISION ALL_OUT(VECSIZE_MEMMAX)
+C     IMIRROR_VEC, ICONF_VEC and IFLAV_VEC have one entry per warp
       INTEGER IMIRROR_VEC(*)
       INTEGER ICONF_VEC(*)
       INTEGER IFLAV_VEC(*)
@@ -410,6 +424,8 @@ C     MINCFIG has this config number
       COMMON/TO_CONFIGS/MINCFIG, MAXCFIG
       INTEGER MAPCONFIG(0:LMAXCONFIGS), ICONFIG
       COMMON/TO_MCONFIGS/MAPCONFIG, ICONFIG
+      INTEGER IMIRROR_GLOBAL, IPROC_GLOBAL
+      COMMON/TO_MIRROR/ IMIRROR_GLOBAL, IPROC_GLOBAL
 C     Keep track of whether cuts already calculated for this event
       LOGICAL CUTSDONE,CUTSPASSED
       COMMON/TO_CUTSDONE/CUTSDONE,CUTSPASSED
@@ -437,9 +453,27 @@ C
       DOUBLE PRECISION P1(0:3, NEXTERNAL)
       INTEGER IVEC, CURR_WARP, IWARP, NB_WARP_USED
       INTEGER CHANNELS(VECSIZE_MEMMAX)
+C     Per-event flavor index and leshouche row passed to SMATRIX_MULTI;
+C     NB_PSEL_WARP(w) is the number of ALL_PD rows of the flavor of
+C      warp w
+      INTEGER ALL_IFLAV(VECSIZE_MEMMAX), ALL_IPSEL(VECSIZE_MEMMAX)
+C     Per-event beam orientation (IMIRROR of the warp), set in
+C      TO_MIRROR
+C     for each SMATRIX call (its good-helicity filter is per
+C      orientation)
+      INTEGER ALL_IMIRROR(VECSIZE_MEMMAX)
+      INTEGER NB_PSEL_WARP(NB_WARP)
+      INTEGER IFLAV, IPSEL_SHIFT
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER IGRAPH(VECSIZE_MEMMAX)
       COMMON/VEC_IGRAPH/IGRAPH
+C     1-x of each beam: OMX_EE is what PDG2PDF reads for a
+C      dressed-lepton
+C     density, ALL_OMX_EE its value per lane (filled in dsample.f)
+      DOUBLE PRECISION OMX_EE(2)
+      COMMON /TO_EE_OMX1/ OMX_EE
+      DOUBLE PRECISION ALL_OMX_EE(2, VECSIZE_MEMMAX)
+      COMMON /TO_EE_OMX_VEC/ ALL_OMX_EE
 C     
 C     DATA
 C     
@@ -477,6 +511,8 @@ C     Continue only if IMODE is 0, 4 or 5
         ENDIF
         DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+C         the dressed-lepton densities read 1-x from OMX_EE, not from x
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
           IF (ABS(LPP(IB(1))).GE.1) THEN
 C           LP=SIGN(1,LPP(IB(1)))
             U1(IVEC)=PDG2PDF(LPP(IB(1)),2, IB(1),ALL_XBK(IB(1),IVEC)
@@ -489,14 +525,20 @@ C           LP=SIGN(1,LPP(IB(2)))
           ENDIF
         ENDDO  ! IWARP LOOP
       ENDDO  ! CURRWARP LOOP
-      ALL_PD(0,:) = 0D0
-      IPROC = 0
-      IPROC=IPROC+1  ! u u~ > u u~
-      DO IVEC=1, VECSIZE_USED
-        ALL_PD(IPROC,IVEC)=U1(IVEC)*UX2(IVEC)
-        ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))
-
-      ENDDO
+      ALL_PD(:,:) = 0D0
+      DO CURR_WARP=1, NB_WARP_USED
+        IFLAV = IFLAV_VEC(CURR_WARP)
+        DO IWARP=1, WARP_SIZE
+          IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+          IPROC = 0
+          IF (IFLAV.EQ.1) THEN
+            IPROC=IPROC+1  ! u u~ > u u~
+            ALL_PD(IPROC,IVEC)=U1(IVEC)*UX2(IVEC)
+            ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))
+          ENDIF
+        ENDDO  ! IWARP LOOP
+        NB_PSEL_WARP(CURR_WARP) = IPROC
+      ENDDO  ! CURRWARP LOOP
 
 
       IF (IMODE.EQ.4)THEN
@@ -512,28 +554,49 @@ C           LP=SIGN(1,LPP(IB(2)))
           IB(1) = 2
           IB(2) = 1
         ENDIF
+C       config and mirror of this warp (used by the clustering in
+C        REWGT and by UNWGT)
+        ICONFIG = SYMCONF(ICONF_VEC(CURR_WARP))
+        IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
+C       flavor of this warp (ALL_PD only holds the rows of that flavor)
+        IFLAV = IFLAV_VEC(CURR_WARP)
+        CALL GET_FLAVOR1(IFLAV, FLAVOR)
+
+C       set minimum ipsel for this IFLAV
+        IF (IFLAV.EQ.1) THEN
+          IPSEL_SHIFT = 0
+        ENDIF
+
         DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
 C         Do not need those three here. do I?     
           XBK(:) = ALL_XBK(:,IVEC)
 C         CM_RAP = ALL_CM_RAP(IVEC)
           Q2FACT(:) = ALL_Q2FACT(:, IVEC)
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
 
 
 C         Select a flavor combination (need to do here for right sign)
           CALL RANMAR(R)
           IPSEL=0
-          DO WHILE (R.GE.0D0 .AND. IPSEL.LT.IPROC)
+          DO WHILE (R.GE.0D0 .AND. IPSEL.LT.NB_PSEL_WARP(CURR_WARP))
             IPSEL=IPSEL+1
             R=R-DABS(ALL_PD(IPSEL,IVEC))/ALL_PD(0,IVEC)
           ENDDO
+C         .GE. above already covers R = 0; this catches a NaN R (every
+C         comparison false) and a flavor without rows. See the scalar
+C          branch.
+          IF (IPSEL.LT.1) IPSEL = 1
+C         leshouche row (IPSEL is used by REWGT, SMATRIX and UNWGT)
+          IPSEL = IPSEL + IPSEL_SHIFT
+          ALL_IPSEL(IVEC) = IPSEL
+          ALL_IFLAV(IVEC) = IFLAV
+          ALL_IMIRROR(IVEC) = IMIRROR_VEC(CURR_WARP)
 
           CHANNELS(IVEC) = CONFSUB(1,SYMCONF(ICONF_VEC(CURR_WARP)))
           SUBDIAG(1) = CHANNELS(IVEC)  ! only valid if a single process
           CHANNEL = SUBDIAG(1)
 
-
-          CALL GET_FLAVOR1(IFLAV_VEC(IVEC), FLAVOR)
           IF (IMODE.EQ.0) THEN
             ALL_RWGT(IVEC) = REWGT(ALL_PP(0,1,IVEC),FLAVOR,IVEC)
           ELSE
@@ -550,9 +613,9 @@ C         Select a flavor combination (need to do here for right sign)
           CALL RANMAR(COL_RAND(IVEC))
         ENDDO  ! end loop on IWARP/IVEC	 
       ENDDO  ! end loop on the CURR_WARP
-      CALL SMATRIX1_MULTI(P_MULTI, IFLAV_VEC, HEL_RAND, COL_RAND,
-     $  CHANNELS, IGRAPH, ALL_OUT , SELECTED_HEL, SELECTED_COL,
-     $  VECSIZE_USED)
+      CALL SMATRIX1_MULTI(P_MULTI, ALL_IFLAV, ALL_IPSEL, ALL_IMIRROR,
+     $  HEL_RAND, COL_RAND, CHANNELS, IGRAPH, ALL_OUT , SELECTED_HEL,
+     $  SELECTED_COL, VECSIZE_USED)
 
 
       DO CURR_WARP=1, NB_WARP_USED
@@ -563,8 +626,20 @@ C         Select a flavor combination (need to do here for right sign)
           IB(1) = 2
           IB(2) = 1
         ENDIF
+C       config and mirror of this warp (used by the clustering in
+C        REWGT and by UNWGT)
+        ICONFIG = SYMCONF(ICONF_VEC(CURR_WARP))
+        IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
+        IFLAV = IFLAV_VEC(CURR_WARP)
+
+C       set minimum ipsel for this IFLAV
+        IF (IFLAV.EQ.1) THEN
+          IPSEL_SHIFT = 0
+        ENDIF
+
         DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+          IPSEL = ALL_IPSEL(IVEC)
           DSIGUU = ALL_OUT(IVEC)
           IF (IMODE.EQ.5) THEN
             IF (DSIGUU.LT.1D199) THEN
@@ -572,12 +647,14 @@ C         Select a flavor combination (need to do here for right sign)
             ELSE
               ALL_OUT(IVEC) = 0.0D0
             ENDIF
-            RETURN
+            CYCLE
           ENDIF
 
           XBK(:) = ALL_XBK(:,IVEC)
 C         CM_RAP = ALL_CM_RAP(IVEC)
           Q2FACT(:) = ALL_Q2FACT(:, IVEC)
+C         UNWGT samples the beamstrahlung split from it
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
 
           IF(FRAME_ID.NE.6)THEN
             CALL BOOST_TO_FRAME(ALL_PP(0,1,IVEC), FRAME_ID, P1)
@@ -597,7 +674,7 @@ C          1.0)
           IF (DSIGUU.LT.1D199) THEN
 C           Set sign of dsig based on sign of PDF and matrix element
             ALL_OUT(IVEC)=DSIGN(CONV*ALL_PD(0,IVEC)*DSIGUU,DSIGUU
-     $       *ALL_PD(IPSEL,IVEC))
+     $       *ALL_PD(IPSEL-IPSEL_SHIFT,IVEC))
           ELSE
             WRITE(*,*) 'Error in matrix element'
             DSIGUU=0D0
@@ -624,9 +701,9 @@ C           Call UNWGT to unweight and store events
       END
 
 
-      SUBROUTINE SMATRIX1_MULTI(P_MULTI, IFLAV_VEC, HEL_RAND, COL_RAND
-     $ , CHANNELS, IGRAPH, OUT, SELECTED_HEL, SELECTED_COL,
-     $  VECSIZE_USED)
+      SUBROUTINE SMATRIX1_MULTI(P_MULTI, IFLAV_VEC, IPSEL_VEC,
+     $  IMIRROR_VEC, HEL_RAND, COL_RAND, CHANNELS, IGRAPH, OUT,
+     $  SELECTED_HEL, SELECTED_COL, VECSIZE_USED)
       USE OMP_LIB
       IMPLICIT NONE
 
@@ -638,7 +715,13 @@ C           Call UNWGT to unweight and store events
       DOUBLE PRECISION P_MULTI(0:3, NEXTERNAL, VECSIZE_MEMMAX)
       DOUBLE PRECISION HEL_RAND(VECSIZE_MEMMAX)
       DOUBLE PRECISION COL_RAND(VECSIZE_MEMMAX)
+C     Per-event flavor index and leshouche row (IPSEL, used for
+C      BROKEN_SYM)
       INTEGER IFLAV_VEC(VECSIZE_MEMMAX)
+      INTEGER IPSEL_VEC(VECSIZE_MEMMAX)
+C     Per-event beam orientation (IMIRROR, used by the good-helicity
+C      filter)
+      INTEGER IMIRROR_VEC(VECSIZE_MEMMAX)
       INTEGER CHANNELS(VECSIZE_MEMMAX)
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER IGRAPH(VECSIZE_MEMMAX)
@@ -649,12 +732,18 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
 
       INTEGER IVEC
 
+      INTEGER          IPSEL
+      COMMON /SUBPROC/ IPSEL
+      INTEGER IMIRROR, IPROC
+      COMMON/TO_MIRROR/ IMIRROR, IPROC
 
 
 
 !$OMP PARALLEL
 !$OMP DO
       DO IVEC=1, VECSIZE_USED
+        IPSEL = IPSEL_VEC(IVEC)
+        IMIRROR = IMIRROR_VEC(IVEC)
         CALL SMATRIX1(P_MULTI(0,1,IVEC),
      &                           IFLAV_VEC(IVEC), 
      &                           hel_rand(IVEC),
@@ -673,38 +762,39 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       END
 
       INTEGER FUNCTION GET_NHEL1(HEL, IPART)
-C     if hel>0 return the helicity of particule ipart for the selected
-C      helicity configuration
-C     if hel=0 return the number of helicity state possible for that
-C      particle 
+C     if hel>0 return the helicity of particule ipart for the
+C     selected helicity configuration
+C     if hel=0 return the number of helicity state possible for
+C     that particle
       IMPLICIT NONE
-      INTEGER HEL,I, IPART
+      INTEGER HEL, I, IPART
       INCLUDE 'nexternal.inc'
-      INTEGER ONE_NHEL(NEXTERNAL)
-      INTEGER                 NCOMB
-      PARAMETER (             NCOMB=16)
-      INTEGER NHEL(NEXTERNAL,0:NCOMB)
-      DATA (NHEL(I,0),I=1,4) / 2, 2, 2, 2/
-      DATA (NHEL(I,   1),I=1,4) / 1,-1,-1, 1/
-      DATA (NHEL(I,   2),I=1,4) / 1,-1,-1,-1/
-      DATA (NHEL(I,   3),I=1,4) / 1,-1, 1, 1/
-      DATA (NHEL(I,   4),I=1,4) / 1,-1, 1,-1/
-      DATA (NHEL(I,   5),I=1,4) / 1, 1,-1, 1/
-      DATA (NHEL(I,   6),I=1,4) / 1, 1,-1,-1/
-      DATA (NHEL(I,   7),I=1,4) / 1, 1, 1, 1/
-      DATA (NHEL(I,   8),I=1,4) / 1, 1, 1,-1/
-      DATA (NHEL(I,   9),I=1,4) /-1,-1,-1, 1/
-      DATA (NHEL(I,  10),I=1,4) /-1,-1,-1,-1/
-      DATA (NHEL(I,  11),I=1,4) /-1,-1, 1, 1/
-      DATA (NHEL(I,  12),I=1,4) /-1,-1, 1,-1/
-      DATA (NHEL(I,  13),I=1,4) /-1, 1,-1, 1/
-      DATA (NHEL(I,  14),I=1,4) /-1, 1,-1,-1/
-      DATA (NHEL(I,  15),I=1,4) /-1, 1, 1, 1/
-      DATA (NHEL(I,  16),I=1,4) /-1, 1, 1,-1/
-
-      GET_NHEL1 = NHEL(IPART, IABS(HEL))
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=2)
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+      DATA NHSTATE /2,2,2,2/
+      DATA (STATES(I,1),I=1,2) /1,-1/
+      DATA (STATES(I,2),I=1,2) /-1,1/
+      DATA (STATES(I,3),I=1,2) /-1,1/
+      DATA (STATES(I,4),I=1,2) /1,-1/
+      INTEGER XGW, XGD, XGK
+      IF (HEL.EQ.0) THEN
+C       Number of helicity states for particle ipart.
+        GET_NHEL1 = NHSTATE(IPART)
+      ELSE
+C       Decode the canonical mixed-radix helicity code into
+C       particle ipart's helicity value (last external leg =
+C       least-significant digit).
+        XGW = 1
+        DO XGK = IPART+1, NEXTERNAL
+          XGW = XGW * NHSTATE(XGK)
+        ENDDO
+        XGD = MOD((IABS(HEL)-1)/XGW, NHSTATE(IPART))
+        GET_NHEL1 = STATES(XGD+1, IPART)
+      ENDIF
       RETURN
       END
+
 
 
 

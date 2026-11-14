@@ -6,6 +6,7 @@ MG5AMC_VERSION=SpecifiedByMG5aMCAtRunTime
 STDLIB=-lstdc++
 PYTHIA8_PATH=NotInstalled
 STDLIB_FLAG=
+AMP_FLAG=
 #end_of_make_opts_variables
 
 BIASLIBDIR=../../../lib/
@@ -125,6 +126,7 @@ else
   alfas_to_clean=alfas_functions_lhapdf.o
   llhapdf=
 endif
+
 
 # Helper function to check MG5 version
 define CHECK_MG5AMC_VERSION

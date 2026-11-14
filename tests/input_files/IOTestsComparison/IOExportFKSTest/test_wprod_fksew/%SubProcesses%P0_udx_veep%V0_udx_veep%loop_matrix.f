@@ -86,7 +86,7 @@ C      CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja and COLLIER
 C     Only CutTools or possibly Ninja (if installed with qp support)
 C      provide QP
       INTEGER QP_NLOOPLIB
-      PARAMETER (QP_NLOOPLIB=1)
+      PARAMETER (QP_NLOOPLIB=2)
       INTEGER MAXSTABILITYLENGTH
       DATA MAXSTABILITYLENGTH/20/
       COMMON/STABILITY_TESTS/MAXSTABILITYLENGTH
@@ -137,7 +137,7 @@ C
       REAL*8 P(0:3,NEXTERNAL)
 C     DP_RES STORES THE DOUBLE PRECISION RESULT OBTAINED FROM
 C      DIFFERENT EVALUATION METHODS IN ORDER TO ASSESS STABILITY.
-C     THE STAB_STAGE COUNTER I CORRESPONDANCE GOES AS FOLLOWS
+C     THE STAB_STAGE COUNTER CORRESPONDENCE GOES AS FOLLOWS
 C     I=1 -> ORIGINAL PS, CTMODE=1
 C     I=2 -> ORIGINAL PS, CTMODE=2, (ONLY WITH CTMODERUN=-1)
 C     I=3 -> PS WITH ROTATION 1, CTMODE=1, (ONLY WITH CTMODERUN=-2)
@@ -261,9 +261,9 @@ C      loop_library is not available
 C     in which case neither is its quadruple precision version.
       LOGICAL LOOPLIBS_QPAVAILABLE(0:7)
       DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.
-     $ ,.FALSE.,.FALSE.,.FALSE.,.FALSE./
-C     PS CAN POSSIBILY BE PASSED THROUGH IMPROVE_PS BUT IS NOT
-C      MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
+     $ ,.FALSE.,.FALSE.,.TRUE.,.FALSE./
+C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED
+C      FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT
 C      USED ANYWHERE ELSE
       REAL*8 PS(0:3,NEXTERNAL)
@@ -548,12 +548,18 @@ C       Setup the file paths
 
         CALL SET_N_EVALS(N_DP_EVAL,N_QP_EVAL)
 
-C       Make sure that the loop filter is disabled when there is
-C        spin-2 particles for 2>1 or 1>2 processes
-        IF(MAX_SPIN_EXTERNAL_PARTICLE.GT.3.AND.(NEXTERNAL.LE.3.AND.HELI
-     $CITYFILTERLEVEL.NE.0)) THEN
-          WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1'
-     $     //' processes involving spin 2 particles.'
+C       Disable the helicity filter for 2>1 and 1>2 processes.
+C       In the c.m. frame one particle is then at rest (the
+C       final state of a 2>1, the decaying one of a 1>2), and
+C       which helicities vanish depends on the frame: at rest
+C       the helicity is defined along z, a boost changes it.
+C       A filter learned in one frame silently drops part of
+C       the result in another (u d~ > w+: virtual = 0 with the
+C       W along -z) and the stability test cannot see it.
+C       The tree-level standalone output does the same.
+        IF(NEXTERNAL.LE.3.AND.HELICITYFILTERLEVEL.NE.0) THEN
+          WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1 and'
+     $     //' 1>2 processes.'
           HELICITYFILTERLEVEL = 0
 C         We write a dummy filter for structural reasons here
           OPEN(1, FILE=HELFILTERFN, ERR=6116, STATUS='NEW'
@@ -761,7 +767,7 @@ C        therefore guarantee any precision
         CTMODEINIT_BU=CTMODEINIT
 C       So either one choses quad precision directly
 C       CTMODEINIT=4
-C       Or, because this is very slow, we keep the orignal value. The
+C       Or, because this is very slow, we keep the original value. The
 C        accuracy returned is -1 and tells the MC that he should not
 C        trust the evaluation for checks.
         CTMODEINIT=CTMODEINIT_BU
@@ -1095,8 +1101,8 @@ C     Make sure that no NaN is present in the result
 
       IF (CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED)) THEN
         IF((USERHEL.EQ.-1).OR.(USERHEL.EQ.HELPICKED)) THEN
-C         Make sure that that no polarization constraint filters out
-C          this helicity
+C         Make sure that no polarization constraint filters out this
+C          helicity
           IF (POLARIZATIONS(0,0).EQ.-1.OR.IS_HEL_SELECTED(HELPICKED))
      $      THEN
 C           TO KEEP TRACK OF THE FINAL ANSWER TO BE RETURNED DURING
@@ -1204,7 +1210,7 @@ C              support exactly identical Hels.)
                 ENDDO
               ENDIF
 C             In all cases, from now on this helicity will be computed
-C              independantly of the others.
+C              independently of the others.
 C             In particular, it is the only thing to do if the
 C              helicity was flagged not contributing.
               GOODHEL(HELPICKED)=1
@@ -1245,8 +1251,8 @@ C         DOUBLE CHECK THE HELICITY FILTER
               WRITE(*,*) '##W15 Helicity filter could not be'
      $         //' successfully double checked.'
               WRITE(*,*) '##One reason for this is that you might have'
-     $         //' changed sensible parameters which affected what are'
-     $         //' the zero helicity configurations.'
+     $         //' changed sensitive parameters which affected what'
+     $         //' are the zero helicity configurations.'
               WRITE(*,*) '##MadLoop will try to reset the Helicity'
      $         //' filter with the next PS points it receives.'
               NTRY=0
@@ -1261,8 +1267,8 @@ C         DOUBLE CHECK THE HELICITY FILTER
               WRITE(*,*) '##W15 Helicity filter could not be'
      $         //' successfully double checked.'
               WRITE(*,*) '##One reason for this is that you might have'
-     $         //' changed sensible parameters which affected the'
-     $         //' helicity dependance relations.'
+     $         //' changed sensitive parameters which affected the'
+     $         //' helicity dependence relations.'
               WRITE(*,*) '##MadLoop will try to reset the Helicity'
      $         //' filter with the next PS points it receives.'
               NTRY=0
@@ -1779,7 +1785,7 @@ C     BEGIN CODE
 C     ----------
       IF(ABS(REFERENCE_VALUE).EQ.0.0D0) THEN
         ISZERO=.FALSE.
-        WRITE(*,*) '##E02 ERRROR Reference value for comparison is'
+        WRITE(*,*) '##E02 ERROR Reference value for comparison is'
      $   //' zero.'
         STOP 1
       ELSE

@@ -185,7 +185,7 @@ class FortranWriter(FileWriter):
         pass
 
     # Parameters defining the output of the Fortran writer
-    keyword_pairs = {r'^if.+then\s*$': ('^end\s*if', 2),
+    keyword_pairs = {r'^if.+then\s*$': (r'^end\s*if', 2),
                      r'^type(?!\s\()\s.+\s*$': ('^endtype', 2),
                      r'^do(?!\s+\d+)\s+': (r'^end\s*do\s*$', 2),
                      '^subroutine': (r'^end\s*$', 0),
@@ -198,7 +198,7 @@ class FortranWriter(FileWriter):
     number_re = re.compile(r'^(?P<num>\d+)\s+(?P<rest>.*)')
     line_cont_char = '$'
     comment_char = 'c'
-    uniformcase = True #force everyting to be lower/upper case 
+    uniformcase = True #force everything to be lower/upper case
     downcase = False
     line_length = 71
     max_split = 20
@@ -208,7 +208,7 @@ class FortranWriter(FileWriter):
     # Private variables
     __indent = 0
     __keyword_list = []
-    __comment_pattern = re.compile(r"^(\s*#|c\$|c$|(c\s+([^=]|$))|cf2py|c\-\-|c\*\*|\s*!|!\$)", re.IGNORECASE)
+    __comment_pattern = re.compile(r"^(\s*#|c\$|c$|(c\s+([^=]|==+|$))|cf2py|c\-\-|c\*\*|\s*!|!\$)", re.IGNORECASE)
     __continuation_line = re.compile(r"(?:     )[$&]")
     # A floating-point literal whose value is zero can be written with a
     # negative sign (-0.000...D+00) depending on the host's round-off / numpy
@@ -693,7 +693,7 @@ class CPPWriter(FileWriter):
                 res_lines.extend(self.write_line(myline))
             return res_lines
 
-        # Check if line starts with keyword with parentesis
+        # Check if line starts with keyword with parentheses
         for key in self.indent_par_keywords.keys():
             if re.search(key, myline):
                 # Step through to find end of parenthesis

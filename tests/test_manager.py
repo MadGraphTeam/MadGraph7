@@ -119,8 +119,15 @@ class MyTextTestRunner(unittest.TextTestRunner):
                     self.stream.write("FAILED ( ")
                 self.stream.writeln(" errors=%d)" % errored)
             self.stream.writeln(' '.join([str(t[0]).split()[0] for t in result.errors]))
+        elif result.skipped:
+            self.stream.writeln("OK (skipped=%d)" % len(result.skipped))
         else:
             self.stream.writeln("OK")
+        # a skipped test did not run: name it so a skip never reads as a pass
+        if result.skipped:
+            self.stream.writeln("Skipped %d:" % len(result.skipped))
+            for t, reason in result.skipped:
+                self.stream.writeln("%s: %s" % (str(t).split()[0], reason))
         if self.bypassed:
             self.stream.writeln("Bypassed %s:" % len(self.bypassed))
             self.stream.writeln(" ".join(self.bypassed))
@@ -617,7 +624,7 @@ class TimeLimit(Exception): pass
 class TestSuiteModified(unittest.TestSuite):
     """ This is a wrapper for the default implementation of unittest.TestSuite 
     so that we can add the decorator for the resetting of the global variables
-    everytime the TestSuite is __call__'ed., hence avoiding side effects from 
+    every time the TestSuite is __call__'ed., hence avoiding side effects from
     them."""
     
     time_limit = 1
@@ -922,7 +929,7 @@ class TestFinder(list):
         1) full file position
         2) name of the file (with extension)
         3) full file position whithour extension
-        4) name of the file (whithout extension)
+        4) name of the file (without extension)
         5) name of the file (but suppose name in python format)
         6) if name is a python file, try with a './' and with package pos
         """

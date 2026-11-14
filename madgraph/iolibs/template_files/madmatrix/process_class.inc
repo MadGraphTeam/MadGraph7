@@ -25,8 +25,24 @@
     // Initialize process (read model parameters from file)
     virtual void initProc( const std::string& param_card_name );
 
-    // Retrieve the compiler that was used to build this module
-    static const std::string getCompiler();
+#ifndef MGONGPU_HARDCODE_PARAM
+    // Re-synchronize the independent parameters/couplings (cIPD/cIPC/cIPF), the
+    // BSM-independent-parameter buffer (bsmIndepParam) and the external masses with the
+    // current values in the model parameters of this process. sigmaKin() and friends read
+    // these copies (parameters()), not the model parameters themselves, for performance,
+    // so updating the model parameters alone (e.g. via modelParameters().setParameterByName())
+    // has no effect until this is called again; it is called once automatically by initProc().
+    void refreshIndependentParams();
+
+    // The model parameters of this process (not shared with any other CPPProcess)
+    Parameters& modelParameters() { return *m_pars; }
+#endif
+
+    // The parameters the matrix element of this process is evaluated with: the kernels
+    // (sigmaKin and friends) take them as an argument. The good helicities in there are
+    // set by the caller (sigmaKin_setGoodHel).
+    ProcessParameters& parameters() { return m_params; }
+    const ProcessParameters& parameters() const { return m_params; }
 
     // PDG id for a given flavor combination index and particle index (0-based).
     // Useful for tools that need to enumerate flavor combinations without going through UMAMI.
@@ -45,39 +61,47 @@
 
   public:
 
-    // Process-independent compile-time constants
-    static constexpr int np4 = 4; // dimensions of 4-momenta (E,px,py,pz)
-    static constexpr int nw6 = %(nwave)d; // dimensions of each wavefunction (HELAS KEK 91-11): e.g. 6 for e+ e- -> mu+ mu- (fermions and vectors)
-
-    // Process-dependent compile-time constants
-    static constexpr int npari = %(nincoming)d; // #particles in the initial state (incoming): e.g. 2 (e+ e-) for e+ e- -> mu+ mu-
-    static constexpr int nparf = %(noutcoming)d; // #particles in the final state (outgoing): e.g. 2 (mu+ mu-) for e+ e- -> mu+ mu-
-    static constexpr int npar = npari + nparf; // #particles in total (external = initial + final): e.g. 4 for e+ e- -> mu+ mu-
-    static constexpr int ncomb = %(nbhel)d; // #helicity combinations: e.g. 16 for e+ e- -> mu+ mu- (2**4 = fermion spin up/down ** npar)
-    static constexpr int ndiagrams = %(ndiagrams)d; // #Feynman diagrams: e.g. 3 for e+ e- -> mu+ mu-
-    static constexpr int ncolor = %(ncolor)s; // the number of leading colors: e.g. 1 for e+ e- -> mu+ mu-
+    // Compile-time constants: single source of truth is ProcessData.h
+    static constexpr int np4 = ProcessData::np4;
+    static constexpr int nw6 = ProcessData::nw6;
+    static constexpr int npari = ProcessData::npari;
+    static constexpr int nparf = ProcessData::nparf;
+    static constexpr int npar = ProcessData::npar;
+    static constexpr int ncomb = ProcessData::ncomb;
+    static constexpr int ndiagrams = ProcessData::ndiagrams;
+    static constexpr int ncolor = ProcessData::ncolor;
     // The color structures the color flow is picked among. Same as ncolor,
     // unless the color sum runs on a smaller basis (see set_color_flow_lines_cpp).
     static constexpr int ncolor_flow = %(ncolor_flow)s;%(split_order_constants)s
-    static constexpr int nmaxflavor = %(nmaxflavor)d; // the maximum number of flavor combinations
-
-    // Hardcoded parameters for this process (constant class variables)
-    // [NB: this class assumes nprocesses==1 i.e. a single DSIG1 and no DSIG2 in Fortran (#272 and #343)]
-    // [NB: these parameters (e.g. nwf) are P1-specific, i.e. they are different for different P1 subdirectories (#644)]
-    // [NB: I am currently unable to get the right value of nwf in CPPProcess.h - will hardcode it in CPPProcess.cc instead (#644)]
-    //static const int nwf = ??; // #wavefunctions = #external (npar) + #internal: e.g. 5 for e+ e- -> mu+ mu- (1 internal is gamma or Z)
+    static constexpr int nmaxflavor = ProcessData::nmaxflavor;
+    // Rows of the crossing table (1 without crossing): the extended flavor
+    // ids K*nmaxflavor + flav run over [0, ncross*nmaxflavor).
+    static constexpr int ncross = ProcessTables::ncross;
 
   private: /* clang-format on */
+
+    // Store the parameters and couplings in m_params (the calls are generated in initProc
+    // and refreshIndependentParams)
+    void setIndependentParams( const fptype* tIPD );
+    void setIndependentCouplings( const cxtype* tIPC );
+    void setFlavorCouplings( const int* tIPF_partner1, const int* tIPF_partner2, const cxtype* tIPF_value );
+    void setBsmIndepParam( const double* values, int n );
+#ifndef MGONGPU_HARDCODE_PARAM
+    // Re-populate a mass vector from the model parameters, as initProc() does for m_masses
+    void refreshExternalMasses( std::vector<fptype>& masses );
+#endif
 
     // Command line arguments (constructor)
     bool m_verbose;
     bool m_debug;
 
-    // Physics model parameters to be read from file (initProc function)
+    // Physics model parameters to be read from file (initProc function), owned by this process
 #ifndef MGONGPU_HARDCODE_PARAM
+    std::unique_ptr<Parameters> m_ownedPars;
     Parameters* m_pars;
 #endif
     std::vector<fptype> m_masses; // external particle masses
+    ProcessParameters m_params{}; // see parameters()
 
     // Other variables of this instance (???)
     //int id1, id2; // initial particle ids

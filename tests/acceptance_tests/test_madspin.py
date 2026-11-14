@@ -154,6 +154,9 @@ class TestMadSpin(unittest.TestCase):
                         stdout=stdout,stderr=stderr)
 
         self.assertTrue(os.path.exists(pjoin(self.path, 'test_spinmode_none_decayed.lhe.gz')))
+        # the input is decompressed to be read: it has to be compressed back
+        self.assertTrue(os.path.exists(pjoin(self.path, 'test_spinmode_none.lhe.gz')))
+        self.assertFalse(os.path.exists(pjoin(self.path, 'test_spinmode_none.lhe')))
         lhe = lhe_parser.EventFile(pjoin(self.path, 'test_spinmode_none_decayed.lhe.gz'))
         self.assertEqual(100, len(lhe))
         
@@ -258,6 +261,7 @@ shower=OFF
 analysis=OFF
 set nevents 10000
 set iseed 1
+add madspin_card --before_line="launch" set offshell_min_recoil 0.5
 decay w+ > j j
 decay w- > j j
 decay z > l+ l-
@@ -276,11 +280,11 @@ decay z > l+ l-
             log = log_file.read()
             misc.sprint(log)
 
-        # MadSpin's default spinmode is "PA" (pole approximation), which
-        # routes through the density code path. The density path emits a
-        # single summary line of the form:
-        #   CRITICAL: MadSpin unweight efficiency: 0.3697
-        #            (10000 written / 27048 trials, 2.70 trials/event)
+        # MadSpin's default spinmode is "madspin" (offshell), which routes
+        # through the density code path. The density path emits a single
+        # summary line of the form:
+        #   CRITICAL: MadSpin unweight efficiency: 0.1000
+        #            (10000 written / 99958 trials, 10.00 trials/event)
         # rather than the legacy multi-line onshell summary
         # ("Total number of events written", "Average number of trial
         # points per production event", "Branching ratio to allowed
@@ -303,14 +307,23 @@ decay z > l+ l-
         self.assertEqual(n_written, 10000,
             msg='Expected 10000 written events, got %d' % n_written)
 
-        # trials/event is sampling dependent (~2.70 in density mode, ~4.98 on
-        # the legacy onshell path): only sanity-check it is present and in a
-        # physically reasonable range rather than pinning the exact value.
+        # trials/event is sampling dependent: 9.6-12.6 over eight production
+        # samples of this card (spinmode madspin; PA takes ~2.8, the legacy
+        # onshell path ~4.98). It used to depend strongly on the production
+        # sample -- with madevent decays iseed 1-4 gave 4.4-15 (34 on CI), and
+        # 4.6-152 before the refine normalisation changed: the offshell
+        # max-weight scan reused one draw's production density for all the
+        # draws of an event, and the weight itself was unbounded -- a Z drawn
+        # up to sqrt(shat) pushes the gluon soft, w ~ 1/chi -- unless
+        # offshell_min_recoil cuts it, which this card opts in to (the option
+        # is off by default: it biases the off-shell tail). Only sanity-check it is present and in a
+        # physically reasonable range rather than pinning the exact value: the
+        # bound only catches a broken unweighting.
         trials = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*trials\s*/\s*event', log)
         if trials is not None:
             trials_per_event = float(trials.group(1))
             self.assertGreater(trials_per_event, 1.0)
-            self.assertLess(trials_per_event, 20.0)
+            self.assertLess(trials_per_event, 500.0)
 
         # The legacy onshell-mode summary lines (Branching ratio to allowed
         # decays / Number of events with weights larger than max_weight /
@@ -342,7 +355,8 @@ decay z > l+ l-
 
         NB: 'set nevents 500' relies on the mg7 run_card editor accepting the
         legacy madevent name (mapped to generation.events); without it the run
-        would generate the full default 100k events and risk the timeout below.
+        would generate and decay the full default 100k events. That is checked
+        on the event count of the summary line, not on the wall-clock bound.
         """
         cmd_path = pjoin(self.path, 'test_madspin_mixed_flavor_mg7.cmd')
         log_path = pjoin(self.path, 'test_madspin_mixed_flavor_mg7.log')
@@ -367,32 +381,52 @@ decay z > l+ l-
             fsock.write(command)
 
         # Bounded and with stdin closed so the run never blocks on a prompt.
-        # With 'set nevents 500' honoured the decay is quick; a timeout here
-        # would signal a regression (e.g. nevents no longer applied -> the full
-        # 100k events get decayed).
+        # The bound only guards against a hang: the run costs about 100 s of
+        # CPU but its wall time follows the machine load (about 210-290 s at a
+        # load average of 100; 30-110 s on a CI runner, which varies a lot from
+        # one run to the next), so a tight bound fails on a busy machine.
+        timeout = 900
+        def log_tail(why):
+            # the mg7 run log lives in a tmp dir CI does not upload: show its
+            # tail in the CI output, so that the reason is visible there
+            with open(log_path) as log_file:
+                lines = log_file.read().splitlines()
+            print('\n===== test_madspin_mixed_flavor_decay_log_summary_mg7: '
+                  'madgraph log tail (%s) =====\n%s' % (why, '\n'.join(lines[-150:])),
+                  file=sys.stderr, flush=True)
         with open(log_path, 'w') as log_file:
             try:
                 return_code = subprocess.call(
                     [sys.executable, pjoin(_file_path, os.path.pardir, 'bin', 'madgraph'), cmd_path],
                     cwd=pjoin(_file_path, os.path.pardir),
                     stdin=subprocess.DEVNULL,
-                    stdout=log_file, stderr=subprocess.STDOUT, timeout=240)
+                    stdout=log_file, stderr=subprocess.STDOUT, timeout=timeout)
             except subprocess.TimeoutExpired:
-                self.fail('mg7 + MadSpin run timed out (is set nevents applied?)')
+                log_file.flush()
+                log_tail('timed out after %d s' % timeout)
+                load = os.getloadavg() if hasattr(os, 'getloadavg') else None
+                self.fail('mg7 + MadSpin run timed out after %s s (load average'
+                          ' %s; is set nevents applied?)' % (timeout, load))
         with open(log_path) as log_file:
             log = log_file.read()
-        # On failure, surface the tail of the mg7 run log (which lives in a tmp
-        # dir CI does not upload) so the reason is visible in the CI output.
         if return_code != 0 or not re.search(r'MadSpin\s+unweight\s+efficiency', log):
-            print('\n===== test_madspin_mixed_flavor_decay_log_summary_mg7: '
-                  'madgraph log tail (rc=%s) =====\n%s'
-                  % (return_code, '\n'.join(log.splitlines()[-150:])),
-                  file=sys.stderr, flush=True)
+            log_tail('rc=%s' % return_code)
         self.assertEqual(return_code, 0)
 
+        summary = re.search(
+            r'MadSpin\s+unweight\s+efficiency:\s*\S+\s*\((\d+)\s+written', log)
         self.assertIsNotNone(
-            re.search(r'MadSpin\s+unweight\s+efficiency', log),
+            summary,
             msg='mg7 + MadSpin: density-mode summary line not found in log')
+        # 'set nevents 500' reached the mg7 run card (generation.events)
+        self.assertEqual(int(summary.group(1)), 500)
+        # store_result used to save the madevent results database to
+        # HTML/results.pkl, which the mg7 output does not have
+        self.assertEqual(
+            [line for line in log.splitlines() if 'I/O error' in line], [])
+        self.assertFalse(os.path.exists(pjoin(self.run_dir, 'crossx.html')))
+        # the madmatrix exporter used to print its keyword arguments
+        self.assertNotIn('kwargs[', log)
 
     def test_madspin_wplus_all_all_flavor_balance(self):
         """`w+ > all all` should populate e/mu decay modes with similar rates."""
@@ -587,7 +621,7 @@ decay w+ > all all
                                      % (particle.pid, name_scipt_file))
 
     def test_madspin_loop_induced(self):
-        """ Tests that that the differrent mode of madspin work for loop-induced processes.
+        """ Tests that the different modes of MadSpin work for loop-induced processes.
             It checks that there is no crash and that the decayed particles have a status of 2.
         """ 
 
@@ -597,7 +631,7 @@ decay w+ > all all
         self._run_one_mode("madspin", [24, -24], 'test_madspin_loop_induced_madspin.lhe.gz', 'test_loop_induced_madspin')
 
     def test_madspin_tree_level(self):
-        """ Tests that that the differrent mode of madspin work for tree-level processes.
+        """ Tests that the different modes of MadSpin work for tree-level processes.
             It checks that there is no crash and that the decayed particles have a status of 2.
         """ 
 
@@ -608,3 +642,86 @@ decay w+ > all all
         self._run_one_mode("none", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_none')
         self._run_one_mode("madspin_v1", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_madspin_v1')
         self._run_one_mode("onshell_v1", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_onshell_v1')
+
+    @staticmethod
+    def _decayed_sample(path):
+        """The <init> block (sigma*BR) and the event blocks of an LHE file:
+        everything that has to come out the same, without the banner."""
+        with gzip.open(path, 'rt') as fsock:
+            text = fsock.read()
+        init = re.search(r'<init>.*?</init>', text, re.S)
+        return (init.group(0) if init else None,
+                re.findall(r'<event>.*?</event>', text, re.S))
+
+    def test_madspin_mg7_decays_reproducible_with_seed(self):
+        """The same card, seed and input give the same decayed sample with the
+        default decay_generator mg7.
+
+        Its decay pools used to run with mg7's run.seed = -1 -- a new random
+        seed on every run -- so two runs of this card differed from the first
+        event on (sigma*BR and the unweighting efficiency too), in every spin
+        mode, while decay_generator madevent was reproducible. Both paths are
+        covered: the density modes (one forked generation per decaying
+        particle) and spinmode none (serial generation).
+        """
+        import MadSpin.interface_madspin as interface_madspin
+        if not interface_madspin.MadSpinInterface._mg7_available():
+            self.skipTest('madspace is not built: MadSpin would generate the '
+                          'decays with madevent, which is not what is tested')
+
+        for spinmode in ('madspin', 'none'):
+            samples = []
+            for tag in ('a', 'b'):
+                run = pjoin(self.path, '%s_%s' % (spinmode, tag))
+                os.mkdir(run)
+                files.cp(pjoin(MG5DIR, 'tests', 'input_files', 'ttbar.lhe.gz'),
+                         pjoin(run, 'events.lhe.gz'))
+                card = pjoin(run, 'madspin_card.dat')
+                with open(card, 'w') as fsock:
+                    fsock.write('import events.lhe.gz\n'
+                                'set spinmode %s\n'
+                                'set decay_generator mg7\n'
+                                'set seed 77\n'
+                                'decay t > w+ b, w+ > e+ ve\n'
+                                'decay t~ > w- b~, w- > mu- vm~\n'
+                                'launch\n' % spinmode)
+                log_path = pjoin(run, 'madspin.log')
+                with open(log_path, 'w') as log:
+                    returncode = subprocess.call(
+                        [sys.executable, pjoin(MG5DIR, 'MadSpin', 'madspin'),
+                         card],
+                        cwd=run, stdin=subprocess.DEVNULL,
+                        stdout=log, stderr=subprocess.STDOUT, timeout=900)
+                decayed = pjoin(run, 'events_decayed.lhe.gz')
+                if returncode or not os.path.exists(decayed):
+                    with open(log_path) as log:
+                        print('\n===== %s %s: MadSpin log tail (rc=%s) =====\n%s'
+                              % (spinmode, tag, returncode,
+                                 '\n'.join(log.read().splitlines()[-100:])),
+                              file=sys.stderr, flush=True)
+                self.assertEqual(returncode, 0)
+                self.assertTrue(os.path.exists(decayed))
+
+                # the mg7 generator really made the pools, each with a fixed
+                # seed of its own
+                cards = glob.glob(pjoin(run, 'decay_*', 'Cards',
+                                        'run_card.toml'))
+                self.assertEqual(len(cards), 2, 'no mg7 decay pool in %s' % run)
+                seeds = [banner.RunCardMG7(path)['run']['seed']
+                         for path in cards]
+                self.assertTrue(all(seed > 0 for seed in seeds), seeds)
+                self.assertEqual(len(set(seeds)), 2, seeds)
+
+                samples.append(self._decayed_sample(decayed))
+
+            init_a, events_a = samples[0]
+            init_b, events_b = samples[1]
+            self.assertEqual(len(events_a), 25)
+            self.assertEqual(init_a, init_b,
+                             'spinmode %s: sigma*BR differs between the two '
+                             'runs' % spinmode)
+            for i, (event_a, event_b) in enumerate(zip(events_a, events_b)):
+                self.assertEqual(event_a, event_b,
+                                 'spinmode %s: event %s differs between the '
+                                 'two runs' % (spinmode, i))
+            self.assertEqual(len(events_a), len(events_b))

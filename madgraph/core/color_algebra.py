@@ -182,7 +182,7 @@ class ColorOne(ColorObject):
         """Check for no index"""
         
         if len(args) ==2 and args[0] == 'i' and not args[1]:
-            # py3 pickle wierd output some time...
+            # py3 pickle weird output some time...
             return super(ColorOne, self).__init__()
             
         assert len(args) == 0 , "ColorOne objects must have no index!"
@@ -775,7 +775,7 @@ class ColorString(list):
     Nc_power = 0
     # The loop_NC_power attribute is the power of Nc that comes from the
     # possible color trace that appear in loop diagrams. It is typically
-    # equal to 1 if the loop diagrams is a closed fermion loop and 0 otherwise.
+    # equal to 1 if the loop diagram is a closed fermion loop and 0 otherwise.
     loop_Nc_power = 0
     canonical = None
     immutable = None

@@ -29,7 +29,7 @@ sys.path.append(root_path)
 from madgraph import MG5DIR
 import madgraph.iolibs.import_v4 as import_v4
 import madgraph.interface.master_interface as interface
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import aloha.create_aloha as create_aloha
 import madgraph.iolibs.files as files
 import madgraph.various.misc as misc

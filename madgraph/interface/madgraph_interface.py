@@ -20,7 +20,9 @@ from __future__ import division
 from __future__ import absolute_import
 import atexit
 import collections
+import concurrent.futures
 import cmath
+import math
 import glob
 import logging
 import operator
@@ -42,6 +44,7 @@ import inspect
 import urllib.request, urllib.parse, urllib.error
 import random
 import io
+import json
 #useful shortcut
 pjoin = os.path.join
 
@@ -80,6 +83,7 @@ import madgraph.iolibs.import_v4 as import_v4
 import madgraph.iolibs.save_load_object as save_load_object
 
 import madgraph.interface.extended_cmd as cmd
+import madgraph.interface.coloring_logging as coloring_logging
 import madgraph.interface.tutorials as tutorials
 import madgraph.interface.tutorials.mixin as tutorial_mixin
 import madgraph.interface.launch_ext_program as launch_ext
@@ -96,14 +100,16 @@ import madgraph.various.cluster as cluster
 
 import madgraph.fks.fks_tag as fks_tag
 
-import models as ufomodels
-import models.import_ufo as import_ufo
-import models.write_param_card as param_writer
-import models.check_param_card as check_param_card
-import models.model_reader as model_reader
+import madgraph.models as ufomodels
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.write_param_card as param_writer
+import madgraph.models.check_param_card as check_param_card
+import madgraph.models.model_reader as model_reader
+import madgraph.models.build_restriction_lib as build_restrict_lib
 
 import aloha.aloha_fct as aloha_fct
 import aloha.create_aloha as create_aloha
+import aloha.aloha_writers as aloha_writers
 import aloha.aloha_lib as aloha_lib
 
 import mg5decay.decay_objects as decay_objects
@@ -122,11 +128,353 @@ logger_tuto = logging.getLogger('tutorial') # -> stdout include instruction in
 logger_tuto_nlo = logging.getLogger('tutorial_aMCatNLO') # deprecated, unused
 logger_tuto_madloop = logging.getLogger('tutorial_MadLoop') # deprecated, unused
 
-# Central definition of the main interface prompt (bold blue "MG7> ")
-MG7_PROMPT = "\001\033[1;94m\002MG7> \001\033[0m\002"
+
+# The logo's blue (#3B6598). Empty under --plain (MG7_NO_COLOR).
+if os.environ.get('MG7_NO_COLOR'):
+    MG7_BLUE = ""
+elif os.environ.get('COLORTERM', '').lower() in ('truecolor', '24bit'):
+    MG7_BLUE = "\033[1;38;2;59;101;152m"
+else:
+    MG7_BLUE = "\033[1;34m" #fall back to bold blue
+MG7_RESET = "\033[0m" if MG7_BLUE else ""
+
+class DuplicateParticle(madgraph.InvalidCmd):
+    """A particle name given twice where only one is meaningful.
+
+    Its own class because the caller that asks for it (the required s-channel
+    list) turns it into a message about the "> A A >" syntax, and must not
+    turn any *other* InvalidCmd -- an unknown particle name, say -- into that
+    same misleading message.
+    """
+    
+#===============================================================================
+# Interference of two amplitude sets: 'left [LIxtree=QCD] right' and
+# 'left [treextree] right'
+#===============================================================================
+# The bracket of an interference process. Its keyword is matched without
+# regard to case, so that [LIxtree=QCD], [lixtree=QCD] and [TreeXTree] are all
+# accepted; INTERFERENCE_MODES maps the lower-case spelling on the one stored
+# in Process['interference_mode'].
+INTERFERENCE_MODES = {'lixtree': 'LIxtree', 'treextree': 'treextree'}
+_INTERFERENCE_BRACKET = re.compile(
+    r"\[\s*(?:(?P<option>\w+)\s*=)?\s*(?P<orders>[^\]\[]*?)\s*\]")
+# One coupling-order constraint at the start of a string: 'QED=0', 'QCD^2<=4',
+# 'QED == 2', ... The constraints written between the bracket and the
+# right-hand process belong to the left-hand one (the usual place of the
+# squared-order constraints of a loop process), those written after the
+# right-hand process belong to the right-hand one. An order name is an
+# identifier, never a pdg code: '25 > 6 -6' is a process, not 'ORDER > 6'.
+_LEADING_ORDER_CONSTRAINT = re.compile(
+    r"^\s*[A-Za-z_]\w*(?:\^2)?\s*(?:===|==|<=|>=|!=|=|<|>)\s*-?\d+(?=\s|$)")
+
+
+def interference_mode_of(option, orders):
+    """The interference mode named by a bracket, '' if it names none.
+    'option' is the word before '=' (None without '='), 'orders' the list of
+    words after it."""
+
+    if option and option.lower() in INTERFERENCE_MODES:
+        return INTERFERENCE_MODES[option.lower()]
+    # bare keyword: '[treextree]', or '[LIxtree]' (refused later: no orders)
+    if not option and len(orders) == 1 and orders[0].lower() in INTERFERENCE_MODES:
+        return INTERFERENCE_MODES[orders[0].lower()]
+    return ''
+
+
+# '[amplicol]' takes the matrix elements of a process from AmpliCol, a
+# colour-ordered generator, instead of MG diagrams (mg7 output only)
+ME_BACKENDS = ('amplicol',)
+_BACKEND_BRACKET = re.compile(r"\[\s*(?P<backend>\w+)\s*\]")
+
+
+def check_amplicol_overlap(procdef, others, what):
+    """Refuse a process sharing a subprocess with another one, which would
+    count it twice (the duplicate check of 'add process')."""
+    import madgraph.iolibs.export_amplicol as export_amplicol
+    model = procdef.get('model')
+    for other in others:
+        if export_amplicol.overlapping(procdef, other, model):
+            raise madgraph.InvalidCmd(
+                "Duplicate process %s found: it overlaps %s. Please check "
+                "your processes." % (procdef.nice_string(prefix=False), what(other)))
+
+
+def set_process_gauge(procdef, gauge):
+    """The gauge of a process definition and of its decay chains."""
+
+    if not gauge:
+        return
+    procdef.set('gauge', gauge)
+    for chain in procdef.get('decay_chains'):
+        set_process_gauge(chain, gauge)
+
+
+def iter_tree_amplitudes(amplitudes):
+    """The Amplitude objects behind a list of amplitudes: a decay chain is
+    unfolded into its core amplitudes and those of every decay, recursively."""
+
+    for amp in amplitudes:
+        if isinstance(amp, diagram_generation.DecayChainAmplitude):
+            for one in iter_tree_amplitudes(amp.get('amplitudes')):
+                yield one
+            for one in iter_tree_amplitudes(amp.get('decay_chains')):
+                yield one
+        else:
+            yield amp
+
+
+def fd_gauge_criterion(amplitudes):
+    """Whether tree-level amplitudes are better computed in the FD gauge.
+
+    True when a massive vector propagator ends on a vertex that is not a
+    conserved current (rule of the PR #422 review): the q^mu q^nu/M^2 term of
+    the unitary-gauge propagator then grows with the energy and digits are
+    lost in the sum over diagrams, while the FD gauge (arXiv:2203.10440,
+    2405.01256) cancels it diagram by diagram.  A conserved end is a vertex
+    with two massless fermions or SM charged leptons (a quark line that also
+    radiates gluons stays conserved once the gluon insertions are summed); a
+    massive quark (t-b, t-t, a massive b) or a bosonic vertex (HVV, VVV, VVVV)
+    is not.
+    External massive vectors are not looked at; a massive vector of a decay
+    chain is a propagator, ending on its production and its decay vertex.
+    False for loop amplitudes, perturbed processes and particles of spin
+    above one, for which the FD gauge is not validated (_fd_gauge_excluded).
+    """
+
+    if _fd_gauge_excluded(amplitudes):
+        return False
+    return any(_fd_gauge_criterion_node(amp, decay=False) for amp in amplitudes)
+
+
+def amplitudes_prefer_fd_gauge(amplitudes):
+    """Whether the amplitudes of one process line want the FD gauge:
+    fd_gauge_criterion, and no polarised leg (the split of a cross section
+    into polarisations is defined in the unitary gauge)."""
+
+    if not amplitudes:
+        return False    # [amplicol]: no diagram
+    for amp in iter_tree_amplitudes(amplitudes):
+        for leg in amp.get('process').get('legs'):
+            if leg.get('polarization'):
+                return False
+    return fd_gauge_criterion(amplitudes)
+
+
+def _fd_gauge_excluded(amplitudes):
+    """Loop, perturbed or spin above one: the FD gauge is not validated."""
+
+    for amp in iter_tree_amplitudes(amplitudes):
+        if isinstance(amp, loop_diagram_generation.LoopAmplitude):
+            return True
+        process = amp.get('process')
+        if process.get('perturbation_couplings'):
+            return True
+        model = process.get('model')
+        pdgs = set(leg.get('id') for leg in process.get('legs'))
+        for diagram in amp.get('diagrams'):
+            for vertex in diagram.get('vertices'):
+                pdgs.update(leg.get('id') for leg in vertex.get('legs'))
+        for pdg in pdgs:
+            particle = model.get_particle(pdg)
+            if particle and particle.get('spin') > 3:
+                return True
+    return False
+
+
+def _fd_gauge_criterion_node(amp, decay):
+    """fd_gauge_criterion for an amplitude or a decay-chain node; `decay`
+    when its amplitudes are the 1 -> n decays of a particle of the chain."""
+
+    if not isinstance(amp, diagram_generation.DecayChainAmplitude):
+        return _fd_gauge_criterion_one(amp, set(), decay)
+    decayed = set()
+    for chain in amp.get('decay_chains'):
+        decayed.update(one.get('process').get('legs')[0].get('id')
+                       for one in chain.get('amplitudes'))
+    if any(_fd_gauge_criterion_one(core, decayed, decay)
+           for core in amp.get('amplitudes')):
+        return True
+    return any(_fd_gauge_criterion_node(chain, decay=True)
+               for chain in amp.get('decay_chains'))
+
+
+def _fd_gauge_criterion_one(amp, decayed, decay):
+    """fd_gauge_criterion for one Amplitude: its final-state legs with a pdg
+    code in `decayed` decay further, its initial leg is a decaying particle
+    of a chain when `decay`."""
+
+    model = amp.get('process').get('model')
+
+    def massive_vector(pdg):
+        particle = model.get_particle(pdg)
+        return bool(particle) and particle.get('spin') == 3 and \
+               particle.get('mass').lower() != 'zero'
+
+    def conserved(vertex, position):
+        """whether the leg at `position` couples to a conserved current"""
+        if model.get_interaction(vertex.get('id')) is None:
+            return True     # identity vertex: no vertex at this end
+        others = [leg for k, leg in enumerate(vertex.get('legs'))
+                  if k != position]
+        if len(others) != 2:
+            return False
+        for leg in others:
+            particle = model.get_particle(leg.get('id'))
+            if not particle or particle.get('spin') != 2:
+                return False
+            # the masses of the SM charged leptons are negligible against
+            # the W/Z mass: their currents count as conserved
+            if particle.get('mass').lower() != 'zero' and \
+                                abs(particle.get('pdg_code')) not in (11, 13, 15):
+                return False
+        return True
+
+    def attached_end(vertices, number, start):
+        """the first vertex from `start` on taking the line `number` as an
+        input (a non-final vertex outputs its last leg), with its position"""
+        last = len(vertices) - 1
+        for k in range(start, last + 1):
+            legs = vertices[k].get('legs')
+            inputs = legs if k == last else legs[:-1]
+            for position, leg in enumerate(inputs):
+                if leg.get('number') == number:
+                    return vertices[k], position
+        return None, None
+
+    # the external legs that are propagators in a decay chain
+    external = [leg.get('number') for leg in amp.get('process').get('legs')
+                if massive_vector(leg.get('id')) and
+                ((leg.get('state') and leg.get('id') in decayed) or
+                 (not leg.get('state') and decay))]
+
+    for diagram in amp.get('diagrams'):
+        vertices = diagram.get('vertices')
+        for number in external:
+            vertex, position = attached_end(vertices, number, 0)
+            if vertex is not None and not conserved(vertex, position):
+                return True
+        for k, vertex in enumerate(vertices[:-1]):
+            line = vertex.get('legs')[-1]
+            if not massive_vector(line.get('id')):
+                continue
+            if not conserved(vertex, len(vertex.get('legs')) - 1):
+                return True
+            end, position = attached_end(vertices, line.get('number'), k + 1)
+            if end is not None and not conserved(end, position):
+                return True
+    return False
+
+
+def split_backend_line(line):
+    """(line without the bracket, backend) for a process with a matrix-element
+    backend bracket like '[amplicol]', (line, '') for any other line."""
+
+    match = next((m for m in _BACKEND_BRACKET.finditer(line)
+                  if m.group('backend').lower() in ME_BACKENDS), None)
+    if not match:
+        return line, ''
+    rest = line[:match.start()] + ' ' + line[match.end():]
+    if '[' in rest or ']' in rest:
+        raise madgraph.InvalidCmd(
+            "[%s] cannot be combined with another '[...]'." % match.group('backend'))
+    return ' '.join(rest.split()), match.group('backend').lower()
+
+
+def split_interference_line(line):
+    """Split a process definition of the form
+
+        left_process [LIxtree=ORDERS] left_constraints right_process
+        left_process [treextree] left_constraints right_process
+
+    into (left_line, mode, right_line).
+
+    'left_line' is the left-hand process written in the ordinary syntax: with
+    '[noborn=ORDERS]' for LIxtree (the loop-induced amplitude) and without any
+    bracket for treextree. 'mode' is 'LIxtree' or 'treextree', and
+    'right_line' the right-hand (tree-level) process, None when it is absent.
+    A trailing '@N' and what follows it stay with the left-hand line, which
+    carries the process number of the whole definition.
+
+    A line without an interference bracket is returned as (line, '', None).
+    Raises InvalidCmd for a malformed interference bracket.
+    """
+
+    match = _INTERFERENCE_BRACKET.search(line)
+    if not match:
+        return line, '', None
+    option = match.group('option')
+    orders = match.group('orders').split()
+    mode = interference_mode_of(option, orders)
+    if not mode:
+        return line, '', None
+    if not option:
+        # the only word in the bracket is the keyword itself
+        orders = []
+
+    head, tail = line[:match.start()], line[match.end():]
+    if '[' in tail or ']' in tail:
+        raise madgraph.InvalidCmd(
+            "Only one '[...]' is allowed in a %s process: the right-hand "
+            "process is a tree-level process." % mode)
+
+    if mode == 'LIxtree':
+        if not orders:
+            raise madgraph.InvalidCmd(
+                "The LIxtree mode needs the orders of the loop, as in "
+                "'g g > h > t t~ [LIxtree=QCD]'.")
+        bracket = ' [noborn= %s ] ' % ' '.join(orders)
+    else:
+        if option:
+            raise madgraph.InvalidCmd(
+                "The treextree mode takes no orders: write '[treextree]', "
+                "not '[%s=%s]'." % (option, ' '.join(orders)))
+        bracket = ' '
+
+    # '@N ...' closes the whole definition: keep it with the left-hand line
+    suffix = ''
+    at = re.search(r'@\s*\d+', tail)
+    if at:
+        tail, suffix = tail[:at.start()], ' ' + tail[at.start():]
+
+    left_constraints = []
+    tail = tail.strip()
+    constraint = _LEADING_ORDER_CONSTRAINT.match(tail)
+    while constraint:
+        rest = tail[constraint.end():].strip()
+        # a constraint is followed by more constraints or by the right-hand
+        # process, which has an arrow: in 'h > 5 -5', 'h > 5' is no constraint
+        if rest and not re.search(r'>\D', rest):
+            break
+        left_constraints.append(constraint.group(0).strip())
+        tail = rest
+        constraint = _LEADING_ORDER_CONSTRAINT.match(tail)
+
+    right = tail if tail else None
+    if right is None and mode == 'treextree':
+        raise madgraph.InvalidCmd(
+            "The treextree mode needs the right-hand process, as in "
+            "'p p > z > e+ e- [treextree] p p > a > e+ e-'.")
+
+    left = head.rstrip() + bracket + ' '.join(left_constraints) + suffix
+    return ' '.join(left.split()), mode, right
+
+
 # the same prompt without the colour escapes, for quoting commands inside
 # tutorial text and help messages
 MG7_PROMPT_TEXT = "MG7> "
+
+# Stock macOS Python just leaks escape bytes into
+# the line editor instead of rendering. Keep the prompt plain there.
+try:
+    _prompt_is_libedit = 'libedit' in readline.__doc__
+except Exception:
+    _prompt_is_libedit = False
+
+#left open so whole command in blue
+if _prompt_is_libedit or not MG7_BLUE:
+    MG7_PROMPT = MG7_PROMPT_TEXT
+else:
+    MG7_PROMPT = "\001%s\002MG7> " % MG7_BLUE
 
 # The banner (and every easter-egg variant of it in madgraph.various.misc) is
 # written as a block of BANNER_WIDTH columns: '*', 58 characters of content and
@@ -186,6 +534,22 @@ def fit_banner_width(text, width=None):
         out.append(line[:start+1] + fill*left + inside + fill*right + line[end:])
     return '\n'.join(out)
 
+# Human readable name of the internal polarization codes, used when refusing a
+# polarization restriction that names the same state twice.
+_POLARIZATION_STATE_NAMES = {0: '0 (longitudinal)',
+                             1: '+1 (right)',
+                             -1: '-1 (left)',
+                             4: '4 (metric, "G")',
+                             5: '5 (Theta, "H")',
+                             6: '6 (longitudinal - Theta, "Q")',
+                             7: '7 (Ward-protected, "W")',
+                             9: '9 (scalar, "S")',
+                             99: '99 (auxiliary, "A")'}
+
+def polarization_state_name(value):
+    """Name one internal polarization code the way a user typed/reads it."""
+    return _POLARIZATION_STATE_NAMES.get(value, '%+d' % value)
+
 #===============================================================================
 # CmdExtended
 #===============================================================================
@@ -226,7 +590,7 @@ class CmdExtended(cmd.Cmd):
     intro_banner = "************************************************************\n" + \
         "*                                                          *\n" + \
         "*                     W E L C O M E to                     *\n" + \
-        "*                    M A D G R A P H 7                     *\n" + \
+        "*                    M A D G R A P H " + MG7_BLUE + "7" + MG7_RESET + "                     *\n" + \
         "*                                                          *\n" + \
         "*                                                          *\n" + \
         "*                        ..........                        *\n" + \
@@ -237,11 +601,11 @@ class CmdExtended(cmd.Cmd):
         "*                 .     M  M   M  M  ..                    *\n" + \
         "*                 ..    M   M M   M ..                     *\n" + \
         "*                  .    M    M    M.                       *\n" + \
-        "*                  ...               7777777               *\n" + \
-        "*                    ....                 7                *\n" + \
-        "*                       ................ 7                 *\n" + \
-        "*                                       7                  *\n" + \
-        "*                                      7                   *\n" + \
+        "*                  ...               " + MG7_BLUE + "7777777" + MG7_RESET + "               *\n" + \
+        "*                    ....                 " + MG7_BLUE + "7" + MG7_RESET + "                *\n" + \
+        "*                       ................ " + MG7_BLUE + "7" + MG7_RESET + "                 *\n" + \
+        "*                                       " + MG7_BLUE + "7" + MG7_RESET + "                  *\n" + \
+        "*                                      " + MG7_BLUE + "7" + MG7_RESET + "                   *\n" + \
         "*                                                          *\n" + \
         "%s" + \
         "*                                                          *\n" + \
@@ -425,6 +789,13 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   The following options are available:")
         logger.info("     --force        Overwrite without asking any existing installation.")
         logger.info("     --keep_source  Keep a local copy of the sources of the tools MadGraph7 installed from.")
+        logger.info("     --hepmc2       (pythia8) Build Pythia8 against HepMC2 instead of HepMC3.")
+        logger.info("                    Either way, main164 is also compiled for the other HepMC version.")
+        logger.info(" ")
+        logger.info("   \"install cuttools_iregi\"",'$MG:BOLD')
+        logger.info("   recompile the CutTools and IREGI libraries shipped with MadGraph7")
+        logger.info("   (in vendor/) with the current fortran compiler (option fortran_compiler).")
+        logger.info("   Needed after a change (or an update) of the fortran compiler.")
         logger.info(" ")
         logger.info("   \"install update\"",'$MG:BOLD')
         logger.info("   check if your MG5 installation is the latest one.")
@@ -440,6 +811,11 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --bin          Install pre-compiled package from PyPI (non-interactive;")
         logger.info("                    only guaranteed to match this checkout in a release tarball).")
         logger.info("     --source       Build from source (non-interactive).")
+        logger.info("     -j N/--jobs=N  Parallel compilation jobs (source build;")
+        logger.info("                    defaults to the 'nb_core' option).")
+        logger.info("     --system       Install into the active Python environment instead of madspace/install.")
+        logger.info("     --clean        Delete the build and install directories first (full rebuild).")
+        logger.info("     --docs         Generate API docstrings and .pyi stubs (source build, needs doxygen).")
         logger.info("     --cuda         Enable CUDA GPU backend (source build).")
         logger.info("     --hip          Enable HIP/ROCm GPU backend (source build).")
         logger.info("     --openblas     Build OpenBLAS from source (default on Linux/Windows, source build).")
@@ -450,6 +826,27 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --no-debug     Optimized build, no debug symbols, Release (source build, default).")
         logger.info("     --cuda-arch=ARCHS  Semicolon-separated CUDA compute capabilities, e.g. 75;80;86.")
         logger.info("     --hip-arch=ARCHS   Semicolon-separated HIP architectures, e.g. gfx900;gfx906.")
+        logger.info(" ")
+        logger.info("   \"install pyamplicol [options]\"",'$MG:BOLD')
+        logger.info("   Install pyAmpliCol, the matrix-element generator of the [amplicol] backend.")
+        logger.info("   Without options an interactive installer is launched. Available options:")
+        logger.info("     -y/--yes       Re-install non-interactively using saved settings.")
+        logger.info("     --bin          Install pre-compiled package from PyPI (non-interactive;")
+        logger.info("                    only guaranteed to match this checkout in a release tarball).")
+        logger.info("     --source       Build from source (non-interactive; needs a Rust toolchain,")
+        logger.info("                    which is installed locally if rustup is not available).")
+        logger.info("     -j N/--jobs=N  Parallel compilation jobs (source build;")
+        logger.info("                    defaults to the 'nb_core' option).")
+        logger.info("     --system       Install into the active Python environment instead of pyamplicol/install.")
+        logger.info("     --clean        Delete the build and install directories first (full rebuild).")
+        logger.info("     --build-models Regenerate the prepared models instead of downloading them.")
+        logger.info("   \"install madtrex [options]\"",'$MG:BOLD')
+        logger.info("   Install MadtRex, the event-reweighting library used by MG7, together")
+        logger.info("   with its bundled Rex fork. Requires madspace to be installed first.")
+        logger.info("   Without options an interactive installer is launched. Available options:")
+        logger.info("     -y/--yes       Install non-interactively.")
+        logger.info("     -j N/--jobs=N  Parallel compilation jobs (defaults to the 'nb_core' option).")
+        logger.info("     --clean        Rebuild from scratch.")
 
     def help_display(self):
         logger.info("syntax: display " + "|".join(self._display_opts),'$MG:color:BLUE')
@@ -510,6 +907,18 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > --nb_run=0  Masking check: skip the timing table and instead")
         logger.info("                print the matrix-element value per flavor after N SMATRIX calls.")
         logger.info("")
+        logger.info("Launch on FKS Born building-block standalone output (output standalone_fortran --fks):",'$MG:BOLD')
+        logger.info(" o Example: launch PROC_FKS_sm_0 --energy=500",'$MG:color:GREEN')
+        logger.info(" > Builds and runs 'check_fks', printing the Born, spin-correlated Born")
+        logger.info("   and color/charge-linked Borns for one phase-space point.")
+        logger.info(" > You will be asked whether you want to edit the param_card, unless")
+        logger.info("   the -f option is specified.")
+        logger.info(" > --energy=E   sqrt(s) of the phase-space point (default: built-in)")
+        logger.info(" > --timings=N --nb_run=Y   time N Born re-evaluations over Y runs")
+        logger.info(" > If the output was made with --limits, also builds and runs the")
+        logger.info("   soft/collinear limit test (test_soft_col_limits) and reports whether")
+        logger.info("   it passed; the beams/energy are read from the run_card.")
+        logger.info("")
         logger.info("Launch on aMC@NLO output:",'$MG:BOLD')
         logger.info(" > launch <dir_path> <mode> <options>",'$MG:color:BLUE')
         logger.info(" o Example: launch MyProc aMC@NLO -f -p",'$MG:color:GREEN')
@@ -533,20 +942,44 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info('   The program used to open those files can be chosen in the')
         logger.info('   configuration file ./input/mg7_configuration.txt')
 
+    def help_explain_restriction(self):
+        logger.info("syntax: explain_restriction [PATH|MODEL-RESTRICTION]",'$MG:color:BLUE')
+        logger.info("--  Report what a restriction card removes from a model.",'$MG:BOLD')
+        logger.info("    Without argument the card the current model was loaded with,")
+        logger.info("    otherwise the path of a card or a name such as 'sm-ckm'.")
+        logger.info("    Every parameter the card sets to zero/one, and every family of")
+        logger.info("    parameters it sets to a common value, is applied alone to say")
+        logger.info("    which couplings it -and it only- is responsible for.")
+        logger.info("    --all lists every coupling instead of the first few of them.")
+
     def help_customize_model(self):
         logger.info("syntax: customize_model --save=NAME",'$MG:color:BLUE')
         logger.info("--  Open an invite where you options to tweak the model.",'$MG:BOLD')
+        logger.info("    On top of the options specific to the model, you can choose the")
+        logger.info("    flavour scheme (3F/4F/5F), the number of massive leptons, and set")
+        logger.info("    a parameter to zero/one/to the value of another parameter.")
         logger.info("    If you specify the option --save=NAME, this tweak will be")
         logger.info("    available for future import with the command 'import model XXXX-NAME'")
+        logger.info("    Changing the formula of a parameter/coupling is also possible but")
+        logger.info("    requires to write a new UFO model (and is not compatible with --save)")
+        logger.info("    --explain=life (the default) reports what each command you")
+        logger.info("    enter changes in the model, --explain=final reports which of your")
+        logger.info("    choices is responsible for each coupling removed from it,")
+        logger.info("    --explain=off asks for no report at all.")
+        logger.info("    --all lists every coupling instead of the first few of them.")
 
     def help_output(self):
         logger.info("syntax: output [" + "|".join(self._export_formats) + \
                     "] [path|.|auto] [options]",'$MG:color:BLUE')
         logger.info("-- Output any generated process(es) to file.",'$MG:BOLD')
-        logger.info("   Default mode is madevent. Default path is \'.\' or auto.")
+        logger.info("   Default mode is mg7. Default path is \'.\' or auto.")
         logger.info("   mode:",'$MG:BOLD')
         logger.info("   - For MadLoop and aMC@NLO runs, there is only one mode and")
         logger.info("     it is set by default.")
+        logger.info("   - For an NLO process, 'standalone_fortran --fks' writes the FKS Born")
+        logger.info("     building blocks (Born, spin-correlated and color/charge-linked Borns)")
+        logger.info("     with a light 'check_fks' driver; adding '--limits' also keeps the")
+        logger.info("     real-emission code so that 'launch' runs the soft/collinear limit test.")
         logger.info("   - If mode is madevent, create a MadEvent process directory.")
         logger.info("   - If mode is standalone, create a Standalone directory")
         logger.info("     using the MadMatrix (C++/CUDA) matrix elements.")
@@ -575,9 +1008,22 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --jamp_optim=[True|False]: [madevent(default:True)|standalone_fortran(default:False)] allows a more efficient code computing the color-factor.")
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
-        logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
+        logger.info("      --hel_recycling=False: [madevent|standalone|mg7] forbids helicity recycling optimization (the plain matrix element)")
+        logger.info("      --hel_recycling=True: [standalone_fortran|standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (on by default for standalone|mg7, off by default for standalone_fortran). C++: CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes; an mg7 launch measures them again at its param_card (each scan point, and the cards of a MadtRex reweighting) and rebuilds only when they change. Anywhere else (a standalone output whose param_card is edited, a parameter set through UMAMI) the build checks at run time that the amplitudes it skips still vanish, and uses the plain matrix element, with a warning, when one does not.")
+        logger.info("      --hel_recycling_chunk=<n>: [standalone_fortran|standalone|mg7] statements per function when the recycled block is cut up (default 1500 Fortran, 200 C++; 0 keeps it in one piece).")
+        logger.info("      --hel_recycling_jamp=rows|fold|expanded: [standalone|mg7] how the recycled build makes the color flows: rows (default) stores every amplitude per helicity row and runs the plain color code once per row, as the fortran recycler does; fold adds each amplitude into per-row shared sub-expressions; expanded into every color flow.")
+        logger.info("      --hel_recycling_tables=False: [standalone|mg7] write the recycled amplitudes as straight-line code instead of tables (default True; straight-line code stops fitting in the caches on large processes).")
+        logger.info("      --hel_recycling_max=<n>: [standalone|mg7] keep the plain code when the recycled block would exceed n statements, which no longer runs from the caches and is slower (default 300000, 0 for no limit).")
+        logger.info("      --axial_gauge=True: [madevent|standalone_fortran|standalone|mg7] build the polarisation of massless vectors in the axial gauge of another external leg, and quantise the spin of the massive final-state fermions along the reference shared by at least two of the massless vectors they couple to, instead of along their own momentum, so that whole diagrams and helicity configurations vanish (default:False). The two spin states of such a fermion are not helicity states: its helicity is written as 9 (unknown) in the event file.")
+        logger.info("      --fermion_reference=False: with --axial_gauge=True, keep the massive fermions in the helicity basis (default:True; always False for a polarised process and with --density).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
+        logger.info("      --f2py_per_process=False: [standalone_fortran with --prefix] build the combined all_matrix2py module with only its dispatching entry points (smatrixhel, smatrixhel_idx, py_get_density, ...), without the per-process py_<prefix>* ones: much faster to build for many subprocesses (used by MadSpin).")
+        logger.info("      --use_crossing=False: [standalone_fortran|standalone|mg7|madevent] write this output WITHOUT the crossing machinery (on by default, as on the generate line): the crossed subprocesses folded onto their base at generation are written back as their own directories. With it, mg7 evaluates each crossed subprocess with the library of its base (cpu, simd and GPU).")
+        logger.info("      --crossing_table=all: [standalone_fortran|standalone] with the crossing machinery, let the extended flavor index also reach every applicable crossing (each choice of the legs that start in the initial state), not only the crossed subprocesses the generation folded -- e.g. for a single generated process, which folds none. Only the extended-index entry (smatrixhel_idx) reaches these extra crossings: the Fortran PDG-keyed smatrixhel/density still answer only the generated and folded subprocesses (NaN otherwise).")
+        logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran|standalone_rw/msP/msF] drop the width of the spacelike (t-channel) propagators as madevent, for this output (default: the option zerowidth_tchannel)")
+        logger.info("      --zerowidth_decay=True|False|<pdg>,<pdg>: [standalone_fortran] write the propagators of the final-state particles (of the decaying particle in a 1>N decay) with a zero width; a pdg list restricts to those.")
+        logger.info("      --density=<i>[,<j>...]: [standalone_fortran, also for loop processes] keep the helicities of the external legs i, j, ... open and write their spin-density matrix (the other legs are summed over helicity). In the madevent, mg7 and NLO outputs it only selects the default me_frame of the run_card, as a polarized particle does.")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
         logger.info("       output standalone_fortran MYRUN -f",'$MG:color:GREEN')
@@ -598,12 +1044,26 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   that the resulting matrix elements give the same value.")
         logger.info("o gauge:",'$MG:color:GREEN')
         logger.info("   Check that processes are gauge invariant by ")
-        logger.info("   comparing Feynman and unitary gauges.")
+        logger.info("   comparing Feynman and unitary gauges. For tree-level")
+        logger.info("   processes the axial gauge (and, if the model has a Feynman")
+        logger.info("   gauge, the Feynman-diagram (FD) gauge) are compared as well,")
+        logger.info("   and so are the external wavefunctions of output")
+        logger.info("   --axial_gauge=True (column Reference): the massless vectors")
+        logger.info("   in the axial gauge of a reference momentum, the massive")
+        logger.info("   fermions quantised along it.")
+        logger.info("   A decay chain is accepted here only, e.g.")
+        logger.info("   'check gauge t > w+{0} b, w+ > ta+ vt': it is compared in")
+        logger.info("   the unitary, axial and FD gauges (not Feynman, where the")
+        logger.info("   chain has no Goldstone boson) with every decayed particle")
+        logger.info("   on shell and a width of 1e-9 M. {A}, {S} and {0S} are")
+        logger.info("   gauge dependent and are expected to differ in FD.")
         logger.info("   This check is, for now, not available for loop processes.")
         logger.info("o brs:",'$MG:color:GREEN')
         logger.info("   Check that the Ward identities are satisfied if the ")
         logger.info("   process has at least one massless gauge boson as an")
-        logger.info("   external particle.")
+        logger.info("   external particle. For tree-level processes, the matrix")
+        logger.info("   element with the reference momenta of output")
+        logger.info("   --axial_gauge=True is compared as well (column Reference).")
         logger.info("o lorentz_invariance:",'$MG:color:GREEN')
         logger.info("   Check that the amplitude is lorentz invariant by")
         logger.info("   comparing the amplitiude in different frames")
@@ -617,6 +1077,35 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Fortran standalone (SA), and C++ standalone (SA) back-ends")
         logger.info("   at the same phase-space point.  Requires gfortran / g++.")
         logger.info("   Example: check language p p > e+ e-",'$MG:color:GREEN')
+        logger.info("o crossing:",'$MG:color:GREEN')
+        logger.info("   Output the process to a standalone backend twice, with")
+        logger.info("   the crossing symmetry on (--use_crossing=True) and off,")
+        logger.info("   then compare each subprocess evaluated through the")
+        logger.info("   extended flavor-index crossing against its independent")
+        logger.info("   value. --exporter picks the backend (default")
+        logger.info("   standalone_fortran): standalone_fortran (fortran/f2py) or")
+        logger.info("   standalone (madmatrix). Requires gfortran+f2py")
+        logger.info("   (standalone_fortran) or a C++ compiler (standalone).")
+        logger.info("   For standalone, --simd picks the vectorisation width:")
+        logger.info("   auto (default), scalar, simd_128, simd_256, avx512y, simd_512;")
+        logger.info("   and --precision picks the float type: m mixed (default), d double, f float.")
+        logger.info("   Example: check crossing g u > g u",'$MG:color:GREEN')
+        logger.info("   Example: check crossing g u > g u --exporter=standalone --simd=simd_256 --precision=d",'$MG:color:GREEN')
+        logger.info("o precision:",'$MG:color:GREEN')
+        logger.info("   syntax: check precision m|f|v [m|f|v ...] process_definition [--nb_event=X] [--energy=] [--backend=]")
+        logger.info("   Evaluate the madmatrix standalone output built in each of the given")
+        logger.info("   floating point modes (m: colour algebra in single precision,")
+        logger.info("   f: single precision everywhere, v: single precision amplitudes")
+        logger.info("   with double precision momenta and denominators) against its")
+        logger.info("   double precision build, on the same X RAMBO phase-space points")
+        logger.info("   (default 10^6). Reports the mean and maximum relative error and")
+        logger.info("   the rate of events with an error above 1%, the time spent in the")
+        logger.info("   matrix element by each of the two builds (and the speed-up), and")
+        logger.info("   writes a plot of the difference. Requires g++ and make.")
+        logger.info("   Several modes share one double precision reference and one plot.")
+        logger.info("   --backend selects the madmatrix BACKEND of every build (default auto:")
+        logger.info("   the widest SIMD flavour of the host): %s." % '|'.join(process_checks.PRECISION_BACKENDS))
+        logger.info("   Example: check precision f m v g g > t t~ g --nb_event=100000",'$MG:color:GREEN')
         logger.info("o cms:",'$MG:color:GREEN')
         logger.info("   Check the complex mass scheme consistency by comparing")
         logger.info("   it to the narrow width approximation in the off-shell")
@@ -645,7 +1134,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("    --lambdaCMS = <python_list> : specifies the list of lambdaCMS values to ")
         logger.info(r"      use for the test. For example: '[(1/2.0)**exp\ for\ exp\ in\ range(0,20)]'")
         logger.info("      In the list expression, you must escape spaces. Also, this option")
-        logger.info("      *must* appear last in the otpion list. Finally, the default value is '1.0e-6'")
+        logger.info("      *must* appear last in the option list. Finally, the default value is '1.0e-6'")
         logger.info("      for which an optimal list of progressive values is picked up to 1.0e-6")
         logger.info("    --show_plot = True or False: Whether to show plot during analysis (default is True)")
         logger.info("    --report = concise or full: Whether return a concise or full report.")
@@ -710,6 +1199,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > allowed coupling operator are: \"==\", \"=\", \"<=\" and \">\".")
         logger.info("    \"==\" request exactly that number of coupling while \"=\" is interpreted as \"<=\".")
         logger.info(" > To generate a second process use the \"add process\" command")
+        logger.info(" > Crossing symmetry is used by default: a subprocess that is a crossing of")
+        logger.info("   another one (u g > u g of u u~ > g g) is evaluated with the matrix element")
+        logger.info("   of its base. Append --use_crossing=False to generate every subprocess on")
+        logger.info("   its own (on any line of the definition, it applies to the whole definition).")
         logger.info("Decay chain syntax:",'$MG:BOLD')
         logger.info(" o core process, decay1, (decay2, (decay2', ...)), ...  etc")
         logger.info(" o Example: generate p p > t~ t QED=0, (t~ > W- b~, W- > l- vl~), t > j j b @2",'$MG:color:GREEN')
@@ -734,9 +1227,50 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     all=   : Generate all the real-emission and loop diagrams, ready for aMC@NLO runs.")
         logger.info("     virt=  : Generate only the loop diagrams, read for MadLoop standalone checks/runs.")
         logger.info("     real=  : Generate only the real-emission diagrams, for use with alternative OLP. ")
-        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > z), please use ")
-        logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
-        logger.info("   can still handle these.")
+        logger.info("     noborn=: Loop-induced processes (no born amplitude, e.g. g g > h), see below.")
+        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > h), please use ")
+        logger.info("   the 'noborn=' mode: 'output madevent' then integrates them at LO, with MadLoop")
+        logger.info("   for the matrix element. aMC@NLO cannot integrate these processes. 'virt=' and")
+        logger.info("   'sqrvirt=' give the standalone MadLoop output of the loop amplitude, for checks.")
+        self._log_interference_syntax()
+        self._log_diagram_filter_syntax()
+
+    def _log_diagram_filter_syntax(self):
+        """The diagram filter options, for 'help generate' and 'help add'."""
+        logger.info("Diagram filter syntax:",'$MG:BOLD')
+        logger.info(" o process --diagram_filter=PLUGINNAME")
+        logger.info(" o NLO process [QCD] --tree_diagram_filter=PLUGINNAME --loop_diagram_filter=PLUGINNAME")
+        logger.info(" o Example: generate u u~ > d d~ QED=2 --diagram_filter=no_photon",'$MG:color:GREEN')
+        logger.info(" > Removes the diagrams for which the function new_diagram_filter of the plugin")
+        logger.info("   PLUGINNAME (in its __init__.py) returns True. It is called as")
+        logger.info("   new_diagram_filter(diagram, model).")
+        logger.info(" > --diagram_filter applies to tree-level and MadLoop ([virt=], [noborn=])")
+        logger.info("   processes, to the Born and the loop diagrams. For NLO processes with FKS")
+        logger.info("   subtraction, --tree_diagram_filter filters the Born and real-emission")
+        logger.info("   diagrams and --loop_diagram_filter the loop diagrams of the virtual.")
+        logger.info(" > Without =PLUGINNAME, the function remove_diag of PLUGIN/user_filter.py is used.")
+        logger.info(" > Removing diagrams usually breaks gauge invariance.")
+        logger.info(" > See the 'Diagram filters' page of the documentation.")
+
+    def _log_interference_syntax(self):
+        """The interference syntax, for 'help generate' and 'help add'."""
+        logger.info("Interference syntax:",'$MG:BOLD')
+        logger.info(" o left process [LIxtree=LoopOrders] SQUAREDCOUPi=ORDERi right process")
+        logger.info(" o left process [treextree] SQUAREDCOUPi=ORDERi right process")
+        logger.info(" o Example: generate g g > h > t t~ [LIxtree=QCD] g g > t t~",'$MG:color:GREEN')
+        logger.info(" o Example: generate p p > z > e+ e- [treextree] p p > a > e+ e-",'$MG:color:GREEN')
+        logger.info(" > Only the interference 2 Re(A_left A_right^*) is computed. The left process is")
+        logger.info("   a loop-induced process for LIxtree, a tree-level one for treextree; the right")
+        logger.info("   process is always tree level. The keywords are case-insensitive.")
+        logger.info(" > Each side takes its own s-channel requirements, exclusions and amplitude orders.")
+        logger.info("   Squared-order constraints apply to the interference: give them right after ']'.")
+        logger.info(" > Both sides must have the same external legs, in the same order (the right-hand")
+        logger.info("   legs may be wider multiparticles). For LIxtree the right process is optional:")
+        logger.info("   by default it is the tree-level process with the same legs.")
+        logger.info(" > 'output' (mg7) and 'output madevent' integrate the interference (events with")
+        logger.info("   signed weights); 'output standalone' and 'output standalone_fortran' evaluate")
+        logger.info("   it at a phase-space point. LIxtree needs a loop backend: 'output madevent' or")
+        logger.info("   'output standalone_fortran' only.")
 
     def help_add(self):
         logger.info("-- generate diagrams for a process and add to existing processes",'$MG:color:BLUE')
@@ -776,9 +1310,13 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     all=   : Generate all the real-emission and loop diagrams, ready for aMC@NLO runs.")
         logger.info("     virt=  : Generate only the loop diagrams, read for MadLoop standalone checks/runs.")
         logger.info("     real=  : Generate only the real-emission diagrams, for use with alternative OLP. ")
-        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > z), please use ")
-        logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
-        logger.info("   can still handle these.")
+        logger.info("     noborn=: Loop-induced processes (no born amplitude, e.g. g g > h), see below.")
+        logger.info(" > For processes without born amplitudes (i.e. loop-induced like g g > h), please use ")
+        logger.info("   the 'noborn=' mode: 'output madevent' then integrates them at LO, with MadLoop")
+        logger.info("   for the matrix element. aMC@NLO cannot integrate these processes. 'virt=' and")
+        logger.info("   'sqrvirt=' give the standalone MadLoop output of the loop amplitude, for checks.")
+        self._log_interference_syntax()
+        self._log_diagram_filter_syntax()
 
         logger.info("--  merge two model to create a new one", '$MG:color:BLUE')
         logger.info("syntax:",'$MG:BOLD')
@@ -790,6 +1328,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   --output=  : Specify the name of the directory where the merge is done.")
         logger.info("                This allow to do \"import NAME\" to load that merge.")
         logger.info("   --recreate : Force to recreated the merge model even if the merge model directory already exists.")
+        logger.info("   --fock_states_only : only add the Fock states (bound states) of MODELNAME to the current model,")
+        logger.info("                        e.g. 'import model heft' then 'add model sm_onia --fock_states_only'.")
         
     def help_convert(self):
         logger.info("syntax: convert model FULLPATH")
@@ -810,14 +1350,31 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("              We then either stop at the N-body decay or when the estimated error is lower than M.")
         logger.info("        default: 4.0025")
         logger.info("  --min_br=X: All channel which are estimated below this value will not be integrated numerically.")
-        logger.info("        default: precision (decimal part of the body_decay options) divided by four")
+        logger.info("        default: precision (decimal part of the body_decay options) divided by five")
         logger.info("  --precision_channel=X: requested numerical precision for each channel")
         logger.info("        default: 0.01")
         logger.info("  --path=X: path for param_card")
         logger.info("        default: take value from the model")
         logger.info("  --output=X: path where to write the resulting card. ")
         logger.info("        default: overwrite input file. If no input file, write it in the model directory")
-        logger.info("  --nlo: Compute NLO width [if the model support it]")
+        logger.info("  --nlo: Compute the NLO width. With the dedicated code of the model")
+        logger.info("        (SMWidth, for the SM: QCD and EW) when it has one. Otherwise the two-body")
+        logger.info("        decays that have a colour charge are run at NLO in QCD with MC@NLO (it")
+        logger.info("        needs a model with loop information; sm uses loop_sm) and the decays into")
+        logger.info("        three bodies or more stay at LO: --nlo --body_decay=3 is the two-body")
+        logger.info("        decays at NLO and the three-body ones at LO, --body_decay=2 the two-body")
+        logger.info("        decays only. --nlo=smwidth or --nlo=mcatnlo chooses the code.")
+        logger.info("  --corrections=X: corrections of the MC@NLO runs: QCD (default), QED (the")
+        logger.info("        electroweak corrections, EW is accepted) or QCD+QED. The electroweak ones")
+        logger.info("        are for every two-body decay, not only the coloured ones, and need a")
+        logger.info("        model with loop information (loop_qcd_qed_sm).")
+        logger.info("  --engine=X: integrator of the N-body decays (N>2): madspace or madevent")
+        logger.info("        default: madspace (the phase-space library of the mg7 output, with madevent")
+        logger.info("        as fallback when it is unusable). madevent is the Fortran integration of the")
+        logger.info("        former releases; it is the only one for the complex mass scheme.")
+        logger.info("")
+        logger.info("  In a param_card, a width set to auto takes the same options:")
+        logger.info("        DECAY 6 auto --nlo --body_decay=3   (DECAY 6 auto@NLO is 'auto --nlo')")
         logger.info("")
         logger.info(" example: calculate_width h --body_decay=2 --output=./param_card")
 
@@ -835,7 +1392,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("              We then either stop at the N-body decay or when the estimated error is lower than M.")
         logger.info("        default: 4.0025")
         logger.info("  --min_br=X: All channel which are estimated below this value will not be integrated numerically.")
-        logger.info("        default: precision (decimal part of the body_decay options) divided by four")
+        logger.info("        default: precision (decimal part of the body_decay options) divided by five")
         logger.info("  --precision_channel=X: requested numerical precision for each channel")
         logger.info("        default: 0.01")
         logger.info("  --path=X: path for param_card")
@@ -859,10 +1416,75 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > Example: generate t{L} > w+{T} b{R}, w+ > ta+ vt",'$MG:color:GREEN')
         logger.info(" > Example: generate p p > z{T} z{A}, z > e+ e-",'$MG:color:GREEN')
         logger.info(" > Example: generate p p > z{0} z{T}, z > e+ e-, z > mu+ mu-",'$MG:color:GREEN')
+        logger.info(" > '{X}' is a *set* of helicities, so each helicity may be named at most once.")
+        logger.info("   '{++}' is refused, and so is '{+T}' -- 'T' already covers +1 and -1.")
         logger.info(" > '{G}','{H}','{Q}','{W}','{S}' select a piece of the *propagator* of a massive vector")
         logger.info("   and are only valid on a particle that is decayed further (an internal line).")
-        logger.info(" > Users need to set 'group_subprocesses False', 'nhel=1' (run_card), and 'me_frame' (run_card)")
-        logger.info(" > For the proces 'p p > w+ z j j, w+ > l+ vl, z > l+ l-', the WZ rest frame is given by me_frame = [3,4,5,6]")
+        logger.info(" > A polarised propagator (any '{X}' on a massive vector that is decayed further) is a piece")
+        logger.info("   of the propagator numerator: available in the unitary and axial gauges, and in the FD gauge")
+        logger.info("   for {0},{T},{+},{-},{A},{S},{0S} ({T},{+},{-} only for a massless vector); not in the")
+        logger.info("   Feynman gauge, nor in the complex-mass scheme. {T},{+},{-} are the same in every gauge and")
+        logger.info("   {0} on shell; {A},{S},{0S} are gauge-dependent remainders that differ between gauges.")
+        logger.info("   An external polarised particle is supported in every gauge.")
+        logger.info(" > At LO, polarized processes work with any 'group_subprocesses' setting. 'me_frame' (run_card)")
+        logger.info("   defaults to the rest frame of the massive final-state particles (or their")
+        logger.info("   decay products) in p p collisions, [1,2] (the partonic c.m.) in e+ e-.")
+        logger.info("   'nhel=1' is only a variance choice, not a requirement: it selects Monte-Carlo")
+        logger.info("   over helicities, which is an unbiased estimator of the same cross-section.")
+        logger.info(" > For the process 'p p > w+ z j j, w+ > l+ vl, z > l+ l-', the WZ rest frame is given by me_frame = [3,4,5,6]")
+        logger.info("Polarization at NLO:",'$MG:BOLD')
+        logger.info(" > A polarized massive particle needs a frame, so it is allowed for the NLO modes")
+        logger.info("   that have one:")
+        logger.info("     - [QCD], [real=QCD] and [LOonly=QCD] take 'me_frame' from the run_card.")
+        logger.info("       QCD is the only perturbation order supported here so far: the boost")
+        logger.info("       machinery is order-agnostic, but nothing in the QED sector has been")
+        logger.info("       validated, so [QED] and mixed orders are still refused.")
+        logger.info("     - [virt=QCD] and standalone MadLoop take the frame from the momenta the")
+        logger.info("       caller supplies, so any perturbation order is allowed.")
+        logger.info("   A polarized massless particle needs no frame and was always allowed.")
+        logger.info(" > Colour, in [QCD]/[real=QCD]/[LOonly=QCD] only: a polarized coloured")
+        logger.info("   particle must be in the FINAL state and must be massive.")
+        logger.info("     - final state, massive: allowed. p p > t{+} t~{-} [QCD] -- the closure")
+        logger.info("       and the FKS soft limit off the polarized top were measured.")
+        logger.info("     - final state, massless: untested and refused, so a polarized gluon or")
+        logger.info("       massless quark, and 'p'/'j', which contain one. Note this depends on")
+        logger.info("       the model: b is massive in a 4-flavour scheme and massless in a")
+        logger.info("       5-flavour one. The check reads the symbolic mass at generation time,")
+        logger.info("       so setting a mass to zero in the param card afterwards is NOT")
+        logger.info("       re-checked.")
+        logger.info("     - INITIAL state: refused whatever the mass, so b{+} b~ > h [QCD] and")
+        logger.info("       t{+} t~ > z [QCD] are both rejected. The initial-state splitting runs")
+        logger.info("       backwards, g -> q(-> Born) q~, so the polarized parton is an internal")
+        logger.info("       line of the real emission and no external leg can carry the")
+        logger.info("       projection. A 1 -> N decay is exempt: its initial leg is never split,")
+        logger.info("       so t{+} > w+ b [QCD] and h > b{+} b~ [QCD] are fine.")
+        logger.info(" > Caveat, coloured polarized particle + single-leg 'me_frame': what was")
+        logger.info("   measured is a two-leg frame, me_frame = [3,4]. A frame made of ONE leg")
+        logger.info("   puts that leg exactly at rest, which is where HELAS picks the spin")
+        logger.info("   quantisation axis by convention rather than from the momentum. That")
+        logger.info("   combination is accepted but untested; prefer a frame of two or more legs.")
+        logger.info(" > Example: generate p p > z{0} z{0} j [QCD]  with me_frame = [3,4]",'$MG:color:GREEN')
+        logger.info(" > Example: generate p p > t{+} t~{-} [QCD]  with me_frame = [3,4]",'$MG:color:GREEN')
+        logger.info(" > Both fixed-order (calculate_xsect) and NLO+PS event generation")
+        logger.info("   (generate_events, i.e. MC@NLO matching) are supported: the MC")
+        logger.info("   counterterms and the weights written to the LHE use the same frame as")
+        logger.info("   the cross-section. The shower itself knows nothing about the frame, so")
+        logger.info("   the polarised sample is defined by the hard process, as at LO.")
+        logger.info(" > At NLO a frame may only contain legs whose momentum no infrared limit")
+        logger.info("   changes. Refused: a beam that radiates (the partons of p p) -- the real")
+        logger.info("   emission and the reduced Born carry different momentum fractions even in the")
+        logger.info("   collinear limit -- and a jet (a massless coloured parton), which a collinear")
+        logger.info("   splitting changes by a finite amount. Allowed: colourless or massive")
+        logger.info("   final-state particles, the decaying particle of a 1 -> N process (never")
+        logger.info("   split, even if coloured), and a beam that does not radiate (e+ e- with [QCD]).")
+        logger.info(" > The default frame at NLO, as at LO: with initial-state QCD radiation (p p),")
+        logger.info("   the rest frame of the massive final-state particles -- [3,4] for")
+        logger.info("   p p > w+{0} w- [QCD], [3] (Collins-Soper) for p p > w+{0} j [QCD]; without")
+        logger.info("   it (e+ e- > t{L} t~ [QCD], decays) [1,2], the partonic c.m..")
+        logger.info(" > me_frame = [1,2] set by hand on a p p process: the c.m. of the real emission")
+        logger.info("   is not infrared safe, so it is evaluated as the rest frame of the Born final")
+        logger.info("   state -- the same frame for the Born -- and refused when that final state")
+        logger.info("   contains a jet.")
         logger.info(" > For further details, see appendices of [arXiv:1912.01725] and [arXiv:2512.10015],")
         logger.info("   and for possibilities with loop-induced processes, see [2401.17365].")
     
@@ -941,10 +1563,25 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > This option can considerably slow down the loop ME")
         logger.info("   computation time, especially when summing over all color")
         logger.info("   and helicity configuration, hence turned off by default.")        
-        logger.info("gauge unitary|Feynman|axial|FD",'$MG:color:GREEN')
+        logger.info("gauge unitary|Feynman|axial|FD|default",'$MG:color:GREEN')
         logger.info(" > (default unitary) choose the gauge of the non QCD part.")
         logger.info(" > FD is for Feynman Diagram gauge:     2203.10440 ")
         logger.info(" > For loop processes, only Feynman gauge is employable.")
+        logger.info(" > Unless set here, a tree-level process with a W/Z propagator ending")
+        logger.info("   on a current that is not conserved is generated in the FD gauge")
+        logger.info("   (see auto_gauge); '--gauge=X' on a process line sets its own gauge.")
+        logger.info(" > Gauges agree only up to O(width/mass) when an unstable particle")
+        logger.info("   (W, Z, h, t) is EXTERNAL and has a non-zero width, also in the")
+        logger.info("   complex-mass scheme: its momentum is on the real mass shell, not on")
+        logger.info("   the complex one the Ward identities need. The unitary gauge enhances")
+        logger.info("   that piece with the energy, FD does not (w+ w- > w+ w- at 1 TeV:")
+        logger.info("   7% apart). Set the width of the external particles to zero for a")
+        logger.info("   gauge-independent result.")
+        logger.info("auto_gauge True|False",'$MG:color:GREEN')
+        logger.info(" > (default True) pick the FD gauge automatically, per process, when a")
+        logger.info("   W/Z propagator ends on a vertex that is not a conserved current")
+        logger.info("   (HVV, VVV, a massive quark): the unitary gauge loses digits at")
+        logger.info("   high energy for them. 'set gauge X' or '--gauge=X' overrides it.")
         logger.info("complex_mass_scheme True|False",'$MG:color:GREEN')
         logger.info(" > (default False) Set complex mass scheme.")
         logger.info(" > Complex mass scheme is not yet supported for loop processes.")
@@ -959,8 +1596,6 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > This allow to not run on the central disk. ")
         logger.info(" > This is not used by condor cluster (since condor has")
         logger.info("   its own way to prevent it).")
-        logger.info("mg5amc_py8_interface_path PATH",'$MG:color:GREEN')
-        logger.info(" > Necessary when showering events with Pythia8 from Madevent.")        
         logger.info("OLP ProgramName",'$MG:color:GREEN')
         logger.info(" > (default 'MadLoop') [Used for virtual generation]")
         logger.info(" > Chooses what One-Loop Program to use for the virtual")
@@ -989,7 +1624,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("zerowidth_tchannel <value>",'$MG:color:GREEN')
         logger.info(" > (default: True) [Used ONLY for tree-level output with madevent]")
         logger.info(" > set the width to zero for all T-channel propagator --no impact on complex-mass scheme mode")
-        logger.info("auto_convert_model <value>",'$MG:color:GREEN')   
+        logger.info("zerowidth_external <value>",'$MG:color:GREEN')
+        logger.info(" > (default: True) [tree-level output] drop the width of an internal")
+        logger.info(" > propagator whose particle is also an external (initial/final) state")
+        logger.info("auto_convert_model <value>",'$MG:color:GREEN')
         logger.info(" > (default: False) If set on True any python2 UFO model will be automatically converted to pyton3 format")   
         logger.info("nlo_mixed_expansion <value>",'$MG:color:GREEN') 
         logger.info("deactivates mixed expansion support at NLO, goes back to MG5aMCv2 behavior")
@@ -999,6 +1637,46 @@ class HelpToCmd(cmd.HelpCmd):
 #===============================================================================
 # CheckValidForCmd
 #===============================================================================
+#===============================================================================
+# customize_model --explain
+#===============================================================================
+# 'life' reports what each command does while the question is answered,
+# 'final' reports which choice is responsible for what once it is closed,
+# 'off' asks for no report at all. 'life' is what one gets without asking.
+CUSTOMIZE_EXPLAIN_MODES = ['life', 'final', 'off']
+CUSTOMIZE_EXPLAIN_DEFAULT = 'life'
+CUSTOMIZE_EXPLAIN_ALIAS = {'live': 'life', # 'live' is the spelling one expects
+                           'none': 'off', 'false': 'off', 'no': 'off'}
+
+
+def natural_key(name):
+    """sort GC_9 before GC_10"""
+
+    return [int(part) if part.isdigit() else part
+            for part in re.split(r'(\d+)', str(name))]
+
+
+def parse_explain_mode(arg):
+    """the mode of a --explain/--explain=MODE argument (None if arg is neither)"""
+
+    if arg == '--explain':
+        return 'life'
+    if not arg.startswith('--explain='):
+        return None
+    mode = arg.split('=', 1)[1].lower()
+    return CUSTOMIZE_EXPLAIN_ALIAS.get(mode, mode)
+
+
+def resolve_explain_mode(args):
+    """the --explain mode a customize_model command line asks for: the last
+    --explain wins, the live report is what one gets without the option, and
+    None (no report at all) is what --explain=off asks for."""
+
+    mode = ([CUSTOMIZE_EXPLAIN_DEFAULT] + [parse_explain_mode(a) for a in args
+                                           if parse_explain_mode(a)])[-1]
+    return None if mode == 'off' else mode
+
+
 class CheckValidForCmd(cmd.CheckCmd):
     """ The Series of help routine for the MadGraphCmd"""
 
@@ -1063,12 +1741,25 @@ class CheckValidForCmd(cmd.CheckCmd):
             self.help_display()
             raise self.InvalidCmd('Invalid arguments for display command: %s' % args[0])
 
-        if not self._curr_model:
+        # the model list is what you read *before* importing one -- the banner
+        # suggests it at startup -- and it lists model directories and the
+        # online database, never the loaded model
+        if not self._curr_model and args[0] not in ('modellist', 'model_list'):
             raise self.InvalidCmd("No model currently active, please import a model!")
 
-# check that either _curr_amps or _fks_multi_proc exists
-        if (args[0] in ['processes', 'diagrams', 'diagrams_text'] and not self._curr_amps and not self._fks_multi_proc):
-           raise self.InvalidCmd("No process generated, please generate a process!")
+        # check that either _curr_amps or _fks_multi_proc exists.
+        # _fks_multi_proc is only created when an NLO process is generated, so
+        # it is read with getattr: without it 'display processes' before any
+        # process died with an AttributeError instead of saying so.
+        if args[0] in ['processes', 'diagrams', 'diagrams_text'] and \
+                not self._curr_amps and not getattr(self, '_fks_multi_proc', None):
+            # [amplicol] processes are kept without diagrams
+            if self._curr_amplicol_defs and args[0] != 'processes':
+                raise self.InvalidCmd("Only [amplicol] processes are defined: "
+                    "their matrix elements come from AmpliCol, without diagrams. "
+                    "Use 'display processes' to list them.")
+            elif not self._curr_amplicol_defs:
+                raise self.InvalidCmd("No process generated, please generate a process!")
         if args[0] == 'checks' and not self._comparisons and not self._cms_checks:
             raise self.InvalidCmd("No check results to display.")
 
@@ -1108,6 +1799,19 @@ class CheckValidForCmd(cmd.CheckCmd):
                                         not args[0].lower().endswith('options'):
             args.insert(0, 'full')
 
+        # check precision takes one or more floating point modes first
+        precision_mode = None
+        if args[0] == 'precision':
+            modes = []
+            while len(args) > 1 and args[1] in process_checks.PRECISION_MODES:
+                modes.append(args.pop(1))
+            if not modes or len(args) < 2:
+                self.help_check()
+                raise self.InvalidCmd("\"check precision\" requires at least one precision "
+                        "mode (%s) and a process." % '|'.join(process_checks.PRECISION_MODES))
+            # one token, and no ',' which would read as a decay chain below
+            precision_mode = ':'.join(misc.make_unique(modes))
+
         param_card = None
         if args[0] not in ['stability','profile','timing'] and \
                                         len(args)>1 and os.path.isfile(args[1]):
@@ -1118,6 +1822,9 @@ class CheckValidForCmd(cmd.CheckCmd):
                 args.insert(1, '-no_reuse')
         else:
             args.append('-no_reuse')
+
+        if precision_mode:
+            args.insert(2, precision_mode)
 
         if args[0] in ['timing'] and len(args)>2 and os.path.isfile(args[2]):
             param_card = args.pop(2)
@@ -1133,7 +1840,23 @@ class CheckValidForCmd(cmd.CheckCmd):
         if args[0] in ['stability', 'profile'] and os.path.isfile(args[3]):
             param_card = args.pop(3)
         if any([',' in elem for elem in args if not elem.startswith('--')]):
-            raise self.InvalidCmd('Decay chains not allowed in check')
+            if args[0] != 'gauge':
+                raise self.InvalidCmd("Decay chains are only allowed in 'check gauge'")
+            if any('[' in elem or ']' in elem for elem in args):
+                raise self.InvalidCmd("The '[' and ']' syntax cannot be used "
+                                      "with decay chains.")
+            if self.options['complex_mass_scheme']:
+                # the complex masses keep the physical widths: the chain is
+                # then off shell by iM*Gamma, and gauge dependent at that order
+                raise self.InvalidCmd("'check gauge' with a decay chain is "
+                    "not available in the complex-mass scheme: use 'set "
+                    "complex_mass_scheme False'.")
+            if any(elem.startswith('--events') for elem in args):
+                # the events hold the decay products, not the decayed
+                # particles the phase-space point of a chain is built from
+                raise self.InvalidCmd("'check gauge' with a decay chain does "
+                    "not take --events: its point puts the decayed particles "
+                    "on shell.")
         
         user_options = {'--energy':'1000','--split_orders':'-1',
                    '--reduction':'1|3|5|6','--CTModeRun':'-1',
@@ -1142,7 +1865,21 @@ class CheckValidForCmd(cmd.CheckCmd):
                    '--collier_internal_stability_test':'False',
                    '--collier_mode':'1',
                    '--events': None,
-                   '--skip_evt':0}  
+                   '--skip_evt':0,
+                   # 'check crossing' backend: standalone_fortran (the default,
+                   # fortran/f2py) or standalone (madmatrix).
+                   '--exporter':'standalone_fortran',
+                   # 'check crossing --exporter=standalone' vectorisation (SIMD)
+                   # width: auto (default), scalar, simd_128, simd_256,
+                   # avx512y, simd_512 -- the madmatrix cpu_mode tokens.
+                   '--simd':'auto',
+                   # 'check crossing --exporter=standalone' float precision:
+                   # m mixed (default), d double, f float.
+                   '--precision':'m'}
+
+        if args[0] == 'precision':
+            user_options['--nb_event'] = '1000000'
+            user_options['--backend'] = 'auto'
 
         if args[0] in ['cms'] or args[0].lower()=='cmsoptions':
             # increase the default energy to 5000
@@ -1245,7 +1982,14 @@ class CheckValidForCmd(cmd.CheckCmd):
     def check_process_format(self, process):
         """ check the validity of the string given to describe a format """
 
-        #check balance of paranthesis
+        left, mode, right = split_interference_line(process)
+        if mode:
+            self.check_process_format(left)
+            if right is not None:
+                self.check_process_format(right)
+            return
+
+        #check balance of parenthesis
         if process.count('(') != process.count(')'):
             raise self.InvalidCmd('Invalid Format, no balance between open and close parenthesis')
         #remove parenthesis for fututre introspection
@@ -1272,7 +2016,7 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd(
                 '\"%s\" is a wrong process format. Please try again' % process)
 
-        # '/' and '$' sould be used only after the process definition
+        # '/' and '$' should be used only after the process definition
         for particles in particles_parts[:-1]:
             if re.search(r'\D/', particles):
                 raise self.InvalidCmd(
@@ -1292,48 +2036,117 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd('Polarization restriction can not be used in forbidding particles')
             
         if '[' in process and '{' in process:
-            valid = False
-            if 'noborn' in process or 'sqrvirt' in process:
-                valid = True
+            # Which NLO mode was asked for, taken from inside the brackets so
+            # that a stray 'real' elsewhere in the process cannot match.
+            bracket = process.split('[')[1].split(']')[0]
+            if '=' in bracket:
+                nlo_mode, pert_orders = bracket.split('=', 1)
+                nlo_mode = nlo_mode.strip().lower()
             else:
-                raise self.InvalidCmd('Polarization restriction can not be used for NLO processes')
+                # no keyword, e.g. '[QCD]': the parser calls that mode 'all'
+                nlo_mode, pert_orders = 'all', bracket
 
-            # below are the check when [QCD] will be valid for computation            
-            order = process.split('[')[1].split(']')[0]
-            if '=' in order:
-                order = order.split('=')[1]
-#            if order.strip().lower() != 'qcd':
-#                raise self.InvalidCmd('Polarization restriction can not be used for generic NLO computations')
+            # A polarised massive particle needs a frame to be defined in,
+            # but the three NLO regimes get there in completely different ways
+            # and so need different checks -- not one shared flag.
+            #
+            # 1. 'virt' outputs standalone MadLoop. The user supplies the
+            #    phase-space point themselves and so chooses the frame. There
+            #    is no run_card, no me_frame and nothing for the code to get
+            #    wrong, whatever the perturbation orders.
+            standalone_olp = nlo_mode == 'virt'
 
-            def check(p):
-                # Polarisation restriction can now be used for color charged
-                # particles, so there is no longer a color check here. The mass
-                # restriction is independent of the color one and must stay
-                # outside it -- keeping it in an "elif" would have silently
-                # exempted massive color-charged particles.
-                if p.get('mass') != 'ZERO':
-                    raise self.InvalidCmd('Polarization restriction can not be used for massive particles')
- 
+            # 2. Loop-induced. There is no Born to subtract against and no
+            #    counterterm that has to be evaluated in the same frame as
+            #    anything else: 'noborn' is exported through the LO madevent
+            #    template and boosted by the very same
+            #    Template/LO/SubProcesses/genps.f boost_to_frame as a tree
+            #    process, and 'sqrvirt' squares one amplitude standalone. So
+            #    nothing here is an NLO-specific hazard, and no NLO-specific
+            #    restriction applies -- massive or not, whatever the orders.
+            #    Verified at runtime on g g > z{0} z{0} [noborn=QCD]: see
+            #    docs/nlo_polarisation_boost_plan.md, M6.
+            loop_induced = nlo_mode in ('noborn', 'sqrvirt')
 
+            # 3. The subtracted modes. Here the frame comes from me_frame in
+            #    the run_card and every piece has to be boosted into it by
+            #    hand: the Born (M1), the real emission and the full set of FKS
+            #    counterterms (M2), the virtual through binothlha_frame (M3),
+            #    and the MC counterterms' azimuth for NLO+PS (M5). That
+            #    threading is what can be got wrong, so this is the only
+            #    regime worth restricting, and the restriction is exactly the
+            #    reach of the boost: validated for QCD, since the QED
+            #    counterterms go through the same wrappers but nothing in the
+            #    QED sector has been validated.
+            subtracted_boost_ok = (nlo_mode in ('loonly', 'real', 'all')
+                                   and pert_orders.strip().lower() == 'qcd')
 
-            for p in particles_parts[0].split()+ particles_parts[-1].split():
-                if '{' in p:
-                    part = p.split('{')[0]
-                else:
-                    continue
-                if self._curr_model:
-                    p = self._curr_model.get_particle(part)
-                    if not p:
-                        if part in self._multiparticles:
-                            for part2 in self._multiparticles[part]:
-                                p = self._curr_model.get_particle(part2)
-                                check(p)
+            if not (standalone_olp or loop_induced or subtracted_boost_ok):
+                raise self.InvalidCmd('Polarization restriction can not be '
+                                      'used for NLO processes')
+
+            # Colour, in the subtracted regime only: a coloured polarised
+            # particle is an FKS emitter. Two rules, two messages.
+            # (a) INITIAL state coloured: refused whatever the mass -- the
+            #     splitting reads backwards, so the polarised parton is an
+            #     internal line of the real. A 1 -> N decay is exempt, its
+            #     initial leg being a spectator find_reals never splits.
+            # (b) FINAL state coloured: refused if MASSLESS (untested, and no
+            #     daughter carries the mother's identity); massive is measured.
+            # Evidence and caveats: docs/nlo_polarisation_massive_colour.md.
+            if subtracted_boost_ok:
+                # A 1 -> N decay: the single particle before the '>' is the
+                # decaying one, never an FKS initial-state splitter.
+                is_decay = len(particles_parts[0].split()) == 1
+
+                def check(p, initial):
+                    # get_particle returns None for a name the model does not
+                    # know; leave the real diagnostic to the process parser
+                    if p is None:
+                        return
+                    if p.get('color') == 1:
+                        return
+                    if initial and not is_decay:
+                        raise self.InvalidCmd(
+                            'Polarization restriction can not be used for '
+                            'color charged particles (%s) in the INITIAL '
+                            'state of a subtracted NLO computation, whatever '
+                            'their mass: the initial-state splitting makes '
+                            'the polarized particle an internal line of the '
+                            'real emission, so no external leg can carry the '
+                            'polarization. Only final-state coloured '
+                            'particles may be polarized.' % p.get('name'))
+                    if p.get('mass').lower() == 'zero':
+                        raise self.InvalidCmd(
+                            'Polarization restriction can not be used for '
+                            'massless color charged particles (%s) in a '
+                            'subtracted NLO computation. Only massive '
+                            'coloured particles may be polarized here.'
+                            % p.get('name'))
+
+                def walk(particles, initial):
+                    # no model loaded -> nothing to look a colour up in, so
+                    # the whole check is skipped rather than passing per token
+                    if not self._curr_model:
+                        return
+                    for p in particles.split():
+                        if '{' not in p:
+                            continue
+                        part = p.split('{')[0]
+                        particle = self._curr_model.get_particle(part)
+                        if particle:
+                            check(particle, initial)
+                        elif part.lower() in self._multiparticles:
+                            # do_define lowercases the label it stores
+                            for part2 in self._multiparticles[part.lower()]:
+                                check(self._curr_model.get_particle(part2),
+                                      initial)
                         else:
-                            p = self._curr_model.get_particle(part.lower())
-                            check(p)
-                    else:
-                        check(p)
-                    
+                            check(self._curr_model.get_particle(part.lower()),
+                                  initial)
+
+                walk(particles_parts[0], True)
+                walk(particles_parts[-1], False)
 
 
     def check_tutorial(self, args):
@@ -1342,7 +2155,12 @@ class CheckValidForCmd(cmd.CheckCmd):
             # a bare 'tutorial' opens the menu -- or, with no terminal to ask
             # on, keeps its historical meaning of "start the first tutorial"
             args.append(self.ask_tutorial())
-        if len(args) != 1:
+        if len(args) == 2 and args[0] == 'skip':
+            # `tutorial skip N` goes to step N
+            if not args[1].isdigit():
+                raise self.InvalidCmd('tutorial skip takes a step number -- '
+                                      '`tutorial index` lists them')
+        elif len(args) != 1:
             self.help_tutorial()
             raise self.InvalidCmd('Too many arguments for tutorial')
         if args[0] not in self._tutorial_opts:
@@ -1468,10 +2286,14 @@ class CheckValidForCmd(cmd.CheckCmd):
             # to install as argument.   
             args = args[:1]
 
+        if args[0] == 'mg5amc_py8_interface':
+            raise self.InvalidCmd("The MG5aMC_PY8_interface is not supported by "+
+                "MadGraph7: the Pythia8 shower runs Pythia8's main164, which is "+
+                "installed (and compiled if needed) with 'install pythia8'.")
+
         if args[0] not in self._install_opts + hidden_prog + self._advanced_install_opts: 
-            if not args[0].startswith('td'):
-                self.help_install()
-                raise self.InvalidCmd('Not recognize program %s ' % args[0])
+            self.help_install()
+            raise self.InvalidCmd('Not recognize program %s ' % args[0])
 
         if args[0] in ["ExRootAnalysis", "Delphes", "Delphes2"]:
             if not misc.which('root'):
@@ -1539,6 +2361,9 @@ This will take effect only in a NEW terminal
             raise self.InvalidCmd('%s is not a valid directory' % args[0])
 
         mode = self.find_output_type(path)
+        if mode == 'madweight':
+            raise self.InvalidCmd('launch on a madweight directory is no longer supported; '
+                                  'MadWeight has been removed')
 
         args[0] = mode
         args.append(path)
@@ -1598,6 +2423,8 @@ This will take effect only in a NEW terminal
             return 'pythia8'
         elif not os.path.isdir(os.path.join(path, 'SubProcesses')):
             raise self.InvalidCmd('%s : Not a valid directory' % path)
+        if os.path.isfile(pjoin(subproc_path, 'check_sa_fks_mode')):
+            return 'amcatnlo_fks_sa'
         if os.path.isfile(pjoin(bin_path,'madevent')):
             return 'madevent'
         elif os.path.isfile(pjoin(subproc_path, 'madmatrix_standalone.mk')):
@@ -1631,20 +2458,42 @@ This will take effect only in a NEW terminal
             self.help_load()
             raise self.InvalidCmd('wrong \"load\" format')
 
+    def check_explain_restriction(self, args):
+        """check the validity of the line"""
+
+        args = [arg for arg in args if arg != '--all']
+        if len(args) > 1:
+            self.help_explain_restriction()
+            raise self.InvalidCmd('explain_restriction takes at most one argument')
+        if not args and not self._curr_model:
+            raise self.InvalidCmd('No model loaded: give a restriction card or '
+                                  'a model name to explain.')
+        if self._model_v4_path:
+            raise self.InvalidCmd('Restriction of Model is not supported by v4 model.')
+
     def check_customize_model(self, args):
         """check the validity of the line"""
 
         # Check argument validity
-        if len(args) >1 :
+        for arg in args:
+            if arg == '--all':
+                continue
+            if arg == '--explain' or arg.startswith('--explain='):
+                mode = parse_explain_mode(arg)
+                if mode not in CUSTOMIZE_EXPLAIN_MODES:
+                    raise self.InvalidCmd('Valid values for --explain are: %s '
+                        '(--explain alone means --explain=%s, which is also '
+                        'what you get without the option; --explain=off turns '
+                        'the report off).'
+                        % (', '.join(CUSTOMIZE_EXPLAIN_MODES),
+                           CUSTOMIZE_EXPLAIN_DEFAULT))
+                continue
+            if arg.startswith('--save='):
+                if '-' in arg.split('=', 1)[1]:
+                    raise self.InvalidCmd('The name given in save options can\'t contain \'-\' symbol.')
+                continue
             self.help_customize_model()
-            raise self.InvalidCmd('No argument expected for this command')
-
-        if len(args):
-            if not args[0].startswith('--save='):
-                self.help_customize_model()
-                raise self.InvalidCmd('Wrong argument for this command')
-            if '-' in args[0][6:]:
-                raise self.InvalidCmd('The name given in save options can\'t contain \'-\' symbol.')
+            raise self.InvalidCmd('Wrong argument for this command')
 
         if self._model_v4_path:
             raise self.InvalidCmd('Restriction of Model is not supported by v4 model.')
@@ -1734,6 +2583,10 @@ This will take effect only in a NEW terminal
                                                              (args[0], default))
             args[1] = str(default)
 
+        if cmd.is_removed_option(args[0]):
+            # handled (and reported) by do_set: never an error
+            return
+
         if args[0] not in self._set_options:
             if not args[0] in self.options and not args[0] in self.options:
                 self.help_set()
@@ -1757,9 +2610,9 @@ This will take effect only in a NEW terminal
 
         if args[0] in ['timeout', 'max_npoint_for_channel', 'max_t_for_channel']:
             if not args[1].isdigit():
-                raise self.InvalidCmd('%s values should be a integer' % args[0])
+                raise self.InvalidCmd('%s values should be an integer' % args[0])
             
-        if args[0] in ['loop_optimized_output', 'loop_color_flows', 'low_mem_multicore_nlo_generation', 'nlo_mixed_expansion']:
+        if args[0] in ['loop_optimized_output', 'loop_color_flows', 'low_mem_multicore_nlo_generation', 'nlo_mixed_expansion', 'auto_gauge']:
             try:
                 args[1] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
             except Exception:
@@ -1772,7 +2625,7 @@ This will take effect only in a NEW terminal
 
         if args[0] in ['timeout']:
             if not args[1].isdigit():
-                raise self.InvalidCmd('timeout values should be a integer')
+                raise self.InvalidCmd('timeout values should be an integer')
 
         if args[0] in ['OLP']:
             if args[1] not in MadGraphCmd._OLP_supported:
@@ -1879,7 +2732,11 @@ This will take effect only in a NEW terminal
             return
 
 
-        if not self._curr_amps:
+        if self._curr_amplicol_defs and self._export_format != 'mg7':
+            raise self.InvalidCmd(
+                'The [amplicol] processes are only supported by the mg7 output.')
+
+        if not self._curr_amps and not self._curr_amplicol_defs:
             text = 'No processes generated. Please generate a process first.'
             raise self.InvalidCmd(text)
 
@@ -1938,13 +2795,17 @@ This will take effect only in a NEW terminal
         particles = set()
         options = {'path':None, 'output':None,
                    'min_br':None, 'body_decay':4.0025, 'precision_channel':0.01,
-                   'nlo':False}
+                   'nlo':False, 'engine':None, 'corrections':None}
         # check that the firsts argument is valid
         
         for i,arg in enumerate(args):
             if arg.startswith('--'):
                 if arg.startswith('--nlo'):
-                    options['nlo'] =True  
+                    # --nlo, or --nlo=smwidth / --nlo=mcatnlo to choose the code
+                    value = arg.partition('=')[2].lower()
+                    if value not in ('', 'true', 'false', 'smwidth', 'mcatnlo'):
+                        raise self.InvalidCmd('--nlo takes smwidth or mcatnlo, not %s' % value)
+                    options['nlo'] = value if value in ('smwidth', 'mcatnlo') else value != 'false'
                     continue
                 elif not '=' in arg:
                     raise self.InvalidCmd('Options required an equal (and then the value)')
@@ -2008,6 +2869,22 @@ This will take effect only in a NEW terminal
 
         if not options['min_br']:
             options['min_br'] = (float(options['body_decay']) % 1) / 5
+        if options['engine'] is not None:
+            options['engine'] = str(options['engine']).lower()
+            if options['engine'] not in ('madspace', 'madevent'):
+                raise self.InvalidCmd(
+                    '--engine takes madspace or madevent, not %s' % options['engine'])
+        if options['corrections'] is not None:
+            try:
+                options['corrections'] = check_param_card.parse_nlo_corrections(
+                                                           options['corrections'])
+            except check_param_card.InvalidParam as error:
+                raise self.InvalidCmd(str(error))
+            if not options['nlo']:
+                raise self.InvalidCmd('--corrections needs --nlo')
+            if options['nlo'] == 'smwidth':
+                raise self.InvalidCmd('SMWidth computes the QCD and the electroweak '
+                    'corrections together: --corrections is for --nlo=mcatnlo')
         return particles, options
 
 
@@ -2039,6 +2916,11 @@ This will take effect only in a NEW terminal
 
         if self._export_format in ['NLO', 'ewsudsa']:
             name_dir = lambda i: 'PROCNLO_%s_%s' % \
+                                    (self._curr_model['name'], i)
+            auto_path = lambda i: pjoin(self.writing_dir,
+                                               name_dir(i))
+        elif self._export_format == 'NLO_SA':
+            name_dir = lambda i: 'PROC_FKS_%s_%s' % \
                                     (self._curr_model['name'], i)
             auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
@@ -2214,7 +3096,7 @@ class CompleteForCmd(cmd.CompleteCmd):
             pert_couplings_allowed = []
         if self._curr_model.get('name').startswith('sm'):
             pert_couplings_allowed = pert_couplings_allowed + ['QCD']
-        # Find wether the loop mode is already set or not
+        # Find whether the loop mode is already set or not
         loop_specs = line[line.index('[')+1:]
         try:
             loop_orders = loop_specs[loop_specs.index('=')+1:]
@@ -2321,8 +3203,8 @@ class CompleteForCmd(cmd.CompleteCmd):
         if not categories:
             # The direct completion (might be needed for some completion using
             # this function but adding some other completions (like in check)).
-            # For those, it looks ok in the categorie mode on my mac, but if
-            # someone sees wierd result on Linux systems, then use the
+            # For those, it looks ok in the category mode on my mac, but if
+            # someone sees weird result on Linux systems, then use the
             # default completion for these features.
             return self.list_completion(text, particles+syntax+couplings)
         else:
@@ -2365,10 +3247,17 @@ class CompleteForCmd(cmd.CompleteCmd):
             return
 
         if text.startswith('--'):
-            return self.list_completion(text, ['--no_crossing', 
+            filters = ['%s=%s' % (opt, name) for name in
+                       misc.plugin_diagram_filter(self.plugin_path, None)
+                       for opt in ['--diagram_filter', '--tree_diagram_filter',
+                                   '--loop_diagram_filter']]
+            return self.list_completion(text, ['--use_crossing=True',
+                                               '--use_crossing=False',
                                                '--no_warning=duplicate',
                                                '--diagram_filter',
-                                               '--standalone']) 
+                                               '--tree_diagram_filter',
+                                               '--loop_diagram_filter',
+                                               '--standalone'] + filters)
 
         try:
             return self.model_completion(text, ' '.join(args[1:]),line, formatting)
@@ -2437,17 +3326,49 @@ class CompleteForCmd(cmd.CompleteCmd):
         elif args[1] == 'model':
             completion_categories = self.complete_import(text, line, begidx, endidx, 
                                                          allow_restrict=False, formatting=False)
-            completion_categories['options'] = self.list_completion(text,['--modelname=','--recreate'])
+            completion_categories['options'] = self.list_completion(text,['--modelname=','--recreate','--fock_states_only'])
             return self.deal_multiple_categories(completion_categories, formatting) 
             
+    def complete_explain_restriction(self, text, line, begidx, endidx):
+        """Complete the explain_restriction command: a restriction card of the
+        current model, or a MODEL-RESTRICTION name.
+
+        Every candidate must start with text: when the word being completed
+        contains a '-', the readline wrapper strips that common prefix off each
+        of them, so one which does not share it comes back mangled (a
+        'loop_qcd_qed_sm' proposed for 'loop_sm-' would show up as '_qed_sm')."""
+
+        args = [arg for arg in self.split_arg(line[0:begidx]) if arg != '--all']
+        if len(args) > 1:
+            return self.list_completion(text, ['--all'], line)
+
+        if '-' in text and not text.startswith('-'):
+            # the restrictions of a given model ('--all' also has a '-')
+            model = text.rsplit('-', 1)[0]
+            out = self.find_restrict_card(model, no_restrict=False)
+            out += self.find_restrict_card(model, no_restrict=False,
+                                           base_dir=pjoin(MG5DIR, 'models'))
+        else:
+            out = ['--all']
+            if self._curr_model:
+                model_path = self._curr_model.get('modelpath')
+                out += [name for name in os.listdir(model_path)
+                        if name.startswith('restrict_') and name.endswith('.dat')]
+            model_dir = pjoin(MG5DIR, 'models')
+            out += [name for name in os.listdir(model_dir)
+                    if os.path.exists(pjoin(model_dir, name, 'couplings.py'))]
+
+        return self.list_completion(text, misc.make_unique(out), line)
+
     def complete_customize_model(self, text, line, begidx, endidx):
         "Complete the customize_model command"
 
         args = self.split_arg(line[0:begidx])
 
         # Format
-        if len(args) == 1:
-            return self.list_completion(text, ['--save='])
+        return self.list_completion(text, ['--save=', '--explain',
+                    '--explain=life', '--explain=final', '--explain=off',
+                    '--all'])
 
 
     def complete_check(self, text, line, begidx, endidx, formatting=True):
@@ -2460,8 +3381,18 @@ class CompleteForCmd(cmd.CompleteCmd):
         if len(args) == 1:
             return self.list_completion(text, self._check_opts)
 
+        if len(args) >= 2 and args[1] == 'precision' and \
+                all(a in process_checks.PRECISION_MODES for a in args[2:]):
+            remaining = [m for m in process_checks.PRECISION_MODES if m not in args[2:]]
+            if len(args) == 2:
+                return self.list_completion(text, remaining)
+            return self.deal_multiple_categories(
+                {'Precision modes': self.list_completion(text, remaining),
+                 'Process completion': self.model_completion(text, '', line,
+                                                  categories=False)}, formatting)
 
         cms_check_mode = len(args) >= 2 and args[1]=='cms'
+        crossing_check_mode = len(args) >= 2 and args[1]=='crossing'
 
         cms_options = ['--name=','--tweak=','--seed=','--offshellness=',
           '--lambdaCMS=','--show_plot=','--report=','--lambda_plot_range=','--recompute_width=',
@@ -2469,8 +3400,29 @@ class CompleteForCmd(cmd.CompleteCmd):
           '--loop_filter=','--resonances=']
 
         options = ['--energy=']
+        if len(args) >= 2 and args[1] == 'precision':
+            options.extend(['--nb_event=', '--backend='])
         if cms_options:
             options.extend(cms_options)
+        if crossing_check_mode:
+            # 'check crossing' only understands --energy, --exporter and (for
+            # the madmatrix 'standalone') --simd / --precision; the cms options above do not
+            # apply.
+            crossing_options = ['--energy=', '--exporter=', '--simd=',
+                                '--precision=']
+            # Value completion for the crossing-specific options.
+            if args[-1] == '--exporter=':
+                return self.list_completion(
+                    text, list(process_checks.CROSSING_EXPORTERS))
+            elif args[-1] == '--simd=':
+                return self.list_completion(
+                    text, list(process_checks.MG7_SIMD_CHOICES))
+            elif args[-1] == '--precision=':
+                return self.list_completion(
+                    text, list(process_checks.MG7_PRECISION_CHOICES))
+            # Propose the options themselves once the user starts an option.
+            if text.startswith('-'):
+                return self.list_completion(text, crossing_options)
 
         # Directory continuation
         if args[-1].endswith(os.path.sep):
@@ -2672,12 +3624,15 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         if mode and mode.startswith('standalone') and mode != 'standalone':
             # NB: `mode != 'standalone'` deliberately EXCLUDES the plain
-            # `standalone` (madmatrix) output, which is launched through its own
-            # bin/generate_events, not through SALauncher.  It is not a typo:
+            # `standalone` (madmatrix) output, which is launched through
+            # MadMatrixLauncher, not through SALauncher.  It is not a typo:
             # every *other* standalone_* mode (standalone_fortran, _cpp, _msP,
             # _msF, _rw) is run through SALauncher/MadLoopLauncher, for which
             # only force + the timing analysis options are relevant.
             opt = ['-f', '--force', '--timings=', '--nb_run=']
+            out['Options'] = self.list_completion(text, opt, line)
+        elif mode == 'standalone':
+            opt = ['-f', '--force']
             out['Options'] = self.list_completion(text, opt, line)
         elif line[0:begidx].endswith('--laststep='):
             opt = ['parton', 'pythia', 'pgs','delphes','auto']
@@ -2768,9 +3723,10 @@ class CompleteForCmd(cmd.CompleteCmd):
     @cmd.debug()
     def complete_output(self, text, line, begidx, endidx,
                         possible_options = ['f', 'noclean', 'nojpeg'],
-                        possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False',
+                        possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False', '--hel_recycling=True', '--hel_recycling_chunk=', '--hel_recycling_max=', '--hel_recycling_jamp=', '--hel_recycling_tables=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
-                                                 '--mask=False', '--prefix=']):
+                                                 '--mask=False', '--prefix=', '--use_crossing=True', '--use_crossing=False',
+                                                 '--crossing_table=all', '--axial_gauge=True', '--fermion_reference=False']):
         "Complete the output command"
 
         possible_format = list(self._export_formats)
@@ -2796,7 +3752,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                 except Exception as error:
                     print(error)
             if 'standalone_fortran' in args:
-                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=']
+                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=', '--f2py_per_process=False', '--zerowidth_decay=']
 
             # Directory continuation
             if args[-1].endswith(os.path.sep):
@@ -3148,7 +4104,8 @@ class CompleteForCmd(cmd.CompleteCmd):
         elif len(args) and args[0] == 'update':
             return self.list_completion(text, ['-f','--timeout='])
         elif len(args) >= 2 and args[1] == 'madspace':
-            options = ['-y', '--yes', '--bin', '--source',
+            options = ['-y', '--yes', '--bin', '--source', '-j', '--jobs=',
+                       '--system', '--clean', '--docs', '--no-docs',
                        '--cuda', '--no-cuda', '--hip', '--no-hip',
                        '--openblas', '--no-openblas',
                        '--simd', '--no-simd',
@@ -3158,12 +4115,24 @@ class CompleteForCmd(cmd.CompleteCmd):
                 if any(a.startswith(opt) for a in args[2:]):
                     options.remove(opt)
             return self.list_completion(text, options)
+        elif len(args) >= 2 and args[1] == 'pyamplicol':
+            options = ['-y', '--yes', '--bin', '--source', '-j', '--jobs=',
+                       '--system', '--clean', '--build-models']
+            for opt in options[:]:
+                if any(a.startswith(opt) for a in args[2:]):
+                    options.remove(opt)
+            return self.list_completion(text, options)
+        elif len(args) >= 2 and args[1] == 'madtrex':
+            options = ['-y', '--yes', '--clean', '--jobs=']
+            for opt in options[:]:
+                if any(a.startswith(opt) for a in args[2:]):
+                    options.remove(opt)
+            return self.list_completion(text, options)
         elif len(args)>=2 and args[1] in self._advanced_install_opts:
             options = ['--keep_source','--logging=']
             if args[1]=='pythia8':
                 options.append('--pythia8_tarball=')
-            elif args[1]=='mg5amc_py8_interface':
-                options.append('--mg5amc_py8_interface_tarball=') 
+                options.append('--hepmc2')
             elif args[1] in ['MadAnalysis5','MadAnalysis']:
                 #options.append('--no_MA5_further_install')
                 options.append('--no_root_in_MA5')
@@ -3192,9 +4161,12 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _display_opts = ['particles', 'interactions', 'processes', 'diagrams',
                      'diagrams_text', 'multiparticles', 'couplings', 'lorentz',
                      'checks', 'parameters', 'options', 'coupling_order','variable',
-                     'modellist']
+                     'modellist', 'fockstates', 'boundstates']
     _add_opts = ['process', 'model']
-    _save_opts = ['model', 'processes', 'options']
+    # (no 'processes': the amplitudes kept after an output are the base
+    # amplitudes of its matrix elements, which lost the diagrams its --mask
+    # trimmed, so a saved list could not be output with the other --mask)
+    _save_opts = ['model', 'options']
     # commands the running tutorial provides, also accepted as `tutorial X`:
     # people reach for `tutorial hint` as readily as `hint`
     _tutorial_step_cmds = ('hint', 'solution', 'next', 'repeat', 'back', 'skip')
@@ -3204,29 +4176,51 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         """Names 'tutorial' accepts: every tutorial, its aliases, and the
         housekeeping sub-commands."""
         return (tutorials.names(include_aliases=True) +
-                ['stop', 'list', 'status', 'help'] +
+                ['stop', 'list', 'status', 'index', 'help'] +
                 list(self._tutorial_step_cmds))
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
-                   'gauge','lorentz', 'brs', 'cms', 'flavor', 'language']
+                   'gauge','lorentz', 'brs', 'cms', 'flavor', 'language',
+                   'crossing', 'precision']
     _import_formats = ['model_v4', 'model', 'proc_v4', 'command', 'banner']
-    _install_opts = ['Delphes', 'MadAnalysis4', 'ExRootAnalysis',
+    _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
-                     'looptools', 'MadSTR', 'RunningCoupling', 'madspace']
+                     'looptools', 'cuttools_iregi', 'MadSTR', 'RunningCoupling',
+                     'madspace', 'pyamplicol', 'madtrex']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
-                              'hepmc','mg5amc_py8_interface','ninja','oneloop','MadAnalysis5',
+                              'hepmc','ninja','oneloop','MadAnalysis5',
                               'yoda', 'rivet', 'fastjet', 'fjcontrib', 'contur', 'cmake', 'eMELA',
                               'cudacpp', 'hepmc3', 'pythia8_hepmc3', 'DMTCP']
 
     _install_opts.extend(_advanced_install_opts)
 
+    # the only outputs with templates projecting bound-state constituents
+    _onia_formats = ['madevent', 'standalone_fortran']
     _v4_export_formats = ['madevent', 'standalone_fortran', 'standalone_msP','standalone_msF',
                           'matrix', 'standalone_rw']
     _export_formats = _v4_export_formats + ['aloha',
                                             'matchbox_cpp', 'matchbox', 'mg7_v5', 'mg7',
                                             'standalone']
+    # Formats that CONSUME the recorded crossings (merge_crossing='record')
+    # instead of needing them expanded back into separate subprocesses: they fold
+    # each crossed subprocess into its base directory and reach it through the
+    # base's crossing-aware SMATRIX/sigmaKin at an extended flavor index.
+    # 'standalone_fortran' is the fortran standalone and 'standalone' the
+    # madmatrix one (the names flipped in PR #64 -- test membership EXACTLY,
+    # 'standalone' is a prefix of every other standalone_* format).
+    # 'standalone_rw' is the reweight's own output: its python driver resolves a
+    # crossed event through the generated GET_PDG_FOR_FLAVOR entry points (see
+    # reweight_interface.ReweightInterface.build_cross_resolve).
+    # 'mg7' (madspace) writes one subprocesses.json entry per crossed
+    # subprocess, pointing at its base's library with the extended flavor id
+    # (export_mg7.OneProcessExporterMG7.get_crossed_subprocess_info); the
+    # crossings it cannot represent, and those recorded inside a decay chain,
+    # are expanded (the exporter's crossing_foldable /
+    # folds_decay_chain_crossings).
+    _crossing_folding_formats = ('standalone_fortran', 'standalone',
+                                 'standalone_rw', 'mg7')
     _set_options = ['group_subprocesses',
                     'ignore_six_quark_processes',
                     'stdout_level',
@@ -3236,10 +4230,12 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'complex_mass_scheme',
                     'include_lepton_initiated_processes',
                     'gauge',
+                    'auto_gauge',
                     'EWscheme',
                     'max_npoint_for_channel',
                     'max_t_for_channel',
                     'zerowidth_tchannel',
+                    'zerowidth_external',
                     'default_unset_couplings',
                     'nlo_mixed_expansion',
                     'color_basis',
@@ -3247,7 +4243,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'merge_quartic_vertices'
                     ]
     _valid_color_basis = ['auto', 'trace', 'ddm']
-    _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only']
+    _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only',
+                        'LIxtree']
     _valid_sqso_types = ['==','<=','=','>']
     _valid_amp_so_types = ['=','<=', '==', '>']
     _OLP_supported = ['MadLoop', 'GoSam']
@@ -3256,16 +4253,15 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     # The three options categories are treated on a different footage when a
     # set/save configuration occur. current value are kept in self.options
     options_configuration = {'pythia8_path': './HEPTools/pythia8',
-                       'hwpp_path': './herwigPP',
+                       'herwig7_path': './herwig7',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
-                       'madanalysis_path': './MadAnalysis',
+                       'hepmc3_path': './HEPTools/hepmc3',
                        'madanalysis5_path':'./HEPTools/madanalysis5/madanalysis5',
                        'pythia-pgs_path':'./pythia-pgs',
                        'rivet_path' : './HEPTools/rivet',
                        'yoda_path' : './HEPTools/yoda',
                        'contur_path' : './HEPTools/contur',
-                       'td_path':'./td',
                        'delphes_path':'./Delphes',
                        'exrootanalysis_path':'./ExRootAnalysis',
                        'syscalc_path': './SysCalc',
@@ -3299,10 +4295,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'lhapdf_py2': None,
                        'lhapdf_py3': None,
                        'cluster_temp_path':None,
-                       'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'cluster_local_path': None,
                        'cvmfs_lhapdf_path': misc.CVMFS_LHAPDF_PATH,
-                       'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'OLP': 'MadLoop',
                        'cluster_nb_retry':1,
                        'cluster_retry_wait':300,
@@ -3313,6 +4307,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'acknowledged_v3.1_syntax': True,
                        'auto_update':7,
                        'heptools_install_dir': './HEPTools',
+                       'plain': False,
                        }
 
     options_madgraph= {'group_subprocesses': 'Auto',
@@ -3321,13 +4316,15 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'complex_mass_scheme': False,
                           'include_lepton_initiated_processes': False,
                           'gauge':'unitary',
+                          'auto_gauge': True,
                           'stdout_level':None,
                           'loop_optimized_output':True,
                           'loop_color_flows':False,
-                          'max_npoint_for_channel': 0, # 0 means automaticly adapted
+                          'max_npoint_for_channel': 0, # 0 means automatically adapted
                           'default_unset_couplings': 99, # 99 means infinity
                           'max_t_for_channel': 99, # means no restrictions
                           'zerowidth_tchannel': True,
+                          'zerowidth_external': True,
                           'nlo_mixed_expansion':True,
                           'apply_flavor_grouping': True,
                           'color_basis': 'auto',
@@ -3348,10 +4345,30 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _curr_model = None  #base_objects.Model()
     _curr_amps = diagram_generation.AmplitudeList()
     _curr_proc_defs = base_objects.ProcessDefinitionList()
+    # processes whose matrix elements come from AmpliCol, see split_backend_line
+    _curr_amplicol_defs = base_objects.ProcessDefinitionList()
     _curr_matrix_elements = helas_objects.HelasMultiProcess()
     _curr_helas_model = None
     _curr_exporter = None
     _second_exporter = None
+    # UI flag --use_crossing; see do_add. DEFAULT ON: the crossed subprocesses
+    # are recorded on their base at generation and reached through its
+    # crossing-aware matrix element (the fortran/C++ standalone and mg7 fold
+    # them, madevent expands them and shares the base matrix element through
+    # its router; any other output expands them), and --use_crossing=False
+    # gives the complete un-crossed output.
+    _use_crossing = True
+    # Sticky: an explicit --use_crossing=False on ANY line of the current
+    # process definition keeps it off, even if a later line asks for it.
+    _use_crossing_off = False
+    # Same flag on the output line, for the output being written (see do_output).
+    # do_output sets it on every call, so it can never leak to the next output.
+    _output_use_crossing = True
+    # _crossing_fold_signature() of the output _curr_matrix_elements were built
+    # for (None: not built by _export). Recorded crossings come out folded or
+    # expanded depending on it, so an output asking for the other answer must
+    # not reuse them; see generate_matrix_elements in _export.
+    _curr_me_folds_crossings = None
     _done_export = False
     _curr_decaymodel = None
 
@@ -3361,7 +4378,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     def preloop(self):
         """Initializing before starting the main loop"""
 
-        self.prompt = MG7_PROMPT
+        self.prompt = MG7_PROMPT_TEXT if self.options.get('plain') else MG7_PROMPT
         if madgraph.ReadWrite: # prevent on read-only disk
             self.do_install('update --mode=mg5_start')
 
@@ -3405,8 +4422,31 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
             
         # Variables to store state information
         self._multiparticles = {}
+        self._boundstates = {}
+        self._fockstates = []
         self.options = {}
         self._generate_info = "" # store the first generated process
+        # automatic choice of the gauge (apply_automatic_gauge):
+        # the user typed 'set gauge X' -> the gauge is theirs
+        self._explicit_gauge = False
+        # the FD gauge in use was picked by apply_automatic_gauge
+        self._auto_gauge_active = False
+        # the 'generate'/'add process' lines of the session with the process
+        # number each was given, to generate them again in another gauge
+        self._process_lines = []
+        # the amplitudes of each process line, (start, end) in _curr_amps, and
+        # the lines generated in the FD gauge by the automatic choice
+        self._line_ranges = []
+        self._auto_fd_lines = set()
+        self._auto_gauge_replay = False
+        # models the FD gauge was given up on (import_ufo could not check
+        # their goldstone content): not tried again
+        self._fd_unverified_models = set()
+        # per-process gauge: the model of each other gauge, and the gauge of
+        # the line being generated ('--gauge=X' of generate/add process)
+        self._gauge_models = {}
+        self._line_gauge = ''
+        self._auto_gauge_freeze_logged = False
         self._model_v4_path = None
         self._export_dir = None
         self._export_format = 'madevent'
@@ -3434,6 +4474,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         self._done_export=False
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
 
         self._v4_export_formats = ['madevent', 'standalone_fortran','standalone_msP','standalone_msF',
@@ -3456,9 +4497,96 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         
         return value
 
+    def pop_use_crossing_flag(self, args):
+        """Remove --use_crossing[=True|False] from `args` and return its value.
+
+        Returns None when the flag is absent, so the caller keeps its own
+        default. Shared by do_add (where the flag decides whether the crossed
+        subprocesses are folded onto their base at generation) and by do_output
+        (where it decides whether this output keeps them folded).
+
+        '--no_crossing' (the MG5 3.x flag) is accepted as a deprecated alias of
+        '--use_crossing=False': left in `args` it would reach check_add as a
+        particle name. It means the complete output, never the 3.x behaviour
+        of dropping the crossed subprocesses (see do_add).
+        """
+        value = None
+        for arg in args[:]:
+            if arg == '--no_crossing':
+                logger.warning('--no_crossing is deprecated: use '
+                               '--use_crossing=False instead (treated as such)')
+                value = False
+            elif arg == '--use_crossing':
+                value = True
+            elif arg.startswith('--use_crossing='):
+                given = arg.split('=', 1)[1]
+                if given.lower() in ['true', 't', '1', 'yes', 'on']:
+                    value = True
+                elif given.lower() in ['false', 'f', '0', 'no', 'off']:
+                    value = False
+                else:
+                    raise self.InvalidCmd('--use_crossing expects True or '
+                                          'False, got \'%s\'' % given)
+            else:
+                continue
+            args.remove(arg)
+        return value
+
+    def extract_diagram_filter(self, args, option='--diagram_filter'):
+        """Remove the --diagram_filter[=PLUGINNAME] option from args and return
+        the filter to use: False if absent, True for the filter of
+        PLUGIN/user_filter.py (bare option, historical behaviour) or the
+        function new_diagram_filter of the plugin PLUGINNAME. The option name
+        can be changed (--tree_diagram_filter, --loop_diagram_filter)."""
+
+        diagram_filter = False
+        for arg in list(args):
+            if arg == option:
+                diagram_filter = True
+                args.remove(arg)
+            elif arg.startswith(option + '='):
+                args.remove(arg)
+                try:
+                    diagram_filter = misc.plugin_diagram_filter(
+                                      self.plugin_path, arg.split('=', 1)[1])
+                except MadGraph5Error as error:
+                    raise self.InvalidCmd(str(error))
+        return diagram_filter
+
     # Add a process to the existing multiprocess definition
     # Generate a new amplitude
-    def do_add(self, line):
+    def add_backend_process(self, procdef, backend, warning_duplicate=True):
+        """Keep a process whose matrix elements come from another backend than
+        MG diagrams. It is exported by the mg7 output, without diagrams."""
+
+        if procdef.get('decay_chains') or procdef.get('required_s_channels') or \
+                procdef.get('forbidden_onsh_s_channels') or \
+                procdef.get('forbidden_s_channels') or \
+                procdef.get('forbidden_particles') or procdef.get('orders') or \
+                procdef.get('squared_orders') or procdef.get('is_decay_chain') or \
+                any(leg.get('polarization') for leg in procdef.get('legs')) or \
+                procdef.get_ninitial() != 2:
+            raise self.InvalidCmd(
+                "[%s] supports 2 -> n processes without decay chains, coupling "
+                "orders, s-channel or particle restrictions and polarizations."
+                % backend)
+        initial = [amp.get_ninitial() for amp in self._curr_amps]
+        if initial and initial[0] != procdef.get_ninitial():
+            raise self.InvalidCmd(
+                "Can not mix processes with different number of initial states.")
+        if warning_duplicate:
+            check_amplicol_overlap(
+                procdef, list(self._curr_amplicol_defs),
+                lambda other: other.nice_string(prefix=False))
+            check_amplicol_overlap(
+                procdef, [amp.get('process') for amp in self._curr_amps],
+                lambda other: other.nice_string())
+        self._curr_amplicol_defs.append(procdef)
+        self._done_export = False
+        logger.info("Process %s is computed by %s at output time" %
+                    (procdef.nice_string(prefix=False), backend))
+
+    def do_add(self, line, counter=0):
         """Generate an amplitude for a given process and add to
         existing amplitudes
         or merge two model
@@ -3475,7 +4603,13 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # a value matching neither makes the next output redo all of them
         self._quartic_order = 'mixed'
 
+        # as received, to run it again in another gauge (apply_automatic_gauge)
+        raw_line = line
         args = self.split_arg(line)
+
+        line_gauge, args = self.split_gauge_option(args)
+        if line_gauge is not None:
+            return self.add_process_in_gauge(raw_line, args, line_gauge, counter)
 
         
         warning_duplicate = True
@@ -3483,28 +4617,81 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
             warning_duplicate = False
             args.remove('--no_warning=duplicate')
 
-        diagram_filter = False
-        if '--diagram_filter' in args:
-            diagram_filter = True
-            args.remove('--diagram_filter')
+        diagram_filter = self.extract_diagram_filter(args)
         
         standalone_only = False
         if '--standalone' in args:
             standalone_only = True
-            merge_crossing = True
-            args.remove('--standalone')            
+            args.remove('--standalone')
 
-        merge_crossing = False
-        if '--no_crossing' in args:
-            merge_crossing = True
-            args.remove('--no_crossing') 
+        # Crossing symmetry is ON by default. --use_crossing (bare) or
+        # --use_crossing=True asks for it, --use_crossing=False turns it off for
+        # the whole definition. --standalone does not affect it.
+        use_crossing = self.pop_use_crossing_flag(args)
+        # The flag has to be popped HERE, before check_add sees `args`, but it
+        # is resolved into self._use_crossing further down -- after check_add.
+        # See the comment there.
 
         # Check the validity of the arguments
         self.check_add(args)
 
         if args[0] == 'model':
             return self.add_model(args[1:])
-        
+
+        # Resolve what THIS line means for the definition as a whole. (With the
+        # default off, an `and` accumulator could never be lifted -- False and
+        # True is False -- so an explicit --use_crossing=True was silently
+        # ignored.) Instead: an explicit True switches it on, an explicit False
+        # switches it off for good (a multi-line definition must not end up
+        # half crossed), and a line with no flag inherits what the definition
+        # already chose -- which starts on.
+        #
+        # AFTER check_add, and that is load-bearing: with no model imported yet
+        # check_generate imports the Standard Model for the user, and do_import
+        # calls clean_process(), which resets exactly these attributes. Setting
+        # them earlier left the LOCAL merge_crossing below enabled while
+        # self._use_crossing went back to False -- so the crossings were folded
+        # onto their base at generation and the exporter, which reads the
+        # attribute, then wrote no decoder for them. `p p > j j
+        # --use_crossing=True` came out as 3 subprocess directories covering 15
+        # of its 65 flavor columns, with the other 50 unreachable and an
+        # extended FLAV_IDX returning 0 in silence -- but only in a script that
+        # had not imported a model of its own first, which is why it survived.
+        if use_crossing is False:
+            self._use_crossing_off = True
+        elif use_crossing is True:
+            self._use_crossing = True
+        if getattr(self, '_use_crossing_off', False):
+            self._use_crossing = False
+        use_crossing = self._use_crossing
+        # Crossed subprocesses are ALWAYS kept (merge_crossing=False, the
+        # historical 3.x default): use_crossing only decides later, at the
+        # exporter stage, whether they collapse into a single extended-FLAV_IDX
+        # matrix element (fortran standalone) or are written out as their own
+        # matrix elements (every other output, incl. madevent). The old
+        # merge_crossing=True / --no_crossing path DROPS the crossed processes
+        # from the amplitude list ("do not generate diagrams"), silently losing
+        # those partonic contributions, so it must not be reachable from
+        # --use_crossing: use_crossing=False has to remain a complete output.
+        #
+        # merge_crossing='record' keeps the partonic contribution: the crossed
+        # process is recorded on the base (not generated on its own) and reached
+        # through the base's crossing-aware SMATRIX. This is the DEFAULT for a
+        # crossing-enabled generation -> the standalone output is one directory
+        # per base ME, and the grouped backends (madevent/mg7) reconstruct the
+        # crossed subprocesses at output time (see do_output). A process that
+        # breaks crossing (s-channel constraint, decay chain, loop, ...) falls
+        # back to full generation per-process inside generate_matrix_elements.
+        # --use_crossing=False keeps the complete unmerged generation, and
+        # MG_MERGE_CROSSING=off is a debug escape hatch to the same.
+        merge_crossing = 'record' if use_crossing else False
+        if os.environ.get('MG_MERGE_CROSSING') == 'off':
+            merge_crossing = False
+
+        # self._use_crossing is the definition-wide choice resolved just above
+        # (and reset per definition by clean_process/do_generate); the exporter
+        # reads that attribute, `merge_crossing` here only drives generation.
+
         # special option for 1->N to avoid generation of kinematically forbidden
         #decay.
         if args[-1].startswith('--optimize'):
@@ -3516,6 +4703,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         if args[0] == 'process':
             # Rejoin line
             line = ' '.join(args[1:])
+            first_amp = len(self._curr_amps)
 
             # the '{...}' syntax selects particle polarizations -> remember it so
             # the polarization paper is cited at output time
@@ -3529,6 +4717,11 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
             # Reset Helas matrix elements
             self._curr_matrix_elements = helas_objects.HelasMultiProcess()
 
+            # the process number: the rank of the line in the history (counter
+            # corrects it when the line is run again in another gauge)
+            nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
+            nb_proc += counter
+
             # Extract process from process definition
             if ',' in line:
                 if ']' in line or '[' in line:
@@ -3539,8 +4732,8 @@ This implies that with decay chains:
   > Loop corrections cannot be considered."""
                     raise MadGraph5Error(error_msg)
                 else:
-                    nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
                     myprocdef, line = self.extract_decay_chain_process(line, proc_number=nb_proc)
+                    set_process_gauge(myprocdef, self.process_gauge_tag())
                     # Redundant with above, but not completely as in the future
                     # one might think of allowing the core process to be 
                     # corrected by loops.
@@ -3557,8 +4750,20 @@ This implies that with decay chains:
                         raise MadGraph5Error("Decay processes cannot include negative"+\
                                                 " coupling orders constraints.")                    
             else:
-                nb_proc = len([l for l in self.history if l.startswith(('generate','add process'))])
+                line, backend = split_backend_line(line)
                 myprocdef = self.extract_process(line, proc_number=nb_proc)
+                set_process_gauge(myprocdef, self.process_gauge_tag())
+                if backend:
+                    self.add_backend_process(myprocdef, backend, warning_duplicate)
+                    self._line_ranges.append((first_amp, first_amp, False))
+                    # kept for the replay of an automatic change of gauge
+                    if not self._auto_gauge_replay:
+                        self._process_lines.append((raw_line, nb_proc))
+                        self.apply_automatic_gauge()
+                    return
+                # 'left [treextree] right': hidden order selecting the
+                # interference, minimal orders of the right-hand process
+                diagram_generation.prepare_interference_process(myprocdef)
 
             
 
@@ -3570,18 +4775,36 @@ This implies that with decay chains:
             if self._curr_amps and self._curr_amps[0].get_ninitial() != \
                myprocdef.get_ninitial() and not standalone_only:
                 raise self.InvalidCmd("Can not mix processes with different number of initial states.")
+            # [amplicol] processes are always 2 -> n
+            if self._curr_amplicol_defs and myprocdef.get_ninitial() != 2 \
+                    and not standalone_only:
+                raise self.InvalidCmd("Can not mix processes with different number of initial states.")
+
+            # A polarised line next to an FD gauge chosen automatically: the
+            # automatic choice keeps it in the unitary gauge (amplitudes_
+            # prefer_fd_gauge), so the session leaves the FD gauge now, before
+            # the diagrams of the line are generated, and the line is run
+            # again there (its braces then validated in that gauge)
+            if self.polarised_line_leaves_automatic_fd(myprocdef):
+                self.leave_automatic_fd_gauge(raw_line.split(None, 1)[-1])
+                return MadGraphCmd.do_add(self, raw_line, counter=counter)
 
             # Check the propagator-only polarization braces: {G},{H},{Q},{W}
             # and {S} name a piece of a propagator numerator and are valid on
             # an internal line only.
             self.validate_propagator_polarization(myprocdef)
+            # and a polarised propagator of a massive vector exists only in
+            # some gauges (all braces in the unitary and axial gauges, some in
+            # FD, none in Feynman): checked in the gauge of this line
+            self.validate_polarized_propagator_gauge(
+                            myprocdef, aloha_gauge=self.line_aloha_gauge())
 
             #Check that we do not have situation like z{T} z
             if not myprocdef.check_polarization():
                 logger.critical("Not Supported syntax:\n"+ \
-                                "   Syntax like p p  > Z{T} Z are ambiguious" +\
+                                "   Syntax like p p  > Z{T} Z are ambiguous" +\
                                 "   Behavior is not guarantee to be stable within future version of the code." + \
-                                "   Furthemore, you can have issue with symmetry factor (we do not guarantee [differential] cross-section."+\
+                                "   Furthermore, you can have issue with symmetry factor (we do not guarantee [differential] cross-section."+\
                                 "   We suggest you to abort this computation")
                 ans = self.ask('Do you want to continue', 'no',['yes','no'])
                 if ans == 'no':
@@ -3593,7 +4816,7 @@ This implies that with decay chains:
             self._curr_proc_defs.append(myprocdef)
 
             try:
-                # Negative coupling order contraints can be given on at most one
+                # Negative coupling order constraints can be given on at most one
                 # coupling order (and either in squared orders or orders, not both)
                 if len([1 for val in list(myprocdef.get('orders').values())+\
                               list(myprocdef.get('squared_orders').values()) if val<0])>1:
@@ -3621,15 +4844,27 @@ This implies that with decay chains:
                                "ignore_six_quark_processes" in self.options \
                                else []
     
-                myproc = diagram_generation.MultiProcess(myprocdef,
+                try:
+                    myproc = diagram_generation.MultiProcess(myprocdef,
                                          collect_mirror_procs = collect_mirror_procs,
                                          ignore_six_quark_processes = ignore_six_quark_processes,
                                          optimize=optimize, diagram_filter=diagram_filter,
                                          merge_crossing=merge_crossing)
+                    amplitudes = myproc.get('amplitudes')
+                except diagram_generation.NoDiagramException:
+                    if not myprocdef.get_interference_mode():
+                        raise
+                    raise self.InvalidCmd(
+                        "No subprocess of '%s' has diagrams on both sides of "
+                        "[treextree]: there is no interference to compute." %
+                        myprocdef.nice_string(prefix=False))
     
-    
-                for amp in myproc.get('amplitudes'):
+                for amp in amplitudes:
                     if amp not in self._curr_amps:
+                        if warning_duplicate and self._curr_amplicol_defs:
+                            check_amplicol_overlap(
+                                amp.get('process'), list(self._curr_amplicol_defs),
+                                lambda other: other.nice_string(prefix=False))
                         self._curr_amps.append(amp)
                     elif warning_duplicate:
                         raise self.InvalidCmd( "Duplicate process %s found. Please check your processes." % \
@@ -3647,16 +4882,544 @@ This implies that with decay chains:
             ndiags = sum([amp.get_number_of_diagrams() for \
                               amp in myproc.get('amplitudes')])
             
-            logger.info("%i processes with %i diagrams generated in %0.3f s" % \
-                  (nprocs, ndiags, (cpu_time2 - cpu_time1)))
+            logger.info("%i processes with %i diagrams generated in %0.3f s%s" % \
+                  (nprocs, ndiags, (cpu_time2 - cpu_time1),
+                   self._crossing_summary(myproc.get('amplitudes'))))
             ndiags = sum([amp.get_number_of_diagrams() for \
                               amp in self._curr_amps])
-            logger.info("Total: %i processes with %i diagrams" % \
-                  (len(self._curr_amps), ndiags))        
+            logger.info("Total: %i processes with %i diagrams%s" % \
+                  (len(self._curr_amps), ndiags,
+                   self._crossing_summary(self._curr_amps)))
+
+            self._line_ranges.append((first_amp, len(self._curr_amps),
+                    amplitudes_prefer_fd_gauge(self._curr_amps[first_amp:])))
+            if not self._auto_gauge_replay:
+                self._process_lines.append((raw_line, nb_proc))
+                self.apply_automatic_gauge()
+
+    # ------------------------------------------------------------------
+    # a gauge per process: 'generate|add process ... --gauge=FD'
+    # ------------------------------------------------------------------
+    @staticmethod
+    def split_gauge_option(args):
+        """(gauge, args without it) for a '--gauge=X' among args, (None,
+        args) without one."""
+
+        options = [a for a in args if a.startswith('--gauge=')]
+        if not options:
+            return None, args
+        if len(options) > 1:
+            raise madgraph.InvalidCmd('Only one --gauge= option per process line.')
+        gauge = options[0].split('=', 1)[1]
+        if gauge not in ['unitary', 'FD']:
+            raise madgraph.InvalidCmd('--gauge= takes unitary or FD, not %s' % gauge)
+        return gauge, [a for a in args if a != options[0]]
+
+    def add_process_in_gauge(self, raw_line, args, gauge, counter):
+        """'generate|add process ... --gauge=X': the process generated with
+        the model of that gauge (model_for_gauge), its process definitions
+        tagged with it.  The line keeps the option in the history."""
+
+        if len(args) < 2 or args[0] != 'process':
+            raise self.InvalidCmd('--gauge= is an option of generate and add process.')
+        if any('[' in a for a in args):
+            raise self.InvalidCmd('--gauge= is for tree-level processes without '
+                                  '[...] (loop, NLO, [amplicol], interference).')
+        nb_proc = len([l for l in self.history
+                       if l.startswith(('generate', 'add process'))]) + counter
+        line = ' '.join(args)
+        if gauge == self.options['gauge']:
+            # the line itself is recorded (with its option) below, once
+            with misc.TMP_variable(self, '_auto_gauge_replay', True), \
+                 misc.TMP_variable(self, '_line_gauge', gauge):
+                MadGraphCmd.do_add(self, line, counter=counter)
+        else:
+            if self.postponed_export_pending():
+                raise self.InvalidCmd('An output is waiting for its model '
+                                      '(--postpone_model): --gauge= is not '
+                                      'available until it is written.')
+            model = self.model_for_gauge(gauge)
+            nb_amps = len(self._curr_amps)
+            with misc.TMP_variable(self, '_curr_model', model), \
+                 misc.TMP_variable(self, '_line_gauge', gauge), \
+                 misc.TMP_variable(self, '_auto_gauge_replay', True):
+                MadGraphCmd.do_add(self, line, counter=counter)
+            new = self._curr_amps[nb_amps:]
+            # a polarised propagator is checked against the FD gauge by
+            # do_add itself (validate_polarized_propagator_gauge, in the gauge
+            # of the line), before any diagram is generated
+            if gauge == 'FD' and (_fd_gauge_excluded(new) or
+                                  self.has_onium_amplitude(new)):
+                del self._curr_amps[nb_amps:]
+                self._curr_proc_defs.pop(-1)
+                self._line_ranges.pop(-1)
+                raise self.InvalidCmd('--gauge=FD: the FD gauge is not available '
+                    'for this process (spin above one or bound state).')
+        if not self._auto_gauge_replay:
+            self._process_lines.append((raw_line, nb_proc))
+            self.apply_automatic_gauge()
+
+    def model_for_gauge(self, gauge):
+        """The session model in another gauge, for the processes of a line
+        with '--gauge=X'.  Imported once per session model (import model and
+        set gauge make a new one)."""
+
+        if gauge == self.options['gauge']:
+            return self._curr_model
+        if self.model_edited_since_import():
+            raise self.InvalidCmd('The model was changed after its import (add '
+                'model, customize_model): it cannot be imported again in another '
+                'gauge. Use "set gauge %s" before the import instead.' % gauge)
+        base = self._curr_model
+        cached = self._gauge_models.get(gauge)
+        if cached and cached[0] is base:
+            return cached[1]
+        if gauge == 'FD' and 1 not in base.get('gauge'):
+            raise self.InvalidCmd('The model %s has no FD gauge (no goldstone '
+                                  'bosons).' % base.get('name'))
+        if isinstance(base, loop_base_objects.LoopModel) and \
+                    base.get('perturbation_couplings') not in [[], ['QCD']]:
+            raise self.InvalidCmd('--gauge= is not available for the model %s.'
+                                  % base.get('name'))
+        with aloha.gauge_scope(gauge):
+            twin = import_ufo.import_model(
+                base.get('modelpath+restriction'),
+                prefix=(aloha.aloha_prefix == 'mdl_'),
+                complex_mass_scheme=self.options['complex_mass_scheme'],
+                options={'apply_flavor_grouping':
+                         self.options.get('apply_flavor_grouping', True)})
+        twin._curr_gauge = gauge
+        if 'modelname' not in self.history.get('full_model_line'):
+            twin.pass_particles_name_in_mg_default()
+        if gauge == 'FD' and not self.fd_gauge_supported_by_model(twin):
+            raise self.InvalidCmd('The goldstone content of the model %s could '
+                'not be checked against the FD gauge: --gauge=FD is refused.'
+                % base.get('name'))
+        conflicts = import_ufo.gauge_model_conflicts(base, twin)
+        if conflicts:
+            raise self.InvalidCmd('The model %s defines %s differently in the two '
+                'gauges: one output cannot hold both. Use "set gauge %s".'
+                % (base.get('name'), ', '.join(conflicts[:5]), gauge))
+        self._gauge_models[gauge] = (base, twin)
+        return twin
+
+    # the outputs that write each subprocess in its own gauge
+    MIXED_GAUGE_FORMATS = ['madevent', 'standalone_fortran', 'standalone', 'mg7']
+
+    def single_gauge_for_output(self, args):
+        """Lines put in the FD gauge by the automatic choice, for an output
+        that writes every matrix element into one library: the whole output
+        in the FD gauge when every process can be (it is correct for all of
+        them), else in the unitary gauge."""
+
+        if not self._auto_fd_lines or (
+                self._export_format in self.MIXED_GAUGE_FORMATS and
+                '--postpone_model' not in args):
+            return
+        capable = all(self.line_can_be_fd(k)
+                      for k in range(len(self._process_lines)))
+        gauge = 'FD' if capable else 'unitary'
+        logger.info('The output %s has one gauge for all its processes: the %s '
+                    'gauge (the automatic choice had put only some of them in '
+                    'the FD gauge).' % (self._export_format, gauge))
+        export_format, export_dir = self._export_format, self._export_dir
+        self.switch_gauge_and_regenerate(gauge)
+        self._export_format, self._export_dir = export_format, export_dir
+
+    def line_can_be_fd(self, k):
+        """Whether the processes of the k-th process line can be generated
+        in the FD gauge (diagrams, no exclusion, no polarised leg)."""
+
+        start, end, wants = self._line_ranges[k]
+        amps = self._curr_amps[start:end]
+        if not amps or _fd_gauge_excluded(amps):
+            return False
+        return not any(leg.get('polarization')
+                       for amp in iter_tree_amplitudes(amps)
+                       for leg in amp.get('process').get('legs'))
+
+    def refuse_unsupported_mixed_gauge(self, args):
+        """Refuse an output of processes in two gauges in a format that
+        writes them into one library."""
+
+        if len(self.gauges_in_use()) < 2:
+            return
+        if '--postpone_model' in args or aloha.npwave != [0]:
+            raise self.InvalidCmd('--postpone_model and P-wave onia are not '
+                                  'available for processes in two gauges.')
+        if self._export_format not in self.MIXED_GAUGE_FORMATS:
+            raise self.InvalidCmd('The processes are in two gauges (--gauge=), '
+                'which the output %s does not support (only %s). Use "set gauge" '
+                'for the whole output.' % (self._export_format,
+                ', '.join(self.MIXED_GAUGE_FORMATS) or 'none yet'))
+
+    def set_exporter_gauges(self, exporter):
+        """Tell the exporter of an output in two gauges which HELAS library
+        each gauge gets (gauge_libraries; the writers follow in _export)."""
+
+        other = sorted(self.gauges_in_use() - set([self.options['gauge']]))
+        if not other:
+            return
+        if self._me_curr_exporter:
+            raise self.InvalidCmd('--me_exporter= is not available for processes '
+                                  'in two gauges.')
+        exporter.gauge_libraries = dict((gauge, ('_' + gauge.upper(),
+                                                 '_' + gauge.lower()))
+                                        for gauge in other)
+
+    def writer_in_gauge(self, matrix_element):
+        """(helas writer, aloha.gauge_scope) of a matrix element or group of
+        an output in two gauges; the session writer and no scope otherwise."""
+
+        if getattr(self._curr_exporter, 'gauge_writers', None) or \
+                        getattr(self._curr_exporter, 'gauge_models', None):
+            return self._curr_exporter.export_processes_in_gauge(
+                                    matrix_element, self._curr_helas_model)
+        return self._curr_helas_model, aloha.gauge_scope('')
+
+    def lorentz_of_other_gauges(self, wanted_lorentz):
+        """For an output in two gauges, the Lorentz structures (with their
+        tags) used by each gauge, '' for the session gauge; {} otherwise.
+        The P1N routines of the helicity recycling (added to wanted_lorentz
+        by finalize) go with the gauge of the structure they derive from."""
+
+        if not getattr(self._curr_exporter, 'gauge_libraries', None):
+            return {}
+        by_gauge = {'': []}
+        for me in self._curr_matrix_elements.get_matrix_elements():
+            gauge = me.get('processes')[0].get_gauge()
+            by_gauge.setdefault(gauge, []).extend(me.get_used_lorentz())
+        recycled = [l for l in wanted_lorentz if 'P1N' in l[1]]
+        for gauge, lorentz in by_gauge.items():
+            names = set((name, tuple(t for t in flag if t != 'P1N'))
+                        for name, flag, out in lorentz)
+            lorentz.extend(l for l in recycled if (l[0], tuple(
+                t for t in l[1] if t != 'P1N')) in names)
+            by_gauge[gauge] = misc.make_unique(lorentz)
+        return by_gauge
+
+    def model_edited_since_import(self):
+        """Whether the session model was changed after 'import model' (add
+        model, customize_model): importing it again, in another gauge, would
+        lose that."""
+
+        return any(line.startswith(('add model', 'customize_model'))
+                   for line in self.history)
+
+    def gauges_in_use(self):
+        """The gauges of the generated processes, the session one included."""
+
+        gauges = set()
+        for amp in iter_tree_amplitudes(self._curr_amps):
+            gauges.add(amp.get('process').get_gauge(self.options['gauge']))
+        return gauges
+
+    # ------------------------------------------------------------------
+    # automatic choice of the gauge
+    # ------------------------------------------------------------------
+    # The gauge is a property of the loaded model: the goldstone bosons are
+    # kept, dropped or merged into the vectors when the model is imported, so
+    # 'set gauge' reloads the model and drops the amplitudes.  The automatic
+    # choice below therefore runs once the diagrams of a process are known
+    # (the criterion reads them) and, when it wants another gauge, reloads the
+    # model and generates the processes of the session again -- the loop of
+    # 'check gauge', which evaluates one process in several gauges that way.
+
+    # the lines written into the history (the proc_card of the output) when
+    # the FD gauge is chosen automatically
+    AUTO_GAUGE_COMMENT = '# FD gauge chosen automatically: massive vector ' \
+                         'propagators on non-conserved currents (help set gauge)'
+    AUTO_GAUGE_LINE = 'set gauge FD'
+
+    def apply_automatic_gauge(self):
+        """Choose the gauge of each process line (fd_gauge_criterion on its
+        diagrams): the whole output in the FD gauge when every line needs
+        it ('set gauge FD' in the proc_card), else the unitary gauge with the
+        lines that need it generated with --gauge=FD, as if the user had
+        typed it.  Unless the user chose ('set gauge X', '--gauge=X' on a
+        line) or turned it off ('set auto_gauge False').  Runs at the end of
+        every 'generate' and 'add process'."""
+
+        if self._auto_gauge_replay or not self.automatic_gauge_in_charge():
+            return
+        current = self.options['gauge']
+        target = self.automatic_gauge_target()
+        if target == (current, self._auto_fd_lines):
+            return
+        if self.postponed_export_pending():
+            # an 'output --postpone_model' is waiting for its model: the
+            # processes written in it fix the gauge until the model is written
+            if not self._auto_gauge_freeze_logged:
+                logger.info('An output is waiting for its model (--postpone_model): '
+                            'the gauge of the processes written in it is kept.')
+                self._auto_gauge_freeze_logged = True
+            return
+        gauge, tags = target
+        if gauge == 'FD' or tags:
+            model = self._curr_model
+            if 1 not in model.get('gauge') or \
+                              model.get('name') in self._fd_unverified_models:
+                # no goldstone boson in the model: no FD gauge to switch to
+                return
+        if gauge == 'FD':
+            logger.info('The processes have a massive vector propagator ending on '
+                        'a current that is not conserved: generating them in the '
+                        'FD gauge (Feynman-diagram gauge, arXiv:2203.10440, '
+                        '2405.01256), whose precision does not degrade with the '
+                        'energy as the unitary gauge does. Type "set gauge '
+                        'unitary" (before "generate") to keep the unitary gauge.',
+                        '$MG:BOLD')
+        elif tags - self._auto_fd_lines:
+            names = [self._process_lines[k][0].split(None, 1)[-1]
+                     for k in sorted(tags - self._auto_fd_lines)]
+            logger.info('%s: a massive vector propagator ends on a current that '
+                        'is not conserved, generated in the FD gauge '
+                        '(arXiv:2203.10440, 2405.01256), the other processes in '
+                        'the unitary gauge. Add "--gauge=unitary" to the line, or '
+                        'type "set gauge unitary", to keep the unitary gauge.'
+                        % '; '.join(names), '$MG:BOLD')
+        elif current == 'FD' or self._auto_fd_lines:
+            logger.info('Back to the unitary gauge for the processes that do not '
+                        'need the FD gauge (chosen automatically).')
+        self.switch_gauge_and_regenerate(gauge, tags)
+
+    def automatic_gauge_in_charge(self):
+        """Whether the automatic choice may change the gauge of the session
+        (apply_automatic_gauge): it is on, the user has not chosen a gauge,
+        the model was not edited after its import (a reload into another
+        gauge would lose that), and the gauge in use is the unitary one or
+        an FD gauge it chose itself (Feynman/axial are imposed by the model
+        or by a loop interface, an FD gauge from the configuration file is
+        the user's).  An output waiting for its model is checked apart, see
+        postponed_export_pending."""
+
+        if not self.options.get('auto_gauge', True) or self._explicit_gauge \
+                or self.model_edited_since_import():
+            return False
+        current = self.options['gauge']
+        if current != 'FD':
+            # an FD gauge we had chosen is gone (a model without the Feynman
+            # gauge was imported since): nothing of ours is in use
+            self._auto_gauge_active = False
+        return current == 'unitary' or \
+               (current == 'FD' and self._auto_gauge_active)
+
+    def polarised_line_leaves_automatic_fd(self, procdef):
+        """Whether the session leaves an FD gauge chosen automatically for
+        the process definition of a new line: it has a polarised leg (its
+        decays included), which automatic_gauge_target never puts in the FD
+        gauge, and nothing else holds the FD gauge (the user's '--gauge=FD'
+        on the line, an output waiting for its model)."""
+
+        def polarised(one):
+            return any(leg.get('polarization') for leg in one.get('legs')) or \
+                   any(polarised(decay) for decay in one.get('decay_chains'))
+
+        return not self._auto_gauge_replay and not self._line_gauge and \
+               self.options['gauge'] == 'FD' and \
+               self.automatic_gauge_in_charge() and \
+               not self.postponed_export_pending() and polarised(procdef)
+
+    def leave_automatic_fd_gauge(self, line):
+        """Back to the unitary gauge from an FD gauge chosen automatically
+        for the lines of the session, which keep it with '--gauge=FD' (as
+        apply_automatic_gauge does once a line not wanting it is added),
+        before the polarised process `line` is generated."""
+
+        lines = self._process_lines
+        tags = set(k for k, (_, _, wants) in enumerate(self._line_ranges)
+                   if wants) if len(self._line_ranges) == len(lines) else set()
+        logger.info('%s: polarised, generated in the unitary gauge%s.'
+                    % (line, ', the other processes in the FD gauge chosen '
+                       'automatically for them (--gauge=FD)' if tags else ''),
+                    '$MG:BOLD')
+        self.switch_gauge_and_regenerate('unitary', tags)
+
+    def automatic_gauge_target(self):
+        """(session gauge, lines to generate with --gauge=FD) the automatic
+        choice wants: see apply_automatic_gauge."""
+
+        lines = self._process_lines
+        if not lines or len(self._line_ranges) != len(lines) or \
+                                                   self.has_onium_amplitude():
+            return 'unitary', set()
+        explicit = [self.split_gauge_option(self.split_arg(line))[0]
+                    for line, nb in lines]
+        wants = [gauge == 'FD' if gauge else self._line_ranges[k][2]
+                 for k, gauge in enumerate(explicit)]
+        if all(wants) and not any(explicit):
+            return 'FD', set()
+        return 'unitary', set(k for k, want in enumerate(wants)
+                              if want and not explicit[k])
+
+    def automatic_fd_gauge_in_use(self):
+        """Whether an FD gauge in use was picked by apply_automatic_gauge: for
+        the whole output (a later 'import model' may have left the FD gauge
+        on its own), or for some process lines."""
+
+        return (self._auto_gauge_active and self.options['gauge'] == 'FD') or \
+               bool(self._auto_fd_lines)
+
+    def postponed_export_pending(self):
+        """Whether an 'output --postpone_model' is waiting for its model
+        (finalize keeps what that needs in previous_lorentz).  The processes
+        written in that directory are in the gauge of the session, and the
+        model written at the end has to match them: the gauge is fixed until
+        then (apply_automatic_gauge, refuse_automatic_gauge_change)."""
+
+        return hasattr(self, 'previous_lorentz')
+
+    def refuse_automatic_gauge_change(self, why):
+        """The FD gauge chosen automatically has to step aside (`why` says
+        for what): refused while an 'output --postpone_model' holds processes
+        written in it, since the model written at the end would not match
+        them."""
+
+        if self.automatic_fd_gauge_in_use() and self.postponed_export_pending():
+            raise self.InvalidCmd(
+                'The output waiting for its model (--postpone_model) was '
+                'written in the FD gauge, chosen automatically for a purely '
+                'electroweak process, and %s needs the unitary gauge: start '
+                'again with "set gauge unitary" before the first "generate".'
+                % why)
+
+    def fd_gauge_supported_by_model(self, model):
+        """Whether import_ufo could check the goldstone content of the model
+        (loaded in FD gauge) against what the FD gauge assumes."""
+
+        return import_ufo.FD_GAUGE_UNVERIFIED not in model.get('limitations')
+
+    def switch_gauge_and_regenerate(self, gauge, tags=frozenset()):
+        """Generate the processes of the session again with the session model
+        in `gauge` and the lines `tags` (indices in _process_lines) with
+        --gauge=FD, as 'set gauge' and the 'generate'/'add process' lines of
+        the user would do.
+
+        An FD gauge the model cannot be trusted in (no goldstone boson, or a
+        goldstone phase convention that nothing fixes: import_ufo tags the
+        model) is given up on the spot: the unitary gauge everywhere, and the
+        switch is not tried again for that model."""
+
+        tags = set(tags)
+        lines = list(self._process_lines)
+        generate_info = self._generate_info
+        if gauge == 'unitary' and tags:
+            try:
+                self.model_for_gauge('FD')
+            except self.InvalidCmd:
+                tags = set()
+        if self.options['gauge'] != gauge:
+            self.do_set('gauge %s' % gauge, log=False)
+        if gauge == 'FD' and \
+                        not self.fd_gauge_supported_by_model(self._curr_model):
+            logger.info('The FD gauge is not chosen automatically for the model '
+                        '%s: its goldstone content could not be checked against '
+                        'the convention of the FD gauge (see the warning above). '
+                        'Type "set gauge FD" to use it anyway.',
+                        self._curr_model.get('name'))
+            self._fd_unverified_models.add(self._curr_model.get('name'))
+            gauge = 'unitary'
+            self.do_set('gauge unitary', log=False)
+        # a reload of the model cleans the process state (clean_process)
+        old_tags = self._auto_fd_lines if self._curr_amps else set()
+        self._process_lines = lines
+        self._auto_gauge_active = (gauge == 'FD')
+        self._auto_fd_lines = tags
+        self.record_automatic_gauge(gauge, tags)
+        if self._curr_amps and tags == old_tags:
+            # the model was not reloaded (already in that gauge) and every
+            # line is in its gauge already: the amplitudes are still there
+            return
+
+        if self._curr_amps and tags - old_tags == set([len(lines) - 1]) and \
+                                    old_tags <= tags:
+            # only the last line changes, to the FD gauge: generate it alone
+            start = self._line_ranges[-1][0]
+            del self._curr_amps[start:]
+            del self._line_ranges[-1]
+            self._curr_proc_defs.pop(-1)
+            redo = lines[-1:]
+            first = len(lines) - 1
+        else:
+            self._curr_amps = diagram_generation.AmplitudeList()
+            self._curr_proc_defs = base_objects.ProcessDefinitionList()
+            self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
+            self._line_ranges = []
+            redo = lines
+            first = 0
+        self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+        self._done_export = False
+
+        # the process lines again, with the process numbers they had
+        aloha.npwave = [0]
+        nb_history = len([l for l in self.history
+                            if l.startswith(('generate', 'add process'))])
+        with misc.TMP_variable(self, '_auto_gauge_replay', True):
+            for k, (line, nb_proc) in enumerate(redo, first):
+                if k in tags:
+                    line = '%s --gauge=FD' % line
+                MadGraphCmd.do_add(self, line, counter=nb_proc - nb_history)
+        self._process_lines = lines
+        self._generate_info = generate_info
+
+    # appended to the process lines of the history (the proc_card) that the
+    # automatic choice generates in the FD gauge
+    AUTO_LINE_OPTION = ' --gauge=FD'
+    AUTO_LINE_COMMENT = '# --gauge=FD chosen automatically for the processes ' \
+                        'that need it (help set auto_gauge)'
+
+    def record_automatic_gauge(self, gauge, tags=frozenset()):
+        """Write the automatic choice into the history, i.e. into the
+        proc_card of the output, as the user would have typed it: 'set gauge
+        FD' ahead of the process lines for the whole output, '--gauge=FD' on
+        the lines `tags`.  The card then reproduces the same code explicitly,
+        and the tools reading it (reweighting) run in the gauge of the
+        sample.  Dropped again when the choice goes back to unitary."""
+
+        for line in [self.AUTO_GAUGE_COMMENT, self.AUTO_GAUGE_LINE,
+                     self.AUTO_LINE_COMMENT]:
+            while line in self.history:
+                self.history.remove(line)
+        start = self.history_process_start()
+        k = 0
+        for index in range(start, len(self.history)):
+            line = self.history[index]
+            if not line.startswith(('generate', 'add process')):
+                continue
+            if k < len(self._process_lines) and \
+                    self.split_gauge_option(self.split_arg(
+                                    self._process_lines[k][0]))[0] is None:
+                if line.endswith(self.AUTO_LINE_OPTION):
+                    line = line[:-len(self.AUTO_LINE_OPTION)]
+                if k in tags:
+                    line += self.AUTO_LINE_OPTION
+                self.history[index] = line
+            k += 1
+        if gauge == 'FD':
+            self.history.insert(start, self.AUTO_GAUGE_LINE)
+            self.history.insert(start, self.AUTO_GAUGE_COMMENT)
+        elif tags:
+            self.history.insert(start, self.AUTO_LINE_COMMENT)
+
+    def history_process_start(self):
+        """Index in the history of the first process line of the current
+        generation: the last 'generate', else the first 'add process'."""
+
+        for index in range(len(self.history) - 1, -1, -1):
+            if self.history[index].startswith('generate'):
+                return index
+        for index, line in enumerate(self.history):
+            if line.startswith('add process'):
+                return index
+        return len(self.history)
                 
     def add_model(self, args):
         """merge two model"""
 
+        if '--fock_states_only' in args:
+            args.remove('--fock_states_only')
+            return self.add_fock_states(args[0])
+        
         model_path = args[0]
 
         # adding the taudecay library -> cite the TauDecay paper at output time
@@ -3702,7 +5465,7 @@ This implies that with decay chains:
                     return
         
         #Need to do the work!!!        
-        import models.usermod as usermod
+        import madgraph.models.usermod as usermod
         try:
             base_model = copy.deepcopy(usermod.UFOModel(self._curr_model.get('modelpath')))
         except Exception:
@@ -3732,6 +5495,52 @@ This implies that with decay chains:
                               printcmd=False, precmd=True, postcmd=True)         
         
     
+    def add_fock_states(self, model_name):
+        """Import only the Fock states (bound states) of another UFO model on top
+        of the current one, without merging particles or interactions, e.g.
+            import model heft
+            add model sm_onia --fock_states_only
+        A Fock state is only kept if its constituents exist in the current model."""
+
+        import madgraph.models.import_ufo as import_ufo
+        import madgraph.models.import_boundstates as ufo_boundstates
+
+        if os.path.isdir(model_name):
+            path = model_name
+        else:
+            try:
+                path = import_ufo.find_ufo_path(model_name)
+            except import_ufo.UFOImportError:
+                # accept a restricted name such as sm_onia-c_mass
+                path = import_ufo.find_ufo_path(model_name.rsplit('-', 1)[0])
+
+        fockstates = ufo_boundstates.get_boundstates_ufo(path)
+        if not fockstates:
+            raise self.InvalidCmd('Model %s does not define any Fock state.' % model_name)
+
+        known = set(f.get('name') for f in self._fockstates)
+        particles = self._curr_model['particles']
+        added, skipped = [], []
+        for fock in fockstates:
+            if not all(particles.get_copy(p) for p in fock.get('particles')):
+                skipped.append(fock.get('name'))
+            elif fock.get('name') not in known:
+                self._fockstates.append(fock)
+                known.add(fock.get('name'))
+                added.append(fock.get('name'))
+
+        if skipped:
+            logger.warning('%i Fock states of %s skipped: their constituents are not in the current model.'
+                           % (len(skipped), model_name))
+        if not added:
+            logger.info('No new Fock state added from %s.' % model_name)
+            return
+
+        logger.info('Added %i Fock states from %s.' % (len(added), model_name))
+        logger.warning('The model contains non-relativistic bound states. Please consider citing arXiv:2510.26773 and arXiv:2607.26739 if relevant.')
+        if not self._boundstates:
+            self.add_default_boundstates()
+
     def do_convert(self, line):
         """convert model FULLPATH
            modify (in place) the UFO model to make it compatible with both python2 and python3
@@ -3753,34 +5562,9 @@ This implies that with decay chains:
             answer = self.ask('model conversion to support both py2 and py3 are done in place.\n They are NO guarantee of success.\n It can make the model to stop working under PY2 as well.\n Do you want to proceed?',
                      'y', ['y','n'])
             if answer != 'y':
-                return 
-        
-        #Object_library 
-        text = open(pjoin(model_dir, 'object_library.py')).read()
-        #(.iteritems() -> .items())
-        text = text.replace('.iteritems()', '.items()')
-        # raise UFOError, "" -> raise UFOError()
-        text = re.sub('raise (\\w+)\\s*,\\s*["\']([^"]+)["\']',
-                      r'raise \g<1>("\g<2>")', text)
-        text = open(pjoin(model_dir, 'object_library.py'),'w').write(text)
-        
-        # write_param_card.dat -> copy the one of the sm model
-        files.cp(pjoin(MG5DIR, 'models','sm','write_param_card.py'),
-                 pjoin(model_dir, 'write_param_card.py'))
-        
-        # __init__.py check that function_library and object_library are imported
-        text = open(pjoin(model_dir, '__init__.py')).read()
-        mod = False
-        # import function_library 
-        # from . import function_library
-        to_check =  ['object_library', 'function_library']
-        for lib in to_check:
-            if 'import %s' % lib in text:
-                continue
-            mod = True
-            text = "import %s \n" % lib + text  
-        if mod:
-            open(pjoin(model_dir, '__init__.py'),'w').write(text)
+                return
+
+        import_ufo.convert_model_py2_to_py3(model_dir, force=True)
         
         
         
@@ -3969,6 +5753,18 @@ This implies that with decay chains:
         elif args[0] == 'processes':
             for amp in self._curr_amps:
                 print(amp.nice_string_processes())
+                # the crossed processes folded into it (--use_crossing) are no
+                # amplitude of their own, but are part of the generation
+                last = None
+                for base, xproc in self._recorded_crossings([amp]):
+                    if base is not last:
+                        print('  Crossed processes evaluated through %s:'
+                              % base.get('process').base_string())
+                        last = base
+                    print(xproc.nice_string(4))
+            for procdef in self._curr_amplicol_defs:
+                print('Process: %s [amplicol] (no diagrams)'
+                      % procdef.nice_string(prefix=False).strip())
 
         elif args[0] == 'diagrams_text':
             dirpath, no_open, merge = self._parse_display_output_args(args[1:])
@@ -3988,11 +5784,36 @@ This implies that with decay chains:
             for key in self._multiparticles:
                 print(self.multiparticle_string(key))
 
+        elif args[0] == 'fockstates':
+            print('Current model contains %i Fock states:'%(len(self._fockstates)))
+            print(' '.join([fockstate.get('name') for fockstate in self._fockstates]))
+
+        elif args[0] == 'boundstates':
+            print('Bound state labels:')
+            for key in self._boundstates:
+                print(self.boundstate_string(key))
+
         elif args[0] == 'coupling_order':
-            hierarchy = list(self._curr_model['order_hierarchy'].items())
+            hierarchy = [(order, weight) for order, weight in
+                         self._curr_model['order_hierarchy'].items()
+                         if order != base_objects.INTERFERENCE_ORDER]
             hierarchy.sort(key=operator.itemgetter(1))
-            for order in hierarchy:
-                print(' %s : weight = %s' % order)
+            # an order declared by the model can have no interaction left
+            # carrying it -- a restriction card typically removes all of them.
+            # Such an order is inert: it can not constrain a process.
+            active = self._curr_model.get('coupling_orders')
+            inert = []
+            for order, weight in hierarchy:
+                if order in active:
+                    print(' %s : weight = %s' % (order, weight))
+                else:
+                    print(' %s : weight = %s [inert]' % (order, weight))
+                    inert.append(order)
+            if inert:
+                print(' [inert]: no interaction of this model carries that'
+                      ' order (the restriction card likely removed them all),')
+                print('          so it can not be used to constrain a process.')
+
         elif args[0] == 'couplings' and len(args) == 1:
             if self._model_v4_path:
                 print('No couplings information available in V4 model')
@@ -4026,7 +5847,7 @@ This implies that with decay chains:
 
             try:
                 ufomodel = ufomodels.load_model(self._curr_model.get('name'))
-                print('Note that this is the UFO informations.')
+                print('Note that this is the UFO information.')
                 print(' "display couplings" present the actual definition')
                 print('prints the current states of mode')
                 print(eval('ufomodel.couplings.%s.nice_string()'%args[1]))
@@ -4243,6 +6064,14 @@ This implies that with decay chains:
                                     get('particle_dict')[part_id].get_name() \
                                     for part_id in self._multiparticles[key]]))
 
+    def boundstate_string(self, key):
+        """Returns a nicely formatted string for the bound state"""
+
+        if key in self._boundstates:
+            return f"{key} = {' '.join(self._boundstates[key])}"
+        else:
+            return f"Boundstate {key} is not defined."
+
     def do_tutorial(self, line):
         """Activate/deactivate the tutorial mode."""
 
@@ -4267,9 +6096,9 @@ This implies that with decay chains:
                             "one, or 'tutorial help'.")
                 return
             session.suppress_next = True
-            return getattr(self, 'do_%s' % name)('')
+            return getattr(self, 'do_%s' % name)(' '.join(args[1:]))
 
-        if name in ('list', 'status', 'help'):
+        if name in ('list', 'status', 'index', 'help'):
             # informational: never (re)start anything, and never let the
             # postcmd hook mistake this for the tutorial's intro step
             session = getattr(self, '_tutorial_session', None)
@@ -4279,6 +6108,8 @@ This implies that with decay chains:
                 self.print_tutorial_list()
             elif name == 'status':
                 self.print_tutorial_status()
+            elif name == 'index':
+                self.print_tutorial_index()
             else:
                 self.print_tutorial_help()
             return
@@ -4323,12 +6154,16 @@ This implies that with decay chains:
         logger.info("   repeat      print the current step again")
         logger.info("   back        go back one step")
         logger.info("   skip        move on without doing this step")
+        logger.info("   skip N      go to step N, running the commands that "
+                    "lead there")
         logger.info("Anytime:", '$MG:BOLD')
         logger.info("   tutorial            choose a tutorial from the menu")
         logger.info("   tutorial NAME       start that one (switches if one is "
                     "already running)")
         logger.info("   tutorial list       show the tutorials on offer")
         logger.info("   tutorial status     how far you have got")
+        logger.info("   tutorial index      the steps of the running tutorial, "
+                    "numbered")
         logger.info("   tutorial help       this message")
         logger.info("   tutorial stop       leave tutorial mode")
         logger.info("A tutorial never blocks a command: anything you type runs "
@@ -4383,7 +6218,17 @@ This implies that with decay chains:
                     (session.tutorial.name, done, total), '$MG:BOLD')
         for i, step in enumerate(session.tutorial.steps):
             mark = '>' if i == session.index else ('x' if i in session.seen else ' ')
-            logger.info("  %s %2d. %s" % (mark, i + 1, step.title or step.key))
+            note = '   (answers a command in place)' if step.sticky else ''
+            logger.info("  %s %2d. %s%s"
+                        % (mark, i + 1, step.title or step.key, note))
+
+    def print_tutorial_index(self):
+        """`tutorial index`: the numbered steps, and how to go to one."""
+
+        self.print_tutorial_status()
+        if getattr(self, '_tutorial_session', None) is not None:
+            logger.info("'>' is where you are, 'x' what you have seen. "
+                        "'tutorial skip N' goes to step N.")
 
     def ask_tutorial(self, default=None):
         """Menu shown by a bare 'tutorial'.  Returns a name.
@@ -4632,6 +6477,10 @@ This implies that with decay chains:
         if args[0] in ['stability', 'profile']:
             options['npoints'] = int(args[1])
             args = args[:1]+args[2:]
+        # For the precision check the floating point modes come first
+        if args[0] == 'precision':
+            options['precision_mode'] = args[1].split(':')
+            args = args[:1]+args[2:]
         MLoptions={}
         i=-1
         CMS_options = {}
@@ -4643,11 +6492,23 @@ This implies that with decay chains:
                 if option[1] == 'None':
                     options['events'] = None
                 elif not os.path.exists(option[1]):
-                    raise Exception('path %s does not exists' % option[1])
+                    raise Exception('path %s does not exist' % option[1])
                 else:
                     options['events'] = option[1]
             elif option[0] == '--skip_evt':
                 options['skip_evt']=int(option[1])
+            elif option[0] == '--nb_event':
+                try:
+                    options['nb_event'] = int(float(option[1]))
+                except ValueError:
+                    raise self.InvalidCmd("The value of the 'nb_event' option"+\
+                                       " must be a number, not %s."%option[1])
+            elif option[0] == '--backend':
+                if option[1] not in process_checks.PRECISION_BACKENDS:
+                    raise self.InvalidCmd("The value of the 'backend' option must be"
+                            " one of %s, not %s." % ('|'.join(process_checks.PRECISION_BACKENDS),
+                                                     option[1]))
+                options['backend'] = option[1]
             elif option[0]=='--split_orders':
                 options['split_orders']=int(option[1])
             elif option[0]=='--helicity':
@@ -4686,6 +6547,36 @@ This implies that with decay chains:
                 options['report'] = option[1].lower()
             elif option[0]=='--seed':
                 options['seed'] = int(option[1])
+            elif option[0]=='--exporter':
+                # Backend for 'check crossing': which standalone output to build
+                # and run the crossing self-check against.
+                if option[1] not in process_checks.CROSSING_EXPORTERS:
+                    raise self.InvalidCmd(
+                        "The '--exporter' option for 'check crossing' must be "
+                        "one of %s, not '%s'." % (
+                            ', '.join(process_checks.CROSSING_EXPORTERS),
+                            option[1]))
+                options['exporter'] = option[1]
+            elif option[0]=='--simd':
+                # Vectorisation width for 'check crossing --exporter=
+                # standalone' (madmatrix; ignored by the fortran backend).
+                if option[1] not in process_checks.MG7_SIMD_CHOICES:
+                    raise self.InvalidCmd(
+                        "The '--simd' option for 'check crossing' must be one "
+                        "of %s, not '%s'." % (
+                            ', '.join(process_checks.MG7_SIMD_CHOICES),
+                            option[1]))
+                options['simd'] = option[1]
+            elif option[0]=='--precision':
+                # Floating-point precision for 'check crossing --exporter=
+                # standalone' (madmatrix; ignored by the fortran backend).
+                if option[1] not in process_checks.MG7_PRECISION_CHOICES:
+                    raise self.InvalidCmd(
+                        "The '--precision' option for 'check crossing' must be "
+                        "one of %s, not '%s'." % (
+                            ', '.join(process_checks.MG7_PRECISION_CHOICES),
+                            option[1]))
+                options['precision'] = option[1]
             elif option[0]=='--name':
                 if '.' in option[1]:
                     raise self.InvalidCmd("Do not specify the extension in the"+
@@ -4730,7 +6621,7 @@ This implies that with decay chains:
                 except:
                     tweaks = [value]
                 if not all(isinstance(t,str) for t in tweaks):
-                    raise self.InvalidCmd("Invalid specificaiton of tweaks: %s"%value)
+                    raise self.InvalidCmd("Invalid specification of tweaks: %s"%value)
                 CMS_options['tweak'] = []
                 for tweakID, tweakset in enumerate(tweaks):
                     specs =re.match(r'^(?P<tweakset>.*)\((?P<name>.*)\)$', tweakset)
@@ -4924,7 +6815,17 @@ This implies that with decay chains:
         proc_line = " ".join(args[1:])
         # Don't try to extract the process if just re-analyzing a saved run
         if not (args[0]=='cms' and options['analyze']!='None'):
-            myprocdef = self.extract_process(proc_line)
+            myprocdef = self.extract_check_process(proc_line, validate_gauge=False)
+            if myprocdef and myprocdef.get_interference_mode():
+                raise self.InvalidCmd(
+                    "The check command does not support %s interference "
+                    "processes: generate the process and use 'output "
+                    "standalone_fortran', whose check executable prints the "
+                    "interference and, as cross-checks, the squared loop and "
+                    "tree amplitudes (complete only with HelicityFilterLevel "
+                    "0 in MadLoopParams.dat, the filter being set on the "
+                    "interference)."
+                    % myprocdef.get_interference_mode())
 
             # Check that we have something
             if not myprocdef:
@@ -4938,6 +6839,24 @@ This implies that with decay chains:
         # If the test has to write out on disk, it should do so at the location
         # specified below where the user must be sure to have writing access.
         output_path = os.getcwd()
+
+        # The crossing check does not use the analytic MatrixElementEvaluator /
+        # gauge / CMS machinery: it regenerates the process to fortran
+        # standalone twice (crossing on and off) and compares the compiled
+        # matrix elements. Route it here and return early.
+        if args[0] == 'crossing':
+            options['proc_line'] = proc_line
+            options.setdefault('exporter', 'standalone_fortran')
+            crossing_result = process_checks.check_crossing(
+                myprocdef, param_card=param_card, options=options, cmd=self)
+            text = ('Crossing symmetry check (crossing on vs off, exporter=%s):'
+                    '\n' % options['exporter'])
+            text += process_checks.output_crossing(crossing_result) + '\n'
+            logging.getLogger('madgraph.check_cmd').info(text)
+            process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+            if not options['reuse']:
+                process_checks.clean_up(self._mgme_dir)
+            return
 
         if args[0] in ['timing','stability', 'profile'] and not \
                                         myprocdef.get('perturbation_couplings'):
@@ -4994,6 +6913,9 @@ This implies that with decay chains:
         cms_results = []
         flavor_result = []
         language_result = []
+        precision_result = []
+        # check modes for which no process could be checked at all
+        not_checked = []
 
         if "_cuttools_dir" in dir(self):
             CT_dir = self._cuttools_dir
@@ -5088,57 +7010,78 @@ This implies that with decay chains:
                         myprocdef.get('perturbation_couplings') in [[],['QCD']]:
 
             line = " ".join(args[1:])
-            myprocdef = self.extract_process(line)
-            if gauge == 'unitary':
-                myprocdef_unit = myprocdef
-            else:
+            decay_chain = bool(myprocdef.get('decay_chains'))
+            # a decay chain is compared in the unitary, axial and FD gauges at
+            # a point where its decayed particles are on shell (process_checks.
+            # check_unitary_feynman_decay_chains); each gauge validates its
+            # own polarised propagators
+            # the gauge of the session is restored whatever happens: an
+            # extraction or the check may refuse the process after the
+            # gauge was switched
+            try:
                 self.do_set('gauge unitary', log=False)
-                myprocdef_unit = self.extract_process(line)
-            if gauge == 'feynman':
-                myprocdef_feyn = myprocdef
-            else:
-                self.do_set('gauge Feynman', log=False)
-                myprocdef_feyn = self.extract_process(line)
-            if myprocdef.get('perturbation_couplings') == [] and \
-               (args[0] == 'full' or (args[0] == 'gauge')) and \
-               0 in self._curr_model.get('gauge'):
-                if gauge == 'axial':
-                    myprocdef_axial = myprocdef
+                myprocdef_unit = self.extract_check_process(line)
+                if decay_chain:
+                    logger_check.info("Decay chain: the Feynman gauge is not "
+                        "compared (the chain fixes the intermediate vector, "
+                        "without its Goldstone boson); the decayed particles are "
+                        "put on shell, with a width of 1e-9 M.")
+                    myprocdef_feyn = None
                 else:
+                    self.do_set('gauge Feynman', log=False)
+                    myprocdef_feyn = self.extract_check_process(line)
+                if myprocdef.get('perturbation_couplings') == [] and \
+                   (args[0] == 'full' or (args[0] == 'gauge')) and \
+                   0 in self._curr_model.get('gauge'):
                     self.do_set('gauge axial', log=False)
-                    myprocdef_axial = self.extract_process(line)
-            else:
-                myprocdef_axial = None
-            if myprocdef.get('perturbation_couplings') == [] and \
-               (args[0] == 'full' or (args[0] == 'gauge')) and \
-               1 in self._curr_model.get('gauge'):
-                if gauge == 'FD':
-                    myprocdef_fd = myprocdef
+                    myprocdef_axial = self.extract_check_process(line)
                 else:
+                    myprocdef_axial = None
+                if myprocdef.get('perturbation_couplings') == [] and \
+                   (args[0] == 'full' or (args[0] == 'gauge')) and \
+                   1 in self._curr_model.get('gauge'):
                     self.do_set('gauge FD', log=False)
-                    myprocdef_fd = self.extract_process(line)
-            else:
-                myprocdef_fd = None
+                    try:
+                        myprocdef_fd = self.extract_check_process(line)
+                    except self.InvalidCmd as error:
+                        # e.g. a unitary-only propagator piece ({G}, {H}, ...)
+                        logger_check.info("Not compared in the FD gauge: %s" % error)
+                        myprocdef_fd = None
+                else:
+                    myprocdef_fd = None
 
-            nb_part_unit = len(myprocdef_unit.get('model').get('particles'))
-            nb_part_feyn = len(myprocdef_feyn.get('model').get('particles'))
-            if nb_part_feyn == nb_part_unit:
-                logger_check.error('No Goldstone present for this check!!')
-            gauge_result_no_brs = process_checks.check_unitary_feynman(
-                                                myprocdef_unit, myprocdef_feyn,
-                                                myprocdef_axial,
-                                                myprocdef_fd,
-                                                param_card = param_card,
-                                                options=options,
-                                                cuttools=CT_dir,
-                                                tir=TIR_dir,
-                                                reuse = options['reuse'],
-                                                output_path = output_path,
-                                                cmd = self)
-            
-            # restore previous settings
-            self.do_set('gauge %s' % gauge, log=False)
-            nb_processes += len(gauge_result_no_brs)            
+                if myprocdef_feyn is not None:
+                    nb_part_unit = len(myprocdef_unit.get('model').get('particles'))
+                    nb_part_feyn = len(myprocdef_feyn.get('model').get('particles'))
+                    if nb_part_feyn == nb_part_unit:
+                        logger_check.error('No Goldstone present for this check!!')
+                # tree level: the external wavefunctions of output
+                # --axial_gauge=True (reference momenta), in the unitary
+                # gauge; not for a decay chain, compared on its own path
+                if myprocdef.get('perturbation_couplings') == [] and \
+                                                        not decay_chain:
+                    myprocdef_ref = myprocdef_unit
+                else:
+                    myprocdef_ref = None
+                gauge_result_no_brs = process_checks.check_unitary_feynman(
+                                                    myprocdef_unit, myprocdef_feyn,
+                                                    myprocdef_axial,
+                                                    myprocdef_fd,
+                                                    param_card = param_card,
+                                                    options=options,
+                                                    cuttools=CT_dir,
+                                                    tir=TIR_dir,
+                                                    reuse = options['reuse'],
+                                                    output_path = output_path,
+                                                    cmd = self,
+                                                    processes_reference = myprocdef_ref)
+            finally:
+                # restore previous settings
+                self.do_set('gauge %s' % gauge, log=False)
+            # the first entry is the process definition, not a check
+            nb_processes += len(gauge_result_no_brs) - 1
+            if len(gauge_result_no_brs) <= 1:
+                not_checked.append('gauge')
 
         if args[0] in  ['permutation', 'full']:
             comparisons = process_checks.check_processes(myprocdef,
@@ -5151,6 +7094,8 @@ This implies that with decay chains:
                                             output_path = output_path,
                                             options=options)
             nb_processes += len(comparisons[0])
+            if not comparisons[0]:
+                not_checked.append('permutation')
 
         if args[0] in ['lorentz', 'full']:
             myprocdeff = copy.copy(myprocdef)
@@ -5163,6 +7108,8 @@ This implies that with decay chains:
                                           output_path = output_path,
                                           options=options)
             nb_processes += len(lorentz_result)
+            if not lorentz_result:
+                not_checked.append('lorentz')
 
         _merged_pdgs = myprocdef.get('model').get('merged_particles') if myprocdef else {}
         _proc_has_merged = myprocdef and any(
@@ -5183,6 +7130,15 @@ This implies that with decay chains:
                                           cmd = self)
             nb_processes += len(language_result)
 
+        if args[0] in ['precision']:
+            precision_result = process_checks.check_precision(myprocdef,
+                                          options['precision_mode'],
+                                          param_card = param_card,
+                                          options=options,
+                                          cmd = self,
+                                          output_path = output_path)
+            nb_processes += len(precision_result)
+
         if args[0] in  ['brs', 'full']:
             gauge_result = process_checks.check_gauge(myprocdef,
                                           param_card = param_card,
@@ -5193,6 +7149,10 @@ This implies that with decay chains:
                                           output_path = output_path,
                                           options=options)
             nb_processes += len(gauge_result)
+            # in 'full' mode a process without a massless gauge boson simply
+            # has no Ward identity to check
+            if not gauge_result and args[0] == 'brs':
+                not_checked.append('brs')
 
         # The CMS check is typically more complicated and slower than others
         # so we don't run it automatically with 'full'.
@@ -5264,6 +7224,11 @@ This implies that with decay chains:
         cpu_time2 = time.time()
         logger_check.info("%i check performed in %s"% (nb_processes,
                                   misc.format_time(int(cpu_time2 - cpu_time1))))
+        for mode in not_checked:
+            logger_check.warning("check %s: no process could be checked "
+                "(no diagrams%s, or a vanishing matrix element for every "
+                "flavour combination)." % (mode,
+                ', no massless external gauge boson' if mode == 'brs' else ''))
 
         if args[0] in ['cms']:
                 text = "Note that the complex mass scheme test in principle only\n"
@@ -5272,7 +7237,7 @@ This implies that with decay chains:
             if self.options['complex_mass_scheme']:
                 text = "Note that Complex mass scheme gives gauge/lorentz invariant\n"
                 text+= "results only for stable particles in final states.\n\ns"
-            elif ((not args or args[0] != 'language') and
+            elif ((not args or args[0] not in ['language', 'precision']) and
                   not myprocdef.get('perturbation_couplings')):
                 text = "Note That all width have been set to zero for those checks\n\n"
             else:
@@ -5304,16 +7269,26 @@ This implies that with decay chains:
         if language_result:
             text += 'Language comparison results (Fortran SA / C++ SA / MG7 SA / Python):\n'
             text += process_checks.output_language(language_result) + '\n'
+        if precision_result:
+            text += 'Floating point precision results (madmatrix standalone):\n'
+            text += process_checks.output_precision(precision_result) + '\n'
         if gauge_result:
             text += 'Gauge results:\n'
             text += process_checks.output_gauge(gauge_result) + '\n'
-        if gauge_result_no_brs:
-            gauge_labels = ['Unitary', 'Feynman']
+        if len(gauge_result_no_brs) > 1:
+            gauge_labels = ['Unitary']
+            if any('value_feynm' in res for res in gauge_result_no_brs[1:]):
+                gauge_labels.append('Feynman')
             if any('value_axial' in res for res in gauge_result_no_brs[1:]):
                 gauge_labels.append('Axial')
             if any('value_fd' in res for res in gauge_result_no_brs[1:]):
                 gauge_labels.append('FD')
             text += 'Gauge results (switching between %s gauge):\n' % '/'.join(gauge_labels)
+            if any('value_ref' in res for res in gauge_result_no_brs[1:]):
+                # not a gauge of the propagators: the external wavefunctions
+                text += 'Reference: unitary gauge with the reference momenta of ' \
+                        'output --axial_gauge=True (external vectors and spin ' \
+                        'axis of the massive fermions)\n'
             text += process_checks.output_unitary_feynman(gauge_result_no_brs) + '\n'
         if cms_results:
             text += 'Complex mass scheme results (varying width in the off-shell regions):\n'
@@ -5375,9 +7350,15 @@ This implies that with decay chains:
         self._curr_amps = diagram_generation.AmplitudeList()
         # Reset Process definition
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         # Reset Helas matrix elements
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._generate_info = ""
+        # the process lines to replay on an automatic change of gauge
+        self._process_lines = []
+        self._line_ranges = []
+        self._auto_fd_lines = set()
+        self._auto_gauge_freeze_logged = False
         # Reset the diagrams kept for an 'auto' merge_quartic_vertices, they
         # describe the amplitudes just dropped
         self._quartic_order = None
@@ -5385,7 +7366,14 @@ This implies that with decay chains:
         # Reset polarization-citation marker (a new process definition starts)
         self._uses_polarization = False
         self._uses_density_matrix = False
-        self._uses_quarkonia = False
+        # Reset the --use_crossing choice (a new process definition starts).
+        # The output-line one is set by every do_output, but the loop/aMC@NLO
+        # interfaces have their own do_output which does not, so give it the
+        # same lifetime as the generate-line flag rather than leaving the last
+        # output's choice behind.
+        self._use_crossing = True
+        self._use_crossing_off = False
+        self._output_use_crossing = True
         # Reset _done_export, since we have new process
         self._done_export = False
         # Also reset _export_format and _export_dir
@@ -5397,7 +7385,11 @@ This implies that with decay chains:
         """Main commands: Generate an amplitude for a given process"""
 
         self.clean_process()
-        self._generate_info = line
+        self._generate_info = ' '.join(a for a in line.split()
+                                       if not a.startswith('--gauge='))
+
+        # reset P-wave onia counter for new process
+        aloha.npwave = [0]
 
         # Call add process
         args = self.split_arg(line)
@@ -5471,10 +7463,176 @@ This implies that with decay chains:
         for decay in procdef.get('decay_chains'):
             self.validate_propagator_polarization(decay)
 
+    # aloha.unitary_gauge: True is the unitary gauge, 2 the axial gauge, False
+    # the Feynman gauge, 3 the FD gauge. In the unitary and axial gauges (the
+    # axial gauge only changes the propagator of the massless vectors) every
+    # polarised propagator is a piece of the unitary numerator -g + qq/M^2
+    # (aloha/create_aloha.py, get_custom_propa). In the FD gauge only the
+    # pieces of the five-component FD numerator exist (FD_POLARIZED_PROPAGATORS
+    # in aloha/aloha_writers.py); which braces they are is read from the table
+    # brace -> tag of helas_objects (VECTOR_PROPAGATOR_TAGS), not repeated here.
+    ALOHA_GAUGE_NAMES = {True: 'unitary', 2: 'axial', False: 'Feynman', 3: 'FD'}
+    UNITARY_PROPAGATOR_GAUGES = (True, 2)
+    FD_GAUGE = 3
+
+    @staticmethod
+    def polarization_brace(polarization):
+        """The brace content of a leg 'polarization' list as the user types
+        it: 'T' for the transverse pair, the letters of the propagator pieces
+        ('A', 'S', 'G', ...), the helicities otherwise."""
+        if sorted(polarization) == [-1, 1]:
+            return 'T'
+        signs = {1: '+', -1: '-'}
+        return ''.join(signs.get(p) or base_objects.polarization_to_string([p])
+                       for p in polarization)
+
+    def line_aloha_gauge(self):
+        """The aloha.unitary_gauge value of the process line being generated:
+        its '--gauge=X' (self._line_gauge), else the gauge of the session."""
+
+        if self._line_gauge:
+            return {'unitary': True, 'FD': self.FD_GAUGE}[self._line_gauge]
+        return aloha.unitary_gauge
+
+    def process_gauge_tag(self):
+        """The 'gauge' of the process definitions of the line being
+        generated: its '--gauge=X' when that is not the session gauge, ''
+        (the session gauge) otherwise."""
+
+        if self._line_gauge == self.options['gauge']:
+            return ''
+        return self._line_gauge
+
+    def validate_polarized_propagator_gauge(self, procdef, aloha_gauge=None):
+        """Refuse a polarised propagator of a vector in a gauge where it does
+        not exist.
+
+        The braces on a vector that is decayed further -- 'w+{0}', 'w+{T}',
+        'w+{A}', 'w+{S}', 'w+{0S}', 'w+{G}', ... in
+        't > w+{0} b, w+ > ta+ vt' -- replace its propagator by one piece of
+        its numerator, over the pole 1/(q^2 - M^2 + iM Gamma):
+          - unitary and axial gauges: every brace, pieces of -g + qq/M^2;
+          - FD gauge: the pieces of the five-component FD numerator, {0},
+            {T}, {+}, {-}, {A}, {S}, {0S} (aloha_writers.
+            FD_POLARIZED_PROPAGATORS); {G}, {H}, {Q}, {W}, pieces of the
+            unitary numerator only, are refused. For a massless vector the
+            FD longitudinal vector vanishes and only {T}, {+}, {-} (gauge
+            independent) are kept. {A}, {S} and {0S} are allowed with a
+            warning: the FD remainder is not the unitary-gauge one;
+          - Feynman gauge: refused for a massive vector. The propagator is
+            -ig/(q^2 - M^2) and the qq/M^2 piece is carried by separate
+            Goldstone diagrams, so a piece of the propagator is not a
+            polarisation (the output used to crash with 'particle with
+            custom propagator can not have polarization').
+        None of them exists for a massive vector in the complex-mass scheme,
+        whose propagator is not the fixed-width one the pieces decompose (the
+        output used to stop with an ALOHA error).
+        An *external* polarised vector is fine in every gauge (its helicity
+        amplitudes are gauge invariant) and is not touched here.
+        `aloha_gauge` is the aloha.unitary_gauge value of the gauge the
+        process is generated in (line_aloha_gauge), the current one if None.
+
+        Raises InvalidCmd; returns None."""
+
+        if procdef is None:
+            return
+        if aloha_gauge is None:
+            aloha_gauge = aloha.unitary_gauge
+        complex_mass = bool(self.options.get('complex_mass_scheme'))
+        if aloha_gauge in self.UNITARY_PROPAGATOR_GAUGES and not complex_mass:
+            return
+        model = procdef.get('model')
+        if not model:
+            return
+        fd_gauge = aloha_gauge == self.FD_GAUGE
+        gauge = self.ALOHA_GAUGE_NAMES.get(aloha_gauge, str(aloha_gauge))
+
+        decayed_ids = set()
+        for decay in procdef.get('decay_chains'):
+            for leg in decay.get('legs'):
+                if not leg.get('state'):
+                    decayed_ids.update(leg.get('ids'))
+
+        for leg in procdef.get('legs'):
+            if not leg.get('polarization'):
+                continue
+            tag = helas_objects.vector_propagator_tag(leg.get('polarization'))
+            for pdg in decayed_ids.intersection(leg.get('ids')):
+                particle = model.get_particle(pdg)
+                if particle is None or particle.get('spin') != 3:
+                    continue
+                massless = particle.get('mass').lower() == 'zero'
+                values = {'name': particle.get_name(),
+                          'pol': self.polarization_brace(leg.get('polarization')),
+                          'gauge': gauge}
+                if complex_mass and not massless:
+                    raise self.InvalidCmd(
+                        "The polarised propagator of a massive vector "
+                        "('%(name)s{%(pol)s}' decayed further) is not "
+                        "available in the complex-mass scheme: its pieces "
+                        "decompose the fixed-width propagator. Use 'set "
+                        "complex_mass_scheme False'." % values)
+                if aloha_gauge in self.UNITARY_PROPAGATOR_GAUGES:
+                    continue
+                if fd_gauge:
+                    supported = aloha_writers.FD_MASSLESS_POLARIZED_PROPAGATORS \
+                        if massless else aloha_writers.FD_POLARIZED_PROPAGATORS
+                    if tag in supported:
+                        if tag in ('1A', '1S', '1LS'):
+                            logger.warning(
+                                "In the FD gauge '%(name)s{%(pol)s}' uses the "
+                                "remainder of the FD propagator, (q^2-M^2) n n/"
+                                "(n.q)^2 (with q^2-M^2+iM*Gamma for {S}): like "
+                                "{A} and {S} in the unitary gauge it vanishes on "
+                                "shell and is gauge dependent, but it is not the "
+                                "unitary-gauge one, so {A}, {S} and {0S} differ "
+                                "between the two gauges." % values)
+                        continue
+                    if massless:
+                        raise self.InvalidCmd(
+                            "The polarised propagator '%(name)s{%(pol)s}' of a "
+                            "massless vector is not available in the FD gauge: "
+                            "its FD longitudinal polarisation vanishes, so "
+                            "only the transverse pieces {T}, {+}, {-} are "
+                            "kept. Use one of those, or 'set gauge unitary'."
+                            % values)
+                    raise self.InvalidCmd(
+                        "The polarised propagator '%(name)s{%(pol)s}' is a "
+                        "piece of the unitary-gauge numerator -g + qq/M^2 and "
+                        "has no counterpart in the %(gauge)s gauge, whose "
+                        "propagator only splits into the helicity pieces {0}, "
+                        "{T}, {+}, {-} and the remainder {A} (or {S}, {0S}). "
+                        "Use one of those, or 'set gauge unitary'." % values)
+                if massless:
+                    # the massless propagator is the same -g in the Feynman
+                    # and unitary gauges
+                    continue
+                raise self.InvalidCmd(
+                    "The polarised propagator of a massive vector "
+                    "('%(name)s{%(pol)s}' decayed further) is not available "
+                    "in the %(gauge)s gauge: there the qq/M^2 part of the "
+                    "propagator is carried by separate Goldstone-boson "
+                    "diagrams, so a piece of the propagator is not a "
+                    "polarisation. Use 'set gauge unitary' (or the axial or FD "
+                    "gauge), or polarise an external particle instead (that "
+                    "is supported in every gauge)." % values)
+
+        for decay in procdef.get('decay_chains'):
+            self.validate_polarized_propagator_gauge(decay, aloha_gauge)
+
     def extract_process(self, line, proc_number = 0, overall_orders = {},
                         avoid_squared_orders=False):
         """Extract a process definition from a string. Returns
         a ProcessDefinition."""
+
+        # 'left [LIxtree=QCD] right' / 'left [treextree] right': two processes
+        # on one line, see extract_interference_process
+        left, mode, right = split_interference_line(line)
+        if mode:
+            return self.extract_interference_process(left, mode, right,
+                                    proc_number=proc_number,
+                                    overall_orders=overall_orders,
+                                    avoid_squared_orders=avoid_squared_orders)
 
         orig_line = line
         # Check basic validity of the line
@@ -5528,8 +7686,21 @@ This implies that with decay chains:
             line = perturbation_couplings_re.group("proc")+\
                      perturbation_couplings_re.group("rest")
 
+        if LoopOption != 'tree' and self._auto_fd_lines:
+            # FD lines chosen automatically next to a loop process: the loop
+            # outputs have one gauge, the unitary one
+            self.refuse_automatic_gauge_change('a loop process')
+            self.switch_gauge_and_regenerate('unitary')
         if LoopOption != 'tree' and self.options['gauge'] in ['FD','axial']:
-            raise Exception('Gauge %s is only supported/validated for tree level amplitude'% self.options['gauge'])
+            if self.options['gauge'] == 'FD' and self.automatic_fd_gauge_in_use():
+                # ours, for a previous tree-level process: step aside
+                self.refuse_automatic_gauge_change('a loop process')
+                logger.info('Loop process: back to the unitary gauge (the FD '
+                            'gauge, chosen automatically for a previous process, '
+                            'is only supported for tree-level amplitudes).')
+                self.switch_gauge_and_regenerate('unitary')
+            else:
+                raise Exception('Gauge %s is only supported/validated for tree level amplitude'% self.options['gauge'])
 
         ## Now check for orders/squared orders/constrained orders
         order_pattern = re.compile(\
@@ -5559,7 +7730,7 @@ This implies that with decay chains:
                 coupling_alias['aS'] = 'QCD^2=2*'
         
         ## The 'split_orders' (i.e. those for which individual matrix element
-        ## evalutations must be provided for each corresponding order value) are
+        ## evaluations must be provided for each corresponding order value) are
         ## defined from the orders specified in between [] and any order for
         ## which there are squared order constraints.
         split_orders = []
@@ -5623,7 +7794,8 @@ This implies that with decay chains:
         if self.options['default_unset_couplings'] != 99 and \
                                                      (orders or squared_orders): 
                            
-                to_set = [name for name in self._curr_model.get('coupling_orders')
+                to_set = [name for name in base_objects.visible_orders(
+                                       self._curr_model.get('coupling_orders'))
                           if name not in orders and name not in squared_orders]
                 if to_set:
                     logger.info('the following coupling will be allowed up to the maximal value of %s: %s' % 
@@ -5638,9 +7810,9 @@ This implies that with decay chains:
 
         # If the squared orders are defined but not the orders, assume 
         # orders=sq_orders. In case the squared order has a negative value or is
-        # defined with the '>' operato, then this order correspondingly set to 
+        # defined with the '>' operator, then this order correspondingly set to
         # be maximal (99) since there is no way to know, during generation, if 
-        # the amplitude being contstructed will be leading or not.
+        # the amplitude being constructed will be leading or not.
         # This only applies when no perturbation couplings are provided, ie
         # for LO-only generation
         if orders=={} and squared_orders!={} and not perturbation_couplings:
@@ -5694,6 +7866,64 @@ This implies that with decay chains:
 
         args = self.split_arg(line)
 
+        # Bound states are only supported without flavour grouping: the onium
+        # templates project two explicit constituents, which a merged
+        # (flavour-indexed) particle cannot provide.
+        if self._curr_model and self._curr_model.get('merged_particles') and \
+                self.has_fock_state(args):
+            self.unmerge_flavors_for_onia()
+
+        # Extract process
+        boundstates = {}
+        boundstates_keys = [key for key in self._boundstates.keys()]
+        boundstates_keys_lower = [key.lower() for key in boundstates_keys]
+        for index,part_name in enumerate(args):
+            if part_name in boundstates_keys_lower:
+                bound_name = boundstates_keys[boundstates_keys_lower.index(part_name)]
+                boundstates[index] = self._boundstates[bound_name]
+
+        if boundstates:
+            # find all combinations of Fock states
+            for index,key in enumerate(boundstates.keys()):
+                if index==0:
+                    all_combinations = [[(key,b)] for b in boundstates[key]]
+                else:
+                    all_combinations = [c+[(key,b)] for c in all_combinations for b in boundstates[key]]
+            # filter symmetric final states
+            already_generated = []
+            unique_combinations = []
+            for fockstates in all_combinations:
+                state = sorted([fockstate[1] for fockstate in fockstates])
+                if state not in already_generated:
+                    unique_combinations.append(fockstates)
+                    already_generated.append(state)
+
+            # add processes
+            last = len(unique_combinations)-1
+            for idx,fockstates in enumerate(unique_combinations):
+                copy_args = args
+                for index,fockstate in fockstates:
+                    copy_args[index] = fockstate
+                process = f" ".join(["process"]+copy_args)
+                logger.info("INFO: Trying to generate "+process)
+                if not idx==last:
+                    for order in model_orders:
+                        try:
+                            (order_val,order_op) = squared_orders[order]
+                        except KeyError:
+                            try:
+                                order_val = orders[order]
+                                order_op = '='
+                            except KeyError:
+                                continue
+                        process += " "+order+order_op+str(order_val)
+                    # a piece of this very line: not a line of its own for
+                    # the automatic choice of the gauge
+                    with misc.TMP_variable(self, '_auto_gauge_replay', True):
+                        self.do_add(process)
+                else:
+                    args = [arg.lower() for arg in copy_args]
+
         myleglist = base_objects.MultiLegList()
         state = False
 
@@ -5703,6 +7933,8 @@ This implies that with decay chains:
         else:
             upc_with_jet = False
 
+        onium_index = 0
+        aloha.dual_mode = 0
         # Extract process
         for part_name in args:
             if part_name == '>':
@@ -5716,6 +7948,22 @@ This implies that with decay chains:
                 offshell = True
             else:
                 offshell = False
+
+            # check if particle is ONIA
+            is_onium = False
+            for fockstate in self._fockstates:
+                if part_name == fockstate.get('name').lower():
+                    is_onium = True
+                    onium_info = fockstate
+                    break
+                elif part_name.lstrip('-').isdigit() and int(part_name)==fockstate.get('pdg_code'):
+                    is_onium = True
+                    onium_info = fockstate
+                    break
+
+            # check that only final-state particles are ONIA
+            if is_onium and not state:
+                raise self.InvalidCmd("initial particles cannot be onia")
 
             # check if the particle is tagged (!PART!)
             if part_name.startswith('!') and part_name.endswith('!'):
@@ -5767,10 +8015,20 @@ This implies that with decay chains:
                 if rest:
                     raise self.InvalidCmd('A space is required after the "}" symbol to separate particles')
                 ignore  =False
+                # A polarization restriction is a *set* of helicities, so the
+                # same state must not be named twice -- neither literally
+                # ("{++}") nor through a multi-valued label ("{+T}").  Keeping
+                # a duplicate would silently double-count: get_helicity_matrix
+                # runs itertools.product over this raw list while
+                # get_denominator_factor ignores the repetition.  Remember
+                # which label introduced each state so the refusal can name
+                # both spellings.
+                pol_origin = {}
                 for i,p in enumerate(pol):
                     if ignore or p==',':
                         ignore= False
                         continue
+                    pol_nb_before = len(polarization)
                     if p.upper() in ['T']:
                         if spin == 3:
                             polarization += [1,-1]
@@ -5847,7 +8105,33 @@ This implies that with decay chains:
                         polarization.append(p)
                     else:
                         raise self.InvalidCmd('Invalid Polarization')
-                    
+
+                    # 'p' may have been overwritten above, so read the label
+                    # back from the string; 'ignore' tells whether this label
+                    # consumed a second character (the "+2"/"-3" spellings).
+                    # The names below are prefixed: 'state' and 'flavor' are
+                    # live variables of the enclosing leg loop.
+                    pol_label = pol[i:i+2] if ignore else pol[i]
+                    pol_new = polarization[pol_nb_before:]
+                    for pol_state in pol_new:
+                        if pol_state in pol_origin:
+                            raise self.InvalidCmd(
+                              'Invalid polarization "{%(pol)s}": helicity '
+                              '%(dup)s is selected more than once. "%(new)s" '
+                              'selects %(newvals)s, but "%(old)s" already '
+                              'selected %(dup)s. Each helicity may be named at '
+                              'most once inside "{}" (e.g. "{T}" on its own '
+                              'already selects both transverse helicities); '
+                              'drop the redundant label.'
+                              % {'pol': pol,
+                                 'dup': polarization_state_name(pol_state),
+                                 'new': pol_label,
+                                 'old': pol_origin[pol_state],
+                                 'newvals': ' and '.join(
+                                    polarization_state_name(v)
+                                    for v in pol_new)})
+                        pol_origin[pol_state] = pol_label
+
 
             duplicate =1
             if part_name[0].isdigit() and len(part_name) > 1 and not part_name[1].isdigit(): 
@@ -5885,12 +8169,54 @@ This implies that with decay chains:
                             # If not all merged components are in this multiparticle,
                             # record the present ones as a per-leg flavor restriction
                             # so diagram generation only allows those specific flavors.
-                            if not all(pdg in self._multiparticles[part_name]
+                            # Completeness is checked per sign: `u d s c d~`
+                            # holds every Q but only one Qx.
+                            sign = 1 if pid > 0 else -1
+                            if not all(sign * pdg in self._multiparticles[part_name]
                                        for pdg in self._curr_model.merged_particles[abs(merged_pdg)]):
                                 if pid not in flavor:
                                     flavor.append(pid)
                         else:
                             mylegids.append(pid)
+
+            elif is_onium:
+                onium_name = onium_info.get('name')
+                onium_id = onium_info.get('pdg_code')
+                onium_principal = onium_info.get('principal')
+                onium_spin = int((onium_info.get('spin')-1)/2)
+                onium_orbit = onium_info.get('orbital')
+                onium_j = onium_info.get('J')
+                onium_color = onium_info.get('color')
+                onium_charge = onium_info.get('charge')
+                constituents = onium_info.get('particles')
+                try:
+                    onium_mass = onium_info.get('mass')
+                except AttributeError:
+                    onium_mass = -1.
+                try:
+                    onium_ldme = onium_info.get('ldme')
+                except AttributeError:
+                    onium_ldme = 1.
+
+                # use dual mode for P-wave ONIA
+                
+                if onium_orbit >= 1:
+                    aloha.dual_mode += 1
+                for i in range(2):
+                    mypart = self._curr_model['particles'].get_copy(constituents[i])
+
+                    myleglist.append(base_objects.MultiLeg({'ids':[mypart.get_pdg_code()],
+                                                        'state':state,
+                                                        'polarization': polarization,
+                                                        'onium': {'id':onium_id, 'name':onium_name,
+                                                                  'N':onium_principal, 'S':onium_spin,
+                                                                  'L':onium_orbit, 'J':onium_j,
+                                                                  'C':onium_color, 'charge':onium_charge,
+                                                                  'index':onium_index, 'mass':onium_mass,
+                                                                  'ldme':onium_ldme
+                                                                 }
+                                                        	}))
+                onium_index += 1
             elif part_name.isdigit() or part_name.startswith('-') and part_name[1:].isdigit():
                 if abs(int(part_name)) in sum(self._curr_model.merged_particles.values(),[]):
                    for pdg in self._curr_model.merged_particles: 
@@ -5934,14 +8260,32 @@ This implies that with decay chains:
                                                             'state':state,
                                                             'polarization': polarization,
                                                             'flavor': flavor,
+                                                            'onium': {},
                                                             'offshell': offshell}))
                     else:
                         myleglist.append(fks_tag.MultiTagLeg({'ids':mylegids,
                                                           'state':state,
                                                           'polarization': polarization,
+                                                          'onium': {},
                                                           'is_tagged':is_tagged}))
+            elif is_onium:
+                pass
             else:
                 raise self.InvalidCmd("No particle %s in model" % part_name)
+
+        # Bound states are handled by the LO exporters only: nothing in the
+        # FKS/loop path reads back the 'onium' leg properties and there is no
+        # onia matrix-element template for it, so a perturbed process would
+        # silently produce a wrong result rather than fail.
+        if onium_index and perturbation_couplings.strip():
+            raise self.InvalidCmd(
+                "Onia are only supported at leading order: the perturbation "
+                "'[%s]' can not be combined with a bound state."
+                % perturbation_couplings.strip())
+
+        if aloha.dual_mode:
+            aloha.npwave.append(aloha.dual_mode)
+            aloha.npwave = list(set(aloha.npwave))
 
         if any(['is_tagged' in l.keys()  and l['is_tagged'] and l['state'] for l in myleglist]):
             logger.warning('The process involves tagged particles. Please consider citing arXiv:2106.02059 if relevant.')
@@ -5969,7 +8313,7 @@ This implies that with decay chains:
                                        self._curr_model.get('order_hierarchy')
                                        [elem if not elem.endswith('.sqrt') else elem[:-5]])
             except KeyError:
-                raise self.InvalidCmd("The loaded model does not defined a "+\
+                raise self.InvalidCmd("The loaded model does not define a "+\
                     " coupling order hierarchy for these couplings: %s"%\
                       str([so for so in split_orders if so!='WEIGHTED' and so not 
                                  in list(self._curr_model['order_hierarchy'].keys())]))
@@ -6013,6 +8357,18 @@ This implies that with decay chains:
                isinstance(forbidden_onsh_schannel_ids[0], list):
                 raise self.InvalidCmd("Multiparticle %s is or-multiparticle" % part_name + \
                       " which can be used only for required s-channels")
+            # $ removes the window |sqrt(s) - M| < BWCUTOFF * W around the
+            # pole: a massless particle has none (and in the complex-mass
+            # scheme its width, -Im(M^2)/M, is 0/0)
+            massless = [self._curr_model.get_particle(pid).get_name()
+                        for pid in forbidden_onsh_schannel_ids
+                        if self._curr_model.get_particle(pid) and
+                        self._curr_model.get_particle(pid).get('mass').lower() == 'zero']
+            if massless:
+                raise self.InvalidCmd("The $ syntax is not supported for massless "
+                      "particles (%s): there is no on-shell window to exclude. "
+                      "Use / to remove the particle, or $$ to remove its "
+                      "s-channel propagators." % ', '.join(massless))
             if forbidden_schannel_ids and \
                isinstance(forbidden_schannel_ids[0], list):
                 raise self.InvalidCmd("Multiparticle %s is or-multiparticle" % part_name + \
@@ -6021,8 +8377,8 @@ This implies that with decay chains:
             try:
                 required_schannel_ids = \
                                self.extract_particle_ids(required_schannels, crash_on_duplication=True)
-            except self.InvalidCmd:
-                raise self.InvalidCmd("Invalid \"> A A >\" syntax. In old version of MadGraph7, this was allowed but incorectly intrepreted as \"> A >\".")
+            except DuplicateParticle:
+                raise self.InvalidCmd("Invalid \"> A A >\" syntax. In older versions of MadGraph7, this was allowed but incorrectly interpreted as \"> A >\".")
 
             if required_schannel_ids and not \
                    isinstance(required_schannel_ids[0], list):
@@ -6056,6 +8412,121 @@ This implies that with decay chains:
         #                       'is_decay_chain': decay_process\
 
 
+    def extract_interference_process(self, left, mode, right, proc_number=0,
+                                     overall_orders=None,
+                                     avoid_squared_orders=False):
+        """Build the ProcessDefinition of an interference process, as split by
+        split_interference_line: 'left' is the left-hand process in the
+        ordinary syntax, 'mode' is 'LIxtree' or 'treextree' and 'right' the
+        right-hand (tree-level) process, None for the LIxtree default.
+
+        The left-hand process is returned, with 'interference_mode' set and
+        the right-hand ProcessDefinition in 'interference_process'. The
+        quantity computed is 2 Re(A_left A_right^*): the squared-order
+        constraints, which constrain that product, are given on the left-hand
+        side only. Without a right-hand process, LIxtree interferes with the
+        tree-level amplitudes of the same external legs, i.e. with what
+        'generate <legs>' alone would give: no s-channel requirement, no order
+        constraint and no exclusion is carried over from the loop process.
+        """
+
+        # An amplitude-level '==' or '>' constraint on the left-hand process
+        # constrains the left-hand amplitudes only: unlike for an ordinary
+        # process, it must not turn into a squared-order constraint, which
+        # here would act on the left x right products (u d > u d QED==0
+        # [treextree] u d > u d QCD==0 would get QED^2==0 and no interference
+        # at all). Explicit '^2' constraints are kept.
+        procdef = self.extract_process(left, proc_number=proc_number,
+                    overall_orders=overall_orders if overall_orders else {},
+                    avoid_squared_orders=True)
+        if not procdef:
+            raise self.InvalidCmd("Empty or wrong format process, please try again.")
+        if procdef.get('decay_chains'):
+            raise self.InvalidCmd("Decay chains are not supported for %s processes." % mode)
+
+        if right is None:
+            rightdef = base_objects.ProcessDefinition({
+                                        'legs': copy.deepcopy(procdef['legs']),
+                                        'model': procdef['model']})
+        else:
+            if ',' in right:
+                raise self.InvalidCmd("Decay chains are not supported for %s processes." % mode)
+            # the process number belongs to the whole definition, i.e. to
+            # the left-hand process: the right-hand one keeps id 0
+            rightdef = self.extract_process(right, avoid_squared_orders=True)
+            if not rightdef:
+                raise self.InvalidCmd("The right-hand process '%s' of the %s "
+                                      "process is not valid." % (right, mode))
+            if rightdef['squared_orders']:
+                raise self.InvalidCmd(
+                    "Squared-order constraints (%s) are not allowed on the "
+                    "right-hand process of a %s process: they constrain the "
+                    "interference, so they belong to the left-hand side, "
+                    "between ']' and the right-hand process, as in "
+                    "'g g > h > t t~ [LIxtree=QCD] QCD^2==6 g g > t t~'."
+                    % (', '.join('%s^2%s%d' % (k, rightdef.get_squared_order_type(k), v)
+                                 for k, v in rightdef['squared_orders'].items()),
+                       mode))
+
+        self.validate_interference_legs(procdef, rightdef, mode)
+
+        procdef.set('interference_mode', mode)
+        procdef.set('interference_process', rightdef)
+        return procdef
+
+    @staticmethod
+    def interference_leg_pdgs(leg, model):
+        """The set of signed pdg codes a MultiLeg stands for, with the merged
+        (flavour-grouped) particles expanded into their members, restricted
+        by the leg 'flavor' when it is set."""
+
+        merged = getattr(model, 'merged_particles', None) or {}
+        restriction = set(leg.get('flavor') or [])
+        pdgs = set()
+        for pid in leg.get('ids'):
+            if abs(pid) in merged:
+                sign = 1 if pid > 0 else -1
+                members = set(sign * m for m in merged[abs(pid)])
+                pdgs |= (members & restriction) or members
+            else:
+                pdgs.add(pid)
+        return pdgs
+
+    def validate_interference_legs(self, leftdef, rightdef, mode):
+        """The two sides of an interference process must describe the same
+        external legs, written in the same order: same number of initial and
+        final particles, the same polarisation, and at each position every
+        particle of the left-hand leg must be allowed by the right-hand one
+        (the right-hand legs may be wider, e.g. 'j' against 'g'). Raises
+        InvalidCmd otherwise."""
+
+        left_legs, right_legs = leftdef.get('legs'), rightdef.get('legs')
+        if leftdef.get_ninitial() != rightdef.get_ninitial() or \
+                                            len(left_legs) != len(right_legs):
+            raise self.InvalidCmd(
+                "The two sides of a %s process must have the same external "
+                "legs: '%s' and '%s' differ in the number of initial or final "
+                "particles." % (mode, leftdef.nice_string(prefix=False),
+                                rightdef.nice_string(prefix=False)))
+
+        model = leftdef.get('model')
+        names = lambda pdgs: ' '.join(sorted(model.get_particle(p).get_name()
+                                             for p in pdgs))
+        for i, (lleg, rleg) in enumerate(zip(left_legs, right_legs)):
+            missing = self.interference_leg_pdgs(lleg, model) - \
+                      self.interference_leg_pdgs(rleg, model)
+            if lleg.get('state') != rleg.get('state') or missing:
+                raise self.InvalidCmd(
+                    "The two sides of a %s process must have the same external "
+                    "legs, in the same order: leg %d of the right-hand process "
+                    "does not contain %s. Write the right-hand legs in the "
+                    "order of the left-hand ones." % (mode, i + 1,
+                    names(missing) if missing else 'the same state'))
+            if sorted(lleg.get('polarization')) != sorted(rleg.get('polarization')):
+                raise self.InvalidCmd(
+                    "The two sides of a %s process must have the same "
+                    "polarisation on each leg (leg %d differs)." % (mode, i + 1))
+
     def create_loop_induced(self, line, myprocdef=None):
         """ Routine to create the MultiProcess for the loop-induced case"""
         
@@ -6087,9 +8558,22 @@ This implies that with decay chains:
             #if not isinstance(self, extended_cmd.CmdShell):
             #    raise self.InvalidCmd, "loop_filter is not allowed in web mode"
         args = [a for a in args if not a.startswith('--loop_filter=')]
+        diagram_filter = self.extract_diagram_filter(args)
+        # the options of the NLO (FKS) generation, which falls back to this
+        # mode when it finds no Born diagram: no Born diagram is generated
+        # here, the loop filter is the diagram filter of this mode
+        if self.extract_diagram_filter(args, '--tree_diagram_filter'):
+            raise self.InvalidCmd("No Born diagram for %s: it can not be "
+                "filtered with --tree_diagram_filter (in the loop-induced mode "
+                "use --diagram_filter or --loop_diagram_filter)." %
+                ' '.join(a for a in args if not a.startswith('--')))
+        diagram_filter = self.extract_diagram_filter(args,
+                                    '--loop_diagram_filter') or diagram_filter
         
         if not myprocdef:
             myprocdef = self.extract_process(' '.join(args))
+        # LIxtree: hidden order selecting the interference, right-hand orders
+        diagram_generation.prepare_interference_process(myprocdef)
         
         myprocdef.set('NLO_mode', 'noborn')
             
@@ -6111,7 +8595,7 @@ This implies that with decay chains:
              self._curr_amps[0]['has_born']):
             raise self.InvalidCmd("Can not mix loop induced process with not loop induced process")
             
-        # Negative coupling order contraints can be given on at most one
+        # Negative coupling order constraints can be given on at most one
         # coupling order (and either in squared orders or orders, not both)
         if len([1 for val in list(myprocdef.get('orders').values())+\
                       list(myprocdef.get('squared_orders').values()) if val<0])>1:
@@ -6131,15 +8615,26 @@ This implies that with decay chains:
                        "ignore_six_quark_processes" in self.options \
                        else []
 
-        # Decide here wether one needs a LoopMultiProcess or a MultiProcess
+        # Decide here whether one needs a LoopMultiProcess or a MultiProcess
 
-        myproc = loop_diagram_generation.LoopInducedMultiProcess(myprocdef,
+        try:
+            myproc = loop_diagram_generation.LoopInducedMultiProcess(myprocdef,
                                  collect_mirror_procs = collect_mirror_procs,
                                  ignore_six_quark_processes = ignore_six_quark_processes,
                                  optimize=optimize,
-                                 loop_filter=loop_filter)
+                                 loop_filter=loop_filter,
+                                 diagram_filter=diagram_filter)
+            amplitudes = myproc.get('amplitudes')
+        except diagram_generation.NoDiagramException:
+            if myprocdef.get_interference_mode() != 'LIxtree':
+                raise
+            raise self.InvalidCmd(
+                "No subprocess of '%s' has both loop-induced diagrams and "
+                "tree-level diagrams of '%s': there is no interference to "
+                "compute." % (myprocdef.nice_string(prefix=False).split('[')[0].strip(),
+                    myprocdef.get('interference_process').nice_string(prefix=False)))
 
-        for amp in myproc.get('amplitudes'):
+        for amp in amplitudes:
             if amp not in self._curr_amps:
                 self._curr_amps.append(amp)
                 if amp['has_born']:
@@ -6364,7 +8859,7 @@ This implies that with decay chains:
                 test = [set_dict.setdefault(i,i) for i in idlist \
                             if i not in set_dict]
                 if len(test) != len(idlist):
-                    raise self.InvalidCmd('Particle can not be duplicate')  
+                    raise DuplicateParticle('Particle can not be duplicate')
 
         if len(res_lists) == 1:
             res_lists = res_lists[0]
@@ -6388,6 +8883,22 @@ This implies that with decay chains:
                       reverse = True)
         pdg_list.sort(key = lambda i: \
                       model.get_particle(i).get('mass').lower() != 'zero')
+
+    def extract_check_process(self, line, validate_gauge=True):
+        """The process of a 'check' command: a single process, or (for
+        'check gauge') a decay chain such as 't > w+{0} b, w+ > ta+ vt',
+        whose polarisation braces are validated as by 'generate' (in the
+        current gauge if validate_gauge). check_check has already refused
+        '[...]' (loops, perturbed decays) with a decay chain. Returns a
+        ProcessDefinition."""
+
+        if ',' not in line:
+            return self.extract_process(line)
+        myprocdef, _ = self.extract_decay_chain_process(line)
+        self.validate_propagator_polarization(myprocdef)
+        if validate_gauge:
+            self.validate_polarized_propagator_gauge(myprocdef)
+        return myprocdef
 
     def extract_decay_chain_process(self, line, level_down=False, proc_number=0):
         """Recursively extract a decay chain process definition from a
@@ -6431,7 +8942,7 @@ This implies that with decay chains:
             if not line.strip():
                 break
             index_par = line.find(')')
-            # special cases: parenthesis but no , => remove the paranthesis!
+            # special cases: parenthesis but no , => remove the parenthesis!
             if line.lstrip()[0] == '(' and index_par !=-1 and \
                                                     not ',' in line[:index_par]:
                 par_start = line.find('(')
@@ -6532,7 +9043,7 @@ This implies that with decay chains:
                             except Exception:
                                 raise err
                     else:
-                        raise self.InvalidCmd('UFO model not python3 compatible. You can convert it via the command \nconvert model %s\nYou can also type \"set auto_convert_model T\" to automatically convert all python2 module to be python3 compatible in the future.' % model_path)
+                        raise self.InvalidCmd('UFO model is not compatible with Python 3. You can convert it via the command \nconvert model %s\nYou can also type \"set auto_convert_model T\" to automatically convert all python2 module to be python3 compatible in the future.' % model_path)
                 if os.path.sep in args[1] and "import" in self.history[-1]:
                     self.history[-1] = 'import model %s' % self._curr_model.get('modelpath+restriction')
 
@@ -6559,11 +9070,15 @@ This implies that with decay chains:
                 else:
                     if 1 not in self._curr_model.get('gauge') :
                         logger_stderr.warning('Change the gauge to unitary since the'+\
-                          ' model does not allow Feynman gauge.'+\
-                                                  ' Please re-import the model')
+                          ' model does not allow Feynman gauge.')
                         self._curr_model = None
                         self.do_set('gauge unitary', log= False)
-                        return
+                        # the model again, in the unitary gauge (an FD gauge
+                        # chosen automatically for a previous process is a
+                        # common way to get here), without the interface
+                        # switching of the master command
+                        return MadGraphCmd.do_import(self, line, force=force,
+                                                     options=options)
             if self._curr_model:
                 self._curr_model._curr_gauge = self.options['gauge']
 
@@ -6576,8 +9091,10 @@ This implies that with decay chains:
             self._curr_amps = diagram_generation.AmplitudeList()
             # Reset proc defs
             self._curr_proc_defs = base_objects.ProcessDefinitionList()
+            self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
             self._curr_matrix_elements = helas_objects.HelasMultiProcess()
             process_checks.store_aloha = []
+            self.advise_neglected_masses()
 
         elif args[0] == 'command':
 
@@ -6597,7 +9114,8 @@ This implies that with decay chains:
             ban = banner_module.Banner(args[1])
             # Check that this is MG5 banner
             if 'mg5proccard' in ban:
-                for line in ban['mg5proccard'].split('\n'):
+                # ProcCard joins the lines older versions wrapped with '\'
+                for line in banner_module.ProcCard(ban['mg5proccard'].split('\n')):
                     if line.startswith('#') or line.startswith('<'):
                         continue
                     self.exec_cmd(line)
@@ -6626,7 +9144,7 @@ This implies that with decay chains:
                 raise MadGraph5Error('No default directory in output')
 
 
-            #convert and excecute the card
+            #convert and execute the card
             self.import_mg4_proc_card(proc_card)
 
     def remove_pointless_decay(self, param_card):
@@ -6645,7 +9163,6 @@ This implies that with decay chains:
         for amp in amplitudes:
             mother = [l.get('id') for l in amp['process'].get('legs') \
                                                         if not l.get('state')]
-            misc.sprint(mother)
             if 1 == len(mother):
                 try:
                     decay_table = decay_tables[abs(mother[0])]
@@ -6661,13 +9178,10 @@ This implies that with decay chains:
                              else -x for x in child]
                 child.sort()
                 child.insert(0, len(child))
-                misc.sprint(child)
-                misc.sprint(list(decay_table.keys()))  
                 #check if the decay is present or not:
                 if tuple(child) not in list(decay_table.keys()):
                     if any(id in self._curr_model.get('merged_particles') for id in child):
                         all_keys =[list(k) for k in decay_table.keys()]
-                        misc.sprint(all_keys)
                         for one_key in all_keys:
                             for i,pid in enumerate(one_key):
                                 if i ==0:
@@ -6677,20 +9191,14 @@ This implies that with decay chains:
                                         one_key[i] = mid
                                     if -pid in pdgs:
                                         one_key[i] = -mid
-                        misc.sprint(all_keys)
                         for i,k in enumerate(all_keys):
-                            misc.sprint(k)
                             new_k = list(k[1:])
                             new_k.sort()
                             new_k.insert(0, k[0])
-                            misc.sprint(new_k) 
                             all_keys[i] = tuple(new_k)            
-                        misc.sprint(all_keys)
                         if tuple(child) not in all_keys:
-                            misc.sprint('to rm' , child)
                             to_remove.append(amp)
                     else:
-                        misc.sprint('to rm' , child)
                         to_remove.append(amp)
         def remove_amp(amps, to_remove):
             for amp in amps[:]:
@@ -6701,8 +9209,7 @@ This implies that with decay chains:
                     for decay in amp.get('decay_chains'):
                         remove_amp(decay.get('amplitudes'), to_remove)
         remove_amp(self._curr_amps, to_remove)
-        misc.sprint("Removed %s amplitudes that are not in the decay table" % len(to_remove))
-        misc.sprint("Remaining amplitudes: %s" % len(self._curr_amps))
+        logger.debug("Removed %s amplitudes that are not in the decay table" % len(to_remove))
 
 
     def import_ufo_model(self, model_name):
@@ -6724,6 +9231,14 @@ This implies that with decay chains:
                                         self._curr_model.get('interactions')], []))
 
         self.add_default_multiparticles()
+        # A new model starts without any Fock state: those of a previously
+        # imported model must not leak in. Use 'add model X --fock_states_only'
+        # to put the bound states of one model on top of another.
+        self._boundstates = {}
+        self.add_default_fockstates()
+        if self._fockstates:
+            logger.warning('The model contains non-relativistic bound states. Please consider citing arXiv:2510.26773 and arXiv:2607.26739 if relevant.')
+            self.add_default_boundstates()
 
 
     def import_mg4_proc_card(self, filepath):
@@ -6799,23 +9314,27 @@ This implies that with decay chains:
 
         scheme = "old"
         photon = False
+        # The flavour scheme is a property of the model: the heaviest quark
+        # that is still massless (Model.get_flavour_scheme). The run_card
+        # default for maxjetflavor is derived from the very same number, so
+        # the jet definition and maxjetflavor always agree.
+        nflav = self._curr_model.get_flavour_scheme()
         for qcd_container in ['p', 'j']:
             if qcd_container not in self._multiparticles:
                 continue
             multi = self._multiparticles[qcd_container]
-            b = self._curr_model.get_particle(5)
-            if not b:
+            if nflav is None:
                 break
 
-            if 5 in multi:
-                if b['mass'] != 'ZERO':
-                    multi.remove(5)
-                    multi.remove(-5)
-                    scheme = 4
-            elif b['mass'] == 'ZERO':
-                multi.append(5)
-                multi.append(-5)
-                scheme = 5
+            for pdg in (4, 5):
+                if pdg <= nflav and pdg not in multi:
+                    multi.extend([pdg, -pdg])
+                    scheme = nflav
+                elif pdg > nflav and pdg in multi:
+                    multi.remove(pdg)
+                    if -pdg in multi:
+                        multi.remove(-pdg)
+                    scheme = nflav
 
             # check if the photon has to be added to j and p
             if 'perturbation_couplings' in list(self._curr_model.keys()) and \
@@ -6827,9 +9346,14 @@ This implies that with decay chains:
                 multi.remove(22)
                 photon = False
                 
-        if scheme in [4,5] and not photon:
+        if scheme in [3,4,5] and not photon:
             self.optimize_order(multi)
-            self._multiparticles[qcd_container] = multi
+            # only re-register the containers that still exist: a model may
+            # define a real particle called 'j' (or 'p'), in which case the
+            # multiparticle was dropped above and must not come back.
+            for container in ['p', 'j']:
+                if container in self._multiparticles:
+                    self._multiparticles[container] = multi
             logger.warning("Pass the definition of \'j\' and \'p\' to %s flavour scheme." % scheme)
             for container in ['p', 'j']:
                 if container in defined_multiparticles:
@@ -6891,6 +9415,227 @@ This implies that with decay chains:
         if os.path.commonpath([prefix, MG5DIR]) == MG5DIR:
             return prefix, ''
         return prefix, misc.user_config_file(create=True) or ''
+
+    def add_default_boundstates(self):
+        """Add default bound states from file boundstates_default.txt in the input folder"""
+
+        # Load default bound states from boundstates_default.txt
+        boundstates_file = pjoin(MG5DIR, 'input', 'boundstates_default.txt')
+        # Check if the file exists!
+        if not os.path.isfile(boundstates_file):
+            logger.warning(f"Bound states file {boundstates_file} not found.")
+            return
+
+        with open(boundstates_file) as f:
+            for line in f:
+                if line.startswith('#'):
+                    continue
+                # The first item on the line is the quarkonium, the rest is the list of Fock states
+                boundstate_label, bound_state = line.split("=", 1)
+                boundstate_label = boundstate_label.strip()
+                bound_state = bound_state.strip()
+                fock_states = bound_state.strip().split()
+                self._boundstates[boundstate_label] = fock_states
+
+                logger.info(f"Defined boundstate {boundstate_label} = {bound_state}")
+
+    def has_onium_amplitude(self, amplitudes=None):
+        """True if one of the generated processes (or of `amplitudes`) has a
+        bound state."""
+
+        for amp in (self._curr_amps if amplitudes is None else amplitudes) or []:
+            try:
+                amps = amp.get_amplitudes() if hasattr(amp, 'get_amplitudes') else [amp]
+                for one_amp in amps:
+                    if any(leg.get('onium') for leg in one_amp.get('process').get('legs')):
+                        return True
+            except Exception:
+                # amplitude containers of other interfaces (NLO, ...) never
+                # hold a bound state: onia are refused there at generation
+                continue
+        return False
+
+    def get_rge_parameters_used(self):
+        """Parameters evolved by the RGE of the model (running.py, aS excluded)
+        on which a coupling of the generated diagrams depends."""
+
+        model = self._curr_model
+        if not model or not model.get('running_elements'):
+            return set()
+        couplings = set()
+        for amp in self._curr_amps or []:
+            try:
+                amps = amp.get_amplitudes() if hasattr(amp, 'get_amplitudes') else [amp]
+                for one_amp in amps:
+                    for diag in one_amp.get('diagrams'):
+                        for vertex in diag.get('vertices'):
+                            if not vertex.get('id'):
+                                continue
+                            inter = model.get_interaction(vertex.get('id'))
+                            couplings.update(inter.get('couplings').values())
+            except Exception:
+                # unknown amplitude layout (loop, NLO...): assume the worst
+                couplings.update(c.name for coups in model.get('couplings').values()
+                                 for c in coups)
+        return model.get_rge_parameters_used(couplings)
+
+    def warn_rge_not_supported(self):
+        """The RGE of running.py is only implemented in the madevent and
+        aMC@NLO Fortran code: say loudly that the other outputs keep the
+        running parameters at their param_card value."""
+
+        used = self.get_rge_parameters_used()
+        if not used:
+            return
+        logger.warning(
+            "The model evolves some parameters with the scale (running.py), "
+            "and the process depends on %s. 'output %s' does NOT implement this "
+            "running: these parameters keep the value given in the param_card "
+            "(at the scale Q= of their block) for every event, whatever "
+            "fixed_extra_scale / mue_ref_fixed / mue_over_ref say. Only alpha_s "
+            "runs. Use 'output madevent' to include the running."
+            % (', '.join(sorted(used)), self._export_format))
+
+    def has_fock_state(self, args):
+        """True if one of the process tokens names a Fock state or a bound-state
+        label (which expands into Fock states)."""
+
+        names = set(f.get('name').lower() for f in self._fockstates)
+        pdgs = set(str(f.get('pdg_code')) for f in self._fockstates)
+        labels = set(k.lower() for k in self._boundstates)
+        for arg in args:
+            arg = arg.lower().rstrip('*')
+            if arg in names or arg in labels or arg in pdgs:
+                return True
+        return False
+
+    def unmerge_flavors_for_onia(self):
+        """Reload the current model without flavour grouping, keeping the
+        multiparticles and the Fock states the user already has."""
+
+        if self._curr_amps:
+            raise self.InvalidCmd("Bound states require the model without flavour "
+                "grouping, but processes were already generated with it. Use "
+                "'set apply_flavor_grouping False' (and re-import the model) "
+                "before the first generate.")
+
+        model_name = self._curr_model.get('modelpath+restriction')
+        logger.info("Bound states are not supported with flavour grouping: "
+                    "reloading the model without it (apply_flavor_grouping = False).")
+        saved_multiparticles = copy.deepcopy(self._multiparticles)
+        saved_fockstates = list(self._fockstates)
+        saved_boundstates = dict(self._boundstates)
+        # the import resets the generate line, which output needs for the
+        # proc card (procdef_mg5.dat)
+        saved_generate_info = self._generate_info
+        self.exec_cmd('set apply_flavor_grouping False', precmd=False)
+        self.exec_cmd('import model %s' % model_name, precmd=False)
+        assert not self._curr_model.get('merged_particles')
+        self._multiparticles = saved_multiparticles
+        self._fockstates = saved_fockstates
+        self._boundstates = saved_boundstates
+        self._generate_info = saved_generate_info
+
+    def add_default_fockstates(self):
+        """Load the Fock states shipped by the current model (its boundstates.py),
+        replacing any Fock state of a previously imported model."""
+        import madgraph.models.import_boundstates as ufo_boundstates
+        self._fockstates = ufo_boundstates.get_boundstates_ufo(self._curr_model)
+
+        return self._fockstates
+
+    def install_cuttools_iregi(self):
+        """Recompile from scratch the CutTools and IREGI libraries of vendor/
+        with the current fortran compiler, for instance after an update of
+        gfortran (the loop runs refuse a CutTools compiled by another one)."""
+
+        compiler = self.options['fortran_compiler'] or 'gfortran'
+        try:
+            version = misc.get_gfortran_version(compiler)
+        except Exception:
+            raise self.InvalidCmd('Fortran compiler "%s" not found: check the '
+                                  'option fortran_compiler.' % compiler)
+
+        ct_dir = pjoin(MG5DIR, 'vendor', 'CutTools')
+        current = misc.detect_current_compiler(pjoin(ct_dir, 'makefile'))
+        if current != compiler:
+            misc.mod_compilator(ct_dir, compiler, current)
+        logger.info('Compiling CutTools with %s (version %s). This can take a '
+                    'couple of minutes...' % (compiler, version), '$MG:BOLD')
+        misc.compile(['clean'], cwd=ct_dir, job_specs=False)
+        misc.compile(cwd=ct_dir, job_specs=False)
+        for name in ['libcts.a', 'mpmodule.mod']:
+            if not os.path.exists(pjoin(ct_dir, 'includects', name)):
+                raise MadGraph5Error('CutTools could not be compiled in %s.'
+                                     % ct_dir)
+
+        iregi_dir = pjoin(MG5DIR, 'vendor', 'IREGI', 'src')
+        current = misc.detect_current_compiler(pjoin(iregi_dir,
+                                                     'makefile_ML5_lib'))
+        if current != compiler:
+            misc.mod_compilator(iregi_dir, compiler, current)
+        logger.info('Compiling IREGI with %s (version %s). This can take a '
+                    'couple of minutes...' % (compiler, version), '$MG:BOLD')
+        # the IREGI makefiles locate their sources through $(PWD)
+        env = dict(os.environ, PWD=iregi_dir)
+        misc.compile(['-f', 'makefile_ML5_lib', 'clean'], cwd=iregi_dir,
+                     job_specs=False, env=env)
+        misc.compile(['-f', 'makefile_ML5_lib'], cwd=iregi_dir,
+                     job_specs=False, env=env)
+        if not os.path.exists(pjoin(iregi_dir, 'libiregi.a')):
+            raise MadGraph5Error('IREGI could not be compiled in %s.'
+                                 % iregi_dir)
+        # the same record as CutTools, checked before the loop runs
+        with open(pjoin(iregi_dir, 'compiler_version.log'), 'w') as fsock:
+            fsock.write('%s\n' % version)
+        logger.info('CutTools and IREGI recompiled.')
+
+    def install_pythia8_main164(self, prefix, config_file, add_options):
+        """Compile main164, the Pythia8 program MadEvent showers with, for both
+        HepMC2 and HepMC3 (installing the HepMC version Pythia8 was not
+        configured with if needed), so that the pythia8_card can pick either
+        with 'HEPMCoutput:format'. Record the HepMC3 installation in hepmc3_path
+        if none is set yet."""
+
+        pythia8_path = self.options['pythia8_path']
+        try:
+            misc.get_pythia8_main164(pythia8_path)
+        except (MadGraph5Error, OSError) as error:
+            logger.warning('Pythia8 is installed but its main164 could not be ' +
+                'compiled, so MadEvent cannot shower with it yet:\n%s' % error)
+            return
+        # the main164 an MLM shower uses to split its jet rates per jet sample,
+        # patched if needed: built now rather than at the first MLM shower
+        try:
+            misc.get_pythia8_main164(pythia8_path, jet_sample_djrs=True)
+        except (MadGraph5Error, OSError) as error:
+            logger.info('main164 could not be built to split the jet rates per ' +
+                'jet sample (the DJR plots of MLM showers will show their sum ' +
+                'only):\n%s' % error)
+        # the HepMC3 of a Pythia8 built against it (pythia8_hepmc3)
+        if not self.options['hepmc3_path'] and misc.find_hepmc(3, [pjoin(prefix, 'hepmc3')]):
+            self.options['hepmc3_path'] = pjoin(prefix, 'hepmc3')
+            self.exec_cmd('save options %s hepmc3_path' % config_file, printcmd=False, log=False)
+        native = misc.pythia8_hepmc_version(misc.find_pythia8_main164(pythia8_path)[1])
+        if native not in [2, 3]:
+            return
+        other = 5 - native
+        hepmc_tool = 'hepmc3' if other == 3 else 'hepmc'
+        hepmc_dir = pjoin(prefix, hepmc_tool)
+        if not misc.find_hepmc(other, [hepmc_dir]):
+            logger.info('Installing HepMC%d, so that Pythia8 can also write HepMC%d events.'
+                        % (other, other), '$MG:BOLD')
+            try:
+                self.advanced_install(hepmc_tool, additional_options=add_options+['--force'])
+            except self.InvalidCmd as error:
+                logger.warning('Pythia8 will only write HepMC%d events: %s' % (native, error))
+                return
+        try:
+            misc.get_pythia8_main164(pythia8_path, hepmc_version=other,
+                                     hepmc_paths=[hepmc_dir])
+        except (MadGraph5Error, OSError) as error:
+            logger.warning('main164 of Pythia8 could not be compiled for HepMC%d, ' % other +
+                'so that Pythia8 will only write HepMC%d events:\n%s' % (native, error))
 
     def advanced_install(self, tool_to_install,
                                HepToolsInstaller_web_address=None,
@@ -6969,21 +9714,6 @@ This implies that with decay chains:
         prefix, config_file = self.heptools_install_target(
                                        self.options['heptools_install_dir'])
 
-        # Add the path of pythia8 if known and the MG5 path
-        if tool=='mg5amc_py8_interface':
-            #add_options.append('--mg5_path=%s'%MG5DIR)
-            # Warn about the soft dependency to gnuplot
-            if misc.which('gnuplot') is None:
-                logger.warning("==========")
-                logger.warning("The optional dependency 'gnuplot' for the tool"+\
-                 " 'mg5amc_py8_interface' was not found. We recommend that you"+\
-                 " install it so as to be able to view the plots related to "+\
-                                                      " merging with Pythia 8.")
-                logger.warning("==========")
-            if self.options['pythia8_path']:
-                add_options.append(
-                               '--with_pythia8=%s'%os.path.abspath(self.options['pythia8_path']))
-
         # Special rules for certain tools
         if tool in ['madanalysis5', 'rivet']:
             add_options.append('--mg5_path=%s'%MG5DIR)
@@ -7000,7 +9730,7 @@ This implies that with decay chains:
                 add_options.append('--with_delphes3=%s'%\
                    os.path.normpath(pjoin(MG5DIR,self.options['delphes_path'])))
 
-        if tool in ['pythia8','eMELA']:
+        if tool in ['pythia8', 'pythia8_hepmc3', 'eMELA']:
             # All what's below is to handle the lhapdf dependency of Pythia8
             lhapdf_config  = misc.which(self.options['lhapdf'])
             lhapdf_version = None
@@ -7048,7 +9778,7 @@ This implies that with decay chains:
             elif lhapdf_version==6:
                 lhapdf_option.append('--with_lhapdf5=OFF')
                 lhapdf_option.append('--with_lhapdf6=%s'%lhapdf_path)
-            # Make sure each otion in add_options appears only once
+            # Make sure each option in add_options appears only once
             add_options.append('--mg5_path=%s'%MG5DIR)
             add_options = misc.make_unique(add_options)
 
@@ -7061,7 +9791,7 @@ This implies that with decay chains:
                         + lhapdf_option + compiler_options + add_options)
         else:
             logger.info('Now installing %s. Be patient...'%tool)
-            # Make sure each otion in add_options appears only once
+            # Make sure each option in add_options appears only once
             add_options.append('--mg5_path=%s'%MG5DIR)
             add_options = misc.make_unique(add_options)
             add_options.append('--mg5_path=%s'%MG5DIR)
@@ -7116,13 +9846,18 @@ This implies that with decay chains:
             raise self.InvalidCmd("Installation of %s failed."%tool_to_install)
 
         # Post-installation treatment
-        if tool == 'pythia8':
+        if tool in ['pythia8', 'pythia8_hepmc3']:
             self.options['pythia8_path'] = pjoin(prefix,'pythia8')
             self.exec_cmd('save options %s pythia8_path' % config_file, printcmd=False, log=False)
-            # Automatically re-install the mg5amc_py8_interface after a fresh
-            # Pythia8 installation
-            self.advanced_install('mg5amc_py8_interface',
-                              additional_options=add_options+['--force'])          
+            # Build the beamstrahlung main against this Pythia8 while we know
+            # it is fresh. It has to be rebuilt whenever Pythia8 changes, and
+            # a process directory cannot build it itself. Failing here is not
+            # fatal: only dressed-lepton runs with beamstrahlung need it, and
+            # those refuse to shower without it rather than silently using
+            # another main.
+            import madgraph.various.py8_bstrahl as py8_bstrahl
+            py8_bstrahl.build(MG5DIR, self.options['pythia8_path'], force=True)
+            self.install_pythia8_main164(prefix, config_file, add_options)
         elif tool == 'lhapdf6':
                 self.options['lhapdf_py3'] = pjoin(prefix,'lhapdf6_py3','bin', 'lhapdf-config')
                 self.exec_cmd('save options %s lhapdf_py3' % config_file)
@@ -7136,13 +9871,6 @@ This implies that with decay chains:
         elif tool == 'madanalysis5':
             self.options['madanalysis5_path'] = pjoin(prefix, 'madanalysis5','madanalysis5')
             self.exec_cmd('save options madanalysis5_path', printcmd=False, log=False)
-        elif tool == 'mg5amc_py8_interface':
-            # At this stage, pythia is guaranteed to be installed
-            if self.options['pythia8_path'] in ['',None,'None']:
-                self.options['pythia8_path'] = pjoin(prefix,'pythia8')
-            self.options['mg5amc_py8_interface_path'] = pjoin(prefix, 'MG5aMC_PY8_interface')
-            self.exec_cmd('save options %s mg5amc_py8_interface_path' % config_file, 
-                                                            printcmd=False, log=False)      
         elif tool == 'collier':
             self.options['collier'] = pjoin(prefix,'lib')
             self.exec_cmd('save options %s collier' % config_file, printcmd=False, log=False)      
@@ -7259,10 +9987,8 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                           'lhapdf6':['arXiv:1412.7420'],
                           'lhapdf5':['arXiv:0605240'],
                           'hepmc':['CPC 134 (2001) 41-46'],
-                          'mg5amc_py8_interface':['arXiv:1410.3012','arXiv:XXXX.YYYYY'],
                           'ninja':['arXiv:1203.0291','arXiv:1403.1229','arXiv:1604.01363'],
                           'MadAnalysis5':['arXiv:1206.1599'],
-                          'MadAnalysis':['arXiv:1206.1599'],
                           'collier':['arXiv:1604.06792'],
                           'oneloop':['arXiv:1007.4716'],
                           'maddm':['arXiv:1804.00444'],
@@ -7272,10 +9998,9 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
     install_server = ['http://madgraph.phys.ucl.ac.be/package_info.dat',
                          'http://madgraph.mi.infn.it/package_info.dat']
 
-    install_name = {'td_mac': 'td', 'td_linux':'td', 'Delphes2':'Delphes',
+    install_name = {'Delphes2':'Delphes',
                 'Delphes3':'Delphes', 'pythia-pgs':'pythia-pgs',
                 'ExRootAnalysis': 'ExRootAnalysis','MadAnalysis':'madanalysis5',
-                'MadAnalysis4':'MadAnalysis',
                 'SysCalc':'SysCalc', 'Golem95': 'golem95',
                     'lhapdf6' : 'lhapdf6_py3',
                 'QCDLoop':'QCDLoop','MadAnalysis5':'madanalysis5',
@@ -7309,9 +10034,23 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
         elif args[0] == 'looptools':
             self.install_reduction_library(force=True)
             return
-        elif args[0] == 'madspace':
-            install_script = pjoin(MG5DIR, 'madspace', 'install.py')
-            subprocess.run([sys.executable, install_script] + args[1:])
+        elif args[0] == 'cuttools_iregi':
+            self.install_cuttools_iregi()
+            return
+        elif args[0] in ('madspace', 'pyamplicol', 'madtrex'):
+            install_script = pjoin(MG5DIR, args[0], 'install.py')
+            install_args = args[1:]
+            # The source build compiles in parallel only if it is told how many
+            # jobs it may use (see set_build_parallelism in install.py), so hand
+            # it MG5's nb_core unless an explicit -j was given on the line.
+            if not any(a == '-j' or a.startswith('-j') or a.startswith('--jobs')
+                       for a in install_args):
+                install_args = install_args + ['-j', str(self.options['nb_core'])]
+            result = subprocess.run([sys.executable, install_script] + install_args)
+            if result.returncode != 0:
+                raise self.InvalidCmd('install %s failed (%s exited with code %d): see '
+                                      'its output above' % (args[0], install_script,
+                                                            result.returncode))
             return
 
         plugin = self.install_plugin
@@ -7396,25 +10135,26 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             name = name[args[0]]
         except KeyError:
             name = args[0]
-        if args[0] == 'MadAnalysis4':
-            args[0] = 'MadAnalysis'
-        elif args[0] in ['madstr', 'madSTR']:
+        if args[0] in ['madstr', 'madSTR']:
             args[0] = 'MadSTR'
             name = 'MadSTR'
             
         if args[0] in self._advanced_install_opts:
             # Now launch the advanced installation of the tool args[0]
-            # path['HEPToolsInstaller'] is the online adress where to downlaod
+            # path['HEPToolsInstaller'] is the online address where to download
             # the installers if necessary.
-            # Specify the path of the MG5_aMC_interface
-            MG5aMC_PY8_interface_path = path['MG5aMC_PY8_interface'] if \
-                                        'MG5aMC_PY8_interface' in path else 'NA'
-            add_options.append('--mg5amc_py8_interface_tarball=%s'%\
-                                                   MG5aMC_PY8_interface_path)
             add_options.extend(install_options['options_for_HEPToolsInstaller'])
             if not any(opt.startswith('--logging=') for opt in add_options):
                 add_options.append('--logging=%d' % logger.level)
-                
+            # Pythia8 is built against HepMC3 (the HepMC2 version of its main164
+            # is compiled afterwards), unless --hepmc2 asks for the HepMC2 build.
+            if name == 'pythia8':
+                if '--hepmc2' in add_options:
+                    add_options.remove('--hepmc2')
+                else:
+                    name = 'pythia8_hepmc3'
+                    add_options = [opt.replace('--pythia8_tarball=', '--pythia8_hepmc3_tarball=')
+                                   for opt in add_options]
 
             return self.advanced_install(name, path['HEPToolsInstaller'],
                                         additional_options = add_options)
@@ -7511,8 +10251,6 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             base_compiler= ['FC=g77','FC=gfortran']
             if args[0] == "pythia-pgs":
                 path = os.path.join(MG5DIR, 'pythia-pgs', 'src', 'make_opts')
-            elif args[0] == 'MadAnalysis':
-                path = os.path.join(MG5DIR, 'MadAnalysis', 'makefile')
             if path:
                 text = open(path).read()
                 for base in base_compiler:
@@ -7583,12 +10321,12 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                 plugin = sys.modules['PLUGIN.%s' % name] 
                 new_interface = plugin.new_interface
                 new_output = plugin.new_output
-                latest_validated_version = plugin.latest_validated_version
-                minimal_mg5amcnlo_version = plugin.minimal_mg5amcnlo_version
-                maximal_mg5amcnlo_version = plugin.maximal_mg5amcnlo_version
+                latest_validated_version = getattr(plugin,
+                                         'latest_validated_mg7_version',
+                                         getattr(plugin, 'latest_validated_version', ''))
             except Exception as error:
                 print(error)
-                logger.warning('Plugin not python3 compatible! It will run with python2')
+                logger.warning('Plugin is not compatible with Python 3! It will run with python2')
                 text = open(os.path.join(MG5DIR, 'PLUGIN', name, '__init__.py')).read()
                 if re.search(r'^\s*new_interface\s*=\s*(?!None).', text, re.M):
                     new_interface = True
@@ -7597,8 +10335,6 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                     misc.sprint(text)
                 new_output = []
                 latest_validated_version = ''
-                minimal_mg5amcnlo_version = ''
-                maximal_mg5amcnlo_version = ''
                 misc.sprint(pyvers)
                     
             logger.info('Plugin %s correctly interfaced. Latest official validition for MadGraph7 version %s.' % (name, '.'.join(repr(i) for i in latest_validated_version)))
@@ -7681,43 +10417,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 logger.warning('Error detected during the compilation. Please check the compilation error and run make manually.')
 
 
-        # Special treatment for TD/Ghostscript program (require by MadAnalysis)
-        if args[0] == 'MadAnalysis':
-            try:
-                os.system('rm -rf td')
-                os.mkdir(pjoin(MG5DIR, 'td'))
-            except Exception as error:
-                print(error)
-                pass
-
-            if sys.platform == "darwin":
-                logger.info('Downloading TD for Mac')
-                target = 'https://home.fnal.gov/~parke/TD/td_mac_intel64.tar.gz'
-                misc.wget(target, 'td.tgz', cwd=pjoin(MG5DIR,'td'))
-                misc.call(['tar', '-xzpvf', 'td.tgz'],
-                                                  cwd=pjoin(MG5DIR,'td'))
-                files.mv(MG5DIR + '/td/td_intel_mac64',MG5DIR+'/td/td')
-            else:
-                if sys.maxsize > 2**32:
-                    logger.info('Downloading TD for Linux 64 bit')
-                    target = 'https://home.fnal.gov/~parke/TD/td_linux_64bit.tar.gz'
-                    #logger.warning('''td program (needed by MadAnalysis) is not compile for 64 bit computer.
-                #In 99% of the case, this is perfectly fine. If you do not have plot, please follow 
-                #instruction in https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/TopDrawer .''')
-                else:                    
-                    logger.info('Downloading TD for Linux 32 bit')
-                    target = 'http://madgraph.phys.ucl.ac.be/Downloads/td'
-                misc.wget(target, 'td', cwd=pjoin(MG5DIR,'td'))
-            os.chmod(pjoin(MG5DIR,'td','td'), 0o775)
-            self.options['td_path'] = pjoin(MG5DIR,'td')
-
-            if not misc.which('gs'):
-                logger.warning('''gosthscript not install on your system. This is not required to run MA.
-                    but this prevent to create jpg files and therefore to have the plots in the html output.''')
-                if sys.platform == "darwin":
-                    logger.warning('''You can download this program at the following link:
-                    http://www.macupdate.com/app/mac/9980/gpl-ghostscript''')
-
         if args[0] == 'Delphes2':
             data = open(pjoin(MG5DIR, 'Delphes','data','DetectorCard.dat')).read()
             data = data.replace('data/', 'DELPHESDIR/data/')
@@ -7743,7 +10442,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                            'Delphes2': 'delphes_path',
                            'Delphes3': 'delphes_path',
                            'ExRootAnalysis': 'exrootanalysis_path',
-                           'MadAnalysis': 'madanalysis_path',
                            'SysCalc': 'syscalc_path',
                            'pythia-pgs':'pythia-pgs_path',
                            'Golem95': 'golem'}
@@ -7797,7 +10495,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             #pattern = re.compile(r'''=== removed file \'(?P<new>[^\']*)\'''')
             #all_rm = pattern.findall(text)
             pattern=re.compile(r'''=== removed file \'(?P<new>[^\']*)\'(?=.*=== added file \'(?P=new)\')''',re.S)
-            print('this step can take a few minuts. please be patient')
+            print('this step can take a few minutes. please be patient')
             all_rm_add = pattern.findall(text)
             #=== added file 'tests/input_files/full_sm/interactions.dat'
             for new in all_add:
@@ -8087,8 +10785,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 fsock.write("version_nb   %s\n" % fail)
             fsock.write("last_check   %s\n" % int(time.time()))
             fsock.close()
-            logger.info('Refreshing installation of MG5aMC_PY8_interface.')
-            self.do_install('mg5amc_py8_interface',additional_options=['--force'])
             logger.info('Checking current version. (type ctrl-c to bypass the check)')
             subprocess.call([os.path.join('tests','test_manager.py')],
                                                                   cwd=MG5DIR)            
@@ -8130,8 +10826,8 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             self.options.update(self.options_madevent)
 
         if not config_path:
-            if 'MADGRAPH_BASE' in os.environ:
-                config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
+            config_path = misc.base_config_file()
+            if config_path:
                 self.set_configuration(config_path, final=False)
             config_path = misc.user_config_file()
             if config_path and os.path.exists(config_path):
@@ -8141,15 +10837,22 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
 
         if not os.path.exists(config_path):
             files.cp(pjoin(MG5DIR,'input',misc.CONFIG_TEMPLATE_NAME), config_path)
-        if not os.path.exists(pjoin(MG5DIR,'input','default_run_card_lo.dat')) and madgraph.ReadWrite:
-            files.cp(pjoin(MG5DIR,'input','.default_run_card_lo.dat'), pjoin(MG5DIR,'input','default_run_card_lo.dat'))
-            files.cp(pjoin(MG5DIR,'input','.default_run_card_nlo.dat'), pjoin(MG5DIR,'input','default_run_card_nlo.dat'))
-            files.cp(pjoin(MG5DIR,'input','.default_run_card_mg7.toml'), pjoin(MG5DIR,'input','default_run_card_mg7.toml'))
+        if madgraph.ReadWrite:
+            # user-editable default files: run_card defaults (LO/NLO/mg7) and
+            # the launch switch defaults. Each is materialised from its own
+            # '.'-prefixed template, and checked on its own: a user who has an
+            # old installation carrying only some of them still gets the rest.
+            for name in ('default_run_card_lo.dat', 'default_run_card_nlo.dat',
+                         'default_run_card_mg7.toml', 'default_switch.txt'):
+                target = pjoin(MG5DIR, 'input', name)
+                template = pjoin(MG5DIR, 'input', '.%s' % name)
+                if not os.path.exists(target) and os.path.exists(template):
+                    files.cp(template, target)
 
         config_file = open(config_path)
 
         # read the file and extract information
-        logger.info('load MG5 configuration from %s ' % config_file.name)
+        logger.info('load MG7 configuration from %s ' % config_file.name)
         for line in config_file:
             if '#' in line:
                 line = line.split('#',1)[0]
@@ -8162,6 +10865,10 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             else:
                 name = name.strip()
                 value = value.strip()
+                if cmd.is_removed_option(name):
+                    # an old configuration file: drop the entry rather than
+                    # carrying a dead option around in self.options
+                    continue
                 if name not in ['mg5_path', 'f2py_compiler', 'f2py_compiler_py2','f2py_compiler_py3', 'lhapdf']:
                     self.options[name] = value
                 elif hasattr(self, 'set2_%s' % name) and value:
@@ -8172,14 +10879,14 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
         config_file.close()      
         self.options['stdout_level'] = logging.getLogger('madgraph').level
         if not final:
-            return self.options # the return is usefull for unittest
+            return self.options # the return is useful for unittest
 
         # Treat each expected input
-        # 1: Pythia8_path and hewrig++ paths
+        # 1: Pythia8_path and herwig7 paths
         # try absolute and relative path
         for key in self.options:
-            if key in ['pythia8_path', 'hwpp_path', 'thepeg_path', 'hepmc_path',
-                       'mg5amc_py8_interface_path','madanalysis5_path']:
+            if key in ['pythia8_path', 'herwig7_path', 'thepeg_path', 'hepmc_path',
+                       'hepmc3_path', 'madanalysis5_path']:
                 if self.options[key] in ['None', None]:
                     self.options[key] = None 
                     continue
@@ -8188,12 +10895,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 if key == 'pythia8_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'Pythia8', 'Pythia.h')):
                     if not os.path.isfile(pjoin(path,  'include', 'Pythia8', 'Pythia.h')):
                         self.options['pythia8_path'] = None
-                    else:
-                        continue
-                #this is for mg5amc_py8_interface_path
-                if key == 'mg5amc_py8_interface_path' and not os.path.isfile(pjoin(MG5DIR, path, 'MG5aMC_PY8_interface')):
-                    if not os.path.isfile(pjoin(path, 'MG5aMC_PY8_interface')):
-                        self.options['mg5amc_py8_interface_path'] = None
                     else:
                         continue
                 #this is for madanalysis5
@@ -8208,10 +10909,10 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                             logger.warning(message)
                             continue
  
-                #this is for hw++
-                if key == 'hwpp_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'Herwig++', 'Analysis', 'BasicConsistency.hh')):
-                    if not os.path.isfile(pjoin(path, 'include', 'Herwig++', 'Analysis', 'BasicConsistency.hh')):
-                        self.options['hwpp_path'] = None
+                #this is for hw7
+                if key == 'herwig7_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'Herwig', 'Analysis', 'BasicConsistency.h')):
+                    if not os.path.isfile(pjoin(path, 'include', 'Herwig', 'Analysis', 'BasicConsistency.h')):
+                        self.options['herwig7_path'] = None
                     else:
                         continue
                 # this is for thepeg
@@ -8224,6 +10925,12 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 elif key == 'hepmc_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'HepMC', 'HEPEVT_Wrapper.h')):
                     if not os.path.isfile(pjoin(path, 'include', 'HepMC', 'HEPEVT_Wrapper.h')):
                         self.options['hepmc_path'] = None
+                    else:
+                        continue
+                # this is for hepmc3 (hepmc_path being the HepMC2 installation)
+                elif key == 'hepmc3_path' and not os.path.isfile(pjoin(MG5DIR, path, 'include', 'HepMC3', 'GenEvent.h')):
+                    if not os.path.isfile(pjoin(path, 'include', 'HepMC3', 'GenEvent.h')):
+                        self.options['hepmc3_path'] = None
                     else:
                         continue
 
@@ -8296,12 +11003,20 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     logger.warning("Option %s from config file not understood" \
                                    % key)
                 else:
+                    if key == 'gauge' and self.options[key] == 'unitary':
+                        # the default, not a choice: once run again from the
+                        # proc_card, 'set gauge unitary' would count as the
+                        # user's choice (set2_gauge) and keep the automatic
+                        # FD gauge out; a gauge picked for a process is
+                        # recorded as 'set gauge FD' (record_automatic_gauge)
+                        continue
+                    if key == 'auto_gauge' and self.options[key]:
+                        # the default as well: MadSpin and the reweighting
+                        # run the 'set' lines of the proc_card with their
+                        # own auto_gauge False
+                        continue
                     if key in self.options_madgraph:
                         self.history.append('set %s %s' % (key, self.options[key]))
-        
-        warnings = madevent_interface.MadEventCmd.mg5amc_py8_interface_consistency_warning(self.options)
-        if warnings:
-            logger.warning(warnings)
 
         # Check for the minimal required compiler version (C++20 with
         # std::format, needed by madspace): gcc 13, LLVM clang 17,
@@ -8318,8 +11033,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         return self.options
 
     def check_for_export_dir(self, filepath):
-        """Check if the files is in a valid export directory and assign it to
-        export path if if is"""
+        """Check if the file is in a valid export directory and assign it to
+        export path if it is"""
 
         # keep previous if a previous one is defined
         if self._export_dir:
@@ -8334,7 +11049,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             self._export_dir = os.path.sep.join(path_split[:-2])
             return
 
-    def setup_mg7_environment(self):
+    def setup_mg7_environment(self, lhapdf=True):
         """Export what an mg7 run needs from MG5's configuration.
 
         These used to be built into the environment of the bin/generate_events
@@ -8342,6 +11057,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         the run shells out to (the madspace build, the real LHAPDF library used
         by systematics/MadSpin/reweight), and the only channel those have is
         os.environ -- so set it here rather than per child process.
+
+        ``lhapdf=False`` leaves LHAPDF out, for a run without PDFs (the survey
+        of a decay).
         """
         # The one-off madspace build picks up a cmake installed through MG5's
         # 'install cmake' from here (heptools_install_dir may point outside
@@ -8351,6 +11069,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             if not os.path.isabs(heptools_dir):
                 heptools_dir = pjoin(MG5DIR, heptools_dir)
             os.environ['MADGRAPH_HEPTOOLS_DIR'] = os.path.abspath(heptools_dir)
+
+        if not lhapdf:
+            return
 
         # The resolved LHAPDF location. The launcher resolves it the same way on
         # its own (launch.lhapdf_paths), so this only matters for the real
@@ -8380,15 +11101,23 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         options = options.__dict__
         # args is now MODE PATH
 
+        if args[0] == 'amcatnlo_fks_sa':
+            # the FKS Born building-block check: ExtLauncher.run() first offers
+            # to edit the param_card (skipped under -f), then launch_program()
+            # builds and runs the lightweight check_fks (honouring --energy /
+            # --timings / --nb_run).
+            ext_program = launch_ext.FKSSALauncher(self, args[1],
+                                            options=self.options, **options)
+            ext_program.run()
+            os.chdir(start_cwd) #ensure to go to the initial path
+            # ensure that MG options are not changed!
+            for key, value in current_options.items():
+                self.options[key] = value
+            return
+
         if args[0] == 'standalone':
-            class ext_program:
-                @staticmethod
-                def run():
-                    os.chdir(args[1])
-                    try:
-                        subprocess.run(os.path.join("bin", "generate_events"))
-                    except KeyboardInterrupt:
-                        pass
+            ext_program = launch_ext.MadMatrixLauncher(self, args[1],
+                                                options=self.options, **options)
 
         elif args[0].startswith('standalone'):
             if os.path.isfile(os.path.join(os.getcwd(),args[1],'Cards',\
@@ -8447,31 +11176,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 else:
                     ME = amcatnlo_run.aMCatNLOCmd(me_dir=args[1],options=self.options)
                     ME.pass_in_web_mode()
-                # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')]
-                for line in config_line:
+                # transfer interactive configuration (without the
+                # generation-time options the run interface rejects)
+                for line in cmd.set_lines_for_run(self.history):
                     ME.exec_cmd(line)
                 stop = self.define_child_cmd_interface(ME)
                 return stop
             ext_program = launch_ext.aMCatNLOLauncher( args[1], self,
                                                        shell = isinstance(self, cmd.CmdShell),
                                                         **options)
-        elif args[0] == 'madweight':
-            import madgraph.interface.madweight_interface as madweight_interface
-            if options['interactive']:
-                if isinstance(self, cmd.CmdShell):
-                    MW = madweight_interface.MadWeightCmdShell(me_dir=args[1], options=self.options)
-                else:
-                    MW = madweight_interface.MadWeightCmd(me_dir=args[1],options=self.options)
-                # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')]
-                for line in config_line:
-                    MW.exec_cmd(line)
-                stop = self.define_child_cmd_interface(MW)                
-                return stop
-            ext_program = launch_ext.MWLauncher( self, args[1],
-                                                 shell = isinstance(self, cmd.CmdShell),
-                                                 options=self.options,**options)            
         elif args[0] == 'mg7':
             me_dir = args[1]
             # An mg7 output runs in this process, exactly like a madevent one:
@@ -8485,10 +11198,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # what needs madspace). The bootstrap has to be told whether it may
             # take over the terminal: in a subprocess it could read that off
             # sys.argv/sys.stdin, but in process those describe MG5, not the run.
-            from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
+            from madgraph.mg7 import bootstrap as mg7_bootstrap
             mg7_bootstrap.ensure_madspace(
-                interactive=bool(self.use_rawinput) and not options['force'])
-            from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+                interactive=bool(self.use_rawinput) and not options['force'],
+                jobs=self.options['nb_core'])
+            from madgraph.mg7 import launch as mg7_launch
 
             MG7 = mg7_launch.MG7Cmd(me_dir=me_dir, options=self.options)
             if options['interactive']:
@@ -8552,37 +11266,870 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             else:
                 raise self.RWError('Could not load model from file %s' \
                                       % args[1])
-        elif args[0] == 'processes':
-            amps,proc_defs = save_load_object.load_from_file(args[1])
-            if isinstance(amps, diagram_generation.AmplitudeList):
-                cpu_time2 = time.time()
-                logger.info("Loaded processes from file in %0.3f s" % \
-                      (cpu_time2 - cpu_time1))
-                if amps:
-                    model = amps[0].get('process').get('model')
-                    if not model.get('parameters'):
-                        # This is a v4 model.  Look for path.
-                        self._model_v4_path = import_v4.find_model_path(\
-                                   model.get('name').replace("_v4", ""),
-                                   self._mgme_dir)
-                    else:
-                        self._model_v4_path = None
-                    # If not exceptions from previous steps, set
-                    # _curr_amps and _curr_model
-                    self._curr_amps = amps
-                    self._curr_model = model
-                    self._curr_proc_defs = proc_defs
-                    logger.info("Model set from process.")
-                    # Do post-processing of model
-                    self.process_model()
-                self._done_export = None
-            else:
-                raise self.RWError('Could not load processes from file %s' % args[1])
 
 
     def post_install_RunningCoupling(self):
 
         shutil.move(pjoin(MG5DIR,'RunningCoupling'), pjoin(MG5DIR,'Template', 'Running'))
+
+    # Masses that a generation almost never wants. The light quarks are
+    # massless in every flavour scheme customize_model offers, and an electron
+    # or a muon mass buys nothing at collider energies. c, b and tau are left
+    # out on purpose: a massive b (the 4F scheme) or tau is a deliberate and
+    # very common choice, and this must not nag about it.
+    NEGLECTED_MASSES = [1, 2, 3, 11, 13]
+    # the model the advice below has already been given for.  MG7 re-imports
+    # the model behind the user's back -- 'set gauge', 'set
+    # complex_mass_scheme', and 'check gauge' four times over -- and each one
+    # comes through do_import, so without this the same paragraph is printed
+    # five times for one command.
+    _advised_masses_for = None
+
+    def advise_neglected_masses(self):
+        """Point at customize_model when the model keeps a light fermion mass.
+
+        A non-zero mass for u, d, s, e or mu costs something in every process
+        those particles appear in: the Yukawa vertices they enable bring extra
+        diagrams, and the helicity configurations which vanish for a massless
+        fermion stop vanishing. At collider energies the mass itself is
+        negligible, so that is a price paid for nothing, and no restriction has
+        to ship with the model for the user to drop it: the flavour and lepton
+        mass schemes are generic options of customize_model.
+
+        Said once per model: every re-import of the same one is MG7 rebuilding
+        it for a gauge or a scheme, and repeating the paragraph there is noise.
+
+        Informative only. A model may well mean those masses -- a low-energy
+        process, a Yukawa-sensitive one -- so this says what is there and what
+        can be done about it, and decides nothing.
+        """
+
+        model = self._curr_model
+        if not model:
+            return
+        try:
+            # said once per model: a re-import of the one in front of the user
+            # is MG7 rebuilding it, not a new model to comment on
+            identity = (model.get('name'), model.get('modelpath'))
+        except Exception:
+            identity = None
+        if identity is not None and identity == self._advised_masses_for:
+            return
+        self._advised_masses_for = identity
+
+        try:
+            massive = [pdg for pdg in self.NEGLECTED_MASSES
+                       if build_restrict_lib.is_massive(model, pdg)
+                       and build_restrict_lib.can_be_massive(model, pdg)]
+        except Exception:
+            # an informative message is never a reason to fail an import
+            return
+        if not massive:
+            return
+
+        names = ', '.join(build_restrict_lib.PARTICLE_NAME[pdg]
+                          for pdg in massive)
+        options = []
+        if any(pdg in build_restrict_lib.LIGHT_QUARKS for pdg in massive):
+            options.append("'flavour scheme'")
+        if any(pdg in build_restrict_lib.LEPTONS for pdg in massive):
+            options.append("'nb of massive leptons'")
+        logger.info("This model keeps a non-zero mass for %s. Such a mass is "
+            "negligible at collider energies but not free: it brings in the "
+            "Yukawa vertices of those particles and the helicity "
+            "configurations which would otherwise vanish, in every process "
+            "they appear in.\n  'customize_model' sets them to zero (option%s "
+            "%s), and 'customize_model --save=NAME' keeps the result as a "
+            "restriction you can import later.",
+            names, '' if len(options) == 1 else 's', ' and '.join(options))
+
+    def get_customize_categories(self, model, reference_model):
+        """the list of the options proposed by customize_model for a given
+        model: the generic (model independent) ones and, on top of them, the
+        ones defined in the build_restrict.py of the model (if any).
+        model is the model without any restriction, reference_model is the
+        model as currently loaded (it only defines the default of the options)
+        """
+
+        categories = build_restrict_lib.get_generic_categories(model,
+                                                               reference_model)
+        # the (block, lhacode) already handled by the generic options
+        generic_target = set()
+        for category in categories:
+            for option in category:
+                generic_target.update(build_restrict_lib.get_rules_target(option))
+
+        model_path = model.get('modelpath')
+        if not os.path.exists(pjoin(model_path, 'build_restrict.py')):
+            return categories
+
+        ufo_model = ufomodels.load_model(model_path)
+        if not hasattr(ufo_model, 'build_restrict'):
+            return categories
+
+        externals = self.get_external_lhacode(model)
+        # the categories of the model are module level objects: without a copy
+        # the status set during a previous (possibly aborted) customize_model
+        # would be the starting point of this one
+        for category in copy.deepcopy(ufo_model.build_restrict.all_categories):
+            kept = build_restrict_lib.Category(category.name)
+            superseded, obsolete = [], []
+            for option in self.group_options(category):
+                target = set()
+                for rule in option:
+                    target.update(build_restrict_lib.get_rules_target(rule))
+                # An option of the model can target a parameter which is now
+                # handled by one of the generic options. Keeping both would let
+                # the user set contradictory values, so the model one is dropped.
+                if target & generic_target:
+                    superseded.append(option[0].name)
+                elif not (target & externals):
+                    # the parameters of that option are not in the model anymore
+                    obsolete.append(option[0].name)
+                else:
+                    kept += option
+            for message, options in [('superseded by the generic mass scheme options',
+                                      superseded),
+                                     ('not based on parameters of this model',
+                                      obsolete)]:
+                if options:
+                    logger.debug('customize_model: option(s) of the %s model '
+                                 'dropped (%s): %s', model.get('name'), message,
+                                 ', '.join(options))
+            if kept:
+                categories.append(kept)
+
+        return categories
+
+    @staticmethod
+    def group_options(category):
+        """a Category is a flat list of rules, the ones of a given option being
+        introduced by the rule with first=True. Return the list of options,
+        each of them being the list of its rules."""
+
+        options = []
+        for rule in category:
+            if rule.first or not options:
+                options.append([])
+            options[-1].append(rule)
+        return options
+
+    @staticmethod
+    def get_loaded_restriction_card(model):
+        """The restriction card `model` was loaded with, parsed -- None when it
+        was loaded without one, or the card is not on disk anymore."""
+
+        card = getattr(model, 'restrict_card', None)
+        if isinstance(card, check_param_card.ParamCard):
+            return card
+        if isinstance(card, str) and os.path.isfile(card):
+            try:
+                return check_param_card.ParamCard(card)
+            except Exception:
+                return None
+        return None
+
+    @staticmethod
+    def get_reference_name(model):
+        """how to name, in a message, the restriction a model was loaded with"""
+
+        card = getattr(model, 'restrict_card', None)
+        if isinstance(card, str) and os.path.isfile(card):
+            return os.path.basename(card)
+        return 'the restriction of %s' % model.get('name')
+
+    def get_loaded_default_card(self, full_model, reference_model, externals):
+        """The values the customized model starts from: the ones of the model
+        as it was loaded, so that the inputs of the restriction it was imported
+        with ('sm-ckm') are propagated.
+
+        A parameter that restriction had fixed has no value worth propagating
+        -- it was set to zero/one or merged with another one -- so it recovers
+        the value of the UFO. Return the card and those parameters."""
+
+        default_card = self.get_full_param_card(full_model) # the UFO values
+        if reference_model is None:
+            return default_card, []
+
+        kept = self.get_external_lhacode(reference_model)
+        loaded = self.get_full_param_card(reference_model)
+        # an SLHA2 restriction keeps the parameters it fixed in the param_card,
+        # so 'not external anymore' does not catch them: the ones sitting at
+        # zero/one, or sharing the value of another one, were fixed as well
+        dropped, merged = self.get_parameter_classes(loaded, kept)
+        fixed = dropped | merged
+
+        recovered = []
+        for block in default_card:
+            if block.startswith(('qnumbers', 'decay_table')) or 'info' in block:
+                continue
+            for param in default_card[block]:
+                key = (block.lower(), tuple(param.lhacode))
+                if key not in externals:
+                    continue # an informative entry, not a parameter
+                if key not in kept or key in fixed:
+                    recovered.append(key) # fixed at load time: keep the UFO one
+                    continue
+                value = loaded.get_value(block, tuple(param.lhacode),
+                                         default='__not_set__')
+                if value != '__not_set__':
+                    param.value = value
+
+        return default_card, recovered
+
+    def build_default_card(self, full_model, baseline, ask_instance):
+        """the values of the parameters of the customized model, once the
+        'set default' commands are taken into account"""
+
+        if ask_instance.default_source == 'ufo':
+            param_card = self.get_full_param_card(full_model)
+        else:
+            param_card = check_param_card.ParamCard(baseline)
+            source = ask_instance.default_card_values
+            if source is not None:
+                for block in param_card:
+                    if block.startswith(('qnumbers', 'decay_table')) \
+                                                        or 'info' in block:
+                        continue
+                    for param in param_card[block]:
+                        value = source.get_value(block, tuple(param.lhacode),
+                                                 default='__not_set__')
+                        if value != '__not_set__':
+                            param.value = value
+
+        for (lhablock, lhacode), value in ask_instance.default_values.items():
+            try:
+                param_card[lhablock.lower()].get(list(lhacode)).value = value
+            except (KeyError, IndexError):
+                logger.warning('%s %s is not in the param_card of the model '
+                               'anymore: its default value is ignored.',
+                               lhablock, list(lhacode))
+        return param_card
+
+    def warn_recovered_defaults(self, recovered, restricted, param_card,
+                                        model_path, reference, ask_instance):
+        """say which parameters could not take the value of the model as it was
+        loaded, because the restriction it came with had fixed them"""
+
+        # the ones the user gave a value to did not fall back on anything
+        given = set((lhablock.lower(), lhacode)
+                    for lhablock, lhacode in ask_instance.default_values)
+        source = ask_instance.default_card_values
+        if source is not None:
+            given.update(key for key in recovered
+                         if source.get_value(key[0], key[1],
+                                             default='__not_set__') != '__not_set__')
+
+        lha2name = self.get_lha2name(model_path)
+        back = [key for key in recovered
+                if key not in restricted and key not in given
+                and param_card.has_param(key[0], list(key[1]))]
+        if not back:
+            return
+        them = 'it' if len(back) == 1 else 'them'
+        # an SLHA2 restriction fixes dozens of them, so the list is truncated
+        logger.warning('%s: value taken from the UFO model, since %s had fixed '
+            '%s and the model you loaded therefore carries no value for %s. '
+            '\'set default\' can give another one.',
+            self.short_list([self.name_of_lha(lha2name, key) for key in back]),
+            reference, them, them)
+
+    @staticmethod
+    def get_full_param_card(model):
+        """the param_card of a model, with the default value of every parameter"""
+
+        out_path = io.StringIO()
+        param_writer.ParamCardWriter(model, out_path)
+        return check_param_card.ParamCard(out_path.getvalue().split('\n'))
+
+    @staticmethod
+    def get_external_lhacode(model):
+        """the (lhablock, lhacode) of all the external parameters of a model"""
+
+        return set((param.lhablock.lower(), tuple(param.lhacode))
+                   for param in model['parameters'][('external',)])
+
+    @staticmethod
+    def randomize_param_card(param_card, externals):
+        """Replace the values of the card which are 0, 1 or identical to another
+        one by a random value: those values would otherwise be simplified by
+        the restriction machinery while the user did not ask for it.
+        0 and 1 are replaced by a random value in ]0,1[, a duplicated value v
+        by a random value in ]v,2v[ (the order of magnitude of a parameter is
+        physical: replacing MZ by 0.3 does break most of the models).
+        Two kind of parameters are left untouched: the zero widths (giving a
+        width to a particle which does not have one is not physical and changes
+        the model) and the technical parameters of the 'loop' block (MU_R, ...).
+        externals restricts this to the parameters which are really read from
+        the card (a param_card also contains informative entries)."""
+
+        used = {} # per block: two parameters are only merged inside a block
+        for block in param_card:
+            if block.startswith(('qnumbers', 'decay_table')) or 'info' in block:
+                continue
+            if block.lower() == 'loop':
+                continue
+            used.setdefault(block.lower(), set())
+            for param in param_card[block]:
+                if (block.lower(), tuple(param.lhacode)) not in externals:
+                    continue
+                try:
+                    value = float(param.value)
+                except (TypeError, ValueError):
+                    continue # 'auto' width and co.
+                if value == 0. and block.lower() == 'decay':
+                    continue
+                seen = used[block.lower()]
+                if value in (0., 1.) or abs(value) in seen:
+                    while True:
+                        if value in (0., 1.):
+                            new_value = random.random()
+                        else:
+                            new_value = value * (1 + random.random())
+                        if new_value not in (0., 1.) and abs(new_value) not in seen:
+                            break
+                    value = new_value
+                    param.value = value
+                seen.add(abs(value))
+
+    @staticmethod
+    def resolve_set_equal(set_equal):
+        """'set_equal A B' followed by 'set_equal B C' means that A, B and C all
+        take the value of C. Applying the pairs in the order they were typed
+        would instead give A the value B had before it was itself re-pointed,
+        so each pair is first resolved to the root of its chain."""
+
+        link = dict(set_equal)
+        out = []
+        for target, source in set_equal:
+            root, seen = source, set([target])
+            while root in link and root not in seen:
+                seen.add(root)
+                root = link[root]
+            if root == target:
+                # a cycle ('set_equal A B' + 'set_equal B A'): any member of the
+                # cycle is a valid root, keep the one the user gave
+                root = source
+            out.append((target, root))
+        return out
+
+    @staticmethod
+    def apply_customize_rules(param_card, categories, set_zero, set_one,
+                                                                     set_equal):
+        """write in param_card the restrictions asked by the user.
+        categories are the (toggled) options of the question, set_zero/set_one
+        are lists of (lhablock, lhacode) and set_equal a list of
+        ((lhablock, lhacode), (lhablock, lhacode)) where the first parameter
+        is forced to the value of the second one."""
+
+        def get_param(lhablock, lhacode, loglevel=logging.WARNING):
+            try:
+                return param_card[lhablock.lower()].get(list(lhacode))
+            except (KeyError, IndexError):
+                logger.log(loglevel, '%s %s is not a parameter of this model. '
+                           'Corresponding restriction is ignored.',
+                           lhablock, list(lhacode))
+                return None
+
+        restricted = set()
+        for category in categories:
+            for option in category:
+                for (lhablock, lhacode, value) in option.get_rules():
+                    # an option of the model can be partially obsolete
+                    param = get_param(lhablock, lhacode, logging.DEBUG)
+                    if param is not None:
+                        param.value = value
+                        restricted.add((lhablock.lower(), tuple(lhacode)))
+
+        for value, entries in [(0., set_zero), (1., set_one)]:
+            for (lhablock, lhacode) in entries:
+                param = get_param(lhablock, lhacode)
+                if param is not None:
+                    param.value = value
+                    restricted.add((lhablock.lower(), tuple(lhacode)))
+
+        # done last so that 'set_equal A B' where B is itself restricted does
+        # propagate the restricted value to A
+        for (lhablock, lhacode), (lhablock2, lhacode2) in set_equal:
+            target = get_param(lhablock, lhacode)
+            source = get_param(lhablock2, lhacode2)
+            if target is not None and source is not None:
+                target.value = source.value
+                restricted.add((lhablock.lower(), tuple(lhacode)))
+
+        return restricted
+
+    @staticmethod
+    def get_restriction_signature(model):
+        """A summary of everything that the restriction of a model did remove
+        or merge. Two restrictions done with different (random) input values
+        have to return the same signature."""
+
+        # the flavour grouped couplings are named with a counter which is not
+        # reset between two imports: those names carry no information here
+        clean = lambda text: re.sub(r'\bFLV_\d+\b', 'FLV', str(text))
+
+        interactions = []
+        for vertex in model.get('interactions'):
+            interactions.append((
+                tuple(sorted(p.get('pdg_code') for p in vertex.get('particles'))),
+                tuple(sorted(str(lor) for lor in vertex.get('lorentz'))),
+                tuple(sorted(clean('%s:%s' % (key, value))
+                             for key, value in vertex.get('couplings').items()))))
+
+        couplings = [clean(coup.name) for value in model.get('couplings').values()
+                                                          for coup in value]
+        externals = ['%s %s' % (param.lhablock.lower(), list(param.lhacode))
+                     for param in model['parameters'][('external',)]]
+        particles = ['%s %s %s' % (p.get('pdg_code'), p.get('mass'), p.get('width'))
+                     for p in model.get('particles')]
+
+        return {'interactions': sorted(interactions),
+                'couplings': sorted(couplings),
+                'external parameters': sorted(externals),
+                'masses/widths': sorted(particles)}
+
+    def build_restricted_model(self, model_path, param_card, externals,
+                                categories, set_zero, set_one, set_equal):
+        """apply one full restriction of the model. The input values which
+        would be simplified by accident are randomized first.
+        return the restricted model, the associated restriction card and the
+        set of the (lhablock, lhacode) really restricted."""
+
+        restrict_card = check_param_card.ParamCard(param_card)
+        self.randomize_param_card(restrict_card, externals)
+        restricted = self.apply_customize_rules(restrict_card, categories,
+                                                set_zero, set_one, set_equal)
+
+        # the restriction is applied by import_model (and not directly by
+        # RestrictModel) so that the model is the very same -flavour grouping
+        # included- as the one obtained by 'import model NAME-restriction'
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            restrict_path = pjoin(tmp_dir, 'restrict_customize.dat')
+            restrict_card.write(restrict_path)
+            model = import_ufo.import_model(model_path, restrict=restrict_path)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        return model, restrict_card, restricted
+
+    def get_default_param_card(self, model, default_card, restricted,
+                                                               set_equal=()):
+        """the param_card of the (restricted) model where all the parameters
+        which were not restricted by the user are set back to the default value
+        of the model."""
+
+        out_path = io.StringIO()
+        param_writer.ParamCardWriter(model, out_path)
+        param_card = check_param_card.ParamCard(out_path.getvalue().split('\n'))
+
+        for block in param_card:
+            if block.startswith(('qnumbers', 'decay_table')) or 'info' in block:
+                continue
+            for param in param_card[block]:
+                if (block.lower(), tuple(param.lhacode)) in restricted:
+                    continue # the user asked for that value: keep it
+                value = default_card.get_value(block, tuple(param.lhacode),
+                                               default='__not_found__')
+                if value != '__not_found__':
+                    param.value = value
+
+        # a parameter identified to another one has to follow it, including
+        # when the value of that one was restored above
+        for (lhablock, lhacode), (lhablock2, lhacode2) in set_equal:
+            try:
+                target = param_card[lhablock.lower()].get(list(lhacode))
+                source = param_card[lhablock2.lower()].get(list(lhacode2))
+            except (KeyError, IndexError):
+                continue # merged by the restriction (or removed from the model)
+            target.value = source.value
+
+        return param_card
+
+    #===========================================================================
+    # customize_model --explain: which choice removed which coupling
+    #===========================================================================
+    def get_restriction_groups(self, categories, set_zero, set_one, set_equal,
+                                                                      lha2name):
+        """the user choices, as (label, set of (lhablock, lhacode)) pairs. Those
+        are the units the removal of a coupling is attributed to."""
+
+        def name(key):
+            return self.name_of_lha(lha2name, key)
+
+        groups = []
+        for category in categories:
+            for option in self.group_options(category):
+                keys = set()
+                for rule in option:
+                    keys.update((lhablock.lower(), tuple(lhacode))
+                        for lhablock, lhacode, value in rule.get_rules())
+                if not keys:
+                    continue # option not selected
+                label = option[0].name
+                if isinstance(option[0], build_restrict_lib.ChoiceOption):
+                    label = '%s = %s' % (label, option[0].status)
+                groups.append((label, keys))
+
+        for command, entries in [('set_zero', set_zero), ('set_one', set_one)]:
+            for key in entries:
+                key = (key[0].lower(), tuple(key[1]))
+                groups.append(('%s %s' % (command, name(key)), set([key])))
+        for target, source in set_equal:
+            target = (target[0].lower(), tuple(target[1]))
+            groups.append(('set_equal %s %s' % (name(target),
+                       name((source[0].lower(), tuple(source[1])))), set([target])))
+
+        return groups
+
+    @staticmethod
+    def get_parameter_classes(param_card, externals):
+        """what the restriction does to the param_card itself for those values:
+        (the external parameters it turns internal because they are 0 or 1, the
+        ones it fuses because they share the value of another one of the same
+        block). Mirrors detect_special_parameters/detect_identical_parameters."""
+
+        dropped, by_value = set(), {}
+        for block in param_card:
+            if block.startswith(('qnumbers', 'decay_table')) or 'info' in block:
+                continue
+            for param in param_card[block]:
+                key = (block.lower(), tuple(param.lhacode))
+                if key not in externals:
+                    continue
+                try:
+                    value = float(param.value)
+                except (TypeError, ValueError):
+                    continue
+                if value in (0., 1.):
+                    dropped.add(key)
+                elif block.lower() != 'decay': # widths are never fused
+                    by_value.setdefault((block.lower(), abs(value)), []).append(key)
+
+        fused = set()
+        for keys in by_value.values():
+            if len(keys) > 1:
+                fused.update(keys)
+        return dropped, fused
+
+    @staticmethod
+    def get_coupling_classes(model, param_card):
+        """evaluate all the couplings for the values of param_card and return
+        (the ones the restriction would drop, the ones it would fuse with at
+        least one other). Same thresholds/rounding as detect_identical_couplings
+        so that the report matches what the restriction really does."""
+
+        def rounded(value):
+            out = []
+            for part in (value.real, value.imag):
+                if part:
+                    part = round(part,
+                        int(abs(round(math.log(abs(part), 10), 0)) + 10))
+                out.append(part)
+            return tuple(out)
+
+        model.set_parameters_and_couplings(check_param_card.ParamCard(param_card))
+        zero, by_value = set(), {}
+        for name, value in model.get('coupling_dict').items():
+            value = complex(value)
+            if abs(value) < 1e-13:
+                zero.add(name)
+            else:
+                by_value.setdefault(rounded(value), []).append(name)
+
+        fused = set()
+        for names in by_value.values():
+            if len(names) > 1:
+                fused.update(names)
+        return zero, fused
+
+    @staticmethod
+    def get_interaction_impact(model, couplings):
+        """(removed, modified) number of interactions if couplings are zero"""
+
+        removed, modified = 0, 0
+        for vertex in model.get('interactions'):
+            names = set()
+            for value in vertex.get('couplings').values():
+                if isinstance(value, base_objects.FLV_Coupling):
+                    values = list(value.get('flavors').values())
+                else:
+                    values = [value]
+                names.update(v[1:] if v.startswith('-') else v for v in values)
+            if not names:
+                continue
+            if names.issubset(couplings):
+                removed += 1
+            elif names & couplings:
+                modified += 1
+        return removed, modified
+
+    def explain_restriction(self, model_path, externals, groups, unrestricted,
+                                    restricted, base=None, full=False):
+        """Report what each of the user choices does to the couplings of the
+        model: which ones it drops and which ones it fuses with another.
+
+        For each choice the couplings are evaluated with that choice -and only
+        that one- applied, so a coupling can legitimately have several causes
+        (in the sm 'yb*conjugate(CKM1x3)' is dropped by the 5F scheme as well as
+        by the diagonal CKM). Nothing is removed or changed here: this only
+        reads values, so the report can not alter the resulting model."""
+
+        # done before the header so that the (noisy) log of the model import
+        # does not land in the middle of the report
+        if base is None:
+            base = model_reader.ModelReader(
+                        import_ufo.import_model(model_path, restrict=False))
+        self.log_report_banner('Restriction report: analysing %d restriction(s),'
+                               ' one evaluation of the couplings each'
+                               % len(groups))
+
+        # what is already zero/fused without any restriction is a property of
+        # the model, not something the user did
+        base_zero, base_fused = self.get_coupling_classes(base, unrestricted)
+        all_zero, all_fused = self.get_coupling_classes(base, restricted)
+        all_zero -= base_zero
+        all_fused -= base_fused
+        base_pdrop, base_pfuse = self.get_parameter_classes(unrestricted, externals)
+        logger.info('  in total: %d coupling(s) dropped, %d fused (%d and %d are'
+                    ' already so in the unrestricted model)' % (len(all_zero),
+                    len(all_fused), len(base_zero), len(base_fused)),
+                    '$MG:color:GREEN')
+
+        # what each choice does on its own. Reported as it is computed: on a
+        # large model each of those is a full evaluation of the couplings.
+        alone = []
+        for label, keys in groups:
+            probe = check_param_card.ParamCard(unrestricted)
+            for (lhablock, lhacode) in keys:
+                try:
+                    probe[lhablock].get(list(lhacode)).value = \
+                            restricted[lhablock].get(list(lhacode)).value
+                except (KeyError, IndexError):
+                    continue
+            zero, fused = self.get_coupling_classes(base, probe)
+            pdrop, pfuse = self.get_parameter_classes(probe, externals)
+            alone.append((label, zero - base_zero, fused - base_fused,
+                          (pdrop - base_pdrop) | (pfuse - base_pfuse)))
+            self.log_restriction_group(base, alone[-1], full)
+
+        # the cross-choice information is only available once they all ran
+        # how many of the restrictions cover each coupling. Counting (instead
+        # of intersecting every pair) keeps this linear on a card which has
+        # hundreds of restrictions, and does not confuse two groups which
+        # happen to have the same label
+        explained, covered_by = set(), {}
+        for label, zero, fused, params in alone:
+            entries = zero | fused
+            explained |= entries
+            for name in entries:
+                covered_by[name] = covered_by.get(name, 0) + 1
+        shared = set(name for name, nb in covered_by.items() if nb > 1)
+        conjunction = (all_zero | all_fused) - explained
+
+        nb = None if full else 8
+        if shared:
+            logger.info('  %d coupling(s) are covered by more than one '
+                        'restriction: %s' % (len(shared),
+                        self.short_list(shared, nb)), '$MG:color:BLUE')
+        if conjunction:
+            logger.info('  %d coupling(s) only through several of them at once:'
+                        ' %s' % (len(conjunction),
+                        self.short_list(conjunction, nb)), '$MG:color:BLUE')
+        self.log_report_banner()
+
+        return alone, (base_zero, base_fused), conjunction
+
+    REPORT_WIDTH = 78
+
+    @classmethod
+    def log_report_banner(cls, text=None):
+        """a separator -and optionally a title- around a restriction report.
+        Those reports are printed in the middle of the (verbose) log of a model
+        import, so they need to stand out."""
+
+        logger.info('=' * cls.REPORT_WIDTH, '$MG:color:GREEN')
+        if text is not None:
+            logger.info(' %s' % text, '$MG:color:GREEN')
+            logger.info('=' * cls.REPORT_WIDTH, '$MG:color:GREEN')
+
+    def log_restriction_group(self, model, entry, full=False):
+        """the part of the --explain report which concerns a single choice"""
+
+        label, zero, fused, params = entry
+        if not zero and not fused and not params:
+            logger.info('  %-38s changes nothing' % label, '$MG:color:BLACK')
+            return
+        nb_removed, nb_modified = self.get_interaction_impact(model, zero)
+        logger.info('  %-38s %d coupling(s) dropped, %d fused, %d '
+                    'interaction(s) removed%s' % (label, len(zero), len(fused),
+                    nb_removed,
+                    ', %d modified' % nb_modified if nb_modified else ''),
+                    '$MG:BOLD')
+        indent = '  %-38s   ' % ''
+        if zero:
+            self.log_names(indent, 'dropped:', zero, full)
+        if fused:
+            self.log_names(indent, 'fused:  ', fused, full)
+        if params:
+            logger.info('  %-38s   %d parameter(s) restricted (set to 0/1 '
+                        'or merged)', '', len(params))
+
+    @staticmethod
+    def short_list(names, nb=8):
+        """a readable list of names, truncated after nb of them (nb=None to
+        keep them all)"""
+
+        names = sorted(names, key=natural_key)
+        if nb is None or len(names) <= nb:
+            return ', '.join(names)
+        return '%s, ... (%d more)' % (', '.join(names[:nb]), len(names) - nb)
+
+    @staticmethod
+    def wrap_list(names, width=64):
+        """the names, cut into lines of at most width characters"""
+
+        lines, current, length = [], [], 0
+        for name in sorted(names, key=natural_key):
+            if current and length + len(name) + 2 > width:
+                lines.append(', '.join(current))
+                current, length = [], 0
+            current.append(name)
+            length += len(name) + 2
+        if current:
+            lines.append(', '.join(current))
+        return lines or ['']
+
+    def log_names(self, indent, title, names, full):
+        """'title: a, b, c', on several lines when they are all wanted"""
+
+        if not full:
+            logger.info('%s%s %s', indent, title, self.short_list(names))
+            return
+        lines = self.wrap_list(names)
+        logger.info('%s%s %s', indent, title, lines[0])
+        for line in lines[1:]:
+            logger.info('%s%s %s', indent, ' ' * len(title), line)
+
+    @staticmethod
+    def get_lha2name(model_path):
+        """(lhablock in lower case, lhacode) -> the name of the parameter as
+        the UFO -and so the user- spells it (no 'mdl_' prefix). The block is
+        lowered because a UFO spells it as it likes ('Wolfenstein' in the sm)."""
+
+        ufo_model = ufomodels.load_model(model_path)
+        return dict(((param.lhablock.lower(), tuple(param.lhacode)), param.name)
+                    for param in ufo_model.all_parameters
+                    if param.nature == 'external')
+
+    @staticmethod
+    def name_of_lha(lha2name, key):
+        """the name of a (lhablock, lhacode), whatever the case of the block"""
+
+        return lha2name.get((key[0].lower(), tuple(key[1])), None) or \
+               '%s %s' % (key[0], list(key[1]))
+
+    @staticmethod
+    def get_card_restriction_groups(param_card, externals, lha2name=None):
+        """the restrictions a param_card contains, as the (label, keys) groups
+        a report attributes a removal to: the parameters it sets to zero or to
+        one, and the families which share a value inside a block."""
+
+        lha2name = lha2name or {}
+
+        def name(key):
+            return MadGraphCmd.name_of_lha(lha2name, key)
+
+        groups, by_value = [], {}
+        for block in param_card:
+            if block.startswith(('qnumbers', 'decay_table')) or 'info' in block:
+                continue
+            for param in param_card[block]:
+                key = (block.lower(), tuple(param.lhacode))
+                if key not in externals:
+                    continue
+                try:
+                    value = float(param.value)
+                except (TypeError, ValueError):
+                    continue
+                if value in (0., 1.):
+                    groups.append(('%s = %d' % (name(key), value), set([key])))
+                elif block.lower() != 'decay': # widths are never fused
+                    by_value.setdefault((block.lower(), abs(value)), []).append(key)
+
+        for value in sorted(by_value):
+            keys = by_value[value]
+            if len(keys) > 1:
+                groups.append((' = '.join(name(key) for key in keys), set(keys)))
+        return groups
+
+    def do_explain_restriction(self, line):
+        """explain what a restriction card removes from a model"""
+
+        args = self.split_arg(line)
+        self.check_explain_restriction(args)
+        full = '--all' in args
+        args = [arg for arg in args if arg != '--all']
+
+        model_path, restrict_file = self.get_restriction_to_explain(args)
+        logger.info('Explaining %s on the model %s', os.path.basename(restrict_file),
+                    os.path.basename(model_path.rstrip('/')))
+
+        model = import_ufo.import_model(model_path, restrict=False)
+        externals = self.get_external_lhacode(model)
+        default_card = self.get_full_param_card(model)
+
+        restricted = check_param_card.ParamCard(restrict_file)
+        groups = self.get_card_restriction_groups(restricted, externals,
+                                            self.get_lha2name(model_path))
+        if not groups:
+            logger.info('%s does not restrict anything in this model.',
+                        os.path.basename(restrict_file))
+            return
+
+        # everything the card does not restrict has to come from the model, so
+        # the reference is the default values, with the ones which would be
+        # simplified by accident randomized (as customize_model does)
+        unrestricted = check_param_card.ParamCard(default_card)
+        self.randomize_param_card(unrestricted, externals)
+
+        self.explain_restriction(model_path, externals, groups, unrestricted,
+                                 restricted, full=full)
+
+    def get_restriction_to_explain(self, args):
+        """(model path, restriction card) of an 'explain_restriction' argument:
+        a card, a 'model-restriction' name, or nothing for the current model"""
+
+        if not args:
+            model = self._curr_model
+            # RestrictModel keeps it as an attribute, not as a key
+            restrict_file = getattr(model, 'restrict_card', None)
+            if not isinstance(restrict_file, str):
+                raise self.InvalidCmd('The current model is not restricted by '
+                    'a card. Give one (or a model name like sm-ckm) to explain.')
+            if not os.path.isfile(restrict_file):
+                raise self.InvalidCmd('The card the current model was built '
+                    'from (%s) is not on disk anymore. Give the path of a card '
+                    '(or a model name like sm-ckm) to explain.' % restrict_file)
+            return model.get('modelpath'), restrict_file
+
+        if os.path.isfile(args[0]):
+            if not self._curr_model:
+                raise self.InvalidCmd('Import a model before explaining one of '
+                                      'its restriction cards.')
+            return self._curr_model.get('modelpath'), args[0]
+
+        try:
+            model_path, restrict_file, restrict_name = \
+                                        import_ufo.get_path_restrict(args[0])
+        except Exception as error:
+            raise self.InvalidCmd('%s is neither a restriction card nor a model'
+                                  ' name: %s' % (args[0], error))
+        if not restrict_file:
+            raise self.InvalidCmd('%s does not select any restriction card.'
+                                  % args[0])
+        return model_path, restrict_file
 
     def do_customize_model(self, line):
         """create a restriction card in a interactive way"""
@@ -8590,82 +12137,283 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         args = self.split_arg(line)
         self.check_customize_model(args)
 
+        name = ([a.split('=', 1)[1] for a in args if a.startswith('--save=')]
+                                                                      + [None])[0]
+        explain = resolve_explain_mode(args)
+        full = '--all' in args
         model_path = self._curr_model.get('modelpath')
-        if not os.path.exists(pjoin(model_path,'build_restrict.py')):
-            raise self.InvalidCmd('''Model not compatible with this option.''')
+        # the model as currently loaded: only used to know which of the generic
+        # options are already applied (it defines their default value)
+        reference_model = self._curr_model
+
+        try:
+            self.customize_model(model_path, reference_model, name, explain,
+                                 full)
+        except Exception:
+            # do not leave the interface with the unrestricted model
+            self._curr_model = reference_model
+            raise
+
+    def customize_model(self, model_path, reference_model, name, explain=None,
+                                                                   full=False):
+        """the body of do_customize_model. model_path is the model to
+        customize, reference_model the model as currently loaded and name the
+        name of the restriction to save (None to only modify the model in
+        memory). explain is 'life' to report what each command changes while
+        the question is answered, 'final' to report which choice is responsible
+        for what once it is closed, None for no report at all."""
 
         # (re)import the full model (get rid of the default restriction)
         self._curr_model = import_ufo.import_model(model_path, restrict=False)
+        categories = self.get_customize_categories(self._curr_model,
+                                                   reference_model)
 
-        #1) create the full param_card
-        out_path = io.StringIO()
-        param_writer.ParamCardWriter(self._curr_model, out_path)
-        # and load it to a python object
-        param_card = check_param_card.ParamCard(out_path.getvalue().split('\n'))
+        # the values the customized model starts from, before any 'set default'
+        externals = self.get_external_lhacode(self._curr_model)
+        baseline, recovered = self.get_loaded_default_card(self._curr_model,
+                                                    reference_model, externals)
 
+        explainer = None
+        if explain == 'life':
+            explainer = RestrictionExplainer(self, model_path, baseline,
+                                             externals, categories)
 
-        all_categories = self.ask('','0',[], ask_class=AskforCustomize)
-        put_to_one = []
-        ## Make a Temaplate for  the restriction card. (card with no restrict)
-        for block in param_card:
-            value_dict = {}
-            for param in param_card[block]:
-                value = param.value
-                if value == 0:
-                    param.value = 0.000001e-99
-                elif value == 1:
-                    if block != 'qnumbers':
-                        put_to_one.append((block,param.lhacode))
-                        param.value = random.random()
-                elif abs(value) in value_dict:
-                    param.value += value_dict[abs(value)] * 1e-4 * param.value
-                    value_dict[abs(value)] += 1
-                else:
-                    value_dict[abs(value)] = 1
+        # the question starts from the restriction the model was loaded with:
+        # without it, what that restriction had fixed -- zeros, ones, merged
+        # parameters -- came back at its UFO value, so customizing
+        # SMEFTatNLO-NLO silently switched operators, masses and widths back on
+        ask_instance = self.ask('', '0', [], ask_class=AskforCustomize,
+                                categories=categories, explainer=explainer,
+                                baseline_card=baseline,
+                                loaded_card=self.get_loaded_restriction_card(
+                                                            reference_model),
+                                loaded_name=self.get_reference_name(
+                                                            reference_model),
+                                return_instance=True)[1]
 
-        for category in all_categories:
-            for options in category:
-                if not options.status:
-                    continue
-                param = param_card[options.lhablock].get(options.lhaid)
-                param.value = options.value
+        set_zero = ask_instance.set_zero
+        set_one = ask_instance.set_one
+        set_equal = self.resolve_set_equal(ask_instance.set_equal)
+        new_formula = ask_instance.new_formula
+        new_coupling = ask_instance.new_coupling
+
+        if new_formula or new_coupling:
+            # changing a formula can not be done via a restriction card:
+            # a new UFO model has to be written on disk
+            if name:
+                raise self.InvalidCmd(
+                    'Modifying a formula is not compatible with the --save option.\n'
+                    '  Run \'customize_model\' without --save: you will be asked for\n'
+                    '  the name of the new model to create.')
+            old_externals = self.get_external_lhacode(self._curr_model)
+            model_path = self.create_customized_ufo(model_path, new_formula,
+                                                                  new_coupling)
+            self._curr_model = import_ufo.import_model(model_path, restrict=False)
+            self.warn_rules_lost_by_formula(categories,
+                    old_externals - self.get_external_lhacode(self._curr_model))
+            # the parameters changed, so the values they start from have to be
+            # read again from the model which is now used
+            baseline, recovered = self.get_loaded_default_card(self._curr_model,
+                    reference_model, self.get_external_lhacode(self._curr_model))
+
+        # the values of the model, used to restore the non restricted
+        # parameters, with what 'set default' asked for on top of them
+        externals = self.get_external_lhacode(self._curr_model)
+        default_card = self.build_default_card(self._curr_model, baseline,
+                                               ask_instance)
 
         logger.info('Loading the resulting model')
-        # Applying the restriction
-        self._curr_model = import_ufo.RestrictModel(self._curr_model)
-        model_name = self._curr_model.get('name')
-        if model_name == 'mssm':
-            keep_external=True
-        else:
-            keep_external=False
-        self._curr_model.restrict_model(param_card,keep_external=keep_external)
+        model, restrict_card, restricted = self.build_restricted_model(
+            model_path, default_card, externals, categories, set_zero, set_one,
+            set_equal)
 
-        if args:
-            name = args[0].split('=',1)[1]
-            path = pjoin(model_path,'restrict_%s.dat' % name)
-            logger.info('Save restriction file as %s' % path)
-            param_card.write(path)
+        if explain == 'final':
+            groups = self.get_restriction_groups(categories, set_zero, set_one,
+                                          set_equal, ask_instance.lha2name)
+            try:
+                unrestricted = check_param_card.ParamCard(default_card)
+                self.randomize_param_card(unrestricted, externals)
+                restricted = check_param_card.ParamCard(unrestricted)
+                self.apply_customize_rules(restricted, categories, set_zero,
+                                                        set_one, set_equal)
+                self.explain_restriction(model_path, externals, groups,
+                        unrestricted, restricted,
+                        base=explainer.model if explainer else None, full=full)
+            except Exception as error:
+                # the report is informative only: never let it break the command
+                logger.warning('Could not build the restriction report: %s', error)
+
+        if name:
+            # The restriction is driven by the value of the parameters, so a
+            # (un)lucky set of random values could remove more -or less- than
+            # what the user asked for. Redo it with another set of values and
+            # check that we do end up with the very same model.
+            logger.info('Checking the stability of the restriction')
+            check_model = self.build_restricted_model(model_path, default_card,
+                        externals, categories, set_zero, set_one, set_equal)[0]
+            signature = self.get_restriction_signature(model)
+            check_signature = self.get_restriction_signature(check_model)
+            diff = [key for key, value in signature.items()
+                    if value != check_signature[key]]
+            if diff and madgraph.ADMIN_DEBUG:
+                for key in diff:
+                    only1 = [v for v in signature[key] if v not in check_signature[key]]
+                    only2 = [v for v in check_signature[key] if v not in signature[key]]
+                    misc.sprint(key, 'only in run1:', only1[:5])
+                    misc.sprint(key, 'only in run2:', only2[:5])
+            if diff:
+                logger.warning('Two restrictions of the model done with different '
+                    'input values do not lead to the same model.\n'
+                    '  Difference(s) found for: %s\n'
+                    '  This typically means that the model has (hidden) relations '
+                    'between its parameters.\n'
+                    '  The restriction is therefore NOT applied.', ', '.join(diff))
+                raise self.InvalidCmd('customize_model can not be applied to this model.')
+
+        self._curr_model = model
+        # the card it was just built from was a temporary file which
+        # build_restricted_model has already removed: do not leave the model
+        # pointing at it (explain_restriction would read it)
+        self._curr_model.restrict_card = None
+        # restore the default value of everything the user did not restrict
+        param_card = self.get_default_param_card(model, default_card, restricted,
+                                                 set_equal)
+        self._curr_model.set_parameters_and_couplings(param_card)
+        # rewrite it so that the informative entries (dependent parameters) of
+        # the card are the ones of the model with its default values
+        param_card = self.get_full_param_card(self._curr_model)
+        if ask_instance.default_source != 'ufo':
+            self.warn_recovered_defaults(recovered, restricted, param_card,
+                            model_path, self.get_reference_name(reference_model),
+                            ask_instance)
+        self.process_model()
+
+        if name:
+            restrict_path = pjoin(model_path, 'restrict_%s.dat' % name)
+            logger.info('Save restriction file as %s' % restrict_path)
+            restrict_card.write(restrict_path)
+            param_path = pjoin(model_path, 'param_%s.dat' % name)
+            logger.info('Save default card file as %s' % param_path)
+            param_card.write(param_path)
             self._curr_model['name'] += '-%s' % name
+            # that one does exist, so 'explain_restriction' can read it back
+            self._curr_model.restrict_card = restrict_path
 
-        # if some need to put on one
-        if put_to_one:
-            out_path = io.StringIO()
-            param_writer.ParamCardWriter(self._curr_model, out_path)
-            # and load it to a python object
-            param_card = check_param_card.ParamCard(out_path.getvalue().split('\n'))
-            
-            for (block, lhacode) in put_to_one:
-                try:
-                    param_card[block].get(lhacode).value = 1
-                except:
-                    pass # was removed of the model!
-            self._curr_model.set_parameters_and_couplings(param_card)
+    @staticmethod
+    def warn_rules_lost_by_formula(categories, lost):
+        """A 'formula' command turns an external parameter into an internal
+        one, so a restriction pointing at that parameter can not be written in
+        the param_card anymore. Those are silently skipped when the card is
+        filled, so say here which options are concerned."""
 
-            if args:
-                name = args[0].split('=',1)[1]
-                path = pjoin(model_path,'paramcard_%s.dat' % name)
-                logger.info('Save default card file as %s' % path)
-                param_card.write(path)
+        if not lost:
+            return
+        affected = set()
+        for category in categories:
+            for option in category:
+                target = set((lhablock.lower(), tuple(lhacode))
+                             for lhablock, lhacode, value in option.get_rules())
+                if target & lost:
+                    affected.add(option.name)
+        if affected:
+            logger.warning('The following option(s) can not be fully applied '
+                'anymore: %s.\n  A \'formula\' command turned one of the '
+                'parameters they act on into an internal parameter of the new '
+                'model, so that parameter is not in the param_card anymore and '
+                'the corresponding restriction is dropped.',
+                ', '.join(sorted(affected)))
+
+    def create_customized_ufo(self, model_path, new_formula, new_coupling,
+                                                                    name=None):
+        """write on disk a new UFO model where the formula of some parameters
+        and/or couplings are the one asked by the user. Return the path of the
+        new model."""
+
+        import madgraph.models.usermod as usermod
+
+        if not name:
+            default = '%s_customized' % os.path.basename(model_path.rstrip('/'))
+            name = self.ask('Please enter the name of the new model', default,
+                                                  ask_class=AskforModelName)
+            name = str(name).strip()
+        if not AskforModelName.name_pattern.match(name):
+            raise self.InvalidCmd('\'%s\' is not a valid model name '
+                '(letters, digits and underscores only).' % name)
+
+        output_dir = pjoin(MG5DIR, 'models', name)
+        if os.path.exists(output_dir):
+            answer = self.ask('Model %s already exists. Overwrite it?' % name,
+                              'n', ['y', 'n'])
+            if answer != 'y':
+                raise self.InvalidCmd('Model %s already exists.' % name)
+            shutil.rmtree(output_dir)
+
+        try:
+            base_model = copy.deepcopy(usermod.UFOModel(model_path))
+        except Exception:
+            base_model_tmp = usermod.UFOModel(model_path)
+            with misc.TMP_variable(base_model_tmp, 'model', None):
+                base_model = copy.deepcopy(base_model_tmp)
+            base_model.model = base_model_tmp.model
+            del base_model_tmp
+
+        # the external parameters which become internal have to be removed from
+        # the restriction cards shipped with the original model
+        removed = []
+        for param_name, expr in new_formula:
+            for param in base_model.parameters:
+                if param.name != param_name:
+                    continue
+                logger.info('%s is now an internal parameter: %s = %s',
+                            param.name, param.name, expr)
+                removed.append((param.lhablock.lower(), tuple(param.lhacode)))
+                param.nature = 'internal'
+                param.value = expr
+                del param.lhablock
+                del param.lhacode
+                break
+            else:
+                raise self.InvalidCmd('%s is not a parameter of the model' % param_name)
+
+        for coupling_name, expr in new_coupling:
+            for coupling in base_model.couplings:
+                if coupling.name != coupling_name:
+                    continue
+                logger.info('%s is redefined as: %s', coupling.name, expr)
+                coupling.value = expr
+                break
+            else:
+                raise self.InvalidCmd('%s is not a coupling of the model' % coupling_name)
+
+        base_model.write(output_dir)
+
+        # optional files of the UFO which write() does not propagate but which
+        # are needed for the new model to behave like the original one
+        for filename in ['build_restrict.py', 'running.py', 'decays.py', 'README']:
+            if os.path.exists(pjoin(model_path, filename)):
+                files.cp(pjoin(model_path, filename), output_dir)
+
+        # write() only propagates the restrict_XXX.dat, but the associated
+        # param_XXX.dat (default values) has to follow them
+        for card in os.listdir(model_path):
+            if card.startswith('param_') and card.endswith('.dat') and \
+                   os.path.exists(pjoin(model_path, card.replace('param_', 'restrict_', 1))):
+                files.cp(pjoin(model_path, card), output_dir)
+
+        if removed:
+            for card in os.listdir(output_dir):
+                if not card.startswith(('restrict_', 'param_')) or \
+                                                    not card.endswith('.dat'):
+                    continue
+                param_card = check_param_card.ParamCard(pjoin(output_dir, card))
+                for lhablock, lhacode in removed:
+                    if param_card.has_param(lhablock, list(lhacode)):
+                        param_card.remove_param(lhablock, list(lhacode))
+                # same precision as usermod uses for those cards
+                param_card.write(pjoin(output_dir, card), precision=7)
+
+        logger.info('New model created in %s', output_dir)
+        return output_dir
 
     def do_save(self, line, check=True, to_keep={}, log=True):
         """Not in help: Save information to file"""
@@ -8683,13 +12431,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     logger.info('Saved model to file %s' % args[1])
             else:
                 raise self.InvalidCmd('No model to save!')
-        elif args[0] == 'processes':
-            if self._curr_amps:
-                if save_load_object.save_to_file(args[1], (self._curr_amps,self._curr_proc_defs) ):
-                    logger.info('Saved processes to file %s' % args[1])
-            else:
-                raise self.InvalidCmd('No processes to save!')
-
         elif args[0] == 'options':
             partial_save = False
             to_define = {}
@@ -8818,6 +12559,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger.info('Note that you need to regenerate all processes')
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         if self.options[args[0]] == 'gpu':
             export_v4.ProcessExporterFortranMEGroup.grouped_mode = 'gpu'
@@ -8897,10 +12639,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         else:
             if not old:
                 if log:
-                    logger.info('Complex mass already desactivated.')
+                    logger.info('Complex mass already deactivated.')
                 return
             if log:
-                logger.info('Desactivate complex mass scheme.')
+                logger.info('Deactivate complex mass scheme.')
         if not self._curr_model:
             return
         self.do_import("model %s" % self._curr_model.get('name'), options={'allow_qed_cms':True})
@@ -8912,8 +12654,44 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         logger.info(" > axial is also named the parton-shower gauge (for massless particles only).")
         logger.info(" > FD is for Feynman Diagram gauge: (see 2203.10440 and 2405.01256). This is the extension of the axial gauge to massive particles.")
         logger.info(" > For loop processes, only Feynman gauge is employable.")
+        logger.info(" > Unless the gauge is set here, a tree-level process whose W/Z")
+        logger.info("   propagator ends on a current that is not conserved (VBF, VBS,")
+        logger.info("   p p > w+ w-, t t~ with W decays, ...) is generated in the FD gauge,")
+        logger.info("   where the precision does not degrade with the energy (see 'set")
+        logger.info("   auto_gauge'). 'set gauge default' restores that.")
+        logger.info(" > 'generate|add process ... --gauge=FD|unitary' sets the gauge of one")
+        logger.info("   process line: the outputs madevent, standalone_fortran, standalone")
+        logger.info("   and mg7 hold subprocesses in both gauges.")
 
-        
+    def help_set2_auto_gauge(self):
+        """Help for set auto_gauge command"""
+        logger.info("auto_gauge True|False",'$MG:color:GREEN')
+        logger.info(" > (default True) choose the FD gauge automatically for each process line")
+        logger.info("   whose diagrams have a W/Z propagator ending on a vertex that is not a")
+        logger.info("   conserved current: a bosonic vertex (HVV, VVV) or a massive quark")
+        logger.info("   (t-b). Two massless fermions or SM leptons are conserved, external W/Z")
+        logger.info("   looked at. In the unitary gauge the diagrams of such a process grow")
+        logger.info("   with the energy and digits are lost in their sum; the FD gauge")
+        logger.info("   cancels that diagram by diagram. When every line needs it the whole")
+        logger.info("   output is FD ('set gauge FD' in the proc_card), else only those")
+        logger.info("   lines ('--gauge=FD' on them). 'set gauge X' and '--gauge=X' win.")
+
+    def set2_auto_gauge(self, args, log=True):
+        """Set whether the gauge is chosen automatically, see
+        apply_automatic_gauge."""
+
+        args = ['auto_gauge'] + args
+        self.check_set(args)
+        if not args[1] and self.automatic_fd_gauge_in_use():
+            self.refuse_automatic_gauge_change('"set auto_gauge False"')
+        self.options['auto_gauge'] = args[1]
+        if not args[1] and self.automatic_fd_gauge_in_use():
+            # the FD gauge in use was ours: back to the default
+            if log:
+                logger.info('Back to the unitary gauge (the FD gauge had been '
+                            'chosen automatically): the processes have to be '
+                            'generated again.')
+            self.switch_gauge_and_regenerate('unitary')
 
     def set2_gauge(self, args, log=True):
         """Set the gauge to be used in the model. Options are:
@@ -8922,8 +12700,18 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
               axial: Parton-shower gauge
               FD: Four-Dimensional gauge (see 2203.10440 and 2405.01256)
         """
+        # 'set gauge default' hands the choice back to the automatic selection
+        restore_automatic = bool(args) and args[0] == 'default'
         args = ['gauge'] + args
         self.check_set(args)
+        if log:
+            # typed by the user (the internal callers, 'check gauge' and the
+            # automatic choice, pass log=False): the gauge is theirs from now
+            # on, see apply_automatic_gauge
+            self._explicit_gauge = not restore_automatic
+            self._auto_gauge_active = False
+            if restore_automatic:
+                self.record_automatic_gauge('unitary')
 
         # Treat the case where they are no model loaded
         if not self._curr_model:
@@ -8957,7 +12745,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 if log: logger.warning('Note that parton-shower gauge is not allowed for your current model %s' \
                                         % self._curr_model.get('name'))
         elif args[1] == 'FD':
-            logger.warning("WARNING: NOT ALL MODEL ARE SUPPORTING THIS GAUGE. PLEASE CHECK/CITE 2203.10440 and 2405.01256")
+            if log:
+                logger.warning("WARNING: NOT ALL MODEL ARE SUPPORTING THIS GAUGE. PLEASE CHECK/CITE 2203.10440 and 2405.01256")
             if 1 in self._curr_model.get('gauge'):
                 aloha.unitary_gauge = 3
             else:
@@ -8977,6 +12766,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             return
         
         
+        if log and self.postponed_export_pending():
+            # the processes written in that output are in the gauge left now:
+            # the model written at the end could not serve them
+            logger.warning('The output waiting for its model (--postpone_model) '
+                           'was written in the %s gauge: generate and output its '
+                           'processes again in the %s gauge.'
+                           % (self.options['gauge'], args[1]))
+            del self.previous_lorentz
+            del self.previous_couplings
         self.options[args[0]] = args[1]
 
         if able_to_mod and log and args[0] == 'gauge' and \
@@ -8988,11 +12786,17 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
 
 
+        # the multiparticles of the user survive the reload of the model (the
+        # particles are the same in every gauge): add_default_multiparticles
+        # drops the ones of 'define V z|a', whose entries are lists, and edits
+        # the lists of p and j in place for the flavour scheme of the model
+        multiparticles = copy.deepcopy(self._multiparticles)
         #re-init all variable
         model_name = self._curr_model.get('modelpath+restriction')
         self._curr_model = None
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._curr_helas_model = None
         self._curr_exporter = None
@@ -9008,6 +12812,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             else:
                 opts=''
             MadGraphCmd.do_import(self,'model %s %s' % (model_name, opts), force=True)
+            self._multiparticles.update(multiparticles)
         elif log:
             logger.info('Note that you have to reload the model')
 
@@ -9169,20 +12974,24 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         """
         args = ['eMELA'] + args
         self.check_set(args)
-        
+
         try:
             p = subprocess.Popen([args[1], '--version'], stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
             output, error = p.communicate()
-            output = output.decode()
-            res = 0
+            output = output.decode(errors='ignore').strip()
+            res = p.returncode
         except Exception:
-            res = 1
+            output, res = '', 1
 
-        if res != 0 or error:
+        # Judge eMELA-config by its exit code and the version it prints, not by
+        # stderr: it is a bash script built on egrep, which grep >= 3.8 (e.g.
+        # AlmaLinux 10, Fedora) flags on stderr as obsolescent. Rejecting any
+        # stderr output dropped a valid eMELA there.
+        if res != 0 or not output:
             if args[1] != 'None':
                 logger.info('%s does not seem to correspond to a valid eMELA-config ' % args[1] + \
-                'executable.\n Please set the \'fastjet\'' + \
+                'executable.\n Please set the \'eMELA\'' + \
                 'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).' +
                     '\n MadGraph7> set eMELA /PATH/TO/eMELA-config\n')
             self.options[args[0]] = None
@@ -9277,7 +13086,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             if major_version != sys.version_info[0] or \
                minor_version != sys.version_info[1]:
                return  
-            # remove the --python- arguent to not include it in the option/configuration file
+            # remove the --python- argument to not include it in the option/configuration file
             del args[2]
 
         to_do = True
@@ -9295,10 +13104,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             except Exception:
                 res = 1
             if res != 0 and args[1] != 'None':
-                logger.info('%s does not seem to correspond to a valid lhapdf-config ' % args[1] + \
+                # the shipped default just means "no LHAPDF here", which the
+                # mg7 output does not need (it downloads the PDF sets itself)
+                log_level = logging.DEBUG if args[1] == 'lhapdf-config' else logging.INFO
+                logger.log(log_level, '%s does not seem to correspond to a valid lhapdf-config ' % args[1] + \
                         'executable. \nPlease set the \'lhapdf\' variable to the (absolute) ' + \
                         '/PATH/TO/lhapdf-config (including lhapdf-config).\n' + \
-                        'Note that you can still compile and run aMC@NLO with the built-in PDFs\n' + \
+                        'Note that you can still compile and run aMC@NLO with the built-in PDFs,\n' + \
+                        'and the mg7 output downloads its PDF sets without LHAPDF\n' + \
                         ' MadGraph7> set lhapdf /PATH/TO/lhapdf-config\n')
                
     set2_lhapdf_py2 = set2_lhapdf
@@ -9472,6 +13285,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # depend on this option
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._curr_exporter = None
         self._second_exporter = None
@@ -9515,6 +13329,26 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.check_set(args)
         
         self.options[args[0]] = args[1]
+
+    def set2_plain(self, args, log=True):
+        """Enable/Disable coloured output (equivalent to ./bin/madgraph --plain).
+        Example: set plain True
+        or: set plain False [Default]
+        """
+        args = ['plain'] + args
+        self.check_set(args)
+        if args[1] not in ['None', 'True', 'False']:
+            raise self.InvalidCmd('expected bool for plain')
+        self.options[args[0]] = eval(args[1])
+
+        if self.options['plain']:
+            os.environ['MG7_NO_COLOR'] = '1'
+            coloring_logging.NO_COLOR = True
+            self.prompt = MG7_PROMPT_TEXT
+        else:
+            os.environ.pop('MG7_NO_COLOR', None)
+            coloring_logging.NO_COLOR = False
+            self.prompt = MG7_PROMPT
 
     def set2_notification_center(self, args, log=True):
         """Enable/Disable the notification center (on desktop ubuntu/mac).
@@ -9573,19 +13407,46 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         
     def help_set2_zerowidth_tchannel(self):
         logger.info("zerowidth_tchannel <value>",'$MG:color:GREEN')
-        logger.info(" > (default: True) [Used ONLY for tree-level output with madevent]")
-        logger.info(" > set the width to zero for all T-channel propagator --no impact on complex-mass scheme mode")
+        logger.info(" > (default: True) [generation/output-time option for tree-level output]")
+        logger.info(" > drop the width in the propagator denominator for spacelike (t-channel,")
+        logger.info(" > P^2<0) momenta. Done inside the ALOHA routine (runtime sign of P^2), so it")
+        logger.info(" > applies to every tree-level output. No impact in complex-mass-scheme mode.")
         
 
 
     def set2_zerowidth_tchannel(self, args, log=True):
         """Set whether the code should use zero-width for t-channel propagators.
         Default is set to True. (since v2.8.0)
-        Example: set zerowidth_tchannel False 
-        """ 
+        The treatment is now performed inside the ALOHA propagator routine (it
+        drops the width for spacelike, P^2<0, momenta); this flag is therefore an
+        output-time (code-generation) option and propagates to aloha here.
+        Example: set zerowidth_tchannel False
+        """
         args = ['zerowidth_tchannel'] + args
         self.check_set(args)
-        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0]) 
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
+        aloha.t_channel_width = not self.options[args[0]]
+
+    def help_set2_zerowidth_external(self):
+        logger.info("zerowidth_external <value>",'$MG:color:GREEN')
+        logger.info(" > (default: True) [generation/output-time option for tree-level output]")
+        logger.info(" > drop the width in the propagator denominator of any internal propagator")
+        logger.info(" > whose particle also appears as an external (initial/final) state -- an")
+        logger.info(" > external particle is an on-shell asymptotic state, so its internal")
+        logger.info(" > propagator (e.g. the s/u-channel top in t a > t a) must not carry the")
+        logger.info(" > i*M*Gamma resonance term. In the complex-mass scheme the real mass is")
+        logger.info(" > used there too. External legs themselves have no width argument.")
+
+    def set2_zerowidth_external(self, args, log=True):
+        """Set whether the width should be dropped for internal propagators whose
+        particle is also an external state. Default True. Applied at output time
+        per matrix element (HelasMatrixElement.set_onshell_particles_width_to_zero),
+        so it is a code-generation option like zerowidth_tchannel.
+        Example: set zerowidth_external False
+        """
+        args = ['zerowidth_external'] + args
+        self.check_set(args)
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
 
     def help_set2_merge_quartic_vertices(self):
         logger.info("merge_quartic_vertices <value>",'$MG:color:GREEN')
@@ -9763,7 +13624,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         
     def set2_automatic_html_opening(self, args, log=True):
         """Set whether the code should automatically open the html status page when
-        running madevent executation (default: yes).
+        running madevent execution (default: yes).
         """
         return self.set_default('automatic_html_opening', args, log=log)
     
@@ -9838,7 +13699,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
     def set2_dmtcp(self, args, log=True):
         """ Usage: set dmtcp /PATH/TO/dmtcp_install_directory
-            usefull only if checkpointing is True.
+            useful only if checkpointing is True.
             DMTCP installation directory should contain bin/dmtcp_restart and bin/dmtcp_launch
         """
         args = ['dmtcp'] + args
@@ -9858,8 +13719,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         logger.info(" > trace: the (n-1)! basis of traces of fundamental generators")
         logger.info(" > ddm:   the (n-2)! Del Duca-Dixon-Maltoni half-ladder basis")
         logger.info("          (n-1 times fewer JAMPs, (n-1)^2 times smaller color matrix)")
-        logger.info(" > auto:  ddm for the output formats which do not need a color")
-        logger.info("          flow decomposition (standalone), trace otherwise")
+        logger.info(" > auto:  ddm for the output formats which support it (madevent, mg7,")
+        logger.info("          standalone and standalone_fortran; the trace basis is still")
+        logger.info("          used next to it for the color flow of each event), trace")
+        logger.info("          otherwise (NLO, pythia8, matchbox, ...)")
 
     def set2_color_basis(self, args, log=True):
         """Set the color basis used for fully adjoint (multi-gluon) processes.
@@ -9885,12 +13748,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 # not documented options:
 #   	            	contur_path         
 #delphes_path             	eps_viewer               	exrootanalysis_path
-#hepmc_path               	hwpp_path                	
-#madanalysis_path         	mg5amc_py8_interface_path
+#hepmc_path               	hepmc3_path              	herwig7_path
 #pineappl                 	pythia-pgs_path          	pythia8_path
 #rivet_path               	                 	syscalc_path
-#td_path                  	              	thepeg_path
-#              	yoda_path
+#thepeg_path              	yoda_path
 
     def set_default(self, name, args, log=True):
         """Generic function to set default options.
@@ -9909,8 +13770,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # Be careful:
         # This command is associated to a post_cmd: post_set.
         # This command mainly delegates to set2_xxx functions.
-        # which is the recomend way to provide help via docstrings.
+        # which is the recommended way to provide help via docstrings.
         args = self.split_arg(line)
+
+        if args and cmd.is_removed_option(args[0]):
+            cmd.warn_removed_option(args[0], args[1] if len(args) > 1 else None)
+            return
 
         if hasattr(self, 'set2_%s' % args[0]):
             func = getattr(self, 'set2_%s' % args[0])
@@ -10135,9 +14000,29 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         """Main commands: Initialize a new Template or reinitialize one"""
 
         args = self.split_arg(line)
+
+        # --use_crossing=False on the output line: write THIS output without the
+        # crossing machinery, whatever the generation chose. The exporters read
+        # it through _use_crossing (see Export{V4,CPP}Factory) and the crossings
+        # folded onto their base at generation are expanded back into explicit
+        # subprocesses (_output_folds_crossings), so the output stays complete --
+        # it is exactly the generate --use_crossing=False output. Set on every
+        # do_output, so it never leaks to the next one.
+        output_use_crossing = self.pop_use_crossing_flag(args)
+        self._output_use_crossing = output_use_crossing is not False
+
         # Check Argument validity
         self._export_plugin = None
         self.check_output(args)
+
+        if self._export_format not in self._onia_formats + ['aloha'] and \
+                self.has_onium_amplitude():
+            raise self.InvalidCmd("Bound states (onia) can only be written out "
+                    "with 'output %s', not with 'output %s'."
+                    % ("' or 'output ".join(self._onia_formats), self._export_format))
+
+        if self._export_format not in self._v4_export_formats + ['aloha']:
+            self.warn_rge_not_supported()
 
         noclean = '-noclean' in args
         force = '-f' in args
@@ -10173,6 +14058,36 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         line_options = dict( (arg[2:].split('=')  if "=" in arg else (arg[2:], True))
                              for arg in args if arg.startswith('--'))
 #        line_options = dict(arg[2:].split('=') for arg in args if arg.startswith('--') and '=' not in arg)
+
+        # --axial_gauge=True builds the polarisation of the massless vectors in
+        # the axial gauge of another leg, which the FD gauge (fixing the gauge
+        # of the massless vectors itself) has no room for: an FD gauge chosen
+        # automatically steps aside; one asked for with 'set gauge' is kept
+        # and the option is dropped with a warning (helas_call_writers)
+        self.single_gauge_for_output(args)
+        self.refuse_unsupported_mixed_gauge(args)
+        if self.automatic_fd_gauge_in_use() and \
+                str(line_options.get('axial_gauge', False)).strip().lower() \
+                                          in ('true', 't', '1', 'yes', 'on'):
+            self.refuse_automatic_gauge_change('--axial_gauge=True')
+            logger.info('--axial_gauge=True: back to the unitary gauge (the FD '
+                        'gauge had been chosen automatically), the processes '
+                        'are generated again.')
+            # the reload of the model cleans the process state, this output
+            # command included (clean_process)
+            export_format, export_dir = self._export_format, self._export_dir
+            self.switch_gauge_and_regenerate('unitary')
+            self._export_format, self._export_dir = export_format, export_dir
+
+        # helicity recycling is on by default for the madmatrix outputs: 'auto'
+        # recycles like True but stays quiet where a directory cannot be
+        # recycled. A cuda/hip build of the output is the plain matrix element
+        # anyway (backend/gpu/SigmaKin.cc), so nothing is lost on a GPU.
+        # --hel_recycling=False (or the spin>3 / --me_exporter rules above)
+        # keeps the plain one.
+        if self._export_format in ('standalone', 'mg7', 'mg7_v5') and \
+                                            'hel_recycling' not in line_options:
+            line_options['hel_recycling'] = 'auto'
         main_file_name = ""
         try:
             main_file_name = args[args.index('-name') + 1]
@@ -10193,7 +14108,13 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # catch output dir
             output = [d for d in args if d.startswith('--output=')]
             if not output:
-                output = import_ufo.find_ufo_path(self._curr_model['name'])
+                # the model name can carry a restriction suffix and says
+                # nothing about where the model lives, so ask the model
+                # itself for the directory it was imported from.
+                try:
+                    output = self._curr_model.get('modelpath')
+                except Exception:
+                    output = import_ufo.find_ufo_path(self._curr_model['name'])
                 output = pjoin(output, format)
                 if not os.path.isdir(output):
                     os.mkdir(output)
@@ -10206,7 +14127,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             names = [d for d in args if not d.startswith('-')]
             wanted_lorentz = aloha_fct.guess_routine_from_name(names)
             # Create and write ALOHA Routine
-            aloha_model = create_aloha.AbstractALOHAModel(self._curr_model.get('name'))
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(self._curr_model)
             aloha_model.add_Lorentz_object(self._curr_model.get('lorentz'))
             if wanted_lorentz:
                 aloha_model.compute_subset(wanted_lorentz)
@@ -10254,6 +14175,20 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         else:
             options['me_exporter'] = {}
 
+        # A loop-induced process is exported by this tree-level do_output (see
+        # create_loop_induced), but only the madevent formats have a
+        # loop-induced exporter to route it to. Refuse the others here, ahead
+        # of the directory cleaning just below, so that a guaranteed refusal
+        # never deletes an existing output directory first. The exporter
+        # factories carry the same check as a backstop.  Kept first in this
+        # block so a refusal costs nothing: everything below it configures a
+        # build that is not going to happen.
+        if self._export_format not in export_v4.LOOP_INDUCED_FORMATS and \
+           self._curr_amps and isinstance(self._curr_amps[0],
+                                    loop_diagram_generation.LoopAmplitude):
+            raise self.InvalidCmd(export_v4.loop_induced_not_supported_msg(
+                        self._export_format, self._curr_amps[0].get('process')))
+
         # now that the backend getting the matrix elements is known, an 'auto'
         # merge_quartic_vertices can be resolved -- before anything is built
         self.apply_quartic_diagram_order(options)
@@ -10274,6 +14209,24 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     raise self.InvalidCmd(
                         export_v4.loop_induced_not_supported_msg(
                             format, self._curr_amps[0].get('process')))
+
+        # A tree x tree interference ('left [treextree] right') needs the
+        # selection of squared split orders in the generated code: other
+        # formats would silently return |A_left + A_right|^2.
+        # (a decay-chain amplitude has no 'process', and is never one)
+        interference = [amp for amp in self._curr_amps if 'process' in amp
+            and amp['process'].get_interference_mode() == 'treextree']
+        if interference:
+            for format in [self._export_format,
+                           options['me_exporter'].get('name')]:
+                if format and format not in \
+                           diagram_generation.TREE_INTERFERENCE_FORMATS:
+                    raise self.InvalidCmd(
+                        "The '%s' output format cannot select the "
+                        "interference of a treextree process (it would "
+                        "return |A_left + A_right|^2): use one of %s."
+                        % (format, ', '.join(
+                               diagram_generation.TREE_INTERFERENCE_FORMATS)))
 
         # check
         if os.path.realpath(self._export_dir) == os.getcwd():
@@ -10313,7 +14266,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # have been defined with multiparticle labels, because then
             # branching ratios necessitates to keep subprocesses independent.
             # That applies only if there is more than one subprocess of course.
-            if self._curr_amps[0].get_ninitial() == 1 and \
+            if self._curr_amps and self._curr_amps[0].get_ninitial() == 1 and \
                                                      len(self._curr_amps)>1:
                 
                 processes = [amp.get('process') for amp in self._curr_amps if 'process' in  list(amp.keys())]
@@ -10371,6 +14324,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self._curr_exporter.pass_information_from_cmd(self)
         if self._me_curr_exporter:
             self._me_curr_exporter.pass_information_from_cmd(self)
+        self.set_exporter_gauges(self._curr_exporter)
         
         if options['output'] == 'Template':
             self._curr_exporter.copy_template(self._curr_model)
@@ -10402,6 +14356,296 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         # Reset _export_dir, so we don't overwrite by mistake later
         self._export_dir = None
+
+    def output_uses_crossing(self):
+        """Whether the output being written gets the crossing machinery: the
+        generation asked for it (--use_crossing of generate / add process,
+        sticky off, see do_add) and the output line did not refuse it. This is
+        the use_crossing option the exporter factories (ExportV4Factory,
+        ExportCPPFactory) hand the exporters."""
+        return bool(getattr(self, '_use_crossing', True) and
+                    getattr(self, '_output_use_crossing', True))
+
+    def _output_folds_crossings(self, decay_chains=False):
+        """True if the output being written consumes the recorded crossings.
+
+        Only the folding-capable backends do, and only when this output gets
+        the crossing machinery (output_uses_crossing): --use_crossing=False on
+        the output line, or on any line of the generation, drops it, so the
+        crossings have to come back as explicit subprocesses just like for a
+        non-folding backend. Asking the output line alone left the crossings
+        recorded by an earlier `generate ... --use_crossing=True` neither
+        expanded nor written once a later `add process ... --use_crossing=False`
+        turned the machinery off.
+
+        With `decay_chains`, the question is asked for the crossings recorded
+        inside a decay chain, which a folding backend may still not read (the
+        mg7 one: folds_decay_chain_crossings on the exporter).
+        """
+        folds = self._export_format in self._crossing_folding_formats and \
+            self.output_uses_crossing()
+        if folds and decay_chains:
+            folds = getattr(self._curr_exporter,
+                            'folds_decay_chain_crossings', True)
+        return folds
+
+    def _crossing_foldable(self, amp, record):
+        """Whether the folding output being written can fold the recorded
+        crossing `record` of `amp` into its base: the exporter decides
+        (crossing_foldable), a crossing it refuses is expanded instead."""
+        check = getattr(self._curr_exporter, 'crossing_foldable', None)
+        return True if check is None else bool(check(amp, record))
+
+    def _crossing_fold_signature(self):
+        """What the matrix elements built for this output depend on, as far
+        as the recorded crossings go: folded or expanded, the decay chains'
+        answer, and -- since which crossings fold is the exporter's call --
+        the format."""
+        folds = self._output_folds_crossings()
+        return (folds, self._output_folds_crossings(decay_chains=True),
+                self._export_format if folds else None)
+
+    def _crossing_needs_expansion(self, amps):
+        """True if `amps` carry folded crossings the current output cannot read.
+
+        Only the folding-capable standalone backends consume the recorded
+        crossings directly (they reach them through the base's crossing-aware
+        SMATRIX/sigmaKin). Every other output needs them back as explicit
+        subprocesses, and expanding is always safe: it just reproduces the
+        complete unmerged (--use_crossing=False) output.
+
+        This used to carve out squared-order processes as well: their matrix
+        element is written from matrix_standalone_splitOrders_v4.inc, which had
+        no crossing machinery, so folding into it dropped the crossed
+        subprocesses outright. That template folds now
+        (fill_crossing_replace_dict_so), so the carve-out is gone and the
+        answer is the format again. The other two folding formats never needed
+        it: standalone_rw writes the same fortran template, and the
+        mg7/cudacpp exporter has no split-orders variant at all.
+        """
+        crossed = [amp for amp in amps if 'crossed_processes' in amp
+                   and amp.get('crossed_processes')]
+        if not crossed:
+            return False
+        if not self._output_folds_crossings():
+            return True
+        # a folding output may still refuse some of them (crossing_foldable)
+        return any(not self._crossing_foldable(amp, record)
+                   for amp in crossed for record in amp.get('crossed_processes'))
+
+    def _expand_recorded_crossings(self, amps):
+        """Expand each amplitude's recorded crossings back into separate
+        (mirror-folded) amplitudes, reproducing a merge_crossing=False
+        generation. The crossed diagrams are reused (cross_amplitude), not
+        regenerated. Record mode stores a crossing and its beam-swap as two
+        separate entries (neither is in the amplitude list when the other is
+        met, so the generator's mirror check never fires); the beam-swap is
+        folded back into has_mirror_process here, exactly as
+        generate_matrix_elements would.
+
+        Shared by the grouped and the ungrouped paths so that an output which
+        cannot read folded crossings gets them expanded automatically, without
+        the user having to pass --use_crossing=False.
+
+        `amps` is left untouched: the bases come back as shallow copies (same
+        process and diagrams, their own crossed_processes and
+        has_mirror_process -- the mirror fold can mark a base that recorded
+        nothing, so every one is copied). They are self._curr_amps' own
+        amplitudes, and emptying their crossed_processes or marking their
+        mirror in place made every later output depend on this one -- a
+        standalone_fortran written after a madevent one, from the same
+        generation, folded nothing.
+
+        A folding output expands only the crossings its exporter refuses to
+        fold (crossing_foldable); the others stay recorded on the base copy.
+        """
+        if self.options['group_subprocesses'] == 'Auto':
+            collect_mirror = True
+        else:
+            collect_mirror = self.options['group_subprocesses']
+
+        def _fastproc(amp):
+            return tuple(l.get('id') for l in amp.get('process').get('legs'))
+
+        folds = self._output_folds_crossings()
+        originals = []
+        for amp in amps:
+            crossed = amp.get('crossed_processes') \
+                if 'crossed_processes' in amp else []
+            kept = [record for record in crossed
+                    if folds and self._crossing_foldable(amp, record)]
+            originals.append((amp, [record for record in crossed
+                                    if not any(record is k for k in kept)],
+                              kept))
+        # Each subprocess goes back where the merge_crossing=False generation
+        # lists it (generation_rank, see MultiProcess), crossings between
+        # the bases instead of after all of them. Sorted by number of
+        # diagrams afterwards, as the caller does, the madevent P directories
+        # then come in the --use_crossing=False order, and so get the same
+        # iproc.dat, hence random seeds. Without every rank, the bases keep
+        # their order and the crossings follow.
+        entries = [(amp.get('process'), amp, None, kept)
+                   for amp, _crossed, kept in originals] + \
+                  [(record[0], amp, record, None)
+                   for amp, crossed, _kept in originals for record in crossed]
+        ranks = [getattr(entry[0], 'generation_rank', None)
+                 for entry in entries]
+        if None not in ranks:
+            entries = [entry for _rank, _i, entry in
+                       sorted(zip(ranks, range(len(entries)), entries))]
+
+        expanded = diagram_generation.AmplitudeList()
+        seen = {}   # fast_proc -> amplitude, for mirror fold
+        for proc, amp, record, kept in entries:
+            if record is None:
+                # a base, with the crossings it still folds
+                amp = copy.copy(amp)
+                if 'crossed_processes' in amp:
+                    amp.set('crossed_processes', kept)
+                expanded.append(amp)
+                seen[_fastproc(amp)] = amp
+                continue
+            _proc, base_perm, cross_perm = record
+            xamp = diagram_generation.MultiProcess.\
+                cross_amplitude(amp, proc, base_perm, cross_perm)
+            xamp.set('crossed_processes', [])
+            fp = _fastproc(xamp)
+            mirror = (fp[1], fp[0]) + fp[2:]
+            if collect_mirror and mirror in seen and \
+                    proc.get_ninitial() == 2:
+                seen[mirror].set('has_mirror_process', True)
+                continue
+            xamp.set('has_mirror_process', False)
+            expanded.append(xamp)
+            seen[fp] = xamp
+        return expanded
+
+    @staticmethod
+    def _recorded_crossings(amps):
+        """The crossed processes recorded on `amps` at generation
+        (merge_crossing='record'), as (amplitude, crossed Process) pairs: a plain
+        amplitude's own `crossed_processes`, a decay chain's inner amplitudes'.
+        A crossing and its beam swap are recorded apart; the swap is left out
+        here, as the mirror of a generated process is (has_mirror_process)."""
+        pairs = []
+        for amp in amps:
+            if isinstance(amp, diagram_generation.DecayChainAmplitude):
+                inner = amp.get('amplitudes')
+            else:
+                inner = [amp]
+            for a in inner:
+                if 'crossed_processes' not in a:
+                    continue
+                seen = set()
+                for record in a.get('crossed_processes'):
+                    xproc = record[0]
+                    initial = xproc.get_initial_ids()
+                    if len(initial) == 2:
+                        key = (tuple(sorted(initial)), tuple(xproc.get_final_ids()))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                    pairs.append((a, xproc))
+        return pairs
+
+    @classmethod
+    def _crossing_summary(cls, amps):
+        """What the generation summary adds for the crossed processes folded
+        into `amps`: they have no amplitude, hence are not in its counts."""
+        ncross = len(cls._recorded_crossings(amps))
+        if not ncross:
+            return ''
+        return (' (and %i crossed process%s evaluated through them, see '
+                '"display processes")' % (ncross, '' if ncross == 1 else 'es'))
+
+    @staticmethod
+    def _has_recorded_crossings(amps):
+        """True if any amplitude of `amps` folds crossings recorded at
+        generation (merge_crossing='record'): a plain amplitude on its own
+        `crossed_processes`, a decay chain on its inner amplitudes'."""
+        for amp in amps:
+            if isinstance(amp, diagram_generation.DecayChainAmplitude):
+                inner = amp.get('amplitudes')
+            else:
+                inner = [amp]
+            if any(a.get('crossed_processes') for a in inner
+                   if 'crossed_processes' in a):
+                return True
+        return False
+
+    @staticmethod
+    def _copy_decay_chain(dc_amp):
+        """A copy of the DecayChainAmplitude `dc_amp` that the matrix-element
+        builders may consume.
+
+        HelasDecayChainProcess pops the decay chains off the amplitude it is
+        built from, recursively, to save memory, so building straight from
+        self._curr_amps empties the generation's own chains. The end-of-export
+        replacement of self._curr_amps used to hide that; a generation with
+        recorded crossings keeps its amplitudes (see _export), and a later
+        output rebuilt from an emptied chain wrote the core process with its
+        resonance left undecayed -- p p > z j, z > e+ e- came out as P1_gQ_zQ,
+        without an error. Only the lists are copied: the amplitudes and their
+        diagrams are shared.
+        """
+        new = copy.copy(dc_amp)
+        new.set('amplitudes',
+                diagram_generation.AmplitudeList(dc_amp.get('amplitudes')))
+        new.set('decay_chains', diagram_generation.DecayChainAmplitudeList(
+            [MadGraphCmd._copy_decay_chain(dc)
+             for dc in dc_amp.get('decay_chains')]))
+        return new
+
+    def _expand_crossings_for_ungrouped_output(self):
+        """The amplitudes an ungrouped output builds its matrix elements from:
+        self._curr_amps, with the folded crossings put back if the output
+        cannot read them.
+
+        Counterpart of the grouped path's expansion, for the ungrouped one. A
+        plain amplitude carries its crossings in `crossed_processes` and is
+        expanded (on copies); a decay chain records them on its inner
+        amplitudes instead, and its grouping does not survive a partial
+        expansion, so the affected chains are regenerated whole with
+        merge_crossing=False (the base diagrams are still reused by
+        cross_amplitude). Either way the result is exactly the complete
+        unmerged output.
+
+        Returned rather than stored: self._curr_amps is the generation, and an
+        output must not rewrite it. It used to be replaced by the expanded list,
+        so any later output rebuilt from it -- a folding one included -- came
+        out unfolded.
+        """
+        dc_amps = [amp for amp in self._curr_amps
+                   if isinstance(amp, diagram_generation.DecayChainAmplitude)]
+        non_dc_amps = diagram_generation.AmplitudeList(
+            [amp for amp in self._curr_amps
+             if not isinstance(amp, diagram_generation.DecayChainAmplitude)])
+
+        dc_crossed = not self._output_folds_crossings(decay_chains=True) and \
+            self._has_recorded_crossings(dc_amps)
+        expand_non_dc = self._crossing_needs_expansion(non_dc_amps)
+        if not dc_crossed and not expand_non_dc:
+            return self._curr_amps
+
+        if expand_non_dc:
+            non_dc_amps = self._expand_recorded_crossings(non_dc_amps)
+
+        if dc_crossed:
+            ign6 = self.options.get('ignore_six_quark_processes', []) or []
+            if self.options['group_subprocesses'] == 'Auto':
+                collect_mirror = True
+            else:
+                collect_mirror = self.options['group_subprocesses']
+            dc_amps = [diagram_generation.DecayChainAmplitude(
+                           procdef, collect_mirror, ign6, merge_crossing=False)
+                       for procdef in self._curr_proc_defs
+                       if procdef.get('decay_chains')]
+
+        new_amps = diagram_generation.AmplitudeList()
+        new_amps.extend(non_dc_amps)
+        new_amps.extend(dc_amps)
+        new_amps.sort(key=lambda x: x.get_number_of_diagrams(), reverse=True)
+        return new_amps
 
     # Export a matrix element
     def set_color_basis_mode(self, *exporters):
@@ -10446,24 +14690,62 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         """Export a generated amplitude to file, with the color basis already
         selected."""
 
+        # T-channel width treatment is now baked into ALOHA (the propagator
+        # routine drops the width i*M*Gamma for spacelike, P^2<0, momenta -- the
+        # correct tree-level treatment outside the complex-mass scheme). Propagate
+        # the zerowidth_tchannel option to the aloha flag it now controls, so the
+        # generated propagator routines carry the runtime sign check. A 1->N decay
+        # has no t-channel, so keep every width there (as the legacy code did).
+        zerowidth_tchannel = self.options['zerowidth_tchannel']
+        if self._curr_amps and self._curr_amps[0].get_ninitial() == 1:
+            zerowidth_tchannel = False
+        # The output option --zerowidth_tchannel=True|False of the standalone
+        # Fortran outputs overrides it for that output (MadSpin passes True).
+        # Without it the option decides for every output alike -- standalone
+        # (Fortran and C++), the reweighting (standalone_rw) and MadSpin
+        # (standalone_msP/msF) all drop the width of a spacelike propagator, as
+        # madevent: the runtime check is right for every crossing of a matrix
+        # element too, where the generation-time t-channel tag is not. The
+        # loop exporters (MadLoop, aMC@NLO, loop-induced madevent) are not
+        # concerned.
+        output_options = getattr(self._curr_exporter, 'opt', {}) or {}
+        output_options = output_options.get('output_options') or {}
+        if isinstance(self._curr_exporter, export_v4.ProcessExporterFortranSA) \
+           and not isinstance(self._curr_exporter,
+                              loop_exporters.LoopExporterFortran) \
+           and 'zerowidth_tchannel' in output_options \
+           and not (self._curr_amps and self._curr_amps[0].get_ninitial() == 1):
+            zerowidth_tchannel = banner_module.ConfigFile.format_variable(
+                output_options['zerowidth_tchannel'], bool, 'zerowidth_tchannel')
+        aloha.t_channel_width = not zerowidth_tchannel
+
         # Define the helas call  writer
         if hasattr(self._curr_exporter, 'helas_exporter') and self._curr_exporter.helas_exporter:
             self._curr_helas_model = self._curr_exporter.helas_exporter(self._curr_model, options=self.options)
-        elif self._curr_exporter.exporter == 'cpp':       
+        elif self._curr_exporter.exporter == 'cpp':
             self._curr_helas_model = helas_call_writers.CPPUFOHelasCallWriter(self._curr_model)
-        elif self._curr_exporter.exporter == 'gpu':       
+        elif self._curr_exporter.exporter == 'gpu':
             self._curr_helas_model = helas_call_writers.GPUFOHelasCallWriter(self._curr_model)
         elif self._curr_exporter.exporter == 'v4':
             if self._model_v4_path:
                 self._curr_helas_model = helas_call_writers.FortranHelasCallWriter(self._curr_model)
             else:
-                options = {'zerowidth_tchannel': self.options['zerowidth_tchannel']}
-                if self._curr_amps and self._curr_amps[0].get_ninitial() == 1:
-                    options['zerowidth_tchannel'] = False
-                self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model,
-                                                                                      options=options)
+                self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
         else:
             raise Exception('unable to associate an helas format')
+
+        if getattr(self._curr_exporter, 'gauge_libraries', None):
+            # an output in two gauges: a writer per gauge for Fortran, one
+            # writer used in both gauges for C++ (its coupling indices)
+            if self._curr_exporter.exporter == 'v4':
+                self._curr_exporter.gauge_writers = dict(
+                    (gauge, helas_call_writers.FortranUFOHelasCallWriter(
+                                    self.model_for_gauge(gauge)))
+                    for gauge in self._curr_exporter.gauge_libraries)
+            else:
+                self._curr_exporter.gauge_models = dict(
+                    (gauge, self.model_for_gauge(gauge))
+                    for gauge in self._curr_exporter.gauge_libraries)
 
         # Define the helas call  writer if a second exporter is needed
         self._me_curr_helas_model = False
@@ -10481,8 +14763,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     assert self._me_curr_exporter.exporter == 'v4'
                     self._me_curr_helas_model = helas_call_writers.FortranHelasCallWriter(self._curr_model)
                 else:                    
-                    self._me_curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model,
-                                                                                             options=options)
+                    self._me_curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
 
         version = [arg[10:] for arg in args if arg.startswith('--version=')]
         if version:
@@ -10507,13 +14788,32 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # to get most efficient multichannel output
             self._curr_amps.sort(key=lambda x: x.get_number_of_diagrams(),reverse=True)
 
+            # The matrix elements of the previous output are reused as they
+            # are, but with recorded crossings they are not the same for every
+            # output: folded into their base for a folding standalone backend,
+            # expanded into explicit subprocesses for anything else. Reusing
+            # them across that line made the output depend on the one written
+            # before it -- a madevent output after a standalone_fortran one
+            # dropped every crossed subprocess, a standalone_fortran after a
+            # madevent one folded nothing. Rebuild them instead.
+            folds_crossings = self._crossing_fold_signature()
+            if self._curr_matrix_elements.get_matrix_elements() and \
+                    self._curr_me_folds_crossings != folds_crossings and \
+                    self._has_recorded_crossings(self._curr_amps):
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+
             cpu_time1 = time.time()
             ndiags = 0
             if not self._curr_matrix_elements.get_matrix_elements():
+                self._curr_me_folds_crossings = folds_crossings
                 if group_processes:
                     cpu_time1 = time.time()
+                    # Copies: building the matrix elements empties a decay
+                    # chain, and self._curr_amps must keep its own for the next
+                    # output (see _copy_decay_chain).
                     dc_amps = diagram_generation.DecayChainAmplitudeList(\
-                        [amp for amp in self._curr_amps if isinstance(amp, \
+                        [self._copy_decay_chain(amp) for amp in self._curr_amps
+                         if isinstance(amp, \
                                         diagram_generation.DecayChainAmplitude)])
                     non_dc_amps = diagram_generation.AmplitudeList(\
                              [amp for amp in self._curr_amps if not \
@@ -10526,6 +14826,90 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     grouping_criteria = self._curr_exporter.grouped_mode
                     if grouping_criteria == 'gpu':
                         grouping_criteria = 'madevent'
+
+                    # merge_crossing='record' skipped generating the crossed
+                    # subprocesses so the standalone output collapses to one
+                    # directory per base. The grouped (madevent) backends need
+                    # them back as integration units -- each crossing is its own
+                    # partonic channel with its own PDF/phase-space -- so expand
+                    # the recorded metadata into crossed amplitudes here, reusing
+                    # the base's diagrams via cross_amplitude (no diagram
+                    # regeneration). The normal grouping + crossing routing then
+                    # handles them exactly as an unmerged (merge_crossing=False)
+                    # generation would.
+                    # The standalone exporters ('standalone_fortran' and the
+                    # madmatrix 'standalone') consume the crossed_processes
+                    # metadata directly -- they fold the crossings into the base
+                    # directory and reach them through the base's crossing-aware
+                    # SMATRIX/sigmaKin (extended flavor id), so they must NOT
+                    # reconstruct. Every other (summation / event-generation)
+                    # backend needs the crossings back as integration units, and
+                    # reconstructing is also the safe default for any format that
+                    # does not implement folding (it just reproduces the complete
+                    # unmerged output) -- or for a folding backend told to write
+                    # this output without the machinery (--use_crossing=False).
+                    # DecayAmplitude / DecayChainAmplitude are Amplitude
+                    # subclasses that override default_setup with their own
+                    # key set and do NOT carry crossed_processes (e.g. the
+                    # compute_widths and MadSpin decay paths reach here), so
+                    # guard on the dict key rather than the amplitude type
+                    # (_crossing_needs_expansion does that).
+                    # Asked OUTSIDE the format gate below, because the format
+                    # is not the whole answer: a folding backend still cannot
+                    # fold a process carrying a squared order, whose matrix
+                    # element is written from a template with no decoder. See
+                    # _crossing_needs_expansion.
+                    if self._crossing_needs_expansion(non_dc_amps):
+                        non_dc_amps = \
+                            self._expand_recorded_crossings(non_dc_amps)
+                        # sorted as self._curr_amps above, which decides the
+                        # P directory order (and iproc.dat)
+                        non_dc_amps.sort(
+                            key=lambda x: x.get_number_of_diagrams(),
+                            reverse=True)
+
+                    if not self._output_folds_crossings(decay_chains=True):
+                        # Decay chains: the crossing dedup (folding the crossed
+                        # decay-chain subprocesses into the base's crossing-aware
+                        # SMATRIX) is implemented for the standalone backends only.
+                        # For the summation backends each crossed decay-chain
+                        # subprocess must stay its own integration unit; rather
+                        # than reconstruct-and-route them (whose grouping does not
+                        # reproduce the historical layout), regenerate the affected
+                        # decay chains fully (merge_crossing=False), giving exactly
+                        # the pre-dedup output. cross_amplitude reuse still avoids
+                        # regenerating the diagrams of the base subprocess.
+                        # The chains are regenerated into a list of their own:
+                        # self._curr_amps keeps the recorded ones for the next
+                        # output.
+                        if self._has_recorded_crossings(dc_amps):
+                            ign6 = self.options.get(
+                                'ignore_six_quark_processes', []) or []
+                            if self.options['group_subprocesses'] == 'Auto':
+                                collect_mirror = True
+                            else:
+                                collect_mirror = \
+                                    self.options['group_subprocesses']
+                            regenerated = \
+                                diagram_generation.DecayChainAmplitudeList()
+                            for procdef in self._curr_proc_defs:
+                                if not procdef.get('decay_chains'):
+                                    continue
+                                regenerated.append(
+                                    diagram_generation.DecayChainAmplitude(
+                                        procdef, collect_mirror, ign6,
+                                        merge_crossing=False))
+                            # Regenerating walks _curr_proc_defs, so the
+                            # diagram-count ordering _curr_amps was sorted into
+                            # above is lost -- and that ordering decides the
+                            # subprocess group numbering (P1_/P2_...). Restore it
+                            # so the output is named exactly as an uncrossed
+                            # generation would name it.
+                            regenerated.sort(
+                                key=lambda x: x.get_number_of_diagrams(),
+                                reverse=True)
+                            dc_amps = regenerated
+
                     if non_dc_amps:
                         subproc_groups.extend(\
                           group_subprocs.SubProcessGroup.group_amplitudes(\
@@ -10562,13 +14946,31 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     if uid == 0 and last_error:
                         raise last_error
                 else: # Not grouped subprocesses
+                    # Same automatic expansion as the grouped path above: an
+                    # ungrouped output (e.g. the ungrouped madevent) cannot read
+                    # the folded crossings, so put them back as explicit
+                    # subprocesses instead of forcing the user to regenerate with
+                    # --use_crossing=False. Without this the crossings would be
+                    # silently missing from the output. For this output only:
+                    # self._curr_amps keeps the recorded crossings.
+                    amps = self._expand_crossings_for_ungrouped_output()
+                    # And the decay chains as copies, which the matrix elements
+                    # may empty (see _copy_decay_chain).
+                    if any(isinstance(amp,
+                                      diagram_generation.DecayChainAmplitude)
+                           for amp in amps):
+                        amps = diagram_generation.AmplitudeList(
+                            [self._copy_decay_chain(amp) if isinstance(amp,
+                                      diagram_generation.DecayChainAmplitude)
+                             else amp for amp in amps])
                     mode = {}
-                    if self._export_format in [ 'standalone_msP' , 
+                    if self._export_format in [ 'standalone_msP' ,
                                              'standalone_msF', 'standalone_rw']:
                         mode['mode'] = 'MadSpin'
                     # The conditional statement tests whether we are dealing
                     # with a loop induced process.
-                    if isinstance(self._curr_amps[0], 
+                    # (an output with only [amplicol] processes has no amplitudes)
+                    if amps and isinstance(amps[0],
                                          loop_diagram_generation.LoopAmplitude):
                         mode['optimized_output']=self.options['loop_optimized_output']
                         HelasMultiProcessClass = loop_helas_objects.LoopHelasProcess
@@ -10578,7 +14980,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         compute_loop_nc = False
                     
                     self._curr_matrix_elements = HelasMultiProcessClass(
-                      self._curr_amps, compute_loop_nc=compute_loop_nc,
+                      amps, compute_loop_nc=compute_loop_nc,
                                                        matrix_element_opts=mode)
                     
                     ndiags = sum([len(me.get('diagrams')) for \
@@ -10608,10 +15010,61 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # the flavor machinery to enumerate all combinations: permutation-
         # duplicate diagrams then keep a valid flavor and are not trimmed, while
         # genuinely unphysical diagrams (no flavor at all) are still removed.
-        helas_objects.HelasMatrixElement.enumerate_all_flavors = \
-            not getattr(self._curr_exporter, 'use_flavor_mask', True)
+        enumerate_all = not getattr(self._curr_exporter, 'use_flavor_mask', True)
+        # An output replaces self._curr_amps by the base amplitudes of its
+        # matrix elements (end of export), which only have the diagrams that
+        # output kept: with merged flavors, those its --mask trimmed are gone,
+        # and the other --mask needs them (the orderings --mask=False adds:
+        # q q > w+ w- q q QCD=0, q = u d, 183 diagrams of 294 and 3 of its 6
+        # flavors wrong). self._trimmed_amps keeps, for an output that
+        # trimmed, [those base amplitudes, the amplitudes they were made
+        # from, the --mask of its matrix elements]. Matrix elements kept from
+        # an output with the other --mask are made again (`output
+        # standalone_fortran A` then `output standalone B --mask=False` used
+        # to write B from A's flavors and diagrams), and whenever they are
+        # made, from the amplitudes as generated (the base amplitudes of that
+        # output may sit in self._curr_amps with processes added since).
+        trimmed = getattr(self, '_trimmed_amps', None)
+        if trimmed is not None:
+            base_amps, generated_amps, trimmed_all = trimmed
+            if self._curr_matrix_elements.get_matrix_elements() and \
+                    trimmed_all != enumerate_all:
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+            if not self._curr_matrix_elements.get_matrix_elements() and base_amps:
+                base_ids = set(id(amp) for amp in base_amps)
+                kept = [amp for amp in self._curr_amps if id(amp) not in base_ids]
+                if len(kept) + len(base_amps) == len(self._curr_amps):
+                    self._curr_amps = diagram_generation.AmplitudeList(
+                                                    list(generated_amps) + kept)
+        helas_objects.HelasMatrixElement.enumerate_all_flavors = enumerate_all
 
+        made = not self._curr_matrix_elements.get_matrix_elements()
+        generated_amps = self._curr_amps
         ndiags, cpu_time = generate_matrix_elements(self,group_processes)
+        if made:
+            self._trimmed_amps = None
+            if any(getattr(me, '_flavor_allow_trimming', False) for me in
+                   self._curr_matrix_elements.get_matrix_elements()):
+                # the base amplitudes are known at the end of export
+                self._trimmed_amps = [None, generated_amps, enumerate_all]
+
+        # zerowidth_external: an external (initial/final) particle is an on-shell
+        # asymptotic state, so an internal propagator of the same field must not
+        # carry the i*M*Gamma resonance term (e.g. the s/u-channel top in
+        # t a > t a). Drop that width per matrix element before any backend
+        # writes the propagator calls (all UFO backends read the wavefunction
+        # width). Tree-level only; complex-mass scheme then uses the real mass.
+        if self.options.get('zerowidth_external', True) and \
+                self._curr_matrix_elements.get_matrix_elements():
+            n_dropped = 0
+            for me in self._curr_matrix_elements.get_matrix_elements():
+                if me.set_onshell_particles_width_to_zero():
+                    n_dropped += 1
+            if n_dropped:
+                logger.info("Some on-shell (external) particle widths have been "
+                            "set to zero in their internal propagators [new]\n if "
+                            "you want to keep them set \"zerowidth_external\" to "
+                            "False", '$MG:BOLD')
 
         calls = 0
 
@@ -10709,7 +15162,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                       
                       
         matrix_elements = self._curr_matrix_elements.get_matrix_elements()
-        if any(l.get('flavor') is None for l in matrix_elements[0].get('processes')[0].get('legs')):
+        if matrix_elements and any(l.get('flavor') is None for l in matrix_elements[0].get('processes')[0].get('legs')):
             [m.get_external_flavors() for m in matrix_elements]  #precompute all flavors
         # Just the matrix.f files
         if self._export_format == 'matrix':
@@ -10733,15 +15186,19 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 matrix_elements = self._curr_matrix_elements.get_matrix_elements()
 
             for me_number, me in enumerate(self._curr_matrix_elements):
-                calls = calls + \
-                    self._curr_exporter.generate_subprocess_directory(\
-                        me, self._curr_helas_model, me_number)               
+                writer, scope = self.writer_in_gauge(me)
+                with scope:
+                    calls = calls + \
+                        self._curr_exporter.generate_subprocess_directory(\
+                            me, writer, me_number)
         
         # ungroup mode
         else:
             for nb,me in enumerate(matrix_elements[:]):
-                new_calls = self._curr_exporter.generate_subprocess_directory(\
-                            me, self._curr_helas_model, nb)
+                writer, scope = self.writer_in_gauge(me)
+                with scope:
+                    new_calls = self._curr_exporter.generate_subprocess_directory(\
+                                me, writer, nb)
                 if  isinstance(new_calls, int):
                     if new_calls ==0:
                         matrix_elements.remove(me)
@@ -10783,11 +15240,23 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         # Replace the amplitudes with the actual amplitudes from the
         # matrix elements, which allows proper diagram drawing also of
-        # decay chain processes
-        matrix_elements = self._curr_matrix_elements.get_matrix_elements()
-        self._curr_amps = diagram_generation.AmplitudeList(\
-               [me.get('base_amplitude') for me in \
-                matrix_elements])
+        # decay chain processes.
+        # Not when the generation recorded crossings: the amplitudes rebuilt
+        # from the matrix elements carry none (get_base_amplitude keeps only the
+        # process and the diagrams), and they are this output's -- folded, or
+        # expanded into explicit subprocesses -- not the generation's. The next
+        # output would inherit that choice: after a standalone_fortran one, a
+        # madevent output rebuilt from them misses every crossed subprocess.
+        if not self._has_recorded_crossings(self._curr_amps):
+            matrix_elements = self._curr_matrix_elements.get_matrix_elements()
+            self._curr_amps = diagram_generation.AmplitudeList(\
+                   [me.get('base_amplitude') for me in \
+                    matrix_elements])
+            # These lost the diagrams this output's --mask trimmed: record
+            # them, so that the next regeneration starts again from the
+            # amplitudes as generated (see the --mask above).
+            if getattr(self, '_trimmed_amps', None) is not None:
+                self._trimmed_amps[0] = list(self._curr_amps)
 
     def finalize(self, nojpeg, online = False, flaglist=[]):
         """Make the html output, write proc_card_mg5.dat and create
@@ -10810,8 +15279,24 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             wanted_lorentz = self._curr_matrix_elements.get_used_lorentz()
             wanted_couplings = self._curr_matrix_elements.get_used_couplings()
 
-            if self._export_format == 'madevent' and not 'no_helrecycling' in flaglist and \
-                not isinstance(self._curr_amps[0], loop_diagram_generation.LoopAmplitude):
+            # the P1N (amplitude split) routines: madevent's helicity recycling,
+            # the Fortran standalone --hel_recycling (same machinery, off by
+            # default) and the C++ one of a madmatrix output (--hel_recycling,
+            # on by default: 'auto')
+            sa_hel_recycling = str(getattr(self._curr_exporter, 'cmd_options', {}).get(
+                    'hel_recycling', False)).lower() in ('true', '1', 'yes')
+            exporter_opts = (getattr(self._curr_exporter, 'opt', None) or {}).get(
+                                                       'output_options') or {}
+            cpp_recycling = hasattr(getattr(self._curr_exporter,
+                                            'oneprocessclass', None),
+                                    'write_recycled') and \
+                str(exporter_opts.get('hel_recycling', False)).lower() in \
+                                               ('true', '1', 'yes', 'auto')
+            if (self._export_format == 'madevent' or sa_hel_recycling or
+                    cpp_recycling) and \
+                not 'no_helrecycling' in flaglist and \
+                not (self._curr_amps and isinstance(
+                    self._curr_amps[0], loop_diagram_generation.LoopAmplitude)):
                 for (name, flag, out) in wanted_lorentz[:]:
                     if out == 0:
                         newflag = list(flag) + ['P1N']
@@ -10828,14 +15313,30 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 self.previous_lorentz = wanted_lorentz
                 self.previous_couplings = wanted_couplings
             else:
-                self._curr_exporter.convert_model(self._curr_model, 
-                                               wanted_lorentz,
-                                               wanted_couplings)
+                # an output in two gauges: the routines of the other one go
+                # to their own library (gauge_libraries)
+                other_lorentz = self.lorentz_of_other_gauges(wanted_lorentz)
+                if other_lorentz:
+                    wanted_lorentz = other_lorentz.pop('')
+                for npwave in aloha.npwave:
+                    aloha.dual_mode = npwave
+                    self._curr_exporter.convert_model(self._curr_model,
+                                                   wanted_lorentz,
+                                                   wanted_couplings,
+                                                   npwave=npwave)
+                aloha.dual_mode = 0
+                for gauge, lorentz in sorted(other_lorentz.items()):
+                    with aloha.gauge_scope(gauge):
+                        self._curr_exporter.write_aloha_library(
+                            self.model_for_gauge(gauge), lorentz, gauge=gauge)
                 if hasattr(self, '_me_curr_exporter') and self._me_curr_exporter:
                     self._me_curr_exporter.convert_model(self._curr_model, 
                                                wanted_lorentz,
                                                wanted_couplings)
 
+            # exporting the files related to bound states
+            if self._export_format in self._onia_formats:
+                self._curr_exporter.export_onia_files(self._curr_matrix_elements)
         
         # move the old options to the flaglist system.
         if nojpeg:
@@ -10845,12 +15346,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
             
 
-        if self._export_format in ['NLO', 'ewsudsa']:
-            ## write fj_lhapdf_opts file            
+        if self._export_format in ['NLO', 'ewsudsa', 'NLO_SA']:
+            ## write fj_lhapdf_opts file
             # Create configuration file [path to executable] for amcatnlo
             filename = os.path.join(self._export_dir, 'Cards', 'amcatnlo_configuration.txt')
-            opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'hwpp_path', 'thepeg_path', 
-                                                                    'hepmc_path', 'eMELA']
+            opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'herwig7_path',
+                            'thepeg_path', 'hepmc_path', 'hepmc3_path', 'eMELA']
             to_keep = {}
             for opt in opts_to_keep:
                 if self.options[opt]:
@@ -10896,7 +15397,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         run) plus a ready-to-use citations.bib and a citations.md summary.
         """
         runnable = ['madevent', 'standalone_fortran', 'NLO',
-                    'madweight', 'matchbox', 'mg7', 'mg7_v5', 'standalone']
+                    'matchbox', 'mg7', 'mg7_v5', 'standalone']
         if self._export_format not in runnable or not self._export_dir:
             return
         try:
@@ -10917,8 +15418,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # cited too.
 
         # optional generation choices: gauge, polarization, TauDecay
+        gauge = str(self.options.get('gauge', 'unitary'))
+        if hasattr(self, 'gauges_in_use') and 'FD' in self.gauges_in_use():
+            gauge = 'FD'    # some processes in the FD gauge (--gauge=FD)
         pairs += citation.optional_generation_pairs(
-            gauge=str(self.options.get('gauge', 'unitary')),
+            gauge=gauge,
             polarization=getattr(self, '_uses_polarization', False),
             taudecay=getattr(self, '_uses_taudecay', False))
 
@@ -10932,6 +15436,19 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 pairs.append(('Hagebock:2025jyk',
                                'data-parallel matrix-element evaluation (MadMatrix)'))
 
+        # NLO output: FKS subtraction (MadFKS) and, when virtuals are
+        # generated by MadLoop, the one-loop matrix elements
+        if self._export_format == 'NLO':
+            pairs.append(('Frederix:2009yq',
+                           'FKS subtraction (MadFKS)'))
+            try:
+                has_virt = bool(self._fks_multi_proc.get_virt_amplitudes())
+            except Exception:
+                has_virt = False
+            if has_virt and self.options.get('OLP', 'MadLoop') == 'MadLoop':
+                pairs.append(('Hirschi:2011pa',
+                               'one-loop matrix elements (MadLoop)'))
+
         # running couplings (model-level RGE)
         try:
             if self._curr_model and self._curr_model.get('running_elements'):
@@ -10940,13 +15457,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         except Exception:
             pass
 
-        # quarkonium / leptonium (NRQCD/NRQED) models: detect from model name
+        # quarkonium / leptonium (NRQCD/NRQED): a bound state in the generated
+        # processes (e.g. with 'add model sm_onia'), or such a model by name
         _quarkonia_kws = ('nrqcd', 'nrqed', 'quarkon', 'leptonium')
         try:
             _mn = (self._curr_model.get('name') or '').lower() if self._curr_model else ''
         except Exception:
             _mn = ''
-        if getattr(self, '_uses_quarkonia', False) or any(k in _mn for k in _quarkonia_kws):
+        if self.has_onium_amplitude() or any(k in _mn for k in _quarkonia_kws):
             pairs.append(('ColpaniSerri:2025vdz',
                            'S-wave quarkonium/leptonium production (NRQCD/NRQED)'))
 
@@ -10963,7 +15481,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger.debug('could not write generation citations: %s', error)
 
     def do_help(self, line):
-        """ propose some usefull possible action """
+        """ propose some useful possible action """
 
         super(MadGraphCmd,self).do_help(line)
 
@@ -10982,6 +15500,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 last_action_2 = 'none'
 
 
+
+    def get_model(self):
+        """the model of the current session. The card question of `launch` on
+        a standalone output calls this (via update_dependent) on its mother
+        interface, as it calls MadEventCmd.get_model for madevent."""
+        return self._curr_model
 
     # Calculate decay width
     def do_compute_widths(self, line, model=None, do2body=True, decaymodel=None):
@@ -11016,7 +15540,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         except ImportError:
             pass
 
-        if '--nlo' not in line:
+        if not re.search(r'--nlo(?:\s|$|=(?!false))', line):
             warning_text = """Please note that the automatic computation of the width is
     only valid in narrow-width approximation and at tree-level."""
             logger.warning(warning_text)
@@ -11030,10 +15554,40 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if not isinstance(model, model_reader.ModelReader):
             model = model_reader.ModelReader(model)
 
-        if '--nlo' in line:
-            # call SMWidth to calculate NLO Width
-            self.compute_widths_SMWidth(line, model=model)
-            return
+        nlo = re.search(r'--nlo(?:=(\w+))?(?:\s|$)', line)
+        nlo_code = nlo.group(1).lower() if nlo and nlo.group(1) else None
+        if nlo_code not in (None, 'true', 'false', 'smwidth', 'mcatnlo'):
+            raise self.InvalidCmd('--nlo takes smwidth or mcatnlo, not %s' % nlo_code)
+        if nlo_code == 'false':
+            nlo = None
+        if nlo_code in ('true', 'false'):
+            nlo_code = None
+        # SMWidth does not choose its corrections (QCD and EW): asking for some is
+        # asking for MC@NLO
+        mcatnlo_only = re.search(r'--corrections=', line) is not None
+        if nlo and (nlo_code == 'smwidth' or
+                    (nlo_code is None and not mcatnlo_only and self.has_smwidth(model))):
+            # the dedicated code of the model for the NLO widths (the SM)
+            return self.compute_widths_SMWidth(line, model=model)
+
+        # the decay model of this computation, if the LO step makes one: the NLO
+        # step needs the tree-level diagrams of the same model, and a second decay
+        # model made from the first one's model finds its vertices twice
+        self._widths_decaymodel = None
+
+        decay_info, particles, opts = self._compute_widths_lo(line, model, do2body,
+                                                              decaymodel)
+        if nlo:
+            # no dedicated code, or MC@NLO asked for: the two-body decays are run at
+            # NLO with MC@NLO
+            decay_info = self.compute_widths_nlo(particles, opts, decay_info,
+                                                 model, decaymodel)
+        return decay_info
+
+    def _compute_widths_lo(self, line, model, do2body, decaymodel):
+        """The LO widths of do_compute_widths. Returns the decay_info (the
+        partial widths of every particle, {pid: [[decay products, width], ...]}),
+        the particles and the options of the command."""
 
         # check the argument and return those in a dictionary format
         particles, opts = self.check_compute_widths(self.split_arg(line))
@@ -11042,7 +15596,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             correct = True
             param_card = check_param_card.ParamCard(opts['path'])
             for param in param_card['decay']:
-                if param.value == "auto":
+                if check_param_card.auto_width_options(param.value) is not None:
                     param.value = 1
                     param.format = 'float'
                     correct = False
@@ -11083,7 +15637,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                             value_mass = eval(str(p.mass), data)
                         except Exception:
                             # the p object can still be UFO reference. since the 
-                            # mass name might hve change load back the MG5 one.
+                            # mass name might have changed load back the MG5 one.
                             value_mass = eval(str(model.get_particle(p.pdg_code).get('mass')), data)
                         tmp_mass -= abs(value_mass)             
                     if tmp_mass <=0:
@@ -11111,7 +15665,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 madevent_interface.MadEventCmd.update_width_in_param_card(decay_info,
                                                        opts['path'], opts['output'])
                 if float(opts['body_decay']) == 2:
-                    return  decay_info
+                    return decay_info, particles, opts
         else:
             skip_2body = True
 
@@ -11122,14 +15676,45 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.do_decay_diagram('%s %s' % (' '.join([repr(id) for id in particles]),
                                          ' '.join('--%s=%s' % (key,value)
                                                   for key,value in opts.items()
-                                                  if key not in ['precision_channel'])
+                                                  if key not in ['precision_channel', 'engine',
+                                                                 'corrections'])
                                          ), skip_2body=skip_2body, model=decaymodel)
+        self._widths_decaymodel = self._curr_decaymodel
 
         if self._curr_amps:
             logger.info('Pass to numerical integration for computing the widths:')
         else:            
             logger.info('No need for N body-decay (N>2). Results are in %s' % opts['output'])
-            return  decay_info
+            return decay_info, particles, opts
+
+        engine = opts['engine'] or 'madspace'
+        if engine == 'madspace' and (self.options.get('complex_mass_scheme') or
+                                     aloha.complex_mass):
+            # the mg7 output has no complex mass scheme: its matrix elements
+            # would not even compile
+            if opts['engine']:
+                raise self.InvalidCmd('madspace does not support the complex mass '
+                                      'scheme. Use --engine=madevent.')
+            logger_mg.info('The complex mass scheme is not supported by madspace: '
+                           'the widths are computed with madevent.')
+            engine = 'madevent'
+        if engine == 'madspace':
+            try:
+                decay_info = self.integrate_widths_madspace(opts, decay_info)
+            except Exception as error:
+                if opts['engine']:
+                    # asked for explicitly: do not hide that it does not work
+                    raise
+                logger.warning('The width integration with madspace failed (%s).\n'
+                               'Falling back to madevent. Use --engine=madevent '
+                               'to select it and silence this message.', error)
+                logger.debug('madspace width failure', exc_info=True)
+            else:
+                madevent_interface.MadEventCmd.update_width_in_param_card(decay_info,
+                                                           opts['path'], opts['output'])
+                if self._curr_model['name'] == 'mssm' or self._curr_model['name'].startswith('mssm-'):
+                    check_param_card.convert_to_slha1(opts['output'])
+                return decay_info, particles, opts
 
         # Do the MadEvent integration!!
         with misc.TMP_directory(dir=os.getcwd()) as path:
@@ -11137,7 +15722,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger_mg.info('More info in temporary files:\n    %s/index.html' % (decay_dir))
             with misc.MuteLogger(['madgraph','ALOHA','cmdprint','madevent'], [40,40,40,40]):
                 self.exec_cmd('output madevent %s -f' % decay_dir,child=False)
-                
+
                 #modify some parameter of the default run_card
                 run_card = banner_module.RunCard(pjoin(decay_dir,'Cards','run_card.dat'))
                 if run_card['ickkw']:
@@ -11215,9 +15800,342 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         if self._curr_model['name'] == 'mssm' or self._curr_model['name'].startswith('mssm-'):
             check_param_card.convert_to_slha1(opts['output'])
+        return decay_info, particles, opts
+
+
+
+    def run_madspace_decay_widths(self, decay_dir, precision):
+        """Integrate the decays of an mg7 output with madspace, in a process of
+        its own (see launch.compute_decay_widths), and return their widths."""
+        result_file = pjoin(decay_dir, 'decay_widths.json')
+        log_file = pjoin(decay_dir, 'decay_widths.log')
+        cmd = [sys.executable, pjoin(decay_dir, 'bin', 'generate_events'),
+               '--decay-widths=%s' % result_file, '--precision=%s' % precision,
+               '--allow-stdin']
+        if self.options['nb_core']:
+            cmd.append('--nb-core=%s' % self.options['nb_core'])
+        with open(log_file, 'w') as log:
+            returncode = subprocess.call(cmd, cwd=decay_dir, stdout=log,
+                                         stderr=subprocess.STDOUT,
+                                         stdin=subprocess.DEVNULL)
+        if returncode:
+            with open(log_file) as log:
+                tail = ''.join(log.readlines()[-15:])
+            raise MadGraph5Error('madspace failed to integrate the decays '
+                                 '(exit status %s):\n%s' % (returncode, tail))
+        with open(result_file) as fin:
+            return json.load(fin)
+
+    def integrate_widths_madspace(self, opts, decay_info):
+        """Integrate the N-body decays of self._curr_amps with madspace.
+
+        Counterpart of the MadEvent integration of do_compute_widths: the
+        amplitudes of the decay_diagram command are written as an mg7 output
+        and its survey (madspace) gives the partial widths. One output
+        directory per decaying particle, since a madspace decay directory has a
+        single decaying mass. The partial widths are added to a copy of
+        decay_info (the same {pid: [[decay products, width], ...]} the
+        two-body formulas fill), which is returned: when a particle fails
+        after others succeeded, the caller still has the decay_info it would
+        hand to MadEvent.
+        """
+        from madgraph.mg7 import bootstrap as mg7_bootstrap
+        # the survey of a decay uses no PDF: only the build needs the environment
+        self.setup_mg7_environment(lhapdf=False)
+        mg7_bootstrap.ensure_madspace(interactive=False,
+                                      jobs=self.options['nb_core'])
+        decay_info = copy.deepcopy(decay_info)
+
+        amps_by_pid = collections.OrderedDict()
+        for amp in self._curr_amps:
+            pid = abs(amp.get('process').get('legs')[0].get('id'))
+            amps_by_pid.setdefault(pid, []).append(amp)
+
+        all_amps = self._curr_amps
+        start = time.time()
+        try:
+            for pid, amps in amps_by_pid.items():
+                self._curr_amps = diagram_generation.AmplitudeList(amps)
+                # 'output' only builds the matrix elements when there are none:
+                # without this every particle after the first would export the
+                # matrix elements of the previous one
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+                particle = self._curr_model.get_particle(pid)
+                with misc.TMP_directory(dir=os.getcwd()) as path:
+                    decay_dir = pjoin(path, 'temp_decay')
+                    with misc.MuteLogger(['madgraph','ALOHA','cmdprint','madevent',
+                                          'madgraph7'], [40]*5):
+                        self.exec_cmd('output mg7 %s -f' % decay_dir, child=False)
+                        # the param_card to use is the one of the madevent run
+                        if os.path.exists(opts['output']):
+                            files.cp(opts['output'], pjoin(decay_dir, 'Cards', 'param_card.dat'))
+                        else:
+                            files.cp(opts['path'], pjoin(decay_dir, 'Cards', 'param_card.dat'))
+                        if self._curr_model['name'] == 'mssm' or self._curr_model['name'].startswith('mssm-'):
+                            check_param_card.convert_to_slha1(pjoin(decay_dir, 'Cards', 'param_card.dat'))
+                        results = self.run_madspace_decay_widths(
+                            decay_dir, float(opts['precision_channel']))
+
+                # one entry per final state: a decay can come in several flavour
+                # assignments or subprocesses
+                partial = collections.OrderedDict()
+                for res in results:
+                    key = tuple(sorted(res['outgoing']))
+                    partial[key] = partial.get(key, 0.) + res['width']
+                total = sum(partial.values())
+                error = sum(res['error']**2 for res in results) ** 0.5
+                logger_mg.info('%s: width from the N-body decays = %.5g +- %.2g GeV',
+                               particle.get('name'), total, error)
+                if pid not in decay_info:
+                    decay_info[pid] = []
+                for decay_to, width in partial.items():
+                    if 0 < width < 0.1 and particle['color'] != 1:
+                        logger.warning("partial width of particle %s lower than QCD scale:%s. Set it to zero. (%s)" \
+                                       % (particle.get('name'), width, list(decay_to)))
+                        continue
+                    decay_info[pid].append([list(decay_to), width])
+        finally:
+            self._curr_amps = all_amps
+            self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+        logger_mg.debug('madspace widths computed in %.1f s', time.time() - start)
         return decay_info
 
+    @staticmethod
+    def has_smwidth(model):
+        """Does the model come with SMWidth, the dedicated code (HDECAY) of the
+        NLO widths of the Standard Model?"""
+        return os.path.exists(pjoin(model.get('modelpath'), 'SMWidth'))
 
+    def compute_widths_nlo(self, particles, opts, decay_info, model, decaymodel=None):
+        """NLO widths of the two-body decays, with MC@NLO (aMC@NLO at fixed
+        order). Used by 'compute_widths --nlo' when the model has no dedicated
+        code for it (SMWidth), or with '--corrections'.
+
+        ``decay_info`` holds the LO widths. The corrections are those of
+        opts['corrections']: QCD (the default), QED (the electroweak ones), or both.
+        A two-body decay is run at NLO and its width replaced when it has a QCD
+        correction -- a colour charge in the decaying particle or in a decay product
+        -- or, with the electroweak corrections, always: every decay has one. The
+        decays into three bodies or more stay at LO, which is what '--body_decay=3'
+        asks for with '--nlo'. The param_card is rewritten with the sums.
+
+        A decay that cannot be run (a model without loop information, ...) keeps
+        its LO width, with a warning. Returns the new decay_info."""
+
+        corrections = (opts.get('corrections') or 'QCD').split('+')
+        if 'QED' in corrections and 'QED' not in (self._curr_model.get('perturbation_couplings') or []):
+            logger.warning('The model has no QED loop information: the electroweak '
+                'corrections are computed with the loop model MG finds for it '
+                '(loop_qcd_qed_sm), whose electroweak input scheme and parameters may '
+                'not be those of the card. Load a model with loop information '
+                '(loop_qcd_qed_sm, loop_qcd_qed_sm_Gmu) to choose them.')
+        channels = []
+        for pid in particles:
+            decaying = model.get_particle(pid)
+            for index, (decay_to, width) in enumerate(decay_info.get(pid, [])):
+                if len(decay_to) != 2 or not width:
+                    continue
+                products = [model.get_particle(abs(code)) for code in decay_to]
+                if 'QED' not in corrections and \
+                        all(p.get('color') == 1 for p in [decaying] + products):
+                    continue # no QCD correction
+                channels.append((pid, index, tuple(decay_to)))
+        if not channels:
+            logger_mg.info('None of the two-body decays has a %s correction: '
+                           'the widths are the LO ones.', '+'.join(corrections))
+            return decay_info
+
+        orders = self.two_body_born_orders(sorted(set(pid for pid, _, _ in channels)),
+                                           opts, decaymodel)
+        model_ref = self._curr_model.get('modelpath+restriction')
+        param_card = opts['output'] if os.path.exists(opts['output']) else opts['path']
+        precision = float(opts['precision_channel'])
+
+        with misc.MuteLogger(['madgraph'], [40]):
+            default_names = base_objects.Model.load_default_name()
+
+        def process_line(pid, decay_to):
+            names = [self.particle_name(model, pid, default_names)] + \
+                    [self.particle_name(model, code, default_names) for code in decay_to]
+            born = orders.get((pid, tuple(sorted(decay_to))))
+            if born is None:
+                raise MadGraph5Error('no tree-level diagram for this decay')
+            hierarchy = self._curr_model.get('order_hierarchy') or {'QCD': 1, 'QED': 2}
+            born = ' '.join('%s=%d' % (name, born.get(name, 0)) for name in hierarchy)
+            return '%s > %s %s %s [%s]' % (names[0], names[1], names[2], born,
+                                           ' '.join(corrections))
+
+        # Flavours the model treats alike (u and c, d and s, W > u d~ and W > c s~
+        # in the SM) have the same LO width to the last digit and the same NLO
+        # width: run one of them. The same decaying particle, the same colours,
+        # masses and charges of the decay products, and the same LO width.
+        # The electroweak corrections also see the isospin partner of the decay
+        # products, in the loops: the b, whose partner is the top quark, is not a d
+        # (Z > b b~ is 1.5% lower than Z > d d~ at NLO EW). Only the light quarks of
+        # a type, and the leptons and the neutrinos of the three families, are taken
+        # as alike for them; any other particle has its own run.
+        def kind(code):
+            code = abs(code)
+            for name, codes in (('d', (1, 3)), ('u', (2, 4)), ('l', (11, 13, 15)),
+                                ('v', (12, 14, 16))):
+                if code in codes:
+                    return name
+            return code
+
+        def signature(channel):
+            pid, index, decay_to = channel
+            products = [model.get_particle(abs(code)) for code in decay_to]
+            flavours = tuple(sorted(str(kind(code)) for code in decay_to)) \
+                       if 'QED' in corrections else ()
+            return (pid, tuple(sorted((p.get('color'), str(p.get('mass')), p.get('charge'))
+                                      for p in products)), flavours,
+                    float('%.9g' % decay_info[pid][index][1]))
+
+        signatures = [signature(channel) for channel in channels]
+        unique = []
+        for number, sig in enumerate(signatures):
+            if sig not in [signatures[first] for first in unique]:
+                unique.append(number)
+        workers = max(1, min(len(unique), 4))
+        cores = max(1, (self.options['nb_core'] or os.cpu_count() or 1) // workers)
+
+        logger_mg.info('NLO %s width of %d two-body decay(s) with MC@NLO (%d run(s)) ...',
+                       '+'.join(corrections), len(channels), len(unique))
+        start = time.time()
+        with misc.TMP_directory(dir=os.getcwd()) as path:
+            def run(number):
+                pid, _, decay_to = channels[number]
+                try:
+                    return self.run_mcatnlo_width(
+                        pjoin(path, 'nlo_%d' % number), process_line(pid, decay_to),
+                        model_ref, param_card, precision, cores)
+                except Exception as error:
+                    return error
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+                done = dict(zip(unique, pool.map(run, unique)))
+        outcomes = [done[next(first for first in unique if signatures[first] == sig)]
+                    for sig in signatures]
+
+        decay_info = copy.deepcopy(decay_info)
+        for (pid, index, decay_to), outcome in zip(channels, outcomes):
+            name = '%s > %s' % (self.particle_name(model, pid, default_names),
+                    ' '.join(self.particle_name(model, code, default_names)
+                             for code in decay_to))
+            lo = decay_info[pid][index][1]
+            if isinstance(outcome, Exception):
+                logger.warning('NLO width of %s failed (%s): the LO width %.5g GeV is kept.',
+                               name, outcome, lo)
+                continue
+            width, error = outcome
+            logger_mg.info('NLO width of %s: %.5g +- %.2g GeV (LO %.5g GeV, NLO/LO = %.3f)',
+                           name, width, error, lo, width / lo)
+            decay_info[pid][index][1] = width
+        logger_mg.debug('NLO widths computed in %.1f s', time.time() - start)
+
+        madevent_interface.MadEventCmd.update_width_in_param_card(
+                                      decay_info, opts['output'], opts['output'])
+        return decay_info
+
+    @staticmethod
+    def particle_name(model, code, default=None):
+        """The name of the particle of pdg code ``code`` (negative: the antiparticle)
+        in the MG convention (mu-, ta+, ...), which is the one of a session that imports
+        the model: the NLO runs generate their process in such a session, whereas
+        the model of the decays keeps the names of the UFO (m-, tt+). ``default`` is
+        the table of these names, read when it is not given."""
+        if default is None:
+            with misc.MuteLogger(['madgraph'], [40]):
+                default = base_objects.Model.load_default_name()
+        if code in default:
+            return default[code]
+        particle = model.get_particle(abs(code))
+        return particle.get('name') if code > 0 else particle.get('antiname')
+
+    def two_body_born_orders(self, pids, opts, decaymodel=None):
+        """The coupling orders of the tree-level two-body decays of the particles
+        ``pids``: {(pid, sorted decay products): {'QED': 1}}. The NLO process
+        needs them, 'generate t > w+ b [QCD]' cannot guess them."""
+        all_amps = self._curr_amps
+        try:
+            self.do_decay_diagram('%s --body_decay=2 --path=%s' % (
+                  ' '.join(str(pid) for pid in pids), opts['path']),
+                  skip_2body=False, model=decaymodel or self._widths_decaymodel)
+            orders = {}
+            for amp in self._curr_amps:
+                legs = amp.get('process').get('legs')
+                key = (abs(legs[0].get('id')), tuple(sorted(l.get('id') for l in legs[1:])))
+                orders[key] = dict(amp.get('diagrams')[0].get('orders'))
+        finally:
+            self._curr_amps = all_amps
+        return orders
+
+    def run_mcatnlo_width(self, workdir, process, model_ref, param_card, precision, nb_core):
+        """The NLO (QCD) partial width of a decay, with aMC@NLO at fixed order:
+        'process' is generated with its [QCD] correction, exported, and run, in
+        processes of their own. ``param_card`` gives the values of the
+        parameters. Returns the width and its error, in GeV."""
+        os.makedirs(workdir)
+        proc_dir = pjoin(workdir, 'PROC_NLO')
+
+        def run(cmd, log_name):
+            log_path = pjoin(workdir, log_name)
+            with open(log_path, 'w') as log:
+                returncode = subprocess.call(cmd, cwd=workdir, stdout=log,
+                                             stderr=subprocess.STDOUT,
+                                             stdin=subprocess.DEVNULL)
+            with open(log_path) as log:
+                text = log.read()
+            if returncode or re.search(r'Error detected|interrupted with error|Traceback', text):
+                lines = [l.strip() for l in text.splitlines() if l.strip()]
+                # the error of MG, 'InvalidCmd : ...', or the last line
+                message = next((l for l in reversed(lines)
+                                if re.match(r'\w*(Error|Exception|Cmd)\w* ?:', l)),
+                               lines[-1] if lines else 'exit status %s' % returncode)
+                raise MadGraph5Error('%s (%s)' % (message, log_path))
+            return text
+
+        script = pjoin(workdir, 'generate.mg5')
+        with open(script, 'w') as fsock:
+            fsock.write('set automatic_html_opening False --no_save\n')
+            fsock.write('set nb_core %s --no_save\n' % nb_core)
+            if aloha.complex_mass:
+                fsock.write('set complex_mass_scheme True\n')
+            # the gauge of the session, which a model such as loop_qcd_qed_sm needs
+            gauge = self.options.get('gauge')
+            if gauge and gauge not in ('unitary', 'default'):
+                fsock.write('set gauge %s\n' % gauge)
+            fsock.write('import model %s\n' % model_ref)
+            fsock.write('generate %s\n' % process)
+            fsock.write('output %s -f\n' % proc_dir)
+        run([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), script], 'generate.log')
+
+        # the parameters of the user, in the card the loop model wrote
+        card = pjoin(proc_dir, 'Cards', 'param_card.dat')
+        check_param_card.merge_param_card_values(param_card, card)
+        run_card = pjoin(proc_dir, 'Cards', 'run_card.dat')
+        with open(run_card) as fsock:
+            text = fsock.read()
+        text = re.sub(r'(?m)^(\s*)[-\d.eE+]+(\s*=\s*req_acc_FO\b)',
+                      lambda m: '%s%s%s' % (m.group(1), precision, m.group(2)), text)
+        with open(run_card, 'w') as fsock:
+            fsock.write(text)
+
+        script = pjoin(workdir, 'launch.txt')
+        with open(script, 'w') as fsock:
+            fsock.write('set automatic_html_opening False --no_save\n')
+            fsock.write('set nb_core %s --no_save\n' % nb_core)
+            fsock.write('launch NLO -f\n')
+        run([sys.executable, pjoin(proc_dir, 'bin', 'aMCatNLO'), script], 'launch.log')
+
+        pattern = re.compile(r'\(Partial\) decay width:\s*([-+\d.eE]+)\s*\+-\s*([-+\d.eE]+)\s*GeV')
+        for summary in sorted(glob.glob(pjoin(proc_dir, 'Events', '*', 'summary.txt')),
+                              reverse=True):
+            with open(summary) as fsock:
+                found = pattern.search(fsock.read())
+            if found:
+                return float(found.group(1)), float(found.group(2))
+        raise MadGraph5Error('no width in the results of aMC@NLO (%s)' % workdir)
 
     # Calculate decay width with SMWidth
     def compute_widths_SMWidth(self, line, model=None):
@@ -11231,7 +16149,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             correct = True
             param_card = check_param_card.ParamCard(opts['path'])
             for param in param_card['decay']:
-                if param.value == "auto":
+                if check_param_card.auto_width_options(param.value) is not None:
                     param.value = 1
                     param.format = 'float'
                     correct = False
@@ -11282,26 +16200,46 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             misc.compile(cwd=pjoin(model_path, 'SMWidth'))
 
         # look for the ident_card.dat
-        identpath=" "
         carddir=os.path.dirname(opts['path'])
-        if 'ident_card.dat' in os.listdir(carddir):
-            identpath=pjoin(carddir,'ident_card.dat')
+        has_ident = 'ident_card.dat' in os.listdir(carddir or '.')
+        # smwidth keeps the path of the cards in 100 characters: with a longer one
+        # it reads nothing and every width comes out as zero. It runs in its own
+        # directory, on copies of the cards with short names.
+        smdir = pjoin(model_path, 'SMWidth')
+        copies = ['smwidth_card_%d.dat' % os.getpid()]
+        files.cp(opts['path'], pjoin(smdir, copies[0]))
+        identpath = " "
+        if has_ident:
+            copies.append('smwidth_ident_%d.dat' % os.getpid())
+            files.cp(pjoin(carddir, 'ident_card.dat'), pjoin(smdir, copies[1]))
+            identpath = copies[1]
         #run the code
-        output,error = misc.Popen(['./smwidth',opts['path'],identpath,arg2],
-                                  stdout=subprocess.PIPE,
-                                  stdin=subprocess.PIPE,
-                                  cwd=pjoin(model_path, 'SMWidth')).communicate()
+        try:
+            output,error = misc.Popen(['./smwidth', copies[0], identpath, arg2],
+                                      stdout=subprocess.PIPE,
+                                      stdin=subprocess.PIPE,
+                                      cwd=smdir).communicate()
+        finally:
+            for name in copies:
+                if os.path.exists(pjoin(smdir, name)):
+                    os.remove(pjoin(smdir, name))
         pattern = re.compile(r'''  decay\s+(\+?\-?\d+)\s+(\+?\-?\d+\.\d+E\+?\-?\d+)''',re.I)
         width_list = pattern.findall(output.decode(errors='ignore'))
+        if not width_list:
+            raise MadGraph5Error('SMWidth returned no width:\n%s' %
+                                 '\n'.join(output.decode(errors='ignore').splitlines()[-8:]))
         width_dict = {}
         for pid,width in width_list:
             width_dict[int(pid)] = float(width)
 
+        decay_info = {}
         for pid in particles:
             if not pid in width_dict:
                 width = 0
             else:
                 width = width_dict[pid]
+            # the total only: HDECAY does not give the channels
+            decay_info[pid] = [[[], width]]
             param = param_card['decay'].get((pid,))
             param.value = width
             param.format = 'float'
@@ -11318,7 +16256,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         else:
             param_card.write(opts['path'])
             logger.info('Results are written in %s' % opts['path'])
-        return
+        return decay_info
 
     # Calculate decay width
     def do_decay_diagram(self, line, skip_2body=False,  model=None):
@@ -11359,6 +16297,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # Reset amplitudes
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
+        self._curr_amplicol_defs = base_objects.ProcessDefinitionList()
         # Reset Helas matrix elements
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         # Reset _done_export, since we have new process
@@ -11493,6 +16432,8 @@ _launch_usage = "launch [DIRPATH] [options]\n" + \
          "   Example: launch PROC_sm_1 --name=run2 \n" + \
          "   Example: launch ../pythia8 \n"
 _launch_parser = misc.OptionParser(usage=_launch_usage)
+_launch_parser.add_option("--allow_qed_ps", default=False, action='store_true',
+                            help="Allow experimental NLO QED+PS matching by bypassing the launch restriction")
 _launch_parser.add_option("-f", "--force", default=False, action='store_true',
                                 help="Use the card present in the directory in order to launch the different program")
 _launch_parser.add_option("-n", "--name", default='', type='str',
@@ -11514,10 +16455,119 @@ _launch_parser.add_option("", "--timings", default=0, type='int',
                             help="[standalone_fortran] Number of SMATRIX calls per flavor per run for timing analysis (0=disabled)")
 _launch_parser.add_option("", "--nb_run", default=1, type='int',
                             help="[standalone_fortran] Number of timing repetitions for statistics (used with --timings); 0 = good-helicity check (print matrix-element values instead of a timing table)")
+_launch_parser.add_option("", "--energy", default=0, type='float',
+                            help="[FKS standalone] sqrt(s) of the phase-space point (0=built-in default)")
 
 #===============================================================================
 # Interface for customize question.
 #===============================================================================
+class RestrictionExplainer(object):
+    """Evaluates the couplings/parameters of a model for the choices made so
+    far at the customize_model question and reports what changed since the
+    previous call, so that 'customize_model --explain' gives a live feedback
+    after each command instead of only a report at the end.
+
+    It only reads values (one evaluation of the couplings per call): it can not
+    change the model which is being built."""
+
+    def __init__(self, cmd, model_path, default_card, externals, categories):
+
+        self.cmd = cmd
+        self.externals = externals
+        self.model = model_reader.ModelReader(
+                        import_ufo.import_model(model_path, restrict=False))
+        # the values which would be simplified by accident are randomized, as
+        # they are for the real restriction
+        self.unrestricted = check_param_card.ParamCard(default_card)
+        cmd.randomize_param_card(self.unrestricted, externals)
+
+        # the starting point is the question as it opens, i.e. the default
+        # value of the options, not the unrestricted model
+        self.state = self.evaluate(self.apply(categories, [], [], []))
+        cmd.log_report_banner('Restriction report (live): the default choices of'
+                              ' this model already drop %d coupling(s), fuse %d'
+                              ' and restrict %d parameter(s).'
+                              % tuple(len(entries) for entries in self.state))
+        logger.info(' Each command you enter is followed by what it changes.',
+                    '$MG:color:GREEN')
+        MadGraphCmd.log_report_banner()
+
+    def apply(self, categories, set_zero, set_one, set_equal):
+        """the param_card for the choices made so far"""
+
+        param_card = check_param_card.ParamCard(self.unrestricted)
+        self.cmd.apply_customize_rules(param_card, categories, set_zero,
+                        set_one, self.cmd.resolve_set_equal(set_equal))
+        return param_card
+
+    def evaluate(self, param_card):
+        """(dropped couplings, fused couplings, parameters leaving the card)"""
+
+        zero, fused = self.cmd.get_coupling_classes(self.model, param_card)
+        dropped, merged = self.cmd.get_parameter_classes(param_card,
+                                                         self.externals)
+        return zero, fused, dropped | merged
+
+    def update(self, categories, set_zero, set_one, set_equal, lha2name=None):
+        """evaluate the choices made so far and log what the last command
+        changed"""
+
+        new = self.evaluate(self.apply(categories, set_zero, set_one, set_equal))
+        self.report(self.state, new, lha2name or {})
+        self.state = new
+
+    def report(self, old, new, lha2name):
+        """the difference between two states, in plain words"""
+
+        old_zero, old_fused, old_param = old
+        new_zero, new_fused, new_param = new
+
+        def name(key):
+            if not isinstance(key, tuple):
+                return str(key)
+            return MadGraphCmd.name_of_lha(lha2name, key)
+
+        changes = [('+', new_zero - old_zero, 'coupling(s) dropped'),
+                   ('-', old_zero - new_zero, 'coupling(s) back in the model'),
+                   ('+', new_fused - old_fused, 'coupling(s) fused'),
+                   # a coupling which is now dropped is not 'fused' anymore:
+                   # reporting it a second time would only be confusing
+                   ('-', (old_fused - new_fused) - new_zero,
+                    'coupling(s) not fused anymore'),
+                   ('+', new_param - old_param,
+                    'parameter(s) restricted (set to 0/1 or merged)'),
+                   ('-', old_param - new_param,
+                    'parameter(s) free again')]
+
+        changed = False
+        for sign, entries, title in changes:
+            if not entries:
+                continue
+            changed = True
+            logger.info('  %s%d %s: %s' % (sign, len(entries), title,
+                        self.cmd.short_list([name(key) for key in entries])),
+                        '$MG:color:GREEN' if sign == '+' else '$MG:color:BLUE')
+        if not changed:
+            logger.info('  no change on the couplings/parameters of the model',
+                        '$MG:color:BLACK')
+
+
+class AskforModelName(cmd.SmartQuestion):
+    """Ask for a (free text) model name. The only reason for this class to
+    exist is that a question with no pre-defined answer is otherwise not
+    scriptable (any line of the script would be refused)."""
+
+    name_pattern = re.compile(r'^\w+$')
+
+    def special_check_answer_in_input_file(self, line, default):
+        # only accept something which can be a model name: a script which does
+        # not answer this question must not have its next command swallowed
+        line = line.strip()
+        if self.name_pattern.match(line):
+            return line
+        return None
+
+
 class AskforCustomize(cmd.SmartQuestion):
     """A class for asking a question where in addition you can have the
     set command define and modifying the param_card/run_card correctly"""
@@ -11525,10 +16575,51 @@ class AskforCustomize(cmd.SmartQuestion):
     def __init__(self, question, allow_arg=[], default=None,
                                             mother_interface=None, *arg, **opt):
 
-        model_path = mother_interface._curr_model.get('modelpath')
-        #2) Import the option available in the model
+        categories = opt.pop('categories', None)
+
+        model = mother_interface._curr_model
+        model_path = model.get('modelpath')
+        # the UFO objects are used (and not the MG5 ones) since the user knows
+        # the model under that form (no 'mdl_' prefix, ...)
         ufo_model = ufomodels.load_model(model_path)
-        self.all_categories = ufo_model.build_restrict.all_categories
+        #2) Import the option available in the model
+        if categories is None:
+            categories = ufo_model.build_restrict.all_categories
+        self.all_categories = categories
+
+        self.external_params = dict((param.name.lower(), param)
+                                    for param in ufo_model.all_parameters
+                                    if param.nature == 'external')
+        self.internal_params = dict((param.name.lower(), param)
+                                    for param in ufo_model.all_parameters
+                                    if param.nature != 'external')
+        self.ufo_couplings = dict((coupling.name.lower(), coupling)
+                                  for coupling in ufo_model.all_couplings)
+        # (lhablock, lhacode) -> name, to display a parameter as the user knows it
+        self.lha2name = MadGraphCmd.get_lha2name(model_path)
+
+        # the customizations which are not a simple on/off switch
+        self.set_zero = []    # [(lhablock, lhacode)]
+        self.set_one = []     # [(lhablock, lhacode)]
+        self.set_equal = []    # [((lhablock, lhacode), (lhablock, lhacode))]
+        self.new_formula = [] # [(parameter name, expression)]
+        self.new_coupling = []# [(coupling name, expression)]
+        self.formula_target = {} # parameter name -> (lhablock, lhacode)
+        self._identifiable = None # cache for the set_equal completion
+        # where the value of a parameter comes from. By default the model as it
+        # was loaded (baseline_card), otherwise what 'set default' asked for
+        self.baseline_card = opt.pop('baseline_card', None)
+        self.default_source = None      # None, 'ufo', or the path of a card
+        self.default_card_values = None # that card, parsed
+        self.default_values = {}        # (lhablock, lhacode) -> value
+        # customize_model --explain: report each command as it is entered
+        self.explainer = opt.pop('explainer', None)
+        # the restriction the model was loaded with is where the question
+        # starts: its zeros, ones and merged parameters as rules, so that
+        # `done` rebuilds that very model and `set NAME free` releases one
+        self.loaded_restriction = None
+        self.start_from_restriction(opt.pop('loaded_card', None),
+                                    opt.pop('loaded_name', None))
 
         question = self.get_question()
         # determine the possible value and how they are linked to the restriction
@@ -11546,7 +16637,24 @@ class AskforCustomize(cmd.SmartQuestion):
 
         cmd.SmartQuestion.__init__(self, question, allow_arg, default, mother_interface)
 
+    @property
+    def answer(self):
+        """what do_customize_model gets back from ask(). The value returned by
+        cmdloop() in interactive mode, so that a scripted answer (which does
+        not go through cmdloop) returns the very same object."""
+        return self.all_categories
 
+    @property
+    def question(self):
+        """The question is fully derived from the current state, so it is
+        rebuilt on every read: a command answered from a script never goes
+        through reask(), and would otherwise be shown the state of the
+        question as it was before any of the commands ran."""
+        return self.get_question()
+
+    @question.setter
+    def question(self, value):
+        pass # derived, see above
 
     def default(self, line):
         """Default action if line is not recognized"""
@@ -11555,64 +16663,777 @@ class AskforCustomize(cmd.SmartQuestion):
         args = line.split()
         if line == '' and self.default_value is not None:
             self.value = self.default_value
-        # check if input is a file
-        elif hasattr(self, 'do_%s' % args[0]):
-            self.do_set(' '.join(args[1:]))
+        # check if input is a command
+        elif args and hasattr(self, 'do_%s' % args[0]):
+            getattr(self, 'do_%s' % args[0])(' '.join(args[1:]))
         elif line.strip() != '0' and line.strip() != 'done' and \
             str(line) != 'EOF' and line.strip() in self.allow_arg:
             option = self.name2options[line.strip()]
-            option.status = not option.status
+            if isinstance(option, build_restrict_lib.ChoiceOption):
+                option.next_status()
+            else:
+                option.status = not option.status
             self.value = 'repeat'
+            self.explain_change()
         else:
             self.value = line
 
         return self.all_categories
 
-    def reask(self, reprint_opt=True):
+    def reask(self, reprint_opt=True, line=None):
         """ """
         reprint_opt = True
-        self.question = self.get_question()
-        cmd.SmartQuestion.reask(self, reprint_opt)
+        cmd.SmartQuestion.reask(self, reprint_opt, line=line)
 
     def do_set(self, line):
-        """ """
+        """set one of the options of the question, or -when the first argument
+        is a parameter of the model- a shortcut for the set_zero/set_one/
+        set_equal commands: 'set yt 0', 'set yt 1', 'set yt = yb'"""
+
         self.value = 'repeat'
 
-        args = line.split()
-        if args[0] not in self.name2options:
-            logger.warning('Invalid set command. %s not recognize options. Valid options are: \n  %s' %
-                           (args[0], ', '.join(list(self.name2options.keys())) ))
+        # 'set yt = yb', 'set yt= yb' and 'set yt=yb' are the same thing
+        args = re.sub(r'\s*=\s*', ' = ', line).split()
+        if not args:
+            logger.warning('Invalid set command. Syntax is: set NAME VALUE')
             return
-        elif len(args) != 2:
+
+        if args[0].lower() == 'default':
+            return self.set_default(args[1:])
+        if args[0] in self.name2options:
+            return self.set_option(args)
+        if len(args) >= 2 and args[1].lower() == 'all' \
+                          and self.get_block_parameters(args[0]):
+            return self.set_parameter(args)
+        if args[0].lower() in self.external_params or \
+                                    args[0].lower() in self.internal_params:
+            return self.set_parameter(args)
+
+        logger.warning('Invalid set command: %s is neither one of the options '
+                       'nor a parameter of the model.\n  Valid options are: %s',
+                       args[0], ', '.join(x for x in self.name2options
+                                                        if not x.isdigit()))
+
+    def set_option(self, args):
+        """set NAME VALUE where NAME is one of the options of the question"""
+
+        if len(args) != 2:
             logger.warning('Invalid set command. Not correct number of argument')
             return
 
+        option = self.name2options[args[0]]
+        if isinstance(option, build_restrict_lib.ChoiceOption):
+            try:
+                option.set_status(args[1])
+            except ValueError as error:
+                logger.warning(str(error))
+            else:
+                self.explain_change()
+            return
 
         if args[1] in ['True','1','.true.','T',1,True,'true','TRUE']:
-            self.name2options[args[0]].status = True
+            option.status = True
         elif args[1] in ['False','0','.false.','F',0,False,'false','FALSE']:
-            self.name2options[args[0]].status = False
+            option.status = False
         else:
             logger.warning('%s is not True/False. Didn\'t do anything.' % args[1])
+            return
+        self.explain_change()
 
+    def set_default(self, args):
+        """'set default UFO', 'set default PATH' and 'set default NAME [=] VALUE'
+        choose where the values written in the param_card come from. They are
+        the values of the model, not a restriction: use set_zero/set_one to
+        remove a parameter from the model."""
 
+        if not args:
+            logger.warning('Invalid set default command. Syntax is: '
+                'set default UFO | PATH | NAME [=] VALUE')
+            return
+
+        if len(args) == 1:
+            # both forms start from scratch: they undo every 'set default'
+            # entered before them
+            if args[0].lower() == 'ufo':
+                self.default_source = 'ufo'
+                self.default_card_values = None
+                self.default_values = {}
+                logger.info('Default values taken from the UFO model.')
+                return
+            if not os.path.isfile(args[0]):
+                logger.warning('%s is neither \'UFO\' nor a file. Syntax is: '
+                    'set default UFO | PATH | NAME [=] VALUE', args[0])
+                return
+            try:
+                card = check_param_card.ParamCard(args[0])
+            except Exception as error:
+                logger.warning('%s is not a valid param_card: %s', args[0], error)
+                return
+            self.default_source = args[0]
+            self.default_card_values = card
+            self.default_values = {}
+            logger.info('Default values taken from %s (for the parameters it '
+                        'defines, the ones of the model for the others).', args[0])
+            return
+
+        keys, value = self.resolve_parameters(args)
+        if keys is None:
+            return
+        if value and value[0] == '=':
+            value = value[1:]
+        if len(value) != 1:
+            logger.warning('Invalid set default command. Syntax is: '
+                'set default UFO | PATH | NAME [=] VALUE (NAME can also be '
+                '\'BLOCK all\')')
+            return
+        try:
+            value = float(value[0])
+        except ValueError:
+            logger.warning('%s is not a number. Syntax is: '
+                           'set default NAME [=] VALUE', value[0])
+            return
+        for key in keys:
+            self.default_values[key] = value
+
+    def get_default_value(self, param):
+        """the value a parameter will get: what 'set default' asked for, then
+        the model as it was loaded, then the UFO"""
+
+        key = (param.lhablock, tuple(param.lhacode))
+        if key in self.default_values:
+            return self.default_values[key]
+        cards = [self.default_card_values]
+        if self.default_source != 'ufo':
+            cards.append(self.baseline_card)
+        for card in cards:
+            if card is None:
+                continue
+            value = card.get_value(param.lhablock.lower(),
+                                   tuple(param.lhacode), default='__not_set__')
+            if value != '__not_set__':
+                return value
+        return param.value
+
+    def set_parameter(self, args):
+        """'set NAME 0', 'set NAME 1' and 'set NAME = OTHER' are the same as
+        set_zero/set_one/set_equal. NAME can also be 'BLOCK all'."""
+
+        keys, value = self.resolve_parameters(args)
+        if keys is None:
+            return
+        if value and value[0] == '=':
+            value = value[1:]
+        if len(value) != 1:
+            logger.warning('Invalid set command. For a parameter the syntax is:'
+                ' set NAME 0 / set NAME 1 / set NAME = OTHERNAME / set NAME '
+                'free (NAME can be \'BLOCK all\' for the 0, 1 and free forms)')
+            return
+        value = value[0]
+        if value == '0':
+            self.apply_restriction(keys, 0)
+        elif value == '1':
+            self.apply_restriction(keys, 1)
+        elif value.lower() == 'free':
+            # back to the value it starts from: undoes one rule, where `clear`
+            # would undo every one of them
+            for key in keys:
+                self.forget_parameter(key)
+            self.explain_change()
+        elif value.lower() in self.external_params:
+            if len(keys) > 1:
+                logger.warning('A whole block can only be set to 0 or to 1, '
+                               'not to the value of another parameter.')
+                return
+            self.do_set_equal('%s %s' % (args[0], value))
+        else:
+            logger.warning('%s can only be set to 0, to 1, to the value of '
+                'another external parameter, or free (\'%s\' is none of '
+                'them).', args[0], value)
+
+    #===========================================================================
+    # customization of a single parameter/coupling
+    #===========================================================================
+    def get_external_parameter(self, name):
+        """return the (lhablock, lhacode) of an external parameter of the model
+        (None if the parameter is not a valid external parameter)"""
+
+        param = self.external_params.get(name.lower(), None)
+        if param is None:
+            if name.lower() in self.internal_params:
+                logger.warning('%s is an internal parameter of the model. Only '
+                    'external parameters (i.e. parameters of the param_card) '
+                    'can be restricted.', name)
+            else:
+                logger.warning('%s is not a parameter of this model.', name)
+            return None
+        return (param.lhablock, tuple(param.lhacode))
+
+    def get_block_parameters(self, name):
+        """the external parameters of a block of the param_card, None when name
+        is not one of its blocks"""
+
+        params = [param for param in self.external_params.values()
+                  if param.lhablock.lower() == name.lower()]
+        return params or None
+
+    def resolve_parameters(self, args):
+        """what a designation refers to, as a list of (lhablock, lhacode): the
+        name of a parameter, or 'BLOCK all' for every parameter of a block.
+        Return it with the arguments which are left."""
+
+        if not args:
+            return None, args
+        if len(args) >= 2 and args[1].lower() == 'all':
+            params = self.get_block_parameters(args[0])
+            if params is None:
+                logger.warning('%s is not a block of the param_card of this '
+                               'model.', args[0])
+                return None, args[2:]
+            return [(param.lhablock, tuple(param.lhacode))
+                    for param in params], args[2:]
+        key = self.get_external_parameter(args[0])
+        if key is None:
+            return None, args[1:]
+        return [key], args[1:]
+
+    def apply_restriction(self, keys, value):
+        """fix a list of parameters to zero or to one"""
+
+        for key in keys:
+            self.forget_parameter(key)
+            # forget_parameter rebinds the lists, so they are read back here
+            if value:
+                self.set_one.append(key)
+            else:
+                self.set_zero.append(key)
+        self.explain_change()
+
+    def do_set_zero(self, line):
+        """set an external parameter -or a whole block- of the model to zero"""
+
+        self.value = 'repeat'
+        keys, rest = self.resolve_parameters(line.split())
+        if keys is None:
+            return
+        if rest:
+            logger.warning('Invalid set_zero command. Syntax is: '
+                           'set_zero NAME | BLOCK all')
+            return
+        self.apply_restriction(keys, 0)
+
+    def do_set_one(self, line):
+        """set an external parameter -or a whole block- of the model to one"""
+
+        self.value = 'repeat'
+        keys, rest = self.resolve_parameters(line.split())
+        if keys is None:
+            return
+        if rest:
+            logger.warning('Invalid set_one command. Syntax is: '
+                           'set_one NAME | BLOCK all')
+            return
+        self.apply_restriction(keys, 1)
+
+    def do_set_equal(self, line):
+        """force an external parameter to take the value of another one"""
+
+        self.value = 'repeat'
+        args = line.split()
+        if len(args) != 2:
+            logger.warning('Invalid set_equal command. Syntax is: set_equal NAME1 NAME2')
+            return
+        param = self.get_external_parameter(args[0])
+        param2 = self.get_external_parameter(args[1])
+        if param is None or param2 is None:
+            return
+        if param == param2:
+            logger.warning('Can not set a parameter equal to itself.')
+            return
+        if param[0].lower() != param2[0].lower():
+            # the model restriction only merges two parameters of a same block:
+            # both will stay in the param_card (with the same value)
+            logger.warning('%s and %s are in two different blocks of the '
+                'param_card (%s and %s): the interactions will be simplified as '
+                'if they were identical but both will remain independent '
+                'entries of the param_card (you will have to keep them equal).\n'
+                '  Use \'formula %s = %s\' to link them for good (this writes a '
+                'new model on disk).', args[0], args[1], param[0], param2[0],
+                args[0], args[1])
+        self.forget_parameter(param)
+        self.set_equal.append((param, param2))
+        self.explain_change()
+
+    def do_formula(self, line):
+        """define an external parameter as a formula of other parameters.
+        This requires to write a new UFO model on disk."""
+
+        self.value = 'repeat'
+        if '=' not in line:
+            logger.warning('Invalid formula command. Syntax is: formula NAME = EXPRESSION')
+            return
+        name, expr = line.split('=', 1)
+        name, expr = name.strip(), expr.strip()
+        if name.lower() not in self.external_params:
+            logger.warning('%s is not an external parameter of this model.', name)
+            return
+        if not expr:
+            logger.warning('Invalid formula command: empty expression.')
+            return
+        for variable in self.get_variables(expr):
+            if variable == name.lower():
+                logger.warning('%s can not be defined in term of itself.', name)
+                return
+            if variable not in self.external_params:
+                logger.warning('%s is not an external parameter of this model. '
+                    'Such formula is likely to fail when loading the model.', variable)
+        param = self.get_external_parameter(name)
+        name = self.external_params[name.lower()].name
+        self.forget_parameter(param)
+        self.new_formula = [(n, e) for (n, e) in self.new_formula if n != name]
+        self.formula_target[name] = param
+        self.new_formula.append((name, expr))
+        self.warn_not_explained()
+
+    def do_coupling(self, line):
+        """change the definition of one of the coupling of the model.
+        This requires to write a new UFO model on disk."""
+
+        self.value = 'repeat'
+        if '=' not in line:
+            logger.warning('Invalid coupling command. Syntax is: coupling NAME = EXPRESSION')
+            return
+        name, expr = line.split('=', 1)
+        name, expr = name.strip(), expr.strip()
+        if name.lower() not in self.ufo_couplings:
+            logger.warning('%s is not a coupling of this model.', name)
+            return
+        if not expr:
+            logger.warning('Invalid coupling command: empty expression.')
+            return
+        name = self.ufo_couplings[name.lower()].name
+        self.new_coupling = [(n, e) for (n, e) in self.new_coupling if n != name]
+        self.new_coupling.append((name, expr))
+        self.warn_not_explained()
+
+    @staticmethod
+    def get_variables(expr):
+        """the (lower case) name of all the variables used in an expression"""
+
+        known = set(['cmath', 'math', 'abs', 'complex', 'complexconjugate',
+                     're', 'im', 'sqrt', 'pi', 'exp', 'log', 'sin', 'cos',
+                     'tan', 'asin', 'acos', 'atan', 'sec', 'csc', 'cot'])
+        out = []
+        for variable in re.findall(r'\b[A-Za-z_]\w*\b', expr):
+            if variable.lower() in known or variable.lower() in out:
+                continue
+            out.append(variable.lower())
+        return out
+
+    def warn_not_explained(self):
+        """formula/coupling change the model itself, not the values written in
+        the restriction card, so --explain can not evaluate them here"""
+
+        if self.explainer is not None:
+            logger.info('  the effect of that command can only be seen once the '
+                        'new model is written (it is not a restriction)')
+
+    def explain_change(self):
+        """with --explain, report what the command which just ran changed"""
+
+        if self.explainer is None:
+            return
+        try:
+            self.explainer.update(self.all_categories, self.set_zero,
+                            self.set_one, self.set_equal, self.lha2name)
+        except Exception as error:
+            # informative only: a failure here must not stop the customization
+            logger.warning('Could not report the effect of that command: %s',
+                           error)
+
+    def start_from_restriction(self, card, name=None):
+        """Fill the rules with what the restriction card `card` does.
+
+        Mirrors what the restriction itself does to a card
+        (detect_special_parameters / detect_identical_parameters): a parameter
+        at 0 or 1 is fixed there, and parameters of the same block sharing a
+        value are merged.  Parameters an option of the question already covers
+        -- a massless b, a diagonal CKM -- are left to that option, so they are
+        not listed twice.  Two parameters merged with opposite signs cannot be
+        written as `set A = B`: they are left free.
+        """
+
+        if card is None:
+            return
+        by_lha = dict(((param.lhablock.lower(), tuple(param.lhacode)),
+                       (param.lhablock, tuple(param.lhacode)))
+                      for param in self.external_params.values())
+        covered = set()
+        for category in self.all_categories:
+            for option in category:
+                for lhablock, lhacode, _ in option.get_rules():
+                    if not isinstance(lhacode, (list, tuple)):
+                        lhacode = [lhacode]
+                    covered.add((lhablock.lower(), tuple(lhacode)))
+
+        zeros, ones, groups = [], [], {}
+        for block in card:
+            if block.startswith(('qnumbers', 'decay_table')) or 'info' in block:
+                continue
+            for param in card[block]:
+                lha = (block.lower(), tuple(param.lhacode))
+                if lha not in by_lha or lha in covered:
+                    continue
+                try:
+                    value = float(param.value)
+                except (TypeError, ValueError):
+                    continue # an 'auto' width
+                if value == 0.:
+                    zeros.append(by_lha[lha])
+                elif value == 1.:
+                    ones.append(by_lha[lha])
+                elif block.lower() != 'decay': # widths are never merged
+                    groups.setdefault((block.lower(), value), []).append(
+                                                                  by_lha[lha])
+        equal = [(key, keys[0]) for keys in groups.values() if len(keys) > 1
+                 for key in keys[1:]]
+        if zeros or ones or equal:
+            self.set_zero, self.set_one, self.set_equal = zeros, ones, equal
+            self.loaded_restriction = name or 'the loaded one'
+
+    def forget_parameter(self, param):
+        """remove any previous customization of a given parameter"""
+
+        if param is None:
+            return
+        self.set_zero = [p for p in self.set_zero if p != param]
+        self.set_one = [p for p in self.set_one if p != param]
+        self.set_equal = [(p, p2) for (p, p2) in self.set_equal if p != param]
+        self.new_formula = [(n, e) for (n, e) in self.new_formula
+                            if self.formula_target.get(n, None) != param]
+
+    def do_clear(self, line):
+        """forget all the parameter/coupling modifications entered so far"""
+
+        self.value = 'repeat'
+        self.set_zero = []
+        self.set_one = []
+        self.set_equal = []
+        self.new_formula = []
+        self.new_coupling = []
+        self.formula_target = {}
+        self.default_source = None
+        self.default_card_values = None
+        self.default_values = {}
+        self.explain_change()
+
+    #===========================================================================
+    # looking at the model while answering the question
+    #===========================================================================
+    def do_display(self, line):
+        """display the parameters/couplings of the model, so that one knows
+        what to give to set_zero/set_one/set_equal"""
+
+        self.value = 'repeat'
+        args = line.split()
+        if not args:
+            logger.warning('Invalid display command. Syntax is: '
+                           'display parameters|couplings [NAME]')
+            return
+        if args[0].startswith('param'):
+            self.display_parameters(args[1:])
+        elif args[0].startswith('coupl'):
+            self.display_couplings(args[1:])
+        else:
+            logger.warning('Invalid display command. %s is not one of '
+                           'parameters/couplings.', args[0])
+
+    def get_current_restrictions(self):
+        """(lhablock, lhacode) -> what the choices made so far do to it"""
+
+        out = {}
+        for category in self.all_categories:
+            for option in category:
+                for lhablock, lhacode, value in option.get_rules():
+                    out[(lhablock.lower(), tuple(lhacode))] = \
+                                        '%g (%s)' % (value, option.name)
+        for param in self.set_zero:
+            out[(param[0].lower(), param[1])] = '0'
+        for param in self.set_one:
+            out[(param[0].lower(), param[1])] = '1'
+        for param, param2 in self.set_equal:
+            out[(param[0].lower(), param[1])] = \
+                        MadGraphCmd.name_of_lha(self.lha2name, param2)
+        for name, expr in self.new_formula:
+            key = self.formula_target.get(name, None)
+            if key:
+                out[(key[0].lower(), key[1])] = expr
+        return out
+
+    def display_parameters(self, args):
+        """the external parameters, by block, with the effect of the choices
+        made so far. Without argument the full list, with one only the block or
+        the parameters whose name contains it."""
+
+        pattern = args[0].lower() if args else None
+        restricted = self.get_current_restrictions()
+        exact = self.external_params.get(pattern, None)
+
+        def match(param):
+            if pattern is None:
+                return True
+            if exact is not None:
+                return param is exact # an exact name wins over a substring
+            return pattern == param.lhablock.lower() or \
+                   pattern in param.name.lower()
+
+        selected = {}
+        for param in self.external_params.values():
+            if match(param):
+                selected.setdefault(param.lhablock, []).append(param)
+
+        if not selected:
+            if not self.display_internal(pattern):
+                if args:
+                    logger.info('No parameter of this model matches \'%s\'.',
+                                args[0])
+                else:
+                    logger.info('This model has no external parameter.')
+            return
+
+        nb = sum(len(params) for params in selected.values())
+        if pattern is None and nb > 300:
+            logger.info('This model has %d external parameters. Give a block or '
+                'a part of a name to list them:\n    %s', nb,
+                '\n    '.join('%-20s %d parameter(s)' % (block, len(params))
+                              for block, params in sorted(selected.items())))
+            return
+
+        for block in sorted(selected):
+            logger.info('%s', block)
+            for param in sorted(selected[block],
+                                key=lambda p: self.natural_key(p.name)):
+                key = (block.lower(), tuple(param.lhacode))
+                logger.info('    %-22s %-8s %-14s %s', param.name,
+                            ' '.join(str(code) for code in param.lhacode),
+                            self.format_value(self.get_default_value(param)),
+                            '-> %s' % restricted[key] if key in restricted else '')
+        if pattern is not None:
+            self.display_internal(pattern)
+
+    def display_internal(self, pattern):
+        """the internal parameters matching pattern. They can not be restricted
+        but the user has to be able to find out why."""
+
+        if pattern is None:
+            return False
+        if pattern in self.internal_params:
+            matching = [self.internal_params[pattern]]
+        else:
+            matching = [param for param in self.internal_params.values()
+                        if pattern in param.name.lower()]
+        if not matching:
+            return False
+        logger.info('internal parameter(s) (computed from the ones of the '
+                    'param_card, they can not be restricted):')
+        for param in sorted(matching, key=lambda p: self.natural_key(p.name)):
+            logger.info('    %-22s = %s', param.name, param.value)
+            if len(matching) <= self.EXPAND_MAX_MATCH:
+                self.log_expansion_conclusion(param.name,
+                                    self.expand_expression(param.value))
+        return True
+
+    # a definition is unfolded only when the user asked for a few of them, and
+    # only down to that many levels
+    EXPAND_MAX_MATCH = 5
+    EXPAND_MAX_DEPTH = 8
+
+    def expand_expression(self, expr, depth=1, seen=None, restricted=None,
+                                                                   found=None):
+        """print the definition of every parameter appearing in expr, and
+        recursively of the ones appearing in those definitions, down to the
+        parameters of the param_card. That is where a coupling which is dropped
+        comes from, so the ones the current choices restrict are marked.
+        Return the restricted parameters the expression depends on."""
+
+        if seen is None:
+            seen = set()
+        if restricted is None:
+            restricted = self.get_current_restrictions()
+        if found is None:
+            found = []
+        if depth > self.EXPAND_MAX_DEPTH:
+            logger.info('%s...', '    ' * (depth + 1))
+            return found
+
+        indent = '    ' * (depth + 1)
+        for name in self.get_variables(str(expr)):
+            param = self.external_params.get(name, None)
+            if param is not None:
+                # a parameter of the param_card: this is where it stops, and
+                # where the reason of a drop is to be found
+                key = (param.lhablock.lower(), tuple(param.lhacode))
+                logger.info('%s%-22s = %-12s (%s %s)%s' % (indent, param.name,
+                            self.format_value(self.get_default_value(param)),
+                            param.lhablock,
+                            list(param.lhacode),
+                            '   -> %s' % restricted[key] if key in restricted
+                            else ''),
+                            '$MG:BOLD' if key in restricted else '$MG:color:BLACK')
+                if key in restricted and (param.name, restricted[key]) not in found:
+                    found.append((param.name, restricted[key]))
+                continue
+            param = self.internal_params.get(name, None)
+            if param is None:
+                continue # a function of the model, a number, ...
+            if name in seen:
+                logger.info('%s%-22s = (see above)', indent, param.name)
+                continue
+            seen.add(name)
+            logger.info('%s%-22s = %s', indent, param.name, param.value)
+            self.expand_expression(param.value, depth + 1, seen, restricted, found)
+        return found
+
+    @staticmethod
+    def log_expansion_conclusion(name, found):
+        """the one line answer to 'why is that one dropped?'"""
+
+        if not found:
+            logger.info('    %s does not depend on any parameter your choices '
+                        'restrict.' % name, '$MG:color:BLUE')
+            return
+        logger.info('    %s depends on %s' % (name,
+                    ', '.join('%s -> %s' % entry for entry in found)),
+                    '$MG:color:GREEN')
+
+    def display_couplings(self, args):
+        """the couplings of the model, with their expression"""
+
+        pattern = args[0].lower() if args else None
+        if pattern in self.ufo_couplings:
+            # an exact name wins: 'display couplings GC_1' is about GC_1, not
+            # about GC_1, GC_10, GC_100, ...
+            matching = [self.ufo_couplings[pattern]]
+        else:
+            matching = [coupling for coupling in self.ufo_couplings.values()
+                        if pattern is None or pattern in coupling.name.lower()]
+        if not matching:
+            if args:
+                logger.info('No coupling of this model matches \'%s\'.', args[0])
+            else:
+                logger.info('This model has no coupling.')
+            return
+        if pattern is None and len(matching) > 300:
+            logger.info('This model has %d couplings. Give a name -or a part '
+                        'of one- to list them.', len(matching))
+            return
+        for coupling in sorted(matching, key=lambda c: self.natural_key(c.name)):
+            logger.info('    %-14s = %s' % (coupling.name, coupling.value),
+                        '$MG:BOLD')
+            if len(matching) <= self.EXPAND_MAX_MATCH:
+                self.log_expansion_conclusion(coupling.name,
+                                    self.expand_expression(coupling.value))
+
+    @staticmethod
+    def format_value(value):
+        """the default value of a parameter, as the param_card shows it"""
+
+        try:
+            return '%.6g' % float(value)
+        except (TypeError, ValueError):
+            return str(value)
+
+    @staticmethod
+    def natural_key(name):
+        """sort GC_9 before GC_10"""
+
+        return [int(part) if part.isdigit() else part
+                for part in re.split(r'(\d+)', name)]
+
+    def complete_display(self, text, line, begidx, endidx):
+        """ Complete the display command"""
+
+        signal.alarm(0) # avoid timer if any
+        args = self.split_arg(line[0:begidx])
+        if len(args) == 1:
+            return self.list_completion(text, ['parameters', 'couplings'], line)
+        if args[1].startswith('coupl'):
+            return self.list_completion(text,
+                    [coupling.name for coupling in self.ufo_couplings.values()],
+                    line)
+        blocks = sorted(set(param.lhablock
+                            for param in self.external_params.values()))
+        return self.list_completion(text, blocks +
+                    [param.name for param in self.external_params.values()], line)
 
     def get_question(self):
         """define the current question."""
+
         question = ''
-        i=0
+        i = 0
         for category in self.all_categories:
             question += category.name + ':\n'
             for options in category:
                 if not options.first:
                     continue
-                i+=1
+                i += 1
                 question += '    %s: %s [%s]\n' % (i, options.name,
                                 options.display(options.status))
-            question += 'Enter a number to change it\'s status or press enter to validate.\n'
-            question += 'For scripting this function, please type: \'help\''
-        return question
+                if isinstance(options, build_restrict_lib.ChoiceOption):
+                    question += '        possible values: %s%s\n' % (
+                        ', '.join(options.labels),
+                        ' (%s)' % options.description if options.description else '')
+        question += 'Enter a number to change it\'s status or press enter to validate.\n'
 
+        fmt = lambda key: '%s (%s %s)' % (
+                    MadGraphCmd.name_of_lha(self.lha2name, key).split(' ')[0],
+                    key[0], list(key[1]))
+
+        def lines_for(keys, value):
+            """one line per parameter, or 'BLOCK all' when a whole block is
+            concerned -- which is how the user typed it in the first place"""
+
+            by_block, out = {}, []
+            for key in keys:
+                by_block.setdefault(key[0], []).append(key)
+            for block, block_keys in by_block.items():
+                whole = self.get_block_parameters(block)
+                if whole and len(block_keys) == len(whole):
+                    out.append('    %s all = %s' % (block, value))
+                else:
+                    out += ['    %s = %s' % (fmt(key), value)
+                            for key in block_keys]
+            return out
+
+        current = lines_for(self.set_zero, 0) + lines_for(self.set_one, 1)
+        for param, param2 in self.set_equal:
+            current.append('    %s = %s' % (fmt(param), fmt(param2)))
+        for name, expr in self.new_formula:
+            current.append('    %s = %s' % (name, expr))
+        for name, expr in self.new_coupling:
+            current.append('    %s = %s' % (name, expr))
+        question += 'parameter/coupling modifications (use set_zero/set_one):\n'
+        if self.loaded_restriction:
+            question += ('    (starting from %s, the restriction the model was '
+                         'loaded with:\n     \'set NAME free\' releases one, '
+                         '\'clear\' all of them)\n' % self.loaded_restriction)
+        if current:
+            question += '\n'.join(current) + '\n'
+        else:
+            question += '    none\n'
+
+        if self.default_source or self.default_values:
+            question += 'default values: %s\n' % (
+                'the UFO model' if self.default_source == 'ufo'
+                else self.default_source or 'the model as it was loaded')
+            by_value = {}
+            for key, value in self.default_values.items():
+                by_value.setdefault(value, []).append(key)
+            for value in sorted(by_value):
+                question += '\n'.join(lines_for(by_value[value], value)) + '\n'
+
+        question += 'For the other commands (set_equal, formula, coupling, display, clear),\n'
+        question += 'or for scripting this function, please type: \'help\''
+        return question
 
     def complete_set(self, text, line, begidx, endidx):
         """ Complete the set command"""
@@ -11620,11 +17441,80 @@ class AskforCustomize(cmd.SmartQuestion):
         args = self.split_arg(line[0:begidx])
 
         if len(args) == 1:
+            # an option of the question, or a parameter ('set MB 0')
             possibilities = [x for x in self.name2options if not x.isdigit()]
+            possibilities += [param.name
+                              for param in self.external_params.values()]
             return self.list_completion(text, possibilities, line)
-        else:
-            return self.list_completion(text,['True', 'False'], line)
 
+        option = self.name2options.get(args[1], None)
+        if isinstance(option, build_restrict_lib.ChoiceOption):
+            return self.list_completion(text, option.labels, line)
+        elif option is not None:
+            return self.list_completion(text, ['True', 'False'], line)
+
+        param = self.external_params.get(args[1].lower(), None)
+        if param is None:
+            return []
+        # 0, 1, or one of the parameters it can really be merged with
+        names = self.get_identifiable().get(param.lhablock.lower(), [])
+        return self.list_completion(text, ['0', '1'] +
+                            [n for n in names if n != param.name], line)
+
+    def complete_set_zero(self, text, line, begidx, endidx):
+        """ Complete the set_zero command: a parameter, or a block and 'all'"""
+        signal.alarm(0) # avoid timer if any
+        args = self.split_arg(line[0:begidx])
+        if len(args) > 1:
+            return self.list_completion(text, ['all'], line)
+        blocks = sorted(set(param.lhablock
+                            for param in self.external_params.values()))
+        return self.list_completion(text, blocks +
+                  [param.name for param in self.external_params.values()], line)
+
+    complete_set_one = complete_set_zero
+    complete_formula = complete_set_zero
+
+    def get_identifiable(self):
+        """the external parameters which can really be merged with another one,
+        grouped by block. The restriction only fuses two parameters of a same
+        block of the param_card, and never two widths."""
+
+        if self._identifiable is None:
+            by_block = {}
+            for param in self.external_params.values():
+                if param.lhablock.lower() == 'decay':
+                    continue
+                by_block.setdefault(param.lhablock.lower(), []).append(param.name)
+            self._identifiable = dict((block, sorted(names))
+                            for block, names in by_block.items() if len(names) > 1)
+        return self._identifiable
+
+    def complete_set_equal(self, text, line, begidx, endidx):
+        """Complete the set_equal command. Only the parameters which can
+        actually be merged are proposed, and for the second argument only the
+        ones of the same block as the first."""
+
+        signal.alarm(0) # avoid timer if any
+        args = self.split_arg(line[0:begidx])
+        identifiable = self.get_identifiable()
+
+        if len(args) == 1:
+            return self.list_completion(text,
+                    sum([names for names in identifiable.values()], []), line)
+        elif len(args) == 2:
+            param = self.external_params.get(args[1].lower(), None)
+            if param is None:
+                return []
+            names = identifiable.get(param.lhablock.lower(), [])
+            return self.list_completion(text,
+                            [n for n in names if n != param.name], line)
+
+    def complete_coupling(self, text, line, begidx, endidx):
+        """ Complete the coupling command"""
+        signal.alarm(0) # avoid timer if any
+        return self.list_completion(text,
+                  [coup.name for coup in self.ufo_couplings.values()], line)
 
     def do_help(self, line):
         '''help message'''
@@ -11637,19 +17527,61 @@ class AskforCustomize(cmd.SmartQuestion):
         print('function \'set\'. This function takes two argument:')
         print('set NAME VALUE')
         print('   NAME is the description of the option where you remove all spaces')
-        print('   VALUE is either True or False')
+        print('   VALUE is either True/False or, for the options with more than')
+        print('         two values, one of the value proposed within the bracket')
+        print('         (an unambiguous abbreviation is enough: 5 for 5F)')
         print(' Example: For the question')
         print('''     sm customization:
         1: diagonal ckm [True]
-        2: c mass = 0 [True]
-        3: b mass = 0 [False]
-        4: tau mass = 0 [False]
-        5: muon mass = 0 [True]
-        6: electron mass = 0 [True]
+     mass scheme:
+        2: flavour scheme [4F]
+        3: nb of massive leptons [1]
     Enter a number to change it's status or press enter to validate.''')
         print(''' you can answer by''')
         print('   set diagonalckm False')
-        print('   set taumass=0 True')
+        print('   set flavourscheme 5F        (or just: set flavourscheme 5)')
+        print('   set nbofmassiveleptons 0')
+        print('')
+        print('On top of those options, the following commands are available:')
+        print('   set_zero NAME          : set the external parameter NAME to zero')
+        print('   set_one NAME           : set the external parameter NAME to one')
+        print('     NAME can be \'BLOCK all\' to act on a whole block of the')
+        print('     param_card: set_zero decay all, set CEFT all 0, ...')
+        print('   set_equal NAME1 NAME2  : force NAME1 to take the value of NAME2')
+        print('   clear                  : forget all those modifications')
+        print('   display parameters [X] : the parameters of the model (all of')
+        print('                            them, or the block/names matching X)')
+        print('   By default the parameters keep the value they have in the model')
+        print('   you loaded. To change that:')
+        print('   set default UFO        : take the values of the UFO instead')
+        print('   set default PATH       : take them from that param_card')
+        print('   set default NAME VALUE : set the value of one parameter, or of')
+        print('                            a whole block: set default CEFT all 0')
+        print('   UFO and PATH start from scratch: they undo the \'set default\'')
+        print('   entered before them. Those are values, not restrictions:')
+        print('   use set_zero to remove a parameter from the model.')
+        print('                            Those are values, not restrictions:')
+        print('                            use set_zero to remove a parameter.')
+        print('   display couplings [X]  : the couplings, with their expression.')
+        print('                            When X selects a few of them, every')
+        print('                            parameter of the expression is')
+        print('                            unfolded down to the param_card, so')
+        print('                            that one sees why one is dropped.')
+        print('')
+        print('The \'set\' command is a shortcut for the three of them when its')
+        print('first argument is a parameter of the model:')
+        print('   set NAME 0             same as set_zero NAME')
+        print('   set NAME 1             same as set_one NAME')
+        print('   set BLOCK all 0        same as set_zero BLOCK all')
+        print('   set NAME = OTHERNAME   same as set_equal NAME OTHERNAME')
+        print('')
+        print('The two following commands change a formula of the model. They can')
+        print('not be stored in a restriction card, so a new UFO model is written')
+        print('on disk (you will be asked for its name). They are therefore not')
+        print('compatible with the --save=NAME option.')
+        print('   formula NAME = EXPRESSION   : NAME (an external parameter) becomes')
+        print('                                 an internal parameter of the model')
+        print('   coupling NAME = EXPRESSION  : change the definition of a coupling')
 
     def cmdloop(self, intro=None):
         cmd.SmartQuestion.cmdloop(self, intro)

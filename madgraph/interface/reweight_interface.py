@@ -19,6 +19,7 @@ import difflib
 import logging
 import copy
 import math
+import numbers
 import os
 import re
 import shutil
@@ -40,13 +41,15 @@ import madgraph.iolibs.files as files
 import madgraph.various.misc as misc
 import madgraph.various.banner as banner
 import madgraph.various.lhe_parser as lhe_parser
-import madgraph.various.combine_plots as combine_plots
 import madgraph.various.cluster as cluster
 import madgraph.fks.fks_common as fks_common
 import madgraph.core.diagram_generation as diagram_generation
 
-import models.import_ufo as import_ufo
-import models.check_param_card as check_param_card 
+from madgraph.various import fxfx_ewsudakov
+from madgraph.various.fxfx_ewsudakov import FxFxEWSudakovMixin
+
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.check_param_card as check_param_card 
 #import MadSpin.decay as madspin
 
 
@@ -58,11 +61,57 @@ cmd_logger = logging.getLogger('cmdprint2') # -> print
 dir_to_f2py_free_mod = {}
 nb_f2py_module = 0 # each time the process/model is changed this number is modified to 
                # forced the python module to re-create an executable
+# names (output directory name + suffix, e.g. rw_me, rw_me_r2) under which a
+# reweighting f2py module and its shared library were imported in this python
+# process. Nothing loaded can be unloaded: the dynamic loader resolves a
+# library by its install name/SONAME to the one already loaded, whichever
+# directory it comes from (e.g. the rw_me of a previous reweighting in the same
+# session, or of another sample). A new build must therefore use a name that is
+# not in here (see get_f2py_suffix), or it gets the previous matrix elements.
+loaded_f2py_names = set()
 
 #lhapdf = None
 
 
-class ReweightInterface(extended_cmd.Cmd):
+def first_add_process_to_generate(commands):
+    """Turn the first 'add process' of the command sequence into 'generate'.
+
+    A command may start with definitions ('define pert_QCD = ...; add process
+    ...'), so the first occurrence is searched inside each command, as for a
+    single concatenated command line.
+    """
+    commands = list(commands)
+    for idx, cmd in enumerate(commands):
+        if 'add process' in cmd:
+            commands[idx] = cmd.replace('add process', 'generate', 1)
+            break
+    return commands
+
+
+# The "change <option>" lines of a reweight card that ReweightInterface.do_change
+# understands, and those DensityInterface adds (its do_change_<option>
+# methods). The reweighting-backend selector (madgraph/various/
+# reweight_backend.py) uses them to tell which lines need this (the classic)
+# backend.
+REWEIGHT_CHANGE_OPTIONS = frozenset([
+    'backend', 'model', 'process', 'keep_ordering', 'use_eventid',
+    'allow_missing_finalstate', 'boost', 'virtual_path', 'tree_path',
+    'output', 'helicity', 'mode', 'rwgt_dir', 'systematics', 'soft_threshold',
+    'multicore', 'identical_particle_in_prod_and_decay', 'include_sudakov',
+    'sudakov_xi'])
+DENSITY_CHANGE_OPTIONS = frozenset([
+    'helicity_direction', 'boost_choice', 'order_helicities',
+    'symmetrise_initial_state', 'axis_referential', 'matrix_normalisation',
+    'particle_in_density_matrix'])
+# "change" options of the shared reweight-card vocabulary that only MadtRex
+# (MG7 outputs) understands; an error here rather than a discarded line.
+MADTREX_ONLY_CHANGE_OPTIONS = frozenset([
+    'fptype', 'verbose', 'max_batch', 'max_deferred_iterations', 'streaming',
+    'stream_batch_size', 'nb_core', 'min_batch', 'alpha_s_power',
+    'scale_variation_output'])
+
+
+class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
     """Basic interface for reweighting operation"""
 
     prompt = 'Reweight>'
@@ -105,6 +154,10 @@ class ReweightInterface(extended_cmd.Cmd):
         self.systematics = False # allow to run systematics in ouput2.0 mode
         self.boost_event = False
         self.mg5cmd = master_interface.MasterCmd()
+        # the reweighting runs in the gauge of the sample: the one of its
+        # proc_card ('set gauge FD' when it was chosen automatically at
+        # generation time), never a new automatic choice
+        self.mg5cmd.options['auto_gauge'] = False
         if mother:
             self.mg5cmd.options.update(mother.options)
         self.seed = None
@@ -112,27 +165,60 @@ class ReweightInterface(extended_cmd.Cmd):
         self.helicity_reweighting = True
         self.rwgt_mode = '' # can be LO, NLO, NLO_tree, '' is default 
         self.has_nlo = False
+        self.amcatnlo_sample = False # events from aMC@NLO (widths, see get_amcatnlo_param_card)
         self.rwgt_dir = None
         self.exitted = False # Flag to know if do_quit was already called.
         self.keep_ordering = False
         self.use_eventid = False
         self.inc_sudakov = False
+        # 'sudakov_xi' card values (ickkw=3 only): clustering threshold xi*M_W^2
+        # on |s_ij|, with xi >= 1; one set of Sudakov variants per xi.
+        # None -> [mW2_cluster_scale] (1.5).
+        self.sudakov_xi_scan = None
+        self._sudakov_xi_list = None      # xi values of the output weight layout
+        self._current_xi_idx = 0          # index of the xi being evaluated
         self.event_path = event_path
-        self.path2prefix = {} # store the f2pyprefix associated to a library 
-        if event_path:
-            logger.info("Extracting the banner ...")
-            self.do_import(event_path, allow_madspin=allow_madspin)
-            
-        # dictionary to fortan evaluator
+        self.path2prefix = {} # store the f2pyprefix associated to a library
+        # output directory name (rw_me, rw_mevirt, ...) -> suffix of the names
+        # its f2py modules and library were built with ('' = default names)
+        self.f2py_suffix = {}
+        # id_to_path-style tag -> folded crossed subprocesses reachable through
+        # a base matrix element (see build_cross_resolve); empty when crossing
+        # folded nothing.
+        self.cross_resolve = {}
+        self.cross_resolve_second = {}
+        self.scale2_is_rooted = set() # loop libraries expecting mu^4 (see load_module)
+        self.fxfx_clustered_final_states = set()
+        self.fxfx_clustered_decay_processes = set()
+        self._fxfx_cluster_catalog_ready = False
+        self.fxfx_catalogue_source = None
+        self.density_prod_dirname = 'rw_me_density_prod'
+        self.density_decay_dirname = 'rw_me_density_decay'
+        self.density_prod_id_to_path = {}
+        self.density_decay_id_to_path = {}
+        self.density_prod_f2pylib = {}
+        self.density_decay_f2pylib = {}
+
+        self.beampol = None # (pol1, pol2) of the events' beams (see get_beampol)
+        self.beampol_legs = None # per incoming leg: is it polarised
+        self._beampol_set = {} # id(module) -> value its /to_beampol/ holds
+        self._spin_cache = {}
+        self._pickled_spins = {} # pdg -> spin, from rwgt.pkl (see save_to_pickle)
+        # dictionary to fortran evaluator
         self.calculator = {}
         self.calculator_nbcall = {}
-        
+
         #all the cross-section for convenience
         self.all_cross_section = {}
 
         #If we are using the DensityInterface
         self.flag_density_matrix = False
-            
+
+        # Last: if do_import raises, __del__ -> do_quit still uses the attributes above.
+        if event_path:
+            logger.info("Extracting the banner ...")
+            self.do_import(event_path, allow_madspin=allow_madspin)
+
     def do_import(self, inputfile, allow_madspin=False):
         """import the event file"""
 
@@ -168,6 +254,12 @@ class ReweightInterface(extended_cmd.Cmd):
             value = self.ask("What is the path to banner", 0, [0], "please enter a path", timeout=0)
             self.lhe_input.banner = open(value).read()
         self.banner = self.lhe_input.get_banner()
+        if self.banner.proc_card_in_one_gauge():
+            # a sample whose processes are in two gauges: the processes are
+            # generated again with the automatic choice, and the one library
+            # of the reweighting gets one gauge (single_gauge_for_output: FD
+            # when every process can be, else unitary)
+            self.mg5cmd.options['auto_gauge'] = True
         
         #get original cross-section/error
         if 'init' not in self.banner:
@@ -197,6 +289,9 @@ class ReweightInterface(extended_cmd.Cmd):
         # load information
         process = self.banner.get_detail('proc_card', 'generate')
         if '[' in process and isinstance(self.banner.get('run_card'), banner.RunCardNLO):
+            # aMC@NLO sample: its matrix elements had the widths of the
+            # external particles set to zero (see get_amcatnlo_param_card)
+            self.amcatnlo_sample = True
             if not self.banner.get_detail('run_card', 'store_rwgt_info'):
                 logger.warning("The information to perform a proper NLO reweighting is not present in the event file.")
                 logger.warning("       We will perform a LO reweighting instead. This does not guarantee NLO precision.")
@@ -282,7 +377,7 @@ class ReweightInterface(extended_cmd.Cmd):
                 commandline +='add process %s pert_%s %s --no_warning=duplicate;' % (process,order.replace(' ',''), final)
             if ewsudakov:
                 # EW sudakov reweight
-                # this is a NLO-type generation, so [LOonly=QCD] must be added, toghether
+                # this is a NLO-type generation, so [LOonly=QCD] must be added, together
                 # with the proper flag for the EW sudakov.
                 # Also, --no_warning=duplicate can be removed
                 commandline = commandline.replace("--no_warning=duplicate", "[LOonly=QCD] --ewsudakov")
@@ -371,11 +466,14 @@ class ReweightInterface(extended_cmd.Cmd):
     def help_change(self):
         """help for change command"""
 
+        print("change backend classic|auto: the reweighting program (MadtRex, the other")
+        print("               backend, needs an MG7 output)")
         print("change model X :use model X for the reweighting")
         print("change process p p > e+ e-: use a new process for the reweighting")
         print("change process p p > mu+ mu- --add : add one new process to existing ones")
         print("change output [default|2.0|unweight]:")
-        print("               default: add weight(s) to the current file")    
+        print("               default: add weight(s) to the current file")
+        print("change sudakov_xi XI [XI ...]: FxFx clustering factors, each finite and >= 1")
 
     def do_change(self, line):
         """allow to define a second model/processes"""
@@ -383,9 +481,25 @@ class ReweightInterface(extended_cmd.Cmd):
         global nb_f2py_module
         
         args = self.split_arg(line)
-        if len(args)<2:
+        if len(args)<2 and args[:1] != ['sudakov_xi']:
             logger.critical("not enough argument (need at least two). Discard line")
-        if args[0] == "model":
+        if args[0] in MADTREX_ONLY_CHANGE_OPTIONS or \
+                (args[0] == 'mode' and len(args) > 1 and args[1].lower() == 'pdf'):
+            raise self.InvalidCmd(
+                "'change %s' is MadtRex only: MadtRex reweights MG7 outputs "
+                "(change backend madtrex)" % ' '.join(args))
+        if args[0] not in REWEIGHT_CHANGE_OPTIONS:
+            logger.critical("unknown option! %s.  Discard line." % args[0])
+        elif args[0] == "backend":
+            # which backend reads the card (madgraph/various/reweight_backend.py)
+            if len(args) < 2 or args[1].lower() not in ('classic', 'auto', 'madtrex'):
+                raise self.InvalidCmd(
+                    "change backend: expected classic, madtrex or auto")
+            if args[1].lower() == 'madtrex':
+                raise self.InvalidCmd(
+                    "the reweight card asks for MadtRex ('change backend madtrex'): "
+                    "MadtRex needs an MG7 output; use 'change backend classic' or auto")
+        elif args[0] == "model":
             nb_f2py_module += 1 # tag to force the f2py to reload
             self.second_model = " ".join(args[1:])
             if self.has_standalone_dir:
@@ -458,8 +572,12 @@ class ReweightInterface(extended_cmd.Cmd):
             if args[1] == 'True':
                 self.inc_sudakov = True
                 self.rwgt_mode = 'LO'
-        else:
-            logger.critical("unknown option! %s.  Discard line." % args[0])
+        elif args[0] == 'sudakov_xi':
+            try:
+                xi_values = fxfx_ewsudakov.validate_sudakov_xi(args[1:])
+            except ValueError as error:
+                raise self.InvalidCmd(str(error)) from error
+            self.sudakov_xi_scan = xi_values
         
             
     def check_launch(self, args):
@@ -517,34 +635,23 @@ class ReweightInterface(extended_cmd.Cmd):
             self.options['rwgt_info'] = opts['rwgt_info']
         model_line = self.banner.get('proc_card', 'full_model_line')
 
+        # combine_ij (event clustering) needs the model.
+        if self.inc_sudakov:
+            model = self.banner.get('proc_card', 'model')
+            self.load_model(model, True, False)
 
-        if not self.has_standalone_dir:                           
-            if self.rwgt_dir and os.path.exists(pjoin(self.rwgt_dir,'rw_me','rwgt.pkl')):
-                self.load_from_pickle()
-                if opts['rwgt_name']:
-                    self.options['rwgt_name'] = opts['rwgt_name']
-                if not self.rwgt_dir:
-                    self.me_dir = self.rwgt_dir
-                self.load_module()       # load the fortran information from the f2py module
-            elif self.multicore == 'wait':
-                i=0
-                while not os.path.exists(pjoin(self.me_dir,'rw_me','rwgt.pkl')):
-                    time.sleep(10+i)
-                    i+=5
-                if not self.rwgt_dir:
-                    self.rwgt_dir = self.me_dir
-                self.load_from_pickle(keep_name=True)
-                self.load_module()
-            else:
-                self.create_standalone_directory() 
-                self.compile()
-                self.load_module()  
-                if self.multicore == 'create':
-                    self.load_module()
-                    if not self.rwgt_dir:
-                        self.rwgt_dir = self.me_dir
-                    self.save_to_pickle()      
-        
+        self._ensure_fxfx_cluster_catalogue()
+        if self.inc_sudakov:
+            self._collect_sudakov_weight_sources()
+
+        if not self.has_standalone_dir:
+            out = self.setup_f2py_interface()
+            # Loading cached settings can clear the explicitly requested name.
+            if opts['rwgt_name']:
+                self.options['rwgt_name'] = opts['rwgt_name']
+            if out:
+                return
+
         # get the mode of reweighting #LO/NLO/NLO_tree/...
         type_rwgt = self.get_weight_names() 
 
@@ -553,21 +660,9 @@ class ReweightInterface(extended_cmd.Cmd):
         else:
             path_me = self.me_dir 
         
-        scale_rwgt_info=[]
-        if 'initrwgt' in self.banner and self.output_type == 'default': 
-            for i in self.banner['initrwgt'].split('\n'):
-                if "weight id" in i:
-                    start = i.find('weight')
-                    scale_rwgt_info.append(i[start+11:start+15])
-                    
         if self.inc_sudakov:
-            type_rwgt=[]
-            for tag in scale_rwgt_info:
-                tag_strip=tag[1:]
-                type_rwgt.append('2'+tag_strip)
+            type_rwgt = self._prepare_sudakov_weight_ids()
 
-
-            
         # get iterator over param_card and the name associated to the current reweighting.
         param_card_iterator, tag_name = self.handle_param_card(model_line, args, type_rwgt)
 
@@ -595,9 +690,10 @@ class ReweightInterface(extended_cmd.Cmd):
                 sys.path.insert(0, path_me)
                 sud_mod = importlib.import_module('%s.bin.internal.ewsud_pydispatcher' % onedir)
             logger.info('EW Sudakov reweight module imported')
+            self._validate_fxfx_sudakov_catalogue(sud_mod)
 
-        if type_rwgt==[]:
-            type_rwgt=['2001']
+        if not type_rwgt:
+            type_rwgt = self._prepare_sudakov_weight_ids() if self.inc_sudakov else ['2001']
 
         if self.second_model or self.second_process or self.dedicated_path:
             rw_dir = pjoin(path_me, 'rw_me_%s' % self.nb_library)
@@ -633,10 +729,15 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
         self.lhe_input.seek(0)
-        count_errors = 0
+        # FKS accounting is module-level (it would accumulate over param scans and
+        # repeated launches), so reset it here. CURRENT_EVENT_ID is 1-based in the
+        # event loop; 0 (catalogue prescan) is not counted.
+        fxfx_ewsudakov.CURRENT_EVENT_ID = 0
+        fxfx_ewsudakov.fks_reset_accounting()
         for event_nb,event in enumerate(self.lhe_input):
+            fxfx_ewsudakov.CURRENT_EVENT_ID = event_nb + 1
             #control logger
-            if (event_nb % max(int(10**int(math.log10(float(event_nb)+1))),10)==0): 
+            if (event_nb % max(int(10**int(math.log10(float(event_nb)+1))),10)==0):
                     running_time = misc.format_timer(time.time()-start)
                     logger.info('Event nb %s %s' % (event_nb, running_time))
             if (event_nb==10001): logger.info('reducing number of print status. Next status update in 10000 events')
@@ -651,22 +752,24 @@ class ReweightInterface(extended_cmd.Cmd):
                 weight = {'':weight}
 
             for name in weight:
+                if name not in cross:
+                    cross[name], error[name] = 0., 0.
+                    ratio[name], ratio_square[name] = 0., 0.
                 cross[name] += weight[name]
                 ratio[name] += weight[name]/event.wgt
                 ratio_square[name] += (weight[name]/event.wgt)**2
 
-            # ensure to have a consistent order of the weights. new one are put 
-            # at the back, remove old position if already defines
-            for tag in type_rwgt:
-                if tag in event.reweight_order:
-                    logger.critical('This is a reweighted event file! Do not reweight with ewsudakov twice')
-                    return
-                try:
-                    event.reweight_order.remove('%s%s'  % (tag_name,tag))
-                except ValueError:
-                    continue
-
-            event.reweight_order += ['%s%s' % (tag_name,name) for name in type_rwgt]  
+            if self.inc_sudakov:
+                event.reweight_order = [key for key in event.reweight_order
+                                       if key not in self._sudakov_weight_metadata]
+                event.reweight_order.extend(key for key in type_rwgt if key in weight)
+            else:
+                for tag in type_rwgt:
+                    try:
+                        event.reweight_order.remove('%s%s' % (tag_name, tag))
+                    except ValueError:
+                        continue
+                event.reweight_order += ['%s%s' % (tag_name, name) for name in type_rwgt]
             if self.output_type == "default":
                 for name in weight:
                     if 'orig' in name:
@@ -687,15 +790,17 @@ class ReweightInterface(extended_cmd.Cmd):
                     output[(tag_name,name)].write(str(new_evt))
 
         # check normalisation of the events:
-        if self.run_card and 'event_norm' in self.run_card:
-            if self.run_card['event_norm'] in ['average','bias']:
-                for key, value in cross.items():
-                    cross[key] = value / (event_nb+1)
+        if self.run_card and self.run_card.get_event_norm() in ['average','bias']:
+            for key, value in cross.items():
+                cross[key] = value / (event_nb+1)
                 
         running_time = misc.format_timer(time.time()-start)
-        logger.info('All event done  (nb_event: %s) %s' % (event_nb+1, running_time))     
+        logger.info('All event done  (nb_event: %s) %s' % (event_nb+1, running_time))
         if self.inc_sudakov:
-            logger.info('Number of events thrown away due to large Sudakov: %s' % str(count_errors))   
+            # FKS-mapping/clustering summary. Events are never dropped; fallback
+            # handling is set by fxfx_ewsudakov.FKS_FALLBACK_POLICY.
+            for line in fxfx_ewsudakov.fks_accounting_summary().splitlines():
+                logger.info(line)
         
         if self.output_type == "default":
             output.write('</LesHouchesEvents>\n')
@@ -798,16 +903,16 @@ class ReweightInterface(extended_cmd.Cmd):
     def setup_f2py_interface(self):
         """ ensure that all f2py interface are ready/loaded/compiled
             if this function does not return None then nothing is executed after this
-            usefull for some plugin
+            useful for some plugin
         """
 
         if self.rwgt_dir and os.path.exists(pjoin(self.rwgt_dir,'rw_me','rwgt.pkl')):
             self.load_from_pickle()
-            if opts['rwgt_name']:
-                self.options['rwgt_name'] = opts['rwgt_name']
             if not self.rwgt_dir:
                 self.me_dir = self.rwgt_dir
             self.load_module()       # load the fortran information from the f2py module
+            if self.inc_sudakov:
+                self.load_density_modules()
         elif self.multicore == 'wait':
             i=0
             while not os.path.exists(pjoin(self.me_dir,'rw_me','rwgt.pkl')):
@@ -817,10 +922,14 @@ class ReweightInterface(extended_cmd.Cmd):
                 self.rwgt_dir = self.me_dir
             self.load_from_pickle(keep_name=True)
             self.load_module()
+            if self.inc_sudakov:
+                self.load_density_modules()
         else:
             self.create_standalone_directory()
             self.compile()
-            self.load_module()  
+            self.load_module()
+            if self.inc_sudakov:
+                self.load_density_modules()
             if self.multicore == 'create':
                 self.load_module()
                 if not self.rwgt_dir:
@@ -828,6 +937,15 @@ class ReweightInterface(extended_cmd.Cmd):
                 self.save_to_pickle()  
 
 
+
+    @staticmethod
+    def write_card_atomically(path, text):
+        """write text to path through a temporary file and a rename, so that
+        a process reading path never sees it half written"""
+        tmp = '%s.%d.tmp' % (path, os.getpid())
+        with open(tmp, 'w') as fsock:
+            fsock.write(text)
+        os.replace(tmp, path)
 
     def handle_param_card(self, model_line, args, type_rwgt):
         
@@ -844,8 +962,10 @@ class ReweightInterface(extended_cmd.Cmd):
         if not '--keep_card' in args:
             if self.has_nlo and self.rwgt_mode != "LO":
                 rwdir_virt = rw_dir.replace('rw_me', 'rw_mevirt')
-            with open(pjoin(rw_dir, 'Cards', 'param_card.dat'), 'w') as fsock:
-                fsock.write(self.banner['slha']) 
+            # the reweighting runs in several processes sharing rw_dir: they
+            # all write this same card, atomically, so that none can read it
+            # half written
+            self.write_card_atomically(pjoin(rw_dir, 'Cards', 'param_card.dat'), self.banner['slha'])
             out, cmd = common_run_interface.CommonRunCmd.ask_edit_card_static(cards=['param_card.dat'],
                                 ask=self.ask, pwd=rw_dir, first_cmd=self.stored_line,
                                 write_file=False, return_instance=True
@@ -870,7 +990,7 @@ class ReweightInterface(extended_cmd.Cmd):
                 Shell_internal = None
             if not isinstance(self.mother, (extended_cmd.CmdShell, Shell_internal)): 
                 raise Exception("scan are not allowed on the Web")
-            # at least one scan parameter found. create an iterator to go trough the cards
+            # at least one scan parameter found. create an iterator to go through the cards
             main_card = check_param_card.ParamCardIterator(new_card)
             if self.options['rwgt_name']:
                 self.options['rwgt_name'] = '%s_0' % self.options['rwgt_name']
@@ -886,18 +1006,23 @@ class ReweightInterface(extended_cmd.Cmd):
             raise Exception(str(new_card))
         tmp_card = new_card.lower().split('block',1)[1]
         if "auto" in tmp_card: 
-            if param_card_iterator:
-                first_card.write(pjoin(rw_dir, 'Cards', 'param_card.dat'))
-            else:
-                ff = open(pjoin(rw_dir, 'Cards', 'param_card.dat'),'w')
-                ff.write(new_card)
-                ff.close()
-                
-            self.mother.check_param_card(pjoin(rw_dir, 'Cards', 'param_card.dat'))
-            new_card = open(pjoin(rw_dir, 'Cards', 'param_card.dat')).read()
+            # the widths are computed in place: on a card of this process
+            # only, the other reweighting processes share rw_dir
+            path = pjoin(rw_dir, 'Cards', 'param_card_%d.dat' % os.getpid())
+            with open(path, 'w') as fsock:
+                fsock.write(first_card.write() if param_card_iterator else new_card)
+            try:
+                self.mother.check_param_card(path)
+                new_card = open(path).read()
+            finally:
+                os.remove(path)
 
         # Find new tag in the banner and add information if needed
-        if 'initrwgt' in self.banner and self.output_type == 'default':
+        if self.inc_sudakov:
+            header_rwgt_other = self.banner['initrwgt'] if 'initrwgt' in self.banner else ''
+            mg_rwgt_info = []
+            rewgtid = 1
+        elif 'initrwgt' in self.banner and self.output_type == 'default':
             if 'name=\'mg_reweighting\'' in self.banner['initrwgt']:
                 blockpat = re.compile(r'''<weightgroup name=\'mg_reweighting\'\s*weight_name_strategy=\'includeIdInWeightName\'>(?P<text>.*?)</weightgroup>''', re.I+re.M+re.S)
                 before, content, after = blockpat.split(self.banner['initrwgt'])
@@ -987,31 +1112,24 @@ class ReweightInterface(extended_cmd.Cmd):
             for name in type_rwgt:
                 mg_rwgt_info.append((tag, name, str_info))
 
-        # re-create the banner.
-        self.banner['initrwgt'] = header_rwgt_other
-        if self.output_type == 'default':
-            self.banner['initrwgt'] += '\n<weightgroup name=\'mg_reweighting\' weight_name_strategy=\'includeIdInWeightName\'>\n'
+        if self.inc_sudakov:
+            self.banner['initrwgt'] = self._sudakov_weight_header()
         else:
-            self.banner['initrwgt'] += '\n<weightgroup name=\'main\'>\n'
-        for tag, rwgttype, diff in mg_rwgt_info:
-            if self.inc_sudakov:
-                try:
-                    sud_order = int(rwgttype[-1]) -1
-                    sud_order = '10' +rwgttype[-2:]
-                    self.banner['initrwgt'] += '<weight id=\'%s\'>%sscale_%s_sud</weight>\n' % \
-                            (rwgttype, diff, sud_order)
-                except IndexError:
-                    logger.critical('This is a reweighted event file! Do not reweight with ewsudakov twice')
-                    sys.exit(1)
+            # re-create the banner.
+            self.banner['initrwgt'] = header_rwgt_other
+            if self.output_type == 'default':
+                self.banner['initrwgt'] += '\n<weightgroup name=\'mg_reweighting\' weight_name_strategy=\'includeIdInWeightName\'>\n'
             else:
+                self.banner['initrwgt'] += '\n<weightgroup name=\'main\'>\n'
+            for tag, rwgttype, diff in mg_rwgt_info:
                 if tag.isdigit():
                     self.banner['initrwgt'] += '<weight id=\'rwgt_%s%s\'>%s</weight>\n' % \
-                                    (tag, rwgttype, diff)
+                                        (tag, rwgttype, diff)
                 else:
                     self.banner['initrwgt'] += '<weight id=\'%s%s\'>%s</weight>\n' % \
-                                    (tag, rwgttype, diff)
-        self.banner['initrwgt'] += '\n</weightgroup>\n'
-        self.banner['initrwgt'] = self.banner['initrwgt'].replace('\n\n', '\n')
+                                        (tag, rwgttype, diff)
+            self.banner['initrwgt'] += '\n</weightgroup>\n'
+            self.banner['initrwgt'] = self.banner['initrwgt'].replace('\n\n', '\n')
 
         if self.flag_density_matrix:
             logger.info('starts to compute density matrices for events with the inputs from the reweight_card:')
@@ -1034,10 +1152,11 @@ class ReweightInterface(extended_cmd.Cmd):
 
             with misc.chdir(pjoin(os.path.dirname(rw_dir), path)):
                 with misc.stdchannel_redirected(sys.stdout, os.devnull):                    
-                    if 'rw_me_' in path or tag == 3:
+                    if path.startswith(('rw_me_', 'rw_mevirt_')) or tag == 3:
                         param_card = self.new_param_card
                     else:
                         param_card = check_param_card.ParamCard(self.orig_param_card_text)
+                    param_card = self.get_amcatnlo_param_card(param_card)
                     module.initialise('../Cards/param_card.dat')
                     for block in param_card:
                         if block.lower() == 'qnumbers':
@@ -1050,6 +1169,18 @@ class ReweightInterface(extended_cmd.Cmd):
                         if param_card[block].scale:
                             name = "mdl__%s__scale" % block.upper()
                             module.change_para(name, param_card[block].scale)
+
+                    # the $-syntax propagators veto |m-M| < bwcutoff*Gamma: use
+                    # the window the events were generated with rather than
+                    # the standalone default of 15
+                    if hasattr(module, 'set_bwcutoff') and 'mgruncard' in self.banner:
+                        try:
+                            module.set_bwcutoff(float(self.banner.get_detail('run_card', 'bwcutoff')))
+                        except Exception as error:
+                            logger.warning('bwcutoff not passed to %s: %s. The '
+                                           '$-syntax propagators keep the '
+                                           'default window of 15 widths.',
+                                           path, error)
 
                     #check for running attribute
                     update_running_info = False
@@ -1078,7 +1209,150 @@ class ReweightInterface(extended_cmd.Cmd):
                             if self.model:
                                 raise
                     module.update_all_coup()
+
+        self.beampol = self.get_beampol()
+        self._beampol_set = {}
         return param_card_iterator, tag_name
+
+    def get_beampol(self):
+        """The beam polarisation of the events, (pol1, pol2) per beam in the
+        convention of the /to_beampol/ common of the matrix elements -- the
+        internal one of madevent's /to_polarization/ (setrun.f):
+        sign(1 + |polbeam|/100, polbeam), so 1 is unpolarised and 2 fully
+        polarised -- or None when no beam polarisation enters the matrix
+        element of the events.
+
+        madevent applies the polarisation only to a leg of the process whose
+        particles are all spin-1/2 fermions, across all the processes of the
+        output (export_v4.beam_polarization), and with the EVA pdf it is the
+        pdf that carries it. The value is the one of the beam the particle of
+        that leg comes from: beam 2 for leg 1 of a mirror process, as in the
+        `e- a > e- a` and `a e- > e- a` of an e- e- collider. self.beampol_legs
+        keeps that decision per leg of the library (whose legs are the ones of
+        the madevent process), for set_event_beampol. Unpolarised legs stay
+        unpolarised here as well: a polarised ratio on events generated
+        unpolarised would be as wrong as an unpolarised one on polarised
+        events. An NLO or mg7 run_card has no beam polarisation, and a decay
+        no beam.
+        """
+        run_card = getattr(self, 'run_card', None)
+        pol = self.events_beampol(run_card) if run_card is not None else None
+        if not pol:
+            return None
+        pol = list(pol)
+        model = getattr(self, 'original_model', None) or self.model
+        self.beampol_legs = []
+        for j in (0, 1):
+            partons = set(order[0][j] for key, (order, _, _) in self.id_to_path.items()
+                          if not isinstance(key[1], str))
+            self.beampol_legs.append(all(self._is_fermion(model, pid) for pid in partons))
+            if not self.beampol_legs[-1]:
+                logger.warning('As in madevent, incoming leg %i of the processes has no '
+                               'beam polarisation: one of its particles (%s) is not a '
+                               'spin-1/2 fermion.', j + 1,
+                               ', '.join(str(p) for p in sorted(partons)))
+        if not any(self.beampol_legs):
+            return None
+        logger.info('Beam polarisation of the events in the matrix elements: '
+                    'polbeam1=%s, polbeam2=%s', run_card['polbeam1'], run_card['polbeam2'])
+        return tuple(pol)
+
+    def events_beampol(self, run_card=None):
+        """(pol1, pol2) the run_card of the events asks for, in the
+        /to_beampol/ convention of get_beampol, or None when it asks for no
+        beam polarisation (or is no LO run_card, or the events are decays).
+        Unlike get_beampol it needs no matrix element: it is what the run_card
+        says, before deciding which incoming legs are spin-1/2 fermions, so
+        tree_crossing_flag can read it before the matrix elements exist.
+        run_card defaults to the one of the events' banner."""
+        if getattr(self, 'is_decay', False):
+            return None
+        if run_card is None and getattr(self, 'banner', None) is not None:
+            try:
+                run_card = banner.Banner(self.banner).charge_card('run_card')
+            except Exception:
+                return None
+        if not isinstance(run_card, banner.RunCardLO):
+            return None
+        pol = [1., 1.]
+        for b in (1, 2):
+            value = float(run_card['polbeam%i' % b])
+            if not value:
+                continue
+            if 'eva' in (run_card['pdlabel'], run_card.get('pdlabel%i' % b)):
+                continue
+            pol[b-1] = math.copysign(1 + abs(value) / 100., value)
+        if pol == [1., 1.]:
+            return None
+        return tuple(pol)
+
+    def _is_fermion(self, model, pid):
+        """True when pid is a spin-1/2 particle of model, or -- for a job set
+        up from rwgt.pkl, which has no model -- of the spins saved there. An
+        unknown spin is an error: taking it as "not a fermion" would silently
+        reweight with unpolarised matrix elements."""
+        if pid not in self._spin_cache:
+            particle = model.get_particle(pid) if model else None
+            spin = particle.get('spin') if particle else None
+            if spin is None:
+                spin = getattr(self, '_pickled_spins', {}).get(pid)
+            if spin is None:
+                raise self.InvalidCmd('The spin of particle %s is not known: the beam '
+                                      'polarisation (polbeam1/polbeam2) can not be '
+                                      'applied. Remove the rw_me directory to have it '
+                                      'regenerated.' % pid)
+            self._spin_cache[pid] = spin == 2
+        return self._spin_cache[pid]
+
+    def set_event_beampol(self, module, event, lab_p, pdg, n_initial, virtual=False,
+                          crossed=False):
+        """Hand the beam polarisation of this event to the /to_beampol/ of
+        module. SMATRIX applies BEAMPOL(J) to its incoming leg J, which is not
+        beam J when the legs of the event are reordered to the ones of the
+        library (an e+ e- event computed by an `e- e+ >` matrix element):
+        beam 1 is the incoming particle that runs along +z in the lab.
+
+        lab_p: lab-frame momenta in the order of the library (pdg).
+        crossed: the event is evaluated at a folded crossing's flavor index.
+        The value is set again only when it changes, which is rare.
+        """
+        if not self.beampol or n_initial != 2:
+            return
+        model = getattr(self, 'original_model', None) or self.model
+        if virtual or hasattr(module, 'set_madloop_path'):
+            raise self.InvalidCmd('Polarised beams (polbeam1/polbeam2 of the run_card) '
+                                  'are not supported by the loop matrix elements of '
+                                  'the reweighting.')
+        incoming = [(part.E, part.px, part.py, part.pz) for part in event
+                    if part.status == -1]
+        legs = [tuple(p) for p in lab_p[:2]]
+        if any(p not in incoming for p in legs):
+            raise self.InvalidCmd('Polarised beams (polbeam1/polbeam2 of the run_card) '
+                                  'can not be reweighted with a crossed matrix element: '
+                                  'a final-state particle of the event is an incoming '
+                                  'leg of %s.' % pdg)
+        beams = (0, 1) if legs[0][3] >= legs[1][3] else (1, 0)
+        value = tuple(self.beampol[b]
+                      if self.beampol_legs[j] and self._is_fermion(model, pdg[j]) else 1.
+                      for j, b in enumerate(beams))
+        if crossed and any(abs(v) > 1 for v in value):
+            # The crossing-aware SMATRIX refuses a polarised beam at a crossed
+            # flavor index with a Fortran STOP, which would end the session.
+            # tree_crossing_flag generates unfolded matrix elements for
+            # polarised events, so this is a library folded by an earlier run.
+            raise self.InvalidCmd('Polarised beams (polbeam1/polbeam2 of the run_card) '
+                                  'can not be reweighted with a matrix element folded '
+                                  'by crossing symmetry (event %s): remove the rw_me '
+                                  'directories to have them regenerated without '
+                                  'crossing.' % (pdg,))
+        if self._beampol_set.get(id(module)) == value:
+            return
+        if not hasattr(module, 'py_set_beampol'):
+            raise self.InvalidCmd('The reweighting matrix elements predate the beam '
+                                  'polarisation support (no py_set_beampol): remove '
+                                  'the rw_me directories to have them regenerated.')
+        module.py_set_beampol(*value)
+        self._beampol_set[id(module)] = value
 
         
     def do_set(self, line):
@@ -1098,6 +1372,27 @@ class ReweightInterface(extended_cmd.Cmd):
             return self.exec_cmd("launch")
         else:
             return super(ReweightInterface,self).default(line, log=log)
+
+    def check_answer_in_input_file(self, question_instance, default, path=False, line=None):
+        """The reweight card is the whole input of this interface. The
+        param_card question opened by a launch block is answered by the lines
+        that follow it, and ends with the card or with the next launch/change
+        line: the question then takes its default (done) quietly. The base
+        version reads stdin instead whenever stdin is not a tty (haspiping),
+        so a script run with stdin left open waited there forever."""
+
+        if line is None and self.inputfile:
+            line = self.get_stored_line()
+            if not line:
+                line = next(self.inputfile, None)
+                if line is None:
+                    return str(default)
+            if line.split() and line.split()[0] in ['launch', 'change']:
+                self.store_line(line)
+                return str(default)
+        with misc.TMP_variable(self, 'haspiping', False):
+            return super(ReweightInterface, self).check_answer_in_input_file(
+                                        question_instance, default, path, line)
 
     def write_reweighted_event(self, event, tag_name, **opt):
         """a function for running in multicore"""
@@ -1176,7 +1471,7 @@ class ReweightInterface(extended_cmd.Cmd):
             # LO reweighting    
             w_orig = self.calculate_matrix_element(event, 0)
             # reshuffle event for mass effect # external mass only
-            # carefull that new_event can sometimes be = to event 
+            # careful that new_event can sometimes be = to event
             # (i.e. change can be in place)
             jac, new_event = self.change_kinematics(event)
         
@@ -1203,198 +1498,125 @@ class ReweightInterface(extended_cmd.Cmd):
 
             return {'orig': orig_wgt, '': w_new/w_orig*orig_wgt*jac}
         else:
-            buff_event=copy.deepcopy(event)
-            orig_wgt = event.wgt
-            w_orig= event.wgt
-            pi=3.141592653589
-            mW = 80.3
+            ickkw = getattr(self, '_sudakov_ickkw', None)
+            if ickkw is None:
+                try:
+                    ickkw = int(self.banner.get('run_card', 'ickkw'))
+                except Exception:
+                    ickkw = 0
 
-            mgcmd = self.mg5cmd
-            import importlib
-            import numpy as np
-
-            # identify the process
-            try:
-                process = self.banner.get_detail('proc_card', 'generate')
-            except KeyError:
-                process = self.banner.get_detail('proc_card', 'add process')
-            process, opts = mg_interface.MadGraphCmd.split_process_line(process)
-            nexternal = len([p for p in process.split() if p != '>'])
-
-            # Remove all propagator particles from the event to be passed to Sud module
-            for ip,part in enumerate(list(buff_event)):
-                if (abs(part.status) != 1):
-                    buff_event.pop(ip)
-
-            x = 1.0
-            sud_cut= x*(mW**2)
-            min_inv=1000000000.0   # dummy variable, used to start the loop of min_inv finding
-            inv_dict={}
-
-            if (len(buff_event) == nexternal +1): # is an H-event
-                for ievt,evt in enumerate(buff_event):
-                    # Find the smallest abs(inv) and the corresponding pair
-                    if (ievt <= 1):
-                        sign1 = 1.0
-                    else:
-                        sign1 = -1.0
-                    for ievt2,evt2 in enumerate(buff_event):
-                        if (ievt2 <= 1):
-                            sign2 = 1.0
-                        else:
-                            sign2 = -1.0
-                        if (ievt2 > ievt):
-                            inv = (sign1*evt.E+sign2*evt2.E)**2-(sign1*evt.px+sign2*evt2.px)**2\
-                                            - (sign1*evt.py+sign2*evt2.py)**2-(sign1*evt.pz+sign2*evt2.pz)**2
-                            inv_dict[(ievt,ievt2)] = abs(inv)
-                            if (abs(inv) < min_inv):
-                                min_inv=abs(inv)
-                                min_i=ievt
-                                min_j=ievt2
-                            
-                # Below finds the current process tag and tries to recombine the min_i and min_j
-                tag, order = buff_event.get_tag_and_order()
-                matrix_elements = mgcmd._curr_matrix_elements.get_matrix_elements()
-
-                ij_comb= []
-                if min_i <= 1:
-                    state = False
-                else:
-                    state = True
-                comb_i = fks_common.FKSLeg({'id': buff_event[min_i].pid,'number': min_i+1,'state': state})
-                if min_j<= 1:
-                    state = False
-                else:
-                    state = True
-                comb_j = fks_common.FKSLeg({'id': buff_event[min_j].pid,'number': min_j+1,'state': state})
-                ij_comb =fks_common.combine_ij(comb_i,comb_j, self.model, dict={},pert='QCD')
-                if ij_comb == []:
-                    ij_comb =fks_common.combine_ij(comb_j,comb_i, self.model, dict={},pert='QCD')
-        
-                # For n+1-body reweighting
-                if min_inv > sud_cut:
-                    event_to_sud = buff_event
-                    n_part = nexternal+1
-                    mapped_tag, mapped_order = event_to_sud.get_tag_and_order()
-                    type = 1  #### H1 type
-
-                # For n-body reweighting
-                else:
-                    # If no reasonable recbination found, still use the n+1-body kinematics for sudakov
-                    if ij_comb == []:
-                        event_to_sud = buff_event
-                        n_part = nexternal+1
-                        mapped_tag, mapped_order = event_to_sud.get_tag_and_order()
-                        #### H1 type
-                        type = 1
-                    else:
-                        buff_event.merge_particles_kinematics(min_i,min_j,ij_comb)
-                        event_to_sud = buff_event
-                        n_part = nexternal 
-                        mapped_tag, mapped_order = event_to_sud.get_tag_and_order()
-                        # map to n+1 body if recoil does not exist at Born level among processes
-                        if mapped_tag not in sud_mod.pdg2ewsud_dict.keys():
-                            event_to_sud = buff_event
-                            n_part = nexternal+1
-                            mapped_tag, mapped_order = event_to_sud.get_tag_and_order()
-                            type = 1   #### H1 type
-                        else:
-                            type = 2    #### H2 type                 
-            elif (len(buff_event) == nexternal): # is an S-event
-                    event_to_sud = buff_event
-                    n_part = nexternal 
-                    mapped_tag, mapped_order = event_to_sud.get_tag_and_order()
-                    type = 0   ### S type
+            if ickkw == 0:
+                # Clustering cut fixed at M_W^2 (sud_cut): no xi loop.
+                self._current_xi_idx = 0
+                return self._compute_ewsudakov_reweight(event, sud_mod)
+            elif ickkw == 3:
+                xi_list = (self._sudakov_xi_list or self.sudakov_xi_scan
+                           or [getattr(self, 'mW2_cluster_scale', 1.5)])
+                merged = {}
+                with self._fxfx_event_preparation(event):
+                    for k, xi in enumerate(xi_list):
+                        self.mW2_cluster_scale = xi
+                        self._current_xi_idx = k
+                        sub = self._compute_density_ewsudakov_reweight(event, sud_mod)
+                        merged.update((key, value) for key, value in sub.items()
+                                      if key != 'orig' or k == 0)
+                return merged
             else:
-                logger.critical('ERROR: neither H nor S event!')
-                logger.critical(buff_event)
-                sys.exit(2)
-                
-            # Boost to partonic CM frame if not already in one for the momentum reshuffling 
-            p = lhe_parser.FourMomentum()
-            for i,particle in enumerate(event_to_sud):
-                    if particle.status == -1:
-                        p += particle
-            in_part_mom = p
-            if not ((abs(p.px) < 1e-6 * p.E) and (abs(p.py) < 1e-6 * p.E) and (abs(p.pz) < 1e-6 * p.E)):
-                event_to_sud.boost(in_part_mom)
+                raise Exception("EW Sudakov reweighting not supported for run_card ickkw=%s" % ickkw)
 
-            # Rotate system to a partonic CM along z-axis
-            initial = copy.deepcopy(event_to_sud[0])
-            if not ((abs(initial.px) < 1e-6 * initial.E) and (abs(initial.py) < 1e-6 * initial.E)):
-                for p in event_to_sud:
-                    p.set_momentum(lhe_parser.FourMomentum(p).rotate_to_z(prot=lhe_parser.FourMomentum(initial)))
-            
-            # Set all light quarks and lepton masses to zero in event file
-            #self.set_final_jet_mass_to_zero(event_to_sud)
-            event_to_sud.set_final_jet_mass_to_zero()
-            # Set finally all initial masses to zero rather than the masses in the event files
-            event_to_sud.set_initial_mass_to_zero()
-            event_to_sud.check_kinematics_only()
+    def _compute_ewsudakov_reweight(self, event, sud_mod):
+        """EW Sudakov weights for one event with the ickkw=0 clustering."""
+        buff_event = copy.deepcopy(event)
+        mW = 80.3
 
-            gstr = math.sqrt(4*pi*event.aqcd)
-            sorted_tag = (tuple(mapped_order[0]),tuple(sorted(mapped_order[1])))
+        # 2->1 events (e.g. q qbar -> Z) get unit factors, as in the FxFx paths:
+        # no Sudakov logs at s = M^2, and the kernel returns res[2] = -res[0]
+        # (a zero central factor) there.
+        n_init  = sum(1 for p in buff_event if p.status == -1)
+        n_final = sum(1 for p in buff_event if p.status ==  1)
+        if n_init == 2 and n_final == 1:
+            names = getattr(self, '_sudakov_variant_names', self.SUDAKOV_LO_VARIANT_NAMES)
+            return self._build_sudakov_rwgt_dict(event, [1.0] * len(names), names)
 
-            # Read in the event momenta into np array in the order which is defined in the process directory
-            perm = []
-            i = 1
-            for r in mapped_order[1]:
-                if not list(sud_mod.original_pdg_list_dict[sorted_tag][1]).index(r) in perm:
-                    perm.append(list(sud_mod.original_pdg_list_dict[sorted_tag][1]).index(r))
+        # identify the process
+        try:
+            process = self.banner.get_detail('proc_card', 'generate')
+        except KeyError:
+            process = self.banner.get_detail('proc_card', 'add process')
+        process, opts = mg_interface.MadGraphCmd.split_process_line(process)
+        nexternal = len([p for p in process.split() if p != '>'])
+
+        # Remove all propagator particles from the event to be passed to Sud module
+        for ip, part in enumerate(list(buff_event)):
+            if (abs(part.status) != 1):
+                buff_event.pop(ip)
+
+        x = 1.0
+        sud_cut = x * (mW ** 2)
+        min_inv = 1000000000.0
+        inv_dict = {}
+
+        if (len(buff_event) == nexternal + 1):  # is an H-event
+            for ievt, evt in enumerate(buff_event):
+                if (ievt <= 1):
+                    sign1 = 1.0
                 else:
-                    perm.append(list(sud_mod.original_pdg_list_dict[sorted_tag][1]).index(r)+i)
-                    i += 1
-            order = dict((i,j) for i,j in enumerate(perm))
-            event_to_sud_order = copy.deepcopy(event_to_sud)
-            event_to_sud_order[:len(mapped_tag[0])] =  event_to_sud[:len(mapped_tag[0])]
-            for r in order.keys():
-                event_to_sud_order[r+len(mapped_tag[0])] = event_to_sud[order[r]+len(mapped_tag[0])]
-            p_in = np.zeros(shape=(n_part, 4))
-            for i,el in enumerate(event_to_sud_order):
-                p_in[i] = [float(el.E),float(el.px),float(el.py),float(el.pz)]
-            mapped_tag, mapped_order = event_to_sud_order.get_tag_and_order()
-            if list(sud_mod.original_pdg_list_dict[sorted_tag][1]) != mapped_order[1]:
-                logger.critical('ERROR: order in particle momenta does not match MG convention!')
-                sys.exit(3)
+                    sign1 = -1.0
+                for ievt2, evt2 in enumerate(buff_event):
+                    if (ievt2 <= 1):
+                        sign2 = 1.0
+                    else:
+                        sign2 = -1.0
+                    if (ievt2 > ievt):
+                        inv = (sign1 * evt.E + sign2 * evt2.E) ** 2 - (sign1 * evt.px + sign2 * evt2.px) ** 2 \
+                              - (sign1 * evt.py + sign2 * evt2.py) ** 2 - (sign1 * evt.pz + sign2 * evt2.pz) ** 2
+                        inv_dict[(ievt, ievt2)] = abs(inv)
+                        if (abs(inv) < min_inv):
+                            min_inv = abs(inv)
+                            min_i = ievt
+                            min_j = ievt2
 
-            # compute the actual Sudakov weight
-            res = sud_mod.ewsudakov(sorted_tag, p_in, gstr)
+            ij_comb = []
+            if min_i <= 1:
+                state = False
+            else:
+                state = True
+            comb_i = fks_common.FKSLeg({'id': buff_event[min_i].pid, 'number': min_i + 1, 'state': state})
+            if min_j <= 1:
+                state = False
+            else:
+                state = True
+            comb_j = fks_common.FKSLeg({'id': buff_event[min_j].pid, 'number': min_j + 1, 'state': state})
+            ij_comb = fks_common.combine_ij(comb_i, comb_j, self.model, dict={}, pert='QCD')
+            if ij_comb == []:
+                ij_comb = fks_common.combine_ij(comb_j, comb_i, self.model, dict={}, pert='QCD')
 
-            # Do the reewightings
-            sudrat0 = 1. + res[1]/res[0] # SUD0            s_to_rij ON  rij_ge_mw ON
-            sudrat1 = 1. + res[2]/res[0] # SUD1 (SKD_weak) s_to_rij ON  rij_ge_mw ON
-            sudrat2 = 1. + res[3]/res[0] # SUD1 (SKD_weak) s_to_rij OFF  rij_ge_mw ON
-            sudrat3 = 1. + res[4]/res[0] # SUD1 (SKD_weak) s_to_rij OFF  rij_ge_mw OFF
-            sudrat4 = 1. + res[5]/res[0] # SUD1 (SKD_weak) s_to_rij ON  rij_ge_mw OFF
+            if min_inv <= sud_cut and ij_comb:
+                buff_event.merge_particles_kinematics(min_i, min_j, ij_comb)
+            event_to_sud = buff_event
+        elif (len(buff_event) == nexternal):  # is an S-event
+            event_to_sud = buff_event
+        else:
+            logger.critical('ERROR: neither H nor S event!')
+            logger.critical(buff_event)
+            sys.exit(2)
 
-            # Damp when the Sudakov weights are too large (in abs value)
-            large_sud_error=False
-            if abs(sudrat1) > 200:
-                logger.info('ERROR: event will not be reweighted because Sudakov ratio is too large: %s ' %sudrat1)
-                logger.info(buff_event)
-                sudrat0 = 1. 
-                sudrat1 = 1.
-                sudrat2 = 1.
-                sudrat3 = 1. 
-                sudrat4 = 1.
-                large_sud_error = True
+        prep = self._prepare_sudakov_inputs(event, sud_mod, event_to_sud)
+        res = sud_mod.ewsudakov(prep['sorted_tag'], prep['p_in'], prep['gstr'])
 
-            # Dummy step: needed to read in the parse_reweight function
-            event.rescale_weights(1.)
+        # Do the reewightings
+        sudrat0 = 1. + res[1]/res[0] # SUD0            s_to_rij ON  rij_ge_mw ON
+        sudrat1 = 1. + res[2]/res[0] # SUD1 (SKD_weak) s_to_rij ON  rij_ge_mw ON
+        sudrat2 = 1. + res[3]/res[0] # SUD1 (SKD_weak) s_to_rij OFF  rij_ge_mw ON
+        sudrat3 = 1. + res[4]/res[0] # SUD1 (SKD_weak) s_to_rij OFF  rij_ge_mw OFF
+        sudrat4 = 1. + res[5]/res[0] # SUD1 (SKD_weak) s_to_rij ON  rij_ge_mw OFF
 
-            rwgt_dict = copy.deepcopy(event.parse_reweight())
-            if rwgt_dict=={}:
-                rwgt_dict['1001'] =  orig_wgt
-            rwgt_dict_new = {}
-            rwgt_dict_new['orig'] = orig_wgt
+        factors = fxfx_ewsudakov.limit_sudakov_factors(
+            [sudrat1, sudrat2, sudrat0, sudrat3, sudrat4])
+        event.rescale_weights(1.)
+        names = getattr(self, '_sudakov_variant_names', self.SUDAKOV_LO_VARIANT_NAMES)
+        return self._build_sudakov_rwgt_dict(event, factors, names)
 
-            for el in rwgt_dict:
-                ending = el[-2:]
-                tag = '20' + ending
-                rwgt_dict_new[tag] = rwgt_dict[el]*sudrat1  # use SDK_weak! 
-            
-            return rwgt_dict_new
-    
     def get_pdg_tuple(self, pdgs, nincoming):
         """write a tuple of 2 tuple, with the incoming particles unsorted
         and the outgoing ones sorted
@@ -1410,13 +1632,14 @@ class ReweightInterface(extended_cmd.Cmd):
             
         event.parse_reweight()
         event.parse_nlo_weight(threshold=self.soft_threshold) 
-        if not event.nloweight.ispureqcd():
-            raise Exception('NLO reweighting does not support mixed expansion mode. Only LO accurate mode is allowed.')
-        
+        # A mixed expansion (squared orders with different powers of g_s in
+        # one event) needs no special treatment: every contribution is
+        # rescaled with matrix elements evaluated at its own g_s (below).
+
         if self.output_type != 'default':
             event.nloweight.modified = True # the internal info will be changed
-                                            # so set this flage to True to change
-                                            # the writting of those data
+                                            # so set this flag to True to change
+                                            # the writing of those data
 
         #initialise the input to the function which recompute the weight
         scales2 = []
@@ -1429,29 +1652,72 @@ class ReweightInterface(extended_cmd.Cmd):
         qcdpower = []
         ref_wgts = [] #for debugging
 
+        # Every contribution is rescaled with the ratio of the matrix element
+        # it is proportional to, evaluated with its own strong coupling:
+        #  - the soft counter-terms (types 4 and 8) are eikonal sums of
+        #    colour-linked Borns, i.e. the real emission in the soft limit:
+        #    get_soft_limit_event. Their ratio is not the one of the Born
+        #    when the squared orders mix colour structures (four-fermion
+        #    operators, ...), and the real emission they cancel against
+        #    near the soft limit follows the colour-linked one.
+        #  - any other contribution: the matrix element of its kinematic
+        #    configuration (real emission, or Born for an n-body one).
+        # Within such a contribution type, the weights of the different
+        # squared orders are all proportional to the corresponding pieces of
+        # that matrix element *at the contribution's g_s*. One ratio of the
+        # summed matrix element is then exact, without splitting the orders;
+        # but with a dynamical scale g_s differs between contributions (and
+        # from the event's alpha_s), and the orders carry different powers of
+        # it, so the matrix element has to be evaluated at that g_s.
+        me_cache = {}
+        def tree_me(obj, key, alphas):
+            if (key, alphas) not in me_cache:
+                me_cache[(key, alphas)] = (
+                    self.calculate_matrix_element(obj, 0, alphas=alphas),
+                    self.calculate_matrix_element(obj, 1, alphas=alphas))
+            return me_cache[(key, alphas)]
+        soft_events = {}
         orig_wgt = 0
-        for cevent in event.nloweight.cevents:
-            #check if we need to compute the virtual for that cevent
-            need_V = False # the real is nothing else than the born for a N+1 config
-            all_ctype = [w.type for w in cevent.wgts]
-            if '_nlo' in type_nlo and any(c in all_ctype for c in [2,14,15]):
-                need_V =True
-            
-            w_orig = self.calculate_matrix_element(cevent, 0)
-            w_new =  self.calculate_matrix_element(cevent, 1)
-            ratio_T = w_new/w_orig
-
-            if need_V:
-                scale2 = cevent.wgts[0].scales2[0]
-                #for scale2 in set(c.scales2[1] for c in cevent.wgts): 
-                w_origV = self.calculate_matrix_element(cevent, 'V0', scale2=scale2**2)
-                w_newV =  self.calculate_matrix_element(cevent, 'V1', scale2=scale2**2)                    
-                ratio_BV = (w_newV + w_new) / (w_origV + w_orig)
-                ratio_V = w_newV/w_origV if w_origV else  "should not be used"
-            else:
-                ratio_V = "should not be used"
-                ratio_BV = "should not be used"
+        for icev, cevent in enumerate(event.nloweight.cevents):
+            born_kinematics = len(cevent) < cevent.wgts[0].nexternal
             for c_wgt in cevent.wgts:
+                alphas = c_wgt.gs**2 / (4 * math.pi)
+                obj, key = cevent, icev
+                if born_kinematics and c_wgt.type in (4, 8):
+                    skey = self.soft_limit_key(c_wgt)
+                    if skey not in soft_events:
+                        soft_events[skey] = self.get_soft_limit_event(event.nloweight, c_wgt)
+                    if soft_events[skey] is not None:
+                        obj, key = soft_events[skey], skey
+                w_orig, w_new = tree_me(obj, key, alphas)
+                ratio_T = w_new / w_orig
+                # The virtual and the virt-trick (sect. 2.4.3 of
+                # arXiv:1405.0301): at a phase-space point the sample carries
+                # the surrogate S (type 15, S = c_k(x) B_k per split order)
+                # and, with probability f, the residual (V - S)/f (type 14,
+                # in a 'virt' event of its own). E[W15 + W14] = V_orig, so
+                # both are kept as they are and the change of the virtual,
+                # V_new - V_orig, goes on the Born (type 2) of the same
+                # point: W2 (B_new + V_new - V_orig) / B_orig. A ratio of
+                # virtuals would be exact as well, but V_orig changes sign
+                # over the phase space and V_new/V_orig has no finite
+                # variance; B_orig, a full squared matrix element, does not
+                # vanish.
+                if '_nlo' in type_nlo and c_wgt.type == 2:
+                    # the virtual's own g_s, and the Ellis-Sexton scale
+                    # (already squared in the LHE; smatrixhel takes mu^2)
+                    virt = next((w for w in cevent.wgts if w.type in (14, 15)), c_wgt)
+                    alphas_V = virt.gs**2 / (4 * math.pi)
+                    scale2 = virt.scales2[0]
+                    if ('V', icev, alphas_V, scale2) not in me_cache:
+                        me_cache[('V', icev, alphas_V, scale2)] = (
+                            self.calculate_matrix_element(cevent, 'V0', scale2=scale2, alphas=alphas_V),
+                            self.calculate_matrix_element(cevent, 'V1', scale2=scale2, alphas=alphas_V))
+                    w_origV, w_newV = me_cache[('V', icev, alphas_V, scale2)]
+                    ratio_BV = (w_new + w_newV - w_origV) / w_orig
+                else:
+                    ratio_BV = "should not be used"
+
                 orig_wgt += c_wgt.ref_wgt
                 #add the information to the input
                 scales2.append(c_wgt.scales2)
@@ -1463,7 +1729,9 @@ class ReweightInterface(extended_cmd.Cmd):
                 ref_wgts.append(c_wgt.ref_wgt)
                 
                 if '_nlo' in type_nlo:
-                    if c_wgt.type in  [2,14,15]:
+                    if c_wgt.type in [14, 15]:
+                        R = 1.
+                    elif c_wgt.type == 2:
                         R = ratio_BV
                     else:
                         R = ratio_T
@@ -1535,6 +1803,117 @@ class ReweightInterface(extended_cmd.Cmd):
 
         return final_weight 
 
+    @staticmethod
+    def soft_limit_key(c_wgt):
+        """what identifies the configuration of get_soft_limit_event: the
+        Born and real kinematics, the FKS pair, and the flavours, since one
+        momentum configuration is shared by the contributions of the several
+        flavours (IPROC) of an event"""
+        return (c_wgt.born_related, c_wgt.real_related,
+                tuple(c_wgt.to_merge_pdg), tuple(c_wgt.pdgs))
+
+    @staticmethod
+    def get_soft_limit_event(nloweight, c_wgt, lam=1e-6):
+        """The configuration whose real-emission matrix element rescales the
+        soft counter-term c_wgt: its Born kinematics plus the FKS parton i_fks
+        with an energy lam*sqrt(shat), along the direction it has in the
+        real-emission kinematics of that contribution (each in its partonic
+        centre-of-mass frame). The final state of the Born absorbs the
+        transverse recoil, the incoming partons stay along the beam.
+
+        A soft counter-term is the eikonal sum of colour-linked Borns, which
+        is this real emission for lam -> 0 (the same holds for photons and
+        charge-linked Borns). Returns None when the configuration cannot be
+        built: the counter-term then follows the Born."""
+
+        nexternal = c_wgt.nexternal
+        nincoming = sum(1 for p in nloweight.event if p.status == -1)
+        i_fks, j_fks = [i - 1 for i in c_wgt.to_merge_pdg]
+        if nincoming != 2 or i_fks < nincoming or c_wgt.pdgs[i_fks] not in (21, 22):
+            return None
+        def config(n):
+            return [list(p.get_tuple()) for p in
+                    nloweight.momenta[nexternal * (n - 1): nexternal * n]]
+        born, real = config(c_wgt.born_related), config(c_wgt.real_related)
+        if len(born) != nexternal or len(real) != nexternal:
+            return None
+
+        def boost(p, b):
+            b2 = sum(x * x for x in b)
+            if b2 == 0:
+                return list(p)
+            g = 1 / math.sqrt(1 - b2)
+            bp = sum(b[i] * p[i + 1] for i in range(3))
+            g2 = (g - 1) / b2
+            return [g * (p[0] + bp)] + [p[i + 1] + g2 * bp * b[i] + g * b[i] * p[0] for i in range(3)]
+        def to_cm(moms, total):
+            return [boost(p, [-total[i + 1] / total[0] for i in range(3)]) for p in moms]
+        def add(a, b, sign=1):
+            return [a[i] + sign * b[i] for i in range(4)]
+
+        # the n-body Born: i_fks merged into j_fks
+        born[j_fks] = add(born[j_fks], born[i_fks], 1 if j_fks >= nincoming else -1)
+        others = [k for k in range(nexternal) if k != i_fks]
+        born = dict(zip(others, to_cm([born[k] for k in others], add(born[0], born[1]))))
+        real = to_cm(real, add(real[0], real[1]))
+        def unit(v):
+            n = math.sqrt(sum(x * x for x in v))
+            return [x / n for x in v] if n else None
+        direction = real[i_fks][1:]
+        norm = math.sqrt(sum(x * x for x in direction))
+        if norm == 0:
+            return None
+        if j_fks >= nincoming:
+            # final-state j_fks (genps_fks.f, generate_momenta_*_final): the
+            # FKS angles of i_fks are measured from the mother i_fks + j_fks,
+            # which is along the Born j_fks: cos(theta) = y_ij, the cosine
+            # between i_fks and j_fks in the real kinematics, at the azimuth
+            # i_fks has around the mother. Copying the direction of i_fks
+            # instead changes its angle to a recoiling j_fks (massive top).
+            pi, pj = unit(real[i_fks][1:]), unit(real[j_fks][1:])
+            mother = unit([real[i_fks][k] + real[j_fks][k] for k in (1, 2, 3)])
+            axis = unit(born[j_fks][1:])
+            if pj is None or mother is None or axis is None:
+                return None
+            y = sum(a * b for a, b in zip(pi, pj))
+            perp = [a - sum(x * m for x, m in zip(pi, mother)) * m for a, m in zip(pi, mother)]
+            perp = [a - sum(x * b for x, b in zip(perp, axis)) * b for a, b in zip(perp, axis)]
+            perp = unit(perp)
+            if perp is None:
+                direction = axis
+            else:
+                s = math.sqrt(max(0., 1 - y * y))
+                direction = [y * a + s * b for a, b in zip(axis, perp)]
+            norm = 1.
+        energy = lam * (born[0][0] + born[1][0])
+        k = [energy] + [energy * x / norm for x in direction]
+        # the final state of the Born takes the transverse recoil, keeping its
+        # invariant mass and longitudinal momentum
+        finals = [kk for kk in others if kk >= nincoming]
+        Q = [sum(born[kk][i] for kk in finals) for i in range(4)]
+        M2 = Q[0]**2 - sum(x * x for x in Q[1:])
+        qnew = [-k[1], -k[2], Q[3]]
+        Enew = math.sqrt(M2 + sum(x * x for x in qnew))
+        new = {}
+        for kk in finals:
+            p = boost(born[kk], [-Q[i + 1] / Q[0] for i in range(3)])
+            new[kk] = boost(p, [x / Enew for x in qnew])
+        E, pz = Enew + k[0], Q[3] + k[3]
+        plus = [(E + pz) / 2, 0., 0., (E + pz) / 2]
+        minus = [(E - pz) / 2, 0., 0., -(E - pz) / 2]
+        new[0], new[1] = (plus, minus) if born[0][3] >= 0 else (minus, plus)
+        new[i_fks] = k
+
+        soft = lhe_parser.NLO_PARTIALWEIGHT.BasicEvent.__new__(
+                                          lhe_parser.NLO_PARTIALWEIGHT.BasicEvent)
+        list.__init__(soft, [lhe_parser.FourMomentum(new[kk]) for kk in range(nexternal)])
+        soft.soft = False
+        soft.wgts = [c_wgt]
+        soft.pdgs = list(c_wgt.pdgs)
+        soft.event = nloweight.event
+        soft.real_type = nloweight.real_type
+        return soft
+
 
     def combine_wgt_local(self, scale2s, pdgs, bjxs, base_wgts, gss, qcdpowers, pdf):
 
@@ -1574,6 +1953,74 @@ class ReweightInterface(extended_cmd.Cmd):
             open(pjoin(Pdir, 'matrix%spy.so' % tag),'w').write(open(pjoin(Pdir, 'matrix2py.so')
                                         ).read().replace('matrix2py', 'matrix%spy' % tag))
 
+    def get_amcatnlo_param_card(self, param_card):
+        """The param_card the matrix elements of an aMC@NLO sample were
+        evaluated with. aMC@NLO sets the width of the external particles to
+        zero when it writes its param_card.inc (common_run_interface,
+        update_make_opts_full / --keepwidth): all of them for a mixed
+        expansion (nlo_mixed_expansion, the default), the coloured ones
+        otherwise, every width for the EW Sudakov approximation without the
+        complex mass scheme. The banner keeps the card as given, so the
+        reweighting has to do the same, or the ratios differ (soft gluons off
+        a top quark with and without its width, for instance).
+        Returns param_card itself if nothing changes, a modified copy
+        otherwise."""
+
+        if not self.amcatnlo_sample or self.flag_density_matrix:
+            return param_card
+        try:
+            decay = param_card['decay']
+        except KeyError:
+            return param_card
+        characteristics = getattr(self.mother, 'proc_characteristics', None) or {}
+        def characteristic(name, default):
+            try:
+                return characteristics[name]
+            except (KeyError, TypeError):
+                return default
+        model = getattr(self, 'original_model', None) or self.model
+
+        if characteristic('ew_sudakov', False) and not characteristic('complex_mass_scheme', False):
+            pdgs = set(abs(p.lhacode[0]) for p in decay)
+        else:
+            pdgs = set()
+            def collect(obj):
+                # the keys hold numpy integers
+                if isinstance(obj, numbers.Integral):
+                    pdgs.add(abs(int(obj)))
+                elif isinstance(obj, (tuple, list)):
+                    for o in obj:
+                        collect(o)
+            collect(list(self.id_to_path.keys()))
+            if not characteristic('nlo_mixed_expansion', True):
+                coloured = set()
+                for pdg in pdgs:
+                    try:
+                        if model.get_particle(pdg).get('color') != 1:
+                            coloured.add(pdg)
+                    except Exception:
+                        coloured.add(pdg)
+                pdgs = coloured
+
+        to_zero = []
+        for pdg in sorted(pdgs):
+            try:
+                if decay.get((pdg,)).value != 0:
+                    to_zero.append(pdg)
+            except KeyError:
+                continue
+        if not to_zero:
+            return param_card
+        if not getattr(self, '_amcatnlo_width_logged', False):
+            logger.info('The matrix elements of the aMC@NLO sample were evaluated with zero '
+                        'width for the external particle(s) %s: so are the ones of the reweighting.',
+                        ', '.join(str(p) for p in to_zero))
+            self._amcatnlo_width_logged = True
+        param_card = copy.deepcopy(param_card)
+        for pdg in to_zero:
+            param_card['decay'].get((pdg,)).value = 0.
+        return param_card
+
     def _get_revert_merged_for(self, model):
         """Return the {individual_pdg: merged_pdg} mapping for a given model.
 
@@ -1596,9 +2043,34 @@ class ReweightInterface(extended_cmd.Cmd):
                 rm[val] = key
         return rm
 
-    def calculate_matrix_element(self, event, hypp_id, scale2=0):
-        """routine to return the matrix element"""
+    def _pdg_for_me_call(self, event, orig_order, momenta, relevant_model):
+        """Return the PDG list to hand to the fortran for one permutation.
 
+        orig_order holds the leg ids of the generated process, which under
+        flavor grouping are the merged codes (81 for jets, 82 for charged
+        leptons, ...). Those are SIGNED: a subprocess whose grouped legs are
+        anti-particles -- g q~ > w+ q~, whose get_pdg_order is
+        [21,-81,24,-81] -- carries the negative code. model['merged_particles']
+        is keyed by the POSITIVE code only ({81: [1,2,3,4], ...}), hence the
+        abs(): without it the merged labels are handed to the fortran as-is,
+        the flavor mapping there resolves them to "no flavour", and both
+        SMATRIXHEL and GET_DENSITY return an exact zero.
+
+        Kept in one place because both calculate_matrix_element implementations
+        (matrix element and density matrix) need exactly this."""
+        pdg = list(orig_order[0]) + list(orig_order[1])
+        merged = relevant_model.get('merged_particles') if relevant_model \
+                 else self.merged_particles
+        if merged and any(abs(p) in merged for p in pdg):
+            return event.get_pdg(momenta)
+        return pdg
+
+    def calculate_matrix_element(self, event, hypp_id, scale2=0, alphas=None):
+        """routine to return the matrix element (alphas: the strong coupling
+        to evaluate it with, by default the one of the event)"""
+
+        if alphas is None:
+            alphas = event.aqcd
         if self.has_nlo:
             nb_retry, sleep = 10, 60
         else:
@@ -1635,28 +2107,34 @@ class ReweightInterface(extended_cmd.Cmd):
         #else:
         #    base = "rw_me"
 
+        # A crossed subprocess folded in by crossing symmetry has no id_to_path
+        # entry of its own; it is reached through the base's crossing-aware
+        # SMATRIX at an extended flavor index (see build_cross_resolve).
+        # procindex / flav_idx stay None for every ordinary lookup.
         if (not self.second_model and not self.second_process and not self.dedicated_path) or hypp_id==0:
-            if tag in self.id_to_path:
-                orig_order, Pdir, hel_dict = self.id_to_path[tag]
-            else:
-                cross_tag = self.get_crossing_tag(tag)
-                orig_order, Pdir, hel_dict = self.id_to_path[cross_tag]
+            found = self.find_matrix_element(tag, tag_orig, self.id_to_path,
+                                             self.cross_resolve)
+            if not found:
+                logger.critical('The following initial/final state %s matches no matrix element generated for the reweighting.', tag)
+                raise Exception('no matrix element for %s' % (tag,))
         else:
-            try:
-                orig_order, Pdir, hel_dict = self.id_to_path_second[tag]
-            except KeyError:
-                cross_tag = self.get_crossing_tag(tag)
-                if cross_tag:
-                    orig_order, Pdir, hel_dict = self.id_to_path[cross_tag]
-                elif self.options['allow_missing_finalstate']:
+            found = self.find_matrix_element(tag, tag_orig,
+                                             self.id_to_path_second,
+                                             self.cross_resolve_second)
+            if not found:
+                if self.options['allow_missing_finalstate']:
                     return 0.0
                 else:
                     logger.critical('The following initial/final state %s can not be found in the new model/process. If you want to set the weights of such events to zero use "change allow_missing_finalstate False"', tag)
                     raise Exception
+        orig_order, Pdir, hel_dict, procindex, flav_idx = found
 
 
         base = os.path.basename(os.path.dirname(Pdir))
-        if base == 'rw_me':
+        # rw_me and rw_mevirt have one module per parameter set (2: original,
+        # 3: new); the second-library directories (rw_me_<N>, rw_mevirt_<N>)
+        # only have module 2, which carries the new parameters.
+        if base in ['rw_me', 'rw_mevirt']:
             moduletag = (base, 2+hypp_id)
         else:
             moduletag = (base, 2)
@@ -1665,24 +2143,42 @@ class ReweightInterface(extended_cmd.Cmd):
         if self.keep_ordering:
             all_p = [event.get_momenta(orig_order, merged_map=self.revert_merged)]
         else:
-            all_p = event.get_all_momenta(orig_order, merged_map=self.revert_merged)
+            all_p = event.get_all_momenta(orig_order, merged_map=self.revert_merged,
+                                          decay_chain=True)
             if len(all_p) >1:
                 if self.helicity_reweighting:
                     logger.warning("due to ordering ambiguity, we flip off helicity per helicity reweighting.")
                 self.helicity_reweighting = False
 
         # add helicity information
-        event_pos2order, orderevent_2pos = event.get_mapping(orig_order, merged_map=self.revert_merged)
-        hel_order = event.get_helicity(orig_order, merged_map=self.revert_merged)
+        hel_order = event.get_helicity(orig_order, merged_map=self.revert_merged,
+                                       decay_chain=not self.keep_ordering)
         if self.helicity_reweighting and 9 not in hel_order:
             nhel = hel_dict[tuple(hel_order)]
 
         else:
             nhel = -1
-        pdg = list(orig_order[0])+list(orig_order[1])
-        relevant_merged = relevant_model.get('merged_particles') if relevant_model else self.merged_particles
-        if relevant_merged and any(p in relevant_merged for p in pdg):
-            pdg = event.get_pdg(all_p[0])
+        pdg = self._pdg_for_me_call(event, orig_order, all_p[0], relevant_model)
+
+        # the permutations of all_p differ in their final state only: the
+        # incoming legs, still lab-frame here, say which beam is which leg
+        self.set_event_beampol(module, event, all_p[0], pdg, len(orig_order[0]),
+                               virtual=is_virtual_tag or 'virt' in base,
+                               crossed=flav_idx is not None)
+
+        # aMC@NLO writes its LHE with the partons on the Monte-Carlo mass shell
+        # (add_write_info.f, put_on_MC_mshell_in / put_on_MC_mshell_Hevout)
+        # while these matrix elements are massless ones. Undo that on both
+        # sides before the momenta are handed over -- and before any boost,
+        # which is what turns the O(m^2/shat) mismatch into an O(1) one. See
+        # lhe_parser.project_massless_partons.  The projection is for the
+        # matrix-element call only: it works on the copy get_momenta handed
+        # back, so the event that is rewritten to the LHE keeps its own
+        # (massive) momenta and only the weights move.
+        n_ini = len(orig_order[0])
+        all_p = [lhe_parser.project_massless_partons(
+                     p, pdg, relevant_model or self.model, n_initial=n_ini)
+                 for p in all_p]
 
         #boosting the event
         all_p = self.method_boost_event(event, all_p, orig_order, hypp_id)
@@ -1703,23 +2199,38 @@ class ReweightInterface(extended_cmd.Cmd):
             if not self.use_eventid:
                 pid = -1
             
-            if not scale2: 
-                if hasattr(event, 'scale'):
+            if not scale2:
+                # mu_R: the mur of the <scales> tag when the event has one
+                # (mg7), else SCALUP, which holds mu_F
+                if hasattr(event, 'get_ren_scale'):
+                    scale2 = event.get_ren_scale()**2
+                elif hasattr(event, 'scale'):
                     scale2 = event.scale**2
                 else:
                     scale2 = 0
+            me_scale2 = scale2**2 if base in self.scale2_is_rooted else scale2
 
             with misc.chdir(Pdir):
                 with misc.stdchannel_redirected(sys.stdout, os.devnull):
-                    #misc.sprint(pdg, pid, p, event.aqcd, scale2, nhel)
-                    new_value = module.smatrixhel(pdg, pid, p, event.aqcd, scale2, nhel)
+                    if flav_idx is None:
+                        new_value = module.smatrixhel(pdg, pid, p, alphas, me_scale2, nhel)
+                    else:
+                        # folded crossing: name the matrix element by its slot
+                        # and the process by the extended flavor index the
+                        # event was resolved to (build_cross_resolve), rather
+                        # than by its PDG codes. NPDG is f2py-derived from p.
+                        new_value = module.smatrixhel_idx(procindex, flav_idx, p,
+                                                    alphas, me_scale2, nhel)
                     #misc.sprint(new_value)
-                    if new_value == 0:
+                    # NaN: no matrix element of the module serves these PDG
+                    # codes (its ERROR line goes to the silenced stdout)
+                    if new_value == 0 or (isinstance(new_value, float)
+                                          and math.isnan(new_value)):
                         raise Exception("Invalid matrix element")
             # for loop we have also the stability status code
             if isinstance(new_value, tuple):
                 new_value, code = new_value
-                #if code points unstability -> returns 0
+                #if code points instability -> returns 0
                 hundred_value = (code % 1000) //100
                 if hundred_value in [4]:
                     new_value = 0.
@@ -1737,18 +2248,61 @@ class ReweightInterface(extended_cmd.Cmd):
             return me_value
         
 
-    def get_crossing_tag(self,tag):
-        """find if using crossing symmetry allow to find the correct tag and return the assoicated tag"""
+    def find_matrix_element(self, tag, phys_tag, id_to_path, cross_resolve):
+        """(orig_order, Pdir, hel_dict, procindex, flav_idx) of the matrix
+        element that evaluates an event of (merged) tag `tag` and physical tag
+        `phys_tag`, among `id_to_path` and the crossings folded into it
+        (`cross_resolve`, see build_cross_resolve); None when there is none.
+        procindex and flav_idx are None unless the event is a folded crossing.
 
+        The folded crossing is looked up BEFORE the legacy get_crossing_tag.
+        That one matches the event's merged all-leg multiset, which a crossed
+        q q~ pair leaves unchanged (u d~ > w+ g g and g g > w+ q q~ are both
+        {81,-81,24,21,21}), so it would claim such a folded event for the base
+        and evaluate it through get_all_momenta's sign flips -- which cannot
+        move a gluon across (ValueError) and keep the base's spin and colour
+        averages -- instead of through the crossing the generation folded. The
+        legacy lookup also searches `id_to_path` only: the second hypothesis'
+        must not fall back on the original matrix elements, whose library is
+        not even loaded with the second card (load_module stops at MENUM=2)."""
+        if tag in id_to_path:
+            return tuple(id_to_path[tag]) + (None, None)
+        folded = self.resolve_folded_crossing(tag, phys_tag, cross_resolve)
+        if folded:
+            return folded
+        cross_tag = self.get_crossing_tag(tag, id_to_path)
+        if cross_tag:
+            return tuple(id_to_path[cross_tag]) + (None, None)
+        return None
+
+    def get_crossing_tag(self, tag, id_to_path=None):
+        """find if using crossing symmetry allow to find the correct tag and return the associated tag
+        (a key of `id_to_path`, self.id_to_path by default)"""
+
+        if id_to_path is None:
+            id_to_path = self.id_to_path
         # get list of possible crossing tag
-        crossing_tag = [tuple([int(x) for x in sorted(list(t[0])+list(t[1]))]) for t in self.id_to_path.keys()]
+        # id_to_path is not uniformly keyed: the NLO path also stores the
+        # virtual matrix element under ((initial, final), 'V'), so t[1] can be a
+        # string rather than a list of PDGs. Only a plain (initial, final) pair
+        # can carry a crossing, so skip anything else instead of trying to sort
+        # a string against a tuple (and keep the keys aligned with what is kept).
+        crossing_tag = []
+        keys = []
+        for t in id_to_path.keys():
+            try:
+                crossing_tag.append(
+                    tuple([int(x) for x in sorted(list(t[0]) + list(t[1]))]))
+            except (TypeError, ValueError):
+                continue
+            keys.append(t)
 
         mytag = list(tag[0])+list(tag[1])
         if self.revert_merged:
             for i in range(len(mytag)):
                 if mytag[i] in self.revert_merged:
                     mytag[i] = self.revert_merged[mytag[i]]
-                if -mytag[i] in self.revert_merged:
+                elif -mytag[i] in self.revert_merged:
                     mytag[i] = -self.revert_merged[-mytag[i]]
         mytag.sort()
         mytag=tuple(mytag)
@@ -1759,46 +2313,155 @@ class ReweightInterface(extended_cmd.Cmd):
             raise Exception('more than one cross-matrix element found')
         else:
             index = crossing_tag.index(mytag)
-        return list(self.id_to_path.keys())[index]
+        return keys[index]
 
 
 
+
+    @staticmethod
+    def boost_momenta_to_rest_frame(momenta, pboost, rest_leg=None):
+        """``momenta`` -- (E, px, py, pz) in the matrix element's leg order --
+        boosted into the rest frame of ``pboost``; the convention of
+        ``Event.boost``. ``rest_leg`` (0-based) is forced to exactly zero
+        three-momentum: HELAS picks the frame's z axis as quantisation axis
+        only for a momentum that is exactly at rest, and the boost arithmetic
+        leaves ~1e-14 (see boost_to_frame in Template/LO/SubProcesses/genps.f).
+        """
+        if pboost.mass_sqr <= 1e-10 * pboost.E ** 2:
+            # a light-like (e.g. a single massless leg) system has no rest
+            # frame: FourMomentum.boost would divide by its zero mass
+            raise madgraph.InvalidCmd(
+                "The frame asked for (me_frame / boost choice) is the rest "
+                "frame of a massless system (m^2 = %g GeV^2): it does not "
+                "exist. Select massive legs, or several legs." % pboost.mass_sqr)
+        neg = lhe_parser.FourMomentum(pboost.E, -pboost.px, -pboost.py,
+                                      -pboost.pz)
+        out = []
+        for mom in momenta:
+            new = lhe_parser.FourMomentum(mom).boost(neg)
+            out.append((new.E, new.px, new.py, new.pz))
+        if rest_leg is not None:
+            out[rest_leg] = (out[rest_leg][0], 0., 0., 0.)
+        return out
+
+    @classmethod
+    def boost_momenta_to_me_frame(cls, momenta, nb_initial, selected):
+        """madevent's ``boost_to_frame``: ``momenta`` (lab frame, matrix
+        element's leg order) in the rest frame of the legs ``selected``
+        (counted from 1), a single one exactly at rest.
+
+        For a collision that frame is reached by a boost along z, to zero
+        rapidity of the selected legs, and then a transverse one
+        (get_me_frame_boosts in Template/Common/Source/impose_frame_rest.f),
+        which lands in the same frame whichever frame along the beam it
+        starts from -- the lab here, the partonic CM in madevent. A single
+        boost from either would not: two boosts along different directions
+        compose to a boost *and* a rotation (Wigner), and the quantisation
+        axis of a single leg at rest turns with it -- by 25 degrees already
+        for a W of pT = 100 GeV in a partonic CM at rapidity 1. A decay has
+        no beam: its frame is a single boost from the rest frame of the
+        decaying particle, the frame madevent works in.
+        """
+        rest_leg = selected[0] - 1 if len(selected) == 1 else None
+        if nb_initial != 2:
+            pinit = lhe_parser.FourMomentum()
+            for i in range(nb_initial):
+                pinit += lhe_parser.FourMomentum(momenta[i])
+            rest = cls.boost_momenta_to_rest_frame(momenta, pinit)
+            pboost = lhe_parser.FourMomentum()
+            for n in selected:
+                pboost += lhe_parser.FourMomentum(rest[n - 1])
+            return cls.boost_momenta_to_rest_frame(rest, pboost, rest_leg)
+        pboost = lhe_parser.FourMomentum()
+        for n in selected:
+            pboost += lhe_parser.FourMomentum(momenta[n - 1])
+        along_z = cls.boost_momenta_to_rest_frame(
+            momenta, lhe_parser.FourMomentum(pboost.E, 0., 0., pboost.pz))
+        transverse = lhe_parser.FourMomentum(
+            math.sqrt((pboost.E - pboost.pz) * (pboost.E + pboost.pz)),
+            pboost.px, pboost.py, 0.)
+        return cls.boost_momenta_to_rest_frame(along_z, transverse, rest_leg)
+
+    def get_me_frame(self, n_incoming, n_external):
+        """The legs -- counted from 1, in the matrix element's order -- whose
+        rest frame the events' own matrix element was evaluated in, from the
+        run_card of the banner. None when that is the rest frame of the
+        incoming system (the partonic centre of mass of a collision), which
+        the zboost branch of method_boost_event reaches on its own; [] when
+        the matrix element saw the momenta unboosted, mg7's default.
+
+        me_frame is read rather than frame_id. frame_id is a system parameter,
+        computed only when the include files are written, so a run_card read
+        back from an LHE banner keeps its default 6 whatever me_frame says --
+        a polarised sample was reweighted in the partonic centre of mass. An
+        mg7 banner has no frame_id at all, and there [] means no boost:
+        madspace evaluates the matrix element on the lab-frame momenta it
+        writes out, not in madevent's partonic centre of mass.
+        """
+        run_card = self.banner.run_card
+        if isinstance(run_card, banner.RunCardMG7):
+            me_frame = list(run_card['run']['me_frame'])
+            if not me_frame:
+                return []
+        elif 'me_frame' in run_card:
+            me_frame = list(run_card['me_frame'])
+            # madevent and aMC@NLO skip [1, 2] (frame_id 6) outright, decays
+            # included: their matrix element is handed momenta already in
+            # the partonic centre of mass, or the decaying particle's rest
+            # frame
+            if sorted(set(me_frame)) == [1, 2]:
+                return None
+        else:
+            return None
+        # madevent reads only the bits of the legs the matrix element has
+        # (mapid), and with none of them selected boosts by nothing, i.e.
+        # stays in the partonic centre of mass
+        me_frame = sorted(set(n for n in me_frame if 1 <= n <= n_external))
+        if not me_frame or me_frame == list(range(1, n_incoming + 1)):
+            return None
+        return me_frame
 
     def method_boost_event(self, event, all_p, orig_order, hypp_id):
         # For 2>N pass in the center of mass frame
         #   - required for helicity by helicity re-weighitng
         #   - Speed-up loop computation 
         
-        if (hypp_id == 0 and ('frame_id' in self.banner.run_card and self.banner.run_card['frame_id'] !=6)):
-            import copy
-            new_event = copy.deepcopy(event)
-            pboost = FourMomenta()
-            to_inc = bin(self.banner.run_card['frame_id'])[2:]
-            to_inc.reverse()
-            nb_ext = 0
-            for p in new_event:
-                if p.status in [-1,1]:
-                    nb_ext += 1
-                    if to_inc[nb_ext]:
-                        pboost += p                    
-            new_event.boost(pboost)
-            if self.keep_ordering:
-                new_all_p = [new_event.get_momenta(orig_order)]
-            else:
-                new_all_p = new_event.get_all_momenta(orig_order)
-            if len(new_all_p) > 1:
-                logger.critical("due to ordering ambiguity, the boost used might not be consistent. please ensure that this is not an issue")
-                
-            return new_all_p
+        n_incoming = len(orig_order[0])
+        me_frame = None
+        if not (hypp_id == 1 and self.boost_event):
+            me_frame = self.get_me_frame(n_incoming, len(all_p[0]))
+        if me_frame is not None:
+            # The frame the events were generated in (see get_me_frame for why
+            # it is read from me_frame and not frame_id). Both matrix elements
+            # are evaluated in it: the weight is w_new/w_orig, and a ratio of
+            # two helicity-dependent matrix elements taken in two frames means
+            # nothing. A boost set explicitly for the new one ('change boost')
+            # still takes precedence.
+            # me_frame counts legs in the *matrix element's* order, the order
+            # all_p is already in -- walking the event's own lines instead
+            # picks whatever particle the LHE wrote at that place. The momenta
+            # are boosted directly, like the zboost below, rather than re-read
+            # from a boosted copy of the event, so the Monte-Carlo-mass
+            # projection the caller applied to all_p survives the boost.
+            if not me_frame:
+                # mg7's default: its matrix element saw the lab-frame momenta
+                return all_p
+            # each assignment of the identical particles is its own guess of
+            # which particle is leg n: its frame is built from its own legs
+            return [self.boost_momenta_to_me_frame(p, n_incoming, me_frame)
+                    for p in all_p]
+        # None: the rest frame of the incoming system, i.e. the default
+        # partonic-CM boost below (madevent's frame_id 6, or no leg selected)
 
-        elif (hypp_id == 1 and self.boost_event):
+        if (hypp_id == 1 and self.boost_event):
             if self.boost_event is not True:
                 new_event = copy.deepcopy(event)
                 new_event.boost(self.boost_event)
                 if self.keep_ordering:
-                    new_all_p = [new_event.get_momenta(orig_order)]
+                    new_all_p = [new_event.get_momenta(orig_order, merged_map=self.revert_merged)]
                 else:     
-                    new_all_p = new_event.get_all_momenta(orig_order)
+                    new_all_p = new_event.get_all_momenta(orig_order, merged_map=self.revert_merged,
+                                                          decay_chain=True)
 
                 return new_all_p
             return all_p #if we arrive here, we should return the input no ?
@@ -1878,14 +2541,93 @@ class ReweightInterface(extended_cmd.Cmd):
         """Adding one element to the list based on the matrix element"""
         
 
+    def tree_crossing_flag(self, processes):
+        """The --use_crossing option appended to every TREE definition of
+        `processes` when the reweight generates its own matrix elements (see
+        create_standalone_tree_directory).
+
+        The reweight reads the crossed subprocesses folded (build_cross_resolve),
+        so that they cost neither a generation nor a compilation of their own:
+        ' --use_crossing=True', which is also the default of a generation, but
+        stated so that the reweight does not depend on it. The modes that need
+        the crossed subprocesses back as separate entries get
+        ' --use_crossing=False' (appended last, so it also overrides a True
+        replayed from the card):
+         - 'keep_ordering' promises that the events are written in the matrix
+           element's own leg order, which makes the id_to_path key
+           order-sensitive; a folded crossing has no directory and hence no
+           such order to promise, so a crossed event would miss the lookup.
+         - the density mode evaluates py_get_density, not SMATRIX, and finds
+           the matrix element and its leg order through get_pdg_order, which
+           lists no folded crossing. py_get_density itself falls back to a
+           folded crossing (f77_crossed_density), but only for legs in that
+           crossing's own order (GET_PDG_FOR_FLAVOR) up to exchanges of
+           same-code legs not in POS inside the initial or the final state,
+           which this mode does not build.
+         - 'use_eventid' hands the event's process id to SMATRIXHEL, while the
+           folded entry point SMATRIXHEL_IDX takes none: a crossed event would
+           silently be given the first matching matrix element instead.
+         - beam polarisation (polbeam1/polbeam2 of an LO run_card): SMATRIX
+           weights BEAMPOL(J) with the helicity of its incoming leg J, which for
+           a crossed flavor index is the base's leg, not the event's beam; the
+           crossing-aware SMATRIX therefore refuses that combination with a
+           Fortran STOP, which would end the whole session at the first
+           crossed event. madevent folds such a process when the crossing
+           does not move the polarised beam (e- u > e- u with e- u~ > e- u~),
+           so the events can be polarised while the reweight folds.
+        So do, whatever the card says:
+         - a perturbative ([...]) definition among `processes`: the reweight
+           reads its LO lines (get_LO_definition_from_NLO) unfolded, and
+           create_standalone_tree_directory appends the flag to them as well
+           (the [...] lines themselves are never crossed);
+         - the EW Sudakov output (ewsudakovsa): it is no folding format, so the
+           folded crossings would only be expanded back.
+        Nothing is appended, leaving the generation as the lines ask, when a
+        line already carries --use_crossing, or its deprecated alias
+        --no_crossing: the proc card replays the user's own choice, and an
+        explicit False is sticky for the whole definition (see
+        MadGraphCmd.do_add), so it is respected as is.
+        A folded generation whose crossing records come out incomplete is
+        redone unfolded afterwards (see create_standalone_tree_directory).
+        """
+        if self.keep_ordering or self.flag_density_matrix or self.use_eventid:
+            return ' --use_crossing=False'
+        if self.events_beampol():
+            return ' --use_crossing=False'
+        if self.inc_sudakov or any('[' in proc for proc in processes):
+            return ' --use_crossing=False'
+        if any(arg in ('--use_crossing', '--no_crossing')
+               or arg.startswith('--use_crossing=')
+               for proc in processes for arg in proc.split()):
+            return ''
+        return ' --use_crossing=True'
+
+    @staticmethod
+    def with_crossing_flag(commandline, xflag):
+        """`commandline` (';'-separated commands, get_LO_definition_from_NLO)
+        with `xflag` appended to every tree 'add process' line: the others
+        (define, and the [...] lines, which take the loop path and read no
+        --use_crossing) are left as they are."""
+        if not xflag:
+            return commandline
+        out = []
+        for command in commandline.split(';'):
+            if command.split()[:2] == ['add', 'process'] and '[' not in command:
+                command = command.rstrip() + xflag + ' '
+            out.append(command)
+        return ';'.join(out)
+
     @misc.mute_logger()
     def create_standalone_tree_directory(self, data ,second=False):
         """generate the various directory for the weight evaluation"""
-        
-        mgcmd = self.mg5cmd         
-        path_me = data['path'] 
+
+        mgcmd = self.mg5cmd
+        path_me = data['path']
+        fxfx_mode = data.get('fxfx_mode', False)
+        fxfx_extra_set = data.get('fxfx_extra_set', set())
+        fxfx_clean = lambda expression: re.sub(r'\[[^\]]*\]', '', expression).strip()
         # 2. compute the production matrix element -----------------------------
-        has_nlo = False  
+        has_nlo = False
         mgcmd.exec_cmd("set group_subprocesses False")
 
         if not second:
@@ -1893,35 +2635,67 @@ class ReweightInterface(extended_cmd.Cmd):
         else:
             logger.info('generating the square matrix element for reweighting (second model and/or processes)')
         start = time.time()
-        commandline=''
+        # The reweight matches each event's flavor to a subprocess matrix
+        # element (id_to_path), and reaches a FOLDED crossed subprocess through
+        # the base's crossing-aware SMATRIX (see build_cross_resolve), so it
+        # asks for the folding itself: the crossed subprocesses then cost
+        # neither a generation nor a compilation. See tree_crossing_flag for the
+        # modes that cannot fold, and for the explicit choice it leaves alone.
+        # The flag goes on every tree line, the LO lines of a perturbative
+        # definition included, but never inside a [...] line: those take the
+        # loop path (never crossed), which reads no --use_crossing.
+        xflag = self.tree_crossing_flag(data['processes'])
+        command_list = []
         for i,proc in enumerate(data['processes']):
+            if fxfx_mode:
+                clean_proc = fxfx_clean(proc)
+                if clean_proc not in fxfx_extra_set:
+                    continue
+                ordered_proc = f"{clean_proc}"
+                single_cmd = "add process %s [LOonly=QCD] --ewsudakov;" % ordered_proc
+                logger.info("FxFx Sudakov process: %s", single_cmd.strip(';'))
+                command_list.append(single_cmd)
+                continue
             if '[' not in proc:
-                commandline += "add process %s ;" % proc
+                single_cmd = "add process %s%s ;" % (proc, xflag)
+                logger.info("Process: %s", single_cmd.strip(';'))
+                command_list.append(single_cmd)
             else:
                 has_nlo = True
                 if self.banner.get('run_card','ickkw') == 3:
                     if len(proc) == min([len(p.strip()) for p in data['processes']]):
-                        commandline += self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
+                        single_cmd = self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
                     else:
-                        commandline += self.get_LO_definition_from_NLO(proc,
+                        single_cmd = self.get_LO_definition_from_NLO(proc,
                                                     self.model, real_only=True, ewsudakov=self.inc_sudakov)
                 else:
-                    commandline += self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
-        # --no_crossing skips the generation of crossed subprocesses (e.g.
-        # u~ g > h u~ when u g > h u is already there). That's fine when
-        # flavor grouping is on, because the merged matrix element handles
-        # all signs internally. Without flavor grouping, however, the
-        # crossed subprocesses must be generated as separate entries --
-        # otherwise antiparticle events have nothing to match against in
-        # id_to_path. Only emit --no_crossing when both conditions hold.
-        if not self.keep_ordering and self._reweight_use_flavor_grouping():
-            commandline = commandline.replace('add process', 'add process --no_crossing')
-        commandline = commandline.replace('add process', 'generate',1)
-        logger.info(commandline)
+                    single_cmd = self.get_LO_definition_from_NLO(proc, self.model, ewsudakov=self.inc_sudakov)
+                single_cmd = self.with_crossing_flag(single_cmd, xflag)
+                logger.info("Process: %s", single_cmd.strip(';'))
+                command_list.append(single_cmd)
+
+        if not command_list:
+            raise Exception("No processes defined for reweighting generation.")
+
+        command_list = first_add_process_to_generate(command_list)
+
+        def exec_command_sequence(cmds, log_fxfx_failure=False):
+            for idx, cmd in enumerate(cmds):
+                try:
+                    mgcmd.exec_cmd(cmd, precmd=True, errorhandling=False)
+                except diagram_generation.NoDiagramException:
+                    raise
+                except Exception:
+                    if log_fxfx_failure and fxfx_mode:
+                        logger.error("FxFx Sudakov command %02d failed: %s", idx+1, cmd.strip())
+                    raise
+
         try:
-            mgcmd.exec_cmd(commandline, precmd=True, errorhandling=False)
+            exec_command_sequence(command_list, log_fxfx_failure=True)
         except diagram_generation.NoDiagramException:
-            commandline=''
+            if fxfx_mode:
+                raise
+            fallback_commands = []
             for proc in data['processes']:
                 if '[' not in proc:
                     raise
@@ -1932,24 +2706,52 @@ class ReweightInterface(extended_cmd.Cmd):
                     nlo_order = 'virt=%s' % nlo_order
                 elif 'noborn' in nlo_order:
                     nlo_order = nlo_order.replace('noborn', 'virt')
-                commandline += "add process %s [%s] %s;" % (base,nlo_order,post)
-            commandline = commandline.replace('add process', 'generate',1)
-            if commandline:
-                logger.info("RETRY with %s", commandline)
-                mgcmd.exec_cmd(commandline, precmd=True)
+                fallback_commands.append("add process %s [%s] %s;" % (base,nlo_order,post))
+            fallback_commands = first_add_process_to_generate(fallback_commands)
+            if fallback_commands:
+                logger.info("RETRY with fallback virtual commands.")
+                exec_command_sequence(fallback_commands)
                 has_nlo = False
         except Exception as error:
+            if fxfx_mode:
+                logger.error("FxFx Sudakov generation aborted due to: %s", str(error))
             misc.sprint(type(error))
             raise
         
-        commandline = 'output %s %s --prefix=int --prefixf2py=%s' % (self.sa_class, pjoin(path_me,data['paths'][0]), self.nb_rw)
         self.path2prefix[pjoin(path_me,data['paths'][0])] = self.nb_rw
         self.nb_rw += 1
+        # no --prefixf2py for the tree output: rw_me and rw_me_<N> are kept
+        # apart by the name of their shared library (see compile_SubProcess_dir)
         commandline = 'output %s %s --prefix=int --density=1' % (self.sa_class, pjoin(path_me,data['paths'][0]))
         if self.inc_sudakov:
             # in this case, the sudakov output format has to be changed
             commandline = 'output ewsudakovsa %s --prefix=int' % pjoin(path_me,data['paths'][0])
         mgcmd.exec_cmd(commandline, precmd=True)
+
+        # The folded crossings are read back from the records this output wrote
+        # (build_cross_resolve). A record that could not name every crossed
+        # subprocess it folded (complete 0) leaves those events without a
+        # matrix element, and the first of them would stop the reweighting; so
+        # such a generation is redone with the crossings unfolded, which gives
+        # every subprocess an entry of its own.
+        incomplete = sorted(prefix for prefix, (_codes, complete) in
+            self.read_crossing_records(pjoin(path_me, data['paths'][0],
+                                             'SubProcesses')).items()
+            if not complete)
+        if incomplete and not self.inc_sudakov and \
+           not any('[' in proc for proc in data['processes']) and \
+           xflag != ' --use_crossing=False':
+            logger.warning('Crossing symmetry folded subprocesses into %s that '
+                           'the reweighting could not reach back; generating '
+                           'the matrix elements again with --use_crossing=False.',
+                           ', '.join(incomplete))
+            unfolded = ''.join("add process %s --use_crossing=False ;" % proc
+                               for proc in data['processes'])
+            unfolded = unfolded.replace('add process', 'generate', 1)
+            logger.info(unfolded)
+            mgcmd.exec_cmd(unfolded, precmd=True, errorhandling=False)
+            shutil.rmtree(pjoin(path_me, data['paths'][0]))
+            mgcmd.exec_cmd(commandline, precmd=True)
 
         logger.info('Done %.4g' % (time.time()-start))
         self.has_standalone_dir = True
@@ -2103,6 +2905,43 @@ class ReweightInterface(extended_cmd.Cmd):
 
                     data['id2path'][(tag,'V')] = [order, Pdir, hel_dict]
 
+    def create_density_tree_directory(self, data, processes, out_dirname, label):
+        """Generate a standalone directory for density matrix evaluation."""
+        if not processes:
+            return False
+
+        mgcmd = self.mg5cmd
+        path_me = data['path']
+        out_path = pjoin(path_me, out_dirname)
+        if os.path.exists(out_path):
+            try:
+                shutil.rmtree(out_path)
+            except Exception as error:
+                misc.sprint('fail to rm density dir:', error)
+                pass
+
+        density_clean = lambda expression: re.sub(r'\[[^\]]*\]', '', expression).strip()
+        mgcmd.exec_cmd("set group_subprocesses False")
+        command_list = []
+        for proc in processes:
+            clean_proc = density_clean(proc)
+            if not clean_proc:
+                continue
+            command_list.append("add process %s ;" % clean_proc)
+
+        if not command_list:
+            return False
+
+        command_list = first_add_process_to_generate(command_list)
+
+        for cmd in command_list:
+            mgcmd.exec_cmd(cmd, precmd=True, errorhandling=False)
+
+        commandline = 'output %s %s --prefix=int' % (self.sa_class, out_path)
+        mgcmd.exec_cmd(commandline, precmd=True)
+        logger.info('Density output (%s) written to %s', label, out_path)
+        return True
+
     def load_interface_model(self, second=False):
         data={}
         if not second:
@@ -2158,8 +2997,40 @@ class ReweightInterface(extended_cmd.Cmd):
 
         #if not self.keep_ordering:
         #    for i,line in enumerate(data['processes']):
-        #        data['processes'][i] = '%s --no_crossing' % line
+        #        data['processes'][i] = '%s --use_crossing=False' % line
             
+        # FxFx EW Sudakov: add the clustered final states catalogued from the events.
+        fxfx_clean = lambda expression: re.sub(r'\[[^\]]*\]', '', expression).strip()
+        extra_processes = []
+        fxfx_extra_set = set()
+        fxfx_mode = (not second) and self.inc_sudakov and self._needs_fxfx_cluster_catalogue()
+        if fxfx_mode:
+            extra_processes = self._get_fxfx_extra_processes()
+            if extra_processes:
+                existing = set(data['processes'])
+                for proc in extra_processes:
+                    if proc in existing:
+                        continue
+                    data['processes'].append(proc)
+                    existing.add(proc)
+                logger.info('Added %d FxFx clustered final-state processes for Sudakov reweighting',
+                            len(extra_processes))
+                fxfx_extra_set = set(fxfx_clean(proc) for proc in extra_processes)
+
+        data['fxfx_mode'] = fxfx_mode
+        data['fxfx_extra_set'] = fxfx_extra_set
+
+        # Density-matrix production/decay processes, from the same catalogue.
+        density_prod_processes = []
+        density_decay_processes = []
+        if fxfx_mode:
+            density_prod_processes = self._get_fxfx_density_production_processes()
+            density_decay_processes = self._get_fxfx_density_decay_processes()
+            if density_prod_processes or density_decay_processes:
+                logger.info('Added %d density production processes and %d decay processes for density matrices',
+                            len(density_prod_processes), len(density_decay_processes))
+        data['density_prod_processes'] = density_prod_processes
+        data['density_decay_processes'] = density_decay_processes
 
         # 0. clean previous run ------------------------------------------------
         if not self.rwgt_dir:
@@ -2184,8 +3055,20 @@ class ReweightInterface(extended_cmd.Cmd):
         has_cms = re.compile(r'''set\s+complex_mass_scheme\s*(True|T|1|true|$|;)''')
         has_ew = re.compile(r'''set\s+EWscheme\s*(\w*)''')
         for line in self.banner.proc_card:
-            if line.startswith('set'):
-                mgcmd.exec_cmd(line, printcmd=False, precmd=False, postcmd=False)
+            # 'set gauge X' is run: the matrix elements must be the ones of
+            # the sample; the automatic choice stays off (auto_gauge False)
+            if line.startswith('set') and \
+                                    line.split()[:2] != ['set', 'auto_gauge']:
+                try:
+                    mgcmd.exec_cmd(line, printcmd=False, precmd=False,
+                                   postcmd=False)
+                except madgraph.InvalidCmd:
+                    # A proc card can carry a `set` that is no MG5 option --
+                    # an answer to a launch card question (`set width 6
+                    # auto`) was written into it before those were kept
+                    # out.  It says nothing about the process: skip it.
+                    logger.debug('proc card line ignored: %s', line)
+                    continue
                 if has_cms.search(line):
                     complex_mass = True
                 if has_ew.search(line, re.I):
@@ -2196,6 +3079,9 @@ class ReweightInterface(extended_cmd.Cmd):
                 except madgraph.InvalidCmd:
                     pass 
                         
+        if self.keep_tchannel_width(self.banner):
+            mgcmd.options['zerowidth_tchannel'] = False
+
         # 1. Load model---------------------------------------------------------  
         if  not data['model_name'] and not second:
             raise self.InvalidCmd('Only UFO model can be loaded in this module.')
@@ -2220,6 +3106,19 @@ class ReweightInterface(extended_cmd.Cmd):
                     pass
         return path_me, data, mgcmd
 
+    @staticmethod
+    def keep_tchannel_width(event_banner):
+        """True if the sample was generated with finite t-channel widths:
+        only madevent (since 2.8.0) sets them to zero (zerowidth_tchannel),
+        aMC@NLO keeps them. The version is in the header of the proc_card."""
+
+        if 'mgruncard' in event_banner and \
+               isinstance(event_banner.get('run_card'), banner.RunCardNLO):
+            return True
+        version = re.search(r'VERSION\s+(\d+)\.(\d+)', event_banner['mg5proccard'])
+        return bool(version) and \
+                         (int(version.group(1)), int(version.group(2))) < (2, 8)
+
     @misc.mute_logger()
     def create_standalone_directory(self, second=False):
         """generate the various directory for the weight evaluation"""
@@ -2233,6 +3132,17 @@ class ReweightInterface(extended_cmd.Cmd):
                 has_nlo=False
         else:
             has_nlo = self.create_standalone_tree_directory(data, second)
+            if (not second) and self.inc_sudakov:
+                prod_procs = data.get('density_prod_processes', [])
+                decay_procs = data.get('density_decay_processes', [])
+                if prod_procs:
+                    self.create_density_tree_directory(
+                        data, prod_procs, self.density_prod_dirname, label='production'
+                    )
+                if decay_procs:
+                    self.create_density_tree_directory(
+                        data, decay_procs, self.density_decay_dirname, label='decay'
+                    )
 
         if has_nlo and not self.rwgt_mode:
             self.rwgt_mode = ['NLO']
@@ -2320,7 +3230,7 @@ class ReweightInterface(extended_cmd.Cmd):
                     nb_core = int(self.options['nb_core'])
                 except (TypeError, KeyError):
                     nb_core = multiprocessing.cpu_count()
-            except ImportError: 
+            except ImportError:
                 nb_core = 1
 
             compile_options = copy.copy(self.options)
@@ -2341,6 +3251,7 @@ class ReweightInterface(extended_cmd.Cmd):
                 compile_cluster.remove()
                 self.do_quit('')
             logger.info('...done')
+            self._compile_density_subprocesses()
 
         else:
             rwgt_dir_possibility =   ['rw_me','rw_me_%s' % self.nb_library,'rw_mevirt','rw_mevirt_%s' % self.nb_library]
@@ -2348,29 +3259,174 @@ class ReweightInterface(extended_cmd.Cmd):
                 if not os.path.isdir(pjoin(path_me,onedir)):
                     continue
                 pdir = pjoin(path_me, onedir, 'SubProcesses')
-                self.compile_SubProcess_dir(pdir)
+                self.f2py_suffix[onedir] = self.get_f2py_suffix(pdir)
+                self.compile_SubProcess_dir(pdir, self.f2py_suffix[onedir])
 
+    @staticmethod
+    def get_f2py_suffix(Sdir):
+        """suffix for the names of the f2py modules/library built in Sdir:
+        '' (the default names) unless that name was already imported in this
+        process, from this or any other directory (see loaded_f2py_names).
+        """
+        name = os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
+        suffix = ''
+        i = 1
+        while name + suffix in loaded_f2py_names:
+            i += 1
+            suffix = '_r%i' % i
+        return suffix
 
-    def compile_SubProcess_dir(self, Sdir):
-        """compile a full Subprocess directory"""
+    def compile_SubProcess_dir(self, Sdir, suffix=''):
+        """compile a full Subprocess directory. A non-empty suffix is appended
+        to the names of the f2py modules and of their shared library."""
 
         if self.mother:
             nb_core = self.mother.options['nb_core'] if self.mother.options['run_mode'] !=0 else 1
         else:
             nb_core = 1
-        os.environ['MENUM'] = '2'
-        try: 
-            misc.compile(['all_matrix2py.so'], cwd=Sdir, nb_core=nb_core)
-        except Exception as e:
-            misc.compile(['all_matrix2py.so'], cwd=Sdir, nb_core=1)
-
-        if not (self.second_model or self.second_process or self.dedicated_path):
-            os.environ['MENUM'] = '3'
+        # rw_me and rw_me_<N> are loaded in the same process: their shared
+        # library (liball<PROCNAME>_<MENUM>me) needs a distinct name, otherwise
+        # the loader hands the second f2py module the first library.
+        # The leading '_' keeps it different from the liball<dir>_<N>me.so
+        # name that load_module tries to preload with RTLD_GLOBAL.
+        # A rebuild of a name already loaded in this process (suffix) also
+        # renames the f2py module, and for the loop output (rw_mevirt, whose
+        # makefile names its library after ROOTNAME) the library too.
+        dirname = os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
+        names = ['PROCNAME=_%s%s' % (dirname, suffix)]
+        if suffix:
+            names.append('ROOTNAME=%s%s' % (dirname, suffix))
+        for menum in ['2', '3']:
+            if menum == '3' and (self.second_model or self.second_process or self.dedicated_path):
+                break
+            os.environ['MENUM'] = menum
+            args = names + ['all_matrix%spy.so' % menum]
+            if suffix:
+                args.insert(-1, 'F2PYMOD=all_matrix%spy%s' % (menum, suffix))
             try:
-                misc.compile(['all_matrix3py.so'], cwd=Sdir, nb_core=nb_core)
+                misc.compile(args, cwd=Sdir, nb_core=nb_core)
             except Exception as e:
-                misc.compile(['all_matrix3py.so'], cwd=Sdir, nb_core=1)
-                
+                misc.compile(args, cwd=Sdir, nb_core=1)
+
+
+    def _compile_density_subprocesses(self):
+        """Compile density matrix subprocess directories if present."""
+        path_me = self.rwgt_dir if self.rwgt_dir else self.me_dir
+        for dir_name in [self.density_prod_dirname, self.density_decay_dirname]:
+            if not dir_name:
+                continue
+            sub_dir = pjoin(path_me, dir_name, 'SubProcesses')
+            if not os.path.isdir(sub_dir):
+                continue
+            logger.info('Compiling density modules in %s', sub_dir)
+            self.f2py_suffix[dir_name] = self.get_f2py_suffix(sub_dir)
+            self.compile_SubProcess_dir(sub_dir, self.f2py_suffix[dir_name])
+
+    def load_density_modules(self):
+        """Load density matrix modules from the dedicated density directories."""
+        if not self.inc_sudakov:
+            return
+        self._density_initialized_modules = {}
+        self.density_prod_id_to_path = {}
+        self.density_decay_id_to_path = {}
+        self.density_prod_f2pylib = {}
+        self.density_decay_f2pylib = {}
+        self._load_density_dir(self.density_prod_dirname, nincoming=2,
+                               id_to_path=self.density_prod_id_to_path,
+                               f2pylib=self.density_prod_f2pylib)
+        self._load_density_dir(self.density_decay_dirname, nincoming=1,
+                               id_to_path=self.density_decay_id_to_path,
+                               f2pylib=self.density_decay_f2pylib)
+
+    def _load_density_dir(self, dir_name, nincoming, id_to_path, f2pylib):
+        """Load a standalone density directory and populate mappings."""
+        required = (self._needs_fxfx_cluster_catalogue()
+                    and bool(getattr(self, 'fxfx_clustered_decay_processes', None)))
+        if not dir_name:
+            if required:
+                raise fxfx_ewsudakov.DensityLibraryError('A required density directory is not configured.')
+            return
+        path_me = self.rwgt_dir if self.rwgt_dir else self.me_dir
+        base_dir = pjoin(path_me, dir_name)
+        if not os.path.isdir(base_dir):
+            if required:
+                raise fxfx_ewsudakov.DensityLibraryError(
+                    'Required density directory is missing: %s. Regenerate and compile the density libraries.'
+                    % base_dir)
+            return
+        pdir = pjoin(base_dir, 'SubProcesses')
+        suffix = self.f2py_suffix.get(dir_name, '')
+        for tag in [2, 3]:
+            mod_name = '%s.SubProcesses.all_matrix%spy%s' % (dir_name, tag, suffix)
+            try:
+                with misc.TMP_variable(sys, 'path', [pjoin(path_me), pdir] + sys.path):
+                    tmp_mod_name = mod_name
+                    while tmp_mod_name:
+                        sys.modules.pop(tmp_mod_name, None)
+                        tmp_mod_name = tmp_mod_name.rpartition('.')[0]
+                    # Native extension names are shared across directories.
+                    sys.modules.pop('all_matrix%spy%s' % (tag, suffix), None)
+                    import importlib
+                    importlib.invalidate_caches()
+                    mymod = importlib.import_module(mod_name)
+                    loaded_f2py_names.add(dir_name + suffix)
+                    if hasattr(mymod, 'set_madloop_path'):
+                        mymod.set_madloop_path(pjoin(pdir, 'MadLoop5_resources'))
+            except Exception as error:
+                # DensityHelper uses the tree module (tag 2). Tag 3 is optional.
+                if required and tag == 2:
+                    raise fxfx_ewsudakov.DensityLibraryError(
+                        'Cannot load required density module %s from %s: %s: %s'
+                        % (mod_name, pdir, type(error).__name__, error)) from error
+                logger.debug('Optional density module %s unavailable: %s', mod_name, error)
+                continue
+            f2pylib[(dir_name, tag)] = mymod
+
+        mymod = f2pylib.get((dir_name, 2))
+        if mymod is None:
+            return
+
+        try:
+            allids, all_pids = mymod.get_pdg_order()
+            all_pdgs = [[pdg for pdg in pdgs if pdg != 0] for pdgs in allids]
+            all_prefix = [bytes(j).decode(errors="ignore").strip().lower() for j in mymod.get_prefix()]
+            prefix_set = set(all_prefix)
+
+            hel_dict = {}
+            for prefix in prefix_set:
+                if hasattr(mymod, '%sprocess_nhel' % prefix):
+                    # Copy the ME helicity table into the f2py common block.
+                    getattr(mymod, '%sget_nhel_entry' % prefix)()
+                    nhel = getattr(getattr(mymod, '%sprocess_nhel' % prefix), '%snhel' % prefix)
+                    hel_dict[prefix] = {}
+                    for i, onehel in enumerate(zip(*nhel)):
+                        hel_dict[prefix][tuple(onehel)] = i + 1
+                elif hasattr(mymod, 'set_madloop_path') and \
+                     os.path.exists(pjoin(pdir, 'MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper())):
+                    hel_dict[prefix] = {}
+                    with open(pjoin(pdir, 'MadLoop5_resources', '%sHelConfigs.dat' % prefix.upper())) as helicities:
+                        for i, line in enumerate(helicities):
+                            hel_dict[prefix][tuple(int(h) for h in line.split())] = i + 1
+
+            for i, (pdg, pid) in enumerate(zip(all_pdgs, all_pids)):
+                incoming = pdg[:nincoming]
+                outgoing = pdg[nincoming:]
+                order = (list(incoming), list(outgoing))
+                if not self.keep_ordering:
+                    incoming.sort()
+                    outgoing.sort()
+                tag = (tuple(incoming), tuple(outgoing))
+                prefix = all_prefix[i]
+                hel = hel_dict.get(prefix, {})
+                id_to_path[tag] = order, pdir, hel
+            if required and not id_to_path:
+                raise ValueError('No density subprocesses were loaded.')
+        except Exception as error:
+            if required:
+                raise fxfx_ewsudakov.DensityLibraryError(
+                    'Invalid required density module %s in %s: %s: %s'
+                    % (dir_name, pdir, type(error).__name__, error)) from error
+            raise
 
     def load_module(self, metag=1):
         """load the various module and load the associate information"""
@@ -2382,6 +3438,8 @@ class ReweightInterface(extended_cmd.Cmd):
 
         self.id_to_path = {}
         self.id_to_path_second = {}
+        self.cross_resolve = {}
+        self.cross_resolve_second = {}
         rwgt_dir_possibility =   ['rw_me','rw_me_%s' % self.nb_library,'rw_mevirt','rw_mevirt_%s' % self.nb_library]
         fprefix = ''
         for onedir in rwgt_dir_possibility:
@@ -2408,23 +3466,19 @@ class ReweightInterface(extended_cmd.Cmd):
                             except Exception as err:
                                 logger.debug('ctypes trick fail for module')
                             break
-                    mod_name = '%s.SubProcesses.all_matrix%spy' % (onedir, tag)
-                    #mymod = __import__('%s.SubProcesses.allmatrix%spy' % (onedir, tag), globals(), locals(), [],-1)
-                    if mod_name in list(sys.modules.keys()):
-                        del sys.modules[mod_name]
-                        tmp_mod_name = mod_name
-                        while '.' in tmp_mod_name:
-                            tmp_mod_name = tmp_mod_name.rsplit('.',1)[0]
-                            del sys.modules[tmp_mod_name]
-                        import importlib
-                        mymod = importlib.import_module(mod_name,)
-                        mymod = importlib.reload(mymod)
-                        #mymod = __import__(mod_name, globals(), locals(), [])
-                    else:
-                        import importlib
-                        mymod = importlib.import_module(mod_name,)
-                        #mymod = __import__(mod_name, globals(), locals(), [])
-                    
+                    suffix = self.f2py_suffix.get(onedir, '')
+                    mod_name = '%s.SubProcesses.all_matrix%spy%s' % (onedir, tag, suffix)
+                    # forget the module and its packages: the packages of a
+                    # previous reweighting may point to another rwgt_dir
+                    tmp_mod_name = mod_name
+                    while tmp_mod_name:
+                        sys.modules.pop(tmp_mod_name, None)
+                        tmp_mod_name = tmp_mod_name.rpartition('.')[0]
+                    import importlib
+                    importlib.invalidate_caches()
+                    mymod = importlib.import_module(mod_name)
+                    loaded_f2py_names.add(onedir + suffix)
+
                 if fprefix != '':
                     fprefix = 'f%i_' % fprefix
                     for attr in dir(mymod):
@@ -2440,6 +3494,12 @@ class ReweightInterface(extended_cmd.Cmd):
                 fprefix = ''
                 # Param card not available -> no initialisation
                 self.f2pylib[(onedir,tag)] = mymod
+                # loop libraries written before the fix of the dispatcher passed
+                # DSQRT(SCALES2) to get_me, which takes the square root again:
+                # such a (re-used) library needs mu^4 to run at mu.
+                allmatrix = pjoin(pdir, 'all_matrix.f')
+                if os.path.exists(allmatrix) and 'DSQRT(SCALES2)' in open(allmatrix).read():
+                    self.scale2_is_rooted.add(onedir)
                 if hasattr(mymod, 'set_madloop_path'):
                     mymod.set_madloop_path(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources'))
                 if (self.second_model or self.second_process or self.dedicated_path):
@@ -2448,8 +3508,10 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
             data = self.id_to_path
+            cross_data = self.cross_resolve
             if onedir not in ["rw_me",  "rw_mevirt"]:
                 data = self.id_to_path_second
+                cross_data = self.cross_resolve_second
 
             # get all the information
 
@@ -2460,9 +3522,9 @@ class ReweightInterface(extended_cmd.Cmd):
             hel_dict={}
             for prefix in prefix_set:
                 if hasattr(mymod,'%s%sprocess_nhel' % (fprefix,prefix)):
-                    #transer nhel information from fortran to wrapper
+                    #transfer nhel information from fortran to wrapper
                     getattr(mymod, '%sget_nhel_entry' % prefix)()
-                    #transer now to python dictionary
+                    #transfer now to python dictionary
                     nhel = getattr(getattr(mymod, '%sprocess_nhel' % prefix), '%snhel' %prefix)
                     hel_dict[prefix] = {}
                     for i, onehel in enumerate(zip(*nhel)):
@@ -2521,8 +3583,282 @@ class ReweightInterface(extended_cmd.Cmd):
                         misc.sprint(order, pdir,)
                         raise Exception( "two different matrix-element have the same initial/final state. Leading to an ambiguity. If your events are ALWAYS written in the correct-order (look at the numbering in the Feynman Diagram). Then you can add inside your reweight_card the line 'change keep_ordering True'." )
                 data[tag] = order, pdir, hel
-             
-             
+
+            # The merged-particle convention of the model that built `data`:
+            # get_pdg_order (hence every id_to_path key) may speak merged codes,
+            # and the crossed subprocesses must be keyed the same way.
+            if onedir in ("rw_me", "rw_mevirt"):
+                cross_model = getattr(self, 'original_model', None) or self.model
+            else:
+                cross_model = self.model
+            if cross_model is not None:
+                merged_map = self._get_revert_merged_for(cross_model)
+            else:
+                # restored from a pickle without a model loaded: the saved map
+                merged_map = getattr(self, 'revert_merged', None)
+            self.build_cross_resolve(mymod, all_prefix, all_pdgs, hel_dict,
+                                     pdir, 'virt' in onedir, cross_data,
+                                     merged_map)
+
+    def build_cross_resolve(self, mymod, all_prefix, all_pdgs, hel_dict, pdir,
+                            is_virt, cross_data, merged_map):
+        """Add to `cross_data` every CROSSED subprocess folded into this
+        module's matrix elements, keyed exactly like id_to_path.
+
+        With crossing on (merge_crossing='record') a crossed subprocess is not
+        generated as a directory of its own: the base's crossing-aware SMATRIX
+        evaluates it at an *extended* flavor index (FLAV_IDX = K*NFLAV+flav, K a
+        row of the matrix element's crossing table), so it has no get_pdg_order
+        entry and id_to_path cannot see it -- a crossed event would silently
+        lose its weight. The per-process f2py entry points
+        PY_<prefix>GET_FLAVOR_LAYOUT / GET_PDG_FOR_FLAVOR let us walk that index
+        space and ask each entry which process it evaluates, over the rows the
+        generation recorded (crossed_flavors.dat, which also gives each row's
+        permutation).
+
+        A matrix element covers several subprocesses in two independent ways, and
+        the crossing has to be applied to each: as FLAVOR indices inside one
+        get_pdg_order entry (flavor grouping: 81 for jets), and as several
+        get_pdg_order entries sharing one prefix (the exporter combining
+        processes with an identical matrix element, e.g. g u > h u and g s > h s).
+        So each recorded crossing is applied to EVERY base entry of the prefix,
+        by permuting and conjugating its PDGs the way GET_PDG_FOR_FLAVOR did for
+        the representative -- which is what makes the tags come out in the same
+        vocabulary the base entries use.
+
+        Each entry maps an id_to_path-style tag to a LIST of candidates
+        ``(order, pdir, hel, procindex, flav_idx, pdgs)``, one per flavor of the
+        tag's merged matrix element: the matrix element is NOT flavor blind
+        across those -- g d > z d and g u > z u differ by ~25% -- so the flavor is
+        picked per event from the signed PDGs (see resolve_folded_crossing).
+        `procindex` is the 1-based get_prefix slot the crossing-aware
+        SMATRIXHEL_IDX dispatch expects.
+
+        The helicity dictionary maps the event's helicities, in the crossed leg
+        order, to the crossed process's OWN helicity code, which is what
+        SMATRIXHEL takes for an extended index (CROSS_HELCODE translates it
+        into the base row it evaluates) -- the same code the expanded output
+        takes, the madevent output writes and the C++ backends report. Crossed
+        leg k carries base leg D[k] with its helicity states in the same order
+        (tau leaves the helicity slots alone), so its digit is that leg's.
+        Keying on the base rows read positionally in the crossed leg order
+        asks for a different helicity configuration of the crossed process,
+        often an exactly vanishing one. D[k] is the base leg sitting in crossed
+        leg k, both for the PDGs and for the helicities."""
+        codes = self.get_recorded_crossings(pdir)
+        if not codes:
+            return
+        perms = self.read_crossing_perms(pdir)
+        ninitial = 1 if self.is_decay else 2
+        # merged codes (81, ...) as they appear in a base entry, i.e. the legs
+        # whose flavor a base entry leaves open and the flavor index resolves.
+        labels = set(merged_map.values()) if merged_map else set()
+        slots = {}
+        for i, (prefix, pdgs) in enumerate(zip(all_prefix, all_pdgs), 1):
+            slots.setdefault(prefix, []).append((i, [int(x) for x in pdgs]))
+        for prefix, entries in slots.items():
+            if not codes.get(prefix):
+                continue
+            layout = getattr(mymod, 'py_%sget_flavor_layout' % prefix, None)
+            get_pdg = getattr(mymod, 'py_%sget_pdg_for_flavor' % prefix, None)
+            if layout is None or get_pdg is None:
+                # matrix element written without the crossing machinery
+                continue
+            nflav, nexternal, ncross = (int(x) for x in layout())
+            entries = [e for e in entries if len(e[1]) == nexternal]
+            for cross in codes[prefix]:
+                if not 0 < cross < ncross:
+                    continue           # 0 is the base, already in id_to_path
+                D = perms.get(prefix, {}).get(cross)
+                if D is None or len(D) != nexternal:
+                    logger.debug('crossing row %s of %s comes without its '
+                                 'permutation: skipped' % (cross, prefix))
+                    continue
+                # per base leg, its helicity states in code order: the base
+                # table is the mixed-radix product, so the values of a leg
+                # appear in state order
+                leg_states = [[] for _ in range(nexternal)]
+                for row, ihel in sorted(
+                        ((r, i) for r, i in hel_dict.get(prefix, {}).items()
+                         if isinstance(r, tuple)), key=lambda x: x[1]):
+                    for b in range(nexternal):
+                        if row[b] not in leg_states[b]:
+                            leg_states[b].append(row[b])
+                # -1 where crossed leg k sits on the other side of the
+                # initial/final line than its base leg D[k]
+                ic = [-1 if ((k < ninitial) != (D[k] < ninitial)) else 1
+                      for k in range(nexternal)]
+                # The event's helicities (crossed leg order) -> the crossed
+                # process's OWN helicity code, which SMATRIXHEL takes for an
+                # extended index (CROSS_HELCODE): crossed leg k carries base
+                # leg D[k] with its own states, so its digit is that leg's.
+                hel = {}
+                for row, ihel in hel_dict.get(prefix, {}).items():
+                    if not isinstance(row, tuple):
+                        hel[row] = ihel        # the 9 -> 0 'unknown' entry
+                        continue
+                    xrow = tuple(row[D[k]] for k in range(nexternal))
+                    code = 0
+                    for k in range(nexternal):
+                        states = leg_states[D[k]]
+                        code = code * len(states) + states.index(row[D[k]])
+                    hel[xrow] = code + 1
+                for flav in range(1, nflav+1):
+                    crossed = [int(x) for x in get_pdg(cross*nflav + flav)]
+                    if not any(crossed):
+                        continue       # names no valid flavor/crossing
+                    base = [int(x) for x in get_pdg(flav)]
+                    # Which legs the crossing conjugated: those it moved between
+                    # the initial and the final state, except a self-conjugate
+                    # one (a gluon crossed to the other side is still a gluon).
+                    # Read off the representative rather than from the model, so
+                    # that this needs nothing but the generated entry points.
+                    conj = [ic[k] == -1 and crossed[k] != base[D[k]]
+                            for k in range(nexternal)]
+                    for (procindex, pdgs) in entries:
+                        xpdgs = [-pdgs[D[k]] if conj[k] else pdgs[D[k]]
+                                 for k in range(nexternal)]
+                        # The physical process this candidate evaluates: the
+                        # crossed base entry, with the legs it leaves merged
+                        # resolved by the flavor index.
+                        phys = [crossed[k] if abs(xpdgs[k]) in labels
+                                else xpdgs[k] for k in range(nexternal)]
+                        tag, order = self.tag_from_pdgs(xpdgs)
+                        if is_virt:
+                            tag = (tag, 'V')
+                        cross_data.setdefault(tag, []).append(
+                            (order, pdir, hel,
+                             procindex, cross*nflav + flav, phys))
+
+    def tag_from_pdgs(self, pdgs):
+        """(tag, order) of a subprocess given its per-leg PDG codes, in the same
+        convention load_module uses to key id_to_path."""
+        if self.is_decay:
+            incoming, outgoing = [pdgs[0]], list(pdgs[1:])
+        else:
+            incoming, outgoing = list(pdgs[0:2]), list(pdgs[2:])
+        order = (list(incoming), list(outgoing))
+        incoming.sort()
+        if not self.keep_ordering:
+            outgoing.sort()
+        return (tuple(incoming), tuple(outgoing)), order
+
+    @staticmethod
+    def read_crossing_records(pdir):
+        """{prefix: ([crossing rows K], complete)} as written in the
+        crossed_flavors.dat of `pdir` (see export_v4.write_crossing_records);
+        empty when there is no such file."""
+        path = pjoin(pdir, 'crossed_flavors.dat')
+        if not os.path.exists(path):
+            return {}
+        records = {}
+        for line in open(path):
+            line = line.split('#', 1)[0].split()
+            if not line or line[0] == 'perm':
+                continue
+            records[line[0].lower()] = ([int(c) for c in line[2:]],
+                                        line[1] == '1')
+        return records
+
+    @staticmethod
+    def read_crossing_perms(pdir):
+        """{prefix: {K: D}} from the 'perm' lines of crossed_flavors.dat: D[k]
+        the 0-based base leg sitting in crossed leg k for crossing-table row
+        K."""
+        path = pjoin(pdir, 'crossed_flavors.dat')
+        if not os.path.exists(path):
+            return {}
+        perms = {}
+        for line in open(path):
+            line = line.split('#', 1)[0].split()
+            if len(line) < 3 or line[0] != 'perm':
+                continue
+            perms.setdefault(line[1].lower(), {})[int(line[2])] = \
+                tuple(int(d) - 1 for d in line[3:])
+        return perms
+
+    def get_recorded_crossings(self, pdir):
+        """{prefix: [crossing rows K]} of the crossed subprocesses folded into the
+        matrix elements of `pdir`, from the crossed_flavors.dat written at output
+        time (see export_v4.write_crossing_records).
+
+        An absent file means an output produced before crossings were recorded,
+        hence one with nothing folded; an empty list for a prefix means that
+        matrix element folds no crossing."""
+        codes = {}
+        for prefix, (pcodes, complete) in \
+                self.read_crossing_records(pdir).items():
+            codes[prefix] = pcodes
+            if not complete:
+                logger.warning('Crossing symmetry folded a subprocess into the '
+                               'matrix element %s that could not be resolved '
+                               'back to a flavor. An event of that flavor will '
+                               'stop the reweighting rather than be given a '
+                               'wrong weight; if that happens, rerun with '
+                               '"change keep_ordering True" (which keeps the '
+                               'crossed subprocesses separate) and report it.',
+                               prefix)
+        return codes
+
+    def resolve_folded_crossing(self, tag, phys_tag, cross_data):
+        """(order, Pdir, hel, procindex, flav_idx) of the folded crossed
+        subprocess matching an event, or None.
+
+        `tag` is the (merged) id_to_path key the event was looked up with and
+        `phys_tag` its signed *physical* PDG twin. All candidates under one tag
+        share the merged flavor pattern, so the physical PDGs pick which flavor
+        of the merged matrix element the event actually is -- the matrix element
+        is not flavor blind. A candidate leg that the flavor index does not
+        resolve keeps its merged label and matches any member of the group."""
+        candidates = cross_data.get(tag) if cross_data else None
+        if not candidates:
+            return None
+        merged = self.revert_merged_groups()
+        ninitial = 1 if self.is_decay else 2
+        for (order, Pdir, hel, procindex, flav_idx, pdgs) in candidates:
+            if self.pdgs_match_event(pdgs, ninitial, phys_tag, merged):
+                return order, Pdir, hel, procindex, flav_idx
+        return None
+
+    def revert_merged_groups(self):
+        """{merged code: [member pdgs]} of the model the current lookup uses
+        (empty without flavor grouping)."""
+        if not self.revert_merged:
+            return {}
+        groups = {}
+        for pdg, code in self.revert_merged.items():
+            groups.setdefault(code, []).append(pdg)
+        return groups
+
+    @staticmethod
+    def pdgs_match_event(pdgs, ninitial, phys_tag, merged):
+        """Can `pdgs` (a subprocess' per-leg codes, possibly carrying merged
+        labels) be the event whose physical tag is `phys_tag`? Compared as
+        multisets per side, a merged label absorbing any one member flavor of the
+        same sign. Merged groups are disjoint, so the greedy assignment below is
+        exact."""
+        sides = ((pdgs[:ninitial], phys_tag[0]), (pdgs[ninitial:], phys_tag[1]))
+        for legs, want in sides:
+            left = list(want)
+            labels = []
+            for pdg in legs:
+                if abs(pdg) in merged:
+                    labels.append(pdg)
+                elif pdg in left:
+                    left.remove(pdg)
+                else:
+                    return False
+            for pdg in labels:
+                hit = next((q for q in left if (q > 0) == (pdg > 0)
+                            and abs(q) in merged[abs(pdg)]), None)
+                if hit is None:
+                    return False
+                left.remove(hit)
+            if left:
+                return False
+        return True
+
+
     def load_model(self, name, use_mg_default, complex_mass=False, ew_scheme=None):
         """load the model"""
 
@@ -2628,6 +3964,18 @@ class ReweightInterface(extended_cmd.Cmd):
         to_save['allow_missing_finalstate'] = self.options['allow_missing_finalstate']
         to_save['identical_particle_in_prod_and_decay'] = self.options['identical_particle_in_prod_and_decay']
         to_save['nb_library'] = self.nb_library
+        if self.inc_sudakov:
+            to_save['sudakov_source_ids'] = self._sudakov_source_ids
+        # the jobs that load this pickle (--multicore=wait, a reused rwgt_dir)
+        # have no model, and get_beampol needs the spin of the incoming
+        # particles, flavour-merged ones included
+        spins = {}
+        for model in (getattr(self, 'original_model', None), self.model):
+            if model:
+                spins.update((pid, part.get('spin'))
+                             for pid, part in model.get('particle_dict').items())
+        to_save['spins'] = spins
+        to_save['f2py_suffix'] = self.f2py_suffix
 
         name = pjoin(self.rwgt_dir, 'rw_me', 'rwgt.pkl')
         save_load_object.save_to_file(name, to_save)
@@ -2639,6 +3987,11 @@ class ReweightInterface(extended_cmd.Cmd):
         obj = save_load_object.load_from_file( pjoin(self.rwgt_dir, 'rw_me', 'rwgt.pkl'))
         
         self.has_standalone_dir = True
+        if self.inc_sudakov and self.multicore == 'wait':
+            sources = set(obj['sudakov_source_ids'])
+            if not set(self._sudakov_source_ids).issubset(sources):
+                raise ValueError('Worker source weights are absent from the shared Sudakov layout.')
+            self._sudakov_source_ids = sources
         previous_options = dict(self.options)
         self.options = dict(previous_options)
         self.options.update({'curr_dir': os.path.realpath(os.getcwd()),
@@ -2677,6 +4030,8 @@ class ReweightInterface(extended_cmd.Cmd):
         self.second_model = obj['second_model']
         self.has_nlo = obj['has_nlo']
         self.nb_library = obj['nb_library']
+        self._pickled_spins = obj.get('spins') or {}
+        self.f2py_suffix = obj.get('f2py_suffix', {})
         if not self.rwgt_mode:
             self.rwgt_mode = obj['rwgt_mode']
             logger.info("mode set to %s" % self.rwgt_mode)
@@ -2703,7 +4058,153 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
 
-        
+
+#===============================================================================
+# Helper functions for the average density matrix (density mode)
+#
+# Those are module level functions since the average density matrix is written
+# either by DensityInterface itself (single core) or by the mother interface
+# recombining the output of the various multicore jobs
+# (common_run_interface.do_reweight).
+#===============================================================================
+def parse_matrix_normalisation(value):
+    """interpret the argument of 'change matrix_normalisation'.
+    return (value, understood) where understood is False if the argument is
+    neither 'True' nor 'False' (in which case the default, True, is kept)"""
+
+    value = value.strip("[],()")
+    if value == 'True':
+        return True, True
+    elif value == 'False':
+        return False, True
+    return True, False
+
+def get_matrix_normalisation(card_path):
+    """return the matrix_normalisation option of a density mode reweight card.
+    The default (option absent from the card) is the one of DensityInterface."""
+
+    matrix_normalisation = True # default value of DensityInterface
+    if not card_path or not os.path.exists(card_path):
+        return matrix_normalisation
+
+    with open(card_path) as card:
+        for line in card:
+            line = line.strip()
+            if not line or line[0] in ('#', '!'):
+                continue
+            split_line = line.split()
+            if len(split_line) < 3 or split_line[0] != 'change' or \
+                                        split_line[1] != 'matrix_normalisation':
+                continue
+            # last occurence wins, as when the card is executed line by line
+            matrix_normalisation, _ = parse_matrix_normalisation(split_line[2])
+    return matrix_normalisation
+
+def average_density_matrix_label(lhe_path):
+    """the label identifying an event file in the average density matrix output"""
+
+    if lhe_path.endswith('.gz'):
+        lhe_path = lhe_path[:-3]
+    return os.path.basename(lhe_path)[:-4]
+
+def average_density_matrix_path(lhe_path, output_dir=None):
+    """the canonical path of the average density matrix associated to an event file"""
+
+    if output_dir is None:
+        output_dir = os.path.dirname(lhe_path)
+    return pjoin(output_dir,
+                 "Average_density_matrix_%s.txt" % average_density_matrix_label(lhe_path))
+
+def write_average_density_matrix(rho_avg, lhe_path, output_dir=None):
+    """log the average density matrix rho_avg (line form) and write it in square
+    form next to the event file it has been computed from. return the path used."""
+
+    import madgraph.various.Density_functions as dens
+
+    rho_avg_square = dens.DensityMatrixObservables(rho_avg).square_matrix()
+
+    logger.info("Average density matrix:")
+    for i in range(len(rho_avg_square)):
+        print("\t",list(rho_avg_square[i]))
+
+    path = average_density_matrix_path(lhe_path, output_dir)
+    file_density = open(path, 'w')
+    file_density.write(f'Average density matrix of LHE file {average_density_matrix_label(lhe_path)}:\n')
+    # Cast each entry to a plain Python ``complex`` so that the file is
+    # written in the legacy ``(re+imj)`` repr regardless of the underlying
+    # numpy dtype (newer numpy prints np.complex64 values with a
+    # ``np.complex64(...)`` wrapper which the consumer parser cannot read).
+    for i in range(len(rho_avg_square)):
+            row = [complex(v) for v in rho_avg_square[i]]
+            file_density.write('\t' + str(row) + '\n')
+    file_density.close()
+    return path
+
+def average_density_matrix_from_lhe(lhe_path, matrix_normalisation=True):
+    """re-compute the average density matrix from the <density> tag of every
+    event of an already reweighted event file. This reproduces exactly what
+    DensityInterface.launch_actual_reweighting accumulates on the fly:
+     - matrix_normalisation True: the per event matrices stored in the file are
+       already normalised by their trace, the average is weighted by the weight
+       of the events.
+     - matrix_normalisation False: the per event matrices are the raw ones, the
+       average is a plain average over the events.
+    return the average density matrix in line form (None if no event of the file
+    carries a density matrix)."""
+
+    average_rho = None
+    total_wgt = 0.
+    nb_event = 0
+
+    lhe = lhe_parser.EventFile(lhe_path)
+    lhe.parsing = "wgt_only" # we only need the weight and the <density> tag
+    for event in lhe:
+        if not event.density:
+            continue
+        if matrix_normalisation:
+            contrib = [value * event.wgt for value in event.density]
+            total_wgt += event.wgt
+        else:
+            contrib = event.density
+        nb_event += 1
+        if average_rho is None:
+            average_rho = list(contrib)
+        elif len(contrib) != len(average_rho):
+            raise Exception("Inconsistent size of the density matrices within %s" % lhe_path)
+        else:
+            for i in range(len(average_rho)):
+                average_rho[i] += contrib[i]
+    lhe.close()
+
+    if average_rho is None:
+        return None
+
+    norm = total_wgt if matrix_normalisation else nb_event
+    return [value / norm for value in average_rho]
+
+def combine_density_matrix(lhe_path, chunk_paths=(), reweight_card=None):
+    """write the canonical average density matrix of lhe_path after a multicore
+    reweighting: each job has written the average of its own chunk of events, so
+    the average of the full (recombined) file is re-computed here and the per
+    chunk files are removed. return the path of the file written (None if the
+    average could not be computed)."""
+
+    matrix_normalisation = get_matrix_normalisation(reweight_card)
+    rho_avg = average_density_matrix_from_lhe(lhe_path, matrix_normalisation)
+
+    if rho_avg is None:
+        # keep the per chunk files: they are the only output left in that case
+        logger.warning("No density matrix found in %s: the average density matrix is not written." % lhe_path)
+        return None
+
+    path = write_average_density_matrix(rho_avg, lhe_path)
+    for chunk in chunk_paths:
+        chunk_path = average_density_matrix_path(chunk)
+        if chunk_path != path and os.path.exists(chunk_path):
+            os.remove(chunk_path)
+    return path
+
+
 class DensityInterface(ReweightInterface):
     """Basic interface for computing density matrix"""
 
@@ -2738,8 +4239,20 @@ class DensityInterface(ReweightInterface):
         complex_mass = False   
         has_cms = re.compile(r'''set\s+complex_mass_scheme\s*(True|T|1|true|$|;)''')
         for line in self.banner.proc_card:
-            if line.startswith('set'):
-                mgcmd.exec_cmd(line, printcmd=False, precmd=False, postcmd=False)
+            # 'set gauge X' is run: the matrix elements must be the ones of
+            # the sample; the automatic choice stays off (auto_gauge False)
+            if line.startswith('set') and \
+                                    line.split()[:2] != ['set', 'auto_gauge']:
+                try:
+                    mgcmd.exec_cmd(line, printcmd=False, precmd=False,
+                                   postcmd=False)
+                except madgraph.InvalidCmd:
+                    # A proc card can carry a `set` that is no MG5 option --
+                    # an answer to a launch card question (`set width 6
+                    # auto`) was written into it before those were kept
+                    # out.  It says nothing about the process: skip it.
+                    logger.debug('proc card line ignored: %s', line)
+                    continue
                 if has_cms.search(line):
                     complex_mass = True
         data = {}
@@ -2773,7 +4286,7 @@ class DensityInterface(ReweightInterface):
         pattern = re.compile(r"\[[^\]]*\]", re.IGNORECASE)
         return pattern.findall(input_text)
 
-    def find_observable(self, input_text): #we accepect input as "observable" or "observable_name"
+    def find_observable(self, input_text): #we accept input as "observable" or "observable_name"
         # pattern = re.compile(r"lambda p: p\.[A-Za-z0-9]+", re.IGNORECASE)
         # output = pattern.findall(input_text)
         # if output == []:
@@ -2927,15 +4440,9 @@ class DensityInterface(ReweightInterface):
         Choses if the production matrix should be normalised by its trace or not.
         Default = True
         """
-        for i in range(len(line)): 
-            line[i] = line[i].strip("[],()") 
-        if line[0] == 'True':
-            self.matrix_normalisation = True
-        elif line[0] == 'False':
-            self.matrix_normalisation = False
-        else:
-            logger.warning('Option matrix_normalisation not understood, set it to True. Please use the syntax: change matrix_normalisation True if you want to enable it.')
-            self.matrix_normalisation = False
+        self.matrix_normalisation, understood = parse_matrix_normalisation(line[0])
+        if not understood:
+            logger.warning('Option matrix_normalisation not understood, set it to True (the default). Please use the syntax: change matrix_normalisation False if you want to disable it.')
 
 
     def do_change_particle_in_density_matrix(self, line):
@@ -3115,22 +4622,8 @@ class DensityInterface(ReweightInterface):
             for i in range(len(rho_avg)):
                 rho_avg[i] = self.average_rho[i] / self.nevents
 
-        rho_avg_instance = dens.DensityMatrixObservables(rho_avg)
-        rho_avg_square = rho_avg_instance.square_matrix()
-
-        logger.info("Average density matrix:")
-        for i in range(len(rho_avg_square)):
-            print("\t",list(rho_avg_square[i]))
-        file_density = open(pjoin(os.path.dirname(self.event_path), f"Average_density_matrix_{os.path.basename(self.lhe_input.name)[:-4]}.txt"), 'w')
-        file_density.write(f'Average density matrix of LHE file {os.path.basename(self.lhe_input.name)[:-4]}:\n')
-        # Cast each entry to a plain Python ``complex`` so that the file is
-        # written in the legacy ``(re+imj)`` repr regardless of the underlying
-        # numpy dtype (newer numpy prints np.complex64 values with a
-        # ``np.complex64(...)`` wrapper which the consumer parser cannot read).
-        for i in range(len(rho_avg_square)):
-                row = [complex(v) for v in rho_avg_square[i]]
-                file_density.write('\t' + str(row) + '\n')
-        file_density.close()
+        write_average_density_matrix(rho_avg, self.lhe_input.name,
+                                    output_dir=os.path.dirname(self.event_path))
 
 
         if self.output_type == "default":
@@ -3185,7 +4678,7 @@ class DensityInterface(ReweightInterface):
                 self.all_cross_section[(tag_name,name)] = (cross[name], error[name])
 
 
-    def calculate_matrix_element(self, event, hypp_id, scale2=0):
+    def calculate_matrix_element(self, event, hypp_id, scale2=0, alphas=None):
         """ This method overwrites the method of the same name in the class ReweightInterface.
             It computes the production matrix R given the user's inputs.
             Output: new_value (the production matrix R for a single event)
@@ -3224,7 +4717,8 @@ class DensityInterface(ReweightInterface):
         if self.keep_ordering:
             all_p = [event.get_momenta(orig_order, merged_map=self.revert_merged)]
         else:
-            all_p = event.get_all_momenta(orig_order, merged_map=self.revert_merged)
+            all_p = event.get_all_momenta(orig_order, merged_map=self.revert_merged,
+                                          decay_chain=True)
 
             if len(all_p) >1:
                 if self.helicity_reweighting:
@@ -3232,25 +4726,33 @@ class DensityInterface(ReweightInterface):
                 self.helicity_reweighting = False
 
         # add helicity information
-        hel_order = event.get_helicity(orig_order, merged_map=self.revert_merged)
+        hel_order = event.get_helicity(orig_order, merged_map=self.revert_merged,
+                                       decay_chain=not self.keep_ordering)
         if self.helicity_reweighting and 9 not in hel_order:
             nhel = hel_dict[tuple(hel_order)]
         else:
             nhel = -1
 
-        pdg = list(orig_order[0])+list(orig_order[1])
-        relevant_merged = relevant_model.get('merged_particles') if relevant_model else self.merged_particles
-        if relevant_merged and any(p in relevant_merged for p in pdg):
-            pdg = event.get_pdg(all_p[0])
+        pdg = self._pdg_for_me_call(event, orig_order, all_p[0], relevant_model)
 
-        #list_properties is the list of properties of the class FourMomentum that we can use to rank particles
-        list_properties = [p for p in dir(lhe_parser.FourMomentum) if isinstance(getattr(lhe_parser.FourMomentum,p),property)]
-        
-        
-        boost_corrected = self.chose_particle_user_input(event, pdg, list_properties, orig_order, self.momenta_boost, 'momenta_boost', fortran_format = False)
+        # same Monte-Carlo-mass projection as in ReweightInterface, and for the
+        # same reason: this path boosts and rotates the momenta before the
+        # matrix element sees them.  Again on the copy only.
+        n_ini = len(orig_order[0])
+        all_p = [lhe_parser.project_massless_partons(
+                     p, pdg, relevant_model or self.model, n_initial=n_ini)
+                 for p in all_p]
+
+        # the particles are chosen -- and ranked, for an observable -- on the
+        # lab-frame momenta, laid out in the matrix element's order like pdg
+        # and all_p, so that a returned position is a leg for all three
+        lab_p = event.get_momenta(orig_order, merged_map=self.revert_merged,
+                                 decay_chain=not self.keep_ordering)
+        self.set_event_beampol(module, event, lab_p, pdg, n_ini)
+        boost_corrected = self.chose_particle_user_input(lab_p, pdg, self.momenta_boost, 'momenta_boost', fortran_format = False)
         all_p = self.method_boost_event(event, all_p, orig_order, hypp_id, boost_corrected)
         
-        refChoice_corrected = self.chose_particle_user_input(event, pdg, list_properties, orig_order, self.helicity_direction, 'helicity_direction', fortran_format = True)
+        refChoice_corrected = self.chose_particle_user_input(lab_p, pdg, self.helicity_direction, 'helicity_direction', fortran_format = True)
         phi, theta = self.calculate_angles_rotation(refChoice_corrected, all_p, module)
         
         for i in range(len(all_p)):
@@ -3279,7 +4781,8 @@ class DensityInterface(ReweightInterface):
                 raise Exception("Ambiguous particle in production and decay. crash as requested by \'identical_particle_in_prod_and_decay\'")
 
 
-        pos_corrected = self.chose_particle_user_input(event, pdg, list_properties, orig_order, self.particle_in_density_matrix, 'particle_in_density_matrix', fortran_format = True)
+        # POS of py_get_density: a leg of the matrix element, like pdg and all_p
+        pos_corrected = self.chose_particle_user_input(lab_p, pdg, self.particle_in_density_matrix, 'particle_in_density_matrix', fortran_format = True)
 
         status = []
         for particle in event:
@@ -3291,7 +4794,7 @@ class DensityInterface(ReweightInterface):
         All_PDGs = []
         prefix_unique = []
             
-        #Bloc to determine which sets of pdg-codes corresponds to which prefix
+        #Block to determine which sets of pdg-codes corresponds to which prefix
         for i in range(len(PREFIX)):
             prefix_cor.append(PREFIX[i].decode('UTF-8').strip().lower())
             if prefix_cor[i] not in prefix_unique:
@@ -3315,17 +4818,28 @@ class DensityInterface(ReweightInterface):
                     prefix = prefix_cor[k]
 
         get_density = lambda *args: module.py_get_density(pdg, *args)
+        # mu_R: the mur of the <scales> tag when the event has one (mg7), else
+        # SCALUP, which holds mu_F
+        ren_scale2 = (event.get_ren_scale() if hasattr(event, 'get_ren_scale')
+                      else event.scale)**2
         for i in range(len(all_p)):
             pinv = self.invert_momenta(all_p[i])
             # npdg = len(all_p[i]) #number of particles in the event
-            # the argument event.scale**2 is a dummy argument for LO processes, else it is taken as the value given in the LHE file
+            # the argument mu_R**2 is a dummy argument for LO processes, else it is taken as the value given in the LHE file
             production_matrix = get_density(-1, pinv, pos_corrected, #self.number_changing_helicities,
-                                            self.allowed_helicities, event.aqcd, event.scale**2)
+                                            self.allowed_helicities, event.aqcd, ren_scale2)
+            # NaN (z != z): no matrix element of the module evaluates these
+            # legs in this order (f77_no_process in all_matrix.f).
+            if any(z != z for z in production_matrix):
+                raise Exception("Invalid density matrix: NaN returned for "
+                    "event %s (pdg %s): no matrix element evaluates these "
+                    "legs in this order." % (getattr(event, 'ievent', -1),
+                                             list(pdg)))
 
             if self.symmetrise_initial_state:
                 pinv_bis = self.invert_momenta(all_p_bis[i])
                 production_matrix_bis = get_density(-1, pinv_bis, pos_corrected, #self.number_changing_helicities,
-                                            self.allowed_helicities, event.aqcd, event.scale**2)
+                                            self.allowed_helicities, event.aqcd, ren_scale2)
                 
             if self.symmetrise_initial_state:
                 rho_instance = dens.DensityMatrixObservables(production_matrix + production_matrix_bis, self.number_combinations * (self.number_combinations + 1) / 2)
@@ -3334,6 +4848,21 @@ class DensityInterface(ReweightInterface):
                 rho_instance = dens.DensityMatrixObservables(production_matrix, self.number_combinations * (self.number_combinations + 1) / 2)
                 new_value = rho_instance.density_matrix
 
+        # An identically-zero density matrix is not a physical answer for an
+        # event that is in the event file: either GET_DENSITY could not resolve
+        # the flavour of the legs it was handed (typically merged-particle
+        # labels 81/82/... reaching the fortran instead of the concrete PDGs),
+        # or 'allowed_helicities' selects a helicity configuration that carries
+        # no amplitude. Do not average it in: the trace is zero, so with
+        # matrix_normalisation on the normalisation is 0/0 and the average
+        # density matrix comes back as NaN; with it off the event silently
+        # dilutes the average. Refuse loudly, as the matrix-element path does.
+        if not any(new_value):
+            raise Exception("Invalid density matrix: only zeros returned for "
+                "event %s (pdg %s). Check that the flavour of every leg can be "
+                "resolved and that 'allowed_helicities' selects a contributing "
+                "helicity configuration." % (getattr(event, 'ievent', -1), list(pdg)))
+
         return new_value
 
 
@@ -3341,7 +4870,7 @@ class DensityInterface(ReweightInterface):
     def calculate_weight(self, event, sud_mod=None):
         """ This method overwrites the method of the same name in the class ReweightInterface.
             For this mode, it does not do a lot.
-            Output: {'orig': w_orig} (dictionnary with the production matrix as value)
+            Output: {'orig': w_orig} (dictionary with the production matrix as value)
         """
         w_orig = self.calculate_matrix_element(event, 0)
         return {'orig': w_orig}
@@ -3349,26 +4878,37 @@ class DensityInterface(ReweightInterface):
 
     def method_boost_event(self, event, all_p, orig_order, hypp_id, boost_corrected):
         """ This method overwrites the method of the same name in the class ReweightInterface.
+            boost_corrected are positions (python format) in orig_order, like the momenta in all_p.
             Output: new_all_p (all the boosted momenta of a given event)
         """
 
         if 0 in self.momenta_boost[0]: #if we don't want to boost the system
             return all_p
-        
-        import copy
-        new_event = copy.deepcopy(event)
-        nb_ext = 0
-        pboost = lhe_parser.FourMomentum()
-        for p in new_event: 
-            for j in range(len(boost_corrected)):
-                if nb_ext == boost_corrected[j]:
-                    pboost += p
-            nb_ext += 1
+        if -1 in boost_corrected:
+            return all_p
 
+        # boost_corrected holds legs of the matrix element (0-based), the
+        # order all_p is in. This used to count the event's own lines,
+        # status-2 ones included, against them -- another particle whenever
+        # the LHE order is not the matrix element's, or a resonance line sits
+        # before the chosen leg.
+        # Each assignment of identical particles in all_p is its own guess of
+        # which particle sits on those legs, so each gets the frame of its own
+        # legs (one boost from all_p[0] for all of them left the others'
+        # chosen legs moving). Boosted directly, like the base class's frame
+        # and zboost branches, rather than re-read from a boosted copy of the
+        # event.
+        return [self._boost_to_chosen_legs(p, boost_corrected) for p in all_p]
+
+    def _boost_to_chosen_legs(self, momenta, positions):
+        """``momenta`` in the rest frame of the legs ``positions`` (0-based)"""
+        pboost = lhe_parser.FourMomentum()
+        for position in positions:
+            pboost += lhe_parser.FourMomentum(momenta[position])
 
         if abs(pboost.px/pboost.E) < 1e-10 and abs(pboost.py/pboost.E) < 1e-10 and abs(pboost.pz/pboost.E) < 1e-10:
-            #if we try to boost with with a 4-momentum like [M, 0, 0, 0], we return the momenta without any boost
-            return all_p
+            #if we try to boost with a 4-momentum like [M, 0, 0, 0], we return the momenta without any boost
+            return momenta
                 
         if abs(pboost.px/pboost.E) < 1e-10:
             pboost.px = 0.
@@ -3377,185 +4917,66 @@ class DensityInterface(ReweightInterface):
         if abs(pboost.pz/pboost.E) < 1e-10:
             pboost.pz = 0.
 
-        new_event.boost(pboost)
-        if self.keep_ordering:
-            new_all_p = [new_event.get_momenta(orig_order, merged_map=self.revert_merged)]
-        else:
-            new_all_p = new_event.get_all_momenta(orig_order, merged_map=self.revert_merged)
-        if len(new_all_p) > 1:
-            logger.critical("due to ordering ambiguity, the boost used might not be consistent. please ensure that this is not an issue")
-
-        return new_all_p
+        return self.boost_momenta_to_rest_frame(momenta, pboost)
 
 
 
-    def chose_particle_user_input(self, event, pdg, list_properties, orig_order, user_input, name_input, fortran_format = False):
+    @staticmethod
+    def chose_particle_user_input(momenta, pdg, user_input, name_input, fortran_format = False):
         """
         This function transforms the user_input for a given name_input into the position of particles in the original order.
         The position of the particles can then be used to boost, rotate the event, etc.
+        user_input = (pdg codes, observable, ranks). The j-th position returned corresponds to the j-th pdg code given by the user,
+        such that the order of the user is kept (it is the order of the particles in the density matrix).
+        For each pdg code, the candidates are the particles of the process with this pdg code:
+          - without observable, the k-th occurrence of a pdg code in the user input takes the k-th candidate in the original order
+          - with an observable, the candidates are ranked in decreasing order of the observable (evaluated on momenta). The k-th
+            occurrence of a pdg code takes the k-th candidate, or the candidate of rank user_input[2][j] if ranks are given.
+        momenta: momenta of the event in the original order, pdg: pdg codes in the original order
         fortran_format = True, means that we use the Fortran format for indices, so lists begin at 1, else we use Python format.
-        Output: position_particles
+        Output: position_particles ([-1] if the option is not used)
         """
-        if 0 in user_input[0]: # if the user does not want to user this input
+        pdg_to_chose, observable = list(user_input[0]), user_input[1]
+        if 0 in pdg_to_chose: # if the user does not want to use this input
             return [-1]
-        
-        if user_input[1] == '':
-            position_particles = self.find_position_particles_default_order(orig_order, user_input, name_input, fortran_format) #if the user does not give an observable to rank the particles
-            return position_particles
 
-        else:
-            found_property = False
-            for prop in list_properties: #finding the observable given by the user
-                if prop == user_input[1]:
-                    found_property = True
-                    observable_values = []
-                    original_order = [i for i in range(len(event))]
-                    for i, p in enumerate(event):
-                        if pdg[i] in user_input[0]:
-                            correct_p_rot = lhe_parser.FourMomentum(p)
-                            observable_values.append(getattr(correct_p_rot, prop))
-                        else:
-                            observable_values.append(float('NaN'))
-
-                    # if several particles of same pdg have the same value of the observable, we can not rank them so we use the default order.
-                    # we do not crash the code because it can happen randomly for an event, even if the user_input is correct
-                    if len(set(observable_values)) != len(observable_values) and len(set(user_input[0])) != len(user_input[0]):
-                        logger.warning(f"Some particles in {name_input} have the same value for the observable given. For this event the order of the observable is not taken into account.")                        
-                        position_particles = self.find_position_particles_default_order(orig_order, user_input, name_input, fortran_format)
-                        return position_particles
-                    
-                    observable_values_sorted, new_order = zip(*sorted(zip(observable_values, original_order), reverse=True)) #ranking the particles via the observable's value
-
-                    if len(user_input[2]) > 0: # if the user gives a ranking to use for the observable, use it
-                        position_particles = self.find_position_particles_with_observable(pdg, observable_values_sorted, new_order, original_order, user_input, name_input, fortran_format)
-                        return position_particles
-
-                    else: #else they are ranked in decreasing order
-                        position_particles = self.find_position_particles_new_order(pdg, user_input, new_order, fortran_format)
-                        return position_particles
-
-            if not found_property:
-                raise ValueError(f'The observable {user_input[1]} is not recognised. Observables are defined in the class FourMomentum of lhe_parser.')
-
-
-    def find_position_particles_with_observable(self, pdg, observable_values_sorted, new_order, original_order, user_input, name_input, fortran_format):
-        """
-        This function transforms the user_input for a given name_input into the position of particles in the original order specifically if the user gives an observable.
-        The position of the particles can then be used to boost, rotate the event, etc.
-        fortran_format = True, means that we use the Fortran format for indices, so lists begin at 1, else we use Python format.
-        Output: position_particles
-        """
-        if len(user_input[0]) != len(user_input[2]):
+        ranks = list(user_input[2]) if observable else [] # a ranking without observable is ignored (an error is already printed when reading the card)
+        if observable and not isinstance(getattr(lhe_parser.FourMomentum, observable, None), property):
+            raise ValueError(f'The observable {observable} is not recognised. Observables are defined in the class FourMomentum of lhe_parser.')
+        if ranks and len(ranks) != len(pdg_to_chose):
             raise ValueError(f'The number of particle in {name_input}[0] and the number of ranks in {name_input}[2] do not match.')
 
-        pdg_new = [0] * len(pdg)
-        new_order_corrected = [0] * len(pdg)
-        for i in range(len(pdg)):
-            if observable_values_sorted[i] == observable_values_sorted[i]: #if the value of observable is not a NaN (it is in the density matrix)
-                pdg_new[i] = pdg[new_order[i]]
-                new_order_corrected[i] = new_order[i]
-            else: #if it is a NaN we keep them in the original order
-                pdg_new[i] = pdg[i]
-                new_order_corrected[i] = original_order[i]
+        # candidates[pid] are the positions of the particles with this pdg code, in the original order
+        candidates = {pid: [i for i in range(len(pdg)) if pdg[i] == pid] for pid in set(pdg_to_chose)}
+        for pid in candidates:
+            if not candidates[pid]:
+                raise ValueError(f'The pdg inputs for {name_input} are not correct. The pdg {pid} is not present in the process.')
 
-        # dic_rank_particles keys are the particles chosen by the user and the values are their wanted rank in the observable's order
-        dic_rank_particles = {}
-        for i in range(len(user_input[0])):
-            if user_input[0][i] not in dic_rank_particles.keys():
-                dic_rank_particles[user_input[0][i]] = []
-
-        for i in range(len(user_input[0])):
-            if user_input[0][i] in dic_rank_particles.keys():
-                dic_rank_particles[user_input[0][i]].append(user_input[2][i])
-
-        # dic_values_observable keys are the particles chosen by the user and is filled with their value in the chosen observable
-        # dic_postion_new_order keys are the particles chosen by the user and is filled with their position in new_order
-        dic_values_observable, dic_postion_new_order = {}, {}
-        for key in user_input[0]:
-            dic_values_observable[key], dic_postion_new_order[key] = [], []
-
-        for key in dic_rank_particles.keys():
-            for j in range(len(pdg_new)):
-                if pdg_new[j] == int(key):
-                    dic_values_observable[key].append(observable_values_sorted[j])
-            for k in range(len(dic_rank_particles[key])):
-                for l in range(len(observable_values_sorted)):
-                    try:
-                        #this if statement represents which index of dic_values_observable[key] we want to keep
-                        if observable_values_sorted[l] == dic_values_observable[key][dic_rank_particles[key][k]] and pdg[new_order[l]] == key:
-                            dic_postion_new_order[key].append(l)
-                    except:
-                        raise ValueError(f'There are not enough identical particles for the rank you chose in {name_input}. Please change your input')
+        if observable:
+            values = {i: getattr(lhe_parser.FourMomentum(momenta[i]), observable) for pos in candidates.values() for i in pos}
+            if any(len(set(values[i] for i in pos)) != len(pos) for pos in candidates.values()):
+                # if several particles of same pdg have the same value of the observable, we can not rank them so we use the default order.
+                # we do not crash the code because it can happen randomly for an event, even if the user_input is correct
+                logger.warning(f"Some particles in {name_input} have the same value for the observable given. For this event the order of the observable is not taken into account.")
+            else:
+                for pid in candidates:
+                    candidates[pid] = sorted(candidates[pid], key=lambda i: values[i], reverse=True) #ranking the particles via the observable's value
 
         position_particles = []
-        for key in dic_postion_new_order.keys(): # here we convert the position in new_order to the position in the original order
-            for j in range(len(dic_postion_new_order[key])):
-                if fortran_format:
-                    position_particles.append(new_order[dic_postion_new_order[key][j]] + 1) #python format begins integers at 0 so we do not need to add +1
-                else:
-                    position_particles.append(new_order[dic_postion_new_order[key][j]]) #python format begins integers at 0 so we do not need to add +1
-        return position_particles
+        for j, pid in enumerate(pdg_to_chose):
+            rank = ranks[j] if ranks else pdg_to_chose[:j].count(pid)
+            try:
+                position = candidates[pid][rank]
+            except IndexError:
+                if ranks:
+                    raise ValueError(f'There are not enough identical particles for the rank you chose in {name_input}. Please change your input')
+                raise ValueError(f'The pdg inputs for {name_input} are not correct. The pdg {pid} is not present {pdg_to_chose.count(pid)} times in the process.')
+            if position in position_particles:
+                raise ValueError(f'The same particle (pdg {pid}) is selected twice in {name_input}. Please change your input')
+            position_particles.append(position)
 
-    def find_position_particles_default_order(self, orig_order, user_input, name_input, fortran_format):
-        """
-        This function transforms the user_input for a given name_input into the position of particles in the original order specifically if the user does not give any additional information.
-        The position of the particles can then be used to boost, rotate the event, etc.
-        fortran_format = True, means that we use the Fortran format for indices, so lists begin at 1, else we use Python format.
-        Output: position_particles
-        """
-        pdg_to_chose = user_input[0]
-        position_particles = []
-        orig_order_concatenated = orig_order[0] + orig_order[1]
-        particle_in_process_already_chosen = [False for i in range(len(orig_order_concatenated))]
-        particle_in_user_input_already_found = [False for i in range(len(pdg_to_chose))]
-        
-        if 0 in pdg_to_chose:
-            return [-1]
-        else:
-            for i in range(len(orig_order_concatenated)):
-                if len(position_particles) != len(user_input[0]):
-                    for j in range(len(pdg_to_chose)):
-                        if pdg_to_chose[j] == orig_order_concatenated[i] and not particle_in_process_already_chosen[i] and not particle_in_user_input_already_found[j]: # if the particles is still available and that its pdg code corresponds to the user input
-                            if fortran_format:
-                                position_particles.append(i + 1) #if fortran_format = True, we add +1 because Fortran indices begin at 1 instead of 0 as in Python
-                            else:
-                                position_particles.append(i) # position of the particle in the original order
-                            particle_in_process_already_chosen[i] = True
-                            particle_in_user_input_already_found[j] = True
-
-                            break
-
-            if len(position_particles) != len(user_input[0]):
-                logger.error(f'The pdg inputs for {name_input} are not correct. At least one pdg is not present in the process.')
-
-            return position_particles
-
-
-    def find_position_particles_new_order(self, pdg, user_input, new_order, fortran_format):
-        """
-        This function transforms the user_input for a given name_input into the position of particles in the original order specifically if the user gives 
-        an observable but does not specify the rank in which to order them. In this case, they are ranked in decreasing order.
-        The position of the particles can then be used to boost, rotate the event, etc.
-        fortran_format = True, means that we use the Fortran format for indices, so lists begin at 1, else we use Python format.
-        Output: position_particles
-        """
-        if -1 not in user_input[0]:
-            position_particles = [0] * len(user_input[0])
-            is_particle_taken = [0] * len(pdg)
-            compteur = 0
-            for i in range(len(position_particles)):
-                for j in range(len(pdg)):
-                    if pdg[new_order[j]] == user_input[0][i] and is_particle_taken[j] == 0:
-                        if fortran_format:
-                            position_particles[compteur] = new_order[j] + 1 #if fortran_format = True, we add +1 because Fortran indices begin at 1 instead of 0 as in Python
-                        else:
-                            position_particles[compteur] = new_order[j]
-                        is_particle_taken[j] = 1
-                        compteur += 1
-                        break                    
-        else:
-            position_particles = [-1]
-        
+        if fortran_format: # we add +1 because Fortran indices begin at 1 instead of 0 as in Python
+            position_particles = [i + 1 for i in position_particles]
         return position_particles
 
     def calculate_angles_rotation(self, position_particles, all_p, module):
@@ -3563,9 +4984,9 @@ class DensityInterface(ReweightInterface):
             Output: phi and theta for each element of all_p
         """
         if -1 not in position_particles:
-            pref = [0, 0, 0, 0]
             phi, theta = [0] * len(all_p), [0] * len(all_p)
             for i in range(len(all_p)):
+                pref = [0, 0, 0, 0]
                 for j in range(len(position_particles)):
                     for k in range(len(pref)):
                         pref[k] += all_p[i][position_particles[j] - 1][k]

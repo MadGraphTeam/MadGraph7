@@ -10,7 +10,10 @@ LIBDIR        = ../../lib/
 
 include ../make_opts
 
-PDF = opendata.o PhotonFlux.o
+# bstrahl.o/sample_bstrahl.o are needed whatever the PDF choice: the
+# default bstrahl_pars.inc declares no beamstrahlung, and is replaced by
+# copy_lep_densities() when a dressed-lepton density is selected.
+PDF = opendata.o PhotonFlux.o bstrahl.o sample_bstrahl.o
 TOREMOVE =  # file that need to be remove since not linked in current library. important to force recompilation
 TOCOMPILE = # the libraries that should be compiled
 
@@ -27,32 +30,19 @@ else
   TOREMOVE += ElectroweakFluxDriver.o ElectroweakFlux.o 
 endif
 
-# check if we need to link to gammaUPC
-ifneq (,$(filter edff chff, $(pdlabel1) $(pdlabel2)))
-# go through here if pdflabel1 or pdlabel2 is on "edff" or "chff"
-   TOREMOVE += $(LIBDIR)libgammaUPC.$(libext)
-# remove it to force recompilation of the library if back on it
-   TOCOMPILE += makefile_gammaUPC
-else
-# go throught here if neither pdlabel1 or pdlabel2 is on "edff" or "chff"
-   TOCOMPILE += makefile_gammaUPC_dummy
-   TOREMOVE += $(LIBDIR)libgammaUPC.$(libext)
-endif
+# libgammaUPC (gammaUPC/) is built by ../makefile only, as at NLO
+
 FFLAGS += -I../MODEL
 ifdef lhapdf
   TOREMOVE +=  pdfwrap.o
   PDF         += pdfwrap_lhapdf.o pdg2pdf_lhapdf6.o
   ifeq ($(lhapdfversion),5)
     $(error Bad lhadpfversion version 6 is now required)
+  else ifneq (,$(filter 0 1,$(lhapdfsubversion))) # 6.0.X, 6.1.X
+    $(error LHAPDF 6.2 or later is required)
   else
-    ifeq ($(lhapdfsubversion),1) # 6.1.X
-	PDF         += pdf_lhapdf6.o
-        TOREMOVE += pdf_lhapdf62.o
-    else # 6.2.X
-        CXXFLAGS+=-std=c++20
-	PDF  += pdf_lhapdf62.o
-	TOREMOVE += pdf_lhapdf6.o
-    endif    
+    CXXFLAGS+=-std=c++20
+    PDF  += pdf_lhapdf62.o
   endif
 else
   TOREMOVE += pdfwrap_lhapdf.o
@@ -72,12 +62,8 @@ $(LIBDIR)$(LIBRARY): $(PDF)
 	rm $(LIBDIR)$(LIBRARY) || echo "recompilation of $(LIBDIR)$(LIBRARY)"
 	$(call CREATELIB, $@, $^)
 
-makefile_gammaUPC:
-	(cd ./gammaUPC ; make ; cd ../)
-
-makefile_gammaUPC_dummy:
-	(cd ./gammaUPC ; make -f makefile_dummy; cd ../)
+# the density's parameters are compiled into bstrahl.o
+bstrahl.o: bstrahl_pars.inc
 
 clean:
 	@($(RM) *.o $(LIBDIR)$(LIBRARY))
-	@(cd ./gammaUPC ; make clean ; cd ../)

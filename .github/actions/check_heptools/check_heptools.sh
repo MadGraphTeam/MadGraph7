@@ -49,8 +49,9 @@ check_lhapdf() {
     need_glob "libLHAPDF" "$HEP/lhapdf6_py3/lib/libLHAPDF.*" "$HEP/lhapdf6_py3/lib64/libLHAPDF.*"
     # the two PDF sets the NLO acceptance tests need are unpacked by the
     # warm_cache lhapdf job itself, not by the installer
-    need_dir "$HEP/lhapdf6_py3/share/LHAPDF/cteq6l1"
-    need_dir "$HEP/lhapdf6_py3/share/LHAPDF/NNPDF23_nlo_as_0118_qed"
+    # (their .info file: an interrupted unpack leaves the directory without it)
+    need_file "$HEP/lhapdf6_py3/share/LHAPDF/cteq6l1/cteq6l1.info"
+    need_file "$HEP/lhapdf6_py3/share/LHAPDF/NNPDF23_nlo_as_0118_qed/NNPDF23_nlo_as_0118_qed.info"
 }
 
 check_boost() {
@@ -60,6 +61,9 @@ check_boost() {
         "$HEP/boost/lib/libboost_system.*" "$HEP/boost/lib/libboost_system-mt.*" \
         "$HEP/boost/lib64/libboost_system.*" "$HEP/boost/lib64/libboost_system-mt.*"
     need_file "$HEP/boost/include/boost/version.hpp"
+    # HEPToolInstaller.install_emela uses the first boost/boost* entry, the
+    # source tree, as eMELA's include path
+    need_glob "boost source headers" "$HEP/boost/boost_[0-9]*/boost/version.hpp"
 }
 
 check_pythia8() {
@@ -70,7 +74,8 @@ check_pythia8() {
     need_exec "$HEP/pythia8/bin/pythia8-config"
     need_glob "libpythia8" "$HEP/pythia8/lib/libpythia8.*" "$HEP/pythia8/lib64/libpythia8.*"
     need_dir  "$HEP/hepmc"
-    need_file "$HEP/MG5aMC_PY8_interface/MG5aMC_PY8_interface"
+    # the LO shower driver, compiled by installPYTHIA8.sh ('make mainMG')
+    need_exec "$HEP/pythia8/share/Pythia8/examples/main164"
 }
 
 check_emela() {

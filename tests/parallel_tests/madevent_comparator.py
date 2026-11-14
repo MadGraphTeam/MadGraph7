@@ -41,6 +41,7 @@ import madgraph.iolibs.save_load_object as save_load_object
 import madgraph.interface.master_interface as cmd_interface
 
 import madgraph.various.misc as misc
+import tests
 
 from madgraph import MadGraph5Error, MG5DIR
 from . import me_comparator
@@ -86,7 +87,7 @@ class MadEventComparator(me_comparator.MEComparator):
             logging.info("Cleaning code %s runner" % runner.name)
             runner.cleanup()
     def output_result(self, filename=None, tolerance=3e-02):
-        """Output result as a nicely formated table. If filename is provided,
+        """Output result as a nicely formatted table. If filename is provided,
         write it to the file, else to the screen. Tolerance can be adjusted."""
 
         def detect_type(data):
@@ -239,7 +240,7 @@ class MadEventComparatorGauge(me_comparator.MEComparatorGauge):
             runner.cleanup()
             
     def output_result(self, filename=None, tolerance=3e-03):
-        """Output result as a nicely formated table. If filename is provided,
+        """Output result as a nicely formatted table. If filename is provided,
         write it to the file, else to the screen. Tolerance can be adjusted."""
 
         def detect_type(data):
@@ -490,6 +491,9 @@ class MG5Runner(MadEventRunner):
         else:
             v5_string = "import model %s\n" % model
         v5_string += "set automatic_html_opening False\n"
+        # the references were produced in the unitary gauge; a purely
+        # electroweak process picks the FD gauge by default
+        v5_string += "set gauge unitary\n"
         if orders == {}:
             couplings = ' '
         else:
@@ -623,11 +627,7 @@ class MG7Runner(MG5Runner):
         (``ChannelEventGenerator``), and a resolvable LHAPDF data path for
         hadronic PDFs.
         """
-        try:
-            import madspace
-        except ImportError:
-            return False
-        if not hasattr(madspace, 'ChannelEventGenerator'):
+        if not hasattr(tests.import_madspace(), 'ChannelEventGenerator'):
             return False
         return cls.resolve_lhapdf_data_path() is not None
 
@@ -638,6 +638,9 @@ class MG7Runner(MG5Runner):
         else:
             v5_string = "import model %s\n" % model
         v5_string += "set automatic_html_opening False\n"
+        # the references were produced in the unitary gauge; a purely
+        # electroweak process picks the FD gauge by default
+        v5_string += "set gauge unitary\n"
         couplings = ' ' if orders == {} else \
             me_comparator.MERunner.get_coupling_definitions(orders)
         for i, proc in enumerate(proc_list):
@@ -747,6 +750,9 @@ class MG5RunnerMG7Aligned(MG5Runner):
         else:
             v5_string = "import model %s\n" % model
         v5_string += "set automatic_html_opening False\n"
+        # the references were produced in the unitary gauge; a purely
+        # electroweak process picks the FD gauge by default
+        v5_string += "set gauge unitary\n"
         couplings = ' ' if orders == {} else \
             me_comparator.MERunner.get_coupling_definitions(orders)
         for i, proc in enumerate(proc_list):

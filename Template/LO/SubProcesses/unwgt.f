@@ -143,44 +143,41 @@ c      write(*,*) 'storing Events'
 C**************************************************************************
 C      HELPING ROUTINE FOR PERFORMING THE Z BOOST OF THE EVENTS
 C**************************************************************************
-      double precision function get_betaz(pin,pout)
-C     compute the boost for the requested transformation
+      double precision function get_rapz(pin,pout)
+C     rapidity of the z boost taking pin to pout (same mass).
+C     The light-cone ratio stays accurate at small parton x,
+C     where beta -> 1 lost digits to the beam mass.
       implicit none
       double precision pin(0:3), pout(0:3)
-      double precision denom, control
+      double precision num, den
 
-      denom = pin(0)*pout(0) - pin(3)*pout(3)
-      if (denom.ne.0d0) then
-         control = pin(0)*pout(0) + pin(3)*pout(3)
-         if (denom/control.gt.1d-12)then
-            get_betaz = (pin(3) * pout(0) - pout(3) * pin(0)) / denom
-c        pass in massless case
-         else if (abs(pin(0)+pin(3)).gt.abs(pin(0))) then
-            get_betaz = (pin(0)**2 - pout(0)**2)/(pin(0)**2 + pout(0)**2)
-         else
-            get_betaz = (pout(0)**2 - pin(0)**2)/(pin(0)**2 + pout(0)**2)
-         endif
-      else if (pin(0).eq.pin(3)) then
-         get_betaz = (pin(0)**2 - pout(0)**2)/(pin(0)**2 + pout(0)**2)
-      else if (pin(0).eq.abs(pin(3))) then
-         get_betaz = (pout(0)**2 - pin(0)**2)/(pin(0)**2 + pout(0)**2)
+      if (pin(3)+pout(3).ge.0d0) then
+         num = pin(0) + pin(3)
+         den = pout(0) + pout(3)
       else
-         get_betaz = 0d0
+         num = pout(0) - pout(3)
+         den = pin(0) - pin(3)
+      endif
+      if (num.gt.0d0.and.den.gt.0d0) then
+         get_rapz = log(num/den)
+      else
+         get_rapz = 0d0
       endif
       return
       end
 
-      subroutine zboost_with_beta(pin, beta, pout)
-c     apply the boost
+      subroutine zboost_with_rap(pin, rap, pout)
+c     apply the boost on the light-cone components E+pz, E-pz
       implicit none
       double precision pin(0:3), pout(0:3)
-      double precision beta, gamma
+      double precision rap, pplus, pminus
 
-      gamma = 1d0/DSQRT(1-beta**2)
-      pout(0) = gamma * pin(0) - gamma * beta * pin(3)
+      pplus = (pin(0) + pin(3)) * exp(-rap)
+      pminus = (pin(0) - pin(3)) * exp(rap)
+      pout(0) = 0.5d0 * (pplus + pminus)
       pout(1) = pin(1)
       pout(2) = pin(2)
-      pout(3) = - gamma * beta * pin(0) + gamma * pin(3)
+      pout(3) = 0.5d0 * (pplus - pminus)
       return
       end
 
@@ -223,6 +220,11 @@ C
       logical               zooming
       common /to_zoomchoice/zooming
 
+      logical last_it
+      double precision last_uref, last_ufix, last_lumi, last_goal, last_xnorm
+      common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
+     &     last_xnorm, last_it
+
 c
 c     External
 c
@@ -238,6 +240,10 @@ C-----
 C  BEGIN CODE
 C-----
       local_twgt = max(twgt_it, twgt)
+c     refine last iteration (dsample): a large weight must not coarsen the events
+c     stored after it beyond the maximum weight they are unweighted against
+      if (last_it .and. last_ufix .gt. 0d0)
+     &     local_twgt = min(local_twgt, twgt*last_ufix/fudge)
 c      write(*,*) "twgt", twgt, twgt_it, local_twgt
       if (local_twgt .ge. 0d0) then
          p(:,:) = px(:,:)
@@ -328,6 +334,18 @@ c      save neventswritten
       integer ngroup
       common/to_group/ngroup
 
+c     maximum weight of this unweighting, for the refine last iteration (dsample)
+      logical last_it
+      double precision last_uref, last_ufix, last_lumi, last_goal, last_xnorm
+      common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
+     &     last_xnorm, last_it
+c     events this unweighting would give at last_uref (dsample, run.inc)
+      double precision last_nref
+      common /to_refine_lastn/ last_nref
+      double precision max_overweight_truncation
+      common/to_overweight/max_overweight_truncation
+      double precision xow
+
 c
 c     external
 c
@@ -341,11 +359,13 @@ C-----
 c
 c     First scale all of the events to the total cross section
 c
-
+      last_uref = 0d0
       if (nw .le. 0) return
       if (scale_to_xsec) then
          call sample_result(xsecabs,xsec,xerr,itmin)
          if (xsecabs .le. 0) return !Fix by TS 12/3/2010
+c        refine last iteration: its events are normalised to its own mean
+         if (last_it .and. last_xnorm .gt. 0d0) xsecabs = last_xnorm
       else
          xscale = nw*twgt
       endif
@@ -368,6 +388,34 @@ c
       th_maxwgt = dabs(swgt(i))
       if ( force_max_wgt.lt.0)then
          target_wgt = dabs(swgt(i))
+c        maximum weight for a refine last iteration decided now: the 99% quantile
+c        of the event weights, a count quantile that one large weight cannot move
+c        (unlike the truncation above, whose maximum a single large weight sets).
+c        The events are in units of twgt*fudge (fudge=10 in unwgt): in units of
+c        twgt, i.e. of |wgt|/twgt of a phase-space point
+         last_uref = dabs(swgt(max(1,min(nw,int(0.99d0*nw)))))*10d0
+c        with max_overweight_truncation set, the maximum weight is instead the
+c        one above which the events carry that fraction of the cross-section
+c        (as mg7's max_overweight_truncation); last_nref is then the number of
+c        events this iteration gives at that maximum
+         last_nref = 0d0
+         if (max_overweight_truncation .gt. 0d0) then
+            xow = 0d0
+            i = nw
+            do while (i .gt. 1 .and. xow+dabs(swgt(i)) .le.
+     &           max_overweight_truncation*xtot)
+               xow = xow + dabs(swgt(i))
+               i = i-1
+            enddo
+            last_uref = dabs(swgt(i))*10d0
+            do i=1,nw
+               last_nref = last_nref + min(1d0, dabs(swgt(i))*10d0/last_uref)
+            enddo
+         endif
+c        the refine last iteration is unweighted against the maximum weight its
+c        stop was counted with: a large weight it contains stays an overweight
+c        event and does not set the maximum for all the other events of the job
+         if (last_it .and. last_ufix .gt. 0d0) target_wgt = last_ufix/10d0
       else if (.not.scale_to_xsec) then
          target_wgt = force_max_wgt / xscale
       else
@@ -480,6 +528,8 @@ c     include 'vector.inc' ! defines VECSIZE_MEMMAX
       include 'cluster.inc' ! includes vector.inc that defines VECSIZE_MEMMAX
       include 'run.inc'
       include 'run_config.inc'
+      include '../../Source/PDF/pdf.inc'
+      include '../../Source/bstrahl.inc'
 
 
       
@@ -494,6 +544,7 @@ c
 c
 c     Local
 c
+      logical exists
       integer i,j,k,iini,ifin
       double precision sum_wgt,sum_wgt2, xtarget,targetamp(maxflow)
       integer ip, np, ic, nc
@@ -501,7 +552,7 @@ c
       integer iseed
       double precision beam_mass
       double precision pboost(0:3)
-      double precision beta, get_betaz
+      double precision rap, get_rapz
       double precision ebi(0:3), ebo(0:3)
       double precision ptcltmp(nexternal), pdum(0:3)
       integer beam_number
@@ -515,8 +566,14 @@ c
       integer ievent
       logical flip
 
+      integer ibeam1, ibeam2
+
       real ran1
       external ran1
+      integer bstrahl_beam_id
+      external bstrahl_beam_id
+      logical eepdf_has_bstrahl
+      external eepdf_has_bstrahl
 
       character*40 cfmt
 C     
@@ -531,6 +588,9 @@ C
 
       integer          IPSEL
       COMMON /SubProc/ IPSEL
+
+      double precision omx_ee(2)
+      common /to_ee_omx1/ omx_ee
 
 c      character*101       hel_buf
 c      common/to_helicity/hel_buf
@@ -587,6 +647,17 @@ c
          jsym = jsym+1
       enddo
 c
+c     Guard against an invalid subprocess selection: idup(i,ipsel,numproc)
+c     with ipsel outside 1..maxproc reads outside the array and writes an
+c     event with meaningless PDG codes (see the IPSEL clamp in auto_dsig).
+c     Nothing downstream can recognise such an event, so refuse to write it.
+c
+      if (ipsel.lt.1.or.ipsel.gt.maxproc) then
+         write(*,*) 'Error write_leshouche: invalid ipsel=',ipsel,
+     $        ' (valid range 1 to ',maxproc,'); event not written.'
+         stop 1
+      endif
+c
 c     Fill jpart color and particle info
 c
       do i=1,nexternal
@@ -619,6 +690,11 @@ c   Fix ordering of ptclus
       do i=1,nexternal
         ptclus(i) = ptcltmp(i)
       enddo
+c     MLM: start the shower of the non-jet particles from the hardest
+c     scale of the event instead of sqrt(s) (run_card mlm_shower_start)
+      if (ickkw.gt.0 .and. mlm_hardest_shower) then
+         call mlm_hardest_shower_scale(jpart, ptclus)
+      endif
 
 c     Check if we have flipped particle 1 and 2, and flip back
       flip = .false.
@@ -638,6 +714,7 @@ c
       pboost(1)=0d0
       pboost(2)=0d0
       pboost(3)=0d0
+      rap=0d0
       if (nincoming.eq.2) then
          if (xbk(1) .gt. 0d0 .and. xbk(1) .le. 1d0 .and.
      $       xbk(2) .gt. 0d0 .and. xbk(2) .le. 1d0) then
@@ -655,7 +732,7 @@ c
                ebo(1) = 0
                ebo(2) = 0
                ebo(3) = DSQRT(ebo(0)**2-beam_mass**2)
-               beta = get_betaz(ebi, ebo)
+               rap = get_rapz(ebi, ebo)
                if (xbk(1).eq.1d0) then
                 pb(0,isym(1,jsym)) = ebo(0)
                 pb(1,isym(1,jsym)) = ebo(1)
@@ -665,7 +742,7 @@ c
                 endif
                do j=1,nexternal
                   if (j.eq.1.and.xbk(1).eq.1d0) cycle
-                  call zboost_with_beta(p(0,j),beta,pb(0,isym(j,jsym)))
+                  call zboost_with_rap(p(0,j),rap,pb(0,isym(j,jsym)))
                   pb(4,isym(j,jsym))=pmass(j)
                enddo
 
@@ -683,7 +760,7 @@ c
                ebo(1) = 0
                ebo(2) = 0
                ebo(3) = -1d0*DSQRT(ebo(0)**2-beam_mass**2)
-               beta = get_betaz(ebi, ebo)
+               rap = get_rapz(ebi, ebo)
                if (xbk(2).eq.1d0) then
                 pb(0,isym(2,jsym)) = ebo(0)
                 pb(1,isym(2,jsym)) = ebo(1)
@@ -693,7 +770,7 @@ c
                endif
                do j=1,nexternal
                   if (j.eq.2.and.xbk(2).eq.1d0) cycle
-                  call zboost_with_beta(p(0,j),beta,pb(0,isym(j,jsym)))
+                  call zboost_with_rap(p(0,j),rap,pb(0,isym(j,jsym)))
                   pb(4,isym(j,jsym))=pmass(j)
                enddo
                ! wrong boost if both parton are massive!
@@ -703,7 +780,7 @@ c
      $           xbk(1),xbk(2)
          endif
          do j=1,nexternal
-            call zboost_with_beta(p(0,j),beta,pb(0,isym(j,jsym)))
+            call zboost_with_rap(p(0,j),rap,pb(0,isym(j,jsym)))
             pb(4,isym(j,jsym))=pmass(j)
          enddo
 
@@ -737,6 +814,13 @@ c
 c     Add info on resonant mothers
 c     recall onbw since that might have configured onBW for the wrong config (check tt~a ,t >... for checking impact 
       call cut_bw(p)
+c     check if process contains onia (the file is only created in this case)
+c     if the process contains onia set icol to a negative value to force
+c     the flag 'is_LC' set to be false in the routine addmothers to bypass 
+c     the writing of intermediate particles
+#if HAS_ONIA
+      icol = -abs(icol)
+#endif
       call addmothers(ipsel,jpart,pb,isym,jsym,sscale,aaqcd,aaqed,buff,
      $                npart,numproc,flip, icol, ivec)
 
@@ -852,6 +936,32 @@ C     bias module, then the beginning of the routine will directly
 C     jump here.
 
  1123 continue
+
+c     Split each beam momentum fraction into its beamstrahlung and ISR
+c     parts.  Only the ISR part may be handed to a shower's backward
+c     evolution, so the beamstrahlung part is written to the event
+c     file -- see Source/bstrahl.inc.  xbk/omx_ee/q2fact still hold the
+c     current phase-space point here: unwgt() is called from the
+c     integration loop, not from a replay of stored events.
+c
+c     This sits before the do_write_events guard because the bias
+c     module calls us with .False. purely to set up the event and then
+c     writes the record itself, via write_event_to_stream.
+      write_bstrahl = .false.
+      xbs_beam(1) = 1d0
+      xbs_beam(2) = 1d0
+      if (pdlabel.eq.'dressed') then
+         ibeam1 = bstrahl_beam_id(lpp(1))
+         ibeam2 = bstrahl_beam_id(lpp(2))
+         if (ibeam1.ne.0 .and. ibeam2.ne.0) then
+            call sample_beamstrahlung(
+     &           xbk(1), omx_ee(1), q2fact(1), ibeam1,
+     &           xbk(2), omx_ee(2), q2fact(2), ibeam2,
+     &           xbs_beam(1), xbs_beam(2))
+            write_bstrahl = eepdf_has_bstrahl()
+         endif
+      endif
+
       if (.not.do_write_events) then
         return
       endif
@@ -868,6 +978,61 @@ c     Store weight for event
 
       end
       
+      subroutine mlm_hardest_shower_scale(jpart, ptclus)
+c************************************************************************
+c     setclscales writes ptclus = sqrt(s) for every outgoing particle that
+c     no QCD clustering booked a scale onto. With
+c     Beams:setProductionScalesFromLHEF, Pythia8 starts each particle's
+c     final-state shower from its pt_clust and the initial-state shower
+c     from the largest one, so leptons and heavy quarks at sqrt(s) start
+c     the shower at the collider energy. Give the outgoing particles that
+c     are not light partons the event's hardest scale instead:
+c     max(SCALUP, pt_clust of the light partons below sqrt(s)). Light
+c     partons at sqrt(s) (core partons) keep it: that value is Pythia8's
+c     do-not-match flag. Only the shower start changes, not the matching.
+c     The hardest scale also includes the core-process scale of the
+c     clustering (mlm_core_scale, cluster.inc), so it does not drop below the
+c     hard process when mu_F does. Same rule as apply_mlm_hardest_shower_scale
+c     in madspace.
+c************************************************************************
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      include 'vector.inc'
+      include 'run.inc'
+      include 'cuts.inc'
+      integer jpart(7,-nexternal+3:2*nexternal-3)
+      double precision ptclus(nexternal)
+      double precision stot,m1,m2
+      common/to_stot/stot,m1,m2
+      integer i, id
+      double precision flag, hardest
+      logical light
+c     cluster.inc (not included: it also declares ptclus)
+      double precision mlm_core_scale
+      common/cl_core/mlm_core_scale
+
+      flag = 0.999d0*sqrt(stot)
+c     the core-process scale (setclscales) keeps the start at the hard
+c     process when mu_F is lower (scalefact < 1, a fixed scale)
+      hardest = 0d0
+      if (mlm_core_scale.lt.flag) hardest = max(hardest, mlm_core_scale)
+      if (q2fact(1).gt.0d0) hardest = max(hardest, sqrt(q2fact(1)))
+      if (q2fact(2).gt.0d0) hardest = max(hardest, sqrt(q2fact(2)))
+      do i=nincoming+1,nexternal
+         id = abs(jpart(1,i))
+         light = id.eq.21 .or. (id.ge.1 .and. id.le.maxjetflavor)
+         if (light .and. ptclus(i).lt.flag)
+     $        hardest = max(hardest, ptclus(i))
+      enddo
+      if (hardest.le.0d0) return
+      do i=nincoming+1,nexternal
+         id = abs(jpart(1,i))
+         light = id.eq.21 .or. (id.ge.1 .and. id.le.maxjetflavor)
+         if (.not.light .and. ptclus(i).ge.flag) ptclus(i) = hardest
+      enddo
+      end
+
       integer function n_unwgted()
 c************************************************************************
 c     Determines the number of unweighted events which have been written

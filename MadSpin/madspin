@@ -21,7 +21,7 @@ from __future__ import absolute_import
 import sys
 if sys.version_info < (3, 12):
     sys.exit('MadSpin works only with python 3.12 (or later).\n\
-               Please upgrade your version of python.')
+               Please upgrade your version of Python.')
 
 import os
 import optparse
@@ -171,7 +171,7 @@ try:
         except Exception as error:
             pass
 except KeyboardInterrupt:
-    print('writting history and quit on KeyboardInterrupt') 
+    print('writing history and quit on KeyboardInterrupt')
     pass
 
 

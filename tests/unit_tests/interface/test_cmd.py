@@ -24,6 +24,8 @@ import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.various.misc as misc
 import os
 import logging
+import io
+import contextlib
 
 import tests.parallel_tests.test_aloha as test_aloha
 
@@ -161,6 +163,24 @@ class TestValidCmd(unittest.TestCase):
         goal = [l.strip() for l in  goal.split('\n')]
         self.assertEqual(self.cmd.history, goal)
     
+    def test_save_and_load_processes_are_refused(self):
+        """`save processes` / `load processes` are gone: after an output the
+        amplitudes kept are the base amplitudes of its matrix elements, which
+        lost the diagrams its --mask trimmed, and a saved list could not be
+        output with the other --mask. `save model` / `load model` remain."""
+
+        master = cmd.MasterCmd()
+        master.no_notification()
+        target = pjoin(self.path, 'processes.pkl')
+        self.assertRaises(master.InvalidCmd, master.do_save,
+                          'processes %s' % target)
+        self.assertRaises(master.InvalidCmd, master.do_load,
+                          'processes %s' % target)
+        self.assertFalse(os.path.exists(target))
+        import madgraph.interface.madgraph_interface as mg_interface
+        self.assertNotIn('processes', mg_interface.MadGraphCmd._save_opts)
+        self.assertIn('model', mg_interface.MadGraphCmd._save_opts)
+
     def test_InvalidCmd(self):
         """test that the Invalid Command are dealt with correctly"""
         
@@ -231,7 +251,7 @@ class TestValidCmd(unittest.TestCase):
 
         self.assertEqual(cmd._curr_model.get('name'), 'sm')
 
-        import models as ufomodels
+        import madgraph.models as ufomodels
         ufomodel = ufomodels.load_model(cmd._curr_model.get('name'))
         for key in target:
             try:
@@ -240,6 +260,212 @@ class TestValidCmd(unittest.TestCase):
                 continue
             else:
                 self.assertEqual(to_check, target[key])
+
+    @test_aloha.set_global()
+    def test_polarisation_nlo_regimes(self):
+        """A polarised NLO process is checked differently in each regime.
+
+        The three do not share a hazard, so they must not share a check:
+
+          - 'virt' is standalone MadLoop: the user supplies the phase-space
+            point and so picks the frame themselves;
+          - loop-induced ('noborn', 'sqrvirt') has no Born to subtract and no
+            counterterm that has to sit in the same frame, and 'noborn' is
+            boosted by the same LO boost_to_frame as a tree process, so
+            nothing NLO-specific applies;
+          - the subtracted modes thread the frame through Born, real, FKS
+            counterterms, virtual and the MC-counterterm azimuth by hand, and
+            only the QCD path is validated. Colour is restricted there by two
+            separate rules:
+              * FINAL state: only MASSLESS coloured particles are refused. A
+                massive coloured emitter was measured (see the p p > t t~
+                [QCD] closure study), a massless one has not been -- and for a
+                massless one the real emission could not carry the born's
+                polarization onto the FKS emitter anyway (g -> q q~ changes
+                the identity of leg j).
+              * INITIAL state: ANY coloured particle is refused, whatever its
+                mass. The initial-state splitting runs backwards,
+                g -> q(-> born) q~, so the polarized quark is an internal line
+                of the real and no external leg can carry the projection.
+                A 1 -> N decay is exempt: fks_base.find_reals never splits the
+                initial state of a decay process.
+
+        The two gates used to disagree: the first admitted noborn/sqrvirt and
+        the second refused them again for being massive, so the first clause
+        was dead and loop-induced polarisation was refused outright.
+        """
+        cmd = self.cmd
+        cmd.do_import('sm')
+
+        # loop-induced: no restriction at all, massive or not, any order
+        cmd.check_process_format('g g > z{0} z{0} [noborn=QCD]')
+        cmd.check_process_format('g g > z{0} z{0} [sqrvirt=QCD]')
+        cmd.check_process_format('g g > z{0} z{0} [noborn=QED]')
+        # standalone MadLoop: likewise
+        cmd.check_process_format('u u~ > w+{0} w-{0} [virt=QED]')
+        # subtracted, QCD: the boost is threaded through
+        cmd.check_process_format('p p > z{0} j [QCD]')
+        cmd.check_process_format('p p > z{0} j [real=QCD]')
+
+        # subtracted, but outside the reach of the validated boost
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'p p > z{0} j [QED]')
+        # no frame at all in this mode
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'p p > z{0} j [tree=QCD]')
+        # A coloured polarised particle is also an FKS emitter. For a MASSIVE
+        # one that was measured -- p p > t t~ [QCD], all four top-helicity
+        # combinations, closure at +0.03 sigma, check_poles 20/20 and test_ME
+        # clean on the FKS configurations whose emitter IS the polarised top
+        # (docs/nlo_polarisation_massive_colour.md) -- so it is allowed.
+        cmd.check_process_format('u u~ > t{L} t~ [QCD]')
+        cmd.check_process_format('p p > t{+} t~{-} [QCD]')
+        cmd.check_process_format('p p > t{-} t~{+} [QCD]')
+        cmd.check_process_format('g g > t{+} t~{+} [real=QCD]')
+        cmd.check_process_format('u u~ > t{R} t~{L} [LOonly=QCD]')
+        # ... a MASSLESS coloured one is not: still untested, so still refused.
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'g{+} g > t t~ [QCD]')
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'u{+} u~ > t t~ [QCD]')
+
+        # A coloured particle in the INITIAL state is refused whatever its
+        # mass: the initial-state splitting is read backwards,
+        # g -> q(-> born) q~, so the polarized quark is an internal line of the
+        # real emission and there is no external leg to carry the projection.
+        # The massless-only rule above does not catch this, which is why it is
+        # a rule of its own: b and t are massive in the default sm, and
+        # b{+} b~ > h [QCD] used to reach generation and die there with a raw
+        # fks_common.FKSProcessError traceback.
+        for proc in ['b{+} b~ > h [QCD]',
+                     't{+} t~ > z [QCD]',
+                     'b~{+} b > h [real=QCD]',
+                     'g{+} g > t t~ [LOonly=QCD]']:
+            self.assertRaises(cmd.InvalidCmd, cmd.check_process_format, proc)
+        # control: the same colliders, with the polarization on a colourless
+        # leg or on a coloured FINAL-state one -- accepted
+        cmd.check_process_format('b b~ > h{0} [QCD]')
+        cmd.check_process_format('b b~ > t{+} t~ [QCD]')
+        # the two colour rules give distinguishable messages
+        try:
+            cmd.check_process_format('t{+} t~ > z [QCD]')
+            self.fail('an initial-state coloured polarized leg must be refused')
+        except cmd.InvalidCmd as error:
+            self.assertIn('INITIAL', str(error))
+        try:
+            cmd.check_process_format('p p > u{+} u~ [QCD]')
+            self.fail('a massless coloured polarized leg must be refused')
+        except cmd.InvalidCmd as error:
+            self.assertIn('massless color charged', str(error))
+            self.assertNotIn('INITIAL', str(error))
+
+        # A 1 -> N DECAY is exempt. Its "initial state" is the decaying
+        # particle, and fks_base.find_reals skips initial-state splittings for
+        # decay processes ("no splittings for initial states in decay
+        # processes"), so that leg is a spectator and keeps its polarization.
+        cmd.check_process_format('t{+} > w+ b QED=1 [QCD]')
+        cmd.check_process_format('h > b{+} b~ QED=1 [QCD]')
+        cmd.check_process_format('t{+} > w+ b{-} QED=1 [QCD]')
+
+        # The multiparticle case is what proves the constituent expansion
+        # works: p and j are refused through their gluon / massless quarks.
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'p{+} p > t t~ [QCD]')
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'p p > j{+} j [QCD]')
+        # ... and the refusal is not keyed on the gluon: a multiparticle with
+        # no gluon in it is refused too, through its massless quarks.
+        # (This does NOT show the walk reaches every constituent. MG5 orders
+        # multiparticle members gluon first, then by |pdg| ascending, so
+        # 'qlight = u u~ d d~' is stored as [2, 1, -2, -1] and the refusal
+        # fires on the FIRST member. In the SM one cannot build a
+        # multiparticle whose first member is massive-coloured and a later one
+        # massless-coloured, so "reaches every constituent" is untestable
+        # here.)
+        # do_define mutates the interface, and self.cmd is a class attribute
+        # shared by every test in this class, so use a private instance.
+        own = self.cmd.__class__()
+        own.no_notification()
+        own.do_import('sm')
+        own.do_define('qlight = u u~ d d~')
+        self.assertRaises(own.InvalidCmd,
+                          own.check_process_format,
+                          'p p > qlight{+} qlight [QCD]')
+        # An UPPERCASE multiparticle label: do_define lowercases the key it
+        # stores, so the walk has to look it up lowercased. It used to fall
+        # through to get_particle('qq') -> None and crash with an
+        # AttributeError instead of accepting the (massive, coloured) members.
+        own.do_define('QQ = t t~')
+        own.check_process_format('p p > QQ{+} QQ [QCD]')
+        # An unknown particle name is not this check's business: it must not
+        # crash here, the process parser reports it.
+        own.check_process_format('p p > nosuchparticle{+} t~ [QCD]')
+        # ... but colour is no restriction where there is no subtraction
+        cmd.check_process_format('g g > t{L} t~ [noborn=QCD]')
+        cmd.check_process_format('g{+} g > t t~ [noborn=QCD]')
+
+    @test_aloha.set_global()
+    def test_polarisation_no_duplicate_helicity(self):
+        """A polarization restriction must name each helicity at most once.
+
+        '{++}' used to be accepted and silently gave a factor two: the
+        helicity matrix is itertools.product over the raw list -- so [1,1]
+        yields ncomb=8 rows for 4 distinct helicity assignments -- while the
+        denominator factor is built from the same restriction as '{+}'.  The
+        overlap can also be hidden behind a multi-valued label: 'T' expands to
+        (+1,-1), so '{+T}', '{RT}', '{-T}' and '{LT}' repeat a helicity too.
+        Both families are refused; the message has to name the repeated
+        helicity and what each label expanded to, since '{+T}' does not look
+        like a duplicate until you know what 'T' covers.
+        """
+        cmd = self.cmd
+        cmd.do_import('sm')
+
+        # accepted: every spelling below names each helicity exactly once
+        for accepted, expected in [('+', [1]), ('-', [-1]), ('0', [0]),
+                                   ('T', [1, -1]), ('L', [-1]), ('R', [1]),
+                                   ('A', [99]), ('S', [9]),
+                                   ('+-', [1, -1]), ('-+', [-1, 1]),
+                                   ('0T', [0, 1, -1]), ('T0', [1, -1, 0]),
+                                   ('LR', [-1, 1]), ('0+', [0, 1]),
+                                   ('0S', [0, 9]), ('GH', [4, 5]),
+                                   ('GQW', [4, 6, 7]), ('0-', [0, -1]),
+                                   # '+0' is the signed spelling of helicity
+                                   # 0, so '{+0+}' is 0 and +1 -- not a
+                                   # duplicate, however it reads
+                                   ('+0', [0]), ('+0+', [0, 1]),
+                                   ('+2', [2])]:
+            procdef = cmd.extract_process('p p > w+{%s}' % accepted)
+            self.assertEqual(procdef['legs'][-1]['polarization'], expected,
+                             'polarization {%s} should be %s' % (accepted,
+                                                                 expected))
+
+        # refused: a helicity named twice, literally or after expansion
+        for refused in ['++', '--', '+-+', 'TT', 'LL', 'RR', '00', 'GG', 'AA',
+                        '+T', 'RT', '-T', 'LT', 'TL', 'TR', 'T+', 'T-',
+                        'R+', 'L-', '0T0']:
+            self.assertRaises(cmd.InvalidCmd, cmd.extract_process,
+                              'p p > w+{%s}' % refused)
+
+        # the message names the repeated helicity and both labels
+        try:
+            cmd.extract_process('p p > w+{+T}')
+        except cmd.InvalidCmd as error:
+            msg = str(error)
+            self.assertIn('+1 (right)', msg)
+            self.assertIn('-1 (left)', msg)
+            self.assertIn('selects', msg)
+            self.assertIn('already selected', msg)
+        else:
+            raise Exception('{+T} repeats helicity +1 and must be refused')
+
+        # the same parse loop serves LO: the double-count is not NLO-specific
+        self.assertRaises(cmd.InvalidCmd, cmd.extract_process,
+                          'p p > w+{++} [real=QCD]')
+        # ... and it reaches every leg of a decay chain, which parses each
+        # piece through the same extract_process
+        self.assertRaises(cmd.InvalidCmd, cmd.extract_decay_chain_process,
+                          'e+ e- > z{T}, z > mu+{++} mu-')
 
     @test_aloha.set_global()
     def test_check_generate(self):
@@ -261,9 +487,21 @@ class TestValidCmd(unittest.TestCase):
         cmd.check_process_format('g g > Z Z [ noborn=QCD] @1')
         cmd.check_process_format('u u~ > 2w+ 2j')
         cmd.check_process_format('u u~ > 2w+{0} 2j')
-        cmd.check_process_format,'u u~ > e+{L} vl [QED]'
-        
-        # unvalid syntax
+        cmd.check_process_format('u u~ > w+{L} [QCD]')
+        cmd.check_process_format('u u~ > z{0} g [QCD]')
+        cmd.check_process_format('u u~ > z{0} g [real=QCD]')
+        cmd.check_process_format('u u~ > z{0} g [LOonly=QCD]')
+        # standalone MadLoop: the user supplies the momenta, so the frame is
+        # theirs and the perturbation orders do not matter
+        cmd.check_process_format('u u~ > z{0} g [virt=QCD]')
+        cmd.check_process_format('u u~ > z{0} g [virt=QED QCD]')
+        # a MASSIVE coloured particle may be polarised in the subtracted
+        # regime: measured on p p > t t~ [QCD], see
+        # docs/nlo_polarisation_massive_colour.md
+        cmd.check_process_format('u u~ > t{L} t~ [QCD]')
+        cmd.check_process_format('p p > t{+} t~{-} [QCD]')
+
+        # invalid syntax
         self.wrong(cmd.check_process_format, ' e+ e-')
         self.wrong(cmd.check_process_format, ' e+ e- > e+ e-,')
         self.wrong(cmd.check_process_format, ' e+ e- > > e+ e-')
@@ -277,9 +515,15 @@ class TestValidCmd(unittest.TestCase):
         self.wrong(cmd.check_process_format, 'e+ e- > Z{L} > mu+ mu-')
         self.wrong(cmd.check_process_format, 'e+ e- > Z > mu+ mu- / W+{L}')
         self.wrong(cmd.check_process_format, 'e+ e- > Z > mu+ mu- $ W+{L}')
-        self.wrong(cmd.check_process_format, 'u u~ > t{L} t~ [QCD]')
+        # a MASSLESS coloured particle stays refused in the subtracted regime,
+        # multiparticles included -- p and j carry a gluon
+        self.wrong(cmd.check_process_format, 'g{+} g > t t~ [QCD]')
+        self.wrong(cmd.check_process_format, 'u{+} u~ > t t~ [QCD]')
+        self.wrong(cmd.check_process_format, 'p{+} p > t t~ [QCD]')
+        self.wrong(cmd.check_process_format, 'p p > j{+} j [QCD]')
+        # massive colourless polarization at NLO QCD is supported since the
+        # me_frame boost reaches the virtual; mixed and pure QED are not
         self.wrong(cmd.check_process_format, 'u u~ > W+{L} vl [ QED QCD]')
-        self.wrong(cmd.check_process_format,'u u~ > w+{L} [QCD]')
         self.wrong(cmd.check_process_format,'u u~ > e+{L} vl [QED]')
         
     @test_aloha.set_global()
@@ -297,7 +541,7 @@ class TestValidCmd(unittest.TestCase):
         
     @test_aloha.set_global()
     def test_simple_generate(self):
-        """check that simple syntax goes trough and return expected process"""
+        """check that simple syntax goes through and return expected process"""
            
         cmd = self.cmd
         self.do('import model sm')
@@ -307,8 +551,27 @@ class TestValidCmd(unittest.TestCase):
         self.assertEqual(len(proc), 4)
         
     @test_aloha.set_global()
+    def test_dollar_massless_is_refused(self):
+        """`$` removes the on-shell window |sqrt(s) - M| < BWCUTOFF * W: a
+        massless particle has none (in the complex-mass scheme its width
+        would be 0/0, and the diagram silently zero), so `$ a` is refused,
+        also inside a multiparticle; `$ z` and `$$ a` still go through."""
+
+        cmd = self.cmd
+        self.do('import model sm')
+        for line in ('generate e+ e- > mu+ mu- $ a',
+                     'generate e+ e- > mu+ mu- $ g',
+                     'generate e+ e- > mu+ mu- $ z a'):
+            with self.assertRaisesRegex(cmd.InvalidCmd, 'not supported for massless'):
+                cmd.do_generate(line.split(' ', 1)[1])
+        self.do('generate e+ e- > mu+ mu- $ z')
+        self.assertEqual(cmd._curr_amps[0].get('process').get('forbidden_onsh_s_channels'), [23])
+        self.do('generate e+ e- > mu+ mu- $$ a')
+        self.assertTrue(cmd._curr_amps)
+
+    @test_aloha.set_global()
     def test_generate_polarised(self):
-        """check that simple syntax goes trough and return expected process"""
+        """check that simple syntax goes through and return expected process"""
            
         cmd = self.cmd
         self.do('import model sm')
@@ -429,6 +692,117 @@ class TestValidCmd(unittest.TestCase):
                 self.do('generate %s, w+ > ta+ vt' % proc.input_string())
                 self.assertTrue(cmd._curr_amps)
         finally:
+            cmd.exec_cmd('generate p p > t t~')
+
+    @test_aloha.set_global()
+    def test_polarised_propagator_gauges(self):
+        """A polarised propagator of a massive vector ('t > w+{0} b, w+ > ...')
+        is a piece of the propagator numerator. The unitary and axial gauges
+        take every brace (pieces of -g + qq/M^2; the axial gauge only changes
+        the propagator of the massless vectors). The FD gauge takes {0}, {T},
+        {+}, {-}, {A}, {S}, {0S} (pieces of its five-component numerator) and
+        refuses {G}, {H}, {Q}, {W}, which are pieces of the unitary numerator
+        only. The Feynman gauge refuses them all: the qq/M^2 part of the
+        propagator is carried by separate Goldstone diagrams there (the
+        output used to crash with 'particle with custom propagator can not
+        have polarization'). An external polarisation and a polarised fermion
+        propagator are fine in every gauge."""
+        cmd = self.cmd
+        self.do('import model sm')
+        fd_braces = ('0', 'T', '+', '-', 'A', 'S', '0S')
+        unitary_only = ('G', 'H', 'Q', 'W')
+        try:
+            # --- Feynman gauge: every brace refused --------------------
+            self.do('set gauge Feynman')
+            for brace in fd_braces + unitary_only:
+                proc = 'generate t > w+{%s} b, w+ > ta+ vt' % brace
+                try:
+                    self.do(proc)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('w+{%s}' % brace, str(error))
+                    self.assertIn('Feynman gauge', str(error))
+                    self.assertIn('Goldstone', str(error))
+                    self.assertIn('set gauge unitary', str(error))
+                else:
+                    self.fail('%s accepted in the Feynman gauge' % proc)
+            # the walk recurses into the decay chains
+            self.assertRaises(
+                madgraph.InvalidCmd, self.do,
+                'generate p p > t t~, (t > w+{0} b, w+ > ta+ vt)')
+
+            # --- FD gauge: the helicity pieces and the remainder -------
+            self.do('set gauge FD')
+            for brace in fd_braces:
+                self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                self.assertTrue(cmd._curr_amps)
+            for brace in unitary_only:
+                proc = 'generate t > w+{%s} b, w+ > ta+ vt' % brace
+                try:
+                    self.do(proc)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('w+{%s}' % brace, str(error))
+                    self.assertIn('FD gauge', str(error))
+                    self.assertIn('unitary-gauge numerator', str(error))
+                else:
+                    self.fail('%s accepted in the FD gauge' % proc)
+            self.assertRaises(
+                madgraph.InvalidCmd, self.do,
+                'generate p p > t t~, (t > w+{G} b, w+ > ta+ vt)')
+            # the FD remainder is not the unitary one: said when it is used
+            with self.assertLogs('cmdprint', level='WARNING') as log:
+                self.do('generate t > w+{A} b, w+ > ta+ vt')
+            self.assertTrue(any('remainder of the FD propagator' in line
+                                for line in log.output))
+            # a massless vector: only the transverse pieces (its FD
+            # longitudinal vector vanishes)
+            self.do('generate e+ e- > z a{T}, a > mu+ mu-')
+            self.assertTrue(cmd._curr_amps)
+            for brace in ('0', 'A', 'S', 'G'):
+                try:
+                    self.do('generate e+ e- > z a{%s}, a > mu+ mu-' % brace)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('a{%s}' % brace, str(error))
+                    self.assertIn('massless vector', str(error))
+                else:
+                    self.fail('a{%s} accepted in the FD gauge' % brace)
+
+            # --- external polarisations, fermion propagators -----------
+            for gauge in ('Feynman', 'FD'):
+                self.do('set gauge %s' % gauge)
+                self.do('generate t t~ > w+{0} w-')
+                self.assertTrue(cmd._curr_amps)
+                self.do('generate t t~ > w+{T} w-')
+                self.assertTrue(cmd._curr_amps)
+                self.do('generate e+ e- > t{+} t~, t > w+ b')
+                self.assertTrue(cmd._curr_amps)
+
+            # --- unitary and axial gauges: everything ------------------
+            for gauge in ('axial', 'unitary'):
+                self.do('set gauge %s' % gauge)
+                for brace in fd_braces + unitary_only:
+                    self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                    self.assertTrue(cmd._curr_amps)
+            # a massless vector keeps the same -g propagator in the Feynman
+            # gauge: its transverse propagator stays allowed there
+            self.do('set gauge Feynman')
+            self.do('generate e+ e- > z a{T}, a > mu+ mu-')
+            self.assertTrue(cmd._curr_amps)
+
+            # --- complex-mass scheme: nowhere ---------------------------
+            self.do('set complex_mass_scheme True')
+            for gauge in ('unitary', 'FD'):
+                self.do('set gauge %s' % gauge)
+                try:
+                    self.do('generate t > w+{0} b, w+ > ta+ vt')
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('complex-mass scheme', str(error))
+                else:
+                    self.fail('accepted in the complex-mass scheme (%s)' % gauge)
+                self.do('generate t t~ > w+{0} w-')
+                self.assertTrue(cmd._curr_amps)
+        finally:
+            self.do('set complex_mass_scheme False')
+            self.do('set gauge unitary')
             cmd.exec_cmd('generate p p > t t~')
 
 
@@ -560,3 +934,457 @@ class TestModel_interface(unittest.TestCase):
 
         self.cmd.exec_cmd('import model loop_qcd_qed_sm_a0')
         self.assertTrue(self.cmd._curr_model.get('startfromalpha0'))
+
+
+class _MassOnlyModel(dict):
+    """The little of a model that the mass advice reads.
+
+    is_massive() wants the particles and the value of each mass parameter,
+    and reads 'parameter_dict' off the model as a dict (Model is one), so
+    this is a dict too.
+    """
+
+    def __init__(self, masses, name='fake'):
+        """masses: {pdg: (mass parameter name, value)}"""
+
+        dict.__init__(self)
+        self['parameter_dict'] = dict(masses.values())
+        self['name'] = name
+        self['modelpath'] = '/models/%s' % name
+        self._particles = dict((pdg, {'mass': name})
+                               for pdg, (name, _) in masses.items())
+
+    def get(self, key):
+        if key == 'particle_dict':
+            return self._particles
+        return dict.get(self, key)
+
+
+class NeglectedMassAdviceTest(unittest.TestCase):
+    """What `import model` says about a light fermion mass the model kept.
+
+    A massive u, d, s, e or mu costs diagrams and helicity configurations for
+    a mass which is negligible anyway, and customize_model removes it. A
+    massive b or tau is the 4F scheme and a deliberate choice, so the same
+    message there would be noise on the most common import there is.
+    """
+
+    B_AND_TAU = {5: ('MB', 4.7), 15: ('MTA', 1.777)}
+
+    def advice_for(self, masses):
+        """What advise_neglected_masses logs for a model with those masses."""
+
+        import madgraph.interface.madgraph_interface as mg_interface
+
+        class _Interface(object):
+            NEGLECTED_MASSES = mg_interface.MadGraphCmd.NEGLECTED_MASSES
+
+        interface = _Interface()
+        interface._advised_masses_for = None
+        interface._curr_model = (_MassOnlyModel(masses)
+                                if masses is not None else None)
+
+        captured = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                captured.append(record.getMessage())
+
+        # the interface logs to 'cmdprint', which is what the user sees
+        logger = logging.getLogger('cmdprint')
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers = [_Handler()]
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        try:
+            mg_interface.MadGraphCmd.advise_neglected_masses(interface)
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+        return captured
+
+    def test_a_massive_up_quark_is_reported(self):
+        masses = dict(self.B_AND_TAU)
+        masses[2] = ('MU', 2.55e-3)
+        message = self.advice_for(masses)
+        self.assertEqual(len(message), 1)
+        self.assertIn('for u.', message[0])
+        self.assertIn('customize_model', message[0])
+        self.assertIn("'flavour scheme'", message[0])
+        self.assertNotIn('massive leptons', message[0])
+
+    def test_massive_light_leptons_are_reported(self):
+        masses = dict(self.B_AND_TAU)
+        masses[11] = ('MEL', 5.11e-4)
+        masses[13] = ('MMU', 0.106)
+        message = self.advice_for(masses)
+        self.assertEqual(len(message), 1)
+        self.assertIn('for e, mu.', message[0])
+        self.assertIn("'nb of massive leptons'", message[0])
+        self.assertNotIn('flavour scheme', message[0])
+
+    def test_both_kinds_name_both_options(self):
+        masses = dict(self.B_AND_TAU)
+        masses[3] = ('MS', 0.101)
+        masses[13] = ('MMU', 0.106)
+        message = self.advice_for(masses)
+        self.assertIn('for s, mu.', message[0])
+        self.assertIn("options 'flavour scheme' and 'nb of massive leptons'",
+                      message[0])
+
+    def test_the_4f_scheme_says_nothing(self):
+        """b and tau massive, everything else massless: that is `sm`."""
+
+        self.assertEqual(self.advice_for(self.B_AND_TAU), [])
+
+    def test_a_mass_hardcoded_to_zero_says_nothing(self):
+        """A UFO whose u mass is ZERO cannot be restricted, and is already
+        what the advice would ask for."""
+
+        masses = dict(self.B_AND_TAU)
+        masses[2] = ('ZERO', 0.0)
+        self.assertEqual(self.advice_for(masses), [])
+
+    def test_no_model_at_all_is_harmless(self):
+        self.assertEqual(self.advice_for(None), [])
+
+    def test_it_is_said_once_per_model(self):
+        """MG7 re-imports the model behind the user's back -- `set gauge`,
+        `set complex_mass_scheme`, and `check gauge` four times over -- and
+        each one comes through do_import."""
+
+        import madgraph.interface.madgraph_interface as mg_interface
+
+        class _Interface(object):
+            NEGLECTED_MASSES = mg_interface.MadGraphCmd.NEGLECTED_MASSES
+            _advised_masses_for = None
+
+        interface = _Interface()
+        masses = dict(self.B_AND_TAU)
+        masses[2] = ('MU', 2.55e-3)
+        interface._curr_model = _MassOnlyModel(masses)
+
+        said = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                said.append(record.msg)
+
+        logger = logging.getLogger('cmdprint')
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers = [_Handler()]
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        try:
+            for _ in range(5):
+                mg_interface.MadGraphCmd.advise_neglected_masses(interface)
+            # ... and a different model is a new thing to say
+            interface._curr_model = _MassOnlyModel(masses, name='other')
+            mg_interface.MadGraphCmd.advise_neglected_masses(interface)
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+        self.assertEqual(len(said), 2, said)
+
+
+class CheckDisplayWithoutProcessTest(unittest.TestCase):
+    """'display processes' before anything is generated has to say so, not die.
+
+    _fks_multi_proc only exists once an NLO process has been generated, and
+    check_display read it unconditionally.
+    """
+
+    def setUp(self):
+        import madgraph.interface.master_interface as cmd
+        self.cmd = cmd.MasterCmd()
+        self.cmd.do_import('model sm')
+
+    def test_it_raises_invalid_cmd(self):
+        self.assertFalse(hasattr(self.cmd, '_fks_multi_proc'))
+        for what in ['processes', 'diagrams', 'diagrams_text']:
+            try:
+                self.cmd.check_display([what])
+            except AttributeError as error:
+                self.fail('check_display(%r) raised %s' % (what, error))
+            except Exception as error:
+                self.assertTrue('No process generated' in str(error), what)
+            else:
+                self.fail('check_display(%r) accepted an empty session' % what)
+
+    def test_it_accepts_a_generated_process(self):
+        self.cmd.do_generate('e+ e- > mu+ mu-')
+        self.cmd.check_display(['processes'])   # must not raise
+
+
+class CrossingDisplayTest(unittest.TestCase):
+    """The crossed processes folded into a base (default --use_crossing) have no
+    amplitude of their own, yet are part of the generation: `display processes`
+    and the generation summary have to show them."""
+
+    def setUp(self):
+        import madgraph.interface.master_interface as cmd
+        self.cmd = cmd.MasterCmd()
+        self.cmd.do_import('model sm')
+
+    def _summary(self, line):
+        said = []
+        logger = logging.getLogger('cmdprint')
+        handler = logging.Handler()
+        handler.emit = lambda record: said.append(record.getMessage())
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers, logger.propagate = [handler], False
+        logger.setLevel(logging.INFO)
+        try:
+            self.cmd.exec_cmd(line, errorhandling=False, printcmd=False)
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+        return [text for text in said if text.startswith('Total:')]
+
+    def _display(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.cmd.do_display('processes')
+        return out.getvalue()
+
+    def test_crossings_are_listed_and_counted(self):
+        total = self._summary('generate p p > w+ j')
+        self.assertEqual(total, ['Total: 1 processes with 2 diagrams (and 2 crossed '
+                                 'processes evaluated through them, see '
+                                 '"display processes")'])
+        text = self._display()
+        self.assertIn('Crossed processes evaluated through g Q > w+ Q:', text)
+        # a crossing and its beam swap are one entry, as a mirror process is
+        self.assertEqual(text.count('    Process: '), 2, text)
+        self.assertIn('_quark _anti_quark > w+ g', text)
+        self.assertIn('g _anti_quark > w+ _anti_quark', text)
+
+    def test_decay_chain_production_crossings(self):
+        self._summary('generate p p > z j, z > e+ e-')
+        text = self._display()
+        self.assertIn('Crossed processes evaluated through g Q > z Q:', text)
+        self.assertEqual(text.count('    Process: '), 2, text)
+
+    def test_nothing_is_added_without_crossing(self):
+        # the 1 + 2 processes the folded generation reports, each its own
+        total = self._summary('generate p p > w+ j --use_crossing=False')
+        self.assertEqual(total, ['Total: 3 processes with 6 diagrams'])
+        self.assertNotIn('Crossed', self._display())
+
+    def test_offshell_legs_cross(self):
+        # an off-shell ('*') leg is evaluated at the invariant mass of its
+        # momentum by the crossed external call as well (that of the leg fed
+        # to its base slot): it folds as the on-shell process does
+        total = self._summary('generate p p > w+* j')
+        self.assertEqual(total, ['Total: 1 processes with 2 diagrams (and 2 crossed '
+                                 'processes evaluated through them, see '
+                                 '"display processes")'])
+        self.assertIn('_quark _anti_quark > w+* g', self._display())
+
+    def test_offshell_leg_pairs_with_an_offshell_leg(self):
+        import madgraph.core.base_objects as base_objects
+        import madgraph.core.diagram_generation as diagram_generation
+        model = self.cmd._curr_model
+
+        def legs(spec):
+            return base_objects.LegList([
+                base_objects.Leg({'id': pid, 'state': final, 'offshell': star})
+                for pid, final, star in spec])
+
+        pairing = diagram_generation.MultiProcess.crossing_flavor_pairing
+        # u u~ > t* t~ crossed into u~ u > t* t~: the starred tops pair up
+        base = legs([(2, False, False), (-2, False, False), (6, True, True),
+                     (-6, True, False)])
+        crossed = legs([(-2, False, False), (2, False, False), (6, True, True),
+                        (-6, True, False)])
+        self.assertIsNotNone(pairing(base, crossed, model))
+        # the star on the other top: no slot of the base evaluates it
+        crossed = legs([(-2, False, False), (2, False, False), (6, True, False),
+                        (-6, True, True)])
+        self.assertIsNone(pairing(base, crossed, model))
+
+
+class RequiredSChannelErrorTest(unittest.TestCase):
+    """A bad required s-channel has to be reported for what it is.
+
+    extract_process asks extract_particle_ids for the required s-channels with
+    crash_on_duplication, and used to turn *any* InvalidCmd coming back into a
+    message about the '> A A >' syntax -- so an unknown particle name in that
+    position was reported as a syntax that the user had not used.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = cmd.MasterCmd()
+        cls.cmd.do_import('model sm')
+
+    def error_of(self, process):
+        try:
+            self.cmd.extract_process(process)
+        except madgraph.InvalidCmd as error:
+            return str(error)
+        self.fail('%r was accepted' % process)
+
+    def test_an_unknown_particle_says_so(self):
+        message = self.error_of('b b~ > w+ w- | h+ h- > ta+ vt ta- vt~')
+        self.assertIn('h+', message)
+        self.assertNotIn('A A', message)
+
+    def test_a_repeated_one_still_reports_the_syntax(self):
+        message = self.error_of('p p > z z > e+ e- mu+ mu-')
+        self.assertIn('A A', message)
+
+    def test_a_good_one_is_accepted(self):
+        self.cmd.extract_process('p p > z | a > e+ e-')   # must not raise
+
+
+class DisplayInertCouplingOrderTest(unittest.TestCase):
+    """A coupling order the model declares but which no interaction carries
+    is inert: it can not be used to constrain a process. That happens as soon
+    as a restriction card removes every vertex of that order -- SMEFTatNLO
+    keeps NP in its hierarchy while its default restriction drops all the NP
+    vertices, so 'generate p p > t t~ NP<=2' is rejected while 'display
+    coupling_order' used to advertise NP like any other order.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = cmd.MasterCmd()
+        cls.cmd.do_import('model sm')
+
+    def setUp(self):
+        self.hierarchy = self.cmd._curr_model['order_hierarchy']
+
+    def tearDown(self):
+        self.cmd._curr_model['order_hierarchy'] = self.hierarchy
+
+    def display(self):
+        import contextlib, io
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.cmd.do_display('coupling_order')
+        return output.getvalue()
+
+    def test_an_order_carried_by_no_interaction_is_flagged(self):
+        self.cmd._curr_model['order_hierarchy'] = \
+                                      {'NP': 1, 'QCD': 2, 'QED': 4}
+        text = self.display()
+        self.assertIn('NP : weight = 1 [inert]', text)
+        self.assertIn('QCD : weight = 2\n', text)
+        self.assertIn('QED : weight = 4\n', text)
+        # and the flag is explained
+        self.assertIn('no interaction of this model carries that order', text)
+
+    def test_a_model_with_no_inert_order_is_left_alone(self):
+        text = self.display()
+        self.assertNotIn('inert', text)
+        self.assertIn('QCD : weight = 1\n', text)
+        self.assertIn('QED : weight = 2\n', text)
+
+
+class NoCrossingAliasTest(unittest.TestCase):
+    """'--no_crossing' (the MG5 3.x flag, which main still completes) is a
+    deprecated alias of '--use_crossing=False'.
+
+    Once do_add stopped popping it, it reached check_add as part of the
+    process definition: 'generate e+ e- > mu+ mu- --no_crossing' died with
+    'No particle --no_crossing in model'.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = cmd.MasterCmd()
+        cls.cmd.do_import('model sm')
+
+    def test_it_is_popped_as_false(self):
+        args = ['p', '>', '--no_crossing']
+        with self.assertLogs('cmdprint', level='WARNING') as said:
+            self.assertIs(self.cmd.pop_use_crossing_flag(args), False)
+        self.assertEqual(args, ['p', '>'])
+        self.assertIn('--use_crossing=False', '\n'.join(said.output))
+
+    def test_a_generate_with_it_works(self):
+        with self.assertLogs('cmdprint', level='WARNING'):
+            self.cmd.exec_cmd('generate e+ e- > mu+ mu- --no_crossing')
+        self.assertEqual(len(self.cmd._curr_amps), 1)
+        self.assertFalse(self.cmd._use_crossing)
+
+
+class LaunchCopiesOnlyRunTimeSetsTest(unittest.TestCase):
+    """`launch -i` of an aMC@NLO or MadWeight output copies the MG5 `set`
+    history into the run interface it starts, and that run's check_set
+    rejects the generation-time zerowidth_tchannel.
+
+    MadGraphCmd.do_launch replayed every line with exec_cmd (which raises), so
+    `set zerowidth_tchannel False; generate p p > t t~ [QCD]; output X;
+    launch X -i` aborted there; only the aMC@NLO prompt's own launch skipped
+    it. The run interface is a stub around the real check_set, so no process
+    directory is needed.
+    """
+
+    history = ['import model sm',
+               'set zerowidth_tchannel False',
+               'set nb_core 4',
+               'generate p p > t t~ [QCD]',
+               'output PROC']
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = cmd.MasterCmd()
+
+    def replayed(self, launch, mode, module, name, path='PROC'):
+        """The lines `launch` (a do_launch) sends to the run interface it
+        builds, with the run interface classes module.name and
+        module.nameShell (MasterCmd is a CmdShell) stubbed."""
+
+        from unittest import mock
+        import madgraph.interface.common_run_interface as common_run
+
+        sent = []
+
+        class _Run(common_run.CheckValidForCmd):
+            InvalidCmd = madgraph.InvalidCmd
+            _set_options = []
+
+            def __init__(self, me_dir, options):
+                self.options = dict(options)
+
+            def help_set(self):
+                pass
+
+            def pass_in_web_mode(self):
+                pass
+
+            def exec_cmd(self, line):
+                self.check_set(line.split()[1:])
+                sent.append(line)
+
+        def check_launch(args, options):
+            args[:] = [p for p in [mode, path] if p]
+
+        master = self.cmd
+        with mock.patch.object(master, 'check_launch', check_launch), \
+             mock.patch.object(master, 'history', list(self.history)), \
+             mock.patch.object(master, 'define_child_cmd_interface',
+                               lambda child: 'stop'), \
+             mock.patch.object(module, name, _Run), \
+             mock.patch.object(module, name + 'Shell', _Run):
+            self.assertEqual(launch(master, '%s -i' % path), 'stop')
+        return sent
+
+    def test_from_mg5_for_amcatnlo(self):
+        import madgraph.interface.madgraph_interface as mg_interface
+        import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
+        sent = self.replayed(mg_interface.MadGraphCmd.do_launch, 'aMC@NLO',
+                             amcatnlo_run, 'aMCatNLOCmd')
+        self.assertEqual(sent, ['set nb_core 4'])
+
+    def test_from_the_amcatnlo_prompt(self):
+        import shutil
+        import madgraph.interface.amcatnlo_interface as amcatnlo_interface
+        import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
+        path = tempfile.mkdtemp(prefix='launch_replay')
+        try:
+            os.mkdir(pjoin(path, 'Events'))
+            sent = self.replayed(amcatnlo_interface.aMCatNLOInterface.do_launch,
+                                 None, amcatnlo_run, 'aMCatNLOCmd', path=path)
+        finally:
+            shutil.rmtree(path, ignore_errors=True)
+        self.assertEqual(sent, ['set nb_core 4'])

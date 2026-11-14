@@ -61,6 +61,7 @@ import tempfile
 import unittest
 
 import madgraph.interface.master_interface as MGCmd
+import tests
 from madgraph.various.banner import RunCardMG7
 
 pjoin = os.path.join
@@ -75,29 +76,14 @@ def _mg7_datadir_or_skip(test):
     """Return an LHAPDF data dir that contains the NNPDF23_lo_as_0130_qed set,
     or ``skipTest`` (on *test*) when the mg7 runtime stack (madspace + LHAPDF +
     the run_card.toml default PDF) is unavailable."""
-    try:
-        import madspace
-        has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-    except ImportError:
-        has_mg7 = False
-    if not has_mg7:
+    if not hasattr(tests.import_madspace(), 'ChannelEventGenerator'):
         test.skipTest('mg7 runtime stack (madspace) unavailable')
 
-    candidates = []
-    if os.environ.get('LHAPDF_DATA_PATH'):
-        candidates.extend(os.environ['LHAPDF_DATA_PATH'].split(os.pathsep))
-    try:
-        out = subprocess.check_output(['lhapdf-config', '--datadir'],
-                                      stderr=subprocess.DEVNULL).decode().strip()
-        if out:
-            candidates.append(out)
-    except Exception:
-        pass
-    for d in candidates:
-        if d and os.path.isdir(d) and glob.glob(pjoin(d, 'NNPDF23_lo_as_0130_qed*')):
-            return d
-    test.skipTest('NNPDF23_lo_as_0130_qed LHAPDF data not found '
-                  '(set $LHAPDF_DATA_PATH)')
+    datadir = tests.lhapdf_data_path('NNPDF23_lo_as_0130_qed')
+    if not datadir:
+        test.skipTest('NNPDF23_lo_as_0130_qed LHAPDF data not found (set the '
+                      'lhapdf option or $LHAPDF_DATA_PATH)')
+    return datadir
 
 
 def _lhe_hash(path):
@@ -161,6 +147,9 @@ class MG7ReproducibilityTest(unittest.TestCase):
         mg.exec_cmd('set automatic_html_opening False --no_save')
         mg.exec_cmd('generate %s' % _PROCESS)
         mg.exec_cmd('output mg7 %s' % run_dir)
+        # the hashes are taken on the LHE file; npy is the default output
+        self._set_run_card(pjoin(run_dir, 'Cards', 'run_card.toml'),
+                           **{'run.output_format': 'lhe'})
         return run_dir
 
     def _set_run_card(self, toml_path, **settings):

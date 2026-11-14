@@ -75,8 +75,8 @@ class TestMadEventCmd(unittest.TestCase):
 
         card_dir= pjoin(root_path,'..','Template/Common', 'Cards')
 
-        # PLOT_CARD
-        self.assertEqual(detect(pjoin(card_dir, 'plot_card.dat')),
+        # PLOT_CARD (MadAnalysis4 is gone, but old banners still carry the card)
+        self.assertEqual(detect(pjoin(root_path, 'input_files', 'plot_card.dat')),
                          'plot_card.dat')
 
         # Delphes
@@ -126,11 +126,19 @@ class TestMadEventCmd(unittest.TestCase):
         card_dir= pjoin(root_path,'..','Template', 'LO', 'Cards')
         self.assertEqual(detect(pjoin(card_dir, 'rivet_card_default.dat')),
                          'rivet_card.dat')        
+
+        # Onia card
+        self.assertEqual(detect(pjoin(root_path, 'input_files',
+                                      'onia_card_quarkonium.dat')),
+                         'onia_card.dat')
+        self.assertEqual(detect(pjoin(root_path, 'input_files',
+                                      'onia_card_leptonium.dat')),
+                         'onia_card.dat')
         
         
     def test_help_category(self):
         """Check that no help category are introduced by mistake.
-           If this test failes, this is due to a un-expected ':' in a command of
+           If this test fails, this is due to a un-expected ':' in a command of
            the cmd interface.
         """
         cmd = mecmd.MadEventCmdShell
@@ -214,7 +222,7 @@ class TestDelphesFusion(unittest.TestCase):
         exe = pjoin(ddir, 'DelphesHepMC2')
         fail = ('[[ "$3" == *%s* ]] && exit 0' % fail_split) if fail_split else 'false'
         with open(exe, 'w') as f:
-            f.write('#!/bin/bash\n%s\ncp "$3" "$2"\n' % fail)
+            f.write('#!/bin/bash\n%s\necho "DELPHES_OUTPUT_$3"\ncp "$3" "$2"\n' % fail)
         os.chmod(exe, os.stat(exe).st_mode | stat.S_IEXEC)
 
         # fake hadd (ROOTSYS/bin/hadd): concatenate the input ROOTs into output.
@@ -224,6 +232,8 @@ class TestDelphesFusion(unittest.TestCase):
         with open(hadd, 'w') as f:
             f.write('#!/bin/bash\n'
                     'out=""; skip=0; ins=()\n'
+                    'echo "HADD_STDOUT"\n'
+                    'echo "HADD_STDERR" >&2\n'
                     'for a in "$@"; do\n'
                     '  if [ "$skip" = 1 ]; then skip=0; continue; fi\n'
                     '  case "$a" in -f) ;; -j) skip=1;;\n'
@@ -257,6 +267,21 @@ class TestDelphesFusion(unittest.TestCase):
         # hadd concatenated every split's Delphes output, in order.
         self.assertEqual(open(final).read(),
                          'CONTENT_0\nCONTENT_1\nCONTENT_2\n')
+        log = pjoin(stub.me_dir, 'Events', 'run_01', 'tag_1_delphes.log')
+        log_content = open(log).read()
+        split_sections = []
+        for i in range(3):
+            section = ('=' * 35 + '\n'
+                       ' -> Delphes log file for run %d <-\n' % i
+                       + '=' * 35 + '\n'
+                       'DELPHES_OUTPUT_' + pjoin(split_dirs[i], 'events.hepmc') + '\n\n')
+            split_sections.append(section)
+        self.assertEqual(log_content[:sum(map(len, split_sections))],
+                         ''.join(split_sections))
+        self.assertEqual(log_content.count('DELPHES_OUTPUT_'), 3)
+        self.assertGreater(log_content.index('HADD_STDOUT'),
+                   log_content.index('DELPHES_OUTPUT_' + pjoin(split_dirs[-1], 'events.hepmc')))
+        self.assertIn('HADD_STDERR', log_content)
 
     def test_run_delphes_on_splits_partial_failure(self):
         # split_1's Delphes produces no ROOT (but exits 0): the fused path must
@@ -453,3 +478,65 @@ class TestSharedPdfsetsDir(unittest.TestCase):
         self.assertEqual(cmd.get_shared_pdfsets_dirs(), [])
         cmd.options['run_mode'] = 1
         self.assertEqual(cmd.get_shared_pdfsets_dirs()[0], self.cvmfs)
+
+
+class TestPythia8MergingPlugin(unittest.TestCase):
+    """Since Pythia8 8.318, main164 loads its merging hook as a plugin, with
+    a readString that Pythia8 ignores after reading a card with Main:subrun
+    lines (all of ours): the card of a CKKW-L shower requests the plugin."""
+
+    def setUp(self):
+        import madgraph.various.banner as banner_mod
+        self.banner_mod = banner_mod
+        self.tmpdir = tempfile.mkdtemp(prefix='mg5_py8_merging')
+        self.template = open(pjoin(madgraph.MG5DIR, 'Template', 'LO', 'Cards',
+                                   'pythia8_card_default.dat')).read()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def make_pythia8(self, version):
+        """a fake Pythia8 installation, with main164.cc as in this version"""
+        py8 = pjoin(self.tmpdir, 'pythia%s' % version)
+        os.makedirs(pjoin(py8, 'share', 'Pythia8', 'examples'))
+        os.makedirs(pjoin(py8, 'lib'))
+        if version == '8318':
+            source = ('    pythia.readString("Init:plugins += {libpythia8amcatnloHooks.so"\n'
+                      '      "::aMCatNLOHooks}");\n')
+            open(pjoin(py8, 'lib', 'libpythia8amcatnloHooks.so'), 'w').close()
+        else:
+            source = '    pythia.setUserHooksPtr(mergingHooks);\n'
+        with open(pjoin(py8, 'share', 'Pythia8', 'examples', 'main164.cc'), 'w') as fsock:
+            fsock.write(source)
+        return py8
+
+    def setup_card(self, pythia8_path, run_type, **run_card):
+        """the card of the shower, as do_pythia8 sets it up"""
+        class FakeCmd(object):
+            pass
+        cmd = FakeCmd()
+        cmd.run_tag, cmd.run_name, cmd.me_dir = 'tag_1', 'run_01', self.tmpdir
+        cmd.to_store = []
+        cmd.options = {'run_mode': 2, 'pythia8_path': pythia8_path}
+        cmd.proc_characteristic = {'max_n_matched_jets': 2}
+        cmd.run_card = self.banner_mod.RunCardLO()
+        for name, value in run_card.items():
+            cmd.run_card[name] = value
+        card = self.banner_mod.PY8Card(self.template)
+        card.read(self.template + 'Merging:Process = guess\n', setter='user')
+        mecmd.MadEventCmd.setup_Pythia8RunAndCard(cmd, card, run_type)
+        return card
+
+    def test_ckkwl_requests_the_merging_plugin(self):
+        ckkwl = {'ickkw': 0, 'xqcut': 0.0, 'ktdurham': 30.0}
+        py8 = self.make_pythia8('8318')
+        card = self.setup_card(py8, 'CKKW', **ckkwl)
+        self.assertEqual(card.init_plugins,
+                         ['%s::aMCatNLOHooks::add' %
+                          os.path.abspath(pjoin(py8, 'lib', 'libpythia8amcatnloHooks.so'))])
+        # up to Pythia8 8.317, main164 sets the hook itself
+        card = self.setup_card(self.make_pythia8('8317'), 'CKKW', **ckkwl)
+        self.assertEqual(card.init_plugins, [])
+        # main164 does not merge an MLM shower
+        card = self.setup_card(py8, 'MLM', ickkw=1, xqcut=30.0)
+        self.assertEqual(card.init_plugins, [])

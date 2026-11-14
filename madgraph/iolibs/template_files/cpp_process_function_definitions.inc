@@ -6,17 +6,27 @@
 // Initialize process. 
   
 CPPProcess::CPPProcess(string param_card_name) :
-    goodhel(), ntry(), sum_hel(), ngood(), igood(), jhel()
+    goodhel(), ntry(), sum_hel(), ngood(), igood(), jhel(),
+    flip(), flip_ready(), ntry_csym(), csym_bad(), igoodrep(), nrep(), repwgt()
 {
 // Instantiate the model class and set parameters that stay fixed during run
     SLHAReader slha(param_card_name, false);
+    pars.resetParameterOverrides();
     pars.setIndependentParameters(slha);
     pars.setIndependentCouplings();
     %(initProc_lines)s
-} 
+}
 
 //--------------------------------------------------------------------------
-// Evaluate |M|^2, part independent of incoming flavour. 
+// Re-populate mME from the current model parameters (pars). See declaration in CPPProcess.h.
+
+void CPPProcess::refreshMasses() {
+    mME.clear();
+    %(refreshMasses_lines)s
+}
+
+//--------------------------------------------------------------------------
+// Evaluate |M|^2, part independent of incoming flavour.
 
 double CPPProcess::sigmaKin(int flavor_id) { 
     // Set the parameters which change event by event
@@ -91,3 +101,5 @@ int CPPProcess::broken_sym(const int* flavor)
     }
     return total_factor;
 }
+
+%(ident_cross_function)s

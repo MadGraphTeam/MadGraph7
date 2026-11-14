@@ -332,7 +332,7 @@ class TestAddVariable(unittest.TestCase):
         self.assertEqual(sum.prefactor, 1)
         
     def testmultaddint(self):
-        """test the multiplication of an AddVariable by a Integer"""
+        """test the multiplication of an AddVariable by an Integer"""
         
         prod1 = 3 * self.add1
         prod2 = self.add2 * 2
@@ -360,7 +360,7 @@ class TestAddVariable(unittest.TestCase):
 
     
     def testmultadd_legacy(self):
-        """ int * AddVariable doens't change the content of AddVariable """
+        """ int * AddVariable doesn't change the content of AddVariable """
         
         var1 = aloha_obj.P(1,2)
         var2 = aloha_obj.P(2,2)
@@ -2553,7 +2553,7 @@ class TestSomeObjectProperty(unittest.TestCase):
         
     def test_short_parity_for_epsilon(self):
 
-        # usefull shortcut
+        # useful shortcut
         Epsilon = aloha_obj.Epsilon
         # test some value
         eps = Epsilon(1,2,3,4)
@@ -2572,7 +2572,7 @@ class TestSomeObjectProperty(unittest.TestCase):
     def testEpsilonProperty(self):
         """Test the property of the epsilon object"""
         
-        # usefull shortcut
+        # useful shortcut
         Epsilon = aloha_obj.Epsilon
 
         # test some value
@@ -3167,6 +3167,47 @@ class test_aloha_creation(IOTests.IOTestManager):
         self.assertAlmostEqual(val_V, val_N2)
         self.assertAlmostEqual(val_V, val_N3)
 
+    def test_short_aloha_propagator_momentum_flip(self):
+        """ Check that flipping the momentum of an outgoing fermion propagator
+            keeps the sign of even powers of P (the $ veto P1D was always
+            passing for outgoing fermions since P**2 was turned into -P**2)"""
+
+        self.addCleanup(aloha_lib.KERNEL.clean)
+        builder = create_aloha.AbstractRoutineBuilder.__new__(
+                                              create_aloha.AbstractRoutineBuilder)
+        namespace = vars(create_aloha)
+        def evaluate(expr, flip):
+            out = eval(builder.parse_expression(expr, flip), namespace)
+            return str(out.expand().simplify().get_rep((0,)))
+
+        for expr in ['P(-1,3)**2', 'P(-1,3) ** 2', 'P(-1,3)**2.0',
+                     'P(-1,3)*P(-1,3)', 'Mass(3)**2/P(-1,3)**2',
+                     '2*P(-1,3)**2 - Mass(3)**2', 'P(0,3)**4',
+                     'P(-1,3)**(2)', 'P(-1,3) ** ( 2 )', 'P(-1,3)**2e0',
+                     'P(-1,3)**2.0E+00']:
+            aloha_lib.KERNEL.clean()
+            self.assertEqual(evaluate(expr, True), evaluate(expr, False), expr)
+
+        for expr in ['P(0,3)', 'P(0,3)**3', 'P(0,3)**(3)', 'P(0,3)**3e0',
+                     'P(0,3)**(2*1+1)']:
+            aloha_lib.KERNEL.clean()
+            self.assertEqual(evaluate(expr, True),
+                             evaluate('-1*(%s)' % expr, False), expr)
+
+        # the $ veto should be the same for an incoming and an outgoing fermion
+        FFV = self.Lorentz(name = 'FFV',
+                 spins = [ 2, 2, 3 ],
+                 structure = 'Gamma(3,1,2)')
+        veto = []
+        for outgoing in [1, 2]:
+            aloha_lib.KERNEL.clean()
+            create_aloha.AbstractRoutineBuilder(FFV).compute_routine(outgoing,
+                                                  tag=['P1D'], factorize=False)
+            veto.append([str(v) for v in aloha_lib.KERNEL.reduced_expr2.values()
+                                        if str(v).startswith("('theta_functionr'")])
+        self.assertEqual(len(veto[0]), 1)
+        self.assertEqual(veto[0], veto[1])
+
 
 
 
@@ -3254,7 +3295,7 @@ class test_aloha_creation(IOTests.IOTestManager):
         # check for correct behavior if wrong input:
         # 1) check that it fail for non loop routine
         self.assertRaises(AssertionError, helas_suite.get_info, 'rank', 'VVVV2', 0, []) 
-        # 2) check that unknow information fails.
+        # 2) check that unknown information fails.
         self.assertRaises(create_aloha.ALOHAERROR, helas_suite.get_info, 'SW', 'VVVV2', 2, ['L1'])
         # 3) check that appropriate error is raise for invalid input
         self.assertRaises(AssertionError, helas_suite.get_info, 'rank', 'VVVV2', 1, ['L1'])
@@ -4052,7 +4093,10 @@ def SSS1_1(S2,S3,COUP,M1,W1):
     S1.momenta[2] = +S2.momenta[2]+S3.momenta[2]
     S1.momenta[3] = +S2.momenta[3]+S3.momenta[3]
     P1 = [-S1.momenta[j] for j in range(4)]
-    denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    if (P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2).real > 0:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    else:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1**2)
     S1.W[0]= denom*1j * S3.W[0]*S2.W[0]
     return S1
 
@@ -4172,7 +4216,10 @@ def FFV1C1_1(F1,V3,COUP,M2,W2):
     F2.momenta[3] = +F1.momenta[3]+V3.momenta[3]
     P2 = [-F2.momenta[j] for j in range(4)]
     F2.flavor = F1.flavor
-    denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    if (P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2).real > 0:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    else:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2**2)
     F2.W[0]= denom*(-1j)*(F1.W[0]*(P2[0]*(-V3.W[0]+V3.W[3])+(P2[1]*(V3.W[1]-1j*(V3.W[2]))+(P2[2]*(+1j*(V3.W[1])+V3.W[2])+P2[3]*(-V3.W[0]+V3.W[3]))))+(F1.W[1]*(P2[0]*(V3.W[1]+1j*(V3.W[2]))+(P2[1]*(-1)*(V3.W[0]+V3.W[3])+(P2[2]*(-1)*(+1j*(V3.W[0]+V3.W[3]))+P2[3]*(V3.W[1]+1j*(V3.W[2])))))+M2*(F1.W[2]*(V3.W[0]+V3.W[3])+F1.W[3]*(V3.W[1]+1j*(V3.W[2])))))
     F2.W[1]= denom*1j*(F1.W[0]*(P2[0]*(-V3.W[1]+1j*(V3.W[2]))+(P2[1]*(V3.W[0]-V3.W[3])+(P2[2]*(-1j*(V3.W[0])+1j*(V3.W[3]))+P2[3]*(V3.W[1]-1j*(V3.W[2])))))+(F1.W[1]*(P2[0]*(V3.W[0]+V3.W[3])+(P2[1]*(-1)*(V3.W[1]+1j*(V3.W[2]))+(P2[2]*(+1j*(V3.W[1])-V3.W[2])-P2[3]*(V3.W[0]+V3.W[3]))))+M2*(F1.W[2]*(-V3.W[1]+1j*(V3.W[2]))+F1.W[3]*(-V3.W[0]+V3.W[3]))))
     F2.W[2]= denom*1j*(F1.W[2]*(P2[0]*(V3.W[0]+V3.W[3])+(P2[1]*(-V3.W[1]+1j*(V3.W[2]))+(P2[2]*(-1)*(+1j*(V3.W[1])+V3.W[2])-P2[3]*(V3.W[0]+V3.W[3]))))+(F1.W[3]*(P2[0]*(V3.W[1]+1j*(V3.W[2]))+(P2[1]*(-V3.W[0]+V3.W[3])+(P2[2]*(-1j*(V3.W[0])+1j*(V3.W[3]))-P2[3]*(V3.W[1]+1j*(V3.W[2])))))+M2*(F1.W[0]*(-V3.W[0]+V3.W[3])+F1.W[1]*(V3.W[1]+1j*(V3.W[2])))))
@@ -4204,7 +4251,10 @@ def FFV1C1_2(F2,V3,COUP,M1,W1):
     F1.momenta[3] = +F2.momenta[3]+V3.momenta[3]
     P1 = [-F1.momenta[j] for j in range(4)]
     F1.flavor = F2.flavor
-    denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    if (P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2).real > 0:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    else:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1**2)
     F1.W[0]= denom*(-1j)*(F2.W[0]*(P1[0]*(V3.W[0]+V3.W[3])+(P1[1]*(-1)*(V3.W[1]+1j*(V3.W[2]))+(P1[2]*(+1j*(V3.W[1])-V3.W[2])-P1[3]*(V3.W[0]+V3.W[3]))))+(F2.W[1]*(P1[0]*(V3.W[1]-1j*(V3.W[2]))+(P1[1]*(-V3.W[0]+V3.W[3])+(P1[2]*(+1j*(V3.W[0])-1j*(V3.W[3]))+P1[3]*(-V3.W[1]+1j*(V3.W[2])))))+M1*(F2.W[2]*(V3.W[0]-V3.W[3])+F2.W[3]*(-V3.W[1]+1j*(V3.W[2])))))
     F1.W[1]= denom*1j*(F2.W[0]*(P1[0]*(-1)*(V3.W[1]+1j*(V3.W[2]))+(P1[1]*(V3.W[0]+V3.W[3])+(P1[2]*(+1j*(V3.W[0]+V3.W[3]))-P1[3]*(V3.W[1]+1j*(V3.W[2])))))+(F2.W[1]*(P1[0]*(-V3.W[0]+V3.W[3])+(P1[1]*(V3.W[1]-1j*(V3.W[2]))+(P1[2]*(+1j*(V3.W[1])+V3.W[2])+P1[3]*(-V3.W[0]+V3.W[3]))))+M1*(F2.W[2]*(V3.W[1]+1j*(V3.W[2]))-F2.W[3]*(V3.W[0]+V3.W[3]))))
     F1.W[2]= denom*1j*(F2.W[2]*(P1[0]*(-V3.W[0]+V3.W[3])+(P1[1]*(V3.W[1]+1j*(V3.W[2]))+(P1[2]*(-1j*(V3.W[1])+V3.W[2])+P1[3]*(-V3.W[0]+V3.W[3]))))+(F2.W[3]*(P1[0]*(V3.W[1]-1j*(V3.W[2]))+(P1[1]*(-1)*(V3.W[0]+V3.W[3])+(P1[2]*(+1j*(V3.W[0]+V3.W[3]))+P1[3]*(V3.W[1]-1j*(V3.W[2])))))+M1*(F2.W[0]*(-1)*(V3.W[0]+V3.W[3])+F2.W[1]*(-V3.W[1]+1j*(V3.W[2])))))
@@ -4232,7 +4282,10 @@ def FFV1C1_1(F1,V3,COUP,M2,W2):
     F2.momenta[3] = +F1.momenta[3]+V3.momenta[3]
     P2 = [-F2.momenta[j] for j in range(4)]
     F2.flavor = F1.flavor
-    denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    if (P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2).real > 0:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    else:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2**2)
     F2.W[0]= denom*(-1j)*(F1.W[0]*(P2[0]*(-V3.W[0]+V3.W[3])+(P2[1]*(V3.W[1]-1j*(V3.W[2]))+(P2[2]*(+1j*(V3.W[1])+V3.W[2])+P2[3]*(-V3.W[0]+V3.W[3]))))+(F1.W[1]*(P2[0]*(V3.W[1]+1j*(V3.W[2]))+(P2[1]*(-1)*(V3.W[0]+V3.W[3])+(P2[2]*(-1)*(+1j*(V3.W[0]+V3.W[3]))+P2[3]*(V3.W[1]+1j*(V3.W[2])))))+M2*(F1.W[2]*(V3.W[0]+V3.W[3])+F1.W[3]*(V3.W[1]+1j*(V3.W[2])))))
     F2.W[1]= denom*1j*(F1.W[0]*(P2[0]*(-V3.W[1]+1j*(V3.W[2]))+(P2[1]*(V3.W[0]-V3.W[3])+(P2[2]*(-1j*(V3.W[0])+1j*(V3.W[3]))+P2[3]*(V3.W[1]-1j*(V3.W[2])))))+(F1.W[1]*(P2[0]*(V3.W[0]+V3.W[3])+(P2[1]*(-1)*(V3.W[1]+1j*(V3.W[2]))+(P2[2]*(+1j*(V3.W[1])-V3.W[2])-P2[3]*(V3.W[0]+V3.W[3]))))+M2*(F1.W[2]*(-V3.W[1]+1j*(V3.W[2]))+F1.W[3]*(-V3.W[0]+V3.W[3]))))
     F2.W[2]= denom*1j*(F1.W[2]*(P2[0]*(V3.W[0]+V3.W[3])+(P2[1]*(-V3.W[1]+1j*(V3.W[2]))+(P2[2]*(-1)*(+1j*(V3.W[1])+V3.W[2])-P2[3]*(V3.W[0]+V3.W[3]))))+(F1.W[3]*(P2[0]*(V3.W[1]+1j*(V3.W[2]))+(P2[1]*(-V3.W[0]+V3.W[3])+(P2[2]*(-1j*(V3.W[0])+1j*(V3.W[3]))-P2[3]*(V3.W[1]+1j*(V3.W[2])))))+M2*(F1.W[0]*(-V3.W[0]+V3.W[3])+F1.W[1]*(V3.W[1]+1j*(V3.W[2])))))
@@ -4282,7 +4335,10 @@ def FFFF1_1(F2,F3,F4,COUP,M1,W1):
     P1 = [-F1.momenta[j] for j in range(4)]
     F1.flavor = F2.flavor
     TMP0 = (F4.W[0]*F3.W[0]+F4.W[1]*F3.W[1]+F4.W[2]*F3.W[2]+F4.W[3]*F3.W[3])
-    denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    if (P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2).real > 0:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    else:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1**2)
     F1.W[0]= denom*-1j * TMP0*(F2.W[2]*(P1[0]+P1[3])+(F2.W[3]*(P1[1]+1j*(P1[2]))-F2.W[0]*M1))
     F1.W[1]= denom*1j * TMP0*(F2.W[2]*(-P1[1]+1j*(P1[2]))+(F2.W[3]*(-P1[0]+P1[3])+F2.W[1]*M1))
     F1.W[2]= denom*1j * TMP0*(F2.W[0]*(-P1[0]+P1[3])+(F2.W[1]*(P1[1]+1j*(P1[2]))+F2.W[2]*M1))
@@ -4316,7 +4372,10 @@ def FFFF1C1_1(F1,F3,F4,COUP,M2,W2):
     P2 = [-F2.momenta[j] for j in range(4)]
     F2.flavor = F1.flavor
     TMP0 = (F4.W[0]*F3.W[0]+F4.W[1]*F3.W[1]+F4.W[2]*F3.W[2]+F4.W[3]*F3.W[3])
-    denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    if (P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2).real > 0:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2 * (M2 -1j* W2))
+    else:
+        denom = COUP/(P2[0]**2-P2[1]**2-P2[2]**2-P2[3]**2 - M2**2)
     F2.W[0]= denom*-1j * TMP0*(F1.W[2]*(P2[0]+P2[3])+(F1.W[3]*(P2[1]+1j*(P2[2]))-F1.W[0]*M2))
     F2.W[1]= denom*1j * TMP0*(F1.W[2]*(-P2[1]+1j*(P2[2]))+(F1.W[3]*(-P2[0]+P2[3])+F1.W[1]*M2))
     F2.W[2]= denom*1j * TMP0*(F1.W[0]*(-P2[0]+P2[3])+(F1.W[1]*(P2[1]+1j*(P2[2]))+F1.W[2]*M2))
@@ -4350,7 +4409,10 @@ def FFFF1C2_1(F2,F4,F3,COUP,M1,W1):
     P1 = [-F1.momenta[j] for j in range(4)]
     F1.flavor = F2.flavor
     TMP0 = (F4.W[0]*F3.W[0]+F4.W[1]*F3.W[1]+F4.W[2]*F3.W[2]+F4.W[3]*F3.W[3])
-    denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    if (P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2).real > 0:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1 * (M1 -1j* W1))
+    else:
+        denom = COUP/(P1[0]**2-P1[1]**2-P1[2]**2-P1[3]**2 - M1**2)
     F1.W[0]= denom*-1j * TMP0*(F2.W[2]*(P1[0]+P1[3])+(F2.W[3]*(P1[1]+1j*(P1[2]))-F2.W[0]*M1))
     F1.W[1]= denom*1j * TMP0*(F2.W[2]*(-P1[1]+1j*(P1[2]))+(F2.W[3]*(-P1[0]+P1[3])+F2.W[1]*M1))
     F1.W[2]= denom*1j * TMP0*(F2.W[0]*(-P1[0]+P1[3])+(F2.W[1]*(P1[1]+1j*(P1[2]))+F2.W[2]*M1))

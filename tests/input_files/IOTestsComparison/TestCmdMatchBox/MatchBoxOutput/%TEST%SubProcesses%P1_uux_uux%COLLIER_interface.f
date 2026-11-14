@@ -101,7 +101,7 @@ C     These global variables cache the coefficients already computed
 C      by COLLIER
 C     so that they can be reused. In particular, in CTMODE 2, the
 C      cached ERROR 
-C     quantities for eahc rank will be used to make use of COLLIER's
+C     quantities for each rank will be used to make use of COLLIER's
 C      internal
 C     assessment of the numerical accuracy.
 C     
@@ -310,7 +310,7 @@ C       This do loop spans over 'i' in the expression above.
      $     **2-RBUFF(3)**2,0.0D0)
 
 C         Now regularize the onshell behavior of the kinematic
-C          invarients
+C          invariants
 C         All loop masses are tested, but that might be a bit too
 C          inclusive.
           DO K=1,NLOOPLINE
@@ -512,7 +512,7 @@ C              complex phase leads to slightly more accurate estimates
 
       LOGICAL LOOP_ID_DONE(NLOOPGROUPS)
       COMPLEX*16 TIR_COEFS_DIRECT_MODE(0:LOOPMAXCOEFS-1,3,NLOOPGROUPS)
-      COMPLEX*16 TIR_COEFS_ERROR(0:MAXRANK,NLOOPGROUPS)
+      REAL*8 TIR_COEFS_ERROR(0:MAXRANK,NLOOPGROUPS)
       COMMON/MG5_1_COLLIER_TIR_COEFS/TIR_COEFS_DIRECT_MODE
      $ ,TIR_COEFS_ERROR,LOOP_ID_DONE
 
@@ -710,7 +710,7 @@ C        the screen, the user must see it
 C       and either change its usage of MadLoop or turnoff COLLIER cache
         WRITE(*,*) 'INFO: MadLoop detected that the global cache of'
      $   //' COLLIER had to be reset because of a change in your use'
-     $   //' of MadLoop. This should not happend for each event.'
+     $   //' of MadLoop. This should not happen for every event.'
         USERHEL_BU         = USERHEL
         SQSO_TARGET_BU     = SQSO_TARGET
         COLLIERMODE_BU     = COLLIERMODE

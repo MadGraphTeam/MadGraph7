@@ -122,9 +122,20 @@ class IdentifyMETag(diagram_generation.DiagramTag):
         
         return [amplitude.get('has_mirror_process'),
                 process.get('id'),
+                process.get_gauge(),
                 process.get('is_decay_chain'),
                 identical_particle_factor,
                 dc,
+                # Two modules told to cover DIFFERENT halves of a pattern's
+                # flavors (set_excluded_flavors) must not be identified, however
+                # alike their diagrams: this tag deliberately identifies
+                # processes that agree up to a leg permutation, and the split
+                # that lets a crossing serve q q~ > q' q~' is exactly such a
+                # pair. Merging them would relabel one to the other's leg order
+                # (reorder_process below) and undo the split silently. Empty for
+                # every process that was never told anything, so ordinary
+                # flavor combination is untouched.
+                getattr(process, '_excluded_flavors', ()),
                 perms,
                 sorted_tags]
 
@@ -163,8 +174,8 @@ class IdentifyMETag(diagram_generation.DiagramTag):
     @staticmethod
     def link_from_leg(leg, model):
         """Returns the end link for a leg needed to identify matrix
-        elements: ((leg numer, state, spin, self_antipart, mass,
-        width, color, decay and is_part), number)."""
+        elements: ((leg number, state, spin, self_antipart, mass,
+        width, color, polarization, decay and is_part), number)."""
 
         part = model.get_particle(leg.get('id'))
 
@@ -174,11 +185,26 @@ class IdentifyMETag(diagram_generation.DiagramTag):
         # For FS legs, don't care about number (but do for IS legs)
         if leg.get('state'): number = 0
         else: number = leg.get('number')
+        # A polarization restriction selects which helicities of this leg are
+        # summed over, so two legs which restrict it differently do NOT share
+        # a matrix element ('p p > t t~{+}' and 'p p > t t~{-}' must stay
+        # apart; without this they get the same tag and only the first one is
+        # ever written out).
+        # The stored list is the typed order but means the *set* of allowed
+        # helicities, so canonicalise it: this MUST agree with the
+        # canonicalisation Process.shell_polarization uses to build the P
+        # directory name, or two legs could be told apart here yet render to
+        # one and the same directory.
+        # An unpolarized leg gives (), so every tag of an unpolarized process
+        # is structurally what it was before.
+        polarization = base_objects.canonical_polarization(
+            leg.get('polarization'))
         # Include also onshell, since this specifies forbidden s-channel
         return [((number, id, part.get('spin'), leg.get('onshell'),
                   part.get('is_part'), part.get('self_antipart'),
-                  part.get('mass'), part.get('width'), part.get('color')),
-                 leg.get('number'))]
+                  part.get('mass'), part.get('width'), part.get('color'),
+                  polarization),
+                 leg.get('number'),leg.get('onium'))]
         
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
@@ -433,7 +459,7 @@ class CanonicalConfigTag(diagram_generation.DiagramTag):
     @staticmethod
     def link_from_leg(leg, model):
         """Returns the end link for a leg needed to identify configs: 
-        ((leg numer, mass, width, color), number)."""
+        ((leg number, mass, width, color), number)."""
 
         part = model.get_particle(leg.get('id'))
 
@@ -446,7 +472,7 @@ class CanonicalConfigTag(diagram_generation.DiagramTag):
         
         return [((leg.get('number'), part.get('spin'), part.get('color'), charge,
                   part.get('mass'), part.get('width')),
-                 (leg.get('number'),leg.get('id'),leg.get('state')))]
+                 (leg.get('number'),leg.get('id'),leg.get('state'),leg.get('onium')))]
         
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
@@ -509,6 +535,7 @@ class CanonicalConfigTag(diagram_generation.DiagramTag):
             leg = base_objects.Leg({'number':link.links[0][1][0],
                                      'id':link.links[0][1][1],
                                      'state':link.links[0][1][2],
+                                     'onium':link.links[0][1][3],
                                      'onshell':None})
             return leg
         # This shouldn't happen
@@ -541,6 +568,32 @@ class CanonicalConfigTag(diagram_generation.DiagramTag):
         return vertex_id[1][0]
 
 
+# The propagator form of a polarised massive vector that is decayed further:
+# the brace (the sorted 'polarization' list of the leg) -> the ALOHA tag of the
+# propagator numerator (aloha/create_aloha.py, get_custom_propa; in the FD
+# gauge aloha/aloha_writers.py, FD_POLARIZED_PROPAGATORS). The one place where
+# that correspondence is written: the interface reads it to tell which braces a
+# gauge supports.
+VECTOR_PROPAGATOR_TAGS = {(0,): '1L',       # {0}
+                          (-1, 1): '1T',    # {T}
+                          (1,): '1TR',      # {+}
+                          (-1,): '1TL',     # {-}
+                          (99,): '1A',      # {A}
+                          (9,): '1S',       # {S}
+                          (0, 9): '1LS',    # {0S}
+                          (4,): '1G',       # {G}
+                          (5,): '1H',       # {H}
+                          (6,): '1Q',       # {Q}
+                          (7,): '1W',       # {W}
+                          }
+
+
+def vector_propagator_tag(polarization):
+    """The ALOHA propagator tag (without its 'P') of a polarised massive
+    vector propagator, or None when the brace has no propagator form."""
+    return VECTOR_PROPAGATOR_TAGS.get(tuple(sorted(polarization)))
+
+
 #===============================================================================
 # HelasWavefunction
 #===============================================================================
@@ -554,6 +607,18 @@ class HelasWavefunction(base_objects.PhysicsObject):
     
     supported_analytical_info = ['wavefunction_rank','interaction_rank']
 
+    class FlavorTagError(Exception):
+        """No flavor tag can be assigned to this wavefunction (raised by
+        tag_external_flavor and propagate_flavor_tag)."""
+
+    class AmbiguousFlavorError(FlavorTagError, InvalidCmd):
+        """A merged particle built from unmerged particles only, through a
+        flavored coupling with several flavors (a heavy quark mixing into
+        several merged light quarks): its flavor is fixed by the other end
+        of its fermion line (p p > xq z j), or summed over when no merged
+        leg fixes it (xq xq~ > z z), and the outputs give each wavefunction
+        the one flavor its mothers fix. An InvalidCmd: the process needs the
+        model without flavor grouping."""
 
     @staticmethod
     def spin_to_size(spin):
@@ -585,7 +650,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         self['is_part'] = True
         # Properties related to the interaction generating the propagator
         # For an e- produced from an e+e-A vertex would have the following
-        # proporties:
+        # properties:
         # interaction_id = the id of the interaction in the model
         # pdg_codes = the pdg_codes property of the interaction, [11, -11, 22]
         # inter_color = the 'color' property of the interaction: []
@@ -656,6 +721,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         # diagram flavor store (see HelasMatrixElement.compute_flavor_masks);
         # read through has_flavor(). Not part of get_sorted_keys (runtime cache).
         self.valid_flavors = set()
+        self['onium'] = {}
 
     # Customized constructor
     def __init__(self, *arguments):
@@ -736,6 +802,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 else:
                     self.set('polarization', leg.get('polarization'))
                 self.set('interaction_id', interaction_id, model)
+                self.set('onium', leg.get('onium'))
         elif arguments:
             super(HelasWavefunction, self).__init__(arguments[0])
         else:
@@ -874,6 +941,24 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     raise self.PhysicsObjectError( \
                       "%s is not a valid polarization" % str(value))
 
+        elif name == 'onium':
+            if value:
+                if not value['N'] > 0:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid principal quantum number" % str(value['N']))
+                if value['S'] not in [0, 1, 99]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid spin type" % str(2*value['S']+1))
+                if value['L'] not in [0, 1, 99]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid orbital angular momentum" % str(value['L']))
+                if value['J'] not in range(abs(value['L']-value['S']),value['L']+value['S']+1):
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid total angular momentum" % str(value['J']))
+                if value['C'] not in [1, 8]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid color configuration" % str(value['C']))
+
         return True
 
     # Enhanced get function, where we can directly call the properties of the particle
@@ -889,6 +974,12 @@ class HelasWavefunction(base_objects.PhysicsObject):
             self['lcut_size'] = self.get_lcut_size()  
 
         if name in ['spin', 'mass', 'width', 'self_antipart']:
+            # onshell_zero_width (a runtime annotation set post-generation on an
+            # internal propagator whose particle is also an external/on-shell
+            # state) forces a ZERO width there -- see
+            # HelasMatrixElement.set_onshell_particles_width_to_zero.
+            if name == 'width' and getattr(self, 'onshell_zero_width', False):
+                return 'ZERO'
             return self['particle'].get(name)
         elif name == 'pdg_code':
             return self['particle'].get_pdg_code()
@@ -1581,7 +1672,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
             curr_flav_index = model['merged_particles'][merged_id].index(curr_id) 
             self[tag_name] =  curr_flav_index + 1 
         else:
-            raise Exception('Not Implemented')
+            raise self.FlavorTagError('Not Implemented')
 
     def propagate_flavor_tag(self, model, tag_name='flavortag', fct=None, check_valid_input=True):
         """Propagate the flavor tag from the mothers to the wavefunction.
@@ -1659,11 +1750,12 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     # for this example, we need to find the flavor of the neutrino
                     # A single flavor should be valid from the coupling.
                     if len(coup.get('flavors')) != 1:
-                        raise Exception('Flavor propagation for merged particle with no merged input is ambiguous')
+                        raise self.AmbiguousFlavorError(
+                            self.ambiguous_flavor_message(model, vertex, coup))
                     flv_coup = next(iter(coup.get('flavors').keys()))
                     flav_output = [ f for f in flv_coup if f != 0]
                     if len(flav_output) != 1:
-                        raise Exception('Flavor propagation for merged particle with no merged input is ambiguous')
+                        raise self.FlavorTagError('Flavor propagation for merged particle with no merged input is ambiguous')
                     self[tag_name] = flav_output[0]
                     return return_fct(self, True, model, tag_name)
 
@@ -1689,7 +1781,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     map[pdg] = [flavor]
             map[pdg_out] = [1]
 
-            #carefull check_flavor empty the list of the map!
+            #careful check_flavor empty the list of the map!
             status = vertex.check_flavor(map, model)
             if not status:
                 self[tag_name] = 0
@@ -1699,14 +1791,68 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 return return_fct(self, True, model, tag_name)
         else:
             # no need to set the flavor for this case
-            # note thise might not be consistent but this is not checked here
+            # note this might not be consistent but this is not checked here
             # either this has been checked already (in the case of checking identical matrix-element
-            # or will be explicitely when checking if flavor contributes)
+            # or will be explicitly when checking if flavor contributes)
             self[tag_name] = 1
             return return_fct(self, True, model, tag_name)
         
         raise Exception
-        
+
+    def ambiguous_flavor_error(self, model):
+        """The AmbiguousFlavorError propagate_flavor_tag raises for this
+        wavefunction whatever the external flavors (a merged particle built
+        from unmerged mothers only, through a flavored coupling with several
+        flavors), None if it raises none."""
+
+        merged = model.get('merged_particles')
+        if not self.get('mothers') or abs(self.get('pdg_code')) not in merged or \
+                any(abs(w.get_pdg_code()) in merged for w in self.get('mothers')):
+            return None
+        vertex = model.get('interaction_dict')[self.get('interaction_id')]
+        coup = next(iter(vertex.get('couplings').values()))
+        if isinstance(coup, str) or len(coup.get('flavors')) == 1:
+            return None
+        return self.AmbiguousFlavorError(
+            self.ambiguous_flavor_message(model, vertex, coup))
+
+    def ambiguous_flavor_message(self, model, vertex, coup):
+        """The message of the AmbiguousFlavorError of propagate_flavor_tag:
+        this wavefunction, of a merged particle, is built from unmerged
+        mothers only through the flavored coupling coup of vertex, which has
+        one key per flavor it can take. Names its flavors, its mothers and
+        the vertex of each key with the real particles of the merged ones."""
+
+        merged = model.get('merged_particles')
+
+        def real_name(pdg, index):
+            sign = 1 if pdg > 0 else -1
+            return model.get_particle(sign * merged[abs(pdg)][index - 1]).get_name()
+
+        pdg_out = self.get('pdg_code')
+        pdg_order = [p.get_pdg_code() for p in vertex.get('particles')]
+        if -pdg_out in pdg_order:
+            pos_output = pdg_order.index(-pdg_out)
+        else:
+            pos_output = [i for i, pdg in enumerate(pdg_order) if abs(pdg) in merged][0]
+        built, vertices = [], []
+        for key in sorted(coup.get('flavors')):
+            built.append(real_name(pdg_out, key[pos_output]))
+            names = [real_name(pdg, k) if abs(pdg) in merged
+                     else model.get_particle(pdg).get_name()
+                     for pdg, k in zip(pdg_order, key)]
+            vertices.append('%s (%s)' % (' '.join(names), coup.get('flavors')[key]))
+        mothers = [model.get_particle(w.get_pdg_code()).get_name()
+                   for w in self.get('mothers')]
+        return ("flavor grouping cannot build a %s from %s alone: the flavored "
+                "coupling %s of the vertices %s gives it %d flavors, and a merged "
+                "particle takes its one flavor from its inputs: no output can "
+                "take it from the other end of its fermion line or sum over "
+                "it. Generate this process "
+                "without flavor grouping: 'set apply_flavor_grouping False', "
+                "import the model again and generate the process again."
+                % ('/'.join(built), ' '.join(mothers), coup.get('name'),
+                   ', '.join(vertices), len(built)))
 
     def get_coupling_for_flavor(self, model, tag_name='flavortag'):
         """Return the coupling for the given flavor"""
@@ -1848,7 +1994,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
             else:
                 onec = next(iter(c['flavors'].values()))
 
-            if onec in coupling_dep and 'aS' in coupling_dep[onec]:
+            if onec in coupling_dep and self.model.depends_on_scale(coupling_dep[onec]):
                 output['vec%d'%i] = "(ivec)"
             else:
                 output['vec%d'%i] = ""
@@ -1871,60 +2017,17 @@ class HelasWavefunction(base_objects.PhysicsObject):
             if self.get('polarization'):
                 raise InvalidCmd( 'particle with custom propagator can not have polarization')
         elif self.get('polarization'):
-            if self.get('polarization') == [0]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1L' 
-            elif sorted(self.get('polarization')) == [-1,1]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1T'
-            elif self.get('polarization') == [99]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd('polarization not supported for decay particle')
-                output['propa'] = 'P1A'
-            elif sorted(self.get('polarization')) == [0,9]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1LS'
-            elif self.get('polarization') == [4]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1G'
-            elif self.get('polarization') == [5]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1H'
-            elif self.get('polarization') == [6]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1Q'
-            elif self.get('polarization') == [7]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1W'
-            elif self.get('polarization') == [9]:
-                if self.get('spin') != 3:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1S'
-
-            elif self.get('polarization') == [1]:
-                if self.get('spin') == 2:
-                    output['propa'] = 'P1P'
-                elif self.get('spin') == 3:
-                    output['propa'] = 'P1TR'
-                else:
-                    raise InvalidCmd( 'polarization not supported for decay particle')
-            elif self.get('polarization') == [-1]:
-                if self.get('spin') == 2:
-                    output['propa'] = 'P1M'
-                elif self.get('spin') == 3:
-                    output['propa'] = 'P1TL'
-                else:
-                    raise InvalidCmd( 'Left polarization not supported for decay particle for spin (2s+1=%s) particles' % self.get('spin'))
-            else:            
+            spin = self.get('spin')
+            tag = vector_propagator_tag(self.get('polarization'))
+            if spin == 2 and self.get('polarization') in ([1], [-1]):
+                output['propa'] = 'P1P' if self.get('polarization') == [1] else 'P1M'
+            elif spin == 3 and tag:
+                output['propa'] = 'P%s' % tag
+            elif self.get('polarization') == [-1] and spin not in (2, 3):
+                raise InvalidCmd( 'Left polarization not supported for decay particle for spin (2s+1=%s) particles' % spin)
+            else:
                 raise InvalidCmd( 'polarization not supported for decay particle')
-            
+
         if flav_mode:
             output['propa'] = 'M%s' % output['propa']
 
@@ -1976,7 +2079,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
     def find_leg_index(self, pdg_code, spin_state):
         """ Find the place in the interaction list of the given particle with
         pdg 'pdg_code' and spin 'spin_stat'. For interactions with several identical particles (or 
-        fermion pairs) the outgoing index is always the first occurence.
+        fermion pairs) the outgoing index is always the first occurrence.
         """
         wf_indices = self.get('pdg_codes')
         wf_index = wf_indices.index(pdg_code)
@@ -2074,7 +2177,17 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 'number': self.get('number_external'),
                 'state': self.get('leg_state'),
                 'onshell': self.get('onshell'),
-                'loop_line':self.get('is_loop')
+                'loop_line':self.get('is_loop'),
+                # the wavefunction kept the polarization restriction of the
+                # leg it was built from: put it back, or the amplitude
+                # rebuilt by get_base_amplitude would identify (through
+                # IdentifyMETag) a polarized process with an unpolarized one.
+                # dict.get and not self.get, here and in the two sibling
+                # get_base_vertex: a wavefunction unpickled from a file
+                # written before 'polarization' existed has no such key at
+                # all, and PhysicsObject.get raises on a missing one
+                # (tests/input_files/test_8fs.pkl is one such file)
+                'polarization': dict.get(self, 'polarization', [])
                 })
 
             if optimization != 0 and not self.get('is_loop'):
@@ -2093,7 +2206,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     'state': mother.get('leg_state'),
                     'onshell': None,
                     'loop_line':mother.get('is_loop'),
-                    'onshell': None
+                    'polarization': dict.get(mother, 'polarization', [])
                     })
                 if optimization != 0 and not mother.get('is_loop'):
                     wf_dict[(mother.get('number'),False)] = leg
@@ -2486,6 +2599,15 @@ class HelasWavefunction(base_objects.PhysicsObject):
         checking for identical processes. Note that the number for
         this wavefunction, the pdg code, and the interaction id are
         irrelevant, while the numbers for the mothers are important.
+
+        'polarization' is relevant: get_call_key() includes it, so it is
+        what picks the HELAS call for this wavefunction. Two wavefunctions
+        that differ only there must not be merged -- the survivor would be
+        written out with the other one's polarization, silently and without
+        failing anything. Today nothing puts two differently polarized
+        wavefunctions in the same matrix element (they are separated further
+        up, into distinct subprocesses), so this check never fires; it is
+        here so that it keeps not firing.
         """
 
         if not isinstance(other, HelasWavefunction):
@@ -2504,6 +2626,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
            self.get('mass') != other.get('mass') or \
            self.get('width') != other.get('width') or \
            self.get('color') != other.get('color') or \
+           self.get('polarization') != other.get('polarization') or \
            self['decay'] != other['decay'] or \
            self['decay'] and self['particle'] != other['particle']:
             return False
@@ -2821,7 +2944,7 @@ class HelasWavefunctionList(base_objects.PhysicsObjectList):
                 # index i. None of them should have wf as its mother
                 for w in diag_wfs[i+1:]:
                     if w['number'] in [mwf['number'] for mwf in wf.get('mothers')]:
-                        # There is an inconsisent order so we must move this
+                        # There is an inconsistent order so we must move this
                         # mother w *before* wf which is placed at i.
                         diag_wfs.remove(w)
                         diag_wfs.insert(i,w)
@@ -3034,7 +3157,7 @@ class HelasAmplitude(base_objects.PhysicsObject):
     def nice_string(self):
         """ simple way to check which FD is related to this amplitude"""
         def get_structure(wf):
-            """ funtion to allow to loop over helaswavefunction"""
+            """ function to allow to loop over helaswavefunction"""
             mothers = []
             try:
                 mothers = wf.get('mothers')
@@ -3188,7 +3311,7 @@ class HelasAmplitude(base_objects.PhysicsObject):
                 else:
                     map[pdg] = [flavor]
         if debug: misc.sprint(map)
-        # carefull check_flavor empty the list of the map!
+        # careful check_flavor empty the list of the map!
         status = vertex.check_flavor(map, model)
         if debug: misc.sprint(status)
         if not status:
@@ -3453,7 +3576,8 @@ class HelasAmplitude(base_objects.PhysicsObject):
                     'number': mother.get('number_external'),
                     'state': mother.get('leg_state'),
                     'onshell': None,
-                    'loop_line':mother.get('is_loop')
+                    'loop_line':mother.get('is_loop'),
+                    'polarization': dict.get(mother, 'polarization', [])
                     })
                 if optimization != 0 and not mother.get('is_loop'):
                     wf_dict[(mother.get('number'),False)] = leg
@@ -3625,7 +3749,7 @@ class HelasAmplitude(base_objects.PhysicsObject):
             if c.startswith('-'):
                 c = c[1:]
 
-            if coupling_dep and 'aS' in coupling_dep[c]:
+            if coupling_dep and self.model.depends_on_scale(coupling_dep[c]):
                 output['vec%d'%i] = "(ivec)"
             else:
                 output['vec%d'%i] = ""
@@ -3646,7 +3770,7 @@ class HelasAmplitude(base_objects.PhysicsObject):
         w.r.t. color"""
         mothers = self.get('mothers')
 
-        # Sort mothers according to pdg codes if fermions with indentical
+        # Sort mothers according to pdg codes if fermions with identical
         # color but not identical pdg code. Needed for antisymmetric
         # color eps^{ijk}.
         for imo in range(len(mothers)-1):
@@ -4035,6 +4159,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # has_mirror_process is True if the same process but with the
         # two incoming particles interchanged has been generated
         self['has_mirror_process'] = False
+        # Crossed subprocesses folded into this ME and NOT generated on their
+        # own (merge_crossing='record'); carried over from the base amplitude so
+        # the exporter can reach them through this ME's crossing-aware SMATRIX.
+        # Each entry is (crossed Process, base_permutation, crossed_permutation).
+        self['crossed_processes'] = []
         self['allowed_flavors'] = [] # list of all allowed flavors for the process
         self['allowed_flavors_with_iden'] = [] # list of all allowed flavors for the process but grouped by identical matrix-element
         self['allowed_flavors_with_iden_sign'] = [] # list of all allowed flavors for the process but grouped by identical matrix-element
@@ -4045,6 +4174,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         #   _flavor_populated      -- the valid_flavors store is up to date
         #   _flavor_allow_trimming -- a per-leg flavor restriction is active
         #   _flavor_trimmed        -- restricted-flavor diagram trimming has run
+        #   _flavor_epoch          -- bumped whenever the store or the diagram
+        #                             list is rebuilt; invalidates the masks
+        #   _flavor_mask_cache     -- token of the last compute_flavor_masks()
+        #                             pass, or None if the masks are not current
         self._flavor_populated = False
         self._flavor_allow_trimming = False
         self._flavor_trimmed = False
@@ -4055,6 +4188,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         self.quartic_current_sums = None
         # Slots the current sums were given by reuse_outdated_wavefunctions
         self.quartic_sum_me_ids = None
+        self._flavor_epoch = 0
+        self._flavor_mask_cache = None
         # Cache for get_amplitude_slots(), the recycled AMP array
         self.amplitude_slots = None
 
@@ -4083,6 +4218,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         if name == 'has_mirror_process':
             if not isinstance(value, bool):
                 raise self.PhysicsObjectError("%s is not a valid boolean" % str(value))
+        if name == 'crossed_processes':
+            if not isinstance(value, list):
+                raise self.PhysicsObjectError("%s is not a valid list" % str(value))
         return True
 
     def get_sorted_keys(self):
@@ -4090,7 +4228,15 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         return ['processes', 'identical_particle_factor',
                 'diagrams', 'color_basis', 'color_matrix',
-                'base_amplitude', 'has_mirror_process']
+                'base_amplitude', 'has_mirror_process',
+                'crossed_processes']
+
+    def has_recorded_crossings(self):
+        """True if crossed processes are folded into this matrix element
+        (merge_crossing='record'): it must then not be combined into another
+        one, which would keep its processes only."""
+        return bool('crossed_processes' in self and
+                    self['crossed_processes'])
 
     # Enhanced get function
     def get(self, name):
@@ -4115,6 +4261,18 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 self.get('processes').append(amplitude.get('process'))
                 self.set('has_mirror_process',
                          amplitude.get('has_mirror_process'))
+                if 'crossed_processes' in amplitude and \
+                        amplitude.get('crossed_processes'):
+                    self.set('crossed_processes',
+                             list(amplitude.get('crossed_processes')))
+                    # What the crossed processes are crossed from, for an
+                    # exporter that needs their diagrams (the mg7 entries of
+                    # export_mg7.get_crossed_subprocess_info): the amplitude
+                    # itself, as the expansion crosses it. get_base_amplitude
+                    # rebuilds the diagrams from the wavefunctions and loses
+                    # the merged-flavor content of their vertices (the crossed
+                    # q q~ > q q~ of q q > q q at QCD=0 lost u c~ > d s~).
+                    self.crossing_amplitude = amplitude
                 self.generate_helas_diagrams(amplitude, optimization, decay_ids)
                 self.calculate_fermionfactors()
                 self.calculate_identical_particle_factor()
@@ -4149,6 +4307,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                self['has_mirror_process'] != other['has_mirror_process'] or \
                self['processes'] and \
                self['processes'][0]['id'] != other['processes'][0]['id'] or \
+               self['processes'][0].get_gauge() != \
+                                    other['processes'][0].get_gauge() or \
                self['processes'][0]['is_decay_chain'] or \
                other['processes'][0]['is_decay_chain'] or \
                self['identical_particle_factor'] != \
@@ -4184,9 +4344,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """
         
         assert  isinstance(amplitude, diagram_generation.Amplitude), \
-                    "Missing or erraneous arguments for generate_helas_diagrams"
+                    "Missing or erroneous arguments for generate_helas_diagrams"
         assert isinstance(optimization, int), \
-                    "Missing or erraneous arguments for generate_helas_diagrams"
+                    "Missing or erroneous arguments for generate_helas_diagrams"
         self.optimization = optimization
 
         diagram_list = amplitude.get('diagrams')
@@ -4413,6 +4573,22 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
                     # Add amplitude to amplitdes in helas_diagram
                     helas_diagram.get('amplitudes').append(amp)
+
+            # A right-hand diagram of an interference process
+            # ('left [treextree] right') carries the hidden order tagging it,
+            # which no interaction has: pass it on to its amplitudes (on a
+            # copy, their orders being those of the interaction), so that the
+            # split orders of the generated code see it.
+            interference_tag = diagram.get('orders').get(
+                                    base_objects.INTERFERENCE_ORDER, 0) \
+                               if diagram.get('orders') else 0
+            if interference_tag:
+                for amp in helas_diagram.get('amplitudes'):
+                    orders = dict(amp.get('orders'))
+                    orders[base_objects.INTERFERENCE_ORDER] = \
+                        orders.get(base_objects.INTERFERENCE_ORDER, 0) + \
+                                                               interference_tag
+                    amp.set('orders', orders)
 
             # After generation of all wavefunctions and amplitudes,
             # first sort the wavefunctions according to number
@@ -4741,7 +4917,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """Return the number of different flavors used in the matrix elements"""
         
 
-        return len(self.get_external_flavors())*len(self.get('processes'))
+        return len(self.get_external_flavors()) * \
+            len(self.get_flavor_row_processes())
 
     def insert_decay(self, old_wfs, decay, numbers, got_majoranas):
         """Insert a decay chain matrix element into the matrix element.
@@ -4793,8 +4970,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # We need one copy of the decay element diagrams for each
         # old_wf to be replaced, since we need different wavefunction
         # numbers for them
-        decay_elements = [copy.deepcopy(d) for d in \
-                          [ decay.get('diagrams') ] * len(old_wfs)]
+        decay_elements = [copy.deepcopy(decay.get('diagrams'),
+                                        decay.shared_models_memo())
+                          for old_wf in old_wfs]
 
         # Need to replace Particle in all wavefunctions to avoid
         # deepcopy
@@ -4915,7 +5093,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                             # Don't want to affect original decay
                             # wavefunctions, so need to deepcopy
                             decay_diag_wfs = copy.deepcopy(\
-                                                    decay_diag.get('wavefunctions'))
+                                                    decay_diag.get('wavefunctions'),
+                                                    decay.shared_models_memo())
                             # Need to replace Particle in all
                             # wavefunctions to avoid deepcopy
                             for i, wf in enumerate(decay_diag.get('wavefunctions')):
@@ -4932,7 +5111,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                             final_decay_wfs = [amp.get('mothers')[1] for amp in \
                                                   decay_diag.get('amplitudes')]
 
-                            # Since we made deepcopy, need to syncronize
+                            # Since we made deepcopy, need to synchronize
                             for i, wf in enumerate(final_decay_wfs):
                                 final_decay_wfs[i] = \
                                                    decay_diag_wfs[decay_diag_wfs.index(wf)]
@@ -5082,6 +5261,16 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                                    self.get('diagrams')[\
                                      diagram.get('number') - numdecay - 1:\
                                      diagram.get('number') - 1]], [])
+
+                # The loop below only acts on wavefunctions already present
+                # in earlier_wfs: skip building the (costly) mother arrays of
+                # all later wavefunctions when there is none, e.g. always for
+                # the first copy (numdecay == 0, the only one for a decay
+                # with a single diagram).
+                earlier_numbers = {w.get('number') for w in earlier_wfs}
+                if not any(w.get('number') in earlier_numbers
+                           for w in diagram.get('wavefunctions')):
+                    continue
 
                 later_wfs = sum([d.get('wavefunctions') for d in \
                                    self.get('diagrams')[\
@@ -5428,6 +5617,18 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return max([sum([ len(d.get('wavefunctions')) for d in \
                        self.get('diagrams')])] + extra)
         
+    def shared_models_memo(self):
+        """A copy.deepcopy memo that keeps the models shared: every
+        wavefunction and amplitude keeps its model as attribute (see
+        HelasWavefunction.set), so a plain deepcopy of a diagram also copies
+        the complete model.  Use a new memo for each deepcopy."""
+        memo = {}
+        for obj in self.get_all_wavefunctions() + self.get_all_amplitudes():
+            model = getattr(obj, 'model', None)
+            if model is not None:
+                memo[id(model)] = model
+        return memo
+
     def get_all_wavefunctions(self):
         """Gives a list of all wavefunctions for this ME"""
 
@@ -5439,6 +5640,79 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """Gives a list of all widths used by this ME (from propagator)"""
 
         return set([(d.get('mass'),d.get('width')) for d in self.get_all_wavefunctions()])
+
+
+    def set_onshell_particles_width_to_zero(self):
+        """Drop the width of any internal propagator whose particle is also an
+        external (initial/final) state of the process.
+
+        An external particle is an on-shell asymptotic state, so treating an
+        internal propagator of the same field as an unstable resonance
+        (the i*M*Gamma in its denominator) is inconsistent: e.g. the s/u-channel
+        top in t a > t a. This mirrors the T-channel width drop but is keyed on
+        the particle being external rather than on the propagator momentum being
+        spacelike. It is applied by setting the propagator wavefunction's width
+        to ZERO, which every UFO backend reads for the propagator's W argument
+        (see HelasWavefunction.get_helas_call_dict); in the complex-mass scheme
+        the same ZERO makes that propagator use the real mass. Controlled by the
+        zerowidth_external option; returns True if any width was dropped."""
+        # The asymptotic external states are the decay LEAVES: in a decay chain
+        # (d d~ > z z, z > e+ e-) the core final z is not asymptotic, it is a
+        # resonance decaying to e+ e-, so expand the decays (a no-op without
+        # them). Using the core legs would wrongly flag the resonance's field.
+        external_pdgs = set()
+        offshell_pdgs = set()
+        for proc in self.get('processes'):
+            legs = proc.get_legs_with_decays() \
+                if hasattr(proc, 'get_legs_with_decays') else proc.get('legs')
+            for leg in legs:
+                external_pdgs.add(abs(leg.get('id')))
+            # A leg tagged off-shell (the "particle*" syntax -> leg['offshell'])
+            # is deliberately NOT treated as an asymptotic on-shell state: it
+            # stands for an off-shell resonance whose Breit-Wigner width must be
+            # kept (e.g. p p > t* t~*). Exclude its field so no propagator of it
+            # has the width dropped.
+            for leg in proc.get('legs'):
+                if leg.get('offshell'):
+                    offshell_pdgs.add(abs(leg.get('id')))
+        external_pdgs -= offshell_pdgs
+        # A would-be Goldstone boson is eaten by -- and shares the mass of -- its
+        # gauge boson (G+ <-> W+, G0 <-> Z). In Feynman/FD gauge the Goldstone
+        # propagates explicitly, so if the gauge boson is an external on-shell
+        # state the Goldstone's internal propagator must drop its width too:
+        # otherwise the vector propagator carries ZERO width while its Goldstone
+        # keeps i*M*Gamma, an inconsistency that breaks the gauge-boson/Goldstone
+        # Ward identity. Add the Goldstone PDGs whose (shared) mass matches an
+        # external massive gauge boson. No-op in unitary gauge (no Goldstones)
+        # and for processes without an external vector boson.
+        model = self.get('processes')[0].get('model') if self.get('processes') \
+            else None
+        if model is not None and external_pdgs:
+            ext_vector_masses = set()
+            for pdg in external_pdgs:
+                part = model.get_particle(pdg)
+                if part and part.get('spin') == 3 \
+                        and str(part.get('mass')).lower() != 'zero':
+                    ext_vector_masses.add(part.get('mass'))
+            if ext_vector_masses:
+                for part in model.get('particles'):
+                    if part.get('goldstone') \
+                            and part.get('mass') in ext_vector_masses:
+                        external_pdgs.add(abs(part.get('pdg_code')))
+        dropped = False
+        for wf in self.get_all_wavefunctions():
+            # a wavefunction with no mothers is an external leg (no propagator,
+            # hence no width); only internal propagators carry the i*M*Gamma.
+            # A decay-chain resonance (onshell is True: produced on shell then
+            # decayed) MUST keep its Breit-Wigner width even if the same field
+            # also appears as an asymptotic external leg (e.g. one top decays
+            # while the other is final).
+            if wf.get('mothers') and wf.get('width') != 'ZERO' \
+                    and wf.get('onshell') is not True \
+                    and abs(wf.get_pdg_code()) in external_pdgs:
+                wf.onshell_zero_width = True
+                dropped = True
+        return dropped
 
 
     def get_coupling_for_flv(self, flv, model):
@@ -5475,14 +5749,83 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return sum([ len(d.get('amplitudes')) for d in \
                        self.get('diagrams')])
 
+    def get_nonia(self):
+        """Gives the total number of external onia states"""
+
+        external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers')]
+        nonia = 0
+        for wf in external_wfs:
+            if wf.get('onium'):
+                nonia +=1
+
+        if nonia%2:
+            raise MadGraph5Error("Odd number of quarkonia constituents detected.")
+        else:
+            nonia /= 2
+
+        return int(nonia)
+    
+    def get_npwave(self):
+        """Gives the total number of external p-wave onia states"""
+
+        external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers')]
+        npwave = 0
+        for wf in external_wfs:
+             try:
+                if wf.get('onium').get('L') == 1:
+                  npwave +=1
+             except: 
+                pass
+        if npwave%2:
+            raise MadGraph5Error("Odd number of quarkonia constituents detected.")
+        else:
+            npwave /= 2
+
+        return int(npwave)
+    
+    def get_highest_derivate_order(self):
+        """Gives the highest derivative order used"""
+
+        external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers')]
+        nder = 0
+        for wf in external_wfs:
+             try:
+                if wf.get('onium').get('L') > nder:
+                  nder = wf.get('onium').get('L')
+             except: 
+                pass
+
+        return int(nder)
+
+    def get_onia_pairs(self):
+        """Gives the total number of external onia states"""
+
+        external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers')]
+
+        pairs = []
+        onia = [-1,-1]
+        for wf in external_wfs:
+            if wf.get('onium'):
+                if onia[0] < 0:
+                    onia = [wf.get('onium').get('index'),wf.get('number')]
+                elif onia[0] == wf.get('onium').get('index'):
+                    pairs.append((onia[1],wf.get('number')))
+                    onia[0] = -1
+                else:
+                    raise MadGraph5Error("Quarkonia constituents cannot be matched.")
+
+        return pairs
+
     def get_nexternal_ninitial(self):
         """Gives (number or external particles, number of
         incoming particles)"""
 
         external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers')]
 
+        nonia = self.get_nonia()
+        
         return (len(set([wf.get('number_external') for wf in \
-                         external_wfs])),
+                         external_wfs]))-nonia,
                 len(set([wf.get('number_external') for wf in \
                          [wf for wf in external_wfs if wf.get('leg_state') == False]])))
 
@@ -5504,7 +5847,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
     
     def get_external_nhel(self):
         """Determine which list of helicity are not zero for the external particles"""
-        # NOT IMPLEMETED /WORKING /CALL
+        # NOT IMPLEMENTED /WORKING /CALL
         allowed_helicity = []
         for nhel in self.get_helicity_matrix():
             if self.check_helicity(nhel):
@@ -5521,10 +5864,13 @@ class HelasMatrixElement(base_objects.PhysicsObject):
     def _flavor_enumeration_context(self, model):
         """Per-external-leg data used to enumerate external-flavor assignments.
 
-        Returns (pdgs, pdg_signs, to_map, restricted_flavor, ninit) where, indexed
+        Returns (pdgs, pdg_signs, to_map, restrictions, ninit) where, indexed
         by external leg: pdgs[i] is the (merged) pdg code, pdg_signs[i] the sign
-        to apply when reporting the physical pdg, and restricted_flavor[i] the
-        list of pdgs the leg is restricted to (or None if unconstrained).  to_map
+        to apply when reporting the physical pdg.  restrictions is a list of
+        per-leg restriction vectors, one per distinct flavor restriction among
+        the processes of this matrix element (the first one read from the
+        external wavefunctions): restriction[i] is the list of pdgs the leg is
+        restricted to (or None if unconstrained).  to_map
         maps a merged pdg to its constituent pdgs; ninit is the number of initial
         legs.  This is the single place that reads the external wavefunctions.
         """
@@ -5560,13 +5906,72 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             if wf.get('flavor'):
                 restricted_flavor[i] = wf.get('flavor')
 
-        return pdgs, pdg_signs, to_map, restricted_flavor, ninit
+        # The external wavefunctions only carry the restriction of the FIRST
+        # process; see _combined_flavor_restrictions for the other ones.
+        restrictions = [restricted_flavor]
+        for extra in self._combined_flavor_restrictions():
+            if len(extra) == len(pdgs):
+                restrictions.append(list(extra))
+
+        return pdgs, pdg_signs, to_map, restrictions, ninit
+
+    @staticmethod
+    def get_process_flavor_restriction(process):
+        """Per-external-leg flavor restriction of one process (None when the
+        leg is unconstrained), in the leg order of legs_with_decays.  Same
+        sign convention as the external wavefunctions' 'flavor'."""
+        return tuple(tuple(sorted(leg.get('flavor'))) if leg.get('flavor')
+                     else None for leg in process.get_legs_with_decays())
+
+    def _combined_flavor_restrictions(self):
+        """Restriction vectors of the processes combined into this matrix
+        element (processes[1:]) that differ from the first process's one.
+
+        Processes with identical diagrams are combined (IdentifyMETag and the
+        decay-chain combination) even when their per-leg flavor restrictions
+        differ, e.g. `generate z > u u~` + `add process z > d d~`, or `z > Q Qx`
+        [u u~] and `z > Qx Q` [d~ d] from `define l+ = u d~`.  One matrix
+        element per merged process is what the exporters dispatch on (the
+        leg-order repair of all_matrix.f works inside one matrix element), so
+        it must serve the UNION of the flavor ROWS its processes ask for.  A
+        per-leg union would admit rows no process asked for, hence one vector
+        per process.  See get_flavor_row_processes for the exporters.
+        The combined processes are reordered to the leg order of the first one
+        (HelasMultiProcess.reorder_process), so the vectors are positional.
+        """
+        processes = self.get('processes')
+        if len(processes) < 2:
+            return []
+        ref = self.get_process_flavor_restriction(processes[0])
+        out = []
+        for proc in processes[1:]:
+            vec = self.get_process_flavor_restriction(proc)
+            if vec != ref and vec not in out:
+                out.append(vec)
+        return out
+
+    def get_flavor_row_processes(self):
+        """The processes that own the flavor rows of this matrix element, i.e.
+        that the exporters loop over (IDUP, PDF lines, ...): all of them,
+        except the ones combined in with another flavor restriction.  Those
+        only add rows to the union (see _combined_flavor_restrictions); they
+        have the same leg ids as processes[0] (HelasMultiProcess.
+        find_identical_me), so the rows written for processes[0] cover them.
+        """
+        processes = self.get('processes')
+        if not self._combined_flavor_restrictions():
+            return processes
+        ref = self.get_process_flavor_restriction(processes[0])
+        return base_objects.ProcessList([p for p in processes if
+                    self.get_process_flavor_restriction(p) == ref])
 
     def _iter_candidate_flavors(self, pdgs, pdg_signs, to_map,
-                                restricted_flavor, ninit):
+                                restrictions, ninit):
         """Yield (one_flavor, signed_pdg, signature) for every external-flavor
         assignment permitted by the merged-particle expansion and the per-leg
-        restriction.
+        restriction.  `restrictions` is a list of per-leg restriction vectors
+        (one per distinct process restriction); an assignment is kept when at
+        least one of them admits it (row-level union).
 
         - one_flavor : per-leg merged-flavor-index tuple (the value passed to
           HelasDiagram.check_flavor and stored in valid_flavors).
@@ -5582,24 +5987,209 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             itertools.product(*[to_map.get(abs(id), [1]) for id in pdgs]),
             itertools.product(*[to_map.get(abs(id), [abs(id)]) for id in pdgs]),
         ):
-            # actual pdg codes (with the sign), before the initial-state flip
-            pdg = [one_flavor[i] if id > 0 else -one_flavor[i]
-                   for i, id in enumerate(pdgs)]
+            candidate = self._flavor_candidate(one_flavor, one_flavor_pdg,
+                                    pdgs, pdg_signs, restrictions, ninit)
+            if candidate is not None:
+                yield (one_flavor,) + candidate
 
-            # apply the per-leg flavor restriction (None => leg unconstrained)
-            if any(rf is not None and pdg[i] not in rf
-                   for i, rf in enumerate(restricted_flavor)):
-                continue
+    @staticmethod
+    def _flavor_candidate(one_flavor, one_flavor_pdg, pdgs, pdg_signs,
+                          restrictions, ninit):
+        """(signed_pdg, signature) of one external-flavor assignment, or None
+        if the per-leg restriction rejects it (see _iter_candidate_flavors)."""
 
-            signed_pdg = [flav * sign
-                          for flav, sign in zip(one_flavor_pdg, pdg_signs)]
+        # actual pdg codes (with the sign), before the initial-state flip
+        pdg = [one_flavor[i] if id > 0 else -one_flavor[i]
+               for i, id in enumerate(pdgs)]
 
-            # dedup signature: flip initial states, then sort init/final apart
-            for i in range(ninit):
-                pdg[i] = -pdg[i]
-            signature = tuple(sorted(pdg[:ninit]) + sorted(pdg[ninit:]))
+        # apply the per-leg flavor restriction (None => leg unconstrained)
+        if not any(all(rf is None or pdg[i] in rf
+                       for i, rf in enumerate(restricted_flavor))
+                   for restricted_flavor in restrictions):
+            return None
 
-            yield one_flavor, signed_pdg, signature
+        signed_pdg = [flav * sign
+                      for flav, sign in zip(one_flavor_pdg, pdg_signs)]
+
+        # dedup signature: flip initial states, then sort init/final apart
+        for i in range(ninit):
+            pdg[i] = -pdg[i]
+        signature = tuple(sorted(pdg[:ninit]) + sorted(pdg[ninit:]))
+
+        return signed_pdg, signature
+
+    class FlavorTreeUnsupported(Exception):
+        """The diagram structure is outside what _valid_flavors_per_diagram
+        handles (e.g. overlapping sub-trees); use the full enumeration."""
+
+    def _valid_flavors_per_diagram(self, model, pdgs, to_map):
+        """For every diagram, the set of external-flavor assignments (per-leg
+        flavor tuples, as yielded by _iter_candidate_flavors) for which
+        HelasDiagram.check_flavor accepts it, without enumerating the full
+        product of the per-leg flavors.
+
+        The flavortag of a wavefunction only depends on the flavors of the
+        external legs below it, so the valid partial assignments are built
+        bottom-up: a wavefunction keeps {assignment of its external legs: tag}
+        for the combinations of its mothers' entries that propagate_flavor_tag
+        accepts, and an invalid entry (tag 0) is dropped since it invalidates
+        every descendant.  The cost then scales with the number of *valid*
+        assignments.  For a decay chain this is roughly the product of the
+        valid assignments of each decay rather than the product of the flavors
+        of all the merged legs (4^10 candidates for p p > w+ w+ w- w- with
+        hadronic decays).
+
+        Raises FlavorTreeUnsupported if two mothers share an external leg or
+        an amplitude does not cover every leg.  Lets the
+        HelasWavefunction.FlavorTagError of a tag computation through.
+        """
+
+        # NB: no comprehension variable may be called `id` in this function:
+        # the nested helpers call the builtin id(), which makes it a cell
+        # variable, and python 3.12 leaves that cell unbound after an inlined
+        # comprehension over `id` (UnboundLocalError in id(node)).
+        nleg = len(pdgs)
+        leg_values = [to_map.get(abs(pdg), [1]) for pdg in pdgs]
+        tables = {}      # id(node) -> {partial assignment: tag}
+        prop_cache = {}  # (id(node), mother tags) -> tag (0 = invalid)
+        tagged = []      # nodes whose 'flavortag' must be dropped at the end
+
+        def table(node, is_amp=False):
+            key = id(node)
+            if key in tables:
+                return tables[key]
+            mothers = node.get('mothers')
+            out = {}
+            if not mothers:
+                n = node.get('number_external')
+                if not 0 < n <= nleg:
+                    raise self.FlavorTreeUnsupported(n)
+                flavor = [1] * nleg
+                assignment = [None] * nleg
+                tagged.append(node)
+                for value in leg_values[n - 1]:
+                    flavor[n - 1] = value
+                    assignment[n - 1] = value
+                    node.tag_external_flavor(flavor, model)
+                    out[tuple(assignment)] = node['flavortag']
+            else:
+                subs = [table(m) for m in mothers]
+                tagged.append(node)
+                for combo in itertools.product(*[list(s.items()) for s in subs]):
+                    tags = tuple(tag for _, tag in combo)
+                    ckey = (key, tags)
+                    if ckey not in prop_cache:
+                        for mother, tag in zip(mothers, tags):
+                            mother['flavortag'] = tag
+                        if is_amp:
+                            valid = node.propagate_flavor_tag(model)
+                            prop_cache[ckey] = 1 if valid else 0
+                        else:
+                            node.propagate_flavor_tag(model,
+                                                      check_valid_input=True)
+                            prop_cache[ckey] = node['flavortag']
+                    if not prop_cache[ckey]:
+                        continue
+                    assignment = [None] * nleg
+                    for part, _ in combo:
+                        for i, value in enumerate(part):
+                            if value is not None:
+                                if assignment[i] is not None:
+                                    raise self.FlavorTreeUnsupported(i)
+                                assignment[i] = value
+                    out[tuple(assignment)] = prop_cache[ckey]
+            tables[key] = out
+            return out
+
+        ancestors = {}   # id(node) -> set of id() of node and its ancestors
+        def get_ancestors(node):
+            key = id(node)
+            if key not in ancestors:
+                out = {key}
+                for mother in node.get('mothers'):
+                    out |= get_ancestors(mother)
+                ancestors[key] = out
+            return ancestors[key]
+
+        def project(assignment, node):
+            # restriction of a full assignment to the legs below node (the
+            # key of tables[id(node)])
+            legs = next(iter(tables[id(node)]), None)
+            if legs is None:
+                return None
+            return tuple(value if leg is not None else None
+                         for value, leg in zip(assignment, legs))
+
+        try:
+            out = []
+            for diag in self.get('diagrams'):
+                # check_flavor rejects the diagram if any of its wavefunctions,
+                # or any mother of its wavefunctions and amplitudes, is
+                # invalid, and accepts it if one of its amplitudes is valid.
+                required = list(diag.get('wavefunctions'))
+                for obj in list(diag.get('wavefunctions')) + \
+                                               list(diag.get('amplitudes')):
+                    required.extend(obj.get('mothers'))
+                for node in required:
+                    table(node)
+                valid = set()
+                for amp in diag.get('amplitudes'):
+                    amp_table = table(amp, is_amp=True)
+                    # an amplitude's validity implies that of its ancestors
+                    anc = get_ancestors(amp)
+                    extra = [node for node in required if id(node) not in anc]
+                    for assignment in amp_table:
+                        if None in assignment:
+                            raise self.FlavorTreeUnsupported(assignment)
+                        if all(project(assignment, node) in tables[id(node)]
+                               for node in extra):
+                            valid.add(assignment)
+                out.append(valid)
+            return out
+        finally:
+            for node in tagged:
+                node.pop('flavortag', None)
+
+    def set_excluded_flavors(self, flavors):
+        """Declare external-flavor assignments this module does NOT cover.
+
+        A merged matrix element offers every flavor its diagrams support. That
+        is right while one module covers a whole pattern, and wrong as soon as
+        two modules are meant to SHARE a pattern's flavors between them -- each
+        would offer the other's, and the two would double count.
+
+        The case that needs it: ``Q Q~ > Q Q~`` bundles three coupling classes,
+        and the flavor-changing annihilation ``q q~ > q' q~'`` is the one class a
+        crossing of ``Q Q > Q Q`` reaches only with the two light legs the other
+        way round. A module cannot list that class in the reachable order
+        (its leg pattern is shared by every row -- the FLAVOR table carries
+        unsigned group POSITIONS), so freeing it means generating a sibling with
+        the reordered pattern and giving each module HALF the flavors. This is
+        how a module is told which half is not its own.
+
+        `flavors` is an iterable of flavor-index tuples, in the same convention
+        as get_external_flavors(). Setting it invalidates the populated store so
+        the next read recomputes; passing an empty set restores the default
+        "cover everything the diagrams support".
+
+        The set is stored on the PROCESS, not on this matrix element, because a
+        matrix element is a derived object: the exporter rebuilds it from the
+        amplitude, and an exclusion recorded here would be silently dropped on
+        the way. The process travels with the amplitude, so the module that
+        comes out the far end still knows which half of the flavors is not its
+        own.
+        """
+        excluded = frozenset(tuple(f) for f in flavors)
+        for proc in self.get('processes'):
+            proc._excluded_flavors = excluded
+        # force a repopulate: allowed_flavors and everything derived from it
+        # (masks, pdg tables, coupling classes) must be rebuilt.
+        self._flavor_epoch = getattr(self, '_flavor_epoch', 0) + 1
+        self._flavor_populated = False
+        self['allowed_flavors'] = []
+        self['allowed_flavors_pdgs'] = []
+        self['allowed_flavors_with_iden'] = []
+        self['allowed_flavors_with_iden_pdgs'] = []
 
     def populate_flavor_validity(self, model=None):
         """Eager, single-source-of-truth pass for multi-flavor generation.
@@ -5625,12 +6215,17 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         if model is None:
             model = self.get('processes')[0].get('model')
 
+        # The store below is what the flavor masks are read from, so rebuilding
+        # it retires any masks computed against the previous one.
+        self._flavor_epoch = getattr(self, '_flavor_epoch', 0) + 1
+
         # reset the per-diagram store (this is the authoritative source)
         for diag in self.get('diagrams'):
             diag.valid_flavors = set()
 
-        pdgs, pdg_signs, to_map, restricted_flavor, ninit = \
+        pdgs, pdg_signs, to_map, restrictions, ninit = \
             self._flavor_enumeration_context(model)
+        self._flavor_restriction_key = self._combined_flavor_restrictions()
 
         # Some diagrams may be incompatible with *every* allowed flavor and
         # must be trimmed.  This happens for two reasons:
@@ -5649,7 +6244,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # only genuinely unphysical diagrams remain orphans.
         has_merged_external = any(abs(pdg) in to_map for pdg in pdgs)
         self._flavor_allow_trimming = has_merged_external or \
-            (restricted_flavor != [None] * len(pdgs))
+            any(rf != [None] * len(pdgs) for rf in restrictions)
 
         # Fast path: if no external leg carries a merged (flavor-grouped) pdg and
         # there is no flavor restriction, then there is a single external-flavor
@@ -5659,6 +6254,15 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # common case for models without flavor grouping.
         if not self._flavor_allow_trimming and \
                 not any(abs(pdg) in to_map for pdg in pdgs):
+            # except for a merged particle built from unmerged ones through a
+            # flavored coupling with several flavors (xq xq~ > z z with a
+            # heavy quark xq mixing into d and s): its flavors must be summed
+            # over, which the outputs cannot do (they only find it when
+            # writing the couplings, see get_coupling_for_flv)
+            for wf in self.get_all_wavefunctions():
+                error = wf.ambiguous_flavor_error(model)
+                if error:
+                    raise self.flavor_error_with_process(error)
             identity = tuple([1] * len(pdgs))
             identity_pdg = [abs(pdg) * sign
                             for pdg, sign in zip(pdgs, pdg_signs)]
@@ -5672,6 +6276,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         flavor_list = []
         pdg_list = []
+        # Flavors this module has been told are not its own (set_excluded_
+        # flavors); carried on the process so it survives the exporter
+        # rebuilding the matrix element from the amplitude.
+        excluded_flavors = getattr(self.get('processes')[0],
+                                   '_excluded_flavors', ())
         # signature -> whether some diagram is valid for it, used to skip
         # permutation-equivalent assignments we have already decided on.
         checked = {}
@@ -5695,26 +6304,85 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # at all remain orphans.
         enumerate_all = self.enumerate_all_flavors
 
-        for one_flavor, signed_pdg, signature in self._iter_candidate_flavors(
-                pdgs, pdg_signs, to_map, restricted_flavor, ninit):
-            if not enumerate_all and signature in checked:
-                if checked[signature]:
-                    # genuine permutation duplicate of a validated flavor
+        # For a decay chain every invalid assignment is re-checked (see above),
+        # so the enumeration (else branch) costs (product of the per-leg
+        # flavors) x (number of diagrams): hours for p p > w+ w+ w- w- with
+        # hadronic decays.  Build the valid assignments bottom-up instead and
+        # visit only those, in the same (product) order: as the enumeration
+        # keeps the first *valid* assignment of each signature of a decay
+        # chain, this gives the same result.
+        diag_flavors = None
+        if is_decay_chain:
+            try:
+                diag_flavors = self._valid_flavors_per_diagram(model, pdgs,
+                                                               to_map)
+            except (self.FlavorTreeUnsupported,
+                    HelasWavefunction.FlavorTagError) as error:
+                # A FlavorTagError may come from a wavefunction that only
+                # appears in diagrams the enumeration rejects before reaching
+                # it (check_flavor stops at the first invalid wavefunction):
+                # leave it to the enumeration, which raises it if it does.
+                logger.debug('flavors of %s: full enumeration (%s)' % (
+                    self.get('processes')[0].nice_string().replace(
+                        'Process: ', ''), error))
+        if diag_flavors is not None:
+            position = [dict((value, i) for i, value in
+                             enumerate(to_map.get(abs(pdg), [1])))
+                        for pdg in pdgs]
+            valid = {flavor for flavors in diag_flavors for flavor in flavors}
+            for one_flavor in sorted(valid,
+                    key=lambda f: [pos[v] for pos, v in zip(position, f)]):
+                one_flavor_pdg = tuple(value if abs(pdg) in to_map else abs(pdg)
+                                       for value, pdg in zip(one_flavor, pdgs))
+                candidate = self._flavor_candidate(one_flavor, one_flavor_pdg,
+                                    pdgs, pdg_signs, restrictions, ninit)
+                if candidate is None:
                     continue
-                elif not is_decay_chain:
-                    # known-invalid signature; sound to skip for a plain ME
+                signed_pdg, signature = candidate
+                if not enumerate_all and signature in checked:
                     continue
-                # decay-chain ME: a cached False may hide a valid sibling
-                # assignment sharing this (too coarse) signature, so fall
-                # through and re-check this specific flavor assignment.
-
-            # populate every diagram's store for this flavor
-            if self.check_flavor_for_all_diagrams(one_flavor, model):
-                flavor_list.append(one_flavor)
-                pdg_list.append(signed_pdg)
+                for diag, flavors in zip(self.get('diagrams'), diag_flavors):
+                    if one_flavor in flavors:
+                        diag.valid_flavors.add(one_flavor)
+                # An excluded flavor (set_excluded_flavors) keeps its record in
+                # the per-diagram store but gets no row: see the enumeration
+                # branch below.
+                if tuple(one_flavor) not in excluded_flavors:
+                    flavor_list.append(one_flavor)
+                    pdg_list.append(signed_pdg)
                 checked[signature] = True
-            else:
-                checked[signature] = False
+        else:
+            for one_flavor, signed_pdg, signature in \
+                    self._iter_candidate_flavors(pdgs, pdg_signs, to_map,
+                                                 restrictions, ninit):
+                if not enumerate_all and signature in checked:
+                    if checked[signature]:
+                        # genuine permutation duplicate of a validated flavor
+                        continue
+                    elif not is_decay_chain:
+                        # known-invalid signature; sound to skip for a plain ME
+                        continue
+                    # decay-chain ME: a cached False may hide a valid sibling
+                    # assignment sharing this (too coarse) signature, so fall
+                    # through and re-check this specific flavor assignment.
+
+                # populate every diagram's store for this flavor
+                if self.check_flavor_for_all_diagrams(one_flavor, model):
+                    # A flavor this module has been told it does not cover (see
+                    # set_excluded_flavors) is still CHECKED -- the per-diagram
+                    # store stays an honest record of what the diagrams support
+                    # -- but it is not offered, so it gets no bit in the flavor
+                    # masks and no row anywhere downstream. Everything that
+                    # describes the module's flavor content (compute_flavor_
+                    # masks, the PDG tables, get_external_flavors_with_iden,
+                    # the generated FLAVOR table) reads allowed_flavors, so
+                    # dropping it here is the one place that needs to know.
+                    if tuple(one_flavor) not in excluded_flavors:
+                        flavor_list.append(one_flavor)
+                        pdg_list.append(signed_pdg)
+                    checked[signature] = True
+                else:
+                    checked[signature] = False
 
         self['allowed_flavors'] = flavor_list
         self['allowed_flavors_pdgs'] = pdg_list
@@ -5747,6 +6415,15 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         a no-op: only the representative (deduplicated) flavors are returned.
         """
         if not self._flavor_is_populated():
+            self.populate_flavor_validity()
+        elif self._combined_flavor_restrictions() != \
+                getattr(self, '_flavor_restriction_key', []):
+            # processes with another flavor restriction were combined into
+            # this matrix element after the eager population: redo it
+            if getattr(self, '_flavor_trimmed', False):
+                logger.warning('Flavor restriction of %s changed after its '
+                    'diagrams were trimmed: flavors needing a trimmed diagram '
+                    'are lost.' % self.get('processes')[0].nice_string())
             self.populate_flavor_validity()
 
         if getattr(self, '_flavor_allow_trimming', False) and \
@@ -5806,7 +6483,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             True, pdg 81/82/...), whose concrete flavors are enumerated by
             get_external_flavors_with_iden.
 
-        Returns one (pdg_lists, has_merged_particles) pair per process, so that
+        Returns one (pdg_lists, has_merged_particles) pair per process of
+        get_flavor_row_processes (processes combined in with another flavor
+        restriction only add rows to the first one), so that
         callers which need the per-process split (madevent's IDUP numbering)
         keep it while callers which just want every channel can flatten it.
         """
@@ -5817,7 +6496,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             merged = model['merged_particles']
 
         combinations = []
-        for proc in self.get('processes'):
+        for proc in self.get_flavor_row_processes():
             base_ids = [l.get('id') for l in proc.get_legs_with_decays()]
             has_merged = any(abs(pdg) in merged for pdg in base_ids)
             if has_merged:
@@ -5863,12 +6542,24 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 pass
         any_valid = False
         for i, diag in enumerate(self.get('diagrams')):
-            if diag.check_flavor(real_pdgs, model, debug=debug, clear_flavor_tag=False):
+            try:
+                valid = diag.check_flavor(real_pdgs, model, debug=debug,
+                                          clear_flavor_tag=False)
+            except HelasWavefunction.AmbiguousFlavorError as error:
+                raise self.flavor_error_with_process(error)
+            if valid:
                 any_valid = True
                 if debug: misc.sprint('diag', i, 'is ok')
             else:
                 if debug: misc.sprint('diag', i, 'not ok')
         return any_valid
+
+    def flavor_error_with_process(self, error):
+        """The AmbiguousFlavorError error with the process of this matrix
+        element in front: the output command builds all of them."""
+        return HelasWavefunction.AmbiguousFlavorError('%s: %s' % (
+            self.get('processes')[0].nice_string(print_weighted=False)
+            .replace('Process: ', ''), error))
 
     def remove_diagrams_without_flavor(self):
         """remove all diagrams whose flavor store ('valid_flavors') is empty,
@@ -5886,25 +6577,27 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     out.update(store_dropped(wf, def_wfct))
             return out
         
-        def restore_dropped(wft, dropped_wfct, def_wfct, diag):
-            """diag is the diagram to which assiciated the wfct 
-               wft is the wfct to check recursively (and be sure that it is not dropped)
+        def restore_dropped(wft, dropped_wfct, def_wfct, restored):
+            """wft is the wfct to check recursively (and be sure that it is not dropped)
                dropped_wfct is the dict of dropped wfct (key is the wfct number and value the wfct object)
-               def_wfct is the set of currently defined wfct number (so not need to restore it)"""
+               def_wfct is the set of currently defined wfct number (so not need to restore it)
+               restored collects the wfct taken back from dropped_wfct"""
 
             for wf in wft.get('mothers')[:]:
                 if wf.get('number') in dropped_wfct:
-                    tmp = diag.get('wavefunctions')
-                    tmp.insert(0,dropped_wfct[wf.get('number')])
-                    del dropped_wfct[wf.get('number')]
+                    restored.append(dropped_wfct.pop(wf.get('number')))
                     def_wfct.add(wf.get('number'))
                     # start recursion
-                    restore_dropped(wf, dropped_wfct, def_wfct, diag)
+                    restore_dropped(wf, dropped_wfct, def_wfct, restored)
                 else:
                     def_wfct.add(wf.get('number'))
                     
 
         debug = False
+
+        # Diagrams are about to be dropped and the survivors renumbered, so any
+        # mask set computed against the untrimmed ME is retired here.
+        self._flavor_epoch = getattr(self, '_flavor_epoch', 0) + 1
 
         # store which diagram
         dropped_wfct = {}
@@ -5931,12 +6624,20 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             else:
                 # need to check if the wfct has not been dropped already
                 if debug: misc.sprint('keeping diagram -> check wfcts')
+                restored = []
                 for wf in diag['wavefunctions'][:]:
                     def_wfct.add(wf.get('number'))
-                    restore_dropped(wf, dropped_wfct, def_wfct, diag)
+                    restore_dropped(wf, dropped_wfct, def_wfct, restored)
                 for wf in diag['amplitudes'][:]:
                     def_wfct.add(wf.get('number'))
-                    restore_dropped(wf, dropped_wfct, def_wfct, diag)
+                    restore_dropped(wf, dropped_wfct, def_wfct, restored)
+                # Put the restored wfcts in front in their creation order
+                # (wfct numbers grow along the generation, so mothers stay
+                # before daughters), not in recursion order: the external
+                # wfcts must stay sorted by leg, since insert_decay reads the
+                # leg offset of a decay from its first final-state wfct.
+                restored.sort(key=lambda wf: wf.get('number'))
+                diag['wavefunctions'][:0] = restored
 
         initial_len = len(self.get('diagrams'))
 
@@ -5959,6 +6660,53 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             raise self.NoFlavorError("No diagram left after trimming for flavor! \n Please check the diagram generated and change the QCD/QED restriction to allow more diagrams to be generated.")
 
 
+    def _clear_flavor_tags(self, objects):
+        """Drop the temporary 'flavortag' key from `objects` (wavefunctions and
+        amplitudes).
+
+        The tag is written by check_flavor()/get_coupling_for_flv() while they
+        walk the diagram and neither removes it afterwards, so it outlives the
+        computation that produced it.  It must not: replace_single_wavefunction
+        iterates old_wf.keys() and looks each one up on the new wavefunction, so
+        a leftover tag turns into a lookup on a key the replacement does not
+        have.  compute_flavor_masks() runs this on BOTH its paths -- the masks
+        can be reused from the cache, a stale tag never can.
+        """
+        for obj in objects:
+            try:
+                del obj['flavortag']
+            except Exception:
+                pass
+
+    def _flavor_mask_token(self, allowed_flavors, all_wfs, all_amps):
+        """Fingerprint of everything the flavor masks are derived from.
+
+        A cached mask set stays usable for exactly as long as this is unchanged.
+        It pins three things:
+
+        - `_flavor_epoch`, bumped by every routine that rebuilds the per-diagram
+          valid_flavors store or the allowed-flavor list (populate_flavor_
+          validity, set_excluded_flavors) or drops diagrams from the ME
+          (remove_diagrams_without_flavor).  That store is what the diagram masks
+          are read from, so a rebuild must not be served from the cache.
+        - the shape of the object graph, so any structural rewrite of the ME
+          forces a recompute.
+        - the amplitude NUMBERS, because guard_amp_number is one of them and the
+          helas call writer turns it straight into a bit index.  The C++/
+          madmatrix exporter renumbers amplitudes onto its single rolling
+          amp_sv slot while emitting calls, so the guards that hold inside that
+          window are not the ones that hold outside it and the two must not be
+          confused for each other.
+
+        It is built from the flat views the caller already has, so it costs no
+        traversal of its own.
+        """
+        return (getattr(self, '_flavor_epoch', 0),
+                len(allowed_flavors),
+                len(self.get('diagrams')),
+                len(all_wfs),
+                tuple(amp.get('number') for amp in all_amps))
+
     def compute_flavor_masks(self):
         """Compute per-diagram, per-amplitude and per-wavefunction flavor
         bitmasks. Bit i of a mask is set iff the object contributes for
@@ -5970,6 +6718,14 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         Returns the list of allowed-flavor tuples used to define the bit order
         (same object as self.get_external_flavors()). Returns [] if the ME has
         no merged-particle flavor variants (single flavor / nothing to mask).
+
+        Memoized.  A single `output` asks for the masks of one matrix element
+        four to six times (the flavor table, the pdg tables, the mask blocks,
+        the crossing rows), and step 2 below is an ancestor walk over every
+        wavefunction of every amplitude -- millions of visits for a process like
+        g g > t t~ 4g, repeated identically each time.  The masks are left ON the
+        objects, so a cache hit has nothing to re-apply; see _flavor_mask_token
+        for what keeps a hit honest.
         """
 
         if not self.get('processes'):
@@ -5977,6 +6733,27 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         allowed_flavors = self.get_external_flavors()
         if not allowed_flavors:
             return []
+
+        # The two flat views, taken once and reused for every step below.
+        # Same content and order as get_all_wavefunctions()/get_all_amplitudes(),
+        # flattened with a comprehension rather than their sum(..., []): that
+        # re-copies the accumulator once per diagram, so on a large matrix
+        # element one such rebuild costs about as much as the mask pass it
+        # feeds -- which would leave a cache hit nearly as dear as a miss.
+        diagrams = self.get('diagrams')
+        all_wfs = [wf for diag in diagrams for wf in diag.get('wavefunctions')]
+        all_amps = [amp for diag in diagrams for amp in diag.get('amplitudes')]
+
+        token = self._flavor_mask_token(allowed_flavors, all_wfs, all_amps)
+        if getattr(self, '_flavor_mask_cache', None) == token:
+            # Every mask, valid_flavors set and guard_amp_number this method
+            # writes is still on the objects from the computing call, and the
+            # token says nothing they are derived from has moved since.  Only
+            # step 3 still has to run: whatever ran in between may have re-tagged
+            # the objects (get_external_flavors_with_iden goes through
+            # get_coupling_for_flv, which tags and does not clean up).
+            self._clear_flavor_tags(all_wfs + all_amps)
+            return allowed_flavors
 
         # 1) Per-diagram mask, derived purely from the precomputed flavor store.
         # populate_flavor_validity() (triggered by get_external_flavors above)
@@ -6003,34 +6780,32 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # wavefunction contributes to exactly one amplitude, the call writer can
         # reuse that amplitude guard for the wavefunction call.
         wf_amp_sinks = {}
-        for diag in self.get('diagrams'):
-            for wf in diag.get('wavefunctions'):
-                wf['flavor_mask'] = 0
-                wf.pop('guard_amp_number', None)
+        for wf in all_wfs:
+            wf['flavor_mask'] = 0
+            wf.pop('guard_amp_number', None)
 
-        for diag in self.get('diagrams'):
-            for amp in diag.get('amplitudes'):
-                amp_mask = amp['flavor_mask']
-                if amp_mask == 0:
+        for amp in all_amps:
+            amp_mask = amp['flavor_mask']
+            if amp_mask == 0:
+                continue
+            amp_num = amp.get('number')
+            stack = list(amp.get('mothers'))
+            seen = set()
+            while stack:
+                wf = stack.pop()
+                wf_id = id(wf)
+                if wf_id in seen:
                     continue
-                amp_num = amp.get('number')
-                stack = list(amp.get('mothers'))
-                seen = set()
-                while stack:
-                    wf = stack.pop()
-                    wf_id = id(wf)
-                    if wf_id in seen:
-                        continue
-                    seen.add(wf_id)
-                    if amp_num is not None:
-                        wf_amp_sinks.setdefault(wf_id, set()).add(amp_num)
-                    existing = wf['flavor_mask'] if 'flavor_mask' in wf else 0
-                    new_mask = existing | amp_mask
-                    if new_mask != existing:
-                        wf['flavor_mask'] = new_mask
-                    stack.extend(wf.get('mothers'))
+                seen.add(wf_id)
+                if amp_num is not None:
+                    wf_amp_sinks.setdefault(wf_id, set()).add(amp_num)
+                existing = wf['flavor_mask'] if 'flavor_mask' in wf else 0
+                new_mask = existing | amp_mask
+                if new_mask != existing:
+                    wf['flavor_mask'] = new_mask
+                stack.extend(wf.get('mothers'))
 
-        for wf in self.get_all_wavefunctions():
+        for wf in all_wfs:
             sinks = wf_amp_sinks.get(id(wf))
             if sinks and len(sinks) == 1:
                 wf['guard_amp_number'] = next(iter(sinks))
@@ -6038,7 +6813,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # Mirror the wavefunction masks into per-wavefunction 'valid_flavors'
         # sets so HelasWavefunction.has_flavor() answers consistently with the
         # bitmasks (a wf contributes for flavor f iff bit f of its mask is set).
-        for wf in self.get_all_wavefunctions():
+        for wf in all_wfs:
             mask = wf['flavor_mask'] if 'flavor_mask' in wf else 0
             wf.valid_flavors = set(flavor for flav_idx, flavor
                                    in enumerate(allowed_flavors)
@@ -6047,12 +6822,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # 3) Clean up the 'flavortag' side effect left by diag.check_flavor on
         # wavefunctions and amplitudes. Same cleanup pattern as
         # get_external_flavors.
-        for wfct in self.get_all_wavefunctions() + self.get_all_amplitudes():
-            try:
-                del wfct['flavortag']
-            except Exception:
-                pass
+        self._clear_flavor_tags(all_wfs + all_amps)
 
+        self._flavor_mask_cache = token
         return allowed_flavors
 
     def flavor_mask_is_trivial(self):
@@ -6101,6 +6873,16 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                                   wf.get('pdg_code')].get_helicity_states())
             for wf in self.get_external_wavefunctions()]
 
+        if self.get_nonia()>0:
+            onia_pairs = self.get_onia_pairs()
+            constituent = []
+            external_wavefunctions = self.get_external_wavefunctions()
+            for pair in onia_pairs:
+                hel_per_part[pair[0]-1] = int(2*external_wavefunctions[pair[0]-1].get('onium').get('J')+1)
+                constituent.append(pair[1])
+            for i in sorted(constituent, reverse=True):
+                del hel_per_part[i-1]
+
         return reduce(lambda x, y: x * y,
                       hel_per_part)
 
@@ -6116,6 +6898,19 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                         else model.get('particle_dict')[\
                                   wf.get('pdg_code')].get_helicity_states(allow_reverse)
             for wf in self.get_external_wavefunctions()]
+
+        if self.get_nonia()>0:
+            onia_pairs = self.get_onia_pairs()
+            constituent = []
+            external_wavefunctions = self.get_external_wavefunctions()
+            for pair in onia_pairs:
+                j = external_wavefunctions[pair[0]-1].get('onium').get('J')
+                hel = [i for i in range(-j,j+1,1)]
+                hel_per_part[pair[0]-1] = hel
+                constituent.append(pair[1])
+            for i in sorted(constituent, reverse=True):
+                del hel_per_part[i-1]
+
         return itertools.product(*hel_per_part)
     
     def get_helicity_per_particle(self):
@@ -6175,6 +6970,16 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         
         if len(hel_per_part) == 1:
             hel_per_part.append(0)
+
+        if self.get_nonia()>0:
+            onia_pairs = self.get_onia_pairs()
+            constituent = []
+            legs = [leg for leg in self.get('processes')[0].get('legs')]
+            for pair in onia_pairs:
+                hel_per_part[pair[0]-1] = int(2*legs[pair[0]-1].get('onium').get('S')+1)
+                constituent.append(pair[1])
+            for i in sorted(constituent, reverse=True):
+                del hel_per_part[i-1]
             
         return hel_per_part
 
@@ -6271,7 +7076,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         merge_quartic_amplitudes says whether the caller also writes out the
         sums of get_quartic_amplitude_merges. Only the Fortran writer does.
-        A backend which does not has to leave those amplitudes in the JAMPs,
+        A backend which does not have to leave those amplitudes in the JAMPs,
         where their own colour coefficients give the identical result -- the
         two carry the same colour factor, which is the whole premise."""
 
@@ -6795,7 +7600,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         (HelasMatrixElements) are equal.
 
         Note that this has to be called before any combination of
-        processes has occured.
+        processes has occurred.
         
         Since a decay processes for a decay chain is always generated
         such that all final state legs are completely contracted
@@ -7235,7 +8040,8 @@ class HelasDecayChainProcess(base_objects.PhysicsObject):
                 # Avoid Python copying the complete model every time
                 for i, process in enumerate(core_process.get('processes')):
                     process.set('model',base_objects.Model())
-                matrix_element = copy.deepcopy(core_process)
+                matrix_element = copy.deepcopy(core_process,
+                                            core_process.shared_models_memo())
                 # Avoid Python copying the complete model every time
                 for i, process in enumerate(matrix_element.get('processes')):
                     process.set('model', model_bk)
@@ -7275,10 +8081,18 @@ class HelasDecayChainProcess(base_objects.PhysicsObject):
                 try:
                     if not combine:
                         raise ValueError
+                    # A matrix element carrying recorded crossings keeps its
+                    # own place, as in HelasMultiProcess.generate_matrix_elements:
+                    # combined, only its processes would survive.
+                    if matrix_element.has_recorded_crossings():
+                        raise ValueError
                     # If an identical matrix element is already in the list,
                     # then simply add this process to the list of
                     # processes for that matrix element
-                    me_index = me_tags.index(me_tag)
+                    me_index, reordered = HelasMultiProcess.find_identical_me(
+                        me_tags, me_tag, permutations,
+                        lambda i: matrix_elements[i].get('processes'),
+                        matrix_element.get('processes'))
                 except ValueError:
                     # Otherwise, if the matrix element has any diagrams,
                     # add this matrix element.
@@ -7295,11 +8109,7 @@ class HelasDecayChainProcess(base_objects.PhysicsObject):
                     logger.info("Combining process with %s" % \
                       other_processes[0].nice_string().replace('Process: ', ''))
 
-                    for proc in matrix_element.get('processes'):
-                        other_processes.append(HelasMultiProcess.\
-                              reorder_process(proc,
-                                   permutations[me_index],
-                                   me_tag[-1][0].get_external_numbers()))
+                    other_processes.extend(reordered)
 
         return matrix_elements
 
@@ -7442,7 +8252,6 @@ class HelasMultiProcess(base_objects.PhysicsObject):
         col_basis = color_amp.ColorBasis()
         new_amp = matrix_element.get_base_amplitude()
         matrix_element.set('base_amplitude', new_amp)
-        
         colorize_obj = col_basis.create_color_dict_list(\
                          matrix_element.get('base_amplitude'))
 
@@ -7475,7 +8284,6 @@ class HelasMultiProcess(base_objects.PhysicsObject):
         matrix_element.set('color_matrix',
                                list_color_matrices[col_index])
 
-
     # Below is the type of HelasMatrixElement which should be created by this
     # HelasMultiProcess class
     matrix_element_class = HelasMatrixElement
@@ -7491,7 +8299,7 @@ class HelasMultiProcess(base_objects.PhysicsObject):
         SubprocessGroup functionality). decay_ids is a list of decayed
         particle ids, since those should not be combined even if
         matrix element is identical. 
-        The compute_loop_nc sets wheter independent tracking of Nc power coming
+        The compute_loop_nc sets whether independent tracking of Nc power coming
         from the color loop trace is necessary or not (it is time consuming).
         Matrix_element_opts are potential additional options to be passed to 
         the HelasMatrixElements constructed."""
@@ -7525,6 +8333,7 @@ class HelasMultiProcess(base_objects.PhysicsObject):
 
         # List of valid matrix elements
         matrix_elements = HelasMatrixElementList()
+        no_flavor_error = None
         # List of identified matrix_elements
         identified_matrix_elements = []
         # List of amplitude tags, synchronized with identified_matrix_elements
@@ -7555,7 +8364,13 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                     try:
                         if not combine:
                             raise ValueError
-                        me_index = amplitude_tags.index(amplitude_tag)
+                        # Recorded crossings: see the plain amplitude below.
+                        if matrix_element.has_recorded_crossings():
+                            raise ValueError
+                        me_index, reordered = cls.find_identical_me(
+                            amplitude_tags, amplitude_tag, permutations,
+                            lambda i: identified_matrix_elements[i],
+                            matrix_element.get('processes'))
                     except ValueError:
                         # Create matrix element for this amplitude
                         matrix_element_list.append(matrix_element)
@@ -7567,13 +8382,9 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                     else: # try
                         # Identical matrix element found
                         other_processes = identified_matrix_elements[me_index]
-                        # Reorder each of the processes
-                        # Since decay chain, only reorder legs_with_decays
-                        for proc in matrix_element.get('processes'):
-                            other_processes.append(cls.reorder_process(\
-                                    proc,
-                                    permutations[me_index],
-                                    amplitude_tag[-1][0].get_external_numbers()))
+                        # Reordered processes (since decay chain, only
+                        # legs_with_decays is reordered)
+                        other_processes.extend(reordered)
                         logger.info("Combined %s with %s" % \
                                     (matrix_element.get('processes')[0].\
                                      nice_string().\
@@ -7588,7 +8399,19 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                 # they have the same matrix element
                 amplitude_tag = IdentifyMETag.create_tag(amplitude)
                 try:
-                    me_index = amplitude_tags.index(amplitude_tag)
+                    # An amplitude carrying recorded crossings
+                    # (merge_crossing='record') keeps a matrix element of its
+                    # own: combined into another one, only its process would
+                    # survive, and a folding output would silently lose the
+                    # crossed subprocesses it stands for (g g > c c~ recording
+                    # g c > g c, with apply_flavor_grouping False).
+                    if 'crossed_processes' in amplitude and \
+                            amplitude.get('crossed_processes'):
+                        raise ValueError
+                    me_index, reordered = cls.find_identical_me(
+                        amplitude_tags, amplitude_tag, permutations,
+                        lambda i: identified_matrix_elements[i],
+                        [amplitude.get('process')])
                 except ValueError:
                     # Create matrix element for this amplitude
                     logger.info("Generating Helas calls for %s" % \
@@ -7614,12 +8437,7 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                 else:
                     # Identical matrix element found
                     other_processes = identified_matrix_elements[me_index]
-                                      
-                    
-                    other_processes.append(cls.reorder_process(\
-                        amplitude.get('process'),
-                        permutations[me_index],
-                        amplitude_tag[-1][0].get_external_numbers()))
+                    other_processes.extend(reordered)
                     logger.info("Combined %s with %s" % \
                                 (other_processes[-1].nice_string().\
                                  replace('Process: ', 'process '),
@@ -7628,16 +8446,6 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                     # Go on to next amplitude
                     continue
             
-            for matrix_element in matrix_element_list:
-                # Trigger restricted-flavor / merged-flavor diagram trimming
-                # here, *before* the color basis is built below (process_color),
-                # so the color basis is constructed from the final (trimmed)
-                # diagram set and stays consistent with it.  get_external_flavors
-                # self-populates and only trims when there is something to trim,
-                # so it is a cheap no-op for plain (non-merged, unrestricted)
-                # matrix elements.
-                matrix_element.get_external_flavors()
-
             # Deal with newly generated matrix elements
             for matrix_element in copy.copy(matrix_element_list):
                 assert isinstance(matrix_element, HelasMatrixElement), \
@@ -7646,19 +8454,78 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                 # Add this matrix element to list
                 matrix_elements.append(matrix_element)
 
-                if not gen_color:
-                    continue
+        # Trimming and color are deferred until every amplitude has been
+        # combined: a later process combined into an earlier matrix element
+        # may bring other flavor rows, and the diagrams they need (see
+        # HelasMatrixElement._combined_flavor_restrictions).  The matrix
+        # elements are processed in creation order, as before.
+        for matrix_element in matrix_elements[:]:
+            # Trigger restricted-flavor / merged-flavor diagram trimming
+            # here, *before* the color basis is built below (process_color),
+            # so the color basis is constructed from the final (trimmed)
+            # diagram set and stays consistent with it.  get_external_flavors
+            # self-populates and only trims when there is something to trim,
+            # so it is a cheap no-op for plain (non-merged, unrestricted)
+            # matrix elements.
+            try:
+                matrix_element.get_external_flavors()
+            except HelasMatrixElement.NoFlavorError as error:
+                # One leg combination of a multiparticle definition can allow
+                # no flavor at all, e.g. w+ > c~ s from `define qa = u c~` and
+                # `define qb = d~ s`: drop that matrix element only (the error
+                # is raised below if none is left).
+                logger.debug("No allowed flavor for %s: removed" %
+                    matrix_element.get('processes')[0].nice_string())
+                matrix_elements.remove(matrix_element)
+                no_flavor_error = error
+                continue
 
-                # The treatment of color is quite different for loop amplitudes
-                # than for regular tree ones. So the function below is overloaded
-                # in LoopHelasProcess
-                cls.process_color(matrix_element,color_information,\
-                                                compute_loop_nc=compute_loop_nc)                    
+            if not gen_color:
+                continue
+
+            # The treatment of color is quite different for loop amplitudes
+            # than for regular tree ones. So the function below is overloaded
+            # in LoopHelasProcess
+            cls.process_color(matrix_element,color_information,\
+                                            compute_loop_nc=compute_loop_nc)                    
 
         if not matrix_elements:
+            if no_flavor_error:
+                raise no_flavor_error
             raise InvalidCmd("No matrix elements generated, check overall coupling orders")
 
         return matrix_elements
+
+    @classmethod
+    def find_identical_me(cls, tags, tag, permutations, get_processes,
+                          processes):
+        """Return (index, reordered processes) of the first entry of `tags`
+        equal to `tag` whose matrix element can take `processes`, or raise
+        ValueError.
+
+        Identical diagrams (IdentifyMETag) are enough, except under flavor
+        grouping when the flavor restrictions differ (`z > u u~` + `add
+        process z > d d~`, or z > Q Qx [u u~] and z > Qx Q [d~ d] from `define
+        l+ = u d~`).  The matrix element then serves the union of their flavor
+        rows (HelasMatrixElement._combined_flavor_restrictions), and the
+        exporters write those rows once, for processes[0]: so all its
+        processes must carry the same leg ids, else it is a new matrix
+        element.
+        """
+        restriction = HelasMatrixElement.get_process_flavor_restriction
+        ids = lambda proc: [l.get('id') for l in proc.get_legs_with_decays()]
+        for index, other_tag in enumerate(tags):
+            if other_tag != tag:
+                continue
+            reordered = [cls.reorder_process(proc, permutations[index],
+                                             tag[-1][0].get_external_numbers())
+                         for proc in processes]
+            all_procs = list(get_processes(index)) + reordered
+            if len(set(restriction(p) for p in all_procs)) > 1 and \
+                    any(ids(p) != ids(all_procs[0]) for p in all_procs):
+                continue
+            return index, reordered
+        raise ValueError
 
     @staticmethod
     def reorder_process(process, org_perm, proc_perm):

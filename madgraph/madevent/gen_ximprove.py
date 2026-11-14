@@ -131,8 +131,18 @@ class gensym(object):
         P_zero_result = []
         nb_tot_proc = len(subproc)
         job_list = {}      
-        
-          
+        # A directory routing through another group's matrix element (Track B
+        # crossing, crossgroup.mk) is surveyed BEFORE the bases: its survey,
+        # which runs the base's matrix element at its own (crossed) kinematics,
+        # gives rows the base's recycled optim has to cover (see
+        # crossgroup_shared.dat below).
+        def routed(subdir):
+            return os.path.exists(pjoin(self.me_dir, 'SubProcesses',
+                                        subdir.strip(), 'crossgroup.mk'))
+        subproc = [d for d in subproc if routed(d)] + \
+                  [d for d in subproc if not routed(d)]
+        surveys = {}
+
         for nb_proc,subdir in enumerate(subproc):
             self.cmd.update_status('Compiling for process %s/%s.' % \
                                (nb_proc+1,nb_tot_proc), level=None)
@@ -202,7 +212,11 @@ class gensym(object):
             zero_gc = list()
             all_zampperhel = set()
             all_bad_amps_perhel = set()
-            
+            all_csym_pairs = set()
+            # matrix elements whose C-parity scan failed for some caller (a
+            # crossed one included, see me_csym_bad_report)
+            all_csym_bad = set()
+
             for line in stdout.splitlines():
                 if "="  not in line and ":" not in line:
                     continue
@@ -212,8 +226,21 @@ class gensym(object):
                         zero_gc.append(lsplit[0])
                 if 'Matrix Element/Good Helicity:' in line:
                     all_hel.add(tuple(line.split()[3:5]))
+                if 'CSYM PAIR:' in line:
+                    # (me_index, representative_hel, dropped_partner_hel)
+                    all_csym_pairs.add(tuple(line.split()[2:5]))
+                if 'CSYM BAD:' in line:
+                    all_csym_bad.add(line.split()[2])
                 if 'Amplitude/ZEROAMP:' in line:
                     all_zamp.add(tuple(line.split()[1:3]))
+                # A per-helicity zero amplitude is frame specific: one
+                # diagram can vanish because the beams lie on the z axis
+                # in the survey frame while |M|^2 is Lorentz invariant.
+                # madevent_forhel runs the production auto_dsig, so the
+                # survey frame (partonic CM, or the me_frame boost) is the
+                # one the optim sees later; the optim is not valid for
+                # momenta in any other frame (standalone's hel_warmup
+                # boosts part of its points for that reason).
                 if 'HEL/ZEROAMP:' in line:
                     nb_mat, nb_hel, nb_amp = line.split()[1:4]
                     if (nb_mat, nb_hel) not in all_hel:
@@ -221,6 +248,48 @@ class gensym(object):
                     if (nb_mat,nb_amp) in all_zamp:
                         continue
                     all_zampperhel.add(tuple(line.split()[1:4]))
+
+            surveys[subdir] = (set(all_hel), set(all_zamp), set(all_zampperhel),
+                               set(all_csym_pairs), set(all_csym_bad))
+
+            # A matrix element shared by a crossing (crossgroup_shared.dat:
+            # `<me index> [P directories routing through it]`): its recycled
+            # optim is entered by every crossing that routes through it, so it
+            # must cover the rows each of them evaluates: the same rows for
+            # every crossing (APPLY_CROSSING_ROWS) up to the frame-dependent
+            # ones of a massive leg, so each crossing is still scanned at its
+            # own kinematics:
+            # a within-group router calls the base inside this very survey, a
+            # cross-group one in its own directory's survey, done first. An
+            # amplitude is only dropped where it vanishes for every caller.
+            shared = {}
+            sh_file = pjoin(Pdir, 'crossgroup_shared.dat')
+            if os.path.exists(sh_file):
+                for line in open(sh_file):
+                    vals = line.split()
+                    if vals:
+                        shared[vals[0]] = vals[1:]
+            for me_index, dep_dirs in shared.items():
+                for dep in dep_dirs:
+                    if dep not in surveys:
+                        raise Exception('%s routes through %s but was not '
+                                        'surveyed first' % (dep, subdir))
+                    d_hel, d_zamp, d_zph, d_csym, d_bad = surveys[dep]
+                    mine = set(h for (m, h) in all_hel if m == me_index)
+                    theirs = set(h for (m, h) in d_hel if m == me_index)
+                    all_zamp = set(z for z in all_zamp
+                                   if z[0] != me_index or z in d_zamp)
+                    all_zampperhel = set(
+                        z for z in all_zampperhel
+                        if z[0] != me_index or z[1] not in theirs or z in d_zph
+                    ) | set(z for z in d_zph
+                            if z[0] == me_index and z[1] not in mine)
+                    all_hel |= set((me_index, h) for h in theirs)
+                    # C-parity: the dependent evaluates the base rows too, so
+                    # the pairs it confirmed join the base's, and a mismatch it
+                    # found keeps the full helicity sum for everyone.
+                    all_csym_pairs |= set(c for c in d_csym if c[0] == me_index)
+                    all_csym_bad |= d_bad & set([me_index])
 
             if zero_gc and not gensym.done_warning_zero_coupling:
                 gensym.done_warning_zero_coupling = True
@@ -232,8 +301,18 @@ class gensym(object):
                 
             all_good_hels = collections.defaultdict(list)
             for me_index, hel in all_hel:
-                all_good_hels[me_index].append(int(hel))                           
-                               
+                all_good_hels[me_index].append(int(hel))
+
+            # C-parity de-duplication: (representative -> dropped partner) pairs
+            # per matrix element, reported by matrix<i>_orig.f. rep < flip, and
+            # both are good helicities with |M(rep)|^2 == |M(flip)|^2 at every
+            # scan point. The partner keeps its row (helicity table / |M|^2 sum)
+            # but its amplitudes are dropped from the recycled optim and its
+            # |M|^2 reused from the representative.
+            all_csym = collections.defaultdict(list)
+            for me_index, rep, flip in all_csym_pairs:
+                all_csym[me_index].append((int(rep), int(flip)))
+
             #print(all_hel)
             if self.run_card['hel_zeroamp']:
                 all_bad_amps = collections.defaultdict(list)
@@ -272,7 +351,21 @@ class gensym(object):
                 
         
             for matrix_file in misc.glob('matrix*orig.f', Pdir):
-    
+
+                # Track B cross-group crossing: a dependent P directory reuses a
+                # base group's compiled matrix element, so its matrix<i>_orig.f is
+                # a SYMLINK and crossgroup.mk symlinks the base's already-recycled
+                # matrix<i>_optim.o over it. Running the (expensive) recycler here
+                # is redundant -- the resulting matrix<i>_optim.f is never compiled
+                # (its .o comes from the base). But the P makefile discovers its
+                # matrix objects by the presence of matrix<i>_optim.f, so a
+                # placeholder must still exist: copy the source (cheap) instead of
+                # recycling. The base directory, whose source is a real file, bakes
+                # the shared optim over the UNION good-hel of the whole class.
+                if os.path.islink(matrix_file):
+                    files.cp(matrix_file, matrix_file.replace('orig', 'optim'))
+                    continue
+
                 split_file = matrix_file.split('/')
                 me_index = split_file[-1][len('matrix'):-len('_orig.f')]
 
@@ -286,29 +379,91 @@ class gensym(object):
 
                 # Convert to sorted list for reproducibility
                 #good_hels = sorted(list(good_hels))
-                good_hels = [str(x) for x in sorted(all_good_hels[me_index])]
+                # The rows of every caller: the survey already merged those of
+                # the crossings sharing this matrix element (see above).
+                good_set = set(all_good_hels[me_index])
+                shared_me = me_index in shared
+                good_hels = [str(x) for x in sorted(good_set)]
+
+                mtext = open(matrix_file).read()
+                nb_amp = int(re.findall(r'PARAMETER \(NGRAPHS=(\d+)\)', mtext)[0])
+
                 if self.run_card['hel_zeroamp']:
-                    
                     bad_amps = [str(x) for x in sorted(all_bad_amps[me_index])]
                     bad_amps_perhel = [x for x in sorted(all_bad_amps_perhel[me_index])]
                 else:
-                    bad_amps = [] 
+                    bad_amps = []
                     bad_amps_perhel = []
+
+                # C-parity de-duplication: for each surviving pair KEEP both rows
+                # in the helicity table (so the |M|^2 sum and the event-helicity
+                # CDF stay complete) but drop the partner's amplitudes -- add every
+                # (partner, graph) to bad_amps_perhel so its HELAS calls are never
+                # generated -- and reuse the representative's |M|^2 for it. The
+                # reuse indices are the OPTIM's re-indexed positions in good_hels
+                # (helicity indices are renumbered 1..len(good_hels) in the optim).
+                # A matrix element shared by a crossing (shared_me) is entered
+                # by every caller with the base rows (APPLY_CROSSING_ROWS), so
+                # the base FLIP is their C-parity partner too: the reuse holds
+                # unless some caller's scan -- this survey's or a dependent
+                # directory's -- found a mismatch (CSYM BAD). Without it both
+                # rows of a pair get computed: speed only, since AMP2/JAMP2
+                # ratios do not depend on WHICH subset of the good configs is
+                # summed (they are the same for a row and its mirror).
+                csym_reuse_pairs = []
+                if all_csym[me_index] and me_index not in all_csym_bad:
+                    opt_index = {h: i + 1 for i, h in enumerate(sorted(good_set))}
+                    bad_set = set(bad_amps_perhel)
+                    for rep, flip in all_csym[me_index]:
+                        if rep in good_set and flip in good_set:
+                            for a in range(1, nb_amp + 1):
+                                bad_set.add((flip, a))
+                            csym_reuse_pairs.append((opt_index[rep], opt_index[flip]))
+                    bad_amps_perhel = sorted(bad_set)
                 if __debug__:
-                    mtext = open(matrix_file).read()
-                    nb_amp = int(re.findall(r'PARAMETER \(NGRAPHS=(\d+)\)', mtext)[0])
                     logger.debug('(%s) nb_hel: %s zero amp: %s bad_amps_hel: %s/%s', split_file[-1], len(good_hels),len(bad_amps),len(bad_amps_perhel), len(good_hels)*nb_amp )
                 if len(good_hels) == 1:
                     files.cp(matrix_file, matrix_file.replace('orig','optim'))
                     files.cp(matrix_file.replace('.f','.o'), matrix_file.replace('orig','optim').replace('.f','.o'))
-                    continue # avoid optimization if onlye one helicity
+                    continue # avoid optimization if only one helicity
                 
                 gauge = self.cmd.proc_characteristics['gauge']
+                for one in self.cmd.proc_characteristics['gauge_of_dirs']:
+                    if one.split('=')[0] == os.path.basename(Pdir.rstrip(os.sep)):
+                        gauge = one.split('=')[1]
                 recycler = hel_recycle.HelicityRecycler(good_hels, bad_amps, bad_amps_perhel, gauge=gauge)
+                # C-parity de-duplication: copy each dropped partner's |M|^2 from
+                # its representative (both are real fortran helicity indices).
+                if csym_reuse_pairs:
+                    recycler.template_dict['csym_reuse'] = '\n'.join(
+                        '      TS(%d) = TS(%d)' % (flip, rep)
+                        for rep, flip in sorted(csym_reuse_pairs)) + '\n'
+                # A crossing base's optim holds configs that are dead for
+                # whichever member is calling it: dead for the crossing when the
+                # base evaluates its own flavors, dead for the base when a
+                # dependent's crossing enters. Their |M|^2 is zero and costs the
+                # sum nothing, but their individual diagrams and JAMPs are not
+                # zero, so letting them into AMP2 (multi-channel) and JAMP2
+                # (colour flow) reweights channel and colour selection -- the
+                # g g > q q~ defect. A dead config is not always an exact zero:
+                # where diagrams cancel (p p > w+ j) it is left at the rounding
+                # of that cancellation, so AMP2 takes only the configs above
+                # the good-hel cut of the point, the test the filter itself is
+                # trained on, and each caller accumulates over its own good set
+                # as the uncrossed output does (HelicityRecycler.amp2_blocks).
+                # Keyed on the matrix element being shared rather than on the
+                # union having grown: a within-group router's rows already come
+                # with the base's own survey.
+                recycler.shared_rows = shared_me
                 # In case of bugs you can play around with these:
                 recycler.hel_filt = self.run_card['hel_filtering']
                 recycler.amp_splt = self.run_card['hel_splitamp']
                 recycler.amp_filt = self.run_card['hel_zeroamp']
+                # The unrolled call sequence is the whole file at high
+                # multiplicity; write it out in slices of this many statements
+                # (0 keeps it inline) so that gfortran is not handed one
+                # multi-million-line basic block.
+                recycler.amp_chunk_size = self.run_card['amp_chunk_size']
 
                 recycler.set_input(matrix_file)
                 recycler.set_output(out_file)
@@ -374,10 +529,10 @@ class gensym(object):
             jobs = stdout.split()
             job_list[Pdir] = jobs
             try:
-                # check that all input are valid
+                # check that all inputs are valid
                 [float(s) for s in jobs]
             except Exception:
-                logger.debug("unformated string found in gensym. Please check:\n %s" % stdout)
+                logger.debug("unformatted string found in gensym. Please check:\n %s" % stdout)
                 done=False
                 job_list[Pdir] = []
                 lines = stdout.split('\n')
@@ -491,8 +646,8 @@ class gensym(object):
         
     
     def submit_to_cluster_no_splitting(self, job_list):
-        """submit the survey without the parralelization.
-           This is the old mode which is still usefull in single core"""
+        """submit the survey without the parallelization.
+           This is the old mode which is still useful in single core"""
      
         # write the template file for the parameter file   
         self.write_parameter(parralelization=False, Pdirs=list(job_list.keys()))
@@ -541,8 +696,11 @@ class gensym(object):
         Gdir = pjoin(Pdir, 'G%s' % G)
         self.write_parameter_file(pjoin(Gdir, 'input_app.txt'), options)   
         
-        # 2. check that ftn25 exists.
-        assert os.path.exists(pjoin(Gdir, "ftn25"))    
+        # 2. check that the grid the jobs start from exists: refine_splitted.sh
+        #    copies G/ftn26 into each job's ftn25. A split survey puts it there
+        #    when it combines its last iteration, an unsplit one
+        #    (survey_splitting = 1) leaves the one madevent wrote.
+        assert os.path.exists(pjoin(Gdir, "ftn26"))
         
         
         # 3. Submit the new jobs
@@ -566,7 +724,7 @@ class gensym(object):
 
 
     def submit_to_cluster_splitted(self, job_list):
-        """ submit the version of the survey with splitted grid creation 
+        """ submit the version of the survey with split grid creation
         """ 
         
         #if self.splitted_grid <= 1:
@@ -596,7 +754,7 @@ class gensym(object):
         # Compute the number of events used for this run.                      
         nb_events = grid_calculator.target_evt
 
-        Gdirs = [] #build the the list of directory
+        Gdirs = [] #build the list of directory
         for i in range(self.splitted_for_dir(Pdir, G)):
             path = pjoin(Pdir, "G%s_%s" % (G, i+1))
             Gdirs.append(path)
@@ -718,7 +876,7 @@ class gensym(object):
             
              
         #2. combine the information about the total crossection / error
-        # start by keep the interation in memory
+        # start by keep the interaction in memory
         cross, across, sigma = grid_calculator.get_cross_section()
 
         #3. Try to avoid one single PS point which ruins the integration
@@ -1327,10 +1485,10 @@ class gen_ximprove_v4(gen_ximprove):
             #create the  info dict  assume no splitting for the default
             info = {'name': self.cmd.results.current['run_name'],
                     'script_name': 'unknown',
-                    'directory': C.name,    # need to be change for splitted job
+                    'directory': C.name,    # need to be change for split job
                     'P_dir': C.parent_name, 
                     'Ppath': pjoin(self.cmd.me_dir, 'SubProcesses', C.parent_name), # needed for RO gridpack
-                    'offset': 1,            # need to be change for splitted job
+                    'offset': 1,            # need to be change for split job
                     'nevents': nevents,
                     'maxiter': self.max_iter,
                     'miniter': self.min_iter,
@@ -1338,8 +1496,8 @@ class gen_ximprove_v4(gen_ximprove):
                     'nhel': self.run_card['nhel'],
                     'channel': C.name.replace('G',''),
                     'suppress_amplitude': 0 if self.disable_multichannel else 1,
-                    'grid_refinment' : 0,    #no refinment of the grid
-                    'base_directory': '',   #should be change in splitted job if want to keep the grid
+                    'grid_refinment' : 0,    #no refinement of the grid
+                    'base_directory': '',   #should be change in split job if want to keep the grid
                     'packet': packet, 
                     }
 
@@ -1366,7 +1524,7 @@ class gen_ximprove_v4(gen_ximprove):
         if not write_dir:
             write_dir =  pjoin(self.me_dir, 'SubProcesses')
         
-        #filter the job according to their SubProcess directory # no mix submition
+        #filter the job according to their SubProcess directory # no mix submission
         P2job= collections.defaultdict(list)
         for j in jobs:
             P2job[j['P_dir']].append(j)
@@ -1381,7 +1539,7 @@ class gen_ximprove_v4(gen_ximprove):
         
         template_text = open(template, 'r').read()
         # special treatment if needed to combine the script
-        # computes how many submition miss one job
+        # computes how many submission miss one job
         if self.combining_job > 1:
             skip1=0
             n_channels = len(jobs)
@@ -1485,10 +1643,10 @@ class gen_ximprove_v4(gen_ximprove):
             #create the  info dict  assume no splitting for the default
             info = {'name': self.cmd.results.current['run_name'],
                     'script_name': 'unknown',
-                    'directory': C.name,    # need to be change for splitted job
+                    'directory': C.name,    # need to be change for split job
                     'P_dir': C.parent_name, 
                     'Ppath': pjoin(self.cmd.me_dir, 'SubProcesses', C.parent_name), # used for RO gridpack
-                    'offset': 1,            # need to be change for splitted job
+                    'offset': 1,            # need to be change for split job
                     'nevents': nevents,
                     'maxiter': self.max_iter,
                     'miniter': self.min_iter,
@@ -1683,7 +1841,7 @@ class gen_ximprove_share(gen_ximprove, gensym):
         grid_calculator, cross, error = self.combine_grid(Pdir, G, step)
         
         # collect all the generated_event
-        Gdirs = [] #build the the list of directory
+        Gdirs = [] #build the list of directory
         for i in range(self.splitted_for_dir(Pdir, G)):
             path = pjoin(Pdir, "G%s_%s" % (G, i+1))
             Gdirs.append(path)
@@ -1970,9 +2128,9 @@ class gen_ximprove_gridpack(gen_ximprove_v4):
             #create the  info dict  assume no splitting for the default
             info = {'name': self.cmd.results.current['run_name'],
                     'script_name': 'unknown',
-                    'directory': C.name,    # need to be change for splitted job
+                    'directory': C.name,    # need to be change for split job
                     'P_dir': os.path.basename(C.parent_name), 
-                    'offset': 1,            # need to be change for splitted job
+                    'offset': 1,            # need to be change for split job
                     'Ppath': pjoin(self.cmd.me_dir, 'SubProcesses', C.parent_name), # use for RO gridpack
                     'nevents': nevents, #int(nevents*self.gen_events_security)+1,
                     'maxiter': self.max_iter,
@@ -1982,8 +2140,8 @@ class gen_ximprove_gridpack(gen_ximprove_v4):
                     'nhel': self.run_card['nhel'],
                     'channel': C.name.replace('G',''),
                     'suppress_amplitude': 0 if self.disable_multichannel else 1,
-                    'grid_refinment' : 0,    #no refinment of the grid
-                    'base_directory': '',   #should be change in splitted job if want to keep the grid
+                    'grid_refinment' : 0,    #no refinement of the grid
+                    'base_directory': '',   #should be change in split job if want to keep the grid
                     'packet': None, 
                     }
 

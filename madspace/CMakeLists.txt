@@ -8,6 +8,10 @@ project (
 option(ENABLE_CUDA "Enable CUDA GPU backend" OFF)
 option(ENABLE_HIP "Enable HIP/ROCm GPU backend" OFF)
 option(ENABLE_SIMD "Enable SIMD CPU acceleration" OFF)
+# Extract API docstrings from the Doxygen comments (needs doxygen) and generate
+# the .pyi type stubs. Off for internal MadGraph use; on for the wheels
+# published to PyPI.
+option(ENABLE_DOCS "Generate API docstrings and .pyi type stubs" OFF)
 if(APPLE)
     option(ENABLE_OPENBLAS "Build OpenBLAS from source (default: OFF on Apple, ON elsewhere)" OFF)
 else()
@@ -128,7 +132,7 @@ if(ENABLE_OPENBLAS)
             -DCMAKE_INSTALL_LIBDIR=lib
             -DBUILD_SHARED_LIBS=OFF
             -DBUILD_WITHOUT_LAPACK=ON
-            -DBUILD_SINGLE=OFF
+            -DBUILD_SINGLE=ON
             -DBUILD_DOUBLE=ON
             -DBUILD_COMPLEX=OFF
             -DBUILD_COMPLEX16=OFF
@@ -173,6 +177,7 @@ set(
     ${MADSPACE_GENERATED_DIR}/python/instruction_set.hpp
     ${MADSPACE_GENERATED_DIR}/cpu/runtime_mixin.inc
     ${MADSPACE_GENERATED_DIR}/cpu/runtime_backward_mixin.inc
+    ${MADSPACE_GENERATED_DIR}/cpu/kernel_checks.inc
     ${MADSPACE_GENERATED_DIR}/gpu/runtime_mixin.inc
     ${MADSPACE_GENERATED_DIR}/gpu/runtime_backward_mixin.inc
 )
@@ -205,10 +210,13 @@ add_library(
     src/driver/context.cpp
     src/driver/event_generator.cpp
     src/driver/channel_generator.cpp
+    src/driver/event_utils.cpp
+    src/driver/event_stream.cpp
     src/driver/generator_data.cpp
     src/driver/status_file.cpp
     src/driver/thread_pool.cpp
     src/driver/io.cpp
+    src/driver/tar.cpp
     src/driver/vegas_optimizer.cpp
     src/driver/discrete_optimizer.cpp
     src/driver/backend.cpp
@@ -217,6 +225,7 @@ add_library(
     src/driver/event_histograms.cpp
     src/driver/madnis_training.cpp
     src/driver/random.cpp
+    src/driver/weighting_pipeline.cpp
     src/compgraphs/type.cpp
     src/compgraphs/function.cpp
     src/compgraphs/instruction.cpp
@@ -228,6 +237,7 @@ add_library(
     src/phasespace/two_particle.cpp
     src/phasespace/three_particle.cpp
     src/phasespace/luminosity.cpp
+    src/phasespace/beamstrahlung.cpp
     src/phasespace/topology.cpp
     src/phasespace/t_propagator_mapping.cpp
     src/phasespace/color_ordered_mapping.cpp
@@ -236,6 +246,7 @@ add_library(
     src/phasespace/madnis.cpp
     src/phasespace/rambo.cpp
     src/phasespace/cuts.cpp
+    src/phasespace/custom_function.cpp
     src/phasespace/observable.cpp
     src/phasespace/histograms.cpp
     src/phasespace/chili.cpp
@@ -250,8 +261,10 @@ add_library(
     src/phasespace/channel_weight_network.cpp
     src/phasespace/pdf.cpp
     src/phasespace/matrix_element.cpp
+    src/phasespace/mlm_clustering.cpp
     src/phasespace/cross_section.cpp
     src/phasespace/scale.cpp
+    src/phasespace/weighting_step.cpp
     include/madspace/util.hpp
     include/madspace/driver.hpp
     include/madspace/driver/adam_optimizer.hpp
@@ -263,6 +276,7 @@ add_library(
     include/madspace/driver/channel_generator.hpp
     include/madspace/driver/generator_data.hpp
     include/madspace/driver/io.hpp
+    include/madspace/driver/tar.hpp
     include/madspace/driver/vegas_optimizer.hpp
     include/madspace/driver/discrete_optimizer.hpp
     include/madspace/driver/backend.hpp
@@ -270,6 +284,7 @@ add_library(
     include/madspace/driver/logger.hpp
     include/madspace/driver/madnis_training.hpp
     include/madspace/driver/random.hpp
+    include/madspace/driver/weighting_pipeline.hpp
     include/madspace/compgraphs.hpp
     include/madspace/compgraphs/type.hpp
     include/madspace/compgraphs/function.hpp
@@ -306,8 +321,10 @@ add_library(
     include/madspace/phasespace/channel_weight_network.hpp
     include/madspace/phasespace/pdf.hpp
     include/madspace/phasespace/matrix_element.hpp
+    include/madspace/phasespace/mlm_clustering.hpp
     include/madspace/phasespace/cross_section.hpp
     include/madspace/phasespace/scale.hpp
+    include/madspace/phasespace/weighting_step.hpp
     include/madspace/mixmax/mixmax.hpp
     include/madspace/mixmax/mixmax_skip_N17.c
 )
@@ -327,7 +344,11 @@ install(TARGETS madspace DESTINATION madspace/lib)
 install(
     DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
     DESTINATION "madspace/include"
-    FILES_MATCHING PATTERN "*.hpp*"
+    # *.h (not just *.hpp*) so umami.h -- the public UMAMI ABI header needed by
+    # anyone implementing or consuming a MatrixElementApi-compatible shared
+    # library -- is installed too, and *.c for mixmax/mixmax_skip_N17.c, which
+    # mixmax.hpp #includes.
+    FILES_MATCHING PATTERN "*.hpp*" PATTERN "*.h" PATTERN "*.c"
 )
 # Generated public headers: installed alongside function.hpp/instruction.hpp
 # so a downstream #include "function_builder_mixin.inc" resolves the same
@@ -354,6 +375,7 @@ set(
     src/kernels/rambo.hpp
     src/kernels/cuts.hpp
     src/kernels/chili.hpp
+    src/kernels/mlm.hpp
     src/kernels/nn.hpp
     src/kernels/observables.hpp
     src/kernels/discrete.hpp
@@ -377,6 +399,7 @@ if(COMPILE_CUDA)
         SHARED
         src/gpu/runtime.cu
         src/gpu/device.cu
+        src/gpu/gzip.cu
         src/gpu/kernel_definitions.cuh
         src/gpu/runtime.hpp
         src/gpu/tensor.cuh
@@ -392,6 +415,14 @@ if(COMPILE_CUDA)
     set_property(TARGET madspace_cuda PROPERTY CUDA_STANDARD 20)
     target_link_libraries(madspace_cuda PRIVATE madspace)
     target_link_libraries(madspace_cuda PRIVATE CUDA::cublas)
+    # Optional GPU gzip of the LHE output (src/gpu/gpucomp.cuh), nvCOMP 5 found via nvcomp_ROOT.
+    find_package(nvcomp 5 CONFIG QUIET)
+    if(nvcomp_FOUND)
+        message(STATUS "nvCOMP ${nvcomp_VERSION} found: GPU gzip of LHE output enabled")
+        target_compile_definitions(madspace_cuda PRIVATE MADSPACE_GPUCOMP)
+        target_link_libraries(madspace_cuda PRIVATE nvcomp::nvcomp)
+        set_property(TARGET madspace_cuda PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
+    endif()
     install(TARGETS madspace_cuda DESTINATION madspace/lib)
 endif()
 
@@ -401,6 +432,7 @@ if(COMPILE_HIP)
         SHARED
         src/gpu/runtime.hip
         src/gpu/device.hip
+        src/gpu/gzip.hip
         src/gpu/kernel_definitions.cuh
         src/gpu/runtime.hpp
         src/gpu/tensor.cuh
@@ -420,6 +452,8 @@ if(COMPILE_HIP)
     target_link_libraries(madspace_hip PRIVATE roc::rocblas)
     target_link_libraries(madspace_hip PRIVATE roc::rocthrust)
     target_link_libraries(madspace_hip PRIVATE hip::hipcub)
+    # No MADSPACE_GPUCOMP: hipCOMP only decompresses gzip, so LHE output is gzipped on
+    # the CPU. Once it compresses, map it in src/gpu/gpucomp.cuh and enable it like CUDA.
     install(TARGETS madspace_hip DESTINATION madspace/lib)
 endif()
 
@@ -432,14 +466,26 @@ if(NOT ENABLE_SIMD)
     set(CPU_TARGETS madspace_cpu)
     set(SIMD_FLAGS "")
     set(SIMD_DEFINES "")
-elseif(APPLE)
-    set(CPU_TARGETS madspace_cpu madspace_cpu_neon)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$")
+    set(CPU_TARGETS madspace_cpu madspace_cpu_simd_128)
     set(SIMD_FLAGS "" "")
     set(SIMD_DEFINES "" "USE_SIMD_NEON=1")
 else()
-    set(CPU_TARGETS madspace_cpu madspace_cpu_avx2 madspace_cpu_avx512)
-    set(SIMD_FLAGS "" "-mavx2 -mfma" "-mavx512f")
-    set(SIMD_DEFINES "" "USE_SIMD_AVX2=1" "USE_SIMD_AVX512=1")
+    set(
+        CPU_TARGETS
+        madspace_cpu madspace_cpu_simd_256 madspace_cpu_avx512y madspace_cpu_simd_512
+    )
+    set(
+        SIMD_FLAGS
+        ""
+        "-mavx2 -mfma"
+        "-mavx2 -mfma -mavx512f -mavx512vl -mavx512dq -mprefer-vector-width=256"
+        "-mavx512f"
+    )
+    set(
+        SIMD_DEFINES
+        "" "USE_SIMD_AVX2=1" "USE_SIMD_AVX512Y=1" "USE_SIMD_AVX512=1"
+    )
 endif()
 
 foreach(
@@ -456,10 +502,13 @@ foreach(
         src/cpu/kernel_definitions.hpp
         ${MADSPACE_GENERATED_DIR}/cpu/runtime_mixin.inc
         ${MADSPACE_GENERATED_DIR}/cpu/runtime_backward_mixin.inc
+        ${MADSPACE_GENERATED_DIR}/cpu/kernel_checks.inc
         src/cpu/tensor.hpp
         src/cpu/simd.hpp
         src/cpu/simd_arm.hpp
         src/cpu/simd_x86_256.hpp
+        src/cpu/simd_x86_256y.hpp
+        src/cpu/simd_x86_512.hpp
         ${KERNEL_SRC}
     )
     target_include_directories(${cpu_target} PUBLIC include)
@@ -482,13 +531,55 @@ endforeach()
 # Python bindings                                                                      #
 ########################################################################################
 
+# docstrings.hpp gives madspace.cpp the pydoc::doc() lookup. With ENABLE_DOCS
+# it is filled from the Doxygen comments in the public headers (needs doxygen);
+# otherwise a stub is written whose doc() returns "" and no doxygen is needed.
+if(ENABLE_DOCS)
+    file(GLOB_RECURSE MADSPACE_PUBLIC_HEADERS
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/madspace/*.hpp"
+    )
+    set(MADSPACE_DOCSTRINGS_ARGS
+        --include-dir "${CMAKE_CURRENT_SOURCE_DIR}/include/madspace"
+        --out "${MADSPACE_GENERATED_DIR}/python/docstrings.hpp"
+        --require-doxygen
+    )
+    set(MADSPACE_DOCSTRINGS_DEPS
+        "${CMAKE_CURRENT_SOURCE_DIR}/generate_docstrings.py"
+        ${MADSPACE_PUBLIC_HEADERS}
+    )
+    set(MADSPACE_DOCSTRINGS_COMMENT
+        "Generating madspace binding docstrings from Doxygen comments"
+    )
+else()
+    set(MADSPACE_DOCSTRINGS_ARGS
+        --stub --out "${MADSPACE_GENERATED_DIR}/python/docstrings.hpp"
+    )
+    set(MADSPACE_DOCSTRINGS_DEPS
+        "${CMAKE_CURRENT_SOURCE_DIR}/generate_docstrings.py"
+    )
+    set(MADSPACE_DOCSTRINGS_COMMENT
+        "Writing stub madspace binding docstrings (ENABLE_DOCS=OFF)"
+    )
+endif()
+add_custom_command(
+    OUTPUT ${MADSPACE_GENERATED_DIR}/python/docstrings.hpp
+    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_docstrings.py"
+        ${MADSPACE_DOCSTRINGS_ARGS}
+    DEPENDS ${MADSPACE_DOCSTRINGS_DEPS}
+    COMMENT "${MADSPACE_DOCSTRINGS_COMMENT}"
+    VERBATIM
+)
+
 python_add_library(
     _madspace_py
     MODULE
     src/python/madspace.cpp
     ${MADSPACE_GENERATED_DIR}/python/instruction_set.hpp
+    ${MADSPACE_GENERATED_DIR}/python/docstrings.hpp
     src/python/function_runtime.cpp
     src/python/function_runtime.hpp
+    src/python/python_function.cpp
+    src/python/python_function.hpp
     WITH_SOABI
 )
 target_include_directories(_madspace_py PRIVATE ${MADSPACE_GENERATED_DIR}/python)
@@ -500,24 +591,29 @@ install(TARGETS _madspace_py DESTINATION madspace)
 # Python type stubs                                                                    #
 ########################################################################################
 
-set(MADSPACE_PYI_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated_pyi)
+# Only built (and installed) with ENABLE_DOCS: pybind11-stubgen has to import
+# the freshly built extension, and the stubs carry the docstrings extracted
+# above, so they are only meaningful in a documentation build.
+if(ENABLE_DOCS)
+    set(MADSPACE_PYI_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated_pyi)
 
-# Runs whenever _madspace_py is relinked, i.e. whenever madspace.cpp or,
-# transitively (via instruction_set.hpp), instruction_set.yaml change. Imports
-# the freshly built extension from an isolated staging copy of the madspace
-# package (see generate_pyi.py) so pybind11-stubgen can introspect it.
-add_custom_command(
-    TARGET _madspace_py POST_BUILD
-    COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_pyi.py"
-        --package-dir "${CMAKE_CURRENT_SOURCE_DIR}/madspace"
-        --module "$<TARGET_FILE:_madspace_py>"
-        --lib "$<TARGET_FILE:madspace>"
-        --stage-dir "${CMAKE_CURRENT_BINARY_DIR}/pyi_stage"
-        --output-dir "${MADSPACE_PYI_DIR}"
-    COMMENT "Generating madspace/_madspace_py.pyi"
-    VERBATIM
-)
-install(FILES "${MADSPACE_PYI_DIR}/madspace/_madspace_py.pyi" DESTINATION madspace)
+    # Runs whenever _madspace_py is relinked, e.g. when a binding source, the
+    # generated instruction_set.hpp or docstrings.hpp change. Imports
+    # the freshly built extension from an isolated staging copy of the madspace
+    # package (see generate_pyi.py) so pybind11-stubgen can introspect it.
+    add_custom_command(
+        TARGET _madspace_py POST_BUILD
+        COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_pyi.py"
+            --package-dir "${CMAKE_CURRENT_SOURCE_DIR}/madspace"
+            --module "$<TARGET_FILE:_madspace_py>"
+            --lib "$<TARGET_FILE:madspace>"
+            --stage-dir "${CMAKE_CURRENT_BINARY_DIR}/pyi_stage"
+            --output-dir "${MADSPACE_PYI_DIR}"
+        COMMENT "Generating madspace/_madspace_py.pyi"
+        VERBATIM
+    )
+    install(FILES "${MADSPACE_PYI_DIR}/madspace/_madspace_py.pyi" DESTINATION madspace)
+endif()
 
 ########################################################################################
 # Source hash                                                                          #

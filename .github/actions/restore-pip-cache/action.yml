@@ -5,7 +5,10 @@ runs:
   using: composite
   steps:
     - name: Set cache key
-      run: echo "CACHE_KEY=pip-numpy-$ImageOS" >> $GITHUB_ENV
+      # ImageOS is only set on GitHub-hosted runners; on a self-hosted one
+      # (cern1, alma10) key on the distribution instead, so it never restores
+      # a numpy built for the ubuntu image.
+      run: echo "CACHE_KEY=pip-numpy-${ImageOS:-$(. /etc/os-release && echo $ID$VERSION_ID)}" >> $GITHUB_ENV
       shell: bash
 
     # Generation-suffixed keys: see the comment in restore_heptools.
@@ -18,10 +21,13 @@ runs:
           ${{ env.CACHE_KEY }}
 
     - run: |
-        sudo apt install meson ninja-build
+        # meson+ninja (the build backend of numpy 2.x f2py) come with the pip
+        # cache (warm_cache.yml installs numpy, meson and ninja into it), and
+        # its bin/ goes first on PATH. No apt install here: it was redundant,
+        # and an apt mirror outage then failed every job at setup.
         echo "PYTHONPATH=$PYTHONPATH:$HOME/.cache/pip-packages" >> $GITHUB_ENV
         echo "$HOME/.cache/pip-packages/bin" >> $GITHUB_PATH
-        # Install meson+ninja if missing (numpy 2.x f2py requires meson as build backend).
+        # Install meson+ninja if missing from the cache.
         # --upgrade is needed so pip writes scripts into the existing bin/ directory;
         # it only affects meson/ninja since numpy is not listed here.
         if [ ! -x "$HOME/.cache/pip-packages/bin/meson" ]; then

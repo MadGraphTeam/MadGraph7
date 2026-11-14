@@ -182,7 +182,7 @@ C     ROUTINE FOR F2PY to read the benchmark point.
       IMPLICIT NONE
       CHARACTER*512 PATH
 CF2PY INTENT(IN) :: PATH
-      call setpara(PATH)  !first call to setup the paramaters
+      call setpara(PATH)  !first call to set up the parameters
       return
       end
 
@@ -224,6 +224,8 @@ C     undefined, corrupting memory when the density matrix is written.
      &     N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)
       RETURN
       END
+
+%(f2py_flav_idx_wrappers)s
 
       LOGICAL FUNCTION PY_%(proc_prefix)sIS_BORN_HEL_SELECTED(HELID)
       IMPLICIT NONE

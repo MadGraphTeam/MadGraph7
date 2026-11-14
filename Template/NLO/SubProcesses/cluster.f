@@ -1,15 +1,20 @@
-      subroutine cluster_and_reweight(iproc,sudakov,expanded_sudakov
-     $     ,nqcdrenscale,qcd_ren_scale,qcd_fac_scale,need_matching)
+      subroutine cluster_and_reweight(iproc_input,sudakov
+     $     ,expanded_sudakov,nqcdrenscale,qcd_ren_scale,qcd_fac_scale
+     $     ,need_matching,for_mcatnlo_scale)
+      use fks_phase_space_data, only: p_born,p_ev
 C main wrapper routine for the FxFx clustering, Sudakov inclusion and
 C renormalisation scale setting (to be used to somewhere else to
-C reweight alphaS). Should be called with iproc=0 for n-body
-C contributions and iproc=nFKSprocess for the real-emissions. These
-C routines assume that the c_configuration common block has already been
-C filled with the iforest etc. information, the momenta are given in the
-C pborn and pev common blocks and the current integration channel is
-C given by the to_mconfigs common block.
+C reweight alphaS). Should be called with iproc_input=-nFKSprocess (or
+C iproc_input=0) for n-body contributions and iproc_input=nFKSprocess
+C for the real-emissions. These routines assume that the c_configuration
+C common block has already been filled with the iforest
+C etc. information, the momenta are given in the pborn and pev common
+C blocks and the current integration channel is given by the to_mconfigs
+C common block.
+      use mc_native_context, only: active_context,context_providers
       use weight_lines
       implicit none
+      include 'timing_variables.inc'
       include 'nexternal.inc'
       include 'maxconfigs.inc'
       include 'maxparticles.inc'
@@ -23,27 +28,49 @@ C given by the to_mconfigs common block.
       integer mapconfig(0:lmaxconfigs,0:fks_configs)
       common /c_configurations/pmass,pwidth,iforest,sprop,tprid
      $     ,mapconfig
-      double precision p_born(0:3,nexternal-1)
-      common/pborn/p_born
-      double precision p_ev(0:3,nexternal)
-      common/pev/      p_ev
       integer            this_config
       common/to_mconfigs/this_config
-      integer nfks1,iproc
-      parameter (nfks1=fks_configs+1)
-      integer i,j,il_list,il_pdg,next,nbr,ipdg(nexternal,0:fks_configs)
-     $     ,cluster_list(2*max_branch*lmaxconfigs*(fks_configs+1))
-     $     ,cluster_pdg(3*3*max_branch*lmaxconfigs*(fks_configs+1))
+      integer iproc,iproc_input,nFKSprocess,ncontexts
+      common/c_nFKSprocess/nFKSprocess
+      parameter (ncontexts=size(context_providers))
+      type clustering_table
+         integer,allocatable::ipdg(:),cluster_list(:,:)
+         integer,allocatable::cluster_pdg(:,:,:),cluster_type(:),qcd_mask(:,:)
+         integer(kind=8),allocatable::config_masks(:,:)
+         integer,allocatable::type_pdg(:)
+         double precision,allocatable::type_mass(:)
+         integer ntypes
+      end type clustering_table
+      type(clustering_table),target,save::tables(ncontexts+fks_configs)
+      type(clustering_table),pointer::table
+      integer i,j,next,nbr,slot,ibr,id,ico,get_color,qcd_vertex_mask
      $     ,cluster_conf,iconf,cluster_ij(max_branch),iord(0:max_branch)
-     $     ,nqcdrenscale,iconfig,need_matching(nexternal)
-     $     ,cluster_type(maskr(nexternal),0:fks_configs)
+     $     ,nqcdrenscale,iconfig,need_matching(nexternal),qcd_count(0:max_branch)
       double precision cluster_scales(0:max_branch),qcd_fac_scale
      $     ,qcd_ren_scale(0:nexternal),sudakov,expanded_sudakov,pcl(0:3
-     $     ,nexternal)
-      logical firsttime(0:fks_configs),skip_first
-      data (firsttime(i),i=0,fks_configs) /nfks1*.true./
-      save ipdg,cluster_list,cluster_pdg,cluster_type,firsttime
-      if (iproc.eq.0) then      ! n-body contribution
+     $     ,nexternal),mass,get_mass_from_id
+      logical skip_first,for_mcatnlo_scale,refresh_types
+      external get_color,get_mass_from_id,qcd_vertex_mask
+c One <clustering> string per iproc of the current event
+      INTEGER MAXFKSLOC
+      PARAMETER (MAXFKSLOC=512)
+      CHARACTER*(2000) clusterstrings(0:MAXFKSLOC)
+      COMMON /c_clusterstrings/ clusterstrings
+      INTEGER iclus
+      INTEGER mother_pdg
+      CHARACTER*32 float,integf
+      CHARACTER*32 momstr
+      CHARACTER*32 cidstr
+      CHARACTER*8 role
+      CHARACTER*2000 temp
+      CHARACTER*64 temp0
+      CHARACTER*50 pairstr
+      CHARACTER*6  tmpidx
+      INTEGER cid, cidlocal, bitpos
+      integer get_step_mother_pdg
+      if(timing_sampled)call timing_enter(timing_clustering)
+      if (iproc_input.le.0) then      ! n-body contribution
+         iproc=0
          next=nexternal-1
          do i=1,next
             do j=0,3
@@ -51,6 +78,7 @@ C given by the to_mconfigs common block.
             enddo
          enddo
       else                      ! n+1-body contribution
+         iproc=iproc_input
          next=nexternal
          do i=1,next
             do j=0,3
@@ -59,104 +87,187 @@ C given by the to_mconfigs common block.
          enddo
       endif
       nbr=next-3 ! number of clusterings to get to a 2->1 process
-      if (firsttime(iproc)) then
-         cluster_type(1:maskr(nexternal),iproc)=0 ! set to zero
-         call set_pdg(0,max(1,iproc)) ! use max() here to get something for iproc=0
-         if (iproc.eq.0) then
+c Native Born topologies are immutable within each context. Real
+c topologies are indexed by their FKS process. Keep their derived tables
+c across context switches, allocating only the entries actually used.
+      if (iproc.eq.0) then
+         slot=max(1,active_context)
+      else
+         slot=ncontexts+iproc
+      endif
+      table=>tables(slot)
+      if (.not.allocated(table%ipdg)) then
+         allocate(table%ipdg(next),
+     $        table%cluster_list(2*nbr,mapconfig(0,iproc)),
+     $        table%cluster_pdg(0:2,0:2*nbr,mapconfig(0,iproc)),
+     $        table%qcd_mask(0:2*nbr,mapconfig(0,iproc)),
+     $        table%cluster_type(maskr(next)),
+     $        table%type_pdg(2*nbr*mapconfig(0,iproc)),
+     $        table%type_mass(2*nbr*mapconfig(0,iproc)))
+         table%cluster_type=0
+         if (iproc_input.eq.0) then
+            call set_pdg(0,nFKSprocess)
+         else
+            call set_pdg(0,abs(iproc_input))
+         endif
+         if (iproc.le.0) then
             do i=1,next
-               ipdg(i,iproc)=pdg_uborn(i,0)
+               table%ipdg(i)=pdg_uborn(i,0)
             enddo
          else
             do i=1,next
-               ipdg(i,iproc)=pdg(i,0)
+               table%ipdg(i)=pdg(i,0)
             enddo
          endif
 c Links the configurations (given in iforest) to the allowed clusterings
 c (in cluster_list) with their corresponding PDG codes (in cluster_pdg)
          do iconf=1,mapconfig(0,iproc)
-            call set_array_indices(iproc,iconf,il_list,il_pdg)
-            call iforest_to_list(next,nincoming,nbr,iforest(1,-(nbr+1)
-     $           ,iconf,iproc),sprop(-nbr,iconf,iproc),tprid(-nbr,iconf
-     $           ,iproc),pwidth(-nbr,iconf,iproc),ipdg(1,iproc)
-     $           ,cluster_list(il_list),cluster_pdg(il_pdg)
-     $           ,cluster_type(1,iproc))
+c Empty propagator slices for nbr=0 still need valid base addresses.
+            call iforest_to_list(next,nincoming,nbr,iforest(1,-(nbr+1),iconf,iproc),sprop(-max(nbr,1),iconf,iproc),
+     $     tprid(-max(nbr,1),iconf,iproc),table%ipdg,table%cluster_list(:,iconf),table%cluster_pdg(:,:,iconf),
+     $     table%cluster_type)
          enddo
-         firsttime(iproc)=.false.
+c Index each clustering label by the diagrams containing it. These masks
+c depend only on the topology and can be reused at every phase-space point.
+         allocate(table%config_masks((mapconfig(0,iproc)+63)/64,
+     $        maskr(next)))
+         call make_cluster_config_masks(next,nbr,mapconfig(0,iproc),
+     $        table%cluster_list,table%config_masks)
+c Colour representations are immutable model data. Cache the coloured
+c legs of each vertex alongside its PDG codes.
+         do iconf=1,mapconfig(0,iproc)
+            do ibr=1,2*nbr
+               table%qcd_mask(ibr,iconf)=qcd_vertex_mask(
+     $              table%cluster_pdg(:,ibr,iconf))
+            enddo
+         enddo
+c Only the internal-particle masses affect the cached particle types.
+c Keep one mass per distinct PDG code so model changes can refresh them
+c without rebuilding the topology lists or querying every propagator.
+         table%ntypes=0
+         do iconf=1,mapconfig(0,iproc)
+            do ibr=1,2*nbr
+               id=table%cluster_pdg(0,ibr,iconf)
+               do i=1,table%ntypes
+                  if (table%type_pdg(i).eq.id) exit
+               enddo
+               if (i.le.table%ntypes) cycle
+               table%ntypes=table%ntypes+1
+               table%type_pdg(i)=id
+               table%type_mass(i)=get_mass_from_id(id)
+            enddo
+         enddo
+      endif
+      refresh_types=.false.
+      do i=1,table%ntypes
+         mass=get_mass_from_id(table%type_pdg(i))
+         if (mass.ne.table%type_mass(i)) then
+            table%type_mass(i)=mass
+            refresh_types=.true.
+         endif
+      enddo
+      if (refresh_types) then
+         table%cluster_type=0
+         do iconf=1,mapconfig(0,iproc)
+            do ibr=1,2*nbr
+               id=table%cluster_pdg(0,ibr,iconf)
+               ico=get_color(id)
+               mass=get_mass_from_id(id)
+               call set_particle_type(table%cluster_type(
+     $              table%cluster_list(ibr,iconf)),ico,mass,.false.)
+            enddo
+         enddo
       endif
 c Cluster the event. This gives the most-likely clustering (in
 c cluster_ij) with scales (in cluster_scales)
-      call set_array_indices(iproc,1,il_list,il_pdg)
       if (iproc.eq.0) then
          iconfig=this_config
       else
          iconfig=real_from_born_conf(this_config,iproc)
       endif
       call cluster(next,pcl,mapconfig(0,iproc),nbr
-     $     ,cluster_list(il_list),cluster_pdg(il_pdg),iforest(1,-(nbr+1)
-     $     ,iconfig,iproc),ipdg(1,iproc),pmass(-nbr,iconfig,iproc)
-     $     ,pwidth(-nbr,iconfig,iproc),iconfig,sprop(-nbr,iconfig,iproc)
-     $     ,cluster_conf,cluster_scales,cluster_ij,iord,cluster_type(1
-     $     ,iproc))
+     $     ,table%cluster_list,table%config_masks,table%cluster_pdg,
+     $     table%qcd_mask,
+     $     iforest(1,-(nbr+1)
+     $     ,iconfig,iproc),table%ipdg,pmass(-nbr,iconfig,iproc)
+     $     ,pwidth(-nbr,iconfig,iproc),iconfig
+     $     ,sprop(-max(nbr,1),iconfig,iproc)
+     $     ,cluster_conf,cluster_scales,cluster_ij,iord,table%cluster_type,
+     $     qcd_count)
 c Given the most-likely clustering, it returns the corresponding Sudakov
 c form factor and renormalisation and factorisation scales.
-      if (iproc.eq.0) then
+      if (iproc.eq.0 .or. for_mcatnlo_scale) then
          skip_first=.false.
       else
          skip_first=.true. ! for real-emission: skip the first clustering
       endif
-      call set_array_indices(iproc,cluster_conf,il_list,il_pdg)
       need_matching(1:nexternal)=-99
-      call reweighting(next,pcl,nbr,skip_first,cluster_ij,ipdg(1,iproc)
-     $     ,cluster_pdg(il_pdg),cluster_scales,iord,sudakov
-     $     ,expanded_sudakov,nqcdrenscale,qcd_ren_scale,qcd_fac_scale
-     $     ,need_matching(1))
-      return
-      end
-      
-      subroutine set_array_indices(iproc,iconf,il_list,il_pdg)
-c Given 'iproc' and 'iconf', returns the corresponding location in the
-c cluster_list and cluster_pdg arrays ('il_list' and 'il_pdg',
-c respectively)
-      implicit none
-      include 'nexternal.inc'
-      include 'maxconfigs.inc'
-      include 'maxparticles.inc'
-      include 'nFKSconfigs.inc'
-      integer i,iproc,iconf,il_list,il_pdg
-      double precision pmass(-nexternal:0,lmaxconfigs,0:fks_configs)
-      double precision pwidth(-nexternal:0,lmaxconfigs,0:fks_configs)
-      integer iforest(2,-max_branch:-1,lmaxconfigs,0:fks_configs)
-      integer sprop(-max_branch:-1,lmaxconfigs,0:fks_configs)
-      integer tprid(-max_branch:-1,lmaxconfigs,0:fks_configs)
-      integer mapconfig(0:lmaxconfigs,0:fks_configs)
-      common /c_configurations/pmass,pwidth,iforest,sprop,tprid
-     $     ,mapconfig
-      il_list=1
-      il_pdg=1
-      do i=0,iproc-1
-         if (i.eq.0) then
-            il_list=il_list+2*(nexternal-4)*mapconfig(0,i)
-            il_pdg=il_pdg+3*(1+2*(nexternal-4))*mapconfig(0,i)
+      call reweighting(next,nbr,skip_first,cluster_ij,table%ipdg,table%cluster_pdg(:,:,cluster_conf),cluster_scales,iord,
+     $     qcd_count,sudakov,expanded_sudakov,nqcdrenscale,qcd_ren_scale,qcd_fac_scale,need_matching(1),for_mcatnlo_scale)
+c Clustering history for the LHE event record (FxFx weight calls only;
+c the clustering-only MC@NLO scale calls must not overwrite it):
+c  <clustering type="born|real" iproc="n" step_k="legs;scale;mom=pdg"
+c   ... final_scale="scale"></clustering>
+c legs: comma-separated external legs in the bitmask cluster_ij(k),
+c scale: cluster_scales(k), pdg: PDG code of the clustered mother.
+      if (.not.for_mcatnlo_scale) then
+         temp=''
+         if (iproc.eq.0) then
+            role='born'
          else
-            il_list=il_list+2*(nexternal-3)*mapconfig(0,i)
-            il_pdg=il_pdg+3*(1+2*(nexternal-3))*mapconfig(0,i)
+            role='real'
          endif
-      enddo
-      if (iproc.eq.0) then
-         il_list=il_list+2*(nexternal-4)*(iconf-1)
-         il_pdg=il_pdg+3*(1+2*(nexternal-4))*(iconf-1)
-      else
-         il_list=il_list+2*(nexternal-3)*(iconf-1)
-         il_pdg=il_pdg+3*(1+2*(nexternal-3))*(iconf-1)
+         write(cidstr,'(I0)') iproc
+         temp0='<clustering type="'//trim(adjustl(role))//'" iproc="'//
+     $        trim(adjustl(cidstr))//'"'
+         do iclus = 1, nbr
+            write(integf,'(I0)') iclus
+            write(float,'(ES20.10)') cluster_scales(iclus)
+            float = trim(adjustl(float))
+c external legs in the bitmask cluster_ij(iclus)
+            pairstr=''
+            cid=cluster_ij(iclus)
+            bitpos=1
+            cidlocal=cid
+            do while (cidlocal.gt.0)
+               if (btest(cidlocal,0) .and. bitpos.le.next) then
+                  write(tmpidx,'(I0)') bitpos
+                  pairstr=trim(pairstr)//','//trim(adjustl(tmpidx))
+               endif
+               cidlocal = ishft(cidlocal,-1)
+               bitpos = bitpos + 1
+            enddo
+            if (len_trim(pairstr).ge.1) pairstr=pairstr(2:)
+            mother_pdg = get_step_mother_pdg(iclus, nbr, iord,
+     $           table%cluster_pdg(:,:,cluster_conf))
+            write(momstr,'(I0)') mother_pdg
+            temp = trim(temp)//' step_'//trim(adjustl(integf))//'="'//
+     $           trim(pairstr)//';'//trim(float)//';mom='//
+     $           trim(adjustl(momstr))//'"'
+         enddo
+         write(float,'(ES20.10)') cluster_scales(0)
+         float = trim(adjustl(float))
+         temp = trim(temp)//' final_scale="'//trim(float)//'"'
+         clusterstrings(iproc) = trim(adjustl(trim(temp0)//' '//
+     $        trim(temp)//'></clustering>'))
       endif
+      if(timing_sampled)call timing_leave(timing_clustering)
       return
       end
 
+      integer function get_step_mother_pdg(iclus, nbr, iord, cluster_pdg)
+c Returns the PDG code of the mother for clustering step 'iclus'
+      implicit none
+      integer iclus, nbr
+      integer iord(0:nbr)
+      integer cluster_pdg(0:2,0:2*nbr)
+      get_step_mother_pdg = cluster_pdg(0,iord(iclus))
+      return
+      end
       
 CCCCCCCCCCCCCCC-- INITIALISATION -- CCCCCCCCCCCCCCCC
 
-      subroutine iforest_to_list(next,nincoming,nbr,iforest,sprop
-     $     ,tprid,prwidth,ipdg,cluster_list,cluster_pdg,cluster_type)
+      subroutine iforest_to_list(next,ninc,nbr,iforest,sprop,tprid,ipdg,cluster_list,cluster_pdg,cluster_type)
 c Given iforest it returns cluster_list. This is a binary list where the
 c intermediate particle numbers are the sums of the external ones (which
 c go from 1,2,4,8... If 4 and 8 are connected, the label of intermediate
@@ -165,17 +276,19 @@ c bottom-up, intermediate particles have two different labels depending
 c on two possible clustering orders). It also fills cluster_pdg, the PDG
 c codes for particles in the cluster_list as well as their daughters.
       implicit none
+      include 'nexternal.inc'
       integer ibr,i,j,next,nbr,iforest(2,-(nbr+1):-1),cluster_list(2
-     $     *nbr),cluster_pdg(0:2,0:2*nbr),cluster_tmp(-nbr:next)
-     $     ,ipdg(next),nincoming,sprop(-nbr:-1),tprid(-nbr:-1),n_tchan
-     $     ,cluster_type(maskr(next)),iord(0:nbr),iclus,ico,imo
+     $     *nbr),cluster_pdg(0:2,0:2*nbr)
+     $     ,cluster_tmp(3-nexternal:nexternal)
+     $     ,ipdg(next),ninc,sprop(-nbr:-1),tprid(-nbr:-1),n_tchan
+     $     ,cluster_type(maskr(next)),iclus,ico,imo
      $     ,get_color
-      double precision prwidth(-nbr:-1),mass,get_mass_from_id
+      double precision mass,get_mass_from_id
       logical s_chan
       external get_color,get_mass_from_id
-      if (nincoming.ne.2) then
+      if (ninc.ne.2) then
          write (*,*) 'clustering only works for 2->X process;'/
-     $        /' not for decays',nincoming
+     $        /' not for decays',ninc
       endif
       if (nbr.ne.next-3) then
          ! 'nbr' is the number of clusterings to end up with a trivial
@@ -291,6 +404,11 @@ c massive, except when they are external particles (ie., ext=.true.).
       elseif (abs(ico).eq.3 .and. mass.ne.0d0 ) then
          if (.not.btest(itype,2)) 
      $        itype = itype+4
+      elseif (ico.eq.8 .and. mass.ne.0d0) then
+c Keep massive octets distinct from gluons and massive triplets.
+c Their clustering kinematics follows the same massive branches.
+         if (.not.btest(itype,5))
+     $        itype = itype+32
       elseif (abs(ico).eq.1 .and. mass.eq.0d0 .and. ext) then
          if (.not.btest(itype,3)) 
      $        itype = itype+8
@@ -303,7 +421,7 @@ c massive, except when they are external particles (ie., ext=.true.).
      $        itype = itype+16
       else
 c Stop if a particle type not implemented
-         write (*,*) 'Unknown particle in update_type, mass='
+         write (*,*) 'Unknown particle in set_particle_type, mass='
      $        ,mass,', color=',ico
          stop 1
       endif
@@ -312,9 +430,10 @@ c Stop if a particle type not implemented
 
 CCCCCCCCCCCCCCC-- MAIN CLUSTER ROUTINE -- CCCCCCCCCCCCCCCC
 
-      subroutine cluster(next,p,nconf,nbr,cluster_list,cluster_pdg,itree
+      subroutine cluster(next,p,nconf,nbr,cluster_list,config_masks,
+     $     cluster_pdg,qcd_mask,itree
      $     ,ipdg,prmass,prwidth,iconfig,sprop,cluster_conf
-     $     ,cluster_scales,cluster_ij,iord,cluster_type)
+     $     ,cluster_scales,cluster_ij,iord,cluster_type,qcd_count)
 c Takes a set of momenta and clusters them according to possible diagram
 c configurations (given by cluster_list).  The idea is to perform the
 c clusterings until we have a 2->1 process. Clusterings are only done if
@@ -323,29 +442,38 @@ c clusterings.  Returns the diagram corresponding to the clustering
 c (cluster_conf), the order of the clusterings (cluster_ij) and the
 c clustering scales (cluster_scales).
       implicit none
-      integer next,i,j,nleft,imap(next),iwin,jwin,win_id,nconf,nvalid
+      include 'nexternal.inc'
+      include 'maxconfigs.inc'
+c Generated multiplicities bound the scratch space at compile time;
+c automatic arrays would allocate it on every clustering call.
+      integer next,i,j,nleft,imap(nexternal),iwin,jwin,win_id,nconf,nvalid
+     $     ,nwords,iconf
      $     ,nbr,cluster_list(2*nbr,nconf),cluster_conf,iclus,ipdg(next)
      $     ,cluster_ij(nbr),cluster_pdg(0:2,0:2*nbr,nconf),iord(0:nbr)
-     $     ,iBWlist(2,0:nbr),itree(2,-(nbr+1):-1),iconf,iconfig,sprop(
+     $     ,qcd_mask(0:2*nbr,nconf),qcd_count(0:nbr),qcd_vertex_mask
+     $     ,iBWlist(2,0:nexternal-3),itree(2,-(nbr+1):-1),iconfig,sprop(
      $     -nbr:-1),cluster_type(maskr(next)),get_color,ico
-     $     ,particle_type(next)
-      double precision p(0:3,next),pcl(0:4,next),cluster_scales(0:nbr)
-     $     ,scale,p_inter(0:4,0:2,0:nbr),prmass(-nbr:-1),prwidth(-nbr:-1)
+     $     ,particle_type(nexternal)
+      double precision p(0:3,next),pcl(0:4,nexternal),cluster_scales(0:nbr)
+     $     ,scale,p_inter(0:4,0:2,0:nexternal-3),prmass(-nbr:-1),prwidth(-nbr:-1)
      $     ,djb_clus,get_mass_from_id,mt_2to2,mass
-      logical valid_conf(nconf),is_bw,cluster_according_to_iconfig
+      integer(kind=8) config_masks((nconf+63)/64,*),
+     $     valid_words(ishft(lmaxconfigs+63,-6))
+      logical valid_conf(lmaxconfigs),is_bw,cluster_according_to_iconfig
       parameter (cluster_according_to_iconfig=.false.)
-      external djb_clus,get_mass_from_id,get_color
+      external djb_clus,get_mass_from_id,get_color,qcd_vertex_mask
+      mt_2to2=-1d0
       do i=1,next
          do j=0,3
             pcl(j,i)=p(j,i)
          enddo
-         pcl(4,i)=abs(get_mass_from_id(ipdg(i)))
+         mass=get_mass_from_id(ipdg(i))
+         pcl(4,i)=abs(mass)
 c imap links the current particle labels with the binary coding.
          imap(i)=ishft(1,i-1)
 c fill the type for the external particles
          particle_type(i)=0
          ico=get_color(ipdg(i))
-         mass=get_mass_from_id(ipdg(i))
          call set_particle_type(particle_type(i),ico,mass,.true.)
       enddo
 c Set all diagrams (according to which we cluster) as valid
@@ -360,17 +488,25 @@ c (according to the integration channel)
      $     ,iBWlist)
       call remove_confs_BW(nconf,nbr,nvalid,valid_conf,iBWlist
      $     ,cluster_list,cluster_pdg)
+c Pack the surviving configurations once. Each chosen label restricts
+c this set with a bitwise intersection instead of rescanning all diagrams.
+      nwords=(nconf+63)/64
+      valid_words(1:nwords)=0_8
+      do iconf=1,nconf
+         if (.not.valid_conf(iconf)) cycle
+         i=(iconf-1)/64+1
+         valid_words(i)=ibset(valid_words(i),mod(iconf-1,64))
+      enddo
       nleft=next
 c Loop over the clusterings until we have a 2->1 process. Hence there
 c should be 'nbr' (number of branchings) clusterings.
       do iclus=1,nbr
 c Do one clustering (returning iwin, jwin and win_id and the scale)
          call cluster_one_step(nleft,pcl(0,1),imap(1),nbr,nconf
-     $        ,valid_conf,cluster_list,iBWlist,iwin,jwin,win_id
+     $        ,valid_words,config_masks,iBWlist,iwin,jwin,win_id
      $        ,scale,is_bw,cluster_type,particle_type)
 c Remove diagrams that do not have the win_id among its clusterings
-         call update_valid_confs(win_id,nconf,nbr,nvalid,valid_conf
-     $        ,cluster_list)
+         call update_valid_confs(win_id,nconf,valid_words,config_masks)
          if (nleft.eq.4 .and. (btest(win_id,0).or.btest(win_id,1))) then
             ! save the value of mT^2 of the particle not clustered,
             ! since it will set the final cluster_scale below
@@ -390,10 +526,19 @@ c Save the cluster scales and cluster IDs.
       enddo
 c Set the cluster_conf to (one of) the diagram(s) compatible with the
 c clustering found just above
+      nvalid=0
+      do iconf=1,nconf
+         valid_conf(iconf)=btest(valid_words((iconf-1)/64+1),
+     $        mod(iconf-1,64))
+         if (valid_conf(iconf)) nvalid=nvalid+1
+      enddo
       call set_cluster_conf(nconf,nvalid,valid_conf,iconfig
      $     ,cluster_conf)
-c Set the cluster_scale of the final 2->1 process.      
-      if (.not.(btest(win_id,0).or. btest(win_id,1))) then
+c Set the cluster_scale of the final 2->1 process.
+      if (nbr.eq.0) then
+         ! Already a 2->1 process: there is no last clustering.
+         cluster_scales(0)=sqrt(djb_clus(pcl(0,3)))
+      elseif (.not.(btest(win_id,0).or. btest(win_id,1))) then
          ! s-channel 2->2 process. Use m_T^2 of final state particle in
          ! 2->1 process (which is equal to its invariant mass, since
          ! pT=0)
@@ -404,17 +549,28 @@ c Set the cluster_scale of the final 2->1 process.
          ! 2->1 process, using the momenta from the 2->2 process.
          cluster_scales(0)=mT_2to2
       endif
-c Set the daughter momenta of the 2->1 process (do not need the mother)
+c Keep the complete core vertex. A coloured core mother (e.g. Wb->t)
+c enters the two-coloured-leg scale in update_cluster_scales, just as
+c the daughters do. Leaving its momentum unset makes that scale depend
+c on stack contents and spoils the equality of native S/H counterterms.
+      p_inter(:,0,0)=pcl(:,3)
       p_inter(:,1,0)=pcl(:,1)
       p_inter(:,2,0)=pcl(:,2)
 c Link the cluster_ij values to the ordering used in cluster_pdg (which
 c is similar to the one in iforest)
-      call link_clustering_to_iforest(nbr,cluster_ij,cluster_list(1
-     $     ,cluster_conf),iord)
+      if (nbr.eq.0) then
+         iord(0)=0
+      else
+         call link_clustering_to_iforest(nbr,cluster_ij,cluster_list(1
+     $        ,cluster_conf),iord)
+      endif
 c Fill the cluster_pdg(0:2,0) with the information of the PDG codes for
 c the final, completely clustered 2->1 system
       call set_cluster_pdg_2_1_process(next,nbr,ipdg,cluster_pdg(0,0
      $     ,cluster_conf),cluster_ij,iord)
+c The core vertex depends on the selected clustering and is the only
+c colour mask that must be updated for this phase-space point.
+      qcd_mask(0,cluster_conf)=qcd_vertex_mask(cluster_pdg(:,0,cluster_conf))
 c Now that we have the diagram configuration corresponding to the
 c clustering, we can update some of the clustering scales depending on
 c the PDG codes of the particles. In particular, the correct HARD scale
@@ -426,7 +582,7 @@ c final 2->2 process is s-channel QCD process (e.g. qqbar->ttbar),
 c update the central hard scale and the final cluster scale to the
 c geometric mean of the transverse masses in the 2->2 system.
       call update_cluster_scales(nbr,p_inter,cluster_scales
-     $     ,cluster_pdg(0,0,cluster_conf),cluster_ij,iord)
+     $     ,qcd_mask(:,cluster_conf),cluster_ij,iord,qcd_count)
       return
       end
 
@@ -457,20 +613,18 @@ c     - The factorisation scale will be set to the smallest
 c     cluster_scale (irrespective if that is an initial scale
 c     splitting). In case there is no valid QCD-vertex, its set equal to
 c     the renormalisation scale.
-      subroutine Reweighting(next,p,nbr,skip_first,cluster_ij,ipdg
-     $     ,cluster_pdg,cluster_scales,iord,sudakov,expanded_sudakov
-     $     ,nqcdrenscale,qcd_ren_scale,qcd_fac_scale,need_matching)
+      subroutine Reweighting(next,nbr,skip_first,cluster_ij,ipdg,cluster_pdg,cluster_scales,iord,qcd_count,sudakov,
+     $     expanded_sudakov,nqcdrenscale,qcd_ren_scale,qcd_fac_scale,need_matching,for_mcatnlo_scale)
       implicit none
-      integer next,i,j,nbr,cluster_ij(nbr),iord(0:nbr),cluster_pdg(0:2
-     $     ,0:2*nbr),type(0:next),nqcdrenscale,nqcdrenscalecentral
-     $     ,ipdg(next),first,need_matching(next)
-      double precision prev_qcd_scale,hard_qcd_scale,sudakov
-     $     ,expanded_sudakov,mass(next),exponent_sukodav,QCDsukakov_exp
-     $     ,cluster_scales(0:nbr),qcd_ren_scale(0:nbr),lowest_qcd_scale
-     $     ,p(0:3,next),qcd_fac_scale,expanded_exponent_sudakov
-     $     ,exponent_sudakov
-      logical QCDvertex,QCDchangeline,skip_first,startQCDvertex
-      external QCDvertex,QCDchangeline,startQCDvertex
+      include 'nexternal.inc'
+      integer next,i,nbr,cluster_ij(nbr),iord(0:nbr),cluster_pdg(0:2
+     $     ,0:2*nbr),type(0:nexternal),nqcdrenscale,nqcdrenscalecentral
+     $     ,ipdg(next),first,need_matching(next),qcd_count(0:nbr)
+      double precision prev_qcd_scale,hard_qcd_scale,sudakov,expanded_sudakov,mass(nexternal),cluster_scales(0:nbr),
+     $     qcd_ren_scale(0:nbr),lowest_qcd_scale,qcd_fac_scale,expanded_exponent_sudakov,exponent_sudakov
+      logical skip_first,startQCDvertex
+     $     ,for_mcatnlo_scale
+      external startQCDvertex
 
 c Determine which particles need clustering and which do not
       call matching_particles(next,nbr,ipdg,cluster_pdg,cluster_ij,iord
@@ -489,9 +643,11 @@ c Determine which particles need clustering and which do not
       else
          first=-1
       endif
-      call fill_type(next,ipdg,type,mass)
+c Shower-scale requests do not evaluate Sudakovs, so they need no list
+c of QCD lines or updates to that list after each clustering.
+      if (.not.for_mcatnlo_scale) call fill_type(next,ipdg,type,mass)
       do i=1,nbr                ! cluster all the way to 2->1 process
-         if (QCDvertex(i,nbr,cluster_pdg,iord))then
+         if (qcd_count(i).eq.3)then
 c The vertex is such that it is a QCD clustering, which means a clustering with 3 QCD partons
             if (cluster_scales(i).gt.hard_qcd_scale) then
                hard_qcd_scale=cluster_scales(i)
@@ -523,13 +679,14 @@ c down to the scale of the previous QCD vertex.
                nqcdrenscale=nqcdrenscale+1
                qcd_ren_scale(nqcdrenscale)=hard_qcd_scale
                if (hard_qcd_scale.gt.prev_qcd_scale) then
-                  call QCDsudakov(lowest_qcd_scale,hard_qcd_scale
+                  if (.not.for_mcatnlo_scale)
+     $            call QCDsudakov(lowest_qcd_scale,hard_qcd_scale
      $                 ,prev_qcd_scale,next,type,mass,exponent_sudakov
-     $                 ,expanded_exponent_sudakov)
+     $                 ,expanded_exponent_sudakov,for_mcatnlo_scale)
                   prev_qcd_scale=hard_qcd_scale
                endif
             endif
-         elseif(QCDchangeline(i,nbr,cluster_pdg,iord)) then
+         elseif(qcd_count(i).eq.2) then
 c The vertex is not a QCD clustering, but it changes a QCD line. E.g.,
 c q->Zq, t->Wb, or H->gg. Hence, in case there was already a qcd-cluster
 c with a scale below the current scale, apply Sudakov to all QCD
@@ -548,21 +705,23 @@ c prev_qcd_scale, since all Sudakovs up to that scale have been applied.
             endif
             if (nqcdrenscale.gt.0 .and.
      &           hard_qcd_scale.gt.prev_qcd_scale) then
-               call QCDsudakov(lowest_qcd_scale,hard_qcd_scale
+               if (.not.for_mcatnlo_scale)
+     $         call QCDsudakov(lowest_qcd_scale,hard_qcd_scale
      $              ,prev_qcd_scale,next,type,mass,exponent_sudakov
-     $              ,expanded_exponent_sudakov)
+     $              ,expanded_exponent_sudakov,for_mcatnlo_scale)
                prev_qcd_scale=hard_qcd_scale
             endif
          endif
 c Remove the daughters and add the mother to the list of QCD lines.
-         call update_type(next,i,nbr,cluster_pdg,iord,type
+         if (.not.for_mcatnlo_scale)
+     $   call update_type(next,i,nbr,cluster_pdg,iord,type
      $        ,mass)
       enddo
 c Now we have included all up to the final 2->1 process. In case this is
 c a QCD cluster, include the final clustering scale here [hard scale is
 c given by cluster_scales(0)]. It will never need alpha_s-reweighting,
 c since its scale is equal to the hardest scale by construction.
-      if (QCDvertex(0,nbr,cluster_pdg,iord)) then
+      if (qcd_count(0).eq.3) then
          if (cluster_scales(0).gt.hard_qcd_scale) then
             hard_qcd_scale=cluster_scales(0)
             ! update the renormalisation scale for the 'central process'
@@ -571,12 +730,13 @@ c since its scale is equal to the hardest scale by construction.
          endif
          if (nqcdrenscale.gt.0) then
             if (hard_qcd_scale.gt.prev_qcd_scale) then
-               call QCDsudakov(lowest_qcd_scale,hard_qcd_scale
+               if (.not.for_mcatnlo_scale)
+     $         call QCDsudakov(lowest_qcd_scale,hard_qcd_scale
      $              ,prev_qcd_scale,next,type,mass,exponent_sudakov
-     $              ,expanded_exponent_sudakov)
+     $              ,expanded_exponent_sudakov,for_mcatnlo_scale)
             endif
          endif
-      elseif(QCDchangeline(0,nbr,cluster_pdg,iord)) then
+      elseif(qcd_count(0).eq.2) then
          if (cluster_scales(0).gt.hard_qcd_scale) then
             hard_qcd_scale=cluster_scales(0)
             ! update the renormalisation scale for the 'central process'
@@ -590,9 +750,10 @@ c since its scale is equal to the hardest scale by construction.
          endif
          if (nqcdrenscale.gt.0) then
             if (hard_qcd_scale.gt.prev_qcd_scale) then
-               call QCDsudakov(lowest_qcd_scale,hard_qcd_scale
+               if (.not.for_mcatnlo_scale)
+     $         call QCDsudakov(lowest_qcd_scale,hard_qcd_scale
      $              ,prev_qcd_scale,next,type,mass,exponent_sudakov
-     $              ,expanded_exponent_sudakov)
+     $              ,expanded_exponent_sudakov,for_mcatnlo_scale)
             endif
          endif
       endif
@@ -662,12 +823,14 @@ c resonances are close to their mass shell. If there are, must only
 c cluster according to diagrams/topologies that have that s-channel
 c particle as well.
       implicit none
+      include 'nexternal.inc'
       include 'run.inc'         ! contains 'bwcutoff'
       integer i,j,next,nbr,itree(2,-(nbr+1):-1),idenpart,iBWlist(2
-     $     ,0:nbr),ipdg(next),sprop(-nbr:-1),icl(-nbr:next),nbw,ida(2)
+     $     ,0:nbr),ipdg(next),sprop(-nbr:-1)
+     $     ,icl(3-nexternal:nexternal),nbw,ida(2)
       double precision p(0:3,next),prwidth(-nbr:-1),prmass(-nbr:-1)
-     $     ,xp(0:3,-nbr:next),mass(-nbr:-1),dot
-      logical onBW(nbr),onshell
+     $     ,xp(0:3,3-nexternal:nexternal),mass(3-nexternal:-1),dot
+      logical onBW(nexternal-3),onshell
       external dot
       do i=1,next
          do j=0,3
@@ -699,11 +862,11 @@ c If mother and daughter have the same ID, remove one of them
                   ida(j)=itree(j,i)
                   if(ida(j).lt.0) then
                      if (sprop(i).eq.sprop(ida(j))) then
-                        idenpart=ida(j) ! mother and daugher have same ID
+                        idenpart=ida(j) ! mother and daughter have same ID
                      endif
                   elseif (ida(j).gt.0) then
                      if (sprop(i).eq.ipdg(ida(j))) then
-                        idenpart=ida(j) ! mother and daugher have same ID
+                        idenpart=ida(j) ! mother and daughter have same ID
                      endif
                   endif
                enddo
@@ -712,11 +875,13 @@ c     Always remove if daughter is final-state (and identical)
                   OnBW(-i)=.false.
 c     Else remove either this resonance or daughter, whichever is closer
 c     to mass shell
-               elseif(idenpart.lt.0 .and. abs(mass(i)-prmass(i)).gt.
-     $                 abs(mass(idenpart)-prmass(i))) then
-                  OnBW(-i)=.false.         ! mother off-shell
                elseif(idenpart.lt.0) then
-                  OnBW(-idenpart)=.false.  ! daughter off-shell
+                  if(abs(mass(i)-prmass(i)).gt.
+     $                 abs(mass(idenpart)-prmass(i))) then
+                     OnBW(-i)=.false.         ! mother off-shell
+                  else
+                     OnBW(-idenpart)=.false.  ! daughter off-shell
+                  endif
                endif
             endif
          endif
@@ -773,7 +938,7 @@ c propagators.
                endif
             enddo
             if (.not.in_conf) then
-c s-channel is not in iconf. Set it as a invalid configuration
+c s-channel is not in iconf. Set it as an invalid configuration
                valid_conf(iconf)=.false.
                nvalid=nvalid-1
             endif
@@ -786,8 +951,25 @@ c s-channel is not in iconf. Set it as a invalid configuration
       return
       end
       
-      subroutine cluster_one_step(next,p,imap,nbr,nconf,valid_conf
-     $     ,cluster_list,iBWlist,iwin,jwin,win_id,min_scale,is_bw
+      subroutine make_cluster_config_masks(next,nbr,nconf,cluster_list,
+     $     config_masks)
+c For every clustering label, record the configurations containing it.
+      implicit none
+      integer next,nbr,nconf,cluster_list(2*nbr,nconf),iconf,ibr,word
+      integer(kind=8) config_masks((nconf+63)/64,maskr(next))
+      config_masks=0_8
+      do iconf=1,nconf
+         word=(iconf-1)/64+1
+         do ibr=1,2*nbr
+            config_masks(word,cluster_list(ibr,iconf))=ibset(
+     $           config_masks(word,cluster_list(ibr,iconf)),
+     $           mod(iconf-1,64))
+         enddo
+      enddo
+      end
+
+      subroutine cluster_one_step(next,p,imap,nbr,nconf,valid_words
+     $     ,config_masks,iBWlist,iwin,jwin,win_id,min_scale,is_bw
      $     ,cluster_type,particle_type)
 c Finds the pair of particles with the smallest clustering scale and
 c returns that pair (and the scale) in 'iwin', 'jwin', 'win_id' and
@@ -796,11 +978,14 @@ c topologies is considered (irrespective of it being a QCD or EW (or
 c anything else) cluster).
       implicit none
       integer next,imap(next),iwin,jwin,id_ij,win_id,nbr,nconf
-     $     ,cluster_list(2*nbr,nconf),i,j,iBWlist(2,0:nbr)
-     $     ,cluster_type(maskr(next)),particle_type(next),cl(0:2)
+     $     ,i,j,iBWlist(2,0:nbr),cluster_type(*),particle_type(next)
+     $     ,cl(0:2),word,nwords
+      integer(kind=8) valid_words((nconf+63)/64),
+     $     config_masks((nconf+63)/64,*)
       double precision p(0:4,next),cluster_scale,min_scale,scale
-      logical in_list,valid_conf(nconf),is_bw
-      external in_list,cluster_scale
+      logical is_bw,candidate_is_bw,allowed
+      external cluster_scale
+      nwords=(nconf+63)/64
       iwin=-1 ! set iwin to -1, so that we can track if a single valid
               ! clustering is found
       min_scale=99d99
@@ -810,61 +995,56 @@ c anything else) cluster).
             ! Check if current clustering is in the list of still-valid
             ! diagram topologies. If not, simply go to the next possible
             ! clustering
-            if (.not.in_list(id_ij,nbr,nconf,valid_conf,cluster_list))
-     $           cycle
+            if (nwords.eq.1) then
+               if (iand(valid_words(1),config_masks(1,id_ij)).eq.0_8)
+     $              cycle
+            else
+               allowed=.false.
+               do word=1,nwords
+                  if (iand(valid_words(word),
+     $                 config_masks(word,id_ij)).ne.0_8) then
+                     allowed=.true.
+                     exit
+                  endif
+               enddo
+               if (.not.allowed) cycle
+            endif
             cl(0)=cluster_type(id_ij)
             cl(1)=particle_type(i)
             cl(2)=particle_type(j)
             scale=cluster_scale(iBWlist,nbr,j,id_ij,p(0,i),p(0,j),cl
-     $           ,is_bw)
+     $           ,candidate_is_bw)
             if (scale.lt.min_scale) then
                min_scale=scale
                iwin=i
                jwin=j
                win_id=id_ij
+               is_bw=candidate_is_bw
             endif
          enddo
       enddo
       if (iwin.eq.-1) then
          write (*,*) 'No valid clustering found',iwin,next
          do i=1,nconf
-            if (valid_conf(i)) write (*,*) i,valid_conf(i)
+            if (btest(valid_words((i-1)/64+1),mod(i-1,64)))
+     $           write (*,*) i,.true.
          enddo
+         stop 1
       endif
       return
       end
 
 
-      subroutine update_valid_confs(id_ij,nconf,nbr,nvalid,valid_conf
-     $     ,cluster_list)
-c Updates the list of valid configurations based on if id_ij is part of
-c that list.
+      subroutine update_valid_confs(id_ij,nconf,valid_words,config_masks)
+c Keep only configurations containing the chosen clustering label.
       implicit none
-      integer id_ij,iconf,ibr,nconf,nbr,nvalid,cluster_list(2*nbr,nconf)
-      logical in_conf,valid_conf(nconf)
-c Loop over all diagram topologies
-      do iconf=1,nconf
-c if current topology was already invalid, go to the next         
-         if (.not. valid_conf(iconf)) cycle
-c Check if the id_ij is in the cluster_list of current configuration
-         in_conf=.false.
-         do ibr=1,nbr*2
-            if (cluster_list(ibr,iconf).eq.id_ij) then
-               in_conf=.true.
-               exit
-            endif
-         enddo
-c If current branching is not in the list, remove that configuration as
-c a valid cluster configuration/topology.
-         if (.not. in_conf) then
-            valid_conf(iconf)=.false.
-            nvalid=nvalid-1
-         endif
+      integer id_ij,nconf,word
+      integer(kind=8) valid_words((nconf+63)/64),
+     $     config_masks((nconf+63)/64,*)
+      do word=1,(nconf+63)/64
+         valid_words(word)=iand(valid_words(word),
+     $        config_masks(word,id_ij))
       enddo
-      if (nvalid.le.0) then
-         write (*,*) 'No valid configurations',nvalid
-         stop 1
-      endif
       return
       end
 
@@ -996,23 +1176,24 @@ c cluster_pdg). This allows for easy access to PDG numbers etc.
       end
 
       subroutine update_cluster_scales(nbr,p_inter,cluster_scales
-     $     ,cluster_pdg,cluster_ij,iord)
-c Updates the clustering scale to be abs(2*p1.p2) for clusterings that
-c involve exaclty 2 QCD partons. This will be the correct hard scale in
+     $     ,qcd_mask,cluster_ij,iord,qcd_count)
+c Updates the clustering scale to sqrt(abs(2*p1.p2)) for vertices that
+c involve exactly 2 QCD partons. This will be the correct hard scale in
 c the Sudakov Form Factors (for both massless and massive quarks and
 c gluons).
       implicit none
-      integer i,j,k,cij,nbr,cluster_pdg(0:2,0:2*nbr),cluster_ij(nbr)
-     $     ,iord(0:nbr),next,get_color,iqcd(0:2)
+      integer i,j,cij,nbr,qcd_mask(0:2*nbr),cluster_ij(nbr)
+     $     ,iord(0:nbr),iqcd(0:2),qcd_count(0:nbr),mask
       double precision cluster_scales(0:nbr),dot,p_inter(0:4,0:2,0:nbr)
      $     ,djb_clus
-      logical QCDchangeline,QCDvertex
-      external dot,get_color,djb_clus,QCDchangeline,QCDvertex
+      external dot,djb_clus
       do i=0,nbr
-         if (QCDchangeline(i,nbr,cluster_pdg,iord)) then
+         mask=qcd_mask(iord(i))
+         qcd_count(i)=popcnt(mask)
+         if (qcd_count(i).eq.2) then
             iqcd(0)=0
             do j=0,2
-               if (abs(get_color(cluster_pdg(j,iord(i)))).gt.1) then
+               if (btest(mask,j)) then
                   iqcd(0)=iqcd(0)+1
                   iqcd(iqcd(0))=j
                endif
@@ -1021,18 +1202,20 @@ c gluons).
      $                                        ,p_inter(0,iqcd(2),i))))
          endif
       enddo
+c With no branchings only the core scale above needs updating.
+      if (nbr.eq.0) return
 c Treat here the special case where the final 2->2 process is a pure
 c s-channel QCD process. In that case set the last and next-to-last
 c clustering scale to the average transverse masses of the (combined)
 c particles.
       cij=cluster_ij(nbr)
-      if (QCDvertex(nbr,nbr,cluster_pdg,iord) .and.
+      if (qcd_count(nbr).eq.3 .and.
      $     (.not.(btest(cij,0) .or. btest(cij,1)))) then
          ! Clustered 2->2 process is s-channel with 2 final state QCD
          ! particles. Check if the two initial state particles are also
          ! QCD. If so, update the cluster_scales to be the average m_T^2
          ! of the two QCD final state particles
-         if (QCDvertex(0,nbr,cluster_pdg,iord)) then
+         if (qcd_count(0).eq.3) then
             cluster_scales(nbr)=(djb_clus(p_inter(0,1,nbr))*
      &                           djb_clus(p_inter(0,2,nbr)))**0.25d0
             cluster_scales(0)=cluster_scales(nbr)
@@ -1059,7 +1242,7 @@ c particles, and the mother [cluster_pdg(0,0)] is the outgoing one.
          cluster_pdg(0,0)=ipdg(3)
          return
       endif
-      ! Loop over all the clusterings. Everytime there is a cluster with
+      ! Loop over all the clusterings. Every time there is a cluster with
       ! any of the two incoming lines, update the cluster_pdg(1:2,0)
       do i=1,nbr
          cij=cluster_ij(i)
@@ -1092,25 +1275,6 @@ c particles, and the mother [cluster_pdg(0,0)] is the outgoing one.
       end
       
       
-      logical function in_list(id_ij,nbr,nconf,valid_conf,cluster_list)
-c Checks if the id_ij particle is somewhere in the list of valid
-c configurations.
-      implicit none
-      integer id_ij,iconf,ibr,nconf,nbr,cluster_list(2*nbr,nconf)
-      logical valid_conf(nconf)
-      in_list=.false.
-      do iconf=1,nconf
-         if (.not.valid_conf(iconf)) cycle
-         do ibr=1,nbr*2
-            if (cluster_list(ibr,iconf).eq.id_ij) then
-               in_list=.true.
-               return
-            endif
-         enddo
-      enddo
-      return
-      end
-
       subroutine set_cluster_conf(nconf,nvalid,valid_conf,iconfig
      $     ,cluster_conf)
 c Given the final valid_conf list, returns the "best" cluster_conf
@@ -1162,10 +1326,11 @@ c Determines the cluster scale for the clustering of momenta pi and pj
       implicit none
       integer nbr,i,j,id_ij,iBWlist(2,0:nbr),cl(0:2),itype
       double precision pi(0:4),pj(0:4),sumdot,dj_clus,one_plus_tiny
-     $     ,djb_clus,dot
+     $     ,djb_clus,dot,psum(0:3)
       parameter (one_plus_tiny=1.000001d0)
       logical is_bw
       external sumdot,dj_clus,djb_clus,dot
+      is_bw=.false.
       if (j.le.2) then
 c     initial state clustering
          cluster_scale=sqrt(djb_clus(pi))
@@ -1174,7 +1339,6 @@ c     initial state clustering
      $        cluster_scale=cluster_scale*one_plus_tiny
       else
 c     final state clustering
-         is_bw=.false.
          do i=1,iBWlist(1,0)
             if (iBWlist(1,i).eq.id_ij) then
                is_bw=.true.
@@ -1198,12 +1362,21 @@ c Different scale depending on itype:
             if (itype.eq.1 .or. itype.eq.6 .or.itype.eq.2 .or.
      $          itype.eq.3 .or. itype.eq.7) then
                cluster_scale=sqrt(dj_clus(pi,pj))
-            elseif (itype.eq.4) then
-               cluster_scale=sqrt(abs(dot(pj,(pi+pj))))/2d0
-            elseif (itype.eq.5) then
-               cluster_scale=sqrt(abs(dot(pi,(pi+pj))))/2d0
+            elseif (itype.eq.4 .or. itype.eq.5) then
+c A named fixed-size vector avoids a heap temporary for dot(pi+pj).
+               do i=0,3
+                  psum(i)=pi(i)+pj(i)
+               enddo
+               if (itype.eq.4) then
+                  cluster_scale=sqrt(abs(dot(pj,psum)))/2d0
+               else
+                  cluster_scale=sqrt(abs(dot(pi,psum)))/2d0
+               endif
             elseif (itype.eq.8) then
                cluster_scale=sqrt(max(sumdot(pi,pj,1d0),0d0))
+            else
+               write (*,*) 'Invalid clustering type in cluster_scale',itype
+               stop 1
             endif
          endif
       endif
@@ -1223,37 +1396,49 @@ c Different scale depending on itype:
      $     (btest(cl(2),0).or.btest(cl(2),1).or.btest(cl(2),3))) then 
          ! three massless particles
          itype=1
-      elseif ((btest(cl(0),2).or.btest(cl(0),4)) .and.
+      elseif ((btest(cl(0),2).or.btest(cl(0),4).or.
+     $         btest(cl(0),5)) .and.
      $        (btest(cl(1),0).or.btest(cl(1),1).or.btest(cl(1),3)) .and.
-     $        (btest(cl(2),2).or.btest(cl(2),4))) then
+     $        (btest(cl(2),2).or.btest(cl(2),4).or.
+     $         btest(cl(2),5))) then
          ! massive emitting a massless particle 1
          itype=2
-      elseif ((btest(cl(0),2).or.btest(cl(0),4)) .and.
-     $        (btest(cl(1),2).or.btest(cl(1),4)) .and.
+      elseif ((btest(cl(0),2).or.btest(cl(0),4).or.
+     $         btest(cl(0),5)) .and.
+     $        (btest(cl(1),2).or.btest(cl(1),4).or.
+     $         btest(cl(1),5)) .and.
      $        (btest(cl(2),0).or.btest(cl(2),1).or.btest(cl(2),3))) then
          ! massive emitting a massless particle 2
          itype=3
       elseif ((btest(cl(0),0).or.btest(cl(0),1).or.btest(cl(0),3)) .and.
-     $        (btest(cl(1),2).or.btest(cl(1),4)) .and.
+     $        (btest(cl(1),2).or.btest(cl(1),4).or.
+     $         btest(cl(1),5)) .and.
      $        (btest(cl(2),0).or.btest(cl(2),1).or.btest(cl(2),3))) then
          ! massless emitting a massive particle 1
          itype=4
       elseif ((btest(cl(0),0).or.btest(cl(0),1).or.btest(cl(0),3)) .and.
      $        (btest(cl(1),0).or.btest(cl(1),1).or.btest(cl(1),3)) .and.
-     $        (btest(cl(2),2).or.btest(cl(2),4))) then
+     $        (btest(cl(2),2).or.btest(cl(2),4).or.
+     $         btest(cl(2),5))) then
          ! massless emitting a massive particle 2
          itype=5
       elseif ((btest(cl(0),0).or.btest(cl(0),1).or.btest(cl(0),3)) .and.
-     $        (btest(cl(1),2).or.btest(cl(1),4)) .and.
-     $        (btest(cl(2),2).or.btest(cl(2),4))) then
+     $        (btest(cl(1),2).or.btest(cl(1),4).or.
+     $         btest(cl(1),5)) .and.
+     $        (btest(cl(2),2).or.btest(cl(2),4).or.
+     $         btest(cl(2),5))) then
          ! massless to two massive particles
          itype=6
-      elseif ((btest(cl(0),2).or.btest(cl(0),4)) .and.
-     $        (btest(cl(1),2).or.btest(cl(1),4)) .and.
-     $        (btest(cl(2),2).or.btest(cl(2),4))) then
+      elseif ((btest(cl(0),2).or.btest(cl(0),4).or.
+     $         btest(cl(0),5)) .and.
+     $        (btest(cl(1),2).or.btest(cl(1),4).or.
+     $         btest(cl(1),5)) .and.
+     $        (btest(cl(2),2).or.btest(cl(2),4).or.
+     $         btest(cl(2),5))) then
          ! Three massive particles
          itype=7
-      elseif ((btest(cl(0),2).or.btest(cl(0),4)) .and.
+      elseif ((btest(cl(0),2).or.btest(cl(0),4).or.
+     $         btest(cl(0),5)) .and.
      $        (btest(cl(1),0).or.btest(cl(1),1).or.btest(cl(1),3)) .and.
      $        (btest(cl(2),0).or.btest(cl(2),1).or.btest(cl(2),3))) then
          ! massive decaying into two massless
@@ -1374,52 +1559,17 @@ c mother.
       endif
       end
 
-      integer function numberQCDcharged(iclus,nbr,cluster_pdg,iord)
-c Returns the number of QCD charged particles in the clustering vertex
-c 'cij'.
+      integer function qcd_vertex_mask(pdg_ids)
+c Bits 0, 1 and 2 mark a coloured mother and its coloured daughters.
       implicit none
-      integer i,ipart,iclus,get_color,nbr,cluster_pdg(0:2,0:2*nbr)
-     $     ,iord(0:nbr)
+      integer i,pdg_ids(0:2),get_color
       external get_color
-      numberQCDcharged=0
+      qcd_vertex_mask=0
       do i=0,2
-         ipart=cluster_pdg(i,iord(iclus))
-         if (abs(get_color(ipart)).gt.1) then
-            numberQCDcharged=numberQCDcharged+1
+         if (abs(get_color(pdg_ids(i))).gt.1) then
+            qcd_vertex_mask=ibset(qcd_vertex_mask,i)
          endif
       enddo
-      return
-      end
-
-      
-      logical function QCDchangeline(iclus,nbr,cluster_pdg,iord)
-c Checks if a vertex changes a QCD line. This means that 2 out of the
-c three particles are QCD charged.
-      implicit none
-      integer numberQCDcharged,iclus,nbr,cluster_pdg(0:2,0:2*nbr)
-     $     ,iord(0:nbr)
-      external numberQCDcharged
-      if (numberQCDcharged(iclus,nbr,cluster_pdg,iord).eq.2)
-     $     then
-         QCDchangeline=.true.
-      else
-         QCDchangeline=.false.
-      endif
-      end
-
-      
-      logical function QCDvertex(iclus,nbr,cluster_pdg,iord)
-c Checks if all three particles involved are QCD particles.
-      implicit none
-      integer numberQCDcharged,iclus,nbr,cluster_pdg(0:2,0:2*nbr)
-     $     ,iord(0:nbr)
-      external numberQCDcharged
-      if (numberQCDcharged(iclus,nbr,cluster_pdg,iord).eq.3)
-     $     then
-         QCDvertex=.true.
-      else
-         QCDvertex=.false.
-      endif
       end
 
       
@@ -1738,7 +1888,7 @@ c      enddo
 CCCCCCCCCCCCCCC -- SUDAKOV FUNCTIONS -- CCCCCCCCCCCCCCCC
 
       subroutine QCDsudakov(q0,q2,q1,next,type,mass,QCDsudakov_exp
-     $     ,expanded_QCDsudakov_exp)
+     $     ,expanded_QCDsudakov_exp,for_mcatnlo_scale)
 c Wrapper function for computing the sudakov for the particles listed in
 c itype(). It checks for identical type and mass, and makes sure to use
 c cached ones if already computed. It adds the results to the
@@ -1750,8 +1900,9 @@ c counting with NLO corrections to the main process).
       double precision q0,q2,q1,mass(next),tmp1(next),tmp2(next)
      $     ,expanded_QCDsudakov_exp,QCDsudakov_exp,expanded_sudakov_exp
      $     ,sudakov_exp,q1tmp
-      logical found
+      logical found,for_mcatnlo_scale
       external sudakov_exp,expanded_sudakov_exp
+      if (for_mcatnlo_scale) return
       do i=1,type(0)
          found=.false.
          ! use cached one if already computed:
@@ -1793,6 +1944,7 @@ c Wrapper code for computation of the exponent of the Sudakov Form
 c Factor numerically using Gaussian integration. It also saves the last
 c 'nc' computed values, which is helpful when dealing, e.g., with many
 c real-emission processes for which many Sudakovs might be identical.
+      use FKSParams, only: use_fxfx_finite_terms
       implicit none
 c Arguments
       integer itype
@@ -1802,8 +1954,8 @@ c Gauss
       parameter (eps=1d-7)
       external DGAUSS
 c Function to integrate
-      double precision Gamma
-      external Gamma
+      double precision sudakov_gamma
+      external sudakov_gamma
       integer type,mode
       double precision Q1,mass
       common /to_sud_exp/Q1,mass,type,mode
@@ -1812,7 +1964,10 @@ c Cache (adapted from the pdg2pdf() functions)
       parameter (nc=64) ! number of calls to put in cache
       integer i,ireuse,ii,i_replace,itypelast(nc)
       double precision sudlast(nc),imasslast(nc),q0last(nc),Q11last(nc)
+      logical finite_last(nc),finite_terms
       save sudlast,i_replace,itypelast,imasslast,q0last,Q11last
+      save finite_last
+      data finite_last/nc*.false./
       data sudlast/nc*-99d9/
       data itypelast/nc*-99/
       data imasslast/nc*-99d9/
@@ -1820,10 +1975,12 @@ c Cache (adapted from the pdg2pdf() functions)
       data Q11last/nc*-99d9/
       data i_replace/nc/
 c Check if we can re-use any of the last 'nc' calls
+      finite_terms=use_fxfx_finite_terms()
       ireuse=0
       ii=i_replace
       do i=1,nc
-         if (itype.eq.itypelast(ii)) then
+         if (itype.eq.itypelast(ii).and.
+     $       (finite_last(ii).eqv.finite_terms)) then
             if (Q11.eq.Q11last(ii)) then
                if (imass.eq.imasslast(ii)) then
                   if (q0.eq.q0last(ii)) then
@@ -1846,7 +2003,7 @@ c Cannot reuse anything. Compute a new value
       type=itype
       mass=imass
       mode=2
-      sudakov_exp=DGAUSS(Gamma,q0,Q1,eps)
+      sudakov_exp=DGAUSS(sudakov_gamma,q0,Q1,eps)
 c Calculated a new value: replace the value in cache computed longest
 c ago with the newly computed one
       i_replace=mod(i_replace,20)+1
@@ -1854,6 +2011,7 @@ c ago with the newly computed one
       imasslast(i_replace)=imass
       q0last(i_replace)=q0
       Q11last(i_replace)=Q11
+      finite_last(i_replace)=finite_terms
       sudlast(i_replace)=sudakov_exp
       return
       end
@@ -1865,6 +2023,7 @@ c Form Factor numerically using Gaussian integration. It also saves the
 c last 'nc' computed values, which is helpful when dealing, e.g., with
 c many real-emission processes for which many Sudakovs might be
 c identical.
+      use FKSParams, only: use_fxfx_finite_terms
       implicit none
 c Arguments
       integer itype
@@ -1874,8 +2033,8 @@ c Gauss
       parameter (eps=1d-7)
       external DGAUSS
 c Function to integrate
-      double precision Gamma
-      external Gamma
+      double precision sudakov_gamma
+      external sudakov_gamma
       integer type,mode
       double precision Q1,mass
       common /to_sud_exp/Q1,mass,type,mode
@@ -1884,7 +2043,10 @@ c Cache (adapted from the pdg2pdf() functions)
       parameter (nc=64)         ! number of calls to put in cache
       integer i,ireuse,ii,i_replace,itypelast(nc)
       double precision sudlast(nc),imasslast(nc),q0last(nc),Q11last(nc)
+      logical finite_last(nc),finite_terms
       save sudlast,i_replace,itypelast,imasslast,q0last,Q11last
+      save finite_last
+      data finite_last/nc*.false./
       data sudlast/nc*-99d9/
       data itypelast/nc*-99/
       data imasslast/nc*-99d9/
@@ -1892,10 +2054,12 @@ c Cache (adapted from the pdg2pdf() functions)
       data Q11last/nc*-99d9/
       data i_replace/nc/
 c Check if we can re-use any of the last 'nc' calls
+      finite_terms=use_fxfx_finite_terms()
       ireuse=0
       ii=i_replace
       do i=1,nc
-         if (itype.eq.itypelast(ii)) then
+         if (itype.eq.itypelast(ii).and.
+     $       (finite_last(ii).eqv.finite_terms)) then
             if (Q11.eq.Q11last(ii)) then
                if (imass.eq.imasslast(ii)) then
                   if (q0.eq.q0last(ii)) then
@@ -1918,7 +2082,7 @@ c Cannot reuse anything. Compute a new value
       type=itype
       mass=imass
       mode=1
-      expanded_sudakov_exp=DGAUSS(Gamma,q0,Q1,eps)
+      expanded_sudakov_exp=DGAUSS(sudakov_gamma,q0,Q1,eps)
 c Calculated a new value: replace the value in cache computed longest
 c ago with the newly computed one
       i_replace=mod(i_replace,20)+1
@@ -1926,12 +2090,13 @@ c ago with the newly computed one
       imasslast(i_replace)=imass
       q0last(i_replace)=q0
       Q11last(i_replace)=Q11
+      finite_last(i_replace)=finite_terms
       sudlast(i_replace)=expanded_sudakov_exp
       return
       end
 
       
-      double precision function Gamma(q0)
+      double precision function sudakov_gamma(q0)
 c Calculates the argument of the integral of the exponent of the Sudakov
 c Form Factor. (Type, mass, Q^2, etc, given in the to_sud_exp common
 c block)
@@ -1939,24 +2104,26 @@ c   o. For mode=2: take terms logarithmic in log(Q/q0) and constants
 c      into account (up to NLL).
 c   o. For mode=1: take the strict O(alphaS) expansion, with the alphaS
 c      stripped off.
+c FxFx finite terms retain the finite-z integrals of the massless
+c forward kernels with Pythia8's momentum tagging and global ISR bound.
+c Both modes use the same finite terms; the existing A2 term is retained.
 c Types are
 c   1 : massless fermion, colour triplet
 c   2 : massive fermion, colour triplet
 c   3 : massless vector, colour octet
 c   4 : massive particle, colour triplet (treated in inf. mass limit)
 c   5 : massive particle, colour octet   (treated in inf. mass limit)
+      use FKSParams, only: use_fxfx_finite_terms
       implicit none
       include 'cuts.inc'        ! includes maxjetflavor
       integer i
-      double precision q0,alphasq0,mu,qom,moq2,alphas,qmass(6)
-     $     ,get_mass_from_id,colfac
+      double precision q0,alphasq0,qom,moq2,alphas,qmass(6),get_mass_from_id,colfac,r,zcut,zmax,softlog,pairshape
       external alphas,get_mass_from_id
-      logical firsttime
+      logical firsttime,finite_terms
       save qmass,firsttime
       data firsttime/.true./
 c Constants
-      double precision ZERO,PI,CA,CF,kappa
-      parameter (ZERO=0d0)
+      double precision PI,CA,CF,kappa
       parameter (PI = 3.14159265358979323846d0)
       parameter (CA = 3d0)
       parameter (CF = 4d0/3d0)
@@ -1964,6 +2131,7 @@ c Sudakov type and related
       integer type,mode
       double precision Q1,mass
       common /to_sud_exp/Q1,mass,type,mode
+      finite_terms=use_fxfx_finite_terms()
       if (firsttime) then
 c Quark masses in g->qqbar splittings (assumes that all other X in g->XX are
 c infinitely heavy).
@@ -1972,7 +2140,7 @@ c infinitely heavy).
          enddo
          firsttime=.false.
       endif
-      Gamma=0.0d0
+      sudakov_gamma=0.0d0
       kappa = CA*(67d0/18d0-pi**2/6d0)-maxjetflavor*5d0/9d0
       if (q0.ge.Q1) then
          return
@@ -1988,36 +2156,63 @@ c GeV
          stop
       endif
 
+c In the massless global-recoil ISR bound, z < 1-eps with
+c eps = (r/2)*(sqrt(4+r**2)-r), r=k/Q. Use the stable expression below.
+c Identify the analytic upper scale Q with the dipole mass. This is a
+c universal finite-term prescription, not an event-dependent shower
+c no-emission probability (there are no PDF ratios or recoil momenta).
+      if (finite_terms) then
+         r=q0/Q1
+         zcut=2d0*r/(sqrt(4d0+r*r)+r)
+         zmax=1d0-zcut
+         softlog=log(1d0/zcut)
+c Normalized integral of 2*z*T_R*(z**2+(1-z)**2), T_R=1/2.
+         pairshape=1.5d0*zmax**2-2d0*zmax**3+1.5d0*zmax**4
+      endif
+
       if(type.eq.1 .or. type.eq.2) then
 c Quark Sudakov
 c     q->q+g
-         Gamma=CF*alphasq0*(log(Q1/q0)-3d0/4d0)/pi ! A1+B1
+         sudakov_gamma=CF*alphasq0*(log(Q1/q0)-3d0/4d0)/pi ! A1+B1
+         if (finite_terms.and.type.eq.1) then
+c Integral of z*(P_qq+P_gq) over 0 < z < zmax, divided by 2*C_F.
+            sudakov_gamma=CF*alphasq0*(softlog-0.75d0*zmax**2)/pi
+         endif
          if (type.eq.2) then ! include mass effects
             qom=q0/mass
-            Gamma=Gamma+CF*alphasq0/pi/2d0*( 0.5d0 - qom*atan(1d0/qom) -
+            sudakov_gamma=sudakov_gamma+CF*alphasq0/pi/2d0*( 0.5d0 - qom*atan(1d0/qom) -
      $           (1d0-0.5d0*qom**2)*log(1d0+1d0/qom**2) )
          endif
          if (mode.eq.2) then
-c$$$            Gamma=Gamma*(1d0+alphasq0*kappa/(2d0*pi)) ! A2
-            Gamma=Gamma+CF*alphasq0*log(Q1/q0)/pi*alphasq0*kappa/(2d0*pi) ! A2
+c$$$            sudakov_gamma=sudakov_gamma*(1d0+alphasq0*kappa/(2d0*pi)) ! A2
+            sudakov_gamma=sudakov_gamma+CF*alphasq0*log(Q1/q0)/pi*alphasq0*kappa/(2d0*pi) ! A2
          endif
       elseif (type.eq.3) then !  massless vector, colour octet
 c Gluon sudakov         
 c     g->g+g contribution
-         Gamma=CA*alphasq0*(log(Q1/q0)-11d0/12d0)/pi ! A1+B1
+         sudakov_gamma=CA*alphasq0*(log(Q1/q0)-11d0/12d0)/pi ! A1+B1
+         if (finite_terms) then
+c Integral of z*P_gg over 0 < z < zmax, divided by 2*C_A.
+            sudakov_gamma=CA*alphasq0*(softlog-zmax**2+zmax**3/3d0
+     $           -zmax**4/4d0)/pi
+         endif
 c     g->q+qbar contribution
          do i=1,6 ! assume 6 quark flavours
             if (i.le.maxjetflavor) then   ! massless splitting
-               Gamma=Gamma+alphasq0/(6d0*pi)   ! B1
+               if (finite_terms) then
+                  sudakov_gamma=sudakov_gamma+alphasq0/(6d0*pi)*pairshape
+               else
+                  sudakov_gamma=sudakov_gamma+alphasq0/(6d0*pi) ! B1
+               endif
             else                          ! massive splitting
                moq2=(qmass(i)/q0)**2
-               Gamma=Gamma+alphasq0/(4d0*pi)/(1d0+moq2)*
+               sudakov_gamma=sudakov_gamma+alphasq0/(4d0*pi)/(1d0+moq2)*
      &              (1d0 - 1d0/(3d0*(1+moq2)))  ! B1
             endif
          enddo
          if (mode.eq.2) then
-c$$$            Gamma=Gamma*(1d0+alphasq0*kappa/(2d0*pi)) ! A2
-            Gamma=Gamma+CA*alphasq0*log(Q1/q0)/pi*alphasq0*kappa/(2d0*pi) ! A2
+c$$$            sudakov_gamma=sudakov_gamma*(1d0+alphasq0*kappa/(2d0*pi)) ! A2
+            sudakov_gamma=sudakov_gamma+CA*alphasq0*log(Q1/q0)/pi*alphasq0*kappa/(2d0*pi) ! A2
          endif
       elseif (type.eq.4 .or. type.eq.5) then
 c Sudakov for massive particle (in the large-mass limit, hence no spin
@@ -2028,10 +2223,10 @@ c     X->X+g
          elseif(type.eq.5) then
             colfac=CA ! X is colour octet
          endif
-         Gamma=colfac*alphasq0*(log(Q1/mass)-1d0/2d0)/pi
+         sudakov_gamma=colfac*alphasq0*(log(Q1/mass)-1d0/2d0)/pi
 c$$$         if (mode.eq.2) then
-c$$$            Gamma=Gamma*(1d0+alphasq0*kappa/(2d0*pi)) ! A2
-c$$$            Gamma=Gamma*(1d0+alphasq0*kappa/(2d0*pi)) ! A2
+c$$$            sudakov_gamma=sudakov_gamma*(1d0+alphasq0*kappa/(2d0*pi)) ! A2
+c$$$            sudakov_gamma=sudakov_gamma*(1d0+alphasq0*kappa/(2d0*pi)) ! A2
 c$$$         endif
       else
          write (*,*) 'ERROR in reweight.f: do not know'/
@@ -2042,7 +2237,7 @@ c$$$         endif
       endif
 c Integration is over dq^2/q^2 = 2*dq/q, so factor 2. Also, include
 c already the minus sign here
-      Gamma=-Gamma*2d0/q0
+      sudakov_gamma=-sudakov_gamma*2d0/q0
       return
       end
 
@@ -2118,7 +2313,7 @@ c            nn2       squared norm of n to improve numerics
 c            ct, st    cos/sin theta of rotation in plane 
 c**************************************************************************
       implicit none
-      real*8 p1(0:3), p2(0:3), n(0:3), tr(0:3)
+      real*8 p1(0:3),p2(0:3),n(0:3)
       double precision nn2, ct, st, mct
 
       ct=p1(1)*p2(1)+p1(2)*p2(2)+p1(3)*p2(3)
@@ -2143,7 +2338,7 @@ c     don't rotate if nothing to rotate
 
       double precision function dj_clus(p1,p2)
 c***************************************************************************
-c     Uses Durham algorythm to calculate the y value for two partons
+c     Uses Durham algorithm to calculate the y value for two partons
 c     If collision type is hh, hadronic jet measure is used
 c       y_{ij} = 2min[p_{i,\perp}^2,p_{j,\perp}^2]/S
 c                  (cosh(\eta_i-\eta_j)-cos(\phi_1-\phi_2))
@@ -2153,9 +2348,7 @@ c***************************************************************************
       include 'cuts.inc'        ! includes maxjetflavor
       double precision D
       common/to_dj/D            ! for FxFx: D=1 (set in setrun)
-      double precision pt1,pt2,ptm1,ptm2,eta1,eta2,phi1,phi2,p1a,p2a
-     $     ,costh,p1(0:4),p2(0:4),m1,m2,djb_clus
-      integer j
+      double precision pt1,pt2,eta1,eta2,p1a,p2a,costh,p1(0:4),p2(0:4),m1,m2,djb_clus
       external djb_clus
       m1=p1(4)
       m2=p2(4)
@@ -2200,7 +2393,7 @@ c***************************************************************************
       
       double precision function DJB_clus(p1)
 c***************************************************************************
-c     Uses kt algorythm to calculate the y value for one parton
+c     Uses kt algorithm to calculate the y value for one parton
 c       y_i    = p_{i,\perp}^2/S
 c***************************************************************************
       implicit none

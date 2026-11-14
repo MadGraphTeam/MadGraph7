@@ -35,7 +35,7 @@ MG5DIR = os.path.realpath(os.path.join(os.path.dirname(__file__),
                                                                 os.path.pardir))
 if ' ' in MG5DIR:
    logging.critical('''\033[1;31mpath to MG5: "%s" contains space. 
-    This is likely to create code unstability. 
+    This is likely to create code instability.
     Please consider changing the path location of the code\033[0m''' % MG5DIR)
    time.sleep(1)
 MG4DIR = MG5DIR

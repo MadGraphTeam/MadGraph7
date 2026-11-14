@@ -7,7 +7,7 @@ c     and the sign of ipdg flipped accordingly.
 c
 c     ibeam is the beam identity 1/2
 c      if set to -1/-2 it meand that ipdg should not be flipped even if ih<0
-c      usefull for re-weighting
+c      useful for re-weighting
 c***************************************************************************
       implicit none
 c
@@ -121,7 +121,16 @@ c       change e/mu/tau = 8/9/10 to 11/13/15
         do i_ee = 1, n_ee
           ee_components(i_ee) = compute_eepdf(x,omx_ee(iabs(beamid)),xmu,i_ee,ipart,ih_local)
         enddo
-        pdg2pdf =  ee_components(1) ! temporary to test pdf load
+c       A dressed-lepton density is not one number but the n_ee components
+c       just filled: the luminosity is their beam-by-beam contraction
+c       (ee_comp_prod), not a product of two scalars.  There is no scalar
+c       this function could return, so it returns zero rather than one of
+c       the components: a caller which forgets to pick ee_components up
+c       (auto_dsig does it right after this call) then gets an obvious zero
+c       instead of a plausible cross section that quietly misses the
+c       beamstrahlung, which is 13% of the luminosity at FCC-ee.  The NLO
+c       pdg2pdf.f does the same.
+        pdg2pdf = 0d0
 c        write(*,*), x, beamid ,omx_ee(iabs(beamid)),xmu,1,ipart,ih_local,pdg2pdf
         return
       endif
@@ -269,7 +278,7 @@ c         write(*,*) 'running eva'
 
       
       if (pdlabel(1:5) .eq. 'cteq6') then
-C        Be carefull u and d are flipped inside cteq6
+C        Be careful u and d are flipped inside cteq6
          if (nb_proton(iabs(beamid)).gt.1.or.nb_neutron(iabs(beamid)).ne.0)then
             if (ipart.eq.1.or.ipart.eq.2)then
                pdflast(1,ireuse)=Ctq6Pdf(2,x*nb_hadron,xmu) ! remember u/d flipping in cteq

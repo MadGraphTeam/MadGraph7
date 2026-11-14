@@ -157,6 +157,51 @@ class IOExportV4IOTest(IOTests.IOTestManager,
 
     tearDown = test_file_writers.CheckFileCreate.clean_files
 
+    def test_standalone_files_next_to_matrix_file(self):
+        """The standalone output does not chdir to the process directory, so
+        the split-orders driver written along matrix.f must be placed next to
+        it, not in the directory MG was started from (nor its parent), and
+        only when writing is requested. nsqso_born.inc is only written for a
+        MadLoop born_matrix.f."""
+
+        tmpdir = tempfile.mkdtemp()
+        startdir = pjoin(tmpdir, 'parent', 'start')
+        procdir = pjoin(tmpdir, 'SubProcesses', 'P1_epem_aaa')
+        os.makedirs(startdir)
+        os.makedirs(procdir)
+        old_cwd = os.getcwd()
+        os.chdir(startdir)
+        try:
+            myproc = copy.copy(self.mymatrixelement.get('processes')[0])
+            myproc.set('split_orders', ['QED'])
+            matrix_element = helas_objects.HelasMatrixElement(
+                diagram_generation.Amplitude({'process': myproc}))
+            writer = writers.FortranWriter(pjoin(procdir, 'matrix.f'))
+            export_v4.ProcessExporterFortranSA().write_matrix_element_v4(
+                writer, matrix_element, self.myfortranmodel)
+            writer.close()
+
+            self.assertEqual(os.listdir(startdir), [])
+            self.assertEqual(os.listdir(pjoin(tmpdir, 'parent')), ['start'])
+            self.assertEqual(sorted(os.listdir(procdir)),
+                    ['check_sa_born_splitOrders.f', 'matrix.f'])
+
+            # write=False only returns the replace_dict: no driver either
+            os.remove(pjoin(procdir, 'check_sa_born_splitOrders.f'))
+            writer = writers.FortranWriter(pjoin(procdir, 'matrix.f'))
+            replace_dict = export_v4.ProcessExporterFortranSA(
+                ).write_matrix_element_v4(writer, matrix_element,
+                                          self.myfortranmodel, write=False)
+            writer.close()
+
+            self.assertEqual(replace_dict['nSqAmpSplitOrders'], 1)
+            self.assertEqual(os.path.getsize(pjoin(procdir, 'matrix.f')), 0)
+            self.assertEqual(os.listdir(procdir), ['matrix.f'])
+            self.assertEqual(os.listdir(startdir), [])
+        finally:
+            os.chdir(old_cwd)
+            shutil.rmtree(tmpdir)
+
     def test_flavor_mask_placeholders_present_in_nonstandalone_templates(self):
         template_dir = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files')
         template_names = [
@@ -212,8 +257,125 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             'CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))',
             read('loop_optimized', 'loop_matrix_standalone.inc'))
 
+    def test_crossed_get_all_inter_takes_nhel_in_caller_order(self):
+        """GET_ALL_INTER_IDX (and its split-order twin
+        GET_ALL_INTER_SUMSO_IDX) take P, POS and NHEL in the caller's leg
+        order at a crossed FLAV_IDX: base slot I gets NHEL(PERM(I)), with no
+        sign, after APPLY_CROSSING (which leaves the helicity slots alone).
+        Uncrossed, PERM is the identity."""
+        snippet = export_v4.ProcessExporterFortranSA.CROSSING_SNIPPETS[
+            'allinter_cross_apply']
+        so = open(pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
+                        'matrix_standalone_splitOrders_crossing_v4.inc')).read()
+        so = so.split('GET_ALL_INTER_SUMSO_IDX(')[1].split('\n      END\n')[0]
+        for text in (snippet, so):
+            self.assertIn('NHELUSE(I) = NHEL(PERM(I))', text)
+            self.assertNotIn('SGN(I)*NHEL', text)
+            self.assertLess(text.index('APPLY_CROSSING('),
+                            text.index('NHELUSE(I) = NHEL(PERM(I))'))
+            self.assertLess(text.index('GET_CROSS_PERM('),
+                            text.index('NHELUSE(I) = NHEL(PERM(I))'))
 
-    @IOTests.createIOTest() 
+    def test_matchbox_drivers_use_the_matrix_element_prefix(self):
+        """check_sa.f calls the matrix element by name, and matchbox renames
+        every routine after the process id -- ignoring the --prefix a caller
+        may have passed. The driver has to be given that same name or it does
+        not link, which nothing notices because the matchbox `make` is a no-op.
+        """
+        sa = export_v4.ProcessExporterFortranSA()
+        matchbox = export_v4.ProcessExporterFortranMatchBox()
+        proc_id = self.mymatrixelement.get('processes')[0].get('id')
+
+        self.assertEqual('', sa.get_proc_prefix(self.mymatrixelement))
+        self.assertEqual('M1_', sa.get_proc_prefix(self.mymatrixelement, 'M1_'))
+        # what write_matrix_element_v4 puts on the routines, whatever it is
+        # handed
+        self.assertEqual('MG5_%i_' % proc_id,
+                         matchbox.get_proc_prefix(self.mymatrixelement))
+        self.assertEqual('MG5_%i_' % proc_id,
+                         matchbox.get_proc_prefix(self.mymatrixelement, 'M1_'))
+
+    def test_matrix_template_provides_reports_the_missing_entry_points(self):
+        """The blocks check_sa.f writes -- the density driver, the crossing
+        demonstration -- call routines that only the default template has.
+        Each is emitted behind this predicate, so pin what it answers for the
+        two templates that differ.
+        """
+        sa = export_v4.ProcessExporterFortranSA()
+        matchbox = export_v4.ProcessExporterFortranMatchBox()
+
+        self.assertEqual('matrix_standalone_v4.inc',
+                         sa.get_matrix_template(self.mymatrixelement))
+        self.assertEqual('matrix_standalone_matchbox.inc',
+                         matchbox.get_matrix_template(self.mymatrixelement))
+
+        for marker in ('GET_DENSITY', '%(flavor_pdg_function)s'):
+            self.assertTrue(
+                sa.matrix_template_provides(self.mymatrixelement, marker),
+                '%s missing from the default standalone template' % marker)
+            self.assertFalse(
+                matchbox.matrix_template_provides(self.mymatrixelement, marker),
+                '%s unexpectedly in the matchbox template' % marker)
+
+    def test_splitorders_template_carries_the_standalone_api(self):
+        """Which parts of matrix_standalone_v4.inc the split-orders template
+        deliberately does and does not carry.
+
+        The two drifted apart, and the point of pinning it here is that a
+        reader can tell an intended difference from an accident.
+        """
+        sa = export_v4.ProcessExporterFortranSA()
+        process = self.mymatrixelement.get('processes')[0]
+        saved = process.get('split_orders')
+        try:
+            process.set('split_orders', ['QCD', 'QED'])
+            self.assertEqual('matrix_standalone_splitOrders_v4.inc',
+                             sa.get_matrix_template(self.mymatrixelement))
+
+            # Carried: the canonical helicity table, the C-parity
+            # de-duplication, the flavor-aware denominator accessor, and --
+            # through holes of its own, filled by
+            # fill_crossing_replace_dict_so -- the crossing machinery.
+            for marker in ('DECODE_HEL', 'FILL_NHEL', '%(hel_allow_data)s',
+                           '%(flip_data)s', 'GET_NHEL_IDX', 'GET_DENSITY',
+                           'GET_ALL_INTER', 'GET_ALL_INTER_SUMSO',
+                           '%(so_crossing_routines)s',
+                           '%(so_pdg_function)s', '%(so_cross_decode)s'):
+                self.assertTrue(
+                    sa.matrix_template_provides(self.mymatrixelement, marker),
+                    '%s missing from the split-orders template' % marker)
+
+            # ... so the crossing demonstration check_sa.f writes must be
+            # emitted against it: it calls GET_PDG_FOR_FLAVOR, which this
+            # template reaches through so_pdg_function rather than the default
+            # template's hole, and asking for the wrong hole name is how that
+            # block went missing from a folded output that could run it.
+            self.assertTrue(
+                sa.matrix_template_has_pdg_decoder(self.mymatrixelement))
+
+            # Left out of the template on purpose. Its FLAVOR-array density
+            # stack stays uncrossed; the crossing-aware one (GET_DENSITY_IDX,
+            # GET_ALL_INTER_SUMSO_IDX, GET_INTER_RESCALE, through which the
+            # f2py PDG dispatch reaches a folded crossed subprocess) is only
+            # appended to so_crossing_routines, from
+            # matrix_standalone_splitOrders_crossing_v4.inc, when crossing is
+            # on -- an uncrossed FKS/MadLoop born never gets it. HELCODE
+            # because the external helicity label is the row number, which is
+            # what MadLoop passes. ENCODE_HEL because nothing anywhere calls
+            # it. The default template's own crossing holes because this one
+            # has its own set, shaped for a vector ANS/T.
+            for marker in ('ENCODE_HEL', 'HELCODE', 'GET_DENSITY_IDX',
+                           'GET_ALL_INTER_IDX', 'GET_ALL_INTER_CROSSED',
+                           'GET_INTER_RESCALE', '%(flavor_pdg_function)s',
+                           '%(crossing_routines)s'):
+                self.assertFalse(
+                    sa.matrix_template_provides(self.mymatrixelement, marker),
+                    '%s unexpectedly in the split-orders template' % marker)
+        finally:
+            process.set('split_orders', saved)
+
+
+    @IOTests.createIOTest()
     def testIO_export_matrix_element_v4_standalone(self):
         """target: matrix.f
         """
@@ -225,7 +387,54 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             writers.FortranWriter(pjoin(self.IOpath, 'matrix.f')),
             self.mymatrixelement,
             self.myfortranmodel)
-    
+
+    def test_madevent_csym_self_pair_latch_is_per_subprocess(self):
+        """The C-parity self-pair latch refuses the reuse for its OWN matrix
+        element only, and both madevent templates carry it.
+
+        A self-paired helicity row (FLIP(I)=I) has no distinct partner, so the
+        full-sum loop cannot be halved uniformly and SMATRIX latches CSYMBAD
+        once, on its first call; the validating scan only compares distinct
+        pairs and would never catch it. In a madevent group COMMON/BLOCK_CSYM
+        is (flavor, subprocess)-shaped and shared by every matrix<i>.f, while
+        each SMATRIX<i> runs its own latch (CSYM_DONE is a SAVEd local).
+        Latching the whole array -- as the grouped template did -- let the
+        first call of one such subprocess switch the de-duplication off for
+        every ordinary one of the group, which then never reported a
+        'CSYM PAIR:' line to the helicity recycler. The ungrouped template had
+        lost the latch altogether, leaving a self-paired row at full weight in
+        an otherwise halved loop.
+        """
+        tmpdir = tempfile.mkdtemp(prefix='csym_latch_')
+        try:
+            for exporter_class, proc_id, own_write in (
+                    (export_v4.ProcessExporterFortranMEGroup, '2',
+                     'CSYMBAD(JHEL,2)=1'),
+                    (export_v4.ProcessExporterFortranME, '',
+                     'CSYMBAD(JHEL)=1')):
+                name = exporter_class.__name__
+                path = pjoin(tmpdir, 'matrix%s.f' % proc_id)
+                exporter_class().write_matrix_element_v4(
+                    writers.FortranWriter(path), self.mymatrixelement,
+                    self.myfortranmodel, proc_id)
+                source = open(path).read()
+                latch = re.search(r'IF \(\.NOT\.CSYM_DONE\) THEN\n(.*?)\n'
+                                  r'\s*CSYM_DONE = \.TRUE\.', source, re.S)
+                self.assertTrue(latch, '%s: no self-pair latch' % name)
+                code = [line.strip() for line in latch.group(1).splitlines()
+                        if line.strip() and not line.startswith('C')]
+                self.assertIn('IF (FLIP(I).EQ.I) THEN', code)
+                self.assertEqual(
+                    [line for line in code if line.startswith('CSYMBAD(')],
+                    [own_write],
+                    '%s: the latch must write every flavor of its own '
+                    'subprocess and nothing else' % name)
+                # Local to SMATRIX, so every matrix<i>.f latches for itself.
+                self.assertIn('SAVE CSYM_DONE', source)
+                self.assertNotRegex(source, r'COMMON\s*/\w*/[^\n]*CSYM_DONE')
+        finally:
+            shutil.rmtree(tmpdir)
+
     @IOTests.createIOTest()
     def testIO_export_matrix_element_v4_madevent_group(self):
         """target: amp2lines.txt 
@@ -3682,7 +3891,11 @@ C       This is dummy particle used in multiparticle vertices
 
 """)
 
-        # Test leshouche.inc output
+        # Test leshouche.inc output.
+        # The madevent exporter drops the ICOLUP colour-flow table from
+        # leshouche.inc when the matrix element carries a canonical colour code
+        # (drop_icolup): addmothers.f now rebuilds the Les Houches colour tags
+        # from colorflow.inc instead. leshouche.inc keeps only IDUP and MOTHUP.
         writer = writers.FortranWriter(self.give_pos('leshouche'))
         exporter.write_leshouche_file(writer, matrix_element)
         writer.close()
@@ -3691,18 +3904,27 @@ C       This is dummy particle used in multiparticle vertices
                          """      DATA (IDUP(I,1,1),I=1,6)/2,-2,2,-2,2,-2/
       DATA (MOTHUP(1,I),I=1, 6)/  0,  0,  1,  1,  1,  1/
       DATA (MOTHUP(2,I),I=1, 6)/  0,  0,  2,  2,  2,  2/
-      DATA (ICOLUP(1,I,1,1),I=1, 6)/501,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,1,1),I=1, 6)/  0,501,  0,502,  0,503/
-      DATA (ICOLUP(1,I,2,1),I=1, 6)/501,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,2,1),I=1, 6)/  0,501,  0,503,  0,502/
-      DATA (ICOLUP(1,I,3,1),I=1, 6)/502,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,3,1),I=1, 6)/  0,501,  0,501,  0,503/
-      DATA (ICOLUP(1,I,4,1),I=1, 6)/503,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,4,1),I=1, 6)/  0,501,  0,501,  0,502/
-      DATA (ICOLUP(1,I,5,1),I=1, 6)/502,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,5,1),I=1, 6)/  0,501,  0,503,  0,501/
-      DATA (ICOLUP(1,I,6,1),I=1, 6)/503,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,6,1),I=1, 6)/  0,501,  0,502,  0,501/
+""")
+
+        # Test colorflow.inc output: the six colour flows that used to be the
+        # ICOLUP rows above are now encoded by the canonical colour code, which
+        # addmothers.f decodes back into the very same tags. The old rows, for
+        # reference (colour anti-colour per external leg, one flow per line):
+        #   501   0 502   0 503   0 /   0 501   0 502   0 503
+        #   501   0 502   0 503   0 /   0 501   0 503   0 502
+        #   502   0 502   0 503   0 /   0 501   0 501   0 503
+        #   503   0 502   0 503   0 /   0 501   0 501   0 502
+        #   502   0 502   0 503   0 /   0 501   0 503   0 501
+        #   503   0 502   0 503   0 /   0 501   0 502   0 501
+        writer = writers.FortranWriter(self.give_pos('colorflow'))
+        exporter.write_colorflow_file(writer, matrix_element)
+        writer.close()
+
+        self.assertFileContains('colorflow',
+                         """      DATA NCOLSLOT(1)/3/
+      DATA (ICOLCSL(I,1),I=1,3)/2,3,5/
+      DATA (ICOLASL(I,1),I=1,3)/1,4,6/
+      DATA (ICOLCODE(I,1),I=1,6)/21,15,19,7,11,5/
 """)
 
         # Test pdf output (for auto_dsig.f)
@@ -7679,6 +7901,9 @@ CALL IOSXXX(W(7),W(2),W(3),MGVX350,AMP(2))""".split('\n'))
 
         me = matrix_elements[0]
 
+        (nexternal, ninitial) = me.get_nexternal_ninitial()
+        nonia = me.get_nonia()
+
         #print me.get_base_amplitude().nice_string()
 
         # This has been checked against v4
@@ -7933,7 +8158,7 @@ C     used fake id
 
         # Test decayBW file
         exporter.write_decayBW_file(writer,
-                                     s_and_t_channels)
+                                     s_and_t_channels,nexternal,nonia)
 
         writer.close()
         #print open(self.give_pos('test')).read()
@@ -9857,8 +10082,8 @@ C     used fake id
                            [-4, 3, -5], [-5, -1, -6]]]
                           
 
-        import models.import_ufo
-        mymodel = models.import_ufo.import_model('sm', options={'apply_flavor_grouping':False})
+        import madgraph.models.import_ufo as import_ufo
+        mymodel = import_ufo.import_model('sm', options={'apply_flavor_grouping':False})
 
         wf_dict = {}
         for (idiag, diagram) in enumerate(diagrams):
@@ -10085,7 +10310,7 @@ C       This is dummy particle used in multiparticle vertices
 """)
 
 class AlohaFortranWriterTest(unittest.TestCase):
-    """ A basic test to see if the Aloha Fortran Writter is working """
+    """ A basic test to see if the Aloha Fortran Writer is working """
     
     def setUp(self):
         """ check that old file are remove """
@@ -10129,8 +10354,12 @@ C
       F1%P(:) = +F2%P(:)+V3%P(:)
       P1(:) = -F1 % P (:)
       F1 % FLV_INDEX = F2 % FLV_INDEX
-      DENOM = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1 * (M1 -CI
-     $ * W1))"""
+      IF (DBLE(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2).GT.0D0) THEN
+        DENOM = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1 * (M1
+     $   -CI* W1))
+      ELSE
+        DENOM = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1**2)
+      ENDIF"""
 
         abstract_M = create_aloha.AbstractRoutineBuilder(FFV1).compute_routine(1)
         abstract_M.add_symmetry(2)
@@ -10138,16 +10367,20 @@ C
         
         self.assertTrue(os.path.exists('/tmp/FFV1_1.f'))
         textfile = open('/tmp/FFV1_1.f','r').read()
-        split_sol = solution.split('\n')
-        self.assertEqual(split_sol, textfile.split('\n')[:len(split_sol)])
+        # rstrip each line: the ALOHA line wrapper can leave a trailing space
+        # (e.g. after "(M1 " when the width term spills to a continuation), and
+        # that cosmetic whitespace is not what this test is checking.
+        split_sol = [l.rstrip() for l in solution.split('\n')]
+        split_cur = [l.rstrip() for l in textfile.split('\n')[:len(split_sol)]]
+        self.assertEqual(split_sol, split_cur)
 
 
 class UFO_model_to_mg4_Test(unittest.TestCase):
     """Check the conversion model from UFO to MG4"""
     
     def setUp(self):
-        import models.import_ufo
-        self.mymodel = models.import_ufo.import_model('sm')
+        import madgraph.models.import_ufo as import_ufo
+        self.mymodel = import_ufo.import_model('sm')
     
     
     def test_refactorize(self):
@@ -10260,8 +10493,8 @@ class BrokenSymmetryDecayChainTest(unittest.TestCase):
     """Validate decay-aware broken symmetry decomposition."""
 
     def setUp(self):
-        import models.import_ufo
-        self.model = models.import_ufo.import_model('sm')
+        import madgraph.models.import_ufo as import_ufo
+        self.model = import_ufo.import_model('sm')
 
     def _make_process(self, initial_ids, final_ids, decays):
         legs = base_objects.LegList()
@@ -10362,8 +10595,8 @@ if __name__ == '__main__':
         """Write out pkl file with helas diagram for test_configs_8fs
         """
 
-        import models.import_ufo
-        mymodel = models.import_ufo.import_model('sm')
+        import madgraph.models.import_ufo as import_ufo
+        mymodel = import_ufo.import_model('sm')
         
         myleglist = base_objects.LegList()
 
@@ -10781,6 +11014,90 @@ class OptimiseJampTest(unittest.TestCase):
         return list(zip(left_of, right_of, ratio_of))
 
 
+class HelstateDataPolarizationTest(unittest.TestCase):
+    """The canonical helicity code of _helstate_data must be the row number.
+
+    The code is a mixed-radix integer over per-leg helicity lists; the row is
+    the position in get_helicity_matrix(). Madevent stores the row it sampled
+    and decodes the event's helicities (and the EVA beam helicity) from these
+    tables, and every standalone caller asks for a row. With a radix over the
+    FULL particle states the two differed as soon as one leg was polarized,
+    so p p > w+{0} j wrote W+ helicity -1 in most of its events.
+    """
+
+    def setUp(self):
+        import madgraph.models.import_ufo as import_ufo
+        self.exporter = export_v4.ProcessExporterFortranSA()
+        # keyed on the lepton id: with flavour grouping the electron is a
+        # member of the merged lepton group 82, and only that id has vertices
+        self.models = {
+            11: import_ufo.import_model(
+                    'sm', options={'apply_flavor_grouping': False}),
+            82: import_ufo.import_model('sm')}
+
+    def matrix_element(self, w_plus_polarization, lepton):
+        """l+ l- > w+ w-, the W+ restricted to `w_plus_polarization`."""
+        legs = base_objects.LegList()
+        for i, (pid, pol) in enumerate([(-lepton, []), (lepton, []),
+                                        (24, w_plus_polarization), (-24, [])], 1):
+            legs.append(base_objects.Leg({'id': pid, 'state': i > 2,
+                                          'number': i, 'polarization': pol}))
+        process = base_objects.Process({'legs': legs,
+                                        'model': self.models[lepton]})
+        return helas_objects.HelasMatrixElement(
+                                         diagram_generation.Amplitude(process))
+
+    @staticmethod
+    def data_values(text):
+        """The values of each DATA statement in `text`, one list per statement
+        (continuation lines included)."""
+        statements = re.split(r'\n(?=\s*DATA )', text.strip())
+        return [[int(v) for v in re.findall(r'-?\d+', stmt.split('/', 1)[1])]
+                for stmt in statements]
+
+    def tables(self, matrix_element):
+        data = self.exporter._helstate_data(matrix_element)
+        nhstate = self.data_values(data['nhstate_data'])[0]
+        states = self.data_values(data['states_data'])
+        helallow = self.data_values(data['hel_allow_data'])[0]
+        return nhstate, states, helallow
+
+    @staticmethod
+    def decode(code, nhstate, states):
+        """What DECODE_HEL / madevent's GET_NHEL do: last leg fastest."""
+        rest, config = code - 1, [0] * len(nhstate)
+        for k in reversed(range(len(nhstate))):
+            config[k] = states[k][rest % nhstate[k]]
+            rest //= nhstate[k]
+        return config
+
+    def check_code_is_row(self, matrix_element):
+        nhstate, states, helallow = self.tables(matrix_element)
+        rows = [list(row) for row in matrix_element.get_helicity_matrix()]
+        self.assertEqual(helallow, list(range(1, len(rows) + 1)))
+        for i, row in enumerate(rows, 1):
+            self.assertEqual(self.decode(i, nhstate, states), row,
+                             'row %d does not decode to itself' % i)
+        return nhstate
+
+    def test_polarized_leg_radix_is_its_restriction(self):
+        for lepton in (11, 82):
+            # {0}: the W+ digit has a single state, so 2*2*1*3 = 12 rows
+            self.assertEqual(
+                self.check_code_is_row(self.matrix_element([0], lepton)),
+                [2, 2, 1, 3])
+            # {T}: two of the three massive-vector states
+            self.assertEqual(
+                self.check_code_is_row(self.matrix_element([-1, 1], lepton)),
+                [2, 2, 2, 3])
+
+    def test_unpolarized_tables_unchanged(self):
+        for lepton in (11, 82):
+            self.assertEqual(
+                self.check_code_is_row(self.matrix_element([], lepton)),
+                [2, 2, 3, 3])
+
+
 class F2PYSplitterFlavorOrderTest(unittest.TestCase):
     """all_matrix.f has to repair a leg ordering FLAV_TABLE does not tabulate.
 
@@ -10807,11 +11124,20 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def write(self, merged_particles):
+    def write(self, merged_particles, split_orders=False, crossed_rows=(),
+              output_options=None):
         """Run write_f2py_splitter for a single `q q > z q q` matrix element
         (5 legs, 2 incoming, 12 tabulated flavors) and return all_matrix.f with
-        the fortran continuations folded back into single lines."""
-        exporter = export_v4.ProcessExporterFortranSA(self.tmpdir)
+        the fortran continuations folded back into single lines. crossed_rows
+        are the crossing-table rows of folded crossed subprocesses."""
+        exporter = export_v4.ProcessExporterFortranSA(
+            self.tmpdir, opt={'output_options': dict(output_options or {})})
+        if split_orders:
+            exporter.split_order_prefixes.add('M0_')
+        if crossed_rows:
+            exporter.crossing_records['M0_'] = (
+                list(crossed_rows), True,
+                dict((K, list(range(5))) for K in crossed_rows))
         exporter.model = self.FakeModel({'merged_particles': merged_particles,
                                          'parameters': {('external',): []},
                                          'running_elements': []})
@@ -10835,17 +11161,88 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         self.assertEqual(len(calls), 3)
         for call in calls:
             self.assertIn('M0_GET_FLAVOR_INDEX,M0_GET_FLAVOR,5,2,12', call)
-        # the density and interference wrappers freeze the legs whose helicity
-        # is an open index of rho (POS); smatrixhel has no such leg.
-        self.assertEqual(len([c for c in calls
-                              if 'N_CHANGING,POS,.TRUE.' in c]), 2)
-        # smatrixhel also disarms the repair when a single helicity row was
-        # asked for: that row names the legs by position.
-        self.assertEqual(len([c for c in calls
-                              if '0,MS_NOFROZEN,NHEL.LT.1' in c]), 1)
+        # no leg is frozen: every per-leg datum moves with its leg instead
+        for call in calls:
+            self.assertIn('M0_GET_FLAVOR,5,2,12,.TRUE.,FLAVOR,LPDGS,', call)
+        self.assertNotIn('NOFROZEN', text)
+        # the density's and get_all_inter's open legs (POS) follow their
+        # legs, in the caller's order, so rho is not permuted; an ordering
+        # still unresolved is a miss (crossed fallback, then NaN), never a
+        # silent 0
+        flat = re.sub(r'\s+', ' ', text)
+        posfix = ('DO I = 1, N_CHANGING POSFIX(I) = POS(I) DO J = 1, NPDG'
+                  ' IF (LEGOF(J).EQ.POS(I)) POSFIX(I) = J ENDDO ENDDO'
+                  ' IF (M0_GET_FLAVOR_INDEX(FLAVOR).EQ.0) THEN'
+                  ' FOUND = .FALSE. ELSE CALL M0_GET_')
+        self.assertEqual(flat.count(posfix), 2)
+        self.assertIn('INTEGER POSFIX(N_CHANGING), J', text)
+        # smatrixhel repairs a request for one helicity code too: the code
+        # is re-keyed through the same permutation (FLAVOR_ORDER_HEL), read
+        # in this ME's helicity table (32 codes), so each helicity stays on
+        # its leg.
+        self.assertNotIn('NHEL.LT.1', text)
+        self.assertEqual(text.count('SUBROUTINE FLAVOR_ORDER_HEL('), 1)
+        self.assertIn('NHELFIX = NHEL IF (NHEL.GE.1) THEN CALL'
+                      ' M0_GET_NHEL_IDX(M0_GET_FLAVOR_INDEX(FLAVOR), FRDEN,'
+                      ' FRTAB) CALL FLAVOR_ORDER_HEL(NHEL, 5, 32, FRTAB, LEGOF,'
+                      ' NHELFIX) ENDIF CALL M0_SMATRIXHEL(PFIX, NHELFIX,',
+                      re.sub(r'\s+', ' ', text))
+        self.assertIn('INTEGER FRTAB(160), FRDEN, NHELFIX', text)
+        # every call reports where each leg went
+        for call in calls:
+            self.assertTrue(call.endswith('P,PFIX,LEGOF)'), call)
         # and every matrix element is handed the repaired momenta, not P
         for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
             self.assertIn('CALL %sPFIX' % callee, text)
+        self.assertIn('CALL M0_GET_DENSITY(PFIX, POSFIX,', text)
+        # GET_ALL_INTER takes NHEL second, by leg position: the helicities
+        # follow their legs (and its POS entries may be overwritten)
+        self.assertIn('DO I = 1, NPDG HFIX(I) = LNHEL(LEGOF(I)) ENDDO'
+                      ' DO I = 1, N_CHANGING POSFIX(I) = POS(I)', flat)
+        self.assertIn('CALL M0_GET_ALL_INTER(PFIX, HFIX, POSFIX,', flat)
+
+    def test_per_process_f2py_entries_are_optional(self):
+        """The combined f2py_wrapper.f carries every subprocess' own
+        PY_<prefix>* entry points unless --f2py_per_process=False, which
+        MadSpin uses: f2py's build time grows faster than linearly with the
+        routines of one module, and the dispatching entries are all it needs."""
+        pdir = os.path.join(self.tmpdir, 'SubProcesses', 'P1_qq_zqq')
+        os.mkdir(pdir)
+        with open(os.path.join(pdir, 'f2py_matrix_wrapper.f'), 'w') as fsock:
+            fsock.write('      SUBROUTINE PY_M0_GET_FLAVOR_LAYOUT()\n'
+                        '      END\n')
+        wrapper = os.path.join(self.tmpdir, 'SubProcesses', 'f2py_wrapper.f')
+        for options, kept in (({}, True),
+                              ({'f2py_per_process': 'True'}, True),
+                              ({'f2py_per_process': 'False'}, False)):
+            self.write({81: [1, 2, 3, 4]}, output_options=options)
+            text = open(wrapper).read()
+            self.assertEqual('PY_M0_GET_FLAVOR_LAYOUT' in text, kept)
+            # the dispatching entry points are always there
+            for name in ('SMATRIXHEL(', 'SMATRIXHEL_IDX(', 'PY_GET_DENSITY(',
+                         'PY_GET_ALL_INTER('):
+                self.assertIn('SUBROUTINE ' + name, text)
+
+    def test_pdg_dispatch_checks_npdg_for_one_multiplicity(self):
+        """A PDGS array longer or shorter than the process is a miss (NaN
+        and an ERROR line) on every path. With a single multiplicity the
+        PDG branches used to be written without the NPDG test, so an
+        oversized array matched on its leading codes (only those are copied
+        into LPDGS), while the folded-crossing fallback refused it."""
+        for merged in ({81: [1, 2, 3, 4]}, {}):
+            text = self.write(merged, crossed_rows=(2,))
+            for entry in ('F77_SMATRIXHEL(', 'F77_DENSITY(',
+                          'F77_GET_ALL_INTER('):
+                body = text[text.index('SUBROUTINE ' + entry):]
+                body = body[:body.index('\n END\n')]
+                self.assertEqual(body.count('IF (NPDG.EQ.5)THEN'), 1, entry)
+                # the guard wraps the PDG branches; any other NPDG is a miss
+                guard = body.index('IF (NPDG.EQ.5)THEN')
+                self.assertLess(guard, body.index('81.EQ.LPDGS(1)'), entry)
+                self.assertRegex(re.sub(r'\s+', ' ', body[guard:]),
+                                 r'ELSE FOUND = \.FALSE\. ENDIF'
+                                 r' IF \(\.NOT\.FOUND\) CALL F77_NO_PROCESS',
+                                 entry)
 
     def test_nothing_changes_without_merged_particles(self):
         """No merged particle means one all-ones flavor per ME and no ordering
@@ -10855,3 +11252,180 @@ class F2PYSplitterFlavorOrderTest(unittest.TestCase):
         self.assertNotIn('PFIX', text)
         for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
             self.assertIn('CALL %sP' % callee, text)
+        self.assertIn('CALL M0_GET_ALL_INTER(P, LNHEL, POS,', text)
+
+    def test_folded_crossing_reaches_density_and_get_all_inter(self):
+        """py_get_density / py_get_all_inter fall back to the folded
+        crossings when no PDG branch matches, as smatrixhel does, through
+        GET_DENSITY_IDX / GET_ALL_INTER_IDX (GET_ALL_INTER_SUMSO_IDX for a
+        split-order matrix element) at the extended index, handing over the
+        caller's NHEL copy; a miss everywhere goes to F77_NO_PROCESS (NaN)
+        rather than leaving zeros, and smatrixhel's to F77_NO_PROCESS_ANS.
+
+        A crossing row tabulates one leg order: smatrixhel, the density and
+        get_all_inter also accept the caller's same-code legs exchanged
+        inside the initial or the final state (F77_CROSSED_ORDER, a second
+        pass after the exact one); get_all_inter moves its NHEL, which names
+        legs by position, with the legs, and both move the open legs POS
+        (POSFIX), so that rho keeps the caller's rows and columns."""
+        for split_orders, inter in ((False, 'M0_GET_ALL_INTER_IDX('),
+                                    (True, 'M0_GET_ALL_INTER_SUMSO_IDX(')):
+            text = re.sub(r'\s+', '', self.write(
+                {81: [1, 2, 3, 4]}, split_orders=split_orders,
+                crossed_rows=(1, 3)))
+            for name in ('SMATRIXHEL', 'DENSITY', 'GET_ALL_INTER', 'ORDER'):
+                self.assertEqual(text.count(
+                    'SUBROUTINEF77_CROSSED_%s(' % name), 1)
+            self.assertIn('DATAM0_XROWS/1,3/', text)
+            posfix = ('DOI=1,N_CHANGINGPOSFIX(I)=POS(I)DOJ=1,NPDG'
+                      'IF(LEGOF(J).EQ.POS(I))POSFIX(I)=JENDDOENDDO')
+            self.assertIn(posfix + 'CALLM0_GET_DENSITY_IDX(PFIX,POSFIX,'
+                          'N_CHANGING,ALLOW_HEL,N_COMB,IDX,ALPHAS,SCALE2,'
+                          'INTER)', text)
+            self.assertIn('DOI=1,NPDGHFIX(I)=NHEL(LEGOF(I))ENDDO' + posfix +
+                          'CALL%sPFIX,HFIX,POSFIX,N_CHANGING,ALLOW_HEL,'
+                          'N_COMB,IDX,INTER)' % inter, text)
+            self.assertIn('NHELFIX=NHELIF(NHEL.GE.1)THENCALLM0_GET_NHEL_IDX('
+                          'IDX,XDEN,XTAB)CALLFLAVOR_ORDER_HEL(NHEL,NPDG,32,'
+                          'XTAB,LEGOF,NHELFIX)ENDIFCALLM0_SMATRIXHEL(PFIX,'
+                          'NHELFIX,IDX,ANS)', text)
+            # reached on a PDG miss and on a matched branch whose ordering
+            # did not resolve
+            self.assertIn('ELSEFOUND=.FALSE.ENDIFIF(.NOT.FOUND)CALL'
+                          'F77_CROSSED_DENSITY(PDGS,LPDGS,PROCID,NPDG,'
+                          'P,POS,', text)
+            self.assertIn('ELSEFOUND=.FALSE.ENDIFIF(.NOT.FOUND)CALL'
+                          'F77_CROSSED_GET_ALL_INTER(PDGS,LPDGS,'
+                          'PROCID,NPDG,P,LNHEL,POS,', text)
+            self.assertIn('ELSEFOUND=.FALSE.ENDIFIF(.NOT.FOUND)CALL'
+                          'F77_CROSSED_SMATRIXHEL(PDGS,LPDGS,PROCID,'
+                          'NPDG,P,NHEL,ANS,FOUND)', text)
+            # smatrixhel too: no SMATRIXHEL call at the 0 flavor index
+            self.assertIn('IF(M0_GET_FLAVOR_INDEX(FLAVOR).EQ.0)THENFOUND='
+                          '.FALSE.ELSENHELFIX=NHEL', text)
+            # second pass: smatrixhel for a helicity code too (re-keyed
+            # with the legs), the density and get_all_inter with POS moved
+            self.assertNotIn('IF(NHEL.LT.1)NPASS=2', text)
+            self.assertEqual(text.count('IF(.TRUE.)NPASS=2'), 3)
+            self.assertEqual(text.count(
+                'LPDGS,IPASS.EQ.2,P,PFIX,LEGOF,SAME)'), 3)
+            self.assertNotIn('FROZEN', text)
+            self.assertIn('LEGOF(J)=PERM(J)', text)
+            self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
+            self.assertEqual(text.count(
+                "IF(.NOT.FOUND)CALLF77_NO_PROCESS_ANS('smatrixhel',"), 1)
+            self.assertIn('ANS=IEEE_VALUE(ANS,IEEE_QUIET_NAN)', text)
+            # every crossed routine reports whether a crossing matched
+            self.assertEqual(text.count('FOUND=.TRUE.RETURN'), 3)
+        # without a folded crossing there is nothing to fall back to: the
+        # miss is reported straight away
+        text = re.sub(r'\s+', '', self.write({81: [1, 2, 3, 4]}))
+        self.assertNotIn('F77_CROSSED_DENSITY', text)
+        # without merged particles no leg of a crossing can move, and the
+        # re-keying routine is not emitted: a helicity code goes as is
+        text = re.sub(r'\s+', '', self.write({}, crossed_rows=(1, 3)))
+        self.assertNotIn('FLAVOR_ORDER_HEL', text)
+        self.assertIn('CALLM0_SMATRIXHEL(PFIX,NHEL,IDX,ANS)', text)
+        self.assertEqual(text.count('IF(NHEL.LT.1)NPASS=2'), 1)
+        text = re.sub(r'\s+', '', self.write({81: [1, 2, 3, 4]}))
+        # per entry point: a PDG miss, and a PDGS of the wrong length
+        self.assertEqual(text.count('ELSEFOUND=.FALSE.'), 6)
+        self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS('), 2)
+        self.assertEqual(text.count('IF(.NOT.FOUND)CALLF77_NO_PROCESS_ANS('), 1)
+
+    def test_split_order_get_all_inter_sums_the_split_orders(self):
+        """A split-order GET_ALL_INTER fills INTER(NSQAMPSO,*), larger than
+        the buffer py_get_all_inter allocates: the dispatch must go through
+        GET_ALL_INTER_SUMSO, while the density (which sums the split orders
+        itself) keeps calling GET_DENSITY."""
+        text = self.write({}, split_orders=True)
+        self.assertIn('CALL M0_GET_ALL_INTER_SUMSO(P, LNHEL, POS,', text)
+        self.assertNotIn('CALL M0_GET_ALL_INTER(', text)
+        self.assertIn('CALL M0_GET_DENSITY(P, POS,', text)
+
+
+#===============================================================================
+# RunningModelLibraryTest
+#===============================================================================
+class RunningModelLibraryTest(unittest.TestCase):
+    """The model library of a model with running parameters (running.py) in
+    the formats linked as shared libraries (standalone_rw for the tree-level
+    and madloop for the virtual of the NLO reweighting): the evolution and
+    alpha_s routines must be inside it, and the extra-scale setup in the
+    common block the f2py setters write."""
+
+    def export(self, export_format):
+        import madgraph.models.import_ufo as import_ufo
+        model = import_ufo.import_model(
+            pjoin(MG5DIR, 'tests', 'input_files', 'SMEFTatNLO_running-4f'))
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmpdir)
+        model_dir = pjoin(tmpdir, 'Source', 'MODEL')
+        os.makedirs(model_dir)
+        opt = {'export_format': export_format, 'mp': True,
+               'complex_mass': False, 'loop_induced': False,
+               'output_options': {}}
+        mg4_model = export_v4.UFO_model_to_mg4(model, model_dir, opt)
+        mg4_model.build()
+        return mg4_model, model_dir
+
+    def test_running_in_shared_model_library(self):
+        for export_format in ['standalone_rw', 'madloop']:
+            mg4_model, model_dir = self.export(export_format)
+            self.assertTrue(mg4_model.running_in_model_library())
+            makeinc = open(pjoin(model_dir, 'makeinc.inc')).read()
+            for name in mg4_model.running_sources + ['alfas_functions.f']:
+                self.assertTrue(os.path.exists(pjoin(model_dir, name)), name)
+                self.assertIn(name.replace('.f', '.o'), makeinc)
+            # the Source makefile of both formats builds librunning too
+            self.assertTrue(os.path.isdir(pjoin(model_dir, '..', 'RUNNING')))
+            cuts = open(pjoin(model_dir, '..', 'cuts.inc')).read()
+            self.assertIn('common/model_setup_running/', cuts)
+            # MU_R and muprime are both read (block loop) with
+            # MP_LHA_get_real_silent: same (real) type
+            mp_coupl = open(pjoin(model_dir, 'mp_coupl.inc')).read()
+            self.assertRegex(mp_coupl, r'(?i)REAL\*16\s+MP__MU_R\b')
+
+    def test_madevent_keeps_librunning(self):
+        mg4_model, model_dir = self.export('madevent')
+        self.assertFalse(mg4_model.running_in_model_library())
+        makeinc = open(pjoin(model_dir, 'makeinc.inc')).read()
+        for name in mg4_model.running_sources:
+            self.assertNotIn(name.replace('.f', '.o'), makeinc)
+
+    def test_loop_f2py_running_setters(self):
+        """the reweighting sets up the running on every module, also on the
+        one of the virtual"""
+        loop_dir = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files', 'loop')
+        wrapper = open(pjoin(loop_dir, 'f2py_wrapper_subproccesses.f')).read().upper()
+        splitter = open(pjoin(loop_dir, 'all_matrix.f')).read().upper()
+        for name in ['FIXED_EXTRA_SCALE', 'MUE_OVER_REF', 'MUE_REF_FIXED',
+                     'MAXJETFLAVOR', 'ASMZ', 'NLOOP']:
+            self.assertIn('SUBROUTINE SET_%s(' % name, wrapper)
+            self.assertIn('SUBROUTINE F77_SET_%s(' % name, splitter)
+
+
+class DressedLeptonBeamTest(unittest.TestCase):
+    """Which initial states may take the dressed-lepton luminosity path.
+
+    get_pdf_lines writes a <part><beam>_components array next to the PDG2PDF
+    call of every initial state that has lepton densities, and contracts the
+    two beams with ee_comp_prod.  The test which decides that used to be a
+    list of single-flavor pdg pairs, which apply_flavor_grouping defeats: the
+    merged beams of 'e+ e- > mu+ mu-' expand to ([-11,-13],[11,13]).
+    """
+
+    def test_single_flavor_beams(self):
+        for pdgs in ([-11], [11], [-13], [13], [11, -11]):
+            self.assertTrue(export_v4.is_dressed_lepton_beam(pdgs), pdgs)
+
+    def test_merged_lepton_beams(self):
+        """what the model's merged particles expand to, in any order"""
+        self.assertTrue(export_v4.is_dressed_lepton_beam([-11, -13]))
+        self.assertTrue(export_v4.is_dressed_lepton_beam([13, 11]))
+
+    def test_beams_without_lepton_densities(self):
+        # no beam at all, quarks/gluons/photons, and the tau, which
+        # Source/PDF/eepdf.f has no beam type for
+        for pdgs in ([], [21], [1, 2, 21], [22], [-15], [11, 22], [11, 15]):
+            self.assertFalse(export_v4.is_dressed_lepton_beam(pdgs), pdgs)
