@@ -845,9 +845,12 @@ lepton_x_sample:
     - name: x_min
       type: [float]
       desc: "lower end of the momentum fraction"
-    - name: beta
+    - name: power
       type: [float, single]
-      desc: "exponent of the sampling, (1 - x)^(beta - 1)"
+      desc: "exponent p of the sampling, x distributed as (1 - x)^(-p)"
+    - name: jacobian_power
+      type: [float, single]
+      desc: "power of 1 - x in the Jacobian, p for a full density and 0 for a reduced one"
   outputs:
     - name: x
       type: [float]
@@ -858,7 +861,7 @@ lepton_x_sample:
     - name: det
       type: [float]
       desc: "Jacobian of the mapping"
-  desc: "Maps a random number to the momentum fraction of a lepton beam as generate_x_ee of genps_fks.f, 1 - x = (1 - x_min) r^(1 / (1 - beta)). See @ref FKSLeptonLuminosity."
+  desc: "Maps a random number to the momentum fraction of a lepton beam as generate_x_ee of genps_fks.f, 1 - x = (1 - x_min) r^(1 / (1 - p)), with the Jacobian a (1 - x_min)^(1 - p) (1 - x)^jacobian_power. See @ref LeptonLuminosity."
 
 lepton_x_sample_inverse:
   inputs:
@@ -868,9 +871,12 @@ lepton_x_sample_inverse:
     - name: x_min
       type: [float]
       desc: "lower end of the momentum fraction"
-    - name: beta
+    - name: power
       type: [float, single]
-      desc: "exponent of the sampling, (1 - x)^(beta - 1)"
+      desc: "exponent p of the sampling, x distributed as (1 - x)^(-p)"
+    - name: jacobian_power
+      type: [float, single]
+      desc: "power of 1 - x in the Jacobian of the forward map"
   outputs:
     - name: r
       type: [float]
@@ -878,7 +884,7 @@ lepton_x_sample_inverse:
     - name: det
       type: [float]
       desc: "Jacobian of the mapping"
-  desc: "Inverse of lepton_x_sample. See @ref FKSLeptonLuminosity."
+  desc: "Inverse of lepton_x_sample, with the reciprocal of its Jacobian. See @ref LeptonLuminosity."
 
 diff_cross_section:
   inputs:

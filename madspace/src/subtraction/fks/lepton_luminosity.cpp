@@ -56,8 +56,9 @@ Mapping::Result FKSLeptonLuminosity::build_forward_impl(
     const NamedVector<Value>& conditions
 ) const {
     auto tau = tau_min(fb, conditions);
-    auto [x1, omx1, det1] = fb.lepton_x_sample(inputs.at(0), tau, _beta);
-    auto [x2, omx2, det2] = fb.lepton_x_sample(inputs.at(1), fb.div(tau, x1), _beta);
+    auto [x1, omx1, det1] = fb.lepton_x_sample(inputs.at(0), tau, _beta, _beta);
+    auto [x2, omx2, det2] =
+        fb.lepton_x_sample(inputs.at(1), fb.div(tau, x1), _beta, _beta);
     auto s_hat = fb.mul(fb.mul(x1, x2), _s_lab);
     return {
         {{"x1", x1},
@@ -76,7 +77,8 @@ Mapping::Result FKSLeptonLuminosity::build_inverse_impl(
 ) const {
     auto tau = tau_min(fb, conditions);
     auto x1 = inputs.at(0);
-    auto [r1, det1] = fb.lepton_x_sample_inverse(inputs.at(3), tau, _beta);
-    auto [r2, det2] = fb.lepton_x_sample_inverse(inputs.at(4), fb.div(tau, x1), _beta);
+    auto [r1, det1] = fb.lepton_x_sample_inverse(inputs.at(3), tau, _beta, _beta);
+    auto [r2, det2] =
+        fb.lepton_x_sample_inverse(inputs.at(4), fb.div(tau, x1), _beta, _beta);
     return {{{"r1", r1}, {"r2", r2}}, fb.mul(det1, det2)};
 }
