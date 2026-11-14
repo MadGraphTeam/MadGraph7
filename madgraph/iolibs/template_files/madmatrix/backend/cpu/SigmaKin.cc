@@ -1165,7 +1165,7 @@ namespace madmatrix
 #ifdef _OPENMP
     // OMP multithreading #575 (NB: tested only with gcc11 so far)
 #define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, allihel, params, cNGoodHel, cGoodHel, nhelEval, npagV2, sampleSignedHelicity
-#define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, mgOnGpu::icolamp, mgOnGpu::channel2iconfig
+#define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, allrnddiagram, allDiagramIdsOut, mgOnGpu::icolamp, mgOnGpu::channel2iconfig
 #pragma omp parallel for default( none ) shared( _OMPLIST0 _OMPLIST1 )
 #undef _OMPLIST0
 #undef _OMPLIST1
@@ -1322,13 +1322,14 @@ namespace madmatrix
 #else
       const int vecsize = neppV;
 #endif
-      unsigned int channelIdVec[vecsize];
+      unsigned int channelIdVec[vecsize] = {};
       if( allChannelIds != nullptr )
       {
         for( int ieppV = 0; ieppV < vecsize; ++ieppV )
         {
           const int ievt = ievt00 + ieppV;
           channelIdVec[ieppV] = allChannelIds[ievt];
+          if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelIdVec[ieppV];
         }
       }
 
@@ -1338,6 +1339,8 @@ namespace madmatrix
         for( int ieppV = 0; ieppV < vecsize; ++ieppV )
         {
           const int ievt = ievt00 + ieppV;
+          // A diagram supplied by MLM takes precedence over a new random draw.
+          if( channelIdVec[ieppV] != 0 ) continue;
           fptype numerator_sum = 0., normalization = 0.;
           for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
           {
@@ -1357,7 +1360,7 @@ namespace madmatrix
               break;
             }
           }
-          allDiagramIdsOut[ievt] = channelIdVec[ieppV];
+          if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelIdVec[ieppV];
         }
       }
 
@@ -1401,6 +1404,8 @@ namespace madmatrix
 #endif
           }
           const int ievt = ievt00 + ieppV;
+          allselcol[ievt] = 0; // no color when the allowed jamp2 sum vanishes
+          if( targetamp[ncolor_flow - 1] <= 0 ) continue;
           for( int icolC = 0; icolC < ncolor_flow; icolC++ )
           {
             if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )

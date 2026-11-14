@@ -7,6 +7,7 @@
 #include "umami.h"
 
 #include "ProcessData.h"
+#include "ColorData.h" // diagram-to-color configuration map
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
 #include "SigmaKin.h" // sigmaKin_getGoodHel/setGoodHel
 #include "GpuRuntime.h"
@@ -100,6 +101,12 @@ namespace
   }
 
 
+  __device__ bool selectable_diagram( const int diagram )
+  {
+    return diagram >= 0 && static_cast<unsigned int>( diagram ) < mgOnGpu::nchannels &&
+      mgOnGpu::channel2iconfig[diagram] > 0;
+  }
+
   __global__ void copy_inputs(
     const double* momenta_in,
     const double* helicity_random_in,
@@ -108,6 +115,7 @@ namespace
     const double* alpha_s_in,
     const unsigned int* flavor_indices_in,
     const int* helicity_in,
+    const int* diagram_in,
     fptype_momenta* momenta,
     fptype* helicity_random,
     fptype* color_random,
@@ -115,6 +123,8 @@ namespace
     fptype* g_s,
     unsigned int* flavor_indices,
     int* helicity_given,
+    unsigned int* diagram_given,
+    int* invalid_diagram,
     std::size_t count,
     std::size_t stride,
     std::size_t offset )
@@ -133,6 +143,13 @@ namespace
     color_random[i_event] = color_random_in ? color_random_in[i_in + offset] : 0.5;
     g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_in + offset] ) : 1.2177157847767195;
     flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_in + offset] : 0;
+    if( diagram_in )
+    {
+      const int diagram = diagram_in[i_in + offset];
+      // Report a batch error on the host before evaluating or writing outputs.
+      if( diagram != -1 && !selectable_diagram( diagram ) ) atomicExch( invalid_diagram, 1 );
+      diagram_given[i_event] = ( selectable_diagram( diagram ) ? diagram + 1 : 0 );
+    }
     if( helicity_in )
     {
       // an index out of [0,ncomb) cannot be reported from here (umami_matrix_element returns
@@ -502,7 +519,7 @@ extern "C"
     const double* random_helicity_in = nullptr;
     const double* random_diagram_in = nullptr;
     const int* helicity_in = nullptr;
-    [[maybe_unused]] const int* diagram_in = nullptr; // TODO: unused
+    const int* diagram_in = nullptr;
 
     for( std::size_t i = 0; i < input_count; ++i )
     {
@@ -591,11 +608,11 @@ extern "C"
     fptype *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
     fptype *matrix_elements, *ghel_matrix_elements;
     fptype_amp *color_jamps, *ghel_jamps;
-    int *helicity_index, *color_index, *helicity_given;
-    unsigned int *flavor_indices, *diagram_index;
+    int *helicity_index, *color_index, *helicity_given, *invalid_diagram;
+    unsigned int *flavor_indices, *diagram_index, *diagram_given;
 
     std::size_t n_coup = madmatrix::Parameters_dependentCouplings::ndcoup;
-    std::array<std::pair<void**, std::size_t>, 17> ptrs_and_sizes = {{
+    std::array<std::pair<void**, std::size_t>, 19> ptrs_and_sizes = {{
         {reinterpret_cast<void**>(&momenta), rounded_count * ProcessData::npar * 4 * sizeof( fptype_momenta )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
@@ -605,6 +622,8 @@ extern "C"
         {reinterpret_cast<void**>(&diagram_random), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
+        {reinterpret_cast<void**>(&diagram_given), rounded_count * sizeof( unsigned int )},
+        {reinterpret_cast<void**>(&invalid_diagram), sizeof( int )},
         // The color flow is picked among ncolor_flow structures, which is more than
         // ncolor when the color sum runs on the DDM basis
         {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor_flow * sizeof( fptype_amp )},
@@ -620,9 +639,9 @@ extern "C"
         {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * mgOnGpu::nx2 * sizeof( fptype_amp )},
     }};
     std::size_t total_size = 0;
-    constexpr std::size_t MAX_SIZE = std::max( { sizeof( fptype ), sizeof( fptype_momenta ), sizeof( fptype ), sizeof( int ) } );
+    constexpr std::size_t ALIGNMENT = std::max( { sizeof( double ), sizeof( fptype ), sizeof( fptype_momenta ), sizeof( int ) } );
     for (auto [ptr, size] : ptrs_and_sizes) {
-        std::size_t aligned_size = (size + MAX_SIZE - 1) / MAX_SIZE * MAX_SIZE;
+        std::size_t aligned_size = (size + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT;
         total_size += aligned_size;
     }
     uint8_t* buffer;
@@ -630,11 +649,12 @@ extern "C"
     gpuMallocAsync( &buffer, total_size, gpu_stream );
     std::size_t buf_offset = 0;
     for (auto [ptr, size] : ptrs_and_sizes) {
-        std::size_t aligned_size = (size + 7) / 8 * 8;
+        std::size_t aligned_size = (size + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT;
         *ptr = buffer + buf_offset;
         buf_offset += aligned_size;
     }
 
+    if( diagram_in ) gpuMemsetAsync( invalid_diagram, 0, sizeof( int ), gpu_stream );
     copy_inputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
       momenta_in,
       random_helicity_in,
@@ -643,6 +663,7 @@ extern "C"
       alpha_s_in,
       flavor_indices_in,
       helicity_in,
+      diagram_in,
       momenta,
       helicity_random,
       color_random,
@@ -650,9 +671,22 @@ extern "C"
       g_s,
       flavor_indices,
       helicity_given,
+      diagram_given,
+      invalid_diagram,
       count,
       stride,
       offset );
+    if( diagram_in )
+    {
+      int invalid = 0;
+      gpuStreamSynchronize( gpu_stream );
+      gpuMemcpy( &invalid, invalid_diagram, sizeof( int ), gpuMemcpyDeviceToHost );
+      if( invalid )
+      {
+        gpuFreeAsync( buffer, gpu_stream );
+        return UMAMI_ERROR;
+      }
+    }
     computeDependentCouplings<<<n_blocks, n_threads, 0, gpu_stream>>>( instance->deviceParams.arg( params ), g_s, couplings );
     checkGpu( gpuPeekAtLastError() );
 
@@ -677,7 +711,7 @@ extern "C"
       flavor_indices,
       helicity_random,
       color_random,
-      nullptr,
+      diagram_in ? diagram_given : nullptr,
       diagram_random,
       matrix_elements,
       helicity_index,

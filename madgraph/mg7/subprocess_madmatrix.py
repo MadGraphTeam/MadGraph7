@@ -1145,6 +1145,8 @@ class MadgraphSubprocess:
         the step_matrix_elements of the second pass of a [surrogate]."""
         matrix_elements = []
         self.step_matrix_elements = []
+        per_diagram_mlm = (self.process.mlm_clustering and
+                           self.process.run_card["beam"]["clustering_history"] != "all_diagrams")
         for me_index, matrix_element in enumerate(self.matrix_elements):
             if self.surrogates:
                 # the surrogate in the integrand, the full matrix element in
@@ -1165,7 +1167,9 @@ class MadgraphSubprocess:
                     [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
                      ms.MatrixElement.flavor_in, ms.MatrixElement.random_color_in,
                      ms.MatrixElement.random_helicity_in,
-                     ms.MatrixElement.random_diagram_in],
+                     ms.MatrixElement.random_diagram_in]
+                    + ([ms.MatrixElement.diagram_in]
+                       if per_diagram_mlm else []),
                     [ms.MatrixElement.matrix_element_out,
                      ms.MatrixElement.color_index_out,
                      ms.MatrixElement.helicity_index_out,
@@ -1177,7 +1181,9 @@ class MadgraphSubprocess:
             elif matrix_element:
                 mat = ms.MatrixElement(
                     matrix_element,
-                    ms.Integrand.matrix_element_inputs,
+                    list(ms.Integrand.matrix_element_inputs)
+                    + ([ms.MatrixElement.diagram_in]
+                       if per_diagram_mlm else []),
                     ms.Integrand.matrix_element_outputs,
                     True,
                     self.process.me_frame,

@@ -3780,6 +3780,26 @@ sample_discrete_probs:
       desc: "inverse probability of the sampled index"
   desc: "Samples a discrete choice from a probability vector (normalized internally). Building block of @ref DiscreteFlow."
 
+sample_discrete_probs_reuse:
+  inputs:
+    - name: r
+      type: [float]
+      desc: "fallback random number in [0, 1]"
+    - name: probs
+      type: [float, n]
+      desc: "masked probabilities, proportional to the original draw's weights on the eligible set"
+    - name: preferred
+      type: [int]
+      desc: "existing draw to reuse if it has positive masked probability"
+  outputs:
+    - name: output
+      type: [int]
+      desc: "existing draw if eligible, otherwise a new draw from probs"
+    - name: replaced
+      type: [int]
+      desc: "0 if the original draw was reused, 1 otherwise"
+  desc: "Reuses a discrete draw conditioned on an eligible subset; resamples only rejected draws. The original draw must have probabilities proportional to probs on that subset."
+
 sample_discrete_probs_inverse:
   inputs:
     - name: index

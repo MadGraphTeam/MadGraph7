@@ -641,10 +641,10 @@ namespace madmatrix
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
     // SCALAR channelId for the current event (CUDA)
-    unsigned int channelId = gpu_channelId( allChannelIds );
+    unsigned int channelId = allChannelIds ? allChannelIds[ievt] : 0;
 
     // Event-by-event random choice of channel
-    if( allrnddiagram != nullptr )
+    if( allrnddiagram != nullptr && channelId == 0 )
     {
       fptype numerator_sum = 0., normalization = 0.;
       for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
@@ -663,8 +663,8 @@ namespace madmatrix
           break;
         }
       }
-      allDiagramIdsOut[ievt] = channelId;
     }
+    if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelId;
 
     if( channelId != 0 ) // no event-by-event choice of color if channelId == 0 (fix FPE #783)
     {
@@ -704,6 +704,7 @@ namespace madmatrix
         if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] += jamp2_sv[icolC];
       }
       allselcol[ievt] = 0; // no color unless one is chosen below (vanishing or NaN jamp2 sum)
+      if( targetamp[ncolor_flow - 1] <= 0 ) return;
       for( int icolC = 0; icolC < ncolor_flow; icolC++ )
       {
         if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
