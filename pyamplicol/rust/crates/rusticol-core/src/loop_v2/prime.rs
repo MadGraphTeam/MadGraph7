@@ -188,6 +188,11 @@ by_reference!(
 );
 
 impl FloatLike for Fp {
+    /// A prime-field element is its own conjugate.
+    fn conj(&self) -> Self {
+        *self
+    }
+
     fn set_from(&mut self, other: &Self) {
         *self = *other;
     }
