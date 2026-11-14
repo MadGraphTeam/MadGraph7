@@ -563,16 +563,27 @@ EELuminosity::EELuminosity(
     const std::vector<double>& offsets2,
     double alpha_em,
     double lepton_mass,
-    const std::string& prefix
+    const std::string& prefix,
+    bool beam_scales
 ) :
     FunctionGenerator(
         "EELuminosity",
-        {{"x1", batch_float},
-         {"omx1", batch_float},
-         {"x2", batch_float},
-         {"omx2", batch_float},
-         {"q", batch_float},
-         {"r", batch_float}},
+        [&] {
+            NamedVector<Type> args{
+                {"x1", batch_float},
+                {"omx1", batch_float},
+                {"x2", batch_float},
+                {"omx2", batch_float},
+            };
+            if (beam_scales) {
+                args.push_back("q1", batch_float);
+                args.push_back("q2", batch_float);
+            } else {
+                args.push_back("q", batch_float);
+            }
+            args.push_back("r", batch_float);
+            return args;
+        }(),
         {{"luminosity", batch_float}, {"component_index", batch_int}}
     ),
     _density1(grid, pids1, false, prefix),
@@ -580,7 +591,8 @@ EELuminosity::EELuminosity(
     _offsets1(offsets1),
     _offsets2(offsets2),
     _alpha_em(alpha_em),
-    _lepton_mass(lepton_mass) {
+    _lepton_mass(lepton_mass),
+    _beam_scales(beam_scales) {
     if (pids1.size() != pids2.size()) {
         throw std::invalid_argument(std::format(
             "EELuminosity: {} components on beam 1 but {} on beam 2; the two "
@@ -607,28 +619,29 @@ NamedVector<Value> EELuminosity::build_function_impl(
 ) const {
     auto x1 = args.at(0), omx1 = args.at(1);
     auto x2 = args.at(2), omx2 = args.at(3);
-    auto q = args.at(4), r = args.at(5);
-    auto batch = fb.batch_size({q});
+    auto q1 = args.at(4), q2 = _beam_scales ? args.at(5) : q1;
+    auto r = args.at(_beam_scales ? 6 : 5);
+    auto batch = fb.batch_size({q1});
 
     // one interpolation per beam for all components, then pick them apart;
     // calling the interpolation once per component would redo its search
-    auto reduced1 = _density1.build_function(fb, ValueVec{x1, q}).at(0);
-    auto reduced2 = _density2.build_function(fb, ValueVec{x2, q}).at(0);
+    auto reduced1 = _density1.build_function(fb, ValueVec{x1, q1}).at(0);
+    auto reduced2 = _density2.build_function(fb, ValueVec{x2, q2}).at(0);
 
-    auto log_q = fb.log(q);
     auto two_a = fb.full({2. * _alpha_em / M_PI, batch});
-    auto beta_part = fb.mul(two_a, log_q);
+    auto beta_part1 = fb.mul(two_a, fb.log(q1));
+    auto beta_part2 = _beam_scales ? fb.mul(two_a, fb.log(q2)) : beta_part1;
 
     std::size_t n_comp = _offsets1.size();
     ValueVec products, weights;
     for (std::size_t n = 0; n < n_comp; ++n) {
         auto index = fb.full({static_cast<me_int_t>(n), batch});
         auto exp1 = fb.add(
-            beta_part,
+            beta_part1,
             fb.full({exponent_constant(_offsets1[n], _alpha_em, _lepton_mass), batch})
         );
         auto exp2 = fb.add(
-            beta_part,
+            beta_part2,
             fb.full({exponent_constant(_offsets2[n], _alpha_em, _lepton_mass), batch})
         );
         auto f1 = fb.mul(fb.gather(index, reduced1), fb.pow(omx1, exp1));

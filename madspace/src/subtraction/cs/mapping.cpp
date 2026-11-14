@@ -20,6 +20,13 @@ bool fixed_fractions(const PhaseSpaceMapping& born) {
     return born.leptonic() || born.is_decay();
 }
 
+// whether a Born mapping samples the momentum fractions of dressed leptons,
+// with 1 - x among its outputs
+bool dressed(const PhaseSpaceMapping& born) {
+    const auto& names = born.output_types().keys();
+    return std::find(names.begin(), names.end(), "omx1") != names.end();
+}
+
 CSMapping::Family family_of(
     const PhaseSpaceMapping& born,
     std::size_t emitted,
@@ -112,11 +119,16 @@ NamedVector<Type> cs_input_types(const PhaseSpaceMapping& born) {
 }
 
 NamedVector<Type> cs_output_types(const PhaseSpaceMapping& born) {
-    return {
+    NamedVector<Type> types{
         {"momenta", batch_four_vec_array(born.particle_count() + 1)},
         {"x1", batch_float},
         {"x2", batch_float},
     };
+    if (dressed(born)) {
+        types.push_back("omx1", batch_float);
+        types.push_back("omx2", batch_float);
+    }
+    return types;
 }
 
 } // namespace
@@ -142,6 +154,12 @@ CSMapping::CSMapping(
     _cutoff(cutoff) {
     if (!(cutoff >= 0. && cutoff < 1.)) {
         throw std::invalid_argument("CSMapping: the cutoff has to be in [0, 1)");
+    }
+    if (dressed(born) && _family != final_final) {
+        throw std::invalid_argument(
+            "CSMapping: dressed leptons take emitters and spectators in the final "
+            "state"
+        );
     }
     // the masses of emitter and spectator, the same in every permutation of
     // the Born mapping, and massless incoming partons (but a decaying one)
@@ -255,10 +273,12 @@ Mapping::Result CSMapping::build_forward_impl(
     if (boosted) {
         momenta = fb.boost_beam_light_cone(momenta, Value(_real_masses), plus, minus);
     }
-    return {
-        {{"momenta", momenta}, {"x1", x.at(0)}, {"x2", x.at(1)}},
-        fb.mul(born.at("det"), det)
-    };
+    NamedVector<Value> outputs{{"momenta", momenta}, {"x1", x.at(0)}, {"x2", x.at(1)}};
+    if (dressed(_born)) {
+        outputs.push_back("omx1", born.at("omx1"));
+        outputs.push_back("omx2", born.at("omx2"));
+    }
+    return {outputs, fb.mul(born.at("det"), det)};
 }
 
 NamedVector<Value> CSMapping::build_projection(

@@ -879,8 +879,17 @@ def fks_born_flavor_indices(configurations):
     return indices
 
 
+# the leptons of the beams of dressed leptons by lpp of the run card
+LEPTON_BEAMS = {3: 11, -3: -11, 4: 13, -4: -13}
+
+
 def fks_luminosities(
-    configurations, pdf_grid=None, pdf_grid2=None, beams=(1, 1), sum_flavors=False
+    configurations,
+    pdf_grid=None,
+    pdf_grid2=None,
+    beams=(1, 1),
+    sum_flavors=False,
+    lepton_luminosity=None,
 ):
     """The FKSLuminosity of the real emission (per FKS configuration, over the
     flavors of its real matrix element) and that of the n-body part, as the
@@ -899,34 +908,50 @@ def fks_luminosities(
         pdf_grid: the PdfGrid of the hadron beams, None for none.
         pdf_grid2: the PdfGrid of the second beam where it differs.
         beams: lpp1 and lpp2 of the run card, 1 for protons, -1 for
-            antiprotons and 0 for leptons without densities (both or none,
-            as MadFKS has no DIS at NLO), ignored for a decay.
+            antiprotons, 0 for leptons without densities and 3, -3, 4, -4 for
+            dressed electrons, positrons, muons and antimuons (both of one
+            kind, as MadFKS has no DIS at NLO), ignored for a decay.
         sum_flavors: whether the luminosities sum over the flavors, without a
             flavor index.
+        lepton_luminosity: for dressed leptons, the EELuminosity of their
+            densities, with the scales of the beams (beam_scales) and the
+            full densities (see FKSLuminosity).
 
     Raises:
         ValueError: for a fks_configurations.json of an older exporter, for
             other beams or a hadron with a lepton, for hadrons without a grid
-            or a grid without hadrons, as fks_born_flavor_indices, or if a Born flavor does
-            not underlie any real flavor of a configuration.
+            or a grid without hadrons, for dressed leptons without their
+            luminosity or a luminosity without them, as
+            fks_born_flavor_indices, or if a Born flavor does not underlie
+            any real flavor of a configuration.
     """
     _check_flavors(configurations)
     nincoming = int(configurations.get("nincoming", 2))
     beams = (0, 0) if nincoming == 1 else tuple(int(beam) for beam in beams)
-    if any(beam not in (-1, 0, 1) for beam in beams):
+    if any(beam not in (-1, 0, 1, *LEPTON_BEAMS) for beam in beams):
         raise ValueError(
             f"fks_luminosities: beams {beams} are not protons, antiprotons or "
             "leptons"
         )
-    densities = [abs(beam) == 1 for beam in beams]
-    if densities[0] != densities[1]:
+    kinds = [
+        "hadron" if abs(beam) == 1 else "dressed" if beam else "lepton"
+        for beam in beams
+    ]
+    if kinds[0] != kinds[1]:
         raise ValueError(
             f"fks_luminosities: beams {beams} mix a hadron and a lepton, DIS has no "
             "NLO in MadFKS"
         )
+    densities = [kind == "hadron" for kind in kinds]
     if any(densities) != (pdf_grid is not None):
         raise ValueError(
             "fks_luminosities: hadron beams need a PdfGrid and lepton beams none"
+        )
+    dressed = kinds[0] == "dressed"
+    if dressed != (lepton_luminosity is not None):
+        raise ValueError(
+            "fks_luminosities: dressed leptons need their EELuminosity and other "
+            "beams none"
         )
     options = dict(
         pdf_grid=pdf_grid,
@@ -934,6 +959,11 @@ def fks_luminosities(
         densities=densities,
         sum_flavors=sum_flavors,
     )
+    if dressed:
+        options.update(
+            lepton_luminosity=lepton_luminosity,
+            lepton_pdgs=[LEPTON_BEAMS[beam] for beam in beams],
+        )
     reals = [
         configurations["real_flavors"][c["real_me"] - 1]
         for c in configurations["configurations"]
@@ -968,6 +998,7 @@ def fks_cross_section(
     pdf_grid2=None,
     beams=(1, 1),
     sum_flavors=False,
+    lepton_luminosity=None,
     **parameters,
 ):
     """The FKSCrossSection of the FKS configurations of a Born, the FKS
@@ -985,9 +1016,10 @@ def fks_cross_section(
         scales: the scales by their names in the run card (see nlo_scale), or
             None for the scales, couplings and luminosities as arguments. With
             them, the integrand takes them itself from running_coupling,
-            pdf_grid, pdf_grid2, beams and sum_flavors (see
-            fks_luminosities), with flavor_index among its arguments unless
-            it sums over the flavors.
+            pdf_grid, pdf_grid2, beams, sum_flavors and lepton_luminosity
+            (see fks_luminosities), with flavor_index among its arguments
+            unless it sums over the flavors, and with dressed leptons
+            one_minus_x1 and one_minus_x2 of FKSKinematics.
         running_coupling: the RunningCoupling of alpha_s, with scales.
         parameters: those of fks_subtraction, of which xicut, delta_o and n_f
             also go to the n-body part.
@@ -1010,7 +1042,7 @@ def fks_cross_section(
     if running_coupling is None:
         raise ValueError("fks_cross_section: the scales need a running_coupling")
     luminosity, born_luminosity = fks_luminosities(
-        configurations, pdf_grid, pdf_grid2, beams, sum_flavors
+        configurations, pdf_grid, pdf_grid2, beams, sum_flavors, lepton_luminosity
     )
     return FKSCrossSection(
         *arguments,

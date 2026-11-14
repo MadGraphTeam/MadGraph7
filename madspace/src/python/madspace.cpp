@@ -4023,7 +4023,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<double>&,
                 double,
                 double,
-                const std::string&>(),
+                const std::string&,
+                bool>(),
             py::arg("grid"),
             py::arg("pids1"),
             py::arg("pids2"),
@@ -4032,7 +4033,13 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("alpha_em") = 0.007562397,
             py::arg("lepton_mass") = 0.511e-3,
             py::arg("prefix") = "",
+            py::arg("beam_scales") = false,
             pydoc::doc("EELuminosity::EELuminosity")
+        )
+        .def_property_readonly(
+            "beam_scales",
+            &EELuminosity::beam_scales,
+            pydoc::doc("EELuminosity::beam_scales")
         );
 
     py::classh<AlphaSGrid>(m, "AlphaSGrid", pydoc::doc("AlphaSGrid"))
@@ -4095,7 +4102,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::string&,
                 const std::array<bool, 2>&,
                 bool,
-                const nested_vector2<double>&>(),
+                const nested_vector2<double>&,
+                const std::optional<EELuminosity>&,
+                const std::array<int, 2>&>(),
             py::arg("flavors"),
             py::arg("pdf_grid") = std::nullopt,
             py::arg("pdf_grid2") = std::nullopt,
@@ -4103,6 +4112,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("densities") = std::array<bool, 2>{true, true},
             py::arg("sum_flavors") = false,
             py::arg("factors") = nested_vector2<double>{},
+            py::arg("lepton_luminosity") = std::nullopt,
+            py::arg("lepton_pdgs") = std::array<int, 2>{0, 0},
             pydoc::doc("FKSLuminosity::FKSLuminosity")
         )
         .def(
@@ -4110,6 +4121,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             &FKSLuminosity::sum_flavors,
             pydoc::doc("FKSLuminosity::sum_flavors")
         )
+        .def("lepton", &FKSLuminosity::lepton, pydoc::doc("FKSLuminosity::lepton"))
         .def(
             "configuration_count",
             &FKSLuminosity::configuration_count,

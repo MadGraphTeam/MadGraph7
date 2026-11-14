@@ -43,6 +43,8 @@ FIXED = dict(
     muf_ref_fixed=1000.0,
     ptj=0,
 )
+# the lepton densities of MadFKS for e+ on the first beam and e- on the second
+DRESSED = dict(lpp1=-3, lpp2=3, pdlabel="isronlyll")
 SETUPS = {
     "epem_jj_fixed": ("epem_jj", FIXED),
     "epem_jj": ("epem_jj", {}),
@@ -53,6 +55,15 @@ SETUPS = {
     "epem_jjj": ("epem_jjj", {}),
     "pp_epemj": ("pp_epemj", {}),
     "t_bw_mb0": ("t_bw_mb0", {}),
+    # dressed electrons and positrons, ISR alone at the Z pole (at the fixed
+    # scale of mur_ref_fixed) and at 500 GeV, and with the beamstrahlung of
+    # the ILC
+    "epem_jj_isr": (
+        "epem_jj",
+        dict(DRESSED, ebeam1=45.6, ebeam2=45.6, dynamical_scale_choice=-2),
+    ),
+    "epem_ttx_isr": ("epem_ttx", DRESSED),
+    "epem_ttx_ilc": ("epem_ttx", dict(DRESSED, pdlabel="ilc500ll")),
 }
 # outputs of the cross sections alone, without an integrand reference: name
 # -> (process, run_card values, model). p p > e+ e- j has a jet that radiates
@@ -65,6 +76,7 @@ OUTPUTS = {
         None,
     ),
     "t_bw_mb0": ("t > b w+ QED=1 [QCD]", {}, "loop_sm-no_b_mass"),
+    "epem_ttx": ("e+ e- > t t~ [QCD]", dict(ebeam1=250, ebeam2=250), None),
 }
 # the relative accuracy of the runs (req_acc_FO), per setup where it differs
 ACCURACY = 2e-4

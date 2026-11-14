@@ -22,9 +22,13 @@ namespace madspace {
  * by default), without the conversion to pb (which @ref FKSWeights applies).
  * A flavor the grid does not have (a lepton from a proton) has no density, as
  * pdg2pdf.f, and a beam without densities (a lepton, the decaying particle)
- * counts one. The scales are kept within the grid, where the densities freeze,
- * as the built-in PDFs of MadFKS. The flavors and factors may differ per
- * configuration, so that a batch can mix configurations and flavors.
+ * counts one. Beams of dressed leptons take in place of the two densities the
+ * luminosity @f$\sum_n f^{(1)}_n(x_1, \mu_{F,1}) f^{(2)}_n(x_2, \mu_{F,2})@f$
+ * of an @ref EELuminosity (ee_comp_prod of pdg2pdf.f) for the flavor of the
+ * two beam leptons and none for the others (compute_eepdf has no photon). The scales
+ * are kept within the grid, where the densities freeze, as the built-in PDFs of MadFKS.
+ * The flavors and factors may differ per configuration, so that a batch can mix
+ * configurations and flavors.
  *
  * The real emission and its counter-events take the flavors of the real
  * matrix element of their configuration. With a flavor index, the n-body
@@ -38,6 +42,8 @@ namespace madspace {
  * **Arguments**
  * - `x1`, `x2` – `float`, shape `(batch,)` – the momentum fractions of the
  *   kinematics.
+ * - `one_minus_x1`, `one_minus_x2` – `float`, shape `(batch,)` – 1 - x1 and
+ *   1 - x2, with dressed leptons only.
  * - `fact_scale1`, `fact_scale2` – `float`, shape `(batch,)` – the
  *   factorization scales of the two beams at the kinematics.
  * - `flavor_index` – `int`, shape `(batch,)` – the flavor of the event among
@@ -71,10 +77,19 @@ public:
      *                     configuration, without a flavor index.
      * @param factors      For each configuration, the factor of each flavor,
      *                     one if empty.
+     * @param lepton_luminosity The luminosity of beams of dressed leptons, with
+     *                     the scales of the beams (`beam_scales`) and the
+     *                     full densities, those that the Jacobian of the
+     *                     @ref LeptonLuminosity without `reduced_density`
+     *                     takes. Not with a grid.
+     * @param lepton_pdgs  The PDG codes of the leptons of the two beams, the
+     *                     flavor of @p lepton_luminosity.
      * @throws std::invalid_argument without configurations, with a
      *         configuration without flavors or a flavor that is not a pair,
      *         with factors that do not match the flavors, with @p pdf_grid2
-     *         but no @p pdf_grid, or with a grid and no beam with densities.
+     *         but no @p pdf_grid, with a grid and no beam with densities, or
+     *         with @p lepton_luminosity and a grid or without the scales of
+     *         the beams.
      */
     FKSLuminosity(
         const nested_vector3<me_int_t>& flavors,
@@ -83,7 +98,9 @@ public:
         const std::string& pdf2_prefix = "beam2",
         const std::array<bool, 2>& densities = {true, true},
         bool sum_flavors = false,
-        const nested_vector2<double>& factors = {}
+        const nested_vector2<double>& factors = {},
+        const std::optional<EELuminosity>& lepton_luminosity = std::nullopt,
+        const std::array<int, 2>& lepton_pdgs = {0, 0}
     );
     /// Number of FKS configurations.
     std::size_t configuration_count() const { return _positions.size(); }
@@ -91,6 +108,8 @@ public:
     bool has_pdf() const { return _pdfs.at(0).has_value() || _pdfs.at(1).has_value(); }
     /// Whether the luminosity sums over the flavors.
     bool sum_flavors() const { return _sum_flavors; }
+    /// Whether the beams are dressed leptons.
+    bool lepton() const { return _lepton_luminosity.has_value(); }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -102,6 +121,7 @@ private:
     nested_vector2<double> _factors;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
     std::array<double, 2> _q_min, _q_max;
+    std::optional<EELuminosity> _lepton_luminosity;
 };
 
 } // namespace madspace

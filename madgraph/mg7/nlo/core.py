@@ -397,6 +397,24 @@ def read_run_card(output, values=None):
     return run_card
 
 
+# the leptons of the beams of dressed electrons and positrons by lpp of the
+# run card, the power of the sampling of their momentum fractions, get_ee_expo
+# of the densities of MadFKS (pdg2pdf.f), and the alpha_s(m_Z) that pdfwrap.f
+# of MadFKS sets for every set of lepton densities
+DRESSED_LEPTONS = {3: 11, -3: -11}
+LEPTON_POWER = 0.975
+DRESSED_ALPHA_S = 0.118
+
+
+def beam_kind(run_card):
+    """What the beams of the run card are: "hadrons" (protons and
+    antiprotons, lpp 1 and -1), "dressed" (electrons and positrons with the
+    densities of pdlabel, lpp 3 and -3) or "leptons" (without densities, lpp
+    0)."""
+    beam = abs(integer(run_card["lpp1"]))
+    return {1: "hadrons", 3: "dressed"}.get(beam, "leptons")
+
+
 def check_run_card(run_card):
     """Raises NotImplementedError for the settings the driver does not
     cover."""
@@ -405,22 +423,94 @@ def check_run_card(run_card):
     if integer(run_card["dynamical_scale_choice"]) in (0, 10):
         raise NotImplementedError("nlo.core: no user scales")
     beams = (integer(run_card["lpp1"]), integer(run_card["lpp2"]))
-    if any(abs(beam) > 1 for beam in beams):
+    hadrons = [abs(beam) == 1 for beam in beams]
+    dressed = [beam in DRESSED_LEPTONS for beam in beams]
+    if not (beams == (0, 0) or all(hadrons) or all(dressed)):
         raise NotImplementedError(f"nlo.core: beams {beams}")
+    if all(dressed) and str(run_card["pdlabel"]).lower().startswith("emela"):
+        raise NotImplementedError("nlo.core: no densities of eMELA")
     if integer(run_card.get("pdfscheme", 0)) != 0:
         raise NotImplementedError("nlo.core: only the MSbar PDF scheme")
+
+
+class DressedLeptons:
+    """The densities of dressed electrons and positrons of the beams (lpp 3
+    and -3), those of the set pdlabel of lep_densities in the Source
+    directory source, tabulated for madspace in directory (see
+    madgraph.mg7.lepton_density) and uploaded to the context, with pdgs the
+    leptons of the beams. full and reduced are their luminosity sum_n
+    f1_n(x1) f2_n(x2) (ee_comp_prod of pdg2pdf.f) at the scale of each beam:
+    full that of the densities themselves, reduced that of the densities
+    times (1 - x1)^p (1 - x2)^p of the power p = LEPTON_POWER of the sampling
+    of the momentum fractions."""
+
+    prefix = "ee"
+
+    def __init__(self, source, directory, run_card, context):
+        ms = madspace()
+        from madgraph import MG5DIR
+        from madgraph.mg7.lepton_density import LeptonDensity
+
+        self.pdgs = [DRESSED_LEPTONS[integer(run_card[f"lpp{k}"])] for k in (1, 2)]
+        energy = 2 * math.sqrt(real(run_card["ebeam1"]) * real(run_card["ebeam2"]))
+        density = LeptonDensity(
+            str(run_card["pdlabel"]).lower(),
+            source,
+            MG5DIR,
+            ms,
+            context,
+            energy,
+            beam_pdgs=self.pdgs,
+            prefix=self.prefix,
+            cache_dir=directory,
+        )
+        self.grid, self.meta = density.grid, density.meta
+        # the ids of the components of each beam in the grid
+        self.pids = [density._pids(pdg) for pdg in self.pdgs]
+        self.components = density.components
+        self.full = self.luminosity(0.0)
+        self.reduced = self.luminosity(LEPTON_POWER)
+
+    def offsets(self, power):
+        """p - kappa0 of each component of each beam for the power p."""
+        meta = self.meta
+        return [
+            [
+                power - (kappa["c_b"] * meta["b_exp"] + kappa["c_1"])
+                for kappa in (meta["kappa"][f"{n}_{pdg}"] for n in self.components)
+            ]
+            for pdg in self.pdgs
+        ]
+
+    def luminosity(self, power, beam_scales=True):
+        """The EELuminosity of the densities times (1 - x)^power on each
+        beam, with the scale of each beam or one for both."""
+        offsets = self.offsets(power)
+        return madspace().EELuminosity(
+            self.grid,
+            self.pids[0],
+            self.pids[1],
+            offsets[0],
+            offsets[1],
+            alpha_em=self.meta["alphaem"],
+            lepton_mass=self.meta["me"],
+            prefix=self.prefix,
+            beam_scales=beam_scales,
+        )
 
 
 class Couplings:
     """The PdfGrid and AlphaSGrid of the run, uploaded to the context: those
     of the LHAPDF set of lhaid, or the nodes of the grid of nn23nlo with the
     2-loop running of alpha_s. Lepton beams take alpha_s(m_Z) of the param
-    card."""
+    card, dressed ones that of pdfwrap.f of MadFKS (DRESSED_ALPHA_S) and the
+    densities of their leptons (leptons, a DressedLeptons, None for the other
+    beams)."""
 
     def __init__(self, directory, run_card, param_card, context):
         ms = madspace()
         os.makedirs(directory, exist_ok=True)
-        hadrons = integer(run_card["lpp1"]) != 0
+        hadrons = beam_kind(run_card) == "hadrons"
         self.pdf = None
         pdlabel = str(run_card["pdlabel"]).lower()
         if hadrons and pdlabel == "lhapdf":
@@ -433,7 +523,13 @@ class Couplings:
             if hadrons and pdlabel != "nn23nlo":
                 raise NotImplementedError(f"nlo.core: pdlabel {pdlabel}")
             self.asmz = (
-                grids.NNPDF_ALPHA_S if hadrons else float(param_card["sminputs"]["3"])
+                grids.NNPDF_ALPHA_S
+                if hadrons
+                else (
+                    DRESSED_ALPHA_S
+                    if beam_kind(run_card) == "dressed"
+                    else float(param_card["sminputs"]["3"])
+                )
             )
             path = os.path.join(directory, f"alpha_s_{self.asmz}.info")
             grids.write_alpha_s_grid(path, self.asmz)
@@ -443,10 +539,10 @@ class Couplings:
                 if not os.path.isfile(grid):
                     grids.write_lhapdf_grid(grid)
                 self.pdf = ms.PdfGrid(grid)
+        grid_names = ("pdf_logx", "pdf_logq2", "pdf_coefficients")
         for name in (
-            "pdf_logx",
-            "pdf_logq2",
-            "pdf_coefficients",
+            *grid_names,
+            *(f"{DressedLeptons.prefix}.{name}" for name in grid_names),
             "alpha_s_logq2",
             "alpha_s_coefficients",
         ):
@@ -456,6 +552,12 @@ class Couplings:
             self.pdf.initialize_globals(context)
         self.alpha_s.initialize_globals(context)
         self.running = ms.RunningCoupling(self.alpha_s)
+        self.leptons = None
+        if beam_kind(run_card) == "dressed":
+            output = os.path.dirname(os.path.dirname(os.path.realpath(directory)))
+            self.leptons = DressedLeptons(
+                os.path.join(output, "Source"), directory, run_card, context
+            )
 
 
 class Channel:

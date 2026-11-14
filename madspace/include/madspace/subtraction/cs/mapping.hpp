@@ -64,6 +64,9 @@ namespace madspace {
  * Born, so the Born mapping must have none, except a floor on
  * @f$\sqrt{\hat s}@f$ when emitter and spectator are in the final state. An
  * incoming emitter or spectator needs the momentum fractions of hadron beams.
+ * A Born mapping of dressed leptons (`lepton_sampling_power`) takes emitters
+ * and spectators in the final state, since the leptons radiate no QCD, and
+ * the real emission keeps its 1 - x of the beams.
  *
  * `batch` is the leading batch dimension and `n` the number of particles of
  * the Born, incoming included.
@@ -83,6 +86,8 @@ namespace madspace {
  *   emission in the lab frame, in the order of the real process.
  * - `x1`, `x2` – `float`, shape `(batch,)` – momentum fractions of the real
  *   emission (1 for every point if the Born mapping is leptonic).
+ * - `omx1`, `omx2` – `float`, shape `(batch,)` – 1 - x1 and 1 - x2, with a
+ *   Born mapping of dressed leptons only.
  *
  * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
@@ -223,7 +228,7 @@ private:
  *
  * **Arguments**
  * - `momenta`, `x1`, `x2` – the outputs of the mappings, the real emission in
- *   the lab frame.
+ *   the lab frame, with dressed leptons also `omx1` and `omx2`.
  * - the conditions of the mappings (`mirror_index`).
  *
  * **Returns**

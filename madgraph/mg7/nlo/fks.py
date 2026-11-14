@@ -39,9 +39,14 @@ with [histograms] and [multiparticles] as the run_card.toml of MG7, which
 can be one) or, by default, those MG7 writes for the final state (the pt
 and eta of each object, the masses of pairs, sqrt_s).
 
+Beams of dressed electrons and positrons (lpp 3 and -3) take the densities
+of pdlabel among the lep_densities of the output, with their momentum
+fractions sampled as generate_x_ee of genps_fks.f and the leptonic Born at
+the energy they leave.
+
 Not covered yet: the resonance-local recoil of a final-state emitter inside
-a resonance of the Born, PDF schemes other than MSbar, lepton beams with
-densities, user scales, FxFx and the photon cuts.
+a resonance of the Born, PDF schemes other than MSbar, densities of eMELA,
+photon beams, user scales, FxFx and the photon cuts.
 """
 
 import argparse
@@ -53,6 +58,7 @@ import numpy as np
 
 from madgraph.mg7.nlo.provider import FortranProvider, fks_blocks
 from madgraph.mg7.nlo.core import (  # noqa: F401 (the names the tests import)
+    LEPTON_POWER,
     NLORun,
     Runtime,
     born_cuts,
@@ -106,13 +112,16 @@ class SubprocessIntegrand:
         masses = [
             float(param_card["mass"].get(str(abs(pdg)), 0.0)) for pdg in born_pdgs
         ]
+        # dressed leptons have a leptonic Born at the energy their momentum
+        # fractions leave, which the luminosity of FKSKinematics gives
+        self.leptons = couplings.leptons if self.incoming == 2 else None
         if self.incoming == 1:
             energy, leptonic = masses[0], True
         else:
             energy = 2 * math.sqrt(real(run_card["ebeam1"]) * real(run_card["ebeam2"]))
-            leptonic = integer(run_card["lpp1"]) == 0
+            leptonic = integer(run_card["lpp1"]) == 0 or self.leptons is not None
         beams = (integer(run_card["lpp1"]), integer(run_card["lpp2"]))
-        self.beams = (0, 0) if leptonic else beams
+        self.beams = beams if self.incoming == 2 and beams != (0, 0) else (0, 0)
         real_pdgs = {
             p for c in self.configurations["configurations"] for p in c["real_pdgs"]
         }
@@ -139,6 +148,7 @@ class SubprocessIntegrand:
                     energy,
                     leptonic=leptonic,
                     sqrt_s_hat_min_condition=self.cuts is not None,
+                    sqrt_s_hat_condition=self.leptons is not None,
                 )
             )
         born = self.channel_mappings[0]
@@ -159,23 +169,36 @@ class SubprocessIntegrand:
                 cuts=cuts,
                 scales=scales,
                 running_coupling=couplings.running,
-                pdf_grid=couplings.pdf if self.beams != (0, 0) else None,
+                pdf_grid=couplings.pdf if abs(self.beams[0]) == 1 else None,
                 beams=self.beams,
                 sum_flavors=True,
+                lepton_luminosity=None if self.leptons is None else self.leptons.full,
                 n_f=n_f,
             ),
             context,
         )
-        self.kinematics = [
-            Runtime(
-                ms.FKSKinematics(
-                    fks_configuration_mapping(b, self.configurations, cuts=self.cuts)
-                ),
-                context,
+        # the momentum fractions of dressed leptons as generate_x_ee of
+        # genps_fks.f samples them, with the full Jacobian for their full
+        # densities
+        luminosity = None
+        if self.leptons is not None:
+            luminosity = ms.LeptonLuminosity(
+                energy**2,
+                0.0,
+                LEPTON_POWER,
+                reduced_density=False,
+                s_hat_min_condition=True,
+            )
+        mappings = [
+            fks_configuration_mapping(
+                b, self.configurations, cuts=self.cuts, luminosity=luminosity
             )
             for b in self.channel_mappings
         ]
-        self.dimension = born.random_dim() + 3
+        self.kinematics = [
+            Runtime(ms.FKSKinematics(mapping), context) for mapping in mappings
+        ]
+        self.dimension = mappings[0].random_dim()
         self.configuration_count = len(self.configurations["configurations"])
         self.nlo_count = len(self.configurations["orders"]["nlo"])
         self.born = born

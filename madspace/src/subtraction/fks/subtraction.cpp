@@ -725,14 +725,16 @@ const std::vector<std::string> KINEMATICS = {
 // and with the factorization scales of the Born and of the remnants, then
 // those of the weights that the subtraction and the n-body part do not give,
 // fks_index last. With the couplings inside, the scales, the couplings and
-// the luminosities give way to the momentum fractions, and luminosities of
+// the luminosities give way to the momentum fractions, with dressed leptons
+// also 1 - x of the beams (the same for every kinematics), and luminosities of
 // one flavor take flavor_index before fks_index.
 NamedVector<Type> cross_section_args(
     const FKSSubtraction& subtraction,
     const FKSSoftVirtual& soft_virtual,
     const FKSWeights& weights,
     bool couplings = false,
-    bool flavor = false
+    bool flavor = false,
+    bool lepton = false
 ) {
     if (subtraction.particle_count() != weights.particle_count() ||
         soft_virtual.particle_count() + 1 != weights.particle_count() ||
@@ -772,6 +774,10 @@ NamedVector<Type> cross_section_args(
             for (const auto& kinematics : KINEMATICS) {
                 args.push_back(kinematics + "x1", batch_float);
                 args.push_back(kinematics + "x2", batch_float);
+            }
+            if (lepton) {
+                args.push_back("one_minus_x1", batch_float);
+                args.push_back("one_minus_x2", batch_float);
             }
         }
         if (couplings && coupling) {
@@ -835,7 +841,12 @@ FKSCrossSection::FKSCrossSection(
     FunctionGenerator(
         "FKSCrossSection",
         cross_section_args(
-            subtraction, soft_virtual, weights, true, !luminosity.sum_flavors()
+            subtraction,
+            soft_virtual,
+            weights,
+            true,
+            !luminosity.sum_flavors(),
+            luminosity.lepton()
         ),
         weights.return_types()
     ),
@@ -869,6 +880,12 @@ FKSCrossSection::FKSCrossSection(
         throw std::invalid_argument(
             "FKSCrossSection: the luminosities both sum over the flavors or both "
             "take a flavor index"
+        );
+    }
+    if (luminosity.lepton() != born_luminosity.lepton()) {
+        throw std::invalid_argument(
+            "FKSCrossSection: the luminosities both take dressed leptons or "
+            "neither"
         );
     }
     // with a flavor index the n-body part takes the Born of the real flavor,
@@ -918,11 +935,14 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
                     index = fb.full({static_cast<me_int_t>(0), batch_size});
                 }
                 std::vector<Value> inputs{
-                    args.at(kinematics + "x1"),
-                    args.at(kinematics + "x2"),
-                    scales.at("fact_scale1"),
-                    scales.at("fact_scale2"),
+                    args.at(kinematics + "x1"), args.at(kinematics + "x2")
                 };
+                if (function.lepton()) {
+                    inputs.push_back(args.at("one_minus_x1"));
+                    inputs.push_back(args.at("one_minus_x2"));
+                }
+                inputs.push_back(scales.at("fact_scale1"));
+                inputs.push_back(scales.at("fact_scale2"));
                 if (!function.sum_flavors()) {
                     inputs.push_back(args.at("flavor_index"));
                 }

@@ -57,8 +57,16 @@ as the spectator, the decaying particle at rest. Its dipoles take the soft
 terms of the decaying particle and alpha_ff, and CSInsertion their integral.
 A decay has the flux 1 / (2 M) and gives a width in GeV, as the FKS driver.
 
+Beams of dressed electrons and positrons (lpp 3 and -3) take the densities
+of pdlabel among the lep_densities of the output, reduced by (1 - x)^p of
+the power p of the sampling of their momentum fractions in PhaseSpaceMapping
+(lepton_sampling_power), with the real emission and its dipoles at the
+momentum fractions of the Born. The leptons radiate no QCD, so that the
+Borns have no K and P operators.
+
 Not covered yet: a final-state gluon with a colored decaying particle, PDF
-schemes other than MSbar, user scales and the photon cuts.
+schemes other than MSbar, densities of eMELA, photon beams, user scales and
+the photon cuts.
 """
 
 import argparse
@@ -74,6 +82,7 @@ from madgraph.mg7.nlo.provider import (
     partonic_rapidity,
 )
 from madgraph.mg7.nlo.core import (
+    LEPTON_POWER,
     NLORun,
     Runtime,
     born_topology,
@@ -157,6 +166,38 @@ def qcd_orders(orders):
     return out
 
 
+class DressedLuminosity:
+    """The luminosity of the dressed leptons of a DressedLeptons over flavors
+    (lists with the PDG codes of the incoming partons first): its reduced
+    EELuminosity for each flavor with the leptons of the beams, none for the
+    others (compute_eepdf of MadFKS has no photon)."""
+
+    def __init__(self, leptons, context):
+        self.pdgs = list(leptons.pdgs)
+        self.runtime = Runtime(leptons.reduced, context)
+
+    def __call__(self, flavors, x1, x2, omx, mu1, mu2):
+        """The luminosity at the momentum fractions x1, x2 with 1 - x of omx
+        (omx1, omx2) and the factorization scales mu1, mu2."""
+        count = sum(1 for flavor in flavors if list(flavor[:2]) == self.pdgs)
+        if not count:
+            return np.zeros(len(x1))
+        r = np.full(len(x1), 0.5)
+        return count * self.runtime(x1, omx[0], x2, omx[1], mu1, mu2, r)["luminosity"]
+
+
+def mapping_outputs(out, count):
+    """The momenta, momentum fractions (x1, x2, broadcast to count points),
+    1 - x of dressed leptons (omx1, omx2, None without) and Jacobian of the
+    forward map of a PhaseSpaceMapping or CSMapping."""
+    out = [np.array(np.from_dlpack(t)) for t in out]
+    momenta, x1, x2, det = out[0], out[1], out[2], out[-1]
+    omx = None if len(out) == 4 else (out[3], out[4])
+    x1 = np.broadcast_to(x1, count).copy()
+    x2 = np.broadcast_to(x2, count).copy()
+    return momenta, x1, x2, omx, det
+
+
 class Densities:
     """The densities f(x, q) (not x f) of the light partons of a beam, lpp 1
     for protons and -1 for antiprotons, by PDG code of the parton."""
@@ -213,6 +254,8 @@ class CSBornIntegrand:
         self.masses = [
             float(param_card["mass"].get(str(abs(pdg)), 0.0)) for pdg in self.born_pdgs
         ]
+        # dressed leptons sample their momentum fractions in the mappings
+        self.leptons = couplings.leptons if self.incoming == 2 else None
         if self.incoming == 1:
             # a decay at rest, without beams
             self.energy, leptonic = self.masses[0], True
@@ -226,6 +269,7 @@ class CSBornIntegrand:
             if leptonic
             else (integer(run_card["lpp1"]), integer(run_card["lpp2"]))
         )
+        self.lepton_power = 0.0 if self.leptons is None else LEPTON_POWER
         orders = self.configurations["orders"]
         self.nlo_of_born = qcd_orders(orders)
         self.qcd_powers = [int(o[0]) for o in orders["born"]]
@@ -236,6 +280,7 @@ class CSBornIntegrand:
                 born_topology(self.masses, self.incoming, channel),
                 self.energy,
                 leptonic=leptonic,
+                lepton_sampling_power=self.lepton_power,
             )
             for channel in self.channels
         ]
@@ -272,8 +317,13 @@ class CSBornIntegrand:
             ),
             context,
         )
+        # the densities of hadrons, or the luminosity of other beams with
+        # densities
         self.densities = None
-        if self.beams != (0, 0):
+        self.beam_luminosity = None
+        if self.leptons is not None:
+            self.beam_luminosity = DressedLuminosity(self.leptons, context)
+        elif self.beams != (0, 0):
             self.collinear = Runtime(
                 ms.CSCollinear(
                     self.born_pdgs,
@@ -319,12 +369,14 @@ class CSBornIntegrand:
         layout = np.zeros(len(momenta), dtype=np.int32)
         return self.cuts(momenta, layout_index=layout)["mask"] != 0
 
-    def luminosities(self, x1, x2, mu1, mu2, z=None):
+    def luminosities(self, x1, x2, mu1, mu2, z=None, omx=None):
         """The luminosity of the Born over its flavors and, with the points z
         (batch, 2) of the convolution, those of the K and P operators of each
         beam: the same parton at x_i / z, the partons that split into it at
         x_i / z, each times the density of the Born parton of the other beam
-        (batch, 2, 2)."""
+        (batch, 2, 2). Dressed leptons take 1 - x of omx."""
+        if self.beam_luminosity is not None:
+            return self.beam_luminosity(self.flavors, x1, x2, omx, mu1, mu2), None
         if self.densities is None:
             return np.full(len(x1), float(len(self.flavors))), None
         x = (x1, x2)
@@ -361,9 +413,7 @@ class CSBornIntegrand:
         the fraction of the points of trick."""
         count = len(x)
         out = self.forward[index].call([np.ascontiguousarray(x[:, : self.born_dim])])
-        momenta, x1, x2, det = [np.array(np.from_dlpack(t)) for t in out]
-        x1 = np.broadcast_to(x1, count).copy()
-        x2 = np.broadcast_to(x2, count).copy()
+        momenta, x1, x2, omx, det = mapping_outputs(out, count)
         scales = self.scale(momenta)
         mu_r = scales["ren_scale"]
         alpha_s = self.alpha_s(mu_r)["alpha_s"]
@@ -411,7 +461,7 @@ class CSBornIntegrand:
             )
             z, weights = collinear["z"], collinear["weights"]
         born_lum, convolved = self.luminosities(
-            x1, x2, scales["fact_scale1"], scales["fact_scale2"], z
+            x1, x2, scales["fact_scale1"], scales["fact_scale2"], z, omx
         )
         g_s = np.sqrt(4 * math.pi * alpha_s)
         norm = np.where(valid, det * channel_weight * self.flux(x1, x2), 0.0)
@@ -534,6 +584,7 @@ class CSRealIntegrand:
         self.born_pdgs = source.born_pdgs
         self.energy = source.energy
         self.beams = source.beams
+        self.beam_luminosity = source.beam_luminosity
         leptonic = self.beams == (0, 0)
         orders = configurations["orders"]
         self.nlo_count = len(orders["nlo"])
@@ -566,7 +617,10 @@ class CSRealIntegrand:
                     line_masses, self.incoming, channel, dipole.order
                 )
                 born_mapping = ms.PhaseSpaceMapping(
-                    topology, self.energy, leptonic=leptonic
+                    topology,
+                    self.energy,
+                    leptonic=leptonic,
+                    lepton_sampling_power=source.lepton_power,
                 )
                 mapping = ms.CSMapping(
                     born_mapping, d["i"], d["j"], d["k"], cutoff=technical_cut
@@ -612,9 +666,12 @@ class CSRealIntegrand:
     def choice_count(self, index):
         return 1
 
-    def luminosity(self, x1, x2, mu1, mu2):
+    def luminosity(self, x1, x2, mu1, mu2, omx=None):
         """The luminosity of the real over its flavor lines, at the momentum
-        fractions of the real and the factorization scales mu1, mu2."""
+        fractions of the real and the factorization scales mu1, mu2, for
+        dressed leptons with 1 - x of omx."""
+        if self.beam_luminosity is not None:
+            return self.beam_luminosity(self.flavors, x1, x2, omx, mu1, mu2)
         if self.densities is None:
             return np.full(len(x1), float(len(self.flavors)))
         f1 = self.densities[0](x1, mu1)
@@ -659,19 +716,18 @@ class CSRealIntegrand:
         SubprocessIntegrand.evaluate of nlo/fks.py and weights)."""
         count = len(x)
         out = self.forward[index].call([np.ascontiguousarray(x)])
-        momenta, x1, x2, det = [np.array(np.from_dlpack(t)) for t in out]
-        x1 = np.broadcast_to(x1, count).copy()
-        x2 = np.broadcast_to(x2, count).copy()
-        return self.weights(index, momenta, x1, x2, det, covered=det != 0)
+        momenta, x1, x2, omx, det = mapping_outputs(out, count)
+        return self.weights(index, momenta, x1, x2, det, covered=det != 0, omx=omx)
 
-    def weights(self, index, momenta, x1, x2, det, covered=None):
+    def weights(self, index, momenta, x1, x2, det, covered=None, omx=None):
         """The weights of the channel index at real emissions (batch, n + 1, 4)
         in the lab frame, with their momentum fractions and the Jacobian det
         of their mapping, and the parts of the histograms: the real emission
         and its weight, the Borns of the dipoles in the order of their matrix
         elements and their weights. covered says which events are in the
         region of the channel (all those of its mapping), from the variables
-        of its dipole (covered) if None."""
+        of its dipole (covered) if None. Dressed leptons take 1 - x of omx
+        (omx1, omx2)."""
         count = len(momenta)
         m_channel, b_channel = self.channels[index]
         valid = (det != 0) & np.isfinite(det)
@@ -682,8 +738,9 @@ class CSRealIntegrand:
         if covered is None:
             covered = self.covered(index, momenta)
         keep = valid & covered
-        projected = self.subtraction(momenta, x1, x2)
-        ungated = self.ungated(momenta, x1, x2)["color_weight"]
+        fractions = (x1, x2) if omx is None else (x1, x2, *omx)
+        projected = self.subtraction(momenta, *fractions)
+        ungated = self.ungated(momenta, *fractions)["color_weight"]
         rho = np.abs(ungated)
         total = rho.sum(1)
         # not where the ungated dipoles are infinite (the momenta of the points
@@ -717,6 +774,7 @@ class CSRealIntegrand:
                 x2[points],
                 scales["fact_scale1"][points],
                 scales["fact_scale2"][points],
+                None if omx is None else (omx[0][points], omx[1][points]),
             )
             real_weight[points] = lum * weight
         # the dipoles, each at its Born
@@ -778,6 +836,7 @@ class CSRealIntegrand:
                 x2[points],
                 born_scales["fact_scale1"],
                 born_scales["fact_scale2"],
+                None if omx is None else (omx[0][points], omx[1][points]),
             )
             dipole_weights[points, m] = lum * weight
         norm = np.where(

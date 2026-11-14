@@ -17,8 +17,10 @@ the initial state (p p > t t~) and in the final state (e+ e- > j j j, with
 the splittings of a final-state gluon into g g and q q~). The NLO cross
 sections are those of MG5aMC within PULL combined errors and do not depend
 on alpha, also for p p > e+ e- j, whose jet radiates against the incoming
-partons and the incoming partons against it, and for the decays t > b w+
-with a massive and a massless b, whose b radiates against the top.
+partons and the incoming partons against it, for the decays t > b w+ with a
+massive and a massless b, whose b radiates against the top, and for dressed
+electrons and positrons (e+ e- > j j at the Z pole and e+ e- > t t~ at 500
+GeV with ISR, and the latter with the beamstrahlung of the ILC).
 MADSPACE_FKS_POINTS sets the number of points per channel of an iteration,
 POINTS by default, with which the tests take about four minutes on one
 core, most of it for the real streams of p p > t t~ (108 channels) and e+
@@ -161,6 +163,9 @@ def test_epem_jj_real(alpha):
         "pp_epemj",
         "t_bw",
         "t_bw_mb0",
+        "epem_jj_isr",
+        "epem_ttx_isr",
+        "epem_ttx_ilc",
     ],
 )
 def test_against_mg5amc(name):
@@ -177,7 +182,8 @@ def test_against_mg5amc(name):
 
 @needs_outputs
 @pytest.mark.parametrize(
-    "name", ["epem_jj", "pp_epem", "epem_jjj", "pp_epemj", "t_bw", "t_bw_mb0"]
+    "name",
+    ["epem_jj", "pp_epem", "epem_jjj", "pp_epemj", "t_bw", "t_bw_mb0", "epem_ttx_isr"],
 )
 def test_alpha_independence(name):
     """The NLO cross section does not depend on alpha (1 and 0.1 for all

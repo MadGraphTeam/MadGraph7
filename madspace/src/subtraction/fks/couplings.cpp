@@ -13,17 +13,20 @@ FKSLuminosity::FKSLuminosity(
     const std::string& pdf2_prefix,
     const std::array<bool, 2>& densities,
     bool sum_flavors,
-    const nested_vector2<double>& factors
+    const nested_vector2<double>& factors,
+    const std::optional<EELuminosity>& lepton_luminosity,
+    const std::array<int, 2>& lepton_pdgs
 ) :
     FunctionGenerator(
         "FKSLuminosity",
         [&] {
-            NamedVector<Type> args{
-                {"x1", batch_float},
-                {"x2", batch_float},
-                {"fact_scale1", batch_float},
-                {"fact_scale2", batch_float},
-            };
+            NamedVector<Type> args{{"x1", batch_float}, {"x2", batch_float}};
+            if (lepton_luminosity) {
+                args.push_back("one_minus_x1", batch_float);
+                args.push_back("one_minus_x2", batch_float);
+            }
+            args.push_back("fact_scale1", batch_float);
+            args.push_back("fact_scale2", batch_float);
             if (!sum_flavors) {
                 args.push_back("flavor_index", batch_int);
             }
@@ -34,9 +37,21 @@ FKSLuminosity::FKSLuminosity(
     ),
     _sum_flavors(sum_flavors),
     _q_min{0., 0.},
-    _q_max{0., 0.} {
+    _q_max{0., 0.},
+    _lepton_luminosity(lepton_luminosity) {
     if (flavors.empty()) {
         throw std::invalid_argument("FKSLuminosity: no FKS configurations");
+    }
+    if (lepton_luminosity && pdf_grid) {
+        throw std::invalid_argument(
+            "FKSLuminosity: dressed leptons take no grid of hadrons"
+        );
+    }
+    if (lepton_luminosity && !lepton_luminosity->beam_scales()) {
+        throw std::invalid_argument(
+            "FKSLuminosity: the luminosity of dressed leptons needs the scales "
+            "of the beams"
+        );
     }
     if (pdf_grid2 && !pdf_grid) {
         throw std::invalid_argument(
@@ -105,10 +120,19 @@ FKSLuminosity::FKSLuminosity(
         _q_max.at(beam) = grid->q.back();
     }
     // the positions of each flavor in the densities, -2 for none (no density),
-    // 0 for a beam without densities (one), -1 after the last
+    // 0 for a beam without densities (one), -1 after the last. The luminosity
+    // of dressed leptons takes the place of the first beam, the second counts
+    // one.
     for (std::size_t c = 0; c < flavors.size(); ++c) {
         std::vector<me_int_t> positions;
         for (const auto& flavor : flavors.at(c)) {
+            if (lepton_luminosity) {
+                bool leptons = flavor.at(0) == lepton_pdgs.at(0) &&
+                    flavor.at(1) == lepton_pdgs.at(1);
+                positions.push_back(leptons ? 0 : -2);
+                positions.push_back(0);
+                continue;
+            }
             for (std::size_t beam = 0; beam < 2; ++beam) {
                 if (!_pdfs.at(beam)) {
                     positions.push_back(0);
@@ -144,6 +168,22 @@ NamedVector<Value> FKSLuminosity::build_function_impl(
     auto batch_size = fb.batch_size({args.at("x1")});
     std::array<Value, 2> pdfs, xs;
     for (std::size_t beam = 0; beam < 2; ++beam) {
+        if (_lepton_luminosity && beam == 0) {
+            // the luminosity of both beams, of the densities f, not x f
+            auto luminosity = _lepton_luminosity->build_function(
+                fb,
+                {args.at("x1"),
+                 args.at("one_minus_x1"),
+                 args.at("x2"),
+                 args.at("one_minus_x2"),
+                 args.at("fact_scale1"),
+                 args.at("fact_scale2"),
+                 fb.full({0.5, batch_size})}
+            );
+            pdfs.at(beam) = fb.unsqueeze(luminosity.at(0));
+            xs.at(beam) = fb.full({1., batch_size});
+            continue;
+        }
         if (!_pdfs.at(beam)) {
             // a beam without densities: one per flavor
             auto one = fb.full({1., batch_size});

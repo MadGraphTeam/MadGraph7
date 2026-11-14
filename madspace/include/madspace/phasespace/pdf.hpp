@@ -229,7 +229,9 @@ private:
  * - `x1`, `omx1` – `float`, shape `(batch,)` – first beam's fraction and
  *   @f$1-x@f$.
  * - `x2`, `omx2` – `float`, shape `(batch,)` – second beam's.
- * - `q` – `float`, shape `(batch,)` – factorization scale.
+ * - `q` – `float`, shape `(batch,)` – factorization scale. With
+ *   `beam_scales` it is `q1` and `q2`, those of the two beams, each density at
+ *   the scale of its beam, as `pdg2pdf.f` of MadFKS takes them.
  * - `r` – `float`, shape `(batch,)` – random number for the component choice.
  *
  * **Returns**
@@ -249,6 +251,8 @@ public:
      * @param alpha_em   @f$\alpha@f$ in the scheme the grid was fitted in.
      * @param lepton_mass @f$m@f$ of the beam leptons, in GeV.
      * @param prefix     Prefix for the grid global names.
+     * @param beam_scales Whether each beam takes its own scale, `q1` and `q2`
+     *                   in place of `q`.
      */
     EELuminosity(
         const PdfGrid& grid,
@@ -258,8 +262,11 @@ public:
         const std::vector<double>& offsets2,
         double alpha_em = 0.007562397,
         double lepton_mass = 0.511e-3,
-        const std::string& prefix = ""
+        const std::string& prefix = "",
+        bool beam_scales = false
     );
+    /// Whether each beam takes its own scale.
+    bool beam_scales() const { return _beam_scales; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -270,6 +277,7 @@ private:
     std::vector<double> _offsets1, _offsets2;
     double _alpha_em;
     double _lepton_mass;
+    bool _beam_scales;
 };
 
 /**
