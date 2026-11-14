@@ -313,10 +313,11 @@ With Python Symbolica 3.0.3 from PyPI, results of the Python API can depend
 on what else was generated earlier in the same Python process: normally about
 1e-30 relative, but amplified at nearly degenerate 2 -> 2 kinematics (near
 forward or at a threshold). Generate each artifact in a fresh process (for
-example one `pyamplicol generate` per artifact) where that matters. A
-Symbolica Community build with
-[symbolica-dev/symbolica#163](https://github.com/symbolica-dev/symbolica/pull/163),
-or a Symbolica release that contains it, is not affected. Evaluations of a
+example one `pyamplicol generate` per artifact) where that matters. The
+Symbolica Community build of the pinned `community` revision (`0e2ad04c`)
+behaves the same in double-double and arbitrary precision (a stored process's
+call in the process that generated it and in a fresh one differ at about
+5e-29 relative). Evaluations of a
 stored artifact through the native SDKs do not use Symbolica.
 
 ## Generation appears to repeat expensive validation

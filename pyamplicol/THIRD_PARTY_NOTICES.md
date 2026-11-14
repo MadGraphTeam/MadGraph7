@@ -24,7 +24,7 @@ The native libraries statically link the Symbolica Rust crates `symbolica`,
 `numerica` and `graphica` from the revision pinned in `Cargo.toml` and
 `Cargo.lock`; `licenses/Symbolica.txt` reproduces that revision's complete
 license, and `numerica` and `graphica` state their own MIT License
-(`licenses/rust/numerica-3.0.2/`, `licenses/rust/graphica-3.0.1/`).
+(`licenses/rust/numerica-3.1.0/`, `licenses/rust/graphica-3.0.1/`).
 
 Release artifacts must record the exact Symbolica package, Rust crate,
 serialization ABI, and source revision used to build them.
@@ -140,7 +140,9 @@ content its license lists is not part of the two linked crates.
 
 FeynKit and its sibling crates from GammaLoop
 (<https://github.com/alphal00p/gammaloop>) are linked from the revision pinned
-in `rust/loop-reduction/Cargo.toml` and `Cargo.lock`. At that revision the
+in `rust/loop-reduction/Cargo.toml` and `Cargo.lock` (the fork
+ValentinHirschi/gammaloop `ea3faaae`: alphal00p/gammaloop `d1904bf2` with
+Spenso's `conj` moved to Numerica 3.1's numeric trait). At that revision the
 FeynKit crates and Spenso declare `MIT OR Apache-2.0`, linnet declares MIT,
 and Idenso, spenso-hep-lib, symbolica-utils and the workspace-hack crate
 declare no license and fall under GammaLoop's top-level license, which places

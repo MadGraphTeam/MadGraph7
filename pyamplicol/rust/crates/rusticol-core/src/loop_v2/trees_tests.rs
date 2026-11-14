@@ -168,7 +168,7 @@ fn a_plane_takes_the_exact_side_of_a_cut() {
         .build()
         .expect("an evaluator");
     let binary64 = evaluator.map_coeff(&|r| Complex::new(r.re.to_f64(), r.im.to_f64()));
-    let mut exact = Kernel::Exact(binary64.clone().into_batch_evaluator());
+    let mut exact = Kernel::Exact(RowEvaluator::new(binary64.clone()));
     for level in [2, 0] {
         let (bytes, inputs, outputs) =
             crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(

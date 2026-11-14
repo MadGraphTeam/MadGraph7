@@ -2,12 +2,13 @@
 
 //! Saved dependency evaluators shared by native callers and the Python binding.
 use super::*;
+use rusticol_core::__private::RowEvaluator;
 use symbolica::{
     domains::{
         float::{DoubleFloat, Float, Real},
         rational::Rational,
     },
-    evaluate::{BatchExpressionEvaluator, EvaluationDomain, ExpressionEvaluator},
+    evaluate::{EvaluationDomain, ExpressionEvaluator},
 };
 
 pub fn exact_state(bytes: &[u8]) -> ExecutionResult<ExpressionEvaluator<Complex<Rational>>> {
@@ -18,27 +19,26 @@ pub fn exact_state(bytes: &[u8]) -> ExecutionResult<ExpressionEvaluator<Complex<
 pub(super) fn batch_evaluator<T: Carrier>(
     exact: ExpressionEvaluator<Complex<Rational>>,
     prototype: &T,
-) -> BatchExpressionEvaluator<Complex<T>>
+) -> RowEvaluator<Complex<T>>
 where
     Complex<T>: Real + EvaluationDomain,
 {
-    exact
-        .map_coeff_with_prec(
-            &|r| {
-                Complex::new(
-                    prototype.from_rational(&r.re),
-                    prototype.from_rational(&r.im),
-                )
-            },
-            prototype.get_precision(),
-        )
-        .into_batch_evaluator()
+    RowEvaluator::map_coeff_with_prec(
+        exact,
+        &|r| {
+            Complex::new(
+                prototype.from_rational(&r.re),
+                prototype.from_rational(&r.im),
+            )
+        },
+        prototype.get_precision(),
+    )
 }
 
 enum Coefficients {
-    Double(BatchExpressionEvaluator<Complex<f64>>),
-    DoubleDouble(BatchExpressionEvaluator<Complex<DoubleFloat>>),
-    Arbitrary(BatchExpressionEvaluator<Complex<Float>>),
+    Double(RowEvaluator<Complex<f64>>),
+    DoubleDouble(RowEvaluator<Complex<DoubleFloat>>),
+    Arbitrary(RowEvaluator<Complex<Float>>),
 }
 
 /// Execute saved scalar coefficient instructions across all lanes natively.
@@ -48,7 +48,7 @@ pub struct CoefficientEvaluator {
 }
 
 fn evaluate_coefficients<T: Carrier>(
-    evaluator: &mut BatchExpressionEvaluator<Complex<T>>,
+    evaluator: &mut RowEvaluator<Complex<T>>,
     values: &[DecimalComplex],
     rows: usize,
     bits: u32,
@@ -118,7 +118,7 @@ impl CoefficientEvaluator {
             return Err(error("batch arithmetic or precision differs"));
         }
         fn run<T: BatchCarrier>(
-            evaluator: &mut BatchExpressionEvaluator<Complex<T>>,
+            evaluator: &mut RowEvaluator<Complex<T>>,
             values: &[Complex<T>],
             input: &Batch,
         ) -> ExecutionResult<Batch>

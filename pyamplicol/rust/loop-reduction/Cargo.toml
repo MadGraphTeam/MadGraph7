@@ -19,21 +19,31 @@ default = ["tir"]
 tir = ["dep:iregi-rust", "dep:iregi-masters", "rusticol-core/tirust-capability"]
 
 [dependencies]
-feynkit-kinematics = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
+# FeynKit (GammaLoop): the fork ValentinHirschi/gammaloop `pyamplicol-community`
+# = alphal00p/gammaloop d1904bf2 + Spenso's `conj` in Numerica 3.1's numeric
+# trait, the revision NinjaRS pins (one gammaloop source in the graph).
+feynkit-kinematics = { git = "https://github.com/ValentinHirschi/gammaloop.git", rev = "ea3faaae063b1400570c15cf7e055f48312e9329", default-features = false, features = ["native"] }
 pyamplicol = { path = "../crates/pyamplicol" }
 rusticol-core = { path = "../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge", "loop-v2"] }
-ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "cf28d8e0018e0555256d3fba51e457d4941dcb0e" }
-ninjars-graph = { git = "https://github.com/alphal00p/ninjars.git", rev = "cf28d8e0018e0555256d3fba51e457d4941dcb0e" }
-ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars.git", rev = "cf28d8e0018e0555256d3fba51e457d4941dcb0e", features = ["native-masters"] }
+# NinjaRS main be6d3e04 (b51b7465's crate sources with its pins on
+# Symbolica community 0e2ad04c, the gammaloop fork above and oneloopmaster
+# 2e7afabb).
+ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "be6d3e042df7ff0d3fe18df929c184d31f5a92b3" }
+ninjars-graph = { git = "https://github.com/alphal00p/ninjars.git", rev = "be6d3e042df7ff0d3fe18df929c184d31f5a92b3" }
+ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars.git", rev = "be6d3e042df7ff0d3fe18df929c184d31f5a92b3", features = ["native-masters"] }
 # One oneloop feature set in every root build (M-LIT PLAN §2.c.2 item 3, the Q28
 # rule): NinjaRS's native masters need generated-evaluators, TIRust rust-codegen;
-# rust-codegen only adds modules (rust_codegen, native::batch).
-oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "bd703d09a78f7849a6b86a07096e6f222fc01193", default-features = false, features = ["generated-evaluators", "rust-codegen"] }
+# rust-codegen only adds modules (rust_codegen, native::batch). oneloopmaster
+# main 2e7afabb: 3b6f229f's sources pinned on Symbolica
+# community 0e2ad04c, the revision NinjaRS and TIRust pin.
+oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "2e7afabb5903814196d7ab39c695ed9cac777aa4", default-features = false, features = ["generated-evaluators", "rust-codegen"] }
 symbolica = { version = "=3.0.2", default-features = false, features = ["integer-gmp", "float-mpfr"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# A commit of TIRust's main (after its one history rewrite); its oneloop
-# revision and feature set are this manifest's, its Symbolica requirement
-# ("3.0") resolves to the root [patch.crates-io] revision.
-iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "49dc836e4b3fb0785dba3646a8a9a9c9de19cc5f", optional = true }
-iregi-masters = { git = "https://github.com/huashengshao/TIRust.git", rev = "49dc836e4b3fb0785dba3646a8a9a9c9de19cc5f", optional = true }
+# A commit of TIRust's main (after its one history rewrite; a5d4afbf: PR #35
+# and its Symbolica community move, per-row evaluation instead of the
+# batch evaluator); its oneloop revision and feature set are this manifest's,
+# its Symbolica requirement ("3.0") resolves to the root [patch.crates-io]
+# revision. Its own manifests' gammaloop crates are not in this graph.
+iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "a5d4afbf87a0afc155dc57d2ac633af77a932a16", optional = true }
+iregi-masters = { git = "https://github.com/huashengshao/TIRust.git", rev = "a5d4afbf87a0afc155dc57d2ac633af77a932a16", optional = true }

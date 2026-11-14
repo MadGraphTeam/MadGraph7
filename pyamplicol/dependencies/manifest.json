@@ -9,16 +9,10 @@
         "numerica",
         "graphica"
       ],
-      "url": "https://github.com/ValentinHirschi/symbolica.git",
-      "branch": "loop_me_pyamplicol",
-      "revision": "dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
-      "base": {
-        "url": "https://github.com/symbolica-dev/symbolica.git",
-        "branch": "community",
-        "revision": "36cbac3a555d4b93b9601706f1d2f32629770ae6"
-      },
-      "pull_request": "https://github.com/symbolica-dev/symbolica/pull/163",
-      "note": "community 36cbac3a + the consolidated PR (9 commits); moves to upstream once merged"
+      "url": "https://github.com/symbolica-dev/symbolica.git",
+      "branch": "community",
+      "revision": "0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7",
+      "note": "community 0e2ad04c = main c9406581 (state-omitting evaluator saves) + the author's community-only commits; carries the parts of the former PR symbolica-dev/symbolica#163 pyAmpliCol needs; moves to a crates.io release once one contains it"
     },
     {
       "name": "ninjars",
@@ -29,8 +23,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "cf28d8e0018e0555256d3fba51e457d4941dcb0e",
-      "note": "main cf28d8e0 = 5fe7f392 + the scoped Symbolica library licence (NinjaRS registers its own key for the crate ninjars and holds a thread-bound guard only around its own operations; no API change); 5fe7f392 = the merge of the topic pyamplicol/box-mu-conditioning (71eddb15, same tree: the box mu-expansion's conditioning bound in both engines, a flagged lane decided a posteriori in the binary64 engines, docs/box-mu-conditioning.md) on main 98e223da, whose tree is 5b6a8f57's: main 1ef7b7ae (b3a29c85 = PR #14, the 0BSD relicence 36e30a49) + the re-pins on oneloopmaster a7cf4587 and Symbolica b9eaa735, Symbolica dfe6bd97 and oneloopmaster bd703d09; it reaches main through a merge commit, which the coordinator pushes before this pin lands"
+      "revision": "be6d3e042df7ff0d3fe18df929c184d31f5a92b3",
+      "note": "main be6d3e04 (symbolica-community merged; the MadLoop bridge interface re-pinned) = main b51b7465's crate sources (per-row evaluation without the fork-only batch evaluator, merge of no-batch-evaluator) with its pins moved to Symbolica community 0e2ad04c, the gammaloop fork ea3faaae and oneloopmaster 2e7afabb; no source change"
     },
     {
       "name": "oneloopmaster",
@@ -39,8 +33,8 @@
       ],
       "url": "https://github.com/alphal00p/oneloopmaster.git",
       "ref": "main",
-      "revision": "bd703d09a78f7849a6b86a07096e6f222fc01193",
-      "note": "main: TIRust's oneloop patches (PRs #17/#18, merge 5efc7f6), the 0BSD relicence 37d9a9b3, PR #19 (order-independent massless triangle) and PR #20 (merge bd703d0: C0 at a vanishing Kallen function reduced to bubbles on the arbitrary-precision routes; binary64/double-double kernels unchanged); features generated-evaluators + rust-codegen"
+      "revision": "2e7afabb5903814196d7ab39c695ed9cac777aa4",
+      "note": "main 2e7afabb (fast-forward to its symbolica-community branch) = 3b6f229f's sources (bd703d09 + the per-row dual grouping test) with its standalone [patch] on Symbolica community 0e2ad04c; features generated-evaluators + rust-codegen"
     },
     {
       "name": "tirust",
@@ -50,24 +44,29 @@
       ],
       "url": "https://github.com/huashengshao/TIRust.git",
       "ref": "main",
-      "revision": "49dc836e4b3fb0785dba3646a8a9a9c9de19cc5f",
-      "note": "main 49dc836e (direct engine: a plan variant for affinely dependent propagators with a non-zero constant relation, i.e. exactly degenerate kinematics, now evaluates the master families its base plan never created, which before kept stale or zero values and returned a wrong Success; after de60dc48: scoped Symbolica library key of its own, issued for iregi_rust: guards around TIRust core operations and their downstream masters, no API, dependency or numerical change; after bc94b496, PR #31: triangles get the loop-rotation test on the binary64 TensorWorkspace facade only; DirectWorkspace, TensorStore, embedder mode and double-double unchanged; earlier PRs #25-#30: double-double subset sharing inside an AmplitudeWorkspace, opt-in RotationTest::Disabled on the TensorWorkspace facade; defaults unchanged) after the one history rewrite (2026-11-07; 760e3144 = rewritten ff13bd7), re-pinned on oneloopmaster bd703d09 (3f28d9c3) and to fefb5f2b (lit-tirust-io's supplied invariants, mu^2 input, embedder mode, lifted caps and capability query; lit-tirust-mc's small-Gram fix; lit-tirust-store's persistent tensor store, masters provider, rotation copy and direct-engine concurrency); behind the default cargo feature tir of the crates that link it; oneloop bd703d09 and Symbolica dfe6bd97 as this workspace's (one source each); 0BSD (licenses/TIRust.txt)"
+      "revision": "a5d4afbf87a0afc155dc57d2ac633af77a932a16",
+      "note": "main a5d4afbf = PR #35 + branch symbolica-community (per-row evaluation instead of the batch evaluator in iregi-masters/iregi-rust/iregi-cli/iregi-python; Symbolica community 0e2ad04c, oneloopmaster 2e7afabb); behind the default cargo feature tir of the crates that link it; oneloop 2e7afabb and Symbolica 0e2ad04c as this workspace's (one source each); its own manifests' gammaloop crates are not in this graph; 0BSD (licenses/TIRust.txt)"
     },
     {
       "name": "feynkit",
       "crates": [
         "feynkit-kinematics"
       ],
-      "url": "https://github.com/alphal00p/gammaloop.git",
-      "branch": "feynkit",
-      "revision": "d1904bf2bd5bf4f26969a73b415095e941a55610"
+      "url": "https://github.com/ValentinHirschi/gammaloop.git",
+      "branch": "pyamplicol-community",
+      "revision": "ea3faaae063b1400570c15cf7e055f48312e9329",
+      "base": {
+        "url": "https://github.com/alphal00p/gammaloop.git",
+        "revision": "d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      "note": "d1904bf2 + Spenso's Complex::conj moved into Numerica 3.1's numeric trait (the revision NinjaRS pins)"
     },
     {
       "name": "symbolica-community",
       "role": "Python Symbolica (development Community build)",
       "url": "https://github.com/symbolica-dev/symbolica-community.git",
       "revision": "39b556c7d7dcc919f61d125f60ff83f8d49f7ac3",
-      "patch": "[patch.crates-io] symbolica/numerica/graphica -> ValentinHirschi/symbolica dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+      "patch": "[patch.crates-io] symbolica/numerica/graphica -> symbolica-dev/symbolica 0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7; alphal00p/gammaloop feynkit crates (9102f885) -> a tree identical to ValentinHirschi/gammaloop 6ef9ab3a426844c89cd2c15962ce4a274bb2e43c (9102f885 + the Spenso conj change)",
       "release_lock": "PyPI symbolica 3.0.3 (dependencies/release-lock.toml)"
     }
   ]

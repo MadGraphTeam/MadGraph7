@@ -17,9 +17,11 @@ from .._internal.physics.types import NativeEvaluationError
 ComplexOutput = np.ndarray | tuple[np.ndarray, ...]
 
 
-# Python Symbolica's `Evaluator.save()` envelope: a versioned magic, then the
-# producer's native-code flag, its Symbolica state and the bincode payload.
-_SAVED_EVALUATOR_MAGIC = b"\xffSYMEVAL\x01"
+# Python Symbolica's `Evaluator.save()` envelope: a magic, then its version
+# (1: the native-code flag and always a Symbolica state; 2: the native-code
+# flag, whether a state follows, then the state when the evaluator refers to
+# symbolic data), then the bincode payload.
+_SAVED_EVALUATOR_MAGIC = b"\xffSYMEVAL"
 
 
 def saved_evaluator(evaluator: Any) -> bytes:
@@ -28,13 +30,16 @@ def saved_evaluator(evaluator: Any) -> bytes:
     Every generation writer stores a Symbolica evaluator through this
     function, so the stored bytes depend on the evaluator alone, not on the
     Python Symbolica that produced it nor on the symbols the process created
-    before. The native (``canonical_saved_evaluator``) keeps only the state
-    the evaluator references (a Python Symbolica without symbolica-dev#163,
-    PyPI 3.0.3, saves the process's whole state: tens of MB per evaluator
-    after a model compile) and numbers its symbols canonically (a producer
-    numbers them by its registry); the payload is kept, and the result must
-    decode to the same evaluator. A save without the envelope (no Symbolica
-    state) is returned as it is.
+    before. The native (``canonical_saved_evaluator``) writes envelope
+    version 1, which every Python Symbolica since 3.0.3 loads. An evaluator
+    without symbolic data (only built-in functions and constants) keeps an
+    empty Symbolica state, as Symbolica's own version 2 save keeps none;
+    otherwise the save keeps only the state the evaluator references
+    (Symbolica's save writes the process's whole state: tens of MB per
+    evaluator after a model compile), its symbols numbered canonically (a
+    producer numbers them by its registry). The payload is kept, and the
+    result must decode to the same evaluator. A save without the envelope (no
+    Symbolica state) is returned as it is.
     """
     saved = bytes(evaluator.save())
     if not saved.startswith(_SAVED_EVALUATOR_MAGIC):

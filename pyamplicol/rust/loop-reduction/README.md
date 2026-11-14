@@ -31,37 +31,28 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `cf28d8e0018e0555256d3fba51e457d4941dcb0e` (main: its scoped Symbolica
-  library licence, a key of its own held only around NinjaRS operations, on
-  5fe7f392, the merge of 71eddb15, the box mu-expansion's conditioning bound: typed refusal of near-planar lanes in every carrier, the
-  binary64 engines deciding a flagged lane a posteriori, on
-  main `98e223da` = main `b3a29c85`, PRs #7-#12 and #14, the 0BSD relicence,
-  and the re-pins on the Symbolica and oneloopmaster revisions below; UV/IR
-  pole selection through
-  the master providers, the fast engine's UV residues `fast::tensor_uv`,
-  threshold-free light-like spinors).
-- Symbolica, Numerica and Graphica `dfe6bd97b974b1028dc63071ea165136cd2b0ef5`:
-  symbolica-dev/symbolica `community` 36cbac3a plus the consolidated upstream
-  PR symbolica-dev/symbolica#163 (batched evaluation, `DualNumber` views,
-  state-minimal evaluator saves, complex-modulus Dual derivatives,
-  deterministic integer factor signs, polynomial exponents bounded by the
-  i32 conversion range, a journaled conditional cache in the direct evaluator
-  translator, native Python ComplexFloat operands at the more precise
-  component's precision), branch `loop_me_pyamplicol` of
-  `https://github.com/ValentinHirschi/symbolica` (see `dependencies/README.md`).
-- TIRust `49dc836e4b3fb0785dba3646a8a9a9c9de19cc5f` (its main: PR #31's
-  triangle loop-rotation test on the binary64 `TensorWorkspace` facade, then
-  TIRust's own scoped Symbolica library key: its core operations hold a guard
-  of a key issued for `iregi_rust`, beside pyAmpliCol's own; then a
-  direct-engine fix: a plan variant for affinely dependent propagators with
-  a non-zero constant relation, i.e. exactly degenerate kinematics, now
-  evaluates the master families (A0/B0) its base plan never created, which
-  before kept a previous lane's values or zero and were returned as a wrong
-  `Success`, e.g. a gg -> HH top-loop box at threshold; regression test
-  `tests/v2_tir_relation_variants.rs`), behind the cargo feature `tir` (below).
-- FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
-  dependency revision recorded by NinjaRS.
-- oneloopmaster `bd703d09a78f7849a6b86a07096e6f222fc01193` (its main: per-evaluator
+- NinjaRS `be6d3e042df7ff0d3fe18df929c184d31f5a92b3` (main,
+  the merge of its `symbolica-community` branch: main `b51b7465`'s crate sources, i.e. per-row evaluation
+  without the batch evaluator on main `cf28d8e0` (its scoped Symbolica library
+  licence, the box mu-expansion's conditioning bound, UV/IR pole selection
+  through the master providers, the fast engine's UV residues
+  `fast::tensor_uv`, threshold-free light-like spinors), pinned on the
+  Symbolica, FeynKit and oneloopmaster revisions below).
+- Symbolica, Numerica and Graphica `0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7`:
+  symbolica-dev/symbolica `community` (main `c9406581`, the author's
+  state-omitting evaluator saves, plus his community-only commits; see
+  `dependencies/README.md`).
+- TIRust `a5d4afbf87a0afc155dc57d2ac633af77a932a16` (its main: PR #35 and the
+  move to Symbolica community with per-row evaluation instead of the batch
+  evaluator, on 49dc836e's direct-engine fix for plan variants at exactly
+  degenerate kinematics and TIRust's scoped Symbolica library key), behind
+  the cargo feature `tir` (below).
+- FeynKit `ea3faaae063b1400570c15cf7e055f48312e9329` (ValentinHirschi/gammaloop
+  `pyamplicol-community`: alphal00p/gammaloop `d1904bf2`, the owner's coherent
+  dependency revision recorded by NinjaRS, plus Spenso's `conj` in Numerica
+  3.1's numeric trait).
+- oneloopmaster `2e7afabb5903814196d7ab39c695ed9cac777aa4` (its main:
+  `3b6f229f`'s sources, per-evaluator
   `PoleSelection`, TIRust's oneloop patches incl. #17/#18, the 0BSD relicence,
   #19's order-independent massless triangle (trif0) with a hand-written
   binary64/double-double kernel, and #20's exact bubble reduction of a C0 at a
@@ -158,7 +149,7 @@ numerical transport:
   takes `precision` in decimal digits). Decimal strings are needed only at
   external ingress/egress. Failed lanes carry no value.
 - `CoefficientEvaluator`: a saved exact evaluator mapped to the chosen carrier
-  through Symbolica's instruction-batched evaluator (GIL released).
+  through Symbolica's evaluator, run row by row (GIL released).
 - Engine v2 (`docs/development/loop_v2/DESIGN.md` §11-§12): `V2Reducer`,
   `V2Executor`, `V2Program`, `V2PlanModel`, `V2Dag`, `V2Generation`,
   `SeedBuilder`, `V2SeedFourier`, `NativeCellEngine`/`NativeCellTable`, the
