@@ -289,7 +289,6 @@ namespace
     for( bool& good : instance->good_hel ) good = false;
     instance->keep_every_helicity = no_phase_space( instance );
   }
-  }
 
 }
 

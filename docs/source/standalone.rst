@@ -59,7 +59,14 @@ for those. The log says what it built::
 
 The good helicities are chosen as madevent does: a helicity is kept if its
 |M|^2 exceeds ``limhel``/ncomb of the sum over helicities at one of the points,
-with ``limhel`` = 1e-14 for the warm-up and 1e-8 at run time. At run time they
+with ``limhel`` = 1e-14 for the warm-up and 1e-8 at run time. With a massive
+external leg, every helicity that is not exactly 0 is kept instead, and the list
+is closed over the legs whose helicity states mix under a boost (massive legs
+with spin), so that it holds in every frame. With crossing, one list serves the
+base process and every crossing it folds: each row of the crossing table is
+evaluated too, a crossing that moves a mass on points of its own masses. Where the
+process has no phase space at all (a decay below threshold, whose momenta are off
+shell), every helicity is kept. At run time they
 are chosen as in the Fortran standalone output, on the events the library is
 called with: every helicity is evaluated on the first 16 events, and the ones that
 contribute to one of them are kept for the rest of the run (or until a parameter
@@ -67,16 +74,20 @@ is changed through UMAMI). They are thus chosen at the energies and in the frame
 the matrix element is used at. An ``mg7`` run chooses them before the run
 instead, from its cards: an instance of a CPU build of each library (a scalar
 double-precision one for a run on a GPU) evaluates every helicity on 16 RAMBO
-points of the collider of the run card, half in the partonic centre-of-mass frame
+points (per row of the crossing table) of the collider of the run card, half in
+the partonic centre-of-mass frame
 and half in the lab frame, at its centre-of-mass energy or, when the beams have
 PDFs, ISR or beamstrahlung, from just above the threshold of the process up to
 it, and every instance of the run, on every thread and device, is given that
 choice (``madmatrix_choose_good_helicities``, ``madmatrix_get_helicity_choice``,
-``madmatrix_set_helicity_choice``). It then depends on the cards only, and a run
-on a GPU evaluates the helicities of a run on a CPU. A helicity that is a power
-of m/sqrt(s) below the others matters near threshold only: the all-plus
-helicities of g g > h g in the ``heft`` model are (m_H^2/s)^4 of the rest, 1e-14
-at 13 TeV, 1e-9 at 1.5 TeV and 20% at 150 GeV.
+``madmatrix_set_helicity_choice``; the choice also carries whether the C-parity
+dedup of the CPU builds holds, which an instance that is given a choice cannot
+test itself). It then depends on the cards only, and a run on a GPU evaluates the
+helicities of a run on a CPU. A helicity that is a power of m/sqrt(s) below the
+others matters near threshold only: the all-plus helicities of g g > h g in the
+``heft`` model are (m_H^2/s)^4 of the rest, 1e-14 at 13 TeV, 1e-9 at 1.5 TeV and
+20% at 150 GeV (they are kept at any energy there, the Higgs being massive, but a
+relative cut on points at one energy would drop them).
 The warm-up chooses its rows instead on RAMBO points spread in energy from just
 above the threshold of the process to 1.5 TeV, half of them boosted along the
 beams when an incoming parton comes from a PDF: the matrix element is then called
