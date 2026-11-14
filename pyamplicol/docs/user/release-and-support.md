@@ -168,17 +168,18 @@ completion.
 
 Version `1.0.3` uses the Python dependencies of 1.0.2 (Symbolica 3.0.3
 from PyPI, SymJIT 2.28.3, ufo-model-loader 1.0.1). The native code builds
-Symbolica at the head of symbolica-dev/symbolica#163 (`dfe6bd97`), NinjaRS
-and oneloopmaster at newer commits of their `main` branches, and TIRust
+Symbolica from symbolica-dev/symbolica's `community` branch (`0e2ad04c`),
+NinjaRS and oneloopmaster at newer commits of their `main` branches (their
+sources pinned on that revision), and TIRust
 ([huashengshao/TIRust](https://github.com/huashengshao/TIRust)) at a pinned
 commit, linked by the default cargo feature `tir`; see
 [dependencies/README.md](../../dependencies/README.md). With Python Symbolica
 3.0.3 from PyPI, results of the Python API can depend on what else was
 generated in the same Python process (about 1e-30 relative normally, amplified
 at nearly degenerate 2 -> 2 kinematics): generate each artifact in a fresh
-process where that matters. A Symbolica Community build with
-symbolica-dev/symbolica#163, or a Symbolica release that contains it, is not
-affected. Process artifacts load only in the version that wrote them:
+process where that matters. The Community build of the pinned `community` revision (`0e2ad04c`) shows the
+same in double-double and arbitrary precision (about 5e-29 relative). Saved Symbolica evaluator states are stored in the envelope every Python
+Symbolica since 3.0.3 reads. Process artifacts load only in the version that wrote them:
 artifacts written by 1.0.2 are refused by 1.0.3, regenerate them. The model
 compiler version is unchanged (17), so prepared `.pyamplicol-model` bundles
 written by 1.0.2 still load.

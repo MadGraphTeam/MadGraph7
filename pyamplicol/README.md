@@ -396,8 +396,7 @@ Read the complete [pyAmpliCol documentation](https://madgraph.org/pyamplicol/).
 
 Release builds use pinned published Python dependencies (Symbolica 3.0.3,
 ufo-model-loader 1.0.1) and, in the native code, SymJIT 2.28.3 and pinned
-revisions of Symbolica (with
-[symbolica-dev/symbolica#163](https://github.com/symbolica-dev/symbolica/pull/163)),
+revisions of Symbolica (symbolica-dev/symbolica's `community` branch),
 NinjaRS, oneloopmaster and [TIRust](https://github.com/huashengshao/TIRust);
 see [dependencies/README.md](dependencies/README.md).
 
