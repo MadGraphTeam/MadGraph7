@@ -68,13 +68,14 @@ use super::dress::{Carrier, cast, parse_rational};
 use super::interference::{Entry, Interference, InterferenceRuntime, Ket, MetricCells};
 use super::plan::LoopProgramV4;
 use crate::engine::{PlaneDescriptor, SchemaSources, SymjitPlaneKernel, SymjitPlaneLayout};
+use crate::row_evaluator::RowEvaluator;
 use crate::{RusticolError, RusticolResult};
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use symbolica::domains::float::{Complex, DoubleFloat, Float, Real};
 use symbolica::domains::rational::Rational;
-use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
+use symbolica::evaluate::EvaluationDomain;
 
 /// The tree-program schema this executor runs (4: the counterterm program's
 /// slot table and per-slot reachability masks, WP3.1 I5).
@@ -153,7 +154,7 @@ pub fn compile_plane_application_checked(
             probe: PlaneProbe::NoRealPoint,
         }));
     }
-    let mut batch = evaluator.clone().into_batch_evaluator();
+    let mut batch = RowEvaluator::new(evaluator.clone());
     let shape = (inputs, outputs);
     Ok(level_zero_fallback(
         plane,
@@ -270,7 +271,7 @@ impl std::fmt::Display for PlaneMismatch {
 #[cfg(feature = "python-generation-bridge")]
 fn verify_plane(
     plane: &[u8],
-    evaluator: &mut BatchExpressionEvaluator<Complex<f64>>,
+    evaluator: &mut RowEvaluator<Complex<f64>>,
     shape: (usize, usize),
     real_points: &[Vec<f64>],
 ) -> RusticolResult<Option<PlaneMismatch>> {
@@ -1292,7 +1293,7 @@ type MetricValue<T> = (u32, u32, u32, Complex<T>);
 /// One kernel (or the parameter program) in carrier `T`: its exact
 /// evaluator in the carrier, or in binary64 its SymJIT plane application.
 pub enum Kernel<T> {
-    Exact(BatchExpressionEvaluator<Complex<T>>),
+    Exact(RowEvaluator<Complex<T>>),
     Plane(Box<dyn PlaneRows<T> + Send>),
 }
 
@@ -1377,11 +1378,11 @@ where
 {
     let _unlock = crate::licence::unlock();
     let complex = |re: &Rational, im: &Rational| Complex::new(cast(zero, re), cast(zero, im));
-    Ok(Kernel::Exact(
-        crate::engine::decode_exact_evaluator_state(saved)?
-            .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
-            .into_batch_evaluator(),
-    ))
+    Ok(Kernel::Exact(RowEvaluator::map_coeff_with_prec(
+        crate::engine::decode_exact_evaluator_state(saved)?,
+        &|r| complex(&r.re, &r.im),
+        zero.get_precision(),
+    )))
 }
 
 /// A binary64 plane application on split-complex planes (inputs re, im,
