@@ -6545,11 +6545,9 @@ c The driver starts a fresh complete folded point before any radiation
 c trial. A skipped first soft endpoint must not expose the prior point's
 c cached virtual to a later supported fold.
       implicit none
-      logical virtual_fold_ready,eikonal_point_ready
+      logical virtual_fold_ready
       common /c_folded_virtual/ virtual_fold_ready
-      common /c_folded_eikonal/ eikonal_point_ready
       virtual_fold_ready=.false.
-      eikonal_point_ready=.false.
       return
       end
 
@@ -6634,6 +6632,8 @@ c For the MINT folding
       common /cfl/fold,ifold_counter
       logical virtual_fold_ready,first_virtual_evaluation
       common /c_folded_virtual/ virtual_fold_ready
+      logical eikonal_inputs_checked
+      common /c_eikonal_cache/ eikonal_inputs_checked
       double precision virt_wgt_save
       save virt_wgt_save
 
@@ -6698,6 +6698,8 @@ c after the driver has reset the complete point, not by its fold index.
 c Fixed-order callers retain their ordinary fold-zero initialization.
       if (fold.eq.0) call reset_folded_virtual
       first_virtual_evaluation=.not.virtual_fold_ready
+c The I(reg) link cache checks its physical inputs once per call.
+      eikonal_inputs_checked=.false.
       
       if (firsttime) then
 C check if any real emission need cahrge/color links
@@ -6907,12 +6909,7 @@ C wgt includes the gs/w^2
                      if (collect_surrogate.and.iord.eq.qcd_pos)
      $                    call vs_add_link(p_born,QES2,i_fks,m,n,wgt)
                      if (abrv.eq.'virt') cycle
-                     if (product(ifold(1:ndim)).gt.1) then
-                        call cached_eikonal_Ireg(p,m,n,xicut_used,
-     $                       eikIreg)
-                     else
-                        call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
-                     endif
+                     call cached_eikonal_Ireg(p,m,n,xicut_used,eikIreg)
                      contr=contr+wgt*eikIreg
                      do k=1,amp_split_size
                         amp_split_bsv(k) = amp_split_bsv(k) - 2d0 *
@@ -7204,52 +7201,50 @@ c         stop
 
 
       subroutine cached_eikonal_Ireg(p,m,n,xicut_used,eikIreg)
-c I(reg) is a scalar function of the physical Born state. Sector
-c learning probes cache its link table across their radiation folds; the
-c driver resets the table for every complete point. Native contexts can
-c replace active state, so also compare every input read by the scalar
-c kernel on each call.
+c I(reg) is a scalar function of the physical Born state. With sector
+c learning, its link table is cached across a probe's radiation folds.
+c Native contexts can replace active state, so every input read by the
+c scalar kernel is compared once per bornsoftvirtual call.
       use fks_phase_space_data, only: shat
-      use FKSParams, only: FKSSectorLearning
+      use mint_module, only: sector_learning_active
       implicit none
       include 'nexternal.inc'
       include 'q_es.inc'
       double precision p(0:3,nexternal),xicut_used,eikIreg,
      $     pmass(nexternal)
       integer m,n
-      character*4 abrv
-      common /to_abrv/ abrv
-      logical eikonal_point_ready
-      common /c_folded_eikonal/ eikonal_point_ready
-      logical link_ready(nexternal,nexternal)
+      logical eikonal_inputs_checked
+      common /c_eikonal_cache/ eikonal_inputs_checked
+      logical eikonal_point_ready,link_ready(nexternal,nexternal)
       double precision cached_p(0:3,nexternal),cached_mass(nexternal),
      $     cached_shat,cached_qes2,cached_xicut,
      $     link_value(nexternal,nexternal)
-      character*4 cached_abrv
-      save link_ready,link_value,cached_p,cached_mass,cached_shat,
-     $     cached_qes2,cached_xicut,cached_abrv
+      save eikonal_point_ready,link_ready,link_value,cached_p,
+     $     cached_mass,cached_shat,cached_qes2,cached_xicut
+      data eikonal_point_ready /.false./
 
       include 'pmass.inc'
 
-      if (.not.FKSSectorLearning) then
+      if (.not.sector_learning_active) then
          call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
          return
       endif
-      if (eikonal_point_ready) then
-         if (any(cached_p.ne.p).or.any(cached_mass.ne.pmass).or.
-     $       cached_shat.ne.shat.or.cached_qes2.ne.QES2.or.
-     $       cached_xicut.ne.xicut_used.or.cached_abrv.ne.abrv)
-     $       eikonal_point_ready=.false.
-      endif
-      if (.not.eikonal_point_ready) then
-         link_ready=.false.
-         cached_p=p
-         cached_mass=pmass
-         cached_shat=shat
-         cached_qes2=QES2
-         cached_xicut=xicut_used
-         cached_abrv=abrv
-         eikonal_point_ready=.true.
+      if (.not.eikonal_inputs_checked) then
+         eikonal_inputs_checked=.true.
+c Separate tests: the cached inputs are undefined before the first fill.
+         if (eikonal_point_ready) eikonal_point_ready=
+     $        all(cached_p.eq.p).and.all(cached_mass.eq.pmass).and.
+     $        cached_shat.eq.shat.and.cached_qes2.eq.QES2.and.
+     $        cached_xicut.eq.xicut_used
+         if (.not.eikonal_point_ready) then
+            link_ready=.false.
+            cached_p=p
+            cached_mass=pmass
+            cached_shat=shat
+            cached_qes2=QES2
+            cached_xicut=xicut_used
+            eikonal_point_ready=.true.
+         endif
       endif
       if (.not.link_ready(m,n)) then
          call eikonal_Ireg(p,m,n,xicut_used,link_value(m,n))

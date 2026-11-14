@@ -74,6 +74,7 @@ logical softtest,colltest
 common/sctests/softtest,colltest
 real(8) saved_born(0:3,4)
 type(fks_phase_space_point) point,fresh
+type(fks_born_point) cache
 softtest=.false.
 colltest=.false.
 lpp=1
@@ -95,7 +96,7 @@ native_epoch=0
 x=0d0
 x(1:6)=[0.2d0,0.3d0,0.4d0,0.999d0,0.999d0,0.137d0]
 w=2d0
-call generate_born_contribution(ndim,config,w,x,point)
+call generate_born_contribution(ndim,config,w,x,point,cache)
 if(samples.ne.1.or..not.point%born%valid)error stop 'initial Born not sampled'
 if(.not.point%no_counterevents.or.point%counterevent(0)%valid)error stop 'first fold has endpoint'
 saved_born=point%born%p
@@ -103,7 +104,7 @@ saved_born=point%born%p
 ! soft endpoint. A later fold must regenerate and gain that endpoint.
 x(4:5)=modulo(x(4:5)+0.5d0,1d0)
 w=3d0
-call generate_born_contribution(ndim,config,w,x,point)
+call generate_born_contribution(ndim,config,w,x,point,cache)
 if(samples.ne.1.or.any(point%born%p.ne.saved_born))error stop 'fold resampled Born'
 if(point%no_counterevents.or..not.point%counterevent(0)%valid)error stop 'fold reused stale endpoints'
 w=5d0
@@ -196,7 +197,7 @@ class TestLearningProbeBornCache(unittest.TestCase):
                 'integer :: native_epoch=0\nend module\n')
             (work / 'sampler.f90').write_text(STUBS)
             names = FKS_MAIN_ROUTINES + (
-                'generate_born_contribution', 'generate_real_phase_space',
+                'generate_born_contribution', 'generate_real_phase_space', 'keep_cached_born',
                 'generate_prepared_fks_point', 'prepare_fks_beam_point',
                 'sample_prepared_fks_born', 'fks_born_matches')
             module = fks_test_module(names)

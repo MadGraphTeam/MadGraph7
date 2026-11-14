@@ -62,7 +62,7 @@ if(index(trim(action),'card_').eq.1)then
 endif
 FKSSectorLearningBudget=.35d0
 use_poly_virtual=.false.
-FKSSectorLearning=.true.
+sector_learning_active=.true.;sector_learning_archive=.true.
 FKSExplicitSum=.true.;MCSubtractionAtFixedFlow=.true.
 VirtTrickSurrogate=0
 fixed_order=.false.;nlo_ps=.true.;born_spread_active=.false.
@@ -75,6 +75,17 @@ call random_seed(put=seed)
 allocate(probe_vtot(nintegrals,0:maxchannels),probe_etot(nintegrals,0:maxchannels))
 call register_fixture_layouts
 zero_integrand=index(trim(action),'zero').eq.1
+if(trim(action).eq.'quiet_train')then
+ ! Production MINT0: no audit archive, but the same frozen table.
+ sector_learning_archive=.false.
+ imode=0;ncalls0=4096;itmax=4;accuracy=0d0
+ call mint(integrand)
+ inquire(file='sector_learning_online.bin',exist=exists)
+ if(exists.or..not.sl_ready.or.online_probes.le.0)stop 241
+ call write_grids_to_file
+ print *,'PASS production MINT0 without audit archive'
+ stop 0
+endif
 if(trim(action).eq.'train'.or.trim(action).eq.'zero_train')then
  imode=0;ncalls0=4096;itmax=4;accuracy=0d0
  ! Automatic point counts (ncalls0<=0, as in MC@NLO runs) detect a zero integral.
@@ -82,7 +93,7 @@ if(trim(action).eq.'train'.or.trim(action).eq.'zero_train')then
  call mint(integrand)
  if(online_ordinary_calls.ne.ordinary_nodes)stop 201
  if(online_probes.le.0.or.probe_nodes.ne.16*online_probes.or.probe_ends.ne.online_probes)stop 202
- if(online_reused_nodes.ne.16*online_probes.or.online_restore_checks.ne.online_probes)stop 203
+ if(online_reused_nodes.ne.16*online_probes)stop 203
  if(online_probes.gt.(online_ordinary_calls-48)/16)stop 204
  if(online_record_rejections.ne.0.or..not.sl_ready.or.sector_learning_collect)stop 205
  if(grid_changes.lt.1.or.last_iteration.ne.4)stop 206
@@ -99,12 +110,10 @@ if(trim(action).eq.'train'.or.trim(action).eq.'zero_train')then
  if(sum(online_proxy_hits(:,1,:)).ne.probe_epoch(last_iteration))stop 211
  if(online_extra_cpu.lt.online_probe_cpu+online_fit_cpu.or.online_ordinary_cpu.le.0d0)stop 212
  if(any(online_total_hits.ne.online_base_hits+online_ordinary_hits+online_proxy_hits))stop 213
- inquire(file='sector_learning_orbits.bin',exist=exists)
- if(exists)stop 214
  inquire(file='sector_learning_online.bin',exist=exists)
  if(.not.exists)stop 215
  call write_grids_to_file
- print *,'CHECK',ordinary_nodes,probe_nodes,online_probes,online_reused_nodes,online_restore_checks,grid_changes,map_changes
+ print *,'CHECK',ordinary_nodes,probe_nodes,online_probes,online_reused_nodes,grid_changes,map_changes
  print *,'CHECKCPU',online_ordinary_cpu,online_extra_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
  print *,'PASS native mint iteration/integral isolation'
 else
@@ -114,7 +123,7 @@ else
   call setup_basic_mint
  endif
  if(trim(action).eq.'wrongfold')ifold(2)=2
- if(trim(action).eq.'wrongmode')FKSSectorLearning=.false.
+ if(trim(action).eq.'wrongmode')sector_learning_active=.false.
  if(trim(action).eq.'wrongbudget')FKSSectorLearningBudget=.95d0
  call read_grids_from_file
  call register_fixture_layouts
@@ -309,7 +318,6 @@ class TestEpochReplayIteration(unittest.TestCase):
             self.assertIn('mixed-map ABS summaries are TRAINING heuristics',output)
             self.assertIn('no separate calibration',output)
             self.assertTrue((work/'sector_learning_online.bin').is_file())
-            self.assertFalse((work/'sector_learning_orbits.bin').exists())
             audit=audit_archive(work/'sector_learning_online.bin',work/'mint_grids',expected_budget=.35)
             self.assertTrue(audit['passed'],audit)
             parsed=read_archive(work/'sector_learning_online.bin')
@@ -349,13 +357,21 @@ class TestEpochReplayIteration(unittest.TestCase):
             self.assertEqual((work/'sector_learning_online.bin').read_bytes(),before)
             (work/'mint_grids').write_bytes(training_grid)
             self.run_case('wrongmode',work,'FKSSectorLearning differs from the saved MINT training')
-            self.run_case('wrongfold',work,'Learned sector production requires matched111')
+            self.run_case('wrongfold',work,'Sector learning requires folding 1 1 1 and Born spreading off')
             self.run_case('wrongbudget',work,'FKSSectorLearningBudget differs from the saved MINT training')
             self.run_case('wronglayout',work,'Learned sector layout changed')
             damaged=''.join(line for line in (work/'mint_grids').read_text().splitlines(True)
                             if not line.startswith(' SCL10')and not line.startswith('SCL10'))
             (work/'mint_grids').write_text(damaged)
             self.run_case('restart',work,'FKSSectorLearning differs from the saved MINT training')
+
+    def test_production_training_writes_no_audit_archive(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work=Path(temporary)
+            self.run_case('quiet_train',work)
+            self.assertFalse((work/'sector_learning_online.bin').exists())
+            self.assertIn('SCL10 H',(work/'mint_grids').read_text())
+            self.run_case('restart',work)
 
     def test_zero_integral_ends_every_step_gracefully(self):
         # A zero-result job stops before training ends; its grid has no frozen

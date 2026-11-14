@@ -179,7 +179,7 @@ end program
 use virt_surrogate
 implicit none
 integer :: VirtTrickSurrogate=2
-logical :: FKSSectorLearning=.false.
+logical :: sector_learning_active=.false.
 integer :: ifold(4)=1
 integer,parameter :: nintervals=4,nintervals_virt=2,ndim=4,n_ord_virt=2,maxchannels=2,nintegrals=10
 integer :: nchans=2,imode=0,ncalls0=100,itmax=7,nhits_in_grids(2)=[20,30]
@@ -200,6 +200,9 @@ error stop 'learning read unexpectedly entered surrogate-only fixture'
 end subroutine
 subroutine sl_verify_grid
 error stop 'learning grid unexpectedly entered surrogate-only fixture'
+end subroutine
+subroutine sl_require_matched111
+error stop 'learning check unexpectedly entered surrogate-only fixture'
 end subroutine
 subroutine close_run_zero_res
 error stop 'unexpected zero result'

@@ -1,4 +1,4 @@
-"""Pure-Python reference and archive audit for FKSSectorLearning=29.
+"""Pure-Python reference and archive audit for FKSSectorLearning.
 
 Independent oracle for the tiled S-event maps (no NumPy/SciPy). Probe banks
 use nested lists b[N][16][F] and r[N][S][16][F]; they already contain the
@@ -102,10 +102,6 @@ def arrays(b, r):
             if not _finite(_flat(orbit_b)) or not _finite(_flat(orbit_r)):
                 raise ValueError('Nonfinite bank')
     return b, r
-
-
-def dims(b, r):
-    return len(b), (len(r[0]) if r else 0), (len(b[0][0]) if b else 0)
 
 
 # ------------------------------------------------------------ tile maps

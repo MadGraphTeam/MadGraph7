@@ -1,4 +1,4 @@
-"""Memoized integrated soft scalars must retain every physical kernel input."""
+"""Memoized integrated soft scalars are rechecked against every physical input per call."""
 
 from pathlib import Path
 import shutil
@@ -10,7 +10,7 @@ from tests.unit_tests.fks.test_momentum_maps import TEMPLATE, fortran_routine
 
 
 PROGRAM = '''program check
-use FKSParams,only: FKSSectorLearning
+use mint_module,only: sector_learning_active
 use fks_phase_space_data,only: shat
 use kernel_counter
 implicit none
@@ -19,6 +19,8 @@ common/to_mass/pmass
 common/qes/QES2
 character(4) abrv
 common/to_abrv/abrv
+logical checked
+common/c_eikonal_cache/checked
 integer i,j,before
 p=0d0
 p(:,1)=[1000d0,0d0,0d0,1000d0]
@@ -32,8 +34,8 @@ shat=4d6
 QES2=10000d0
 xicut=0.1d0
 abrv='all'
-FKSSectorLearning=.true.
-call reset_folded_virtual
+sector_learning_active=.true.
+checked=.false.
 ! Cover all massless, mixed-mass, massive-pair and massive-self links.
 do i=1,6
  do j=1,i
@@ -59,12 +61,13 @@ QES2=11000d0
 call miss_and_hit(.true.)
 xicut=0.15d0
 call miss_and_hit(.true.)
-abrv='grid'
-call miss_and_hit(.true.)
-! A new full point must drop even a matching physical-state table.
-call reset_folded_virtual
-call miss_and_hit(.true.)
-FKSSectorLearning=.false.
+! Within one call the inputs are not rechecked: links are reused.
+p(0,1)=p(0,1)+1d0
+before=kernel_calls
+call cached_eikonal_Ireg(p,3,1,xicut,actual)
+if(kernel_calls.ne.before)error stop 'inputs rechecked within one call'
+p(0,1)=p(0,1)-1d0
+sector_learning_active=.false.
 before=kernel_calls
 call cached_eikonal_Ireg(p,3,1,xicut,actual)
 call cached_eikonal_Ireg(p,3,1,xicut,actual)
@@ -79,6 +82,7 @@ integer expected_calls
 before=kernel_calls
 expected_calls=before
 if(miss)expected_calls=expected_calls+1
+checked=.false.
 call raw_eikonal_Ireg(p,3,1,xicut,expected)
 call cached_eikonal_Ireg(p,3,1,xicut,actual)
 if(actual.ne.expected.or.kernel_calls.ne.expected_calls)error stop 'cache guard missed changed input'
@@ -112,6 +116,9 @@ class TestLearningProbeIregCache(unittest.TestCase):
             (work / 'counter.f90').write_text('''module kernel_counter
 integer :: kernel_calls=0
 end module
+module mint_module
+logical :: sector_learning_active=.false.
+end module
 subroutine fixture_external_masses(pmass)
 implicit none
 real(8) pmass(7),active_mass(7)
@@ -131,7 +138,7 @@ end subroutine
             result = subprocess.run([
                 shutil.which('gfortran'), '-O2', '-ffixed-line-length-none', '-fcheck=all',
                 '-ffpe-trap=invalid,zero,overflow', '-I', str(work),
-                str(TEMPLATE / 'FKSParams.f90'), str(TEMPLATE / 'fks_phase_space_data.f'),
+                str(TEMPLATE / 'fks_phase_space_data.f'),
                 str(work / 'counter.f90'), str(work / 'kernels.f'), str(work / 'check.f90'),
                 '-o', str(work / 'check')], cwd=work, text=True, capture_output=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

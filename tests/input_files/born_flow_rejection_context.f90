@@ -8,7 +8,6 @@ module flow_fixture
   double precision :: last_prefactor_weight=1d0
   logical :: real_point_active=.false.,born_cuts=.true.
   logical :: outer_no_endpoint=.false.
-  logical :: no_event_projection=.false.
   logical :: fail_kinematics=.false.
   integer :: fail_weight_fold=0,fail_weight_stage=0
   double precision :: bad_weight=0d0
@@ -30,7 +29,7 @@ end module
 
 module fks_phase_space
   use fks_phase_space_data
-  use flow_fixture, only: outer_no_endpoint,no_event_projection
+  use flow_fixture, only: outer_no_endpoint
   implicit none
   type fks_born_point
     logical :: valid=.false.,event_projection=.true.
@@ -41,28 +40,31 @@ module fks_phase_space
     type(fks_born_point) :: born
   end type
 contains
-  subroutine generate_born_contribution(ndim,config,jac,x,point)
+  subroutine generate_born_contribution(ndim,config,jac,x,point,cached_born)
     integer :: ndim,config
     double precision :: jac,x(99)
     type(fks_phase_space_point) :: point
+    type(fks_born_point),optional :: cached_born
     integer :: i_fks,j_fks
     common/fks_indices/i_fks,j_fks
     point=fks_phase_space_point()
-    point%born%event_projection=.not.no_event_projection
     p_born=1d0
     p1_cnt=1d0
     p1_cnt(:,i_fks,0)=0d0
     if(outer_no_endpoint)p1_cnt(0,1,0)=-99d0
+    if(present(cached_born))cached_born=point%born
   end subroutine
-  subroutine generate_real_phase_space(ndim,config,jac,x,point)
+  subroutine generate_real_phase_space(ndim,config,jac,x,point,cached_born)
     integer :: ndim,config
     double precision :: jac,x(99)
     type(fks_phase_space_point) :: point
+    type(fks_born_point),optional :: cached_born
     integer :: i_fks,j_fks
     common/fks_indices/i_fks,j_fks
     point=fks_phase_space_point()
     p1_cnt(:,:,0)=1d0
     p1_cnt(:,i_fks,0)=0d0
+    if(present(cached_born))cached_born=point%born
   end subroutine
 end module
 
@@ -90,38 +92,41 @@ module mint_module
   integer :: ifold_energy=3,ifold_yij=4,ifold_phi=5
   integer :: born_spread_current_bin=1,born_spread_bin_fold(32),born_spread_sector_fold(32)
   integer :: born_spread_phase=0
-  logical :: sector_learning_collect=.false.
+  logical :: sector_learning_collect=.false.,sector_learning_active=.false.
   integer :: learning_registers=0,learning_begins=0,learning_selects=0,learning_marks=0,learning_rejects=0
   integer :: learning_owners(1024)=0,learning_selected_slot=0
   logical :: new_point=.true.,pass_cuts_check=.false.
   double precision :: virt_wgt_mint(0:1)=0d0,born_wgt_mint(0:1)=0d0
 contains
   subroutine sector_learning_begin_point
+    if(.not.sector_learning_collect)return
     learning_begins=learning_begins+1
     learning_owners=0
     learning_selected_slot=0
   end subroutine
   subroutine sector_learning_select_slot(slot)
     integer :: slot
+    if(.not.sector_learning_active)return
     if(learning_selected_slot.ne.0.and.slot.ne.learning_selected_slot)error stop 'probe changed Born slot'
     learning_selected_slot=slot
     learning_selects=learning_selects+1
   end subroutine
   subroutine sector_learning_mark_range(first,last,owner)
     integer :: first,last,owner
+    if(.not.sector_learning_collect)return
     if(first.lt.1.or.last.gt.size(learning_owners))error stop 'bad owner range'
     learning_marks=learning_marks+1
     learning_owners(first:last)=owner
   end subroutine
   subroutine sector_learning_reject_point
-    learning_rejects=learning_rejects+1
+    if(sector_learning_collect)learning_rejects=learning_rejects+1
   end subroutine
   subroutine resample_sector_radiation(x,updated,ratio,sector_id)
     double precision :: x(ndimmax),updated(ndimmax),ratio
     integer,optional :: sector_id
     updated=x
     ratio=1d0
-    if(FKSSectorLearning)then
+    if(sector_learning_active)then
       sector_draws=sector_draws+1
       updated(3:4)=[0.1d0+sector_draws*0.1d0,0.3d0]
       ratio=2d0
@@ -155,8 +160,9 @@ module scale_module
 end module
 
 subroutine register_sector_learning_layout(slot,n,sectors)
-  use mint_module,only: learning_registers
+  use mint_module,only: learning_registers,sector_learning_active
   integer :: slot,n,sectors(n)
+  if(.not.sector_learning_active)return
   if(slot.ne.1.or.n.ne.1.or.any(sectors.ne.1))error stop 'bad complete slot registration'
   learning_registers=learning_registers+1
 end subroutine

@@ -69,10 +69,10 @@ Learning applies to complete MC@NLO runs. At LO (`aMC@LO`, `noshowerLO`,
 Run fresh MINT0 and MINT1 before generation whenever the method or credit
 changes. `mint_grids` stores the frozen maps (`SCL10` table); MINT1 and
 generation verify the setting, the fold counts and the adaptive grid
-against it. MINT0 also writes
-`sector_learning_online.bin`, a binary per-iteration record of the probes,
-fits and grid feeds for auditing; production does not read it. Probe
-admission depends on measured CPU time, so a seed alone does not reproduce
+against it. With `sector_learning_archive` set in `mint_module` (the tests
+do this), MINT0 also writes `sector_learning_online.bin`, a binary
+per-iteration record of the probes, fits and grid feeds for auditing;
+production runs neither write nor read it. Probe admission depends on measured CPU time, so a seed alone does not reproduce
 the training schedule.
 
 ## Measured effect

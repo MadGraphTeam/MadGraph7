@@ -21,6 +21,8 @@ def production_fixture():
       integer iamp
       logical first_virtual_evaluation,virtual_fold_ready
       common /c_folded_virtual/ virtual_fold_ready
+      logical eikonal_inputs_checked
+      common /c_eikonal_cache/ eikonal_inputs_checked
       double precision virt_wgt_save,amp_split_virt_save(amp_split_size)
       save virt_wgt_save,amp_split_virt_save
       double precision ran2

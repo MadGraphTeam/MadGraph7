@@ -24,11 +24,6 @@ program check_born_flow_rejection
   ! the run-card defaults; individual cases override these settings.
   MCExplicitKLSum=.true.
   FKSExplicitSum=.false.
-  no_event_projection=trim(mode).eq.'no_projection'
-  if(no_event_projection)then
-    FKSExplicitSum=.true.
-    FKSSectorLearning=.true.
-  endif
   nan=ieee_value(0d0,ieee_quiet_nan)
   inf=ieee_value(0d0,ieee_positive_inf)
   leading=[.true.,.true.,.false.]
@@ -76,7 +71,7 @@ program check_born_flow_rejection
     abrv='all'
     x=0.5d0
     FKSExplicitSum=.true.
-    FKSSectorLearning=.true.
+    sector_learning_active=.true.
     sector_learning_collect=.true.
     ifold(3)=16
     call weight_lines_allocated(5,256,1,1)
@@ -182,7 +177,7 @@ program check_born_flow_rejection
     abrv='all'
     x=0.5d0
     FKSExplicitSum=.true.
-    FKSSectorLearning=.true.
+    sector_learning_active=.true.
     call weight_lines_allocated(5,32,1,1)
     do i=0,2
       dummy=sigintF(x,1d0,min(i,1),answer)
@@ -261,7 +256,7 @@ program check_born_flow_rejection
     else
       values(2)=nan
       select case(trim(mode))
-      case('outer','no_projection')
+      case('outer')
       case('born')
         abrv='born'
       case('virtual')

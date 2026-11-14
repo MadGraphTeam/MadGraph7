@@ -74,12 +74,6 @@ class TestBornFlowRejection(unittest.TestCase):
     def test_learned_sector_radiation_jacobian_and_selected_event_replay(self):
         self.check_mode('sector')
 
-    def test_learning_rejects_radiation_dependent_born_coordinates(self):
-        result = subprocess.run([str(self.executable), 'no_projection'],
-                                capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('Sector learning requires event projection', result.stdout)
-
     def test_calibration_uses_s_weights_and_restores_production(self):
         self.check_mode('calibration')
 

@@ -23,7 +23,7 @@ program routed_capture
  integer :: fold,s,k,t,i,j,first,last,owner,ids(3)=[3,1,2],providers(3)=[2,1,2],pdgs(3,5)
  double precision :: value(3),expected_b(2,16),expected_r(2,16,3),loss(1),b(2,16,1),r(2,16,3,1)
  integer :: perms(16,3)
- FKSSectorLearning=.true.
+ sector_learning_active=.true.
  pdgs=21
  call sector_learning_register_layout(1,ids,providers,pdgs)
  sector_learning_collect=.true.
@@ -182,6 +182,7 @@ class TestSectorLearningCapture(unittest.TestCase):
                 (work/name).write_text(''.join('      '+line+'\n' for line in text.splitlines()))
             (work/'helper.f').write_text(routine(TEMPLATE/'driver_mintMC.f','register_sector_learning_layout'))
             (work/'context.f90').write_text("""module mint_module
+logical :: sector_learning_active=.true.
 contains
 subroutine sector_learning_register_layout(slot,ids,providers,pdgs)
  integer :: slot,ids(:),providers(:),pdgs(:,:)

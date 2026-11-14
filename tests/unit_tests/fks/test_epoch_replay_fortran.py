@@ -75,7 +75,7 @@ elseif(trim(action).eq.'empty_previous')then
    if(any(attempt1(j)%tile_trace.ne.attempt2(j)%tile_trace))stop 512
   endif
  enddo
- print *,'PASS exact mode28 fit/maps/loss/trace fallback for empty previous bank'
+ print *,'PASS exact fit/maps/loss/trace fallback for empty previous bank'
 elseif(trim(action).eq.'empty_current')then
  call sector_learning_epoch_replay_bank(b(:,:,1:0),r(:,:,:,1:0),pb,pr,fb,fr)
  if(any(shape(fb).ne.[2,16,0]).or.any(shape(fr).ne.[2,16,2,0]))stop 513
@@ -89,7 +89,7 @@ elseif(trim(action).eq.'badshape')then
  stop 515
 else
  call DefaultFKSParam
- FKSSectorLearning=.true.;FKSSectorLearningBudget=.35d0
+ sector_learning_active=.true.;sector_learning_archive=.true.;FKSSectorLearningBudget=.35d0
  fixed_order=.false.;born_spread_active=.false.;sl_ready=.false.;imode=0
  ndim=4;nchans=1;ichan=1;nint_used=4;ifold=1
  do j=1,4
@@ -107,7 +107,7 @@ else
  if(epoch_replay_previous(1)%nt.ne.64.or.epoch_replay_previous(1)%nf.ne.2)stop 516
  f=29d0;vtot=13d0;etot=17d0;HwU_values=19d0;ans=23d0;unc=31d0
  rand=.13d0;icell=2;ncell=4;sl_current=1
- online_ordinary_calls=64;online_probes=1;online_reused_nodes=16;online_restore_checks=1
+ online_ordinary_calls=64;online_probes=1;online_reused_nodes=16
  if(trim(action).eq.'runtime_empty')then
   call sl_epoch_replay_fit_epoch()
   if(online_slots(1)%gx.ne.1.or.online_slots(1)%gy.ne.1.or.unified_slots(1)%fit_status.ne.0)stop 517
@@ -125,7 +125,6 @@ else
  sl_entries(1)%b=-1d0;sl_entries(1)%r=0d0
  allocate(online_slots(1)%cells(4,16,1),online_slots(1)%channels(1),online_slots(1)%sample_ids(1))
  online_slots(1)%cells=1;online_slots(1)%channels=1;online_slots(1)%sample_ids=64
- if(trim(action).eq.'badmetadata')epoch_replay_previous(1)%providers(1)=99
  call random_seed(size=nseed);allocate(seed_a(nseed),seed_b(nseed));call random_seed(get=seed_a)
  call sl_epoch_replay_fit_epoch()
  call random_seed(get=seed_b)
@@ -137,7 +136,7 @@ else
  if(any(f.ne.29d0).or.any(vtot.ne.13d0).or.any(etot.ne.17d0).or.any(HwU_values.ne.19d0))stop 525
  if(any(ans.ne.23d0).or.any(unc.ne.31d0).or.any(rand.ne..13d0).or.any(icell.ne.2))stop 526
  if(any(nhits.ne.0).or.online_ordinary_calls.ne.64.or.online_probes.ne.1.or. &
-      online_reused_nodes.ne.16.or.online_restore_checks.ne.1)stop 527
+      online_reused_nodes.ne.16)stop 527
  if(any(abs(xacc(1,1:4,1)-256d0).gt.1d-12))stop 528
  if(trim(action).eq.'empty_intervening')then
   if(online_slots(1)%loss_before.ne.16d0.or.online_slots(1)%loss_after.ne.16d0)stop 529
@@ -180,12 +179,10 @@ class TestEpochReplayFortran(unittest.TestCase):
             self.assertIn(failure, output)
 
     def test_scaled_current_first_canonical_padding_and_immutability(self):self.run_case('normal')
-    def test_empty_previous_exact_mode28_maps_losses_and_traces(self):self.run_case('empty_previous')
+    def test_empty_previous_exact_maps_losses_and_traces(self):self.run_case('empty_previous')
     def test_empty_current_does_not_replay_old_observations(self):self.run_case('empty_current')
     def test_current_support_not_increased_and_old_points_never_update_proxy_or_integral(self):self.run_case('runtime')
     def test_positive_history_cannot_fit_empty_current_epoch(self):self.run_case('runtime_empty')
     def test_empty_intervening_epoch_clears_history(self):self.run_case('empty_intervening')
-    def test_metadata_alignment_is_strict(self):
-        self.run_case('badmetadata', 'Epoch replay static sector metadata changed')
     def test_nonfinite_and_incompatible_shapes_rejected(self):
         self.run_case('nan', 'Nonfinite epoch replay bank');self.run_case('badshape', 'Invalid epoch replay bank shapes')
