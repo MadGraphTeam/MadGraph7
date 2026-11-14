@@ -1121,12 +1121,18 @@ class Interaction(PhysicsObject):
            """
         
         pdgs = [p.get_pdg_code() for p in self.get('particles')]
+        # 'merged_particles' is keyed by the positive merged code only
+        # ({81: [1,2,3,4], 82: [11,13], ...}) while pdgs holds the *signed* code:
+        # a leg that is an antiparticle instance reports -82, not 82. Membership
+        # must therefore always be tested through abs() -- a bare `pdg in ...`
+        # silently misses an interaction whose merged legs are all antiparticles
+        # (e.g. the l+ pair of a lepton-number-violating H-- l+ l+ vertex).
+        positions = [i for i in range(len(pdgs)) if abs(pdgs[i]) in model.get('merged_particles')]
         flavor = [map_flavor[pdg].pop() if abs(pdg) in model.get('merged_particles') else 0 for pdg in pdgs]
         for coupling in self.get('couplings').values():
             if isinstance(coupling, str):
                 # if no PDG in merge range -> return True
-                if any([pdg in model['merged_particles'] for pdg in pdgs]):
-                    positions = [i for i in range(len(pdgs)) if abs(pdgs[i]) in model['merged_particles']]
+                if positions:
                     if len(positions) != 2:
                         raise Exception
                     elif flavor[positions[0]] == flavor[positions[1]]:
@@ -2777,10 +2783,10 @@ class FLV_Coupling(PhysicsObject):
           generation (fermion 2). A k2 shared by single-merged-leg keys with
           the merged leg first is the unmerged partner's index: only a
           current building the merged fermion from the unmerged one reads
-          it, and generation refuses that one (HelasWavefunction
-          .FlavorTagError, several flavors from no merged input), so those
-          couplings are written as they are (p p > xq z of a heavy quark
-          xq mixing into d and s)."""
+          it, and the output refuses that one before writing anything
+          (HelasWavefunction.AmbiguousFlavorError, several flavors from no
+          merged input), so those couplings are written as they are (p p >
+          xq z of a heavy quark xq mixing into d and s)."""
         partners = ({}, {})
         for key in self['flavors']:
             k1, k2 = self.get_partner_indices(key)
@@ -3881,6 +3887,9 @@ class Process(PhysicsObject):
         # carrying its own orders, s-channel requirements and exclusions.
         self['interference_mode'] = ''
         self['interference_process'] = None
+        # the gauge this process is generated in when an output mixes gauges
+        # ('FD', 'unitary'); '' is the gauge of the session
+        self['gauge'] = ''
 
     def filter(self, name, value):
         """Filter for valid process property values."""
@@ -3970,6 +3979,10 @@ class Process(PhysicsObject):
             import madgraph.interface.madgraph_interface as mg
             if value not in mg.MadGraphCmd._valid_nlo_modes:
                 raise self.PhysicsObjectError("%s is not a valid NLO_mode" % str(value))
+
+        if name == 'gauge':
+            if value not in ['', 'unitary', 'FD']:
+                raise self.PhysicsObjectError("%s is not a valid gauge" % str(value))
 
         if name == 'interference_mode':
             if value not in ['', 'LIxtree', 'treextree']:
@@ -4073,6 +4086,12 @@ class Process(PhysicsObject):
         a version that did not know about interference processes)."""
 
         return dict.get(self, 'interference_mode', '') or ''
+
+    def get_gauge(self, default=''):
+        """The gauge of this process in an output that mixes gauges, else
+        `default` (the gauge of the session)."""
+
+        return dict.get(self, 'gauge', '') or default
 
     def has_squared_order_selection(self):
         """Whether only some squared orders of this process are kept: an
@@ -5258,7 +5277,8 @@ class ProcessDefinition(Process):
             # the right-hand process stays the ProcessDefinition template:
             # its legs are matched to these ones at generation time
             'interference_mode': self.get_interference_mode(),
-            'interference_process': dict.get(self, 'interference_process')
+            'interference_process': dict.get(self, 'interference_process'),
+            'gauge': self.get_gauge(),
             })
             
     def get_process(self, initial_state_ids, final_state_ids):

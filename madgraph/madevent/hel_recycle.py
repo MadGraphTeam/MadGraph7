@@ -2,6 +2,7 @@
 
 import argparse
 import atexit
+import glob
 import os
 import re
 import collections
@@ -30,6 +31,162 @@ def get_num_lines(file_path):
     while buf.readline():
         lines += 1
     return lines
+
+
+# Default number of fortran statements per amplitude-chunk file; kept in step
+# with export_v4.AMP_CHUNK_SIZE_DEFAULT, which this module cannot import (it is
+# shipped stand-alone as bin/internal/hel_recycle.py). See the comment there.
+AMP_CHUNK_SIZE_DEFAULT = 2000
+
+# How many helicity rows the color stage gathers out of AMP at a time when it
+# gathers at all (see HelicityRecycler.set_gather_lines). AMP is helicity major,
+# so the rows of one amplitude are the adjacent entries and eight complex*16 are
+# one 128 byte cache line: gathering a row on its own fetches one line per
+# amplitude and uses 16 bytes of it, gathering eight fetches the same line once
+# and uses all of it. Kept in step with the exporter's
+# hel_recycling_gather_block, which the standalone color stage uses.
+GATHER_BLOCK = 8
+
+# ... and the size of AMP, in bytes, above which gathering pays at all. Below
+# it the rows sharing a cache line are visited close enough together that the
+# hardware already gets the reuse the gather is after, so the copy is a second
+# pass over AMP for nothing. Measured on the color stage of the recycled matrix
+# element, gathered against read in place: g g > g g g (AMP 14 kB) +35%,
+# g g > g g g g (408 kB) +56%, g g > t t~ g g g (3.9 MB) -21%. A micro-benchmark
+# of the same access pattern puts the crossover near 1.5 MB. Most madevent
+# processes are far below that, so this leaves the plain loop alone for all but
+# the largest matrix elements.
+GATHER_MIN_BYTES = 2 * 1024 ** 2
+
+# The markers the exporter puts around the HELAS block of an amplitude-chunk
+# file, so that the unrolling below can read the calls back out of it.
+AMP_CHUNK_BEGIN = 'HELAS CALLS BEGIN'
+AMP_CHUNK_END = 'HELAS CALLS END'
+AMP_CHUNK_CALL_RE = re.compile(r'^\s*CALL\s+ORIGAMP\d+_(\d+)\s*\(', re.IGNORECASE)
+
+
+_CHUNK_COMMENT_RE = re.compile(r"^(\s*#|c\$|c$|(c\s+([^=]|$))|cf2py|c\-\-|c\*\*|\s*!|!\$)",
+                               re.IGNORECASE)
+_CHUNK_CONTINUATION_RE = re.compile(r"^(?:     )[$&]")
+
+
+def chunk_statements(lines, chunk_size):
+    """Group column-formatted fortran *lines* into slices of about *chunk_size*
+    statements each. A slice boundary may only fall where a new statement
+    starts at nesting depth zero: continuation lines stay with their statement,
+    comments attach to the statement below them, and an IF(...)THEN block --
+    which split_amps puts around a flavor-masked amplitude -- is never cut in
+    half. Mirrors export_v4.chunk_fortran_statements.
+    """
+
+    def depth_change(line):
+        code = line.upper().split('!')[0].strip()
+        if code.startswith('IF') and code.endswith('THEN'):
+            return 1
+        if code.startswith('DO ') or code == 'DO':
+            return 1
+        if code.startswith(('ENDIF', 'END IF', 'ENDDO', 'END DO')):
+            return -1
+        return 0
+
+    chunks = []
+    current = []
+    pending = []
+    nb_statements = 0
+    depth = 0
+    for line in lines:
+        if not line.strip() or _CHUNK_COMMENT_RE.search(line):
+            pending.append(line)
+            continue
+        if _CHUNK_CONTINUATION_RE.match(line):
+            (current if current else pending).append(line)
+            continue
+        if depth == 0 and nb_statements >= chunk_size and current:
+            chunks.append(current)
+            current = []
+            nb_statements = 0
+        current.extend(pending)
+        pending = []
+        current.append(line)
+        nb_statements += 1
+        depth = max(0, depth + depth_change(line))
+    if pending:
+        current.extend(pending)
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def get_subroutine_signature(text):
+    """(name, argument list) of the first SUBROUTINE statement of *text*, with
+    its continuation lines folded back in. The chunk template is written by the
+    exporter, which is where the argument list of a chunk is decided (it
+    depends on the crossing and flavor-mask holes), so it is read back from
+    there rather than repeated here."""
+
+    statement = ''
+    for line in text.split('\n'):
+        if not statement:
+            if 'SUBROUTINE' not in line.upper():
+                continue
+            statement = line.strip()
+        elif line[5:6] in ('$', '&'):
+            statement += line[6:].strip()
+        else:
+            break
+        if statement.endswith(')'):
+            break
+    head, _, args = statement.partition('(')
+    return head.split()[-1], args.rsplit(')', 1)[0]
+
+
+def read_amp_chunk_body(path):
+    """Return the HELAS call lines of an amplitude-chunk file, i.e. what used
+    to sit inline in the matrix element before the split."""
+
+    body = []
+    inside = False
+    with open(path) as chunk_file:
+        for line in chunk_file:
+            if AMP_CHUNK_BEGIN in line.upper():
+                inside = True
+            elif AMP_CHUNK_END in line.upper():
+                break
+            elif inside:
+                body.append(line)
+    return body
+
+
+def splice_amp_chunks(path):
+    """Iterate over the lines of *path*, substituting the body of
+    matrix<i>_origamp<k>.f wherever the matrix element calls it.
+
+    The exporter can move the HELAS call sequence of matrix<i>_orig.f into
+    files of its own; the unrolling below has to see that sequence, and it sees
+    exactly the lines that used to be there.
+    """
+
+    directory = os.path.dirname(path) or '.'
+    base = os.path.basename(path)[:-len('_orig.f')]
+    skipping = False
+    with open(path) as input_file:
+        for line in input_file:
+            if skipping:
+                # the call is long enough to be wrapped as soon as the flavor
+                # masks are threaded through it; its continuations must go with
+                # it, or they would be folded onto the last spliced statement
+                if _CHUNK_CONTINUATION_RE.match(line):
+                    continue
+                skipping = False
+            match = AMP_CHUNK_CALL_RE.match(line)
+            if not match:
+                yield line
+                continue
+            skipping = True
+            chunk = os.path.join(
+                directory, '%s_origamp%s.f' % (base, match.group(1)))
+            for chunk_line in read_amp_chunk_body(chunk):
+                yield chunk_line
 
 class Dialect:
     '''The language-specific text layer of the recycler.
@@ -124,8 +281,18 @@ class Dialect:
         '''`args` with the helicity table read replaced by the fixed value
         `hel`. A scalar has no helicity argument to replace; fortran overwrites
         the slot the output name is about to take anyway, which is why this is
-        unconditional here.'''
+        unconditional here.
+
+        A crossing-aware matrix element passes the NSF flag of leg i as
+        <nsf>*IC(i) (helas_call_writers, use_crossing_ic). A crossed call
+        evaluates each row with the legs that changed side negated
+        (APPLY_CROSSING_ROWS), so the baked helicity takes the same IC(i)
+        factor.'''
+        leg = self.external_helicity_leg(args)
         args[self.helicity_index] = self.helicity_literal(hel)
+        if leg is not None and len(args) > 3 and \
+                re.search(r'\*\s*IC\(\s*%d\s*\)' % leg, args[3], re.I):
+            args[self.helicity_index] += '*IC(%d)' % leg
         return args
 
     def amplitude_diagram(self, line, args):
@@ -1299,8 +1466,35 @@ class HelicityRecycler():
         self.template_dict['helas_calls'] = []
         self.template_dict['jamp_lines'] = '\n'
         self.template_dict['amp2_lines'] = '\n'
-        self.template_dict['ncomb'] = '0'  
-        self.template_dict['nwavefuncs'] = '0' 
+        self.template_dict['ncomb'] = '0'
+        self.template_dict['nwavefuncs'] = '0'
+        # C-parity de-duplication: fortran that copies a dropped C-partner's
+        # |M|^2 back from its representative (TS(flip)=TS(rep)). Empty unless
+        # gen_ximprove supplies C-symmetric pairs: it keeps the partner's
+        # helicity row but adds all its amplitudes to bad_amps_perhel, so their
+        # HELAS calls are never generated and only the representatives are
+        # computed. The indices here are the optim's re-numbered helicities.
+        self.template_dict['csym_reuse'] = '\n'
+        # The other half of that de-duplication, used by the standalone driver:
+        # marks each dropped partner's helicity row dead so the color stage
+        # skips it instead of summing colors over a row of zeros. Empty (every
+        # row live) unless the same pairs are supplied.
+        self.template_dict['csym_dead'] = '\n'
+        # Optional IF/ENDIF around the JAMP2 (colour-flow) accumulation of the
+        # helicity loop, so a config can contribute to the |M|^2 sum without
+        # contributing to the colour weights. Empty -- every kept config feeds
+        # them, as it always did -- unless shared_rows (see amp2_blocks).
+        self.template_dict['dead_row_if'] = '\n'
+        self.template_dict['dead_row_endif'] = '\n'
+        # Set by gen_ximprove when it recycles a matrix element SHARED by a
+        # crossing: its config set is the union over every member of the
+        # class, so it holds configs that are dead for the caller at hand,
+        # and those still have non-zero individual diagrams and JAMPs. See
+        # amp2_blocks and gen_ximprove.gensym.get_helicity.
+        self.shared_rows = False
+        # The AMP2 (multi-channel) lines again, but always reading AMP(K,i)
+        # in place: the cut pass of amp2_blocks runs after the gathered loop.
+        self.amp2_lines_inplace = '\n'
 
         self.dag = DAG()
 
@@ -1312,10 +1506,30 @@ class HelicityRecycler():
 
         self.old_out_name = ''
         self.loop_var = 'K'
+        # The color stage reads AMP in place, over a plain loop on the helicity
+        # rows -- what it always did. set_gather_lines replaces that with the
+        # gathered form where it pays; anything that does not go through it
+        # (another caller, the zero matrix element) keeps what is set here.
+        #
+        # The two loop holes sit inside a literal DO/ENDDO pair in the template
+        # so that the exporter's fortran writer still sees the helicity loop and
+        # indents its body: hr_gather_open is what follows the DO, and
+        # hr_gather_close what follows the ENDDO's comment marker.
+        self.amp_gather = False
+        self.template_dict['hr_gather_decl'] = ''
+        self.template_dict['hr_gather_open'] = '%s = 1, NCOMB' % self.loop_var
+        self.template_dict['hr_gather_close'] = self.loop_var
 
         self.all_hel = []
         self.hel_filt = True
         self.gauge = gauge
+        # statements per matrix<i>_optimamp<k>.f; 0 keeps the unrolled sequence
+        # inline in matrix<i>_optim.f as it always was
+        self.amp_chunk_size = AMP_CHUNK_SIZE_DEFAULT
+        # rows gathered at a time, and the size of AMP the gather starts paying
+        # at; see set_gather_lines
+        self.gather_block = GATHER_BLOCK
+        self.gather_min_bytes = GATHER_MIN_BYTES
 
     def set_input(self, file):
         if 'born_matrix' in file:
@@ -1358,21 +1572,38 @@ class HelicityRecycler():
 
     # string manipulation
 
-    def add_amp_index(self, matchobj):
-        old_pat = matchobj.group()
-        new_pat = old_pat.replace('AMP(', 'AMP( %s,' % self.loop_var)
-        
-        #new_pat = f'{self.loop_var},{old_pat[:-1]}{old_pat[-1]}'
-        return new_pat
+    # Contiguous per-row copy of AMP the color flows read from when the stage
+    # gathers, and the index of the row inside the gathered block. Both are
+    # declared by set_gather_lines below and only ever appear together.
+    AMP_GATHER = 'AMPK'
+    GATHER_LANE = 'HRL'
 
-    def add_indices(self, line):
-        '''Add loop_var index to amp and output variable. 
-           Also update name of output variable.'''
-        # Doesnt work if the AMP arguments contain brackets.
+    def add_amp_index(self, matchobj):
+        # The recycled AMP is helicity major -- that is the layout the rewritten
+        # helas block WRITES, one CombineAmp filling one amplitude for a whole
+        # set of rows at once -- so a read of row K is AMP(K,i). Where the stage
+        # gathers, the row has already been copied out contiguously and the read
+        # becomes AMPK(i,HRL) instead.
+        args = matchobj.group()[len('AMP('):-1]
+        if self.amp_gather:
+            return '%s(%s,%s)' % (self.AMP_GATHER, args, self.GATHER_LANE)
+        return 'AMP( %s,%s)' % (self.loop_var, args)
+
+    def add_indices(self, line, inplace=False):
+        '''Point the amplitude reads at the gathered row (or, with inplace, at
+           row K of AMP itself) and update the name of the output variable.'''
+        if inplace:
+            gather, self.amp_gather = self.amp_gather, False
+            try:
+                return self.add_indices(line)
+            finally:
+                self.amp_gather = gather
         # The character in front is looked at rather than eaten, so that an
         # AMP( opening the statement is indexed too -- which is what a line
-        # like "AMP(31) = AMP(31) + AMP(1)" needs.
-        new_line = re.sub(r'(?<![A-Za-z0-9_])AMP\(.*?\)',
+        # like "AMP(31) = AMP(31) + AMP(1)" needs. One level of brackets is
+        # allowed inside the argument: with the color flow definitions emitted
+        # as operand tables the index is itself a table lookup.
+        new_line = re.sub(r'(?<![A-Za-z0-9_])AMP\((?:[^()]|\([^()]*\))*\)',
                           self.add_amp_index, line)
         new_line = re.sub(r'MATRIX\d+', 'TS(K)', new_line)
         return new_line
@@ -1427,6 +1658,8 @@ class HelicityRecycler():
             self.in_amp2 = False
         elif not line.isspace() and 'DENOM' not in line:
             self.template_dict['amp2_lines'] += f'{line[0:6]}  {self.add_indices(line[6:])}'
+            self.amp2_lines_inplace += \
+                f'{line[0:6]}      {self.add_indices(line[6:], inplace=True)}'
 
     def prepare_bools(self):
         self.amp_calc_started = False
@@ -1558,39 +1791,41 @@ class HelicityRecycler():
 
     def read_orig(self):
 
-        with open(self.input_file, 'r') as input_file:
+        # The HELAS call sequence may live in matrix<i>_origamp<k>.f rather than
+        # inline; splice_amp_chunks puts those lines back where they were.
+        input_file = splice_amp_chunks(self.input_file)
 
-            self.prepare_bools()
+        self.prepare_bools()
 
-            lookahead = self.dialect.needs_lookahead
-            for line_num, line in tqdm(enumerate(input_file), total=get_num_lines(self.input_file)):
-                if lookahead and line_num == 0:
-                    line_cache = line
+        lookahead = self.dialect.needs_lookahead
+        for line_num, line in tqdm(enumerate(input_file), total=get_num_lines(self.input_file)):
+            if lookahead and line_num == 0:
+                line_cache = line
+                continue
+
+            if '!SKIP' in line:
+                continue
+
+            if self.dialect.skip_line(line):
+                continue
+
+            if lookahead:
+                if self.dialect.is_continuation(line):
+                    line_cache = self.dialect.join_continuation(line_cache, line)
                     continue
+                line, line_cache = line_cache, line
 
-                if '!SKIP' in line:
-                    continue
+            if self.dialect.fortran_blocks:
+                self.get_old_name(line)
+                self.get_good_hel(line)
+                self.get_amp_stuff(line_num, line)
+            call_type = self.function_call(line)
+            self.get_gwc(line, call_type)
 
-                if self.dialect.skip_line(line):
-                    continue
 
-                if lookahead:
-                    if self.dialect.is_continuation(line):
-                        line_cache = self.dialect.join_continuation(line_cache, line)
-                        continue
-                    line, line_cache = line_cache, line
-
-                if self.dialect.fortran_blocks:
-                    self.get_old_name(line)
-                    self.get_good_hel(line)
-                    self.get_amp_stuff(line_num, line)
-                call_type = self.function_call(line)
-                self.get_gwc(line, call_type)
-
-                
-                if call_type in ['external', 'internal', 'amplitude']:
-                    self.template_dict['helas_calls'] += self.unfold_helicities(
-                        line, call_type)
+            if call_type in ['external', 'internal', 'amplitude']:
+                self.template_dict['helas_calls'] += self.unfold_helicities(
+                    line, call_type)
 
         self.template_dict['nwavefuncs'] = max(External.num_externals, Internal.max_wav_num, External.max_wav_num)
         # filter out uselless call
@@ -1609,18 +1844,137 @@ class HelicityRecycler():
              for obj in self.template_dict['helas_calls']
              if obj.nb_used > 0 and obj.line])
 
+    def amp2_blocks(self):
+        """The madevent driver's AMP2 (multi-channel weight) accumulation.
+
+        By default every kept config feeds AMP2 inside the helicity loop, as it
+        always did. A matrix element shared by a crossing (shared_rows) holds
+        the union of the good configs of every caller, so for the caller at
+        hand some configs are rounding zeros of a cancellation between
+        diagrams that are themselves not small: summed into AMP2 they would
+        skew the single-diagram channel weights away from those of the
+        uncrossed output, which never keeps such configs. There AMP2 is
+        filled in a second pass, from the configs above the good-helicity cut
+        of this very point (|TS| > LIMHEL x sum|TS| / NCOMB, the cut the
+        filter is trained with). The JAMP2 colour weights keep the exact-zero
+        gate of dead_row_if: they are built from the JAMPs, which are left at
+        the same rounding as the |M|^2 they cancel to, not from the diagrams.
+        """
+
+        amp2 = self.template_dict['amp2_lines']
+        if not self.shared_rows:
+            return {'amp2_row_lines': 'if(sde_strat.eq.1) then%s\n'
+                                      '        endif' % amp2,
+                    'amp2_cut_lines': '\n',
+                    'dead_row_decl': '\n'}
+        k = self.loop_var
+        cut = '\n'.join([
+            '',
+            'C     A config dead for this caller cancels between non-small',
+            'C     diagrams: keep it out of the channel weights.',
+            '      IF (SDE_STRAT.EQ.1) THEN',
+            '        TSSUM = 0D0',
+            '        DO %s = 1, NCOMB' % k,
+            '          TSSUM = TSSUM + DABS(TS(%s))' % k,
+            '        ENDDO',
+            '        DO %s = 1, NCOMB' % k,
+            '          IF (DABS(TS(%s)).GT.TSSUM*LIMHEL/NCOMB) THEN' % k,
+            self.amp2_lines_inplace.rstrip('\n'),
+            '          ENDIF',
+            '        ENDDO',
+            '      ENDIF'])
+        return {'dead_row_if': 'IF (TS(%s).NE.0D0) THEN' % k,
+                'dead_row_endif': 'ENDIF',
+                'amp2_row_lines': '\n',
+                'amp2_cut_lines': cut,
+                'dead_row_decl': '\n'.join([
+                    'DOUBLE PRECISION TSSUM, LIMHEL',
+                    '      COMMON/TO_LIMHEL/LIMHEL'])}
+
     def read_template(self):
+        template_dict = dict(self.template_dict)
+        template_dict.update(self.amp2_blocks())
         out_file = open(self.output_file, 'w+')
         with open(self.template_file, 'r') as file:
             for line in file:
                 s = Template(line)
-                line = s.safe_substitute(self.template_dict)
+                line = s.safe_substitute(template_dict)
                 line = '\n'.join([self.dialect.wrap(sub_lines)
                                   for sub_lines in line.split('\n')])
                 out_file.write(line)
         out_file.close()
 
+    def amp_chunk_paths(self):
+        """(chunk template, chunk file stem) for this matrix element, or None
+        when the exporter did not write a chunk template for it."""
+
+        if not self.output_file.endswith('_optim.f'):
+            return None
+        template_file = '%s_ampchunk.f' % self.template_file[:-len('.f')]
+        if not os.path.exists(template_file):
+            return None
+        return template_file, self.output_file[:-len('_optim.f')]
+
+    def write_amp_chunks(self):
+        """Move the unrolled HELAS call sequence out of matrix<i>_optim.f and
+        into matrix<i>_optimamp<k>.f, one subroutine per amp_chunk_size
+        statements, leaving the calls to them behind.
+
+        That sequence is essentially the whole recycled matrix element at high
+        multiplicity, and as one basic block inside one routine it is what
+        makes the file uncompilable; split up it also gets to be compiled
+        apart from -- and at a lower optimisation level than -- the JAMP and
+        colour blocks, which are the only part -O has anything to do on.
+
+        Returns the number of chunk files written; 0 leaves the sequence inline
+        and matrix<i>_optim.f exactly as it was before.
+        """
+
+        paths = self.amp_chunk_paths()
+        if not paths:
+            return 0
+        template_file, stem = paths
+        # a shorter sequence than last time must not leave live orphans behind
+        for stale in glob.glob('%s_optimamp*.f' % stem):
+            os.remove(stale)
+
+        lines = self.template_dict['helas_calls'].split('\n')
+        if self.amp_chunk_size <= 0 or len(lines) <= self.amp_chunk_size:
+            return 0
+        chunks = chunk_statements(lines, self.amp_chunk_size)
+        if len(chunks) < 2:
+            return 0
+
+        template = open(template_file).read()
+        name, args = get_subroutine_signature(template)
+        # the leading blank puts the comments below in column 1: the template
+        # hole itself is indented, and a comment marker has to start the line
+        driver = ['',
+                  'C     The unrolled HELAS call sequence lives in '
+                  '%s_optimamp<k>.f,' % os.path.basename(stem),
+                  'C     one subroutine per %d statements.' % self.amp_chunk_size]
+        for i, chunk in enumerate(chunks):
+            chunk_dict = dict(self.template_dict)
+            chunk_dict['chunk_id'] = str(i + 1)
+            # the template hole is indented; the leading newline keeps the
+            # first call of the slice in the same columns as all the others,
+            # which a long one would otherwise be split out of
+            chunk_dict['helas_calls'] = '\n' + '\n'.join(chunk)
+            text = Template(template).safe_substitute(chunk_dict)
+            text = '\n'.join([do_multiline(sub) for sub in text.split('\n')])
+            with open('%s_optimamp%d.f' % (stem, i + 1), 'w') as chunk_file:
+                chunk_file.write(text)
+            driver.append('      CALL %s(%s)'
+                          % (Template(name).safe_substitute(chunk_id=i + 1),
+                             args))
+        self.template_dict['helas_calls'] = '\n'.join(driver)
+        return len(chunks)
+
     def write_zero_matrix_element(self):
+        paths = self.amp_chunk_paths()
+        if paths:
+            for stale in glob.glob('%s_optimamp*.f' % paths[1]):
+                os.remove(stale)
         try:
       	    os.remove(self.output_file)
         except Exception:
@@ -1629,16 +1983,325 @@ class HelicityRecycler():
         os.symlink(input_file, self.output_file)
 
 
+    _NGRAPHS_RE = re.compile(r'^\s*PARAMETER\s*\(\s*NGRAPHS\s*=\s*(\d+)\s*\)',
+                             re.IGNORECASE)
+
+    def template_ngraphs(self):
+        """NGRAPHS of the driver template, or 0 when it does not say.
+
+        The exporter fills it in, so it is there before anything is parsed --
+        which is what the gather decision below needs, since the color flow
+        lines are rewritten as they are read."""
+
+        try:
+            with open(self.template_file) as fsock:
+                for line in fsock:
+                    found = self._NGRAPHS_RE.match(line)
+                    if found:
+                        return int(found.group(1))
+        except IOError:
+            pass
+        return 0
+
+    def set_gather_lines(self):
+        """Decide how the color stage reads the amplitudes, and fill the holes
+        of the driver template that say so.
+
+        AMP is helicity major -- that is the layout the rewritten helas block
+        WRITES, one CombineAmp filling one amplitude for a whole set of rows at
+        once, so a column of AMP is what it produces. Reading a row back out of
+        it walks NGRAPHS entries that are NCOMB apart, i.e. one cache line per
+        amplitude, where the unrecycled matrix element reads AMP contiguously.
+
+        The cure is to copy the row into a contiguous buffer first, NHRBLK rows
+        at a time so that the copy itself reads whole lines. But the rows that
+        share a line are also visited within NHRBLK iterations of each other, so
+        below a certain size the hardware already gets that reuse for free and
+        the copy is a second pass over AMP for nothing. Hence the size gate, see
+        GATHER_MIN_BYTES: most madevent processes are below it and keep the very
+        loop the template has always carried, unchanged."""
+
+        ngraphs = self.template_ngraphs()
+        ncomb = len(self.good_elements)
+        self.amp_gather = bool(ngraphs) and \
+            ngraphs * ncomb * 16 >= self.gather_min_bytes
+        if not self.amp_gather:
+            return
+
+        buf, lane = self.AMP_GATHER, self.GATHER_LANE
+        # Each block continues a line the template already indented, so its
+        # first entry carries no indentation of its own.
+        self.template_dict['hr_gather_decl'] = '\n'.join([
+            'INTEGER NHRBLK',
+            '      PARAMETER (NHRBLK=%d)' % self.gather_block,
+            '      INTEGER KB, HRNL, %s' % lane,
+            # One lane per gathered row, and a lane is contiguous (fortran is
+            # column major). Deliberately NOT saved: it has to follow the same
+            # storage class as AMP, which is a plain local. SMATRIX1_MULTI
+            # carries an !$OMP PARALLEL over the matrix element and the link
+            # line already passes -fopenmp; the day FFLAGS does too, gfortran
+            # makes the locals automatic and thread private -- and an explicit
+            # SAVE would be the one thing left shared between the threads.
+            '      COMPLEX*16 %s(NGRAPHS,NHRBLK)' % buf])
+        # The template's own DO opens the block loop; the row loop is nested
+        # inside it and K, which every rewritten line still uses, becomes the
+        # row of the block being read rather than a loop variable.
+        self.template_dict['hr_gather_open'] = '\n'.join([
+            'KB = 1, NCOMB, NHRBLK',
+            '        HRNL = MIN(NHRBLK, NCOMB-KB+1)',
+            '        DO I = 1, NGRAPHS',
+            '          DO %s = 1, HRNL' % lane,
+            '            %s(I,%s) = AMP(KB+%s-1,I)' % (buf, lane, lane),
+            '          ENDDO',
+            '        ENDDO',
+            '        DO %s = 1, HRNL' % lane,
+            '          %s = KB + %s - 1' % (self.loop_var, lane)])
+        # ... and the template's own ENDDO closes the row loop, so only the
+        # block loop is left to close here.
+        self.template_dict['hr_gather_close'] = '\n'.join([
+            lane,
+            '      ENDDO ! KB'])
+
     def generate_output_file(self):
         if not self.good_elements:
             misc.sprint("No helicity", self.input_file)
             self.write_zero_matrix_element()
             return
-        
+
         atexit.register(self.clean_up)
+        # The gather and the two chunkers below act on a fortran matrix
+        # element only; a dialect without its blocks (C++) cuts its own.
+        fortran = self.dialect.fortran_blocks
+        # before read_orig: it rewrites the color flow lines as it reads them,
+        # and how they spell an amplitude is what this decides
+        if fortran:
+            self.set_gather_lines()
         self.read_orig()
+        # Two chunkers live here, one per backend, and exactly one of them
+        # fires for any given matrix element. write_amp_chunks is madevent's:
+        # it cuts template_dict['helas_calls'] up BEFORE the output is written,
+        # and only for a matrix<i>_optim.f whose exporter left a matching
+        # matrix<i>_ampchunk.f template next to it. split_helas_block is
+        # standalone's: it re-reads the file just written and lifts the block
+        # out of it, and only when the exporter set chunk_spec/chunk_stmts/
+        # chunk_file. Neither backend configures the other's, so they never
+        # both cut the same file -- do not "unify" them without checking that.
+        if fortran:
+            self.write_amp_chunks()
         self.read_template()
+        if fortran:
+            self.split_helas_block()
         atexit.unregister(self.clean_up)
+
+    #===========================================================================
+    # Splitting the recycled helas block out of MATRIX
+    #===========================================================================
+    # The recycled MATRIX holds the whole amplitude construction (externals,
+    # shared wavefunctions, P1N currents, CombineAmp) as one straight-line
+    # block. For a dense process that block is enormous -- g g > t t~ g g g
+    # gives ~54k statements -- and a single function that size defeats the
+    # optimizer: gfortran spends ~105 s at -O2 on it AND produces slower code
+    # than if it were split (register allocation degrades on one huge body).
+    #
+    # Moving the block into its own file, cut into chunk subroutines that share
+    # W/AMP by reference, and compiling that file at -O0 fixes both ends: the
+    # block is CALL-bound (its work happens inside libdhelas, already compiled
+    # at -O2), so its own optimization level barely matters for runtime.
+    # Measured on g g > t t~ g g g: compile 105 s -> ~18 s, runtime 0.78 s ->
+    # ~0.52 s, same matrix element.
+    #
+    # Small processes must stay monolithic: there the -O2 monolith optimizes
+    # perfectly and splitting costs runtime (g g > t t~ g g: 0.19 -> 0.28 s).
+    # Hence a threshold on the number of statements, not a chunk count.
+
+    # a statement that opens a block we must not cut through
+    _IF_THEN = re.compile(r'^\s*IF\s*\(.*\)\s*THEN\s*$', re.IGNORECASE)
+    _END_IF = re.compile(r'^\s*END\s*IF\b', re.IGNORECASE)
+    _AMP_INIT = re.compile(r'^\s*AMP\s*\(\s*:\s*,\s*:\s*\)\s*=', re.IGNORECASE)
+    _BLOCK_START = re.compile(r'^\s*(CALL\s|IF\s*\(\s*IAND)', re.IGNORECASE)
+    # What follows the helas calls: the color flows in the madevent templates
+    # (which write them out, or open a helicity loop over them), or -- for a
+    # driver that does something else entirely with AMP, as the standalone one
+    # does -- an explicit marker comment right after the last call.
+    _BLOCK_END = re.compile(r'^\s*(JAMP\s*\(|DO\s+K\s*=\s*1\s*,\s*NCOMB'
+                            r'|C\s+END OF RECYCLED HELAS BLOCK)',
+                            re.IGNORECASE)
+
+    def _group_statements(self, block):
+        """Group the block's physical lines into atomic units.
+
+        A unit is a full fortran statement (continuation lines carry '&' or '$'
+        in column 6, comments and blank lines attach to the statement they
+        precede), and an IF(...)THEN ... ENDIF guard -- which is how a merged
+        process' per-flavor mask wraps a P1N/CombineAmp pair -- is kept whole.
+        """
+        stmts, cur, depth = [], [], 0
+        for line in block:
+            stripped = line.strip()
+            is_comment = bool(line) and line[0] in 'Cc*!'
+            cont = len(line) > 5 and line[5] in '&$'
+            if cur and (cont or is_comment or not stripped or depth > 0):
+                cur.append(line)
+            elif not cur:
+                cur.append(line)
+            else:
+                stmts.append(cur)
+                cur = [line]
+            if not is_comment:
+                if self._IF_THEN.match(line):
+                    depth += 1
+                elif self._END_IF.match(line) and depth > 0:
+                    depth -= 1
+                    # the ENDIF closes the guard: the unit is complete
+                    if depth == 0:
+                        stmts.append(cur)
+                        cur = []
+        if cur:
+            stmts.append(cur)
+        return stmts
+
+    @staticmethod
+    def _starts_with_combine(stmt):
+        """A CombineAmp consumes the TMP its immediately preceding P1N call
+        wrote, so a chunk must never begin with one."""
+        for line in stmt:
+            if line.strip() and not line[0] in 'Cc*!':
+                return 'combineamp' in line.lower()
+        return False
+
+    def split_helas_block(self):
+        """Move the recycled helas block of MATRIX into chunk subroutines in a
+        separate file. No-op unless the caller configured chunk_stmts and a
+        chunk_spec, or when the block is below the threshold.
+
+        Returns the number of chunks written (0 when nothing was split)."""
+        spec = getattr(self, 'chunk_spec', None)
+        limit = getattr(self, 'chunk_stmts', 0)
+        chunk_file = getattr(self, 'chunk_file', None)
+        if not spec or not limit or not chunk_file:
+            return 0
+
+        with open(self.output_file) as fsock:
+            lines = fsock.read().splitlines()
+
+        def find(regex, start=0):
+            for i in range(start, len(lines)):
+                if regex.match(lines[i]):
+                    return i
+            return -1
+
+        amp_init = find(self._AMP_INIT)
+        if amp_init == -1:
+            return 0
+        begin = find(self._BLOCK_START, amp_init)
+        if begin == -1:
+            return 0
+        end = find(self._BLOCK_END, begin)
+        if end == -1:
+            return 0
+
+        stmts = self._group_statements(lines[begin:end])
+        if len(stmts) <= limit:
+            # small enough to stay in MATRIX: make sure no chunk file survives
+            # from an earlier, larger pass.
+            self.clean_chunk_files(chunk_file)
+            return 0
+
+        chunks, cur = [], []
+        for stmt in stmts:
+            if cur and len(cur) >= limit and not self._starts_with_combine(stmt):
+                chunks.append(cur)
+                cur = []
+            cur.append(stmt)
+        if cur:
+            chunks.append(cur)
+        if len(chunks) <= 1:
+            self.clean_chunk_files(chunk_file)
+            return 0
+
+        prefix = spec['name']
+        # Which shared objects the chunks take by reference: whichever of the
+        # candidates the block actually mentions. Deriving it from the block
+        # rather than from the caller keeps the signature right whatever the
+        # enclosing MATRIX happens to declare -- IC only exists when the
+        # crossing machinery threads it, the CURRENT_*_MASK arrays only for a
+        # merged process.
+        block_text = '\n'.join(lines[begin:end])
+        used = [(name, decl) for name, decl in spec['candidates']
+                if re.search(r'\b%s\b' % re.escape(name), block_text)]
+        args = ', '.join(name for name, _ in used)
+        preamble = '\n'.join(
+            [spec['prologue']] + [decl for _, decl in used] +
+            [spec['locals'], spec['epilogue']])
+        preamble = Template(preamble).safe_substitute(self.template_dict)
+
+        calls, bodies = [], []
+        for i, chunk in enumerate(chunks, 1):
+            name = '%s%d' % (prefix, i)
+            calls.append('      CALL %s(%s)' % (name, args))
+            body = ['      SUBROUTINE %s(%s)' % (name, args), preamble]
+            for stmt in chunk:
+                body.extend(stmt)
+            body.append('      END')
+            bodies.append('\n'.join(body))
+
+        self.write_chunk_files(chunk_file, bodies)
+        with open(self.output_file, 'w') as fsock:
+            fsock.write('\n'.join(lines[:begin] + calls + lines[end:]) + '\n')
+        return len(chunks)
+
+    @staticmethod
+    def clean_chunk_files(chunk_file):
+        """Drop every chunk file of an earlier, larger pass. The makefile takes
+        these with a wildcard, so an orphan left behind is still compiled and
+        still linked."""
+
+        stem = chunk_file[:-2] if chunk_file.endswith('.f') else chunk_file
+        for stale in glob.glob('%s*.f' % stem):
+            os.remove(stale)
+
+    def write_chunk_files(self, chunk_file, bodies):
+        """Spread the chunk subroutines over several source files.
+
+        Cutting MATRIX into chunk subroutines makes the file compilable, but as
+        long as they all land in ONE file the compiler still reads the whole
+        thing as a single translation unit: one process, one core, and a heap
+        that grows with the file. g g > 6g gives 419 MB and 9.8M lines, on
+        which gfortran sat at 15 GB and climbing, single threaded, while the
+        other 17 cores of the machine did nothing.
+
+        The subroutines are independent -- they share W/AMP by reference and
+        nothing else -- so which file each one lives in is free. Spread them
+        over chunk_nfiles files and `make -j` compiles them at once, each
+        process holding only its own share. Same trick, and the same reason, as
+        the madevent side writing matrix<i>_optimamp<k>.f per chunk.
+
+        Returns the list of files written."""
+
+        stem = chunk_file[:-2] if chunk_file.endswith('.f') else chunk_file
+        # a shorter sequence than last time must not leave live orphans behind:
+        # the makefile picks these up with a wildcard.
+        for stale in glob.glob('%s*.f' % stem):
+            os.remove(stale)
+
+        nfiles = getattr(self, 'chunk_nfiles', 0)
+        if not nfiles or nfiles < 1:
+            nfiles = 1
+        nfiles = min(nfiles, len(bodies))
+
+        written = []
+        # contiguous, balanced: the first (len % nfiles) files take one extra,
+        # which keeps the subroutine numbering monotonic across the set.
+        per, extra = divmod(len(bodies), nfiles)
+        at = 0
+        for i in range(nfiles):
+            take = per + (1 if i < extra else 0)
+            path = '%s%d.f' % (stem, i + 1)
+            with open(path, 'w') as fsock:
+                fsock.write('\n\n\n'.join(bodies[at:at + take]) + '\n')
+            written.append(path)
+            at += take
+        return written
 
     def clean_up(self):
         pass
@@ -1910,28 +2573,36 @@ def do_multiline(line):
         comment = None
     char_limit = 72
     if len(line) > char_limit:
-        split_line = []
-        remaining = line
-        while len(remaining) > char_limit:
-            split_at = remaining.rfind(' ', 0, char_limit + 1)
-            # A split which leaves nothing but blanks on the current line --
-            # the only space is the statement's own indentation, as for the
-            # space-free Kleiss-Kuijf JAMPF lines -- emits an empty physical
-            # line, and the continuation which follows it is then attached to
-            # the *previous* statement. Break mid-token instead.
-            if split_at <= 0 or not remaining[:split_at+1].strip():
-                split_line.append(remaining[:char_limit])
-                remaining = remaining[char_limit:]
-            else:
-                split_line.append(remaining[:split_at+1])
-                remaining = remaining[split_at+1:]
-        split_line.append(remaining)
         indent = ''
         for char in line[6:]:
             if char == ' ':
                 indent += char
             else:
                 break
+
+        # The split must leave at least one character of the statement on the
+        # first line. Searching from column 0 lets a statement with no internal
+        # blank before the limit -- JAMPF(2,1)=+2D0*(-IMAG1*JAMP(3,1)-...) is
+        # one, and so is any long JAMP -- split inside its own indent: the
+        # first line comes out blank and the continuation after it then
+        # attaches to the PREVIOUS statement, which fortran rejects.
+        first_split = 6 + len(indent)
+
+        split_line = []
+        remaining = line
+        floor = first_split
+        while len(remaining) > char_limit:
+            split_at = remaining.rfind(' ', floor + 1, char_limit + 1)
+            if split_at <= floor:
+                split_line.append(remaining[:char_limit])
+                remaining = remaining[char_limit:]
+            else:
+                split_line.append(remaining[:split_at+1])
+                remaining = remaining[split_at+1:]
+            # the continuations carry no indent of their own, it is prepended
+            # by the join below
+            floor = 0
+        split_line.append(remaining)
 
         line = f'\n     ${indent}'.join(split_line)
     if not comment:

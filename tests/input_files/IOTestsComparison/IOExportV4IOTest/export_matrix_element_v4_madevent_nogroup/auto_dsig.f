@@ -321,7 +321,27 @@ C
       LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC)
       INTEGER NTRY(MAXFLAVPERPROC)
       COMMON/BLOCK_GOODHEL/NTRY,GOODHEL
+C     Persist the C-parity de-duplication verdict next to the
+C     good helicities. Reading the file skips the scan (NTRY is
+C     forced past MAXTRIES below), so a run that never completed
+C     its scan must hand on "broken" rather than the optimistic
+C     default -- otherwise the next job would de-duplicate on a
+C     pairing nothing ever verified.
+      INTEGER NCSYMTOT
+      PARAMETER (NCSYMTOT=MAXFLAVPERPROC*MAXSPROC)
+      INTEGER CSYMBAD(NCSYMTOT), NCSCAN(NCSYMTOT)
+      COMMON/BLOCK_CSYM/CSYMBAD,NCSCAN
+      INTEGER CSYMOUT(NCSYMTOT)
+      INTEGER ICS
       WRITE(STREAM_ID,*) GOODHEL
+      DO ICS=1,NCSYMTOT
+        IF (CSYMBAD(ICS).EQ.0.AND.NCSCAN(ICS).GE.20) THEN
+          CSYMOUT(ICS) = 0
+        ELSE
+          CSYMOUT(ICS) = 1
+        ENDIF
+      ENDDO
+      WRITE(STREAM_ID,*) CSYMOUT
       RETURN
       END
 
@@ -336,8 +356,23 @@ C
       LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC)
       INTEGER NTRY(MAXFLAVPERPROC)
       COMMON/BLOCK_GOODHEL/NTRY,GOODHEL
+      INTEGER NCSYMTOT
+      PARAMETER (NCSYMTOT=MAXFLAVPERPROC*MAXSPROC)
+      INTEGER CSYMBAD(NCSYMTOT), NCSCAN(NCSYMTOT)
+      COMMON/BLOCK_CSYM/CSYMBAD,NCSCAN
+      INTEGER IOCS
       READ(STREAM_ID,*) GOODHEL
       NTRY(:) = MAXTRIES + 1
+C     Inherit the verdict. The good-helicity filter now gates
+C     the full-sum loop, so the scan can no longer be redone in
+C     this job (the rows it would compare are not all evaluated
+C     any more): treat a missing or unfinished verdict as "do
+C     not de-duplicate".
+      READ(STREAM_ID,*,IOSTAT=IOCS) CSYMBAD
+      IF (IOCS.NE.0) THEN
+        CSYMBAD(:) = 1
+      ENDIF
+      NCSCAN(:) = 20
       RETURN
       END
 
@@ -764,11 +799,11 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER VECSIZE_USED
 
       INTEGER IVEC
+
       INTEGER          IPSEL
       COMMON /SUBPROC/ IPSEL
       INTEGER IMIRROR, IPROC
       COMMON/TO_MIRROR/ IMIRROR, IPROC
-
 
 
 
@@ -795,38 +830,39 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       END
 
       INTEGER FUNCTION GET_NHEL(HEL, IPART)
-C     if hel>0 return the helicity of particule ipart for the selected
-C      helicity configuration
-C     if hel=0 return the number of helicity state possible for that
-C      particle 
+C     if hel>0 return the helicity of particule ipart for the
+C     selected helicity configuration
+C     if hel=0 return the number of helicity state possible for
+C     that particle
       IMPLICIT NONE
-      INTEGER HEL,I, IPART
+      INTEGER HEL, I, IPART
       INCLUDE 'nexternal.inc'
-      INTEGER ONE_NHEL(NEXTERNAL)
-      INTEGER                 NCOMB
-      PARAMETER (             NCOMB=16)
-      INTEGER NHEL(NEXTERNAL,0:NCOMB)
-      DATA (NHEL(I,0),I=1,4) / 2, 2, 2, 2/
-      DATA (NHEL(I,   1),I=1,4) / 1,-1,-1,-1/
-      DATA (NHEL(I,   2),I=1,4) / 1,-1,-1, 1/
-      DATA (NHEL(I,   3),I=1,4) / 1,-1, 1,-1/
-      DATA (NHEL(I,   4),I=1,4) / 1,-1, 1, 1/
-      DATA (NHEL(I,   5),I=1,4) / 1, 1,-1,-1/
-      DATA (NHEL(I,   6),I=1,4) / 1, 1,-1, 1/
-      DATA (NHEL(I,   7),I=1,4) / 1, 1, 1,-1/
-      DATA (NHEL(I,   8),I=1,4) / 1, 1, 1, 1/
-      DATA (NHEL(I,   9),I=1,4) /-1,-1,-1,-1/
-      DATA (NHEL(I,  10),I=1,4) /-1,-1,-1, 1/
-      DATA (NHEL(I,  11),I=1,4) /-1,-1, 1,-1/
-      DATA (NHEL(I,  12),I=1,4) /-1,-1, 1, 1/
-      DATA (NHEL(I,  13),I=1,4) /-1, 1,-1,-1/
-      DATA (NHEL(I,  14),I=1,4) /-1, 1,-1, 1/
-      DATA (NHEL(I,  15),I=1,4) /-1, 1, 1,-1/
-      DATA (NHEL(I,  16),I=1,4) /-1, 1, 1, 1/
-
-      GET_NHEL = NHEL(IPART, IABS(HEL))
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=2)
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+      DATA NHSTATE /2,2,2,2/
+      DATA (STATES(I,1),I=1,2) /1,-1/
+      DATA (STATES(I,2),I=1,2) /-1,1/
+      DATA (STATES(I,3),I=1,2) /-1,1/
+      DATA (STATES(I,4),I=1,2) /-1,1/
+      INTEGER XGW, XGD, XGK
+      IF (HEL.EQ.0) THEN
+C       Number of helicity states for particle ipart.
+        GET_NHEL = NHSTATE(IPART)
+      ELSE
+C       Decode the canonical mixed-radix helicity code into
+C       particle ipart's helicity value (last external leg =
+C       least-significant digit).
+        XGW = 1
+        DO XGK = IPART+1, NEXTERNAL
+          XGW = XGW * NHSTATE(XGK)
+        ENDDO
+        XGD = MOD((IABS(HEL)-1)/XGW, NHSTATE(IPART))
+        GET_NHEL = STATES(XGD+1, IPART)
+      ENDIF
       RETURN
       END
+
 
 
 

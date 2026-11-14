@@ -1836,7 +1836,8 @@ class ProcessTest(unittest.TestCase):
                        'NLO_mode':'tree',
                        'split_orders':[],
                        'interference_mode': '',
-                       'interference_process': None}
+                       'interference_process': None,
+                       'gauge': ''}
 
         self.myprocess = base_objects.Process(self.mydict)
 
@@ -2261,7 +2262,8 @@ class ProcessDefinitionTest(unittest.TestCase):
                        'NLO_mode':'tree',
                        'split_orders':[],
                        'interference_mode': '',
-                       'interference_process': None}
+                       'interference_process': None,
+                       'gauge': ''}
 
         self.my_process_definition = base_objects.ProcessDefinition(self.mydict)
 

@@ -4,10 +4,10 @@ ANNOUNCEMENT:
    The 2.9.X LONG TERM STABLE version is now at end of life for bug fixing/support since December 2025.
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
-0.3.0 (XX/XX/XX):
+0.4.0 (XX/XX/XX):
    OM: standalone/mg7 with --mask=False (no flavour guard) gave wrong |M|^2 for some flavours
        of merged electroweak processes (p p > w+ w- j j QCD=0: 24 of 54, d d~ > w+ w- u u~
-       x55). This was also the root cause of the --hel_recycling bug below: the C++ flavoured
+       x55). This was also the root cause of the --hel_recycling bug of 0.3.0: the C++ flavoured
        routines accepted a fermion pair in both orientations of its coupling table, which for
        a W coupling is the W of the opposite charge. They now read it in one orientation, as
        the Fortran routines do (Fortran --mask=False was right). Also:
@@ -25,6 +25,76 @@ ANNOUNCEMENT:
        - "save processes" / "load processes" are removed (the amplitudes kept after an
          output have lost the diagrams its --mask trimmed). "save model", "load model" and
          "save options" remain.
+   OM: flavour grouping: a process in which a merged quark is built from unmerged particles
+       only, through a flavoured coupling with several flavours (a heavy quark xq mixing into
+       d and s through the Z: p p > xq z j, xq xq~ > z z; none in the bundled models), crashed
+       the output with a FlavorTagError and a "report this bug" message (xq xq~ > z z, with no
+       merged external leg, only while writing check_sa.f). The merged output gives each
+       wavefunction the one flavour its inputs fix: it can neither take this one from the
+       other end of the fermion line nor sum over it. The output now stops before writing any
+       subprocess, with an error naming the process and the couplings; generate such a
+       process after "set apply_flavor_grouping False" and a new import of the model.
+   OM: polarised propagators of a massive vector (w+{0}, w+{T}, w+{A}, w+{S}, ... on a
+       particle decayed further) in the FD gauge: {0}, {T}, {+}, {-}, {A}, {S}, {0S} are the
+       pieces of the five-component FD propagator (the FD longitudinal vector of the
+       external W, the unitary transverse ones, and (q^2-M^2) n n/(n.q)^2). The FD output
+       used to be wrong (SIGBUS in the Fortran standalone). {T}, {+}, {-} equal the
+       unitary-gauge ones, {0} equals it on shell; {A}, {S}, {0S} are the FD remainder
+       (a warning says so). A line at rest has its helicity axis along +z, as in the
+       unitary gauge. A massless vector keeps only {T}, {+}, {-} in the FD gauge.
+   OM: polarised propagators of a massive vector are refused in the Feynman gauge (the
+       output crashed), in the complex-mass scheme, and {G}, {H}, {Q}, {W} in the FD gauge
+       (also by ALOHA itself).
+   OM: madmatrix: a custom propagator denominator with a width term (the polarised
+       propagators) was written as a Python complex literal and did not compile.
+   OM: madmatrix, FD gauge, flavour grouping on (the default): |M|^2 was 0 for a W/Goldstone
+       line between merged and unmerged flavours (t > b ta+ vt, ta+ vt > t b~): the
+       combined vector + Goldstone routine assumed a flavour-diagonal coupling.
+   OM: check gauge accepts a decay chain, e.g. 'check gauge t > w+{0} b, w+ > ta+ vt' (the
+       other checks still refuse them). The chain is compared in the unitary, axial and FD
+       gauges (not Feynman, where it has no Goldstone boson), with every decayed particle on
+       shell and a width of 1e-9 M: the helicity pieces agree to 1e-12, {A}, {S} and {0S}
+       are gauge dependent. Refused in the complex-mass scheme and with loops.
+   OM: check gauge/brs/lorentz/permutation/full with flavour grouping (the default):
+       the flavour of the legs was dropped and every grouped process was evaluated for
+       the first flavour of each group only. A charged-current process such as
+       `u d~ > w+ g` (evaluated as d d~ > w+ g, which vanishes) was checked by nothing:
+       an empty gauge table ("Summary: 0/0 passed"), no Ward check, and a "Passed"
+       0 = 0 permutation check. The checks now evaluate the flavour asked for, and a
+       multiparticle such as `p p > w+ w-` each physical flavour, as without grouping.
+       A check that could check no process now says so instead of printing an empty
+       table.
+   OM: the FD gauge (Feynman-diagram gauge, arXiv:2203.10440, 2405.01256) is now chosen
+       automatically for each process line whose diagrams have a W/Z propagator ending on a
+       vertex that is not a conserved current (HVV, VVV, VVVV, or a massive fermion such as t-b):
+       VBF/VBS, u u > h j j j j, p p > w+ w-, t t~ with leptonic W decays switch; Drell-Yan,
+       u d~ > e+ ve g, p p > z z and pure QCD do not. In the unitary gauge the diagrams of such a
+       process grow with the energy and digits are lost in their sum, in the FD gauge the
+       cancellation happens diagram by diagram. When every line needs it the whole output is in
+       the FD gauge ('set gauge FD' in the proc_card), otherwise only those lines are
+       ('--gauge=FD' on them). 'set gauge X' always wins, 'set gauge default' hands the choice
+       back, 'set auto_gauge False' turns it off. Never for loop processes, spin above one,
+       bound states, [amplicol] processes, polarised legs, propagator polarisations, or models
+       without (checked) goldstone bosons. The FD-gauge citation is triggered, the mg7 output
+       records the gauge in its proc_characteristics. Costs 6-27% per phase-space point, with
+       an unweighting efficiency equal or better.
+   OM: new process option 'generate|add process ... --gauge=FD|unitary': the outputs madevent,
+       standalone_fortran, standalone and mg7 hold subprocesses in both gauges (Fortran:
+       Source/DHELAS_FD, C++: src/HelAmps_<model>_fd.h), the other formats refuse it. MadSpin
+       and the reweighting read such a proc_card in one gauge (the reweighting: FD when every
+       process can be, else unitary). Not available after 'add model' or 'customize_model'.
+   OM: FD gauge in the complex-mass scheme: the goldstone part of the propagator used the
+       conjugate mass. Outputs in one gauge are otherwise unchanged. The multiparticles of the
+       user survive the reload of the model behind 'set gauge'. While an 'output
+       --postpone_model' waits for its model, the gauge of the processes written in it is kept.
+   OM: complex-mass scheme: check gauge no longer stops at its axial step (a custom
+       denominator is written unless it uses the width); madmatrix (standalone, mg7)
+       compiles and agrees with Fortran; MadSpin uses madmatrix density matrices; the $
+       exclusion window works (it was silently wrong in Fortran, did not compile in C++);
+       $ on a massless particle is refused. check language evaluates every backend at the
+       same phase-space point, and the C++ FD vxxxxx has the FD longitudinal polarisation.
+
+0.3.0 (XX/XX/XX):
    OM: --hel_recycling (standalone/mg7, CPU/SIMD builds, on by default): the recycled matrix
        element left out the flavour masks of a flavour-merged subprocess, on the assumption
        that an amplitude masked for a flavour vanishes there anyway. It does not always (a

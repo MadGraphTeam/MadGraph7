@@ -20,8 +20,10 @@ import math
 import copy
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 import tests.unit_tests as unittest
@@ -44,6 +46,14 @@ class TestMatrixElementChecker(unittest.TestCase):
         self.base_model = import_ufo.import_model('sm', options={'apply_flavor_grouping':False})
         #sm_path = import_ufo.find_ufo_path('sm')
         #self.base_model = import_ufo.import_model(sm_path)
+        # the tests that 'set gauge' change the global ALOHA gauge; a test
+        # run after them (e.g. the reference momenta of 'check brs', not
+        # built in the FD gauge) must not inherit it
+        import aloha
+        saved = (aloha.unitary_gauge, aloha.complex_mass)
+        def restore():
+            aloha.unitary_gauge, aloha.complex_mass = saved
+        self.addCleanup(restore)
     
     def test_get_momenta(self):
         """Test the get_momenta function"""
@@ -237,6 +247,262 @@ class TestMatrixElementChecker(unittest.TestCase):
         relative_difference = abs(values['unitary'] - values['FD']) / \
             max(abs(values['unitary']), abs(values['FD']))
         self.assertLess(relative_difference, 5e-2)
+
+    def test_external_polarisation_in_every_gauge(self):
+        """An external polarised massive vector is supported in every gauge.
+
+        At one phase-space point and with the widths at zero, |M|^2 of
+        't t~ > w+{0} w-' and of 't t~ > w+{T} w-' is the same in the unitary,
+        Feynman, axial and FD gauges (the FD gauge builds the longitudinal
+        polarisation vector with its fifth, Goldstone component), and the two
+        add up to the unpolarised |M|^2 in each gauge. The top quark makes the
+        s-channel current non-conserved, so the Feynman gauge has a Goldstone
+        diagram and the qq/M^2 piece of the Z propagator matters."""
+
+        import madgraph.interface.master_interface as interface
+        import madgraph.core.helas_objects as helas_objects
+
+        processes = {'0': 't t~ > w+{0} w-', 'T': 't t~ > w+{T} w-',
+                     'all': 't t~ > w+ w-'}
+        gauges = ['unitary', 'Feynman', 'axial', 'FD']
+        values = {}
+        p = None
+        for gauge in gauges:
+            cmd = interface.MasterCmd()
+            cmd.no_notification()
+            cmd.exec_cmd('set gauge %s' % gauge)
+            cmd.exec_cmd('import model sm')
+            evaluator = process_checks.MatrixElementEvaluator(
+                cmd._curr_model, cmd=cmd, reuse=False)
+            for particle in evaluator.full_model.get('particles'):
+                if particle.get('width') != 'ZERO':
+                    evaluator.full_model.get('parameter_dict')[particle.get('width')] = 0.
+            for pol, line in processes.items():
+                cmd.exec_cmd('generate %s' % line)
+                me = helas_objects.HelasMatrixElement(cmd._curr_amps[0])
+                if p is None:
+                    # the same point for the three processes and four gauges
+                    # (the external masses are the same): the RAMBO point of
+                    # the check_sa drivers
+                    with process_checks._seeded_rambo_rng():
+                        p, _ = evaluator.get_momenta(
+                            me.get('processes')[0],
+                            {'energy': 1000., 'events': None, 'skip_evt': 0})
+                values[gauge, pol], _ = evaluator.evaluate_matrix_element(me, p=p)
+
+        for gauge in gauges:
+            self.assertGreater(values[gauge, '0'], 0.)
+            self.assertGreater(values[gauge, 'T'], 0.)
+            self.assertAlmostEqual(
+                (values[gauge, '0'] + values[gauge, 'T']) / values[gauge, 'all'],
+                1., places=10, msg='sum over the polarisations in the %s gauge' % gauge)
+            for pol in processes:
+                self.assertAlmostEqual(
+                    values[gauge, pol] / values['unitary', pol], 1., places=9,
+                    msg='%s: %s gauge vs unitary' % (processes[pol], gauge))
+
+    def test_fd_polarised_propagator_projections(self):
+        """FD gauge: the five-component propagator numerator splits exactly,
+        on or off shell, into the transverse pieces, the FD longitudinal piece
+        eps0 eps0* (eps0 = (-M n/(n.q), i)) and the remainder
+        (q^2-M^2) n n/(n.q)^2. The projections of
+        wavefunctions.fd_polarized_propagator therefore add up to the full FD
+        projector of multiply_propagator_factor: {T}+{0}+{A} = full,
+        {+}+{-} = {T}, {0S} = {0}+{S}, and {S} is {A} with
+        (q^2-M^2) -> q^2-M^2+iM*Gamma. Checked for both signs of the energy
+        flowing through the line."""
+
+        import random
+        import aloha.template_files.wavefunctions as wf
+
+        rng = random.Random(7)
+        mass, width = 80.4, 2.05
+        for trial in range(6):
+            qv = [rng.uniform(-150, 150) for _ in range(3)]
+            energy = math.sqrt(sum(x * x for x in qv) + rng.uniform(20, 200)**2)
+            if trial % 2:
+                energy = -energy
+            win = wf.WaveFunction(size=7)
+            win.momenta = [energy] + qv
+            for i in range(2, 7):
+                win[i] = complex(rng.uniform(-1, 1), rng.uniform(-1, 1))
+            full = wf.multiply_propagator_factor(win, mass)
+            piece = dict((pol, wf.fd_polarized_propagator(win, mass, width, pol))
+                         for pol in range(7))
+            T, R, L, Z, A, S, ZS = [piece[i] for i in (1, 2, 3, 0, 4, 5, 6)]
+            # the momentum flows backwards in the projector: q = -p
+            q2 = energy**2 - sum(x * x for x in qv)
+            for i in range(2, 7):
+                scale = max(abs(full[j]) for j in range(2, 7))
+                self.assertAlmostEqual(abs(T[i] + Z[i] + A[i] - full[i]) / scale, 0., 12)
+                self.assertAlmostEqual(abs(R[i] + L[i] - T[i]) / scale, 0., 12)
+                self.assertAlmostEqual(abs(Z[i] + S[i] - ZS[i]) / scale, 0., 12)
+                self.assertAlmostEqual(
+                    abs(A[i] * (q2 - mass**2 + 1j * mass * width) / (q2 - mass**2)
+                        - S[i]) / scale, 0., 12)
+            # the transverse and helicity pieces have no time-like and no
+            # Goldstone component, the remainders no Goldstone component
+            for X in (T, R, L):
+                self.assertEqual(X[2], 0)
+                self.assertEqual(X[6], 0)
+            self.assertEqual(A[6], 0)
+            self.assertEqual(S[6], 0)
+
+    def test_fd_polarised_propagator_vs_unitary(self):
+        """t > w+{X} b, w+ > ta+ vt in the FD and unitary gauges, at a point
+        with the W on its mass shell and at one 7% below it (widths kept).
+
+        - {T}, {+}, {-} and the unpolarised chain agree at both points: the
+          transverse pieces are the same in both gauges, with no Goldstone
+          component.
+        - {0} agrees on shell, where the FD longitudinal vector eps0 differs
+          from the unitary one by a term along q, which the Goldstone
+          component cancels (Ward identity); off shell the two definitions
+          differ (here by 4e-5).
+        - {A} vanishes on shell in both gauges (it is proportional to
+          q^2-M^2) and is gauge dependent off shell.
+        - With the W at rest (the frame of its decay products, plus rounding
+          noise) the helicities are taken along +z in both gauges."""
+
+        import madgraph.interface.master_interface as interface
+        import madgraph.core.helas_objects as helas_objects
+
+        def boost(p, b):
+            bb = sum(x * x for x in b)
+            g = 1 / math.sqrt(1 - bb)
+            bp = sum(b[i] * p[i+1] for i in range(3))
+            return [g * (p[0] + bp)] + \
+                   [p[i+1] + (g - 1) / bb * bp * b[i] + g * b[i] * p[0] for i in range(3)]
+
+        def two_body(M, m1, m2, theta, phi):
+            E1 = (M * M + m1 * m1 - m2 * m2) / (2 * M)
+            k = math.sqrt(E1 * E1 - m1 * m1)
+            d = [math.sin(theta) * math.cos(phi), math.sin(theta) * math.sin(phi),
+                 math.cos(theta)]
+            return [E1] + [k * x for x in d], [M - E1] + [-k * x for x in d]
+
+        def point(mt, mb, mw, mta):
+            """{pdg: momentum} for t (at rest) > b W(mw), W > ta+ vt"""
+            pb, pw = two_body(mt, mb, mw, 0.7, 0.3)
+            pta, pv = two_body(mw, mta, 0., 1.9, 2.2)
+            beta = [pw[i+1] / pw[0] for i in range(3)]
+            return {6: [mt, 0., 0., 0.], 5: pb, -15: boost(pta, beta),
+                    16: boost(pv, beta)}
+
+        def rest_point(mt, mb, mw, mta):
+            """the same decay seen from the rest frame of the W, as when
+            me_frame is the W's decay products, with a rounding-size offset
+            (1e-12) on the decay products: the line is at rest up to noise"""
+            mom = point(mt, mb, mw, mta)
+            pw = [mom[-15][i] + mom[16][i] for i in range(4)]
+            beta = [-pw[i+1] / pw[0] for i in range(3)]
+            mom = dict((pdg, boost(p, beta)) for pdg, p in mom.items())
+            mom[-15][1] += 3e-12
+            mom[16][2] -= 2e-12
+            return mom
+
+        braces = ('T', '+', '-', '0', 'A', '')
+        values = {}
+        for gauge in ('unitary', 'FD'):
+            cmd = interface.MasterCmd()
+            cmd.no_notification()
+            cmd.exec_cmd('set apply_flavor_grouping False')
+            cmd.exec_cmd('set gauge %s' % gauge)
+            cmd.exec_cmd('import model sm')
+            for brace in braces:
+                cmd.exec_cmd('generate t > w+%s b, w+ > ta+ vt'
+                             % ('{%s}' % brace if brace else ''))
+                me = helas_objects.HelasMultiProcess(
+                                       cmd._curr_amps).get_matrix_elements()[0]
+                evaluator = process_checks.MatrixElementEvaluator(
+                    cmd._curr_model, cmd=cmd, reuse=False)
+                param = evaluator.full_model.get('parameter_dict')
+                masses = [param[name].real for name in
+                          ('mdl_MT', 'mdl_MB', 'mdl_MW', 'mdl_MTA')]
+                legs = [leg.get('id') for leg in
+                        me.get('processes')[0].get_legs_with_decays()]
+                for shell, scale in (('on', 1.), ('off', 0.93), ('rest', 1.)):
+                    make = rest_point if shell == 'rest' else point
+                    mom = make(masses[0], masses[1], scale * masses[2], masses[3])
+                    values[gauge, brace, shell], _ = evaluator.evaluate_matrix_element(
+                        me, p=[mom[pdg] for pdg in legs])
+
+        def rel(brace, shell):
+            u, f = values['unitary', brace, shell], values['FD', brace, shell]
+            return abs(u - f) / max(abs(u), abs(f))
+
+        for brace in ('T', '+', '-', ''):
+            for shell in ('on', 'off'):
+                self.assertLess(rel(brace, shell), 1e-12, (brace, shell))
+        # a W at rest (up to rounding): the helicity axis is pinned to +z, as
+        # in the unitary gauge, instead of following the rounding noise
+        for brace in ('T', '+', '-', '0', ''):
+            self.assertLess(rel(brace, 'rest'), 1e-9, brace)
+        # the two helicities are not swapped
+        self.assertGreater(values['FD', '+', 'off'], 10 * values['FD', '-', 'off'])
+        self.assertLess(rel('0', 'on'), 1e-12)
+        self.assertLess(rel('0', 'off'), 1e-3)
+        self.assertGreater(rel('0', 'off'), 1e-8)
+        for gauge in ('unitary', 'FD'):
+            self.assertLess(values[gauge, 'A', 'on'], 1e-20 * values[gauge, '0', 'on'])
+            self.assertGreater(values[gauge, 'A', 'off'], 1e-8 * values[gauge, '0', 'off'])
+
+    def test_fd_complex_mass_scheme_matches_unitary(self):
+        """In the complex-mass scheme the FD and the unitary gauge agree to
+        machine precision once the EXTERNAL unstable particles have a zero
+        width; the internal W, Z, h, t keep theirs (complex masses).
+
+        With the width of an external particle the two gauges cannot agree:
+        its momentum sits on the real mass shell, not on the complex one the
+        Ward identities need, and every gauge gives another O(width/mass)
+        answer (unitary and Feynman included). See docs/auto-fd-gauge.md.
+
+        Guards the FD propagator, which contracted the goldstone component
+        with the conjugate of -i*m: 6e-7 (w+ w- > w+ w-) and 1e-5
+        (b b > h b b) before the fix."""
+
+        import aloha
+        import madgraph.interface.master_interface as interface
+        import madgraph.core.helas_objects as helas_objects
+        import madgraph.models.write_param_card as write_param_card
+        import madgraph.models.check_param_card as check_param_card
+
+        saved = (aloha.complex_mass, aloha.unitary_gauge)
+        def restore():
+            aloha.complex_mass, aloha.unitary_gauge = saved
+        self.addCleanup(restore)
+        tmpdir = tempfile.mkdtemp(prefix='fd_cms_')
+        self.addCleanup(shutil.rmtree, tmpdir, True)
+
+        # process, the external particle(s) whose width is set to zero
+        for process_line, external in (('w+ w- > w+ w-', [24]),
+                                       ('b b > h b b QCD=0', [25])):
+            values = {}
+            p = None
+            for gauge in ['unitary', 'FD']:
+                cmd = interface.MasterCmd()
+                cmd.no_notification()
+                cmd.exec_cmd('set auto_gauge False')
+                cmd.exec_cmd('set complex_mass_scheme True')
+                cmd.exec_cmd('set gauge %s' % gauge)
+                cmd.exec_cmd('import model sm')
+                cmd.exec_cmd('generate %s' % process_line)
+                me = helas_objects.HelasMatrixElement(cmd._curr_amps[0])
+                card = os.path.join(tmpdir, 'param_card_%s.dat' % gauge)
+                write_param_card.ParamCardWriter(cmd._curr_model, card)
+                param_card = check_param_card.ParamCard(card)
+                for pdg in external:
+                    param_card['decay'].get((pdg,)).value = 0.
+                evaluator = process_checks.MatrixElementEvaluator(
+                    cmd._curr_model, param_card=param_card, cmd=cmd, reuse=False)
+                if p is None:
+                    p, _ = evaluator.get_momenta(me.get('processes')[0])
+                values[gauge], _ = evaluator.evaluate_matrix_element(me, p=p)
+
+            self.assertGreater(abs(values['unitary']), 0)
+            relative_difference = abs(values['unitary'] - values['FD']) / \
+                max(abs(values['unitary']), abs(values['FD']))
+            self.assertLess(relative_difference, 1e-10, process_line)
 
     def test_failed_process(self):
         """Test that check process fails for wrong color-Lorentz."""
@@ -602,6 +868,35 @@ class TestLorentzInvariance(unittest.TestCase):
             self.assertAlmostEqual(invariant_mass_boost[i], 
                                    invariant_mass_result[i])    
 
+
+
+    def test_check_sa_energy_absolute_masses(self):
+        """check language raises the energy to 2*sum|m| of the external legs,
+        as the Fortran pmass.inc: a negative mass must not lower it."""
+
+        class FakeEvaluator(object):
+            def __init__(self, masses):
+                self.masses = masses
+            def get_external_masses(self, proc):
+                return list(self.masses)
+
+        legs = base_objects.LegList(
+            [base_objects.Leg({'id': 6, 'state': False, 'number': 1}),
+             base_objects.Leg({'id': -6, 'state': False, 'number': 2}),
+             base_objects.Leg({'id': 24, 'state': True, 'number': 3}),
+             base_objects.Leg({'id': -24, 'state': True, 'number': 4})])
+        proc = base_objects.Process({'legs': legs, 'model': self.base_model})
+
+        signed = FakeEvaluator([-173., -173., 80., 80.])
+        self.assertAlmostEqual(
+            process_checks._check_sa_energy(proc, signed, 100.), 1012.)
+        self.assertAlmostEqual(
+            process_checks._check_sa_energy(proc, signed, 2000.), 2000.)
+        # a 1 -> n decay keeps the energy it is given
+        decay = base_objects.Process(
+            {'legs': base_objects.LegList(legs[1:]), 'model': self.base_model})
+        self.assertAlmostEqual(
+            process_checks._check_sa_energy(decay, signed, 100.), 100.)
 
 
 class TestFlavorCheck(unittest.TestCase):
@@ -1455,6 +1750,166 @@ class TestPrecisionCheck(unittest.TestCase):
                 self.assertGreater(entry['time_mode'], 0., backend)
             finally:
                 shutil.rmtree(output_path, ignore_errors=True)
+
+
+
+class TestCheckGaugeDecayChain(unittest.TestCase):
+    """'check gauge' on a decay chain (process_checks.
+    check_unitary_feynman_decay_chains): the chain is compared in the
+    unitary, axial and FD gauges, with every decayed particle on shell."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.interface.master_interface as interface
+        cls.cmd = interface.MasterCmd()
+        cls.cmd.no_notification()
+        cls.cmd.exec_cmd('set apply_flavor_grouping False')
+        cls.cmd.exec_cmd('import model sm')
+
+    def check_gauge(self, process, cmd=None):
+        """(gauge labels, {process string: (relative difference, values)})
+        from the table that 'check gauge' logs"""
+        cmd = cmd or self.cmd
+        with self.assertLogs('madgraph.check_cmd', 'INFO') as logs:
+            cmd.exec_cmd('check gauge %s' % process)
+        text = '\n'.join(record.getMessage() for record in logs.records)
+        lines = text.split('\n')
+        header = [line for line in lines if line.startswith('Process ')][0]
+        labels = header.split()[1:-3]
+        rows = {}
+        for line in lines:
+            if line.endswith(('Passed', 'Failed')) and not \
+                                            line.lstrip().startswith('JAMP'):
+                words = line.split()
+                values = [float(x) for x in words[-2 - len(labels):-2]]
+                rows[' '.join(words[:-2 - len(labels)])] = \
+                    (float(words[-2]), values)
+        return labels, rows
+
+    def test_decay_chain_momenta(self):
+        """Momenta of all the external legs, in the order of
+        get_legs_with_decays, with every decayed particle on shell and
+        momentum conserved at every vertex."""
+        import madgraph.core.diagram_generation as diagram_generation
+        import madgraph.core.helas_objects as helas_objects
+        procdef = self.cmd.extract_check_process(
+                        'u u~ > t t~, (t > w+ b, w+ > e+ ve), t~ > w- b~')
+        amplitudes = diagram_generation.MultiProcess(procdef,
+                                collect_mirror_procs=False).get('amplitudes')
+        me = helas_objects.HelasMultiProcess(amplitudes).get_matrix_elements()[0]
+        process = me.get('processes')[0]
+        evaluator = process_checks.MatrixElementEvaluator(self.cmd._curr_model,
+                                                          cmd=self.cmd)
+        p = process_checks.get_decay_chain_momenta(evaluator, process)
+        ids = [leg.get('id') for leg in process.get_legs_with_decays()]
+        self.assertEqual(ids, [2, -2, -11, 12, 5, -24, -5])
+        param = evaluator.full_model.get('parameter_dict')
+        mass = lambda name: abs(param[name])
+        sq = lambda q: q[0]**2 - q[1]**2 - q[2]**2 - q[3]**2
+        add = lambda *qs: [sum(q[i] for q in qs) for i in range(4)]
+        self.assertAlmostEqual(sq(add(p[2], p[3])) / mass('mdl_MW')**2, 1, 12)
+        self.assertAlmostEqual(sq(add(p[2], p[3], p[4])) / mass('mdl_MT')**2, 1, 12)
+        self.assertAlmostEqual(sq(add(p[5], p[6])) / mass('mdl_MT')**2, 1, 12)
+        self.assertAlmostEqual(sq(p[5]) / mass('mdl_MW')**2, 1, 12)
+        total = add(p[2], p[3], p[4], p[5], p[6])
+        for i in range(4):
+            self.assertAlmostEqual(total[i], p[0][i] + p[1][i], 8)
+
+    def test_check_gauge_polarised_decay_chain(self):
+        """The helicity pieces and the unpolarised chain agree in the
+        unitary, axial and FD gauges; {S} is gauge dependent and differs in
+        FD. The Feynman gauge is not compared (no Goldstone boson in the
+        chain), and {G} has no FD counterpart."""
+        for brace in ('', '{0}', '{T}', '{+}', '{0S}'):
+            labels, rows = self.check_gauge('t > w+%s b, w+ > ta+ vt' % brace)
+            self.assertEqual(labels, ['Unitary', 'Axial', 'FD'], brace)
+            (diff, values), = rows.values()
+            self.assertLess(diff, 1e-12, brace)
+            self.assertGreater(min(values), 0, brace)
+        labels, rows = self.check_gauge('t > w+{S} b, w+ > ta+ vt')
+        (diff, values), = rows.values()
+        self.assertGreater(diff, 1e-2)
+        self.assertEqual(values[0], values[1])          # unitary = axial
+        labels, rows = self.check_gauge('t > w+{G} b, w+ > ta+ vt')
+        self.assertEqual(labels, ['Unitary', 'Axial'])
+
+    def test_check_gauge_two_decays(self):
+        """With two decayed bosons the core process has an s-channel W:
+        the width given to the decayed particles (1e-9 M) leaves it gauge
+        invariant to 1e-10 (at the physical width it differs by 4e-4)."""
+        labels, rows = self.check_gauge(
+                        'u d~ > w+{0} z, w+ > e+ ve, z > mu+ mu-')
+        (diff, values), = rows.values()
+        self.assertLess(diff, 1e-9)
+        labels, rows = self.check_gauge(
+                'g g > t t~, (t > w+{T} b, w+ > e+ ve), (t~ > w-{0} b~, w- > mu- vm~)')
+        (diff, values), = rows.values()
+        self.assertLess(diff, 1e-10)
+
+    def test_check_gauge_decay_chain_flavour_grouping(self):
+        """With flavour grouping (the default) every physical flavour of a
+        grouped leg is checked, at any depth of the chain, and a combination
+        that does not conserve charge is skipped: 'p p' gives u d~ and c s~
+        and their mirrors, 'l+ vl' the electron and the muon."""
+        import madgraph.interface.master_interface as interface
+        cmd = interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('import model sm')
+        labels, rows = self.check_gauge(
+                'p p > w+{0} z, w+ > e+ ve, z > mu+ mu-', cmd)
+        flavours = sorted(name.split('[')[1].split(' >')[0] for name in rows)
+        self.assertEqual(flavours, ['c s~', 'd~ u', 's~ c', 'u d~'])
+        for diff, values in rows.values():
+            self.assertLess(diff, 1e-9)
+            self.assertGreater(min(values), 0)
+        labels, rows = self.check_gauge('t > w+{0} b, w+ > l+ vl', cmd)
+        self.assertEqual(sorted(name.split('[')[1] for name in rows),
+                         ['t > e+ ve b]', 't > mu+ vm b]'])
+        for diff, values in rows.values():
+            self.assertLess(diff, 1e-12)
+        # a leg tagged with several flavours ('define q = u c') checks each of
+        # them, not only the first: u d~ and c s~ (u s~ and c d~ vanish)
+        cmd.exec_cmd('define qq = u c')
+        cmd.exec_cmd('define qb = d~ s~')
+        labels, rows = self.check_gauge(
+                'qq qb > w+{0} z, w+ > e+ ve, z > mu+ mu-', cmd)
+        flavours = sorted(name.split('[')[1].split(' >')[0] for name in rows)
+        self.assertEqual(flavours, ['c s~', 'u d~'])
+        for diff, values in rows.values():
+            self.assertLess(diff, 1e-9)
+
+    def test_check_gauge_restores_the_gauge(self):
+        """'check gauge' switches the session through the unitary, axial and
+        FD gauges: the gauge of the session comes back when the check refuses
+        the process after the switch, as on success."""
+        import madgraph
+        import aloha
+        self.cmd.exec_cmd('set gauge Feynman')
+        try:
+            self.assertRaises(madgraph.InvalidCmd, lambda: self.cmd.exec_cmd(
+                'check gauge e+ e- > a z, a > mu+ mu-', errorhandling=False))
+            self.assertEqual(self.cmd.options['gauge'], 'Feynman')
+            self.assertIs(aloha.unitary_gauge, False)
+        finally:
+            self.cmd.exec_cmd('set gauge unitary')
+
+    def test_check_decay_chain_refused(self):
+        """Decay chains: only 'check gauge', without loops, outside the
+        complex-mass scheme, and with massive decayed particles."""
+        import madgraph
+        for line in ('check brs t > w+ b, w+ > ta+ vt',
+                     'check gauge t > w+ b, w+ > ta+ vt --events=events.lhe',
+                     'check full t > w+ b, w+ > ta+ vt',
+                     'check gauge u u~ > z g, z > mu+ mu- [QCD]',
+                     'check gauge e+ e- > a z, a > mu+ mu-'):
+            self.assertRaises(madgraph.InvalidCmd,
+                              lambda: self.cmd.exec_cmd(line, errorhandling=False))
+        self.cmd.exec_cmd('set complex_mass_scheme True')
+        try:
+            self.assertRaises(madgraph.InvalidCmd, lambda: self.cmd.exec_cmd(
+                'check gauge t > w+ b, w+ > ta+ vt', errorhandling=False))
+        finally:
+            self.cmd.exec_cmd('set complex_mass_scheme False')
 
 
 if __name__ == '__main__':
