@@ -75,16 +75,16 @@ Born and its correlated versions, fks_subtraction the real emission with
 its counterterms, fks_soft_virtual the n-body part of the subtraction
 without the virtual, fks_weights the weights of the integrand from them and
 the couplings and luminosities of each kinematics, fks_cuts the generation
-cuts of each kinematics, fks_scale the scales of each kinematics,
+cuts of each kinematics (NLOCuts on the real processes),
 fks_luminosities the parton luminosities of the real emission and of the
 n-body part, per flavor or summed, fks_born_flavor_indices the flavor of the
 Born under each real flavor, and fks_cross_section the integrand from the matrix-element
 blocks, with the scales, couplings and luminosities inside or not. ew_sudakov builds the EWSudakov of the
 Sudakov approximation of the EW corrections from the ewsudakov entry.
 fks_histograms builds the fixed-order histograms of the integrand, the
-event and its counter-events of each point together, and
-fks_histogram_results turns their sums into the weighted histograms of
-info.json that MadBoard draws.
+event and its counter-events of each point together, whose sums
+histogram_results of madspace.nlo turns into the weighted histograms of
+info.json. The scales are those of nlo_scale of madspace.nlo.
 """
 
 import json
@@ -102,24 +102,23 @@ from .._madspace_py import (
     FKSConfigurationMapping,
     FKSCouplingOrders,
     FKSCrossSection,
-    FKSCuts,
     FKSEikonals,
-    FKSHistograms,
-    FKSJets,
     FKSLimits,
     FKSLuminosity,
     FKSMapping,
     FKSObservableHistograms,
     FKSPrefactors,
-    FKSScale,
     FKSSectorFunction,
     FKSSoftVirtual,
     FKSSplittingKernels,
     FKSSubtraction,
     FKSWeights,
+    NLOCuts,
+    NLOJets,
     Observable,
     fks_sqrt_s_hat_min,
 )
+from ..nlo import JET_NAMES, histogram_jet_count, jet_observable, nlo_scale
 
 FILE_NAME = "fks_configurations.json"
 
@@ -774,8 +773,10 @@ def fks_weights(born, configurations):
 
 
 def fks_cuts(born, configurations, **cuts):
-    """The FKSCuts of the FKS configurations of a Born, the generation cuts of
-    cuts.f of MadFKS on one kinematics.
+    """The NLOCuts of the FKS configurations of a Born, the generation cuts of
+    cuts.f of MadFKS on one kinematics, with the real process of each
+    configuration as a flavor layout (layout_index the fks_index) and one
+    unresolved parton.
 
     Args:
         born: the PhaseSpaceMapping of the Born process, for its masses, its
@@ -790,53 +791,11 @@ def fks_cuts(born, configurations, **cuts):
         ValueError: as fks_configurations.
         TypeError: for a cut it does not know.
     """
-    return FKSCuts(fks_configurations(born, configurations), **cuts)
-
-
-# the names of the run card of MadFKS for the scales of FKSScale, with the
-# factorization scale of both beams under the names of the run card
-SCALE_NAMES = {
-    "dynamical_scale_choice": ["dynamical_scale_choice"],
-    "fixed_ren_scale": ["fixed_ren_scale"],
-    "fixed_fac_scale": ["fixed_fac_scale"],
-    "mur_ref_fixed": ["mur_ref_fixed"],
-    "muf_ref_fixed": ["muf1_ref_fixed", "muf2_ref_fixed"],
-    "muf1_ref_fixed": ["muf1_ref_fixed"],
-    "muf2_ref_fixed": ["muf2_ref_fixed"],
-    "mur_over_ref": ["mur_over_ref"],
-    "muf_over_ref": ["muf1_over_ref", "muf2_over_ref"],
-    "muf1_over_ref": ["muf1_over_ref"],
-    "muf2_over_ref": ["muf2_over_ref"],
-}
-
-
-def fks_scale(configurations, **scales):
-    """The FKSScale of the real processes of a Born, the scales of
-    setscales.f of MadFKS at one kinematics (FKSCrossSection takes it for the
-    real processes and the Born alike).
-
-    Args:
-        configurations: the content of fks_configurations.json (see
-            read_fks_configurations).
-        scales: the scales by their names in the run card of MadFKS
-            (dynamical_scale_choice, fixed_ren_scale, fixed_fac_scale,
-            mur_ref_fixed, muf_ref_fixed, mur_over_ref, muf_over_ref, the
-            last two of each also per beam as muf1_ and muf2_), the defaults
-            of the run card by default.
-
-    Raises:
-        TypeError: for a scale it does not know.
-    """
-    options = {}
-    for name, value in scales.items():
-        if name not in SCALE_NAMES:
-            raise TypeError(f"fks_scale: unknown scale parameter {name}")
-        for option in SCALE_NAMES[name]:
-            options[option] = value
-    return FKSScale(
-        len(configurations["born_pdgs"]) + 1,
-        **options,
+    entries = fks_configurations(born, configurations)
+    return NLOCuts(
+        [list(entry.pdgs) for entry in entries],
         incoming=configurations.get("nincoming", 2),
+        **cuts,
     )
 
 
@@ -1023,7 +982,7 @@ def fks_cross_section(
         n_l: the number of massless leptons, for the n-body part.
         cuts: the generation cuts by their names in the run card (see
             fks_cuts), or None for none.
-        scales: the scales by their names in the run card (see fks_scale), or
+        scales: the scales by their names in the run card (see nlo_scale), or
             None for the scales, couplings and luminosities as arguments. With
             them, the integrand takes them itself from running_coupling,
             pdf_grid, pdf_grid2, beams and sum_flavors (see
@@ -1055,7 +1014,11 @@ def fks_cross_section(
     )
     return FKSCrossSection(
         *arguments,
-        fks_scale(configurations, **scales),
+        nlo_scale(
+            len(configurations["born_pdgs"]) + 1,
+            configurations.get("nincoming", 2),
+            **scales,
+        ),
         running_coupling,
         luminosity,
         born_luminosity,
@@ -1144,45 +1107,6 @@ def ew_sudakov(configurations, parameters, modes=None):
     return EWSudakov(process, parameters, modes)
 
 
-# the jet definition of FKSJets by its names in the run card
-JET_NAMES = ("jetalgo", "jetradius", "ptj", "etaj", "maxjetflavor")
-
-
-def fks_histogram_jet_count(observable):
-    """The jets an Observable on the momenta with jets of FKSJets needs, from
-    its keyword arguments: the largest position of a jet in an ordered
-    selection (2 for the second jet), none for selections that sum over the
-    jets.
-
-    Raises:
-        ValueError: for a selection of jets that is neither ordered from the
-            hardest nor summed, which has no value per event, or counted
-            from the softest, which takes the empty slots.
-    """
-    jet_pid = Observable.jet_pids
-    count = 0
-    summed = observable.get("sum_momenta", False) or observable.get(
-        "sum_observable", False
-    )
-    order = list(observable.get("order_indices") or [])
-    for k, selection in enumerate(observable.get("select_pids") or []):
-        if 21 not in selection and not set(selection) & set(jet_pid):
-            continue
-        position = order[k] if k < len(order) else 0
-        if position < 0:
-            raise ValueError(
-                f"observable {observable.get('name', '')}: jets counted from the "
-                "softest take the empty jet slots"
-            )
-        if position == 0 and not summed:
-            raise ValueError(
-                f"observable {observable.get('name', '')}: jets without an order "
-                "have no value per event"
-            )
-        count = max(count, position)
-    return count
-
-
 def fks_histograms(born, configurations, histograms, **jets):
     """The FKSObservableHistograms of the FKS configurations of a Born, the
     fixed-order histograms of the integrand with the event, its
@@ -1196,81 +1120,36 @@ def fks_histograms(born, configurations, histograms, **jets):
         histograms: the histograms, each a dict with name, min, max,
             bin_count and observable, the keyword arguments of Observable
             without pids (those of parse_observable of the MG7 launcher). The
-            observable is built on the momenta with jets of FKSJets, with
-            the jets as gluons (21), and so takes the jets where it selects
-            gluons or the jet particles.
+            observable is built on the momenta with jets of NLOJets (see
+            jet_observable of madspace.nlo).
         jets: the jet definition by its names in the run card (jetalgo,
             jetradius, ptj, etaj, maxjetflavor), anti-kT with radius 0.4
             and no cuts by default.
 
     Raises:
-        ValueError: as fks_configurations and fks_histogram_jet_count.
+        ValueError: as fks_configurations and histogram_jet_count of
+            madspace.nlo.
         TypeError: for a jet parameter it does not know.
     """
     for name in jets:
         if name not in JET_NAMES:
             raise TypeError(f"fks_histograms: unknown jet parameter {name}")
     entries = fks_configurations(born, configurations)
-    layout = FKSJets(entries, **jets)
-    pids = list(layout.pids())
-    incoming = configurations.get("nincoming", 2)
+    layout = NLOJets(
+        [list(entry.pdgs) for entry in entries],
+        incoming=configurations.get("nincoming", 2),
+        **jets,
+    )
     items = []
     for histogram in histograms:
         options = dict(histogram["observable"])
-        options.setdefault("name", histogram.get("name", ""))
-        layout_pids = pids
-        if incoming != 2:
-            # madspace takes the first two momenta for the beams, a decay
-            # selects over all of them, its incoming particle in no group
-            layout_pids = [0] * incoming + pids[incoming:]
-            options["ignore_incoming"] = False
-        observable = Observable(layout_pids, **options)
         items.append(
             FKSObservableHistograms.HistItem(
-                observable,
+                jet_observable(layout, histogram),
                 histogram["min"],
                 histogram["max"],
                 histogram["bin_count"],
-                fks_histogram_jet_count(options),
+                histogram_jet_count(options),
             )
         )
     return FKSObservableHistograms(entries, items, **jets)
-
-
-def fks_histogram_results(histograms, sums, point_count):
-    """The weighted histograms of info.json (its "histograms", which MadBoard
-    draws and the HwU writer of the MG7 launcher takes) from the sums of
-    FKSObservableHistograms over point_count points, as
-    EventGenerator::histograms normalizes those of ObservableHistograms: the
-    cross section in a bin is the sum over the points, its error
-    sqrt(sum w^2 - (sum w)^2 / N) / N, with the underflow and overflow bins
-    first and last. The histograms of several channels add up, their errors
-    in quadrature.
-
-    Args:
-        histograms: the histograms of fks_histograms (name, min, max,
-            bin_count).
-        sums: the outputs of FKSObservableHistograms summed over the batches,
-            values and square_values of each histogram in turn.
-        point_count: the number of points.
-    """
-    results = []
-    count = float(point_count)
-    for k, histogram in enumerate(histograms):
-        values = [float(v) for v in sums[2 * k]]
-        squares = [float(v) for v in sums[2 * k + 1]]
-        errors = [
-            math.sqrt(max(square - value * value / count, 0.0)) / count
-            for value, square in zip(values, squares, strict=True)
-        ]
-        results.append(
-            {
-                "name": histogram.get("name", ""),
-                "min": histogram["min"],
-                "max": histogram["max"],
-                "bin_count": histogram["bin_count"],
-                "bin_values": [value / count for value in values],
-                "bin_errors": errors,
-            }
-        )
-    return results

@@ -714,76 +714,6 @@ NamedVector<Value> FKSWeights::build_function_impl(
     };
 }
 
-FKSCuts::FKSCuts(
-    const std::vector<FKSConfiguration>& configurations,
-    double jetalgo,
-    double jetradius,
-    double ptj,
-    double etaj,
-    int maxjetflavor,
-    double ptl,
-    double etal,
-    double drll,
-    double drll_sf,
-    double mll,
-    double mll_sf
-) :
-    FunctionGenerator(
-        "FKSCuts",
-        NamedVector<Type>{
-            {"momenta",
-             batch_four_vec_array(
-                 static_cast<int>(check_fks_configurations(configurations, "FKSCuts"))
-             )},
-            {"fks_index", batch_int},
-        },
-        NamedVector<Type>{{"mask", batch_float}}
-    ),
-    _particle_count(check_fks_configurations(configurations, "FKSCuts")),
-    _incoming(configurations.at(0).incoming),
-    _options{
-        jetalgo,
-        jetradius,
-        ptj,
-        etaj,
-        static_cast<double>(maxjetflavor),
-        ptl,
-        etal,
-        drll,
-        drll_sf,
-        mll,
-        mll_sf
-    } {
-    for (const auto& configuration : configurations) {
-        std::size_t partons = 0;
-        for (std::size_t i = _incoming; i < configuration.pdgs.size(); ++i) {
-            int flavor = std::abs(configuration.pdgs.at(i));
-            partons += (flavor >= 1 && flavor <= maxjetflavor) || flavor == 21;
-        }
-        if (partons > jet_parton_max) {
-            throw std::invalid_argument(
-                "FKSCuts: more QCD partons than the jet clustering takes"
-            );
-        }
-        _pdg.emplace_back(configuration.pdgs.begin(), configuration.pdgs.end());
-    }
-}
-
-NamedVector<Value> FKSCuts::build_function_impl(
-    FunctionBuilder& fb, const NamedVector<Value>& args
-) const {
-    return {
-        {"mask",
-         fb.fks_cuts(
-             args.at("momenta"),
-             args.at("fks_index"),
-             _pdg,
-             _options,
-             static_cast<me_int_t>(_incoming)
-         )}
-    };
-}
-
 namespace {
 
 // the momentum fractions of the kinematics that the luminosities take
@@ -868,7 +798,7 @@ FKSCrossSection::FKSCrossSection(
     const FKSSubtraction& subtraction,
     const FKSSoftVirtual& soft_virtual,
     const FKSWeights& weights,
-    const std::optional<FKSCuts>& cuts
+    const std::optional<NLOCuts>& cuts
 ) :
     FunctionGenerator(
         "FKSCrossSection",
@@ -884,14 +814,20 @@ FKSCrossSection::FKSCrossSection(
             "FKSCrossSection: the cuts need the particles of the weights"
         );
     }
+    if (_cuts && _cuts->unresolved() != 1) {
+        throw std::invalid_argument(
+            "FKSCrossSection: the cuts need one unresolved parton, that of the "
+            "real emission"
+        );
+    }
 }
 
 FKSCrossSection::FKSCrossSection(
     const FKSSubtraction& subtraction,
     const FKSSoftVirtual& soft_virtual,
     const FKSWeights& weights,
-    const std::optional<FKSCuts>& cuts,
-    const FKSScale& scale,
+    const std::optional<NLOCuts>& cuts,
+    const NLOScale& scale,
     const RunningCoupling& running_coupling,
     const FKSLuminosity& luminosity,
     const FKSLuminosity& born_luminosity
@@ -915,6 +851,12 @@ FKSCrossSection::FKSCrossSection(
     if (_cuts && _cuts->particle_count() != weights.particle_count()) {
         throw std::invalid_argument(
             "FKSCrossSection: the cuts need the particles of the weights"
+        );
+    }
+    if (_cuts && _cuts->unresolved() != 1) {
+        throw std::invalid_argument(
+            "FKSCrossSection: the cuts need one unresolved parton, that of the "
+            "real emission"
         );
     }
     if (scale.incoming() != weights.incoming()) {

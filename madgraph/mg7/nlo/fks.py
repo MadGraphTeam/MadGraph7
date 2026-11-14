@@ -93,9 +93,9 @@ class SubprocessIntegrand:
             fks_cuts,
             fks_minimal_masses,
             fks_resonances,
-            fks_scale,
             fks_splitting_kernels,
         )
+        from madspace.nlo import nlo_scale
 
         self.name = os.path.basename(os.path.normpath(directory))
         self.context = context
@@ -144,7 +144,7 @@ class SubprocessIntegrand:
         born = self.channel_mappings[0]
         self.alpha = 1 / float(param_card["sminputs"]["1"])
         scales = scale_parameters(run_card)
-        scale = fks_scale(self.configurations, **scales)
+        scale = nlo_scale(len(born_pdgs) + 1, self.incoming, **scales)
         self.born_scale = Runtime(scale.with_particle_count(len(born_pdgs)), context)
         self.kernels = Runtime(
             fks_splitting_kernels(born, self.configurations), context
@@ -237,7 +237,7 @@ class SubprocessIntegrand:
         )
         ren_scale = self.born_scale(out["born_momenta"])["ren_scale"]
         passes = {
-            name: self.pass_cuts(out[name], fks_index=fks_index)["mask"] != 0
+            name: self.pass_cuts(out[name], layout_index=fks_index)["mask"] != 0
             for name in ("momenta", "soft_momenta", "collinear_momenta")
         }
         born_mask = passes["momenta"] | passes["soft_momenta"]

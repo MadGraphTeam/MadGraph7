@@ -1,13 +1,14 @@
-"""The fixed-order histograms of the FKS integrand (FKSJets, FKSHistograms,
+"""The fixed-order histograms of the FKS integrand (NLOJets, NLOHistograms,
 FKSObservableHistograms and fks_histograms), with the event, its
 counter-events and the n-body part of each point in the same histograms.
 
-FKSHistograms is checked against HwU_fill and HwU_add_points of HwU.f in
+NLOHistograms is checked against HwU_fill and HwU_add_points of HwU.f in
 Python on random points: the kinematics of a point that fall into one bin add
-up, and the square of the sum enters the error. FKSJets is checked against
-genkt_jets of test_cuts (the clustering of fastjet) on random events and
-counter-events. FKSObservableHistograms is checked against the analyses of
-MadFKS at the points of the integrand reference (test_data/fks_integrand):
+up, and the square of the sum enters the error. NLOJets is checked against
+genkt_jets of test_nlo_cuts (the clustering of fastjet) on random events and
+counter-events in the layouts of the FKS configurations and their Borns.
+FKSObservableHistograms is checked against the analyses of MadFKS at the
+points of the integrand reference (test_data/fks_integrand):
 outfun of madfks_plot.f fills each weight line of sigint with its momenta in
 the lab frame, the n-body part at the soft counter-event, which has the
 momenta of the Born. The sums and squares per bin are those of the weight
@@ -22,16 +23,12 @@ import pytest
 import torch
 from fks_testing import evaluate
 from madspace_testing import default_context
-from test_fks_cuts import genkt_jets, jet_eta, random_kinematics
 from test_fks_integrand import DATA, IDS, boost_z, channels
+from test_nlo_cuts import genkt_jets, jet_eta, random_kinematics
 
 import madspace as ms
-from madspace.subtraction.fks import (
-    fks_configurations,
-    fks_histogram_jet_count,
-    fks_histogram_results,
-    fks_histograms,
-)
+from madspace.nlo import histogram_jet_count, histogram_results
+from madspace.subtraction.fks import fks_configurations, fks_histograms
 
 # the weight lines of sigint at each kinematics of FKSObservableHistograms
 KINEMATICS_TYPES = {
@@ -98,8 +95,8 @@ def test_merging_is_hwu():
     rng = np.random.default_rng(3)
     count, kinematics = 400, 5
     specs = [(0.0, 10.0, 7, 0), (-1.0, 1.0, 3, 1), (2.0, 3.0, 1, 2)]
-    histograms = ms.FKSHistograms(
-        [ms.FKSHistograms.HistItem(*spec) for spec in specs], kinematics
+    histograms = ms.NLOHistograms(
+        [ms.NLOHistograms.HistItem(*spec) for spec in specs], kinematics
     )
     weights = rng.normal(size=(kinematics, count))
     jets = rng.integers(0, 4, size=(kinematics, count)).astype(np.int32)
@@ -135,21 +132,21 @@ def test_merging_is_hwu():
 
 
 def test_histogram_errors():
-    item = ms.FKSHistograms.HistItem
+    item = ms.NLOHistograms.HistItem
     with pytest.raises(ValueError, match="no histograms"):
-        ms.FKSHistograms([], 5)
+        ms.NLOHistograms([], 5)
     with pytest.raises(ValueError, match="needs bins"):
-        ms.FKSHistograms([item(0.0, 1.0, 0)], 5)
+        ms.NLOHistograms([item(0.0, 1.0, 0)], 5)
     with pytest.raises(ValueError, match="needs bins"):
-        ms.FKSHistograms([item(1.0, 1.0, 3)], 5)
+        ms.NLOHistograms([item(1.0, 1.0, 3)], 5)
     with pytest.raises(ValueError, match="kinematics"):
-        ms.FKSHistograms([item(0.0, 1.0, 3)], 0)
+        ms.NLOHistograms([item(0.0, 1.0, 3)], 0)
     with pytest.raises(ValueError, match="kinematics"):
-        ms.FKSHistograms([item(0.0, 1.0, 3)], 65)
+        ms.NLOHistograms([item(0.0, 1.0, 3)], 65)
 
 
 def python_jets(p, pdgs, incoming, jetalgo, jetradius, ptj, etaj, maxjetflavor):
-    """The momenta with jets of FKSJets in Python: the other particles, then
+    """The momenta with jets of NLOJets in Python: the other particles, then
     the jets of genkt_jets with pt >= ptj and |eta| <= etaj by decreasing pt,
     and the number of jets."""
     kept, partons = [], []
@@ -179,10 +176,11 @@ def python_jets(p, pdgs, incoming, jetalgo, jetradius, ptj, etaj, maxjetflavor):
     ids=["antikt", "kt", "cambridge"],
 )
 def test_jets_against_python(name, jets):
-    """FKSJets on random events and counter-events, and on their Borns, are
-    the other particles and the jets of the clustering of fastjet by
-    decreasing pt, with zero momenta in the empty slots, in a layout that
-    every configuration and the Born share."""
+    """NLOJets on random events and counter-events in the layouts of the
+    real processes, and on their Borns in the layouts of the Borns with as
+    many slots, are the other particles and the jets of the clustering of
+    fastjet by decreasing pt, with zero momenta in the empty slots, in a
+    layout that every configuration and the Born share."""
     born, configurations, out, index, pdgs, sqrt_s = random_kinematics(name)
     jets = dict(jets)
     jets["ptj"] = jets["ptj"] * sqrt_s
@@ -190,16 +188,23 @@ def test_jets_against_python(name, jets):
     options.update(jets)
     entries = fks_configurations(born, configurations)
     incoming = configurations["nincoming"]
+    real = [list(config.pdgs) for config in entries]
+    real_jets = ms.NLOJets(real, incoming=incoming, **options)
     for is_born, kinematics in (
         (False, "momenta"),
         (False, "soft_momenta"),
         (False, "collinear_momenta"),
         (True, "born_momenta"),
     ):
-        function = ms.FKSJets(entries, born=is_born, **options)
-        assert function.born() == is_born
+        if is_born:
+            layouts = [config.born_pdgs() for config in entries]
+            slots = real_jets.slot_count()
+            function = ms.NLOJets(layouts, slots, incoming, **options)
+            assert function.pids()[incoming:] == real_jets.pids()[incoming:]
+        else:
+            function = real_jets
         assert function.jet_particle_count() == len(function.pids())
-        jet_momenta, jet_count = evaluate(function, out[kinematics], fks_index=index)
+        jet_momenta, jet_count = evaluate(function, out[kinematics], layout_index=index)
         slots = function.slot_count()
         assert list(function.pids()[-slots:]) == [21] * slots
         for k in range(len(index)):
@@ -238,7 +243,7 @@ def test_jet_errors():
         fks_j_from_i=[[], [], [], [], [3, 4]],
     )
     with pytest.raises(ValueError, match="radius must be positive"):
-        ms.FKSJets([configuration], jetradius=0.0)
+        ms.NLOJets([configuration.pdgs], jetradius=0.0)
     other = ms.FKSConfiguration(
         i_fks=4,
         j_fks=3,
@@ -248,8 +253,21 @@ def test_jet_errors():
         masses=[0.0] * 5,
         fks_j_from_i=[[], [], [], [], [3, 4]],
     )
-    with pytest.raises(ValueError):
-        ms.FKSJets([configuration, other])
+    with pytest.raises(ValueError, match="outside their QCD partons"):
+        ms.NLOJets([configuration.pdgs, other.pdgs])
+    with pytest.raises(ValueError, match="fewer jet slots"):
+        ms.NLOJets([configuration.pdgs], jet_slots=1)
+    with pytest.raises(ValueError, match="no flavor layouts"):
+        ms.NLOJets([])
+    with pytest.raises(ValueError, match="different numbers"):
+        ms.NLOJets([configuration.pdgs, configuration.pdgs[:4]])
+    with pytest.raises(ValueError, match="incoming"):
+        ms.NLOJets([configuration.pdgs], incoming=3)
+    assert ms.NLOJets.parton_count(configuration.pdgs, 2, 4) == 3
+    assert ms.NLOJets.parton_count([2, -2, 5, -5, 21], 2, 4) == 1
+    jets = ms.NLOJets([configuration.pdgs], jet_slots=5)
+    assert jets.slot_count() == 5 and jets.incoming() == 2
+    assert list(jets.pids()) == [11, -11] + [21] * 5
 
 
 def lab(c):
@@ -444,12 +462,12 @@ def test_against_madfks(path):
 
 
 def test_results_are_info_json():
-    """fks_histogram_results gives the weighted histograms of info.json that
+    """histogram_results gives the weighted histograms of info.json that
     MadBoard draws, normalized as EventGenerator::histograms."""
     specs = [dict(name="a", min=0.0, max=1.0, bin_count=3)]
     values = np.array([0.5, 2.0, -1.0, 4.0, 0.0])
     square_values = np.array([0.25, 5.0, 3.0, 9.0, 0.0])
-    (result,) = fks_histogram_results(specs, [values, square_values], 10)
+    (result,) = histogram_results(specs, [values, square_values], 10)
     assert set(result) == {
         "name",
         "min",
@@ -468,14 +486,14 @@ def test_results_are_info_json():
 def test_jet_count_of_observables():
     """The jets an observable needs, from its keyword arguments."""
     lepton = [11, -11]
-    assert fks_histogram_jet_count(dict(select_pids=[lepton])) == 0
+    assert histogram_jet_count(dict(select_pids=[lepton])) == 0
     ordered = dict(select_pids=[JET, JET], order_observable="pt", order_indices=[1, 3])
-    assert fks_histogram_jet_count(ordered) == 3
-    assert fks_histogram_jet_count(dict(select_pids=[JET], sum_observable=True)) == 0
+    assert histogram_jet_count(ordered) == 3
+    assert histogram_jet_count(dict(select_pids=[JET], sum_observable=True)) == 0
     with pytest.raises(ValueError, match="no value per event"):
-        fks_histogram_jet_count(dict(select_pids=[JET]))
+        histogram_jet_count(dict(select_pids=[JET]))
     with pytest.raises(ValueError, match="softest"):
-        fks_histogram_jet_count(dict(select_pids=[JET], order_indices=[-1]))
+        histogram_jet_count(dict(select_pids=[JET], order_indices=[-1]))
 
 
 def test_histograms_errors():
@@ -494,3 +512,30 @@ def test_histograms_errors():
     item = ms.FKSObservableHistograms.HistItem(wrong, 0.0, 1.0, 2)
     with pytest.raises(ValueError, match="momenta with jets"):
         ms.FKSObservableHistograms(entries, [item])
+
+
+def test_photon_emission():
+    """The photon of a real emission is one of the other particles of the
+    momenta with jets, not a jet, and FKSObservableHistograms, whose Born has
+    no photon, rejects such configurations."""
+    configuration = ms.FKSConfiguration(
+        i_fks=4,
+        j_fks=2,
+        pdgs=[-11, 11, -13, 13, 22],
+        colors=[1] * 5,
+        charges=[1.0, -1.0, 1.0, -1.0, 0.0],
+        masses=[0.0] * 5,
+        fks_j_from_i=[[], [], [], [], [2, 3]],
+        splitting_types=["QED"],
+    )
+    jets = ms.NLOJets([configuration.pdgs])
+    assert list(jets.pids()) == [-11, 11, -13, 13, 22]
+    assert jets.slot_count() == 0
+    momenta = np.random.default_rng(5).normal(size=(3, 5, 4))
+    jet_momenta, jet_count = evaluate(jets, momenta, layout_index=np.zeros(3))
+    np.testing.assert_array_equal(jet_momenta, momenta)
+    np.testing.assert_array_equal(jet_count, 0)
+    observable = ms.Observable([-11, 11, -13, 13, 22], "pt", [[13]])
+    item = ms.FKSObservableHistograms.HistItem(observable, 0.0, 1.0, 2)
+    with pytest.raises(ValueError, match="outside their QCD partons"):
+        ms.FKSObservableHistograms([configuration], [item])

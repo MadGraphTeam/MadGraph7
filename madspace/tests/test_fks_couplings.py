@@ -49,11 +49,11 @@ from test_fks_integrand import (
 )
 
 import madspace as ms
+from madspace.nlo import nlo_scale
 from madspace.subtraction.fks import (
     fks_born_flavor_indices,
     fks_cross_section,
     fks_luminosities,
-    fks_scale,
     underlying_born,
 )
 
@@ -285,7 +285,7 @@ def beams(channel):
 
 
 def scale_parameters(run):
-    """The scales of the run card by the names of fks_scale."""
+    """The scales of the run card by the names of nlo_scale."""
     flag = {"True": True, "False": False}
     return dict(
         dynamical_scale_choice=int(run["dynamical_scale_choice"]),
@@ -300,10 +300,15 @@ def scale_parameters(run):
 
 @functools.cache
 def madspace_scales(channel):
-    """The outputs of FKSScale at the event, the Born and the collinear
+    """The outputs of NLOScale at the event, the Born and the collinear
     counter-event."""
     out, _ = channel.event
-    scale = fks_scale(channel.configurations, **scale_parameters(channel.run_card))
+    configurations = channel.configurations
+    scale = nlo_scale(
+        len(configurations["born_pdgs"]) + 1,
+        configurations.get("nincoming", 2),
+        **scale_parameters(channel.run_card),
+    )
     born = scale.with_particle_count(len(channel.configurations["born_pdgs"]))
     return {
         "event": evaluate(scale, out["momenta"]),
@@ -344,7 +349,7 @@ def densities(channel, kinematics):
 
 @pytest.mark.parametrize("path", DATA, ids=IDS)
 def test_scales(path):
-    """FKSScale gives mu_R and mu_F of each weight line at its kinematics, and
+    """NLOScale gives mu_R and mu_F of each weight line at its kinematics, and
     the Ellis-Sexton scale of MadFKS is mu_R. A decay has the mass of the
     decaying particle for mu_R, and for mu_F, which enters nothing (MadFKS
     takes H_T/2 without the first outgoing particle there)."""
@@ -566,7 +571,7 @@ def run_with_couplings(channel, function, flavor_index=None):
 @needs_nnpdf
 @pytest.mark.parametrize("path", DATA, ids=IDS)
 def test_cross_section_with_couplings(path, grids):
-    """FKSCrossSection with FKSScale, RunningCoupling and FKSLuminosity inside
+    """FKSCrossSection with NLOScale, RunningCoupling and FKSLuminosity inside
     is FKSCrossSection with their outputs as arguments, and within the
     interpolation of the PDFs the weights of MadFKS."""
     pdf_grid, alpha_s_grid = grids(asmz(path))
@@ -690,7 +695,7 @@ def setscales(p, choice, fixed_ren, fixed_fac, ref_fixed, over_ref):
         mt2 = (final[..., 0] + final[..., 3]) * (final[..., 0] - final[..., 3])
         reference = np.sqrt(np.maximum(mt2, 0.0)).sum(-1)
         reference = reference if choice == 2 else reference / 2
-    dynamical = np.maximum(ms.FKSScale.min_scale, reference)
+    dynamical = np.maximum(ms.NLOScale.min_scale, reference)
     scales = [
         np.full(len(p), fixed) if is_fixed else dynamical
         for fixed, is_fixed in zip(
@@ -738,7 +743,7 @@ SCALE_CASES = {
 @pytest.mark.parametrize("case", SCALE_CASES.values(), ids=SCALE_CASES.keys())
 @pytest.mark.parametrize("soft", [False, True], ids=["hard", "soft"])
 def test_scale_choices(case, soft):
-    """FKSScale is setscales.f on random events in the lab (the transverse
+    """NLOScale is setscales.f on random events in the lab (the transverse
     energies in the partonic frame), also with a parton without momentum,
     and the floor holds for soft events."""
     rng = np.random.default_rng(7)
@@ -753,7 +758,7 @@ def test_scale_choices(case, soft):
         ref_fixed=(91.118, 125.0, 80.0),
         over_ref=case.get("over_ref", (1.0, 1.0, 1.0)),
     )
-    scale = ms.FKSScale(
+    scale = ms.NLOScale(
         6,
         dynamical_scale_choice=options["choice"],
         fixed_ren_scale=options["fixed_ren"],
@@ -771,7 +776,7 @@ def test_scale_choices(case, soft):
         assert np.isfinite(value).all()
         np.testing.assert_allclose(value, reference_value, rtol=1e-12)
     if not options["fixed_ren"] and options["choice"] != -2:
-        assert (ours[0][:5] == options["over_ref"][0] * ms.FKSScale.min_scale).all()
+        assert (ours[0][:5] == options["over_ref"][0] * ms.NLOScale.min_scale).all()
 
 
 @pytest.mark.parametrize("case", SCALE_CASES.values(), ids=SCALE_CASES.keys())
@@ -788,7 +793,7 @@ def test_decay_scales(case):
     p[:, 0, 1:] = momentum
     p[:, 1:] = rng.normal(size=(64, 3, 4))
     over_ref = case.get("over_ref", (1.0, 1.0, 1.0))
-    scale = ms.FKSScale(
+    scale = ms.NLOScale(
         4,
         dynamical_scale_choice=case["choice"],
         fixed_ren_scale=case.get("fixed_ren", False),
@@ -803,7 +808,7 @@ def test_decay_scales(case):
     )
     assert scale.incoming() == 1
     assert scale.with_particle_count(3).incoming() == 1
-    dynamical = np.maximum(ms.FKSScale.min_scale, mass)
+    dynamical = np.maximum(ms.NLOScale.min_scale, mass)
     fixed = (case.get("fixed_ren", False), case.get("fixed_fac", False))
     expected = [
         over_ref[0] * (91.118 if fixed[0] else dynamical),
@@ -816,15 +821,15 @@ def test_decay_scales(case):
 
 def test_scale_errors():
     with pytest.raises(ValueError, match="dynamical_scale_choice 10"):
-        ms.FKSScale(5, dynamical_scale_choice=10)
+        ms.NLOScale(5, dynamical_scale_choice=10)
     with pytest.raises(ValueError, match="an outgoing particle"):
-        ms.FKSScale(2)
+        ms.NLOScale(2)
     with pytest.raises(ValueError, match="an outgoing particle"):
-        ms.FKSScale(1, incoming=1)
+        ms.NLOScale(1, incoming=1)
     with pytest.raises(ValueError, match="or one"):
-        ms.FKSScale(5, incoming=3)
+        ms.NLOScale(5, incoming=3)
     with pytest.raises(TypeError, match="unknown scale parameter"):
-        fks_scale({"born_pdgs": [1, -1, 11, -11]}, scalefact=1.0)
+        nlo_scale(5, scalefact=1.0)
 
 
 @needs_nnpdf

@@ -46,7 +46,7 @@ from madgraph.mg7.nlo import grids
 
 logger = logging.getLogger("madgraph.mg7.nlo.core")
 
-# the cuts of FKSCuts by their names in the run card
+# the cuts of NLOCuts by their names in the run card
 CUTS = (
     "jetalgo",
     "jetradius",
@@ -88,7 +88,8 @@ def madspace():
 
 class Runtime:
     """A FunctionGenerator of madspace built once and called on numpy
-    arrays, its outputs by name."""
+    arrays, its outputs by name, with its index (fks_index or layout_index)
+    as the last argument where it has one."""
 
     def __init__(self, function, context):
         ms = madspace()
@@ -97,10 +98,11 @@ class Runtime:
         self.names = list(function.arg_types().keys())
         self.returns = list(function.return_types().keys())
 
-    def __call__(self, *args, fks_index=None):
+    def __call__(self, *args, fks_index=None, layout_index=None):
         tensors = [np.ascontiguousarray(a) for a in args]
-        if fks_index is not None:
-            tensors.append(np.ascontiguousarray(fks_index, dtype=np.int32))
+        for index in (fks_index, layout_index):
+            if index is not None:
+                tensors.append(np.ascontiguousarray(index, dtype=np.int32))
         batch = len(args[0])
         outputs = []
         for out in self.runtime.call(tensors):
@@ -108,9 +110,10 @@ class Runtime:
             outputs.append(np.full(batch, out) if out.ndim == 0 else np.array(out))
         return dict(zip(self.returns, outputs))
 
-    def by_name(self, inputs, fks_index=None):
-        args = [inputs[name] for name in self.names if name != "fks_index"]
-        return self(*args, fks_index=fks_index)
+    def by_name(self, inputs, fks_index=None, layout_index=None):
+        indices = ("fks_index", "layout_index")
+        args = [inputs[name] for name in self.names if name not in indices]
+        return self(*args, fks_index=fks_index, layout_index=layout_index)
 
 
 class Vegas:
@@ -307,7 +310,7 @@ def real(value):
 
 
 def run_cuts(run_card):
-    """The cuts of FKSCuts by their names, from the run card."""
+    """The cuts of NLOCuts by their names, from the run card."""
     cuts = {name: real(run_card[name]) for name in CUTS}
     cuts["maxjetflavor"] = integer(cuts["maxjetflavor"])
     cuts["jetalgo"] = integer(cuts["jetalgo"])
@@ -315,7 +318,7 @@ def run_cuts(run_card):
 
 
 def scale_parameters(run_card):
-    """The scales of the run card by the names of fks_scale."""
+    """The scales of the run card by the names of nlo_scale."""
     return dict(
         dynamical_scale_choice=integer(run_card["dynamical_scale_choice"]),
         fixed_ren_scale=flag(run_card["fixed_ren_scale"]),
@@ -933,13 +936,13 @@ class NLORun:
         return status
 
     def histogram_results(self):
-        from madspace.subtraction.fks import fks_histogram_results
+        from madspace.nlo import histogram_results
 
         results = None
         for channel in self.channels:
             if channel.histograms is None or channel.count == 0:
                 continue
-            entries = fks_histogram_results(
+            entries = histogram_results(
                 self.histograms, channel.histograms, channel.count
             )
             if results is None:

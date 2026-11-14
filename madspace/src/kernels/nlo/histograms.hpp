@@ -5,20 +5,20 @@
 namespace madspace {
 namespace kernels {
 
-// The histograms of the FKS integrand at fixed order, with the event and its
-// counter-events of one point in the same histograms, as the analyses of
-// MadFKS fill them (fill_plots of fks_singular.f, HwU_fill and HwU_add_points
-// of HwU.f).
+// The histograms of an NLO integrand at fixed order, with the kinematics of
+// one point (an event and its counter-events) in the same histograms, as the
+// analyses of MadFKS fill them (fill_plots of fks_singular.f, HwU_fill and
+// HwU_add_points of HwU.f).
 
 // The momenta of one kinematics with its QCD partons clustered into jets: the
 // incoming particles and the other final-state particles in their order, then
-// the jets of fks_cluster_jets by decreasing pt, and zero momenta in the slots
-// without a jet, with the number of jets. parton holds per configuration 1 for
-// a final-state QCD parton of its process (the momenta of the kinematics are
-// in the order of that process), options jetalgo, jetradius, ptj and etaj,
-// and particle_count the size of jet_momenta.
+// the jets of nlo_cluster_jets by decreasing pt, and zero momenta in the slots
+// without a jet, with the number of jets. parton holds per flavor layout 1 for
+// a final-state QCD parton (the momenta of the kinematics are in the order of
+// the layout of the event), options jetalgo, jetradius, ptj and etaj, and
+// particle_count the size of jet_momenta.
 template <typename T>
-KERNELSPEC void kernel_fks_jets(
+KERNELSPEC void kernel_nlo_jets(
     FIn<T, 2> p,
     IIn<T, 0> index,
     IIn<T, 2> parton,
@@ -32,7 +32,7 @@ KERNELSPEC void kernel_fks_jets(
     FVal<T> jetalgo = options[0], jetradius = options[1], ptj = options[2],
             etaj = options[3];
     std::size_t n = p.size(), slots = jet_momenta.size();
-    FourMom<T> partons[FKS_JET_PARTONS_MAX];
+    FourMom<T> partons[NLO_JET_PARTONS_MAX];
     std::size_t parton_count = 0, kept = 0;
     for (std::size_t i = 0; i < n; ++i) {
         auto p_i = load_mom<T>(p[i]);
@@ -41,14 +41,14 @@ KERNELSPEC void kernel_fks_jets(
                 jet_momenta[kept][k] = p_i[k];
             }
             ++kept;
-        } else if (parton_count < FKS_JET_PARTONS_MAX) {
+        } else if (parton_count < NLO_JET_PARTONS_MAX) {
             partons[parton_count] = p_i;
             ++parton_count;
         }
     }
-    FourMom<T> jets[FKS_JET_PARTONS_MAX];
+    FourMom<T> jets[NLO_JET_PARTONS_MAX];
     std::size_t count =
-        fks_cluster_jets<T>(partons, parton_count, jetalgo, jetradius, ptj, etaj, jets);
+        nlo_cluster_jets<T>(partons, parton_count, jetalgo, jetradius, ptj, etaj, jets);
     // by decreasing pt, as sorted_by_pt of fastjet
     for (std::size_t i = 1; i < count; ++i) {
         for (std::size_t j = i; j > 0; --j) {
@@ -86,7 +86,7 @@ KERNELSPEC void kernel_fks_jets(
 // that the histogram of the centers with the merged weights has the sums of
 // the point and their squares.
 template <typename T>
-KERNELSPEC void kernel_fks_histogram_weights(
+KERNELSPEC void kernel_nlo_histogram_weights(
     FIn<T, 1> values,
     FIn<T, 1> weights,
     IIn<T, 1> jets,

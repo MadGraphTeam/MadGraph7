@@ -87,7 +87,7 @@ COUNTERTERMS = {
 # the factors 1 - stiny and 1 - ctiny of the radiation of a final-state
 # emitter that MadFKS divides f_b by (fsr_born_cutoff_factor)
 FSR_BORN_CUTOFF_FACTOR = (1 - 1e-6) * (1 - 5e-7)
-# the cuts of FKSCuts, by their names in the run card
+# the cuts of NLOCuts, by their names in the run card
 CUTS = (
     "jetalgo",
     "jetradius",
@@ -534,20 +534,20 @@ class Channel:
         return inputs
 
     def cuts(self):
-        """The cuts of the run, by the names of FKSCuts."""
+        """The cuts of the run, by the names of NLOCuts."""
         cuts = {name: float(self.run_card[name]) for name in CUTS}
         cuts["maxjetflavor"] = int(cuts["maxjetflavor"])
         return cuts
 
     @functools.cached_property
     def masks(self):
-        """The cuts of each luminosity: those of FKSCuts at the event and,
+        """The cuts of each luminosity: those of NLOCuts at the event and,
         for the counterterms and the n-body part, at the soft counter-event,
         as sigint with event projection."""
         out, index = self.event
         function = fks_cuts(self.born, self.configurations, **self.cuts())
-        (event,) = evaluate(function, out["momenta"], fks_index=index)
-        (soft,) = evaluate(function, out["soft_momenta"], fks_index=index)
+        (event,) = evaluate(function, out["momenta"], layout_index=index)
+        (soft,) = evaluate(function, out["soft_momenta"], layout_index=index)
         return dict(
             event_luminosity=event,
             soft_luminosity=soft,
@@ -778,7 +778,7 @@ def test_weights(path):
     lines, summed over the orders and the contributions at each kinematics),
     per unit weight of vegas, up to the ratio of the Jacobians of the two Born
     mappings, MadFKS's spread of the n-body part and the two conversions to
-    pb. With the cuts of FKSCuts, a kinematics without contributions of
+    pb. With the cuts of NLOCuts, a kinematics without contributions of
     MadFKS has zero weight, and the cross section is the sum."""
     seen, expected = set(), set()
     for channel in channels(path):
@@ -809,7 +809,7 @@ def test_weights(path):
 def test_cross_section(path):
     """FKSCrossSection from the blocks with the cuts of the run is
     FKSSubtraction, FKSSoftVirtual and FKSWeights in turn with the
-    luminosities times the cuts of FKSCuts, so it gives the weights of
+    luminosities times the cuts of NLOCuts, so it gives the weights of
     test_weights."""
     for channel in channels(path):
         function = fks_cross_section(

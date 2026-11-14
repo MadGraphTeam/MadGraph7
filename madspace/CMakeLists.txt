@@ -241,6 +241,10 @@ add_library(
     src/phasespace/topology.cpp
     src/phasespace/t_propagator_mapping.cpp
     src/phasespace/color_ordered_mapping.cpp
+    src/nlo/cuts.cpp
+    src/nlo/histograms.cpp
+    src/nlo/jets.cpp
+    src/nlo/scale.cpp
     src/subtraction/common.cpp
     src/subtraction/fks/configuration.cpp
     src/subtraction/fks/limits.cpp
@@ -314,6 +318,11 @@ add_library(
     include/madspace/phasespace/topology.hpp
     include/madspace/phasespace/t_propagator_mapping.hpp
     include/madspace/phasespace/color_ordered_mapping.hpp
+    include/madspace/nlo.hpp
+    include/madspace/nlo/cuts.hpp
+    include/madspace/nlo/histograms.hpp
+    include/madspace/nlo/jets.hpp
+    include/madspace/nlo/scale.hpp
     include/madspace/subtraction.hpp
     include/madspace/subtraction/common.hpp
     include/madspace/subtraction/fks/configuration.hpp
@@ -411,10 +420,11 @@ set(
     src/kernels/threeparticle.hpp
     src/kernels/multichannel.hpp
     src/kernels/operations.hpp
+    src/kernels/nlo/cuts.hpp
+    src/kernels/nlo/histograms.hpp
+    src/kernels/nlo/scale.hpp
     src/kernels/subtraction/common.hpp
     src/kernels/subtraction/fks/couplings.hpp
-    src/kernels/subtraction/fks/cuts.hpp
-    src/kernels/subtraction/fks/histograms.hpp
     src/kernels/subtraction/fks/radiation.hpp
     src/kernels/subtraction/fks/subtraction.hpp
     src/kernels/subtraction/cs/integrated.hpp

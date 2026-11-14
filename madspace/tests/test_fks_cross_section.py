@@ -30,7 +30,7 @@ from madgraph.mg7.nlo.fks import FKSRun, default_histograms, read_histograms
 from madspace_testing import default_context
 from test_fks_couplings import alpha_s_madfks
 
-from madspace.subtraction.fks import fks_histogram_jet_count
+from madspace.nlo import histogram_jet_count
 
 OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
 needs_outputs = pytest.mark.skipif(
@@ -200,4 +200,4 @@ def test_histograms_of_run_card(tmp_path):
         "sqrt_s",
     ]
     for histogram in defaults:
-        fks_histogram_jet_count(histogram["observable"])
+        histogram_jet_count(histogram["observable"])

@@ -12,9 +12,9 @@ its Born channels, with the multichannel weight of MadFKS (amp2 of the Born
 diagram of the channel over that of all Born diagrams). The K and P
 operators take one more random number, the point z = x_i + (1 - x_i) r of
 the convolution of both beams, with the densities of the partons that
-split into those of the Born at x_i / z. The cuts act on the Born, as the
-FKS driver cuts its soft counter-event, and the scales are those of the
-Born.
+split into those of the Born at x_i / z. The cuts act on the Born, with no
+unresolved parton, as those of the FKS driver on its soft counter-event,
+and the scales are those of the Born.
 
 The I operator is that of CDR with the normalization (4 pi)^eps / Gamma(1 -
 eps) of the virtual of MadLoop at the renormalization scale, with the n_f
@@ -68,7 +68,6 @@ import os
 
 import numpy as np
 
-from madgraph.mg7.nlo.fks import HISTOGRAM_KINEMATICS
 from madgraph.mg7.nlo.provider import (
     FortranProvider,
     boost_z,
@@ -203,7 +202,7 @@ class CSBornIntegrand:
         kappa,
     ):
         ms = madspace()
-        from madspace.subtraction.fks import fks_cuts, fks_scale
+        from madspace.nlo import nlo_scale
 
         self.name = os.path.basename(os.path.normpath(directory))
         self.context = context
@@ -247,19 +246,16 @@ class CSBornIntegrand:
         self.born_dim = self.channel_mappings[0].random_dim()
         n = len(self.born_pdgs)
         self.scale = Runtime(
-            fks_scale(
-                self.configurations, **scale_parameters(run_card)
-            ).with_particle_count(n),
-            context,
+            nlo_scale(n, self.incoming, **scale_parameters(run_card)), context
         )
         self.alpha_s = Runtime(couplings.running, context)
-        # the cuts of the Born as FKSCuts of the real with a parton of zero
-        # momentum at i_fks of the first FKS configuration, as the soft
-        # counter-event of the FKS driver
-        self.cut_position = self.configurations["configurations"][0]["i_fks"] - 1
+        # the cuts of the Born, with no unresolved parton
         self.cuts = Runtime(
-            fks_cuts(
-                self.channel_mappings[0], self.configurations, **run_cuts(run_card)
+            ms.NLOCuts(
+                [self.born_pdgs],
+                incoming=self.incoming,
+                unresolved=0,
+                **run_cuts(run_card),
             ),
             context,
         )
@@ -318,10 +314,10 @@ class CSBornIntegrand:
             INV_GEV2_TO_PB, 2 * s_hat, out=np.zeros(len(s_hat)), where=s_hat > 0
         )
 
-    def soft_momenta(self, momenta):
-        """The Born momenta (batch, n, 4) with a parton of zero momentum at
-        i_fks of the first FKS configuration (batch, n + 1, 4)."""
-        return np.insert(momenta, self.cut_position, 0.0, axis=1)
+    def passes_cuts(self, momenta):
+        """Whether the Born momenta (batch, n, 4) pass the cuts."""
+        layout = np.zeros(len(momenta), dtype=np.int32)
+        return self.cuts(momenta, layout_index=layout)["mask"] != 0
 
     def luminosities(self, x1, x2, mu1, mu2, z=None):
         """The luminosity of the Born over its flavors and, with the points z
@@ -371,8 +367,7 @@ class CSBornIntegrand:
         scales = self.scale(momenta)
         mu_r = scales["ren_scale"]
         alpha_s = self.alpha_s(mu_r)["alpha_s"]
-        fks_index = np.zeros(count, dtype=np.int32)
-        passes = self.cuts(self.soft_momenta(momenta), fks_index=fks_index)["mask"] != 0
+        passes = self.passes_cuts(momenta)
         valid = passes & (det != 0)
         b = len(self.qcd_powers)
         n = len(self.born_pdgs)
@@ -386,7 +381,8 @@ class CSBornIntegrand:
             cm = boost_z(
                 momenta[points], -partonic_rapidity(momenta[points], self.incoming)
             )
-            per_position, _, amp2[points] = self.provider.born(cm, fks_index[points])
+            configuration = np.zeros(len(points), dtype=np.int32)
+            per_position, _, amp2[points] = self.provider.born(cm, configuration)
             born[points] = self.provider.born_orders_of(per_position)
             colors[points] = self.provider.color_correlated(cm)
             take = evaluated[points]
@@ -451,27 +447,16 @@ class CSBornIntegrand:
         )
 
     def histogram_runtime(self, histograms, jets):
-        """The FKSObservableHistograms of the histograms with the jets of the
-        run card, filled with the Born alone."""
-        from madspace.subtraction.fks import fks_histograms
-
-        return Runtime(
-            fks_histograms(
-                self.channel_mappings[0], self.configurations, histograms, **jets
-            ),
-            self.context,
-        )
+        """The histograms with the jets of the run card, filled with the Born
+        alone."""
+        runtime = CSHistograms(self.context, histograms, jets, 1)
+        runtime.born = runtime.jets(self, self.born_pdgs)
+        return runtime
 
     def histogram_sums(self, runtime, result, jacobian, choice):
-        momenta = result["momenta"]
-        soft = self.soft_momenta(momenta)
-        inputs = {name: soft for name, _ in HISTOGRAM_KINEMATICS}
-        inputs["born_momenta"] = momenta
-        zero = np.zeros(len(momenta))
-        inputs.update({weight: zero for _, weight in HISTOGRAM_KINEMATICS})
-        inputs["nbody_weight"] = result["nlo"] * jacobian
-        fks_index = np.zeros(len(momenta), dtype=np.int32)
-        return list(runtime.by_name(inputs, fks_index=fks_index).values())
+        inputs = {"weight0": result["nlo"] * jacobian}
+        runtime.kinematics(runtime.born, result["momenta"], inputs, 0)
+        return runtime.sums(inputs)
 
     def matrix_element_calls(self):
         return self.provider.statistics
@@ -528,7 +513,7 @@ class CSRealIntegrand:
         technical_cut,
     ):
         ms = madspace()
-        from madspace.subtraction.fks import fks_cuts, fks_scale
+        from madspace.nlo import nlo_scale
 
         entry = block["reals"][index]
         source = subprocesses[entry["subprocess"]]
@@ -538,6 +523,9 @@ class CSRealIntegrand:
         self.name = f"{source.name} real {self.configuration + 1}"
         configurations = source.configurations
         real_pdgs = configurations["configurations"][self.configuration]["real_pdgs"]
+        # the flavor layout of the real process of the configuration, for the
+        # cuts and the jets
+        self.real_pdgs = list(real_pdgs)
         self.pdgs = list(entry["pdgs"])
         if len(self.pdgs) != len(real_pdgs):
             raise ValueError(f"nlo.cs: the real {self.pdgs} is not {real_pdgs}")
@@ -556,13 +544,11 @@ class CSRealIntegrand:
         ]
         n = len(self.pdgs)
         self.scale = Runtime(
-            fks_scale(configurations, **scale_parameters(run_card)).with_particle_count(
-                n
-            ),
-            context,
+            nlo_scale(n, self.incoming, **scale_parameters(run_card)), context
         )
+        # the cuts of the real emission, with one unresolved parton
         self.cuts = Runtime(
-            fks_cuts(source.channel_mappings[0], configurations, **run_cuts(run_card)),
+            ms.NLOCuts([self.real_pdgs], incoming=self.incoming, **run_cuts(run_card)),
             context,
         )
         self.alpha_s = source.alpha_s
@@ -711,7 +697,8 @@ class CSRealIntegrand:
         # the real emission
         fks_index = np.full(count, self.configuration, dtype=np.int32)
         scales = self.scale(momenta)
-        passes = self.cuts(momenta, fks_index=fks_index)["mask"] != 0
+        layout = np.zeros(count, dtype=np.int32)
+        passes = self.cuts(momenta, layout_index=layout)["mask"] != 0
         points = np.flatnonzero(keep & passes)
         real_weight = np.zeros(count)
         if len(points):
@@ -738,7 +725,6 @@ class CSRealIntegrand:
         born_momenta = np.zeros((count, d, n, 4))
         dipole_weights = np.zeros((count, d))
         amplitude_weight = np.zeros(count)
-        first = np.zeros(count, dtype=np.int32)
         for m, dipole in enumerate(self.dipoles):
             born = dipole.born
             me = projected["born_momenta"][:, m][:, dipole.order]
@@ -747,7 +733,7 @@ class CSRealIntegrand:
             color_weight = projected["color_weight"][:, m]
             spin_weight = projected["spin_weight"][:, m]
             active = keep & ((color_weight != 0) | (spin_weight != 0))
-            active &= born.cuts(born.soft_momenta(me), fks_index=first)["mask"] != 0
+            active &= born.passes_cuts(me)
             needed = active | (keep if m == m_channel else False)
             points = np.flatnonzero(needed)
             if not len(points):
@@ -828,70 +814,60 @@ class CSRealIntegrand:
         pass
 
 
-class CSRealHistograms:
-    """The histograms of the real stream of a real process, the real emission
-    and the Borns of its dipoles of each point in the same histograms
-    (FKSHistograms): the jets of FKSJets on each kinematics, those of the
-    Born for the dipoles, and the observables of the histograms on them, as
-    fks_histograms builds them."""
+class CSHistograms:
+    """The histograms of a stream of the CS integrand, the kinematics of each
+    point in the same histograms (NLOHistograms): the jets of NLOJets on each
+    kinematics, in its flavor layout, and the observables of the histograms
+    on them (jet_observable of madspace.nlo). A kinematics of a subprocess
+    has as many jet slots as its real processes have partons, so that the
+    observables of the real emission also take its Born."""
 
-    def __init__(self, integrand, histograms, jets):
+    def __init__(self, context, histograms, jets, kinematics_count):
         ms = madspace()
-        from madspace.subtraction.fks import fks_configurations, fks_histogram_jet_count
+        from madspace.nlo import histogram_jet_count
 
-        self.context = integrand.context
-        self.configuration = integrand.configuration
+        self.context = context
+        self.histograms = histograms
+        self.jet_options = jets
         self.observables = {}
-
-        def layout(subprocess, born):
-            entries = fks_configurations(
-                subprocess.channel_mappings[0], subprocess.configurations
+        items = [
+            ms.NLOHistograms.HistItem(
+                histogram["min"],
+                histogram["max"],
+                histogram["bin_count"],
+                histogram_jet_count(dict(histogram["observable"])),
             )
-            runtime = Runtime(ms.FKSJets(entries, born, **jets), self.context)
-            pids = tuple(runtime.function.pids())
-            incoming = subprocess.incoming
-            if pids not in self.observables:
-                self.observables[pids] = []
-                for histogram in histograms:
-                    options = dict(histogram["observable"])
-                    options.setdefault("name", histogram.get("name", ""))
-                    layout_pids = list(pids)
-                    if incoming != 2:
-                        # as fks_histograms: a decay selects over all momenta,
-                        # its incoming particle in no group
-                        layout_pids = [0] * incoming + layout_pids[incoming:]
-                        options["ignore_incoming"] = False
-                    self.observables[pids].append(
-                        Runtime(ms.Observable(layout_pids, **options), self.context)
-                    )
-            return runtime, pids
+            for histogram in histograms
+        ]
+        self.binning = Runtime(ms.NLOHistograms(items, kinematics_count), context)
 
-        self.real_jets = layout(integrand.source, False)
-        born_layouts = {}
-        self.born_jets = []
-        for dipole in integrand.dipoles:
-            name = dipole.born.name
-            if name not in born_layouts:
-                born_layouts[name] = layout(dipole.born, True)
-            self.born_jets.append(born_layouts[name])
-        items = []
-        for histogram in histograms:
-            options = dict(histogram["observable"])
-            items.append(
-                ms.FKSHistograms.HistItem(
-                    histogram["min"],
-                    histogram["max"],
-                    histogram["bin_count"],
-                    fks_histogram_jet_count(options),
-                )
-            )
-        self.binning = Runtime(
-            ms.FKSHistograms(items, 1 + len(integrand.dipoles)), self.context
+    def jets(self, subprocess, layout):
+        """The NLOJets of a flavor layout of the subprocess, with the
+        observables of the histograms on its momenta with jets."""
+        ms = madspace()
+        from madspace.nlo import jet_observable
+
+        maxjetflavor = self.jet_options.get("maxjetflavor", 4)
+        slots = max(
+            ms.NLOJets.parton_count(c["real_pdgs"], subprocess.incoming, maxjetflavor)
+            for c in subprocess.configurations["configurations"]
         )
+        function = ms.NLOJets(
+            [list(layout)], slots, subprocess.incoming, **self.jet_options
+        )
+        pids = tuple(function.pids())
+        if pids not in self.observables:
+            self.observables[pids] = [
+                Runtime(jet_observable(function, histogram), self.context)
+                for histogram in self.histograms
+            ]
+        return Runtime(function, self.context), pids
 
-    def kinematics(self, jets, momenta, fks_index, inputs, k):
+    def kinematics(self, jets, momenta, inputs, k):
+        """The jets and the observables of kinematics k into inputs."""
         runtime, pids = jets
-        out = runtime(momenta, fks_index=fks_index)
+        layout = np.zeros(len(momenta), dtype=np.int32)
+        out = runtime(momenta, layout_index=layout)
         inputs[f"jet_count{k}"] = out["jet_count"].astype(np.int32)
         for i, observable in enumerate(self.observables[pids]):
             value = observable(out["jet_momenta"])
@@ -899,18 +875,34 @@ class CSRealHistograms:
                 len(momenta)
             )
 
+    def sums(self, inputs):
+        return list(self.binning.by_name(inputs).values())
+
+
+class CSRealHistograms(CSHistograms):
+    """The histograms of the real stream of a real process, the real emission
+    and the Borns of its dipoles of each point in the same histograms."""
+
+    def __init__(self, integrand, histograms, jets):
+        super().__init__(
+            integrand.context, histograms, jets, 1 + len(integrand.dipoles)
+        )
+        self.real_jets = self.jets(integrand.source, integrand.real_pdgs)
+        born_layouts = {}
+        self.born_jets = []
+        for dipole in integrand.dipoles:
+            name = dipole.born.name
+            if name not in born_layouts:
+                born_layouts[name] = self.jets(dipole.born, dipole.born.born_pdgs)
+            self.born_jets.append(born_layouts[name])
+
     def __call__(self, result, jacobian):
-        momenta = result["momenta"]
-        count = len(momenta)
         inputs = {"weight0": result["real_weight"] * jacobian}
-        configuration = np.full(count, self.configuration, dtype=np.int32)
-        self.kinematics(self.real_jets, momenta, configuration, inputs, 0)
-        zero = np.zeros(count, dtype=np.int32)
+        self.kinematics(self.real_jets, result["momenta"], inputs, 0)
         for m, jets in enumerate(self.born_jets):
             inputs[f"weight{m + 1}"] = result["dipole_weights"][:, m] * jacobian
-            born = result["born_momenta"][:, m]
-            self.kinematics(jets, born, zero, inputs, m + 1)
-        return list(self.binning.by_name(inputs).values())
+            self.kinematics(jets, result["born_momenta"][:, m], inputs, m + 1)
+        return self.sums(inputs)
 
 
 class CSRun(NLORun):

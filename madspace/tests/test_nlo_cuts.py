@@ -1,14 +1,16 @@
-"""The generation cuts of the FKS integrand (FKSCuts), those of cuts.f of
+"""The generation cuts of the NLO integrands (NLOCuts), those of cuts.f of
 MadFKS (passcuts_leptons and passcuts_jets).
 
-FKSCuts is checked against the cuts that sigint applied at the points of the
-integrand reference (test_data/fks_integrand), at the event and at the soft
+NLOCuts on the real processes of the FKS configurations (fks_cuts) is checked
+against the cuts that sigint applied at the points of the integrand
+reference (test_data/fks_integrand), at the event and at the soft
 counter-event, and against madfks_cuts below on random events and
 counter-events of FKS configurations with up to four final-state partons and
 with leptons, for the kT, Cambridge/Aachen, anti-kT and a generalized kT
 algorithm. madfks_cuts is cuts.f in Python, with a clustering written as
 fastjet clusters, which test_clustering_is_fastjet checks where the Python
-bindings of fastjet are installed.
+bindings of fastjet are installed. On the Born layout without an unresolved
+parton NLOCuts gives at the Born what it gives at the soft counter-event.
 """
 
 import functools
@@ -143,14 +145,14 @@ def madfks_cuts(p, pdgs, cuts):
 @pytest.mark.parametrize("path", INTEGRAND_DATA, ids=INTEGRAND_IDS)
 def test_against_madfks(path):
     """At the event and at the soft counter-event of each point with a valid
-    Born, FKSCuts passes where sigint passed (passcuts_n1body and
+    Born, NLOCuts passes where sigint passed (passcuts_n1body and
     passcuts_nbody), and with event projection the collinear counter-event
     takes the cut of the soft one."""
     for channel in channels(path):
         out, index = channel.event
         function = fks_cuts(channel.born, channel.configurations, **channel.cuts())
         for name, key in (("momenta", "event"), ("soft_momenta", "soft")):
-            (mask,) = evaluate(function, out[name], fks_index=index)
+            (mask,) = evaluate(function, out[name], layout_index=index)
             np.testing.assert_array_equal(
                 mask.astype(bool), channel.field("cuts", key), err_msg=name
             )
@@ -222,7 +224,7 @@ def random_kinematics(name, count=500, seed=4711):
 )
 def test_against_python(name, cuts):
     """On random events and counter-events (with a zero and with two
-    collinear partons), FKSCuts is madfks_cuts, and the cuts pass and fail."""
+    collinear partons), NLOCuts is madfks_cuts, and the cuts pass and fail."""
     born, configurations, out, index, pdgs, sqrt_s = random_kinematics(name)
     scale = sqrt_s / 10 if "pp_" in name or "uux" in name else sqrt_s
     cuts = dict(cuts)
@@ -246,7 +248,7 @@ def test_against_python(name, cuts):
     function = fks_cuts(born, configurations, **full)
     outcomes = set()
     for kinematics in KINEMATICS:
-        (mask,) = evaluate(function, out[kinematics], fks_index=index)
+        (mask,) = evaluate(function, out[kinematics], layout_index=index)
         weight = out[{"momenta": "weight"}.get(kinematics, kinematics[:-7] + "det")]
         for k in np.flatnonzero(weight != 0):
             expected = madfks_cuts(out[kinematics][k], pdgs[k], full)
@@ -284,3 +286,96 @@ def test_clustering_is_fastjet():
                 (jet.pt() for jet in sequence.inclusive_jets(0.0)), reverse=True
             )
             np.testing.assert_allclose(ours, theirs, rtol=1e-12)
+
+
+def jet_partons(pdgs, incoming, maxjetflavor):
+    """Whether each particle is a final-state parton of the jets."""
+    return [
+        i >= incoming and (1 <= abs(pdg) <= maxjetflavor or pdg == 21)
+        for i, pdg in enumerate(pdgs)
+    ]
+
+
+@pytest.mark.parametrize("name", RANDOM_DATA)
+@pytest.mark.parametrize(
+    "cuts", RANDOM_CUTS, ids=["kt", "cambridge", "antikt", "genkt", "antikt_wide"]
+)
+def test_born_layout(name, cuts):
+    """NLOCuts on the Born layout without an unresolved parton passes at the
+    Born where NLOCuts on the real processes passes at the soft
+    counter-event, whose soft parton has no momentum, for the
+    configurations whose soft parton is one of the jets and whose other
+    partons are those of the Born. The others (a photon, or quarks beyond
+    maxjetflavor from a gluon of the Born) differ."""
+    born, configurations, out, index, pdgs, sqrt_s = random_kinematics(name)
+    scale = sqrt_s / 10 if "pp_" in name or "uux" in name else sqrt_s
+    cuts = dict(cuts)
+    for key in ENERGIES:
+        if key in cuts:
+            cuts[key] *= scale
+    incoming = configurations["nincoming"]
+    real = fks_cuts(born, configurations, **cuts)
+    at_born = ms.NLOCuts(
+        [configurations["born_pdgs"]], incoming=incoming, unresolved=0, **cuts
+    )
+    assert real.unresolved() == 1 and at_born.unresolved() == 0
+    (soft,) = evaluate(real, out["soft_momenta"], layout_index=index)
+    zero = np.zeros_like(index)
+    (ours,) = evaluate(at_born, out["born_momenta"], layout_index=zero)
+    maxjetflavor = cuts.get("maxjetflavor", 4)
+    born_partons = jet_partons(configurations["born_pdgs"], incoming, maxjetflavor)
+    same = []
+    for configuration in configurations["configurations"]:
+        partons = jet_partons(configuration["real_pdgs"], incoming, maxjetflavor)
+        i = configuration["i_fks"] - 1
+        same.append(partons[i] and partons[:i] + partons[i + 1 :] == born_partons)
+    same = np.array(same)[index]
+    valid = (out["soft_det"] != 0) & same
+    np.testing.assert_array_equal(ours[valid], soft[valid])
+    assert set(ours[valid]) == {0.0, 1.0}
+
+
+def test_layouts_per_event():
+    """Each event takes the layout of its layout_index: a gluon is a parton
+    of the jets, a b quark beyond maxjetflavor is not."""
+    momenta = np.array(
+        [
+            [
+                [50.0, 0.0, 0.0, 50.0],
+                [50.0, 0.0, 0.0, -50.0],
+                [50.0, 30.0, 0.0, 40.0],
+                [50.0, -30.0, 0.0, -40.0],
+            ]
+        ]
+        * 2
+    )
+    layouts = [[11, -11, 21, 21], [11, -11, 5, -5]]
+    cuts = ms.NLOCuts(layouts, unresolved=0, ptj=40.0, maxjetflavor=4)
+    (mask,) = evaluate(cuts, momenta, layout_index=np.array([0, 1]))
+    # jets of pt 30 fail ptj for the gluons, the b quarks make no jets
+    np.testing.assert_array_equal(mask, [0.0, 1.0])
+
+
+def test_invalid_cuts():
+    with pytest.raises(ValueError, match="no flavor layouts"):
+        ms.NLOCuts([])
+    with pytest.raises(ValueError, match="different numbers"):
+        ms.NLOCuts([[11, -11, 1, -1], [11, -11, 1, -1, 21]])
+    with pytest.raises(ValueError, match="incoming"):
+        ms.NLOCuts([[11, -11, 1, -1]], incoming=3)
+    with pytest.raises(ValueError, match="outgoing"):
+        ms.NLOCuts([[11, -11]])
+    partons = [21] * (ms.NLOCuts.jet_parton_max + 1)
+    with pytest.raises(ValueError, match="clustering"):
+        ms.NLOCuts([[11, -11] + partons])
+
+
+def test_accessors():
+    layouts = [[2, -2, 11, -11, 21], [2, 21, 11, -11, 2]]
+    cuts = ms.NLOCuts(layouts, unresolved=1, ptj=20.0, mll_sf=30.0)
+    assert cuts.particle_count() == 5
+    assert cuts.incoming() == 2
+    assert cuts.unresolved() == 1
+    assert [list(layout) for layout in cuts.layouts()] == layouts
+    assert len(cuts.options()) == 12
+    assert cuts.options()[2] == 20.0 and cuts.options()[-1] == 1.0

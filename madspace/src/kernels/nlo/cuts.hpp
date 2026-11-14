@@ -1,22 +1,23 @@
 #pragma once
 
-#include "../../kinematics.hpp"
+#include "../kinematics.hpp"
 
 namespace madspace {
 namespace kernels {
 
-// The generation cuts of the FKS integrand, those of cuts.f of MadFKS
-// (passcuts_leptons and passcuts_jets of passcuts_user), on the momenta of the
-// event or of a counter-event in the lab frame. The particles keep their
-// order in the real process of the configuration of the event.
+// The generation cuts of an NLO integrand, those of cuts.f of MadFKS
+// (passcuts_leptons and passcuts_jets of passcuts_user), on the momenta of one
+// kinematics in the lab frame, and the jets of the clustering they share with
+// the histograms. The particles are in the order of the flavor layout of the
+// event.
 
 // most final-state QCD partons that a kinematics clusters into jets
-// (FKSCuts::jet_parton_max)
-constexpr std::size_t FKS_JET_PARTONS_MAX = 16;
+// (NLOCuts::jet_parton_max, NLOJets::parton_max)
+constexpr std::size_t NLO_JET_PARTONS_MAX = 16;
 
 // pseudorapidity as eta of kin_functions.f, +-25 within 1e-5 of the beam axis
 template <typename T>
-KERNELSPEC FVal<T> fks_cut_eta(const FourMom<T>& p) {
+KERNELSPEC FVal<T> nlo_cut_eta(const FourMom<T>& p) {
     constexpr double pi = 3.14159265358979323846;
     FVal<T> theta = acos(p[3] / sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3]));
     if (fabs(theta) < 1e-5) {
@@ -31,7 +32,7 @@ KERNELSPEC FVal<T> fks_cut_eta(const FourMom<T>& p) {
 // Delta phi as DELTA_PHI of kin_functions.f, from the cosine clamped to
 // +-0.99999999
 template <typename T>
-KERNELSPEC FVal<T> fks_cut_delta_phi(const FourMom<T>& p1, const FourMom<T>& p2) {
+KERNELSPEC FVal<T> nlo_cut_delta_phi(const FourMom<T>& p1, const FourMom<T>& p2) {
     FVal<T> denom =
         sqrt(p1[1] * p1[1] + p1[2] * p1[2]) * sqrt(p2[1] * p2[1] + p2[2] * p2[2]);
     FVal<T> cosine = (p1[1] * p2[1] + p1[2] * p2[2]) / denom;
@@ -40,7 +41,7 @@ KERNELSPEC FVal<T> fks_cut_delta_phi(const FourMom<T>& p1, const FourMom<T>& p2)
 
 // pseudorapidity of a jet as PseudoJet::pseudorapidity of fastjet
 template <typename T>
-KERNELSPEC FVal<T> fks_jet_eta(const FourMom<T>& p) {
+KERNELSPEC FVal<T> nlo_jet_eta(const FourMom<T>& p) {
     constexpr double pi = 3.14159265358979323846;
     FVal<T> pt = sqrt(p[1] * p[1] + p[2] * p[2]);
     if (p[3] == 0.) {
@@ -56,7 +57,7 @@ KERNELSPEC FVal<T> fks_jet_eta(const FourMom<T>& p) {
 // The rapidity and azimuth of a parton for the clustering, as PseudoJet of
 // fastjet: phi in [0, 2 pi).
 template <typename T>
-KERNELSPEC void fks_jet_rap_phi(const FourMom<T>& p, FVal<T>& rapidity, FVal<T>& phi) {
+KERNELSPEC void nlo_jet_rap_phi(const FourMom<T>& p, FVal<T>& rapidity, FVal<T>& phi) {
     constexpr double pi = 3.14159265358979323846;
     rapidity = 0.5 * log((p[0] + p[3]) / (p[0] - p[3]));
     phi = atan2(p[2], p[1]);
@@ -65,14 +66,14 @@ KERNELSPEC void fks_jet_rap_phi(const FourMom<T>& p, FVal<T>& rapidity, FVal<T>&
     }
 }
 
-// The jets of partons (parton_count of them, at most FKS_JET_PARTONS_MAX) with
+// The jets of partons (parton_count of them, at most NLO_JET_PARTONS_MAX) with
 // the pp generalized kT algorithm of fastjet (power jetalgo, radius
 // jetradius, rapidity and azimuth, E scheme), those with pt >= ptj and
 // |eta| <= etaj (etaj <= 0 for none), in jets in the order the clustering
 // finds them, and their number. Partons without transverse momentum make no
 // pseudojet (with ptj > 0 they never make a jet).
 template <typename T>
-KERNELSPEC std::size_t fks_cluster_jets(
+KERNELSPEC std::size_t nlo_cluster_jets(
     const FourMom<T>* partons,
     std::size_t parton_count,
     FVal<T> jetalgo,
@@ -81,9 +82,9 @@ KERNELSPEC std::size_t fks_cluster_jets(
     FVal<T> etaj,
     FourMom<T>* jets
 ) {
-    FourMom<T> pseudo[FKS_JET_PARTONS_MAX];
-    FVal<T> kt2[FKS_JET_PARTONS_MAX], rap[FKS_JET_PARTONS_MAX],
-        phi[FKS_JET_PARTONS_MAX];
+    FourMom<T> pseudo[NLO_JET_PARTONS_MAX];
+    FVal<T> kt2[NLO_JET_PARTONS_MAX], rap[NLO_JET_PARTONS_MAX],
+        phi[NLO_JET_PARTONS_MAX];
     std::size_t active = 0;
     for (std::size_t i = 0; i < parton_count; ++i) {
         FVal<T> k2 = partons[i][1] * partons[i][1] + partons[i][2] * partons[i][2];
@@ -92,7 +93,7 @@ KERNELSPEC std::size_t fks_cluster_jets(
         }
         pseudo[active] = partons[i];
         kt2[active] = k2;
-        fks_jet_rap_phi<T>(partons[i], rap[active], phi[active]);
+        nlo_jet_rap_phi<T>(partons[i], rap[active], phi[active]);
         ++active;
     }
     constexpr double pi = 3.14159265358979323846;
@@ -128,7 +129,7 @@ KERNELSPEC std::size_t fks_cluster_jets(
             // a jet: pt and |eta| of the selection
             auto jet = pseudo[best_i];
             if (kt2[best_i] >= ptj * ptj &&
-                (etaj <= 0. || fabs(fks_jet_eta<T>(jet)) <= etaj)) {
+                (etaj <= 0. || fabs(nlo_jet_eta<T>(jet)) <= etaj)) {
                 jets[jet_count] = jet;
                 ++jet_count;
             }
@@ -139,7 +140,7 @@ KERNELSPEC std::size_t fks_cluster_jets(
             }
             kt2[best_i] = pseudo[best_i][1] * pseudo[best_i][1] +
                 pseudo[best_i][2] * pseudo[best_i][2];
-            fks_jet_rap_phi<T>(pseudo[best_i], rap[best_i], phi[best_i]);
+            nlo_jet_rap_phi<T>(pseudo[best_i], rap[best_i], phi[best_i]);
         }
         // drop best_j: the jet, or the pseudojet merged into best_i
         std::size_t drop = best_j;
@@ -153,18 +154,21 @@ KERNELSPEC std::size_t fks_cluster_jets(
 }
 
 // The generation cuts of cuts.f of MadFKS on one kinematics: 1 where it
-// passes, else 0. The leptons (charged, of either sign) pass ptl and etal,
-// and each pair of opposite charge drll and mll, and drll_sf and mll_sf for
-// the same flavor, with the pseudorapidity and Delta phi of kin_functions.f. The QCD
-// partons (quarks up to maxjetflavor and gluons) are clustered with the pp generalized
-// kT algorithm of fastjet (power jetalgo, radius jetradius, rapidity and azimuth, E
-// scheme) into jets with pt >= ptj and |eta| <= etaj (etaj <= 0 for none). With ptj > 0
-// and more than one parton, at most one parton may be soft (E below 1e-8 of the first
-// incoming energy) and all partons, or all but one, must make jets, as
-// passcuts_jets. Kinematics with a first incoming energy that is not positive
-// or with momenta that are not finite fail.
+// passes, else 0. pdg holds the PDG codes of each layout and index the layout
+// of the event. The leptons (charged, of either sign) pass ptl and etal, and
+// each pair of opposite charge drll and mll, and drll_sf and mll_sf for the
+// same flavor, with the pseudorapidity and Delta phi of kin_functions.f. The
+// QCD partons (quarks up to maxjetflavor and gluons) are clustered with the pp
+// generalized kT algorithm of fastjet (power jetalgo, radius jetradius,
+// rapidity and azimuth, E scheme) into jets with pt >= ptj and |eta| <= etaj
+// (etaj <= 0 for none). With ptj > 0 and more partons than the unresolved
+// ones u (options[11]), at most u partons may be soft (E below 1e-8 of the
+// first incoming energy) and all partons but at most u must make jets, as
+// passcuts_jets for u = 1 on the real emission. Kinematics with a first
+// incoming energy that is not positive or with momenta that are not finite
+// fail.
 template <typename T>
-KERNELSPEC void kernel_fks_cuts(
+KERNELSPEC void kernel_nlo_cuts(
     FIn<T, 2> p,
     IIn<T, 0> index,
     IIn<T, 2> pdg,
@@ -179,6 +183,7 @@ KERNELSPEC void kernel_fks_cuts(
             etaj = options[3], ptl = options[5], etal = options[6], drll = options[7],
             drll_sf = options[8], mll = options[9], mll_sf = options[10];
     int maxjetflavor = static_cast<int>(FVal<T>(options[4]));
+    auto unresolved = static_cast<std::size_t>(FVal<T>(options[11]));
     std::size_t n = p.size();
     mask = 0.;
     FVal<T> e1 = p[0][0];
@@ -206,7 +211,7 @@ KERNELSPEC void kernel_fks_cuts(
         if (ptl > 0. && pt_i < ptl) {
             return;
         }
-        if (etal > 0. && fabs(fks_cut_eta<T>(p_i)) > etal) {
+        if (etal > 0. && fabs(nlo_cut_eta<T>(p_i)) > etal) {
             return;
         }
         if (pdg_i > 0) {
@@ -219,8 +224,8 @@ KERNELSPEC void kernel_fks_cuts(
                 continue;
             }
             auto p_j = load_mom<T>(p[j]);
-            FVal<T> deta = fks_cut_eta<T>(p_i) - fks_cut_eta<T>(p_j);
-            FVal<T> dphi = fks_cut_delta_phi<T>(p_i, p_j);
+            FVal<T> deta = nlo_cut_eta<T>(p_i) - nlo_cut_eta<T>(p_j);
+            FVal<T> dphi = nlo_cut_delta_phi<T>(p_i, p_j);
             FVal<T> r2 = dphi * dphi + deta * deta;
             FourMom<T> pair{
                 p_i[0] + p_j[0], p_i[1] + p_j[1], p_i[2] + p_j[2], p_i[3] + p_j[3]
@@ -244,7 +249,7 @@ KERNELSPEC void kernel_fks_cuts(
     }
 
     // jets
-    FourMom<T> partons[FKS_JET_PARTONS_MAX];
+    FourMom<T> partons[NLO_JET_PARTONS_MAX];
     std::size_t parton_count = 0, soft_count = 0;
     for (std::size_t i = n_in; i < n; ++i) {
         int pdg_i = single_index(pdgs[i]);
@@ -256,20 +261,20 @@ KERNELSPEC void kernel_fks_cuts(
         if (fabs(p_i[0] / e1) < 1e-8) {
             ++soft_count;
         }
-        if (parton_count < FKS_JET_PARTONS_MAX) {
+        if (parton_count < NLO_JET_PARTONS_MAX) {
             partons[parton_count] = p_i;
         }
         ++parton_count;
     }
-    if (ptj > 0. && parton_count > 1) {
-        if (soft_count > 1 || parton_count > FKS_JET_PARTONS_MAX) {
+    if (ptj > 0. && parton_count > unresolved) {
+        if (soft_count > unresolved || parton_count > NLO_JET_PARTONS_MAX) {
             return;
         }
-        FourMom<T> jets[FKS_JET_PARTONS_MAX];
-        std::size_t jet_count = fks_cluster_jets<T>(
+        FourMom<T> jets[NLO_JET_PARTONS_MAX];
+        std::size_t jet_count = nlo_cluster_jets<T>(
             partons, parton_count, jetalgo, jetradius, ptj, etaj, jets
         );
-        if (jet_count != parton_count && jet_count + 1 != parton_count) {
+        if (jet_count + unresolved < parton_count) {
             return;
         }
     }

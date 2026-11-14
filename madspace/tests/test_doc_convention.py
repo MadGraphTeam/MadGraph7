@@ -197,18 +197,34 @@ CASES = {
         configurations=FKS_CONFIGURATIONS,
         orders=ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS),
     ),
-    "FKSCuts": dict(configurations=FKS_CONFIGURATIONS, ptj=10.0),
-    "FKSJets": dict(
-        configurations=FKS_CONFIGURATIONS,
-        born=True,
+    "NLOCuts": dict(
+        layouts=[FKS_CONFIGURATION["pdgs"]],
+        incoming=2,
+        unresolved=1,
+        jetalgo=1.0,
+        jetradius=0.7,
+        ptj=10.0,
+        etaj=2.5,
+        maxjetflavor=4,
+        ptl=5.0,
+        etal=2.5,
+        drll=0.1,
+        drll_sf=0.1,
+        mll=10.0,
+        mll_sf=10.0,
+    ),
+    "NLOJets": dict(
+        layouts=[FKS_CONFIGURATION["pdgs"]],
+        jet_slots=2,
+        incoming=2,
         jetalgo=1.0,
         jetradius=0.7,
         ptj=10.0,
         etaj=2.5,
         maxjetflavor=5,
     ),
-    "FKSHistograms": dict(
-        histograms=[ms.FKSHistograms.HistItem(0.0, 1.0, 4, 1)], kinematics_count=5
+    "NLOHistograms": dict(
+        histograms=[ms.NLOHistograms.HistItem(0.0, 1.0, 4, 1)], kinematics_count=5
     ),
     "FKSObservableHistograms": dict(
         configurations=FKS_CONFIGURATIONS,
@@ -223,7 +239,19 @@ CASES = {
         etaj=4.5,
         maxjetflavor=4,
     ),
-    "FKSScale": dict(particle_count=5, dynamical_scale_choice=1),
+    "NLOScale": dict(
+        particle_count=5,
+        dynamical_scale_choice=1,
+        fixed_ren_scale=False,
+        fixed_fac_scale=False,
+        mur_ref_fixed=91.188,
+        muf1_ref_fixed=91.188,
+        muf2_ref_fixed=91.188,
+        mur_over_ref=1.0,
+        muf1_over_ref=1.0,
+        muf2_over_ref=1.0,
+        incoming=2,
+    ),
     "FKSLuminosity": dict(flavors=[[[2, -2], [4, -4]], [[21, -2]]]),
     "FKSCrossSection": dict(
         subtraction=ms.FKSSubtraction(

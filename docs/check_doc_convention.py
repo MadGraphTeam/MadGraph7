@@ -5,7 +5,7 @@ Read-only. Parses ``docs/build/doxygenxml/*.xml`` (run ``doxygen`` from ``docs/`
 first) and reports, per class, what is missing relative to the convention in
 ``docs/CONTRIBUTING-docs.md``:
 
-phasespace/ and subtraction/ classes:
+phasespace/, subtraction/ and nlo/ classes:
 
 * non-empty one-line brief and a detailed description
 * ``Mapping`` subclasses: **Inputs**, **Conditions**, **Outputs**, the weight
@@ -148,7 +148,7 @@ def main() -> int:
                     if g:
                         problems[name] = g
                 continue
-            if "/phasespace/" not in f and "/subtraction/" not in f:
+            if not any(f"/{d}/" in f for d in ("phasespace", "subtraction", "nlo")):
                 continue
             gaps: list[str] = []
 
@@ -250,7 +250,8 @@ def main() -> int:
 
     if not problems:
         print(
-            "check_doc_convention: all phasespace/, subtraction/ and compgraphs/ classes pass"
+            "check_doc_convention: all phasespace/, subtraction/, nlo/ and compgraphs/ "
+            "classes pass"
         )
         return 0
 

@@ -10,6 +10,7 @@
 #include "madspace/compgraphs.hpp"
 #include "madspace/compgraphs/optimizer.hpp"
 #include "madspace/driver.hpp"
+#include "madspace/nlo.hpp"
 #include "madspace/phasespace.hpp"
 #include "madspace/subtraction.hpp"
 #include "madspace/util.hpp"
@@ -2699,10 +2700,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSWeights::nlo_order_count")
         );
 
-    py::classh<FKSCuts, FunctionGenerator>(m, "FKSCuts", pydoc::doc("FKSCuts"))
+    py::classh<NLOCuts, FunctionGenerator>(m, "NLOCuts", pydoc::doc("NLOCuts"))
         .def(
             py::init<
-                const std::vector<FKSConfiguration>&,
+                const nested_vector2<int>&,
+                std::size_t,
+                std::size_t,
                 double,
                 double,
                 double,
@@ -2714,7 +2717,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 double>(),
-            py::arg("configurations"),
+            py::arg("layouts"),
+            py::arg("incoming") = 2,
+            py::arg("unresolved") = 1,
             py::arg("jetalgo") = 1.,
             py::arg("jetradius") = 0.7,
             py::arg("ptj") = 0.,
@@ -2726,62 +2731,80 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("drll_sf") = 0.,
             py::arg("mll") = 0.,
             py::arg("mll_sf") = 0.,
-            pydoc::doc("FKSCuts::FKSCuts")
+            pydoc::doc("NLOCuts::NLOCuts")
+        )
+        .def_readonly_static(
+            "jet_parton_max",
+            &NLOCuts::jet_parton_max,
+            pydoc::doc("NLOCuts::jet_parton_max")
         )
         .def(
             "particle_count",
-            &FKSCuts::particle_count,
-            pydoc::doc("FKSCuts::particle_count")
+            &NLOCuts::particle_count,
+            pydoc::doc("NLOCuts::particle_count")
         )
-        .def("options", &FKSCuts::options, pydoc::doc("FKSCuts::options"));
+        .def("incoming", &NLOCuts::incoming, pydoc::doc("NLOCuts::incoming"))
+        .def("unresolved", &NLOCuts::unresolved, pydoc::doc("NLOCuts::unresolved"))
+        .def("layouts", &NLOCuts::layouts, pydoc::doc("NLOCuts::layouts"))
+        .def("options", &NLOCuts::options, pydoc::doc("NLOCuts::options"));
 
-    py::classh<FKSJets, FunctionGenerator>(m, "FKSJets", pydoc::doc("FKSJets"))
+    py::classh<NLOJets, FunctionGenerator>(m, "NLOJets", pydoc::doc("NLOJets"))
         .def(
             py::init<
-                const std::vector<FKSConfiguration>&,
-                bool,
+                const nested_vector2<int>&,
+                std::size_t,
+                std::size_t,
                 double,
                 double,
                 double,
                 double,
                 int>(),
-            py::arg("configurations"),
-            py::arg("born") = false,
+            py::arg("layouts"),
+            py::arg("jet_slots") = 0,
+            py::arg("incoming") = 2,
             py::arg("jetalgo") = -1.,
             py::arg("jetradius") = 0.4,
             py::arg("ptj") = 0.,
             py::arg("etaj") = -1.,
             py::arg("maxjetflavor") = 4,
-            pydoc::doc("FKSJets::FKSJets")
+            pydoc::doc("NLOJets::NLOJets")
         )
         .def(
             "particle_count",
-            &FKSJets::particle_count,
-            pydoc::doc("FKSJets::particle_count")
+            &NLOJets::particle_count,
+            pydoc::doc("NLOJets::particle_count")
         )
         .def(
             "jet_particle_count",
-            &FKSJets::jet_particle_count,
-            pydoc::doc("FKSJets::jet_particle_count")
+            &NLOJets::jet_particle_count,
+            pydoc::doc("NLOJets::jet_particle_count")
         )
-        .def("slot_count", &FKSJets::slot_count, pydoc::doc("FKSJets::slot_count"))
-        .def("pids", &FKSJets::pids, pydoc::doc("FKSJets::pids"))
-        .def("born", &FKSJets::born, pydoc::doc("FKSJets::born"))
-        .def("options", &FKSJets::options, pydoc::doc("FKSJets::options"))
+        .def("slot_count", &NLOJets::slot_count, pydoc::doc("NLOJets::slot_count"))
+        .def("incoming", &NLOJets::incoming, pydoc::doc("NLOJets::incoming"))
+        .def("pids", &NLOJets::pids, pydoc::doc("NLOJets::pids"))
+        .def("options", &NLOJets::options, pydoc::doc("NLOJets::options"))
         .def_readonly_static(
-            "parton_max", &FKSJets::parton_max, pydoc::doc("FKSJets::parton_max")
+            "parton_max", &NLOJets::parton_max, pydoc::doc("NLOJets::parton_max")
+        )
+        .def_static(
+            "parton_count",
+            &NLOJets::parton_count,
+            py::arg("layout"),
+            py::arg("incoming"),
+            py::arg("maxjetflavor"),
+            pydoc::doc("NLOJets::parton_count")
         );
 
-    py::classh<FKSHistograms, FunctionGenerator> fks_histograms(
-        m, "FKSHistograms", pydoc::doc("FKSHistograms")
+    py::classh<NLOHistograms, FunctionGenerator> nlo_histograms(
+        m, "NLOHistograms", pydoc::doc("NLOHistograms")
     );
-    py::classh<FKSHistograms::HistItem>(
-        fks_histograms, "HistItem", pydoc::doc("FKSHistograms::HistItem")
+    py::classh<NLOHistograms::HistItem>(
+        nlo_histograms, "HistItem", pydoc::doc("NLOHistograms::HistItem")
     )
         .def(
             py::init(
                 [](double min, double max, std::size_t bin_count, std::size_t jets) {
-                    return FKSHistograms::HistItem{min, max, bin_count, jets};
+                    return NLOHistograms::HistItem{min, max, bin_count, jets};
                 }
             ),
             py::arg("min"),
@@ -2791,40 +2814,40 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def_readonly(
             "min",
-            &FKSHistograms::HistItem::min,
-            pydoc::doc("FKSHistograms::HistItem::min")
+            &NLOHistograms::HistItem::min,
+            pydoc::doc("NLOHistograms::HistItem::min")
         )
         .def_readonly(
             "max",
-            &FKSHistograms::HistItem::max,
-            pydoc::doc("FKSHistograms::HistItem::max")
+            &NLOHistograms::HistItem::max,
+            pydoc::doc("NLOHistograms::HistItem::max")
         )
         .def_readonly(
             "bin_count",
-            &FKSHistograms::HistItem::bin_count,
-            pydoc::doc("FKSHistograms::HistItem::bin_count")
+            &NLOHistograms::HistItem::bin_count,
+            pydoc::doc("NLOHistograms::HistItem::bin_count")
         )
         .def_readonly(
             "jet_count",
-            &FKSHistograms::HistItem::jet_count,
-            pydoc::doc("FKSHistograms::HistItem::jet_count")
+            &NLOHistograms::HistItem::jet_count,
+            pydoc::doc("NLOHistograms::HistItem::jet_count")
         );
-    fks_histograms
+    nlo_histograms
         .def(
-            py::init<const std::vector<FKSHistograms::HistItem>&, std::size_t>(),
+            py::init<const std::vector<NLOHistograms::HistItem>&, std::size_t>(),
             py::arg("histograms"),
             py::arg("kinematics_count"),
-            pydoc::doc("FKSHistograms::FKSHistograms")
+            pydoc::doc("NLOHistograms::NLOHistograms")
         )
         .def(
             "histograms",
-            &FKSHistograms::histograms,
-            pydoc::doc("FKSHistograms::histograms")
+            &NLOHistograms::histograms,
+            pydoc::doc("NLOHistograms::histograms")
         )
         .def(
             "kinematics_count",
-            &FKSHistograms::kinematics_count,
-            pydoc::doc("FKSHistograms::kinematics_count")
+            &NLOHistograms::kinematics_count,
+            pydoc::doc("NLOHistograms::kinematics_count")
         );
 
     py::classh<FKSObservableHistograms, FunctionGenerator> fks_observable_histograms(
@@ -2918,7 +2941,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSObservableHistograms::kinematics")
         );
 
-    py::classh<FKSScale, FunctionGenerator>(m, "FKSScale", pydoc::doc("FKSScale"))
+    py::classh<NLOScale, FunctionGenerator>(m, "NLOScale", pydoc::doc("NLOScale"))
         .def(
             py::init<
                 std::size_t,
@@ -2943,23 +2966,23 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("muf1_over_ref") = 1.,
             py::arg("muf2_over_ref") = 1.,
             py::arg("incoming") = 2,
-            pydoc::doc("FKSScale::FKSScale")
+            pydoc::doc("NLOScale::NLOScale")
         )
         .def_readonly_static(
-            "min_scale", &FKSScale::min_scale, pydoc::doc("FKSScale::min_scale")
+            "min_scale", &NLOScale::min_scale, pydoc::doc("NLOScale::min_scale")
         )
         .def(
             "particle_count",
-            &FKSScale::particle_count,
-            pydoc::doc("FKSScale::particle_count")
+            &NLOScale::particle_count,
+            pydoc::doc("NLOScale::particle_count")
         )
-        .def("incoming", &FKSScale::incoming, pydoc::doc("FKSScale::incoming"))
-        .def("options", &FKSScale::options, pydoc::doc("FKSScale::options"))
+        .def("incoming", &NLOScale::incoming, pydoc::doc("NLOScale::incoming"))
+        .def("options", &NLOScale::options, pydoc::doc("NLOScale::options"))
         .def(
             "with_particle_count",
-            &FKSScale::with_particle_count,
+            &NLOScale::with_particle_count,
             py::arg("particle_count"),
-            pydoc::doc("FKSScale::with_particle_count")
+            pydoc::doc("NLOScale::with_particle_count")
         );
 
     py::classh<FKSCrossSection, FunctionGenerator> fks_cross_section(
@@ -2971,7 +2994,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const FKSSubtraction&,
                 const FKSSoftVirtual&,
                 const FKSWeights&,
-                const std::optional<FKSCuts>&>(),
+                const std::optional<NLOCuts>&>(),
             py::arg("subtraction"),
             py::arg("soft_virtual"),
             py::arg("weights"),
@@ -4100,8 +4123,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const FKSSubtraction&,
                 const FKSSoftVirtual&,
                 const FKSWeights&,
-                const std::optional<FKSCuts>&,
-                const FKSScale&,
+                const std::optional<NLOCuts>&,
+                const NLOScale&,
                 const RunningCoupling&,
                 const FKSLuminosity&,
                 const FKSLuminosity&>(),
