@@ -630,8 +630,8 @@ namespace madmatrix
   // right at the parameters it measured them at: a coupling that was zero there
   // (a Wilson coefficient left at 0 in the output's param_card) has all its
   // amplitudes skipped, at any parameters. So whenever the good helicities are
-  // chosen (sigmaKin_getGoodHel: at initialisation, and again at every change of
-  // parameters through UMAMI), the plain code it runs records which amplitudes
+  // chosen (sigmaKin_getGoodHel: on the first events of a UMAMI instance, and again
+  // after every change of its parameters), the plain code it runs records which amplitudes
   // are alive, as the warm-up probe does; if one of the skipped pairs is,
   // hr_check_stale sets params.hrStale and sigmaKin uses the plain code for that
   // instance (complete, just not recycled). The threshold is looser than the
@@ -1318,7 +1318,7 @@ namespace madmatrix
     return ievt0;
   }
 
-  void
+  int // output: the number of events it looked at, the first ones
   sigmaKin_getGoodHel( const ProcessParameters& params,   // input: parameters of the process
                        const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
@@ -1488,8 +1488,10 @@ namespace madmatrix
     close_good_hel( isGoodHel, cHel );
 #ifdef MGONGPU_HR_CHECK
     hrCheck = nullptr;
-    params.hrStale = hr_check_stale( check, isGoodHel );
+    // stale if it is at one of the scans of an instance (until reset_good_helicities, umami.cc)
+    if( hr_check_stale( check, isGoodHel ) ) params.hrStale = true;
 #endif
+    return maxtry;
   }
 
   //--------------------------------------------------------------------------
@@ -1561,6 +1563,21 @@ namespace madmatrix
     }
 #endif
     return nGoodHel;
+  }
+
+  //--------------------------------------------------------------------------
+
+  bool
+  sigmaKin_csymScanBad()
+  {
+    return cCsymBad;
+  }
+
+  void
+  sigmaKin_setCsymVerdict( const bool bad )
+  {
+    cCsymScanned = true;
+    cCsymBad = bad;
   }
 
   //--------------------------------------------------------------------------
