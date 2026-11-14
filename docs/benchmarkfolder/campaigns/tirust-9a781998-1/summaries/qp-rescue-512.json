@@ -1,0 +1,2108 @@
+{
+ "bridge_lib_rs_sha256": "15be50e02222a04dbda2d7a42202a43d3da1cf3b8aa580b4412e2ce864a62026",
+ "campaign": "tirust-9a781998-1",
+ "cases": {
+  "cms_ew_n2_epem_mupmum": {
+   "candidate-9-auto": {
+    "done": true,
+    "points": {
+     "forward-0.001": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": -0.004335383958002162,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 2.0470242682878044e-06,
+        "passed": false
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 2.046769480984871e-06,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.046769480984871e-06,
+        "passed": false
+       }
+      }
+     },
+     "forward-1e-06": {
+      "accepted": null,
+      "finite": 0.005350931905238929,
+      "qp_failure_latch": true,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.0,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.6209545427763656e-16,
+        "passed": true
+       }
+      }
+     },
+     "forward-1e-08": {
+      "accepted": null,
+      "finite": 0.005350931905241678,
+      "qp_failure_latch": true,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.1891461385406946e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0000": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.0003102826702005376,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 4.5425122302841194e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 4.5425122302841194e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 4.5425122302841194e-15,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0001": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.00039484706192655333,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 5.079875760785762e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 5.079875760785762e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 5.079875760785762e-15,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0002": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.0002854274881249876,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 9.68622734271262e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 9.68622734271262e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 9.68622734271262e-15,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0003": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.0007074924180780896,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.8451480875130133e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.779249941530407e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.779249941530407e-14,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0004": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.0004137888928123221,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.0000126785242733e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 8.730269415688111e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 8.730269415688111e-15,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0005": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.00046546903976332836,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.1529876952787326e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.1064023338533292e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.1064023338533292e-14,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0006": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.001309469852477061,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 4.802227854669976e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 4.802227854669976e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 4.802227854669976e-15,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0007": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.00325605155925504,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.545030227188333e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.5983071315741376e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.5983071315741376e-14,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0008": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.000225075951422626,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 4.5761977561397e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 4.5761977561397e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 4.5761977561397e-15,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0009": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.00029945783352175573,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 6.349774133139128e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 6.901928405586009e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 6.901928405586009e-15,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0010": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.00018447630584222902,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 7.93420556733838e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 7.93420556733838e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 7.93420556733838e-15,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0011": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.00023151935515917775,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 5.306712784204367e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 5.306712784204367e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 5.306712784204367e-15,
+        "passed": true
+       }
+      }
+     },
+     "ww-threshold-+0": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.000923038846386077,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.0571407249623123e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.5269810471677845e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.5269810471677845e-15,
+        "passed": true
+       }
+      }
+     },
+     "ww-threshold-+1e-06": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.0009230378905248887,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.1300387827849107e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.1300387827849107e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.1300387827849107e-15,
+        "passed": true
+       }
+      }
+     },
+     "ww-threshold--1e-06": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 0.0009230398023614791,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 2.730518243093075e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 2.730518243093075e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.730518243093075e-15,
+        "passed": true
+       }
+      }
+     },
+     "z-resonance-+0": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": -0.26463620965990103,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 2.0347108494154787e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 2.0347108494154787e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.0347108494154787e-14,
+        "passed": true
+       }
+      }
+     },
+     "z-resonance-+1": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": -0.049056014951717714,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 2.5691367227590526e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 2.602650214403981e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.602650214403981e-14,
+        "passed": true
+       }
+      }
+     },
+     "z-resonance--1": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": -0.04200726172509303,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 3.1462919052445137e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 3.1462919052445137e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 3.1462919052445137e-14,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "candidate-9-qp": {
+    "done": true,
+    "points": {
+     "forward-0.001": {
+      "accepted": null,
+      "finite": -0.004335375084470587,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 2.547874242929381e-10,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 4.0013227049041864e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 4.0013227049041864e-16,
+        "passed": true
+       }
+      }
+     },
+     "forward-1e-06": {
+      "accepted": null,
+      "finite": 0.005350931905238929,
+      "qp_failure_latch": true,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.0,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.6209545427763656e-16,
+        "passed": true
+       }
+      }
+     },
+     "forward-1e-08": {
+      "accepted": null,
+      "finite": 0.005350931905241678,
+      "qp_failure_latch": true,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.1891461385406946e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0000": {
+      "accepted": null,
+      "finite": 0.00031028267020053645,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 8.735600442854107e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 8.735600442854107e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 8.735600442854107e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0001": {
+      "accepted": null,
+      "finite": 0.00039484706192655534,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.7415633015762064e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 6.698320390677724e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 6.698320390677724e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0002": {
+      "accepted": null,
+      "finite": 0.0002854274881249848,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.2643949083807777e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.2643949083807777e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.2643949083807777e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0003": {
+      "accepted": null,
+      "finite": 0.0007074924180780898,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 3.356554876541803e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 9.88472189739114e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 9.88472189739114e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0004": {
+      "accepted": null,
+      "finite": 0.00041378889281232245,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.5873217119432907e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.4285895407489616e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.4285895407489616e-15,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0005": {
+      "accepted": null,
+      "finite": 0.0004654690397633232,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 4.658536142540385e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 2.8221893164877784e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.8221893164877784e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0006": {
+      "accepted": null,
+      "finite": 0.001309469852477055,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 3.3118812790827566e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 3.3118812790827566e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 3.3118812790827566e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0007": {
+      "accepted": null,
+      "finite": 0.003256051559254988,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 5.327690438580541e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.368152170774628e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.368152170774628e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0008": {
+      "accepted": null,
+      "finite": 0.00022507595142262497,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.0110061838091929e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 3.3700206126973097e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 3.3700206126973097e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0009": {
+      "accepted": null,
+      "finite": 0.00029945783352175524,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.2423471130054895e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 6.901928405586057e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 6.901928405586057e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0010": {
+      "accepted": null,
+      "finite": 0.00018447630584222756,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.9734632752998203e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.9734632752998203e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.9734632752998203e-16,
+        "passed": true
+       }
+      }
+     },
+     "ordinary-0011": {
+      "accepted": null,
+      "finite": 0.00023151935515917664,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 9.365974363051255e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 9.365974363051255e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 9.365974363051255e-16,
+        "passed": true
+       }
+      }
+     },
+     "ww-threshold-+0": {
+      "accepted": null,
+      "finite": 0.0009230388463860756,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 4.698403222054727e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 0.0,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 0.0,
+        "passed": true
+       }
+      }
+     },
+     "ww-threshold-+1e-06": {
+      "accepted": null,
+      "finite": 0.0009230378905248885,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 9.396816175067036e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 4.69840808753352e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 4.69840808753352e-16,
+        "passed": true
+       }
+      }
+     },
+     "ww-threshold--1e-06": {
+      "accepted": null,
+      "finite": 0.0009230398023614798,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 4.698398356004631e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 4.698398356004631e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 4.698398356004631e-16,
+        "passed": true
+       }
+      }
+     },
+     "z-resonance-+0": {
+      "accepted": null,
+      "finite": -0.2646362096599064,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 0.0,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 0.0,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 0.0,
+        "passed": true
+       }
+      }
+     },
+     "z-resonance-+1": {
+      "accepted": null,
+      "finite": -0.049056014951716354,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 2.26317409948178e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.697380574611336e-15,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.697380574611336e-15,
+        "passed": true
+       }
+      }
+     },
+     "z-resonance--1": {
+      "accepted": null,
+      "finite": -0.04200726172509278,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.048763968414871e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.048763968414871e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.048763968414871e-14,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   }
+  },
+  "ew_n2_epem_mupmum": {
+   "candidate-9-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": null,
+      "finite": 0.005343459319387271,
+      "qp_failure_latch": true,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.0,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.0,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "candidate-9-qp": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": null,
+      "finite": 0.005343459319387271,
+      "qp_failure_latch": true,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.0,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.0,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "chain-9671-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       1,
+       "QP"
+      ],
+      "finite": 0.008122223584602559,
+      "qp_failure_latch": false,
+      "recorded_status": 329,
+      "status": 329,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 4.0579707884476815e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0,
+        "passed": false
+       }
+      }
+     }
+    },
+    "returncode": 0
+   }
+  },
+  "ew_n3_epem_ttxa": {
+   "candidate-9-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 2.4734873228207462e-09,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 5.190489633399203e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 6.193693512123419e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 4.100050634785925e-14,
+        "passed": true
+       }
+      }
+     },
+     "stress-soft-collinear": {
+      "accepted": null,
+      "finite": 2.6062515419168384e+16,
+      "qp_failure_latch": true,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": false,
+      "vs_qp_references": {}
+     },
+     "stress-threshold": {
+      "accepted": [
+       9,
+       "QP"
+      ],
+      "finite": 600224465812.9573,
+      "qp_failure_latch": false,
+      "recorded_status": 420,
+      "status": 323,
+      "unchanged": false,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 3.694468950370406e-06,
+        "passed": false
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 0.9910393236677193,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0814244476493861e-09,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "candidate-9-qp": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": null,
+      "finite": 2.4734873228208017e-09,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.744702397781305e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 2.7479062765055552e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 6.542633991679894e-15,
+        "passed": true
+       }
+      }
+     },
+     "stress-soft-collinear": {
+      "accepted": null,
+      "finite": 2.6062515419168384e+16,
+      "qp_failure_latch": true,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": false,
+      "vs_qp_references": {}
+     },
+     "stress-threshold": {
+      "accepted": null,
+      "finite": 600224465812.9573,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": false,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 3.694468950370406e-06,
+        "passed": false
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 0.9910393236677193,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0814244476493861e-09,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "chain-9671-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 2.4734873228207462e-09,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 5.190489633399203e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 6.193693512123419e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 4.100050634785925e-14,
+        "passed": true
+       }
+      }
+     },
+     "stress-soft-collinear": {
+      "accepted": null,
+      "finite": -1.7470440781246847e+34,
+      "qp_failure_latch": false,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": true,
+      "vs_qp_references": {}
+     },
+     "stress-threshold": {
+      "accepted": [
+       9,
+       "QP"
+      ],
+      "finite": 600224465812.9573,
+      "qp_failure_latch": false,
+      "recorded_status": 328,
+      "status": 323,
+      "unchanged": false,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 3.694468950370406e-06,
+        "passed": false
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 0.9910393236677193,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0814244476493861e-09,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   }
+  },
+  "ew_n4_epem_mupmumaa": {
+   "candidate-9-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": -1.5410852854729874e-12,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 2.612455359048357e-07,
+        "passed": false
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 2.612451780264866e-07,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.612466129470003e-07,
+        "passed": false
+       }
+      }
+     },
+     "stress-soft-collinear": {
+      "accepted": null,
+      "finite": 4.6438120046731045e-05,
+      "qp_failure_latch": true,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": false,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.000000000073291,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 0.9999999550598597,
+        "passed": false
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "candidate-9-qp": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": null,
+      "finite": -1.541084882869676e-12,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.0773045319691365e-12,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 5.3757639959931484e-12,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 3.471454178219022e-16,
+        "passed": true
+       }
+      }
+     },
+     "stress-soft-collinear": {
+      "accepted": null,
+      "finite": 4.6438120046731045e-05,
+      "qp_failure_latch": true,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": false,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.000000000073291,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 0.9999999550598597,
+        "passed": false
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "chain-9671-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": -1.5410852854729874e-12,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 2.612455359048357e-07,
+        "passed": false
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 2.612451780264866e-07,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.612466129470003e-07,
+        "passed": false
+       }
+      }
+     },
+     "stress-soft-collinear": {
+      "accepted": null,
+      "finite": 3417032.4142997386,
+      "qp_failure_latch": false,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 0.0020817012221313307,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.000000000073183,
+        "passed": false
+       }
+      }
+     }
+    },
+    "returncode": 0
+   }
+  },
+  "li_gg_hh": {
+   "candidate-9-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 3.982296271077802e-05,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.0150375939810108,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.015037455883265,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0150375939849647,
+        "passed": true
+       }
+      }
+     },
+     "stress-threshold": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 2.1971149598006468e-08,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 0.9999999997705892,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 0.9999999997705895,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 0.9999999997705892,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "candidate-9-qp": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": null,
+      "finite": 3.982296271078052e-05,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": false,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 4.31923442785599e-08,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 0.9984798888468791,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 0.0,
+        "passed": true
+       }
+      }
+     },
+     "stress-threshold": {
+      "accepted": null,
+      "finite": 2.1971149595385444e-08,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.1425732828872429e-11,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.752346039289443e-06,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 0.0,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "chain-9671-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 3.982296271077802e-05,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.0150375939810108,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.015037455883265,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0150375939849647,
+        "passed": true
+       }
+      }
+     },
+     "stress-threshold": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 2.1971149598006468e-08,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 0.9999999997705892,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 0.9999999997705895,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 0.9999999997705892,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   }
+  },
+  "mixed_uux_ga": {
+   "candidate-9-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": null,
+      "finite": -529857362838.7981,
+      "qp_failure_latch": true,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.2290013970731675,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0249255618103763,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "candidate-9-qp": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": null,
+      "finite": -529857362838.7981,
+      "qp_failure_latch": true,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.2290013970731675,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0249255618103763,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "chain-9671-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": null,
+      "finite": -825522332111955.9,
+      "qp_failure_latch": false,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 0.6339927283521773,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.2290014203490323,
+        "passed": false
+       }
+      }
+     }
+    },
+    "returncode": 0
+   }
+  },
+  "qcd_n2_gg_ttx": {
+   "candidate-9-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": -1.062697296149667,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.2536661515722335e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.9849714066560217e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.9849714066560217e-14,
+        "passed": true
+       }
+      }
+     },
+     "stress-threshold": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 34.88594375500289,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.2712820725013751e-10,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.2712820725013751e-10,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.2712820725013751e-10,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "candidate-9-qp": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": null,
+      "finite": -1.062697296149688,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 7.313052550837976e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.9609787056132654e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.9609787056132654e-16,
+        "passed": true
+       }
+      }
+     },
+     "stress-threshold": {
+      "accepted": null,
+      "finite": 34.88594375943788,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 2.1997530684668772e-16,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 2.1997530684668772e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.1997530684668772e-16,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "chain-9671-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": -1.062697296149667,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.2536661515722335e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.9849714066560217e-14,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.9849714066560217e-14,
+        "passed": true
+       }
+      }
+     },
+     "stress-threshold": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": 34.88594375500289,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.2712820725013751e-10,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 1.2712820725013751e-10,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.2712820725013751e-10,
+        "passed": true
+       }
+      }
+     }
+    },
+    "returncode": 0
+   }
+  },
+  "qcd_n3_uux_zgg": {
+   "candidate-9-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": -0.0006034562150534533,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 3.110336054227067e-13,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 3.081642917195461e-13,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 3.080208260343881e-13,
+        "passed": true
+       }
+      }
+     },
+     "stress-soft-collinear": {
+      "accepted": null,
+      "finite": -1.6443805169342339e+18,
+      "qp_failure_latch": true,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": false,
+      "vs_qp_references": {}
+     },
+     "stress-threshold": {
+      "accepted": null,
+      "finite": -3.1121172574008655e+27,
+      "qp_failure_latch": true,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": false,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.000000000076208,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 3.3720272516470467e-07,
+        "passed": false
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "candidate-9-qp": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": null,
+      "finite": -0.0006034562150535223,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 7.905278692859386e-15,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 6.588049953162119e-16,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 2.6352199812648486e-16,
+        "passed": true
+       }
+      }
+     },
+     "stress-soft-collinear": {
+      "accepted": null,
+      "finite": -1.6443805169342339e+18,
+      "qp_failure_latch": true,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": false,
+      "vs_qp_references": {}
+     },
+     "stress-threshold": {
+      "accepted": null,
+      "finite": -3.1121172574008655e+27,
+      "qp_failure_latch": true,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": false,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.000000000076208,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 3.3720272516470467e-07,
+        "passed": false
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "chain-9671-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": -0.0006034562150534533,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 3.110336054227067e-13,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 3.081642917195461e-13,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 3.080208260343881e-13,
+        "passed": true
+       }
+      }
+     },
+     "stress-soft-collinear": {
+      "accepted": null,
+      "finite": 1.0063111495744453e+40,
+      "qp_failure_latch": false,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": true,
+      "vs_qp_references": {}
+     },
+     "stress-threshold": {
+      "accepted": null,
+      "finite": -1.9855713042329566e+34,
+      "qp_failure_latch": false,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 0.9718867465250042,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0000000027107483,
+        "passed": false
+       }
+      }
+     }
+    },
+    "returncode": 0
+   }
+  },
+  "qcd_n4_uux_zzgg": {
+   "candidate-9-auto": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": [
+       9,
+       "DP"
+      ],
+      "finite": -1.3367534414406252e-09,
+      "qp_failure_latch": false,
+      "recorded_status": 219,
+      "status": 219,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 4.54796315900156e-09,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 4.546368863699224e-09,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 4.547969545198577e-09,
+        "passed": true
+       }
+      }
+     },
+     "stress-soft-collinear": {
+      "accepted": null,
+      "finite": -1379915974542.9858,
+      "qp_failure_latch": true,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": false,
+      "vs_qp_references": {}
+     },
+     "stress-threshold": {
+      "accepted": null,
+      "finite": -1.7275157912566683e+22,
+      "qp_failure_latch": true,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": false,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 0.9999999999976981,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0148485805119887,
+        "passed": false
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "candidate-9-qp": {
+    "done": true,
+    "points": {
+     "stress-small-gram": {
+      "accepted": null,
+      "finite": -1.3367534456331794e-09,
+      "qp_failure_latch": false,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.3768259726150798e-14,
+        "passed": true
+       },
+       "candidate-6-qp": {
+        "maximum_relative_error": 2.6689230030015174e-11,
+        "passed": true
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 3.09399094969685e-16,
+        "passed": true
+       }
+      }
+     },
+     "stress-soft-collinear": {
+      "accepted": null,
+      "finite": -1379915974542.9858,
+      "qp_failure_latch": true,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": false,
+      "vs_qp_references": {}
+     },
+     "stress-threshold": {
+      "accepted": null,
+      "finite": -1.7923868412492137e+22,
+      "qp_failure_latch": true,
+      "recorded_status": 120,
+      "status": 120,
+      "unchanged": false,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 0.9999999999976117,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0154061690524736,
+        "passed": false
+       }
+      }
+     }
+    },
+    "returncode": 0
+   },
+   "chain-9671-auto": {
+    "done": false,
+    "points": {
+     "stress-threshold": {
+      "accepted": null,
+      "finite": -2.421155804349255e+33,
+      "qp_failure_latch": false,
+      "recorded_status": 420,
+      "status": 420,
+      "unchanged": true,
+      "vs_qp_references": {
+       "candidate-1-qp": {
+        "maximum_relative_error": 1.122147124637765,
+        "passed": false
+       },
+       "candidate-8-qp": {
+        "maximum_relative_error": 1.0000000004805232,
+        "passed": false
+       }
+      }
+     }
+    },
+    "returncode": 0
+   }
+  }
+ },
+ "library_sha256": "a01c763975e6f5c4798d75ff2754852ee080f33e08bcacbc8deae8173990915d",
+ "previous_bridge_lib_rs_sha256": "e5bdb54a4c484c0e5390478d2e3f9dd8942b1d60746a669d77c7df7558378d37",
+ "previous_library_sha256": "6c11cfd9eecf7895e6a981615f37863d8c34f904f82099a6018212069619c729"
+}

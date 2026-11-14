@@ -3589,7 +3589,8 @@ RESTART = %(mint_mode)s
     
         RetUnit_finder =re.compile(
                            r"#Unit\s*(?P<unit>\d+)\s*=\s*(?P<n_occurences>\d+)")
-        ninjars_finder = re.compile(r"#NinjaRS\s+(DP|QP)\s*=\s*(\d+)")
+        contextual_finder = re.compile(
+            r"#(NinjaRS|TIRust)\s+(DP|QP)\s*=\s*(\d+)")
         version_finder = re.compile(r"#ReturnCodeVersion\s*=\s*(\S+)")
         backend_usage = {}
     #Unit
@@ -3598,9 +3599,11 @@ RESTART = %(mint_mode)s
             channel_name = '/'.join(gv_log.split('/')[-5:-1])
             with open(gv_log, 'r') as stream:
                 log = stream.read()
-            ninjars_usage = {'DP': 0, 'QP': 0}
-            for precision, count in ninjars_finder.findall(log):
-                ninjars_usage[precision] += int(count)
+            contextual_usage = dict.fromkeys(
+                ('ninjars_dp', 'ninjars_qp', 'tirust_dp', 'tirust_qp'), 0)
+            for backend, precision, count in contextual_finder.findall(log):
+                key = '%s_%s' % (backend.lower(), precision.lower())
+                contextual_usage[key] += int(count)
             try:
                 versions = {int(value) for value in version_finder.findall(log)}
             except ValueError:
@@ -3612,8 +3615,8 @@ RESTART = %(mint_mode)s
             for match in RetUnit_finder.finditer(log):
                 unit_counts[int(match.group('unit'))] += int(match.group('n_occurences'))
             for backend, count in sum_html.decode_madloop_backend_usage(
-                    unit_counts, ninjars_usage['DP'], ninjars_usage['QP'],
-                    version).items():
+                    unit_counts, format_version=version,
+                    **contextual_usage).items():
                 backend_usage[backend] = backend_usage.get(backend, 0) + count
             UPS_stats = re.search(UPS_stat_finder,log)
             for retunit_stats in re.finditer(RetUnit_finder, log):

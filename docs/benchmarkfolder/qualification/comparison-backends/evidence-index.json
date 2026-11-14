@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "purpose": "Native comparison-library smoke qualification; not process-level accuracy or performance acceptance",
+  "captured_on": "2026-11-09",
+  "files": {
+    "comparison-dependencies.json": {
+      "original_path": ".tirust-build/comparison-dependencies.json",
+      "sha256": "38f9bb6e1657b9bff170b63b39b62c7c448562679ce489658e86b55d4d5cfc44",
+      "bytes": 7573
+    },
+    "ninjars-config.json": {
+      "original_path": "HEPTools/ninjars/lib/ninjars-config.json",
+      "sha256": "218f0a7c12321a924eef9d36cce5dc6b83f29fc9524f2af903fd0a44c17d5460",
+      "bytes": 4171
+    },
+    "ninjars-install.log.txt": {
+      "original_path": "HEPTools/ninjars/install.log",
+      "sha256": "019cc0df5e30fd612b3837471f0fc13a01ab2b51c53af87271c40dcff6240298",
+      "bytes": 2270
+    },
+    "ninjars-runtime-failure.log.txt": {
+      "original_path": "HEPTools/.ninjars-build-5qmlt4km/install.log",
+      "sha256": "26936283e78b46c89be81890318e29ae012adb6c785a7b89c880554f71b8f6d2",
+      "bytes": 11417
+    },
+    "ninjars-staticgcc-smoke.log.txt": {
+      "original_path": ".tirust-build/ninjars-staticgcc-smoke.log",
+      "sha256": "c7189b02e08cbe0ac078811a10b2fb0712a979a5a7f169df74ec52979f175086",
+      "bytes": 74
+    },
+    "ninjars-runtime-unit.log.txt": {
+      "original_path": ".tirust-build/ninjars-runtime-unit.log",
+      "sha256": "cb32f720dcbfc34eaffe93e9e32fba0e2df9ebd991e79056c2f846a8d83e6f61",
+      "bytes": 121
+    },
+    "cuttools-smoke.log.txt": {
+      "original_path": ".tirust-build/cuttools-smoke.log",
+      "sha256": "cd61942d2554647acd79d671534d645274df77ab32eb99ed5c03ea0ac15d7717",
+      "bytes": 2509
+    },
+    "ninja-dp-smoke.log.txt": {
+      "original_path": ".tirust-build/ninja-dp-smoke.log",
+      "sha256": "85a4f1527332250231caa1ef575d2a553bfae3e7523309c5dbfcf9830e8139ba",
+      "bytes": 2641
+    },
+    "ninja-qp-smoke.log.txt": {
+      "original_path": ".tirust-build/ninja-qp-smoke.log",
+      "sha256": "9d8b60a00af79868af669fa2e53ed63dd31e023aae486af02dc7c62609bbcb2b",
+      "bytes": 2987
+    },
+    "collier-static-summary.json": {
+      "original_path": ".tirust-build/collier-smoke.log",
+      "sha256": "23d1cc7830092703c8b1ffcf67f29b36bd1c955c7ec1c4540bd0dd8dd92915c8",
+      "bytes": 135
+    },
+    "collier-shared-summary.json": {
+      "original_path": ".tirust-build/collier-shared-smoke.log",
+      "sha256": "23d1cc7830092703c8b1ffcf67f29b36bd1c955c7ec1c4540bd0dd8dd92915c8",
+      "bytes": 135
+    },
+    "collier-reference.json": {
+      "original_path": ".tirust-build/collier-smoke/reference.json",
+      "sha256": "30fb10c60887b510e3d976fe8f715fda4ba6cb889cab257322d5549c1ce677d5",
+      "bytes": 166098
+    },
+    "collier-static-provenance.json": {
+      "original_path": ".tirust-build/collier-smoke/reference.provenance.json",
+      "sha256": "6e74a726a4a52b69385cda3b491617f383e60ece85a15d69c979f920f44ffa94",
+      "bytes": 1200
+    },
+    "collier-shared-provenance.json": {
+      "original_path": ".tirust-build/collier-shared-smoke/reference.provenance.json",
+      "sha256": "e22768a81b32fd639dd410676b64a1655d9882d564297104213db36fa4600fa8",
+      "bytes": 1207
+    },
+    "comparison-coexistence.f90": {
+      "original_path": ".tirust-build/comparison-coexistence.f90",
+      "sha256": "767d1df87690de8ee2a3bc54433232fb17ce4931eb32f15af9b58de7fc8ae8b4",
+      "bytes": 4410
+    },
+    "comparison-coexistence-build.log.txt": {
+      "original_path": ".tirust-build/comparison-coexistence-build.log",
+      "sha256": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51",
+      "bytes": 314
+    },
+    "comparison-coexistence.log.txt": {
+      "original_path": ".tirust-build/comparison-coexistence.log",
+      "sha256": "82ccbaf95dd448097977a7b33fef0e9930e5af55441ee1d08a2aa110318936c3",
+      "bytes": 5339
+    },
+    "collier-comparison.json": {
+      "original_path": null,
+      "sha256": "2371433c69c669319b489d2bf9a211c3c8522ed7838b1521bcef8d5baa5d0d48",
+      "bytes": 579,
+      "kind": "derived evidence summary"
+    },
+    "source-notices.json": {
+      "original_path": null,
+      "sha256": "2f54c7f5d10593a7c87d22c8ce62a094c8b6f79b112351c1c0ad47417f5fec96",
+      "bytes": 4707,
+      "kind": "derived evidence summary"
+    },
+    "comparison-coexistence-provenance.json": {
+      "original_path": null,
+      "sha256": "b7fe4fc8c2c9f65b83d1535b4f10ee08dd10249560b2a1f5edb992102e23ba53",
+      "bytes": 2311,
+      "kind": "derived evidence summary"
+    }
+  },
+  "repository_inputs": {
+    "vendor/ninjars/smoke.f90": "6b18ca787fe13f1ee0a5e2a565988e2253eb64020f27809e663c8e741d73c80f",
+    "vendor/ninjars/tests/poles/collier_poles.f90": "0265012288259ff01f208416ccd72fce9807eb2baefee7571e7bc00b26c1881e",
+    "vendor/ninjars/tests/poles/collier_jobs.in": "60b0f6965326aff14c31c03ad166798d42d1b8e26ffa4d9e710457f01e458488",
+    "vendor/ninjars/tests/poles/tensor_cases.json": "16decf75a9ecc460406ddd87b1ee492f4e48bc6d6f73ec8b9afca5fd3b9bae0f",
+    "vendor/CutTools/examples/example0.f": "485e0f308d29dc08bd7a04b136e6931443960de5b1cb0d11badeafb5ac3bf8a8",
+    "vendor/CutTools/examples/numerators.f": "4f966a815fa3f0fb358e2c02d76dac108a2719d4e4fc8b167b53647bdb448221",
+    "vendor/CutTools/examples/mpnumerators.f90": "c87a77aa7a031ddce0144294fe14c7e579eaf6551f764863fe7e86b1290bb5f5"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "compile_commands": 2,
+  "max_public_calls": 48,
+  "native_workers": 4,
+  "no_retry": true,
+  "proposal_index_sha256": "c9a61e13b12c8566579d760268b739c7ec83c17198bf686f1afd9b0ef37b34c5",
+  "real_numerical_authorized_by_root": true,
+  "runner_sha256": "8df0c0b776d8f587e35644b1766129428a1d3e5ae095e8dc6635a230420cdf80",
+  "schema": "reduction-latch-small-runner-v1",
+  "stage_seconds": 600
+}

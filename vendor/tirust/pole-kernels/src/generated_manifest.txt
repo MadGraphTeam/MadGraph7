@@ -1,0 +1,7 @@
+oneloopmaster_revision=bd703d09a78f7849a6b86a07096e6f222fc01193
+laurent_tags=-1,-2
+finite_roots=0
+A0: inputs=2 outputs=2 root_instructions=2 helpers=2 branches=0 bytes=813
+B0: inputs=4 outputs=2 root_instructions=2 helpers=2 branches=0 bytes=1324
+C0: inputs=7 outputs=2 root_instructions=2 helpers=17 branches=20 bytes=112313
+D0: inputs=11 outputs=2 root_instructions=2 helpers=24 branches=57 bytes=681083

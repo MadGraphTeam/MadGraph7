@@ -1,0 +1,1774 @@
+{
+  "campaign": "entry-latch-cache-guard-1",
+  "cases": {
+    "ew_n1_udx_wp": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.099222018,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.091158279,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.067547873,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.908569511240864e-12,
+          "max_symmetric_finite": 9.93724527202984e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.080323139,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.9090079866179385e-12,
+          "max_symmetric_finite": 9.451626401009102e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.057182026,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.907692560486716e-12,
+          "max_symmetric_finite": 9.92169589931243e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.057343796,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.9090079866179385e-12,
+          "max_symmetric_finite": 9.433684817104395e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "u d~ > w+ [virt=QED]",
+      "results": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n1_udx_wp-1/results.json",
+      "role": "main"
+    },
+    "ew_n2_epem_mupmum": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.492249893,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.426839011,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.346509251,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.30738082924273e-12,
+          "max_symmetric_finite": 4.021953712571465e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.462041394,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.775316659135798e-12,
+          "max_symmetric_finite": 2.331230617767045e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.350770386,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 4.197684884543614e-12,
+          "max_symmetric_finite": 3.4267795063475645e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.361067976,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.707652272263257e-12,
+          "max_symmetric_finite": 2.2641895949613956e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "e+ e- > mu+ mu- [virt=QED]",
+      "results": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n2_epem_mupmum-1/results.json",
+      "role": "main"
+    },
+    "ew_n3_epem_ttxa": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 10.15682797,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 8.753305586,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 7.797961938,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.264640663643316e-10,
+          "max_symmetric_finite": 6.32320331861641e-11,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 9.262939304,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 8.841936707631176e-10,
+          "max_symmetric_finite": 4.4209683557700844e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 8.008550171,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.3385447129254763e-09,
+          "max_symmetric_finite": 6.692723569106637e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 8.327883251,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 2.2850265279789794e-09,
+          "max_symmetric_finite": 1.1425132652948262e-09,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "e+ e- > t t~ a [virt=QED]",
+      "results": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n3_epem_ttxa-1/results.json",
+      "role": "main"
+    },
+    "ew_n4_epem_mupmumaa": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 426.277373684,
+          "dp": 93,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 7,
+          "status": "complete",
+          "status_counts": {
+            "211": 93,
+            "329": 7
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 412.496717545,
+          "dp": 93,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 7,
+          "status": "complete",
+          "status_counts": {
+            "211": 93,
+            "329": 7
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 152.409648958,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 2.9705208013429e-07,
+          "max_symmetric_finite": 1.1436723327443275e-07,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [
+            14,
+            69,
+            81,
+            85,
+            87
+          ],
+          "target_misses": 12,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 10,
+            "single": 2
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 167.126952478,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 2.2872706074824454e-07,
+          "max_symmetric_finite": 1.1436354345314084e-07,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [
+            14,
+            38,
+            81,
+            85,
+            87
+          ],
+          "target_misses": 10,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 2,
+            "finite": 8,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 153.245290453,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 3.053102849435326e-07,
+          "max_symmetric_finite": 1.1436457495625833e-07,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [
+            14,
+            69,
+            81,
+            85,
+            87
+          ],
+          "target_misses": 14,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 2,
+            "finite": 10,
+            "single": 2
+          }
+        }
+      },
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "e+ e- > mu+ mu- a a [virt=QED]",
+      "results": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-ew_n4_epem_mupmumaa-1/results.json",
+      "role": "main"
+    },
+    "li_gg_h": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.192705033,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.193409334,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.099348353,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.9951712763149096,
+          "max_symmetric_finite": 1.5498248237004234e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.078991812,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.8322175612240899,
+          "max_symmetric_finite": 1.5465100576796894e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.079010322,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.9989207251529628,
+          "max_symmetric_finite": 1.5500099544471832e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.05322205,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.0055330962866256,
+          "max_symmetric_finite": 1.5499942183337085e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "g g > h [noborn=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_h-1/results.json",
+      "role": "control"
+    },
+    "li_gg_hh": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 1.887057926,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 1.877257097,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.848053408,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.9190694076987012,
+          "max_symmetric_finite": 6.406201065306805e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.556600832,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.9553529295070444,
+          "max_symmetric_finite": 4.607213071848314e-09,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.693980673,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.8893510024614215,
+          "max_symmetric_finite": 6.406673252896617e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.31387402,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.9448553565084956,
+          "max_symmetric_finite": 6.406886098943664e-10,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "g g > h h [noborn=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-li_gg_hh-1/results.json",
+      "role": "control"
+    },
+    "mixed_uux_ga": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.778466091,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.732309173,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.44578,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.219234245631373e-11,
+          "max_symmetric_finite": 2.6096171228837877e-11,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.537504339,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.1603074073742446e-11,
+          "max_symmetric_finite": 2.5801537037536942e-11,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.437883729,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.169326821393193e-11,
+          "max_symmetric_finite": 2.5846634107634013e-11,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.416315696,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.1374582251929095e-11,
+          "max_symmetric_finite": 2.5687291126624382e-11,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "u u~ > g a [virt=QCD QED]",
+      "results": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-mixed_uux_ga-1/results.json",
+      "role": "control"
+    },
+    "qcd_n1_uux_z": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.034017263,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.034312434,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.028151182,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.375751743997572e-13,
+          "max_symmetric_finite": 2.6878758719995086e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.03044944,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.1556154226752629e-13,
+          "max_symmetric_finite": 5.778077113376648e-14,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.017172152,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.370615675452354e-13,
+          "max_symmetric_finite": 2.685307837726898e-13,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.014753414,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 1.0854224858905508e-13,
+          "max_symmetric_finite": 5.427112429453049e-14,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "u u~ > z [virt=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-qcd_n1_uux_z-1/results.json",
+      "role": "main"
+    },
+    "qcd_n2_gg_ttx": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 0.639526755,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 0.547233724,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 0.433777179,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.150028381599888e-12,
+          "max_symmetric_finite": 2.575014190806575e-12,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 0.545234362,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 9.166863183211485e-12,
+          "max_symmetric_finite": 4.58343159162675e-12,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 0.426266048,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.449428933154404e-12,
+          "max_symmetric_finite": 2.7247144665846265e-12,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 0.430484864,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.583162048476477e-12,
+          "max_symmetric_finite": 2.7915810242460312e-12,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "219": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "g g > t t~ [virt=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-qcd_n2_gg_ttx-1/results.json",
+      "role": "main"
+    },
+    "qcd_n3_uux_zgg": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 9.607880515,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 7.805087579,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "211": 100
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 7.263100732,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.61185122112659e-06,
+          "max_symmetric_finite": 2.8059334838039187e-06,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "216": 100
+          },
+          "target_miss_points": [
+            6,
+            18,
+            20,
+            25,
+            26,
+            27,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            41,
+            44,
+            48,
+            52,
+            60,
+            61,
+            64,
+            70,
+            77,
+            79,
+            87,
+            88,
+            91,
+            92,
+            93,
+            100
+          ],
+          "target_misses": 56,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 56,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 8.02695478,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.6119780085219845e-06,
+          "max_symmetric_finite": 2.8059968778573777e-06,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [
+            6,
+            18,
+            20,
+            25,
+            26,
+            27,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            41,
+            44,
+            48,
+            52,
+            60,
+            61,
+            64,
+            70,
+            77,
+            79,
+            87,
+            88,
+            91,
+            92,
+            93,
+            100
+          ],
+          "target_misses": 56,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 56,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 6.710975211,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 5.612469146107487e-06,
+          "max_symmetric_finite": 2.8062424480283216e-06,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "218": 100
+          },
+          "target_miss_points": [
+            6,
+            18,
+            20,
+            25,
+            26,
+            27,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            41,
+            44,
+            48,
+            52,
+            60,
+            61,
+            64,
+            70,
+            77,
+            79,
+            87,
+            88,
+            91,
+            92,
+            93,
+            100
+          ],
+          "target_misses": 56,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 56,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 73.154179393,
+          "dp": 87,
+          "failures": 0,
+          "max_relative_error": 5.61282554230633e-06,
+          "max_symmetric_finite": 2.8064206471279104e-06,
+          "passed": true,
+          "qp": 13,
+          "status": "complete",
+          "status_counts": {
+            "219": 87,
+            "323": 13
+          },
+          "target_miss_points": [
+            6,
+            18,
+            20,
+            25,
+            26,
+            27,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            41,
+            44,
+            48,
+            52,
+            60,
+            61,
+            64,
+            70,
+            77,
+            79,
+            87,
+            88,
+            91,
+            92,
+            93,
+            100
+          ],
+          "target_misses": 56,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 56,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "u u~ > z g g [virt=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-qcd_n3_uux_zgg-1/results.json",
+      "role": "main"
+    },
+    "qcd_n4_uux_zzgg": {
+      "lanes": {
+        "baseline-1": {
+          "cold_seconds": 1183.866103646,
+          "dp": 88,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 12,
+          "status": "complete",
+          "status_counts": {
+            "211": 88,
+            "329": 12
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-1": {
+          "cold_seconds": 1148.398621169,
+          "dp": 88,
+          "failures": 0,
+          "max_relative_error": 0.0,
+          "max_symmetric_finite": 0.0,
+          "passed": true,
+          "qp": 12,
+          "status": "complete",
+          "status_counts": {
+            "211": 88,
+            "329": 12
+          },
+          "target_miss_points": [],
+          "target_misses": 0,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 0,
+            "single": 0
+          }
+        },
+        "candidate-6": {
+          "cold_seconds": 453.136181578,
+          "dp": 97,
+          "failures": 0,
+          "max_relative_error": 8.258362793805673e-07,
+          "max_symmetric_finite": 4.129183101917442e-07,
+          "passed": true,
+          "qp": 3,
+          "status": "complete",
+          "status_counts": {
+            "216": 97,
+            "328": 3
+          },
+          "target_miss_points": [
+            2,
+            11,
+            13,
+            14,
+            16,
+            19,
+            20,
+            21,
+            25,
+            28,
+            31,
+            33,
+            35,
+            36,
+            38,
+            39,
+            43,
+            44,
+            45,
+            49,
+            51,
+            52,
+            54,
+            56,
+            57,
+            58,
+            60,
+            61,
+            66,
+            70,
+            74,
+            75,
+            78,
+            79,
+            82,
+            85,
+            86,
+            87,
+            88,
+            89,
+            91,
+            95,
+            99,
+            100
+          ],
+          "target_misses": 88,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 88,
+            "single": 0
+          }
+        },
+        "candidate-7": {
+          "cold_seconds": 269.805294368,
+          "dp": 100,
+          "failures": 0,
+          "max_relative_error": 8.3018197546771e-07,
+          "max_symmetric_finite": 4.150911600344546e-07,
+          "passed": true,
+          "qp": 0,
+          "status": "complete",
+          "status_counts": {
+            "217": 100
+          },
+          "target_miss_points": [
+            2,
+            11,
+            13,
+            14,
+            16,
+            19,
+            20,
+            21,
+            25,
+            28,
+            31,
+            33,
+            35,
+            36,
+            38,
+            43,
+            44,
+            49,
+            51,
+            54,
+            56,
+            57,
+            58,
+            60,
+            61,
+            66,
+            70,
+            74,
+            75,
+            78,
+            79,
+            82,
+            85,
+            86,
+            88,
+            91,
+            93,
+            95,
+            99,
+            100
+          ],
+          "target_misses": 80,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 80,
+            "single": 0
+          }
+        },
+        "candidate-8": {
+          "cold_seconds": 860.828597016,
+          "dp": 96,
+          "failures": 0,
+          "max_relative_error": 8.258432567588928e-07,
+          "max_symmetric_finite": 4.1292179888378796e-07,
+          "passed": true,
+          "qp": 4,
+          "status": "complete",
+          "status_counts": {
+            "218": 96,
+            "322": 4
+          },
+          "target_miss_points": [
+            2,
+            11,
+            13,
+            14,
+            19,
+            20,
+            21,
+            25,
+            28,
+            31,
+            33,
+            35,
+            36,
+            38,
+            39,
+            43,
+            44,
+            49,
+            51,
+            54,
+            56,
+            57,
+            58,
+            60,
+            61,
+            66,
+            70,
+            74,
+            75,
+            78,
+            79,
+            82,
+            85,
+            86,
+            87,
+            88,
+            91,
+            95,
+            99,
+            100
+          ],
+          "target_misses": 80,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 80,
+            "single": 0
+          }
+        },
+        "candidate-9": {
+          "cold_seconds": 8805.568306148,
+          "dp": 14,
+          "failures": 0,
+          "max_relative_error": 8.258550201832676e-07,
+          "max_symmetric_finite": 4.129276806008328e-07,
+          "passed": true,
+          "qp": 86,
+          "status": "complete",
+          "status_counts": {
+            "219": 14,
+            "323": 86
+          },
+          "target_miss_points": [
+            2,
+            11,
+            13,
+            14,
+            16,
+            19,
+            20,
+            21,
+            25,
+            28,
+            31,
+            33,
+            35,
+            36,
+            38,
+            43,
+            44,
+            49,
+            51,
+            54,
+            56,
+            57,
+            58,
+            60,
+            61,
+            66,
+            70,
+            74,
+            75,
+            78,
+            79,
+            82,
+            85,
+            86,
+            88,
+            91,
+            95,
+            99,
+            100
+          ],
+          "target_misses": 78,
+          "target_misses_by_column": {
+            "born": 0,
+            "double": 0,
+            "finite": 78,
+            "single": 0
+          }
+        }
+      },
+      "model": "loop_sm",
+      "process": "u u~ > z z g g [virt=QCD]",
+      "results": "docs/benchmarkfolder/campaigns/entry-latch-cache-guard-1/experiments/numerical/full100-warmup-qcd_n4_uux_zzgg-1/results.json",
+      "role": "main"
+    }
+  },
+  "predecessor": null,
+  "totals": {
+    "lanes_complete": 65,
+    "lanes_expected": 66,
+    "lanes_failed_3e-6": 0,
+    "lanes_meeting_1e-8": 54
+  }
+}

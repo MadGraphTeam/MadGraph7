@@ -1,0 +1,8 @@
+set automatic_html_opening False
+set auto_update 0
+import model loop_sm
+generate g g > t t~ [virt=QCD]
+generate u u~ > z g g [virt=QCD]
+generate u u~ > z z g g [virt=QCD]
+generate g g > h h [noborn=QCD]
+quit

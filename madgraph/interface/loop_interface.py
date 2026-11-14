@@ -997,7 +997,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
     
     local_installer = ['ninja', 'collier']
     required = ['cuttools', 'iregi']
-    order = ['cuttools', 'iregi', 'ninja', 'collier', 'golem', 'ninjars']
+    order = ['cuttools', 'iregi', 'ninja', 'collier', 'golem', 'ninjars', 'tirust']
     bypassed = ['pjfry']
 
     @property
@@ -1018,6 +1018,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
         self.code = {'ninja': 'install',
                      'collier': 'install',
                      'ninjars': 'off',
+                     'tirust': 'off',
                      'golem': 'off',
                      'cuttools': 'required',
                      'iregi': 'required'}
@@ -1053,6 +1054,9 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
                 self.code['ninja'] =  pjoin(install_dir2, 'ninja','lib')
             if 'ninjars' in self.code and os.path.isfile(pjoin(install_dir1, 'ninjars', 'lib', 'libninjars.a')):
                 self.code['ninjars'] = pjoin(install_dir1, 'ninjars', 'lib')
+            from madgraph.various import tirust_install
+            if tirust_install.is_available(pjoin(install_dir1, 'tirust', 'lib')):
+                self.code['tirust'] = pjoin(install_dir1, 'tirust', 'lib')
         
         # 1. create the question
         question, allowed_answer = self.create_question(first=True)
@@ -1075,6 +1079,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
                      'iregi': ['iregi','(TIR)','[1405.0301]'],
                      'ninja': ['ninja','(OPP)','[1403.1229]'],
                      'ninjars': ['ninjars','(OPP)','[NinjaRS]'],
+                     'tirust': ['tirust','(TIR)','[TIRust]'],
                      'golem': ['golem','(TIR)','[0807.0605]'],
                      'collier': ['collier','(TIR)','[1604.06792]']} 
 
@@ -1193,6 +1198,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
 
     do_ninja = lambda self,line : self.apply_name('ninja', line)
     do_ninjars = lambda self,line : self.apply_name('ninjars', line)
+    do_tirust = lambda self,line : self.apply_name('tirust', line)
     do_collier = lambda self,line : self.apply_name('collier', line)
     do_golem = lambda self,line : self.apply_name('golem', line)
     do_cuttools = lambda self,line : self.apply_name('cuttools', line)
@@ -1214,6 +1220,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
     
     complete_ninja = complete_prog 
     complete_ninjars = complete_prog
+    complete_tirust = complete_prog
     complete_collier = complete_prog
     complete_golem = complete_prog
     complete_cuttools = complete_prog

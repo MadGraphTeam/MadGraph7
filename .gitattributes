@@ -5,6 +5,20 @@
 .pre-commit-config.yaml export-ignore
 .bzrignore export-ignore
 
+# Preserve the frozen report bytes and keep compressed PDF streams out of diffs.
+doc/benchmarkfolder/*.pdf binary
+docs/benchmarkfolder/*.pdf binary
+docs/benchmarkfolder/**/*.pdf binary
+
+# Preserve raw CLI output and generated cards exactly as measured.
+docs/benchmarkfolder/experiments/** -whitespace
+docs/benchmarkfolder/qualification/** -whitespace
+docs/benchmarkfolder/inputs/** -whitespace
+docs/benchmarkfolder/runs/** -whitespace
+
+# Patch context includes significant single-space blank lines.
+vendor/tirust/patches/*.patch -whitespace
+
 # pyamplicol tests and development tooling stay in the repository for its own
 # PyPI releases. The MadGraph7 installer builds the wheel without them.
 pyamplicol/tests/ export-ignore

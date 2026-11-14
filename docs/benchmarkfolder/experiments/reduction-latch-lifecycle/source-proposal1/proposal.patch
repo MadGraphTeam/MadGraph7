@@ -1,0 +1,11 @@
+--- a/madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc
++++ b/madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc
+@@ -846,6 +846,8 @@
+ ENDDO
+ ## }
+ 
++FPE_IN_DP_REDUCTION=.FALSE.
++FPE_IN_QP_REDUCTION=.FALSE.
+ MP_DONE=.FALSE.
+ MP_DONE_ONCE=.FALSE.
+ MP_PS_SET=.FALSE.

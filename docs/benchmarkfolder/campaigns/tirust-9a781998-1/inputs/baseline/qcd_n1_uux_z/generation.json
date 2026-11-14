@@ -1,0 +1,29 @@
+{
+  "campaign_binding": {
+    "id": "tirust-9a781998-1",
+    "manifest_sha256": "bb8b530e57a6fad1dd7f6255213c3274d01ef6aeafbf7c288f9a6a176bec33b6"
+  },
+  "case": {
+    "id": "qcd_n1_uux_z",
+    "model": "loop_sm",
+    "nfinal": 1,
+    "process": "u u~ > z [virt=QCD]",
+    "role": "main"
+  },
+  "command_sha256": "9f4a2de440a720e69d718167a4c4ce736e5f506ecdb016838b0b8f899658701a",
+  "created_utc": "2026-11-13T16:29:18.544172+00:00",
+  "default_chain": "8|6|7|1",
+  "export_environment": {
+    "PYTHONHASHSEED": "0"
+  },
+  "export_environment_binding_version": 1,
+  "parameter_card_sha256": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+  "seconds": 6.304874998051673,
+  "source": "baseline",
+  "source_identity": {
+    "archive_sha256": "c21b0acdd14916a97d2b5c6fbd9b569468ea37f34d8f02e4b3d405675e19853b",
+    "dirty": false,
+    "files_sha256": "274a9ab19bb0bd3a382eeac5680c6aad4bd761093e9c6c8a66078eb3c0002558",
+    "revision": "9228fc58e8f8e48dadc70a6fcfb6617845aaeb1f"
+  }
+}

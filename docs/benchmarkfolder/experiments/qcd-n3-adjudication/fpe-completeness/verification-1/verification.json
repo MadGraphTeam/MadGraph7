@@ -1,0 +1,128 @@
+{
+  "evidence": {
+    "MadLoopParams.dat": "e145689b4e1b9fb5aeb464c9962be726dc1a302711a0a5889cc1a80f9b3558a1",
+    "check_sa.f": "b709caf8c0d1dee8da93b5c1f341b94db9ce9d2107b9565417646e875b1bb7d7",
+    "compilation.json": "14d0dbb554ad7a21a0927d610bb6fd8f79301abe5a88ea41b813c6acb5c7a9fd",
+    "driver-build-plan.json": "d063533a6fb7ee5d02a69146714c1703e2f1b7cdd21d86a625869f2411b021f2",
+    "driver-build-preflight.log": "967c888ae815372c51bd3a8a189778d3ae09146c1cce4dcb9506abd0b1bdfb59",
+    "driver-build.log": "c96e8c575e79109cac1d75f15ba9855449d1f70f88cb82556480ac541ab0bb51",
+    "original-MadLoopParams.dat": "e145689b4e1b9fb5aeb464c9962be726dc1a302711a0a5889cc1a80f9b3558a1",
+    "original-candidate-inputs.json": "8c8f75c7fa9f65e57a8123275e08d4709d6bb4e13a0c4f9b3f78ce95c82a583d",
+    "original-check_sa.f": "99bc61556a1e604736ec9402a5ce3f71d1ddfbcddc7e26f3fde2ba9ec46e71ac",
+    "original-diagnostic-compilation.json": "dfc6fa6fc605cbaee343d31ceae113da8714853246e8ac487893402d79fbdbde",
+    "original-param_card.dat": "5a535b7044777bd87c7088dc14bf9605d165ebae843dbcbde91a02f545c05433",
+    "original-result.json": "5d8b4b6d9005225d8aea9d3e1fbfdef096a844f1f8b298cde3d7cf3f5adf88ae",
+    "points.dat": "499ed6e4c0c2cd977fc1c8777ab8eb790121141f451ffbcb2f08287a3bf499f0",
+    "points.json": "a9b307dd07ab888bae133110f9e360d52f9943ac043385d9d8ef58355790d76f",
+    "raw/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "raw/fpe-calls.dat": "a4e035df681eb59ab4bdff1f184da7096127c0dc16dd19993e5fe43e7fc9e6b1",
+    "raw/timed_status.dat": "47e18f5d3f686e1a8af731bdb46395d77adf47d6f7234cccf705817ebba1adae",
+    "raw/timing.dat": "d5622aa0c8d8ed449a0bb2ab38c6a80acef8c46e916e0a69e301de06e3cb882e",
+    "raw/values.dat": "0e86f1852f96f2823bde47be21729b480dc1b97ed357cceff98bfe0c6eddbaa0",
+    "result.json": "ee8a033a3e9eab6231b89af46fa8b6d1d61ddae1588546abc6f6bfb3d2781683",
+    "run.py": "4160ea18aeb51d8ae9806ad47c32c521cbd2447a3d88d87672d69123a6af2fc1",
+    "specification.json": "67a5ca6588afc3dade4dbc15c2392839f76d4f93278a82bfa182e65f569f2c47",
+    "tirust_benchmark.py": "dfa2c80b8af6758e862d182f9eb8683b436fa1668f920156187c9ceafa6a9d0a",
+    "tirust_benchmark_cohorts.f": "a9e9cf5f35af5d1fdf8aaf1c7ec783c29b56c7a7b1a86378f09bbd060dd0a6f1",
+    "tirust_benchmark_cohorts.py": "bc7aedc4971c7d2241ce80407a9cd32f51da43ea8906b45a51d60aebc6ef7093",
+    "tirust_benchmark_compiler.py": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+    "tirust_benchmark_worker.py": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57",
+    "worker.log": "da7869e638bdc058ea0c7b2a96f2fb989f53caf6268894fadd383162298b9e81"
+  },
+  "flags": {
+    "all_observed_flags_false": true,
+    "calls": [
+      [
+        0,
+        0,
+        1,
+        120,
+        0,
+        0
+      ],
+      [
+        1,
+        1,
+        1,
+        120,
+        0,
+        0
+      ],
+      [
+        1,
+        2,
+        2,
+        120,
+        0,
+        0
+      ],
+      [
+        1,
+        3,
+        3,
+        120,
+        0,
+        0
+      ],
+      [
+        1,
+        4,
+        4,
+        120,
+        0,
+        0
+      ],
+      [
+        2,
+        1,
+        1,
+        120,
+        0,
+        0
+      ],
+      [
+        2,
+        1,
+        2,
+        120,
+        0,
+        0
+      ],
+      [
+        2,
+        1,
+        3,
+        120,
+        0,
+        0
+      ],
+      [
+        2,
+        1,
+        4,
+        120,
+        0,
+        0
+      ]
+    ],
+    "final_qp_flags_false": true,
+    "flagged_calls": []
+  },
+  "original_parser_execution_hashes": "Not retroactively asserted; initial omission retained",
+  "protocols": {
+    "frozen-worker.py": "33c7b986798b468bdd0a5649283ce1ab707d16edc7373e6c8930d134f22d01ee",
+    "instrumentation.py": "57a77d604ff258b7bc9fcde2d66bb3479059f702a80d3c1105ad11cb22f9ee58",
+    "original-adjudication.py": "91cce8394d33656379fe46e34b52fb762c644f9cb6dc17c17c0e526ae42c15c5",
+    "tirust_benchmark.py": "a198d2203585766a960f3a5d70829dbc4b7f92d868d38493262b0c8b122b4ad7",
+    "tirust_benchmark_cohorts.f": "a9e9cf5f35af5d1fdf8aaf1c7ec783c29b56c7a7b1a86378f09bbd060dd0a6f1",
+    "tirust_benchmark_cohorts.py": "bc7aedc4971c7d2241ce80407a9cd32f51da43ea8906b45a51d60aebc6ef7093",
+    "tirust_benchmark_compiler.py": "86dd3a860a39a1421e035dcf6555575addcbed0c99c80211f9f8b348a3e75e46",
+    "tirust_benchmark_worker.py": "71a460579b2cabe8a1485fa0eed406e98988ec019b6c195bd78af55eedf99d57",
+    "tirust_complex_stress.py": "9426f8ada21dc0ee6142b557611576039c98e640a59ed4a82d24962b6ae1bdc0",
+    "verify.py": "3e6e965f00ed01b6865e83bb87cbe62b50f2464b95ae68f1ef26fc5be1a0fe04"
+  },
+  "rows_equal_original": true,
+  "scope": "Independent retained-evidence reparse; no native execution or accuracy certification",
+  "status": "verified",
+  "values_bytes_equal_original": true
+}

@@ -445,7 +445,10 @@ c     Global
 c
       INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
       COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      INTEGER TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      COMMON/TIRUSTSTATS/TIRUST_DP_USAGE,TIRUST_QP_USAGE
       DATA NINJARS_DP_USAGE,NINJARS_QP_USAGE/0,0/
+      DATA TIRUST_DP_USAGE,TIRUST_QP_USAGE/0,0/
       INTEGER U_RETURN_CODES(0:9)
       INTEGER T_RETURN_CODES(0:9)
       INTEGER H_RETURN_CODES(0:9)
@@ -487,6 +490,10 @@ c-----
      &     '</ninjars_dp_usage>'
       write(outUnit,'(A,I0,A)') '<ninjars_qp_usage>',NINJARS_QP_USAGE,
      &     '</ninjars_qp_usage>'
+      write(outUnit,'(A,I0,A)') '<tirust_dp_usage>',TIRUST_DP_USAGE,
+     &     '</tirust_dp_usage>'
+      write(outUnit,'(A,I0,A)') '<tirust_qp_usage>',TIRUST_QP_USAGE,
+     &     '</tirust_qp_usage>'
       write(outUnit,33) '<t_return_code>',T_RETURN_CODES,'</t_return_code>'
       write(outUnit,33) '<h_return_code>',H_RETURN_CODES,'</h_return_code>'
       write(outUnit,*) '<average_time>'//trim(toStr_real(AVG_TIMING))

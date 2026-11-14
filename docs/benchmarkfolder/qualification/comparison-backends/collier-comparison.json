@@ -1,0 +1,20 @@
+{
+  "cases": 8,
+  "components": 455,
+  "maximum_relative_difference": 4.859694008141881e-15,
+  "worst_component": {
+    "case": "complex-mass-bubble-r3",
+    "powers": [
+      0,
+      0,
+      2,
+      1
+    ],
+    "part": "uv"
+  },
+  "historical_reference": "vendor/ninjars/tests/poles/collier_reference.json",
+  "historical_sha256": "18f6694dd5af873d847e39bd299957454c698aeb31f3bf4b2389593bc44d3970",
+  "measured_reference": "collier-reference.json",
+  "measured_sha256": "30fb10c60887b510e3d976fe8f715fda4ba6cb889cab257322d5549c1ce677d5",
+  "static_shared_identical": true
+}

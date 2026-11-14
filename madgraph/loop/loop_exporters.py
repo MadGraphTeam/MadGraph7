@@ -41,6 +41,7 @@ import madgraph.iolibs.group_subprocs as group_subprocs
 import madgraph.various.banner as banner_mod
 import madgraph.various.misc as misc
 import madgraph.various.ninjars_install as ninjars_install
+import madgraph.various.tirust_install as tirust_install
 import madgraph.various.q_polynomial as q_polynomial
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.gen_infohtml as gen_infohtml
@@ -98,6 +99,7 @@ class LoopExporterFortran(object):
 
     include_names    = {'ninja' : 'mninja.mod',
                         'ninjars' : 'mninjars.mod',
+                        'tirust' : 'mtirust.mod',
                         'golem' : 'generic_function_1p.mod',
                         'samurai':'msamurai.mod',
                         'collier': 'collier.mod'}
@@ -538,7 +540,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         replace_dict['tir_include'] = ' '.join(tir_include)
         replace_dict['rpaths_libs'] = ''
         for lib in tir_libs:
-            if lib.endswith('libninjars.a'):
+            if lib.endswith(('libninjars.a', 'libtirust.a')):
                 continue
             replace_dict['rpaths_libs'] += '-Wl,-rpath,%s '%os.path.dirname(lib)    
 
@@ -1938,7 +1940,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
     # make sure that ninja appears first in the list of -L because 
     # it is the tool for which the user is most susceptible of 
     # using a standalone version independent of gosam_contrib
-    all_tir=['pjfry','iregi','ninja','golem','samurai','collier','ninjars']
+    all_tir=['pjfry','iregi','ninja','golem','samurai','collier','ninjars','tirust']
     
     def __init__(self, dir_path = "", opt=None):
         """Initiate the LoopProcessOptimizedExporterFortranSA with directory 
@@ -1949,7 +1951,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
 
         # TIR available ones
         self.tir_available_dict={'pjfry':False,'iregi':True,'golem':True,
-                                 'samurai':True,'ninja':True,'collier':True,'ninjars':True}
+                                 'samurai':True,'ninja':True,'collier':True,'ninjars':True,'tirust':True}
 
         for tir in self.all_tir:
             tir_dir="%s_dir"%tir
@@ -1957,7 +1959,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 # Make sure to defer the 'local path' to the current MadGraph7 root.
                 tir_path = self.opt[tir_dir].strip()
                 if tir_path.startswith('.') or (
-                        tir == 'ninjars' and not os.path.isabs(tir_path)):
+                        tir in ('ninjars', 'tirust') and not os.path.isabs(tir_path)):
                     tir_path = os.path.abspath(pjoin(MG5DIR,tir_path))
                 setattr(self,tir_dir,tir_path)
             else:
@@ -1989,10 +1991,19 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             self.tir_available_dict.get('ninjars', False) and
             ninjars_install.supports_quad_precision(getattr(self, 'ninjars_dir', '')))
 
+        context['tirust_supports_quad_prec'] = (
+            self.tir_available_dict.get('tirust', False) and
+            tirust_install.supports_quad_precision(getattr(self, 'tirust_dir', '')))
+
+        context['tirust_dp_route_statistics_available'] = (
+            self.tir_available_dict.get('tirust', False) and
+            tirust_install.supports_dp_route_statistics(
+                getattr(self, 'tirust_dir', '')))
+
         for tir in self.all_tir:
             context['%s_available'%tir]=self.tir_available_dict[tir]
             # safety check
-            if tir not in ['golem','pjfry','iregi','samurai','ninja','collier','ninjars']:
+            if tir not in ['golem','pjfry','iregi','samurai','ninja','collier','ninjars','tirust']:
                 raise MadGraph5Error("%s was not a TIR currently interfaced."%tir_name)
 
         return context
@@ -2013,23 +2024,33 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             tir_name=tir
             libpath = self.link_TIR(os.path.join(self.dir_path, 'lib'),
                                               libpath,libname,tir_name=tir_name)
-            if tir == 'ninjars':
-                self.ninjars_dir = libpath
+            if tir in ('ninjars', 'tirust'):
+                setattr(self, tir + '_dir', libpath)
             if libpath != "":
-                if tir in ['ninja','pjfry','golem','samurai','collier','ninjars']:
+                if tir in ['ninja','pjfry','golem','samurai','collier','ninjars','tirust']:
                     # It is cleaner to use the original location of the libraries
-                    copied_ninjars = tir == 'ninjars' and self.dependencies == 'internal'
+                    copied_ninjars = tir in ('ninjars', 'tirust') and self.dependencies == 'internal'
                     if tir == 'ninjars':
                         link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+                    if tir == 'tirust':
+                        link_tir_libs.extend(tirust_install.pre_link_flags(libpath))
                     if copied_ninjars:
-                        link_tir_libs.append('-L$(LIBDIR) -lninjars')
-                        tir_libs.append('$(LIBDIR)libninjars.a')
+                        link_tir_libs.append('-L$(LIBDIR) -l' + tir)
+                        tir_libs.append('$(LIBDIR)lib' + tir + '.a')
                     else:
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
                         tir_libs.append('%s/lib%s.%s' % (
-                            libpath, tir, 'a' if tir == 'ninjars' else '$(libext)'))
+                            libpath, tir, 'a' if tir in ('ninjars', 'tirust') else '$(libext)'))
                     if tir == 'ninjars':
                         link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
+                    if tir == 'tirust':
+                        link_tir_libs.extend(tirust_install.native_link_flags(libpath))
+                        if copied_ninjars:
+                            # Executables live in SubProcesses or its process
+                            # directories; shared process libraries live in lib.
+                            link_tir_libs.append("-Wl,-rpath,'$$ORIGIN:$$ORIGIN/../lib:$$ORIGIN/../../lib:$$ORIGIN/../../../lib'")
+                        else:
+                            link_tir_libs.append('-Wl,-rpath,%s' % libpath)
                     # For Ninja, we must also link against OneLoop.
                     if tir in ['ninja']:
                         if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 
@@ -2038,14 +2059,14 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
 "The OneLOop library 'libavh_olo.(a|dylib|so)' could no be found in path '%s'. Please place a symlink to it there."%libpath)
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,'avh_olo'))
                         tir_libs.append('%s/lib%s.$(libext)'%(libpath,'avh_olo'))
-                    if tir in ['ninja','golem', 'samurai','collier','ninjars']:
+                    if tir in ['ninja','golem', 'samurai','collier','ninjars','tirust']:
                         trgt_path = pjoin(os.path.dirname(libpath),'include')
                         if os.path.isdir(trgt_path):
                             to_include = misc.find_includes_path(trgt_path,
                                                         self.include_names[tir])
                         else:
                             to_include = None
-                        if to_include is None and tir == 'ninjars':
+                        if to_include is None and tir in ('ninjars', 'tirust'):
                             to_include = misc.find_includes_path(
                                 libpath, self.include_names[tir])
                         # Special possible location for collier
@@ -2064,7 +2085,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                         # (such as what is done with the Sherpa interface), we
                         # place here an easy handle on the golem includes
                         name_map = {'golem':'golem95','samurai':'samurai',
-                                    'ninja':'ninja','collier':'collier','ninjars':'ninjars'}
+                                    'ninja':'ninja','collier':'collier','ninjars':'ninjars','tirust':'tirust'}
                         if not copied_ninjars:
                             ln(to_include, starting_dir=pjoin(self.dir_path,'lib'),
                                        name='%s_include'%name_map[tir],abspath=True)
@@ -2116,7 +2137,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         if tir_name == 'pjfry':
             self.tir_available_dict['pjfry'] = False
             return ""
-        if tir_name in ['golem','samurai','ninja','collier','ninjars']:
+        if tir_name in ['golem','samurai','ninja','collier','ninjars','tirust']:
             # not self-contained libraries
             if (not isinstance(libpath,str)) or (not os.path.exists(libpath)) \
             or (not os.path.isfile(pjoin(libpath,libname))):
@@ -2134,6 +2155,11 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                                    "run 'install ninjars --update'. It will not be available.", libpath)
                     self.tir_available_dict[tir_name] = False
                     return ""
+            if tir_name == 'tirust' and not tirust_install.is_available(libpath):
+                logger.warning("TIRust installation at %s is unusable; run "
+                               "'install tirust --update'. It will not be available.", libpath)
+                self.tir_available_dict[tir_name] = False
+                return ""
             # Check the version of the tool, if the library was found
             if tir_name in ['ninja','samurai'] and self.tir_available_dict[tir_name]:
                 # Make sure the librry was indeed installed in the source directory
@@ -2160,28 +2186,16 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 return ""
        
         if self.dependencies=='internal':
-            if tir_name == 'ninjars':
+            if tir_name in ('ninjars', 'tirust'):
                 os.makedirs(targetPath, exist_ok=True)
-                module_dir = misc.find_includes_path(libpath, 'mninjars.mod')
-                if module_dir is None:
-                    module_dir = misc.find_includes_path(
-                        pjoin(libpath, os.pardir, 'include'), 'mninjars.mod')
-                sources = [pjoin(libpath, 'libninjars.a'),
-                           pjoin(module_dir, 'mninjars.mod'),
-                           pjoin(libpath, ninjars_install.CONFIG_NAME),
-                           pjoin(libpath, 'ninjars-native-libs.txt'),
-                           pjoin(libpath, 'ninjars-link-before.txt')]
-                header = pjoin(libpath, os.pardir, 'include', 'ninjars.h')
-                if os.path.isfile(header):
-                    sources.append(header)
-                module_source = pjoin(libpath, os.pardir, 'include', 'mninjars.f90')
-                if os.path.isfile(module_source):
-                    sources.append(module_source)
-                for source in sources:
-                    if os.path.isfile(source):
-                        destination = pjoin(targetPath, os.path.basename(source))
-                        if os.path.abspath(source) != os.path.abspath(destination):
-                            shutil.copy2(source, destination)
+                installer = ninjars_install if tir_name == 'ninjars' else tirust_install
+                # Include the installed ABI, runtime and its complete dependency
+                # notices/provenance so internal output stays self-contained.
+                for artifact in installer.export_files(libpath):
+                    source = artifact if os.path.isabs(artifact) else pjoin(libpath, artifact)
+                    destination = pjoin(targetPath, os.path.basename(source))
+                    if os.path.abspath(source) != os.path.abspath(destination):
+                        shutil.copy2(source, destination)
                 self.tir_available_dict[tir_name] = True
                 return os.path.abspath(targetPath)
             if tir_name in ['pjfry','golem','samurai','ninja','collier']:
@@ -2245,7 +2259,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                     self.tir_available_dict[tir_name]=False
                     return ""
             # We link the tools below directly to the lib directory of the output 
-            if not tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars']:
+            if not tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars','tirust']:
                 ln(os.path.join(libpath,libname),targetPath,abspath=True)
 
         elif self.dependencies=='environment_paths':
@@ -2256,7 +2270,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 logger.info('MadGraph7 is using %s installation found at %s.'%\
                                                           (tir_name,newlibpath)) 
                 # We link the tools below directly to directly where the library is detected
-                if not tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars']:
+                if not tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars','tirust']:
                     ln(newlibpath,targetPath,abspath=True)
                 self.tir_available_dict[tir_name]=True
                 return os.path.dirname(newlibpath)
@@ -2289,6 +2303,9 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         super(LoopProcessOptimizedExporterFortranSA,self).finalize(matrix_element,
                                              cmdhistory, MG5options, outputflag)
         self.write_global_specs(matrix_element)
+        # Model, ALOHA and shared include sources now exist. Until this final
+        # rendered proof succeeds, every DP batch retains the ordinary call.
+        self.finalize_dp_terminal_updates()
     
 
     
@@ -2377,6 +2394,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             self.write_COLLIER_interface(writers.FortranWriter(filename),
                                        matrix_element)
 
+        if self.tir_available_dict.get('tirust', False):
+            self.write_TIRUST_interface(writers.FortranWriter('TIRUST_interface.f'),
+                                        matrix_element)
+
         filename = 'loop_num.f'
         self.write_loop_num(writers.FortranWriter(filename),\
                                            matrix_element,OptimizedFortranModel)
@@ -2415,7 +2436,139 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             self.write_mp_compute_loop_coefs(writers.FortranWriter('mp_compute_loop_coefs.f'),
                 matrix_element, OptimizedFortranModel, _terminal=False)
 
+        dp_terminal = self.get_dp_terminal_wavefunctions(matrix_element)
+        if dp_terminal:
+            pending = getattr(self, '_dp_terminal_pending', {})
+            pending[os.path.abspath('.')] = (
+                matrix_element.rep_dict['proc_prefix'], dp_terminal)
+            self._dp_terminal_pending = pending
+
         return calls
+
+    def get_dp_terminal_wavefunctions(self, matrix_element):
+        """Select the qualified standalone DP diagonal rank/shape pairs."""
+        if (type(self) is not LoopProcessOptimizedExporterFortranSA or
+                self.opt.get('vector_size') or
+                self.get_context(matrix_element)['MadEventOutput'] or
+                not matrix_element.get('processes')[0].get('has_born') or
+                matrix_element.rep_dict.get('max_lwf_size') != 4 or
+                len(matrix_element.rep_dict['proc_prefix']+'DP_TERMINAL_WL_1_1') > 63):
+            return {}
+        terminal = helas_call_writers.FortranUFOHelasCallWriterOptimized.\
+            get_terminal_wavefunctions(matrix_element)
+        rank = matrix_element.get_max_loop_rank()
+        vertex_rank = matrix_element.get_max_loop_vertex_rank()
+        return {number: info for number, info in terminal.items()
+                if info['vertex_rank'] == 1 and
+                (info['loop_mother_rank'] == 1 or
+                 (info['loop_mother_rank'] in (2, 3) and vertex_rank == 1 and
+                  info['loop_mother_rank'] + 1 <= rank <= 6)) and
+                info['lcut_size'] == info['in_size'] == info['out_size'] == 4}
+
+    @staticmethod
+    def prepare_dp_terminal_batch(source, prefix, expected):
+        """Propose exact fixed-form call replacements, leaving other bytes intact.
+
+        This is only a proposal: the independent full-source validator must
+        accept all consumers and aliases before these private calls survive.
+        """
+        if (not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*|', prefix) or
+                'WL_ENTRY_INEXACT' in source.upper()):
+            raise ValueError('Unknown DP terminal batch declaration')
+        wanted = {}
+        for target, info in expected.items():
+            if (info['loop_mother_rank'] not in (1, 2, 3) or info['vertex_rank'] != 1 or
+                    any(info[key] != 4 for key in ('lcut_size', 'in_size', 'out_size'))):
+                raise ValueError('Unsupported DP terminal shape')
+            call = ('CALL '+prefix+'UPDATE_WL_{loop_mother_rank}_{vertex_rank}'
+                    '(WL(1,0,1,{loop_mother_number}),'
+                    '4,COEFS,4,4,WL(1,0,1,{out}))').format(**info)
+            wanted[re.sub(r'\s+', '', call).upper()] = target
+        physical = source.splitlines(True)
+        blocks = []
+        for index, raw in enumerate(physical):
+            if not raw.strip() or raw[0] in 'cC*!':
+                continue
+            if len(raw.rstrip('\n')) > 132 or len(raw) < 6 or '\t' in raw[:6]:
+                raise ValueError('Unknown DP fixed-form statement')
+            text = re.sub(r'\s+', '', raw[6:].strip()).upper()
+            if raw[5] not in ' 0':
+                if not blocks:
+                    raise ValueError('Orphan DP continuation')
+                blocks[-1][1] = index+1
+                blocks[-1][2] += text
+            else:
+                blocks.append([index, index+1, text])
+
+        def fixed(statement):
+            return '      '+statement[:66]+'\n'+''.join(
+                '     $'+statement[i:i+66]+'\n' for i in range(66, len(statement), 66))
+
+        replacements, found = [], set()
+        for start, end, text in blocks:
+            if text not in wanted:
+                continue
+            target = wanted[text]
+            if target in found or physical[start][:5].strip():
+                raise ValueError('Duplicate or labeled DP terminal producer')
+            if any(line[0] in 'cC*!' for line in physical[start:end]):
+                raise ValueError('Comment inside DP terminal call')
+            found.add(target)
+            private = text.replace('CALL', 'CALL ', 1).replace(
+                'UPDATE_WL_', 'DP_TERMINAL_WL_', 1)[:-1]+',WL_ENTRY_INEXACT)'
+            replacements.append((start, end,
+                fixed('CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)')+fixed(private)))
+        if not found:
+            return source, found
+        for start, end, replacement in reversed(replacements):
+            physical[start:end] = [replacement]
+        candidate = ''.join(physical)
+        pattern = r'(?mi)^ {6}IMPLICIT\s+NONE[ \t]*\n'
+        insertion = (fixed('USE, INTRINSIC :: IEEE_EXCEPTIONS, ONLY: IEEE_GET_FLAG,IEEE_INEXACT')+
+                     '      IMPLICIT NONE\n      LOGICAL WL_ENTRY_INEXACT\n')
+        candidate, count = re.subn(pattern, lambda _: insertion, candidate)
+        if count != 1:
+            raise ValueError('Unknown DP terminal batch scope')
+        return candidate, found
+
+    def finalize_dp_terminal_updates(self):
+        """Promote only complete rendered proofs; otherwise restore dense bytes."""
+        pending = getattr(self, '_dp_terminal_pending', {})
+        self._dp_terminal_pending = {}
+        for directory, (prefix, expected) in sorted(pending.items()):
+            original, proposals, selected = {}, {}, set()
+            accepted = False
+            try:
+                from madgraph.loop.dp_terminal_proof import validate_dp_terminal_wavefunctions
+                if os.path.realpath(directory) != os.path.abspath(directory):
+                    raise ValueError('Aliased DP export directory')
+                for filename in sorted(glob.glob(pjoin(directory, 'coef_construction_*.f'))):
+                    if os.path.islink(filename) or not stat.S_ISREG(os.stat(filename).st_mode):
+                        raise ValueError('Aliased or nonregular DP batch')
+                    with open(filename, 'rb') as stream:
+                        source_bytes = stream.read()
+                    source = source_bytes.decode('utf-8')
+                    candidate, found = self.prepare_dp_terminal_batch(source, prefix, expected)
+                    if selected.intersection(found):
+                        raise ValueError('Repeated DP terminal producer across batches')
+                    selected.update(found)
+                    if found:
+                        original[filename], proposals[filename] = source_bytes, candidate.encode('utf-8')
+                if selected != set(expected):
+                    raise ValueError('Not every DP terminal producer was recognized')
+                for filename, source in proposals.items():
+                    with open(filename, 'wb') as stream:
+                        stream.write(source)
+                accepted = validate_dp_terminal_wavefunctions(directory, prefix, expected)
+            except (ImportError, OSError, ValueError, KeyError, TypeError):
+                accepted = False
+            finally:
+                if not accepted:
+                    for filename, source in original.items():
+                        with open(filename, 'wb') as stream:
+                            stream.write(source)
+            if not accepted:
+                logger.debug('Keeping full DP updaters: generated terminal proof unavailable')
 
     def set_optimized_output_specific_replace_dict_entries(self, matrix_element):
         """ Specify the entries of the replacement dictionary which are specific
@@ -2521,6 +2674,33 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             writer.writelines(file,context=self.get_context(matrix_element))
         else:
             return file
+
+    def write_TIRUST_interface(self, writer, matrix_element):
+        """Emit the DP/QP tensor adapters, static permutation and plan registry."""
+        replace_dict = copy.copy(matrix_element.rep_dict)
+        replace_dict['include_vector'] = (
+            "include '../../Source/vector.inc'" if self.opt['vector_size'] else '')
+        generator = q_polynomial.FortranPolynomialRoutines(replace_dict['maxrank'])
+        permutation = generator.get_TIRUST_mapping()
+        replace_dict['tirust_coefmap'] = '\n'.join(
+            'DATA (TIRUST_MAP(I),I=%d,%d)/%s/' %
+            (start, min(start + 9, len(permutation) - 1),
+             ','.join(str(value) for value in permutation[start:start + 10]))
+            for start in range(0, len(permutation), 10))
+        plans = sorted(set((amp.get_call_key()[1],
+                            amp.get_analytic_info('wavefunction_rank'))
+                           for diagram in matrix_element.get_loop_diagrams()
+                           for amp in diagram.get_loop_amplitudes()))
+        replace_dict['tirust_plan_registration'] = '\n'.join(
+            '      CALL TIRUST_REGISTER_PLAN(%d,%d,STATUS)\n'
+            '      IF(STATUS.NE.TIRUST_SUCCESS) RETURN' % pair
+            for pair in plans if 1 <= pair[0] <= 6 and 0 <= pair[1] <= 6)
+        with open(os.path.join(self.template_dir, 'TIRUST_interface.inc')) as stream:
+            source = stream.read() % replace_dict
+        if writer:
+            writer.writelines(source, context=self.get_context(matrix_element))
+        else:
+            return source
 
     def write_COLLIER_interface(self, writer, matrix_element):
         """ Create the file COLLIER_interface.f"""
@@ -2716,6 +2896,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 
         terminal = helas_call_writers.FortranUFOHelasCallWriterOptimized.\
             get_terminal_wavefunctions(matrix_element)
+        dp_terminal = self.get_dp_terminal_wavefunctions(matrix_element)
+        for left, right in sorted(set((item['loop_mother_rank'], item['vertex_rank'])
+                                      for item in dp_terminal.values())):
+            subroutines.append(poly_writer.write_dp_terminal_wl_updater(left, right))
         for left, right in sorted(set((item['loop_mother_rank'], item['vertex_rank'])
                                       for item in terminal.values())):
             if left == right == 1 or left == 0 or right == 0:
@@ -3336,7 +3520,7 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
         looplibs_av=['.TRUE.']
         # one should be careful about the order in the following as it must match
         # the ordering in MadLoopParamsCard.
-        for tir_lib in ['pjfry','iregi','golem','samurai','ninja','collier','ninjars']:
+        for tir_lib in ['pjfry','iregi','golem','samurai','ninja','collier','ninjars','tirust']:
             looplibs_av.append('.TRUE.' if tir_lib in self.all_tir and \
                                 self.tir_available_dict[tir_lib] else '.FALSE.')
         replace_dict['data_looplibs_av']=','.join(looplibs_av)

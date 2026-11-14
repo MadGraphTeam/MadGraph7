@@ -1,0 +1,499 @@
+{
+  "campaign": "tirust-9a781998-1",
+  "cases": {
+    "ew_n1_udx_wp": {
+      "cache-off_identical": true,
+      "counts": {
+        "dp_dd": 0,
+        "dp_mpfr": 0,
+        "dp_native": 100,
+        "failed": 0,
+        "qp": 0
+      },
+      "failed_points": [],
+      "numerical_lane_qp": 0,
+      "numerical_lane_status_agreement": 100,
+      "points": 100,
+      "qp_points": [],
+      "route_totals": {
+        "check": [
+          600,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "primary": [
+          600,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "small-budget_identical": true,
+      "status": "complete"
+    },
+    "ew_n2_epem_mupmum": {
+      "cache-off_identical": true,
+      "counts": {
+        "dp_dd": 0,
+        "dp_mpfr": 0,
+        "dp_native": 100,
+        "failed": 0,
+        "qp": 0
+      },
+      "failed_points": [],
+      "numerical_lane_qp": 0,
+      "numerical_lane_status_agreement": 100,
+      "points": 100,
+      "qp_points": [],
+      "route_totals": {
+        "check": [
+          2600,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "primary": [
+          2500,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "small-budget_identical": true,
+      "status": "complete"
+    },
+    "ew_n3_epem_ttxa": {
+      "cache-off_identical": true,
+      "counts": {
+        "dp_dd": 0,
+        "dp_mpfr": 0,
+        "dp_native": 100,
+        "failed": 0,
+        "qp": 0
+      },
+      "failed_points": [],
+      "numerical_lane_qp": 0,
+      "numerical_lane_status_agreement": 100,
+      "points": 100,
+      "qp_points": [],
+      "route_totals": {
+        "check": [
+          19990,
+          10,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "primary": [
+          18620,
+          15,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "small-budget_identical": true,
+      "status": "complete"
+    },
+    "ew_n4_epem_mupmumaa": {
+      "cache-off_identical": true,
+      "counts": {
+        "dp_dd": 58,
+        "dp_mpfr": 1,
+        "dp_native": 40,
+        "failed": 0,
+        "qp": 1
+      },
+      "failed_points": [],
+      "numerical_lane_qp": 1,
+      "numerical_lane_status_agreement": 100,
+      "points": 100,
+      "qp_points": [
+        87
+      ],
+      "route_totals": {
+        "check": [
+          118444,
+          2568,
+          786,
+          2,
+          0,
+          0,
+          0,
+          786,
+          2,
+          0
+        ],
+        "primary": [
+          102644,
+          2091,
+          698,
+          0,
+          0,
+          0,
+          0,
+          698,
+          0,
+          0
+        ]
+      },
+      "small-budget_identical": true,
+      "status": "complete"
+    },
+    "li_gg_h": {
+      "cache-off_identical": true,
+      "counts": {
+        "dp_dd": 0,
+        "dp_mpfr": 0,
+        "dp_native": 100,
+        "failed": 0,
+        "qp": 0
+      },
+      "failed_points": [],
+      "numerical_lane_qp": 0,
+      "numerical_lane_status_agreement": 100,
+      "points": 100,
+      "qp_points": [],
+      "route_totals": {
+        "check": [
+          400,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "primary": [
+          200,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "small-budget_identical": true,
+      "status": "complete"
+    },
+    "li_gg_hh": {
+      "cache-off_identical": true,
+      "counts": {
+        "dp_dd": 0,
+        "dp_mpfr": 0,
+        "dp_native": 100,
+        "failed": 0,
+        "qp": 0
+      },
+      "failed_points": [],
+      "numerical_lane_qp": 0,
+      "numerical_lane_status_agreement": 100,
+      "points": 100,
+      "qp_points": [],
+      "route_totals": {
+        "check": [
+          1600,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "primary": [
+          800,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "small-budget_identical": true,
+      "status": "complete"
+    },
+    "mixed_uux_ga": {
+      "cache-off_identical": true,
+      "counts": {
+        "dp_dd": 0,
+        "dp_mpfr": 0,
+        "dp_native": 100,
+        "failed": 0,
+        "qp": 0
+      },
+      "failed_points": [],
+      "numerical_lane_qp": 0,
+      "numerical_lane_status_agreement": 100,
+      "points": 100,
+      "qp_points": [],
+      "route_totals": {
+        "check": [
+          2800,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "primary": [
+          2800,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "small-budget_identical": true,
+      "status": "complete"
+    },
+    "qcd_n1_uux_z": {
+      "cache-off_identical": true,
+      "counts": {
+        "dp_dd": 0,
+        "dp_mpfr": 0,
+        "dp_native": 100,
+        "failed": 0,
+        "qp": 0
+      },
+      "failed_points": [],
+      "numerical_lane_qp": 0,
+      "numerical_lane_status_agreement": 100,
+      "points": 100,
+      "qp_points": [],
+      "route_totals": {
+        "check": [
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "primary": [
+          100,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "small-budget_identical": true,
+      "status": "complete"
+    },
+    "qcd_n2_gg_ttx": {
+      "cache-off_identical": true,
+      "counts": {
+        "dp_dd": 0,
+        "dp_mpfr": 0,
+        "dp_native": 100,
+        "failed": 0,
+        "qp": 0
+      },
+      "failed_points": [],
+      "numerical_lane_qp": 0,
+      "numerical_lane_status_agreement": 100,
+      "points": 100,
+      "qp_points": [],
+      "route_totals": {
+        "check": [
+          2800,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "primary": [
+          2800,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "small-budget_identical": true,
+      "status": "complete"
+    },
+    "qcd_n3_uux_zgg": {
+      "cache-off_identical": true,
+      "counts": {
+        "dp_dd": 13,
+        "dp_mpfr": 0,
+        "dp_native": 87,
+        "failed": 0,
+        "qp": 0
+      },
+      "failed_points": [],
+      "numerical_lane_qp": 0,
+      "numerical_lane_status_agreement": 100,
+      "points": 100,
+      "qp_points": [],
+      "route_totals": {
+        "check": [
+          11381,
+          154,
+          65,
+          0,
+          0,
+          0,
+          0,
+          65,
+          0,
+          0
+        ],
+        "primary": [
+          9958,
+          166,
+          69,
+          0,
+          0,
+          0,
+          0,
+          69,
+          0,
+          0
+        ]
+      },
+      "small-budget_identical": true,
+      "status": "complete"
+    },
+    "qcd_n4_uux_zzgg": {
+      "cache-off_identical": true,
+      "counts": {
+        "dp_dd": 71,
+        "dp_mpfr": 15,
+        "dp_native": 14,
+        "failed": 0,
+        "qp": 0
+      },
+      "failed_points": [],
+      "numerical_lane_qp": 0,
+      "numerical_lane_status_agreement": 100,
+      "points": 100,
+      "qp_points": [],
+      "route_totals": {
+        "check": [
+          66269,
+          5922,
+          2243,
+          66,
+          0,
+          0,
+          0,
+          2281,
+          66,
+          0
+        ],
+        "primary": [
+          52018,
+          5308,
+          2147,
+          57,
+          0,
+          0,
+          0,
+          2172,
+          57,
+          0
+        ]
+      },
+      "small-budget_identical": true,
+      "status": "complete"
+    }
+  },
+  "classes": [
+    "dp_native",
+    "dp_dd",
+    "dp_mpfr",
+    "qp",
+    "failed"
+  ],
+  "route_counter_order": [
+    "Direct",
+    "MethodChoice",
+    "Tier106",
+    "Tier256",
+    "Tier512",
+    "Refused",
+    "unreported",
+    "attempted106",
+    "attempted256",
+    "attempted512"
+  ]
+}

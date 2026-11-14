@@ -1,0 +1,41 @@
+  
+------------------------------------------------------------------------
+|              You are using CutTools - Version 1.9.3                  |
+|              Authors: G. Ossola, C. Papadopoulos, R. Pittau          |
+|              Published in JHEP 0803:042,2008                         |
+|              http://www.ugr.es/~pittau/CutTools                      |
+|                                                                      |
+|              Compiler with  34  significant digits detetected        |
+ ---------------------------------------------------------------------- 
+   
+########################################################################
+#                                                                      #
+#                      You are using OneLOop-3.6                       #
+#                                                                      #
+# for the evaluation of 1-loop scalar 1-, 2-, 3- and 4-point functions #
+#                                                                      #
+# author: Andreas van Hameren <hamerenREMOVETHIS@ifj.edu.pl>           #
+#   date: 18-02-2015                                                   #
+#                                                                      #
+# Please cite                                                          #
+#    A. van Hameren,                                                   #
+#      Comput.Phys.Commun. 182 (2011) 2427-2438, arXiv:1007.4716       #
+#    A. van Hameren, C.G. Papadopoulos and R. Pittau,                  #
+#      JHEP 0909:106,2009, arXiv:0903.4665                             #
+# in publications with results obtained with the help of this program. #
+#                                                                      #
+########################################################################
+                
+  Complete Amplitude (without r2):     
+                
+                
+  finite part           amp(0)=               (224441070.98353791,118277568.35956860)
+  coeff of 1/eps   pole amp(1)=              (37677244.127266824,-171233190.00794649)
+  coeff of 1/eps^2 pole amp(2)=        (-54505221.766277909,1.54244000124960721E-007)
+                         ampcc=               (763872484.96565175,118277568.35540998)
+                            R1=        (-539431413.98211384,4.15862011129806627E-003)
+                        stable= T
+                
+ n_tot =   1.0000000000000000     
+ n_mp  =   0.0000000000000000     
+ n_unst=   0.0000000000000000     

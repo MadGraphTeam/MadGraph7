@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/consumer"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+  "returncode": 0,
+  "stdout": " PASS CALLER CREATE MERGE\n",
+  "stderr": "",
+  "elapsed": 0.006692647933959961
+}

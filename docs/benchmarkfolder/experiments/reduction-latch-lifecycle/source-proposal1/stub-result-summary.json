@@ -1,0 +1,64 @@
+{
+  "adjudication": {
+    "claims": [
+      "original sticky defect reproduced",
+      "first-call failure retained",
+      "healthy parity retained",
+      "DP/QP independent-call reset",
+      "within-call groups and jumps retain failure",
+      "automatic DP-to-QP rescue and terminal failures retained"
+    ],
+    "fresh_process_cases": 32,
+    "passed": true,
+    "scope": "Compiled source-bound software-latch stubs only; no complete host, physical amplitude, reducer, accuracy or performance qualification."
+  },
+  "all_command_returncodes_zero": true,
+  "caps": {
+    "compiler_commands": 4,
+    "compiler_seconds_each": 30,
+    "stub_executions": 32,
+    "stub_seconds_each": 5,
+    "total_seconds": 300
+  },
+  "command_counts": {
+    "compiler": 4,
+    "stub": 32
+  },
+  "compiler": {
+    "invoked": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "resolved": "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "sha256": "30c6495dcb18cc324629fc230302d9cd8d81143f0ca1635d752b3f8552d48cae"
+  },
+  "elapsed_seconds_including_cleanup": 0.5922214961610734,
+  "fragment_sha256": {
+    "before": {
+      "automatic_policy": "702273b7a33b5b70c2b6e7606723c285277e44862f1ad0fbfe3b07dc477e9499",
+      "call_initialization": "ef8dac63d1c2fb91d1f02d75c4ad047714da27f08f963a3981cfae72077f57c9",
+      "latch_common": "ae09002f1d3702f55a40046e26346e6b57b25c73988fb8e3c0df29e92adb3bd4",
+      "public_wrapper": "4776b36a366b0c5dfc1c99af55f751c1736418a3411c4bb106f602e807a12bce"
+    },
+    "candidate": {
+      "automatic_policy": "702273b7a33b5b70c2b6e7606723c285277e44862f1ad0fbfe3b07dc477e9499",
+      "call_initialization": "57d73553bc7ff9fcde77a4f08994e6bcd27cb0e218e8f6287c0e5c52fb591596",
+      "latch_common": "ae09002f1d3702f55a40046e26346e6b57b25c73988fb8e3c0df29e92adb3bd4",
+      "public_wrapper": "4776b36a366b0c5dfc1c99af55f751c1736418a3411c4bb106f602e807a12bce"
+    }
+  },
+  "full_receipt": "/tmp/reduction-latch-stub-source-proposal1-run2.json",
+  "full_receipt_sha256": "532251b60959393c24352772e181411cf395491a82d22775394d0acb4e56f3ed",
+  "prior_failed_compiler_attempts": 1,
+  "prior_stub_executions": 0,
+  "public_calls": 76,
+  "real_sm_or_reducer_executions": 0,
+  "schema": "madloop-reduction-latch-stub-summary-v1",
+  "scope": "Compiled source-bound software-latch stubs only; no complete host, physical amplitude, reducer, accuracy or performance qualification.",
+  "source_sha256": {
+    "stub_check.py": "c973c9b316d9bfd28cdaa5c405f8a68a7970bcc09bbbc891bdbc21047859a9e5",
+    "test_stub.py": "38c4743b6c63a583be737025aadbf19b420e67b3b72f5795aa3b809c95297b52"
+  },
+  "template_sha256": {
+    "before": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+    "candidate": "3223f38d2e61243f2b2849d08982d17eadf2a93ae1dc2edaccaa44515467494b"
+  },
+  "total_compiler_commands_all_attempts": 5
+}

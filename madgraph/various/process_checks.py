@@ -861,21 +861,23 @@ class LoopMatrixElementEvaluator(MatrixElementEvaluator):
                                                  'PS.input_%s'%PS_name),PSpoint)        
         # Run ./check
         try:
-            output = subprocess.Popen('./check',
+            result_path = pjoin(dir_name, 'result.dat')
+            if os.path.exists(result_path):
+                os.remove(result_path)
+            check = subprocess.Popen('./check',
                         cwd=dir_name,
-                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout
-            output.read()
-            output.close()
-            if os.path.exists(pjoin(dir_name,'result.dat')):
-                return cls.parse_check_output(open(pjoin(dir_name,\
-                                                   'result.dat')),format=format)  
-            else:
-                logging.warning("Error while looking for file %s"%str(os.path\
-                                           .join(dir_name,'result.dat')))
-                return ((0.0, 0.0, 0.0, 0.0, 0), [])
-        except IOError:
-            logging.warning("Error while executing ./check in %s" % shell_name)
-            return ((0.0, 0.0, 0.0, 0.0, 0), [])
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            output, _ = check.communicate()
+            if check.returncode != 0:
+                raise MadGraph5Error("./check failed in %s (exit %s): %s" %
+                    (dir_name, check.returncode, output.decode(errors='replace')[-2000:]))
+            if not os.path.isfile(result_path):
+                raise MadGraph5Error("./check did not produce a fresh result.dat in %s" % dir_name)
+            with open(result_path) as result:
+                return cls.parse_check_output(result, format=format)
+        except OSError as error:
+            raise MadGraph5Error("Could not execute ./check in %s: %s" %
+                                 (dir_name, error)) from error
 
     @classmethod
     def parse_check_output(cls,output,format='tuple'):
@@ -1273,8 +1275,18 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         MadLoopInitializer.fix_PSPoint_in_check(
                  pjoin(export_dir,'SubProcesses'), read_ps = False, npoints = 4)
 
-        self.fix_MadLoopParamCard(pjoin(export_dir,'Cards'),
-                            mp = False, loop_filter = True,MLOptions=MLOptions)
+        # Explicit pole modes include all helicities and loop groups.  The
+        # Fortran deliberately does not learn or write filters in these modes.
+        card_options = {key.lower(): value for key, value in
+            self.get_MadLoop_Params(pjoin(export_dir, 'Cards', 'MadLoopParams.dat')).items()}
+        requested_options = {key.lower(): value for key, value in MLOptions.items()}
+        explicit_poles = int(requested_options.get('looppolemode',
+                                 card_options.get('looppolemode', -1))) >= 0
+        filter_options = dict(MLOptions)
+        if explicit_poles:
+            filter_options['HelicityFilterLevel'] = 0
+        self.fix_MadLoopParamCard(pjoin(export_dir,'Cards'), mp=False,
+            loop_filter=not explicit_poles, MLOptions=filter_options)
         
         shell_name = None
         directories = misc.glob('P0_*', pjoin(export_dir, 'SubProcesses'))
@@ -1285,11 +1297,13 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
 
         # Do not refresh the filter automatically as this is very often a waste
         # of time
+        check_path = pjoin(dir_name, 'check')
+        check_ready = os.path.isfile(check_path) and os.access(check_path, os.X_OK)
         if not MadLoopInitializer.need_MadLoopInit(
-                                                export_dir, subproc_prefix='P'):
+                export_dir, subproc_prefix='P') and (not explicit_poles or check_ready):
             return infos
 
-        attempts = [3,15]
+        attempts = [1] if explicit_poles else [3,15]
         # remove check and check_sa.o for running initialization again
         try:
             os.remove(pjoin(dir_name,'check'))
@@ -1299,7 +1313,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
 
         nPS_necessary = MadLoopInitializer.run_initialization(dir_name,
                                 pjoin(export_dir,'SubProcesses'),infos,\
-                                req_files = ['HelFilter.dat','LoopFilter.dat'],
+                                req_files = ([] if explicit_poles else
+                                    ['HelFilter.dat','LoopFilter.dat']),
                                 attempts = attempts)
         if attempts is None:
             logger.error("Could not compile the process %s,"%shell_name+\
@@ -1405,7 +1420,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                     if (name.endswith(('.a', '.dylib', '.mod')) or
                             re.search(r'\.so(?:\.[0-9]+)*$', name) or
                             name in ('ninjars-config.json', 'ninjars-native-libs.txt',
-                                     'ninjars-link-before.txt')):
+                                     'ninjars-link-before.txt', 'tirust-config.json',
+                                     'tirust-native-libs.txt', 'tirust-link-before.txt')):
                         path = pjoin(directory, name)
                         records[os.path.relpath(path, export_dir)] = timing_file(path)
             for name in ('Source/make_opts', 'SubProcesses/MadLoop_makefile_definitions'):
@@ -1562,8 +1578,24 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         proc_prefix_file = open(pjoin(dir_name,'proc_prefix.txt'),'r')
         proc_prefix = proc_prefix_file.read()
         proc_prefix_file.close()
-        helicities = open(pjoin(dir_name,'MadLoop5_resources',
-                                  '%sHelFilter.dat'%proc_prefix)).read().split()
+        helicity_path = pjoin(dir_name, 'MadLoop5_resources',
+                              '%sHelConfigs.dat'%proc_prefix)
+        configurations = None
+        if os.path.isfile(helicity_path):
+            with open(helicity_path) as stream:
+                configurations = [line.split() for line in stream if line.strip()]
+        effective_card = {key.lower(): value for key, value in
+            self.get_MadLoop_Params(pjoin(export_dir, 'Cards', 'MadLoopParams.dat')).items()}
+        explicit_poles = int(effective_card.get('looppolemode', -1)) >= 0
+        if explicit_poles:
+            if not configurations:
+                raise MadGraph5Error('Explicit pole profiling requires helicity configurations: %s'
+                                    % helicity_path)
+            helicities = [('1' if self.loop_optimized_output else 'T')
+                          for configuration in configurations]
+        else:
+            helicities = open(pjoin(dir_name,'MadLoop5_resources',
+                                      '%sHelFilter.dat'%proc_prefix)).read().split()
         for i, hel in enumerate(helicities):
             if (self.loop_optimized_output and int(hel)>-10000) or hel=='T':
                 if contributing_hel==0:
@@ -1577,15 +1609,20 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         
         res_timings['n_contrib_hel']=n_contrib_hel
         res_timings['n_tot_hel']=len(helicities)
+        if explicit_poles:
+            # Keep numeric count fields compatible; their kind is configured,
+            # and the selected helicity has no learned contribution evidence.
+            res_timings['timing_helicity_selection']='configured-unverified'
         if record_timing:
-            helicity_path = pjoin(dir_name, 'MadLoop5_resources', '%sHelConfigs.dat'%proc_prefix)
             physical_tuple = None
-            if os.path.isfile(helicity_path):
-                with open(helicity_path) as stream:
-                    configurations = [line.split() for line in stream if line.strip()]
-                if 0 < contributing_hel <= len(configurations):
-                    physical_tuple = [int(value) for value in configurations[contributing_hel-1]]
+            if configurations and 0 < contributing_hel <= len(configurations):
+                physical_tuple = [int(value) for value in configurations[contributing_hel-1]]
             timing_metadata['selected_timing_helicity'] = {
+                'filter_policy': ('all-helicities-explicit-poles' if explicit_poles else
+                                  'learned-helicity-filter'),
+                'learned_filter_used': not explicit_poles,
+                'count_kind': ('configured' if explicit_poles else 'contributing'),
+                'polarized_contribution_verified': not explicit_poles,
                 'one_based_index': contributing_hel,
                 'physical_tuple': physical_tuple,
                 'helicity_configurations': timing_file(helicity_path, True),
@@ -1793,22 +1830,22 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             tools=misc.make_unique(tools) # remove the duplication ones
             
         # not self-contained tir libraries
-        tool_var={'golem':4,'samurai':5,'ninja':6,'collier':7,'ninjars':8}
-        for tool in ['golem','samurai','ninja','collier','ninjars']:
+        tool_var={'golem':4,'samurai':5,'ninja':6,'collier':7,'ninjars':8,'tirust':9}
+        for tool in ['golem','samurai','ninja','collier','ninjars','tirust']:
             tool_dir='%s_dir'%tool
             if not tool_dir in self.tir_dir:
-                if tool == 'ninjars' and tool_var[tool] in tools:
-                    raise MadGraph5Error("Requested NinjaRS library is unavailable. "
-                                         "Run 'install ninjars'.")
+                if tool in ('ninjars', 'tirust') and tool_var[tool] in tools:
+                    raise MadGraph5Error("Requested %s library is unavailable. Run 'install %s'." %
+                                         (bannermod.MadLoopParam._ID_reduction_tool_map[tool_var[tool]], tool))
                 continue
             tool_libpath=self.tir_dir[tool_dir]
             tool_libname="lib%s.a"%tool
             if (not isinstance(tool_libpath,str)) or (not os.path.exists(tool_libpath)) \
                 or (not os.path.isfile(pjoin(tool_libpath,tool_libname))):
                 if tool_var[tool] in tools:
-                    if tool == 'ninjars':
-                        raise MadGraph5Error("Requested NinjaRS library is unavailable. "
-                                             "Run 'install ninjars'.")
+                    if tool in ('ninjars', 'tirust'):
+                        raise MadGraph5Error("Requested %s library is unavailable. Run 'install %s'." %
+                                             (bannermod.MadLoopParam._ID_reduction_tool_map[tool_var[tool]], tool))
                     tools.remove(tool_var[tool])
         if not tools:
             return None
@@ -2050,8 +2087,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                     dp_accuracy = relative_spread(dp_res)
                     dp_dict['Accuracy'] = dp_accuracy
                     if dp_accuracy>accuracy_threshold:
-                        if tool in [1,6,8]:
-                            # CutTools, Ninja and NinjaRS can use QP
+                        if tool in [1,6,8,9]:
+                            # CutTools, Ninja, NinjaRS and TIRust can use QP
                             UPS = [i,p]
                             qp_res=[]
                             PSPoint = format_PS_point(p,0)
@@ -2552,6 +2589,8 @@ def check_stability(process_definition, param_card = None,cuttools="",tir={},
         # does not work with the way we call independently CTMODERun 1 and 2
         # with the StabilityChecker.
         MLoptions['COLLIERGlobalCache'] = 0
+        # Independent direction/rotation probes must not reuse the original point's cache.
+        MLoptions['TIRustGlobalCache'] = 0
 
         if "MLReductionLib" not in MLOptions:
             MLoptions["MLReductionLib"] = []
@@ -3117,12 +3156,12 @@ The loop direction test power P is computed as follow:
         # Use nicer name for the XML tag in the log file
         xml_toolname = {'GOLEM95':'GOLEM','IREGI':'IREGI',
                         'CUTTOOLS':'CUTTOOLS','PJFRY++':'PJFRY',
-                        'NINJA':'NINJA','NINJARS':'NINJARS','SAMURAI':'SAMURAI',
+                        'NINJA':'NINJA','NINJARS':'NINJARS','TIRUST':'TIRUST','SAMURAI':'SAMURAI',
                         'COLLIER':'COLLIER'}[toolname.upper()]
         if len(UPS)>0:
             res_str_i = "\nDetails of the %d/%d UPS encountered by %s\n"\
                                                         %(len(UPS),nPS,toolname)
-            prefix = 'DP' if toolname in ['CutTools','Ninja','NinjaRS'] else ''
+            prefix = 'DP' if toolname in ['CutTools','Ninja','NinjaRS','TIRust'] else ''
             res_str_i += "|= %s Median inaccuracy.......... %s\n"\
                                     %(prefix,f(median(UPS_stability_DP),'%.2e'))
             res_str_i += "|= %s Max accuracy............... %s\n"\
@@ -3131,7 +3170,7 @@ The loop direction test power P is computed as follow:
                                        %(prefix,f(max(UPS_stability_DP),'%.2e'))
             (pmed,pmin,pfrac)=loop_direction_test_power(\
                                  [stab['DP_stability'][U[0]] for U in UPS])
-            if toolname in ['CutTools','Ninja','NinjaRS']:
+            if toolname in ['CutTools','Ninja','NinjaRS','TIRust']:
                 res_str_i += "|= UPS DP loop_dir test power.... %s,%s\n"\
                                                 %(f(pmed,'%.1f'),f(pmin,'%.1f'))
                 res_str_i += "|= UPS DP fraction with power<-3. %s\n"\
@@ -3336,7 +3375,13 @@ def output_timings(process, timings):
                                   %(coef_time,int(round(100.0*coef_time/total)))
         res_str += "|= Loop evaluation time...... %.3gms (%d%%)\n"\
                                   %(loop_time,int(round(100.0*loop_time/total)))
-    res_str += "\n= One helicity time / PSpoint ========== %.3gms\n"\
+    configured_helicity = timings.get('timing_helicity_selection') == 'configured-unverified'
+    if configured_helicity:
+        res_str += "\n= Configured helicity time / PSpoint === %.3gms\n"\
+                                    %(timings['run_polarized_total']*1000.0)
+        res_str += "|= Contribution unknown; the selected result may be zero.\n"
+    else:
+        res_str += "\n= One helicity time / PSpoint ========== %.3gms\n"\
                                     %(timings['run_polarized_total']*1000.0)
     if loop_optimized_output:
         coef_time=timings['run_polarized_coefs']*1000.0
@@ -3348,7 +3393,11 @@ def output_timings(process, timings):
         res_str += "|= Loop evaluation time...... %.3gms (%d%%)\n"\
                                   %(loop_time,int(round(100.0*loop_time/total)))
     res_str += "\n= Miscellaneous ========================\n"
-    res_str += "|= Number of hel. computed... %s/%s\n"\
+    if configured_helicity:
+        res_str += "|= Configured helicities..... %s/%s (contribution unknown)\n"\
+                %(f(timings['n_contrib_hel'],'%d'),f(timings['n_tot_hel'],'%d'))
+    else:
+        res_str += "|= Number of hel. computed... %s/%s\n"\
                 %(f(timings['n_contrib_hel'],'%d'),f(timings['n_tot_hel'],'%d'))
     res_str += "|= Number of loop diagrams... %s\n"%f(timings['n_loops'],'%d')
     if loop_optimized_output:

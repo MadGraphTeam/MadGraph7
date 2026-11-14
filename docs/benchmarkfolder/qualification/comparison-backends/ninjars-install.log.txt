@@ -1,0 +1,20 @@
+
+$ make install PREFIX=/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.ninjars-build-lin7q99w/install FC=gfortran
+note: link against the following native artifacts when linking against this static library. The order and any duplication can be significant on some platforms
+
+note: native-static-libs: -ldl -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc
+
+    Finished `release` profile [optimized] target(s) in 0.34s
+gfortran -O3 -fPIC -c mninjars.f90 -o mninjars.o
+cp "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/ninjars-target/release/libmadloop_ninjars.a" libninjars.a
+ar rcs libninjars.a mninjars.o
+mkdir -p "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.ninjars-build-lin7q99w/install/lib" "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.ninjars-build-lin7q99w/install/include"
+cp libninjars.a mninjars.mod ninjars-native-libs.txt ninjars-link-before.txt "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.ninjars-build-lin7q99w/install/lib/"
+cp ninjars.h mninjars.f90 "/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.ninjars-build-lin7q99w/install/include/"
+
+$ gfortran -I/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.ninjars-build-lin7q99w/install/lib /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.ninjars-build-lin7q99w/bridge/smoke.f90 /nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a -lgcc_s /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.ninjars-build-lin7q99w/install/lib/libninjars.a -ldl -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc -o /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.ninjars-build-lin7q99w/smoke
+/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: warning: 2759c6e58623ef3d-x86_64.o: missing .note.GNU-stack section implies executable stack
+/nix/store/cl88v2m1y5q3k6jlkq5jjf73nmfgl1px-binutils-2.44/bin/ld: NOTE: This behaviour is deprecated and will be removed in a future version of the linker
+
+$ /shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/.ninjars-build-lin7q99w/smoke
+ NinjaRS ABI4 DP, binary128-input rescue and separated UV/IR poles passed

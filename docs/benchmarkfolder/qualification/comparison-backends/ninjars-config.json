@@ -1,0 +1,103 @@
+{
+  "abi_version": 4,
+  "quad_precision": true,
+  "native_libs": [
+    "-ldl",
+    "-lgcc_s",
+    "-lutil",
+    "-lrt",
+    "-lpthread",
+    "-lm",
+    "-ldl",
+    "-lc"
+  ],
+  "local_sources": {},
+  "fortran_compiler": "gfortran",
+  "link_before": [
+    "/nix/store/g825z4hlkyiqm8zpv4kbjkvw5fl901pz-gfortran-15.2.0/lib/gcc/x86_64-unknown-linux-gnu/15.2.0/libgcc.a",
+    "-lgcc_s"
+  ],
+  "link_order_version": 1,
+  "compiler_runtime": "gnu-linux-static-libgcc-before-rust",
+  "build_provenance": {
+    "manifest_sha256": "168b0a7239e1fffb23594b19dfaa7938410022015aeed49e99ae5e1ae12d8e95",
+    "lock_sha256": "a0db06134fe266f080e0ecf0e4590de19932213cec12908c893e5380e40d549b",
+    "git_dependencies": [
+      {
+        "name": "dot-parser",
+        "version": "0.5.1",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "feynkit-kinematics",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "gammaloop-workspace-hack",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "graphica",
+        "version": "3.0.1",
+        "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+      },
+      {
+        "name": "linnet",
+        "version": "0.17.0",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "ninjars",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082"
+      },
+      {
+        "name": "ninjars-positional",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082"
+      },
+      {
+        "name": "ninjars-symbolica",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082"
+      },
+      {
+        "name": "numerica",
+        "version": "3.0.1",
+        "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+      },
+      {
+        "name": "oneloop",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/oneloopmaster.git?rev=5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5#5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5"
+      },
+      {
+        "name": "spenso",
+        "version": "0.6.0",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "spenso-macros",
+        "version": "0.3.2",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "symbolica",
+        "version": "3.0.1",
+        "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+      },
+      {
+        "name": "symbolica-typst-plugin",
+        "version": "0.1.0",
+        "source": "git+https://github.com/symbolica-dev/symbolica-typst-plugin?rev=57b7455b37c30f4f87353c0073e49f5225e937ab#57b7455b37c30f4f87353c0073e49f5225e937ab"
+      },
+      {
+        "name": "symbolica-utils",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      }
+    ]
+  }
+}

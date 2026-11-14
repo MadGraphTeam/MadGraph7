@@ -26,6 +26,7 @@ If you need a stable release, use the
    :hidden:
 
    installation
+   tirust
    first_steps
    standalone
    run_card

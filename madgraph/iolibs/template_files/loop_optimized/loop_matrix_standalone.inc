@@ -145,20 +145,25 @@ C     These are constants related to the split orders
 C     The total number of loop reduction libraries
 C     CutTools, IREGI, Golem95, Samurai, Ninja, COLLIER and NinjaRS are supported.
       INTEGER NLOOPLIB
-      PARAMETER (NLOOPLIB=8)
+      PARAMETER (NLOOPLIB=9)
 C     CutTools, Ninja and NinjaRS can provide QP when installed with support
-      INTEGER QP_NLOOPLIB
+      INTEGER QP_NLOOPLIB,TIRUST_QP_COUNT
+## if(tirust_supports_quad_prec) {
+      PARAMETER (TIRUST_QP_COUNT=1)
+## } else {
+      PARAMETER (TIRUST_QP_COUNT=0)
+## }
 ## if(ninja_supports_quad_prec) {
 ## if(ninjars_supports_quad_prec) {
-      PARAMETER (QP_NLOOPLIB=3)
+      PARAMETER (QP_NLOOPLIB=3+TIRUST_QP_COUNT)
 ## } else {
-      PARAMETER (QP_NLOOPLIB=2)
+      PARAMETER (QP_NLOOPLIB=2+TIRUST_QP_COUNT)
 ## }
 ## } else {
 ## if(ninjars_supports_quad_prec) {
-      PARAMETER (QP_NLOOPLIB=2)
+      PARAMETER (QP_NLOOPLIB=2+TIRUST_QP_COUNT)
 ## } else {
-      PARAMETER (QP_NLOOPLIB=1)
+      PARAMETER (QP_NLOOPLIB=1+TIRUST_QP_COUNT)
 ## }
 ## }
 
@@ -333,7 +338,7 @@ C     A FLAG TO DENOTE WHETHER THE CORRESPONDING LOOPLIBS ARE AVAILABLE OR NOT
 	  common/%(proc_prefix)sLOOPLIBS_AV/ LOOPLIBS_AVAILABLE
 C     A FLAG TO DENOTE WHETHER THE CORRESPONDING DIRECTION TESTS AVAILABLE OR NOT IN THE LOOPLIBS
       LOGICAL LOOPLIBS_DIRECTEST(NLOOPLIB)
-	  DATA LOOPLIBS_DIRECTEST /8*.TRUE./
+	  DATA LOOPLIBS_DIRECTEST /9*.TRUE./
 C     Specifying for which reduction tool quadruple precision is available.
 C     The index 0 is dummy and simply means that the corresponding loop_library is not available
 C     in which case neither is its quadruple precision version.
@@ -349,6 +354,11 @@ C     in which case neither is its quadruple precision version.
       DATA LOOPLIBS_QPAVAILABLE(8)/.TRUE./
 ## } else {
       DATA LOOPLIBS_QPAVAILABLE(8)/.FALSE./
+## }
+## if(tirust_supports_quad_prec) {
+      DATA LOOPLIBS_QPAVAILABLE(9)/.TRUE./
+## } else {
+      DATA LOOPLIBS_QPAVAILABLE(9)/.FALSE./
 ## }
 C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT USED ANYWHERE ELSE
@@ -586,6 +596,11 @@ ENDIF
 
 C Check every evaluation because callers may change the mode at runtime.
 CALL ML_CHECK_LOOP_POLE_MODE()
+IF(.NOT.TIRustComputeFinite) THEN
+  WRITE(*,*) 'Poles-only tensors are not complete amplitudes.'
+  WRITE(*,*) 'Use TIRUST_TENSOR_DIAGNOSTIC for poles-only evaluation.'
+          STOP 1
+ENDIF
 C Learned zero and equivalent-helicity filters belong to the pole convention
 C that produced them.  Diagnostic modes must include cancelling UV/IR loops.
 BYPASS_FILTERS=BYPASS_CHECK.OR.LoopPoleMode.GT.0
@@ -604,6 +619,12 @@ C Explain an explicit NinjaRS-only request before dropping unavailable tools.
      WRITE(*,*) 'NinjaRS (MLReductionLib=8) is unavailable in this generated process.'
      WRITE(*,*) 'Run install ninjars in MadGraph, then regenerate and rebuild this process.'
      STOP 'Requested NinjaRS backend is unavailable.'
+  ENDIF
+  IF(MLReductionLib(1).EQ.9.AND.MLReductionLib(2).EQ.0.AND..NOT.LOOPLIBS_AVAILABLE(9))THEN
+     WRITE(*,*) 'TIRust (MLReductionLib=9) is unavailable in this generated process.'
+     WRITE(*,*) 'Run install tirust, then regenerate and rebuild this process.'
+     WRITE(*,*) 'Requested TIRust backend is unavailable.'
+          STOP 1
   ENDIF
 C SKIP THE ONES THAT NOT AVAILABLE
   J=1
@@ -838,6 +859,8 @@ REF=REF+ANS(0,I)
 ENDDO
 ## }
 
+FPE_IN_DP_REDUCTION=.FALSE.
+FPE_IN_QP_REDUCTION=.FALSE.
 MP_DONE=.FALSE.
 MP_DONE_ONCE=.FALSE.
 MP_PS_SET=.FALSE.
@@ -2054,6 +2077,9 @@ C     AUTOMATIC_CACHE_CLEARING is set to False. It must then be called after
 C     ech event
 C
         CALL %(proc_prefix)sCLEAR_TIR_CACHE()
+## if(tirust_available){
+        CALL %(proc_prefix)sCLEAR_TIRUST_CACHE()
+## }
 ## if(ninja_available){
         call ninja_clear_integral_cache()
 ## }
@@ -3061,7 +3087,7 @@ C         Stable with CutTools in double precision.
 C     U == 2
 C         Stable with NinjaRS. T records whether quadruple precision was used.
 C     U == 3
-C         Stable with IREGI.
+C         Stable with IREGI (H=2), or TIRust in quadruple precision (H=3).
 C     U == 4
 C         Stable with Golem95
 C     U == 5
@@ -3073,7 +3099,7 @@ C         Stable with COLLIER.
 C     U == 8
 C         Stable with Ninja in quadruple precision.
 C     U == 9
-C         Stable with CutTools in quadruple precision.         
+C         Stable with CutTools in quadruple precision (H=3), or TIRust in double precision (H=2).
 C
       IMPLICIT NONE
 C  
@@ -3144,6 +3170,9 @@ c arrays
 ## }
 ## if(ninjars_available) {
         CALL NINJARS_FINALIZE()
+## }
+## if(tirust_available) {
+        CALL %(proc_prefix)sFINALIZE_TIRUST()
 ## }
         CONTINUE
 	  END

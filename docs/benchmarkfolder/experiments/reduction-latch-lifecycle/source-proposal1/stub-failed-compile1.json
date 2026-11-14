@@ -1,0 +1,28 @@
+{
+  "command": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-O0",
+    "-fcheck=all",
+    "-ffixed-line-length-none",
+    "-fno-fast-math",
+    "stub.f",
+    "-o",
+    "check"
+  ],
+  "compiler_commands": 1,
+  "reason": "fixed-form renderer incorrectly prepended six columns to a column-six dollar continuation",
+  "returncode": 1,
+  "schema": "madloop-reduction-latch-stub-failed-attempt-v1",
+  "scope": "Source-bound compiled stubs only; no reducer or physical amplitude execution",
+  "seconds": 0.027578625828027725,
+  "source_path": "/tmp/reduction-latch-stub-source-proposal1-failed1.py",
+  "source_sha256": "1a90f15814e93118f0f0f7e73e3df10f2538724cc8f27281c669ba58250641f8",
+  "status": "first compiler failed; no stub executed",
+  "stderr": "stub.f:56:62:\n\n   56 |       COMMON/P_NRS_RETRY_STATS/NRS_RETRY_COUNT,NRS_RETRY_PASS,\n      |                                                              1\nError: Syntax error in COMMON statement at (1)\nstub.f:57:13:\n\n   57 |            $ NRS_RETRY_FAIL,NRS_RETRY_HARD_SKIP\n      |             1\nError: Invalid character in name at (1)\n",
+  "stdout": "",
+  "stub_executions": 0,
+  "template_sha256": {
+    "template.before.inc": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8",
+    "template.candidate.inc": "3223f38d2e61243f2b2849d08982d17eadf2a93ae1dc2edaccaa44515467494b"
+  }
+}

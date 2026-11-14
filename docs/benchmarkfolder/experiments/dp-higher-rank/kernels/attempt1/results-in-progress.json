@@ -1,0 +1,39 @@
+{
+  "scope": "synthetic private kernels, no acceptance timing; numerical results require independent COMB and consumer proof",
+  "commands": [
+    {
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-ffree-line-length-none",
+        "constants.f",
+        "public.f",
+        "oracle.f90",
+        "traced.f",
+        "guards.f90",
+        "-o",
+        "guards"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "",
+      "elapsed": 0.82076096534729
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/guards"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+      "returncode": 1,
+      "stdout": " BIT MISMATCH           1           1           2           1           1           8           1\n",
+      "stderr": "Note: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG\nSTOP 1\n",
+      "elapsed": 0.025800466537475586
+    }
+  ],
+  "checks": [],
+  "timings": []
+}

@@ -174,7 +174,9 @@ C      computation in the quadruple precision variables.
       COMPUTE_INTEGRAND_IN_QP = ((MLREDUCTIONLIB(LIBINDEX)
      $ .EQ.6.AND.USEQPINTEGRANDFORNINJA) .OR. (MLREDUCTIONLIB(LIBINDEX)
      $ .EQ.1.AND.USEQPINTEGRANDFORCUTTOOLS) .OR.
-     $  (MLREDUCTIONLIB(LIBINDEX).EQ.8.AND.USEQPINTEGRANDFORNINJARS))
+     $  (MLREDUCTIONLIB(LIBINDEX).EQ.8.AND.USEQPINTEGRANDFORNINJARS)
+     $  .OR. (MLREDUCTIONLIB(LIBINDEX)
+     $ .EQ.9.AND.USEQPINTEGRANDFORTIRUST))
 
 C     To be on the safe side, we always update the MP params here.
 C     It can be redundant as this routine can be called a couple of

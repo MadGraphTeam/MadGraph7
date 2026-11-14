@@ -54,16 +54,22 @@ MADLOOP_UNIT_BACKENDS = tuple(
 MADLOOP_BACKEND_LABELS = dict(MADLOOP_LEGACY_UNIT_BACKENDS + MADLOOP_UNIT_BACKENDS + (
     ('NinjaRS_DP', 'NinjaRS (double precision)'),
     ('NinjaRS_QP', 'NinjaRS (quadruple precision)'),
+    ('TIRust_DP', 'TIRust (double precision)'),
+    ('TIRust_QP', 'TIRust (quadruple precision)'),
 ))
 
 
 def decode_madloop_backend_usage(unit_counts, ninjars_dp=0, ninjars_qp=0,
-                                 format_version=1):
+                                 format_version=1, tirust_dp=0, tirust_qp=0):
     """Decode one versioned histogram without modifying the input.
 
-    Unmarked files use version 1, including the historical NinjaRS aliases.
+    Unmarked files use version 1, including the historical aliases: NinjaRS
+    used (hundreds, units) = (2, 8) for DP and (3, 2) for QP, TIRust (2, 9)
+    for DP and (3, 3) for QP.
     Version 2 assigns unit 2 exclusively to NinjaRS. Its DP/QP counters split
     this bucket directly; there is no subtraction from another backend.
+    TIRust (MLReductionLib=9) shares unit 3 with IREGI; its DP/QP counters
+    are split off that bucket.
     Decode each source before aggregating statistics from different versions.
     """
     if format_version not in (1, MADLOOP_RETURN_CODE_VERSION):
@@ -75,14 +81,23 @@ def decode_madloop_backend_usage(unit_counts, ninjars_dp=0, ninjars_qp=0,
         # These aliases belong only to previously serialized files.
         usage['Ninja_QP'] -= ninjars_dp
         usage['PJFry'] -= ninjars_qp
+        usage['CutTools_QP'] -= tirust_dp
+        usage['IREGI'] -= tirust_qp
     else:
         if (ninjars_dp < 0 or ninjars_qp < 0 or
                 ninjars_dp + ninjars_qp != unit_counts[2]):
             raise MadGraph5Error('Inconsistent NinjaRS precision counters in '
                                  'MadLoop return-code format 2.')
+        if (tirust_dp < 0 or tirust_qp < 0 or
+                tirust_dp + tirust_qp > unit_counts[3]):
+            raise MadGraph5Error('Inconsistent TIRust precision counters in '
+                                 'MadLoop return-code format 2.')
         usage['PJFry'] = 0
+        usage['IREGI'] -= tirust_dp + tirust_qp
     usage['NinjaRS_DP'] = ninjars_dp
     usage['NinjaRS_QP'] = ninjars_qp
+    usage['TIRust_DP'] = tirust_dp
+    usage['TIRust_QP'] = tirust_qp
     return usage
 
 
@@ -112,6 +127,8 @@ class RunStatistics(dict):
           'Ninja_QP_usage'     : 0,
           'NinjaRS_DP_usage'   : 0,
           'NinjaRS_QP_usage'   : 0,
+          'TIRust_DP_usage'    : 0,
+          'TIRust_QP_usage'    : 0,
           'COLLIER_usage'      : 0,
           'max_precision'      : 1.0e99,
           'min_precision'      : 0.0,
@@ -169,17 +186,18 @@ class RunStatistics(dict):
         
         u_return_code = xml_node.getElementsByTagName('u_return_code')
         u_codes = [int(_) for _ in getData(u_return_code[0]).split(',')]
-        ninjars_usage = {}
-        for precision in ('DP', 'QP'):
-            nodes = xml_node.getElementsByTagName(
-                'ninjars_%s_usage' % precision.lower())
-            ninjars_usage[precision] = int(getData(nodes[0])) if nodes else 0
+        contextual_usage = {}
+        for backend in ('ninjars', 'tirust'):
+            for precision in ('dp', 'qp'):
+                key = '%s_%s' % (backend, precision)
+                nodes = xml_node.getElementsByTagName(key + '_usage')
+                contextual_usage[key] = int(getData(nodes[0])) if nodes else 0
         versions = xml_node.getElementsByTagName('return_code_version')
         version = int(getData(versions[0])) if versions else 1
         self.update((backend + '_usage', count) for backend, count in
                     decode_madloop_backend_usage(
-                        u_codes, ninjars_usage['DP'], ninjars_usage['QP'],
-                        version).items()
+                        u_codes, format_version=version,
+                        **contextual_usage).items()
                     if backend != 'unidentified')
         t_return_code = xml_node.getElementsByTagName('t_return_code')
         t_codes = [int(_) for _ in getData(t_return_code[0]).split(',')]
@@ -241,7 +259,9 @@ class RunStatistics(dict):
           ('Ninja_DP',float(self['Ninja_usage'])/self['n_madloop_calls']),
           ('Ninja_QP',float(self['Ninja_QP_usage'])/self['n_madloop_calls']),
           ('NinjaRS_DP',float(self['NinjaRS_DP_usage'])/self['n_madloop_calls']),
-          ('NinjaRS_QP',float(self['NinjaRS_QP_usage'])/self['n_madloop_calls'])]
+          ('NinjaRS_QP',float(self['NinjaRS_QP_usage'])/self['n_madloop_calls']),
+          ('TIRust_DP',float(self['TIRust_DP_usage'])/self['n_madloop_calls']),
+          ('TIRust_QP',float(self['TIRust_QP_usage'])/self['n_madloop_calls'])]
 
         tools_used = [(_[0],'%.3g'%(100.0*_[1])) for _ in tools_used if _[1] > 0.0 ]
 

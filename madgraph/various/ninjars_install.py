@@ -85,6 +85,26 @@ def default_reduction_library(has_born, libdir):
     return [8] if has_born and is_available(libdir) else [6]
 
 
+def export_files(libdir):
+    """Return the installed interface and dependency notices for internal output."""
+    from madgraph.various import rust_dependency_notices
+
+    config = read_config(libdir)
+    directory = Path(libdir)
+    artifacts = ['libninjars.a', 'mninjars.mod', CONFIG_NAME,
+                 'ninjars-native-libs.txt', 'ninjars-link-before.txt']
+    if not (directory / 'mninjars.mod').is_file():
+        artifacts[1] = str((directory.parent / 'include/mninjars.mod').resolve())
+    for name in ('mninjars.f90', 'ninjars.h'):
+        for candidate in (directory / name, directory.parent / 'include' / name):
+            if candidate.is_file():
+                artifacts.append(str(candidate.resolve()))
+                break
+    artifacts.extend(rust_dependency_notices.export_files(
+        libdir, 'ninjars', expected=config.get('dependency_notices')))
+    return artifacts
+
+
 def pre_link_flags(libdir):
     """Resolve the Fortran compiler runtime before Rust's builtin symbols."""
     return read_config(libdir)['link_before']
@@ -209,6 +229,8 @@ def _run(command, cwd, log, environment):
 
 def _publish(installed, destination, stage, prefix):
     """Publish the validated tree and owned aliases as one recoverable update."""
+    from madgraph.various import rust_dependency_notices
+
     backup = stage / 'previous'
     common_lib = prefix / 'lib'
     alias_stage = None
@@ -225,12 +247,13 @@ def _publish(installed, destination, stage, prefix):
         new_links = alias_stage / 'links'
         saved_links.mkdir()
         new_links.mkdir()
+        notices = tuple(rust_dependency_notices.export_files(installed / 'lib', 'ninjars'))
         if destination.exists() or destination.is_symlink():
             os.replace(destination, backup)
         os.replace(installed, destination)
         published = True
         for name in ('libninjars.a', 'mninjars.mod', CONFIG_NAME,
-                     'ninjars-native-libs.txt', 'ninjars-link-before.txt'):
+                     'ninjars-native-libs.txt', 'ninjars-link-before.txt') + notices:
             link = common_lib / name
             # Existing regular user files and directories belong to the user.
             if not link.is_symlink() and link.exists():
@@ -291,6 +314,8 @@ def _publish(installed, destination, stage, prefix):
 
 def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
     """Install, smoke-test and publish NinjaRS; return its library directory."""
+    from madgraph.various import rust_dependency_notices
+
     try:
         options = build_parser().parse_args(list(arguments))
     except SystemExit as error:
@@ -349,6 +374,7 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
          bridge, log, environment)
 
     libdir = installed / 'lib'
+    notices = rust_dependency_notices.package(bridge, libdir, 'ninjars', environment)
     try:
         native_libs = shlex.split((libdir / 'ninjars-native-libs.txt').read_text())
         link_before = shlex.split((libdir / 'ninjars-link-before.txt').read_text())
@@ -359,7 +385,8 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
               'native_libs': native_libs, 'local_sources': provenance,
               'fortran_compiler': compiler, 'link_before': link_before,
               'link_order_version': 1,
-              'compiler_runtime': 'gnu-linux-libgcc_s-before-rust',
+              'compiler_runtime': 'gnu-linux-static-libgcc-before-rust',
+              'dependency_notices': notices,
               'build_provenance': _dependency_provenance(bridge)}
     (libdir / CONFIG_NAME).write_text(json.dumps(config, indent=2) + '\n')
     # This exercises the installed Fortran module and both numerical domains.

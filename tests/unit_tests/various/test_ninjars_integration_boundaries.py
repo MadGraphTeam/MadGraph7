@@ -15,7 +15,7 @@ from madgraph import MadGraph5Error
 from madgraph.core import base_objects
 from madgraph.loop import loop_exporters
 from madgraph.madevent.sum_html import RunStatistics
-from madgraph.various import ninjars_install, process_checks
+from madgraph.various import ninjars_install, process_checks, rust_dependency_notices
 
 
 class TestNinjaRSIntegrationBoundaries(unittest.TestCase):
@@ -105,6 +105,7 @@ class TestNinjaRSIntegrationBoundaries(unittest.TestCase):
             return replace(source,destination)
         with mock.patch.object(ninjars_install.shutil,'which',return_value='/bin/tool'), \
                 mock.patch.object(ninjars_install,'_run',side_effect=build), \
+                mock.patch.object(rust_dependency_notices,'package',return_value=None), \
                 mock.patch.object(ninjars_install.os,'replace',side_effect=fail_publish):
             with self.assertRaisesRegex(OSError,'publication failure'):
                 ninjars_install.install(self.work,prefix,['--force'])
@@ -161,7 +162,8 @@ class TestNinjaRSIntegrationBoundaries(unittest.TestCase):
                 if len(smoke_attempts) == 1:
                     raise MadGraph5Error('first installed precision smoke failed')
         with mock.patch.object(ninjars_install.shutil,'which',return_value='/bin/tool'), \
-                mock.patch.object(ninjars_install,'_run',side_effect=build):
+                mock.patch.object(ninjars_install,'_run',side_effect=build), \
+                mock.patch.object(rust_dependency_notices,'package',return_value=None):
             with self.assertRaisesRegex(MadGraph5Error,'precision smoke failed'):
                 ninjars_install.install(self.work,prefix)
             self.assertFalse((prefix/'ninjars').exists())

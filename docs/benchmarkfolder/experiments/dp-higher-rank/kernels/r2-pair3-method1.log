@@ -1,0 +1,11 @@
+{
+  "command": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2/timing",
+    "1"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+  "returncode": 0,
+  "stdout": "TIMING 500   1.5868270000000001E-03   2.2332667332667438E+03  -9.4555444555443603E+02\n",
+  "stderr": "",
+  "elapsed": 0.0094146728515625
+}

@@ -1,0 +1,16 @@
+{
+  "command": [
+    "gfortran",
+    "-O0",
+    "-ffixed-line-length-132",
+    "-c",
+    "constants.f",
+    "caller.f",
+    "reference.f"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/r2",
+  "returncode": 0,
+  "stdout": "",
+  "stderr": "",
+  "elapsed": 0.07702851295471191
+}

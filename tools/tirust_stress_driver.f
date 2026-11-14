@@ -1,0 +1,121 @@
+C     Stress diagnostic driver: warm MadLoop on ordinary points, then
+C     evaluate every stress point once. Failures and refusals are recorded,
+C     never fatal. Usage: check warm.dat stress.dat checked|unchecked
+      PROGRAM TIRUST_STRESS_DRIVER
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER(NEXTERNAL=@NEXTERNAL@)
+      INCLUDE 'coupl.inc'
+      INTEGER NSQSO_BORN
+      PARAMETER(NSQSO_BORN=@NBORN@)
+      INTEGER MAXWARM
+      PARAMETER(MAXWARM=200)
+      REAL*8, ALLOCATABLE :: WARM(:,:,:),STRESS(:,:,:)
+      REAL*8, ALLOCATABLE :: ANS(:,:),ACC(:)
+      REAL*8 P(0:3,NEXTERNAL),TOTAL(0:3),ESTIMATE
+      INTEGER NWARM,NSTRESS,NDIM,NSO,J,K,CODE,STEADY,NEED,TENS
+      INTEGER VALID,IOS
+      INTEGER*8 T0,T1,RATE
+      LOGICAL FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
+@FPE_COMMON@
+C@STRESS_ROUTE_DECLARATIONS@
+      CHARACTER*1024 WARMFILE,STRESSFILE,MODE
+
+      CALL SETPARA('param_card.dat')
+      CALL GET_COMMAND_ARGUMENT(1,WARMFILE)
+      CALL GET_COMMAND_ARGUMENT(2,STRESSFILE)
+      CALL GET_COMMAND_ARGUMENT(3,MODE)
+      IF(TRIM(MODE).NE.'checked'.AND.TRIM(MODE).NE.'unchecked') STOP 1
+      CALL @PREFIX@GET_ANSWER_DIMENSION(NDIM)
+      CALL @PREFIX@GET_NSQSO_LOOP(NSO)
+      IF(NDIM.NE.MAX(NSO,NSQSO_BORN)) STOP 2
+      OPEN(73,FILE='dimensions.dat',STATUS='REPLACE')
+      WRITE(73,*) NDIM,NSO,NSQSO_BORN
+      CLOSE(73)
+      OPEN(73,FILE=TRIM(WARMFILE),STATUS='OLD')
+      READ(73,*) NWARM
+      IF(NWARM.LE.0) STOP 3
+      ALLOCATE(WARM(0:3,NEXTERNAL,NWARM))
+      DO K=1,NWARM
+         DO J=1,NEXTERNAL
+            READ(73,*) WARM(:,J,K)
+         ENDDO
+      ENDDO
+      CLOSE(73)
+      OPEN(73,FILE=TRIM(STRESSFILE),STATUS='OLD')
+      READ(73,*) NSTRESS
+      IF(NSTRESS.LE.0) STOP 4
+      ALLOCATE(STRESS(0:3,NEXTERNAL,NSTRESS))
+      DO K=1,NSTRESS
+         DO J=1,NEXTERNAL
+            READ(73,*) STRESS(:,J,K)
+         ENDDO
+      ENDDO
+      CLOSE(73)
+      ALLOCATE(ANS(0:3,0:NDIM),ACC(0:NSO))
+      IF(TRIM(MODE).EQ.'checked') THEN
+         CALL @PREFIX@FORCE_STABILITY_CHECK(.TRUE.)
+      ENDIF
+C     Warm up until NEED consecutive steady (T=1,2) statuses.
+      NEED=MIN(NWARM,5)
+      STEADY=0
+      OPEN(75,FILE='warm.dat',STATUS='REPLACE')
+      DO K=1,MAXWARM
+         P=WARM(:,:,1+MOD(K-1,NWARM))
+         CALL STRESS_CALL(P,ANS,ACC,NDIM,NSO,CODE)
+         WRITE(75,'(3I12)') K,1+MOD(K-1,NWARM),CODE
+         TENS=MOD(CODE,100)/10
+         IF((TENS.EQ.1.OR.TENS.EQ.2).AND.CODE/100.NE.4) THEN
+            STEADY=STEADY+1
+         ELSE
+            STEADY=0
+         ENDIF
+         IF(STEADY.GE.NEED) EXIT
+      ENDDO
+      CLOSE(75)
+      OPEN(76,FILE='stress-values.dat',STATUS='REPLACE')
+C@STRESS_ROUTE_OPEN@
+      CALL SYSTEM_CLOCK(T0,RATE)
+      DO K=1,NSTRESS
+         P=STRESS(:,:,K)
+C@STRESS_ROUTE_BEFORE@
+         CALL STRESS_CALL(P,ANS,ACC,NDIM,NSO,CODE)
+C@STRESS_ROUTE_WRITE@
+         VALID=0
+         IF(ALL(IEEE_IS_FINITE(ANS)).AND.ALL(IEEE_IS_FINITE(ACC)))
+     $      VALID=1
+         DO J=0,NDIM
+            ESTIMATE=ACC(0)
+            IF(J.LE.NSO) ESTIMATE=ACC(J)
+            WRITE(76,'(3I8,5ES26.17E3,3I3)') K,J,CODE,ANS(:,J),
+     $           ESTIMATE,VALID,MERGE(1,0,FPE_IN_DP_REDUCTION),
+     $           MERGE(1,0,FPE_IN_QP_REDUCTION)
+         ENDDO
+C        A reducer may hang or abort on the next point: keep this one on disk.
+         FLUSH(76)
+      ENDDO
+      CALL SYSTEM_CLOCK(T1)
+      CLOSE(76)
+C@STRESS_ROUTE_CLOSE@
+      OPEN(73,FILE='stress-timing.dat',STATUS='REPLACE')
+      WRITE(73,'(ES26.17E3)') DBLE(T1-T0)/DBLE(RATE)
+      CLOSE(73)
+      CALL @PREFIX@EXIT_MADLOOP()
+      WRITE(*,'(A)') 'STRESS-DONE'
+      END
+
+      SUBROUTINE STRESS_CALL(P,ANS,ACC,NDIM,NSO,CODE)
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER(NEXTERNAL=@NEXTERNAL@)
+      INCLUDE 'coupl.inc'
+      INTEGER NDIM,NSO,CODE
+      REAL*8 P(0:3,NEXTERNAL),ANS(0:3,0:NDIM),ACC(0:NSO),TOTAL(0:3)
+      TOTAL=P(:,1)+P(:,2)
+      MU_R=SQRT(ABS(TOTAL(0)**2-SUM(TOTAL(1:3)**2)))
+      CALL UPDATE_AS_PARAM()
+      ANS=0D0
+      ACC=-1D0
+      CALL @PREFIX@SLOOPMATRIX_THRES(P,ANS,-1D0,ACC,CODE)
+      END

@@ -1,0 +1,11 @@
+{
+  "command": [
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+    "0"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+  "returncode": 0,
+  "stdout": "CAPTURE_PASS T T   3.5851749999999999E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+  "stderr": ""
+}

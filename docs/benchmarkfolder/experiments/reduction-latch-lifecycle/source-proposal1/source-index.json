@@ -1,0 +1,86 @@
+{
+  "candidate_executable_assignments": 2,
+  "compiled_stub_qualification": true,
+  "dependency_manifest": "bindings.json",
+  "files": {
+    "README.md": {
+      "bytes": 2746,
+      "sha256": "2f9bd56040b8e5f33dca1a25515c48dca5382fa60c04497726a4a5d33d3aa2d3"
+    },
+    "bindings.json": {
+      "bytes": 81134,
+      "sha256": "30a688fa0c6c969af325cd74fc284875ac1693c99cc81473a757cbad605523b4"
+    },
+    "donor-closure.json": {
+      "bytes": 6063,
+      "sha256": "8a2f90218e324d3d55faf91378a64536e34439d0628e077a745333136543b479"
+    },
+    "inherited-build2.json": {
+      "bytes": 8815,
+      "sha256": "c3d2d2568814b0f0efef8a8d465db561e129473eefe55e3fbaa4b785a1ded322"
+    },
+    "loop_matrix.candidate.f": {
+      "bytes": 100892,
+      "sha256": "b37926358e421ba1de350eb0a6cb0ce9eab5127b171365eeb682439e0b6c9c5f"
+    },
+    "loop_matrix.original.f": {
+      "bytes": 100824,
+      "sha256": "2846f4d35755abfb7a8709a5bb1560983b3676535fd43b39cd62acac1be6185c"
+    },
+    "promotion-todo.md": {
+      "bytes": 2092,
+      "sha256": "75b2ccaa23cb04d0e1872786207faa5930c112bb941f765e1ef0b78f7a31c83a"
+    },
+    "proposal.patch": {
+      "bytes": 309,
+      "sha256": "8f0abd44f95a55a2679ef94aa353c108f2da75fb445088c565fc42a16845a6cc"
+    },
+    "protocol.json": {
+      "bytes": 1876,
+      "sha256": "9ea68e9b972d43d14723cf6213cd5b80b72939d85c91d0b34e86d98f7f69cf2b"
+    },
+    "sm-replay-plan.json": {
+      "bytes": 19081,
+      "sha256": "fe708e7dc3ae77763fb8e6532cc8ba044c0e1dc5c7ef628933ead5858d59c6ce"
+    },
+    "stub-failed-compile1.json": {
+      "bytes": 1408,
+      "sha256": "afd8ed0a9232b6a80d3895adb67e71f609fc748b6d3f4f0f0e951d26c49cc371"
+    },
+    "stub-failed-source1.py": {
+      "bytes": 19202,
+      "sha256": "1a90f15814e93118f0f0f7e73e3df10f2538724cc8f27281c669ba58250641f8"
+    },
+    "stub-result-summary.json": {
+      "bytes": 2901,
+      "sha256": "6b3613ade08b24d4dd9584e00304d40ae5541ada07efd70bfeb2f26b68acb155"
+    },
+    "stub-result.json": {
+      "bytes": 108559,
+      "sha256": "532251b60959393c24352772e181411cf395491a82d22775394d0acb4e56f3ed"
+    },
+    "stub_check.py": {
+      "bytes": 19656,
+      "sha256": "c973c9b316d9bfd28cdaa5c405f8a68a7970bcc09bbbc891bdbc21047859a9e5"
+    },
+    "template.before.inc": {
+      "bytes": 103475,
+      "sha256": "fdcd4433366cd558b29e1cd4cad5aee0c8a10c669dd6c9311a642740628893a8"
+    },
+    "template.candidate.inc": {
+      "bytes": 103531,
+      "sha256": "3223f38d2e61243f2b2849d08982d17eadf2a93ae1dc2edaccaa44515467494b"
+    },
+    "test_stub.py": {
+      "bytes": 3342,
+      "sha256": "38c4743b6c63a583be737025aadbf19b420e67b3b72f5795aa3b809c95297b52"
+    }
+  },
+  "payload_bytes": 685906,
+  "payload_files": 18,
+  "production_mutation": false,
+  "real_sm_or_reducer_admission": false,
+  "real_sm_or_reducer_executions": 0,
+  "schema": "madloop-reduction-latch-lifecycle-source-v1",
+  "scope": "Private two-assignment candidate and source-bound synthetic lifecycle qualification; representative SM replay proposed but not executed."
+}

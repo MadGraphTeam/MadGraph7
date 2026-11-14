@@ -1,0 +1,16 @@
+{
+  "scope": "Private synthetic compact DP experiment; no production promotion; numerical qualification awaits separate COMB/consumer proof",
+  "source_sha256": {
+    "madgraph/various/q_polynomial.py": "da5ca27ffbc792f56acaa5ce446ca3988672f6b6e5552b052e24efdd808a9f11",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/kernels/prepare.py": "85b87b59e326080474920a52d320e19855eb8567ea02f1443abafc48ea46a510",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/kernels/merge.f": "9adecba375805eb6f6c30ac547e3188c9277ee19e767e0a8d8f066fa4e7a3a1e",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/kernels/private-r3.f": "aa89e52427f45750c946a927434416fb1bfef36bc3b23274955a0b6ad0468fb2",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/kernels/constants.f": "38eca89680f0adeb2fd58395711ee476214dfc5e7e104f61deb2d566c21368fd",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/kernels/private-r2.f": "2cdba3f7e9fdec1977c71fb3145eb467679ac952d6d0754111f67232cf20bcee",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/kernels/public.f": "836116f037c543ca6acc5a40ff178459723f4a7fb5234cf4ee1ae6f0c17bacb2",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/kernels/coef_specs.inc": "b41116ffe9a7ebc73f0ed896fd9a02a4d9b206d3efe4f866eb44b3142e7f6c59",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/kernels/loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/kernels/private-r3.txt": "2321ca65744684248ba2ae01acf281eee6537cc799908a73fa13e1ef7276ee2a",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/kernels/private-r2.txt": "f11865ca19872e03a4891c4afa659d7ad48d5d49d677cdab01928ded9ed1a0e6"
+  }
+}

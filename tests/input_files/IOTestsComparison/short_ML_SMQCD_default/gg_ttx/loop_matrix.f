@@ -449,7 +449,6 @@ C     Reject a retired selection also after global initialization.
           STOP 1
         ENDIF
       ENDDO
-
 C     The non-optimized output uses CutTools regardless of the
 C      requested chain.
       IF(LOOPPOLEMODE.GT.0) THEN

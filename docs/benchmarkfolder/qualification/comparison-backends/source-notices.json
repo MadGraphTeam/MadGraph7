@@ -1,0 +1,138 @@
+{
+  "inspected_on": "2026-11-09",
+  "scope": "Release notice inventory only; no reference sources modified",
+  "records": [
+    {
+      "dependency": "collier",
+      "revision_or_release": "1.2.9",
+      "files": [
+        {
+          "path": "HEPTools/collier/COLLIER-1.2.9/COPYING",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        {
+          "path": "HEPTools/collier/COLLIER-1.2.9/src/collier_global.F90",
+          "sha256": "f09d6528e00eff751c0fed02b9d31d213088f4433a4f1b8166993a5701c57624"
+        }
+      ]
+    },
+    {
+      "dependency": "ninja",
+      "revision_or_release": "1.2.1",
+      "files": [
+        {
+          "path": "HEPTools/ninja/Ninja/COPYING",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        {
+          "path": "HEPTools/ninja/Ninja/AUTHORS",
+          "sha256": "d7932e23d98c0b07afc37641cd96eab7f4584aad727f13f7b9ad06ffc4eae21a"
+        }
+      ]
+    },
+    {
+      "dependency": "oneloop",
+      "revision_or_release": "3.6",
+      "files": [
+        {
+          "path": "HEPTools/oneloop/OneLOop-3.6/COPYING",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        {
+          "path": "HEPTools/oneloop/OneLOop-3.6/src/avh_olo_box.f90",
+          "sha256": "d9a2d4bfa4db06850168304ce9dcb78f847f9e9ce031cc9de5cc1918b61cb80b"
+        }
+      ]
+    },
+    {
+      "dependency": "ninjars",
+      "revision_or_release": "41a4c00e7635e3ab188fc26bacf0aae6941e8082",
+      "files": [
+        {
+          "path": ".tirust-build/cargo-home/git/checkouts/ninjars-3842d69907c1a3a3/41a4c00/LICENSE",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        {
+          "path": ".tirust-build/cargo-home/git/checkouts/ninjars-3842d69907c1a3a3/41a4c00/Cargo.toml",
+          "sha256": "1254cf790aeeb0f398a713b203a326b2f5ce158f2b922c29c62a96062d107a9d"
+        }
+      ]
+    },
+    {
+      "dependency": "ninjars_oneloopmaster",
+      "revision_or_release": "5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5",
+      "files": [
+        {
+          "path": ".tirust-build/cargo-home/git/checkouts/oneloopmaster-1e046f4c0b16c2f9/5b71043/Cargo.toml",
+          "sha256": "b4b7c8198f595b17f922a3b4bafdb24b9d71a019be109ab1c38f2bde345401e4"
+        },
+        {
+          "path": ".tirust-build/cargo-home/git/checkouts/oneloopmaster-1e046f4c0b16c2f9/5b71043/README.md",
+          "sha256": "c2f08fb247a7903cbdcfb8c33b92f20779e3617579cd15ff9953b80902b37c72"
+        }
+      ]
+    },
+    {
+      "dependency": "tirust",
+      "revision_or_release": "854b79dcb7fffcb35e92b4a8a3dd443369b798c4",
+      "files": [
+        {
+          "path": "../references/TIRust/LICENSE",
+          "sha256": "14d279556c98445dc55568cd5d156b082a889d3d9b78ea0d1e7a161a3d3a7958"
+        },
+        {
+          "path": "../references/TIRust/Cargo.toml",
+          "sha256": "61f96d48cb50d2535bcdbfec0d5b57a2a5417506d32341a566166d77675fc100"
+        }
+      ]
+    },
+    {
+      "dependency": "tirust_oneloopmaster",
+      "revision_or_release": "bd703d09a78f7849a6b86a07096e6f222fc01193",
+      "files": [
+        {
+          "path": "../references/oneloopmaster/LICENSE",
+          "sha256": "b37a4826d4cbd587f9bf4a45f6b71843085dc05f746d117b9690bdd4185066da"
+        },
+        {
+          "path": "../references/oneloopmaster/Cargo.toml",
+          "sha256": "7796765f4e9b6677418f185f416dd1e27a57cb06916f9e7f9b84e30d200a8149"
+        },
+        {
+          "path": "../references/oneloopmaster/README.md",
+          "sha256": "3937a4d2daf866fcae675af449c15d173ca13cf87fdfc7cd4ec28027d4063e1b"
+        }
+      ]
+    },
+    {
+      "dependency": "ninjars_symbolica",
+      "revision_or_release": "9cdc2949cdb153478c1eca0d40690dc0abfc616e",
+      "files": [
+        {
+          "path": ".tirust-build/cargo-home/git/checkouts/symbolica-7e92af2066df6214/9cdc294/License.md",
+          "sha256": "95576170a17bc8996fb8a94473745545048b6edc5d91e3867f091f7fc6b26981"
+        }
+      ]
+    },
+    {
+      "dependency": "tirust_symbolica",
+      "revision_or_release": "dfe6bd97b974b1028dc63071ea165136cd2b0ef5",
+      "files": [
+        {
+          "path": ".tirust-build/cargo-home/git/checkouts/symbolica-cc465e8cf60c7b8e/dfe6bd9/License.md",
+          "sha256": "95576170a17bc8996fb8a94473745545048b6edc5d91e3867f091f7fc6b26981"
+        }
+      ]
+    },
+    {
+      "dependency": "cuttools",
+      "revision_or_release": "1.9.3",
+      "files": [
+        {
+          "path": "vendor/CutTools/README",
+          "sha256": "fc470bd3168c67a26b014877d00e6b4e475bc0faf94d2357c466260a858df790"
+        }
+      ]
+    }
+  ]
+}

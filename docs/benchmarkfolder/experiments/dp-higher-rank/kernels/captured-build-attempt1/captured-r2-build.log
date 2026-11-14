@@ -1,0 +1,19 @@
+{
+  "command": [
+    "gfortran",
+    "-O3",
+    "-fPIC",
+    "-ffixed-line-length-132",
+    "-ffree-line-length-none",
+    "constants.f",
+    "public.f",
+    "private.f",
+    "driver.f90",
+    "-o",
+    "captured"
+  ],
+  "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+  "returncode": 1,
+  "stdout": "",
+  "stderr": "driver.f90:28:1:\n\n   28 | a=transfer(abits,a)\n      | 1\nError: Incompatible ranks 3 and 1 in assignment at (1)\ndriver.f90:29:1:\n\n   29 | b=transfer(bbits,b)\n      | 1\nError: Incompatible ranks 3 and 1 in assignment at (1)\n"
+}

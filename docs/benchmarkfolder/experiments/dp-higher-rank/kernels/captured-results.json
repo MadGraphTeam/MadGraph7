@@ -1,0 +1,1345 @@
+{
+  "scope": "Exact observed-flag captured-input parity; timing is warm repeated operands, includes candidate IEEE_GET_FLAG and all guards, original O3 polynomial flags without bounds checking; no amplitude or acceptance claim",
+  "records": [
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 0,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001338516,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 0,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000683893,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 1,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000691822,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 1,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001345855,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 2,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001369506,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 2,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000679803,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 3,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000681653,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 3,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001338065,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 4,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001336205,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 4,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000742093,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 5,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000685363,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 5,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001323855,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 6,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001730707,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 1,
+      "pair": 6,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000683193,
+      "iterations": 500,
+      "capture_sha256": "ae344c436fdc514b1cc8b27b192829ca522e1c8fe4bee1578880b139cf4f9ddc"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 0,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001598817,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 0,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000789253,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 1,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000737493,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 1,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001675887,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 2,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001593826,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 2,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000748793,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 3,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000758623,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 3,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001609496,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 4,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001719057,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 4,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000745553,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 5,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000736543,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 5,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001611057,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 6,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001638727,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "pair": 6,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.000768384,
+      "iterations": 500,
+      "capture_sha256": "cbd0e8655e3a09fe9ef5fe22da3bb03ca4ee78386f9446dbd54403437b08bf16"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 0,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003677215,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 0,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001417536,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 1,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001437646,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 1,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003925496,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 2,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003802696,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 2,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001419425,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 3,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001453206,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 3,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003569985,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 4,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003714766,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 4,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001556536,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 5,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001492706,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 5,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003585175,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 6,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003644425,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "pair": 6,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001592437,
+      "iterations": 500,
+      "capture_sha256": "d69400c5a634f8575355eb6466a8fc525a84af6d4f717c34d537b293c7252f18"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 0,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003658945,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 0,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001487986,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 1,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001413546,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 1,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003837956,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 2,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003564734,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 2,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001478976,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 3,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001416776,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 3,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003592905,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 4,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003632495,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 4,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001417916,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 5,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001472326,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 5,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.004026637,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 6,
+      "method": 0,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.003585045,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "pair": 6,
+      "method": 1,
+      "captured_inexact": true,
+      "warm_inexact": true,
+      "seconds": 0.001464326,
+      "iterations": 500,
+      "capture_sha256": "6a2104e2ff264993d18023b111b180079a95dab0c0ce14e537773b0ea3d8e88e"
+    }
+  ],
+  "summary": [
+    {
+      "rank": 2,
+      "sample": 1,
+      "candidate_over_dense_median": 0.5109337505117607,
+      "paired_ratios": [
+        0.5109337505117607,
+        0.5140390309505853,
+        0.49638555800412704,
+        0.5094319035323396,
+        0.555373614078678,
+        0.5177024674152381,
+        0.3947479267143428
+      ]
+    },
+    {
+      "rank": 2,
+      "sample": 2,
+      "candidate_over_dense_median": 0.4688907914497046,
+      "paired_ratios": [
+        0.49364811607582354,
+        0.44006129291533375,
+        0.4698084985437557,
+        0.4713419604646424,
+        0.4336988244136175,
+        0.4571799756309057,
+        0.4688907914497046
+      ]
+    },
+    {
+      "rank": 3,
+      "sample": 1,
+      "candidate_over_dense_median": 0.40706221454712,
+      "paired_ratios": [
+        0.38549173763296407,
+        0.3662329550202064,
+        0.37326807086340846,
+        0.40706221454712,
+        0.4190132029850602,
+        0.41635512910806305,
+        0.43695150812542444
+      ]
+    },
+    {
+      "rank": 3,
+      "sample": 2,
+      "candidate_over_dense_median": 0.3943260397923129,
+      "paired_ratios": [
+        0.4066707753191152,
+        0.36830698423848524,
+        0.4148909848532878,
+        0.3943260397923129,
+        0.3903421752817279,
+        0.36564656809143714,
+        0.4084540082481531
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": [
+        "gfortran",
+        "-O3",
+        "-fPIC",
+        "-ffixed-line-length-132",
+        "-ffree-line-length-none",
+        "constants.f",
+        "public.f",
+        "private.f",
+        "driver.f90",
+        "-o",
+        "captured"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.3385160000000001E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   6.8389299999999998E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   6.9182200000000003E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.3458550000000000E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.3695059999999999E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   6.7980299999999998E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   6.8165299999999995E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.3380650000000000E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.3362050000000000E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   7.4209299999999998E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   6.8536300000000003E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.3238550000000001E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.7307069999999999E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   6.8319300000000002E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.5988170000000000E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   7.8925299999999996E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   7.3749299999999998E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.6758870000000000E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.5938260000000000E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   7.4879299999999998E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   7.5862300000000004E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.6094960000000000E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.7190570000000000E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   7.4555300000000004E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   7.3654299999999999E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.6110569999999999E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.6387270000000000E-03   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r2-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r2",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   7.6838399999999999E-04   0.0000000000000000E+00   0.0000000000000000E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "gfortran",
+        "-O3",
+        "-fPIC",
+        "-ffixed-line-length-132",
+        "-ffree-line-length-none",
+        "constants.f",
+        "public.f",
+        "private.f",
+        "driver.f90",
+        "-o",
+        "captured"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.6772150000000002E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4175360000000001E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4376460000000001E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.9254959999999997E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.8026959999999999E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4194250000000000E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4532060000000001E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.5699849999999999E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.7147660000000000E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.5565360000000001E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4927059999999999E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.5851749999999999E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.6444250000000002E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-1.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.5924369999999999E-03  -1.0332448110755151E-01  -2.2469478851212496E-01\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.6589449999999998E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4879860000000000E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4135459999999999E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.8379560000000000E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.5647340000000000E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4789759999999999E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4167760000000000E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.5929050000000000E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.6324949999999999E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4179160000000000E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4723259999999999E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   4.0266369999999996E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "0"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   3.5850449999999998E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3/captured",
+        "/shared/external/madloop_tirust/madgraph7_madloop_tirust/docs/benchmarkfolder/experiments/dp-higher-rank/capture/attempt3/capture-r3-2.txt",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/dp-higher-rank/kernels/captured/r3",
+      "returncode": 0,
+      "stdout": "CAPTURE_PASS T T   1.4643260000000000E-03  -2.9440172778543205E+00  -2.2485072851973533E+00\n",
+      "stderr": ""
+    }
+  ],
+  "source_sha256": {
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/captured-r3-constants.f": "d2872c0c763ff285fee3033cfff30846ca62abf0fbb02b3dc05cca308066e567",
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/captured-r2-loop_max_coefs.inc": "1368ed9582578ff90bb02a376855ea5aad43ed486a5f93acaf074927c1989aa9",
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/captured-r3-driver.f90": "be034aa758539a39ef9dc85b4483aae52c2109e8391a0add04db6f37f4d9cd6f",
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/captured-template.f90": "8db8e7ca52b9ba88db7a57e719163783ce4cedbdfda2baedd0b6eafdf273b68a",
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/captured-r2-driver.f90": "6a0a0575c53b69bd78e145f53869b6e3fc2413040a49b224f02dd38dbcb1edcf",
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/captured-r3-loop_max_coefs.inc": "1368ed9582578ff90bb02a376855ea5aad43ed486a5f93acaf074927c1989aa9",
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/captured.py": "d78195a6ac7f27008d87755c841a48208e89da45f0ce943be463467f03eb05a1",
+    "docs/benchmarkfolder/experiments/dp-higher-rank/kernels/captured-r2-constants.f": "d2872c0c763ff285fee3033cfff30846ca62abf0fbb02b3dc05cca308066e567"
+  }
+}

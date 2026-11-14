@@ -1,0 +1,20 @@
+{
+  "library_sha256": "70891c9d04fd5e109838a701df1ee616ab2092599c5a615d24b5f9cd33c96a07",
+  "compiler": "GNU Fortran (GCC) 15.2.0",
+  "driver_sha256": "0265012288259ff01f208416ccd72fce9807eb2baefee7571e7bc00b26c1881e",
+  "inputs_sha256": "60b0f6965326aff14c31c03ad166798d42d1b8e26ffa4d9e710457f01e458488",
+  "cases_sha256": "16decf75a9ecc460406ddd87b1ee492f4e48bc6d6f73ec8b9afca5fd3b9bae0f",
+  "raw_output_sha256": "ab8495f34417eaa913c3054b1dc2a5c21b34d677442abb83b8ed6b423e29b2b5",
+  "reference_sha256": "30fb10c60887b510e3d976fe8f715fda4ba6cb889cab257322d5549c1ce677d5",
+  "command": [
+    "/nix/store/5km6kqfhjr16939ak9l1crzsh6x96f68-gfortran-wrapper-15.2.0/bin/gfortran",
+    "-O2",
+    "-I/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier/include",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/vendor/ninjars/tests/poles/collier_poles.f90",
+    "-L/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier",
+    "-lcollier",
+    "-Wl,-rpath,/shared/external/madloop_tirust/madgraph7_madloop_tirust/HEPTools/collier",
+    "-o",
+    "/shared/external/madloop_tirust/madgraph7_madloop_tirust/.tirust-build/collier-smoke/collier_poles"
+  ]
+}

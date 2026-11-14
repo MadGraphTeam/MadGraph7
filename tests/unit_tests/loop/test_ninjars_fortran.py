@@ -44,6 +44,7 @@ class NinjaRSFortranTest(unittest.TestCase):
       PROGRAM TEST_STATUS
       IMPLICIT NONE
       INTEGER SET_RET_CODE_U,ML_GET_RETURN_CODE_VERSION,I,EXPECTED
+      INTEGER ML_GET_RET_CODE_LIBRARY
       CHARACTER*1 MODE
       CALL GET_COMMAND_ARGUMENT(1,MODE)
       IF(MODE.EQ.'2'.OR.MODE.EQ.'F') THEN
@@ -51,12 +52,17 @@ class NinjaRSFortranTest(unittest.TestCase):
         WRITE(*,*) 'UNEXPECTEDLY ACCEPTED RETIRED BACKEND'
       ENDIF
       IF (ML_GET_RETURN_CODE_VERSION().NE.2) STOP 7
-      DO I=1,8
+      IF (ML_GET_RET_CODE_LIBRARY().NE.0) STOP 11
+      DO I=1,9
         IF(I.EQ.2) CYCLE
         EXPECTED=I
         IF(I.EQ.8) EXPECTED=2
+        IF(I.EQ.9) EXPECTED=3
         IF (SET_RET_CODE_U(I,.FALSE.,.TRUE.).NE.EXPECTED) STOP 1
+C The shared unit 3 is attributed to the library that produced it.
+        IF (ML_GET_RET_CODE_LIBRARY().NE.I) STOP 12
         IF (SET_RET_CODE_U(I,.FALSE.,.FALSE.).NE.0) STOP 2
+        IF (ML_GET_RET_CODE_LIBRARY().NE.0) STOP 13
         IF (SET_RET_CODE_U(I,.TRUE.,.FALSE.).NE.0) STOP 3
       ENDDO
       IF (SET_RET_CODE_U(1,.TRUE.,.TRUE.).NE.9) STOP 4
@@ -66,6 +72,12 @@ C The backend digit is independent of H (quality) and T (QP usage).
       IF(200+10+SET_RET_CODE_U(8,.FALSE.,.TRUE.).NE.212) STOP 8
       IF(300+20+SET_RET_CODE_U(8,.TRUE.,.TRUE.).NE.322) STOP 9
       IF(300+10+SET_RET_CODE_U(8,.FALSE.,.TRUE.).NE.312) STOP 10
+C TIRust shares IREGI's unit 3 in both precisions: 213 stable DP, 323 QP rescue.
+      IF(200+10+SET_RET_CODE_U(9,.FALSE.,.TRUE.).NE.213) STOP 14
+      IF(300+20+SET_RET_CODE_U(9,.TRUE.,.TRUE.).NE.323) STOP 15
+      IF (ML_GET_RET_CODE_LIBRARY().NE.9) STOP 16
+      IF(200+10+SET_RET_CODE_U(3,.FALSE.,.TRUE.).NE.213) STOP 17
+      IF (ML_GET_RET_CODE_LIBRARY().NE.3) STOP 18
       END
 ''')
         self.compile_run(['status.f'])
@@ -80,7 +92,7 @@ C The backend digit is independent of H (quality) and T (QP usage).
 
     def test_card_supported_libraries_and_terminator(self):
         (self.work / 'card.dat').write_text(
-            '#MLReductionLib\n8|7|6|5|4|3|1|8\n'
+            '#MLReductionLib\n9|8|7|6|5|4|3|1|8|9|8\n'
             '#UseQPIntegrandForNinjaRS\n.FALSE.\n')
         (self.work / 'card.f').write_text('''
       PROGRAM TEST_CARD
@@ -88,11 +100,11 @@ C The backend digit is independent of H (quality) and T (QP usage).
       INCLUDE 'MadLoopParams.inc'
       CHARACTER*512 FILENAME
       CALL DEFAULTPARAM()
-      IF(ANY(MLReductionLib(4:9).NE.0)) STOP 1
+      IF(ANY(MLReductionLib(4:10).NE.0)) STOP 1
       IF(.NOT.UseQPIntegrandForNinjaRS) STOP 2
       FILENAME='card.dat'
       CALL MADLOOPPARAMREADER(FILENAME,.FALSE.)
-      IF(ANY(MLReductionLib.NE.(/8,7,6,5,4,3,1,0,0/))) STOP 3
+      IF(ANY(MLReductionLib.NE.(/9,8,7,6,5,4,3,1,0,0/))) STOP 3
       IF(UseQPIntegrandForNinjaRS) STOP 4
       END
 ''')
@@ -172,8 +184,8 @@ C The backend digit is independent of H (quality) and T (QP usage).
             writer.writelines('''
       PROGRAM TEST_SELECTION
       IMPLICIT NONE
-      INTEGER NLOOPLIB,QP_NLOOPLIB,I,J,MODE,MLReductionLib(9)
-      PARAMETER (NLOOPLIB=8,QP_NLOOPLIB=3)
+      INTEGER NLOOPLIB,QP_NLOOPLIB,I,J,MODE,MLReductionLib(10)
+      PARAMETER (NLOOPLIB=9,QP_NLOOPLIB=3)
       INTEGER INDEX_QP_TOOLS(QP_NLOOPLIB+1)
       LOGICAL LOCAL_ML_INIT,QP_TOOLS_AVAILABLE
       LOGICAL LOOPLIBS_AVAILABLE(NLOOPLIB)
@@ -318,7 +330,8 @@ C Fill a real coefficient cache with a valid reduction before switching IDs.
                         writer.writelines(source % replacements, context={
                             'AmplitudeReduction': amplitude, 'TIRCaching': caching,
                             'collier_available': True, 'golem_available': False,
-                            'iregi_available': False, 'pjfry_available': False})
+                            'iregi_available': False, 'pjfry_available': False,
+                            'tirust_available': False})
                     (self.work / 'dispatch.f').write_text(
                         driver % {'factor': 1 if amplitude else 2})
                     self.run_command('gfortran', '-ffixed-line-length-132',
@@ -371,6 +384,7 @@ end module
                         writer.writelines(source % {'proc_prefix': 'TEST_'},
                                           context={
                                               'ninjars_available': available,
+                                              'tirust_available': False,
                                               'ComputeColorFlows': color_flows})
                     (self.work / 'exit_driver.f90').write_text(f'''
 program check_exit
