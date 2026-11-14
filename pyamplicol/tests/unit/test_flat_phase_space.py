@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import random
+from decimal import Decimal, localcontext
 from fractions import Fraction
 
 import pytest
@@ -260,6 +261,37 @@ def test_no_two_to_three_point_is_planar():
         abs(_epsilon(*beams, st.momenta[0], st.momenta[1])) / 1000.0**4 for st in states
     )
     assert smallest > 1e-12
+
+
+def test_supplied_points_are_not_planar():
+    """The reference toolkit's points (``supplied_points.generate``, regular
+    family) come from the generator: none of 200 g g > x0 g g points at
+    1 TeV is planar, not even to the printed precision (the former
+    construction put about one in seven in a plane), each exactly conserving
+    after printing."""
+
+    from tools.loop_reference import supplied_points
+
+    masses = [Fraction(0), Fraction(0), Fraction(125), Fraction(0), Fraction(0)]
+    with localcontext() as context:
+        context.prec = supplied_points.CONSTRUCTION_DIGITS
+        points, scales, _ = supplied_points.generate(
+            masses, count=200, sqrt_s_values=[Fraction(1000)] * 200
+        )
+        printed = [
+            supplied_points.quantise(p, s) for p, s in zip(points, scales, strict=True)
+        ]
+    with localcontext() as context:
+        context.prec = 200
+        for point in printed:
+            # Far from planar: the 30-digit printing of an exactly planar
+            # 60-digit point (the former construction) leaves ~1e-28 of s^2.
+            eps = abs(_epsilon(point[0], point[1], point[2], point[3]))
+            assert eps / Decimal(1000) ** 4 > Decimal("1e-12")
+            for mu in range(4):
+                assert point[0][mu] + point[1][mu] == sum(p[mu] for p in point[2:])
+            shell, _ = supplied_points.measure(point, masses)
+            assert shell < Decimal("1e-27")
 
 
 _DRAW = """

@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import math
 import random
 import shutil
 import struct
@@ -699,30 +698,14 @@ assert provider.umami_free(handle) == 0
 
 
 def _rambo(rng: random.Random, energy: float) -> list[list[float]]:
-    """A massless 2 -> 3 point in the centre-of-mass frame (RAMBO)."""
+    """A massless 2 -> 3 point in the centre-of-mass frame, flat in phase
+    space (``generation.phase_space.flat_final_state``)."""
 
-    raw = []
-    for _ in range(3):
-        cos = 2.0 * rng.random() - 1.0
-        phi = 2.0 * math.pi * rng.random()
-        e = -math.log(rng.random() * rng.random())
-        sin = math.sqrt(1.0 - cos * cos)
-        raw.append([e, e * sin * math.cos(phi), e * sin * math.sin(phi), e * cos])
-    total = [sum(p[i] for p in raw) for i in range(4)]
-    mass = math.sqrt(total[0] ** 2 - total[1] ** 2 - total[2] ** 2 - total[3] ** 2)
-    boost = [-total[i] / mass for i in (1, 2, 3)]
-    gamma, scale = total[0] / mass, energy / mass
-    a = 1.0 / (1.0 + gamma)
-    final = []
-    for p in raw:
-        bq = sum(boost[i] * p[i + 1] for i in range(3))
-        final.append(
-            [scale * (gamma * p[0] + bq)]
-            + [
-                scale * (p[i + 1] + boost[i] * p[0] + a * bq * boost[i])
-                for i in range(3)
-            ]
-        )
+    from pyamplicol.generation.phase_space import flat_final_state
+
+    final = [
+        list(p) for p in flat_final_state([0.0] * 3, sqrt_s=energy, seed=rng).momenta
+    ]
     half = energy / 2.0
     return [[half, 0.0, 0.0, half], [half, 0.0, 0.0, -half], *final]
 

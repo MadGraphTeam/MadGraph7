@@ -2841,7 +2841,7 @@ def profile_points(
     config: RunConfig | BenchmarkConfig | None,
 ) -> Momenta:
     """The timed points of a loop runtime profile (``profile_virtual``): one
-    distinct flat (RAMBO) point per point of every warm-up and timed call,
+    distinct flat (RAMBO on diet) point per point of every warm-up and timed call,
     ``batch_size x (warmup_runs + max(minimum_samples, 1))`` of them, drawn
     by ``cli.flat_points`` with ``evaluation.phase_space``'s seed and energy
     (point i from seed + i; without a RunConfig: its defaults, seed 1 at the

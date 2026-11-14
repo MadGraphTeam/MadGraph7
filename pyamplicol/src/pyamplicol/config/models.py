@@ -1424,7 +1424,7 @@ class EvaluationStabilityChecksConfig:
 class EvaluationPhaseSpaceConfig:
     """The flat phase-space points ``evaluate`` and ``profile`` draw when no
     ``evaluation.momenta`` file is given (``cli.flat_points``): ``points``
-    of them from ``seed`` (point i from seed + i), RAMBO-flat in the
+    of them from ``seed`` (point i from seed + i), flat (RAMBO on diet) in the
     centre-of-mass frame of a 2 -> n scattering at ``sqrt_s`` (None: the
     artifact's own validation point's energy) or in the rest frame of a
     decaying particle (1 -> n, at its mass), with the external masses of

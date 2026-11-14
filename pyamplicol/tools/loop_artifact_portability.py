@@ -442,42 +442,22 @@ def scan(root: Path, extra: tuple[str, ...] = ()) -> dict[str, Any]:
 
 
 def points(legs: int, count: int, seed: int = 20261024, energy: float = 1000.0):
-    """Massless 2 -> legs-2 points (RAMBO-like flat sampling, binary64), with
+    """Massless 2 -> legs-2 points (flat: ``generation.phase_space.
+    flat_final_state``, one 64-bit seed per candidate; binary64), with
     every pair invariant above 1% of s, and one mu_R^2 per point. A host that
     has the source checkout may pass exact points instead (any JSON of the
     same shape)."""
 
-    import math
     import random
+
+    from pyamplicol.generation.phase_space import flat_final_state
 
     rng = random.Random(seed)
     out = []
     n = legs - 2
     while len(out) < count:
-        q = []
-        for _ in range(n):
-            c = 2 * rng.random() - 1
-            phi = 2 * math.pi * rng.random()
-            e = -math.log(rng.random() * rng.random())
-            s = math.sqrt(1 - c * c)
-            q.append([e, e * s * math.cos(phi), e * s * math.sin(phi), e * c])
-        total = [sum(p[i] for p in q) for i in range(4)]
-        mass = math.sqrt(total[0] ** 2 - sum(t * t for t in total[1:]))
-        b = [-t / mass for t in total[1:]]
-        gamma = total[0] / mass
-        a = 1 / (1 + gamma)
-        x = energy / mass
-        final = []
-        for p in q:
-            bq = sum(bi * pi for bi, pi in zip(b, p[1:], strict=True))
-            e = x * (gamma * p[0] + bq)
-            final.append(
-                [e]
-                + [
-                    x * (pi + bi * p[0] + a * bq * bi)
-                    for pi, bi in zip(p[1:], b, strict=True)
-                ]
-            )
+        drawn = flat_final_state([0.0] * n, sqrt_s=energy, seed=rng)
+        final = [list(p) for p in drawn.momenta]
         half = energy / 2
         momenta = [[half, 0.0, 0.0, half], [half, 0.0, 0.0, -half], *final]
         s = energy * energy

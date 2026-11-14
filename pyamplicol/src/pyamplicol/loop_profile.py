@@ -9,7 +9,7 @@ the ratio to the fastest backend. Every call times a new batch of distinct
 flat points (``benchmarking.profile_points``, ``evaluation.phase_space``'s
 seed and energy), the same points on every backend.
 
-STABILITY (``--stability``): per backend, over N flat (RAMBO) phase-space
+STABILITY (``--stability``): per backend, over N flat (RAMBO on diet) phase-space
 points (``cli.flat_points``, ``evaluation.phase_space``'s seed and energy),
 the accuracy of the pure binary64 result and of its own stability estimate,
 measured as in sect. 3.4 of arXiv:1103.0621 (MadLoop) and the section
@@ -1120,7 +1120,9 @@ def _stability(
         "n_core": workers,
         "seed": flat.seed,
         "sqrt_s": flat.sqrt_s,
-        "generator": "flat (RAMBO), beams along +-z in the centre-of-mass frame",
+        "generator": (
+            "flat (RAMBO on diet), beams along +-z in the centre-of-mass frame"
+        ),
         "measured": "finite part of the total (sum over the squared-order sectors)",
         "reference": "double-double re-run of the same point on the same backend",
         "estimate": (

@@ -181,29 +181,13 @@ def _rational_direction(theta: float, phi: float, resolution: int):
 
 
 def _rambo(n_out: int, energy: float, rng: random.Random):
-    """RAMBO: n massless momenta in the centre-of-mass frame (binary64)."""
+    """n massless momenta in the centre-of-mass frame (binary64), flat in
+    phase space: pyAmpliCol's generator (``generation.phase_space.
+    flat_final_state``, RAMBO on diet) from one 64-bit seed of ``rng``."""
 
-    qs = []
-    for _ in range(n_out):
-        c = 2 * rng.random() - 1
-        phi = 2 * math.pi * rng.random()
-        e = -math.log(rng.random() * rng.random())
-        s = math.sqrt(1 - c * c)
-        qs.append((e, e * s * math.cos(phi), e * s * math.sin(phi), e * c))
-    total = [sum(q[k] for q in qs) for k in range(4)]
-    mass = math.sqrt(total[0] ** 2 - sum(x * x for x in total[1:]))
-    b = [-x / mass for x in total[1:]]
-    gamma = total[0] / mass
-    a = 1 / (1 + gamma)
-    x = energy / mass
-    out = []
-    for q in qs:
-        bq = sum(bi * qi for bi, qi in zip(b, q[1:], strict=True))
-        space = [
-            x * (qi + bi * (q[0] + a * bq)) for qi, bi in zip(q[1:], b, strict=True)
-        ]
-        out.append((x * (gamma * q[0] + bq), *space))
-    return out
+    from pyamplicol.generation.phase_space import flat_final_state
+
+    return list(flat_final_state([0.0] * n_out, sqrt_s=energy, seed=rng).momenta)
 
 
 def exact_point(n_out: int, energy: float, rng: random.Random, resolution=10**6):
