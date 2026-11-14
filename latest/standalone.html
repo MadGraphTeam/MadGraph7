@@ -772,13 +772,44 @@ for those. The log says what it built:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">INFO</span><span class="p">:</span> <span class="n">hel_recycling</span><span class="p">:</span> <span class="n">P1_gg_ttxg</span> <span class="n">builds</span> <span class="mi">32</span> <span class="n">helicity</span> <span class="n">rows</span> <span class="n">of</span> <span class="mi">32</span><span class="p">,</span> <span class="n">dropping</span> <span class="mi">64</span> <span class="p">(</span><span class="n">helicity</span><span class="p">,</span> <span class="n">amplitude</span><span class="p">)</span> <span class="n">pairs</span> <span class="n">that</span> <span class="n">vanish</span>
 </pre></div>
 </div>
-<p>The good helicities are chosen as madevent does (a helicity is kept if its
+<p>The good helicities are chosen as madevent does: a helicity is kept if its
 <a href="#id1"><span class="problematic" id="id2">|</span></a>M|^2 exceeds <code class="docutils literal notranslate"><span class="pre">limhel</span></code>/ncomb of the sum over helicities at one of the points,
-with <code class="docutils literal notranslate"><span class="pre">limhel</span></code> = 1e-14 for the warm-up, 1e-8 at run time), on RAMBO points
-boosted along the beams when an incoming parton comes from a PDF: the matrix
-element is called in the lab frame, where the helicity of a massive leg is not
-boost invariant, so a configuration that vanishes in the partonic centre-of-mass
-frame can contribute there (gg &gt; t t~ builds 16 rows where madevent keeps 12).</p>
+with <code class="docutils literal notranslate"><span class="pre">limhel</span></code> = 1e-14 for the warm-up and 1e-8 at run time. With a massive
+external leg, every helicity that is not exactly 0 is kept instead, and the list
+is closed over the legs whose helicity states mix under a boost (massive legs
+with spin), so that it holds in every frame. With crossing, one list serves the
+base process and every crossing it folds: each row of the crossing table is
+evaluated too, a crossing that moves a mass on points of its own masses. Where the
+process has no phase space at all (a decay below threshold, whose momenta are off
+shell), every helicity is kept. At run time they
+are chosen as in the Fortran standalone output, on the events the library is
+called with: every helicity is evaluated on the first 16 events, and the ones that
+contribute to one of them are kept for the rest of the run (or until a parameter
+is changed through UMAMI). They are thus chosen at the energies and in the frame
+the matrix element is used at. An <code class="docutils literal notranslate"><span class="pre">mg7</span></code> run chooses them before the run
+instead, from its cards: an instance of a CPU build of each library (a scalar
+double-precision one for a run on a GPU) evaluates every helicity on 16 RAMBO
+points (per row of the crossing table) of the collider of the run card, half in
+the partonic centre-of-mass frame
+and half in the lab frame, at its centre-of-mass energy or, when the beams have
+PDFs, ISR or beamstrahlung, from just above the threshold of the process up to
+it, and every instance of the run, on every thread and device, is given that
+choice (<code class="docutils literal notranslate"><span class="pre">madmatrix_choose_good_helicities</span></code>, <code class="docutils literal notranslate"><span class="pre">madmatrix_get_helicity_choice</span></code>,
+<code class="docutils literal notranslate"><span class="pre">madmatrix_set_helicity_choice</span></code>; the choice also carries whether the C-parity
+dedup of the CPU builds holds, which an instance that is given a choice cannot
+test itself). It then depends on the cards only, and a run on a GPU evaluates the
+helicities of a run on a CPU. A helicity that is a power of m/sqrt(s) below the
+others matters near threshold only: the all-plus helicities of g g &gt; h g in the
+<code class="docutils literal notranslate"><span class="pre">heft</span></code> model are (m_H^2/s)^4 of the rest, 1e-14 at 13 TeV, 1e-9 at 1.5 TeV and
+20% at 150 GeV (they are kept at any energy there, the Higgs being massive, but a
+relative cut on points at one energy would drop them).
+The warm-up chooses its rows instead on RAMBO points spread in energy from just
+above the threshold of the process to 1.5 TeV, half of them boosted along the
+beams when an incoming parton comes from a PDF: the matrix element is then called
+in the lab frame, where the helicity of a massive leg is not boost invariant, so a
+configuration that vanishes in the partonic centre-of-mass frame can contribute
+there (gg &gt; t t~ builds 16 rows where madevent keeps 12). A row that the run time
+finds and the warm-up did not is computed without recycling.</p>
 <p>Two limits keep the recycled code where it is faster than the plain one:</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">--hel_recycling_max=&lt;n&gt;</span></code></dt><dd><p>Statements of the recycled block above which the output keeps the plain code
