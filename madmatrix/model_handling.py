@@ -664,34 +664,37 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             out.write('      return;\n')
             out.write('    }\n')
             if nb_coupling == 1:
-                # A flavored coupling is indexed by the *merged* fermion leg; for
-                # a single merged leg the unmerged partner carries flavor index 0
-                # and the merged leg can be either F1 or F2 (the cudacpp argument
-                # order is not guaranteed to put the merged leg first, unlike the
-                # Fortran side). Pick whichever leg is the merged (partner-
-                # populated) one. For the two-leg case partner1[flv1]==flv2 holds
-                # and flv_sel==flv_index1, reproducing the old behaviour.
-                out.write('    int flv_sel = -1;\n')
-                out.write('    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;\n')
-                out.write('    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;\n')
-                out.write('    if(flv_sel == -1) {\n')
+                # One orientation only, as the Fortran routine: the table is
+                # filled F1 -> F2 (partner1[k1] = k2, value at k1, see
+                # FLV_Coupling.get_partner_indices, also for a single merged
+                # leg, whose unmerged partner is flavor index 0), and F1 / F2
+                # are the arguments of the call. The other orientation,
+                # partner1[flv2] == flv1, is another vertex: for the two
+                # merged quarks of a W coupling it is the W of the opposite
+                # charge. Accepting it (as this routine once did, for the
+                # single-merged-leg tables of the running couplings, then
+                # filled with the merged leg first wherever it sat) made the
+                # amplitudes of a merged subprocess non-zero at flavours they
+                # do not have: a W current of the wrong charge closed by a
+                # VVV vertex (d d~ > w+ w- u u~ of p p > w+ w- j j QCD=0,
+                # |M|^2 x55 with --mask=False, which has no flavor guard).
+                out.write('    if(MCOUP.partner1[flv_index1] != flv_index2) {\n')
                 out.write('      %s\n' % fail)
                 out.write('      return;\n')
                 out.write('    }\n')
             else:
                 # Several merged couplings summed in one routine (e.g. the
                 # FD-gauge vector+Goldstone FFV2_FFS3M_3 of a W+ -> l+ vl line).
-                # Each coupling has its own partner table, so resolve the
-                # flavour slot of each one as in the single-coupling case
-                # above: a diagonal check (flv_index1 == flv_index2) zeroes an
+                # Each coupling has its own partner table, so check the pair
+                # in each one as in the single-coupling case above, in the
+                # same single orientation (F1 -> F2, value at flv_index1): a
+                # diagonal check (flv_index1 == flv_index2) zeroes an
                 # off-diagonal vertex such as an unmerged vt (flavour 0) and a
                 # merged tau (flavour 2), and a coupling whose table has no
                 # entry for this pair (the Goldstone coupling of a massless
                 # lepton) contributes zero while the other ones are kept.
                 for i in range(1,nb_coupling+1):
-                    out.write('    int flv_sel%i = -1;\n' % i)
-                    out.write('    if(MCOUP%i.partner1[flv_index1] == flv_index2) flv_sel%i = flv_index1;\n' % (i,i))
-                    out.write('    else if(MCOUP%i.partner1[flv_index2] == flv_index1) flv_sel%i = flv_index2;\n' % (i,i))
+                    out.write('    const int flv_sel%i = MCOUP%i.partner1[flv_index1] == flv_index2 ? flv_index1 : -1;\n' % (i,i))
                 out.write('    if(%s) {\n' % ' && '.join('flv_sel%i == -1' % i for i in range(1,nb_coupling+1)))
                 out.write('      %s\n' % fail)
                 out.write('      return;\n')
@@ -703,7 +706,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 # the per-flavor stride is C_ACCESS::flv_stride (nx2 for independent
                 # couplings = scalar broadcast; nx2*neppC for dependent ones = AOSOA
                 # SIMD record), so the same routine body works for both instantiations
-                out.write('    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );\n')
+                out.write('    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_index1 );\n')
             else:
                 for i in range(1,nb_coupling+1):
                     # the coupling is a complex number but in this case it is represented as a sequence of real numbers
@@ -713,22 +716,18 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     out.write('    else { COUP%i = C_ACCESS::kernelAccessConst( MCOUP%i.value + C_ACCESS::flv_stride*flv_sel%i ); }\n' % (i,i,i))
         else:
             incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
-            # The P1N currents of --hel_recycling (the vertex with one external
-            # fermion left off, see hel_recycle.CppDialect._p1n_group) resolve
-            # the flavour of a single flavoured coupling in BOTH orientations,
-            # as the _0 / _3 routines above do: the table is filled with the
-            # merged leg as its first fermion (ProcessTables.h for a running
-            # coupling) while the call can put that leg second, e.g. the
-            # gluino-squark-quark vertex of MSSM_SLHA2, whose P1N_1 with the
-            # merged antiquark as F2 found partner2[flv] = -1 and dropped the
-            # amplitude for every flavour but the first. Orientation A (the
-            # table's first fermion is F1) uses slot flv_index1 and is tried
-            # first, as in _0; orientation B (it is F2) uses slot flv_index2.
-            # A table where both give a different partner cannot be one current:
-            # the recycler does not split those (p1n_flavour_safe). The full
-            # _1 / _2 routines keep the one orientation they always had.
-            both = nb_coupling == 1 and 'P1N' in self.tag and incoming in (1, 2)
-            slot = 'flv_sel' if both else 'flv_index1'
+            # One orientation, as _0 / _3 above and the Fortran routines: the
+            # table is filled F1 -> F2 (FLV_Coupling.get_partner_indices), so
+            # the partner of an F1 input is partner1[flv1], that of an F2
+            # input partner2[flv2], and the value sits at slot flv_index1.
+            # This holds for the P1N currents of --hel_recycling too (the
+            # vertex with one external fermion left off): they once fell back
+            # on the other orientation, because the tables of the running
+            # couplings (ProcessTables.h) were filled with the merged leg
+            # first wherever it sat (the gluino-squark-quark vertex of
+            # MSSM_SLHA2, with the merged antiquark as F2); those tables are
+            # oriented now, and the fallback gave the opposite-charge W
+            # current of a two-leg table.
             if incoming %2 == 1:
                 outgoing = self.outgoing
                 out.write('    int flv_index%i = F%i.flv_index;\n' % (incoming, incoming))
@@ -737,11 +736,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
-                if both:
-                    out.write('    int flv_index2 = MCOUP.partner1[flv_index1];\n')
-                    out.write('    int flv_sel = flv_index1;\n')
-                    out.write('    if(flv_index2 == -1) { flv_index2 = MCOUP.partner2[flv_index1]; flv_sel = flv_index2; }\n')
-                elif nb_coupling == 1:
+                if nb_coupling == 1:
                     out.write('    int flv_index2 = MCOUP.partner1[flv_index%i];\n' %(incoming))
                 else:
                     out.write('    int flv_index2 = MCOUP1.partner1[flv_index%i];\n' %(incoming))
@@ -761,11 +756,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('      F%i.flv_index = -1;\n' % outgoing)
                 out.write('      return;\n')
                 out.write('    }\n')
-                if both:
-                    out.write('    int flv_index1 = MCOUP.partner2[flv_index2];\n')
-                    out.write('    int flv_sel = flv_index1;\n')
-                    out.write('    if(flv_index1 == -1) { flv_index1 = MCOUP.partner1[flv_index2]; flv_sel = flv_index2; }\n')
-                elif nb_coupling == 1:
+                if nb_coupling == 1:
                     out.write('    int flv_index1 = MCOUP.partner2[flv_index%i];\n' %(incoming))
                 else:
                     out.write('    int flv_index1 = MCOUP1.partner2[flv_index%i];\n' %(incoming))
@@ -783,7 +774,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     # the coupling is a complex number but in this case it is represented as a sequence of real numbers
                     # so, when we need to shift within the array, we need to double the shift width to account for
                     # both real and imaginary parts
-                    load = '%s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*%s );' % (name, name, slot)
+                    load = '%s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*flv_index1 );' % (name, name)
                     if nb_coupling > 1 and incoming in (1, 2):
                         # the outgoing flavour was taken from the first coupling
                         # with an entry; a coupling whose table pairs flv_index1
@@ -1013,7 +1004,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 # Standard propagator: madmatrix::denom keeps only P^2 - Re(m^2) at denom precision.
                 # Qualified: the local variable is also called denom. Without coupling (one): 1 / ( P^2 - m^2 ).
                 coup_args = '%s, %s, ' % (ccoeff, coup_vertex) if has_coup else ''
-                propagator = lambda mass: 'madmatrix::denom( %sdP%s, %s )' % (coup_args, self.outgoing, mass)
+                propagator = lambda mass, fn='denom': 'madmatrix::%s( %sdP%s, %s )' % (fn, coup_args, self.outgoing, mass)
                 def write_doubleexpansion():
                     # MADARITH_DOUBLEEXPANSION (FPTYPE=e): P^2 - Re(m^2) in
                     # double-word arithmetic, the width as the imaginary part.
@@ -1034,7 +1025,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     else:
                         out.write('    const MG_ARITHM::Double<fptype_amp> Md{i}{s} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{i});\n'.format(**fmt))
                         m2 = '( Md{i}{s} * Md{i}{s} )'.format(**fmt)
-                        width = 'M{i} * W{i}'.format(**fmt)
+                        if aloha.t_channel_width:
+                            width = 'M{i} * W{i}'.format(**fmt)
+                        else:
+                            # no width for a spacelike propagator
+                            width = 'fpternary( PmM2{s} + M{i} * M{i} > 0, fptype_amp( M{i} * W{i} ), fptype_amp( 0 ) )'.format(**fmt)
                     out.write('    const fptype_amp_sv PmM2{s} = static_cast<fptype_amp_sv>(( P{i}d{s}[0] * P{i}d{s}[0] ) - ( P{i}d{s}[1] * P{i}d{s}[1] ) - ( P{i}d{s}[2] * P{i}d{s}[2] ) - ( P{i}d{s}[3] * P{i}d{s}[3] ) - {m2} );\n'.format(m2=m2, **fmt))
                     out.write('    const fptype_amp_sv iMW{s} = {width};\n'.format(width=width, **fmt))
                     out.write('    const cxtype_amp_sv denden{s} = cxmake( PmM2{s}, iMW{s} );\n'.format(**fmt))
@@ -1063,7 +1058,14 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
                     # complex-mass scheme: M is complex and carries the width
                     mass = 'M%(i)s' % mydict if aloha.complex_mass else 'M%(i)s, W%(i)s' % mydict
-                    out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator(mass)))
+                    if aloha.complex_mass or aloha.t_channel_width:
+                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator(mass)))
+                    else:
+                        # spacelike (t-channel) propagator: no pole to
+                        # regulate, so its width is dropped, lane by
+                        # lane, as in the Fortran ALOHA routines
+                        # (aloha.t_channel_width False)
+                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator(mass, 'denom_timelike')))
                     if arith_doubleexpansion:
                         write_doubleexpansion()
                 ###self.declaration.add(('complex','denom')) # AV moved earlier (or simply removed)
@@ -2326,6 +2328,11 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     if( Parameters::nBsmIndepParam > 0 ) setBsmIndepParam( Parameters::mdl_bsmIndepParam, Parameters::nBsmIndepParam );
 #endif'''
 
+        # Crossed CPPProcess::flavorPDG (the plain table lookup when crossing
+        # is off). See get_madmatrix_crossing_tables.
+        replace_dict['flavorpdg_body'] = \
+            self.get_madmatrix_crossing_tables(self.matrix_elements[0])['flavorpdg_body']
+
         # ncolor_flow is set by set_color_flow_lines_cpp in
         # get_process_class_definitions (process_class.inc), and the color flow
         # lines go to ColorFlows.inc (edit_colorflows); the broken-symmetry data
@@ -2407,6 +2414,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ('const int iParity', 'iParity'),
         ('const bool storeChannelWeights', 'storeChannelWeights'),
         ('const FLV_COUPLING_ARRAY<nIPF, nMF>& flvCOUPs', 'flvCOUPs'),
+        # (CDPF_ACCESS is HostAccessCouplings on the CPU, see calculate_jamps)
         ('const FLV_COUPLING_ARRAY<nDPF, nMF, HostAccessCouplings::flv_stride>&'
          ' flvCOUPs_dep', 'flvCOUPs_dep'),
         ('const fptype* cIPD', 'cIPD'),
@@ -2425,6 +2433,19 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         '    using CI_ACCESS [[maybe_unused]] = HostAccessCouplingsFixed;\n'
         '    using CDPF_ACCESS [[maybe_unused]] = HostAccessCouplings;\n'
         '    using F_ACCESS [[maybe_unused]] = HostAccessIflavorVec;\n')
+
+    # With crossing, the recycled calls also read the per-lane permuted momenta
+    # and NSF signs of the crossing preamble (see crossing_preamble_recycled)
+    HR_CHUNK_STATE_CROSSING = [
+        ('const fptype_momenta* xmom', 'xmom'),
+        ('const fptype_sv* icsign', 'icsign'),
+    ]
+
+    def hr_chunk_state(self):
+        """The (declaration, name) pairs a recycled chunk function takes."""
+        if getattr(self, 'use_crossing', False):
+            return self.HR_CHUNK_STATE + self.HR_CHUNK_STATE_CROSSING
+        return self.HR_CHUNK_STATE
 
     # Above this many statements of code (hr_count_statements: the tables of
     # the tabulated P1N groups do not count) the recycled block is declined and
@@ -2470,7 +2491,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         return sum(1 for line in calls.split('\n')
                    if line.split('//')[0].strip()
                    and not line.lstrip().startswith('static constexpr'))
-
     def hel_recycling_chunk_size(self, nstmt):
         """Statements per chunk for a block of `nstmt` statements (0: inline),
         from --hel_recycling_chunk if given."""
@@ -2522,11 +2542,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         units, so that its own body stays a handful of calls -- with one call
         per chunk (10570 for g g > t t~ g g g), SigmaKin.cc alone took longer
         to build than all the chunks together."""
-        return self.hr_chunk_calls_sized(self, calls, self.hel_recycling_chunk_size)
+        return self.hr_chunk_calls_sized(self, calls, self.hel_recycling_chunk_size,
+                                         self.hr_chunk_state())
 
     @staticmethod
-    def hr_chunk_calls_sized(owner, calls, chunk_size):
-        """hr_chunk_calls, with chunk_size(nstmt) the statements per chunk;
+    def hr_chunk_calls_sized(owner, calls, chunk_size, state):
+        """hr_chunk_calls, with chunk_size(nstmt) the statements per chunk and
+        state the (declaration, name) pairs a chunk takes (hr_chunk_state);
         owner (the exporter, or its class) has the HR_* settings."""
         lines = calls.rstrip('\n').split('\n')
         nstmt = sum(1 for line in lines if line.split('//')[0].strip())
@@ -2534,12 +2556,12 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         if per_chunk <= 0 or nstmt <= per_chunk:
             return '', [], calls
         params = ',\n              '.join('[[maybe_unused]] ' + decl
-                                          for decl, _ in owner.HR_CHUNK_STATE)
+                                          for decl, _ in state)
         # the declarations SigmaKin.cc sees leave the names out: there, cIPD &co
         # are its own tables
         types = ', '.join(re.sub(r'\b%s\b' % name, '', decl).strip()
-                          for decl, name in owner.HR_CHUNK_STATE)
-        args = ', '.join(name for _, name in owner.HR_CHUNK_STATE)
+                          for decl, name in state)
+        args = ', '.join(name for _, name in state)
         units, unit, unit_stmts, nchunks = [], [], 0, 0
         for chunk in owner.hr_split_statements(lines, per_chunk):
             unit.append(chunk)
@@ -2595,6 +2617,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         so = export_v4.split_order_tables(self.matrix_elements[0])
         if so and so['nampso'] > 1:
             return 'split amplitude orders'
+        # A crossing that moves a massive leg into a slot of another mass is
+        # scanned by the warm-up on points of its own masses. One with no
+        # phase space there (a crossed decay lighter than its products) is
+        # never evaluated on shell and is not scanned, as in the fortran
+        # warm-up. When RAMBO finds no point for one that has phase space,
+        # the warm-up says so and the directory is written without recycling
+        # (hel_recycling_filter.ProbeTree.run).
         return None
 
     @staticmethod
@@ -2657,7 +2686,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         post = dict(getattr(self, '_hr_jamp_post', None) or
                     MadMatrixUFOHelasCallWriter.HR_POST_EMPTY)
         post['lines'] = list(post['lines'])
-        return {'version': 1,
+        # version 2: an amplitude only some merged flavours have carries
+        # their mask on its //HRAMP tag (flv=0x...), and the rows-mode color
+        # flows are guarded with it (hr_row reads iflavor)
+        return {'version': 2,
                 'calls': list(self._hr_calls),
                 'helicities': [list(hel) for hel in self.matrix_elements[0]
                                .get_helicity_matrix(allow_reverse=True)],
@@ -2669,7 +2701,16 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 'max_stmts': self.hel_recycling_max_stmts(),
                 # --hel_recycling=True asked for: say loudly why it is declined
                 'explicit': self.hel_recycling_explicit,
-                'chunk': options.get('hel_recycling_chunk')}
+                'chunk': options.get('hel_recycling_chunk'),
+                # --axial_gauge: the reference-vector zeros are a rounding
+                # residual the collinear limit needs, so the probe drops exact
+                # zeros only (MG_HR_EXACT_ZERO, hel_recycling_filter.ProbeTree.run)
+                'exact_zero': bool(helas_call_writers.axial_gauge_requested(options)),
+                # crossing folded in: the per-lane gather that opens the
+                # recycled block (crossing_preamble_recycled), '' otherwise
+                'crossing_preamble':
+                    self.helas_call_writer.crossing_preamble_recycled()
+                    if getattr(self, 'use_crossing', False) else ''}
 
     def write_hr_recipe(self):
         """Write the recipe into the P* directory; returns it."""
@@ -2680,20 +2721,17 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         return recipe
 
     @staticmethod
-    def flv_partner_pairs(coupl, dependent):
+    def flv_partner_pairs(coupl, dependent=False):
         """The (k1, k2) pairs (0-based) of a flavoured coupling, k1 the flavour
-        whose slot holds the value, as its table is filled: by
-        FLV_Coupling.get_partner_indices for a fixed coupling (the model's
-        FLV_COUPLING), and with the merged leg always first for a running one
-        (cDPF_partner1/2 of ProcessTables.h, see edit_processtables)."""
+        of the vertex's first fermion (F1), whose slot holds the value, as its
+        table is filled: by FLV_Coupling.get_partner_indices, for a fixed
+        coupling (the model's FLV_COUPLING) as for a running one
+        (cDPF_partner1/2 of ProcessTables.h, see edit_processtables).
+        `dependent` is kept for the callers: both are filled the same way."""
         from madgraph.core import base_objects
         pairs = []
         for key in coupl.flavors:
-            if dependent:
-                nonzero = [i for i in key if i != 0]
-                k1, k2 = nonzero if len(nonzero) == 2 else (nonzero[0], 1)
-            else:
-                k1, k2 = base_objects.FLV_Coupling.get_partner_indices(key)
+            k1, k2 = base_objects.FLV_Coupling.get_partner_indices(key)
             pairs.append((k1 - 1, k2 - 1))
         return pairs
 
@@ -2804,7 +2842,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 os.path.basename(path), nstmt, len(kept), limit)
             return None
         decls, units, calls = cls.hr_chunk_calls_sized(
-            cls, calls.lstrip('\n'), lambda n: cls.hr_chunk_size(recipe.get('chunk'), n))
+            cls, calls.lstrip('\n'), lambda n: cls.hr_chunk_size(recipe.get('chunk'), n),
+            cls.HR_CHUNK_STATE + (cls.HR_CHUNK_STATE_CROSSING
+                                  if recipe.get('crossing_preamble') else []))
+        if recipe.get('crossing_preamble'):
+            # after the cut, so that it stays in calculate_all_jamps and the
+            # chunks get its arrays as arguments
+            calls = recipe['crossing_preamble'] + calls
         for stale in glob.glob(pjoin(path, cls.HR_CHUNK_FILE.replace('%d', '*'))):
             os.remove(stale)
         for k, unit in enumerate(units):
@@ -2838,21 +2882,30 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                os.path.basename(self.path))
             else:
                 recycle = True
-                self._hr_calls = self.hr_orig_calls(color_amplitudes[0])
                 # FD: a vector's current has a fifth (Goldstone) component and
                 # a scalar's value is that fifth one, which the amplitude split
                 # has to know (CppDialect.peel_components)
                 self._hr_gauge = 'FD' if aloha.unitary_gauge == 3 else 'U'
                 if self not in OneProcessExporterMadMatrix._hr_warmups:
                     OneProcessExporterMadMatrix._hr_warmups.append(self)
+        # Crossing symmetry: tell the helas writer to emit the per-event
+        # momentum-permutation preamble + NSF-blended external calls. Read at
+        # emission time and reset afterwards (the writer is reused across
+        # outputs, per the fortran/standalone_cpp lesson). The calls the
+        # recycler reads need it as much as the ordinary ones: without it
+        # every crossed lane of the recycled build would be the base process.
+        self.helas_call_writer.use_crossing_ic = getattr(self, 'use_crossing', False)
         self.helas_call_writer.hr_probe = recycle
         try:
+            if recycle:
+                self._hr_calls = self.hr_orig_calls(color_amplitudes[0])
             helas_calls = self.helas_call_writer.get_matrix_element_calls(\
                                                 self.matrix_elements[0],
                                                 color_amplitudes[0],
                                                 multi_channel_map = self.multi_channel_map
                                                 )
         finally:
+            self.helas_call_writer.use_crossing_ic = False
             self.helas_call_writer.hr_probe = False
         self.couplings2order = self.helas_call_writer.couplings2order
         self.couporderflv = self.helas_call_writer.couporderflv
@@ -2881,6 +2934,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # needs to be after get_matrix_element_calls to have nwf ready
         self.edit_processdata()
         self.edit_processtables()
+        self.edit_crossing_demo() # per-process folded-crossing flavor ids for check_sa
         # The build rules live in SubProcesses/<p_makefile>; SubProcesses/makefile
         # itself is the dispatcher that fans out over all the P* directories.
         # NB: this symlink is overwritten by the madevent makefile if this exists (#480)
@@ -2968,16 +3022,19 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             partner1_vals, partner2_vals, idcoup_vals = [], [], []
             for name in flv_couplings_dep:
                 coupl = flv_map[name]
+                coupl.assert_table_representable()
                 p1 = [-1] * nMF
                 p2 = [-1] * nMF
                 idc = ['-1'] * nMF
                 for key, gc in coupl.flavors.items():
-                    nonzero = [i for i in key if i != 0]
-                    if len(nonzero) == 2:
-                        k1, k2 = nonzero
-                    else:
-                        # single merged leg: unmerged partner has flavor index 1
-                        k1 = nonzero[0]; k2 = 1
+                    # F1 -> F2, as the fixed couplings (write_flv_couplings)
+                    # and the Fortran tables: for a single merged leg the
+                    # unmerged partner is flavor index 1, on the side of the
+                    # vertex it sits on. The routines read the table in that
+                    # one orientation (MadMatrixALOHAWriter.get_coupling_def);
+                    # it used to put the merged leg first wherever it sat,
+                    # and the routines then accepted both orientations.
+                    k1, k2 = base_objects.FLV_Coupling.get_partner_indices(key)
                     p1[k1-1] = k2-1
                     p2[k2-1] = k1-1
                     # symbolic idcoup: resolves to the position of this dependent coupling
@@ -3005,9 +3062,62 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         export_v4.ProcessExporterFortran._fill_broken_sym_replace_dict(
             replace_dict, sym_data)
 
+        # Crossing-symmetry data read by backend/{cpu,simd}/SigmaKin.cc
+        # (zero placeholders and use_crossing=false when crossing is off).
+        replace_dict['crossing_tables'] = \
+            self.get_madmatrix_crossing_tables(self.matrix_elements[0])['crossing_tables']
+        replace_dict.update(self.get_good_helicity_tables(self.matrix_elements[0]))
+
         ff = open(pjoin(self.path, 'ProcessTables.h'), 'w')
         ff.write(template % replace_dict)
         ff.close()
+
+    @staticmethod
+    def get_good_helicity_tables(matrix_element):
+        """ProcessTables.h 'hel_massive' and 'hel_frame_leg', read by the
+        good-helicity scan (sigmaKin_getGoodHel). The scan points sit at a
+        fixed sqrt(s) (rambo::helicity_scan_points), where a row suppressed by
+        powers of m/E -- a helicity flip on a b quark at 1500 GeV -- looks
+        negligible, while near threshold it carries several % of |M|^2. So a
+        process with a massive external leg only drops exact zeros
+        (hel_massive), and the list is closed over the legs whose helicity
+        states mix under a boost (the C++ twin of the fortran warm-up's HMV,
+        export_v4 frame_dependent_helicity_legs). A crossing keeps the mass of
+        every base slot, so the base legs decide for every crossing."""
+        legs = export_v4.ProcessExporterFortranSA.frame_dependent_helicity_legs(
+            matrix_element)
+        ncol = len(next(iter(matrix_element.get_helicity_matrix())))
+        if len(legs) != ncol:
+            # a helicity table of another shape: close over every leg
+            legs = [True] * ncol
+        massive = any(str(wf.get('mass')).lower() != 'zero'
+                      for wf in matrix_element.get_external_wavefunctions())
+        return {'hel_massive': 'true' if massive else 'false',
+                'hel_frame_leg': ', '.join('1' if leg else '0' for leg in legs)}
+
+    def _folded_crossing_flavorids(self, matrix_element):
+        """Extended flavor ids (0-based, K*nmaxflavor + flav0) of the crossed
+        subprocesses folded into this base ME (merge_crossing='record'): one
+        per recorded crossed process, mirror pairs collapsed -- the same
+        selection check_sa.f's crossing demo uses. The index IS the mg7 flavor
+        id, so flavorPDG(id, k) gives the crossed PDG at runtime."""
+        if not matrix_element.get('crossed_processes'):
+            return []
+        nflav = len(matrix_element.get_external_flavors_with_iden())
+        return self.get_crossing_table(matrix_element).demo_ids(nflav)
+
+    def edit_crossing_demo(self):
+        """Write crossing_demo.dat (the folded-crossing flavor ids) into the P*
+        directory so the shared check_sa.exe can demonstrate each crossed
+        subprocess at its own RAMBO point. Nothing is written when the ME has no
+        folded crossings (check_sa then just shows the base flavors)."""
+        if not getattr(self, 'use_crossing', False):
+            return
+        ids = self._folded_crossing_flavorids(self.matrix_elements[0])
+        if not ids:
+            return
+        with open(pjoin(self.path, 'crossing_demo.dat'), 'w') as fsock:
+            fsock.write(' '.join(str(i) for i in ids) + '\n')
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
     def edit_mgonGPU(self):
@@ -3222,6 +3332,38 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             icolamp_text += text % (iconfigc+1, iconfig_to_diag[iconfigc+1]-1) # diag - 1 is to follow MadSpace indexing
             icolamp.append(icolamp_text)
         replace_dict['is_LC'] = '\n'.join(icolamp)
+
+        # Canonical colour-flow code of each colour flow -- baked so the ME can
+        # return the self-describing code (the MG7 colour encoding) instead of a
+        # raw flow index. Same encoding as the fortran output / subprocesses.json
+        # (get_color_code_tables); valid==false leaves the flows to the fallback.
+        codes = None
+        if self.color_basis:
+            n_initial = self.matrix_element.get_nexternal_ninitial()[1]
+            legs = self.process.get_legs_with_decays()
+            repr_dict = {leg.get("number"):
+                         self.model.get_particle(leg.get("id")).get_color()
+                         * (-1) ** (1 + leg.get("state")) for leg in legs}
+            # This is about colour FLOWS, so always the trace basis: with the
+            # DDM basis the elements are products of f's and have no single
+            # flow each (color_flow_decomposition raises on it). get_flow_basis
+            # returns the basis itself when the colour sum is not on DDM.
+            color_flow_dicts = self.color_flow_basis.color_flow_decomposition(
+                repr_dict, n_initial)
+            codes, _slots = self.get_color_code_tables(color_flow_dicts, legs)
+        if codes is None:
+            replace_dict['colorflowcode_valid'] = 'false'
+            replace_dict['colorflowcode_lines'] = '\n'.join(
+                '    0, // colour flow %d (no usable code -- use the tag table)'
+                % i for i in range(nb_color))
+        else:
+            replace_dict['colorflowcode_valid'] = 'true'
+            replace_dict['colorflowcode_lines'] = '\n'.join(
+                '    %d, // colour flow %d' % (c, i)
+                for i, c in enumerate(codes))
+        # NB: ColorData.h is opened only once the whole content is built, so a
+        # failure above cannot leave a truncated (0 byte) header behind -- which
+        # then looks like a silently skipped process at build time.
         ff = open(pjoin(self.path, 'ColorData.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
@@ -3458,6 +3600,206 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Get lines to reset jamps"""
         ret_lines = ""
         return ret_lines
+
+    # ------------------------------------------------------------------
+    # Crossing symmetry (extended flavor id) for the madmatrix / cudacpp
+    # CPU-SIMD backend. Mirrors export_cpp.get_crossing_replace_dict and the
+    # fortran path but adapted to the SIMD structure of this backend: the
+    # per-event momentum permutation lives in calculate_jamps (emitted into
+    # EvaluateDiagrams.inc by the helas writer, gated by use_crossing_ic), while
+    # the crossing-aware good-helicity scan, the per-lane helicity loop, the
+    # per-event denominator and the crossed selected helicity are generic code
+    # in backend/{cpu,simd}/SigmaKin.cc. Only the per-process DATA they read is
+    # written here, into ProcessTables.h, plus the crossed CPPProcess::flavorPDG
+    # body. With self.use_crossing False, ProcessTables::use_crossing is false,
+    # the tables are zero placeholders and every crossing branch of SigmaKin.cc
+    # is discarded at compile time. That is --use_crossing=False, a process
+    # pinning an s-channel, and a matrix element that records no crossed
+    # subprocess (see ProcessExporterMG7.generate_subprocess_directory): only
+    # the identity could be asked for, and the plain path computes it.
+    # ------------------------------------------------------------------
+    def crossing_rows_on_shell(self, matrix_element):
+        """Per crossing-table row, 1 when the points of the base process (its
+        masses, slot by slot: RAMBO in umami_initialize, check_sa) are on shell
+        for that crossing, i.e. input slot k and the base leg it is fed to
+        (D[k]) carry the same mass; 0 when a massive leg moves into a slot of
+        another mass. That happens with the recorded crossings of the default
+        mode too, whenever one process definition puts the massive particle on
+        both sides: `define q = g t t~; generate q q > q q` records g t > g t
+        on g g > t t~, and `define q = u u~; define x = g z; generate
+        q x > q x QED=1 QCD=1` records u z > u g on u g > u z.
+        --crossing_table=all adds more (p p > z j with the z moved into the
+        initial state). Such a row gets scan points of its own masses
+        (xmass_slot_tab, scan_points in umami.cc)."""
+        masses = [wf.get('mass') for wf in matrix_element.get_external_wavefunctions()]
+        return [int(all(masses[k] == masses[row.D[k]] for k in range(len(masses))))
+                for row in self.get_crossing_table(matrix_element)]
+
+    def get_madmatrix_crossing_tables(self, matrix_element):
+        """ProcessTables.h 'crossing_tables' and CPPProcess.cc 'flavorpdg_body'."""
+
+        header = (
+            "    // ---- Crossing symmetry (extended id = K*nmaxflavor + flav) ----\n"
+            "    // K is a row of this matrix element's crossing table (row 0 the\n"
+            "    // identity), written by the exporter from the crossings it records\n"
+            "    // (export_v4 get_crossing_table): a slot permutation stored in both\n"
+            "    // views (cross_gather / cross_pinv below) plus the initial-state\n"
+            "    // spin*colour average of the process each row crosses into. The\n"
+            "    // per-leg tables let backend/<variant>/SigmaKin.cc rebuild the\n"
+            "    // crossed denominator and the crossed helicity code.\n")
+        nexternal = matrix_element.get_nexternal_ninitial()[0]
+
+        def arr(vals):
+            return '{ ' + ', '.join(str(v) for v in vals) + ' }'
+
+        if not getattr(self, 'use_crossing', False):
+            identity = arr(range(nexternal))
+            ones = arr([1] * nexternal)
+            tables = header + (
+                "    constexpr bool use_crossing = false; // no crossing folded in: the identity only\n"
+                "    constexpr int ncross = 1;\n"
+                "    __device__ constexpr int xperm_tab[ProcessData::npar] = %(identity)s;\n"
+                "    __device__ constexpr int xsgn_tab[ProcessData::npar] = %(ones)s;\n"
+                "    __device__ constexpr int xpinv_tab[ProcessData::npar] = %(identity)s;\n"
+                "    __device__ constexpr int xsgni_tab[ProcessData::npar] = %(ones)s;\n"
+                "    __device__ constexpr int xspincol_tab[ncross] = {};\n"
+                "    constexpr int xspincol_host_tab[ncross] = {};\n"
+                "    constexpr int xonshell_tab[ncross] = { 1 };\n"
+                "    constexpr int xmass_slot_tab[ProcessData::npar] = %(identity)s;\n"
+                "    __device__ constexpr int ids_base[ProcessData::npar] = {};\n"
+                "    __device__ constexpr int antipid_base[ProcessData::npar] = {};\n"
+                "    __device__ constexpr int countable_tab[ProcessData::npar] = {};\n"
+                "    constexpr int ident_resonance = 1;\n"
+                "    constexpr int xhel_maxhel = 1;\n"
+                "    __device__ constexpr int xhel_nhstate[ProcessData::npar] = {};\n"
+                "    __device__ constexpr int xhel_states[ProcessData::npar * xhel_maxhel] = {};\n"
+            ) % {'identity': identity, 'ones': ones}
+            return {'crossing_tables': tables,
+                    'flavorpdg_body': '    return flavorPDGs[iflavor][ipar];'}
+
+        import madgraph.iolibs.export_v4 as export_v4
+        import madgraph.iolibs.crossing_table as crossing_table
+        Fort = export_v4.ProcessExporterFortran
+        me = matrix_element
+        tables = Fort.compute_crossing_tables(self, me)
+        table = self.get_crossing_table(me)
+
+        # Per-leg helicity states used to re-encode a crossed helicity config
+        # into its canonical code: the lists the cHel/tHel table itself is
+        # built from (get_helicity_matrix, allow_reverse=True), which are also
+        # the ones the fortran ENCODE_HEL STATES table uses
+        # (ProcessExporterFortran._helstate_data), so that the code IS the row
+        # of that table. allow_reverse=True is NOT optional:
+        # get_helicity_states reverses the list for an ANTIparticle leg, so
+        # with allow_reverse=False every such leg's digit lookup is off by one
+        # state and the code comes out wrong: for u u~ > t t~ legs 1 and 4 give
+        # (+1,-1) not (-1,+1), and all 16 rows mis-encode. A polarized leg
+        # never gets here (it breaks crossing symmetry), but its list would be
+        # the restricted one, exactly as in the table.
+        hstates = [list(s) for s in me.get_helicity_per_particle()]
+        hnstate = [len(s) for s in hstates]
+        maxhel = max(hnstate) if hnstate else 1
+        # Per crossing row K and crossed slot k, the states its code digit runs
+        # over: those of the CROSSED process itself, so that the reported code
+        # is the crossed process's own canonical code -- the one its expanded
+        # output reports, and the one the madevent output writes for a routed
+        # event (export_v4 _crossed_helicity_relabel, its XDST table). Slot k
+        # carries base leg D[k], and an external wavefunction's PDG is the
+        # all-outgoing one, which a crossing leaves alone (a leg changing side
+        # is conjugated twice), so slot k's own states are hstates[D[k]], in
+        # that order. Row 0 is the base's own table.
+        xnhstate, states_flat = [], []
+        for row in table:
+            for k in range(nexternal):
+                use = hstates[row.D[k]]
+                xnhstate.append(len(use))
+                states_flat.extend(use[i] if i < len(use) else 0
+                                   for i in range(maxhel))
+
+        tables_text = header + (
+            "    constexpr bool use_crossing = true;\n"
+            "    constexpr int ncross = %(ncross)d;\n"
+            "    // base-slot view: base slot b takes the momentum of input slot\n"
+            "    // xperm_tab[K*npar+b], NSF sign xsgn_tab[K*npar+b]\n"
+            "    __device__ constexpr int xperm_tab[ncross * ProcessData::npar] = %(xperm)s;\n"
+            "    __device__ constexpr int xsgn_tab[ncross * ProcessData::npar] = %(xsgn)s;\n"
+            "    // input-slot view: input slot k is fed to base slot\n"
+            "    // xpinv_tab[K*npar+k], charge conjugated when xsgni_tab is -1\n"
+            "    __device__ constexpr int xpinv_tab[ncross * ProcessData::npar] = %(xpinv)s;\n"
+            "    __device__ constexpr int xsgni_tab[ncross * ProcessData::npar] = %(xsgni)s;\n"
+            "    // initial-state spin*colour average of the crossed process\n"
+            "    __device__ constexpr int xspincol_tab[ncross] = %(xspincol)s;\n"
+            "    // host copy of xspincol_tab: the GPU good-helicity scan skips a row\n"
+            "    // of 0 (a placeholder naming no process), as backend/cpu does\n"
+            "    constexpr int xspincol_host_tab[ncross] = %(xspincol)s;\n"
+            "    // 1 when the points of the base process are on shell for the row: no\n"
+            "    // massive leg moves into a slot of another mass (host only: picks the\n"
+            "    // good-helicity scan points of the row, scan_points in umami.cc, and\n"
+            "    // the --hel_recycling probe's off-shell list in SigmaKin.cc)\n"
+            "    constexpr int xonshell_tab[ncross] = %(xonshell)s;\n"
+            "    // host copy of xpinv_tab: input slot k of row K carries the mass of\n"
+            "    // base slot xmass_slot_tab[K*npar+k], the masses the good-helicity\n"
+            "    // scan makes the row's own points at (choose_good_helicities, umami.cc)\n"
+            "    constexpr int xmass_slot_tab[ncross * ProcessData::npar] = %(xpinv)s;\n"
+            "    // per-leg flavor-group representative PDG, and its charge conjugate\n"
+            "    __device__ constexpr int ids_base[ProcessData::npar] = %(ids_base)s;\n"
+            "    __device__ constexpr int antipid_base[ProcessData::npar] = %(antipid_base)s;\n"
+            "    // 1 for a single external leg, 0 for a decay-block leaf (whose symmetry\n"
+            "    // is resonance-level: the constant ident_resonance, see ident_cross)\n"
+            "    __device__ constexpr int countable_tab[ProcessData::npar] = %(countable)s;\n"
+            "    constexpr int ident_resonance = %(ident_resonance)d;\n"
+            "    // per crossing row and slot, the helicity states of the reported\n"
+            "    // (crossed) code: xhel_states[(K*npar+k)*xhel_maxhel + d] is digit d of\n"
+            "    // slot k, the slot's first digit the most significant (allow_reverse=True\n"
+            "    // order, see the exporter). Row 0 is the base helicity table.\n"
+            "    constexpr int xhel_maxhel = %(maxhel)d;\n"
+            "    __device__ constexpr int xhel_nhstate[ncross * ProcessData::npar] = %(xnhstate)s;\n"
+            "    __device__ constexpr int xhel_states[ncross * ProcessData::npar * xhel_maxhel] = %(xstates)s;\n"
+        ) % {'ncross': len(table),
+             'xperm': arr(table.flat('B')), 'xsgn': arr(table.flat('SB')),
+             'xpinv': arr(table.flat('D')), 'xsgni': arr(table.flat('SD')),
+             'xspincol': arr(table.spincol(tables['spincol_part'])),
+             'xonshell': arr(self.crossing_rows_on_shell(me)),
+             'ids_base': arr(tables['ids_base']),
+             'antipid_base': arr(tables['antipid_base']),
+             'countable': arr(tables['countable']),
+             'ident_resonance': tables['ident_resonance'],
+             'maxhel': maxhel, 'xnhstate': arr(xnhstate),
+             'xstates': arr(states_flat)}
+
+        # Crossed physical signed PDG per (extended id, leg), like the fortran
+        # GET_PDG_FOR_FLAVOR: the PDG of the base leg input slot ipar is fed to,
+        # charge conjugated when that leg changes side. The base PDGs are the
+        # class REPRESENTATIVES -- the rows cFlavors / flavorPDGs are built from
+        # (get_external_flavors_with_iden, members[0]) -- not the leading rows
+        # of the physical flavor table, which name another process from three
+        # merged flavors on.
+        anti = crossing_table.make_anti(me.get('processes')[0].get('model'))
+        reps = []
+        for flav0, pdgs in Fort.crossing_base_entries(self, me, 'classes'):
+            if flav0 == len(reps):
+                reps.append(pdgs)
+        base_pdg = [p for row in reps for p in row]
+        # Host copies of the input-slot view: flavorPDG runs on the host, so
+        # it must not read the __device__ tables of ProcessTables.h (a GPU
+        # build only has their device copy).
+        flavorpdg_body = (
+            "    if ( iflavor < 0 || iflavor >= ncross * nmaxflavor ) return 0;\n"
+            "    static const int base_pdg[nmaxflavor * npar] = %(base_pdg)s;\n"
+            "    static const int base_antipdg[nmaxflavor * npar] = %(base_antipdg)s;\n"
+            "    static const int pinv_h[ncross * npar] = %(pinv)s;\n"
+            "    static const int sgn_h[ncross * npar] = %(sgn)s;\n"
+            "    const int cross = iflavor / nmaxflavor;\n"
+            "    const int flav0 = iflavor %% nmaxflavor;\n"
+            "    const int src = pinv_h[cross * npar + ipar];\n"
+            "    return ( sgn_h[cross * npar + ipar] == 1 ) ? base_pdg[flav0 * npar + src]\n"
+            "                                               : base_antipdg[flav0 * npar + src];"
+        ) % {'base_pdg': arr(base_pdg),
+             'base_antipdg': arr([anti(p) for p in base_pdg]),
+             'pinv': arr(table.flat('D')), 'sgn': arr(table.flat('SD'))}
+
+        return {'crossing_tables': tables_text,
+                'flavorpdg_body': flavorpdg_body}
 
 
 # Standalone mode: P*/makefile points at the wrapper that also builds check_sa.exe
@@ -3930,6 +4272,13 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         ###misc.sprint(multi_channel_map)
         res = []
         ###res.append('for(int i=0;i<%s;i++){jamp[i] = cxtype(0.,0.);}' % len(color_amplitudes))
+        # Crossing symmetry: the per-event momentum permutation opens
+        # EvaluateDiagrams.inc, i.e. it runs inside calculate_jamps right after
+        # backend/<variant>/SigmaKin.cc has set up momenta/iflavor for the page
+        # (not in the calls the recycler reads: it keeps calls only, and
+        # write_recycled opens the recycled block with its own copy)
+        if getattr(self, 'use_crossing_ic', False) and not self.hr_orig:
+            res.append(self._crossing_preamble(matrix_element))
         diagrams = matrix_element.get('diagrams')
         diag_to_config = {}
         for config in sorted(multi_channel_map.keys()):
@@ -3947,15 +4296,37 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # grouped flavors (get_external_flavors_with_iden), so the per-flavor
         # masks set by compute_flavor_masks() are compressed onto those groups.
         # NB: this relies on iflavor being constant across a SIMD vector.
-        # The guards wrap a call in an if/{} that the recycler's line-per-call
-        # reader cannot unfold, and they are only an optimisation (a masked term
-        # is multiplied by a zero coupling anyway): left out of the hr_orig calls.
-        diag_group_mask, wf_group_mask = ({}, {}) if self.hr_orig \
-                                     else self._compute_group_masks(matrix_element)
+        # The amplitude guards are NOT only an optimisation: one physical
+        # diagram can come several times in the diagram list (the same
+        # topology through couplings that do not vanish for the flavour,
+        # e.g. the W exchange of _quark _quark > Z _quark _quark QCD=0 at
+        # d c > Z u s), and the mask keeps one copy per flavour. --mask=False
+        # (every flavour ordering, no guard) gives the same |M|^2 as the
+        # masked build for that process, provided the flavoured routines
+        # check each fermion pair in the one orientation its coupling table
+        # is filled in (F1 -> F2, see MadMatrixALOHAWriter.get_coupling_def),
+        # as the Fortran ones do. They once accepted the other orientation
+        # too, which for the two merged quarks of a W coupling is the W of
+        # the opposite charge: a diagram closed by a bosonic vertex (VVV1_0
+        # of a W and two such currents) was then non-zero at flavours it is
+        # masked for (d d~ > w+ w- u u~ of p p > w+ w- j j QCD=0: |M|^2 x55
+        # with --mask=False).
+        # The hr_orig calls cannot carry the if/{} themselves (the recycler
+        # reads one call per line and keeps nothing else), so there the mask
+        # of each amplitude goes on its //HRAMP tag, the recycler guards every
+        # copy of the amplitude with it (hel_recycle.CppDialect), and in the
+        # rows mode the color flows of hr_row read the amplitude under the
+        # same guard (its table is not cleared between pages: once an
+        # amplitude is skipped, its stale entry must not be read). The
+        # wavefunction guards are left out of the hr_orig calls (a
+        # wavefunction reaches the color flows only through the amplitudes).
+        diag_group_mask, wf_group_mask = self._compute_group_masks(matrix_element)
+        if self.hr_orig:
+            wf_group_mask = {}
 
         def _guard_open(group_mask):
             # Emit the opening of an `if` guard for a non-full grouped mask.
-            return 'if( ( 0x%xULL >> iflavor ) & 0x1ULL ) {' % group_mask
+            return self.flavour_guard(group_mask)
 
         # OM - the four gluon optimisation (set merge_quartic_vertices). A quartic
         # current and the cubic current carrying the same colour factor are
@@ -4023,20 +4394,24 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 amp_block = [ self.get_amplitude_call(amplitude) ] # AV new: avoid format_call
                 for mother, me_id in sum_original:
                     mother.set('me_id', me_id)
+                # the flavours this amplitude contributes to (None: all of them)
+                gmask = diag_group_mask.get(id(diagram))
                 if hr_mode == 'rows':
                     res.extend(self._hr_orig_store(amp_block[0], namp, hr_namp,
-                                                   amplitude))
+                                                   amplitude, gmask))
                     hr_rows.extend(self._hr_row_lines(
                         namp, diagram, id_amp in diag_to_config, color,
                         jamp_captures.get(namp, []) if jamp_plan is not None else None,
-                        jamp_combines.get(namp, []) if jamp_plan is not None else []))
+                        jamp_combines.get(namp, []) if jamp_plan is not None else [],
+                        gmask))
                     continue
                 if self.hr_orig:
                     res.extend(self._hr_orig_amplitude(
                         amp_block[0], namp, amplitude, diagram, id_amp in diag_to_config,
                         color,
                         jamp_captures.get(namp, []) if hr_mode == 'fold'
-                                                 and jamp_plan is not None else None))
+                                                 and jamp_plan is not None else None,
+                        gmask))
                     continue
                 if self.hr_probe:
                     amp_block.append('MG_HR_PROBE_AMP( %d );' % namp)
@@ -4051,7 +4426,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 # The amplitude (and the jamp/channel contributions that read its
                 # amp_sv[0]) only contributes for the flavors in the diagram's
                 # mask, so guard the whole block as a unit.
-                gmask = diag_group_mask.get(id(diagram))
                 before_guard = []
                 if jamp_plan is None:
                     # With split orders the jamps are nampso vectors end to end
@@ -4136,38 +4510,59 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             mode = 'rows'
         return mode
 
-    @staticmethod
-    def _hr_amp_tag(call, namp, amplitude):
+    def _hr_amp_tag(self, call, namp, amplitude, flavour_mask=None):
         """The call of amplitude namp, tagged for the recycler: its number (all
         amplitudes write the one scratch amp_sv[0]) and the spin (2s+1) of the
         wavefunction each argument is, in argument order -- which the amplitude
         split needs (CppDialect.peel_components), and which the routine name
-        only says by convention."""
-        return '%s //HRAMP %d %s' % (call.rstrip('\n'), namp,
-                                     ','.join(str(mother.get('spin'))
-                                              for mother in amplitude.get('mothers')))
+        only says by convention. With flavour_mask (the grouped flavours the
+        amplitude contributes to, see _compute_group_masks), flv=0x<mask>:
+        the recycler guards every copy of the amplitude, call and fold, with
+        it, as EvaluateDiagrams.inc guards the plain call."""
+        tag = '%s //HRAMP %d %s' % (call.rstrip('\n'), namp,
+                                    ','.join(str(mother.get('spin'))
+                                             for mother in amplitude.get('mothers')))
+        if flavour_mask is not None:
+            import madgraph.madevent.hel_recycle as hel_recycle
+            tag += ' flv=%s' % hel_recycle.CppDialect.flavour_mask_text(
+                flavour_mask, self.flavour_mask_nwords)
+        return tag
 
-    def _hr_orig_store(self, call, namp, nslot, amplitude):
+    def _hr_orig_store(self, call, namp, nslot, amplitude, flavour_mask=None):
         """One amplitude in hr_orig form for the rows mode: the call, then its
         store into the row's amplitude table -- nothing else is done with it
-        until the row loop (_hr_row_lines)."""
-        return [self._hr_amp_tag(call, namp, amplitude), '//HRFOLD %d' % namp,
+        until the row loop (_hr_row_lines). A masked amplitude is not stored
+        at the flavours it is masked for, and the row loop does not read it
+        there either (the table is not cleared between pages)."""
+        return [self._hr_amp_tag(call, namp, amplitude, flavour_mask),
+                '//HRFOLD %d' % namp,
                 'ampAll_sv[( ${row} * nParity + iParity ) * %d + %d] = amp_sv[0];'
                 % (nslot, namp - 1), '//HRENDFOLD']
 
-    def _hr_row_lines(self, namp, diagram, channel, color, captures, combines):
+    def _hr_row_lines(self, namp, diagram, channel, color, captures, combines,
+                      flavour_mask=None):
         """What calculate_jamps does with amplitude namp, for the row loop of
-        the rows mode: amp_sv[0] is the row's ampRow[namp - 1]."""
+        the rows mode: amp_sv[0] is the row's ampRow[namp - 1]. With
+        flavour_mask, under the same guard as in calculate_jamps (iflavor is
+        hr_row's): the amplitude is neither made nor stored at the other
+        flavours, so what the table holds there is another page's."""
         operand = 'ampRow[%d]' % (namp - 1)
-        out = []
+        out, before_guard = [], []
         if channel:
             out.append('if( storeChannelWeights ) numerators_sv[%d] += cxabs2( %s );'
                        % (diagram.get('number') - 1, operand))
         if captures is not None:
-            out += [self._HR_AMP.sub(operand, line.strip())
-                    for line, _target, _first in captures]
-            out += [line.strip() for line in combines]
-            return out
+            for line, target, first in captures:
+                line = self._HR_AMP.sub(operand, line.strip())
+                if first and flavour_mask is not None:
+                    # the guard can skip the line that opens this
+                    # sub-expression, so it has to start from zero (as in
+                    # super_get_matrix_element_calls)
+                    before_guard.append('%s = cxzero_sv();' % target.strip())
+                    line = line.replace(' = ', ' += ', 1)
+                out.append(line)
+            return before_guard + self._hr_flavour_guarded(out, flavour_mask) \
+                + [line.strip() for line in combines]
         for njamp, coeff in color[namp].items():
             scoeff = OneProcessExporterMadMatrix.coeff(*coeff)
             if scoeff[0] == '+': scoeff = scoeff[1:]
@@ -4178,7 +4573,27 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 out.append('jamp_sv[%s] -= %s%s;' % (njamp, scoeff[1:], operand))
             else:
                 out.append('jamp_sv[%s] += %s%s;' % (njamp, scoeff, operand))
-        return out
+        return self._hr_flavour_guarded(out, flavour_mask)
+
+    # the number of 64-bit words of the grouped flavour masks of the matrix
+    # element being written (set by _compute_group_masks)
+    flavour_mask_nwords = 1
+
+    def flavour_guard(self, flavour_mask):
+        """The opening of the runtime test of a grouped flavour mask (iflavor
+        is the grouped flavour index of the page, constant across a SIMD
+        vector); the same text as the recycler writes, see
+        hel_recycle.CppDialect.flavour_guard."""
+        import madgraph.madevent.hel_recycle as hel_recycle
+        return hel_recycle.CppDialect.flavour_guard(flavour_mask,
+                                                    self.flavour_mask_nwords)
+
+    def _hr_flavour_guarded(self, lines, flavour_mask):
+        """lines under the guard of flavour_mask (as they are without one)."""
+        if flavour_mask is None or not lines:
+            return list(lines)
+        return [self.flavour_guard(flavour_mask)] + \
+            ['  ' + line for line in lines] + ['}']
 
     def cached_jamp_plan(self, matrix_element, color_amplitudes):
         """build_jamp_plan, once per matrix element: the hr_orig pass and the
@@ -4213,7 +4628,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         return ntmp, lines + list(final)
 
     def _hr_orig_amplitude(self, call, namp, amplitude, diagram, channel, color,
-                           captures=None):
+                           captures=None, flavour_mask=None):
         """One amplitude in hr_orig form: the call, tagged with its number and
         its legs' spins (_hr_amp_tag), then a //HRFOLD block of what it adds to its helicity row's
         tables -- the multichannel numerator and the color flows -- with a
@@ -4222,8 +4637,13 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         With captures (the build_jamp_plan lines of this amplitude) the color
         flows are added to as the plain build adds to them: into the row's
         shared sub-expressions (jampTmpAll_sv) and the few color flows it goes
-        to directly; hr_post_lines finishes them per row."""
-        out = [self._hr_amp_tag(call, namp, amplitude), '//HRFOLD %d' % namp]
+        to directly; hr_post_lines finishes them per row.
+
+        With flavour_mask the tag carries it, and the recycler guards the call
+        and its folds together: the tables start every page at zero, so an
+        amplitude skipped at a flavour is simply not added in."""
+        out = [self._hr_amp_tag(call, namp, amplitude, flavour_mask),
+               '//HRFOLD %d' % namp]
         slot = '( ${row} * nParity + iParity )'
         if channel:
             out += ['if( storeChannelWeights )', '{',
@@ -4261,9 +4681,13 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # onto the grouped flavors used at runtime (iflavor). Returns two dicts
     # keyed by id(object) -> grouped bitmask, containing only objects whose mask
     # is NOT all-ones (i.e. that actually benefit from a guard). Both dicts are
-    # empty when masking is disabled (use_flavor_mask False), trivial, or the
-    # process has more than 64 flavor groups.
+    # empty when masking is disabled (use_flavor_mask False) or trivial. A
+    # process of more than 64 flavor groups has masks of several 64-bit words
+    # (flavour_mask_nwords, see hel_recycle.CppDialect.flavour_guard): p p >
+    # j j j j QCD=0 has 116 groups in its q q~ > q q q~ q~, which used to get
+    # no guard at all.
     def _compute_group_masks(self, matrix_element):
+        self.flavour_mask_nwords = 1
         if not getattr(self, 'use_flavor_mask', True):
             return {}, {}
         try:
@@ -4274,8 +4698,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             return {}, {}
         groups = [list(g) for g in matrix_element.get_external_flavors_with_iden()]
         n_groups = len(groups)
-        if n_groups == 0 or n_groups > 64:
+        if n_groups == 0:
             return {}, {}
+        self.flavour_mask_nwords = (n_groups + 63) // 64
         flavor_to_idx = {tuple(f): i for i, f in enumerate(allowed)}
         group_bits = []
         for g in groups:
@@ -4330,6 +4755,202 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             if not item.startswith('\n') and not item.startswith('#'): res[i]='      '+item
         return res
 
+    # ------------------------------------------------------------------
+    # Crossing-symmetry helpers (only active when self.use_crossing_ic).
+    # When off, every path below is a no-op and the emitted code is
+    # byte-identical to the historical (no-crossing) output.
+    # ------------------------------------------------------------------
+    def _crossing_tables(self, matrix_element):
+        import madgraph.iolibs.export_v4 as export_v4
+        return export_v4.ProcessExporterFortran.compute_crossing_tables(
+            self, matrix_element)
+
+    def _crossing_preamble(self, matrix_element):
+        """Per-event momentum permutation for crossing symmetry (C++/SIMD).
+
+        All events in a SIMD page share flav_use but may carry DIFFERENT
+        crossings, so this gather is genuinely per-event (NOT vectorized): for
+        each event we permute its momenta into the base slot order (xmom,
+        positive energy preserved) and record the per-event NSF sign flips
+        (icsign). The momentum sign flip of a leg changing side is applied
+        through the NSF flag inside the HELAS routines (see
+        _crossing_external_block).
+
+        GPU: one event per thread, so the row is read once, and each external
+        call reads its momentum straight from the input slot xperm[s] with the
+        NSF sign times xic[s] -- no gather buffer, no blend."""
+        return """#ifdef MGONGPUCPP_GPUIMPL
+      // === CROSSING SYMMETRY (GPU): this event's crossing-table row ===
+      // (cross_gather, the base-slot view): base slot s reads the momentum of
+      // input slot xperm[s], NSF sign times xic[s]. A row out of range gathers
+      // the identity; the event's |M|^2 is then 0 (normalise_output).
+      int xperm[npar], xic[npar];
+      cross_gather( (int)( iflavor_ext / (unsigned int)nmaxflavor ), xperm, xic );
+#else
+""" + self.CROSSING_GATHER_HEAD + """      // 2 scratch external wavefunctions for the per-event NSF-sign blend
+      fptype_momenta_sv pvec_x[2][np4];
+      cxtype_amp_sv w_x[2][nw6];
+      ALOHAOBJ aloha_x[2];
+      aloha_x[0] = ALOHAOBJ{ pvec_x[0], w_x[0] };
+      aloha_x[1] = ALOHAOBJ{ pvec_x[1], w_x[1] };
+""" + self.CROSSING_GATHER_LOOP + """#endif
+"""
+
+    # The per-lane gather of the crossing preamble (CPU/SIMD), in two pieces
+    # so that the recycled block (crossing_preamble_recycled) shares them
+    CROSSING_GATHER_HEAD = """      // === CROSSING SYMMETRY: per-event momentum permutation (NOT vectorized) ===
+      // Each event's crossing-table row (cross_gather, the base-slot view):
+      // base slot s takes the momentum of input slot xperm[s], NSF sign xic[s].
+      // A row out of range gathers the identity; its denominator is 0.
+      // (momenta precision: double for FPTYPE=v, see xblend)
+      alignas( mgOnGpu::cppAlign ) fptype_momenta xmom[npar * np4 * neppV];
+      fptype_sv icsign[npar];
+"""
+    CROSSING_GATHER_LOOP = """      for( int ieppV = 0; ieppV < neppV; ++ieppV )
+      {
+        const int xcr = (int)( iflavorVec[ievt0 + ieppV] / nmaxflavor );
+        int xperm[npar], xic[npar];
+        cross_gather( xcr, xperm, xic );
+        for( int s = 0; s < npar; ++s )
+        {
+          const int src = xperm[s];
+          for( int ip4 = 0; ip4 < np4; ++ip4 )
+            xmom[s * np4 * neppV + ip4 * neppV + ieppV] =
+              MemoryAccessMomenta::ieventAccessIp4IparConst( momenta, ieppV, ip4, src );
+          reinterpret_cast<fptype*>( &icsign[s] )[ieppV] = (fptype)xic[s];
+        }
+      }
+"""
+
+    def crossing_preamble_recycled(self):
+        """The crossing preamble of the recycled block (calculate_all_jamps,
+        CPU only): the same per-lane gather, without the blend scratch, which
+        each crossed external of the recycled calls declares for itself (see
+        _crossing_external_block, hr_orig)."""
+        return self.CROSSING_GATHER_HEAD + self.CROSSING_GATHER_LOOP
+
+    def _crossing_external_block(self, wf, argument):
+        """External HELAS call under crossing symmetry (C++/SIMD).
+
+        Reads the per-event permuted momenta (xmom, in crossed slot order) and
+        applies the per-event NSF sign flip by computing the wavefunction twice
+        and blending lane-wise through icsign. Every lane evaluates the same
+        base helicity row ihel: a lane whose leg changed side (icsign -1) is
+        fed the opposite helicity together with the opposite NSF flag, which is
+        the same all-outgoing configuration (see sigmaKin, and the Fortran
+        APPLY_CROSSING_ROWS). So the two calls are (+nsf, +h) and (-nsf, -h),
+        h = hel_sv[s] (the row's helicity of base leg s, per lane), and the one
+        good-helicity list serves every lane.
+        get_amp downstream stays fully SIMD. Scalars carry no helicity, so
+        their two calls only differ by the NSF flag. GPU: one event per
+        thread, a direct call on the input slot xperm[s] with the helicity and
+        the NSF flag both times xic[s] (see _crossing_preamble).
+
+        --axial_gauge: a vector with a reference leg is vxxxxxr, its gauge
+        vector the momentum at the reference's base slot (xmom slot ref on
+        the CPU, input slot xperm[ref] on the GPU), as the fortran writer
+        passes P(0,ref) of the crossed call."""
+        routine = helas_call_writers.HelasCallWriter.mother_dict[
+            argument.get_spin_state_number()].lower()
+        routine = routine + 'x' * (6 - len(routine))
+        spin = argument.get('spin')
+        axial = spin == 3 and self.has_axial_gauge_ref(wf)
+        ref = self.get_axial_gauge_ref(wf) - 1 if axial else None
+        if axial:
+            routine = routine + 'r'
+        routine = routine + '<M_ACCESS, W_ACCESS>'
+        s = wf.get('number_external') - 1
+        me = wf.get('me_id') - 1
+        if spin == 1:
+            nsf = (-1) ** (wf.get('state') == 'initial')
+        elif argument.is_boson():
+            nsf = (-1) ** (wf.get('state') == 'initial')
+        else:
+            nsf = - (-1) ** wf.get_with_flow('is_part')
+        # A leg marked off-shell ('*') takes the invariant mass of the
+        # momentum that lands in its base slot, as the uncrossed call
+        # (get_external_line) takes that of its own: crossing keeps the
+        # particle of a slot up to its antiparticle, and the mass of a
+        # momentum does not see the side flip. The flag is the slot's own
+        # (wf); a crossing records only partners whose '*' legs pair up
+        # (crossing_flavor_pairing). CPU: the gathered xmom slot s; GPU: the
+        # input slot xperm[s], whose momentum (the thread's own event) gives
+        # the invariant mass there too (backend/gpu/SigmaKin.cc).
+        offshell = spin != 1 and wf.get('offshell')
+        if offshell:
+            mass = 'offshell_mass<M_ACCESS>( m_pars->%s, xmom, %d )' % (wf.get('mass'), s)
+            gpu_mass = 'offshell_mass<M_ACCESS>( m_pars->%s, momenta, xperm[%d] )' % (wf.get('mass'), s)
+        else:
+            mass = gpu_mass = 'm_pars->%s' % wf.get('mass')
+
+        def one_call(sign, obj, hel=None):
+            if spin == 1:
+                call = '%s( xmom, %+d, cFlavors[iflavor][%d], %s, %d );' % \
+                       (routine, sign, s, obj, s)
+            else:
+                call = '%s( xmom, %s, %s, %+d, cFlavors[iflavor][%d], %s, %d%s );' % \
+                       (routine, mass, hel, sign, s, obj, s,
+                        ', %d' % ref if axial else '')
+            return self.format_coupling(call)
+
+        if self.hr_orig:
+            return self._crossing_external_orig(one_call, spin, s, me, nsf)
+
+        hel = None if spin == 1 else 'hel_sv[%d]' % s
+        lines = ['#ifndef MGONGPUCPP_GPUIMPL']
+        lines.append('      ' + one_call(nsf, 'aloha_x[0]', hel))
+        lines.append('      ' + one_call(-nsf, 'aloha_x[1]', hel and '-' + hel))
+        lines.append('      { const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
+        lines.append('        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s)
+        lines.append('        for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = xblend( _sp, _sm, pvec_x[0][_k], pvec_x[1][_k] );' % me)
+        lines.append('        for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _sp * w_x[0][_k] + _sm * w_x[1][_k];' % me)
+        lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
+        lines.append('#else')
+        # GPU: one event per thread. Its crossing-table row was read by the
+        # preamble: base slot s takes the momentum of input slot xperm[s] (the
+        # ipar argument), charge conjugated through the NSF sign when xic[s] is
+        # -1, and fed the base row's helicity times the same sign.
+        if spin == 1:
+            gpu = '%s( momenta, %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d] );' % \
+                  (routine, nsf, s, s, me, s)
+        else:
+            gpu = '%s( momenta, %s, hel_sv[%d] * xic[%d], %+d * xic[%d], cFlavors[iflavor][%d], aloha_obj[%d], xperm[%d]%s );' % \
+                  (routine, gpu_mass, s, s, nsf, s, s, me, s,
+                   ', xperm[%d]' % ref if axial else '')
+        lines.append('      ' + self.format_coupling(gpu))
+        lines.append('#endif\n')
+        return '\n'.join(lines)
+
+    def _crossing_external_orig(self, one_call, spin, s, me, nsf):
+        """The crossed external of _crossing_external_block in the form the
+        helicity recycler reads (hr_orig, CPU only): a head call it unfolds
+        like any external -- (+nsf, h) into the leg's own slot -- then a
+        //HREXT tail that CppDialect.render_external stamps after every copy,
+        ${hel} being the copy's helicity and ${out} its slot. The tail makes
+        the (-nsf, -h) call and keeps it on the lanes whose leg changed side
+        (icsign -1): the base row's all-outgoing configuration, so the one
+        good-helicity table serves every lane. It reaches the slot only through
+        aloha_obj (the chunk functions of a big block see nothing else) and
+        declares its own scratch."""
+        hel = None if spin == 1 else 'hel_sv[%d]' % s
+        tail_hel = None if spin == 1 else '-( ${hel} )'
+        out = 'aloha_obj[${out}]'
+        return '\n'.join([
+            one_call(nsf, 'aloha_obj[%d]' % me, hel),
+            '//HREXT %d' % s,
+            '      {',
+            '        fptype_momenta_sv _px[np4];',
+            '        cxtype_amp_sv _wx[nw6];',
+            '        ALOHAOBJ _ax{ _px, _wx };',
+            '        ' + one_call(-nsf, '_ax', tail_hel),
+            '        const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s,
+            '        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s,
+            '        cxtype_amp_sv* _w = reinterpret_cast<cxtype_amp_sv*>( %s.w );' % out,
+            '        for( int _k = 0; _k < np4; _k++ ) %s.pvec[_k] = xblend( _sp, _sm, %s.pvec[_k], _px[_k] );' % (out, out),
+            '        for( int _k = 0; _k < nw6; _k++ ) _w[_k] = _sp * _w[_k] + _sm * _wx[_k];',
+            '      }',
+            '//HRENDEXT'])
+
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting)
     # [GPUFOHelasCallWriter.format_coupling is called by GPUFOHelasCallWriter.get_external_line/generate_helas_call]
     # [GPUFOHelasCallWriter.get_external_line is called by GPUFOHelasCallWriter.get_external]
@@ -4338,6 +4959,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # (cudacpp's MGONGPU_TEST_DIVERGENCE variant of the first ipzxxx/imzxxx/
     # ixzxxx call is gone with them: get_external_line never emits those)
     def get_external(self, wf, argument):
+        if getattr(self, 'use_crossing_ic', False):
+            return self._crossing_external_block(wf, argument)
         line = self.get_external_line(wf, argument)
         split_line = line.split(',')
         split_line = [ str.lstrip(' ').rstrip(' ') for str in split_line] # AV

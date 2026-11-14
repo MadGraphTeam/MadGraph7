@@ -15,6 +15,7 @@
 #include "SigmaKin.h"
 
 #include "CPPProcess.h" // ProcessData.h, Parameters.h, HelAmps_<model>.h transitively
+#include "CrossingBlend.h" // the crossed externals of the recycled calls
 #include "ProcessTables.h"
 
 #include "MemoryAccessAmplitudes.h"
@@ -29,6 +30,8 @@ namespace madmatrix
 {
   using namespace ProcessData;
   using namespace ProcessTables;
+  // As in SigmaKin.cc: the calls read the fixed couplings as COUPs[ndcoup + i]
+  using Parameters_dependentCouplings::ndcoup;
 
   // As in SigmaKin.cc: the chunks index the jamp tables with it
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT

@@ -70,7 +70,14 @@ class LoopInducedXTreeStandaloneTest(unittest.TestCase):
     def test_loop_induced_x_tree_standalone(self):
         out_dir = pjoin(self.tmpdir, 'gg_h_ttx')
         interface = MGCmd.MasterCmd()
-        for command in ['import model loop_sm',
+        # The references keep the top width in every top propagator. Both
+        # width conventions that drop it would move the interference (by
+        # 0.7% at this point): zerowidth_tchannel (on by default) drops it at
+        # run time for a spacelike momentum, zerowidth_external (on by default)
+        # from the internal tops, the top being an external particle here.
+        for command in ['set zerowidth_tchannel False',
+                        'set zerowidth_external False',
+                        'import model loop_sm',
                         'generate g g > h > t t~ [LIxtree=QCD]',
                         'output standalone_fortran %s -f' % out_dir]:
             interface.exec_cmd(command, printcmd=False, precmd=True,
