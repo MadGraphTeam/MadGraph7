@@ -406,6 +406,18 @@ namespace madmatrix
     return cxtype_v( a.real() + b.real(), a.imag() + b.imag() );
   }
 
+  inline cxtype_v
+  operator+( const fptype& a, const cxtype_v& b )
+  {
+    return cxtype_v( a + b.real(), b.imag() );
+  }
+
+  inline cxtype_v
+  operator+( const cxtype_v& a, const fptype& b )
+  {
+    return cxtype_v( a.real() + b, a.imag() );
+  }
+
   inline const cxtype_v&
   operator+( const cxtype_v& a )
   {

@@ -16,9 +16,137 @@ from __future__ import absolute_import
 
 import re
 import os
+import shutil
 import tempfile
 
 import tests.unit_tests as unittest
+
+
+class TestRunningHelasParameters(unittest.TestCase):
+    """Custom propagators get running inputs independently of vertex couplings."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        from tests.input_files.running_helas_model import create_model
+        cls.directory = tempfile.mkdtemp(prefix='running_helas_')
+        cls.model = import_ufo.import_model(
+            create_model(os.path.join(cls.directory, 'running_ufo')),
+            options={'apply_flavor_grouping': False})
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.directory)
+
+    def converter(self, tags):
+        from madmatrix.model_handling import MadMatrixUFOModelConverter
+        return MadMatrixUFOModelConverter(
+            self.model, self.directory,
+            wanted_lorentz=[(('FFV2', 'FFV4'), tags, 3)],
+            wanted_couplings=['GC_1'])
+
+    def test_parameter_buffer_and_dependency_closure(self):
+        from madmatrix.model_handling import model_parameter_name
+        self.assertEqual(model_parameter_name('mdl_running'), 'mdl_running')
+        converter = self.converter(['PZrun'])
+        self.assertEqual(list(converter.coups_dep),
+                         ['HP_G', 'HP_aS', 'HP_mdl_running_complex', 'HP_mdl_running_real'])
+        self.assertIn('mdl_running_base', converter.used_dependent_parameters())
+        self.assertIn('mdl_running_real', converter.used_dependent_parameters())
+        self.assertNotIn('mdl_running_unused', converter.used_dependent_parameters())
+        # A process without a custom propagator has no additional buffer slots.
+        self.assertEqual(self.converter([]).coups_dep, {})
+
+    def test_combined_routine_arguments(self):
+        from aloha.create_aloha import AbstractALOHAModel
+        from madmatrix.model_handling import MadMatrixALOHAWriter
+        converter = self.converter(['PZrun'])
+        aloha_model = AbstractALOHAModel.from_model(self.model, explicit_combine=True)
+        aloha_model.compute_subset([(('FFV2', 'FFV4'), ['PZrun'], 3)])
+        text = '\n'.join(routine.write(output_dir=None, mode='no_include',
+                        language=converter.aloha_writer)[1]
+                         for routine in aloha_model.values())
+        self.assertIn('const cxtype_sv & running_complex', text)
+        self.assertIn('const fptype_sv & running_real', text)
+        self.assertIn('const fptype_sv & aS', text)
+        self.assertIn('const fptype_sv & G', text)
+        self.assertIn('constexpr fptype_amp PI = M_PI;', text)
+        self.assertNotIn('Parameters::mdl_PI', text)
+        self.assertNotIn('Parameters::mdl_running', text)
+        self.assertNotIn('Parameters::current->mdl_running', text)
+        # Model-specific configuration must not leak into later exports.
+        self.assertEqual(MadMatrixALOHAWriter.dependent_params, ())
+        self.assertEqual(MadMatrixALOHAWriter.propagator_parameters, {})
+
+    def test_fixed_vertex_coupling_with_running_propagator(self):
+        import copy
+        from madgraph.core import base_objects, diagram_generation, helas_objects
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter
+        process = base_objects.Process({'model': self.model,
+            'legs': base_objects.LegList([
+                base_objects.Leg({'id': pdg, 'state': i > 1})
+                for i, pdg in enumerate([-11, 11, -13, 13])])})
+        matrix_element = helas_objects.HelasMatrixElement(
+            diagram_generation.Amplitude(process))
+        writer = MadMatrixUFOHelasCallWriter(self.model)
+        wavefunctions = [wf for wf in matrix_element.get_all_wavefunctions()
+                         if wf.get('mothers') and wf.get('particle').get('pdg_code') == 23]
+        self.assertTrue(wavefunctions)
+        # Populate the call cache with an ordinary propagator first, as in
+        # SMEFTsim where h and its propagator-correction particle share a key.
+        ordinary = copy.copy(wavefunctions[0])
+        ordinary['particle'] = copy.copy(ordinary.get('particle'))
+        ordinary['particle']['propagator'] = ''
+        self.assertEqual(ordinary.get_call_key(), wavefunctions[0].get_call_key())
+        self.assertNotIn('idcoup_HP_', writer.get_wavefunction_call(ordinary))
+        calls = [writer.get_wavefunction_call(wf) for wf in wavefunctions]
+        self.assertTrue(calls)
+        for call in calls:
+            self.assertIn('<W_ACCESS, CI_ACCESS>', call)
+            self.assertIn('CD_ACCESS::kernelAccessConst', call)
+            self.assertIn('idcoup_HP_mdl_running_complex', call)
+            self.assertIn('cxreal( CD_ACCESS::kernelAccessConst', call)
+            self.assertIn('idcoup_HP_mdl_running_real', call)
+
+    def test_running_flavour_coupling_accepts_explicit_parameter_reads(self):
+        from madgraph.core.base_objects import FLV_Coupling
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter
+        writer = MadMatrixUFOHelasCallWriter(self.model)
+        coupling = next(coup.name for key, couplings in self.model['couplings'].items()
+                        if 'aS' in key for coup in couplings)
+        writer.flv_couplings_map['FLV_TEST'] = FLV_Coupling('FLV_TEST', {(1, 1, 0): coupling})
+        call = ('FFV1<W_ACCESS, CI_ACCESS>(m_pars->FLV_TEST, '
+                'CD_ACCESS::kernelAccessConst(COUPs['
+                'Parameters_dependentCouplings::idcoup_HP_mdl_running_real]), out);')
+        formatted = writer.format_coupling(call)
+        self.assertIn('<W_ACCESS, CDPF_ACCESS>', formatted)
+        self.assertIn('flvCOUPs_dep[0]', formatted)
+        self.assertIn('CD_ACCESS::kernelAccessConst', formatted)
+        with self.assertRaisesRegex(Exception, 'mixing a running flavored coupling'):
+            writer.format_coupling(call.replace('out);', 'COUPs[0], out);'))
+
+    def test_direct_alphas_without_an_indirect_dependency(self):
+        from madmatrix.model_handling import MadMatrixUFOModelConverter
+        converter = MadMatrixUFOModelConverter(self.model, self.directory,
+                         wanted_lorentz=[(('FFV2',), ['PZrun'], 3)],
+                         wanted_couplings=['GC_1'])
+        # Isolate the direct aS/G case from the indirect running_real chain.
+        converter.coups_dep = {name: value for name, value in converter.coups_dep.items()
+                              if name in ('HP_aS', 'HP_G')}
+        converter.generate_parameters_class_files()
+        definitions = converter.default_replace_dict['dcoupsetdpar']
+        self.assertIn('const fptype_sv aS = G * G / 4. / M_PI;', definitions)
+
+    def test_complex_parameter_names_are_matched_as_identifiers(self):
+        converter = self.converter(['PZrun'])
+        converter.generate_parameters_class_files()
+        definitions = converter.default_replace_dict
+        for key in ('dcoupsetdpar', 'dcoupsetdpar2'):
+            self.assertIn('(cxtype)mdl_running ', definitions[key])
+        self.assertIn('out.HP_mdl_running_complex = mdl_running_complex;',
+                      definitions['dcoupsetdcoup'])
+        self.assertNotIn('HP_(cxtype)', definitions['dcoupsetdcoup'])
+        self.assertIn('constexpr cxsmpl<fptype>', definitions['hardcoded_independent_couplings'])
 
 
 class TestMadMatrixProcessData(unittest.TestCase):

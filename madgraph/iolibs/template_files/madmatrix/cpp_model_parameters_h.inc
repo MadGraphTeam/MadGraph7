@@ -30,14 +30,6 @@
 // For simplicity, keep this code hardcoded also for SM processes (a nullptr is needed as in the case nBsm == 0)
 %(bsmdefine)s
 
-#ifndef MGONGPU_HARDCODE_PARAM%(eftwarn0)s
-
-#include "read_slha.h"
-
-#include <map>
-#include <set>
-#include <string>
-
 //One namespace. Split ber backend.
 namespace madmatrix
 {
@@ -59,7 +51,18 @@ namespace madmatrix
       }
     }
   };
+}
 
+#ifndef MGONGPU_HARDCODE_PARAM%(eftwarn0)s
+
+#include "read_slha.h"
+
+#include <map>
+#include <set>
+#include <string>
+
+namespace madmatrix
+{
   class Parameters
   {
   public:
