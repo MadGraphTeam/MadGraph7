@@ -42,10 +42,11 @@ jobs:
     #   parallel_bundle_4 test_decay_comparator_nmssm3
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools_core
       - uses: ./.github/actions/restore_ufomodel
@@ -192,6 +193,10 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_decay_nmssm3 -pP -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   test_short_ppgogo_amcatnlo_nlo:
     # The type of runner that the job will run on

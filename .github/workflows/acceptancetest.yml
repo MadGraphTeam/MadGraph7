@@ -1028,16 +1028,19 @@ jobs:
     # and test_nlo_output2 (@bypass_for_py3, never run), test_contur_from_file
     # (disabled in acceptancetest_madevent.yml), test_madspace_example_gpu (GPU).
     # Each step runs even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
       - uses: ./.github/actions/restore-pip-cache
       # StdHEP (the hw6/py6 stdhep tests) needs the rpc headers, as in parralel.yml
       - name: Install libtirpc-dev
+        # preinstalled (libtirpc-devel) on the self-hosted alma10 runners
+        if: runner.environment != 'self-hosted'
         run: sudo apt-get -o Acquire::Retries=5 install -y libtirpc-dev
 
       - name: "standalone and madmatrix outputs"
@@ -1057,6 +1060,10 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_gen_evt_onlygen test_generate_events_lo_hw6_stdhep test_generate_events_lo_py6_stdhep -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
   acceptancetest_82_helicities:
     runs-on: ubuntu-24.04
