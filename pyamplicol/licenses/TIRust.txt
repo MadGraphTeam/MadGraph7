@@ -1,0 +1,84 @@
+TIRust (Rust crates iregi-rust and iregi-masters) linked into pyAmpliCol's native libraries
+
+Source: https://github.com/huashengshao/TIRust (formerly huashengshao/iregi-rust),
+revision a5d4afbf87a0afc155dc57d2ac633af77a932a16 (pinned in
+rust/loop-reduction/Cargo.toml and Cargo.lock; the cargo feature tir, on by
+default, links it).
+
+License: the BSD Zero Clause License (0BSD). The LICENSE file of the pinned
+revision is reproduced verbatim below; it covers the project's own code,
+including the scalar masters generated from oneloopmaster's expressions (a
+transcription of Andreas van Hameren's OneLOop, distributed and relicensed
+with his permission). Of the third-party content it lists, none is part of
+the two linked crates. TIRust's own Rust dependencies (Symbolica,
+oneloopmaster and crates.io crates) are covered by their own notices in
+THIRD_PARTY_NOTICES.md and licenses/.
+
+--------------------------------------------------------------------------------
+BSD Zero Clause License
+
+Copyright (c) 2026 The TIRust authors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+
+--------------------------------------------------------------------------------
+Scope
+
+The licence above covers the project's own code and data: everything in this
+repository except the third-party content listed below. It includes the scalar
+masters generated from oneloopmaster's expressions,
+crates/iregi-masters/src/generated/{a0,b0,db0,c0,d0,constants}.rs, which
+transcribe Andreas van Hameren's OneLOop; his permission to distribute and
+relicense that transcription was received by Valentin Hirschi by email
+(recorded 2026-11-06).
+
+Third-party content (not covered by the licence above; each keeps its own
+licence and notices):
+
+- dependencies/feynkit-integrals: code extracted from FeynKit
+  (https://github.com/alphal00p/gammaloop, revision 865afdc4), MIT OR
+  Apache-2.0 as declared by its manifest; upstream licence text in
+  dependencies/feynkit-integrals/LICENSE, provenance in its UPSTREAM.md.
+- dependencies/linnest and dependencies/linnest-patches: linnest from
+  https://github.com/alphal00p/gammaloop (revision 9102f885), MIT as
+  declared by its manifest;
+  notices in dependencies/linnest/UPSTREAM_REPOSITORY_LICENSE,
+  dependencies/linnest/typst/LICENSE (MIT) and
+  dependencies/linnest/layout/native/LICENSE.networkx (BSD-3-Clause, NetworkX).
+- python/tirust/data/render/fonts: the unchanged STIX Two Math font from
+  gammaloop 9102f885 (crates/linnet-render-py/fonts), SIL Open Font License
+  1.1; licence text in python/tirust/data/licenses/STIX-Two-OFL.txt.
+- python/tirust/data/licenses: the licence texts of the bundled or linked
+  components (the font, FeynKit, Symbolica), reproduced verbatim.
+- python/tirust/_types/symbolica/community/{tensor,graph,hepkit}/__init__.pyi:
+  type-only stubs mirrored by scripts/vendor-python-type-stubs.py with only
+  their import paths rewritten (sources and hashes in
+  python/tirust/owner-stubs.json), from gammaloop 9102f885 (tensor: spynso3,
+  MIT; graph: linnet-render-py, MIT; hepkit: feynkit-py, MIT OR Apache-2.0, as
+  declared by their manifests), with GammaLoop's licence in
+  python/tirust/data/licenses/FeynKit-LICENSE. The same script generates the
+  stub of Symbolica's core (python/tirust/_types/symbolica/core.pyi) locally;
+  it is not part of this repository.
+- fixtures/models/sm.json: copied unchanged from gammaloop 865afdc4
+  (crates/feynkit-model/tests/fixtures/sm.json), under GammaLoop's licence.
+- Evidence under validation/ and docs/research/ that is not the project's own
+  work (evidence only, never built): outputs of MadGraph5_aMC@NLO/MadLoop,
+  COLLIER and IREGI kept as reference values in the test fixtures and research
+  notes, under those programs' terms. The drivers and scripts that run these
+  programs and capture their results (for example the COLLIER and IREGI
+  Fortran drivers) are the project's own code. The rest of the validation
+  evidence is kept outside this repository (validation/README.md).
+
+Dependencies fetched by Cargo (Symbolica, oneloopmaster, the gammaloop crates
+and crates.io packages) are not part of this repository and carry their own
+licences; Symbolica is distributed under its own licence
+(python/tirust/data/licenses/Symbolica-LICENSE.md).

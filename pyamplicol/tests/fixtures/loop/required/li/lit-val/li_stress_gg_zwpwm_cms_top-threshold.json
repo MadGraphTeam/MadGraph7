@@ -1,0 +1,239 @@
+{
+ "name": "li_stress_gg_zwpwm_cms_top-threshold",
+ "li_row": "LI-C1",
+ "stress": {
+  "base": "li_gg_zz_cms",
+  "kind": "top-threshold",
+  "values": [
+   "1e-2",
+   "1e-3",
+   "1e-4"
+  ],
+  "energy": null,
+  "fractions": [
+   "0.36",
+   "0.32",
+   "0.32"
+  ],
+  "transverse": [
+   [
+    "0.3",
+    "0.2"
+   ],
+   [
+    "-0.1",
+    "0.25"
+   ]
+  ],
+  "masses": [
+   null,
+   null,
+   "MZ",
+   "MW",
+   "MW"
+  ],
+  "process": {
+   "pdgs": [
+    21,
+    21,
+    23,
+    24,
+    -24
+   ],
+   "madloop_process": "g g > z w+ w- [sqrvirt=QCD]",
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 3
+   },
+   "squared_orders": {
+    "QCD": 4,
+    "QED": 6
+   },
+   "fixed_parameters": {
+    "WW": "0"
+   }
+  }
+ },
+ "loop_induced": true,
+ "pdgs": [
+  21,
+  21,
+  23,
+  24,
+  -24
+ ],
+ "initial": 2,
+ "madloop_process": "g g > z w+ w- [sqrvirt=QCD]",
+ "loop_orders": {
+  "QCD": 2,
+  "QED": 3
+ },
+ "squared_orders": {
+  "QCD": 4,
+  "QED": 6
+ },
+ "correction": "QCD",
+ "scheme": "ew-gmu-cms",
+ "scheme_data": {
+  "description": "The ew-gmu values under MG5's complex-mass scheme (set complex_mass_scheme True) on the default restriction: complex masses sqrt(M^2 - i M Gamma) for t, Z, W, H at the card widths of restrict_default.dat (WT = 1.37758, WZ = 2.49877, WW = 2.09291, WH = 0.00407468); a process with an external unstable multiplet sets its width to 0 (parameter_overrides). Under CMS MG5 removes the YUKAWA inputs (ymX := the complex mass), so no Yukawa is set.",
+  "restriction": "default",
+  "madloop_model": "{reference}/models/ufodb-6ca4b120-patched/loop_qcd_qed_sm_Gmu_py3",
+  "parameters": {
+   "aS": "0.118",
+   "Gf": "0.0000116639",
+   "MZ": "91.188",
+   "MW": "80.419",
+   "MH": "125",
+   "MT": "173"
+  },
+  "fixed_parameters": {
+   "MB": "0",
+   "MTA": "0",
+   "WT": "1.37758",
+   "WZ": "0",
+   "WW": "0",
+   "WH": "0.00407468",
+   "WTau": "0"
+  },
+  "electroweak_inputs": "gmu",
+  "complex_mass_scheme": true,
+  "active_flavours": 5,
+  "loop_quark_flavours": 6,
+  "conventions": {
+   "CMSParam": "1 (set by MG5's change_mass_to_complex_scheme)",
+   "LogSwitch": "1 (fixed by the restriction card)",
+   "GfRedefinitionChoice": "1 (fixed by the restriction card: alpha_Gmu = sqrt(2) Gf |mu_W^2 (1 - mu_W^2/mu_Z^2)| / pi)",
+   "ghost_widths": "zero (the UFO's ghosts carry no width; MadLoop's loop denominators use the complex mass)"
+  },
+  "parameter_overrides": {
+   "WZ": "0",
+   "WW": "0"
+  }
+ },
+ "normalization": {
+  "initial_average": 256,
+  "final_symmetry": 1,
+  "denominator": 256,
+  "convention": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings"
+ },
+ "carriers": [
+  "double",
+  "double-double",
+  "arbitrary"
+ ],
+ "points": [
+  [
+   [
+    "173.52230246251565404236316680908203125",
+    "0",
+    "0",
+    "173.52230246251565404236316680908203125"
+   ],
+   [
+    "175.946102989240958917250580138020483365994496",
+    "0",
+    "0",
+    "-175.946102989240958917250580138020483365994496"
+   ],
+   [
+    "118.408639660220706149818838708",
+    "62.608169250381",
+    "41.738779500254",
+    "6.591360339779293850181161292"
+   ],
+   [
+    "98.857479871776858059377789035260015764792384",
+    "-20.869389750127",
+    "52.1734743753175",
+    "12.164822590738795982985377773822015485207616"
+   ],
+   [
+    "132.202285919759048750417119203842498851202112",
+    "-41.738779500254",
+    "-93.9122538755715",
+    "-21.179983457243394708053952394760467601202112"
+   ]
+  ],
+  [
+   [
+    "173.52230246251565404236316680908203125",
+    "0",
+    "0",
+    "173.52230246251565404236316680908203125"
+   ],
+   [
+    "172.82440068750391297394147508054463712199704576",
+    "0",
+    "0",
+    "-172.82440068750391297394147508054463712199704576"
+   ],
+   [
+    "117.57130507556565071203665802048",
+    "61.4398857696396",
+    "40.9599238464264",
+    "7.42869492443434928796334197952"
+   ],
+   [
+    "98.33171269879766976842317945804795591498344704",
+    "-20.4799619232132",
+    "51.199904808033",
+    "12.69058976371798427393998735103407533501655296"
+   ],
+   [
+    "130.44368537565624653584480441109871245701359872",
+    "-40.9599238464264",
+    "-92.1598286544594",
+    "-19.42138291314059249348163760201668120701359872"
+   ]
+  ],
+  [
+   [
+    "173.52230246251565404236316680908203125",
+    "0",
+    "0",
+    "173.52230246251565404236316680908203125"
+   ],
+   [
+    "172.51376724762298441036048409304648221074784256",
+    "0",
+    "0",
+    "-172.51376724762298441036048409304648221074784256"
+   ],
+   [
+    "117.48798383054560648116388671188",
+    "61.3224149774889",
+    "40.8816099849926",
+    "7.51201616945439351883611328812"
+   ],
+   [
+    "98.27939481267889480295858921449203137191815424",
+    "-20.4408049924963",
+    "51.10201248124075",
+    "12.74290764983675923940457759458999987808184576"
+   ],
+   [
+    "130.26869106691413716860117497575648208882968832",
+    "-40.8816099849926",
+    "-91.98362246623335",
+    "-19.24638860439848312623800816667445083882968832"
+   ]
+  ]
+ ],
+ "mu_r": [
+  "1000",
+  "1000",
+  "1000"
+ ],
+ "rows": [
+  {
+   "providers": {}
+  },
+  {
+   "providers": {}
+  },
+  {
+   "providers": {}
+  }
+ ],
+ "source": "PLAN \u00a74.1 stress points (M \u00a74.7; \u00a74.1: several on-shell loop propagators (gg>ZWW-type: pentagons with three top and one bottom propagator on shell just above 2 m_t, arXiv:1507.00020 (c.10)), complex-mass scheme with the scheme's Gamma_t, external W/Z widths zero (the cms-external-width remedy)): exact decimal points of tools/loop_benchmark/li_manifest.py write_stress; no provider reference in the fixture (the binary64 estimate against double-double and AP, NinjaRS against TIRust, MadLoop QP: stress-madloop)"
+}

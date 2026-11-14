@@ -253,6 +253,34 @@ and ASM artifacts are target-specific and may require particular CPU features.
 Regenerate a target-specific artifact on the destination, or use a portable
 JIT configuration. See [Artifacts and Portability](artifacts-and-portability.md).
 
+## `NativePlatformError`: a native library needs a newer glibc
+
+```text
+NativePlatformError: Native library .../_rusticol.so needs the ELF version
+GLIBC_2.38, which this process's glibc 2.36 does not define. ...
+```
+
+A native library needs a glibc symbol version that the running glibc does not
+define: pyAmpliCol checks the versions `_rusticol.so` needs against the loaded
+glibc before loading it (a C library that is not glibc is named as such), and
+turns the dynamic loader's own missing-version refusal into the same error when
+it loads `pyamplicol._rusticol` (a library it depends on included) and
+Symbolica's extension at `import pyamplicol`. Other native code (numpy, the
+target-native libraries of C++ or ASM artifacts) reports the loader's error
+unchanged. The release native libraries built from a checkout with
+`tools/developer/build_loop_native.py` need glibc 2.38 or newer; a manylinux
+2.28 wheel needs glibc 2.28. Compare with `ldd --version`, then update glibc or
+run on a system or container that defines the missing versions, or build the
+native libraries from source on this host.
+
+A C, C++ or Fortran client of `librusticol_loop_sdk.so` means the same floor
+with the toolchain's or the loader's message: linking it with a toolchain on an
+older glibc fails with
+``librusticol_loop_sdk.so: undefined reference to `__isoc23_strtol@GLIBC_2.38'``,
+and a client built on a newer glibc and run on an older one gets the dynamic
+loader's ``version `GLIBC_2.38' not found``. See
+[Native libraries and glibc](installation.md#native-libraries-and-glibc).
+
 ## Artifact loading or an explicit checksum audit fails
 
 Treat a size/digest/path mismatch as a changed or incomplete artifact. Do not
@@ -270,6 +298,27 @@ validate_payloads(manifest)
 ```
 
 Do not put this full rehash in every evaluation loop.
+
+## An artifact from an earlier version is refused
+
+Process artifacts load only in the pyAmpliCol version that wrote them:
+artifacts written by 1.0.2 or earlier are refused by 1.0.3 with the version
+named. Regenerate them with the installed version. Prepared
+`.pyamplicol-model` bundles written by 1.0.2 still load in 1.0.3 (the model
+compiler version is unchanged, 17).
+
+## Python-API results differ slightly between processes
+
+With Python Symbolica 3.0.3 from PyPI, results of the Python API can depend
+on what else was generated earlier in the same Python process: normally about
+1e-30 relative, but amplified at nearly degenerate 2 -> 2 kinematics (near
+forward or at a threshold). Generate each artifact in a fresh process (for
+example one `pyamplicol generate` per artifact) where that matters. The
+Symbolica Community build of the pinned `community` revision (`0e2ad04c`)
+behaves the same in double-double and arbitrary precision (a stored process's
+call in the process that generated it and in a fresh one differ at about
+5e-29 relative). Evaluations of a
+stored artifact through the native SDKs do not use Symbolica.
 
 ## Generation appears to repeat expensive validation
 

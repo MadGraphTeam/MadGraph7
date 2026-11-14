@@ -14,12 +14,13 @@ import re
 import time
 import zipfile
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from functools import cache
 from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal, cast
 
+from pyamplicol.api.errors import CompatibilityError
 from pyamplicol.api.requests import ModelSource
 from pyamplicol.artifacts import (
     ArtifactBuilder,
@@ -57,6 +58,8 @@ from .._internal.versions import (
     EAGER_DIRECT_TABLE_BINDING_ABI,
     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
     EVALUATOR_RUNTIME_CAPABILITIES,
+    LEGACY_LOOP_ARTIFACT_REMOVED,
+    LOOP_V2_RUNTIME_CAPABILITIES,
     NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
@@ -72,6 +75,7 @@ from .._internal.versions import (
     RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
     RECURRENCE_PLAN_ABI,
     RECURRENCE_RUNTIME_LAYOUT_ABI,
+    RETIRED_LOOP_RUNTIME_CAPABILITY,
     RUNTIME_PHYSICS_SCHEMA_VERSION,
     SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     SYMBOLICA_CPP_RUNTIME_CAPABILITY,
@@ -103,6 +107,12 @@ from .evaluator_container import (
     PacbinMemberSource,
     PacbinReader,
     write_pacbin_atomic,
+)
+from .loop_artifact import (
+    LOOP_RUNTIME_KIND,
+    LOOP_RUNTIME_PATH,
+    LoopV2ProcessArtifact,
+    loop_process_payloads,
 )
 from .process_grouping import PROCESS_GROUPS_PATH, PROCESS_GROUPS_ROLE, ProcessGroupMap
 from .recurrence_schedule_sharing import (
@@ -399,6 +409,7 @@ ProcessArtifact = (
     | EagerPlanV3ProcessArtifact
     | RecurrenceProcessArtifact
     | OnTheFlyProcessArtifact
+    | LoopV2ProcessArtifact
 )
 
 
@@ -422,11 +433,28 @@ class _GenerationConfigProvenance:
         config: GenerationConfig | RunConfig | ConfigResolution | None,
     ) -> _GenerationConfigProvenance:
         if isinstance(config, ConfigResolution):
-            effective = replace(config.effective, color=config.effective.resolved_color)
+            effective = replace(
+                config.effective,
+                evaluator=replace(
+                    config.effective.evaluator,
+                    execution_mode=config.effective.resolved_execution_mode,
+                ),
+                color=config.effective.resolved_color,
+            )
             return cls(config.requested, effective, config.clamps)
         effective = GenerationConfig() if config is None else config
         if isinstance(effective, RunConfig):
-            return cls(effective, replace(effective, color=effective.resolved_color))
+            return cls(
+                effective,
+                replace(
+                    effective,
+                    evaluator=replace(
+                        effective.evaluator,
+                        execution_mode=effective.resolved_execution_mode,
+                    ),
+                    color=effective.resolved_color,
+                ),
+            )
         return cls(effective, effective)
 
 
@@ -947,6 +975,7 @@ def write_schema_v3_artifact(
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     payload_hook: ArtifactPayloadHook | None = None,
     process_groups: ProcessGroupMap | None = None,
+    staged_validation: Callable[[Path], None] | None = None,
 ) -> ArtifactWriteResult:
     if not processes:
         raise ValueError("schema-v3 generation requires at least one concrete process")
@@ -959,12 +988,48 @@ def write_schema_v3_artifact(
                 "cannot append to an artifact with packed payloads; regenerate it "
                 "with mode='replace'"
             )
-    hook = api_bundle_hook or _default_api_bundle_hook()
     requested_config = _config_payload(configuration.requested)
     effective_config = _config_payload(configuration.effective)
     bundle_requested = _bundle_requested(configuration.effective)
+    loop_processes = tuple(
+        process for process in processes if isinstance(process, LoopV2ProcessArtifact)
+    )
+    has_loop = bool(loop_processes)
+    hook = api_bundle_hook or _default_api_bundle_hook(
+        contribution_kind="virtual" if has_loop else "tree"
+    )
+    if has_loop and len(loop_processes) != len(processes):
+        raise ValueError("tree and virtual processes cannot share an artifact yet")
+    loop_capabilities = {process.runtime_capability for process in loop_processes}
+    if existing is not None:
+        existing_capabilities = set(existing.runtime["required_runtime_capabilities"])
+        if RETIRED_LOOP_RUNTIME_CAPABILITY in existing_capabilities:
+            raise CompatibilityError(LEGACY_LOOP_ARTIFACT_REMOVED)
+        existing_loop = bool(LOOP_V2_RUNTIME_CAPABILITIES & existing_capabilities)
+        if has_loop != existing_loop:
+            raise ValueError(
+                "cannot append tree and virtual processes to the same artifact"
+            )
+    if has_loop:
+        scheme = loop_processes[0].metadata.scheme
+        if any(process.metadata.scheme != scheme for process in loop_processes):
+            raise ValueError(
+                "loop artifact processes require compatible declared schemes"
+            )
+        if existing is not None:
+            for previous in existing.processes:
+                physics = json.loads(
+                    (existing.root / str(previous["physics_path"])).read_text()
+                )
+                if physics.get("metadata", {}).get("scheme") != asdict(scheme):
+                    raise ValueError("loop append requires the same declared scheme")
     existing_bundle = _existing_bundle_path(existing)
-    can_emit_bundle = hook is not None or existing_bundle is not None
+    # The standalone SDK evaluates plan v4 processes once their tree inputs
+    # run natively (WP3.1); until then a v2 artifact carries no API bundle.
+    v2_loop = bool(LOOP_V2_RUNTIME_CAPABILITIES & loop_capabilities)
+    if v2_loop:
+        hook = None
+    can_emit_bundle = not v2_loop and (hook is not None or existing_bundle is not None)
     effective_config = _effective_config_payload(
         effective_config,
         disable_api_bundle=bundle_requested and not can_emit_bundle,
@@ -977,9 +1042,17 @@ def write_schema_v3_artifact(
         adjustments.append(
             {
                 "path": "generation.emit_api_bundle",
-                "reason": "no root API-bundle emitter is installed",
+                "reason": "the standalone SDK does not evaluate v2 virtuals yet"
+                if v2_loop
+                else "no root API-bundle emitter is installed",
             }
         )
+    # Prepared artifacts are relocatable (requirements addendum G): the
+    # recorded configuration keeps file names, not the generating host's
+    # absolute paths (model source, output, caches), for every engine. No
+    # loader reads these paths; the append check compares the same form.
+    requested_config = cast(dict[str, object], _portable_paths(requested_config))
+    effective_config = cast(dict[str, object], _portable_paths(effective_config))
     requested_bytes = _toml_bytes(requested_config)
     effective_bytes = _toml_bytes(effective_config)
     required_runtime_capabilities = set(
@@ -1179,7 +1252,10 @@ def write_schema_v3_artifact(
                     raise ValueError(
                         f"execution payload for {process_id!r} is not an object"
                     )
-                if execution_payload.get("kind") == ON_THE_FLY_RUNTIME_KIND:
+                if execution_payload.get("kind") in {
+                    ON_THE_FLY_RUNTIME_KIND,
+                    LOOP_RUNTIME_KIND,
+                }:
                     continue
                 proof = build_generation_structural_proof(
                     artifact_root=staged_root,
@@ -1239,7 +1315,9 @@ def write_schema_v3_artifact(
         )
         if payload_hook is not None:
             extensions.update(payload_hook(builder))
-        if bundle_requested and hook is not None:
+        if bundle_requested and hook is not None and not has_loop:
+            # Virtual templates call the versioned SDK bulk extension directly.
+            # Standard tree UMAMI provider headers assume positive flow weights.
             _write_umami_bundle(
                 builder,
                 processes=processes,
@@ -1275,6 +1353,8 @@ def write_schema_v3_artifact(
         )
         staged = load_manifest(builder.root)
         _validate_artifact_references(staged)
+        if staged_validation is not None:
+            staged_validation(builder.root)
         if progress_callback is not None:
             progress_callback(
                 {
@@ -1850,7 +1930,16 @@ def _write_process_payloads(
     execution_path = f"{prefix}/execution.json"
     validation_path = f"{prefix}/validation-momenta.json"
     schema: Mapping[str, object]
-    if isinstance(
+    if isinstance(process, LoopV2ProcessArtifact):
+        schema = {}
+        runtime_path = f"{prefix}/{LOOP_RUNTIME_PATH}"
+        evaluator_payloads.add_file(
+            runtime_path, process.loop_runtime_path, process_id=process.process_id
+        )
+        physics, loop_execution = loop_process_payloads(
+            process, builder.staged_path(runtime_path)
+        )
+    elif isinstance(
         process,
         EagerPlanV3ProcessArtifact
         | RecurrenceProcessArtifact
@@ -1891,7 +1980,15 @@ def _write_process_payloads(
         process_id=process.process_id,
         compact=True,
     )
-    if isinstance(process, EagerPlanV3ProcessArtifact):
+    if isinstance(process, LoopV2ProcessArtifact):
+        execution_record = builder.add_json(
+            execution_path,
+            loop_execution,
+            role="evaluator-manifest",
+            process_id=process.process_id,
+            compact=True,
+        )
+    elif isinstance(process, EagerPlanV3ProcessArtifact):
         runtime_path = f"{prefix}/{_EAGER_RUNTIME_CONTAINER_PATH}"
         runtime_record = evaluator_payloads.add_file(
             runtime_path,
@@ -2373,7 +2470,7 @@ def _on_the_fly_execution_summary(
             and set(factorization) == {"kind", "rank", "coset_count"}
             and isinstance(factorization_rank, int)
             and not isinstance(factorization_rank, bool)
-            and 2 <= factorization_rank <= 10
+            and factorization_rank >= 2
             and isinstance(factorization_coset_count, int)
             and not isinstance(factorization_coset_count, bool)
             and factorization_coset_count >= 1
@@ -3716,6 +3813,17 @@ def _color_contraction(record: Mapping[str, object]) -> dict[str, object]:
             ]
             compact["factorized_block"] = compact_factorized
         result["repeated_block"] = compact
+    nc_expansion = record.get("nc_expansion")
+    if nc_expansion is not None:
+        expansion = _mapping(nc_expansion)
+        result["nc_expansion"] = {
+            "accuracy": str(expansion["accuracy"]),
+            "depth": (
+                None if expansion.get("depth") is None else int(expansion["depth"])
+            ),
+            "reference_degree": int(expansion["reference_degree"]),
+            "degrees": [int(value) for value in _sequence(expansion["degrees"])],
+        }
     return result
 
 
@@ -3725,6 +3833,8 @@ def _color_contraction_entry(
     result = _select(record, left, right, "weight", "symmetry_factor")
     if "exact_weight" in record:
         result["exact_weight"] = record["exact_weight"]
+    if record.get("nc_degree") is not None:
+        result["nc_degree"] = int(record["nc_degree"])
     return result
 
 
@@ -4253,8 +4363,12 @@ def _native_compiled_direct_application(
         )
     if result["simd_lane_width"] not in {2, 4}:
         raise ValueError("native DirectApplication SIMD width is unsupported")
-    if result["logical_stack_bytes"] > 64 * 1024:
-        raise ValueError("native DirectApplication logical stack exceeds 64 KiB")
+    # The scratch size is the program's (stack or heap scratch: no size cap);
+    # it must fit the manifest's u32 field.
+    if result["logical_stack_bytes"] > 0xFFFF_FFFF:
+        raise ValueError(
+            "native DirectApplication logical scratch exceeds the u32 manifest field"
+        )
     if result["output_semantics"] != "factor-free-overwrite":
         raise ValueError("native DirectApplication output semantics are incompatible")
     for name in ("source_path", "library_path"):
@@ -5109,6 +5223,8 @@ def _compiled_execution_runtime_capabilities(
 def _process_runtime_capabilities(
     process: ProcessArtifact,
 ) -> tuple[str, ...]:
+    if isinstance(process, LoopV2ProcessArtifact):
+        return (process.runtime_capability,)
     if isinstance(process, OnTheFlyProcessArtifact):
         return _on_the_fly_process_runtime_capabilities(process)
     if isinstance(process, RecurrenceProcessArtifact):
@@ -5210,7 +5326,7 @@ def _validate_symmetric_group_fft_provenance(
     component_count = _nonnegative_integer(
         summary.get("component_count"), f"{context} component count", minimum=1
     )
-    if degree > 10 or group_count % component_count:
+    if group_count % component_count:
         raise ValueError(f"{context} FFT group shape is invalid")
     group_order = math.factorial(degree)
     covered_local_group_count = channel_count * group_order
@@ -5261,7 +5377,10 @@ def _required_runtime_capabilities(
             RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
             RECURRENCE_COLOR_RUNTIME_CAPABILITY,
         }
+        | LOOP_V2_RUNTIME_CAPABILITIES
     )
+    if RETIRED_LOOP_RUNTIME_CAPABILITY in unknown:
+        raise CompatibilityError(LEGACY_LOOP_ARTIFACT_REMOVED)
     if unknown:
         raise ValueError(
             "unsupported evaluator runtime capabilities: " + ", ".join(sorted(unknown))
@@ -5295,7 +5414,9 @@ def _extensions(
             ),
             "filters": dict(process.generation_filters),
         }
-        if _is_prepared_kernel_process(process):
+        if _is_prepared_kernel_process(process) or isinstance(
+            process, LoopV2ProcessArtifact
+        ):
             record["execution_manifest_sha256"] = execution_manifest_sha256_by_process[
                 process.process_id
             ]
@@ -5362,12 +5483,16 @@ def _extensions(
     return result
 
 
-def _default_api_bundle_hook() -> ApiBundleHook | None:
+def _default_api_bundle_hook(
+    *, contribution_kind: Literal["tree", "virtual"] = "tree"
+) -> ApiBundleHook | None:
     try:
         from pyamplicol.artifacts.api_bundle import emit_api_bundle
     except ImportError:
         return None
-    return cast("ApiBundleHook", emit_api_bundle)
+    return lambda builder, points: emit_api_bundle(
+        builder, points, contribution_kind=contribution_kind
+    )
 
 
 def _call_api_bundle_hook(
@@ -5855,6 +5980,19 @@ def _effective_config_payload(
             raise ValueError("generation configuration section is missing")
         generation["emit_api_bundle"] = False
     return result
+
+
+def _portable_paths(value: object) -> object:
+    """``value`` with every absolute filesystem path replaced by its final
+    component (provenance only: no loader reads these configuration paths)."""
+
+    if isinstance(value, Mapping):
+        return {key: _portable_paths(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return type(value)(_portable_paths(item) for item in value)
+    if isinstance(value, str) and os.path.isabs(value):
+        return os.path.basename(os.path.normpath(value))
+    return value
 
 
 def _bundle_requested(config: GenerationConfig | RunConfig) -> bool:

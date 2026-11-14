@@ -160,7 +160,8 @@ def test_flavor_blind_plan_keeps_one_process_per_flavour_class(
     without_conjugation = _plan_names(
         flavor_blind=True, consider_charge_conjugation=False
     )
-    with caplog.at_level(logging.INFO, logger="pyamplicol.generation"):
+    # The grouping summary is a DEBUG record (upstream f88115c4e5).
+    with caplog.at_level(logging.DEBUG, logger="pyamplicol.generation"):
         with_conjugation = _plan_names(flavor_blind=True)
     assert (
         "Flavor-blind grouping: 486 subprocesses -> 23 generated representatives; "

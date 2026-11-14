@@ -1,0 +1,2476 @@
+{
+ "description": "M-SM validation campaign (workspace/reports/engine-v2/m-sm/PLAN.md \u00a74): the 70 core rows of \u00a74.2 (the decay rows XX01/XX02 wait for the user's Q3), SC10 (the R2_ZZHH row of MS-UFODB) and the MadLoop reference runs producing them. Runs live under $LOOP_REFERENCE_ROOT/runs/msm/<run>/ and their merged references are committed as tests/fixtures/loop/required/msm/<run>.json; existing fixtures are paths below tests/fixtures/loop/. Driven by mqcd_campaign.py --campaign msm_campaign.json.",
+ "layout": {
+  "name": "M-SM",
+  "runs": "runs/msm",
+  "fixtures": "required/msm",
+  "manifest": "required/msm_references.json",
+  "schema": "msm-references/1",
+  "plan": "m-sm/PLAN.md",
+  "r2_couplings": true
+ },
+ "restriction_codes": {
+  "G0": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu"
+  },
+  "Ga": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "a0",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu-a0",
+   "note": "aEW0M1 = 137.035999; MadLoop's raw values equal G0's (no coupling uses aEW0): tagged photons compare against raw MadLoop x MG5's alpha(0) formula over the tagged legs"
+  },
+  "Gb": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "with_b_mass",
+   "fixed_parameters": {
+    "MB": "4.5",
+    "ymb": "4.5",
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu-b-mass",
+   "note": "MadLoop: the loop_qcd_qed_sm_Gmu_py3_b_mass copy (restrict_default.dat with MB = ymb = 4.5)"
+  },
+  "Gm": {
+   "model": "loop_qcd_qed_sm_Gmu_massive_muon_py3",
+   "restriction": "default",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu-mm",
+   "note": "declared [loop.model] (no shipped profile)"
+  },
+  "Gk": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "ckm",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu-ckm"
+  },
+  "Gt": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "with_technical",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-gmu-tech",
+   "note": "its own MT = 174.3, MH = 120; epsIR = 0 runs (MS-POLES oracle)"
+  },
+  "Gc": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "default",
+   "mass_scheme": "complex-mass",
+   "fixed_parameters": {},
+   "scheme": "ew-gmu-cms",
+   "note": "card widths; an external unstable multiplet's width is 0 (the run's parameter_overrides)"
+  },
+  "Gca": {
+   "model": "loop_qcd_qed_sm_Gmu",
+   "restriction": "a0",
+   "mass_scheme": "complex-mass",
+   "fixed_parameters": {},
+   "scheme": "ew-gmu-a0-cms",
+   "note": "as Gc on the a0 restriction"
+  },
+  "Lc": {
+   "model": "loop_sm",
+   "restriction": "no_b_mass",
+   "mass_scheme": "complex-mass",
+   "fixed_parameters": {
+    "WT": "1.4915",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd-cms",
+   "note": "MadLoop: loop_sm-no_b_mass under CMS, which MG5 switches to (aEWM1, MZ, MW) inputs; MW = the tree-level value of the alpha_fixed scheme, so the couplings are the same"
+  },
+  "Az": {
+   "model": "loop_qcd_qed_sm",
+   "restriction": "default",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "ew-qcd-qed-sm"
+  },
+  "L5": {
+   "model": "loop_sm",
+   "restriction": "no_b_mass",
+   "fixed_parameters": {
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0"
+   },
+   "scheme": "qcd",
+   "note": "M-QCD route (the epsilon-sign regression)"
+  }
+ },
+ "madloop_settings": {
+  "evaluation": {
+   "requested_relative_accuracy": 1e-13,
+   "madloop_params": {
+    "HelicityFilterLevel": "0"
+   },
+   "quadruple_precision_stage": true,
+   "description": "as the M-QCD campaign (mqcd_campaign.json): every point in MadLoop's quadruple-precision stage (double-precision acceptance bypassed in the run's loop_matrix.f copy), its own test at MLStabThres 1e-13 choosing Ninja or CutTools, HelicityFilterLevel = 0; CMS exports carry the quadruple-precision model-function repair (MP_RECMS and the other CMPLX calls with KIND=16, references.fix_qp_model_functions)",
+   "reason": "stricter than the accurate mode of m-sm/PLAN.md \u00a74.1 (1e-11, forced test, QP rescue), never looser; the M-QCD campaign's reasons apply"
+  },
+  "madloop_accuracy_definition": "MadLoop's own accuracy is ONE number per squared split order over the three Laurent coefficients (see mqcd_campaign.json)",
+  "requested_relative_accuracy": 1e-13,
+  "orders": "explicit squared orders on every job: QCD^2<=99 QED^2<=99 on joint [virt=QCD QED] requests (MadLoop's default selection drops the highest-alpha sector of mixed-Born requests), == on the sector-only jobs; every squared split order is printed (SECTORS)",
+  "job_timeout_seconds": 2700
+ },
+ "rows": [
+  {
+   "row": "LL01",
+   "class": "W-lep",
+   "process": "e- e+ > mu- mu+",
+   "restriction_code": "G0",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [
+    "ap",
+    "uv"
+   ],
+   "runs": [],
+   "existing_fixtures": [
+    "electroweak-mumu-control.json",
+    "electroweak-mumu-scale-control.json"
+   ],
+   "existing_r2_exports": {
+    "electroweak-mumu-control.json": [
+     "runs/msm/emep_mummp_ew_ctl/madloop-export"
+    ],
+    "electroweak-mumu-scale-control.json": [
+     "runs/msm/emep_mummp_ew_ctl/madloop-export"
+    ]
+   },
+   "sectors": [
+    "e^6"
+   ],
+   "components": [
+    "required/msm/components/emep_ttx_ew.json"
+   ]
+  },
+  {
+   "row": "LL02",
+   "class": "W-lep",
+   "process": "e- e+ > mu- mu+ (massive mu)",
+   "restriction_code": "Gm",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "electroweak-massive-mumu-control.json"
+   ],
+   "existing_r2_exports": {
+    "electroweak-massive-mumu-control.json": [
+     "runs/msm/emep_mummp_ew_mm_ctl/madloop-export"
+    ]
+   },
+   "sectors": [
+    "e^6"
+   ],
+   "note": "the model's muon counterterms are the massless muon's: single pole +3/2 Q^2 (alpha/2pi) Born per muon leg (scheme ew-gmu-mm)"
+  },
+  {
+   "row": "LL03",
+   "class": "W-lep",
+   "process": "e- e+ > e- e+",
+   "restriction_code": "Az",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/emep_emep_ew.json"
+   ],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "lepton line through the loop"
+  },
+  {
+   "row": "LL05",
+   "class": "W-lep",
+   "process": "e- e+ > w+ w-",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "emep_wpwm_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "[EWI-7]"
+  },
+  {
+   "row": "LL08",
+   "class": "W-lep",
+   "process": "e- e+ > mu- mu+ a",
+   "restriction_code": "Ga",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "a0"
+   ],
+   "runs": [
+    "emep_mummpa_ew_a0"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^8"
+   ],
+   "note": "final photon tagged"
+  },
+  {
+   "row": "LL09",
+   "class": "W-lep",
+   "process": "e- e+ > t t~",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "emep_ttx_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^6",
+    "s^2e^4"
+   ],
+   "components": [
+    "required/msm/components/emep_ttx_ew.json"
+   ]
+  },
+  {
+   "row": "LL10",
+   "class": "W-lep",
+   "process": "e- e+ > t t~ h",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "emep_ttxh_ew"
+   ],
+   "existing_fixtures": [
+    "required/emep_ttxh_ew.json"
+   ],
+   "sectors": [
+    "e^8"
+   ],
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]"
+  },
+  {
+   "row": "DY01",
+   "class": "W-DY",
+   "process": "u u~ > e- e+",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "uv",
+    "hel",
+    "sp:S3"
+   ],
+   "runs": [
+    "uux_emep_ew",
+    "uux_emep_ew_mwmz",
+    "uux_emep_ew_tech",
+    "uux_emep_ew_tech_ir0"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ],
+   "helicity_reference": "uux_emep_ew",
+   "components": [
+    "required/msm/components/uux_emep_ew.json"
+   ]
+  },
+  {
+   "row": "DY02",
+   "class": "W-DY",
+   "process": "u d~ > e+ ve",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "udx_epve_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ],
+   "note": "[EWI-7]"
+  },
+  {
+   "row": "DY03",
+   "class": "W-DY",
+   "process": "u u~ > e- e+ (alpha(M_Z) twin)",
+   "restriction_code": "Az",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_emep_ew_az"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^6"
+   ]
+  },
+  {
+   "row": "DY04",
+   "class": "W-DY",
+   "process": "e- u > e- u",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "emu_emu_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ]
+  },
+  {
+   "row": "DY05",
+   "class": "W-DY",
+   "process": "u u~ > e- e+ g",
+   "restriction_code": "G0",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [
+    "ward",
+    "joint",
+    "ap",
+    "nc"
+   ],
+   "runs": [
+    "uux_emepg_ew_qcd"
+   ],
+   "existing_fixtures": [
+    "required/uux_emepg_ew.json"
+   ],
+   "sectors": [
+    "s^4e^4",
+    "s^2e^6"
+   ]
+  },
+  {
+   "row": "DY07",
+   "class": "W-DY",
+   "process": "u u~ > e- e+ mu- mu+",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n*",
+   "extras": [],
+   "runs": [
+    "uux_emepmummp_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^10"
+   ],
+   "note": "two lepton lines; the 2->4 cost probe"
+  },
+  {
+   "row": "DY08",
+   "class": "W-DY",
+   "process": "u u~ > e- e+ g g",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n*",
+   "extras": [
+    "nc"
+   ],
+   "runs": [
+    "uux_emepgg_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^6e^4",
+    "s^4e^6"
+   ]
+  },
+  {
+   "row": "VJ01",
+   "class": "W-V",
+   "process": "u u~ > z g",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "ward"
+   ],
+   "runs": [
+    "uux_zg_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^4e^2",
+    "s^2e^4"
+   ]
+  },
+  {
+   "row": "VJ02",
+   "class": "W-V",
+   "process": "u d~ > w+ g",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "d",
+   "extras": [
+    "uv"
+   ],
+   "runs": [
+    "udx_wpg_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^4e^2",
+    "s^2e^4"
+   ],
+   "components": [
+    "required/msm/components/udx_wpg_ew.json"
+   ]
+  },
+  {
+   "row": "VJ03",
+   "class": "W-V",
+   "process": "u u~ > a g",
+   "restriction_code": "Ga",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [
+    "a0",
+    "ward"
+   ],
+   "runs": [
+    "uux_ag_ew_qcd"
+   ],
+   "existing_fixtures": [
+    "required/uux_ag_ew.json"
+   ],
+   "sectors": [
+    "s^4e^2",
+    "s^2e^4"
+   ]
+  },
+  {
+   "row": "VV01",
+   "class": "W-V",
+   "process": "u u~ > w+ w-",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "sp:S4"
+   ],
+   "runs": [
+    "uux_wpwm_ew",
+    "uux_wpwm_ew_4tev"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ],
+   "note": "[EWI-7]"
+  },
+  {
+   "row": "VV02",
+   "class": "W-V",
+   "process": "u u~ > z z",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "hel"
+   ],
+   "runs": [
+    "uux_zz_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ],
+   "helicity_reference": "uux_zz_ew"
+  },
+  {
+   "row": "VV03",
+   "class": "W-V",
+   "process": "u d~ > w+ z",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "udx_wpz_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ],
+   "note": "[EWI-7]"
+  },
+  {
+   "row": "VV05",
+   "class": "W-V",
+   "process": "u d~ > w+ a",
+   "restriction_code": "Ga",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "a0",
+    "ward",
+    "sp:S1"
+   ],
+   "runs": [
+    "udx_wpa_ew_a0",
+    "udx_wpa_ew_a0_zero"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ]
+  },
+  {
+   "row": "VV06",
+   "class": "W-V",
+   "process": "u u~ > a a",
+   "restriction_code": "Ga",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [
+    "a0"
+   ],
+   "runs": [
+    "uux_aa_ew_qcd"
+   ],
+   "existing_fixtures": [
+    "required/uux_aa_ew.json"
+   ],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ]
+  },
+  {
+   "row": "VV07",
+   "class": "W-V",
+   "process": "u u~ > w+ w- g",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "ward"
+   ],
+   "runs": [
+    "uux_wpwmg_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^4e^4",
+    "s^2e^6"
+   ],
+   "note": "[EWI-7]"
+  },
+  {
+   "row": "V301",
+   "class": "W-V",
+   "process": "u u~ > w+ w- z",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_wpwmz_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^8"
+   ],
+   "note": "[EWI-7]"
+  },
+  {
+   "row": "VH01",
+   "class": "W-V",
+   "process": "u u~ > z h",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_zh_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ]
+  },
+  {
+   "row": "VH02",
+   "class": "W-V",
+   "process": "u d~ > w+ h",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "udx_wph_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ]
+  },
+  {
+   "row": "VH03",
+   "class": "W-V",
+   "process": "u d > u d h QCD=0",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "ud_udh_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^6",
+    "e^8"
+   ],
+   "note": "VBF; capped (QCD=0), so typed unpredicted sectors are allowed"
+  },
+  {
+   "row": "TT01",
+   "class": "W-top",
+   "process": "g g > t t~",
+   "restriction_code": "G0",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [
+    "joint",
+    "ap",
+    "uv"
+   ],
+   "runs": [
+    "gg_ttx_ew_tech",
+    "gg_ttx_ew_tech_ir0"
+   ],
+   "existing_fixtures": [
+    "required/gg_ttx.json",
+    "required/gg_ttx_ew.json"
+   ],
+   "sectors": [
+    "s^6",
+    "s^4e^2"
+   ],
+   "components": [
+    "required/msm/components/gg_ttx_ew_tech.json"
+   ]
+  },
+  {
+   "row": "TT02",
+   "class": "W-top",
+   "process": "u u~ > t t~",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "so"
+   ],
+   "runs": [
+    "uux_ttx_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^6",
+    "s^4e^2",
+    "s^2e^4",
+    "e^6"
+   ],
+   "components": [
+    "required/msm/components/uux_ttx_ew.json"
+   ]
+  },
+  {
+   "row": "TT03",
+   "class": "W-top",
+   "process": "g g > t t~ g",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "ward"
+   ],
+   "runs": [
+    "gg_ttxg_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^8",
+    "s^6e^2"
+   ]
+  },
+  {
+   "row": "TT04",
+   "class": "W-top",
+   "process": "t t~ > t t~ QCD=0",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "ttx_ttx_ew"
+   ],
+   "existing_fixtures": [
+    "required/ttx_ttx_ew.json"
+   ],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]; root mixing; ew-validate's fixture's points [EWI-7]"
+  },
+  {
+   "row": "TT05",
+   "class": "W-top",
+   "process": "g t > t t t~",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gt_tttx_ew"
+   ],
+   "existing_fixtures": [
+    "goldstone-mixing.json"
+   ],
+   "existing_r2_exports": {
+    "goldstone-mixing.json": [
+     "runs/required/gt_tttx_ew/madloop-export"
+    ]
+   },
+   "sectors": [
+    "s^2e^6"
+   ],
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]; goldstone-mixing.json gt_tttx_ew (MadLoop double on the unpatched model, R2_G0tt_b omitted) stays the components control"
+  },
+  {
+   "row": "TT06",
+   "class": "W-top",
+   "process": "g b > t t~ b (massive b)",
+   "restriction_code": "Gb",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gb_ttxb_ew_mb"
+   ],
+   "existing_fixtures": [
+    "goldstone-mixing.json"
+   ],
+   "existing_r2_exports": {
+    "goldstone-mixing.json": [
+     "runs/required/gb_ttxb_ew_mb/madloop-export"
+    ]
+   },
+   "sectors": [
+    "s^2e^6"
+   ],
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]; goldstone-mixing.json gb_ttxb_ew_mb (MadLoop double on the unpatched model) stays the components control; binary64 point 0 outside the O1 scope (DD asserted) [EWI-7]"
+  },
+  {
+   "row": "TV01",
+   "class": "W-top",
+   "process": "g g > t t~ h",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gg_ttxh_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^6e^2",
+    "s^4e^4"
+   ]
+  },
+  {
+   "row": "TV02",
+   "class": "W-top",
+   "process": "g g > t t~ z",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gg_ttxz_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^6e^2",
+    "s^4e^4"
+   ]
+  },
+  {
+   "row": "TV03",
+   "class": "W-top",
+   "process": "u d~ > t t~ w+",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "so"
+   ],
+   "runs": [
+    "udx_ttxwp_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^6e^2",
+    "s^4e^4",
+    "s^2e^6"
+   ],
+   "note": "mixed Born orders"
+  },
+  {
+   "row": "TV06",
+   "class": "W-top",
+   "process": "g g > t t~ e- e+",
+   "restriction_code": "G0",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/gg_ttxemep_ew.json"
+   ],
+   "sectors": [
+    "s^4e^6"
+   ]
+  },
+  {
+   "row": "TV07",
+   "class": "W-top",
+   "process": "g g > t t~ e- e+ g (required target)",
+   "restriction_code": "G0",
+   "reference_kind": "E",
+   "tier": "c",
+   "extras": [
+    "ward",
+    "joint",
+    "G1"
+   ],
+   "runs": [],
+   "existing_fixtures": [
+    "required/gg_ttxemepg_ew.json",
+    "required/gg_ttxemepg_qcd.json"
+   ],
+   "sectors": [
+    "s^6e^6",
+    "s^8e^4"
+   ]
+  },
+  {
+   "row": "ST01",
+   "class": "W-singletop",
+   "process": "u b > d t",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "ub_dt_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ],
+   "components": [
+    "required/msm/components/ub_dt_ew.json"
+   ]
+  },
+  {
+   "row": "ST02",
+   "class": "W-singletop",
+   "process": "u d~ > t b~ QCD=0",
+   "restriction_code": "G0",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "required/udx_tbx_ew.json"
+   ],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "ew-validate's fixture (MadLoop + Recola) [EWI-7]"
+  },
+  {
+   "row": "ST03",
+   "class": "W-singletop",
+   "process": "g b > t w-",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "ward"
+   ],
+   "runs": [
+    "gb_twm_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^4e^2",
+    "s^2e^4"
+   ]
+  },
+  {
+   "row": "ST04",
+   "class": "W-singletop",
+   "process": "u d~ > t b~ QCD=0 (massive b)",
+   "restriction_code": "Gb",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "udx_tbx_ew_mb"
+   ],
+   "existing_fixtures": [
+    "required/udx_tbx_ew_mb.json"
+   ],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]: the unpatched model omitted dMB_eCoup_UV_EW (Recola - MadLoop = 9.48e-5 x Born on required/udx_tbx_ew_mb.json, ew-validate's run, whose points this run re-evaluates) [EWI-7]"
+  },
+  {
+   "row": "JJ01",
+   "class": "W-jets",
+   "process": "u u~ > d d~",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "so",
+    "uv"
+   ],
+   "runs": [
+    "uux_ddx_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^6",
+    "s^4e^2",
+    "s^2e^4",
+    "e^6"
+   ],
+   "components": [
+    "required/msm/components/uux_ddx_ew.json"
+   ]
+  },
+  {
+   "row": "JJ02",
+   "class": "W-jets",
+   "process": "u u~ > u u~",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_uux_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^6",
+    "s^4e^2",
+    "s^2e^4",
+    "e^6"
+   ],
+   "note": "identical flavours"
+  },
+  {
+   "row": "JJ03",
+   "class": "W-jets",
+   "process": "u u~ > g g",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_gg_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^6",
+    "s^4e^2"
+   ]
+  },
+  {
+   "row": "JJ04",
+   "class": "W-jets",
+   "process": "u u~ > d d~ g",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "so"
+   ],
+   "runs": [
+    "uux_ddxg_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^8",
+    "s^6e^2",
+    "s^4e^4"
+   ],
+   "note": "cross-order Catani"
+  },
+  {
+   "row": "PI01",
+   "class": "W-photon",
+   "process": "a a > e- e+",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "a0"
+   ],
+   "runs": [
+    "aa_emep_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "one job serves the untagged G0 row and its Ga twin (\"all\": both photons tagged) [MS-PHOTON]"
+  },
+  {
+   "row": "PI02",
+   "class": "W-photon",
+   "process": "a a > w+ w-",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "aa_wpwm_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "untagged photons [MS-PHOTON] [EWI-7]"
+  },
+  {
+   "row": "PI03",
+   "class": "W-photon",
+   "process": "a g > u u~",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "ag_uux_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^4e^2",
+    "s^2e^4"
+   ],
+   "note": "untagged photon [MS-PHOTON]",
+   "components": [
+    "required/msm/components/ag_uux_ew.json"
+   ]
+  },
+  {
+   "row": "PI04",
+   "class": "W-photon",
+   "process": "a u > a u",
+   "restriction_code": "Ga",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "a0"
+   ],
+   "runs": [
+    "au_au_ew_a0"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ],
+   "note": "initial photon untagged, final tagged [MS-PHOTON]"
+  },
+  {
+   "row": "CM01",
+   "class": "W-CMS",
+   "process": "e- e+ > mu- mu+ CMS",
+   "restriction_code": "Gc",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [
+    "ap",
+    "sp:S3"
+   ],
+   "runs": [],
+   "existing_fixtures": [
+    "cms-ufo-standard-gmu.json",
+    "cms-source-gmu.json"
+   ],
+   "existing_r2_exports": {
+    "cms-ufo-standard-gmu.json": [
+     "runs/msm/emep_mummp_ew_cms_ctl/madloop-export"
+    ],
+    "cms-source-gmu.json": [
+     "runs/msm/emep_mummp_ew_cms_ctl/madloop-export"
+    ]
+   },
+   "sectors": [
+    "e^6"
+   ],
+   "note": "MadLoop double references kept (\u00a71.3); S3 widths x 0.001: the fixture's small-width control"
+  },
+  {
+   "row": "CM02",
+   "class": "W-CMS",
+   "process": "u u~ > e- e+ CMS",
+   "restriction_code": "Gc",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "sp:S2"
+   ],
+   "runs": [
+    "uux_emep_cms"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ]
+  },
+  {
+   "row": "CM03",
+   "class": "W-CMS",
+   "process": "u d~ > e+ ve CMS",
+   "restriction_code": "Gc",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "sp:S2"
+   ],
+   "runs": [
+    "udx_epve_cms"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ],
+   "note": "[EWI-7]"
+  },
+  {
+   "row": "CM04",
+   "class": "W-CMS",
+   "process": "g g > t t~ CMS (Gamma_t = 0)",
+   "restriction_code": "Gc",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "gg_ttx_cms"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^6",
+    "s^4e^2"
+   ],
+   "note": "EW-25: external top stable (WT = 0)",
+   "components": [
+    "required/msm/components/gg_ttx_cms.json"
+   ]
+  },
+  {
+   "row": "CM05",
+   "class": "W-CMS",
+   "process": "u u~ > e- e+ g CMS",
+   "restriction_code": "Gc",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "ward"
+   ],
+   "runs": [
+    "uux_emepg_cms"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^4e^4",
+    "s^2e^6"
+   ]
+  },
+  {
+   "row": "CM07",
+   "class": "W-CMS",
+   "process": "g g > t t~ e- e+ g CMS (Gamma_Z, Gamma_W > 0, Gamma_t = 0)",
+   "restriction_code": "Gc",
+   "reference_kind": "N",
+   "tier": "c",
+   "extras": [
+    "ward"
+   ],
+   "runs": [
+    "gg_ttxemepg_cms"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^6e^6"
+   ]
+  },
+  {
+   "row": "CM08",
+   "class": "W-CMS",
+   "process": "u d~ > e+ ve b b~ QCD=0 CMS (Gamma_t, Gamma_W > 0)",
+   "restriction_code": "Gc",
+   "reference_kind": "N",
+   "tier": "n*",
+   "extras": [],
+   "runs": [
+    "udx_epvebbx_cms"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^8"
+   ],
+   "note": "coloured width [MS-CMS-N]"
+  },
+  {
+   "row": "CM09",
+   "class": "W-CMS",
+   "process": "u d~ > e+ ve a CMS (Gamma_W, Gamma_Z > 0)",
+   "restriction_code": "Gca",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [
+    "a0",
+    "ward"
+   ],
+   "runs": [
+    "udx_epvea_cms"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^6",
+    "e^8"
+   ],
+   "note": "CMS x tagged photon: raw MadLoop CMS x MG5's formula (the real part of the complex conversion) [MS-CMS-N]"
+  },
+  {
+   "row": "CM10",
+   "class": "W-CMS",
+   "process": "u d~ > w+ b b~ QCD=0 CMS (Gamma_t > 0)",
+   "restriction_code": "Lc",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "udx_wpbbx_cms"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^6"
+   ],
+   "note": "CMS on loop_sm (no CMSParam), coloured width [MS-CMS-N]"
+  },
+  {
+   "row": "MP01",
+   "class": "W-multi",
+   "process": "p p > e- e+",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "pp_emep_ew_P2_uux_emep",
+    "pp_emep_ew_P3_ddx_emep",
+    "pp_emep_ew_P4_bbx_emep",
+    "pp_emep_ew_P5_aa_emep"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "per Born subprocess"
+   ],
+   "note": "Q2(a): only Born members are compared; MG5 adds the photon to p on this QED-perturbed model, so its multi-P export also holds the photon-initiated members (references for requests that add the photon through process.multiparticles); P0_gg_emep is MG5's loop-squared member (sqrvirt), skipped (typed loop-induced on the pyAmpliCol side)",
+   "components": [
+    "required/msm/components/pp_emep_ew_P2_uux_emep.json"
+   ]
+  },
+  {
+   "row": "MP02",
+   "class": "W-multi",
+   "process": "p p > t t~",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "pp_ttx_ew_P2_gg_ttx",
+    "pp_ttx_ew_P3_uux_ttx",
+    "pp_ttx_ew_P4_ddx_ttx",
+    "pp_ttx_ew_P6_bbx_ttx",
+    "pp_ttx_ew_P0_ga_ttx",
+    "pp_ttx_ew_P5_aa_ttx"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "per Born subprocess"
+   ],
+   "note": "Q2(a): only Born members are compared; MG5 adds the photon to p on this QED-perturbed model, so its multi-P export also holds the photon-initiated members (references for requests that add the photon through process.multiparticles)"
+  },
+  {
+   "row": "SC01",
+   "class": "W-scheme",
+   "process": "e- e+ > u u~",
+   "restriction_code": "G0",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [
+    "nc"
+   ],
+   "runs": [],
+   "existing_fixtures": [
+    "electroweak-eeuu-control.json"
+   ],
+   "existing_r2_exports": {
+    "electroweak-eeuu-control.json": [
+     "runs/msm/emep_uux_ew_ctl/madloop-export"
+    ]
+   },
+   "sectors": [
+    "e^6"
+   ]
+  },
+  {
+   "row": "SC02",
+   "class": "W-scheme",
+   "process": "u u~ > mu- mu+ (massive mu)",
+   "restriction_code": "Gm",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "uux_mummp_ew_mm"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ],
+   "note": "the model's muon counterterms are the massless muon's: single pole +3/2 Q^2 (alpha/2pi) Born per muon leg (scheme ew-gmu-mm)"
+  },
+  {
+   "row": "SC03",
+   "class": "W-scheme",
+   "process": "u d~ > e+ ve (CKM)",
+   "restriction_code": "Gk",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "udx_epve_ew_ckm"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ],
+   "note": "UFOmodeldb issue-1 patch: exactly unitary CKM, the O(lambda^3) remnant (-2.1e-2 (alpha/2pi) Born) is gone; the EW counterterms omit the tau mass (MTA = 1.777 on restrict_ckm), a retained model limitation: the e^6 single pole exceeds the IR prediction by MTA^2/(2 sw^2 (s - MW^2)) (alpha/2pi) Born (scheme ew-gmu-ckm) -> MS-VALIDATE rule 4 [EWI-7]",
+   "components": [
+    "required/msm/components/udx_epve_ew_ckm.json"
+   ]
+  },
+  {
+   "row": "SC04",
+   "class": "W-scheme",
+   "process": "b b~ > w+ w- (massive b)",
+   "restriction_code": "Gb",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "bbx_wpwm_ew_mb",
+    "bbx_wpwm_ew_mb_qed"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "s^2e^4",
+    "e^6"
+   ],
+   "note": "O1 scope per point (m_b^2/s cancellation)"
+  },
+  {
+   "row": "SC05",
+   "class": "W-scheme",
+   "process": "u u~ > e- e+ g g / d s b (epsilon sign)",
+   "restriction_code": "L5",
+   "reference_kind": "E",
+   "tier": "n",
+   "extras": [],
+   "runs": [],
+   "existing_fixtures": [
+    "epsilon-sign.json"
+   ],
+   "existing_r2_exports": {
+    "epsilon-sign.json": "QCD-only loop_sm reference: no EW R2"
+   },
+   "note": "regression"
+  },
+  {
+   "row": "SC06",
+   "class": "W-scheme",
+   "process": "w+ w- > w+ w-",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "wpwm_wpwm_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "massive initial states, root closure [EWI-7]"
+  },
+  {
+   "row": "SC07",
+   "class": "W-scheme",
+   "process": "h h > h h",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "hh_hh_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "scalar EW loops, root closure [EWI-7]"
+  },
+  {
+   "row": "SC08",
+   "class": "W-scheme",
+   "process": "t t~ > w+ w-",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "ttx_wpwm_ew"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "root closure, R2 rule checked first [EWI-7]"
+  },
+  {
+   "row": "SC09",
+   "class": "W-scheme",
+   "process": "t t~ > z h QCD=0",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "ttx_zh_ew"
+   ],
+   "existing_fixtures": [
+    "required/ttx_zh_ew.json"
+   ],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "MadLoop QP on the patched model (UFOmodeldb issue 1: R2_G0tt_{d,s,b} split by loop content, so MadLoop inserts them; G_mu b-mass charge counterterm) [MS-UFO-PATCH]; root mixing; ew-validate's fixture's points [EWI-7]"
+  },
+  {
+   "row": "SC10",
+   "class": "W-scheme",
+   "process": "z z > h h",
+   "restriction_code": "G0",
+   "reference_kind": "N",
+   "tier": "n",
+   "extras": [],
+   "runs": [
+    "zz_hh_ew",
+    "zz_hh_ew_mg5"
+   ],
+   "existing_fixtures": [],
+   "sectors": [
+    "e^6"
+   ],
+   "note": "the R2 vertices Z Z H H and Z Z G0 G0 (coupling R2_ZZHH, fixed in UFOmodeldb 6ca4b120; no other row reaches them) on the UFOmodeldb model [MS-UFODB]"
+  }
+ ],
+ "runs": [
+  {
+   "id": "emep_wpwm_ew",
+   "process": "emep_wpwm_ew",
+   "export": "runs/msm/emep_wpwm_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "emep_mummpa_ew_a0",
+   "process": "emep_mummpa_ew_a0",
+   "export": "runs/msm/emep_mummpa_ew_a0/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "emep_ttx_ew",
+   "process": "emep_ttx_ew",
+   "export": "runs/msm/emep_ttx_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "components": "required/msm/components/emep_ttx_ew.json"
+  },
+  {
+   "id": "emep_ttxh_ew",
+   "process": "emep_ttxh_ew",
+   "export": "runs/msm/emep_ttxh_ew/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/emep_ttxh_ew.json",
+    "half_scale_point": true
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
+  },
+  {
+   "id": "uux_emep_ew",
+   "process": "uux_emep_ew",
+   "export": "runs/msm/uux_emep_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "helicities": "all",
+   "components": "required/msm/components/uux_emep_ew.json"
+  },
+  {
+   "id": "uux_emep_ew_mwmz",
+   "process": "uux_emep_ew_mwmz",
+   "export": "runs/msm/uux_emep_ew/madloop-export",
+   "points": {
+    "generator": "run",
+    "run": "uux_emep_ew"
+   },
+   "note": "S3: runtime MW = 80.379, MZ = 91.1876"
+  },
+  {
+   "id": "uux_emep_ew_tech",
+   "process": "uux_emep_ew_tech",
+   "export": "runs/msm/uux_emep_ew_tech/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "binding": false,
+   "note": "MS-POLES oracle on the technical card (Gt: MT = 174.3, MH = 120), epsIR = 1"
+  },
+  {
+   "id": "uux_emep_ew_tech_ir0",
+   "process": "uux_emep_ew_tech_ir0",
+   "export": "runs/msm/uux_emep_ew_tech/madloop-export",
+   "points": {
+    "generator": "run",
+    "run": "uux_emep_ew_tech"
+   },
+   "binding": false,
+   "note": "MS-POLES oracle: the technical card at epsIR = 0 (UV part of the counterterms alone)"
+  },
+  {
+   "id": "udx_epve_ew",
+   "process": "udx_epve_ew",
+   "export": "runs/msm/udx_epve_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_emep_ew_az",
+   "process": "uux_emep_ew_az",
+   "export": "runs/msm/uux_emep_ew_az/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "emu_emu_ew",
+   "process": "emu_emu_ew",
+   "export": "runs/msm/emu_emu_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_emepg_ew_qcd",
+   "process": "uux_emepg_ew_qcd",
+   "export": "runs/msm/uux_emepg_ew_qcd/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_emepg_ew.json",
+    "half_scale_point": true
+   },
+   "note": "top-up: the missing correction sector at the existing fixture's points (+ the mu_R = mu_0/2 copy of point 1): s^4e^4"
+  },
+  {
+   "id": "uux_emepmummp_ew",
+   "process": "uux_emepmummp_ew",
+   "export": "runs/msm/uux_emepmummp_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_emepgg_ew",
+   "process": "uux_emepgg_ew",
+   "export": "runs/msm/uux_emepgg_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_zg_ew",
+   "process": "uux_zg_ew",
+   "export": "runs/msm/uux_zg_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "udx_wpg_ew",
+   "process": "udx_wpg_ew",
+   "export": "runs/msm/udx_wpg_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "components": "required/msm/components/udx_wpg_ew.json"
+  },
+  {
+   "id": "uux_ag_ew_qcd",
+   "process": "uux_ag_ew_qcd",
+   "export": "runs/msm/uux_ag_ew_qcd/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_ag_ew.json",
+    "half_scale_point": true
+   },
+   "note": "top-up: the missing correction sector at the existing fixture's points (+ the mu_R = mu_0/2 copy of point 1): s^4e^2 (ew-gmu = Ga raw)"
+  },
+  {
+   "id": "uux_wpwm_ew",
+   "process": "uux_wpwm_ew",
+   "export": "runs/msm/uux_wpwm_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_wpwm_ew_4tev",
+   "process": "uux_wpwm_ew",
+   "export": "runs/msm/uux_wpwm_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular",
+    "sqrt_s": [
+     "4000",
+     "4000"
+    ],
+    "half_scale_point": false
+   },
+   "note": "S4: sqrt(s) = 4 TeV (EW Sudakov region, longitudinal-W cancellations)"
+  },
+  {
+   "id": "uux_zz_ew",
+   "process": "uux_zz_ew",
+   "export": "runs/msm/uux_zz_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "helicities": "all"
+  },
+  {
+   "id": "udx_wpz_ew",
+   "process": "udx_wpz_ew",
+   "export": "runs/msm/udx_wpz_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "udx_wpa_ew_a0",
+   "process": "udx_wpa_ew_a0",
+   "export": "runs/msm/udx_wpa_ew_a0/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "udx_wpa_ew_a0_zero",
+   "process": "udx_wpa_ew_a0",
+   "export": "runs/msm/udx_wpa_ew_a0/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "radiation-zero",
+    "count": 2,
+    "zero_cosine": "-1/3",
+    "neighbour_cosine": "-1/5",
+    "half_scale_point": false,
+    "madloop_qp_point": true
+   },
+   "split_points": true,
+   "point_status": {
+    "0": {
+     "comparison": "absolute",
+     "scale_row": 2,
+     "reason": "\u00a74.1 S1 radiation zero: the Born and the double pole vanish to rounding; compare absolutely against the regular neighbour's Born"
+    },
+    "1": {
+     "comparison": "absolute",
+     "scale_row": 2,
+     "reason": "\u00a74.1 S1 radiation zero: the Born and the double pole vanish to rounding; compare absolutely against the regular neighbour's Born"
+    }
+   },
+   "note": "S1: Born-zero points cos(u, photon) = -1/3 and one regular neighbour; one job per point: after MadLoop's initialisation at a Born-zero point the neighbour's QCD double pole missed the universal one by 2.9e-5 in a three-point job (alone: 1e-15)"
+  },
+  {
+   "id": "uux_aa_ew_qcd",
+   "process": "uux_aa_ew_qcd",
+   "export": "runs/msm/uux_aa_ew_qcd/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/uux_aa_ew.json",
+    "half_scale_point": true
+   },
+   "note": "top-up: the missing correction sector at the existing fixture's points (+ the mu_R = mu_0/2 copy of point 1): s^2e^4 (ew-gmu = Ga raw)"
+  },
+  {
+   "id": "uux_wpwmg_ew",
+   "process": "uux_wpwmg_ew",
+   "export": "runs/msm/uux_wpwmg_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_wpwmz_ew",
+   "process": "uux_wpwmz_ew",
+   "export": "runs/msm/uux_wpwmz_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "uux_zh_ew",
+   "process": "uux_zh_ew",
+   "export": "runs/msm/uux_zh_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "udx_wph_ew",
+   "process": "udx_wph_ew",
+   "export": "runs/msm/udx_wph_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "ud_udh_ew",
+   "process": "ud_udh_ew",
+   "export": "runs/msm/ud_udh_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "gg_ttx_ew_tech",
+   "process": "gg_ttx_ew_tech",
+   "export": "runs/msm/gg_ttx_ew_tech/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "binding": false,
+   "note": "MS-POLES oracle on the technical card (Gt: MT = 174.3, MH = 120), epsIR = 1",
+   "components": "required/msm/components/gg_ttx_ew_tech.json"
+  },
+  {
+   "id": "gg_ttx_ew_tech_ir0",
+   "process": "gg_ttx_ew_tech_ir0",
+   "export": "runs/msm/gg_ttx_ew_tech/madloop-export",
+   "points": {
+    "generator": "run",
+    "run": "gg_ttx_ew_tech"
+   },
+   "binding": false,
+   "note": "MS-POLES oracle: the technical card at epsIR = 0 (UV part of the counterterms alone)"
+  },
+  {
+   "id": "uux_ttx_ew",
+   "process": "uux_ttx_ew",
+   "export": "runs/msm/uux_ttx_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "components": "required/msm/components/uux_ttx_ew.json"
+  },
+  {
+   "id": "gg_ttxg_ew",
+   "process": "gg_ttxg_ew",
+   "export": "runs/msm/gg_ttxg_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "ttx_ttx_ew",
+   "process": "ttx_ttx_ew",
+   "export": "runs/msm/ttx_ttx_ew/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/ttx_ttx_ew.json",
+    "half_scale_point": true
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
+  },
+  {
+   "id": "gt_tttx_ew",
+   "process": "gt_tttx_ew",
+   "export": "runs/msm/gt_tttx_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
+  },
+  {
+   "id": "gb_ttxb_ew_mb",
+   "process": "gb_ttxb_ew_mb",
+   "export": "runs/msm/gb_ttxb_ew_mb/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
+  },
+  {
+   "id": "gg_ttxh_ew",
+   "process": "gg_ttxh_ew",
+   "export": "runs/msm/gg_ttxh_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "gg_ttxz_ew",
+   "process": "gg_ttxz_ew",
+   "export": "runs/msm/gg_ttxz_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "udx_ttxwp_ew",
+   "process": "udx_ttxwp_ew",
+   "export": "runs/msm/udx_ttxwp_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "ub_dt_ew",
+   "process": "ub_dt_ew",
+   "export": "runs/msm/ub_dt_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "components": "required/msm/components/ub_dt_ew.json"
+  },
+  {
+   "id": "gb_twm_ew",
+   "process": "gb_twm_ew",
+   "export": "runs/msm/gb_twm_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "udx_tbx_ew_mb",
+   "process": "udx_tbx_ew_mb",
+   "export": "runs/msm/udx_tbx_ew_mb/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/udx_tbx_ew_mb.json",
+    "half_scale_point": true
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
+  },
+  {
+   "id": "uux_ddx_ew",
+   "process": "uux_ddx_ew",
+   "export": "runs/msm/uux_ddx_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "components": "required/msm/components/uux_ddx_ew.json"
+  },
+  {
+   "id": "uux_uux_ew",
+   "process": "uux_uux_ew",
+   "export": "runs/msm/uux_uux_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_gg_ew",
+   "process": "uux_gg_ew",
+   "export": "runs/msm/uux_gg_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_ddxg_ew",
+   "process": "uux_ddxg_ew",
+   "export": "runs/msm/uux_ddxg_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "aa_emep_ew",
+   "process": "aa_emep_ew",
+   "export": "runs/msm/aa_emep_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "aa_wpwm_ew",
+   "process": "aa_wpwm_ew",
+   "export": "runs/msm/aa_wpwm_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "ag_uux_ew",
+   "process": "ag_uux_ew",
+   "export": "runs/msm/ag_uux_ew/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "components": "required/msm/components/ag_uux_ew.json"
+  },
+  {
+   "id": "au_au_ew_a0",
+   "process": "au_au_ew_a0",
+   "export": "runs/msm/au_au_ew_a0/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "uux_emep_cms",
+   "process": "uux_emep_cms",
+   "export": "runs/msm/uux_emep_cms/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular",
+    "sqrt_s": [
+     "91.188",
+     "100",
+     "1000"
+    ]
+   },
+   "note": "S2: sqrt(s) = M_Z, 100 GeV and 1 TeV"
+  },
+  {
+   "id": "udx_epve_cms",
+   "process": "udx_epve_cms",
+   "export": "runs/msm/udx_epve_cms/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular",
+    "sqrt_s": [
+     "80.419",
+     "90",
+     "1000"
+    ]
+   },
+   "note": "S2: sqrt(s) = M_W, 90 GeV and 1 TeV"
+  },
+  {
+   "id": "gg_ttx_cms",
+   "process": "gg_ttx_cms",
+   "export": "runs/msm/gg_ttx_cms/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "components": "required/msm/components/gg_ttx_cms.json"
+  },
+  {
+   "id": "uux_emepg_cms",
+   "process": "uux_emepg_cms",
+   "export": "runs/msm/uux_emepg_cms/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "gg_ttxemepg_cms",
+   "process": "gg_ttxemepg_cms",
+   "export": "runs/msm/gg_ttxemepg_cms/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/gg_ttxemepg_ew.json",
+    "half_scale_point": false
+   },
+   "split_points": true,
+   "note": "[U4] acceptance: MadLoop CMS at the points of the zero-width reference required/gg_ttxemepg_ew.json, one job per point"
+  },
+  {
+   "id": "udx_epvebbx_cms",
+   "process": "udx_epvebbx_cms",
+   "export": "runs/msm/udx_epvebbx_cms/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "udx_epvea_cms",
+   "process": "udx_epvea_cms",
+   "export": "runs/msm/udx_epvea_cms/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "export_parameters": [
+    "MDL_ECOUP_DGMUA0_UV_EW_FIN_"
+   ]
+  },
+  {
+   "id": "udx_wpbbx_cms",
+   "process": "udx_wpbbx_cms",
+   "export": "runs/msm/udx_wpbbx_cms/madloop-export",
+   "points": {
+    "generator": "exact"
+   }
+  },
+  {
+   "id": "pp_emep_ew_P2_uux_emep",
+   "process": "pp_emep_ew",
+   "export": "runs/msm/pp_emep_ew/madloop-export",
+   "points": {
+    "generator": "exact",
+    "pdgs": [
+     2,
+     -2,
+     11,
+     -11
+    ]
+   },
+   "subprocess": "P2_uux_emep",
+   "pdgs": [
+    2,
+    -2,
+    11,
+    -11
+   ],
+   "components": "required/msm/components/pp_emep_ew_P2_uux_emep.json"
+  },
+  {
+   "id": "pp_emep_ew_P3_ddx_emep",
+   "process": "pp_emep_ew",
+   "export": "runs/msm/pp_emep_ew/madloop-export",
+   "points": {
+    "generator": "exact",
+    "pdgs": [
+     1,
+     -1,
+     11,
+     -11
+    ]
+   },
+   "subprocess": "P3_ddx_emep",
+   "pdgs": [
+    1,
+    -1,
+    11,
+    -11
+   ]
+  },
+  {
+   "id": "pp_emep_ew_P4_bbx_emep",
+   "process": "pp_emep_ew",
+   "export": "runs/msm/pp_emep_ew/madloop-export",
+   "points": {
+    "generator": "exact",
+    "pdgs": [
+     5,
+     -5,
+     11,
+     -11
+    ]
+   },
+   "subprocess": "P4_bbx_emep",
+   "pdgs": [
+    5,
+    -5,
+    11,
+    -11
+   ]
+  },
+  {
+   "id": "pp_emep_ew_P5_aa_emep",
+   "process": "pp_emep_ew_aa",
+   "export": "runs/msm/pp_emep_ew/madloop-export",
+   "points": {
+    "generator": "exact",
+    "pdgs": [
+     22,
+     22,
+     11,
+     -11
+    ]
+   },
+   "subprocess": "P5_aa_emep",
+   "pdgs": [
+    22,
+    22,
+    11,
+    -11
+   ]
+  },
+  {
+   "id": "pp_ttx_ew_P2_gg_ttx",
+   "process": "pp_ttx_ew",
+   "export": "runs/msm/pp_ttx_ew/madloop-export",
+   "points": {
+    "generator": "exact",
+    "pdgs": [
+     21,
+     21,
+     6,
+     -6
+    ]
+   },
+   "subprocess": "P2_gg_ttx",
+   "pdgs": [
+    21,
+    21,
+    6,
+    -6
+   ]
+  },
+  {
+   "id": "pp_ttx_ew_P3_uux_ttx",
+   "process": "pp_ttx_ew",
+   "export": "runs/msm/pp_ttx_ew/madloop-export",
+   "points": {
+    "generator": "exact",
+    "pdgs": [
+     2,
+     -2,
+     6,
+     -6
+    ]
+   },
+   "subprocess": "P3_uux_ttx",
+   "pdgs": [
+    2,
+    -2,
+    6,
+    -6
+   ]
+  },
+  {
+   "id": "pp_ttx_ew_P4_ddx_ttx",
+   "process": "pp_ttx_ew",
+   "export": "runs/msm/pp_ttx_ew/madloop-export",
+   "points": {
+    "generator": "exact",
+    "pdgs": [
+     1,
+     -1,
+     6,
+     -6
+    ]
+   },
+   "subprocess": "P4_ddx_ttx",
+   "pdgs": [
+    1,
+    -1,
+    6,
+    -6
+   ]
+  },
+  {
+   "id": "pp_ttx_ew_P6_bbx_ttx",
+   "process": "pp_ttx_ew",
+   "export": "runs/msm/pp_ttx_ew/madloop-export",
+   "points": {
+    "generator": "exact",
+    "pdgs": [
+     5,
+     -5,
+     6,
+     -6
+    ]
+   },
+   "subprocess": "P6_bbx_ttx",
+   "pdgs": [
+    5,
+    -5,
+    6,
+    -6
+   ]
+  },
+  {
+   "id": "pp_ttx_ew_P0_ga_ttx",
+   "process": "pp_ttx_ew_ga",
+   "export": "runs/msm/pp_ttx_ew/madloop-export",
+   "points": {
+    "generator": "exact",
+    "pdgs": [
+     21,
+     22,
+     6,
+     -6
+    ]
+   },
+   "subprocess": "P0_ga_ttx",
+   "pdgs": [
+    21,
+    22,
+    6,
+    -6
+   ]
+  },
+  {
+   "id": "pp_ttx_ew_P5_aa_ttx",
+   "process": "pp_ttx_ew_aa",
+   "export": "runs/msm/pp_ttx_ew/madloop-export",
+   "points": {
+    "generator": "exact",
+    "pdgs": [
+     22,
+     22,
+     6,
+     -6
+    ]
+   },
+   "subprocess": "P5_aa_ttx",
+   "pdgs": [
+    22,
+    22,
+    6,
+    -6
+   ]
+  },
+  {
+   "id": "uux_mummp_ew_mm",
+   "process": "uux_mummp_ew_mm",
+   "export": "runs/msm/uux_mummp_ew_mm/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "madloop_params": {
+    "MLReductionLib": "1"
+   },
+   "note": "CutTools only: MadLoop's quadruple-precision Ninja stage mis-evaluates the e^6 sector at m_mu^2/s ~ 1e-9 (3 of 4 points, wrong single pole, undetected by its own test)"
+  },
+  {
+   "id": "udx_epve_ew_ckm",
+   "process": "udx_epve_ew_ckm",
+   "export": "runs/msm/udx_epve_ew_ckm/madloop-export",
+   "points": {
+    "generator": "exact"
+   },
+   "note": "UFOmodeldb issue-1 patch: exactly unitary CKM, the O(lambda^3) remnant (-2.1e-2 (alpha/2pi) Born) is gone; the EW counterterms omit the tau mass (MTA = 1.777 on restrict_ckm), a retained model limitation: the e^6 single pole exceeds the IR prediction by MTA^2/(2 sw^2 (s - MW^2)) (alpha/2pi) Born (scheme ew-gmu-ckm) -> MS-VALIDATE rule 4",
+   "components": "required/msm/components/udx_epve_ew_ckm.json"
+  },
+  {
+   "id": "bbx_wpwm_ew_mb",
+   "process": "bbx_wpwm_ew_mb",
+   "export": "runs/msm/bbx_wpwm_ew_mb/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "bbx_wpwm_ew_mb_qed",
+   "process": "bbx_wpwm_ew_mb_qed",
+   "export": "runs/msm/bbx_wpwm_ew_mb_qed/madloop-export",
+   "points": {
+    "generator": "run",
+    "run": "bbx_wpwm_ew_mb"
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)",
+   "binding": false,
+   "note": "control: the e^6 sector alone ([virt=QED]) at the joint run's points, MadLoop and Recola"
+  },
+  {
+   "id": "wpwm_wpwm_ew",
+   "process": "wpwm_wpwm_ew",
+   "export": "runs/msm/wpwm_wpwm_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "hh_hh_ew",
+   "process": "hh_hh_ew",
+   "export": "runs/msm/hh_hh_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "ttx_wpwm_ew",
+   "process": "ttx_wpwm_ew",
+   "export": "runs/msm/ttx_wpwm_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   }
+  },
+  {
+   "id": "ttx_zh_ew",
+   "process": "ttx_zh_ew",
+   "export": "runs/msm/ttx_zh_ew/madloop-export",
+   "points": {
+    "generator": "fixture",
+    "fixture": "required/ttx_zh_ew.json",
+    "half_scale_point": true
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "independent check of the UFOmodeldb issue-1 patch: Recola's counterterms and R2 terms are its own (workspace/reports/engine-v2/upstream/ufo-patch-validation.md)"
+  },
+  {
+   "id": "zz_hh_ew",
+   "process": "zz_hh_ew",
+   "export": "runs/msm/zz_hh_ew/madloop-export",
+   "points": {
+    "generator": "supplied",
+    "family": "regular"
+   },
+   "second_providers": [
+    "recola"
+   ],
+   "second_provider_trigger": "diagnostic: Recola's R2 terms are not the UFO's, so it decides UFOmodeldb's R2_ZZHH fix"
+  },
+  {
+   "id": "zz_hh_ew_mg5",
+   "process": "zz_hh_ew_mg5",
+   "export": "runs/msm/zz_hh_ew_mg5/madloop-export",
+   "points": {
+    "generator": "run",
+    "run": "zz_hh_ew"
+   },
+   "binding": false,
+   "note": "control: MadLoop on MG5_aMC's online-database G_mu model, whose R2_ZZHH predates UFOmodeldb's fix (the only difference)"
+  }
+ ]
+}

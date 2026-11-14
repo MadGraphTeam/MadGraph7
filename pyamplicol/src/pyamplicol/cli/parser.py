@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
+from typing import Literal, cast
 
 from pyamplicol.config import (
     ACTIONS,
@@ -18,11 +19,20 @@ from pyamplicol.config import (
     ConfigResolution,
     ConfigurationError,
     EvaluatorExecutionMode,
+    LoopInducedPolicy,
+    PoleSelection,
     ProcessGroupAnalysis,
+    ReductionBackend,
     resolve_config,
 )
+from pyamplicol.config.models import ON_FAILURE
 
 from .licensing import LicenseKind, LicenseRequestInvocation
+from .recurrence_export import (
+    RecurrenceExportInvocation,
+    add_export_options,
+    parse_export_recurrence,
+)
 from .utilities import UtilityInvocation, parse_utility
 
 _LICENSE_ACTIONS: dict[str, LicenseKind] = {
@@ -108,6 +118,8 @@ class CliInvocation:
     dry_run: bool = False
     full_physics: bool = False
     correlators: Path | None = None
+    # --fields-description-help: describe the tables after them.
+    fields_help: bool = False
 
     def __post_init__(self) -> None:
         frozen = _freeze(self.dedicated)
@@ -164,6 +176,16 @@ def _common_parent(*, include_card: bool = True) -> argparse.ArgumentParser:
         help="Emit machine-readable JSON instead of human-facing tables.",
     )
     parser.add_argument(
+        "--fields-description-help",
+        dest="_fields_help",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=(
+            "after the tables, describe each table and its columns in plain "
+            "words (the command runs as usual)"
+        ),
+    )
+    parser.add_argument(
         "--color",
         dest="output.color",
         choices=("auto", "always", "never"),
@@ -213,9 +235,39 @@ def _add_model_options(parser: argparse.ArgumentParser) -> None:
         type=Path,
         default=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--loop-preparation-cache",
+        dest="model.loop_preparation_cache",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "reuse the persistent cache of one-loop model preparations "
+            "(default on; off with --no-model-cache too)"
+        ),
+    )
 
 
 def _add_process_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--loop-coupling-order",
+        dest="process.loop_coupling_orders",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="NAME",
+        help="Request a virtual correction; repeat for a union of correction orders.",
+    )
+    parser.add_argument(
+        "--loop-induced",
+        dest="process.loop_induced",
+        choices=tuple(LoopInducedPolicy),
+        default=argparse.SUPPRESS,
+        help=(
+            "one-loop processes without a Born amplitude (|A_loop|^2): 'auto' "
+            "(default) serves a request with no Born member loop-induced, "
+            "'skip' serves none, 'only' serves only them, 'include' serves "
+            "both kinds as separate contributions"
+        ),
+    )
     parser.add_argument(
         "--name",
         dest="_process_names",
@@ -314,8 +366,23 @@ def _add_color_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--color-accuracy",
         dest="color.accuracy",
-        choices=("lc", "nlc", "full"),
+        choices=("lc", "nlc", "full", "strict-lc", "strict-nlc"),
         default=argparse.SUPPRESS,
+        help=(
+            "trees: lc/nlc the inherited colour-matrix approximation, "
+            "strict-lc/strict-nlc the formal 1/N_c expansion (graded output); "
+            "one loop: lc/nlc the formal-N_c projection, strict-* refused"
+        ),
+    )
+    parser.add_argument(
+        "--color-graded",
+        dest="color.graded",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=(
+            "report trees split by power of N_c (implied by strict-lc and "
+            "strict-nlc; with full colour, every degree)"
+        ),
     )
     contraction = parser.add_mutually_exclusive_group()
     contraction.add_argument(
@@ -379,6 +446,63 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         dest="generation.pack_payloads",
         action=argparse.BooleanOptionalAction,
         default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--particle-veto",
+        dest="generation.particle_veto",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="PARTICLE",
+        help=(
+            "v2 virtuals: remove PARTICLE (and its antiparticle) from every tree "
+            "vertex and its loops from the counterterms; repeat for each particle"
+        ),
+    )
+    parser.add_argument(
+        "--allow-anomalous-veto",
+        dest="generation.allow_anomalous_veto",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: lower the Levi-Civita counterterms a --particle-veto "
+            "keeps from cancelling (e.g. a veto breaking a quark doublet), "
+            "refused by default; recorded in the artifact"
+        ),
+    )
+    parser.add_argument(
+        "--loop-induced-probes",
+        dest="generation.loop_induced_probes",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop-induced processes: run the generation-time finiteness, Ward "
+            "and Goldstone probes (binary64, double-double where a binary64 "
+            "probe fails or is refused; off by default: the artifact does not "
+            "depend on them); a failure refuses the process"
+        ),
+    )
+    parser.add_argument(
+        "--loop-induced-folding",
+        dest="generation.loop_induced_folding",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop-induced processes: fold the loop chains the exact test "
+            "certifies proportional (one dressing per group; a group that "
+            "cancels exactly is an exact zero, with its certificate); on by "
+            "default, --no-loop-induced-folding writes the unfolded plans"
+        ),
+    )
+    parser.add_argument(
+        "--allow-failed-probes",
+        dest="generation.allow_failed_probes",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop-induced processes: store a process whose generation-time "
+            "finiteness or Ward probe failed, refused by default; recorded in "
+            "the artifact (acts only with --loop-induced-probes)"
+        ),
     )
     parser.add_argument(
         "--validation",
@@ -454,6 +578,32 @@ def _add_evaluator_options(
         default=argparse.SUPPRESS,
     )
     if include_runtime_controls:
+        parser.add_argument(
+            "--r2-strategy",
+            dest="loop.r2_strategy",
+            choices=("auto", "model", "direct"),
+            default=argparse.SUPPRESS,
+        )
+        parser.add_argument(
+            "--loop-reduction",
+            dest="loop.reduction",
+            choices=tuple(ReductionBackend),
+            default=argparse.SUPPRESS,
+            help=(
+                "one-loop reduction backend recorded as the artifact's default: "
+                "'auto' (default: TIRust for loop-induced processes, a point it "
+                "refuses or fails evaluated again on NinjaRS; NinjaRS for "
+                "Born-interfered ones), 'ninjars' or 'tirust'"
+            ),
+        )
+        # Removed with the legacy loop engine; still parsed so that naming it
+        # is refused with the removal reason (``config.resolver.REMOVED_FIELDS``).
+        parser.add_argument(
+            "--loop-engine",
+            dest="loop.engine",
+            default=argparse.SUPPRESS,
+            help=argparse.SUPPRESS,
+        )
         parser.add_argument(
             "--execution-mode",
             dest="evaluator.execution_mode",
@@ -557,6 +707,104 @@ def _add_evaluation_options(
     if include_artifact:
         parser.add_argument("artifact", type=Path, nargs="?", default=None)
     parser.add_argument(
+        "--correlated-requests",
+        dest="evaluation.correlated_requests",
+        type=Path,
+        default=argparse.SUPPRESS,
+        metavar="JSON",
+        help="named colour/spin requests evaluated together over the point batch",
+    )
+    parser.add_argument(
+        "--on-failure",
+        dest="evaluation.on_failure",
+        choices=ON_FAILURE,
+        default=argparse.SUPPRESS,
+        help=(
+            "virtual points no configured alternative accepts: best-effort "
+            "(the default) returns each with its best available value (the "
+            "unchecked reduction's), the refusal and its uncertainty, status "
+            "best-effort, never a success; return keeps them as failed rows "
+            "without a value; raise stops at the first one"
+        ),
+    )
+    # The precision-rescue options were removed with the legacy loop engine;
+    # still parsed so that naming one is refused with the removal reason
+    # (``config.models.EVALUATION_STABILITY_REMOVED``).
+    parser.add_argument(
+        "--stability-higher",
+        dest="evaluation.stability.higher",
+        action="append",
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--stability-relative-tolerance",
+        dest="evaluation.stability.relative_tolerance",
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--stability-absolute-tolerance",
+        dest="evaluation.stability.absolute_tolerance",
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--poles",
+        dest="evaluation.poles",
+        choices=tuple(selection.value for selection in PoleSelection),
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: the poles computed; 'none' evaluates the finite part "
+            "only, 'uv' gives the bare loop's UV poles, 'ir' the renormalised "
+            "virtual's IR poles"
+        ),
+    )
+    parser.add_argument(
+        "--stability-rotation",
+        dest="evaluation.stability_checks.rotations",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="ROTATION",
+        help=(
+            "v2 virtual rotation check, '<x|y|z>:<cos>:<sin>' or "
+            "'<ax>,<ay>,<az>:<radians>'; repeat for each rotation"
+        ),
+    )
+    parser.add_argument(
+        "--stability-rotations",
+        dest="evaluation.stability_checks.rotation_count",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="COUNT",
+        help="v2 virtual rotation checks with COUNT default rotations",
+    )
+    parser.add_argument(
+        "--stability-reduction-direction",
+        dest="evaluation.stability_checks.reduction_direction",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help="v2 virtual check: reduce every loop numerator again, reversed",
+    )
+    parser.add_argument(
+        "--stability-rescaled",
+        dest="evaluation.stability_checks.rescaled",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtual check: run the reduction-direction check at rescaled "
+            "inputs, evaluating the master integrals again (with "
+            "--stability-reduction-direction)"
+        ),
+    )
+    parser.add_argument(
+        "--verify-successful",
+        dest="evaluation.stability.verify_successful",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--process",
         dest="evaluation.process",
         default=argparse.SUPPRESS,
@@ -569,10 +817,87 @@ def _add_evaluation_options(
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--arithmetic",
+        dest="evaluation.arithmetic",
+        choices=("double", "double-double", "arbitrary"),
+        default=argparse.SUPPRESS,
+        help=(
+            "virtual carrier selected before parameter binding, or tree "
+            "correlated arithmetic (arbitrary or double-double)"
+        ),
+    )
+    scales = parser.add_mutually_exclusive_group()
+    scales.add_argument(
+        "--mu-r2",
+        dest="evaluation.mu_r2",
+        default=argparse.SUPPRESS,
+        metavar="EXACT_VALUE",
+        help="positive renormalization scale squared, supplied as exact text",
+    )
+    scales.add_argument(
+        "--mu-r2-file",
+        dest="evaluation.mu_r2_file",
+        type=Path,
+        default=argparse.SUPPRESS,
+        metavar="JSON",
+        help="per-point scale-squared JSON list; numbers and strings retain precision",
+    )
+    parser.add_argument(
+        "--r2-strategy",
+        dest="loop.r2_strategy",
+        choices=("auto", "model", "direct"),
+        default=argparse.SUPPRESS,
+        help="select a complete R2 strategy present in the virtual artifact",
+    )
+    parser.add_argument(
+        "--loop-reduction",
+        dest="evaluation.reduction",
+        choices=tuple(ReductionBackend),
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: the reduction backend, overriding the artifact's "
+            "default; 'auto' takes TIRust for loop-induced processes (a point "
+            "TIRust refuses or fails is evaluated again on NinjaRS, recorded "
+            "per point) and NinjaRS for Born-interfered ones; 'ninjars' and "
+            "'tirust' request one backend, without a fallback"
+        ),
+    )
+    parser.add_argument(
+        "--reduction-target",
+        dest="evaluation.reduction_target",
+        type=float,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: the target accuracy (relative, per point) that "
+            "TIRust's method-choice acceptance follows; default 1e-5"
+        ),
+    )
+    parser.add_argument(
+        "--reduction-unchecked",
+        dest="evaluation.reduction_unchecked",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: reduce without the reduction backends' own "
+            "acceptance and refusal checks (TIRust: its gates and method "
+            "choice as method selection, no acceptance pass, plain PV at gate "
+            "0 for what they refuse; NinjaRS: zero stability thresholds); "
+            "default off"
+        ),
+    )
+    _add_kinematics_options(parser)
+    parser.add_argument(
         "--resolved",
         dest="evaluation.resolved",
         action=argparse.BooleanOptionalAction,
         default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--orders",
+        dest="evaluation.orders",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help="split tree values by squared coupling order alongside the total",
     )
     parser.add_argument(
         "--helicity",
@@ -602,8 +927,78 @@ def _add_evaluation_options(
     )
 
 
+def _add_kinematics_options(parser: argparse.ArgumentParser) -> None:
+    """The kinematics improvement options (m-lit lit-psimprove;
+    ``pyamplicol.kinematics``)."""
+
+    # No ``choices``: the value is validated by the native policy (its one
+    # refusal text, ``pyamplicol.kinematics.setting_value``) when the
+    # evaluation configuration is resolved, as on every other surface.
+    parser.add_argument(
+        "--kinematics-improvement",
+        dest="evaluation.kinematics_improvement",
+        metavar="VARIANT",
+        default=argparse.SUPPRESS,
+        help=(
+            "improve the input points to exact energy-momentum conservation "
+            "and exact on-shell externals in each carrier above binary64: "
+            "'z-shift' (MadLoop's ImprovePSPoint 2 with its fallback to 1, "
+            "finished by the projection where MadLoop leaves the point "
+            "inexact; the default), 'rescaling' (MadLoop's ImprovePSPoint 1), "
+            "'projection' (the frame-independent minimal-norm projection) or "
+            "'off'"
+        ),
+    )
+    parser.add_argument(
+        "--kinematics-improvement-binary64",
+        dest="evaluation.kinematics_improvement_binary64",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "also improve the points of binary64 (double-precision) "
+            "evaluations; default off"
+        ),
+    )
+
+
 def _add_profile_options(parser: argparse.ArgumentParser) -> None:
+    from .profile_options import add_profile_mode_options
+
     parser.add_argument("target", type=Path, nargs="?", default=None, metavar="OUTPUT")
+    add_profile_mode_options(parser)
+    # Loop (v2 virtual) artifacts: the profiled calls' backend, setting and
+    # scale (the per-stage table of ``benchmarking.profile_virtual``).
+    parser.add_argument(
+        "--loop-reduction",
+        dest="evaluation.reduction",
+        choices=tuple(ReductionBackend),
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: profile this reduction backend only (default: "
+            "both, side by side; auto: the process type's default)"
+        ),
+    )
+    parser.add_argument(
+        "--reduction-unchecked",
+        dest="evaluation.reduction_unchecked",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: profile the unchecked timing mode (no accuracy "
+            "certificate); default off"
+        ),
+    )
+    _add_kinematics_options(parser)
+    parser.add_argument(
+        "--mu-r2",
+        dest="evaluation.mu_r2",
+        default=argparse.SUPPRESS,
+        metavar="EXACT_VALUE",
+        help=(
+            "loop artifacts: the renormalisation scale squared (default: per "
+            "point the squared invariant mass of its initial state)"
+        ),
+    )
     parser.add_argument(
         "--process",
         dest="evaluation.process",
@@ -695,6 +1090,12 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="_action", required=True)
     common = _common_parent()
 
+    export = subparsers.add_parser(
+        "export-recurrence",
+        help="Export resolved LC recurrence programs without evaluating momenta.",
+    )
+    add_export_options(export)
+
     generate = subparsers.add_parser(
         "generate",
         parents=[common],
@@ -748,6 +1149,91 @@ def build_parser() -> argparse.ArgumentParser:
         help="Compatibility alias for the profile command.",
     )
     _add_profile_options(benchmark)
+
+    check = subparsers.add_parser(
+        "check",
+        parents=[common],
+        help=(
+            "Check the poles (Catani; loop-induced: finiteness) and Ward "
+            "identities of a one-loop request, regenerated in memory."
+        ),
+    )
+    check.add_argument(
+        "_check_target",
+        type=Path,
+        nargs="?",
+        default=None,
+        metavar="CARD_OR_ARTIFACT",
+        help=(
+            "a run card (its generation request) or a generated one-loop "
+            "artifact directory (the processes its artifact.json stores, "
+            "regenerated with its config/effective.toml; refused when the "
+            "model or processes differ from the stored ones)"
+        ),
+    )
+    # The rungs' kinematics improvement (m-lit lit-psimprove (G5)): the
+    # evaluation keys, as Runtime.evaluate's.
+    _add_kinematics_options(check)
+    check.add_argument(
+        "--points",
+        dest="check.points",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="seeded phase-space points per process (default 3)",
+    )
+    check.add_argument(
+        "--seed",
+        dest="check.seed",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="seed of the first point (default: generation.validation.seed)",
+    )
+    check.add_argument(
+        "--precision",
+        dest="check.precision",
+        choices=("auto", "double", "double-double"),
+        default=argparse.SUPPRESS,
+        help=(
+            "auto (default): binary64 first, double-double only where binary64 "
+            "fails, is refused or is out of scope, arbitrary precision only "
+            "for a row double-double leaves undecided; or one carrier alone"
+        ),
+    )
+    check.add_argument(
+        "--arbitrary-digits",
+        dest="check.arbitrary_digits",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="DIGITS",
+        help=(
+            "digits of the auto ladder's arbitrary-precision rung (default: "
+            "derived per row from the double-double shortfall)"
+        ),
+    )
+    check.add_argument(
+        "--sqrt-s",
+        dest="check.sqrt_s",
+        type=float,
+        default=argparse.SUPPRESS,
+        metavar="ENERGY",
+        help=(
+            "centre-of-mass energy of a scattering's points, in the model's "
+            "mass unit (default: the generation's validation convention, "
+            "max(1000, final threshold + 100) for massless beams)"
+        ),
+    )
+    check.add_argument(
+        "--model",
+        dest="check.model",
+        default=argparse.SUPPRESS,
+        metavar="SOURCE",
+        help=(
+            "the model source to regenerate the request from (default: the "
+            "card's model.source; an artifact: the source its "
+            "config/effective.toml records, which must resolve to the stored "
+            "model)"
+        ),
+    )
 
     inspect = subparsers.add_parser(
         "inspect",
@@ -890,7 +1376,11 @@ def _is_prepared_model_output(value: object) -> bool:
     if value is None or value == argparse.SUPPRESS:
         return False
     try:
-        return str(os.fspath(value)).lower().endswith(".pyamplicol-model")
+        return (
+            str(os.fspath(cast("str | os.PathLike[str]", value)))
+            .lower()
+            .endswith(".pyamplicol-model")
+        )
     except TypeError:
         return False
 
@@ -915,7 +1405,10 @@ def _namespace_to_invocation(
             organization=raw.pop("organization", None),
             assume_yes=bool(raw.pop("assume_yes", False)),
             output_format="json" if bool(raw.pop("_json_output", False)) else "human",
-            output_color=str(raw.pop("_output_color", "auto")),
+            output_color=cast(
+                Literal["auto", "always", "never"],
+                str(raw.pop("_output_color", "auto")),
+            ),
         )
     action = Action(action_value) if action_value is not None else None
     if action is Action.MODEL_COMPILE:
@@ -943,6 +1436,7 @@ def _namespace_to_invocation(
     raw["output.format"] = "json" if bool(raw.pop("_json_output", False)) else "human"
     dry_run = bool(raw.pop("_dry_run", False))
     full_physics = bool(raw.pop("_full_physics", False))
+    fields_help = bool(raw.pop("_fields_help", False))
     correlators = raw.pop("_correlators", None)
 
     positional_process = raw.pop("process", None)
@@ -975,6 +1469,18 @@ def _namespace_to_invocation(
     positional_target = raw.pop("target", None)
     if positional_target != argparse.SUPPRESS and positional_target is not None:
         raw["evaluation.artifact"] = positional_target
+    check_target = raw.pop("_check_target", None)
+    if check_target != argparse.SUPPRESS and check_target is not None:
+        resolved_target = Path(os.fspath(check_target)).expanduser()
+        if resolved_target.is_file():
+            if card is not None:
+                raise ConfigurationError(
+                    "check takes a run card or an artifact: give the card "
+                    "either as CARD_OR_ARTIFACT or with --card"
+                )
+            card = resolved_target.resolve(strict=False)
+        else:
+            raw["evaluation.artifact"] = check_target
     positional_source = raw.pop("source", None)
     if positional_source != argparse.SUPPRESS and positional_source is not None:
         raw["model.source"] = positional_source
@@ -997,6 +1503,7 @@ def _namespace_to_invocation(
         dry_run=dry_run,
         full_physics=full_physics,
         correlators=correlators,
+        fields_help=fields_help,
     )
 
 
@@ -1027,10 +1534,21 @@ def _normalize_direct_arguments(
 
 def parse_cli(
     argv: Sequence[str] | None = None,
-) -> CliInvocation | LicenseRequestInvocation | UtilityInvocation:
+) -> (
+    CliInvocation
+    | LicenseRequestInvocation
+    | UtilityInvocation
+    | RecurrenceExportInvocation
+):
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "export-recurrence":
+        return parse_export_recurrence(arguments[1:])
     if arguments and arguments[0] in _UTILITY_COMMANDS:
         return parse_utility(arguments)
+    # ``pyamplicol CARD ACTION [--output DIR] ...`` (``card_actions``).
+    from .card_actions import rewrite_card_action
+
+    arguments = rewrite_card_action(arguments) or arguments
     if any(argument in _REMOVED_FLAT_MODEL_COMMANDS for argument in arguments):
         return _namespace_to_invocation(build_parser().parse_args(arguments))
     command_index = next(
@@ -1046,7 +1564,16 @@ def parse_cli(
         return _namespace_to_invocation(build_parser().parse_args(normalized))
     if arguments == ["--help"]:
         return _namespace_to_invocation(build_parser().parse_args(arguments))
-    return _namespace_to_invocation(build_card_parser().parse_args(arguments))
+    card_parser = build_card_parser()
+    _, unknown = card_parser.parse_known_args(arguments)
+    if unknown:
+        # ``pyamplicol CARD --stability``: options of the card's own action.
+        from .card_actions import card_action_options
+
+        rewritten = card_action_options(arguments)
+        if rewritten is not None:
+            return parse_cli(rewritten)
+    return _namespace_to_invocation(card_parser.parse_args(arguments))
 
 
 __all__ = [

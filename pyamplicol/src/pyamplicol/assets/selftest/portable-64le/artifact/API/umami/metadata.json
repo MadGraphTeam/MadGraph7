@@ -307,7 +307,7 @@
   ],
   "provider": {
     "alpha_s_parameter": null,
-    "artifact_id": "a74e458c6e7fa85d55e2e6ae494a2328a76fd69be74e40c867a35887e2fbd449",
+    "artifact_id": "1df7647b7a4ba3cdac14a773ebb4d9b4f054e478160fc3604e5cba3183976b1b",
     "color_accuracy": "lc",
     "color_count": 1,
     "helicity_count": 12,
@@ -458,6 +458,6 @@
       ]
     }
   ],
-  "schema_version": 2,
+  "schema_version": 3,
   "xml_header": "<generator name=\"pyAmpliCol\">UMAMI artifact provider</generator>"
 }

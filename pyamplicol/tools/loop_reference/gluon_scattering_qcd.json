@@ -1,0 +1,16 @@
+{
+  "process": "g g > g g",
+  "born_orders": {"QCD": 2, "QED": 0},
+  "loop_orders": {"QCD": 4, "QED": 0},
+  "squared_orders": {"QCD": 6, "QED": 0},
+  "parameters": {"alpha_s": 0.118, "mu": 1000.0, "mt": 173.0, "mb": 0.0},
+  "renormalization_flavours": 5,
+  "loop_quark_flavours": 6,
+  "external_momenta": "positive-energy incoming legs 1,2; outgoing legs 3,4; E,px,py,pz in GeV",
+  "normalization": "initial spin/colour average and final identical-gluon factor 1/2; physical couplings; Cepsilon=(4pi)^epsilon/Gamma(1-epsilon)",
+  "points": [
+    [[500,0,0,500], [500,0,0,-500], [500,300,0,400], [500,-300,0,-400]],
+    [[650,0,0,650], [650,0,0,-650], [650,600,0,250], [650,-600,0,-250]],
+    [[500,0,0,500], [500,0,0,-500], [500,0,400,-300], [500,0,-400,300]]
+  ]
+}

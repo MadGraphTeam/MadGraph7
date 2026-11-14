@@ -1,0 +1,1081 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
+"""Calibration of the v2 stability estimates against Float(256) (WP2.3, O15).
+
+``run`` evaluates a deterministic sample of phase-space points of one process
+with the native v2 executor (``loops.v2.plan_export.NativeExecutor``):
+
+* in binary64 (optionally also double-double) with every check of the
+  calibration configuration: the reduction-direction check and two rotations;
+* in 256-bit arbitrary precision (``Precision.arbitrary(57)``: the native
+  ``Float`` carrier works at 57 + 20 guard digits = 77 decimal digits = 256
+  bits), the truth.
+
+Each point is one JSON line: the point, every check's absolute budget and the
+absolute sums S per squared-order sector and Laurent coefficient (so that any
+subset of checks can be recombined, ``StabilityEstimate.subset``), the
+virtual in each carrier and the timings. A point whose truth fails (a reduction
+lane failed, e.g. ``ImpreciseResult`` of a 256-bit master) is recorded with its
+failure and excluded from the rates.
+
+``report`` aggregates the lines of a directory: per process, carrier and
+check configuration, the false-negative rate (points whose true error exceeds
+the estimate), for the Laurent vector (``StabilityEstimate.relative``) and for
+the finite part alone (``StabilityEstimate.finite``); the distribution of
+estimate / true error; the smallest safety factor that would have bracketed
+each point; and the rate of points an estimate flags above given thresholds.
+
+Points: 2 -> n massless points at sqrt(s) = 1 TeV from RAMBO, rounded to
+exactly on-shell, exactly momentum-conserving rationals (rational directions
+on the sphere by inverse stereographic projection; the last momentum keeps
+the transverse balance, the incoming momenta follow from the total), with
+p_T > 20 GeV for every outgoing leg and Delta R > 0.4 between any two of
+them; mu_R = 1 TeV, alpha_s = 0.118, M_T = 173 GeV, M_B = 0 (loop_sm).
+
+Loop-induced rows (m-lit lit-stab-n, ``LOOP_INDUCED``: |A_loop|^2 on route
+R1, NinjaRS per amplitude, native point inputs as the stored runtime): the
+model restriction, coupling orders, parameters and final-state masses are
+those of the row's reference fixture (``tests/fixtures/loop/required/li``);
+exact points (``loop_induced_point``) with uniformly distributed rational
+directions, a 2 -> 1 point in a random longitudinally boosted frame and a
+2 -> 2 equal-mass point at a sqrt(s) drawn in the fixture's scale window.
+Since |A|^2 of an integrated zero (g g > z, Landau-Yang) is itself rounding,
+``report`` also compares the absolute error with the absolute estimate per
+sector and Laurent coefficient (the user's x10 rule, DESIGN §10.4), records
+|value| / E and E / S (the opt-in rescue metric "scale", PLAN §2.a.8).
+
+TIR frames (m-lit lit-stab-t, PLAN §2.b.6, the T7 light re-run): ``--reduction
+tirust`` reduces the checked evaluations with TIRust in its shipped default
+(its frames, ``v2_tir.rs::tir_frame``: the reduction-direction check is the
+cyclic relabelling by one, TIRust's rotation copy from the direct pass's own
+calls; the rescaled one is the rotation by one with the origin shift at inputs
+rescaled by x = 7/10); the truth stays NinjaRS at
+Float(256) on the same exact points (DECISIONS 2026-11-07 19:49 / 21:39: exact
+rational points, consistent inputs). ``--cross-backend`` adds the
+cross-backend check (``stability.CROSS``: the evaluation on the other backend)
+to the checked configuration and times the configuration without it once
+more (``<carrier>-nocross``: the cost of the check; its virtual must equal
+the checked one bitwise). A point the backend fails closed is recorded with
+its reason; ``report`` gives the served fraction and the reasons per row, and
+per point the check whose budget carries the estimate at its worst entry.
+``--truth-from DIR`` reuses the truth of an earlier run of the same points
+(the point must be identical; with ``--truth-served`` for the served points
+it has, the others are evaluated).
+
+Usage:
+    python tools/loop_v2_stability_calibration.py run PROCESS START STOP OUTDIR
+        [--batch N] [--double-double] [--model-cache DIR] [--ufo PATH]
+        [--reduction ninjars|tirust] [--cross-backend] [--truth-from DIR]
+    python tools/loop_v2_stability_calibration.py report OUTDIR [--output PATH]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import random
+import sys
+import time
+from collections import defaultdict
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+from decimal import Decimal
+from fractions import Fraction
+from itertools import combinations
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:  # the ``tools`` package, run as a script
+    sys.path.insert(0, str(ROOT))
+UFO = Path(
+    os.environ.get(
+        "PYAMPLICOL_NLO_UFO_REFERENCE",
+        ROOT / "FOR_REFERENCE_ONLY" / "MG5_aMC_v3_7_0" / "models" / "loop_sm",
+    )
+)
+ENERGY = 1000.0
+SCALE_SQUARED = "1000000"
+PARAMETERS = {"aS": "0.118", "MT": "173"}
+FIXED = {"MB": "0"}
+PT_MIN = 20.0
+DELTA_R_MIN = 0.4
+# Float(256): the native carrier runs at the digits plus 20 guard digits.
+TRUTH_DIGITS = 57
+RESCALED_SUFFIX = "-rescaled"
+NOCROSS_SUFFIX = "-nocross"
+CARRIERS = ("double", "double-double")
+LAURENT = ("finite", "single_pole", "double_pole")
+
+
+@dataclass(frozen=True)
+class Process:
+    process: str
+    born: Mapping[str, int]
+    # Photon exchange only, as calibrated (the Z on loop quark lines was
+    # admitted later, WP3.1 I-AX).
+    ignored: tuple[int, ...] = ()
+
+    @property
+    def outgoing(self) -> int:
+        return len(self.process.split(">")[1].split())
+
+
+PROCESSES = {
+    "gg_ggg": Process("g g > g g g", {"QCD": 3, "QED": 0}),
+    "uux_ddxg": Process("u u~ > d d~ g", {"QCD": 3, "QED": 0}),
+    "uux_emepddxg": Process("u u~ > e- e+ d d~ g", {"QCD": 3, "QED": 2}, (23,)),
+    "gg_gggg": Process("g g > g g g g", {"QCD": 4, "QED": 0}),
+}
+
+
+@dataclass(frozen=True)
+class LoopInduced:
+    """A loop-induced calibration row: its process and loop coupling orders;
+    everything else is read from the reference fixture ``fixture``."""
+
+    process: str
+    orders: Mapping[str, int]
+    fixture: str
+
+    def data(self) -> dict[str, Any]:
+        path = ROOT / "tests" / "fixtures" / "loop" / "required" / "li"
+        return json.loads((path / f"{self.fixture}.json").read_text())
+
+
+# One row with large cancellations, one integrated zero (m-lit PLAN §3.4
+# LIT-STAB-N).
+LOOP_INDUCED = {
+    "li_gg_hh": LoopInduced("g g > h h", {"QCD": 2, "QED": 2}, "li_gg_hh"),
+    "li_gg_z": LoopInduced("g g > z", {"QCD": 2, "QED": 1}, "li_gg_z"),
+}
+
+
+def rotations():
+    """The calibration's two rotation checks: generic axes and angles, so the
+    rotated momenta are non-terminating rationals."""
+
+    from pyamplicol.loops.v2.stability import Rotation
+
+    return (
+        Rotation.from_axis_angle((1, 1, 0), 0.9),
+        Rotation.from_axis_angle((-1, 2, 2), 2.3),
+    )
+
+
+# ------------------------------------------------------------------ points
+
+
+def _rational_direction(theta: float, phi: float, resolution: int):
+    """A rational unit 3-vector near (theta, phi): the inverse stereographic
+    projection of a rational point of the plane (from the south pole)."""
+
+    z = math.cos(theta)
+    scale = math.sin(theta) / (1 + z) if 1 + z > 1e-12 else 1e6
+    u = Fraction(scale * math.cos(phi)).limit_denominator(resolution)
+    v = Fraction(scale * math.sin(phi)).limit_denominator(resolution)
+    n = 1 + u * u + v * v
+    return (2 * u / n, 2 * v / n, (1 - u * u - v * v) / n)
+
+
+def _rambo(n_out: int, energy: float, rng: random.Random):
+    """RAMBO: n massless momenta in the centre-of-mass frame (binary64)."""
+
+    qs = []
+    for _ in range(n_out):
+        c = 2 * rng.random() - 1
+        phi = 2 * math.pi * rng.random()
+        e = -math.log(rng.random() * rng.random())
+        s = math.sqrt(1 - c * c)
+        qs.append((e, e * s * math.cos(phi), e * s * math.sin(phi), e * c))
+    total = [sum(q[k] for q in qs) for k in range(4)]
+    mass = math.sqrt(total[0] ** 2 - sum(x * x for x in total[1:]))
+    b = [-x / mass for x in total[1:]]
+    gamma = total[0] / mass
+    a = 1 / (1 + gamma)
+    x = energy / mass
+    out = []
+    for q in qs:
+        bq = sum(bi * qi for bi, qi in zip(b, q[1:], strict=True))
+        space = [
+            x * (qi + bi * (q[0] + a * bq)) for qi, bi in zip(q[1:], b, strict=True)
+        ]
+        out.append((x * (gamma * q[0] + bq), *space))
+    return out
+
+
+def exact_point(n_out: int, energy: float, rng: random.Random, resolution=10**6):
+    """A 2 -> n_out massless point of exact rationals: every leg exactly
+    massless, momentum exactly conserved, incoming momenta along +-z."""
+
+    floats = _rambo(n_out, energy, rng)
+    outgoing = []
+    for e, px, py, pz in floats[:-1]:
+        theta = math.acos(max(-1.0, min(1.0, pz / e)))
+        direction = _rational_direction(theta, math.atan2(py, px), resolution)
+        rounded = Fraction(e).limit_denominator(resolution)
+        outgoing.append((rounded, *(rounded * c for c in direction)))
+    px = -sum(p[1] for p in outgoing)
+    py = -sum(p[2] for p in outgoing)
+    transverse = px * px + py * py
+    e, _, _, pz = floats[-1]
+    # E - p_z = transverse / (E + p_z) keeps the last leg exactly massless.
+    plus = max(Fraction(e + pz).limit_denominator(resolution), Fraction(1, resolution))
+    outgoing.append(
+        ((plus + transverse / plus) / 2, px, py, (plus - transverse / plus) / 2)
+    )
+    total_e = sum(p[0] for p in outgoing)
+    total_z = sum(p[3] for p in outgoing)
+    zero = Fraction(0)
+    p1 = ((total_e + total_z) / 2, zero, zero, (total_e + total_z) / 2)
+    p2 = ((total_e - total_z) / 2, zero, zero, -(total_e - total_z) / 2)
+    return [p1, p2, *outgoing]
+
+
+def _passes_cuts(point) -> bool:
+    def rapidity_azimuth(p):
+        _e, x, y, z = (float(c) for c in p)
+        modulus = math.sqrt(x * x + y * y + z * z)
+        return 0.5 * math.log((modulus + z) / (modulus - z)), math.atan2(y, x)
+
+    outgoing = point[2:]
+    if any(math.hypot(float(p[1]), float(p[2])) < PT_MIN for p in outgoing):
+        return False
+    for a, b in combinations(outgoing, 2):
+        (ea, fa), (eb, fb) = rapidity_azimuth(a), rapidity_azimuth(b)
+        dphi = abs(fa - fb)
+        if math.hypot(ea - eb, min(dphi, 2 * math.pi - dphi)) < DELTA_R_MIN:
+            return False
+    return True
+
+
+def sample_point(name: str, index: int) -> list[tuple[Fraction, ...]]:
+    """Point ``index`` of the process's deterministic sample."""
+
+    rng = random.Random(f"{name}:{index}")
+    while True:
+        point = exact_point(PROCESSES[name].outgoing, ENERGY, rng)
+        if _passes_cuts(point):
+            return point
+
+
+def _random_direction(rng: random.Random, resolution: int = 10**6):
+    """A rational unit 3-vector, uniformly distributed on the sphere up to
+    the rounding of its stereographic coordinates."""
+
+    theta = math.acos(2 * rng.random() - 1)
+    return _rational_direction(theta, 2 * math.pi * rng.random(), resolution)
+
+
+def _boost_z(point, plus: Fraction):
+    """``point`` boosted along z by the exact rapidity factor ``plus`` =
+    e^y (gamma = (plus + 1/plus) / 2, gamma beta = (plus - 1/plus) / 2)."""
+
+    gamma, gamma_beta = (plus + 1 / plus) / 2, (plus - 1 / plus) / 2
+    return [
+        (gamma * e + gamma_beta * pz, px, py, gamma_beta * e + gamma * pz)
+        for e, px, py, pz in point
+    ]
+
+
+def loop_induced_point(name: str, index: int) -> list[tuple[Fraction, ...]]:
+    """Point ``index`` of a loop-induced row's deterministic sample: exact
+    rationals, exactly on the fixture's mass shells and momentum conserving.
+
+    * One massive final particle (2 -> 1): at rest, beams of energy M/2
+      along a random rational direction, boosted along z by a random
+      rational e^y in [1/4, 4].
+    * Two final particles of one mass m (2 -> 2): beams along +-z, final
+      momenta back to back along a random rational direction with E =
+      m (k + 1/k) / 2, |p| = m (k - 1/k) / 2, log k uniform over the
+      fixture's sqrt(s) window (``point_construction.scale_window``).
+    """
+
+    data = LOOP_INDUCED[name].data()
+    construction = data["point_construction"]
+    initial = int(data.get("initial", 2))
+    masses = [Fraction(m) for m in construction["masses"]][initial:]
+    rng = random.Random(f"{name}:{index}")
+    zero = Fraction(0)
+    if len(masses) == 1 and masses[0]:
+        half = masses[0] / 2
+        n = _random_direction(rng)
+        point = [
+            (half, *(half * c for c in n)),
+            (half, *(-half * c for c in n)),
+            (masses[0], zero, zero, zero),
+        ]
+        plus = Fraction(4 ** (2 * rng.random() - 1)).limit_denominator(1000)
+        return _boost_z(point, plus)
+    if len(masses) == 2 and masses[0] == masses[1] and masses[0]:
+        m = masses[0]
+        low, high = (Fraction(x) / m for x in construction["scale_window"])
+        # k + 1/k = sqrt(s) / m
+        bounds = [float(x + (x * x - 4) ** 0.5) / 2 for x in (low, high)]
+        k = Fraction(
+            math.exp(rng.uniform(math.log(bounds[0]), math.log(bounds[1])))
+        ).limit_denominator(1000)
+        energy, momentum = m * (k + 1 / k) / 2, m * (k - 1 / k) / 2
+        n = _random_direction(rng)
+        return [
+            (energy, zero, zero, energy),
+            (energy, zero, zero, -energy),
+            (energy, *(momentum * c for c in n)),
+            (energy, *(-momentum * c for c in n)),
+        ]
+    raise ValueError(f"{name}: no exact point construction for masses {masses}")
+
+
+# ------------------------------------------------------------------ slices
+
+
+def compile_loop_sm(ufo: Path, cache: Path) -> Any:
+    """loop_sm compiled once into ``cache`` with the checked scalar-arity
+    view (as the tests); later calls load it."""
+
+    from pyamplicol.models.loading import compile_model_source, load_compiled_model
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
+
+    path = cache / "loop-sm.json.pyAmplicol-model.json"
+    if not path.exists():
+        cache.mkdir(parents=True, exist_ok=True)
+        model = compile_model_source(ufo, cache_dir=cache / "model-cache")
+        model = replace(
+            model,
+            raw_loop_model=prepare_loop_sm_scalar_declarations(
+                model.raw_loop_model
+            ).derived,
+            _serialized_path=None,
+            _prepared_bundle=None,
+        )
+        os.replace(model.write(cache / f"loop-sm.{os.getpid()}.json"), path)
+    return load_compiled_model(path)
+
+
+def _furry_zeros(generate):
+    """``generate_counterterm_sites`` with Furry's certified zeros: a closed
+    quark loop with one photon and two gluons is C-odd, so its UV and R2
+    parts vanish. The model certifier (WP3.5) will supply them; until then
+    the photon processes need them here (as ``test_loop_v2_executor``)."""
+
+    from pyamplicol.loops.v2 import ct_sites
+
+    def with_zeros(families, table, rules, data, selection, **options):
+        zeros = [
+            ct_sites.CertifiedZero(
+                signature,
+                species,
+                "Furry: C-odd closed quark loop (one photon, two gluons)",
+            )
+            for signature, sets in ct_sites.divergent_witnesses(families, data).items()
+            if signature.fields == ("A", "G", "G")
+            for species in sets
+            if all(1 <= pdg <= 6 for pdg in species)
+        ]
+        return generate(families, table, rules, data, selection, zeros=zeros, **options)
+
+    return with_zeros
+
+
+def build_slice(name: str, compiled: Any) -> Any:
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2 import assemble
+
+    entry = PROCESSES[name]
+    loop = {k: v + (2 if k == "QCD" else 0) for k, v in entry.born.items()}
+    request = assemble.SliceRequest(
+        entry.process,
+        dict(entry.born),
+        loop,
+        fixed_parameters=FIXED,
+        particle_veto=entry.ignored,
+    )
+    generate = assemble.generate_counterterm_sites
+    if entry.born.get("QED"):
+        assemble.generate_counterterm_sites = _furry_zeros(generate)
+    try:
+        return assemble.LoopSlice.generate(compiled, request, load_loop_native())
+    finally:
+        assemble.generate_counterterm_sites = generate
+
+
+def build_loop_induced(name: str, ufo: Path, cache: Path) -> tuple[Any, dict]:
+    """The slice of a loop-induced row (on loop_sm under the fixture's
+    restriction, ``tools.loop_benchmark.mqcd.compile_restriction``) and the
+    fixture's model parameters it takes at evaluation."""
+
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2 import assemble
+    from tools.loop_benchmark.mqcd import compile_restriction
+
+    entry = LOOP_INDUCED[name]
+    scheme = entry.data()["scheme_data"]
+    restriction = scheme.get("restriction") or "default"
+    compiled = compile_restriction(ufo, restriction, cache / restriction)
+    fixed = {
+        key: value
+        for key, value in scheme["fixed_parameters"].items()
+        if key in compiled.parameter_defaults
+    }
+    request = assemble.SliceRequest(
+        entry.process,
+        dict(entry.orders),
+        dict(entry.orders),
+        contribution="loop-induced",
+        fixed_parameters=fixed,
+    )
+    slice_ = assemble.LoopSlice.generate(compiled, request, load_loop_native())
+    external = slice_._external_parameters()
+    parameters = {
+        key: value
+        for key, value in scheme["parameters"].items()
+        if key in external and key not in slice_.fixed_parameters
+    }
+    return slice_, parameters
+
+
+# ------------------------------------------------------------------ run
+
+
+def _sector(sector) -> str:
+    return " ".join(f"{name}^{power}" for name, power in sector) or "1"
+
+
+def _values(components) -> dict[str, list[str]]:
+    return {
+        _sector(sector): [str(x) for x in laurent.coefficients]
+        for sector, laurent in components.items()
+    }
+
+
+def _budgets(budgets) -> dict[str, list[float]]:
+    return {
+        _sector(sector): [float(x) for x in budget.coefficients]
+        for sector, budget in budgets.items()
+    }
+
+
+def _record(result, seconds: float) -> dict[str, Any]:
+    estimate = result.stability
+    record = {
+        "virtual": _values(result.components["virtual"]),
+        "seconds": seconds,
+    }
+    if estimate is not None:
+        record.update(
+            budgets={name: _budgets(b) for name, b in estimate.budgets.items()},
+            scale=_budgets(estimate.scale),
+            roundoff=estimate.roundoff,
+        )
+        if estimate.not_run:
+            record["not_run"] = dict(estimate.not_run)
+    return record
+
+
+def _evaluate(executor, points, precision, checks, parameters=None, reduction=None):
+    """Evaluate a batch on ``reduction`` (None: NinjaRS); a failed point is
+    recorded with its reasons, every point when the backend refuses the
+    carrier or the process typed."""
+
+    from pyamplicol.api.errors import ReductionUnavailable
+    from pyamplicol.loops.v2.plan_export import FailedPoints
+    from pyamplicol.loops.v2.reduction import running
+
+    scales = [SCALE_SQUARED] * len(points)
+    start = time.perf_counter()
+    failures = {}
+    try:
+        with running(reduction):
+            results = executor.evaluate(
+                points,
+                scales,
+                parameters=PARAMETERS if parameters is None else parameters,
+                precision=precision,
+                stability=checks,
+            )
+    except FailedPoints as failed:
+        results, failures = failed.results, failed.failures
+    except ReductionUnavailable as error:
+        results = [None] * len(points)
+        failures = {index: [f"refused: {error}"] for index in range(len(points))}
+    seconds = (time.perf_counter() - start) / len(points)
+    return [
+        {"failure": "; ".join(failures[index])}
+        if result is None
+        else _record(result, seconds)
+        for index, result in enumerate(results)
+    ]
+
+
+def run(options) -> int:
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from pyamplicol.loops.v2.stability import StabilityChecks
+
+    name = options.process
+    if name in LOOP_INDUCED:
+        # The stored runtime's route: native point inputs, no forward oracle.
+        slice_, parameters = build_loop_induced(name, options.ufo, options.model_cache)
+        executor = NativeExecutor(
+            slice_, threads=options.threads, forward=False, inputs="native"
+        )
+        sample = loop_induced_point
+    else:
+        compiled = compile_loop_sm(options.ufo, options.model_cache)
+        # ``--inputs native``: the stored runtime's route (native trees, no
+        # forward oracle); the default keeps the O15 calibration's.
+        native = (
+            {"forward": False, "inputs": "native"} if options.inputs == "native" else {}
+        )
+        executor = NativeExecutor(
+            build_slice(name, compiled), threads=options.threads, **native
+        )
+        parameters = PARAMETERS
+        sample = sample_point
+    cross = options.cross_backend
+    checks = StabilityChecks(rotations(), True, cross_backend=cross)
+    # The rescaled reduction check is a second evaluation (one reduction
+    # check per evaluation); ``report`` merges its budget by point.
+    rescaled = StabilityChecks((), True, rescaled=True)
+    precisions = [("double", Precision.double())]
+    if options.double_double:
+        precisions.append(("double-double", Precision.double_double()))
+    carriers = [
+        (f"{carrier}{RESCALED_SUFFIX}", precision, rescaled)
+        for carrier, precision in precisions
+    ]
+    suffix = ".rescaled" if options.rescaled_only else ""
+    if options.reduction != "ninjars":
+        suffix += f".{options.reduction}"
+    truths = _truths(options.truth_from, name) if options.truth_from else {}
+    if not options.rescaled_only:
+        carriers = [(carrier, precision, checks) for carrier, precision in precisions]
+        carriers += [(f"{c}{RESCALED_SUFFIX}", p, rescaled) for c, p in precisions]
+        if cross:
+            # The cost of the cross-backend check (and its virtual: bitwise
+            # the checked one's).
+            plain = StabilityChecks(rotations(), True)
+            carriers += [(f"{c}{NOCROSS_SUFFIX}", p, plain) for c, p in precisions]
+        carriers.append(("truth", Precision.arbitrary(TRUTH_DIGITS), None))
+    options.outdir.mkdir(parents=True, exist_ok=True)
+    path = options.outdir / f"{name}.{options.start}-{options.stop}{suffix}.jsonl"
+    done = set()
+    if path.exists():
+        done = {json.loads(line)["index"] for line in path.read_text().splitlines()}
+    todo = [i for i in range(options.start, options.stop) if i not in done]
+    with path.open("a") as out:
+        for first in range(0, len(todo), options.batch):
+            indices = todo[first : first + options.batch]
+            points = [[[str(x) for x in p] for p in sample(name, i)] for i in indices]
+            records = [
+                {"process": name, "index": i, "reduction": options.reduction}
+                for i in indices
+            ]
+            for carrier, precision, configured in carriers:
+                # The truth is NinjaRS at Float(256) on the same exact points.
+                backend = None if carrier == "truth" else options.reduction
+                if carrier == "truth" and options.truth_served:
+                    # Only the points a checked carrier served need it.
+                    served = [
+                        k
+                        for k, record in enumerate(records)
+                        if any(
+                            "failure" not in value
+                            for key, value in record.items()
+                            if isinstance(value, dict)
+                        )
+                    ]
+                    for k, record in enumerate(records):
+                        if k not in served:
+                            record[carrier] = {"skipped": "no checked carrier served"}
+                    # A truth of the same point from ``--truth-from`` serves.
+                    fresh = []
+                    for k in served:
+                        reused = truths.get(indices[k], {})
+                        if reused.get("point") == points[k]:
+                            records[k][carrier] = reused["truth"]
+                        else:
+                            fresh.append(k)
+                    if not fresh:
+                        continue
+                    subset = [points[k] for k in fresh]
+                    for k, value in zip(
+                        fresh,
+                        _evaluate(executor, subset, precision, None, parameters),
+                        strict=True,
+                    ):
+                        records[k][carrier] = value
+                    continue
+                if carrier == "truth" and all(
+                    truths.get(i, {}).get("point") == p
+                    for i, p in zip(indices, points, strict=True)
+                ):
+                    for record in records:
+                        record[carrier] = truths[record["index"]]["truth"]
+                    continue
+                for record, value in zip(
+                    records,
+                    _evaluate(
+                        executor, points, precision, configured, parameters, backend
+                    ),
+                    strict=True,
+                ):
+                    record[carrier] = value
+            for record, point in zip(records, points, strict=True):
+                if not options.rescaled_only:
+                    record["point"] = point
+                out.write(json.dumps(record) + "\n")
+            out.flush()
+    return 0
+
+
+def _truths(directory: Path, name: str) -> dict[int, dict[str, Any]]:
+    """The truth and point of each index of ``name`` recorded in
+    ``directory`` (``--truth-from``)."""
+
+    out = {}
+    for path in sorted(directory.glob(f"{name}.*.jsonl")):
+        for line in path.read_text().splitlines():
+            record = json.loads(line)
+            truth = record.get("truth")
+            # A failed or skipped truth (`--truth-served`) has no virtual.
+            if truth is not None and "virtual" in truth and "point" in record:
+                out[record["index"]] = {"truth": truth, "point": record["point"]}
+    return out
+
+
+# ------------------------------------------------------------------ report
+
+
+@dataclass(frozen=True)
+class _Laurent:
+    coefficients: tuple[Any, ...]
+
+
+def _configurations(names: Sequence[str]) -> list[tuple[str, ...]]:
+    """Every subset of the checks one evaluation can run (one reduction
+    check: the reversed or the rescaled frame)."""
+
+    from pyamplicol.loops.v2.stability import FRAMES
+
+    return [
+        combination
+        for size in range(1, len(names) + 1)
+        for combination in combinations(sorted(names), size)
+        if len(set(combination) & set(FRAMES)) <= 1
+    ]
+
+
+def _records(outdir: Path) -> list[dict[str, Any]]:
+    """The points of a directory with the budget of their rescaled reduction
+    check merged into each carrier's budgets (same binary64 evaluation: the
+    virtuals must agree exactly)."""
+
+    from pyamplicol.loops.v2.stability import RESCALED
+
+    records: dict[tuple[str, int], dict[str, Any]] = {}
+    extra: list[dict[str, Any]] = []
+    for path in sorted(outdir.glob("*.jsonl")):
+        for line in path.read_text().splitlines():
+            record = json.loads(line)
+            if "truth" in record:
+                records[(record["process"], record["index"])] = record
+            extra.append(record)
+    for record in extra:
+        target = records.get((record["process"], record["index"]))
+        if target is None:
+            continue
+        for carrier in CARRIERS:
+            source = record.get(f"{carrier}{RESCALED_SUFFIX}")
+            data = target.get(carrier)
+            if not source or "failure" in source or not data or "failure" in data:
+                continue
+            if source["virtual"] != data["virtual"]:
+                raise ValueError(
+                    f"{record['process']} {record['index']}: virtuals differ"
+                )
+            data["budgets"][RESCALED] = source["budgets"][RESCALED]
+    return list(records.values())
+
+
+def _quantiles(values: list[float]) -> dict[str, float]:
+    if not values:
+        return {}
+    ordered = sorted(values)
+
+    def at(q: float) -> float:
+        return ordered[min(len(ordered) - 1, int(q * len(ordered)))]
+
+    return {
+        "min": ordered[0],
+        "q01": at(0.01),
+        "q10": at(0.1),
+        "median": at(0.5),
+        "q90": at(0.9),
+        "q99": at(0.99),
+        "max": ordered[-1],
+    }
+
+
+THRESHOLDS = (1e-12, 1e-9, 1e-6, 1e-3)
+
+
+def _largest_ratio(numerators, denominators) -> float:
+    """The largest numerator / denominator over sectors and Laurent
+    coefficients (0 / 0 counts 0, x / 0 infinite)."""
+
+    worst = 0.0
+    for sector, values in numerators.items():
+        for x, y in zip(
+            values.coefficients, denominators[sector].coefficients, strict=True
+        ):
+            x, y = abs(float(x)), abs(float(y))
+            if x:
+                worst = max(worst, x / y if y else math.inf)
+    return worst
+
+
+def _point_report(record, carrier, truth):
+    """Per configuration: (true relative error, estimate) for the Laurent
+    vector and for the finite part, the largest absolute error / E over
+    sectors and Laurent coefficients, the largest |value| / E and E / S;
+    and each check's raw budget.
+
+    The estimate's absolute error E is measured against the truth's scale,
+    as the true error is: a point whose value has no correct digit has a
+    relative estimate of order 1 or more against its own (wrong) value,
+    which does not compare with an error relative to the truth. The
+    absolute comparison holds also where the truth is itself zero (an
+    integrated zero, or the vanishing poles of a loop-induced |A|^2).
+    """
+
+    from pyamplicol.loops.v2 import stability
+
+    data = record[carrier]
+    reference = {
+        sector: _Laurent(tuple(Decimal(x) for x in values))
+        for sector, values in data["virtual"].items()
+    }
+    floats = {
+        sector: _Laurent(tuple(float(x) for x in values.coefficients))
+        for sector, values in reference.items()
+    }
+    width = len(next(iter(reference.values())).coefficients)
+    exact = {
+        sector: _Laurent(tuple(Decimal(x) for x in truth[sector][:width]))
+        for sector in reference
+    }
+    errors = {
+        sector: stability.Budget(
+            tuple(
+                float(abs(a - b))
+                for a, b in zip(
+                    reference[sector].coefficients,
+                    exact[sector].coefficients,
+                    strict=True,
+                )
+            )
+        )
+        for sector in reference
+    }
+    exact_floats = {
+        sector: _Laurent(tuple(float(x) for x in value.coefficients))
+        for sector, value in exact.items()
+    }
+    vector = stability.relative(exact_floats, errors)
+    finite = stability.per_coefficient(exact_floats, errors)[0]
+    budgets = {
+        name: {s: stability.Budget(tuple(v)) for s, v in b.items()}
+        for name, b in data["budgets"].items()
+    }
+    scale = {s: stability.Budget(tuple(v)) for s, v in data["scale"].items()}
+    out = {}
+    for names in _configurations(list(budgets)):
+        estimate = stability.StabilityEstimate.from_checks(
+            floats,
+            {name: budgets[name] for name in names},
+            scale=scale,
+            roundoff=data["roundoff"],
+        )
+        out[names] = (
+            vector,
+            stability.relative(exact_floats, estimate.absolute),
+            finite,
+            stability.per_coefficient(exact_floats, estimate.absolute)[0],
+            _largest_ratio(errors, estimate.absolute),
+            _largest_ratio(floats, estimate.absolute),
+            _largest_ratio(estimate.absolute, scale),
+        )
+    raw = {name: stability.relative(exact_floats, b) for name, b in budgets.items()}
+    return out, raw, _carrying(errors, budgets, scale, data["roundoff"])
+
+
+def _carrying(errors, budgets, scale, roundoff) -> str:
+    """The check that carries the estimate of every check (one reduction
+    frame: the rescaled one when it ran) at the point's worst entry (the
+    sector and Laurent coefficient of the largest error / E): the largest
+    term of E there, "rotation" for the rotations' maximum, "floor" for the
+    floor (lit-tir finding (B): report per row which frame carries it)."""
+
+    from pyamplicol.loops.v2 import stability
+
+    frames = [name for name in budgets if name in stability.FRAMES]
+    dropped = set(frames[:-1]) if stability.RESCALED not in frames else set(frames)
+    dropped.discard(stability.RESCALED)
+    names = [name for name in budgets if name not in dropped]
+    worst, carrier = -1.0, "floor"
+    for sector, error in errors.items():
+        for k, value in enumerate(error.coefficients):
+            terms = {
+                "floor": stability.FLOOR_UNITS
+                * roundoff
+                * abs(scale[sector].coefficients[k])
+            }
+            rotations = [
+                abs(budgets[n][sector].coefficients[k])
+                for n in names
+                if n not in stability.ADDITIVE
+            ]
+            if rotations:
+                terms["rotation"] = stability.SAFETY * max(rotations)
+            for n in names:
+                if n in stability.ADDITIVE:
+                    terms[n] = stability.SAFETY * abs(
+                        budgets[n][sector].coefficients[k]
+                    )
+            total = sum(terms.values())
+            ratio = value / total if total else (math.inf if value else 0.0)
+            if ratio > worst:
+                worst, carrier = ratio, max(terms, key=terms.get)
+    return carrier
+
+
+def _reasons(reasons) -> dict[str, int]:
+    """Failure reasons counted by their text without numbers (a row's
+    refusal classes: gates, capability, ...)."""
+
+    import re
+
+    counted: dict[str, int] = defaultdict(int)
+    for reason in reasons:
+        key = re.sub(r"[-+]?\d[\d.e+-]*", "#", str(reason))[:160]
+        counted[key] += 1
+    return dict(sorted(counted.items(), key=lambda item: -item[1])[:12])
+
+
+def report(options) -> int:
+    from pyamplicol.loops.v2 import stability
+
+    # USER DECISION (2026-10-23; DESIGN §10.4; m-lit Q12): a single-point
+    # test of an estimate E holds the true error to at most 10 E.
+    from pyamplicol.loops.v2.induced import ESTIMATE_FACTOR
+
+    rows: dict[tuple[str, str], list] = defaultdict(list)
+    failures: dict[str, list] = defaultdict(list)
+    seconds: dict[tuple[str, str], list] = defaultdict(list)
+    plain: dict[tuple[str, str], list] = defaultdict(list)
+    bitwise: dict[tuple[str, str], list] = defaultdict(list)
+    not_run: dict[tuple[str, str], list] = defaultdict(list)
+    backends: set[str] = set()
+    for record in _records(options.outdir):
+        name = record["process"]
+        backends.add(record.get("reduction", "ninjars"))
+        truth = record["truth"]
+        if "failure" in truth:
+            failures[name].append((record["index"], truth["failure"]))
+            continue
+        if "skipped" in truth and any(
+            "failure" not in (record.get(carrier) or {"failure": ""})
+            for carrier in CARRIERS
+        ):
+            raise ValueError(f"{name} {record['index']}: a served point has no truth")
+        for carrier in CARRIERS:
+            data = record.get(carrier)
+            if data is None:
+                continue
+            if "failure" in data:
+                failures[f"{name} {carrier}"].append((record["index"], data["failure"]))
+                continue
+            rows[(name, carrier)].append(
+                _point_report(record, carrier, truth["virtual"])
+            )
+            seconds[(name, carrier)].append(data["seconds"])
+            for check, reason in data.get("not_run", {}).items():
+                not_run[(name, carrier)].append((record["index"], check, reason))
+            other = record.get(f"{carrier}{NOCROSS_SUFFIX}")
+            if other and "failure" not in other:
+                plain[(name, carrier)].append(other["seconds"])
+                bitwise[(name, carrier)].append(other["virtual"] == data["virtual"])
+    payload: dict[str, Any] = {
+        "safety": stability.SAFETY,
+        "floor_units": stability.FLOOR_UNITS,
+        "truth_bits": 256,
+        # The backend of the checked evaluations (the truth: NinjaRS).
+        "reduction": sorted(backends) if len(backends) != 1 else next(iter(backends)),
+        "processes": {},
+    }
+    # A row the backend serves no point of still reports its refusals.
+    for key in failures:
+        name, _, carrier = key.partition(" ")
+        if carrier in CARRIERS and (name, carrier) not in rows:
+            rows[(name, carrier)] = []
+    for (name, carrier), points in sorted(rows.items()):
+        configurations = {}
+        names_seen = sorted({names for p in points for names in p[0]}, key=len)
+        for names in names_seen:
+            pairs = [p[0][names] for p in points if names in p[0]]
+            vector_misses = sum(error > estimate for error, estimate, *_ in pairs)
+            finite_misses = sum(error > estimate for _, _, error, estimate, *_ in pairs)
+            ratios = [item[4] for item in pairs]
+            configurations[" + ".join(names)] = {
+                "points": len(pairs),
+                "false_negative_rate": vector_misses / len(pairs),
+                "false_negative_rate_finite": finite_misses / len(pairs),
+                "false_negatives": vector_misses,
+                "false_negatives_finite": finite_misses,
+                "estimate_over_error": _quantiles(
+                    [e / r for r, e, *_ in pairs if r > 0]
+                ),
+                "flagged": {
+                    f"{t:.0e}": sum(e > t for _, e, *_ in pairs) / len(pairs)
+                    for t in THRESHOLDS
+                },
+                "true_above": {
+                    f"{t:.0e}": sum(r > t for r, *_ in pairs) / len(pairs)
+                    for t in THRESHOLDS
+                },
+                # Per sector and Laurent coefficient: the absolute error
+                # against E (the user's x10 rule: beyond_margin), |value| / E
+                # (an integrated zero within its estimate) and E / S (the
+                # rescue metric "scale").
+                "absolute": {
+                    "false_negatives": sum(r > 1 for r in ratios),
+                    "beyond_margin": sum(r > ESTIMATE_FACTOR for r in ratios),
+                    "error_over_estimate": _quantiles(ratios),
+                    "value_over_estimate": _quantiles([item[5] for item in pairs]),
+                    "estimate_over_scale": _quantiles([item[6] for item in pairs]),
+                },
+            }
+        raw = {}
+        for check in sorted({check for p in points for check in p[1]}):
+            # (raw check budget, true error) of the points that ran it.
+            pairs = [(p[1][check], p[0][(check,)][0]) for p in points if check in p[1]]
+            raw[check] = {
+                "points": len(pairs),
+                "check_over_error": _quantiles([b / e for b, e in pairs if e > 0]),
+                "false_negative_rate_unscaled": sum(b < e for b, e in pairs)
+                / len(pairs),
+            }
+        errors = [p[0][next(iter(p[0]))][0] for p in points]
+        failed = failures.get(f"{name} {carrier}", [])
+        entry = {
+            # No served point: nothing calibrated (R6: waits on the package
+            # that serves the row), never a vacuous pass.
+            **({} if points else {"status": "WAITS ON lit-tir-mp"}),
+            "points": len(points),
+            "failed_truth": len(failures.get(name, [])),
+            "failed": len(failed),
+            "served_fraction": len(points) / (len(points) + len(failed)),
+            "failure_reasons": _reasons(reason for _, reason in failed),
+            "seconds_per_point": _quantiles(seconds[(name, carrier)]),
+            "true_relative_error": _quantiles(errors),
+            "configurations": configurations,
+            "checks": raw,
+            # The check whose term carries the estimate of every check at
+            # each point's worst entry (``_carrying``).
+            "carried_by": dict(
+                sorted(
+                    (c, sum(p[2] == c for p in points)) for c in {p[2] for p in points}
+                )
+            ),
+        }
+        if not_run.get((name, carrier)):
+            entry["not_run"] = {
+                "points": len(not_run[(name, carrier)]),
+                "reasons": _reasons(r for _, _, r in not_run[(name, carrier)]),
+            }
+        if plain.get((name, carrier)):
+            # The cost of the cross-backend check: the checked evaluation
+            # with it against the same without it (one more evaluation on
+            # the other backend), and its virtual bitwise unchanged.
+            entry["cross_backend_cost"] = {
+                "seconds_with": _quantiles(seconds[(name, carrier)]),
+                "seconds_without": _quantiles(plain[(name, carrier)]),
+                "virtual_bitwise": sum(bitwise[(name, carrier)]),
+                "compared": len(bitwise[(name, carrier)]),
+            }
+        payload["processes"].setdefault(name, {})[carrier] = entry
+    # The first failures per row, each reason cut to its head (the classes
+    # are in ``failure_reasons``).
+    payload["failures"] = {
+        k: [(index, str(reason)[:240]) for index, reason in v[:20]]
+        for k, v in failures.items()
+    }
+    text = json.dumps(payload, indent=1) + "\n"
+    if options.output:
+        options.output.write_text(text)
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
+    commands = parser.add_subparsers(dest="command", required=True)
+    runner = commands.add_parser("run")
+    runner.add_argument("process", choices=sorted([*PROCESSES, *LOOP_INDUCED]))
+    runner.add_argument("start", type=int)
+    runner.add_argument("stop", type=int)
+    runner.add_argument("outdir", type=Path)
+    runner.add_argument("--batch", type=int, default=8)
+    runner.add_argument("--threads", type=int, default=1)
+    runner.add_argument("--double-double", action="store_true")
+    runner.add_argument(
+        "--rescaled-only",
+        action="store_true",
+        help="only the rescaled reduction check (a supplement to a finished run)",
+    )
+    runner.add_argument(
+        "--reduction",
+        choices=("ninjars", "tirust"),
+        default="ninjars",
+        help="the reduction backend of the checked evaluations (truth: NinjaRS)",
+    )
+    runner.add_argument(
+        "--cross-backend",
+        action="store_true",
+        help="add the cross-backend check (and time the checks without it)",
+    )
+    runner.add_argument(
+        "--inputs",
+        choices=("python", "native"),
+        default="python",
+        help="tree inputs of the Born-interfered rows (loop-induced: native)",
+    )
+    runner.add_argument(
+        "--truth-served",
+        action="store_true",
+        help="compute the truth only for points a checked carrier served",
+    )
+    runner.add_argument(
+        "--truth-from",
+        type=Path,
+        help="reuse the truth of an earlier run's identical points",
+    )
+    runner.add_argument("--ufo", type=Path, default=UFO)
+    runner.add_argument(
+        "--model-cache", type=Path, default=Path.cwd() / ".loop-sm-model"
+    )
+    reporter = commands.add_parser("report")
+    reporter.add_argument("outdir", type=Path)
+    reporter.add_argument("--output", type=Path)
+    options = parser.parse_args(argv)
+    return run(options) if options.command == "run" else report(options)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

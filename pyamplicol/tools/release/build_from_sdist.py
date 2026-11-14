@@ -15,6 +15,7 @@ from _artifacts import audit_sdist, audit_wheel
 from _common import (
     CANDIDATE_ARTIFACTS,
     DIST,
+    DISTRIBUTION_WHEEL_SETTINGS,
     ReleaseError,
     build_mode,
     check_dependency_gate,
@@ -48,7 +49,15 @@ def build_wheel_from_sdist(
         wheel_directory = temporary / "wheel"
         wheel_directory.mkdir()
         run(
-            [python, "-m", "build", "--wheel", "--outdir", wheel_directory],
+            [
+                python,
+                "-m",
+                "build",
+                "--wheel",
+                *DISTRIBUTION_WHEEL_SETTINGS,
+                "--outdir",
+                wheel_directory,
+            ],
             cwd=source,
             env=clean_environment(mode=mode),
         )

@@ -296,7 +296,10 @@ def test_native_split_real_header_exports_only_direct_abis() -> None:
     assert "static_assert(sizeof(DirectArenaView) == 56u)" in header
     assert "static_assert(sizeof(DirectClosureRow) == 40u)" in header
     assert "PAC_DIRECT_MAX_SCRATCH_DOUBLES" in header
-    assert "raw_buffer_len > PAC_DIRECT_MAX_SCRATCH_DOUBLES" in header
+    # The scratch budget picks stack or heap scratch; no size refusal.
+    assert "raw_buffer_len <= PAC_DIRECT_MAX_SCRATCH_DOUBLES" in header
+    assert "new (std::nothrow) double[scratch_len]" in header
+    assert "raw_buffer_len > PAC_DIRECT_MAX_SCRATCH_DOUBLES" not in header
     asm_header = prepared_compile._native_split_real_custom_header(
         kernel,
         raw_function_name="prepared_split",
@@ -482,6 +485,16 @@ def test_native_direct_complex_contract_matches_exact_arithmetic(
         direct_spec=spec,
     )
     assert manifest["function_name"] == manifest["direct_table"]["function_name"]
+    # The stored exact state is the native's canonical form of the saved
+    # evaluator, and the DirectTable digests it.
+    from pyamplicol.loops.native import load_loop_native
+
+    state = Path(manifest["evaluator_state_path"]).read_bytes()
+    assert bytes(load_loop_native().canonical_saved_evaluator(state)) == state
+    assert (
+        manifest["direct_table"]["evaluator_state_sha256"]
+        == hashlib.sha256(state).hexdigest()
+    )
     manifest_settings = manifest["settings"]
     assert isinstance(manifest_settings, dict)
     assert manifest_settings["compiler_flags"] == []

@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from typing import Protocol
 
+from ..color.nc_expansion import NcExpansion
 from ..color.plan import GenericColorPlan, build_color_plan
 from ..models._physics_ir import ContractionIR
 from ..models.base import (
@@ -26,6 +28,7 @@ from .dag_algorithms import (
     _retain_canonical_open_line_alias_roots,
     build_backward_live_state_plan,
     prune_dag_to_amplitude_roots,
+    prune_dag_to_required_currents,
 )
 from .dag_color import ColorEngine
 from .dag_equivalence import (
@@ -33,6 +36,7 @@ from .dag_equivalence import (
     _canonical_kernel_evaluation,
     assign_recursive_current_evaluation_reuse,
 )
+from .dag_grades import split_tree_u1_grades, split_u1_grades
 from .dag_ordering import (
     _closure_candidate_splits,
     _closure_combination_matches_word,
@@ -66,9 +70,90 @@ from .dag_types import (
     GenericDAG,
     InteractionNode,
 )
-from .fermion_ordering import apply_fermion_ordering_signs
+from .fermion_ordering import (
+    apply_colour_connection_signs,
+    apply_fermion_ordering_signs,
+)
 
 DAGProgressCallback = Callable[[Mapping[str, str | int]], None]
+
+
+class LoopBlockReachability(Protocol):
+    """Loop-aware reachability of tree currents in loop-request mode.
+
+    ``admits_mask`` names the leg sets a loop position may absorb; the
+    recursion sweeps those and all of their subsets, so a block keeps every
+    sub-current it needs. ``admits_block`` decides which currents are position
+    contents; the compiler keeps those and every current feeding them.
+    """
+
+    def admits_mask(self, mask: int) -> bool: ...
+
+    def admits_block(self, index: CurrentIndex) -> bool: ...
+
+
+@dataclass(frozen=True, slots=True)
+class AttachableLoopBlocks:
+    """Generic loop-aware reachability: every current a loop vertex can absorb.
+
+    A current is a possible position content when its leg set is a proper,
+    non-empty subset of the process legs and its field enters some model
+    vertex, whose two other legs are then loop lines. The family recursion
+    replaces this default with its position table.
+    """
+
+    full_mask: int
+    attachable_particle_ids: frozenset[int]
+
+    @classmethod
+    def for_process(
+        cls,
+        process: CanonicalProcessIR,
+        model: Model,
+        *,
+        ignored_particle_ids: Iterable[int] = (),
+        ignored_vertex_kinds: Iterable[int] = (),
+    ) -> AttachableLoopBlocks:
+        ignored_particles = frozenset(int(pdg) for pdg in ignored_particle_ids)
+        ignored_kinds = frozenset(int(kind) for kind in ignored_vertex_kinds)
+        attachable = frozenset(
+            particle_id
+            for vertex in model.iter_vertices(color_accuracy="full")
+            if vertex.kind not in ignored_kinds
+            and not ignored_particles.intersection(vertex.particles)
+            for particle_id in vertex.particles[:2]
+        )
+        return cls(
+            full_mask=_labels_mask(leg.label for leg in process.legs),
+            attachable_particle_ids=attachable,
+        )
+
+    def admits_mask(self, mask: int) -> bool:
+        return 0 < mask != self.full_mask and mask & self.full_mask == mask
+
+    def admits_block(self, index: CurrentIndex) -> bool:
+        return (
+            self.admits_mask(index.external_mask)
+            and index.particle_id in self.attachable_particle_ids
+        )
+
+
+def _loop_block_masks(
+    full_mask: int,
+    reachability: LoopBlockReachability,
+) -> frozenset[int]:
+    """Admitted leg sets and all of their subsets (multi-leg masks only)."""
+
+    allowed: set[int] = set()
+    legs = tuple(1 << index for index in range(full_mask.bit_length()))
+    for mask in reversed(_masks_by_size(full_mask)):
+        if mask & (mask - 1) == 0 or mask == full_mask:
+            continue
+        if reachability.admits_mask(mask) or any(
+            mask | leg in allowed for leg in legs if not mask & leg
+        ):
+            allowed.add(mask)
+    return frozenset(allowed)
 
 
 def _restrict_color_plan(
@@ -138,7 +223,90 @@ class GenericDAGCompiler:
         online_evaluation_reuse: bool = False,
         backward_live_planning: bool = False,
         progress_callback: DAGProgressCallback | None = None,
+        loop_blocks: bool = False,
+        loop_block_reachability: LoopBlockReachability | None = None,
+        u1_grades: bool = False,
+        loop_born: bool = False,
+        nc_expansion: NcExpansion | None = None,
     ) -> None:
+        """``loop_blocks`` compiles loop-request blocks instead of a tree.
+
+        Loop-request mode builds the U(N) colour-flow currents a loop position
+        can absorb: every ordering of every admitted leg set, with the Born
+        closure pruning layers replaced by ``loop_block_reachability``
+        (default ``AttachableLoopBlocks``). It builds no amplitude roots; the
+        Born stays the ordinary tree compilation. Reflection folding and
+        tree-only selections do not apply. ``u1_grades`` makes every block
+        exact in N_c (``generation.dag_grades.split_u1_grades``), as leading
+        and next-to-leading colour need; full colour at N_c = 3 does not.
+
+        ``nc_expansion`` compiles a full-colour tree for the formal-N_c
+        expansion of its colour sum (strict colour, graded output): every
+        current and amplitude root gets one N_c grade
+        (``generation.dag_grades.split_tree_u1_grades``) and the DAG records
+        the expansion (``GenericDAG.nc_expansion``).
+
+        ``loop_born`` compiles the Born DAG of a loop request: a Dirac current
+        closing on a Weyl sink is a root with the marker contraction
+        ``dag_ordering.DIRAC_WEYL_CLOSURE`` (``_direct_contraction_ir``)
+        instead of a refusal. No tree evaluator lowers such a root; the loop
+        engine reads the roots' orders, sectors and helicities only.
+        """
+
+        if loop_blocks:
+            tree_only = {
+                "max_currents": max_currents,
+                "max_color_sectors": max_color_sectors,
+                "reference_color_order": reference_color_order,
+                "selected_color_sector_ids": selected_color_sector_ids,
+                "max_lc_current_line_groups": max_lc_current_line_groups,
+                "max_quark_pairs": max_quark_pairs,
+                "selected_source_helicities": selected_source_helicities,
+            }
+            requested = sorted(name for name, value in tree_only.items() if value)
+            if online_evaluation_reuse:
+                requested.append("online_evaluation_reuse")
+            if backward_live_planning:
+                requested.append("backward_live_planning")
+            if requested:
+                raise ValueError(
+                    "loop-request blocks do not support tree-only options: "
+                    + ", ".join(requested)
+                )
+            lc_all_ordering_symmetry = False
+        elif loop_block_reachability is not None:
+            raise ValueError("loop_block_reachability requires loop_blocks=True")
+        elif u1_grades:
+            raise ValueError("u1_grades requires loop_blocks=True")
+        if nc_expansion is not None:
+            unsupported = [
+                name
+                for name, value in (
+                    ("loop_blocks", loop_blocks),
+                    ("loop_born", loop_born),
+                    ("online_evaluation_reuse", online_evaluation_reuse),
+                    ("backward_live_planning", backward_live_planning),
+                    ("max_color_sectors", max_color_sectors),
+                    ("reference_color_order", reference_color_order),
+                    ("selected_color_sector_ids", selected_color_sector_ids),
+                )
+                if value
+            ]
+            if unsupported:
+                raise ValueError(
+                    "the formal N_c expansion compiles the complete full-colour "
+                    "tree; unsupported options: " + ", ".join(unsupported)
+                )
+        if loop_born and (loop_blocks or backward_live_planning):
+            raise ValueError(
+                "loop_born compiles a loop request's Born tree: it excludes "
+                "loop_blocks and backward_live_planning"
+            )
+        self.loop_born = bool(loop_born)
+        self.loop_blocks = bool(loop_blocks)
+        self.u1_grades = bool(u1_grades)
+        self.nc_expansion = nc_expansion
+        self.loop_block_reachability = loop_block_reachability
         self.model = model
         self.color_plan = color_plan
         self.max_currents = _normalize_generation_cap(max_currents)
@@ -188,7 +356,11 @@ class GenericDAGCompiler:
         self.progress_callback({"step": step, **details})
 
     def _apply_fermion_ordering(self, dag: GenericDAG) -> GenericDAG:
-        return apply_fermion_ordering_signs(dag, self.model)
+        # Tree programs sign coloured fermions by their Wick order; loop
+        # blocks keep the colour-flow convention their consumers rely on.
+        return apply_fermion_ordering_signs(
+            dag, self.model, coloured_lines=not self.loop_blocks
+        )
 
     def compile(self, process: CanonicalProcessIR) -> GenericDAG:
         if not isinstance(process, CanonicalProcessIR):
@@ -196,6 +368,11 @@ class GenericDAGCompiler:
                 "generic DAG compilation requires a model-resolved CanonicalProcessIR"
             )
         process_ir = process
+        if self.loop_blocks and process_ir.color_accuracy != "full":
+            raise ValueError(
+                "loop-request blocks are exact colour-flow currents; compile the "
+                "full-colour process"
+            )
         self._report_progress("colour planning")
         lc_trace_reflection_proven = bool(
             self.lc_all_ordering_symmetry
@@ -268,6 +445,7 @@ class GenericDAGCompiler:
                 lc_trace_reflection_proven and self.selected_color_sector_ids is None
             ),
             cache_shared_lc_orderings=self.online_evaluation_reuse,
+            loop_blocks=self.loop_blocks,
         )
         global_flip_anchor = self._eager_global_helicity_flip_anchor(process_ir)
         interactions: list[InteractionNode] = []
@@ -316,6 +494,10 @@ class GenericDAGCompiler:
             ],
             tuple[ColorFlow, ...],
         ] = {}
+        # Model queries, coupling-order checks and colour combinations are pure
+        # functions of their keys: the eager compiler and loop-request blocks
+        # (whose counterterm programs repeat them for every slot) memoize them.
+        memoize = self.online_evaluation_reuse or self.loop_blocks
         full_mask = _labels_mask(leg.label for leg in process_ir.legs)
         eager_shared_lc_orderings = (
             color_engine.shared_lc_orderings if self.online_evaluation_reuse else False
@@ -328,11 +510,22 @@ class GenericDAGCompiler:
             and self.model.is_massless_adjoint_vector(int(leg.outgoing_pdg))
         )
         locally_reflectable_current_ids: set[int] = set()
-        closure_candidate_splits = _closure_candidate_splits(
-            process_ir,
-            self.model,
-            color_engine,
-            reference_color_order=self.reference_color_order,
+        # Loop-request blocks replace the three Born-closure pruning layers
+        # (closure-side masks, colour-order masks, useful species states) by
+        # the loop-aware reachability test.
+        tree_pruning = not self.loop_blocks
+        loop_block_reachability = (
+            self._loop_block_reachability(process_ir) if self.loop_blocks else None
+        )
+        closure_candidate_splits = (
+            _closure_candidate_splits(
+                process_ir,
+                self.model,
+                color_engine,
+                reference_color_order=self.reference_color_order,
+            )
+            if tree_pruning
+            else ()
         )
         self._report_progress(
             "reachability",
@@ -343,7 +536,7 @@ class GenericDAGCompiler:
                 full_mask,
                 closure_candidate_splits,
             )
-            if self.closure_side_mask_pruning
+            if self.closure_side_mask_pruning and tree_pruning
             else None
         )
         backward_planner_candidate = bool(
@@ -359,7 +552,11 @@ class GenericDAGCompiler:
                 color_plan,
                 self.model,
             )
-            if self.color_order_mask_pruning and not backward_planner_candidate
+            if (
+                self.color_order_mask_pruning
+                and tree_pruning
+                and not backward_planner_candidate
+            )
             else None
         )
         useful_states_by_mask = (
@@ -374,7 +571,7 @@ class GenericDAGCompiler:
                 ignored_particle_ids=self.ignored_particle_ids,
                 ignored_vertex_kinds=self.ignored_vertex_kinds,
             )
-            if self.species_reachability_pruning
+            if self.species_reachability_pruning and tree_pruning
             else None
         )
         live_state_plan = (
@@ -527,7 +724,7 @@ class GenericDAGCompiler:
             return orders
 
         def coupling_orders_allowed(orders: CouplingOrders) -> bool:
-            if not self.online_evaluation_reuse:
+            if not memoize:
                 return _coupling_orders_within_limits(
                     orders,
                     self.max_coupling_orders,
@@ -563,6 +760,9 @@ class GenericDAGCompiler:
             )
 
         def reflection_reusable_current(current_id: int) -> bool:
+            if self.loop_blocks:
+                # Blocks are literal colour-ordered currents.
+                return False
             if self.online_evaluation_reuse:
                 if not eager_shared_lc_orderings:
                     return False
@@ -629,6 +829,94 @@ class GenericDAGCompiler:
             auxiliary_kind_cache[particle_id] = kind
             return kind
 
+        def cached_vertex_allowed(vertex: Vertex) -> bool:
+            vertex_key = (vertex.kind, *vertex.particles)
+            if vertex_key in vertex_allowed_cache:
+                return vertex_allowed_cache[vertex_key]
+            vertex_allowed = color_engine.vertex_allowed(vertex)
+            vertex_allowed_cache[vertex_key] = vertex_allowed
+            return vertex_allowed
+
+        # Loop-request blocks have no per-mask species pruning, so the vertex
+        # filters below depend on the vertex alone: each input pair's vertex
+        # list is filtered once, in the same order.
+        prefiltered_vertices = self.loop_blocks and useful_states_by_mask is None
+
+        def static_vertex_admitted(vertex: Vertex) -> bool:
+            if (
+                vertex.kind in self.ignored_vertex_kinds
+                or vertex.particles[2] in self.ignored_particle_ids
+            ):
+                return False
+            if not cached_vertex_allowed(vertex):
+                return False
+            return not self.model.skip_duplicate_vertex_orientation(vertex)
+
+        def dynamic_vertex_admitted(vertex: Vertex, mask: int) -> bool:
+            if (
+                vertex.kind in self.ignored_vertex_kinds
+                or vertex.particles[2] in self.ignored_particle_ids
+            ):
+                return False
+            if useful_states_by_mask is not None and vertex.particles[
+                2
+            ] not in useful_states_by_mask.get(mask, {}):
+                return False
+            if not cached_vertex_allowed(vertex):
+                return False
+            if memoize:
+                duplicate_orientation = duplicate_orientation_cache.get(vertex)
+                if duplicate_orientation is None:
+                    duplicate_orientation = (
+                        self.model.skip_duplicate_vertex_orientation(vertex)
+                    )
+                    duplicate_orientation_cache[vertex] = duplicate_orientation
+            else:
+                duplicate_orientation = self.model.skip_duplicate_vertex_orientation(
+                    vertex
+                )
+            return not duplicate_orientation
+
+        # Loop-request blocks build the same result index from many splits:
+        # its validated ``CurrentIndex`` (and whether the model admits it) is
+        # memoized by its construction arguments.
+        memoize_indices = self.loop_blocks
+        index_memo: dict[tuple[object, ...], tuple[CurrentIndex, bool]] = {}
+
+        # The factors of an interaction's colour weight come from a few shared
+        # objects (cached colour flows and vertex weights, literal symmetry
+        # weights): their product is computed once per object triple and the
+        # interactions share it (the factors are kept alive with it).
+        color_weight_products: dict[
+            tuple[int, int, int],
+            tuple[
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+            ],
+        ] = {}
+
+        def shared_color_weight(
+            flow_weight: tuple[float, float],
+            vertex_weight: tuple[float, float],
+            symmetry_weight: tuple[float, float],
+        ) -> tuple[float, float]:
+            key = (id(flow_weight), id(vertex_weight), id(symmetry_weight))
+            found = color_weight_products.get(key)
+            if found is None:
+                found = (
+                    flow_weight,
+                    vertex_weight,
+                    symmetry_weight,
+                    _complex_weight_mul(
+                        _complex_weight_mul(flow_weight, vertex_weight),
+                        symmetry_weight,
+                    ),
+                )
+                color_weight_products[key] = found
+            return found[3]
+
         def cached_vertex_color_weight(
             vertex: Vertex,
         ) -> tuple[float, float]:
@@ -649,7 +937,7 @@ class GenericDAGCompiler:
             ordered_external_labels: tuple[int, ...],
             sector_support_label_variants: tuple[tuple[int, ...], ...],
         ) -> tuple[ColorFlow, ...]:
-            if not self.online_evaluation_reuse:
+            if not memoize:
                 return color_engine.combine(
                     left.color_state,
                     right.color_state,
@@ -676,10 +964,17 @@ class GenericDAGCompiler:
                 color_flow_cache[key] = cached
             return cached
 
+        loop_masks = (
+            None
+            if loop_block_reachability is None
+            else _loop_block_masks(full_mask, loop_block_reachability)
+        )
         recursive_masks = tuple(
             mask
             for mask in _masks_by_size(full_mask)
-            if mask & (mask - 1) and mask != full_mask
+            if mask & (mask - 1)
+            and mask != full_mask
+            and (loop_masks is None or mask in loop_masks)
         )
         recursion_stage_total = max(len(process_ir.legs) - 2, 1)
         for mask_index, mask in enumerate(recursive_masks, start=1):
@@ -804,43 +1099,17 @@ class GenericDAGCompiler:
                                 right.index.particle_id,
                                 color_accuracy=process_ir.color_accuracy,
                             )
+                            if prefiltered_vertices:
+                                vertices = tuple(
+                                    vertex
+                                    for vertex in vertices
+                                    if static_vertex_admitted(vertex)
+                                )
                             vertices_by_input[vertex_lookup_key] = vertices
                         for vertex in vertices:
-                            if (
-                                vertex.kind in self.ignored_vertex_kinds
-                                or vertex.particles[2] in self.ignored_particle_ids
+                            if not prefiltered_vertices and not dynamic_vertex_admitted(
+                                vertex, mask
                             ):
-                                continue
-                            if useful_states_by_mask is not None and vertex.particles[
-                                2
-                            ] not in useful_states_by_mask.get(mask, {}):
-                                continue
-                            vertex_key = (vertex.kind, *vertex.particles)
-                            if vertex_key in vertex_allowed_cache:
-                                vertex_allowed = vertex_allowed_cache[vertex_key]
-                            else:
-                                vertex_allowed = color_engine.vertex_allowed(vertex)
-                                vertex_allowed_cache[vertex_key] = vertex_allowed
-                            if not vertex_allowed:
-                                continue
-                            if self.online_evaluation_reuse:
-                                duplicate_orientation = duplicate_orientation_cache.get(
-                                    vertex
-                                )
-                                if duplicate_orientation is None:
-                                    duplicate_orientation = (
-                                        self.model.skip_duplicate_vertex_orientation(
-                                            vertex
-                                        )
-                                    )
-                                    duplicate_orientation_cache[vertex] = (
-                                        duplicate_orientation
-                                    )
-                            else:
-                                duplicate_orientation = (
-                                    self.model.skip_duplicate_vertex_orientation(vertex)
-                                )
-                            if duplicate_orientation:
                                 continue
                             coupling_orders = combined_coupling_orders(
                                 left.index,
@@ -889,6 +1158,20 @@ class GenericDAGCompiler:
                             if ordered_external_labels is None and not (
                                 left_reflection_reusable or right_reflection_reusable
                             ):
+                                continue
+                            if (
+                                left_reflection_reusable or right_reflection_reusable
+                            ) and not color_engine.singlet_order_allowed(
+                                left.index,
+                                right.index,
+                                vertex,
+                            ):
+                                # The reflection variants below rebuild the
+                                # ordered labels without the colour-singlet
+                                # rule of ``ordered_combination_labels``: a
+                                # merge of a gluon with a colour singlet (the
+                                # HEFT H g -> g) would enter in both input
+                                # orders, doubling the amplitude.
                                 continue
                             order_variants: tuple[
                                 tuple[
@@ -997,43 +1280,69 @@ class GenericDAGCompiler:
                                             self.max_lc_current_line_groups,
                                         ):
                                             continue
-                                        out_index = current_index_factory(
-                                            particle_id=vertex.particles[2],
-                                            external_mask=mask,
-                                            external_labels=labels,
-                                            ordered_external_labels=variant_ordered_labels,
-                                            helicity_ancestry=(
+                                        index_key = None
+                                        memoized = None
+                                        if memoize_indices:
+                                            index_key = (
+                                                vertex.particles[2],
+                                                mask,
+                                                variant_ordered_labels,
                                                 left.index.helicity_ancestry
-                                                | right.index.helicity_ancestry
-                                            ),
-                                            chirality=quantum_flow.chirality,
-                                            spin_state=quantum_flow.spin_state,
-                                            flavour_flow=quantum_flow.flavour_flow,
-                                            quantum_number_flow=(
-                                                quantum_flow.quantum_number_flow
-                                            ),
-                                            color_state=color_flow.state,
-                                            momentum_mask=(
+                                                | right.index.helicity_ancestry,
+                                                quantum_flow.chirality,
+                                                quantum_flow.spin_state,
+                                                quantum_flow.flavour_flow,
+                                                quantum_flow.quantum_number_flow,
+                                                color_flow.state,
                                                 left.index.momentum_mask
-                                                | right.index.momentum_mask
-                                            ),
-                                            coupling_orders=coupling_orders,
-                                            auxiliary_kind=(
-                                                cached_auxiliary_kind(
-                                                    vertex.particles[2]
+                                                | right.index.momentum_mask,
+                                                coupling_orders,
+                                            )
+                                            memoized = index_memo.get(index_key)
+                                        if memoized is None:
+                                            out_index = current_index_factory(
+                                                particle_id=vertex.particles[2],
+                                                external_mask=mask,
+                                                external_labels=labels,
+                                                ordered_external_labels=variant_ordered_labels,
+                                                helicity_ancestry=(
+                                                    left.index.helicity_ancestry
+                                                    | right.index.helicity_ancestry
+                                                ),
+                                                chirality=quantum_flow.chirality,
+                                                spin_state=quantum_flow.spin_state,
+                                                flavour_flow=quantum_flow.flavour_flow,
+                                                quantum_number_flow=(
+                                                    quantum_flow.quantum_number_flow
+                                                ),
+                                                color_state=color_flow.state,
+                                                momentum_mask=(
+                                                    left.index.momentum_mask
+                                                    | right.index.momentum_mask
+                                                ),
+                                                coupling_orders=coupling_orders,
+                                                auxiliary_kind=(
+                                                    cached_auxiliary_kind(
+                                                        vertex.particles[2]
+                                                    )
+                                                    if memoize
+                                                    else self.model.auxiliary_kind(
+                                                        vertex.particles[2]
+                                                    )
+                                                ),
+                                            )
+                                            index_allowed = (
+                                                live_state_plan is None
+                                                or live_state_plan.allows(out_index)
+                                            ) and self.model.current_allowed(out_index)
+                                            if index_key is not None:
+                                                index_memo[index_key] = (
+                                                    out_index,
+                                                    index_allowed,
                                                 )
-                                                if self.online_evaluation_reuse
-                                                else self.model.auxiliary_kind(
-                                                    vertex.particles[2]
-                                                )
-                                            ),
-                                        )
-                                        if (
-                                            live_state_plan is not None
-                                            and not live_state_plan.allows(out_index)
-                                        ):
-                                            continue
-                                        if not self.model.current_allowed(out_index):
+                                        else:
+                                            out_index, index_allowed = memoized
+                                        if not index_allowed:
                                             continue
                                         result = table.add_or_get(
                                             out_index,
@@ -1043,20 +1352,25 @@ class GenericDAGCompiler:
                                             locally_reflectable_current_ids.add(
                                                 result.id
                                             )
-                                        signed_color_weight = _complex_weight_mul(
-                                            _complex_weight_mul(
+                                        if memoize:
+                                            signed_color_weight = shared_color_weight(
                                                 color_flow.weight,
-                                                cached_vertex_color_weight(vertex)
-                                                if self.online_evaluation_reuse
-                                                else self.model.vertex_color_weight(
-                                                    vertex,
-                                                    color_accuracy=(
-                                                        process_ir.color_accuracy
+                                                cached_vertex_color_weight(vertex),
+                                                symmetry_weight,
+                                            )
+                                        else:
+                                            signed_color_weight = _complex_weight_mul(
+                                                _complex_weight_mul(
+                                                    color_flow.weight,
+                                                    self.model.vertex_color_weight(
+                                                        vertex,
+                                                        color_accuracy=(
+                                                            process_ir.color_accuracy
+                                                        ),
                                                     ),
                                                 ),
-                                            ),
-                                            symmetry_weight,
-                                        )
+                                                symmetry_weight,
+                                            )
                                         key = (
                                             vertex.kind,
                                             left_id,
@@ -1068,7 +1382,7 @@ class GenericDAGCompiler:
                                         if key in interaction_keys:
                                             continue
                                         interaction_keys.add(key)
-                                        if self.online_evaluation_reuse:
+                                        if memoize:
                                             rule = lowering_rule_cache.get(vertex.kind)
                                             if rule is None:
                                                 rule = self.model.vertex_lowering_rule(
@@ -1203,6 +1517,20 @@ class GenericDAGCompiler:
                     table.currents[mask_current_start:],
                 )
 
+        if loop_block_reachability is not None:
+            return self._finish_loop_blocks(
+                GenericDAG(
+                    process=process_ir,
+                    color_plan=color_plan,
+                    currents=tuple(table.currents),
+                    sources=tuple(sources),
+                    interactions=tuple(interactions),
+                    amplitude_roots=(),
+                    helicity_coverage=helicity_coverage,
+                    color_coverage=color_coverage,
+                ),
+                loop_block_reachability,
+            )
         self._report_progress(
             "amplitude-closure",
             current_count=len(table.currents),
@@ -1240,6 +1568,10 @@ class GenericDAGCompiler:
         dag = _retain_canonical_open_line_alias_roots(dag, self.model)
         if global_flip_anchor is not None:
             dag = _canonicalize_amplitude_root_order(dag)
+        if self.nc_expansion is not None:
+            # One N_c grade per current and root (formal-N_c expansion of the
+            # colour sum); the evaluation reuse below regroups the copies.
+            dag = replace(split_tree_u1_grades(dag), nc_expansion=self.nc_expansion)
         if reuse_tracker is not None:
             self._report_progress(
                 "symmetry-reuse",
@@ -1256,6 +1588,57 @@ class GenericDAGCompiler:
             amplitude_count=len(dag.amplitude_roots),
         )
         return self._apply_fermion_ordering(dag)
+
+    def _loop_block_reachability(
+        self,
+        process_ir: CanonicalProcessIR,
+    ) -> LoopBlockReachability:
+        if self.loop_block_reachability is not None:
+            return self.loop_block_reachability
+        return AttachableLoopBlocks.for_process(
+            process_ir,
+            self.model,
+            ignored_particle_ids=self.ignored_particle_ids,
+            ignored_vertex_kinds=self.ignored_vertex_kinds,
+        )
+
+    def _finish_loop_blocks(
+        self,
+        dag: GenericDAG,
+        reachability: LoopBlockReachability,
+    ) -> GenericDAG:
+        """Keep admitted blocks with their sub-DAG; sources are always blocks."""
+
+        dag = prune_dag_to_required_currents(
+            dag,
+            (
+                current.id
+                for current in dag.currents
+                if current.is_source or reachability.admits_block(current.index)
+            ),
+        )
+        self._report_progress(
+            "loop-blocks",
+            current_count=len(dag.currents),
+            interaction_count=len(dag.interactions),
+        )
+        # With ``u1_grades`` (leading and next-to-leading colour), a block
+        # whose trees have several N_c grades (U(1)-subtraction pieces of
+        # identical-flavour lines) is graded: its currents carry their grade,
+        # split per grade where one current mixes them
+        # (``generation.dag_grades``). A current derived with both
+        # colour-connection parities (several pairings of identical-flavour
+        # lines) takes the other parity's -1 in those derivations' colour
+        # weights (``loops/v2/blocks.py``). The parity depends on the colour
+        # state, which the evaluation contracts of the reuse leave out, so
+        # the fold precedes the reuse's value equivalences.
+        if self.u1_grades:
+            dag = split_u1_grades(dag)
+        return self._apply_fermion_ordering(
+            assign_recursive_current_evaluation_reuse(
+                apply_colour_connection_signs(dag, self.model), self.model
+            )
+        )
 
     def _compile_backward_live_plan(
         self,
@@ -1889,7 +2272,9 @@ class GenericDAGCompiler:
             right: CurrentNode,
         ) -> ContractionIR | None:
             if not self.online_evaluation_reuse:
-                return _direct_contraction_ir(self.model, left.index, right.index)
+                return _direct_contraction_ir(
+                    self.model, left.index, right.index, loop_born=self.loop_born
+                )
             key = (
                 left.index.particle_id,
                 right.index.particle_id,
@@ -1901,6 +2286,7 @@ class GenericDAGCompiler:
                     self.model,
                     left.index,
                     right.index,
+                    loop_born=self.loop_born,
                 )
             return eager_direct_contractions[key]
 
@@ -2193,6 +2579,8 @@ def compile_generic_dag(
     online_evaluation_reuse: bool = False,
     backward_live_planning: bool = False,
     progress_callback: DAGProgressCallback | None = None,
+    loop_born: bool = False,
+    nc_expansion: NcExpansion | None = None,
 ) -> GenericDAG:
     return GenericDAGCompiler(
         model=model,
@@ -2214,4 +2602,6 @@ def compile_generic_dag(
         online_evaluation_reuse=online_evaluation_reuse,
         backward_live_planning=backward_live_planning,
         progress_callback=progress_callback,
+        loop_born=loop_born,
+        nc_expansion=nc_expansion,
     ).compile(process)

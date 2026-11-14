@@ -250,15 +250,16 @@ class SymbolicaEvaluatorBundle:
         return tuple(complex(value) for value in row[: self.output_length])
 
     def to_artifact_payload(self) -> dict[str, object]:
+        from ...evaluators.symbolica_helpers import saved_evaluator
+
+        state = saved_evaluator(self.evaluator)
         return {
             "kind": "pyamplicol-symbolica-evaluator-bundle",
             "name": self.name,
             "output_length": self.output_length,
             "complex_inputs": self.complex_inputs,
             "param_builder": self.param_builder.to_json_dict(),
-            "evaluator_state_b64": base64.b64encode(self.evaluator.save()).decode(
-                "ascii"
-            ),
+            "evaluator_state_b64": base64.b64encode(state).decode("ascii"),
             "metadata": self.metadata or {},
         }
 

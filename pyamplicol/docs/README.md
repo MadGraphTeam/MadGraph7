@@ -31,9 +31,12 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 | generate and evaluate my first process | [Quick Start](user/quick-start.md) |
 | choose a model, process, color approximation, or evaluator | [Configuration](user/configuration.md) and [Models and Processes](user/models-and-processes.md), including the packaged scalar HEFT workflow |
 | check whether my UFO model is supported | [UFO Model Coverage](user/ufo-model-coverage.md), the exact list of accepted, conditional and rejected model features |
+| run one-loop QCD on loop_sm, coming from MadLoop | [One-loop QCD on loop_sm](user/loop-sm-and-madloop.md): the shipped model, restriction recipes, MadLoop syntax mapping and refusals |
+| run one-loop QCD+QED (electroweak) corrections, coming from MadLoop | [One-loop QCD+QED on loop_qcd_qed_sm](user/electroweak-and-madloop.md): the shipped QCD+QED models, recipes, MadLoop syntax mapping, multiparticle requests and refusal keys |
 | call pyAmpliCol from Python | [Python API](user/python-api.md) |
 | prepare and evaluate tree-level spin and colour correlations | [Born Correlations](correlators.md) and [Correlation Conventions](correlator-conventions.md), LC/NLC/full colour and grouped Python evaluation |
 | use C, C++, Fortran, Rust, or generated Python drivers | [Native APIs](user/native-apis.md) |
+| export resolved LC recurrence programs for an external runner | [Recurrence Export](reference/recurrence-export.md): the JSON format, its bit-exact arithmetic contract and golden vectors |
 | build a UMAMI shared library or integrate with MadSpace | [UMAMI and MadSpace](user/umami-api.md) |
 | benchmark or profile a process | [Profiling and Benchmarking](user/profiling-and-benchmarking.md) |
 | diagnose an error | [Troubleshooting](user/troubleshooting.md) |
@@ -109,7 +112,7 @@ flows, and resolved metadata; particles never cross the `>` boundary. See
 
 ## Explore the documentation
 
-- **Using pyAmpliCol:** [Examples Gallery](user/examples-gallery.md), [Command-Line Interface](user/command-line-interface.md), [Runtime and Selectors](user/runtime-and-selectors.md)
+- **Using pyAmpliCol:** [Examples Gallery](user/examples-gallery.md), [Command-Line Interface](user/command-line-interface.md), [Runtime and Selectors](user/runtime-and-selectors.md), [Recurrence Export](reference/recurrence-export.md)
 - **Generation:** [Models and Processes](user/models-and-processes.md), including scalar HEFT, [Generation Modes and Evaluators](user/generation-modes-and-evaluators.md), and [Process Grouping](user/process-grouping.md) of subprocesses with equal matrix elements
 - **Guided workflows:** [LC workloads and execution modes](user/lc-workloads-and-execution-modes.md)
 - **Deployment:** [Artifacts and Portability](user/artifacts-and-portability.md), [Release and Platform Support](user/release-and-support.md)

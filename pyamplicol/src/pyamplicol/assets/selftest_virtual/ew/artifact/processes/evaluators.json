@@ -1,0 +1,16 @@
+{
+  "kind": "pyamplicol-runtime-execution-set",
+  "processes": [
+    {
+      "manifest_path": "selftest_virtual_ew/execution.json",
+      "process_id": "selftest_virtual_ew",
+      "required_runtime_capabilities": [
+        "rusticol.loop-runtime.v4"
+      ]
+    }
+  ],
+  "required_runtime_capabilities": [
+    "rusticol.loop-runtime.v4"
+  ],
+  "schema_version": 3
+}

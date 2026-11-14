@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MG_VERSION_FILE = ROOT.parent / "VERSION"
-WORKSPACE_CRATES = ("rusticol-capi", "rusticol-core", "rusticol-python")
+WORKSPACE_CRATES = ("pyamplicol", "rusticol-capi", "rusticol-core", "rusticol-python")
 
 
 def madgraph_version() -> str:

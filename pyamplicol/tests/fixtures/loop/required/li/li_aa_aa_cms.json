@@ -1,0 +1,1224 @@
+{
+  "name": "li_aa_aa_cms",
+  "li_row": "LI-C1",
+  "loop_induced": true,
+  "pdgs": [
+    22,
+    22,
+    22,
+    22
+  ],
+  "initial": 2,
+  "madloop_process": "a a > a a [sqrvirt=QED]",
+  "recola_process": "A A -> A A",
+  "openloops": {
+    "unavailable": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+  },
+  "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+  },
+  "squared_orders": {
+    "QCD": 0,
+    "QED": 8
+  },
+  "correction": "EW",
+  "scheme": "ew-gmu-cms",
+  "scheme_data": {
+    "description": "The ew-gmu values under MG5's complex-mass scheme (set complex_mass_scheme True) on the default restriction: complex masses sqrt(M^2 - i M Gamma) for t, Z, W, H at the card widths of restrict_default.dat (WT = 1.37758, WZ = 2.49877, WW = 2.09291, WH = 0.00407468); a process with an external unstable multiplet sets its width to 0 (parameter_overrides). Under CMS MG5 removes the YUKAWA inputs (ymX := the complex mass), so no Yukawa is set.",
+    "restriction": "default",
+    "madloop_model": "{reference}/models/ufodb-6ca4b120-patched/loop_qcd_qed_sm_Gmu_py3",
+    "parameters": {
+      "aS": "0.118",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MW": "80.419",
+      "MH": "125",
+      "MT": "173"
+    },
+    "fixed_parameters": {
+      "MB": "0",
+      "MTA": "0",
+      "WT": "1.37758",
+      "WZ": "2.49877",
+      "WW": "2.09291",
+      "WH": "0.00407468",
+      "WTau": "0"
+    },
+    "electroweak_inputs": "gmu",
+    "complex_mass_scheme": true,
+    "active_flavours": 5,
+    "loop_quark_flavours": 6,
+    "conventions": {
+      "CMSParam": "1 (set by MG5's change_mass_to_complex_scheme)",
+      "LogSwitch": "1 (fixed by the restriction card)",
+      "GfRedefinitionChoice": "1 (fixed by the restriction card: alpha_Gmu = sqrt(2) Gf |mu_W^2 (1 - mu_W^2/mu_Z^2)| / pi)",
+      "ghost_widths": "zero (the UFO's ghosts carry no width; MadLoop's loop denominators use the complex mass)"
+    }
+  },
+  "derived_parameters": {
+    "MW": "80.419",
+    "alpha": "0.00755041146868185506184668938818"
+  },
+  "normalization": {
+    "initial_average": 4,
+    "final_symmetry": 2,
+    "denominator": 8,
+    "convention": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings"
+  },
+  "point_construction": {
+    "process_name": "li_aa_aa_cms",
+    "masses": [
+      "0",
+      "0",
+      "0",
+      "0"
+    ],
+    "construction": "tools/loop_reference/exact_points.py: deterministic exact terminating-decimal sequential construction; mass shells and momentum conservation exact",
+    "cuts": {
+      "min_2pipj_over_s": "1/1000",
+      "resonance_exclusion": "|s_ij-M^2| >= M^2/10 for final particle-antiparticle pairs",
+      "resonances": [
+        "91.188",
+        "80.419",
+        "125",
+        "173"
+      ]
+    },
+    "sqrt_s": [
+      "3125",
+      "1280",
+      "2500"
+    ]
+  },
+  "points": [
+    [
+      [
+        "1562.5",
+        "0",
+        "0",
+        "1562.5"
+      ],
+      [
+        "1562.5",
+        "0",
+        "0",
+        "-1562.5"
+      ],
+      [
+        "1562.5",
+        "840",
+        "-790.5",
+        "1054"
+      ],
+      [
+        "1562.5",
+        "-840",
+        "790.5",
+        "-1054"
+      ]
+    ],
+    [
+      [
+        "640",
+        "0",
+        "0",
+        "640"
+      ],
+      [
+        "640",
+        "0",
+        "0",
+        "-640"
+      ],
+      [
+        "640",
+        "184.9688064",
+        "-290.1147648",
+        "539.648"
+      ],
+      [
+        "640",
+        "-184.9688064",
+        "290.1147648",
+        "-539.648"
+      ]
+    ],
+    [
+      [
+        "1250",
+        "0",
+        "0",
+        "1250"
+      ],
+      [
+        "1250",
+        "0",
+        "0",
+        "-1250"
+      ],
+      [
+        "1250",
+        "264",
+        "-702",
+        "1000"
+      ],
+      [
+        "1250",
+        "-264",
+        "702",
+        "-1000"
+      ]
+    ]
+  ],
+  "mu_r": [
+    "1000",
+    "700",
+    "1400"
+  ],
+  "rows": [
+    {
+      "value": 0.005563165334555955,
+      "value_source": "madloop",
+      "providers": {
+        "madloop": {
+          "value": 0.005563165334555955,
+          "single_pole": 0.0,
+          "double_pole": 0.0,
+          "born_slot": 0.0,
+          "accuracy": 9.027278825883812e-14,
+          "status": 217,
+          "seconds": 0.033600111,
+          "per_helicity_sum_over_avg_relative_deviation": 0.0,
+          "pole_over_value": [
+            0.0,
+            0.0
+          ]
+        },
+        "recola": {
+          "value": 0.005563165813932546,
+          "single_pole": -4.9439619065339e-19,
+          "double_pole": 1.9081958235744878e-19,
+          "lo_slot": 0.0,
+          "seconds": 0.023479011,
+          "pole_over_value": [
+            8.886957663839725e-17,
+            3.4300538351662097e-17
+          ]
+        },
+        "analytic": {
+          "value": 0.005563165813932537,
+          "decimal": "0.005563165813932536642335330676527110557460"
+        }
+      },
+      "provider_pair_relative_errors": {
+        "madloop-recola": 8.616974696419959e-08,
+        "madloop-analytic": 8.616974540508433e-08,
+        "recola-analytic": 1.5591153796210046e-15
+      },
+      "per_helicity": [
+        {
+          "helicity": [
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "value": 0.0018663279526698008,
+          "accuracy": 9.445889346186656e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            -1,
+            -1,
+            1
+          ],
+          "value": 2.9948235018158897e-07,
+          "accuracy": 1.9621493780897744e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            -1,
+            1,
+            -1
+          ],
+          "value": 2.9948235018159876e-07,
+          "accuracy": 3.4841409227162677e-13,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            -1,
+            1,
+            1
+          ],
+          "value": 2.9863428691477293e-07,
+          "accuracy": 5.8303056244028195e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            -1,
+            -1
+          ],
+          "value": 2.9948235018157875e-07,
+          "accuracy": 2.455338275826046e-13,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            -1,
+            1
+          ],
+          "value": 0.0009124752225339672,
+          "accuracy": 7.628237759735706e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            1,
+            -1
+          ],
+          "value": 1.2829283865687018e-06,
+          "accuracy": 8.76460642115391e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            1,
+            1
+          ],
+          "value": 2.99482350181581e-07,
+          "accuracy": 5.303106427269816e-15,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            -1,
+            -1
+          ],
+          "value": 2.994823501815804e-07,
+          "accuracy": 2.6515532136349035e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            -1,
+            1
+          ],
+          "value": 1.2829283865687094e-06,
+          "accuracy": 8.46750111874187e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            1,
+            -1
+          ],
+          "value": 0.0009124752225339695,
+          "accuracy": 8.091635380654203e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            1,
+            1
+          ],
+          "value": 2.9948235018157817e-07,
+          "accuracy": 2.609128362216889e-13,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            -1,
+            -1
+          ],
+          "value": 2.986342869147723e-07,
+          "accuracy": 5.8154147589934445e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            -1,
+            1
+          ],
+          "value": 2.9948235018159564e-07,
+          "accuracy": 3.1977731756437154e-13,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            1,
+            -1
+          ],
+          "value": 2.994823501815919e-07,
+          "accuracy": 2.0151804423624517e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "value": 0.0018663279526697984,
+          "accuracy": 9.585312067163591e-14,
+          "status": 217
+        }
+      ]
+    },
+    {
+      "value": 0.006214343594104341,
+      "value_source": "madloop",
+      "providers": {
+        "madloop": {
+          "value": 0.006214343594104341,
+          "single_pole": 0.0,
+          "double_pole": 0.0,
+          "born_slot": 0.0,
+          "accuracy": 5.610880914311527e-14,
+          "status": 217,
+          "seconds": 0.042398455,
+          "per_helicity_sum_over_avg_relative_deviation": 0.0,
+          "pole_over_value": [
+            0.0,
+            0.0
+          ]
+        },
+        "recola": {
+          "value": 0.0062143401651802415,
+          "single_pole": 1.0503750647039566e-17,
+          "double_pole": -1.3010426069826053e-18,
+          "lo_slot": 0.0,
+          "seconds": 0.024207334,
+          "pole_over_value": [
+            1.6902439145339117e-15,
+            2.0936134366646305e-16
+          ]
+        },
+        "analytic": {
+          "value": 0.006214340165180428,
+          "decimal": "0.006214340165180428335195907353019898369882"
+        }
+      },
+      "provider_pair_relative_errors": {
+        "madloop-recola": 5.517757503418341e-07,
+        "madloop-analytic": 5.517757203333914e-07,
+        "recola-analytic": 3.00084592588588e-14
+      },
+      "per_helicity": [
+        {
+          "helicity": [
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "value": 0.0017854156035726878,
+          "accuracy": 9.327433532032317e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            -1,
+            -1,
+            1
+          ],
+          "value": 3.465090321782871e-07,
+          "accuracy": 2.5648662440894536e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            -1,
+            1,
+            -1
+          ],
+          "value": 3.465090321782821e-07,
+          "accuracy": 2.6780760300597943e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            -1,
+            1,
+            1
+          ],
+          "value": 2.990546089323591e-07,
+          "accuracy": 9.853872094411448e-13,
+          "status": 216
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            -1,
+            -1
+          ],
+          "value": 3.4650903217841874e-07,
+          "accuracy": 2.7028263476392807e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            -1,
+            1
+          ],
+          "value": 0.0013199904390962987,
+          "accuracy": 6.455977879332545e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            1,
+            -1
+          ],
+          "value": 8.066364554139844e-08,
+          "accuracy": 4.3315807064915726e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            1,
+            1
+          ],
+          "value": 3.465090321784082e-07,
+          "accuracy": 2.5754080460210108e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            -1,
+            -1
+          ],
+          "value": 3.465090321784058e-07,
+          "accuracy": 2.5919082577413905e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            -1,
+            1
+          ],
+          "value": 8.066364554139876e-08,
+          "accuracy": 4.7253607707180563e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            1,
+            -1
+          ],
+          "value": 0.0013199904390962924,
+          "accuracy": 6.012437414340256e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            1,
+            1
+          ],
+          "value": 3.465090321784157e-07,
+          "accuracy": 2.7023680084248495e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            -1,
+            -1
+          ],
+          "value": 2.990546089323856e-07,
+          "accuracy": 1.253890527332064e-12,
+          "status": 216
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            -1,
+            1
+          ],
+          "value": 3.465090321782834e-07,
+          "accuracy": 2.6560757477659597e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            1,
+            -1
+          ],
+          "value": 3.4650903217828766e-07,
+          "accuracy": 2.5735746891640877e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "value": 0.0017854156035726873,
+          "accuracy": 9.363868819266821e-14,
+          "status": 217
+        }
+      ]
+    },
+    {
+      "value": 0.009518817719816301,
+      "value_source": "madloop",
+      "providers": {
+        "madloop": {
+          "value": 0.009518817719816301,
+          "single_pole": 0.0,
+          "double_pole": 0.0,
+          "born_slot": 0.0,
+          "accuracy": 4.756502756507116e-14,
+          "status": 217,
+          "seconds": 0.04097297,
+          "per_helicity_sum_over_avg_relative_deviation": 1.8224148492364288e-16,
+          "pole_over_value": [
+            0.0,
+            0.0
+          ]
+        },
+        "recola": {
+          "value": 0.009518817686600302,
+          "single_pole": -1.19522447494802e-17,
+          "double_pole": -3.1225022567582527e-19,
+          "lo_slot": 0.0,
+          "seconds": 0.023725002,
+          "pole_over_value": [
+            1.2556438355054797e-15,
+            3.2803467400723706e-17
+          ]
+        },
+        "analytic": {
+          "value": 0.00951881768660024,
+          "decimal": "0.009518817686600239941443577503370925441805"
+        }
+      },
+      "provider_pair_relative_errors": {
+        "madloop-recola": 3.4895089257021353e-09,
+        "madloop-analytic": 3.4895153041541076e-09,
+        "recola-analytic": 6.378451994585166e-15
+      },
+      "per_helicity": [
+        {
+          "helicity": [
+            -1,
+            -1,
+            -1,
+            -1
+          ],
+          "value": 0.002871618965109873,
+          "accuracy": 6.478892048666909e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            -1,
+            -1,
+            1
+          ],
+          "value": 3.0717733354740006e-07,
+          "accuracy": 1.570208056472912e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            -1,
+            1,
+            -1
+          ],
+          "value": 3.071773335474276e-07,
+          "accuracy": 1.5019606203666291e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            -1,
+            1,
+            1
+          ],
+          "value": 2.9869304127549773e-07,
+          "accuracy": 6.843800536905212e-13,
+          "status": 216
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            -1,
+            -1
+          ],
+          "value": 3.0717733354729e-07,
+          "accuracy": 1.5391864946070324e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            -1,
+            1
+          ],
+          "value": 0.0018859752807957766,
+          "accuracy": 5.79475139994553e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            1,
+            -1
+          ],
+          "value": 2.8721162703603174e-07,
+          "accuracy": 2.98602416603205e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            -1,
+            1,
+            1,
+            1
+          ],
+          "value": 3.0717733354725374e-07,
+          "accuracy": 1.576412368846949e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            -1,
+            -1
+          ],
+          "value": 3.071773335472531e-07,
+          "accuracy": 1.593474227873497e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            -1,
+            1
+          ],
+          "value": 2.872116270360301e-07,
+          "accuracy": 3.262507885109109e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            1,
+            -1
+          ],
+          "value": 0.0018859752807957732,
+          "accuracy": 5.932721671372817e-14,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            -1,
+            1,
+            1
+          ],
+          "value": 3.071773335472885e-07,
+          "accuracy": 1.5696910304423746e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            -1,
+            -1
+          ],
+          "value": 2.986930412754882e-07,
+          "accuracy": 5.77230999983517e-13,
+          "status": 216
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            -1,
+            1
+          ],
+          "value": 3.0717733354742944e-07,
+          "accuracy": 1.4998925162421912e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            1,
+            -1
+          ],
+          "value": 3.0717733354739815e-07,
+          "accuracy": 1.5733102126595643e-12,
+          "status": 217
+        },
+        {
+          "helicity": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "value": 0.0028716189651098773,
+          "accuracy": 6.433585111263635e-14,
+          "status": 217
+        }
+      ]
+    }
+  ],
+  "max_provider_pair_relative_error": 5.517757503418341e-07,
+  "rule": "PLAN \u00a74.0 L1: provider agreement <= 1e-05 relative (lax); digits recorded",
+  "passed": true,
+  "zero_row": false,
+  "providers": {
+    "madloop": {
+      "provider": "madloop",
+      "process_name": "li_aa_aa_cms",
+      "loop_induced": true,
+      "host": "itphlies",
+      "cpu": 325,
+      "points_file": "${LOOP_REFERENCE_ROOT}/runs/li/li_aa_aa_cms/points.json",
+      "timing_scope": "single thread pinned; untimed warm-up (MadLoop: past its initialisation), then each point timed once; not a benchmark campaign",
+      "settings": {
+        "absent_card_parameters_fixed_to_zero": [
+          "MB",
+          "MTA",
+          "WTau"
+        ],
+        "MadLoopParams": {
+          "MLReductionLib": "7|6|1",
+          "COLLIERGlobalCache": "-1",
+          "MLStabThres": "1.000000d-03",
+          "ImprovePSPoint": "2",
+          "HelicityFilterLevel": "0"
+        },
+        "param_card": "BLOCK LOOP\n      666 1.000000e+03\nBLOCK MASS\n      6 173\n      23 91.188\n      24 80.419\n      25 125\n      1 0.000000e+00\n      2 0.000000e+00\n      3 0.000000e+00\n      4 0.000000e+00\n      5 0.000000e+00\n      11 0.000000e+00\n      12 0.000000e+00\n      13 0.000000e+00\n      14 0.000000e+00\n      15 0.000000e+00\n      16 0.000000e+00\n      21 0.000000e+00\n      22 0.000000e+00\n      9000002 9.118800e+01\n      9000003 8.041900e+01\n      9000004 8.041900e+01\n      250 9.118800e+01\n      251 8.041900e+01\nBLOCK SMINPUTS\n      2 0.0000116639\n      3 0.118\nDECAY 6 1.37758\nDECAY 23 2.49877\nDECAY 24 2.09291\nDECAY 25 0.00407468\nDECAY 1 0.000000e+00\nDECAY 2 0.000000e+00\nDECAY 3 0.000000e+00\nDECAY 4 0.000000e+00\nDECAY 5 0.000000e+00\nDECAY 11 0.000000e+00\nDECAY 12 0.000000e+00\nDECAY 13 0.000000e+00\nDECAY 14 0.000000e+00\nDECAY 15 0.000000e+00\nDECAY 16 0.000000e+00\nDECAY 21 0.000000e+00\nDECAY 22 0.000000e+00\nDECAY 250 2.498770e+00\nDECAY 251 2.092910e+00\nBLOCK QNUMBERS 9000001\n      1 0\n      2 1\n      3 1\n      4 1\nBLOCK QNUMBERS 9000002\n      1 0\n      2 1\n      3 1\n      4 1\nBLOCK QNUMBERS 9000003\n      1 3\n      2 1\n      3 1\n      4 1\nBLOCK QNUMBERS 9000004\n      1 -3\n      2 1\n      3 1\n      4 1\nBLOCK QNUMBERS 9000005\n      1 0\n      2 1\n      3 8\n      4 1\nBLOCK QNUMBERS 250\n      1 0\n      2 1\n      3 1\n      4 0\nBLOCK QNUMBERS 251\n      1 3\n      2 1\n      3 1\n      4 1",
+        "MadLoopParams_overrides": {
+          "HelicityFilterLevel": "0"
+        },
+        "exported_card": {
+          "MLReductionLib": "7|6|1",
+          "COLLIERComputeUVpoles": ".false.",
+          "COLLIERComputeIRpoles": ".false.",
+          "HelicityFilterLevel": "2",
+          "CheckCycle": "3",
+          "MLStabThres": "1.000000d-03",
+          "COLLIERGlobalCache": "-1",
+          "CTModeRun": "-1",
+          "ImprovePSPoint": "2"
+        },
+        "export": "${LOOP_REFERENCE_ROOT}/runs/li/li_aa_aa_cms/madloop-export",
+        "fortran_flags": {
+          "export_make_opts": {
+            "GLOBAL_FLAG": "-O",
+            "ALOHA_FLAG": "",
+            "MATRIX_FLAG": ""
+          },
+          "mg5_production": {
+            "GLOBAL_FLAG": "-O",
+            "ALOHA_FLAG": "",
+            "MATRIX_FLAG": ""
+          },
+          "production_build": true,
+          "source": "MG5_aMC run-card defaults global_flag/aloha_flag/matrix_flag (CommonRunCmd.update_make_opts of an optimised MG5 run); MadLoop's own makefile adds -O3 for polynomial.f"
+        },
+        "mg5_quadruple_precision_model_function_repairs": [
+          "added KIND=16 to 19 CMPLX calls in MP_ functions",
+          "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
+        ],
+        "requested_relative_accuracy": 1e-11,
+        "stability_check": "forced on every call",
+        "warm_up": "untimed calls cycling through the points until MadLoop leaves its initialisation phase, at least CheckCycle + 1 = 4",
+        "HELAVGFACTOR": 4,
+        "IDEN": 8
+      },
+      "generation": {
+        "process_name": "li_aa_aa_cms",
+        "mg5": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
+        "model": "${LOOP_REFERENCE_ROOT}/models/ufodb-6ca4b120-patched/loop_qcd_qed_sm_Gmu_py3",
+        "command": "a a > a a [sqrvirt=QED]",
+        "host": "itphlies",
+        "pid": 1949595,
+        "status": "compiled",
+        "graph_generation_s": 5.919473332120106,
+        "process": "Process: a a > a a [ sqrvirt = QED ]",
+        "born": 0,
+        "loops": 216,
+        "identified_loop_records": 186,
+        "count_convention": "loops: sum of native diagram.multiplier",
+        "born_orders": [],
+        "loop_orders": [
+          {
+            "QCD": 0,
+            "QED": 4,
+            "count": 216
+          }
+        ],
+        "UVCT_diagrams": 0,
+        "attached_CT_vertices": 10,
+        "source_export_s": 4.833694470813498,
+        "subprocess_directories": [
+          "P0_aa_aa"
+        ],
+        "fortran_flags": {
+          "GLOBAL_FLAG": "-O",
+          "ALOHA_FLAG": "",
+          "MATRIX_FLAG": ""
+        },
+        "compile_s": 3.0322950440458953,
+        "compile_jobs": 8
+      },
+      "version": "MadLoop/MG5_aMC 3.7.0",
+      "provenance": {
+        "MG5_aMC": {
+          "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
+          "version": "3.7.0"
+        },
+        "reducer_libraries": {
+          "libcts.a": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/CutTools/includects/libcts.a",
+            "version": null
+          },
+          "libiregi.a": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/IREGI/src/libiregi.a",
+            "version": null
+          },
+          "libninja.a": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/ninja/lib/libninja.a",
+            "version": "1.2.0"
+          },
+          "libavh_olo.a": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/oneloop/libavh_olo.a",
+            "version": "3.6"
+          },
+          "libcollier.a": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/collier/libcollier.a",
+            "version": "1.2.9"
+          }
+        }
+      },
+      "per_helicity_normalization": "value = |A(h)|^2/avg (the summed convention's divisor, PLAN Q39) = MadLoop's USERHEL value (SLOOPMATRIXHEL_THRES: colour average and identical factor, no helicity average) / HELAVGFACTOR; helicity labels in MadLoop's HelConfigs.dat convention",
+      "loop_squared_orders": [
+        {
+          "index": 1,
+          "QCD": 0,
+          "QED": 8
+        }
+      ],
+      "helicities": [
+        {
+          "madloop_index": 1,
+          "helicity": [
+            -1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "madloop_index": 2,
+          "helicity": [
+            -1,
+            -1,
+            -1,
+            1
+          ]
+        },
+        {
+          "madloop_index": 3,
+          "helicity": [
+            -1,
+            -1,
+            1,
+            -1
+          ]
+        },
+        {
+          "madloop_index": 4,
+          "helicity": [
+            -1,
+            -1,
+            1,
+            1
+          ]
+        },
+        {
+          "madloop_index": 5,
+          "helicity": [
+            -1,
+            1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "madloop_index": 6,
+          "helicity": [
+            -1,
+            1,
+            -1,
+            1
+          ]
+        },
+        {
+          "madloop_index": 7,
+          "helicity": [
+            -1,
+            1,
+            1,
+            -1
+          ]
+        },
+        {
+          "madloop_index": 8,
+          "helicity": [
+            -1,
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "madloop_index": 9,
+          "helicity": [
+            1,
+            -1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "madloop_index": 10,
+          "helicity": [
+            1,
+            -1,
+            -1,
+            1
+          ]
+        },
+        {
+          "madloop_index": 11,
+          "helicity": [
+            1,
+            -1,
+            1,
+            -1
+          ]
+        },
+        {
+          "madloop_index": 12,
+          "helicity": [
+            1,
+            -1,
+            1,
+            1
+          ]
+        },
+        {
+          "madloop_index": 13,
+          "helicity": [
+            1,
+            1,
+            -1,
+            -1
+          ]
+        },
+        {
+          "madloop_index": 14,
+          "helicity": [
+            1,
+            1,
+            -1,
+            1
+          ]
+        },
+        {
+          "madloop_index": 15,
+          "helicity": [
+            1,
+            1,
+            1,
+            -1
+          ]
+        },
+        {
+          "madloop_index": 16,
+          "helicity": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      ],
+      "loop_index": 1,
+      "initial_call_seconds": 0.179866361,
+      "initialization_calls": 4,
+      "initialization_status": 217,
+      "process_wall_seconds": 0.576035673962906,
+      "evaluation_seconds": [
+        0.033600111,
+        0.042398455,
+        0.04097297
+      ]
+    },
+    "recola": {
+      "provider": "recola",
+      "process_name": "li_aa_aa_cms",
+      "loop_induced": true,
+      "host": "itphlies",
+      "cpu": 326,
+      "points_file": "${LOOP_REFERENCE_ROOT}/runs/li/li_aa_aa_cms/points.json",
+      "timing_scope": "single thread pinned; untimed warm-up (MadLoop: past its initialisation), then each point timed once; not a benchmark campaign",
+      "settings": {
+        "recola_tree": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0",
+        "commands": [
+          "mass W 80.419 2.09291",
+          "mass Z 91.188 2.49877",
+          "mass H 125 0.00407468",
+          "mass top 173 1.37758",
+          "mass bottom 0 0",
+          "mass charm 0 0",
+          "mass strange 0 0",
+          "mass up 0 0",
+          "mass down 0 0",
+          "mass tau 0 0",
+          "mass muon 0 0",
+          "mass electron 0 0",
+          "alphaz 0.00755041146868185506184668938818",
+          "complex_mass",
+          "alphas 0.118 1000 5",
+          "legs 4",
+          "loop_induced",
+          "loop_gs 0",
+          "pow_nlo 0",
+          "process A A -> A A",
+          "generate"
+        ],
+        "collier_cache": "on",
+        "dynamic_settings": 1,
+        "compute_ir_poles": 1
+      },
+      "version": "Recola2 2.2.5 (tree recola2-2.3.0)",
+      "provenance": {
+        "recola_tree": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0",
+        "linked": {
+          "librecola.so": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0/librecola.so",
+            "version": "2.2.5"
+          },
+          "libcollier.so": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/COLLIER-1.2.8/libcollier.so",
+            "version": "1.2.8"
+          },
+          "libmodelfile.so": {
+            "path": "${LOOP_REFERENCE_ROOT}/models/SM_2.2.3/libmodelfile.so",
+            "version": "2.2.3"
+          }
+        }
+      },
+      "generation_seconds": 0.205166469,
+      "initial_call_seconds": 0.024756477,
+      "process_wall_seconds": 0.3163412620779127,
+      "evaluation_seconds": [
+        0.023479011,
+        0.024207334,
+        0.023725002
+      ]
+    },
+    "analytic": {
+      "provider": "analytic",
+      "process_name": "li_aa_aa_cms",
+      "loop_induced": true,
+      "host": "itphlies",
+      "cpu": null,
+      "points_file": "${LOOP_REFERENCE_ROOT}/runs/li/li_aa_aa_cms/points.json",
+      "timing_scope": "single thread pinned; untimed warm-up (MadLoop: past its initialisation), then each point timed once; not a benchmark campaign",
+      "settings": {
+        "oracle": "aa_aa",
+        "dps": 50,
+        "limit": false
+      },
+      "version": "li_analytic.py (mpmath)",
+      "process_wall_seconds": 1.045718153938651,
+      "evaluation_seconds": [
+        null,
+        null,
+        null
+      ]
+    }
+  },
+  "secondary_runs": {},
+  "unavailable": {
+    "openloops": "no designated OpenLoops loop-squared (ls) library serves this process (PLAN \u00a74.1, Q34 = (b))"
+  },
+  "excluded": {},
+  "misses_45_min": {},
+  "note": "complex-mass scheme (Q7): the complete [QED] a a > a a with complex M_W and m_t"
+}

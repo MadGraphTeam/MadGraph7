@@ -10,6 +10,8 @@
 compile_error!("rusticol-core requires at least one evaluator runtime feature");
 
 mod artifact;
+#[cfg(feature = "symbolica-runtime")]
+pub mod diagnostics;
 pub mod direct_arena;
 pub mod eager_layout;
 mod eager_lowering_v3;
@@ -19,9 +21,30 @@ mod eager_runtime;
 mod eager_tables;
 mod engine;
 mod error;
+pub mod kinematics_improvement;
+#[cfg(feature = "symbolica-runtime")]
+mod licence;
+#[cfg(feature = "symbolica-runtime")]
+pub mod loop_artifact;
+#[cfg(feature = "symbolica-runtime")]
+pub mod loop_execution;
+#[cfg(feature = "symbolica-runtime")]
+pub mod loop_runtime;
+#[cfg(feature = "loop-v2")]
+pub mod loop_v2;
 mod metadata;
+#[cfg(feature = "symbolica-runtime")]
+pub mod model_proofs;
+pub mod narrow;
 pub mod pacbin;
 pub mod recurrence;
+#[cfg(feature = "symbolica-runtime")]
+mod row_evaluator;
+pub mod scalar_primitives;
+#[cfg(feature = "symbolica-runtime")]
+pub mod source_bindings;
+#[cfg(feature = "symbolica-runtime")]
+pub mod source_scalar;
 
 pub use artifact::{
     ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, Payload, PayloadRole,
@@ -48,16 +71,18 @@ pub use eager_tables::{
 #[cfg(feature = "f64-symjit")]
 pub use engine::eager_direct_descriptor_for_source_application_bytes;
 pub use engine::{
-    NativeColorComponent, NativeCorrelatedEvaluation, NativeCorrelatedRequest,
-    NativeDecimalEvaluation, NativeDecimalResolvedEvaluation, NativeEagerExactAttachment,
-    NativeEagerExactClosure, NativeEagerExactCoupling, NativeEagerExactFinalization,
-    NativeEagerExactInvocation, NativeEagerExactSections, NativeEagerExactStage,
-    NativeExternalParticle, NativeHelicityConfiguration, NativeModelParameter,
-    NativeProfiledEvaluation, NativeRationalFactor, NativeRecurrenceExactExecutor,
-    NativeRecurrenceExactFactor, NativeRecurrenceExactSections, NativeRecurrenceSelectorPlan,
-    NativeResolvedEvaluation, NativeRuntime, NativeRuntimeMetadata, NativeRuntimeProfile,
-    NativeSpinCorrelationVectors, RuntimeCapability, preflight_prepared_kernel_pack,
-    supported_runtime_capabilities,
+    AmplitudeOrderCatalog, NativeColorComponent, NativeCorrelatedEvaluation,
+    NativeCorrelatedRequest, NativeDecimalCorrelatedEvaluation, NativeDecimalCorrelatedRequest,
+    NativeDecimalEvaluation, NativeDecimalGradedEvaluation, NativeDecimalResolvedEvaluation,
+    NativeDecimalSpinCorrelationVectors, NativeEagerExactAttachment, NativeEagerExactClosure,
+    NativeEagerExactCoupling, NativeEagerExactFinalization, NativeEagerExactInvocation,
+    NativeEagerExactSections, NativeEagerExactStage, NativeExternalParticle,
+    NativeGradedCorrelatedEvaluation, NativeGradedEvaluation, NativeHelicityConfiguration,
+    NativeModelParameter, NativeNcExpansion, NativeProfiledEvaluation, NativeRationalFactor,
+    NativeRecurrenceExactExecutor, NativeRecurrenceExactFactor, NativeRecurrenceExactSections,
+    NativeRecurrenceSelectorPlan, NativeResolvedEvaluation, NativeRuntime, NativeRuntimeMetadata,
+    NativeRuntimeProfile, NativeSpinCorrelationVectors, RuntimeCapability, SquaredAmplitudeOrder,
+    preflight_prepared_kernel_pack, supported_runtime_capabilities,
 };
 #[cfg(feature = "on-the-fly-test-support")]
 pub use engine::{
@@ -69,6 +94,13 @@ pub use engine::{
 pub use engine::{
     NativeOnTheFlyWarmUpEvent, NativeOnTheFlyWarmUpEventKind, NativeOnTheFlyWarmUpObserver,
     NativeOnTheFlyWarmUpResult, NativeOnTheFlyWarmUpStage,
+};
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+pub use engine::{
+    RecurrenceExport, RecurrenceExportAlphaS, RecurrenceExportCrossing, RecurrenceExportCurrent,
+    RecurrenceExportHelicity, RecurrenceExportKernel, RecurrenceExportLeg,
+    RecurrenceExportMomentumTerm, RecurrenceExportParameter, RecurrenceExportProgram,
+    RecurrenceExportReduction, RecurrenceExportRun,
 };
 pub use error::{RusticolError, RusticolErrorKind, RusticolResult};
 pub use metadata::{
@@ -83,10 +115,14 @@ pub const COMPILED_MODEL_SCHEMA_VERSION: u32 = 9;
 pub const PROCESS_ARTIFACT_SCHEMA_VERSION: u32 = 3;
 pub const RUNTIME_PHYSICS_SCHEMA_VERSION: u32 = 1;
 pub const C_ABI_VERSION: u32 = 1;
-pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v1";
+// The whole-state import of a Python Evaluator.save()
+// (`evaluator::backend::whole_state_for_import`) also reads Symbolica's
+// private `Symbol::export` record layout of this ABI; it falls back to the
+// unpatched import when the layout does not parse.
+pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v2";
 
 /// Unstable implementation details shared with pyAmpliCol's private PyO3
-/// extension. This module is absent from ordinary/default rusticol-core builds.
+/// extension and native loop consumer. Absent from ordinary/default builds.
 #[cfg(feature = "python-generation-bridge")]
 #[doc(hidden)]
 pub mod __private {
@@ -95,6 +131,50 @@ pub mod __private {
         OwnedRecurrenceTemplateInput, ValidatedRecurrenceTemplateInput,
     };
     use crate::recurrence::{PreparedDirectExecutorCatalog, SemanticDigest};
+
+    /// Reuse the generic tree massless Dirac wavefunctions in one native batch.
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn massless_dirac_batch<T>(
+        momenta: &[[T; 4]],
+        helicities: &[i32],
+        antiquarks: &[bool],
+    ) -> RusticolResult<Vec<[symbolica::domains::float::Complex<T>; 4]>>
+    where
+        T: symbolica::domains::float::Real
+            + symbolica::domains::float::RealLike
+            + From<f64>
+            + PartialOrd
+            + Clone,
+    {
+        crate::engine::massless_dirac_batch(momenta, helicities, antiquarks)
+    }
+
+    /// Decode the exact coefficients of a Python `Evaluator.save()` payload.
+    /// Reuses the production decoder and its complete-input validation.
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn decode_exact_evaluator_state(
+        bytes: &[u8],
+    ) -> RusticolResult<
+        symbolica::evaluate::ExpressionEvaluator<
+            symbolica::domains::float::Complex<symbolica::domains::rational::Rational>,
+        >,
+    > {
+        crate::engine::decode_exact_evaluator_state(bytes)
+    }
+
+    /// Symbolica's scalar evaluator over row-major batches, one row at a time.
+    #[cfg(feature = "symbolica-runtime")]
+    pub use crate::row_evaluator::RowEvaluator;
+
+    /// A Python `Evaluator.save()` in its canonical stored form (an empty
+    /// Symbolica state for an evaluator without symbolic data, else only the
+    /// state its evaluator references, numbered canonically);
+    /// `None` when it already is in it (the generation writers' form,
+    /// `pyamplicol.evaluators.symbolica_helpers.saved_evaluator`).
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<Vec<u8>>> {
+        crate::engine::canonical_saved_evaluator(bytes)
+    }
 
     /// Unstable cold-path bridge for the private PyO3 artifact generator.
     #[doc(hidden)]
@@ -111,6 +191,37 @@ pub mod __private {
             output_complex_count,
             optimization_level,
             compress,
+        )
+    }
+
+    /// Unstable diagnostic bridge: the CPU features that decide SymJIT's code
+    /// path on this CPU and whether its load-time code generation runs here
+    /// (the loaders' CPU gate).
+    #[doc(hidden)]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    pub fn symjit_host_cpu() -> (Vec<&'static str>, bool) {
+        (
+            crate::engine::symjit_cpu_features(),
+            crate::engine::symjit_host_cpu_supported(),
+        )
+    }
+
+    /// Unstable cold-path bridge: evaluate a stored complex plane application
+    /// through the production loader ((re, im) per value, row-major by point).
+    #[doc(hidden)]
+    pub fn evaluate_plane_application_bytes(
+        application: &[u8],
+        input_complex_count: usize,
+        output_complex_count: usize,
+        inputs: &[f64],
+        point_count: usize,
+    ) -> RusticolResult<Vec<f64>> {
+        crate::engine::evaluate_plane_application_bytes(
+            application,
+            input_complex_count,
+            output_complex_count,
+            inputs,
+            point_count,
         )
     }
 
@@ -235,3 +346,18 @@ pub mod __private {
     }
 }
 pub const ARTIFACT_MANIFEST_FILE: &str = "artifact.json";
+
+/// Mach-O section that groups the artifact cold-load functions on Apple
+/// targets, so loading an artifact touches few `__TEXT` pages. Use it as
+/// `#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]`
+/// next to `inline(never)`, on functions only. `regular,pure_instructions`
+/// declares a code section: without it the macOS linker warns that the
+/// functions' unwind information lies outside a code section.
+#[cfg(target_vendor = "apple")]
+macro_rules! rcl_load_section {
+    () => {
+        "__TEXT,__rcl_load,regular,pure_instructions"
+    };
+}
+#[cfg(target_vendor = "apple")]
+pub(crate) use rcl_load_section;

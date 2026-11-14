@@ -1,0 +1,48 @@
+GammaLoop Rust crates linked into pyAmpliCol's native libraries
+
+Source: https://github.com/ValentinHirschi/gammaloop (branch
+pyamplicol-community), revision ea3faaae063b1400570c15cf7e055f48312e9329 (the
+FeynKit revision pinned in rust/loop-reduction/Cargo.toml and Cargo.lock):
+https://github.com/alphal00p/gammaloop d1904bf2bd5bf4f26969a73b415095e941a55610
+plus one commit moving Spenso's Complex::conj into Numerica 3.1's numeric
+trait. Licenses as declared by each
+crate's manifest at that revision:
+
+- feynkit-amplitude, feynkit-generator, feynkit-graph, feynkit-kinematics,
+  feynkit-model, spenso: MIT OR Apache-2.0
+- linnet: MIT
+- idenso, spenso-hep-lib, symbolica-utils, gammaloop-workspace-hack: no
+  license field; GammaLoop's top-level license applies ("There are no usage
+  restrictions for GammaLoop", reproduced in licenses/GammaLoop.txt).
+
+None of these linked crates has a license file of its own; for them the
+top-level license file applies (other crates of the revision, for example
+crates/linnet-py and tydenso, which pyAmpliCol does not link, carry their own).
+pyAmpliCol uses the crates declaring
+"MIT OR Apache-2.0" under the MIT License, whose text follows. linnet depends
+on the vendored dot-parser 0.5.1 (GPL-2.0-or-later), recorded in
+licenses/rust/dot-parser-0.5.1/. linnet's crates/linnet/src/parser/subgraph_free.rs
+is adapted from dot-parser 0.5.1's src/subgraph_free.rs (Martin Vassor,
+GPL-2.0-or-later) and is covered by the same notice.
+
+MIT License
+
+Copyright (c) the GammaLoop authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

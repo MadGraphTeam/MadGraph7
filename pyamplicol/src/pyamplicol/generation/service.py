@@ -55,6 +55,11 @@ from pyamplicol.reporting import (
 )
 
 from ..color.fft_basis_strategy import best_general_fft_basis
+from ..color.nc_expansion import (
+    STRICT_COLOR_ACCURACIES,
+    NcExpansion,
+    nc_expansion_for,
+)
 from ..color.plan import (
     ColorTopologyReplayCertificate,
     GenericColorPlan,
@@ -64,7 +69,7 @@ from ..color.plan import (
     build_lc_topology_replay_plan,
 )
 from ..models.adjoint_color_certificate import adjoint_tree_color_basis_is_proven
-from ..models.base import Model
+from ..models.base import CouplingOrders, Model
 from ..models.loading import CompiledModel as _CompiledModelPayload
 from ..models.prepared import PreparedKernelPack, PreparedModelBundle
 from ..models.prepared_target import PreparedTargetError, validate_prepared_target
@@ -104,9 +109,11 @@ from .artifact_writer import (
     _GenerationConfigProvenance,
     write_schema_v3_artifact,
 )
+from .born_orders import process_born_amplitude_orders
 from .contracts import RuntimeExpressionSchema, StageCompilationInput
 from .dag_algorithms import (
-    _infer_minimal_coupling_order_limits_from_color_plan,
+    _closure_totals_from_color_plan,
+    _minimal_coupling_order_limits_from_totals,
     contributing_color_sector_ids,
     filter_dag_to_color_sectors,
     has_model_supported_amplitudes,
@@ -152,7 +159,7 @@ from .on_the_fly_seed import (
     OnTheFlyProcessSeedProjectionV1,
     project_on_the_fly_process_seed_v1,
 )
-from .physics_metadata import build_resolved_physics_from_dag
+from .physics_metadata import build_resolved_physics_from_dag, public_color_accuracy
 from .process_grouping import (
     GroupingBasis,
     GroupingParticle,
@@ -249,6 +256,8 @@ _ProcessInput = TypeVar("_ProcessInput")
 _ProcessOutput = TypeVar("_ProcessOutput")
 _MISSING_PROCESS_RESULT = object()
 _LOGGER = logging.getLogger("pyamplicol.generation")
+# Defaults of color.fused_selector_max_sectors and
+# generation.validation.max_resolved_components (tuning, no capability).
 _MAX_FUSED_HELICITY_SELECTOR_SECTORS = 128
 _MAX_POST_BUILD_RESOLVED_COMPONENTS = 1_000_000
 _EAGER_LOWERING_RESULT_KIND = "pyamplicol-eager-runtime-lowering-result"
@@ -349,15 +358,18 @@ _RECURRENCE_PROFILE_LOCK = Lock()
 def _post_build_validation_slices(
     physics: ProcessPhysics,
     sample_count: int,
+    max_components: int | None = _MAX_POST_BUILD_RESOLVED_COMPONENTS,
 ) -> tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]:
-    """Keep resolved-output validation below a bounded component count."""
+    """Keep resolved-output validation below ``max_components`` resolved
+    components (``generation.validation.max_resolved_components``); None
+    validates every component."""
 
     helicities = physics.helicities
     color_flows = physics.color_flows
     contracted = physics.contracted_color_components
     color_count = len(color_flows) or len(contracted)
     full_component_count = sample_count * len(helicities) * color_count
-    if full_component_count <= _MAX_POST_BUILD_RESOLVED_COMPONENTS:
+    if max_components is None or full_component_count <= max_components:
         return (("complete", (), ()),)
 
     helicity = next(
@@ -369,7 +381,7 @@ def _post_build_validation_slices(
     )
     helicity_ids = (str(helicity.id),)
     slices: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
-    if sample_count * color_count <= _MAX_POST_BUILD_RESOLVED_COMPONENTS:
+    if sample_count * color_count <= max_components:
         slices.append(("selected-helicity", helicity_ids, ()))
 
     if color_flows:
@@ -378,7 +390,7 @@ def _post_build_validation_slices(
             color_flows[0],
         )
         color_flow_ids = (str(color_flow.id),)
-        if sample_count * len(helicities) <= _MAX_POST_BUILD_RESOLVED_COMPONENTS:
+        if sample_count * len(helicities) <= max_components:
             slices.append(("selected-flow", (), color_flow_ids))
         if not slices:
             slices.append(("selected-helicity-and-flow", helicity_ids, color_flow_ids))
@@ -2751,6 +2763,9 @@ class _PreparedProcessConstruction:
     materialized_sector_ids: frozenset[int] | None
     coupling_order_limits: Mapping[str, int]
     topology_replay: LCColorTopologyReplayPlan | ColorTopologyReplayCertificate | None
+    # The minimal-order inference's closure totals over ``restricted_color_plan``
+    # within the requested limits, when it ran over that plan.
+    closure_totals: tuple[CouplingOrders, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -3307,6 +3322,10 @@ class GenerationBackend:
         *,
         model: ModelSource | CompiledModel | None = None,
     ) -> GenerationPlan:
+        if self._loop_execution_enabled:
+            from .loop_service import plan_loop_generation
+
+            return plan_loop_generation(self, processes, model=model)
         source = model or self._configured_model_source()
         task_id = "generation-plan"
         if self._progress is not None:
@@ -3405,6 +3424,44 @@ class GenerationBackend:
             self._progress.emit(ProgressEnd(task_id))
         return result
 
+    def check(
+        self,
+        processes: ProcessSet,
+        *,
+        model: ModelSource | CompiledModel | None = None,
+        points: int,
+        seed: int,
+        precision=None,
+        stored=None,
+        sqrt_s=None,
+        arbitrary_digits=None,
+    ):
+        """``pyamplicol check`` of a one-loop request (``loop_service.
+        check_loop_requests``; ``stored``: an artifact input's manifest, the
+        model and processes the regeneration must match; ``sqrt_s``: the
+        points' energy, None the validation convention; ``arbitrary_digits``:
+        the digits of the auto ladder's arbitrary-precision rung, None
+        derived): one ``checks.ProcessCheck`` per process."""
+
+        if not self._loop_execution_enabled:
+            raise GenerationError(
+                "check serves one-loop requests (process.loop_coupling_orders): "
+                "its pole and Ward checks are the one-loop engine's"
+            )
+        from .loop_service import check_loop_requests
+
+        return check_loop_requests(
+            self,
+            processes,
+            model=model,
+            points=points,
+            seed=seed,
+            precision=precision,
+            stored=stored,
+            sqrt_s=sqrt_s,
+            arbitrary_digits=arbitrary_digits,
+        )
+
     def generate(
         self,
         processes: ProcessSet,
@@ -3412,9 +3469,25 @@ class GenerationBackend:
         *,
         model: ModelSource | CompiledModel | None = None,
         mode: str = "error",
+        correlators=None,
     ) -> GenerationResult:
         if mode not in ("error", "append", "replace"):
             raise ValueError("generation mode must be 'error', 'append', or 'replace'")
+        if self._loop_execution_enabled:
+            from .loop_service import generate_loop_artifact
+
+            return generate_loop_artifact(
+                self,
+                processes,
+                output,
+                model=model,
+                mode=mode,
+                correlators=correlators,
+            )
+        if correlators is not None:
+            raise GenerationError(
+                "tree correlators require the tree correlated service"
+            )
         write_mode = cast(Literal["error", "append", "replace"], mode)
         reporter = GenerationPhaseReporter(self._progress)
         run_config = self._run_config
@@ -4482,7 +4555,7 @@ class GenerationBackend:
                     )
                 )
             phase.update(request_index, message=request.name)
-        if self._flavor_blind:
+        if self._flavor_blind and not self._loop_execution_enabled:
             # Names are assigned above, so process IDs do not depend on the flag.
             table = self._grouping_particle_table(resolved)
             result = _collapse_flavor_blind_classes(
@@ -5368,7 +5441,17 @@ class GenerationBackend:
             )
             normalization_started = time.perf_counter()
             normalization_contract, normalization_payload = (
-                build_recurrence_normalization(expanded.process_ir, model)
+                build_recurrence_normalization(
+                    expanded.process_ir,
+                    model,
+                    lambda: process_born_amplitude_orders(
+                        prepared.process,
+                        model=model,
+                        max_coupling_orders=prepared.coupling_order_limits,
+                        color_plan=prepared.restricted_color_plan,
+                        closure_totals=prepared.closure_totals,
+                    ),
+                )
             )
             profile["normalization"] = time.perf_counter() - normalization_started
             layout = (
@@ -7100,7 +7183,7 @@ class GenerationBackend:
         return CompiledProcessArtifact(
             process_id=process_id,
             expression=ir.process,
-            color_accuracy=ir.color_accuracy,
+            color_accuracy=public_color_accuracy(dag),
             external_pdgs=(*ir.initial_pdgs, *ir.final_pdgs),
             aliases=process.compiled.expanded.aliases,
             runtime_schema=process.runtime_schema,
@@ -7401,6 +7484,7 @@ class GenerationBackend:
                             _post_build_validation_slices(
                                 runtime.physics,
                                 len(samples),
+                                validation.max_resolved_components,
                             )
                         )
                     )
@@ -7521,6 +7605,13 @@ class GenerationBackend:
             )
 
     @property
+    def _loop_execution_enabled(self) -> bool:
+        return (
+            self._run_config is not None
+            and self._run_config.process.loop_coupling_orders is not None
+        )
+
+    @property
     def _all_flow_union_enabled(self) -> bool:
         run = self._run_config
         if run is None:
@@ -7554,8 +7645,23 @@ class GenerationBackend:
 
     @property
     def _color_accuracy(self) -> str:
+        """The accuracy of the amplitude basis: strict colour expands the
+        complete full-colour basis (``_nc_expansion``)."""
+
         run = self._run_config
-        return "lc" if run is None else run.color.accuracy
+        if run is None:
+            return "lc"
+        accuracy = str(run.color.accuracy)
+        return "full" if accuracy in STRICT_COLOR_ACCURACIES else accuracy
+
+    @property
+    def _nc_expansion(self) -> NcExpansion | None:
+        """The formal-N_c expansion of strict or graded tree colour."""
+
+        run = self._run_config
+        if run is None or run.process.loop_coupling_orders is not None:
+            return None
+        return nc_expansion_for(str(run.color.accuracy), graded=run.color.graded)
 
     @property
     def _coupling_order_limits(self) -> dict[str, int]:
@@ -7628,6 +7734,7 @@ class GenerationBackend:
     ) -> _ResolvedModel:
         if isinstance(source, CompiledModel):
             compiled = self._private_compiled_model(source)
+            self._require_model_support(compiled)
             is_builtin = self._is_builtin_compiled_model(compiled)
             return _ResolvedModel(
                 self._source_for_compiled_model(compiled),
@@ -7639,7 +7746,7 @@ class GenerationBackend:
             if source.kind == "built-in-sm" and not self._prepared_execution_enabled:
                 return _ResolvedModel(source, _builtin_sm_model())
             if self._prepared_execution_enabled:
-                source = self._packaged_builtin_prepared_source(source.kind)
+                source = self._packaged_builtin_prepared_source(source)
         source_input: str | Path
         if source.kind == "built-in-sm-heft":
             source_input = "built-in-sm-heft"
@@ -7665,7 +7772,9 @@ class GenerationBackend:
                     )
                 cache_dir = None if run is None else run.model.cache_dir
                 compiled = (
-                    load_cached_sm_heft_source(cache_dir=cache_dir)
+                    load_cached_sm_heft_source(
+                        restriction=source.restriction, cache_dir=cache_dir
+                    )
                     if source.kind == "built-in-sm-heft"
                     else load_cached_model_source(
                         source_input,
@@ -7676,9 +7785,15 @@ class GenerationBackend:
                         ),
                         simplify=source.simplify,
                         cache_dir=cache_dir,
+                        require_supported=not self._loop_execution_enabled,
                     )
                 )
                 if compiled is None:
+                    # A Python-2 UFO compiles in no cache: its listed refusal
+                    # (models.source_refusals) is found without importing it.
+                    from ..models.source_refusals import refuse_python2_source
+
+                    refuse_python2_source(Path(source_input))
                     raise ModelError(
                         "dry-run does not compile external model sources; call "
                         "ModelSource.compile() first and pass the returned "
@@ -7688,6 +7803,7 @@ class GenerationBackend:
             raise
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ModelError(str(exc)) from exc
+        self._require_model_support(compiled)
         is_builtin = self._is_builtin_compiled_model(compiled)
         return _ResolvedModel(
             source,
@@ -7702,6 +7818,19 @@ class GenerationBackend:
         if not isinstance(payload, _CompiledModelPayload):
             raise ModelError("compiled model handle has an invalid private payload")
         return payload
+
+    def _require_model_support(self, compiled: _CompiledModelPayload) -> None:
+        """Keep model issues; the selected contribution owns scalar capability."""
+        from ..models.loading import _raise_for_unsupported
+        from ..models.loop_preparation import require_loop_model_source
+
+        try:
+            if self._loop_execution_enabled:
+                require_loop_model_source(compiled)
+            else:
+                _raise_for_unsupported(compiled, require_supported=True)
+        except ValueError as error:
+            raise ModelError(str(error)) from error
 
     @staticmethod
     def _source_for_compiled_model(compiled: _CompiledModelPayload) -> ModelSource:
@@ -7719,6 +7848,7 @@ class GenerationBackend:
     ) -> _ResolvedModel:
         if isinstance(source, CompiledModel):
             compiled = self._private_compiled_model(source)
+            self._require_model_support(compiled)
             if self._is_builtin_compiled_model(compiled):
                 return _ResolvedModel(
                     self._source_for_compiled_model(compiled),
@@ -7738,7 +7868,7 @@ class GenerationBackend:
             if source.kind == "built-in-sm" and not self._prepared_execution_enabled:
                 return _ResolvedModel(source, _builtin_sm_model())
             if self._prepared_execution_enabled:
-                source = self._packaged_builtin_prepared_source(source.kind)
+                source = self._packaged_builtin_prepared_source(source)
         source_input: str | Path
         if source.kind == "built-in-sm-heft":
             source_input = "built-in-sm-heft"
@@ -7759,6 +7889,7 @@ class GenerationBackend:
                 cache_dir = None if run is None else run.model.cache_dir
                 compiled = (
                     compile_sm_heft_source(
+                        restriction=source.restriction,
                         cache_dir=cache_dir,
                         use_cache=use_cache,
                     )
@@ -7773,10 +7904,12 @@ class GenerationBackend:
                         simplify=source.simplify,
                         cache_dir=cache_dir,
                         use_cache=use_cache,
+                        require_supported=not self._loop_execution_enabled,
                     )
                 )
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ModelError(str(exc)) from exc
+        self._require_model_support(compiled)
         if self._is_builtin_compiled_model(compiled):
             return _ResolvedModel(
                 source,
@@ -7787,7 +7920,21 @@ class GenerationBackend:
         return _ResolvedModel(source, CompiledUFOModel(compiled), compiled)
 
     @staticmethod
-    def _packaged_builtin_prepared_source(source_kind: str) -> ModelSource:
+    def _packaged_builtin_prepared_source(source: ModelSource) -> ModelSource:
+        source_kind = source.kind
+        if source.restriction is not None and source_kind != "built-in-sm-heft":
+            # As ``ModelSource.from_config`` for ``source = "built-in-sm"``.
+            raise ModelError(
+                "model restrictions can only be applied to external models"
+            )
+        if source.restriction is not None:
+            raise ModelError(
+                f"the wheel-owned prepared {source_kind} model uses the default "
+                f"restriction; for restriction {source.restriction!r} compile a "
+                "prepared bundle with ModelSource.built_in_sm_heft(restriction=...)"
+                ".compile(prepared_output=..., evaluator=...) and pass the returned "
+                "CompiledModel, or use the compiled execution mode"
+            )
         from ..assets.prepared_models import (
             BUILTIN_SM_HEFT_JIT_O2,
             BUILTIN_SM_JIT_O2,
@@ -8065,6 +8212,19 @@ class GenerationBackend:
         )
         return best_general_fft_basis(process, ddm_proven=ddm_proven).actual_basis
 
+    def _fused_selector_sector_bound_exceeded(self, sector_count: int) -> bool:
+        """Whether the colour-sector count exceeds the tuning bound of the
+        auxiliary all-colour helicity-selector lane
+        (``color.fused_selector_max_sectors``; None: no bound)."""
+
+        run = self._run_config
+        bound = (
+            _MAX_FUSED_HELICITY_SELECTOR_SECTORS
+            if run is None
+            else run.color.fused_selector_max_sectors
+        )
+        return bound is not None and sector_count > bound
+
     def _automatic_adjoint_basis_limit(self, process: CanonicalProcessIR) -> str | None:
         """Known representation limits must not make automatic requests fail."""
 
@@ -8073,11 +8233,10 @@ class GenerationBackend:
             return None
         if process.fundamental_labels or process.antifundamental_labels:
             return None
-        from ..color.adjoint_kernel import MAX_ADJOINT_GLUONS
-
         labels = tuple(sorted(process.adjoint_labels))
-        if len(labels) > MAX_ADJOINT_GLUONS:
-            return "The adjoint metric size limit requires the original trace basis."
+        # A tuning choice between two exact bases (color.adjoint_dense_max_gluons).
+        if len(labels) > run.color.adjoint_dense_max_gluons:
+            return "The dense adjoint metric size prefers the original trace basis."
         reference = self._process_selection.reference_color_order
         if labels and reference and set(reference) == set(labels):
             pivot = reference.index(labels[0])
@@ -8247,6 +8406,7 @@ class GenerationBackend:
             ),
             backward_live_planning=self._eager_execution_enabled,
             progress_callback=progress_callback,
+            nc_expansion=self._nc_expansion,
         )
         if replay_plan is not None and replay_plan.optimized:
             root_sector_ids = {
@@ -8396,6 +8556,7 @@ class GenerationBackend:
                 f"process {process.process!r} has no usable color plan: {detail}"
             )
         limits = self._coupling_order_limits
+        closure_totals = None
         run = self._run_config
         if run is not None and run.process.coupling_order_policy == "minimal":
             if (
@@ -8403,11 +8564,14 @@ class GenerationBackend:
                 and selection.reference_color_order is None
                 and complete_color_plan.color_accuracy == process.color_accuracy
             ):
-                inferred = _infer_minimal_coupling_order_limits_from_color_plan(
+                closure_totals = _closure_totals_from_color_plan(
                     process,
                     model=model,
                     color_plan=complete_color_plan,
                     max_coupling_orders=limits or None,
+                )
+                inferred = _minimal_coupling_order_limits_from_totals(
+                    closure_totals, model=model
                 )
             else:
                 inferred = infer_minimal_coupling_order_limits(
@@ -8418,7 +8582,10 @@ class GenerationBackend:
             limits = inferred or limits
         replay_plan = None
         materialized_sector_ids = selection.selected_color_sector_ids
-        if (
+        if self._nc_expansion is not None:
+            # The formal N_c expansion materializes every colour sector.
+            pass
+        elif (
             self._color_accuracy == "lc"
             and not self._all_flow_union_enabled
             and selection.selected_color_sector_ids is None
@@ -8453,6 +8620,9 @@ class GenerationBackend:
             materialized_sector_ids=materialized_sector_ids,
             coupling_order_limits=MappingProxyType(dict(limits)),
             topology_replay=replay_plan,
+            closure_totals=(
+                closure_totals if color_plan is complete_color_plan else None
+            ),
         )
 
     def _validate_lc_flow_layout(self, selection: _ProcessSelection) -> None:
@@ -8508,7 +8678,9 @@ class GenerationBackend:
             or parent.selected_source_helicities
             or parent.helicity_coverage != "complete"
             or replay is None
-            or len(parent.color_plan.sectors) > _MAX_FUSED_HELICITY_SELECTOR_SECTORS
+            or self._fused_selector_sector_bound_exceeded(
+                len(parent.color_plan.sectors)
+            )
         ):
             return None
 
@@ -8772,7 +8944,7 @@ def _collapse_flavor_blind_classes(
     conjugated = sum(
         member.conjugated for group in members.values() for member in group
     )
-    _LOGGER.info(
+    _LOGGER.debug(
         "Flavor-blind grouping: %d subprocess%s -> %d generated "
         "representative%s; %d routed member%s (%d by charge conjugation%s); "
         "%d relabelling warning%s",

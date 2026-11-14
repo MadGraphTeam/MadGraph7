@@ -1597,6 +1597,8 @@ def _build_transitions(
             binding.key.coupling,
         )
         _validate_vertex_binding_against_model(model, binding, vertex)
+        if _binding_output_vanishes(binding):
+            continue
         kernel = _kernel(kernels, binding.kernel_id, "vertex")
         if kernel.contract_kind != "vertex":
             raise PreparedKernelCatalogError(
@@ -1763,11 +1765,33 @@ def _build_transitions(
         if existing is None or preference < existing[0]:
             selected[alias_key] = candidate
 
+    # Aliases whose model couplings carry the exchange sign differ above only
+    # in how their one contribution coefficient splits into the binding
+    # coupling and the exact factors; keep one row per folded contribution.
+    # Catalogs without such aliases keep every row and their order.
+    by_contribution: dict[str, str] = {}
+    for alias_key in sorted(selected):
+        preference, transition, flow, color, kernel, *_ = selected[alias_key]
+        contribution_key = _canonical_transition_alias_key(
+            binding=transition,
+            kernel=kernel,
+            flow=flow,
+            color=color,
+            transition=transition,
+            fold_output_coupling=True,
+        )
+        incumbent = by_contribution.get(contribution_key)
+        if incumbent is None or preference < selected[incumbent][0]:
+            by_contribution[contribution_key] = alias_key
+    retained_aliases = set(by_contribution.values())
+
     flows_by_id: dict[str, QuantumFlowTemplateV1] = {}
     colors: dict[str, ColorContractionTemplateV1] = {}
     transitions: list[TransitionTemplateV1] = []
     proofs: list[SymmetryProofV1] = []
     for alias_key in sorted(selected):
+        if alias_key not in retained_aliases:
+            continue
         (
             _,
             transition,
@@ -2004,6 +2028,23 @@ def _current_word_reflection_proof(
     )
 
 
+def _binding_output_vanishes(binding: PreparedVertexBinding) -> bool:
+    """Whether a binding's callable output is identically zero.
+
+    A callable linear in one coupling component factors that component out
+    of its output (``output_factor_source``); a vertex whose component is
+    exactly zero (the W's right-handed coupling, reached by the right-handed
+    states of a massive Dirac top) contributes nothing, and the native
+    lowering refuses a zero output factor, so it gets no transition.
+    """
+
+    source = binding.output_factor_source
+    if source not in ("coupling-real", "coupling-imag"):
+        return False
+    component = binding.key.coupling[0 if source == "coupling-real" else 1]
+    return float(component) == 0.0
+
+
 def _canonical_transition_alias_key(
     *,
     binding: PreparedVertexBinding,
@@ -2011,15 +2052,57 @@ def _canonical_transition_alias_key(
     flow: QuantumFlowTemplateV1,
     color: ColorContractionTemplateV1,
     transition: TransitionTemplateV1,
+    fold_output_coupling: bool = False,
 ) -> str:
-    """Return an exact, orientation-independent transition proof key."""
+    """Return an exact, orientation-independent transition proof key.
 
-    order = tuple(int(value) for value in binding.canonical_input_order)
-    inverse_order = tuple(order.index(index) for index in (0, 1))
+    A kernel whose two inputs exchange with a proven factor (WWA, WWZ, HWW,
+    any vertex with two same-dimension legs) admits both input orders of its
+    class representative, and the model keeps the order (0, 1) for both
+    mirrored orientations, e.g. (W+, W-) -> A and (W-, W+) -> A. The key
+    then states the inputs in the order that lists their state IDs
+    increasingly, carrying the exchange factor when that reverses the
+    certified order, so both orientations compare equal: kept twice, every
+    unordered parent pair would receive the vertex twice.
+
+    ``fold_output_coupling`` states the contribution of a callable whose
+    binding coupling component is factored out of its output
+    (``output_factor_source``) as one coefficient: that component times the
+    exact, colour and exchange factors. Two orientations whose model couplings
+    carry the kernel's exchange sign (the built-in (W+, A) -> W+ with +e and
+    (A, W+) -> W+ with -e) then compare equal as well.
+    """
+
+    first, second = binding.canonical_input_order
+    order = (int(first), int(second))
     contribution_factor = _multiply_exact(
         transition.exact_factor,
         color.exact_coefficient,
     )
+    folded_coupling = fold_output_coupling and transition.output_factor_source in (
+        "coupling-real",
+        "coupling-imag",
+    )
+    if folded_coupling:
+        coupling = transition.binding_coupling
+        contribution_factor = _multiply_exact(
+            contribution_factor,
+            ExactComplexRationalV1.from_fractions(
+                coupling.real
+                if transition.output_factor_source == "coupling-real"
+                else coupling.imag
+            ),
+        )
+    if transition.input_exchange_factor is not None:
+        mirrored = (order[1], order[0])
+        states = transition.input_state_template_ids
+        if [states[index] for index in mirrored] < [states[index] for index in order]:
+            order = mirrored
+            contribution_factor = _multiply_exact(
+                contribution_factor,
+                transition.input_exchange_factor,
+            )
+    inverse_order = tuple(order.index(index) for index in (0, 1))
 
     def reordered(values: Sequence[Any]) -> list[Any]:
         return [values[index] for index in order]
@@ -2112,7 +2195,9 @@ def _canonical_transition_alias_key(
             "result_quantum_number_flow": [
                 list(item) for item in flow.result_quantum_number_flow
             ],
-            "exact_coupling": flow.exact_coupling.to_dict(),
+            "exact_coupling": (
+                None if folded_coupling else flow.exact_coupling.to_dict()
+            ),
         },
         "color": {
             "rule_kind": color.rule_kind,
@@ -2137,7 +2222,9 @@ def _canonical_transition_alias_key(
             getattr(transition, "contact_orbit_step_semantic_digests", ())
         ),
         "coupling_orders": [list(item) for item in transition.coupling_orders],
-        "binding_coupling": transition.binding_coupling.to_dict(),
+        "binding_coupling": (
+            None if folded_coupling else transition.binding_coupling.to_dict()
+        ),
         "output_factor_source": transition.output_factor_source,
         "equivalence_class": transition.equivalence_class,
         "input_exchange_factor": (

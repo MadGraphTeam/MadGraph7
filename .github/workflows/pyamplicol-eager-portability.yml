@@ -78,7 +78,10 @@ jobs:
   produce-architecture-packs:
     name: Produce prepared JIT pack (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    # The macOS arm64 pack builds the release extension with the default tir
+    # feature (TIRust) and needs more than 90 minutes on macos runners
+    # (cancelled at 90 on 2026-11-07, run 42383741811; 40-67 min before tir).
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -141,7 +144,9 @@ jobs:
     name: Consume portable pack (${{ matrix.target }})
     needs: produce-architecture-packs
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    # The Intel macOS consumer builds the bootstrap wheel from source and needs
+    # more than 90 minutes on macos-15-intel (cancelled at 90 twice).
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:

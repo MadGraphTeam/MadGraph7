@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import lzma
 import os
 import re
 import shlex
@@ -21,10 +23,37 @@ SDK_SOURCES = (
     ("rust/crates/rusticol-capi/include/rusticol.h", "include/rusticol.h"),
     ("rust/crates/rusticol-capi/include/rusticol.hpp", "include/rusticol.hpp"),
     ("rust/crates/rusticol-capi/fortran/rusticol.f90", "fortran/rusticol.f90"),
+    (
+        "rust/loop-reduction/sdk/include/rusticol_virtual.h",
+        "include/rusticol_virtual.h",
+    ),
+    (
+        "rust/loop-reduction/sdk/include/rusticol_virtual.hpp",
+        "include/rusticol_virtual.hpp",
+    ),
+    (
+        "rust/loop-reduction/sdk/fortran/rusticol_virtual.f90",
+        "fortran/rusticol_virtual.f90",
+    ),
+    (
+        "rust/loop-reduction/sdk/umami/pyamplicol_umami_virtual_v1.h",
+        "include/pyamplicol_umami_virtual_v1.h",
+    ),
+    (
+        "rust/loop-reduction/sdk/umami/pyamplicol_umami_virtual_v1.c",
+        "umami/pyamplicol_umami_virtual_v1.c",
+    ),
+    ("src/pyamplicol/assets/api_templates/umami/umami.h", "include/umami.h"),
+    ("src/pyamplicol/assets/api_templates/umami/UMAMI_LICENSE", "umami/UMAMI_LICENSE"),
 )
 RUST_SDK_SOURCE = "src/pyamplicol/_sdk/rust/rusticol.rs"
+# Distribution wheels ship the static archive xz-compressed (USER 2026-11-07:
+# wheel size); rusticol-config unpacks it on first use into the user cache.
+ARCHIVE_COMPRESSION = "xz"
+ARCHIVE_XZ_PRESET = 9
 RUST_SDK_WORKSPACE_MEMBER = "rust/crates/rusticol-capi"
 NATIVE_MARKER = "native-static-libs:"
+_UNDEFINED_SYMBOL_TYPES = frozenset("UuWwVv")
 FORBIDDEN_UNDEFINED_SYMBOL_PREFIXES = (
     "pyobject",
     "pyexc_",
@@ -182,6 +211,8 @@ def _native_tokens(stderr: str) -> list[str]:
 
 
 def _typed_link_arguments(tokens: list[str], target: str) -> dict[str, Any]:
+    """Classify rustc's native link requirements."""
+
     libraries = MACOS_LIBRARIES if "apple-darwin" in target else LINUX_LIBRARIES
     result: dict[str, Any] = {
         "schema_version": 1,
@@ -225,6 +256,39 @@ def _typed_link_arguments(tokens: list[str], target: str) -> dict[str, Any]:
     return result
 
 
+def _stripped_archive(archive: Path, destination: Path, target: str) -> Path:
+    """Copy the archive without debug info, LLVM bitcode or unneeded symbols.
+
+    The ``sdk`` profile compiles every crate without LTO bitcode, but the
+    precompiled Rust standard library carries bitcode and line tables, and
+    every object keeps local symbols that no relocation references. None of
+    them is used by a C, C++, Fortran or Rust linker; global symbols and the
+    symbols relocations need stay (``strip --strip-unneeded``). GNU strip does
+    it on ELF targets; Apple's strip trails Rust's LLVM (see
+    ``_scan_archive_symbols``), so the macOS archive is shipped as built.
+    """
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if "apple-darwin" in target:
+        shutil.copy2(archive, destination)
+        return destination
+    command = [
+        "strip",
+        "--strip-unneeded",
+        "--remove-section=.llvmbc",
+        "--remove-section=.llvmcmd",
+        "--enable-deterministic-archives",
+        "-o",
+        str(destination),
+        str(archive),
+    ]
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()
+        raise RuntimeError(f"stripping the Rusticol static archive failed: {detail}")
+    return destination
+
+
 def _scan_archive(path: Path) -> None:
     """Reject embedded host paths that would make the SDK non-relocatable.
 
@@ -246,11 +310,16 @@ def _scan_archive(path: Path) -> None:
 def _scan_archive_symbols(path: Path) -> bool:
     """Inspect undefined symbols when a compatible object reader is available.
 
-    Rust tracks upstream LLVM more closely than Apple's command-line tools. An
-    older ``nm`` can therefore reject a valid Rust archive before the platform
-    linker does. Returning ``False`` in that case delegates the authoritative
-    check to :func:`_validate_archive_linkage`; a successfully parsed table is
-    still checked for forbidden Python dependencies here.
+    LLVM's ``nm`` (``llvm-nm``, and Apple's ``nm``, which is LLVM's) lists the
+    symbols of an object's embedded LLVM bitcode instead of its native symbol
+    table, and the precompiled Rust standard library embeds bitcode that a
+    reader older than Rust's LLVM cannot parse (the macOS archive ships as
+    built, see :func:`_stripped_archive`). Each ``nm`` therefore first reads
+    the native table (``--no-llvm-bc``) and, if it does not know that option,
+    runs without it. Returning ``False`` when no ``nm`` reads the archive
+    delegates the authoritative check to :func:`_validate_archive_linkage`; a
+    successfully parsed table is still checked for forbidden Python
+    dependencies here.
     """
 
     candidates: list[str] = []
@@ -263,28 +332,34 @@ def _scan_archive_symbols(path: Path) -> bool:
             candidates.append(candidate)
 
     for nm in candidates:
-        completed = subprocess.run(
-            [nm, "-u", str(path)],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        forbidden: list[str] = []
-        for line in completed.stdout.splitlines():
-            fields = line.split()
-            if len(fields) < 2 or fields[-2] not in {"U", "u", "W", "w", "V", "v"}:
-                continue
-            symbol = fields[-1]
-            normalized = symbol.removeprefix("_").lower()
-            if normalized.startswith(FORBIDDEN_UNDEFINED_SYMBOL_PREFIXES):
-                forbidden.append(symbol)
-        if forbidden:
-            raise RuntimeError(
-                "Rusticol static archive has undefined Python/PyO3/NumPy symbols: "
-                + ", ".join(sorted(set(forbidden)))
+        for native_table in (("--no-llvm-bc",), ()):
+            completed = subprocess.run(
+                [nm, *native_table, "-u", str(path)],
+                check=False,
+                capture_output=True,
+                text=True,
             )
-        if completed.returncode == 0:
-            return True
+            forbidden: list[str] = []
+            for line in completed.stdout.splitlines():
+                fields = line.split()
+                if not fields or line.endswith(":"):
+                    continue
+                # ``[value] type name``; for ``-u`` on Mach-O, Darwin's nm
+                # prints the bare name of each undefined symbol.
+                if len(fields) >= 2 and fields[-2] not in _UNDEFINED_SYMBOL_TYPES:
+                    continue
+                symbol = fields[-1]
+                # Mach-O names carry one more leading underscore.
+                normalized = symbol.lstrip("_").lower()
+                if normalized.startswith(FORBIDDEN_UNDEFINED_SYMBOL_PREFIXES):
+                    forbidden.append(symbol)
+            if forbidden:
+                raise RuntimeError(
+                    "Rusticol static archive has undefined Python/PyO3/NumPy "
+                    "symbols: " + ", ".join(sorted(set(forbidden)))
+                )
+            if completed.returncode == 0:
+                return True
     return False
 
 
@@ -302,7 +377,9 @@ def _native_c_compiler(target: str) -> list[str]:
     raise RuntimeError("a C compiler is required to validate the Rusticol SDK")
 
 
-def _c_api_exports(header: Path) -> tuple[str, ...]:
+def _c_api_exports(
+    header: Path, required_abi: str = "rusticol_abi_version"
+) -> tuple[str, ...]:
     exports = tuple(
         dict.fromkeys(
             re.findall(
@@ -311,7 +388,7 @@ def _c_api_exports(header: Path) -> tuple[str, ...]:
             )
         )
     )
-    if not exports or "rusticol_abi_version" not in exports:
+    if not exports or required_abi not in exports:
         raise RuntimeError(
             f"Rusticol C header declares no complete public ABI: {header}"
         )
@@ -322,6 +399,12 @@ def _native_link_flags(link: Mapping[str, Any], target: str) -> list[str]:
     if link.get("target") != target:
         raise RuntimeError("Rusticol native link metadata targets the wrong platform")
     flags: list[str] = []
+    # rusticol-config --libs's section garbage collection (rusticol_config.
+    # section_gc_flags): the probe links as consumers do.
+    if "apple-darwin" in target:
+        flags.append("-Wl,-dead_strip")
+    elif "-linux-" in target:
+        flags.append("-Wl,--gc-sections")
     libraries = link.get("system_libraries")
     frameworks = link.get("frameworks")
     if not isinstance(libraries, list) or not all(
@@ -344,14 +427,21 @@ def _validate_archive_linkage(
     header: Path,
     link: Mapping[str, Any],
     target: str,
+    virtual_header: Path | None = None,
 ) -> None:
     """Link and execute a probe that references every declared C ABI export."""
 
     exports = _c_api_exports(header)
+    includes = '#include "rusticol.h"'
+    version_check = "rusticol_abi_version() == RUSTICOL_ABI_VERSION"
+    if virtual_header is not None:
+        exports += _c_api_exports(virtual_header, "rusticol_virtual_abi_version")
+        includes += '\n#include "rusticol_virtual.h"'
+        version_check += " && rusticol_virtual_abi_version() == 2u"
     entries = ",\n".join(f"    (rusticol_probe_fn){name}" for name in exports)
     source = f"""\
 #include <stdint.h>
-#include \"rusticol.h\"
+{includes}
 
 typedef void (*rusticol_probe_fn)(void);
 static rusticol_probe_fn volatile rusticol_api[] = {{
@@ -359,8 +449,7 @@ static rusticol_probe_fn volatile rusticol_api[] = {{
 }};
 
 int main(void) {{
-    uint32_t (*abi_version)(void) = (uint32_t (*)(void))rusticol_api[0];
-    return abi_version() == RUSTICOL_ABI_VERSION ? 0 : 1;
+    return ({version_check}) && rusticol_api[0] != 0 ? 0 : 1;
 }}
 """
     with tempfile.TemporaryDirectory(prefix="pyamplicol-sdk-link-") as temporary:
@@ -374,6 +463,7 @@ int main(void) {{
             "-O0",
             "-I",
             str(header.parent),
+            *(["-I", str(virtual_header.parent)] if virtual_header is not None else []),
             str(probe_source),
             str(archive),
             *_native_link_flags(link, target),
@@ -404,6 +494,42 @@ int main(void) {{
             raise RuntimeError(
                 "Rusticol static archive failed the C ABI execution probe" + suffix
             )
+
+
+def _compressed_archive(archive: Path, destination: Path) -> dict[str, Any]:
+    """Write ``archive`` xz-compressed to ``destination``; return its record.
+
+    The record (``metadata.json``'s ``archive_compression``) holds the SHA-256
+    and size of the uncompressed archive, which rusticol-config checks after
+    unpacking. The written file is decompressed once here and checked too.
+    """
+
+    digest = hashlib.sha256()
+    size = 0
+    with (
+        archive.open("rb") as source,
+        lzma.open(
+            destination,
+            "wb",
+            format=lzma.FORMAT_XZ,
+            check=lzma.CHECK_CRC64,
+            preset=ARCHIVE_XZ_PRESET,
+        ) as output,
+    ):
+        while chunk := source.read(1 << 20):
+            digest.update(chunk)
+            size += len(chunk)
+            output.write(chunk)
+    record = {"format": ARCHIVE_COMPRESSION, "sha256": digest.hexdigest(), "size": size}
+    check = hashlib.sha256()
+    unpacked = 0
+    with lzma.open(destination, "rb", format=lzma.FORMAT_XZ) as stream:
+        while chunk := stream.read(1 << 20):
+            check.update(chunk)
+            unpacked += len(chunk)
+    if unpacked != size or check.hexdigest() != record["sha256"]:
+        raise RuntimeError("the xz-compressed Rusticol archive does not round-trip")
+    return record
 
 
 def _package_version(root: Path) -> str:
@@ -437,15 +563,11 @@ def _ensure_sdk_workspace_member(root: Path) -> None:
         raise RuntimeError("Cargo workspace member inventory is invalid")
     if RUST_SDK_WORKSPACE_MEMBER in members:
         return
-    expected = [
-        "rust/crates/rusticol-core",
-        "rust/crates/rusticol-python",
-    ]
-    if (
-        members != expected
-        or not (root / RUST_SDK_WORKSPACE_MEMBER / "Cargo.toml").is_file()
-    ):
+    # Maturin keeps only the members its own build needs; whatever it kept
+    # stays, and the SDK crate (shipped in the sdist) is appended.
+    if not (root / RUST_SDK_WORKSPACE_MEMBER / "Cargo.toml").is_file():
         raise RuntimeError("Cargo workspace does not contain the Rusticol C SDK")
+    restored = [*members, RUST_SDK_WORKSPACE_MEMBER]
 
     workspace = re.search(
         r"(?ms)^\[workspace\]\s*\n(?P<body>.*?)(?=^\[|\Z)",
@@ -454,10 +576,10 @@ def _ensure_sdk_workspace_member(root: Path) -> None:
     if workspace is None:
         raise RuntimeError("Cargo workspace member inventory is invalid")
     body = workspace.group("body")
+    listing = "[" + ", ".join(json.dumps(member) for member in restored) + "]"
     updated_body, count = re.subn(
         r"(?ms)^(members\s*=\s*)\[.*?\]",
-        rf'\g<1>["{expected[0]}", "{expected[1]}", '
-        rf'"{RUST_SDK_WORKSPACE_MEMBER}"]',
+        lambda match: match.group(1) + listing,
         body,
         count=1,
     )
@@ -469,7 +591,19 @@ def _ensure_sdk_workspace_member(root: Path) -> None:
     )
 
 
-def build_sdk(root: Path, target_dir: Path) -> Path:
+def build_sdk(
+    root: Path,
+    target_dir: Path,
+    *,
+    compress_archive: bool = False,
+) -> Path:
+    """Build the C SDK's static archive (GMP, MPFR and MPC included).
+
+    With ``compress_archive`` the validated static archive ships as
+    ``lib/<archive>.xz`` (distribution wheels); metadata.json names it and
+    records the unpacked archive's SHA-256 and size.
+    """
+
     _ensure_sdk_workspace_member(root)
     host = _host_target(root)
     target = _requested_target(host)
@@ -515,11 +649,15 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
     if not archive.is_file():
         raise RuntimeError(f"cargo reported a missing static archive: {archive}")
     link = _typed_link_arguments(_native_tokens(completed.stderr), target)
+    archive = _stripped_archive(
+        archive, target_dir.parent / "sdk-archive" / archive.name, target
+    )
     _scan_archive(archive)
     _scan_archive_symbols(archive)
     _validate_archive_linkage(
         archive,
         header=root / "rust/crates/rusticol-capi/include/rusticol.h",
+        virtual_header=root / "rust/loop-reduction/sdk/include/rusticol_virtual.h",
         link=link,
         target=target,
     )
@@ -545,25 +683,28 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
     )
     library = staging / "lib" / archive_name
     library.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(archive, library)
+    compression: dict[str, Any] | None = None
+    if compress_archive:
+        library = library.with_name(f"{archive_name}.{ARCHIVE_COMPRESSION}")
+        compression = _compressed_archive(archive, library)
+    else:
+        shutil.copy2(archive, library)
     (staging / "link.json").write_text(
         json.dumps(link, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    metadata: dict[str, Any] = {
+        "schema_version": 1,
+        "abi_version": 1,
+        "version": _package_version(root),
+        "target": target,
+        "archive": f"lib/{library.name}",
+        "rust_source": "rust/rusticol.rs",
+    }
+    if compression is not None:
+        metadata["archive_compression"] = compression
     (staging / "metadata.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "abi_version": 1,
-                "version": _package_version(root),
-                "target": target,
-                "archive": f"lib/{archive_name}",
-                "rust_source": "rust/rusticol.rs",
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     return staging

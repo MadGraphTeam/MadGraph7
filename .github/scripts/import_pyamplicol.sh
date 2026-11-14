@@ -24,9 +24,35 @@ UPSTREAM_SHA=$(git rev-parse HEAD)
 
 # Prepared-model packs are rebuilt in CI and shipped as one release archive;
 # reports and papers are linked from the archived upstream repository.
+# The one-loop reference-generation and benchmark tooling (everything under
+# tools/loop_reference and tools/loop_benchmark but their JSON data, which the
+# tests read as fixtures) and the one-loop performance reports stay upstream.
+# These paths appear only after the first import, so the commits imported
+# earlier keep their SHAs.
+#
+# Restored by hand after the import (MadGraph7 commit "restore the core
+# one-loop engine tests"): the filter above drops these helpers, which the
+# one-loop engine tests under tests/unit import. They are byte-identical
+# copies from upstream; on a re-sync, refresh them from the imported upstream
+# commit (git show <upstream-sha>:<path>) and check whether the tests need
+# further helpers. The filter itself is left as is, so the imported SHAs stay
+# reproducible.
+#   tools/loop_reference/exact_points.py
+#   tools/loop_reference/feynkit_loop_graphs.py
+#   tools/loop_reference/legacy_capture.py
+#   tools/loop_reference/levi_civita_aloha.py
+#   tools/loop_reference/model_compatibility.py
+#   tools/loop_reference/njet/njet_fixture.py
+#   tools/loop_reference/ufo_source_oracle.py
+#
+# The Rust toolchain pin is MadGraph7's (1.99.1), upstream's is 1.97.1; keep
+# MadGraph7's side of the files that pin it (rust-toolchain.toml, release-lock,
+# workflows, test_build_backend.py, installation guide) on a re-sync.
 $FILTER_REPO --force \
     --path-glob '*.pyamplicol-model' --invert-paths \
     --path-glob '*.pdf' --invert-paths \
+    --path-regex '^tools/loop_(reference|benchmark)/.*(?<!\.json)$' --invert-paths \
+    --path docs/performance_reports/loop/ --invert-paths \
     --to-subdirectory-filter pyamplicol
 
 git -C "$MG_ROOT" fetch --quiet --no-tags "$WORK/pyamplicol" "+HEAD:refs/heads/pyamplicol-import"

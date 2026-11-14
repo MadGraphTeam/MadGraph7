@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: 0BSD
+# Loop example: profile the gg_zgg artifact (time per stage, checked
+# default; add --reduction-unchecked for the unchecked timing mode) on both
+# reduction backends side by side; --stability adds the stable-digit statistics
+# (pyamplicol profile --card loop_gg_zgg_profile.toml --stability).
+
+schema_version = 1
+action = "benchmark"
+
+[evaluation]
+artifact = "artifacts/loop_gg_zgg"
+momenta = "data/loop_gg_zgg_momenta.json"
+
+[benchmark]
+batch_size = 32
+warmup_runs = 1
+minimum_samples = 3
+# profile --stability: 1000 flat points (the default) on 10 worker
+# processes (n_core, --n_core; at most the usable cores). The progress
+# display shows the estimated time to completion; Ctrl-C prints the tables of
+# the points evaluated so far.
+stability_points = 1000
+n_core = 10

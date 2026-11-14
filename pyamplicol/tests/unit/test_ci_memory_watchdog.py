@@ -840,6 +840,54 @@ def test_exit_code_is_propagated() -> None:
     assert "command finished exit=23" in completed.stderr
 
 
+def test_guarded_environment_announces_the_tighter_limit() -> None:
+    variable = watchdog.LIMIT_ENVIRONMENT_VARIABLE
+    base = {"PATH": "/bin"}
+
+    assert watchdog.guarded_environment(5 * watchdog.GIB, base) == {
+        "PATH": "/bin",
+        variable: str(5 * watchdog.GIB),
+    }
+    assert base == {"PATH": "/bin"}
+    # A nested watchdog announces the tighter of its own and the enclosing one.
+    for enclosing, announced in ((3, 3), (9, 5)):
+        child = watchdog.guarded_environment(
+            5 * watchdog.GIB, {variable: str(enclosing * watchdog.GIB)}
+        )
+        assert child[variable] == str(announced * watchdog.GIB)
+    for unusable in ("", "0", "-1", "lots"):
+        child = watchdog.guarded_environment(5 * watchdog.GIB, {variable: unusable})
+        assert child[variable] == str(5 * watchdog.GIB)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
+def test_guarded_command_sees_the_limit() -> None:
+    environment = dict(os.environ)
+    environment.pop(watchdog.LIMIT_ENVIRONMENT_VARIABLE, None)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(WATCHDOG),
+            "--limit-mib",
+            "256",
+            "--poll-interval",
+            "0.02",
+            "--",
+            sys.executable,
+            "-c",
+            f"import os; print(os.environ[{watchdog.LIMIT_ENVIRONMENT_VARIABLE!r}])",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=environment,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == str(256 * watchdog.MIB)
+
+
 def _pid_exists(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -858,6 +906,7 @@ def test_low_limit_terminates_child_process_tree(tmp_path: Path) -> None:
     child.write_text(
         """
 import os
+import re
 import signal
 import sys
 import time
@@ -899,8 +948,11 @@ time.sleep(30)
             "64",
             "--poll-interval",
             "0.02",
+            # Generous: the watchdog returns as soon as the tree is gone, and a
+            # loaded runner may not schedule the child's SIGTERM handler within
+            # one second (SIGKILL would then cut its marker write short).
             "--terminate-grace",
-            "1",
+            "10",
             "--",
             sys.executable,
             str(parent),
@@ -911,7 +963,7 @@ time.sleep(30)
         check=False,
         capture_output=True,
         text=True,
-        timeout=15,
+        timeout=30,
     )
 
     assert completed.returncode == watchdog.MEMORY_LIMIT_EXIT_CODE
@@ -969,7 +1021,11 @@ def test_tests_workflow_guards_every_heavy_validation_phase() -> None:
     guarded = "tools/ci/memory_watchdog.py --limit-gib 30 --"
     # The installer stages the native runtime within its guarded invocation.
     # Restricted-mode and ordinary integration checks use separate invocations.
-    assert workflow.count(guarded) == 8
+    # The light one-loop tests are the ninth guarded invocation; they run
+    # without the licence secret (the package's own Symbolica library key).
+    assert workflow.count(guarded) == 9
+    assert "secrets.SYMBOLICA_LICENSE" not in text
+    assert f"env -u SYMBOLICA_LICENSE .venv/bin/python {guarded}" in workflow
     for heavy_command in (
         "dependencies/install_dependencies.py",
         "tests/unit/test_generation_execution_schema.py",

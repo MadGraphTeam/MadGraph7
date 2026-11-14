@@ -46,6 +46,9 @@ class CoherentAmplitudeGroup:
     helicities: tuple[int, ...]
     color_word: tuple[int, ...]
     color_sector_id: int
+    # Minus the number of U(1)-subtraction pieces of the group's trees
+    # (graded artifacts: strict or graded colour, ``generation.dag_grades``).
+    nc_grade: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +180,50 @@ def _prepare_spin_vectors(
         for point, wave in zip(result, prepared, strict=True):
             point[leg] = wave
     return result
+
+
+def _copy_spin_vectors(
+    vectors: Mapping[int, object] | None,
+    spin_correlations: Sequence[Sequence[int]],
+    *,
+    point_count: int | None = None,
+) -> dict[int, object]:
+    """Copy and validate setter inputs without rounding or mutating prior state."""
+    spin_legs = tuple(sorted({leg for group in spin_correlations for leg in group}))
+    if vectors is None:
+        vectors = {}
+    if not isinstance(vectors, Mapping):
+        raise EvaluationError("spin vectors must map public leg labels to vectors")
+    legs = tuple(vectors)
+    if any(type(leg) is not int for leg in legs):
+        raise EvaluationError("spin-vector legs must be positive integer labels")
+    if legs and tuple(sorted(legs)) not in spin_correlations:
+        raise EvaluationError("this joint spin-correlation class was not declared")
+    frozen: dict[int, object] = {}
+
+    def freeze(value: object) -> object:
+        if isinstance(value, Sequence) and not isinstance(value, str | bytes):
+            return tuple(freeze(item) for item in value)
+        return value
+
+    for leg, value in vectors.items():
+        if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+            raise EvaluationError("spin vectors must be four-vectors or a batch")
+        vector = tuple(freeze(item) for item in value)
+        if not vector:
+            if point_count == 0:
+                frozen[leg] = vector
+                continue
+            raise EvaluationError("a spin-vector batch must contain at least one point")
+        broadcast = _is_spin_vector(vector)
+        # Validate before replacing the old state; a failed setter is atomic.
+        _prepare_spin_vectors(
+            {leg: vector},
+            allowed_legs=spin_legs,
+            point_count=1 if broadcast else len(vector),
+        )
+        frozen[leg] = vector
+    return frozen
 
 
 def _fill_correlated_sources(
@@ -367,7 +414,9 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
             raise ArtifactError("correlated amplitude output mapping is incomplete")
         groups: list[CoherentAmplitudeGroup] = []
         seen_groups: set[int] = set()
-        physical_groups: dict[tuple[tuple[int, ...], int], CoherentAmplitudeGroup] = {}
+        physical_groups: dict[
+            tuple[tuple[int, ...], int, int], CoherentAmplitudeGroup
+        ] = {}
         physical_roots: dict[int, list[int]] = {}
         descriptors = (
             amplitude.get("coherent_groups")
@@ -395,7 +444,8 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
                 for value in cast(Sequence[object], descriptor["color_word"])
             )
             sector = _json_integer(descriptor["color_sector_id"])
-            key = (values, sector)
+            nc_grade = _json_integer(descriptor.get("nc_grade", 0))
+            key = (values, sector, nc_grade)
             physical = physical_groups.get(key)
             if physical is None:
                 physical = CoherentAmplitudeGroup(
@@ -404,6 +454,7 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
                     helicities=values,
                     color_word=word,
                     color_sector_id=sector,
+                    nc_grade=nc_grade,
                 )
                 physical_groups[key] = physical
                 groups.append(physical)

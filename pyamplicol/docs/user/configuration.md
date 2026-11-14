@@ -132,6 +132,75 @@ restriction = "default"
 UFO modules are Python code and execute during loading. See
 [Models and Processes](models-and-processes.md) before using an external model.
 
+## Model caches and the one-loop preparation cache
+
+`[model] cache = true` (the default; `--no-model-cache` turns it off) reuses
+compiled models keyed by the source's contents, the compile options and the
+toolchain. The cache root is `[model] cache_dir` when set, else
+`$PYAMPLICOL_CACHE_DIR/models`, else the per-user cache's `models` directory
+(`~/.cache/pyamplicol/models` on Linux, `~/Library/Caches/pyamplicol/models` on
+macOS).
+
+One-loop generation also *prepares the model of each request* before it
+builds any tree or loop: it applies the restriction card, lowers every
+parameter, counterterm parameter and coupling of the model to an exact
+Laurent program (about 2,100 declarations on the full QCD+QED UFO
+`loop_qcd_qed_sm_Gmu`), checks each for poles hidden in functions, and builds
+the covariant structure and the counterterm model the request's coupling
+orders admit. A generation forms each of these once and shares it between all
+its consumers (the loop-order inference of a loop-induced process, every
+process, the dry run, the generation-time probes): the lowered program once
+per model, the rest once per distinct set of order bounds and fixed
+parameters. The lowered program is moreover kept in a persistent cache, so a
+later generation with the same model reads it instead of lowering it again:
+
+```toml
+[model]
+loop_preparation_cache = true   # default
+```
+
+- **Where.** `<model cache root>/loop-preparations/`, one file
+  `<sha256>.pyAmplicol-loop-preparation.json` per model and simplification
+  (a JSON header line and the program in Symbolica's own binary
+  serialization; about 35 kB for `loop_sm`, 0.7 MB for `loop_qcd_qed_sm_Gmu`).
+- **Key.** A SHA-256 of the model *as the generation sees it* (its records
+  and metadata: the restriction card's contents, the loop model declaration,
+  `[loop.preparation]`, the mass scheme), `model.simplify`, the entry schema
+  and the code identity: the pyAmpliCol version, a digest of the first-party
+  sources that form and read the program, the Python version, Symbolica
+  (its distribution and module versions and its extension module's size and
+  modification time) and ufo-model-loader. Editing the model, its card or
+  pyAmpliCol therefore never reuses a stale entry: it writes a new one.
+- **Switching it off.** The cache is used only when every switch allows it:
+  `[model] cache` (no model cache means none), `[model]
+  loop_preparation_cache` (CLI `--no-loop-preparation-cache`) and the
+  environment variable `PYAMPLICOL_LOOP_PREPARATION_CACHE` (`0`, `false`,
+  `no` or `off` turn it off; a true value changes nothing; any other value is
+  refused). Off means no entry is read or written. Any switch that says off
+  wins, so a benchmark or a test harness can disable it from the environment
+  without editing its cards, and a card can disable it whatever the
+  environment says.
+- **Safety.** An entry is written to a unique temporary file in its directory,
+  flushed to disk and renamed into place, so concurrent generations writing
+  one entry both succeed and a reader never sees a partial file. Each entry
+  carries its key, schema, code identity and the SHA-256 of its payload, all
+  checked when it is read; a missing, truncated, corrupt, foreign or stale
+  entry is ignored and rebuilt (never an error). A cache directory that cannot
+  be read or written leaves the generation uncached with one warning. No file
+  that runs code is involved.
+- **Removal.** Nothing deletes an entry automatically. Deleting the
+  `loop-preparations` directory (or any file in it) is always safe; the next
+  generation of that model rebuilds what it needs.
+- **What it changes.** Only time: the generated artifact is byte-identical
+  with the cache off, empty or filled (the state is logged by the generation,
+  never written into the artifact).
+
+**Preparing ahead.** The first one-loop generation of a model fills the cache.
+A dry run (`pyamplicol generate --dry-run`, `Generator.plan`) runs the same
+preparations and fills it too, but only when the compiled model is already
+cached, because a dry run never compiles a UFO or JSON model (compile it first,
+e.g. by a first generation or `pyamplicol model inspect`).
+
 ## Processes and multiparticles
 
 One card may contain one inclusive multiparticle request or multiple named
@@ -158,6 +227,225 @@ the default; other user labels are merged over model defaults.
 
 Broad products such as `p p > all all` can expand combinatorially. Prefer a
 narrow user-defined label for production scans.
+
+A process expression may use MG5_aMC syntax (`u u~ > d d~ QCD^2<=4 [QCD QED]`,
+`g g > h [noborn=QCD]`, `/ z`, `QED=2`): it is translated into the settings
+below (`process.loop_coupling_orders`, `process.loop_induced`,
+`process.max_coupling_orders`, `process.squared_coupling_orders`,
+`generation.particle_veto`); see
+[MG5_aMC process syntax](command-line-interface.md#mg5_amc-process-syntax) for
+the table, the conflict rule and what stays refused.
+
+### Squared-order sector selection
+
+`process.squared_coupling_orders` selects the squared-coupling-order sectors a
+one-loop request serves, with MG5_aMC's constraints (`QCD^2<=4`, `QED^2==6`,
+`QED^2>2`, also `<` and `>=`; written in the process as on an MG5_aMC line,
+or in the card):
+
+```toml
+[process]
+entries = [{ expression = "u u~ > d d~" }]
+loop_coupling_orders = ["QCD", "QED"]
+coupling_order_policy = "explicit"
+squared_coupling_orders = ["QCD^2<=4", "QED^2<=6"]
+```
+
+A sector is served when its power of every named order passes (a missing
+order has power 0; powers count the fundamental couplings, g_s and e, as
+MG5_aMC's do). Only the virtual is computed, so the constraints read the
+squared orders of the virtual's sectors, as MadLoop's `[virt=...]` reads
+them: a Born-interfered sector is the Born x one-loop interference
+2 Re(B* V) at the order Born + loop, a loop-induced sector the
+loop x loop order l + l'. For the user example `u u~ > d d~ QCD^2<=4
+QED^2<=6 [QCD QED]` the four interference sectors QCD^6, QCD^4 QED^2,
+QCD^2 QED^4 and QED^6 become the last three (QCD^6, the QCD correction to the
+QCD Born squared, is dropped). The served sectors are the only ones reported
+and summed in the total, alike in Python (`sectors`, `values`,
+`evaluate_orders` and its sums), in the CLI tables, in `--json` and in the
+native SDK records (the artifact holds only them). The Born squared orders
+are reported as before. Generation skips the loop amplitude orders that no
+served sector pairs (a loop order every one of whose Born or loop partners
+lands outside the selection); the Born and the loop orders some served sector
+reads are generated as without the selection, so a served sector equals the
+same sector of the unrestricted run. A selection keeping no sector of a
+process is refused (`squared-order-selection`). Note: MG5_aMC's full NLO
+mode (aMC@NLO, `[QCD]` with reals) applies squared-order constraints to the
+Born-level orders; pyAmpliCol computes the virtual only and follows MadLoop's
+reading above.
+
+A process has one initial particle (a 1 -> n decay, `t > b w+`) or two. A
+decay is averaged over the decaying particle's helicities and colours only;
+its momenta are usually those of its rest frame. With
+`process.loop_coupling_orders` the one-loop decay (1 -> 2, 1 -> 3, QCD and
+electroweak) takes the decaying particle at its real mass with zero own
+width: fix that width to zero in `[loop.preparation] fixed_parameters`
+wherever the particle propagates (`WT = "0"` for `t > b w+ g`, as the
+`coloured-width` guard asks; an electroweak request asks it of every
+propagating width) and under the complex-mass scheme, which keeps external
+states stable (`cms-external-width`). Its field
+renormalisation is the model's, real on-shell (MadLoop's convention: the
+absorptive part of its self-energy at its mass is dropped). Decay chains
+(`t > b w+, w+ > e+ ve`) are refused (`madloop-syntax`).
+
+A one-loop request (`process.loop_coupling_orders`) routes its concrete
+processes without a Born amplitude within their coupling-order limits
+(loop-induced: `g g > h`, `g g > z z`, `h > g g`, MG5_aMC's `[noborn=QCD]`;
+the matrix element is the loop-squared |A_loop|^2) by `process.loop_induced`:
+
+| Value | Served |
+| --- | --- |
+| `"auto"` (default) | a request none of whose processes has a Born is served loop-induced; in a mixed request (`p p > z z`) the Born members are served and the Born-less ones (`g g > z z`) skipped with a typed `loop-induced` record |
+| `"skip"` | nothing loop-induced; a purely loop-induced request is refused (`loop-induced`) |
+| `"only"` | only the Born-less processes, loop-induced; the Born members are skipped (`born-in-loop-induced-mode`, refused for a request without a Born-less member) |
+| `"include"` | both kinds of a mixed request, each concrete process its own contribution, never summed: the Born members as Born-interfered virtuals (runtime `rusticol.loop-runtime.v4`), the Born-less ones loop-induced (`rusticol.loop-runtime.v5`); separate process entries get both kinds in one artifact under `"auto"` too |
+
+A loop-induced process takes the lowest loop-amplitude orders its loops reach
+(`coupling_order_policy = "minimal"`, by the model's coupling hierarchy; with
+`"explicit"` every order within `process.max_coupling_orders`), full colour only
+(`loop-induced-colour-accuracy`), and fixed widths in its tree propagators
+(the complex-mass scheme, when on, applies everywhere and keeps external states
+stable). A process every loop of which has a single coloured attachment
+(`h > g a`, `z > g a`: Tr T^a = 0) is an exact colour zero and served as
+such. A Born-less process that reaches no loop at all is refused, or skipped
+in a multiparticle request (`no-loop-amplitude`). The dry run lists the kind,
+the inferred loop orders and their loop x loop sectors, the loop orders that
+are exact colour zeros (`colour_zero_loop_orders`, `exact_colour_zero`).
+Generation stores |A_loop|^2 at full colour (artifact capability
+`rusticol.loop-runtime.v5`); `Runtime.evaluate` returns a `VirtualEvaluation`
+with `contribution = "loop-induced"`, empty Born fields and the poles
+`"all"` or `"none"` (`"uv"` and `"ir"` are refused: the UV and IR parts of a
+square are not additive). The computed poles vanish (a necessary-only
+finiteness cross-check); with the stability checks each lane diagnostic also
+carries the amplitude-level finiteness ratio (`finiteness`: the amplitude's
+poles in the colour-metric norm against their pre-cancellation scale, of the
+order of the unit roundoff). Zeros are never declared by a physics rule
+(Landau-Yang, Furry, J_z). Two exact zeros are proven by the engine's own
+exact algebra: an exact colour zero (every colour coefficient vanishes at
+N_c = 3), and an exact fold zero (below). Every other vanishing
+|A_loop|^2 is reported as zero within its absolute estimate, `|value| <=
+E` with the estimate's `absolute` E and `magnitude` S (the size of what
+cancelled).
+
+Generation folds the loop chains of every loop-induced process (on by
+default; switch it off with `[generation] loop_induced_folding = false`,
+the CLI flag `--no-loop-induced-folding`, or
+`GenerationConfig(loop_induced_folding=False)`). Within a loop family,
+chains whose numerators are exactly proportional with a rational ratio,
+such as a quark loop's two orientations with vector or scalar couplings or
+the up- and down-type copies of a photon loop, are dressed once with their
+combined colour weights. An exact test decides this per process, with no
+physics rule: every input of the dressing is replaced by a random value and
+each identity is checked in the prime field F_p, p = 2^61 - 1. Its stated
+failure probability is `[generation] helicity_filter_failure_probability`
+(default 1e-12; 0 folds nothing), the same setting as the helicity filter.
+Chains whose orientations differ by an axial coupling, and ratios that are
+complex or go through an irrational constant or a model parameter, fail the
+test, and those chains stay unfolded. A group whose weights cancel exactly is dropped. A process
+left with no chain and no counterterm is an exact fold zero (`g g > a a a`,
+`g g > h a`): its value is exactly 0, and the result's detail, the runtime's
+`inspect()` record (`exact_fold_zero`, `fold_certificate`) and the native
+SDK's capabilities record (`fold_zero`) carry the certificate with its
+failure bound. Folding changes values at the rounding level only. The
+artifact records the fold per process in its generation filters
+(`loop_induced_fold`): prime, seed, points, degree bound, identities
+certified, failure probability and bound, and the counts of chains before
+and after, groups, chains folded and zero groups. With folding off the
+artifact is the unfolded one, and a vanishing |A_loop|^2 is again a
+numerical zero within its estimate.
+
+Generation can also probe every loop-induced process (off by default; enable
+with `[generation] loop_induced_probes = true`, the CLI flag
+`--loop-induced-probes`, or `GenerationConfig(loop_induced_probes=True)` in
+the `RunConfig` given to `Generator`). The probes run at one point (the
+validation point farthest from the tree poles, lifted to exact momentum
+conservation), on the process's full tree kernels with every width fixed to
+zero (the complex-mass scheme keeps its complex masses):
+
+- **finiteness**: the amplitude's poles must vanish;
+- **Ward**, for each external gluon and photon species: the amplitude with
+  one polarisation replaced by its momentum must vanish;
+- **Goldstone**, for an external massive vector of a 't Hooft-Feynman gauge
+  request: the identity k.A(V) = eta M_V A(G) must hold.
+
+Each passes within ten times the probe's own estimate. Every probe runs in
+binary64 first. A probe whose binary64 run fails that test, or whose point
+the reduction backend refuses in binary64, runs again in double-double on the
+same point, and the double-double run decides it. A failure refuses the
+process (`loop-induced-probe`); `[generation] allow_failed_probes = true`
+(CLI `--allow-failed-probes`) stores it anyway, with the failure recorded.
+`allow_failed_probes` does nothing while the probes are off.
+
+The outcome is recorded in the artifact's generation filters
+(`loop_induced_probes`): per probe the carrier that decided it, its ratio to
+its estimate, the reason for a double-double rerun and the time, plus the
+time of each stage. The probes reduce on NinjaRS (recorded). A `goldstone`
+entry reads `status = "not-run"`, with the refusals, when no Goldstone side
+of the request could be generated. With the probes off the record reads
+`{"status": "off"}`: not run, never a pass. An exact colour zero records
+`exact_colour_zero` either way.
+
+What the probes guard is the model and the generation, not the artifact's
+numbers. Nothing in the written artifact or at run time depends on them: the
+stored plan and the evaluated values are bitwise the same with and without
+them.
+
+- The Ward probe checks the R2 completeness of the UFO. A missing or wrong R2
+  vertex changes only the finite part, which the poles cannot show.
+- The finiteness probe checks that no loop family is missing, that no
+  family was wrongly dropped as scaleless, and that the master integrals
+  are right.
+- The Goldstone probe checks the Goldstone-side vertices and counterterms.
+
+Enable them when you generate from a new or edited loop UFO. Their cost,
+measured on the loop-induced 2->3 and 2->4 rows of loop_sm (one pinned core
+of a loaded host): 3.3-13 s per 2->3 process against 2.5-14 s for the
+engine's own generation (the probe slice, a second generation of the
+process, is 3-5 s of it); 18 s and 29 s for g g > h h g g and g g > h g g g
+(engine generation 5 s and 8 s); 93 s and 103 s for g g > a a g g and
+g g > z z z z (engine generation 11 s and 9 s). No probe needed the
+double-double rerun there. Running every probe in double-double instead, as
+generation did before, took 5-195 s per 2->3 process, 7 and 13 minutes for
+g g > h h g g and g g > h g g g, and 70 and 74 minutes for
+g g > a a g g and g g > z z z z. On the electroweak UFOs the probe slice and
+each Goldstone slice generate the process again, so the probes cost one
+generation of the process or more (e+ e- > g g g: 43 s, of which 37 s is the
+probe slice, against 43 s for the engine's generation).
+
+The probes guard generation; `pyamplicol check` runs the same loop-induced
+checks on demand, at several points, and the pole check against Catani's
+operator and the Ward check for Born-interfered processes too, on a card's or
+an artifact's request regenerated in memory
+([command-line guide](command-line-interface.md#check)). Its card section:
+
+```toml
+action = "check"
+
+[evaluation]
+artifact = "artifacts/loop_gg_zgg"   # omit to check the card's own request
+
+[check]
+points = 3          # seeded phase-space points per process
+seed = 12345        # default: generation.validation.seed
+precision = "auto"  # binary64, then double-double where it fails; or one carrier
+# model = "my_ufo"  # default: model.source (an artifact: the source it records)
+# sqrt_s = 2000.0   # a scattering's energy; default: the validation convention
+# arbitrary_digits = 50  # the auto ladder's arbitrary-precision rung; default: derived
+```
+
+Generation also drops the helicity rows of a loop-induced process that are
+zero before the loop integration (every numerator vanishes identically),
+tested exactly modulo the fixed prime 2^61 - 1 at random points. Over the
+random points, the chance that it drops a row that is not zero is at most
+`[generation] helicity_filter_failure_probability` (default `1e-12`; `0`
+drops nothing and skips the test); the bound does not cover the rare case
+where the prime itself divides a coefficient built from the model's
+constants (see the developer design notes, loop_v2 DESIGN §7.13). Rows are
+dropped only when the process has no counterterm contribution (no R2 or UV
+counterterm vertex reaches it, e.g. g g > h a); otherwise every row stays
+live and the test is not run. It never drops every row of a process. The
+verdict is recorded in the artifact's generation filters
+(`loop_induced_helicity_filter`).
 
 `flavor_scheme`, `max_quark_lines`, and coupling-order settings constrain that
 expansion. Coupling-order names come from the selected model: the generic
@@ -191,17 +479,61 @@ for the CLI flags and the `group-processes` command, and
 
 ```toml
 [color]
-accuracy = "lc"                 # lc, nlc, or full
+accuracy = "lc"                 # lc, nlc, full, strict-lc or strict-nlc;
+                                # unset: lc for tree requests, full for
+                                # one-loop requests
 contraction = "auto"            # auto, direct, or symmetric-group-fft
 fft_basis = "adjoint"           # trace or adjoint; used by FFT contraction
 lc_flow_layout = "topology-replay"
+graded = false                  # split trees by power of N_c
+adjoint_dense_max_gluons = 12   # tuning: automatic DDM basis up to this size
+fused_selector_max_sectors = 128 # tuning: all-colour selector lane bound
 ```
+
+The last two are tuning settings with no effect on capability: above
+`adjoint_dense_max_gluons` adjoint labels the automatic tree basis prefers the
+(equally exact) trace basis, and above `fused_selector_max_sectors` colour
+sectors no auxiliary all-colour lane is built for runtime helicity selection
+(topology replay then runs once per sector; omit the key's bound with
+`--set color.fused_selector_max_sectors=null` to always build it).
 
 | Accuracy | Resolved color output |
 | --- | --- |
 | `lc` | One entry per physical leading-color flow. |
 | `nlc` | One contracted color entry per helicity. |
-| `full` | One contracted color entry per helicity. |
+| `full` | One contracted color entry per helicity (one per N_c degree with `graded = true`). |
+| `strict-lc` | One contracted color entry per helicity: the leading N_c degree. |
+| `strict-nlc` | One contracted color entry per helicity and N_c degree (three degrees). |
+
+For tree requests, `lc` and `nlc` are the *inherited* colour approximation:
+the colour matrix is truncated in `N_c` while amplitude coefficients stay at
+`N_c = 3`, including the `1/3` of the U(1)-subtraction (Fierz) pieces that join
+quark lines. For one-loop requests, `lc` and `nlc` are the loop engine's
+formal-N_c projection (every U(1)-subtraction piece graded, each squared
+coupling-order sector truncated at its own leading degree; see the one-loop
+section below), and `strict-lc`, `strict-nlc` and `graded` are refused.
+For trees, `strict-lc` and
+`strict-nlc` are the formal 1/N_c expansion of the squared amplitude: every
+U(1)-subtraction piece counts as a power `1/N_c`, LC keeps the leading degree
+`P` and NLC the degrees `P`, `P-1` and `P-2`, and `N_c = 3` is inserted after
+the truncation, so SU(N_c) identities such as colour conservation hold degree
+by degree. For example the colour factor of `u d > u d` is `(N^2 - 1)/4`
+exactly, `(N^2 + 1)/4` at inherited LC and `N^2/4` at strict LC; see
+[Correlation Conventions](../correlator-conventions.md#strict-colour-the-formal-1nc-expansion).
+Since a tree request defaults to `lc`, compare a tree with a full-colour
+reference (MadGraph standalone, an analytic formula, a loop-induced |A|^2)
+at `accuracy = "full"`: at `lc` the gluon pair of `g g > h` (HEFT) carries
+`N^2` instead of `N^2 - 1`, exactly 9/8 of the full-colour value.
+
+Strict tree artifacts report their value split by N_c degree (graded output:
+`Runtime.evaluate_graded`, the contracted colour axis of `evaluate_resolved`,
+and `NativeRuntime::evaluate_graded_f64` and
+`evaluate_graded_with_precision` in Rust). `graded = true` gives the same
+split of full colour, every degree. Graded tree output is implemented in the
+compiled lane (strict and graded requests select `execution_mode = "compiled"`
+under `auto`; other explicit modes are refused) with the direct contraction
+and the complete colour basis (no `process.max_color_sectors`,
+`reference_color_order` or `selected_color_sector_ids`).
 
 LC offers two complete-coverage layouts:
 
@@ -375,6 +707,7 @@ seed = 12345
 relative_tolerance = 1e-12
 absolute_tolerance = 1e-300
 post_build_validation = false
+max_resolved_components = 1000000  # null: check every resolved component
 ```
 
 Generation validation checks symbolic/numerical construction before
@@ -387,6 +720,29 @@ Enable it when you explicitly want that additional runtime smoke:
 pyamplicol generate --card run.toml \
   --set generation.validation.post_build_validation=true
 ```
+
+The v2 engine's post-build validation compares the reopened artifact with
+its reference executor in binary64 at `relative_tolerance` (Borns per
+coupling order, virtual Laurent coefficients relative to their sector's
+largest one). A validation point where the two binary64 values miss that
+tolerance is checked again, alone, against the reference at 32 digits, in
+both carriers: the artifact in double-double must agree to the same
+`relative_tolerance`, its binary64 Borns to `relative_tolerance` and its
+binary64 virtuals to the larger of `relative_tolerance` and their own
+stability estimate (one exact rotation and the reduction-direction check),
+an estimate that must exist and not exceed 1e-9. A binary64 virtual off by
+more than the tolerance is thus accepted only where binary64 itself
+estimates that it cannot resolve the tolerance (an ill-conditioned point),
+and a defect of either carrier beyond that is refused. An accepted point is
+reported as a warning of the `pyamplicol.generation` logger with its
+deviations and estimates. This costs one double-double and one checked
+binary64 evaluation of the artifact and one 32-digit reference evaluation
+per re-checked point; the 32-digit reference dominates, about 9 to 11 times
+the binary64 one (7.8 s against 0.7 s for d d~ > g g at NLC with five
+colour outputs, 60 s against 6.9 s for u u~ > g g g at NLC with four). The
+estimate cap is the larger of `relative_tolerance` and 1e-9: at high
+multiplicity, where binary64 estimates can exceed 1e-9, validate with a
+`relative_tolerance` that binary64 resolves.
 
 ## Numerical current reuse
 
@@ -455,7 +811,1042 @@ progress = "off"                # auto, tty, log, off
 ```
 
 `helicity_ids` and `color_flow_ids` may be added under `[evaluation]`. Empty
-lists mean complete retained coverage.
+lists mean complete retained coverage. `orders = true` (instead of `resolved`)
+splits recurrence tree totals by squared coupling order.
+
+For a saved virtual artifact, use the same card with `resolved = false` and
+explicit scale input. The optional arithmetic choice applies before model
+parameter binding:
+
+```toml
+[evaluation]
+artifact = "artifacts/virtual"
+process = "gg"
+momenta = "data/points.json"
+arithmetic = "arbitrary"        # double, double-double, arbitrary
+precision = 70
+mu_r2 = "1000000"              # exact text, positive scale squared
+# mu_r2_file = "data/scales.json"  # alternative: one exact value per point
+
+[loop]
+r2_strategy = "model"          # auto or an available complete artifact strategy
+```
+
+`mu_r2` and `mu_r2_file` are mutually exclusive. Quote scalar `mu_r2` in TOML
+to preserve its decimal value exactly. The scale file accepts numeric or string
+JSON entries. No `[process].loop_coupling_orders` declaration is needed to load
+an existing virtual artifact. See [virtual CLI evaluation](command-line-interface.md#saved-virtual-artifacts)
+for output shapes and currently available features.
+
+Partial numerical returns use the same option as the Python runtime:
+
+```toml
+[evaluation]
+artifact = "artifacts/virtual"
+momenta = "data/points.json"
+arithmetic = "double"
+mu_r2 = "1000000"
+on_failure = "return"         # default: "best-effort"
+```
+
+`on_failure` takes `"best-effort"` (the default, also when unset or null),
+`"return"` or `"raise"`. With the default, a point that no configured
+alternative accepts (the reduction backend's own acceptance checks, `auto`'s
+per-point fallback) is returned with its best available value (the unchecked
+reduction's), its refusal and an uncertainty, status `best-effort`; a point
+with no value at all is an unavailable row; nothing is printed per point (the
+result's `statuses` and `warnings` carry it). With `on_failure = "return"`,
+numerical failures become unavailable whole-point rows with diagnostics
+(`null` in JSON), without a best-effort evaluation; `"raise"` (the default
+before 1.0.3) stops the call at the first such point with `EvaluationError`.
+Valid zero values remain zero. Invalid
+inputs and unsupported features still raise errors for the whole call; on v2
+runtimes this includes a non-positive `mu_r2` (`ValueError`). A scale at which
+a counterterm coupling is not finite in the lane's arithmetic (for example
+`mu_r2 = "1e-400"` in binary64) is a numerical failure of the points at that
+scale only: the others keep their values, and with `"raise"` the
+`EvaluationError` names the first failed point. This setting applies only
+to virtual `evaluate`, including resolved output, and is not silently used by
+profiling or generation.
+
+The precision-rescue policy `[evaluation.stability]` (`higher` carriers, the
+two tolerances, `verify_successful`, and the CLI options `--stability-higher`,
+`--stability-relative-tolerance`, `--stability-absolute-tolerance` and
+`--verify-successful`) was removed with the legacy loop engine, the only one
+that served it: any value other than the defaults is refused ("evaluation.stability
+(the precision-rescue policy ...) was removed ..."). v2 evaluations return
+stability estimates instead and leave escalating the arithmetic to the caller
+(below); the built-in rescue is a Python API option only
+(`evaluate(..., stability=VirtualRescuePolicy())`,
+[Python API](python-api.md#stability-rescue-one-loop-virtuals)).
+
+### The v2 loop engine
+
+One-loop requests (`process.loop_coupling_orders`) generate virtual processes
+with the shared-recursion one-loop engine v2 (no loop diagram is listed),
+the only one-loop engine, and publish them as plan v4 processes (runtime
+capability `rusticol.loop-runtime.v4`) for the Born-interfered virtuals and
+plan v5 processes (`rusticol.loop-runtime.v5`, amplitude mode) for the
+loop-induced ones. The per-diagram legacy engine was
+removed: a card, override or command line naming `loop.engine` (or
+`--loop-engine`) is refused ("configuration field 'loop.engine' was removed
+..."), and an artifact of the legacy engine (`rusticol.loop-runtime.v3`) is
+refused at load and inspection with the reason; regenerate it. Its UV and R2
+counterterms come from the same tree recursion as the Born, over the model's
+counterterm vertices (no counterterm diagram is listed either): every
+counterterm vertex of the model, two-point ones included, is an ordinary tree
+vertex inserted exactly once per contribution, within the requested coupling
+orders, and is not matched to the loops. A v2 evaluation can skip the poles
+and return stability estimates:
+
+```toml
+[evaluation]
+artifact = "artifacts/virtual-v2"
+momenta = "data/points.json"
+mu_r2 = "1000000"
+poles = "none"                 # finite part only; poles are absent (null)
+
+[evaluation.stability_checks]
+rotation_count = 1             # that many default (generic-axis) rotations
+# rotations = ["x:3/5:4/5"]    # alternative: exact "<x|y|z>:<cos>:<sin>" or "<ax>,<ay>,<az>:<radians>"
+reduction_direction = true     # re-reduce every loop numerator, reversed frame
+rescaled = true                # ... at rescaled inputs: master integrals evaluated again
+```
+
+This is the recommended configuration (Python `VirtualStabilityChecks(1, True,
+rescaled=True)`). Avoid a rotation about the beam axis (`"z:..."` for beams
+along z): it leaves both incoming momenta and every energy and p_z bitwise
+unchanged, and has under-reported a binary64 double pole 23-fold
+(`u u~ > u u~ e+ e-`); only the rescaled check sees the master integrals' own
+rounding (`g g > b b~ h` with a massive b: up to 96-fold below the error
+without it).
+
+Each check re-evaluates or re-reduces every point; the result then carries one
+`stability` estimate per point (relative accuracy of the whole virtual, of the
+finite part and, with poles, of each pole, plus each check's own budget).
+Without checks no estimate is returned. Escalating to `arithmetic = "arbitrary"`
+is left to the caller (the `[evaluation.stability]` rescue policy was removed,
+above). `poles` is a pole selection (`PoleSelection` in Python):
+`"all"` (the default), `"none"`, `"uv"` or `"ir"`; the finite part is the same
+under every selection, and `"none"` saves the pole work. The CLI spells these
+`--poles {all,none,uv,ir}`,
+`--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT`,
+`--stability-reduction-direction` and `--stability-rescaled`.
+
+#### Reduction backend
+
+Two backends reduce the loop numerators: NinjaRS (integrand reduction) and
+TIRust (tensor-integral reduction: one set of tensor integrals per loop
+family and point serves every helicity and colour amplitude, which suits
+loop-induced processes, reduced per amplitude). Both serve both process
+types. `loop.reduction` is the generation default recorded in the artifact
+(the artifact itself does not depend on it), `evaluation.reduction` (CLI
+`--loop-reduction` on `generate` and `evaluate`; Python `Runtime.load(...,
+reduction=)` and `evaluate(..., reduction=)`) overrides it:
+
+```toml
+[loop]
+reduction = "auto"             # generation default: auto, ninjars, tirust
+
+[evaluation]
+reduction = "ninjars"          # override for this evaluation (default: the artifact's)
+reduction_target = 1e-5        # TIRust's target accuracy (relative, per point; default 1e-5)
+reduction_unchecked = false    # true: no backend acceptance or refusal checks (default false)
+```
+
+`"auto"` takes the per-type default, TIRust for a loop-induced and NinjaRS
+for a Born-interfered process; where TIRust cannot serve the call (a native
+extension built without it, a carrier it does not serve, or an output whose
+executor does not run it: the summed virtual and the resolved, correlated
+and selected outputs are checked separately) it falls back to NinjaRS and
+records why. On TIRust, `"auto"` has a per-point NinjaRS fallback: a point
+TIRust refuses or fails (also in the call's stability checks) is evaluated
+again on NinjaRS from its original exact inputs in the call's arithmetic,
+after the TIRust call, and that point's lane records NinjaRS with the reason
+(a point NinjaRS fails too fails with both reasons). In double-double and
+arbitrary precision every point the fallback serves is guarded: its value
+runs a rotation re-test (the recommended checks' rotation of the evaluated
+point) in the call's arithmetic
+and fails typed when the check's relative estimate exceeds
+`reduction_target`, never below 1e-5 (a binary64 fallback point is served
+unguarded; the guard's estimate is an estimate, not a bound: strongly
+suppressed helicity rows near exactly forward kinematics can be served
+beyond their own 1e-5), recorded per point
+(`VirtualReduction.guard_estimate`; [Python API](python-api.md): NinjaRS can
+return badly wrong values as success at near-planar 2 -> 3 points of rank-n
+pentagon families in every arithmetic, the "Near-planar NinjaRS hazard",
+with the measured windows, which NinjaRS's conditioning bound now refuses
+typed). An explicit `"ninjars"` or `"tirust"` has no fallback and no guard,
+and neither has a
+TIR-only artifact. An explicitly requested backend that cannot serve
+the call is refused before any point is evaluated (`ReductionUnavailable`, a
+`CompatibilityError` with key `reduction-unavailable`), never switched
+silently. The choice is made once per call and carrier (each rescue level's
+carrier in the Python rescue), and every lane diagnostic records it
+(`VirtualLaneDiagnostic.reduction`: the requested and effective backend and
+the reason; also in the CLI's JSON). TIRust is built into the native
+extension by default (the cargo feature `tir`) and serves every arithmetic
+(binary64, double-double and arbitrary precision, also on every level of a
+rescue ladder) on every output of both process types when requested
+(`"tirust"`), and `"auto"` takes it for loop-induced processes with the
+per-point fallback above. Which loop families TIRust serves is TIRust's own capability
+(the number of propagators, the rank, read from TIRust): a family outside it
+is refused typed with TIRust's own reason before any point. TIRust reads the
+same external invariants as NinjaRS (below), so a loop with an on-shell
+massive leg next to a propagator of its mass, such as a top in its own gauge
+loop, stays on its exact on-shell branch in every arithmetic. In every
+arithmetic TIRust serves only the kinematic rows its conditioning gates
+accept (in double-double and arbitrary precision the gate is binary64's taken
+to the arithmetic's precision): a row they refuse fails its point with the
+gates' reason (under `"auto"` the per-point fallback evaluates it on NinjaRS;
+under an explicit `"tirust"` it stays a failed point and a rescue's next
+level moves it). In binary64 the rows the gates refuse are tried once more
+with TIRust's own method choice (small-Gram expansions or an alternative
+reduction); a row the method choice cannot serve either is evaluated by plain
+Passarino-Veltman reduction without the gates (the **verified last resort**:
+the gates bound the worst case of a Gram system, not the error of the row,
+and plain reduction is often accurate there). Each such value is kept only if
+it agrees with the same row
+evaluated again at rescaled inputs (a check that sees the wrong values a
+rotated frame alone misses) within the calibrated acceptance of the
+**target accuracy** `evaluation.reduction_target` (CLI `--reduction-target`,
+Python `reduction_target=`, the SDKs' `set_reduction_target`; default 1e-5,
+the relative accuracy of each point's result, every squared-order sector
+against its own size): the target divided by 580, the largest measured ratio
+of a true error to that frame deviation against consistent high-precision
+truths; a value that fails this check fails its point the same way. The
+target only admits values (a value served at one target is the same at
+another) and governs only the values the method choice and the verified last
+resort admit (the calibration was measured on method-choice values and is
+carried over to the last resort, checked at the default target on a few
+hundred points of five processes): rows that pass
+the conditioning gates carry binary64's own reduction error (measured up to
+about 1e-7 relative), so a target tighter than that can be missed; it is a
+calibrated acceptance, not a certificate. In double-double and arbitrary
+precision, where TIRust's method choice is off, it acts on nothing, and
+NinjaRS has no setting it drives. A target that is not a finite positive
+number is refused. `evaluation.reduction_unchecked = true` (CLI
+`--reduction-unchecked`, Python `reduction_unchecked=True`, the SDKs'
+`set_reduction_unchecked`; default false) reduces without the backends' own
+acceptance and refusal checks: TIRust's gates and method choice select the
+method, its method-choice values are not re-checked (the target then drives
+nothing), and plain Passarino-Veltman at gate 0 serves what they refuse;
+NinjaRS runs with zero stability thresholds. Only points without a finite
+value in any scheme (an exactly singular pivot, a non-finite output, a
+master failure, a NinjaRS lane whose tested quantity is exactly zero or NaN
+or that its box mu-expansion's conditioning bound refuses, which no setting
+turns off) still fail; `"auto"` keeps its choice of backend and its per-point fallback
+acts only on those. pyAmpliCol's stability checks and rescue stack stay
+their own settings and check the unchecked values when enabled. It is a
+timing and benchmark mode with **no accuracy certificate**: a served value
+can be off (measured per process up to 1.4e-2 on TIRust and 1e64 on NinjaRS
+against a 256-bit truth; the table in [Python API](python-api.md),
+"Unchecked reductions"). It is off by default: the default is the checked
+target accuracy. TIRust's qualified domain is up to six
+loop propagators at numerator rank six (reported, never enforced: beyond it
+the achieved precision is measured, as everywhere). `loop.reduction` other
+than `"auto"` needs a one-loop request (`process.loop_coupling_orders`).
+
+**Rank beyond N+2 (TIR-only artifacts; open, untested for correctness).**
+NinjaRS reduces loop numerators of rank at most N+2 over N propagators;
+TIRust has no such limit (its own capability query decides). A family beyond
+N+2, which effective operators produce (in Feynman gauge each insertion of a
+dimension-five or -six operator with both loop legs raises the rank by at
+most one, so it takes three such insertions, e.g. `g g > x0 x0 x0` in
+HC_NLO_X0), is generated when TIRust reduces it, and the artifact is then
+*TIR-only*: it records `reductions = ["tirust"]`, `"auto"` takes TIRust for
+both process types in every arithmetic and on every rescue level (the reason
+says so), and an explicit `"ninjars"` (also as the cross-backend stability
+check or a rescue level's backend) is refused typed (`ReductionUnavailable`),
+as is a generation default `loop.reduction = "ninjars"`; a native extension
+without TIRust refuses the artifact. **Such results carry no correctness
+claim**: the rational terms (R2) and counterterms of rank > N+2 numerators
+would need dimension-eight operators that no model provides, so the values are
+neither validated against a reference nor gauge invariant in general. The
+feature only runs (`tools/loop_v2_eft_execution.py`: the two backends agree on
+the families NinjaRS reduces). Artifacts whose families stay within N+2 are
+unchanged.
+
+**Momenta and arithmetic.** Every arithmetic (`double`, `double-double`,
+`arbitrary`) takes each external leg's invariant p² in the loop integrals to be
+the leg's squared mass at the evaluation's model parameters (zero, or a mass
+parameter such as `MT`), exactly, rather than the p² of the supplied momenta;
+everything else (trees, wavefunctions, loop-momentum shifts, invariants of
+several legs) uses the momenta as given, without projection or tolerance. This
+is always on and changes no input: it is what an external state means. Momenta rounded to binary64 sit off
+their mass shells by about 1e-16 relative, so a point copied from a binary64
+evaluation gives the same finite part and poles in `double-double` and
+`arbitrary` arithmetic, to the accuracy of the binary64 value (its stability
+estimate); `double-double` and `arbitrary` agree with each other to
+double-double accuracy. To go beyond binary64 accuracy, supply momenta that are
+on shell and conserve momentum to the digits wanted (exact decimals or
+rationals): a point off its shells by a relative δ moves the result at order δ.
+
+**Light masses in binary64.** The fast binary64 reduction compares squared
+masses and invariants with an absolute constant, 1e-9 in the model's units: it
+would treat a smaller one as zero and an invariant that close to a squared mass
+as on that shell. A `double` evaluation never applies these: a loop whose
+squared masses or invariants at a point fall in that window (a keV-scale
+internal mass in GeV, the electron mass in TeV) is reduced by the exact generic
+binary64 engine instead, so these comparisons no longer depend on the units;
+only the cost of those loops changes.
+The exact engine uses Symbolica in the native code, under pyAmpliCol's package
+key, so a v2 binary64 evaluation with such a loop needs the key, which other v2
+binary64 evaluations do not (see
+[Symbolica and licensing](symbolica-and-licensing.md)).
+The artifact's generation filters list the masses this light at the generation
+parameters (`binary64_exact_engine`: the threshold and each squared mass; v2
+artifacts); a parameter override is checked again at evaluation. Binary64
+itself limits light loops far below the other scales: a box with three or four
+light lines can lose several digits, and one beside a massive leg can fail with
+a non-finite master integral (the point then fails rather than returning the
+massless value). Such a loop is as accurate as binary64's master integrals at
+its arguments, and the rotation and reduction-direction checks reuse those
+masters, so they do not see that error (`u u~ > t t~` with a 1e-6 GeV top:
+2.5e-6 off with estimates of 4e-15); only the rescaled reduction check, which
+recomputes the masters (`rescaled = true`; Python
+`VirtualStabilityChecks(..., reduction_direction=True, rescaled=True)`), does. Use that check for light loops, and `double-double`
+where binary64 fails.
+
+**Units and the beam axis in binary64.** The fast binary64 engine has no
+absolute constant tied to the beam axis or to the units: its light-like
+spinors are formed from the larger light-cone component, with no window
+around the z axis (NinjaRS #10). With every momentum and dimensionful
+parameter scaled from GeV by factors from 1e-6 to 3e7 (`g g > t t~`,
+`u u~ > d d~ g`, beams along z or rotated off it), a `double` virtual keeps
+its value and its stability estimate, and a final-state leg between 1e-8 and
+1e-3 rad from the z axis loses no accuracy (the rotation and
+reduction-direction checks agree to about 2e-14). Light internal masses are
+the exception above.
+
+**Native libraries and glibc.** On Linux, the native libraries built from a
+checkout with `tools/developer/build_loop_native.py` (`_rusticol.so`,
+`librusticol_loop_sdk.so`) need glibc 2.38 or newer; the manylinux 2.28 wheels
+need glibc 2.28. On an older glibc, importing the extension fails at once with
+`NativePlatformError` naming the missing versions and the running glibc. C,
+C++ or Fortran programs fail to link against `librusticol_loop_sdk.so` with a
+toolchain on an older glibc
+(``undefined reference to `__isoc23_strtol@GLIBC_2.38'``), and a program built
+on a newer glibc is stopped by the dynamic loader on an older one
+(``version `GLIBC_2.38' not found``); see
+[Native libraries and glibc](installation.md#native-libraries-and-glibc).
+
+#### Kinematics improvement of the input points
+
+Evaluating at more digits than binary64 only pays when the input point is
+physical to those digits. A point given in binary64 (or as its decimal text)
+misses its mass shells and energy-momentum conservation by binary64 rounding,
+and near a degenerate configuration (forward, backward, a threshold) a loop
+reduction can amplify that defect far beyond the extra digits. So before
+anything is evaluated in a carrier above binary64 (double-double, and
+arbitrary precision at any requested digit count, 16 included), each point is
+first moved onto exact conservation and the exact external shells in that
+carrier's arithmetic, MadLoop's `ImprovePSPoint`:
+
+```toml
+[evaluation]
+kinematics_improvement = "z-shift"       # z-shift (default), rescaling, projection, off
+kinematics_improvement_binary64 = false  # true: also improve binary64 evaluations
+```
+
+* `"z-shift"`, the default, is MadLoop's default (`ImprovePSPoint = 2`, the
+  "original" method of `improve_ps.inc`): every final state keeps E, px, py
+  and takes pz on its shell, and the two massless initial states, which must
+  lie along the z axis, take the closed-form E / pz shifts that restore
+  conservation. Where it refuses (beams off the z axis, massive or one
+  initial state, a negative energy) MadLoop's own fallback runs
+  `"rescaling"`. Where the point MadLoop's chain produces misses exactness
+  (the rescaling's residual below, or a shell defect the z-shift keeps) or
+  both variants refuse, the chain FINISHES with `"projection"`, continuing
+  from MadLoop's point; only if
+  the projection refuses too is the point evaluated as given (typed), or,
+  after a produced point, used with the `kinematics-inexact` record. So the
+  default is exact in every frame: on points whose beams are along z it is
+  MadLoop's z-shift bit for bit, elsewhere the projection of MadLoop's
+  point. A final state of small |pz| moves by about sqrt(2 E dE) rather than
+  by the input's defect (up to about 1e-8 relative on values; MadLoop
+  behaves so), and one whose given energy lies below its transverse mass
+  keeps a shell defect of the input's order after the z-shift (MadLoop takes
+  |E^2 - pT^2 - m^2|), which the finish removes.
+* `"rescaling"` is MadLoop's `ImprovePSPoint = 1` (after PSMC; the fallback
+  is `"z-shift"`, the finish `"projection"` as above): the last particle
+  balances the 3-momentum, every 3-momentum is scaled (particle 1 by x^2, the
+  others by x, x from Newton on the energy balance) and every energy is put
+  on its shell. As MadLoop codes it, it leaves the 3-momentum conservation
+  residual (x^2 - x) p1, of the input's own order, wherever x differs from
+  1: its points are on their shells but not exactly conserving. In a frame
+  whose beams are not along z the default's MadLoop step produces this
+  point, and near forward, backward or a threshold NinjaRS amplifies its
+  residual about as the inverse box Gram determinant, where no rotation or
+  rescaling check can see it (a rotation keeps the residual): g g > z z at
+  theta 1e-4, rotated and boosted, was returned 5.3 off at double-double,
+  met at estimate 1.6e-7, before the finish. The finish removes it.
+* `"projection"`: the frame-independent minimal-norm projection of the
+  external momenta onto the shells and the four conservation equations
+  (Gauss-Newton `x <- x - J^T (J J^T)^-1 c(x)`, Euclidean on the
+  components), iterated in the carrier until the residual is at the
+  carrier's rounding or stops decreasing (two to three steps from a binary64
+  input). Exact in every frame. Selected, it runs alone from the given point
+  (on its refusal the point is evaluated as given, typed); it is also the
+  finish of both MadLoop selections.
+* `"off"`: no improvement in any carrier (each result records `"off"`).
+  Leave the improvement on above binary64: switched off there, a
+  near-forward point given in binary64 can be served far off **without any
+  flag** (measured 2026-11-10, development host: g g > z z at theta = 1e-4,
+  double-double, `"auto"`: a relative error of 5.25, no stability check or guard
+  flagging it; correct with the default improvement), because the rotation
+  checks and the fallback guard act on the same inexact point.
+
+The shells are exactly the masses the evaluation binds for the external
+states (a leg without a bound mass keeps its own p^2). The improvement runs
+once per point and carrier from the caller's exact inputs, in the caller's
+leg order (a permuted process expression is a different order), never on an
+already improved point: every rescue level and the per-point NinjaRS
+fallback start from the original inputs in their own carrier, and the
+stability checks rotate the improved point. An input that is already exactly
+physical (exact rationals on their shells and conserving) is evaluated
+unchanged. MadLoop's input sanity test runs first for the two MadLoop
+variants (`IS_PHYSICAL`: a conservation defect above 1e-6 of the summed
+energies or a shell defect sqrt(|p^2 - m^2|) above 1e-2 of a leg's
+|E| + |px| + |py| + |pz|; the defect's magnitude is tested, where MadLoop's
+own test is signed): an input failing it is evaluated as given with the typed
+warning (code 1), with no finish (the input is not a physical point to
+MadLoop's bounds). Every variant refuses a move above 1e-2 of the summed
+components (`IS_CLOSE`, code 999; the finish against the caller's input), so
+`"projection"` projects a grossly inconsistent input only within that bound. These two bounds concern the
+input, not the carrier, and are MadLoop's (1e-6, 1e-2 and 1e-2). They are
+overridable at the improvement's own entry, not by an evaluation setting:
+`pyamplicol.kinematics.improve(points, n_initial, masses2, arithmetic,
+digits, variant, tolerances={"fourmom": ..., "onshell": ..., "close": ...})`
+(Rust: `kinematics_improvement::Tolerances`) returns the improved exact
+point, which an evaluation then takes with `kinematics_improvement = "off"`;
+the runtimes and the SDKs run MadLoop's values. MadLoop's precision literals
+(its Newton convergence, consistency and "beams along z" thresholds,
+quadruple-precision values) are derived from the carrier's unit roundoff.
+
+Every result records the improvement per point
+(`VirtualLaneDiagnostic.kinematics`, a `VirtualKinematics`; the SDKs'
+diagnostics `"kinematics"`): the requested setting, what became of the point
+(`improved` by the variant that produced it, `exact`, `not-improved`, or
+`off`), every step of the chain with its code (MadLoop's: 1 the input test,
+100-999 the z-shift, 1000-9999 the rescaling, 999 the move bound; 10001 a
+singular projection), and the produced point's exactness record: its largest
+shell and conservation defects relative to the point's scale against the
+carrier's rounding bounds. Two typed warnings are records, not failures (the
+value is returned as computed, `on_failure` is unaffected and no rescue
+escalates on them): `kinematics-not-improved` (no variant could; evaluated
+as given) and `kinematics-inexact` (the produced point misses exactness:
+the projection stopped at its rounding floor, or the finish refused after a
+MadLoop point; the point is used).
+
+What counts as a double-precision evaluation is the carrier: binary64
+evaluations are improved only with `kinematics_improvement_binary64 = true`
+(off by default, so binary64 results are bitwise unchanged); double-double
+and every arbitrary-precision call follow `kinematics_improvement`. The
+improvement moves double-double and arbitrary-precision values at the level
+of the input's own defect (about 1e-16 relative at regular points; the
+z-shift's slow-particle move above), the remedy for the near-forward
+amplification. Surfaces: the run card above, the CLI (`--kinematics-
+improvement`, `--[no-]kinematics-improvement-binary64` on `evaluate` and
+`profile`), Python (`Runtime.load(..., kinematics_improvement=,
+kinematics_improvement_binary64=)` and per evaluation), the native loop
+SDKs (`rusticol_virtual_set_kinematics_improvement`,
+`rusticol_virtual_set_kinematics_improvement_binary64` and their wrappers)
+and the native tree SDK (`rusticol_runtime_set_kinematics_improvement`,
+`rusticol_runtime_set_kinematics_improvement_binary64` and their wrappers;
+its calls are binary64, so it acts only with the switch on).
+
+Tree evaluations are values only: a tree runtime's record is the warnings
+channel. The C ABI's `rusticol_runtime_take_warnings_json` and the Python
+tree runtime's `Runtime.take_warnings()` return the record of the most recent
+improved call (a summary line naming the carrier, the precision, the
+requested setting and the count per producing variant or status, then every
+typed warning with its point index), replaced by the next improved call and
+not kept while the warnings are muted; in Python the typed warnings are also
+issued as Python warnings. The tree higher-precision modes (Python
+`precision` above 16 and the correlated calls' double-double / arbitrary
+carriers, the default `"arbitrary"` at 16 digits included) improve toward
+the exact executors' external masses at that precision; binary64 (the
+switch) toward the binary64 masses of the native runtime's external
+wavefunctions, the same code as the C ABI's.
+
+#### Leading-colour helicity and colour-flow selection
+
+At leading colour (`[color] accuracy = "lc"`) a v2 virtual offers the tree
+engine's selectors, with the tree engine's identifiers and selector
+conventions (per-flow values at a cross order of several Born orders follow
+the loop's convention, below).
+At evaluation, `Runtime.evaluate(..., helicities=[...], color_flows=[...])`
+returns the sum of the selected Born helicity rows and colour flows (Born
+included): helicities by tree ID (`h:-1,+1,...`, values in leg order) or the
+runtime's `h<index>`, flows by tree ID (`flow:2,4,3,5,1`) or 1-based ordinal.
+`runtime.physics.born_anchored_color_components` lists the flows the
+artifact computes, numbered as the tree runtime with the same `[process]`
+selectors numbers its flows: in the order of the tree engine's
+leading-colour plan (after `reference_color_order` and `max_color_sectors`;
+`reference_color_order` alone selects nothing and only orders), and under
+a generation-time colour selection only the selected flows. The physics
+helicity entries keep the runtime's `h<index>` IDs (the helicity axis of
+`evaluate_resolved` at every colour accuracy); their tree ID is `h:`
+followed by their `values`. A complete set of selections sums to the
+inclusive value; a (helicity, flow) selection equals its `evaluate_resolved`
+entry. `evaluate_resolved` takes the same selectors and returns the selected
+helicity rows and the selected flows' Born basis elements, each entry as
+without selectors. At generation, `process.selected_source_helicities` (leg label to
+helicity) and `process.selected_color_sector_ids` (sectors of the tree
+engine's leading-colour plan, after `reference_color_order` and
+`max_color_sectors`) prune the recursion to the selection: fewer Born rows,
+skeletons and tree currents. The artifact's `evaluate()` then returns the
+selection, and its physics reports `helicity_coverage` and `color_coverage`
+`"selected"`. A sector of a folded trace holds two flows, the sector's and
+its reflection, as in the tree engine. As in the tree engine, declared
+colour or spin correlations with any of these selectors are refused at
+generation (`selected-correlators`): generate the correlations in an
+inclusive artifact. An evaluation-time selection costs at most one inclusive
+evaluation: it runs only the loop families its flows read, and only the
+helicity rows its helicities reach in the loop dressing and the tree
+currents. A generation-time selection is somewhat cheaper still (one
+helicity and one flow, binary64: u u~ > g g g about 0.7 ms per point at
+evaluation and 0.6 ms at generation, against 2.0 ms inclusive at leading
+colour; u u~ > g g g g 4.0 ms and 2.9 ms, against 30 ms). The first call of
+each distinct evaluation-time selection also forms and compiles its column
+set once (u u~ > g g g g: about 1 s and 66 MB for a new (helicity, flow)
+pair). The runtime keeps the 8 most recently used selections for later
+calls; the environment variable `PYAMPLICOL_LOOP_SELECTION_CACHE` sets
+another count (0 keeps none), and `Runtime.clear()` releases them. Sampling
+many distinct selections one event at a time therefore pays that setup per
+selection; the kept sets bound the memory, apart from about 1.5 MB that each
+formation leaves in the native heap (as every rebuild of a native executor
+does today, e.g. `Runtime.clear()` followed by an evaluation). A
+generation-time selection has no such setup.
+
+```toml
+[process]
+selected_color_sector_ids = [2]
+selected_source_helicities = {"1" = -1, "5" = 1}
+[color]
+accuracy = "lc"
+```
+
+The loop's leading colour is the leading N_c power of the squared matrix
+element. A tree flow below it, such as a flow of u u~ > d d~ g that joins
+each quark to its own antiquark, has no leading-colour Born or virtual. Its
+selection is zero at evaluation. At generation it contributes exact zeros
+next to a leading flow (`max_color_sectors = 3` on u u~ > d d~ g keeps two
+such flows and a leading one), and a selection without a leading flow is
+refused (`subleading-colour-flows`). With several Born orders (QCD and
+electroweak Born amplitudes, e.g. u u~ > d d~ with photon exchange) a flow
+can interfere at the leading power with another flow between the two orders
+(there QCD^2 QED^2): its evaluation-time selection keeps that term, and a
+generation-time selection that would drop it is refused
+(`interfering-colour-flows`); select the interfering flows together, or
+select at evaluation. At such a cross order a flow's value is the selected
+flow interfering with the whole Born of the other order (bra the flow, ket
+every flow), not the tree engine's per-flow `evaluate_orders` value: it can
+be nonzero where the inclusive leading-colour value vanishes (u u~ > d d~
+at QCD^2 QED^2: the two flows give +-8.5e-3 and sum to 0), and complete
+sets of flows sum to the inclusive value. Identical-flavour quark lines (u u~ >
+u u~ g) take every selection. A member of an exact flavour group
+(`process.flavor_blind`) lists no flows and takes no evaluation-time
+selection (`CompatibilityError`): select on its representative process,
+which evaluates the member. At next-to-leading and full colour the colour is
+contracted: an evaluation-time selection there keeps Born helicity rows only
+(`helicities=`, every colour component of their Born; colour flows are
+refused), and these accuracies have no generation-time selection
+(`selected_color_sector_ids` and `selected_source_helicities` need
+`accuracy = "lc"`); their plans are unchanged.
+
+#### External photons: alpha(0) per leg
+
+With electroweak (QED) corrections, an on-shell external photon either couples
+with alpha(0) (a *tagged* photon, MG5_aMC's `!a!`: an isolated photon) or keeps
+the loops' coupling, alpha_Gmu on a G_mu model (an *untagged* photon: a photon
+from a PDF or in a jet). `[loop] external_photons` chooses per leg:
+
+```toml
+[loop]
+external_photons = "final"     # default: final-state photons tagged, initial ones untagged
+# external_photons = "all"     # every photon tagged (MG5_aMC with every photon !a!, e.g. UPC/EPA)
+# external_photons = "none"    # no photon tagged
+# external_photons = [1, 3]    # exactly these 1-based legs (initial legs allowed)
+```
+
+The override is `--set loop.external_photons=none` (or `=[1,3]`), and Python
+takes the same values (`LoopConfig(external_photons=...)`, the v2
+`SliceRequest(external_photons=...)`). For n tagged photons the engine applies
+MG5_aMC's formula (the G_mu branch of `export_fks.write_rescale_a0gmu_file`):
+the Born and the virtual are multiplied by (alpha(0)/alpha_Gmu)^n, and the
+virtual of the electromagnetic correction gains -2 n DGmua0 Born, with DGmua0 =
+delta Z_e^Gmu - delta Z_e^alpha(0) the model's `eCoup_DGmua0_UV_EW`; their IR
+poles carry no gamma_gamma. This needs a G_mu loop model with an adjustable
+1/alpha(0): MG5_aMC's `loop_qcd_qed_sm_Gmu` under `restriction = "a0"`
+(`aEW0M1`, a runtime parameter of the stored artifact). Untagged photons need no
+model input and keep their -gamma_gamma/eps pole, which cancels against the
+photon PDF's or the photon-to-fermion collinear counterterm. MadLoop standalone
+converts no photon: its raw values are those of `external_photons = "none"`.
+
+The default `"final"` follows the physics of the usual cases: an initial-state
+photon is a PDF photon (its coupling and pole belong to the PDF's scheme), so
+converting it would shift the result by about 3.3 % per photon
+(alpha(0)/alpha_Gmu ~ 0.967) and give the wrong IR pole; a final-state photon
+is an isolated photon, for which alpha(0) is the physical coupling. Choose
+`"all"` or a list for photons from the photon flux of a charged beam (UPC/EPA).
+Only requests with the electromagnetic correction convert photons (as in
+MG5_aMC: QCD corrections leave every photon at the model's coupling).
+
+The conversion counterterm and 1/alpha(0) are found by MG5_aMC's conventions
+(`eCoup_DGmua0_UV_EW` and the unique adjustable SLHA `SMINPUTS 1` parameter); a
+model that spells them otherwise names them:
+
+```toml
+[loop]
+alpha0_conversion_parameter = "dZe_Gmu_a0"   # default "eCoup_DGmua0_UV_EW"
+alpha0_inverse_parameter = "ainv0"            # default: the SMINPUTS 1 parameter
+```
+
+A named 1/alpha(0) whose inverse is the loops' alpha declares a model whose
+loops already couple with alpha(0): tagged photons then take neither the
+rescaling nor the conversion term (and no conversion counterterm is needed).
+Both names are recorded in the artifact's request only when set.
+
+Refusals (listed, typed): tagged photons on a model that cannot take the
+convention, `external-photon-scheme`; also any on-shell external photon of an
+electroweak request on a model with several photon candidates (massless,
+neutral, colourless vectors: which one is the photon is ambiguous). MG5_aMC's `loop_qcd_qed_sm` declares no
+conversion (MG5_aMC refuses tagged photons there too): use `external_photons =
+"none"` or the G_mu model with `restriction = "a0"`; on the G_mu model's default
+card 1/alpha(0) is fixed (zero): use `restriction = "a0"` or `"none"`. A listed
+leg that is no on-shell external photon of the process: `external-photon-legs`.
+The artifact records the tagged and untagged legs among the electroweak
+conventions (`inspect`: `tagged_photon_legs`, `untagged_photon_legs`).
+
+| MG5_aMC | pyAmpliCol |
+| --- | --- |
+| `generate a a > e+ e- [QED]` (no tags) | `external_photons = "none"` (the default leaves both initial photons untagged too) |
+| `generate !a! !a! > e+ e- [QED]` | `external_photons = "all"` |
+| `generate u u~ > !a! g [QCD QED]` | the default `"final"` |
+| `generate a u > !a! u [QCD QED]` | the default `"final"` (or `[3]`) |
+
+#### Ultraviolet and infrared poles
+
+With `poles = "uv"` or `"ir"` every pole of the Born-virtual interference is
+split by origin, `P/eps = P_UV/eps_UV + P_IR/eps_IR`; the double pole is
+infrared. The finite part is always that of the renormalised virtual; the
+returned poles are:
+
+- `"uv"`: the ultraviolet poles of the bare (unrenormalised) one-loop
+  amplitude interfered with the Born, i.e. the reduction's UV poles (the
+  double pole is zero). The counterterms' UV poles are returned separately
+  (below), so that their cancellation can be checked.
+- `"ir"`: the infrared poles of the renormalised virtual, which Catani's
+  operator predicts. Where the ultraviolet renormalisation is complete they
+  equal the poles of `"all"`. They are the poles of the computed loops: a
+  QCD request, like MadLoop's `[virt=QCD]`, has no loop with a W, Z or H
+  line, so where the Born trees join quark lines in different ways through
+  such lines (`u d > u d h` at `QCD=0`: a Z or a W between the lines; `u b >
+  d t g`: the gluon on either line) the gluon exchanges across the lines are
+  left out and the poles differ from the full Catani operator's. Such
+  sectors carry no Catani prediction (`LoopSlice.unpredicted_sectors()`
+  states why for each).
+
+Both selections cost the same and both also return each origin's parts by
+component, `VirtualEvaluation.pole_parts` (per point, `uv` and `ir`, each
+component a Laurent triple per sector; `pole_part(origin, component)` reads one):
+`virtual` (renormalised), `bare` (the bare loop), `r2`, `uv_local` (the model's
+coupling and mass counterterms), `uv_external_fields` (the on-shell field
+factors) and `uv` (`uv_local + uv_external_fields`). A model states its
+external-field factors with one eps (a massless leg's vanishes), so their
+ultraviolet part is fixed by the ultraviolet finiteness of the renormalised
+virtual: the bare and counterterm UV poles then cancel by construction, and
+the field factors' UV part is the quantity to compare with a field
+renormalisation of your own (for loop_sm in Feynman gauge it equals the
+textbook constants of the external legs). An incomplete ultraviolet
+renormalisation shows in the `"ir"` (and `"all"`) poles, which then miss
+Catani's operator. A model that writes its counterterms with pole regulators
+(MadLoop's electroweak UFOs `loop_qcd_qed_sm` and `loop_qcd_qed_sm_Gmu`:
+`epsUV` and `epsIR` in block `TECHNICAL`, codes 1 and 2) states the origin
+itself: as long as both stay adjustable (not in `fixed_parameters`; the
+complex-mass scheme keeps them), every counterterm component's UV part is its
+value at `epsIR = 0` (MadLoop's reading of that card setting) and its IR part
+the rest, so for these models the bare and counterterm UV poles cancel as a
+check, not by construction (UV finiteness then also needs consistent inputs,
+e.g. the top Yukawa `ymt` at the top mass `MT`). An electroweak process
+records which definition its `"uv"` and `"ir"` parts use in its conventions
+(`Runtime.inspect()["conventions"]["pole_split"]`: `"regulators"`, or
+`"remainder"` with a regulator fixed); an electroweak artifact without that
+entry predates this split and uses the remainder: regenerate it. This costs
+one more pass of the tree program per point in `"uv"` and `"ir"`, also for
+correlated and resolved outputs (g g > t t~ with QCD and QED corrections:
+about 3.1 against 2.1 ms per point under `"all"`, binary64, one thread). In
+Python:
+
+```python
+result = runtime.evaluate(points, mu_r2=scales, poles="uv")
+bare_uv = result.values                           # [point][sector] (finite, 1/eps_UV, 0)
+counterterms_uv = result.pole_part("uv", "uv")    # UV_local + field factors' UV part
+local_uv = result.pole_part("uv", "uv_local")     # the model's coupling and mass CTs
+```
+
+The strong coupling of Catani's QCD operator is the model parameter named by
+`[loop] alpha_s_parameter` (an adjustable external parameter), else the unique
+adjustable SLHA `SMINPUTS 3` parameter; a model with neither (or with it fixed)
+generates the same virtual without a QCD pole prediction, whatever the
+correction set. Masses are the model's runtime values, a derived (internal)
+mass included.
+
+The selection is a runtime option: the same artifact serves all four (it stores
+the companion plan of its certified-scaleless loop families, which only `"uv"`
+and `"ir"` evaluate; they cost about 1 % (u u~ > e- e+ g g), 7 % (g g > g g g)
+and 13–18 % (g g > g g g g) more than `"all"`).
+An artifact written before the split is refused at load with a request to
+regenerate it.
+
+Stability estimates follow the selection. With `"uv"`, request at least one
+rotation check (`rotations` or `rotation_count`) to bracket the selected single
+pole: it is the bare loop's UV residue, which does not depend on the reduction
+frame, so `reduction_direction` alone (also rescaled) sees only its rounding
+and not the error of the loop numerators (at a `u u~ > d d~ g` point in
+double precision it underestimated that error about 8 times; a rotation
+bracketed it). With `"all"`, `"ir"` and `"none"` either check works. The
+`"uv"` double pole is exactly zero, and so is its estimate.
+
+Correlated and resolved outputs
+take every selection too; their `pole_parts` follow their own axes (resolved:
+per sector, helicity and colour component).
+
+A one-loop request without `color.accuracy` is full colour (MadLoop's
+accuracy); LC and NLC are opt-in. MG5_aMC's loop_sm ships with pyAmpliCol
+(`model.source = "loop_sm"`, with its `[loop.model]` declaration): see
+[One-loop QCD on loop_sm](loop-sm-and-madloop.md).
+
+Current v2 scope: model-supplied R2; full, NLC or LC colour (LC/NLC with the
+model's formal-N_c colour declaration, shipped for loop_sm and its
+restrictions; formal-N_c projections for any number of
+quark lines, identical flavours such as `u u~ > u u~ g` included); double,
+double-double and arbitrary
+arithmetic; inclusive results per squared coupling order; colour and spin
+correlations declared at generation (`correlators`); helicity-resolved output
+(also per Born colour component at LC; one contracted component at NLC and full
+colour); exact process mappings (`process.flavor_blind`: a member related by a
+proved species substitution, a permutation within each side, or both, such as
+`s s~ > g g` or `s~ s > g g` of `d d~ > g g`, is served by its representative;
+`ProcessAlias` permutation aliases are published; correlations compose with
+the mapping; see [Process grouping](process-grouping.md#one-loop-virtual-artifacts)). `poles`
+and `[evaluation.stability_checks]` apply to correlated and resolved evaluations
+too (resolved estimates are per helicity row and colour component).
+
+Coupling orders. The loop orders follow the process's Born amplitude orders:
+one loop amplitude per Born amplitude order (within the process's coupling-order
+limits) and correction in `process.loop_coupling_orders`, so mixed Born orders
+(e.g. `u u~ > d d~` with QCD and QED Born amplitudes) and several corrections are
+generated together, each squared coupling order a separate partial result. A
+correction the model does not expand perturbatively is refused. Coupling-order
+names are case-insensitive: `process.loop_coupling_orders`,
+`loop.model.loop_coupling_orders` and `process.max_coupling_orders` resolve
+against the model's declared names (`qcd` names a declared `QCD`, `qe` a
+declared `Qe`), and loop results carry the declared spelling; a name the model
+does not declare is refused, and so is a model declaring two names that differ
+only in case. Tree-level per-coupling-order partials still key orders by the
+tree engine's upper-case spelling (`QE` for a declared `Qe`); every shipped
+model declares upper-case names, where both spellings agree. The strong
+correction is recognised structurally, as the coupling order of the gluon's
+vertices (the massless adjoint vector's), whatever the model calls it; any
+other correction, or a perturbative colour-singlet species, makes the request
+electroweak. Electroweak requests take 't Hooft-Feynman gauge throughout
+(Born, trees attached to the loops, loop lines and counterterms; a model
+whose source declares no such gauge is refused) and need zero widths in
+their trees (see Widths below). Catani's QCD pole prediction needs the
+strong coupling parameter described above (`ir_poles` is absent otherwise;
+`poles = "ir"` still selects the computed virtual's poles).
+What the engine does not admit fails at generation with a typed error that
+names the rule, for example:
+
+- leading and next-to-leading colour over tree currents that are not exact
+  in N_c (currents mixing U(1)-subtraction grades): "colour-accuracy-nc-exact:
+  ... LC needs N_c-exact tree currents ...". Leading and next-to-leading
+  colour split such currents by grade, so identical-flavour quark lines (from
+  `u u~ > u u~ g` up: `u u~ > u u~ d d~`, `g g > u u~ u u~`, ...) are exact
+  and generate, as distinct flavours do; the rule guards any request whose
+  currents would still mix grades. The check runs right after the trees are
+  built, and every export repeats it, so no artifact carries a projection that
+  is not exact;
+- a `particle_veto` that removes a species running in the loops of a
+  requested correction, on a model some of whose counterterm terms of that
+  correction declare no loop content (`loop_particles = []`):
+  "veto-unlabelled-counterterms: ... particle_veto removes the species
+  [23, 24, 25, 250, 251], perturbative in the corrections ['QED'], and the
+  model's counterterm vertices V_UV... write terms of those corrections
+  without loop content ...", in the model preparation, before any tree is
+  built, so a dry run reports it too (photon-only QED corrections on
+  MG5_aMC's `loop_qcd_qed_sm` and its G_mu variant; see the particle veto
+  below). Request the complete corrections;
+- a vertex joining a coloured and a colour-singlet fermion that the request
+  can use (a leptoquark `u e lq` vertex: one fermion line changing colour
+  representation): "fermion-line-representation: ... the vertex V (u~ e- lq)
+  joins a coloured and a colour-singlet fermion ...", before any tree is
+  built. Veto a particle of the vertex (`particle_veto`) or bound its
+  coupling order so that the request cannot use it;
+- a loop vertex that the request's restricted tree model does not hold while
+  its couplings are not shown to vanish at the model's restriction:
+  "loop-vertex-outside-tree-model: ... the loop vertex V (...) at the
+  coupling orders {...} has no term in the request's tree model ...". A
+  vertex whose couplings vanish identically at the restriction (decided from
+  their values: e.g. the W vertices of the off-diagonal CKM elements at the
+  diagonal-CKM default restriction of `loop_qcd_qed_sm_Gmu`) is simply no
+  loop vertex, so `g t > t u u~` with QCD and QED corrections passes the loop
+  catalogue (it is then refused at native export with "plane-mismatch" at
+  its `UV_GTTLEW` counterterm, as `g g > t t~` is, see the stored programs
+  below). Choose a restriction under which the vertex's couplings vanish
+  exactly or one that keeps it, or veto or bound it out of the loops;
+- fermions outside the loop sign rule: vertices joining two or more fermion
+  lines (four-fermion contact vertices: "a loop vertex joins more than one
+  fermion line"), fermions in colour representations other than singlets and
+  (anti)triplets ("a fermion of colour representation 8 has no sign rule"), and
+  Majorana fermions (refused when the model is loaded). Any number of
+  colour-singlet (lepton) fermion lines, mixed with any number of quark lines
+  and running through the loop or not, is admitted: `e- e+ > m- m+` and
+  `e- e+ > e- e+` with QED corrections, `u u~ > e- e+ m- m+` with QCD
+  corrections.
+
+A process whose programs cannot be stored natively is refused with the
+feature's key (see the stored programs below), for example a program whose
+binary64 SymJIT application disagrees with its exact evaluator at the
+generation's check ("plane-mismatch", naming the output: a model coupling by
+its UFO coupling and vertex, a counterterm coupling with its epsilon power, or
+a kernel). Tagged on-shell external photons with electroweak corrections
+couple with alpha(0) and are stored natively, with 1/alpha(0) (`aEW0M1` of
+MG5_aMC's G_mu loop models under `restrict_a0`) a runtime parameter
+([external photons](#external-photons-alpha0-per-leg)). The check compares
+at complex points off the real axis and at the request's parameter values,
+so it depends neither on the parameters' names nor on their order; it
+refuses a branch cut taken on different sides at those values, or a branch
+cut of a program's inputs that no real point certifies.
+
+A `particle_veto` drops every counterterm whose declared loop particles include
+a vetoed particle. MG5_aMC's `loop_qcd_qed_sm` declares some R2 couplings for
+the photon and Z loops together (e.g. the `u u~ g` R2, `R2_GUU2Cp`, with loop
+particles `u` and `Z`), and its electroweak UV counterterms carry nominal loop
+particles (none on the vertices, one representative on the two-point ones),
+so photon-only QED corrections (the Z, W, Higgs and Goldstones vetoed) would
+drop the photon's part of the former and keep the W and Z loops of the latter:
+with lepton lines (`e- e+ > m- m+`) the single pole misses the QED Catani
+operator's, and the finite part is wrong. Such a veto is therefore refused at
+generation ("veto-unlabelled-counterterms", above) on every model with a
+counterterm term of a requested correction that declares no loop content.
+Photon-only corrections are not expressible on this model; full electroweak
+corrections are.
+
+The model's UV and R2 counterterms are taken as declared (`uv_complete`,
+`model_r2_complete`): the engine does not check them against the loops.
+
+MG5_aMC's `loop_qcd_qed_sm` and `loop_qcd_qed_sm_Gmu` (shipped, see
+[One-loop QCD+QED on loop_qcd_qed_sm](electroweak-and-madloop.md)) need no
+compatibility setting: their `G-` loses the Goldstone flag of `G+`, which
+model preparation repairs by structure and records
+(`compatibility = "gmu_particle_anti"` is still accepted);
+`loop.preparation.covariant_multiplets` is not supported by v2 (refused,
+`covariant-multiplets`). `color.contraction` selects the seed contraction of NLC and full-colour virtuals: `auto` (default) contracts
+the certified symmetric-group orbit pairs of the external gluons with the FFT
+and the rest directly, `direct` contracts everything directly, and
+`symmetric-group-fft` requires a certified pair (a process with fewer than two
+external gluons has none and is refused at generation with the listed
+`forced-seed-fft-unserved`, as are declared correlations with a forced FFT,
+since observable columns are contracted directly). The FFT and the direct
+contraction are equal up to rounding in every arithmetic; each evaluation
+reports the algorithm it ran. The orbits are those of the loop's own seed
+tables (the external gluons' permutations, certified on the exact colour
+weights): loop requests keep the default `color.fft_basis = "adjoint"`, and
+`"trace"` is refused unless the contraction is `direct`. A dry run
+(`generate --dry-run`) reports what the configuration, the model preparation
+and the Born need (the veto refusal "veto-unlabelled-counterterms", the
+external-photon convention and the widths of the Born currents of an
+electroweak request included), each with its listed key; the rest of loop
+admission is checked by the generation only, and the dry run lists every key
+with its remedy (`estimated_coverage.loop_configuration_refusals`,
+`loop_admission_refusals`, `loop_internal_refusals`) and what the native
+export refuses (`native_export_refusals`).
+
+Particle veto. `[generation] particle_veto = ["t"]` (CLI `--particle-veto t`,
+repeatable; Python `GenerationConfig(particle_veto=("t",))`) removes the named
+particles, with their antiparticles, from every tree vertex of the v2
+generation: the Born, the trees attached to the loops, the loop vertices and
+propagators, and the counterterm program; every counterterm term whose loop
+content (the UFO `loop_particles`) holds a vetoed particle is dropped, and so is
+its external-field renormalisation. With loop_sm, `particle_veto = ["t"]` gives
+massless five-flavour QCD (no top loop, no top decoupling term), the convention
+of NJet. A vetoed vector boson takes its Faddeev-Popov ghosts with it (the ghosts
+of its colour, charge and mass: vetoing `w+` also vetoes `ghWp` and `ghWm`),
+whose loops without the boson would break the gauge cancellations. A vetoed
+particle cannot be external. The veto is stored with the artifact's generation
+request and in its generation filters; it needs a one-loop request.
+
+Anomalous vetoes. A veto can keep model counterterms from cancelling that
+cancel with every flavour admitted: vetoing `d s b` (or `t`) in a request with
+a Z and gluons leaves the axial Levi-Civita R2 of the Z with gluons
+(`R2_GGZ`, `R2_GGGVa`), which cancels between the members of complete quark
+doublets, uncancelled. Such a request is refused by default
+(`AnomalousVetoError`, naming the counterterm and the override). `[generation]
+allow_anomalous_veto = true` (CLI `--allow-anomalous-veto`; Python
+`SliceRequest(allow_anomalous_veto=True)`) lowers those counterterms as tree
+vertices and records the choice: the artifact's request record and its
+generation filters (`allow_anomalous_veto`, `counterterms_anomalous_veto`:
+rule -> cells). It needs a `particle_veto`.
+
+Widths. By default (`mass_scheme = "real-on-shell"`) v2 virtuals use real
+on-shell masses: loop propagators carry no width and the model counterterms
+renormalise the real mass. Real on-shell takes the real part of every on-shell
+renormalisation constant (the UFO's `CMSParam = 0`, MadLoop's
+`complex_mass_scheme False`, Recola's `set_on_shell_scheme_rcl`; Recola's own
+default is the complex-mass scheme, so a Recola real on-shell reference must
+select it); the complex-mass scheme's limit of vanishing widths keeps the
+absorptive parts of those constants (the imaginary parts of the self-energies
+at the masses, of the size of M W), so it is not real on-shell: from 2 -> 3 on
+the two differ by a one-loop amount that can be of the order of an electroweak
+finite part (up to 1.2 of it in `u u~ > d d~ e+ e-`). A coloured particle that a tree current propagates
+(the top in `g g > t t~`) must therefore have a zero width, fixed in the card,
+otherwise generation and the dry run refuse the request (`coloured-width`; an
+electroweak request refuses any width in its trees, `electroweak-width`):
+
+```toml
+[loop.preparation]
+fixed_parameters = {MB = "0", WT = "0"}
+```
+
+`[loop] external_widths = "zero"` fixes the width parameter of every external
+particle of the request to zero (stable external states; the widths of
+particles that only propagate are kept), unless `fixed_parameters` names it;
+the generation log names the widths it fixed. It reads the model's particle
+records and the requested legs, for any process: in the complex-mass scheme it
+is the generic remedy of `cms-external-width`, in the real on-shell scheme of
+the external particles' own `coloured-width` / `electroweak-width`. The
+default `"model"` keeps the model's widths.
+
+A resonant particle needs the complex-mass scheme, MG5_aMC's `set
+complex_mass_scheme True`:
+
+```toml
+[loop.model.scheme]
+mass_scheme = "complex-mass"
+```
+
+Stated alone, `mass_scheme` selects the scheme over the model's own (source or
+shipped) loop declaration. Generation then runs on MG5_aMC's transform of the
+model: every particle with a nonzero width at the card propagates with its
+complex pole mass `sqrt(M^2 - i M W)`, which the parameters, counterterms and
+couplings read too (`CMSParam = 1`; internal widths take their real part; the
+Yukawa couplings follow the masses). Masses and the nonzero widths stay real
+inputs of the evaluation; a width that is zero at the card (fixed, or zero on
+the restriction card) gives its particle no pole mass and stays zero. The
+scheme refuses, with listed keys: an external
+particle with a width (`cms-external-width`: external states are stable), a
+width-carrying particle whose mass is not an external parameter
+(`cms-internal-mass`, e.g. loop_sm's W), a fixed Yukawa input
+(`cms-yukawa-input`), a value of `mass_scheme` other than `"real-on-shell"` and
+`"complex-mass"` (`mass-scheme`), and a complex fixed parameter in either
+scheme (`complex-fixed-parameter`). Stored artifacts take the complex pole
+masses in their native point inputs (the loop propagators read M^2 - i M W; the
+binary64 fast-engine threshold reads |re| + |im| of it), so they keep native
+point inputs and relocate as any other artifact. A width changed at run time
+may be zero (the real-mass limit), which puts counterterm arguments on their
+branch cuts: an argument that is real when the zeroed widths vanish reads its
+real part there and every zero imaginary part of a cut argument is made
+positive, so every precision takes the principal value (checked against
+MadLoop CMS on `e- e+ > mu- mu+` with all, some and none of the widths zero;
+where MadLoop's double and quadruple precision disagree, pyAmpliCol's
+precisions agree with each other and with one of them). In double-double a width must
+stay at least 1e-150 of its mass, or be zero (`complex-mass-master` otherwise,
+a model-parameter error naming the plan mass). An evaluation
+(the Python API and the native SDKs alike) refuses an empty parameter name, a
+value that is not a finite decimal number (a number, or ASCII decimal text:
+surrounding whitespace and underscores are ignored, fractions and non-ASCII
+digits are refused), unknown parameter names, the renormalisation-scale
+parameter (`mu_r2` sets it per point) and a value other than the one a parameter
+was fixed to at generation (the card's `fixed_parameters` and those the model
+preparation fixes, e.g. a colour declaration's external scheme constants, which
+the refusal names as such: they are not run-time parameters); a parameter
+update with one refused entry changes nothing, and every client checks the
+entries by name, so a mapping with several refused entries gets the same
+message everywhere. Other known parameters are accepted even where
+the process does not use them (for example a width only loop propagators would
+carry). The renormalisation-scale parameter is the
+external parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
+Generation records which model-derived values depend on it: for the usual NLO
+models only the counterterms do, and a batch of points at several scales is
+evaluated at once; for a model whose Born couplings or masses run with the scale
+(a running-coupling or MSbar-mass UFO) an ordinary evaluation (`evaluate`, every
+SDK) is evaluated per scale, so every point equals its evaluation at that scale
+alone. Colour- and spin-correlated and helicity-resolved evaluations of such a
+model take one scale per call: a batch of several scales is refused with a
+`ValueError` naming the scale-dependent couplings, constants or masses (call
+them once per scale).
+
+A v2 artifact stores its whole program: the loop plan and its per-point tree,
+Born, counterterm and parameter programs (`point_inputs = "native-v2"`), the
+latter as SymJIT IR recompiled for the loading CPU and as saved Symbolica states
+for double-double and arbitrary precision, with the companion of the
+certified-scaleless families that the `"uv"` and `"ir"` pole selections
+evaluate and the colour- and spin-correlated and helicity-resolved columns. No
+call of a loaded process regenerates anything: every pole selection, stability
+check, arithmetic, model-parameter change, per-order partial, exact flavour
+member, correlated, resolved and catalogue call reads the stored programs, and a
+load takes a small fraction of the generation time. A process whose programs
+cannot be stored natively is refused at generation with the reason, never stored
+for a regeneration at load. The SymJIT IR of the kernels is compiled at -O2,
+whatever `evaluator.jit.optimization_level` says (a program whose -O2 code fails
+the generation's plane check is kept at level 0 instead: a SymJIT SIMD defect,
+see the portability guide), and that of the parameter program at level 0. The
+artifact holds no absolute path, user or host name of the generating host; a
+copy moved to another directory, user or machine loads without regeneration and,
+with the same pyAmpliCol build (Python package and native extension), gives
+bitwise-identical binary64 results on CPUs of the same SymJIT class (x86-64 with
+AVX and FMA3; AArch64 is expected to behave the same but is untested); other CPU
+levels (checked under emulation) run the saved states and agree to rounding
+([portability](artifacts-and-portability.md#cpu-requirements-of-symjit-kernels)).
+Binary64 evaluation needs no Symbolica licence, at any model parameters, pole
+selection and scale, except for loops routed to the exact engine at light
+masses (above: they use pyAmpliCol's own Symbolica key, which expires on
+2028-03-01, after which they need a personal licence); double-double and
+arbitrary precision use pyAmpliCol's own Symbolica key as well, and so does
+generation (tree and loop: the Python package and every native entry point), so
+a user without a personal licence generates without Symbolica's restricted
+mode until that date. The native SDKs
+(C, C++, Fortran, Rust) open a v2 artifact through `rusticol_virtual_open` and
+evaluate binary64 virtuals, bitwise equal to the Python API, without a licence
+(with the same exception):
+`rusticol_virtual_set_poles(handle, poles)` takes the same pole selections as
+the Python API: `"all"` (the default) every pole, `"none"` the finite part alone
+(its pole-only work skipped natively, the pole entries quiet NaNs), `"uv"` and
+`"ir"` the split selections (the finite part is the same in all four);
+model parameters (at open and through `rusticol_virtual_update_parameters`)
+follow the Python API's rules above, with the same messages
+(`RUSTICOL_VIRTUAL_INVALID_ARGUMENT`); the default R2 strategy `"auto"` selects
+the artifact's model R2; `rusticol_virtual_set_arithmetic(handle, arithmetic,
+digits)` selects binary64, double-double or arbitrary precision as the Python
+API's `arithmetic=`/`precision=` (equal `Decimal` values, as decimal literals
+through `rusticol_virtual_result_decimal_json`); helicity-resolved and colour-
+and spin-correlated calls (`request.resolved = 1`,
+`rusticol_virtual_evaluate_correlated[_with_sources]`) evaluate the process's
+stored observable columns, bitwise equal to the Python API's `evaluate_resolved`
+and `evaluate_correlated_many` in binary64;
+`rusticol_virtual_set_stability_checks(handle, rotation_count, rotations,
+reduction_direction, rescaled, cross_backend)` sets the Python API's
+`stability_checks=` (off by default: no estimate, no extra cost), and each
+successful point of a binary64 ordinary call then carries the Python API's
+estimate in the result's diagnostics (`"stability"`). The stability rescue is
+the Python API's alone. A
+v2 artifact carries no API
+bundle (a requested `emit_api_bundle` is dropped with a recorded configuration
+adjustment).
+
+To evaluate numerical colour/spin requests, set
+`evaluation.correlated_requests = "data/requests.json"`. The file maps output
+labels to the existing `color_correlation` and `spin_vectors` fields described
+in [correlated CLI requests](command-line-interface.md#correlated-requests).
+It works for tree and virtual artifacts and cannot combine with `resolved = true`
+or nonempty `color_flow_ids`. Tree correlated arithmetic follows its existing
+API default (arbitrary precision); virtual arithmetic and optional stability are
+still bound before parameter evaluation. Request JSON preserves exact decimal
+components and rejects duplicate fields or colliding integer leg keys.
 
 The model-parameter card is a flat JSON object:
 
@@ -498,6 +1889,35 @@ override that default; a complete summed-axis list is normalized to equivalent
 omission. A valid shape outside the optimized layout emits at most one pre-loop
 warning per loaded process.
 
+A one-loop artifact is profiled on both reduction backends side by side
+(`[evaluation] reduction` selects one): per stage (trees, dressing, scatter,
+reduction, rest, from the native executor's stage report of the timed
+calls, each on a new batch of `batch_size` distinct flat points;
+`batch_size`, `warmup_runs` and `minimum_samples` apply) and/or as
+stable-digit statistics over flat points. `[evaluation] reduction_unchecked`
+and `mu_r2` select the unchecked timing mode and the scale (default: per
+point the squared invariant mass of its initial state). The loop settings of
+`[benchmark]`:
+
+```toml
+[benchmark]
+runtime = false          # --runtime: time per point and stage
+stability = true         # --stability (neither set: the runtime only)
+stability_points = 1000  # --stability-points: flat (RAMBO) points (default 1000)
+n_core = 10              # --n_core / --n-core: worker processes of --stability
+
+[evaluation.phase_space]
+seed = 1                 # --seed: point i from seed + i
+sqrt_s = 1000.0          # --sqrt-s (null: the artifact's validation-point energy)
+```
+
+The flat points (the timed points without a momenta file, and the stability
+points) are those of [`[evaluation.phase_space]`](command-line-interface.md#evaluate-without-a-momenta-file):
+`profile --seed` and `--sqrt-s` set its seed and energy.
+
+See the [command-line guide](command-line-interface.md#profile) for the
+definitions of the tables.
+
 See [Runtime and Selectors](runtime-and-selectors.md) for evaluation and profiling
 semantics.
 
@@ -508,7 +1928,7 @@ semantics.
 format = "human"
 color = "auto"
 progress = "auto"
-log_level = "info"
+log_level = "warning"
 ```
 
 - The `pyamplicol` CLI always produces aligned colored terminal tables unless

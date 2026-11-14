@@ -46,6 +46,211 @@ Version 1.0.1 uses published Symbolica 3.0.0, SymJIT 2.26.4 and
 ufo-model-loader 1.0.0, as recorded in the dependency lockfiles. No local
 dependency source patches or unpublished wheels are needed.
 
+## 1.0.3 release
+
+**Changed default: a refused point no longer interrupts a run.** A one-loop
+evaluation now returns, by default (`on_failure="best-effort"`; CLI
+`--on-failure best-effort`; SDK `set_on_failure("best-effort")`), every point
+of the batch: a point that no configured alternative accepts (the reduction
+backend's own acceptance checks, `"auto"`'s per-point fallback, the last
+rescue level) is evaluated again without the backends' own acceptance checks
+(the `reduction_unchecked` machinery) and, where that yields a finite value,
+returned with lane status `"best-effort"` (SDK `RUSTICOL_VIRTUAL_BEST_EFFORT`
+= 5): never a success, with its refusal and an uncertainty (the stability
+estimate of the call's checks together with the recommended checks, a
+rotation and the rescaled reduction-direction check, run on the refused
+points only: one rotation alone under-states the error of an unchecked TIRust
+value; if none can be formed the record says so). A point with no value at all is a failed lane.
+Nothing is printed, logged or raised for such points: the result carries it
+as data (`result.statuses`, `result.warnings`, `result.has_warnings`; the
+SDKs' statuses, `uncertainties` and the diagnostics' `"best_effort"` and
+`"warnings"`), so Monte-Carlo logs cannot be swamped. Points the configured
+alternatives accept are evaluated exactly as before (bitwise, same cost).
+`on_failure="return"` keeps such points as failed lanes without computing a
+best-effort value; `on_failure="raise"` is the previous behaviour (raise at
+the first such point; the SDKs return `RUSTICOL_VIRTUAL_RUNTIME_ERROR`);
+`result.emit_warnings()` turns a result's warnings into one filterable
+`NumericalAccuracyWarning`. Failure reasons are bounded to one message per
+reason class with the count of the others. Known, benign dependency log
+events of `generate` and `check` (Symbolica's "Created infinity by raising 0
+to the power of -1" from loop_qcd_qed_sm's unused `aEW0` conditional, the UFO
+loader's exact float-to-rational notice) are returned in the result's
+`warnings` instead of printed. See
+[Python API](python-api.md#best-effort-values-of-refused-points),
+[Command-line interface](command-line-interface.md) and
+[Native APIs](native-apis.md#runtime-and-precision-boundary).
+
+Version `1.0.3` adds loop-induced one-loop processes: processes without a
+Born amplitude within their coupling-order limits (`g g > h`, `g g > z z`,
+`h > g g`), served as |A_loop|^2 at full colour and evaluated as
+`VirtualEvaluation` results with `contribution = "loop-induced"` (empty Born
+fields, poles `"all"` or `"none"`, which vanish; zeros are reported within
+their absolute estimate), see
+[Configuration](configuration.md#processes-and-multiparticles) and the
+[Python API](python-api.md#one-loop-virtuals-and-loop-induced-processes).
+`process.loop_induced` routes them (`"include"` serves both kinds of a mixed
+multiparticle request as separate contributions). Leading and next-to-leading
+colour are refused for loop-induced processes. The native SDKs (C, C++,
+Fortran, Rust, UMAMI) open loop-induced processes directly with empty Born
+counts and the Python API's values, including the helicity-resolved and the
+colour- and spin-correlated outputs (the correlated history `"born"` is
+|A|^2 itself).
+
+The one-loop numerators are reduced by one of two backends, selected by
+`[loop] reduction` (the generation default) and `evaluation.reduction` (CLI
+`--loop-reduction`, Python `reduction=`, the SDKs' `set_reduction`):
+NinjaRS (integrand reduction) and TIRust (tensor-integral reduction, built
+into the native extension by default). `"auto"`, the default, takes TIRust
+for loop-induced and NinjaRS for Born-interfered processes; on TIRust a point
+it refuses or fails is evaluated again on NinjaRS and recorded per point. In
+double-double and arbitrary precision each point this fallback serves is
+guarded by a rotation re-test of the promoted, improved point. The guard's
+estimate is an estimate, not a bound: strongly suppressed helicity rows near
+exactly forward kinematics can be served beyond their own 1e-5 (see
+[Python API](python-api.md), "Near-forward accuracy"). An explicitly
+requested backend that cannot serve a call is refused, never switched; every
+lane records the requested and effective backend and the reason. TIRust's
+target accuracy is `evaluation.reduction_target` (default 1e-5 relative per
+point). `evaluation.reduction_unchecked = true` (Python
+`reduction_unchecked=`, CLI `--reduction-unchecked`) is a timing mode
+without the backends' acceptance and refusal checks and without an accuracy
+certificate; it is off by default, so the backends' own checks stay on.
+
+The input kinematics of double-double and arbitrary-precision evaluations are
+improved to exact energy-momentum conservation and exact on-shell external
+momenta in the working arithmetic with MadLoop's algorithms
+(`evaluation.kinematics_improvement`: `"z-shift"`, the default, MadLoop's
+variant 2 with its fallback to variant 1, finished by a frame-independent
+projection only when the produced point is not exact; `"rescaling"`,
+`"projection"` or `"off"`). Binary64 evaluations are improved only with
+`kinematics_improvement_binary64 = true` (default false). Points whose beams
+lie along the z axis keep MadLoop's values bit for bit. Leave the
+improvement on above binary64: switched off there, near-forward points can be
+served far off without a flag. See
+[Configuration](configuration.md#kinematics-improvement-of-the-input-points).
+
+Binary64 stability checks (rotations, the reduction-direction and rescaled
+checks, the cross-backend check) are available in the Python API and every
+native SDK (`rusticol_virtual_set_stability_checks`), off by default; the
+recommended checks are one rotation with the reduction-direction and
+rescaled checks. The Python API's stability rescue is a stack of
+(precision, backend) levels; for loop-induced processes its default runs
+TIRust then NinjaRS in binary64 before double-double and arbitrary precision.
+Full-colour and next-to-leading-colour Born-interfered virtuals take a
+run-time helicity selection (`helicities=`) in the Python API and the native
+SDKs.
+
+`pyamplicol check` runs the pole (Catani; finiteness for loop-induced
+processes), Ward and Goldstone checks of a one-loop run card or artifact,
+regenerated in memory, escalating undecided rows to double-double and
+arbitrary precision. Ward rows of a request with electroweak loop
+corrections and an on-shell zero-width external massive quark read "not
+applicable": the identity of that check is not guaranteed there. See
+[Command-line interface](command-line-interface.md#check). Four one-loop
+examples ship with the package (`loop_uux_ttxgg`, `loop_uux_ddxepem`,
+`loop_gg_zgg` and `loop_gg_epemmpmm`, the last two loop-induced), see
+[Examples](../../examples/README.md#one-loop-examples) and
+[Build a wheel from a checkout and run the loop examples](installation.md#build-a-wheel-from-a-checkout-and-run-the-loop-examples).
+
+In 1.0.2, storing a one-loop request whose Born couplings, as its scaleless
+companion evaluates them, read a model helper function (e.g. `u u~ > d d~ g`
+with QCD corrections and explicit coupling-order caps that keep both Born
+orders, QCD^3 and QCD QED^2) failed with `Could not create evaluator: function
+value_N(..) is not in a parameter map`, so nothing was stored and no value was
+wrong; such requests now store.
+
+**Command-line output: tables only, progress everywhere, Ctrl-C safe.**
+Every command prints its tables and short status lines only (the table
+titles keep what changes the numbers' meaning: leading colour, finite only,
+UV or IR poles); `--fields-description-help` adds a plain-words description
+of every table and column. The CLI shows no logger-format lines by default (`--log-level`
+defaults to `warning`; a few short notice lines say what is being done) and
+`--progress log` writes plain lines. `check`, `evaluate`, `profile` and
+`self-test` show their progress like `generate`, and Ctrl-C ends any command
+cleanly (exit code 130): `profile`, `evaluate` and `check` report what was
+measured, evaluated or checked so far, an interrupted `generate` writes
+nothing. Value tables print
+an explicit `+` on positive values. `profile`: one-line backend names (`*`:
+the default), a lean runtime table that times best-effort points as served,
+the distribution of failure causes under the tables (`failure_causes` in
+`--json`), and `--stability` over 1000 points by default on `--n_core`
+worker processes (default 10; `benchmark.n_core`) with an estimated time to
+completion.
+
+Version `1.0.3` uses the Python dependencies of 1.0.2 (Symbolica 3.0.3
+from PyPI, SymJIT 2.28.3, ufo-model-loader 1.0.1). The native code builds
+Symbolica from symbolica-dev/symbolica's `community` branch (`0e2ad04c`),
+NinjaRS and oneloopmaster at newer commits of their `main` branches (their
+sources pinned on that revision), and TIRust
+([huashengshao/TIRust](https://github.com/huashengshao/TIRust)) at a pinned
+commit, linked by the default cargo feature `tir`; see
+[dependencies/README.md](../../dependencies/README.md). With Python Symbolica
+3.0.3 from PyPI, results of the Python API can depend on what else was
+generated in the same Python process (about 1e-30 relative normally, amplified
+at nearly degenerate 2 -> 2 kinematics): generate each artifact in a fresh
+process where that matters. The Community build of the pinned `community` revision (`0e2ad04c`) shows the
+same in double-double and arbitrary precision (about 5e-29 relative). Saved Symbolica evaluator states are stored in the envelope every Python
+Symbolica since 3.0.3 reads. Process artifacts load only in the version that wrote them:
+artifacts written by 1.0.2 are refused by 1.0.3, regenerate them. The model
+compiler version is unchanged (17), so prepared `.pyamplicol-model` bundles
+written by 1.0.2 still load.
+
+Version `1.0.2` was not published on PyPI and has no tag; its content is part
+of 1.0.3.
+
+## 1.0.2 release
+
+Version `1.0.2` adds one-loop virtual matrix elements on the v2 engine:
+QCD corrections on MG5_aMC's `loop_sm`, and QCD, electroweak and joint
+corrections on the shipped `loop_qcd_qed_sm` and `loop_qcd_qed_sm_Gmu`
+models, with finite parts and poles per squared coupling order, in binary64,
+double-double or arbitrary precision. They load through `Runtime.load` and the
+C, C++, Fortran and Rust SDKs. See
+[One-loop QCD on loop_sm](loop-sm-and-madloop.md),
+[One-loop QCD+QED](electroweak-and-madloop.md) and
+[virtual artifacts](runtime-and-selectors.md#virtual-one-loop-artifacts).
+
+The built-in Standard Model now equals the UFO `sm` (`no_masses`
+restriction) at tree level. Processes without coloured legs (`e+ e- > a a`,
+`e+ e- > mu+ mu-`) were too small by 1/(8 π α)² ≈ 27.8; massive vector and
+Higgs initial states are averaged over their own spin states; the recurrence
+mode counted every W W photon and W W Z vertex twice; and the lepton and
+neutrino currents, the electroweak exchange between quark lines and the
+H H V V and four-Higgs contacts were incomplete. Artifacts written by 1.0.1
+are refused by 1.0.2, whose runtime admits only artifacts of its own package
+version: regenerate them. A 1.0.2 artifact generated with a built-in SM
+source from before these fixes (a development build) loads with a warning
+and keeps the old values. See
+[Built-in Standard Model](models-and-processes.md#built-in-standard-model).
+
+Four-quark HEFT trees on `built-in-sm-heft` and on UFO HEFT models were too
+large, because the H g g vertex did not subtract the U(1) part of its
+internal gluons: 9/8 times for `q q~ > H q' q'~` and its crossings, other
+factors with identical quark flavours or more gluons (1.36 for
+`u u~ > H d d~ g`); fixed in
+[#40](https://github.com/MadGraphTeam/pyamplicol/pull/40).
+
+Processes with one initial particle (1 -> n decays, `t > b w+`) are served
+at tree level on UFO models and on the built-in SM (`z > e+ e-`), and at one
+loop on the loop models; decay chains and loop-induced decays are refused.
+Mechanical hard-coded limits were lifted: the loop rank is the reduction
+backend's; the colour-FFT degree, grouping factors and flavour mappings,
+charges (now exact rationals) and full-colour N_c powers are uncapped; and
+the native C++ compile has no default timeout. The remaining tuning bounds are
+settings
+(`color.adjoint_dense_max_gluons`, `color.fused_selector_max_sectors`,
+`generation.validation.max_resolved_components`).
+
+Version `1.0.2` uses Python Symbolica 3.0.3 from PyPI (or a Symbolica
+Community build of symbolica-dev's `community` branch with
+symbolica-dev/symbolica#163), and the native code builds Symbolica from that
+branch and pull request at a pinned revision. It also uses SymJIT 2.28.3,
+ufo-model-loader 1.0.1, and NinjaRS and oneloopmaster from their `main`
+branches for the one-loop reduction. Tree and one-loop process artifacts
+load only in the version that wrote them, and the model compiler version is
+now 17: regenerate artifacts, compiled models and prepared
+`.pyamplicol-model` bundles written by an earlier version.
+
 ## 1.0.1 release
 
 Version `1.0.1` adds process grouping for multiprocess outputs. Subprocesses
@@ -140,12 +345,9 @@ The release set consists of:
 Source installation may work elsewhere, but a platform is not advertised as
 supported until its installed Python and native API matrix has passed.
 
-Rendered performance PDFs are repository documents, not PyPI wheel payloads or
-release-CI benchmarks. Their links intentionally point to the current `main`
-branch:
-
-- [MacBook M3 report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
-- [AMD EPYC report](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
+Rendered performance reports are not PyPI wheel payloads or release-CI
+benchmarks; the one-loop benchmark report lives in the upstream repository,
+under [docs/performance_reports/loop](https://github.com/MadGraphTeam/pyamplicol/blob/main/docs/performance_reports/loop/README.md).
 
 ## How artifacts are validated and published
 

@@ -1,0 +1,83 @@
+name: pyAmpliCol publish validated artifacts
+
+# Ported from pyAmpliCol's publish-pypi.yml. Manual only (never on push or
+# pull request): publishes the pyamplicol-validated-release artifact of a
+# pyAmpliCol workflow run with full_matrix (workflow_dispatch) to TestPyPI or
+# PyPI. MadGraph7 releases publish pyamplicol through release.yml; this is the
+# separate path for a TestPyPI rehearsal or a pyAmpliCol-only upload. Each
+# destination needs a Trusted Publisher entry naming this workflow file and
+# the environment of the same name (testpypi or pypi).
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: Run ID of a pyAmpliCol workflow run with full_matrix
+        required: true
+        type: string
+      repository:
+        description: Trusted Publishing destination
+        required: true
+        default: testpypi
+        type: choice
+        options:
+          - testpypi
+          - pypi
+
+permissions: {}
+
+jobs:
+  pypi:
+    runs-on: ubuntu-24.04
+    environment:
+      name: ${{ inputs.repository }}
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Download validated package files
+        uses: actions/download-artifact@v5
+        with:
+          name: pyamplicol-validated-release
+          path: validated
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify release package inventory
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path("validated")
+          files = sorted(path for path in root.iterdir() if path.is_file())
+          wheels = [path for path in files if path.suffix == ".whl"]
+          sdists = [path for path in files if path.name.endswith(".tar.gz")]
+          unexpected = [path for path in files if path not in {*wheels, *sdists}]
+          if unexpected:
+              raise SystemExit(
+                  "validated artifact contains unexpected files: "
+                  + ", ".join(path.name for path in unexpected)
+              )
+          if len(wheels) != 3 or len(sdists) != 1:
+              raise SystemExit(
+                  f"expected three wheels and one sdist, found {len(wheels)} wheels "
+                  f"and {len(sdists)} sdists"
+              )
+          expected = {"macosx_11_0_arm64", "macosx_11_0_x86_64", "manylinux_2_28_x86_64"}
+          found = {
+              next((tag for tag in expected if tag in path.name), None) for path in wheels
+          }
+          if found != expected:
+              raise SystemExit(f"unexpected wheel platform inventory: {found}")
+          if any("candidate" in path.name or "dev0" in path.name for path in files):
+              raise SystemExit("candidate artifacts cannot be published")
+      - name: Publish validated artifacts to TestPyPI
+        if: inputs.repository == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: validated
+          repository-url: https://test.pypi.org/legacy/
+      - name: Publish validated artifacts to PyPI
+        if: inputs.repository == 'pypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: validated

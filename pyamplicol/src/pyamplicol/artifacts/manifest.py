@@ -18,6 +18,8 @@ from typing import Any, Literal, cast
 
 from pyamplicol._internal.versions import (
     KNOWN_EVALUATOR_RUNTIME_CAPABILITIES,
+    LEGACY_LOOP_ARTIFACT_REMOVED,
+    RETIRED_LOOP_RUNTIME_CAPABILITY,
     SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     SYMBOLICA_CPP_RUNTIME_CAPABILITY,
     SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
@@ -189,6 +191,8 @@ def _runtime_capabilities(value: object, context: str) -> tuple[str, ...]:
     if result != tuple(sorted(result)):
         raise ArtifactError(f"{context} must be sorted")
     unknown = set(result) - KNOWN_EVALUATOR_RUNTIME_CAPABILITIES
+    if RETIRED_LOOP_RUNTIME_CAPABILITY in unknown:
+        raise CompatibilityError(LEGACY_LOOP_ARTIFACT_REMOVED)
     if unknown:
         raise ArtifactError(
             f"{context} contains unsupported capabilities: "
@@ -395,7 +399,7 @@ def _process(value: object, index: int) -> Mapping[str, object]:
         },
     )
     accuracy = raw.get("color_accuracy")
-    if accuracy not in {"lc", "nlc", "full"}:
+    if accuracy not in {"lc", "nlc", "full", "strict-lc", "strict-nlc"}:
         raise ArtifactError(f"{context}.color_accuracy is invalid")
     pdgs = tuple(_sequence(raw.get("external_pdgs"), f"{context}.external_pdgs"))
     if len(pdgs) < 3 or not all(
@@ -884,8 +888,7 @@ def _validate_target_compatibility(
         if target_specific_capabilities:
             raise CompatibilityError(
                 f"{PORTABLE_64LE_TARGET} artifact declares target-specific "
-                "evaluator capabilities: "
-                + ", ".join(target_specific_capabilities)
+                "evaluator capabilities: " + ", ".join(target_specific_capabilities)
             )
         if (
             expected_target is not None
