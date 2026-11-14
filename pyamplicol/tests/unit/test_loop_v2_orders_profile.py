@@ -392,6 +392,47 @@ def test_the_runtime_profile_times_distinct_points(uux_ddx, monkeypatch):
     assert profile_points(uux_ddx, "p", bench) == profile_points(uux_ddx, "p", bench)
 
 
+def test_the_runtime_profile_reports_peak_ram_and_double_double(uux_ddx):
+    """The runtime profile's peak RAM over its profiled calls, and with
+    ``evaluation.arithmetic = "double-double"`` the same batches timed in
+    double-double after the binary64 timing (the binary64 calls are the
+    same: one extra pass, none without the setting)."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import profile_virtual
+    from pyamplicol.config import BenchmarkConfig, EvaluationConfig, RunConfig
+
+    bench = BenchmarkConfig(batch_size=2, warmup_runs=1, minimum_samples=2)
+    runtime = Runtime.load(uux_ddx)
+    plain = profile_virtual(runtime, bench, points=_points(uux_ddx) * 6)
+    assert plain.double_double is None
+    assert plain.peak_memory is not None
+    assert plain.peak_memory.peak_rss_bytes >= plain.peak_memory.start_rss_bytes
+    config = RunConfig(
+        action="benchmark",
+        evaluation=EvaluationConfig(arithmetic="double-double"),
+        benchmark=bench,
+    )
+    calls: list = []
+    evaluate = Runtime.evaluate
+
+    def recorded(self, points, *args, **kwargs):
+        calls.append(kwargs.get("arithmetic"))
+        return evaluate(self, points, *args, **kwargs)
+
+    Runtime.evaluate = recorded
+    try:
+        both = profile_virtual(runtime, config, points=_points(uux_ddx) * 6)
+    finally:
+        Runtime.evaluate = evaluate
+    assert calls == [None] * 3 + ["double-double"] * 3
+    dd = both.double_double
+    assert dd is not None and dd.arithmetic == "double-double"
+    assert (dd.batch, dd.samples, dd.warmup, dd.points) == (2, 2, 1, 4)
+    assert dd.low <= dd.seconds_per_point <= dd.high and dd.failed_points == 0
+    assert both.samples == plain.samples and both.batch == plain.batch
+
+
 @pytest.mark.loop_physics
 def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
     """profile --stability on 1 (in-process) and 3 worker processes: the
@@ -430,6 +471,12 @@ def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
         report["stability_setup"].pop("n_core")
         for row in report["stability"]:
             row.pop("seconds")
+            # Timings, with the point counts per precision (all of them).
+            timing = row.pop("precision_timing")
+            assert {k: v["points"] for k, v in timing.items()} == {
+                "binary64": 7,
+                "double-double": 7,
+            }
     assert one["stability"] == three["stability"]
     assert one["stability_setup"] == three["stability_setup"]
     assert one["failure_causes"] == three["failure_causes"]

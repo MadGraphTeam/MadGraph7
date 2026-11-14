@@ -59,7 +59,7 @@ import re
 import statistics
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
@@ -246,6 +246,12 @@ class BackendStability:
     per_point: tuple[StabilityPoint, ...] = ()
     best_effort: int = 0
     best_effort_covered: int = 0
+    # The evaluations of the run per precision: "binary64" (the checked call
+    # with its stability estimate) and "double-double" (the reference), each
+    # with its ``points`` and ``seconds_per_point`` (the wall time per point
+    # of its batches in the workers, the first-call cost of a worker left
+    # out as the progress estimate does: ``_StabilityProgress``).
+    precision_timing: Mapping[str, Mapping[str, float | int | None]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -796,7 +802,7 @@ class _StabilityProgress:
             self.done[(backend, precision)] = self.points
         self.emit()
 
-    def _rate(self, key: tuple[str, str]) -> float:
+    def rate(self, key: tuple[str, str]) -> float:
         """The cost per point of a stream that returned: from its later
         tasks once there are some; else the difference of its two probes
         (one point more, the same first-call cost); else its one probe."""
@@ -812,7 +818,7 @@ class _StabilityProgress:
 
     def eta(self) -> float | None:
         known = {
-            key: self._rate(key)
+            key: self.rate(key)
             for key in self.done
             if self.probes[key] or self.later[key][0]
         }
@@ -1109,6 +1115,25 @@ def _stability(
                 indices=indices,
             )
         )
+    rows = [
+        row
+        if row.refusal is not None
+        else replace(
+            row,
+            precision_timing={
+                precision: {
+                    "points": tracker.done[(row.backend, precision)],
+                    "seconds_per_point": (
+                        tracker.rate((row.backend, precision))
+                        if tracker.done[(row.backend, precision)]
+                        else None
+                    ),
+                }
+                for precision in _PRECISIONS
+            },
+        )
+        for row in rows
+    ]
     setup = {
         "points": count,
         "requested": count,

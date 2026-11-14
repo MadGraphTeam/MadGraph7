@@ -316,7 +316,8 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
 
 
 def _runtime_extra_lines(rows: Any, color: bool) -> list[str]:
-    """Per profiled backend its peak RAM over the profiled calls."""
+    """Per profiled backend its double-double timing (when the profile ran
+    one) and its peak RAM over the profiled calls."""
 
     from .resources import peak_memory_text
 
@@ -326,9 +327,60 @@ def _runtime_extra_lines(rows: Any, color: bool) -> list[str]:
         if profile is None:
             continue
         name = _name(row.backend)
+        dd = getattr(profile, "double_double", None)
+        if dd is not None:
+            ratio = (
+                f", x{dd.seconds_per_point / profile.seconds_per_point:.1f} binary64"
+                if profile.seconds_per_point > 0.0
+                else ""
+            )
+            failed = f", {dd.failed_points} failed" if dd.failed_points else ""
+            lines.append(
+                f"{name} double-double: "
+                + palette.paint(
+                    f"{_seconds_text(dd.seconds_per_point)} / point",
+                    None,
+                    color=color,
+                    bold=True,
+                )
+                + f"{ratio} ({dd.points} points{failed})"
+            )
         text = peak_memory_text(getattr(profile, "peak_memory", None))
         if text is not None:
             lines.append(f"{name} peak RAM: {text}")
+    return lines
+
+
+def _stability_timing_lines(rows: Any) -> list[str]:
+    """Per backend the time per point of the stability run in binary64
+    (with its checks) and in double-double (the reference), one line each,
+    with the points evaluated and the ratio."""
+
+    lines = []
+    for row in rows:
+        timing = getattr(row, "precision_timing", None)
+        if not timing:
+            continue
+        name = _name(row.backend)
+        b64 = timing.get("binary64", {})
+        dd = timing.get("double-double", {})
+        b64_seconds = b64.get("seconds_per_point")
+        dd_seconds = dd.get("seconds_per_point")
+        if b64_seconds is not None:
+            lines.append(
+                f"{name} time / point: binary64 {_seconds_text(float(b64_seconds))}"
+                f" over {b64.get('points')} points (with its checks)"
+            )
+        if dd_seconds is not None:
+            ratio = (
+                f", x{float(dd_seconds) / float(b64_seconds):.1f}"
+                if b64_seconds
+                else ""
+            )
+            lines.append(
+                f"{name} time / point: double-double {_seconds_text(float(dd_seconds))}"
+                f" over {dd.get('points')} points{ratio}"
+            )
     return lines
 
 
@@ -529,6 +581,9 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             )
         )
     blocks.append(str(verdicts.get_string()))
+    timing = _stability_timing_lines(report.stability)
+    if timing:
+        blocks.append("\n".join(timing))
     best = _best_effort_table(report, served, prettytable, color)
     if best is not None:
         blocks.append(best)

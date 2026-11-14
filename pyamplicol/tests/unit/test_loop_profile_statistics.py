@@ -483,6 +483,77 @@ def test_displayed_stability_estimate_is_smoothed(monkeypatch):
     assert tracker.shown_eta() is None
 
 
+def test_runtime_and_stability_report_peak_ram_and_double_double_timing():
+    """The runtime table's lines per backend: the double-double timing (when
+    the profile ran one) and the peak RAM of its profiled calls; the
+    stability run's time per point in binary64 and double-double; all in
+    the JSON as fields, nothing printed when not measured."""
+
+    from pyamplicol.benchmarking import PrecisionTiming, VirtualProfileResult
+    from pyamplicol.cli.main import write_result
+    from pyamplicol.reporting import render_summary
+    from pyamplicol.reporting.resources import PeakMemory
+
+    base = VirtualProfileResult(
+        "gg_zgg",
+        "g g > z g g",
+        "loop-induced",
+        4,
+        2,
+        1,
+        1e-3,
+        9e-4,
+        1.1e-3,
+        {"trees": 5e-4, "reduction": 5e-4},
+        {},
+        False,
+        0,
+    )
+    peak = PeakMemory(3 * 1024**3, 2 * 1024**3, 1024**3, "profiled region", "VmHWM")
+    dd = PrecisionTiming("double-double", 4, 2, 1, 8, 2e-2, 1.9e-2, 2.1e-2, 1)
+    rows = (
+        BackendRuntime(
+            "tirust", replace(base, peak_memory=peak, double_double=dd), ratio=1.0
+        ),
+        BackendRuntime("ninjars", replace(base, seconds_per_point=2e-3), ratio=2.0),
+    )
+    timed = replace(
+        BackendStability("tirust", points=4, true_digits=(9.0,) * 4),
+        precision_timing={
+            "binary64": {"points": 4, "seconds_per_point": 2e-3},
+            "double-double": {"points": 4, "seconds_per_point": 4e-2},
+        },
+    )
+    report = _report((timed,), rows)
+    text = render_summary(report, color=False)
+    lines = text.splitlines()
+    assert (
+        "TIRust double-double: 20 ms / point, x20.0 binary64 (8 points, 1 failed)"
+        in lines
+    ), text
+    assert any(
+        line.startswith("TIRust peak RAM: 3.000 GiB, +1.000 GiB over start")
+        and "(profiled region, VmHWM)" in line
+        for line in lines
+    ), text
+    # Nothing measured, nothing printed (NinjaRS here).
+    assert not any(line.startswith("NinjaRS double-double") for line in lines)
+    assert not any(line.startswith("NinjaRS peak RAM") for line in lines)
+    assert (
+        "TIRust time / point: binary64 2 ms over 4 points (with its checks)" in lines
+    )
+    assert "TIRust time / point: double-double 40 ms over 4 points, x20.0" in lines
+    assert max(len(line) for line in lines) <= 100
+    machine = io.StringIO()
+    write_result(report, format="json", stream=machine, color=False)
+    payload = json.loads(machine.getvalue())
+    profile = payload["runtime"][0]["profile"]
+    assert profile["peak_memory"]["increase_rss_bytes"] == 1024**3
+    assert profile["double_double"]["points"] == 8
+    assert payload["runtime"][1]["profile"]["double_double"] is None
+    assert payload["stability"][0]["precision_timing"]["double-double"]["points"] == 4
+
+
 def test_peak_memory_measures_the_region():
     """``peak_memory`` over a block that touches 256 MiB: the peak and its
     increase over the start cover it (Linux: VmHWM reset at the start;

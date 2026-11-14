@@ -974,6 +974,17 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
             "certificate); default off"
         ),
     )
+    parser.add_argument(
+        "--arithmetic",
+        dest="evaluation.arithmetic",
+        choices=("double", "double-double"),
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: double-double also times the runtime's batches in "
+            "double-double, after the binary64 timing (evaluation.arithmetic; "
+            "default: binary64 only)"
+        ),
+    )
     _add_kinematics_options(parser)
     parser.add_argument(
         "--mu-r2",

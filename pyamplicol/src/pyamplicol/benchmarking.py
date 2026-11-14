@@ -2797,6 +2797,30 @@ class VirtualProfileResult:
     # (warm-up, timed and double-double calls; ``reporting.resources.
     # peak_memory``).
     peak_memory: PeakMemory | None = None
+    # The same timed batches in double-double when the profiled
+    # configuration requests it (``evaluation.arithmetic = "double-double"``),
+    # timed after the binary64 calls; None otherwise (nothing extra runs).
+    double_double: PrecisionTiming | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PrecisionTiming:
+    """The timed calls of a profile in one carrier (``VirtualProfileResult.
+    double_double``): ``samples`` calls of ``batch`` points after ``warmup``
+    warm-up calls, the same batches as the binary64 timing;
+    ``seconds_per_point`` the median call's wall time per point, ``low`` and
+    ``high`` the fastest and slowest call's; ``points`` the timed points;
+    ``failed_points`` those without an accepted value."""
+
+    arithmetic: str
+    batch: int
+    samples: int
+    warmup: int
+    points: int
+    seconds_per_point: float
+    low: float
+    high: float
+    failed_points: int
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -2959,11 +2983,53 @@ def profile_virtual(
             return evaluation.mu_r2
         return [_initial_invariant(point, initial) for point in batch]
 
+    double_double = evaluation is not None and evaluation.arithmetic == "double-double"
     with peak_memory() as peak:
         profile = _profile_virtual_calls(
             runtime, batches, bench, options, scales, progress, calls
         )
-    return replace(profile, peak_memory=peak.result)
+        dd_timing = (
+            _precision_timing(runtime, batches, bench, options, scales, "double-double")
+            if double_double
+            else None
+        )
+    return replace(profile, peak_memory=peak.result, double_double=dd_timing)
+
+
+def _precision_timing(
+    runtime: Any,
+    batches: Sequence[Momenta],
+    bench: BenchmarkConfig,
+    options: Mapping[str, Any],
+    scales: Callable[[Momenta], Any],
+    arithmetic: str,
+) -> PrecisionTiming:
+    """The profile's batches timed in ``arithmetic`` with the binary64
+    protocol (the same warm-up calls, then the same timed batches)."""
+
+    carrier = {**options, "arithmetic": arithmetic}
+    for batch in batches[: bench.warmup_runs]:
+        runtime.evaluate(batch, mu_r2=scales(batch), **carrier)
+    walls: list[float] = []
+    failed = 0
+    for batch in batches[bench.warmup_runs :]:
+        mu_r2 = scales(batch)
+        begin = time.perf_counter()
+        result = runtime.evaluate(batch, mu_r2=mu_r2, **carrier)
+        walls.append(time.perf_counter() - begin)
+        failed += sum(1 for valid in result.valid if not valid)
+    size = bench.batch_size
+    return PrecisionTiming(
+        arithmetic,
+        size,
+        len(walls),
+        bench.warmup_runs,
+        size * len(walls),
+        statistics.median(walls) / size,
+        min(walls) / size,
+        max(walls) / size,
+        failed,
+    )
 
 
 def _profile_virtual_calls(
@@ -3120,6 +3186,7 @@ def create_benchmark_backend(
 
 __all__ = [
     "BenchmarkBackend",
+    "PrecisionTiming",
     "VirtualProfileResult",
     "create_benchmark_backend",
     "is_virtual_target",
