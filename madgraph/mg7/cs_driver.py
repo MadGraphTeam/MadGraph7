@@ -670,8 +670,13 @@ class CSRealIntegrand:
         ungated = self.ungated(momenta, x1, x2)["color_weight"]
         rho = np.abs(ungated)
         total = rho.sum(1)
+        # not where the ungated dipoles are infinite (the momenta of the points
+        # that are not valid, set to zero)
         channel_weight = np.divide(
-            rho[:, m_channel], total, out=np.zeros(count), where=total > 0
+            rho[:, m_channel],
+            total,
+            out=np.zeros(count),
+            where=np.isfinite(total) & (total > 0),
         )
         # the real emission
         fks_index = np.full(count, self.configuration, dtype=np.int32)

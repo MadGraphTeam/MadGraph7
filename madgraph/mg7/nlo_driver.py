@@ -627,7 +627,8 @@ def default_histograms(configurations, energy, leptonic, decay, maxjetflavor):
     """The histograms that MG7 writes by default for the final state of the
     Born (RunCardMG7.set_default_histograms): the pt and eta of every
     final-state object, the jets (the gluon and the quarks up to
-    maxjetflavor) ordered by pt and the other particles grouped by |pdg|,
+    maxjetflavor) ordered by pt, also a single one, and the other particles
+    grouped by |pdg|,
     the invariant mass of every pair of them (at most ten) and sqrt_s (not
     for a decay), with the ranges of MG7 for the energy of the collision."""
     from madgraph.various.banner import RunCardMG7
@@ -645,7 +646,11 @@ def default_histograms(configurations, energy, leptonic, decay, maxjetflavor):
     slots = []
     for group, count in groups.items():
         count = min(count, RunCardMG7.max_histogram_slots)
-        slots += [group] if count == 1 else [f"{group}_{k + 1}" for k in range(count)]
+        # jets always by their order, the real emission has one more of them
+        if count == 1 and group != "jet":
+            slots.append(group)
+        else:
+            slots += [f"{group}_{k + 1}" for k in range(count)]
     rounded = RunCardMG7._round_scale
     if decay:
         pt_max, mass_max = rounded(energy / 2, True), rounded(energy, True)

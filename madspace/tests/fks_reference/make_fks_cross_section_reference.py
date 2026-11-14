@@ -4,8 +4,8 @@ FKS integrand of madspace.
 
 For every setup below, this script runs a fixed-order integration of an
 aMC@NLO output of MadGraph7 (the outputs of make_fks_integrand_reference.py,
-one per process, generated here where they are missing) to the accuracy of
-ACCURACY, at LO and at NLO, and collects into
+one per process, and those of OUTPUTS, generated here where they are
+missing) to the accuracy of ACCURACY, at LO and at NLO, and collects into
 madspace/tests/test_data/fks_cross_section/<name>.json:
 
     process, output (the name of the output), mg_commit, run_card (the values
@@ -33,9 +33,9 @@ import make_fks_integrand_reference as mfir
 HERE = os.path.dirname(os.path.realpath(__file__))
 OUT_DIR = os.path.join(HERE, "..", "test_data", "fks_cross_section")
 
-# name -> (output of make_fks_integrand_reference.py, run_card values). The
-# fixed scale of e+ e- > j j without cuts gives sigma_NLO = sigma_LO (1 +
-# alpha_s / pi).
+# name -> (output of make_fks_integrand_reference.py or of OUTPUTS, run_card
+# values). The fixed scale of e+ e- > j j without cuts gives sigma_NLO =
+# sigma_LO (1 + alpha_s / pi).
 FIXED = dict(
     fixed_ren_scale=True,
     fixed_fac_scale=True,
@@ -51,10 +51,21 @@ SETUPS = {
     "pp_ttx": ("pp_ttx", mfir.PROCESSES["pp_ttx"][1]),
     "t_bw": ("t_bw", {}),
     "epem_jjj": ("epem_jjj", {}),
+    "pp_epemj": ("pp_epemj", {}),
+}
+# outputs of the cross sections alone, without an integrand reference: name
+# -> (process, run_card values, model). p p > e+ e- j has a jet that radiates
+# against the incoming partons and incoming partons that radiate against it.
+OUTPUTS = {
+    "pp_epemj": (
+        "p p > e+ e- j [QCD]",
+        dict(mfir.HADRONIC, mll_sf=30, ptj=30, jetalgo=-1, jetradius=0.4),
+        None,
+    ),
 }
 # the relative accuracy of the runs (req_acc_FO), per setup where it differs
 ACCURACY = 2e-4
-ACCURACIES = {"pp_ttx": 1e-3, "epem_jjj": 1e-3}
+ACCURACIES = {"pp_ttx": 1e-3, "epem_jjj": 1e-3, "pp_epemj": 2e-3}
 # the values of every run, the defaults of the run_card where a setup of
 # the same output changes them
 RUN_CARD = {
@@ -139,9 +150,9 @@ def main():
     names = [args.only] if args.only else list(SETUPS)
     for name in names:
         output, values = SETUPS[name]
-        process, base = mfir.PROCESSES[output]
+        process, base, model = OUTPUTS.get(output) or (*mfir.PROCESSES[output], None)
         out = mfir.generate(
-            output, process, work, os.path.join(work, f"{output}_gen.log")
+            output, process, work, os.path.join(work, f"{output}_gen.log"), model
         )
         mfir.sum_helicities(out)
         accuracy = args.accuracy or ACCURACIES.get(name, ACCURACY)

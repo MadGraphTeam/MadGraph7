@@ -146,12 +146,14 @@ DUMP_CALL = (
 )
 
 
-def generate(name, process, work, log):
+def generate(name, process, work, log, model=None):
     out = os.path.join(work, name)
     if not os.path.isdir(os.path.join(out, "SubProcesses")):
         script = os.path.join(work, f"{name}_gen.mg")
         with open(script, "w") as f:
             f.write("set automatic_html_opening False\n")
+            if model:
+                f.write(f"import model {model}\n")
             f.write(f"generate {process}\n")
             f.write(f"output {out}\n")
         mfr.madgraph(script, work, log, expect=os.path.join(out, "SubProcesses"))

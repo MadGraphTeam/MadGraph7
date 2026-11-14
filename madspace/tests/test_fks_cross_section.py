@@ -12,7 +12,9 @@ an iteration (four adapt the grids, six add up), POINTS by default, with
 which all setups take a minute on one core, half of it for the virtual of
 g g > t t~. With MADSPACE_FKS_ACCURACY=reference the runs go on to the
 accuracy of each reference instead (req_acc_FO of its run card), as a
-fixed-order run of MG5aMC does, in about 20 minutes on one core.
+fixed-order run of MG5aMC does, in about 20 minutes on one core. p p > e+
+e- j (twelve subprocesses, two and a half minutes there) runs only with
+MADSPACE_FKS_SLOW=1.
 """
 
 import functools
@@ -28,12 +30,17 @@ from madgraph.mg7.fks_driver import FKSRun, default_histograms, read_histograms
 from madspace_testing import default_context
 from test_fks_couplings import alpha_s_madfks
 
+from madspace.fks import fks_histogram_jet_count
+
 OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
 needs_outputs = pytest.mark.skipif(
     not OUTPUTS, reason="MADSPACE_FKS_OUTPUTS names no aMC@NLO outputs"
 )
 POINTS = int(os.environ.get("MADSPACE_FKS_POINTS", "2000"))
 TO_ACCURACY = os.environ.get("MADSPACE_FKS_ACCURACY") == "reference"
+SLOW = os.environ.get("MADSPACE_FKS_SLOW") == "1"
+# the references that run only with MADSPACE_FKS_SLOW=1
+SLOW_REFERENCES = {"pp_epemj"}
 PULL = 4.0
 DATA = sorted(
     glob.glob(
@@ -57,6 +64,8 @@ def fks_run(path):
     its run card and param card."""
     data = reference(path)
     name = os.path.basename(path)[:-5]
+    if name in SLOW_REFERENCES and not SLOW:
+        pytest.skip(f"{name} runs only with MADSPACE_FKS_SLOW=1")
     points = {}
     if not TO_ACCURACY:
         points = {
@@ -174,19 +183,21 @@ def test_histograms_of_run_card(tmp_path):
     assert pair["observable"]["select_pids"] == [[11, -11], jet]
     assert pair["observable"]["order_indices"] == [0, 2]
     assert histograms["sqrt_s"]["observable"]["select_pids"] == []
+    # a single jet by its order too, which the real emission needs, as the
+    # FKS histograms take it
     configurations = {"nincoming": 2, "born_pdgs": [-1, 1, 11, -11, 21]}
-    names = [
-        h["name"] for h in default_histograms(configurations, 13000.0, False, False, 4)
-    ]
-    assert names == [
+    defaults = default_histograms(configurations, 13000.0, False, False, 4)
+    assert [h["name"] for h in defaults] == [
         "e_1-pt",
         "e_2-pt",
-        "jet-pt",
+        "jet_1-pt",
         "e_1-eta",
         "e_2-eta",
-        "jet-eta",
+        "jet_1-eta",
         "e_1-e_2-pair_mass",
-        "e_1-jet-pair_mass",
-        "e_2-jet-pair_mass",
+        "e_1-jet_1-pair_mass",
+        "e_2-jet_1-pair_mass",
         "sqrt_s",
     ]
+    for histogram in defaults:
+        fks_histogram_jet_count(histogram["observable"])

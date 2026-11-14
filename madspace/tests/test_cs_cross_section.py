@@ -16,10 +16,12 @@ the real matrix element in the soft and collinear limits, with gluons in
 the initial state (p p > t t~) and in the final state (e+ e- > j j j, with
 the splittings of a final-state gluon into g g and q q~). The NLO cross
 sections are those of MG5aMC within PULL combined errors and do not depend
-on alpha. MADSPACE_FKS_POINTS sets the number of points per channel of an
-iteration, POINTS by default, with which the tests take about four minutes
-on one core, most of it for the real streams of p p > t t~ (108 channels)
-and e+ e- > j j j (192).
+on alpha, also for p p > e+ e- j, whose jet radiates against the incoming
+partons and the incoming partons against it. MADSPACE_FKS_POINTS sets the
+number of points per channel of an iteration, POINTS by default, with which
+the tests take about four minutes on one core, most of it for the real
+streams of p p > t t~ (108 channels) and e+ e- > j j j (192). p p > e+ e- j
+(1072 channels, seven minutes a run there) runs only with MADSPACE_FKS_SLOW=1.
 """
 
 import functools
@@ -39,6 +41,9 @@ needs_outputs = pytest.mark.skipif(
     not OUTPUTS, reason="MADSPACE_FKS_OUTPUTS names no aMC@NLO outputs"
 )
 POINTS = int(os.environ.get("MADSPACE_FKS_POINTS", "1000"))
+SLOW = os.environ.get("MADSPACE_FKS_SLOW") == "1"
+# the references that run only with MADSPACE_FKS_SLOW=1
+SLOW_REFERENCES = {"pp_epemj"}
 PULL = 4.0
 TESTS = os.path.dirname(__file__)
 DATA = os.path.join(TESTS, "test_data", "fks_cross_section")
@@ -58,6 +63,8 @@ def dipole_reference(name):
 
 
 def make_run(name, alpha=1.0, streams=STREAMS, points=POINTS, **options):
+    if name in SLOW_REFERENCES and not SLOW:
+        pytest.skip(f"{name} runs only with MADSPACE_FKS_SLOW=1")
     data = reference(name)
     tag = "_".join([name, str(alpha), *streams])
     return CSRun(
@@ -142,7 +149,7 @@ def test_epem_jj_real(alpha):
 
 @needs_outputs
 @pytest.mark.parametrize(
-    "name", ["epem_jj", "epem_jj_antikt", "pp_epem", "pp_ttx", "epem_jjj"]
+    "name", ["epem_jj", "epem_jj_antikt", "pp_epem", "pp_ttx", "epem_jjj", "pp_epemj"]
 )
 def test_against_mg5amc(name):
     """The LO and NLO cross sections of the CS driver and those of MG5aMC,
@@ -157,7 +164,7 @@ def test_against_mg5amc(name):
 
 
 @needs_outputs
-@pytest.mark.parametrize("name", ["epem_jj", "pp_epem", "epem_jjj"])
+@pytest.mark.parametrize("name", ["epem_jj", "pp_epem", "epem_jjj", "pp_epemj"])
 def test_alpha_independence(name):
     """The NLO cross section does not depend on alpha (1 and 0.1 for all
     families), within PULL combined errors."""
