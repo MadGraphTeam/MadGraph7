@@ -739,13 +739,23 @@ external masses of the artifact's validation point; point i from seed + i;
 unless `--momenta` gives the timed points; the runtime and the stability
 points are drawn separately from the same seed.
 
-**Runtime.** `--minimum-samples` calls of `--batch-size` points each are
-timed per backend after `--warmup-runs` warm-up calls, every call on a new
-batch of distinct points: without `--momenta`, `--batch-size` x
-(`--warmup-runs` + `--minimum-samples`) distinct flat points (seed and
-energy as above), the same on every backend; with `--momenta`, its points
-in order, cycled when there are fewer. The default setup, which the table
-header names: binary64, finite part only, the checked reduction (the
+**Runtime.** Every backend is timed **on one core**, the cost one Monte Carlo
+worker pays: in its own spawned process whose thread pools all run one
+thread (rayon's, used by every native pool, and any BLAS/OpenMP pool;
+`--n_core` is the worker count of `--stability` only), on batched calls
+whose SIMD lanes are filled. Every time the runtime tables print is a time
+per phase-space point on that core: a call's wall time over its points
+(`cpu_per_wall` in `--json`, the process's CPU time over the timed calls'
+wall time, is at most about 1 and says how much of the core the host left
+it). `--warmup-runs` untimed calls (default 2) come first, then at least
+`--minimum-samples` timed calls (default 5), more until they add up to
+`--target-runtime` seconds (default 10), each of `--batch-size` points
+(default 128: eight whole 16-point binary64 SIMD chunks), every call on a
+new batch of distinct points: without `--momenta`, the flat points from the
+seed on (seed and energy as above; call k, warm-ups counted, takes the
+points from k x `--batch-size` on, so every call has the same points on
+every backend); with `--momenta`, its points in order, cycled when there are
+fewer. The default setup, which the table header names: binary64, finite part only, the checked reduction (the
 backends' own acceptance checks; `--reduction-unchecked` profiles the
 unchecked timing mode, no accuracy certificate), no stability checks and no
 rescue; the default backend runs as `auto` (its per-point fallback
@@ -766,7 +776,10 @@ trees and counterterm kets; dressing: seeds, factors and dressing of a
 Born-interfered process, the dressing of a loop-induced one; scatter;
 reduction; rest: every other stage and the untimed remainder), read from the
 native executor's always-on stage reports of the same timed calls, with each
-backend's share (and a bar per group) and the ratio between the two backends.
+backend's share (and a bar per group) and the ratio between the two backends:
+the shares of the timed calls' total time applied to the time per point, so
+the stages add up to it (rest is what the native stages do not attribute:
+Python's part of the call and the native work outside the named stages).
 `--mu-r2` sets the scale (default: per point the squared invariant mass of
 its initial state).
 
@@ -775,22 +788,34 @@ the matrix element on that backend: every backend is profiled in its own
 spawned process that loads the artifact and runs that backend's warm-up and
 timed calls only (so no backend's figure holds the other's prepared state),
 and the cell is that process's peak resident set size over those binary64
-calls, at the runtime setup's points per call, on the native threads the
-timing uses. On Linux it is the kernel's high-water
+calls, at the runtime setup's points per call, on one core (one thread per
+pool), before the reference timing. On Linux it is the kernel's high-water
 mark (`VmHWM`), reset when the calls start (`/proc/self/clear_refs`); on
 macOS and the BSDs only the process lifetime's peak is known (`getrusage`
 `ru_maxrss`): it is the calls' peak when they raised it, else the cell shows
 the bound, `<= 2.21 GiB` (the worker's load reached more than the calls).
 `--json` keeps the start value, the increase, the scope and the method
-(`peak_memory`). With `--arithmetic double-double`
-(`evaluation.arithmetic = "double-double"`) the same batches are also timed
-in double-double after the binary64 timing (the same warm-up and timed
-calls; the binary64 timing is unchanged and nothing extra runs without it),
-and the time cell carries how many times longer the double-double median
-call is:
+(`peak_memory`).
+
+Next to the time per point, `(dd x15)` is the **reference multiplier**: N is
+the time per point of one fully optimistic pass of the same backend in the
+reference precision (`--ground-truth`, below; `dd` double-double by default,
+`arb(D)` arbitrary precision at D digits) over the displayed time per point,
+both on the same core. The optimistic pass is one evaluation per point and
+nothing else: the unchecked reduction of that backend alone (no `auto`
+per-point fallback or guard), no stability checks, no rescue, no best-effort
+re-evaluation. It runs after the binary64 calls in the same process, with the
+same protocol (`--warmup-runs` untimed calls, at least `--minimum-samples`
+timed ones, more until `--target-runtime` seconds), in calls of one SIMD
+chunk (16 points: no padded lane in any carrier), call k on the first points
+of the binary64 timing's batch k; N is its median call's time per point over
+the binary64 median call's. The displayed time keeps its meaning (the
+checked reduction, a refused point served best-effort and timed as such):
+the multiplier is the user's question "how much does one plain pass in the
+reference precision cost", not the cost of a rescue.
 
 ```text
-$ pyamplicol profile artifacts/gg_zz --arithmetic double-double   # g g > z z [noborn=QCD]
+$ pyamplicol profile artifacts/gg_zz   # g g > z z [noborn=QCD]
 +-------------------------------------------------------------------------+
 |                      Runtime per reduction backend                      |
 +----------+------------------+-------------------+------------+----------+
@@ -801,15 +826,28 @@ $ pyamplicol profile artifacts/gg_zz --arithmetic double-double   # g g > z z [n
 +----------+------------------+-------------------+------------+----------+
 ```
 
-The multiplier has one decimal below 10 and none from 10 on.
-
-The double-double timing's points, its fastest and slowest call, its peak
-RAM and its points without an accepted value are in `--json`
-(`double_double`); such
-points are listed under the table as `... in double-double` causes. A tree
+The multiplier has one decimal below 10 and none from 10 on. A reference that
+gives no value at any timed point leaves the time alone. The reference
+timing's calls, points, fastest and slowest call, peak RAM and points
+without a value are in `--json` (`reference`, with its `arithmetic` and
+`digits`); such points are listed under the table as `... in double-double`
+(or `... in arb(D)`) causes, counted over the reference's points. A tree
 artifact's profile reports `peak RAM` as a summary row (its runtime profile
-is binary64 only, in one process). `--fields-description-help` explains
-every column, with how this run measured `peak RAM`.
+is binary64 only, in one process, its pools at one thread).
+`--fields-description-help` explains every column, with how this run
+measured `peak RAM`.
+
+**Ground truth.** `--ground-truth` (`benchmark.ground_truth`) selects the
+reference of both tables: `double-double` (`dd`, the default) or arbitrary
+precision, `arbitrary` (`arb`) at the built-in rescue's arbitrary-precision
+digits (57, `loops.v2.stability.DEFAULT_RESCUE`) or `arbitrary:DIGITS`
+(`arb:DIGITS`). It is the stability run's truth and the precision of both
+tables' multipliers, and the labels follow it: the header's `ground truth`
+row, `(arb(57) x210)`, "Stable digits of binary64 vs arb(57)". The values
+judged are binary64's either way; a point whose reference fails is "no
+ref." as before. Arbitrary precision costs far more than double-double:
+`--minimum-samples` and `--target-runtime` bound its runtime timing as they
+bound the binary64 one.
 
 **Stability.** Over N flat points (`benchmark.stability_points` /
 `--stability-points`, default 1000, drawn with `evaluation.phase_space`'s
@@ -826,7 +864,8 @@ test (one default rotation, what `evaluation.stability_checks` gives by
 default; `evaluation.stability_checks` replaces it when set; the rescue's own
 check set, a fixed Euler rotation plus the rescaled-reduction check, is
 stronger and is not what is measured here) and again in double-double on the
-same backend, the reference. Following the measure of MadLoop
+same backend in the reference precision (`--ground-truth`; double-double by
+default), the reference. Following the measure of MadLoop
 (arXiv:1103.0621, sect. 3.4) and MadGraph5_aMC@NLO (arXiv:1405.0301, "Checks,
 stability, and recovery of numerically-unstable integral reductions"), the
 number of stable digits of a value v against a reference r is
@@ -834,7 +873,8 @@ number of stable digits of a value v against a reference r is
 squared-order sectors; the poles are not computed) and capped to binary64's
 range [0, 15.95]:
 
-- **true digits**: the binary64 value against the double-double re-run;
+- **true digits**: the binary64 value against the reference re-run (its
+  sectors summed exactly, the error formed in rational arithmetic);
 - **estimated digits**: the binary64 call's own stability estimate (its
   absolute finite-part errors summed over the sectors, over |total|).
 
@@ -845,7 +885,7 @@ status best-effort; since 1.0.3) at its true digits, its estimate being the
 call's checks' estimate of that value; it is never accepted, so it always
 counts as flagged. A point with no binary64 value at all ("no value") counts
 0 true digits (the worst end of the ranking) and has no estimate. A point with a binary64 value whose
-double-double reference failed has an unknown truth and is left out (shown as
+reference failed has an unknown truth and is left out (shown as
 "no ref."). The measured points (N in what follows) are all others.
 
 The measured points are sorted by true digits from worst to best. At the
@@ -866,8 +906,8 @@ reads, or a binary64 failure, which the result reports and so detects), the
 flagged points that are truly inaccurate (true relative error above the
 target, or no binary64 value) and the truly inaccurate points not flagged
 ("missed"), and the wall time of its binary64 calls (with their checks,
-summed over the workers) with how many times longer its double-double
-calls took in total, `128 s (dd x1.8)` (on a second line when the table
+summed over the workers) with how many times longer its reference calls
+took in total, `128 s (dd x1.8)` (on a second line when the table
 would pass the line width; each precision's points, total and
 time per point are in `--json`, `precision_timing`). Every worker loads the
 artifact and makes one untimed call per backend and precision before any
@@ -877,7 +917,7 @@ include their stability checks (the default rotation test evaluates each
 point twice) while the reference evaluates each point once, so this
 multiplier is not the cost ratio of one evaluation: that is the runtime
 table's `(dd xN)`. No rescue runs: the statistics are those of pure binary64; the
-double-double re-run is the reference only. When a backend served points
+reference re-run is the reference only. When a backend served points
 best-effort, a third table shows how accurate those values and their
 uncertainties are: per backend the number of best-effort points, their true
 digits (min / median / max), the median digits of their uncertainty, the
@@ -897,12 +937,17 @@ uncoloured (`loop_profile.LoopProfileReport`: `runtime` per backend with its
 `benchmarking.VirtualProfileResult` profile (`seconds_per_point`, `low`,
 `high`, `stages`, `reduction`, `unchecked`, `batch`, `samples`,
 `failed_points`, `failure_reasons`, `peak_memory` with `peak_rss_bytes`,
-`start_rss_bytes`, `increase_rss_bytes`, `scope` and `method`, and
-`double_double`: null, or its `seconds_per_point`, `low`, `high`, `points`,
-`samples` and `failed_points`), `ratio`, `requested` and `refusal`;
+`start_rss_bytes`, `increase_rss_bytes`, `scope` and `method`, `threads`
+(the native threads of the timed calls: 1), `cpu_per_wall`, and
+`reference`: its `arithmetic`, `digits`, `seconds_per_point`, `low`, `high`,
+`batch`, `points`, `samples`, `warmup`, `failed_points` and
+`peak_memory`), `ratio`, `requested` and `refusal`; `ground_truth`
+(`arithmetic`, `digits`, `label`);
 `stability` per backend with the per-point `true_digits` and
 `estimated_digits` of the measured points, `precision_timing` (per
-precision `points` and `seconds_per_point`), `per_point` (every flat point's
+precision, `binary64` and the reference's arithmetic, `double-double` or
+`arbitrary` with its `digits`: `points`, `seconds` and `seconds_per_point`),
+`per_point` (every flat point's
 `index`, `status` measured / binary64-failed / reference-failed, digits and
 failure `reason`), the `percentiles` rows, the flag counts and the failures;
 `stability_setup`).
@@ -913,6 +958,19 @@ Changed since 1.0.3: `pyamplicol profile --json` of a loop artifact is a
 `runtime[i].profile`. From Python, `pyamplicol.loop_profile.profile_loop(
 artifact, config)` returns the same report; `BenchmarkRunner` /
 `benchmark()` keep profiling one backend (`VirtualProfileResult`).
+
+Changed in the final 1.0.x round: the runtime timing runs on one core (its
+process's pools at one thread; before, as they came: `RAYON_NUM_THREADS` or
+the usable cores) and its timed calls follow `--target-runtime` (at least
+`--minimum-samples`; before, exactly `--minimum-samples`); the stages add up
+to the time per point; the reference multiplier is always timed, as one
+optimistic pass in 16-point calls, and `--ground-truth` selects its
+precision. `profile --arithmetic` is removed (it timed the same batches in
+double-double, checked, only on request) and `profile` no longer reads
+`evaluation.arithmetic`; `--json`'s `double_double` is now `reference`.
+From Python, `benchmarking.profile_virtual(..., reference={"arithmetic":
+"double-double"})` times a reference; `BenchmarkRunner` times none and runs
+on the loaded runtime's own pools.
 
 ## Check
 

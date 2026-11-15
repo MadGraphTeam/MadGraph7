@@ -79,9 +79,13 @@ current resident size at the start of the profiled region through
 lifetime's peak is known: it is the region's when the region raised it, else
 the row shows the bound, `<= 2.21 GiB`. The tree runtime profile is binary64
 only; a loop artifact's profile shows `peak RAM` per backend as a column of
-its runtime table and, with `--arithmetic double-double` or `--stability`,
-the double-double time as a multiplier, `176 ms (dd x1.8)` (see
-[Profile](command-line-interface.md#profile)).
+its runtime table and the reference precision's time as a multiplier,
+`2.2 ms (dd x15)` (`--ground-truth`; see
+[Profile](command-line-interface.md#profile)). `pyamplicol profile` (and its
+alias `benchmark`) times on one core: the pools the command starts run one
+thread each, and a loop artifact's runtime timing runs in its own process
+with every pool at one thread, so every time per point it prints is what
+one Monte Carlo worker pays.
 
 For compiled Direct-Arena, the row otherwise represented by an orchestration
 counter is labeled **Direct-Arena runtime envelope**. It includes arena setup,
@@ -212,8 +216,10 @@ already inside Rusticol.
 
 `pyamplicol profile` of a one-loop (v2 virtual) artifact, and
 `BenchmarkRunner.run` / `benchmark()` on one, measure the evaluation of one
-batch (`--batch-size` points, `--minimum-samples` timed calls after
-`--warmup-runs`, finite part only) and split its time per point into the
+batch (`--batch-size` points, at least `--minimum-samples` timed calls and
+more until `--target-runtime` seconds, after `--warmup-runs`, finite part
+only; the CLI on one core, the Python API on the loaded runtime's own
+pools) and split its time per point into the
 groups of the native executor's always-on stage reports of the same timed
 calls (every native batch of a call counted: a per-point fallback, a rescue
 level, one batch per scale):
@@ -227,7 +233,9 @@ level, one batch per scale):
 | rest | every other stage and the call's untimed remainder |
 
 No timer beyond the executor's own runs, so the split is the timed calls' (a
-split read from a separate instrumented run is labelled as such).
+split read from a separate instrumented run is labelled as such); the groups
+take their shares of the timed calls' total time and add up to the reported
+(median call) time per point.
 
 `pyamplicol profile` of a loop artifact profiles both reduction backends side
 by side (TIRust and NinjaRS; `--loop-reduction` selects one) and measures the
@@ -235,7 +243,8 @@ runtime (`--runtime`, the default), the stability statistics (`--stability`)
 or both: per backend the time per point and stage (a coloured bar per stage
 group) with the ratio between the backends (the faster highlighted), and the
 stable digits of pure binary64
-against a double-double re-run over flat points at the percentiles 1 per mil,
+against a re-run in the reference precision (`--ground-truth`: double-double
+by default, or arbitrary precision) over flat points at the percentiles 1 per mil,
 1 %, 10 % and 50 % (a point a backend refuses in binary64 measured with its
 best-effort value at its true digits; only a point with no binary64 value
 ranked at 0 digits), with the accuracy of the default rotation estimate against
