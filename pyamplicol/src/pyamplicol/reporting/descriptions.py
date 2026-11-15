@@ -88,9 +88,8 @@ def _peak_ram(report: Any) -> str:
         "(each backend is profiled in its own such process), at the runtime "
         "setup's points per call, over its binary64 warm-up and timed calls, "
         "before the reference timing (whose own peak is in --json, "
-        "reference), on the native threads the runtime setup names "
-        "(--threads; with --threads 1, the memory of one Monte Carlo worker "
-        "thread; more threads can need somewhat less)"
+        "reference), on one core (every thread pool at one thread): the "
+        "memory of one Monte Carlo worker"
         + (f"; measured from {measured}" if measured else "")
         + "; '<= x': the platform only knows the process's lifetime peak x, "
         "which these calls did not raise; '-': not measurable here"
@@ -118,9 +117,10 @@ def _profile(report: Any) -> list[Block]:
                     "distinct points per call (a new batch every call); the "
                     "timed calls: at least --minimum-samples, more until they "
                     "add up to --target-runtime seconds, after --warmup-runs "
-                    "untimed ones; the native threads of each backend's "
-                    "timing process (--threads; else RAYON_NUM_THREADS or the "
-                    "usable cores)",
+                    "untimed ones; on one core: each backend is timed in its "
+                    "own process whose thread pools all run one thread (what "
+                    "one Monte Carlo worker pays; --n_core is the stability "
+                    "run's worker count only)",
                 ),
                 (
                     "ground truth",
@@ -140,19 +140,25 @@ def _profile(report: Any) -> list[Block]:
                     ("backend", "the reduction backend. " + _DEFAULT_MARK),
                     (
                         "time / point",
-                        "wall time per phase-space point of the median timed "
-                        f"call; '({label} xN)': one fully optimistic pass per "
+                        "the time per phase-space point on one core: the "
+                        "median timed call's wall time over its points; "
+                        f"'({label} xN)': one fully optimistic pass per "
                         f"point in {name} (the ground truth) on the same "
-                        "backend and threads - the unchecked reduction, no "
+                        "backend and core - the unchecked reduction, no "
                         "stability checks, no rescue, no best-effort "
                         "re-evaluation - takes N times this time per point: N "
                         "is its median call's time per point over this one, "
                         "its calls of one SIMD chunk (16 points) each, on the "
-                        "first points of the binary64 calls' batches, with the "
-                        "same warm-up, minimum calls and time budget (its "
+                        "first points of the binary64 calls' batches, after "
+                        "one untimed call, with the same minimum calls and "
+                        "time budget (its "
                         "points, calls and failures are in --json, reference)",
                     ),
-                    ("min - max call", "the fastest and the slowest call, per point"),
+                    (
+                        "min - max call",
+                        "the fastest and the slowest timed call, per point, on "
+                        "one core",
+                    ),
                     (
                         "vs fastest",
                         "time relative to the fastest backend; 'all failed' when "
@@ -253,7 +259,8 @@ def _profile(report: Any) -> list[Block]:
                         "time",
                         "the wall time of the backend's binary64 calls with "
                         "their stability checks (the default rotation test "
-                        "evaluates each point twice), summed over the workers, "
+                        "evaluates each point twice), summed over the workers "
+                        "(each on one core, one thread per pool), "
                         "after each worker's untimed start-up (loading, first "
                         f"calls); '({label} xN)': its {name} reference calls "
                         "(one evaluation per point) took N times as long in "

@@ -3117,8 +3117,12 @@ def _reference_timing(
     effective backend so that no per-point fallback or guard runs), no
     stability checks, no rescue and no best-effort re-evaluation of a
     refused point (``on_failure="return"``), with the binary64 timing's
-    protocol (``_timed_calls``: its warm-up count, minimum calls and time
-    budget) on calls of one SIMD chunk of points each, ``DEFAULT_LANES``
+    protocol (``_timed_calls``: its minimum calls and time budget) after one
+    untimed call (none with ``warmup_runs`` 0: the process is warm and the
+    first call of a carrier builds what it builds lazily, its executor of
+    this lane count included; a second one changes nothing measurable, and
+    an extended-precision call is dear) on calls of one SIMD chunk of
+    points each, ``DEFAULT_LANES``
     (binary64's chunk and the extended carriers' widest lane count: no
     padded lane is timed in any carrier; at most ``batch_size``), call k on
     the first points of the binary64 timing's batch k."""
@@ -3136,7 +3140,8 @@ def _reference_timing(
     if backend is not None:
         options["reduction"] = backend
     reasons: dict[str, int] = {}
-    timed = bench.warmup_runs
+    protocol = replace(bench, warmup_runs=min(bench.warmup_runs, 1))
+    timed = protocol.warmup_runs
 
     def call(k: int) -> float:
         batch = batches(k, size)
@@ -3151,12 +3156,12 @@ def _reference_timing(
                     reasons[reason] = reasons.get(reason, 0) + 1
         return wall
 
-    walls = _timed_calls(bench, call)
+    walls = _timed_calls(protocol, call)
     return PrecisionTiming(
         str(reference["arithmetic"]),
         size,
         len(walls),
-        bench.warmup_runs,
+        protocol.warmup_runs,
         size * len(walls),
         statistics.median(walls) / size,
         min(walls) / size,

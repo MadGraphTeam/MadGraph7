@@ -804,9 +804,11 @@ reference precision (`--ground-truth`, below; `dd` double-double by default,
 both on the same core. The optimistic pass is one evaluation per point and
 nothing else: the unchecked reduction of that backend alone (no `auto`
 per-point fallback or guard), no stability checks, no rescue, no best-effort
-re-evaluation. It runs after the binary64 calls in the same process, with the
-same protocol (`--warmup-runs` untimed calls, at least `--minimum-samples`
-timed ones, more until `--target-runtime` seconds), in calls of one SIMD
+re-evaluation. It runs after the binary64 calls in the same process, after
+one untimed call (none with `--warmup-runs 0`; the first call of a carrier
+builds what it builds lazily, a second one changes nothing measurable), with
+the same minimum calls and budget (at least `--minimum-samples` timed calls,
+more until `--target-runtime` seconds), in calls of one SIMD
 chunk (16 points: no padded lane in any carrier), call k on the first points
 of the binary64 timing's batch k; N is its median call's time per point over
 the binary64 median call's. The displayed time keeps its meaning (the

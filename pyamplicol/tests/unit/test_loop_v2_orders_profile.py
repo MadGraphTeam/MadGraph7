@@ -435,7 +435,7 @@ def test_the_runtime_profile_reports_peak_ram_and_the_reference(uux_ddx):
     from pyamplicol.config import BenchmarkConfig
 
     bench = BenchmarkConfig(
-        batch_size=2, warmup_runs=1, minimum_samples=2, target_runtime=1e-6
+        batch_size=2, warmup_runs=2, minimum_samples=2, target_runtime=1e-6
     )
     runtime = Runtime.load(uux_ddx)
     points = _points(uux_ddx) * 6
@@ -449,7 +449,7 @@ def test_the_runtime_profile_reports_peak_ram_and_the_reference(uux_ddx):
     Runtime.evaluate = recorded
     try:
         plain = profile_virtual(runtime, bench, points=points, reduction="tirust")
-        assert plain.reference is None and len(calls) == 3
+        assert plain.reference is None and len(calls) == 4
         assert plain.peak_memory is not None
         assert plain.peak_memory.peak_rss_bytes >= plain.peak_memory.start_rss_bytes
         calls.clear()
@@ -462,20 +462,23 @@ def test_the_runtime_profile_reports_peak_ram_and_the_reference(uux_ddx):
         )
     finally:
         Runtime.evaluate = evaluate
-    assert [c[1]["arithmetic"] for c in calls] == [None] * 3 + ["double-double"] * 3
+    # Two binary64 warm-ups and two timed calls; one reference warm-up.
+    assert [c[1]["arithmetic"] for c in calls] == [None] * 4 + ["double-double"] * 3
     assert all(
-        c[1] == {
+        c[1]
+        == {
             "arithmetic": "double-double",
             "on_failure": "return",
             "reduction_unchecked": True,
             "reduction": "tirust",
             "stability_checks": None,
         }
-        for c in calls[3:]
+        for c in calls[4:]
     )
     reference = both.reference
     assert reference is not None and reference.arithmetic == "double-double"
     assert (reference.batch, reference.samples, reference.warmup) == (2, 2, 1)
+    assert both.warmup == 2
     assert reference.points == 4 and reference.digits is None
     assert reference.low <= reference.seconds_per_point <= reference.high
     assert reference.failed_points == 0 and reference.peak_memory is not None
