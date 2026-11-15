@@ -159,9 +159,13 @@ with ``[amplicol]`` subprocesses.
 By default MG7 reads the scales off the clustering in its own way. To cluster the events as
 MadEvent does, type ``set mlm madevent`` in the launch question. It turns MLM merging on and
 sets every hidden clustering option to MadEvent's choice: ``scale_scheme``,
-``clustering_measure`` and ``clustering_history`` become ``"madevent"``, and the others keep
-the values they share with MadEvent. A merging cut of 30 GeV is added if ``xqcut`` is 0.
-``set mlm mg7`` puts MG7's defaults back.
+``clustering_measure`` and ``clustering_history`` become ``"madevent"``, ``min_scale`` becomes
+MadEvent's 2 GeV floor, and ``jet_scale_scheme``, ``parton_line_scheme``,
+``alphas_reweighting`` and ``pdf_reweighting`` are set to the values the two codes share. A
+merging cut of 30 GeV is added if ``xqcut`` is 0. ``jet_radius``, ``max_jet_flavor`` and
+``mlm_shower_start`` are left as they are, since MadEvent has them as run card parameters too
+(``d``, ``maxjetflavor`` and ``mlm_shower_start``). A MadEvent run card with ``ickkw = 1`` is
+converted the same way. ``set mlm mg7`` puts MG7's defaults back.
 
 .. list-table::
     :header-rows: 1

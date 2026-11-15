@@ -17,6 +17,7 @@ from cmd import Cmd
 """ Basic test of the command interface """
 
 import unittest
+from unittest import mock
 import madgraph
 import madgraph.interface.master_interface as mgcmd
 import madgraph.interface.extended_cmd as ext_cmd
@@ -596,6 +597,29 @@ class TestPythia8MLMConeRadius(unittest.TestCase):
         self.assertEqual(self.setup_card(run_card)['JetMatching:coneRadius'], 0.7)
 
     def test_pythia8_card_value_is_kept(self):
-        card = self.setup_card(self.madevent_run_card(),
-                               'JetMatching:coneRadius = 0.4\n')
+        """a value the pythia8 card sets is kept for every MLM matching key,
+        with a warning only where it differs from what the events need"""
+        user = ('JetMatching:coneRadius = 0.4\n'
+                'JetMatching:nQmatch = 5\n'
+                'JetMatching:merge = on\n'
+                'JetMatching:scheme = 1\n')
+        run_card = self.madevent_run_card()
+        run_card['maxjetflavor'] = 4
+        with self.assertLogs('madevent.stdout', level='WARNING') as logs:
+            card = self.setup_card(run_card, user)
         self.assertEqual(card['JetMatching:coneRadius'], 0.4)
+        self.assertEqual(card['JetMatching:nQmatch'], 5)
+        warned = ' '.join(logs.output)
+        self.assertIn('JetMatching:coneRadius = 0.4', warned)
+        self.assertIn('JetMatching:nQmatch = 5', warned)
+        self.assertNotIn('JetMatching:merge', warned)
+        self.assertNotIn('JetMatching:scheme', warned)
+        self.assertEqual(len(logs.output), 2, logs.output)
+
+    def test_pythia8_card_value_equal_to_d_is_silent(self):
+        run_card = self.madevent_run_card()
+        run_card['d'] = 0.7
+        with mock.patch.object(mecmd.logger, 'warning') as warning:
+            card = self.setup_card(run_card, 'JetMatching:coneRadius = 0.7\n')
+        self.assertEqual(card['JetMatching:coneRadius'], 0.7)
+        warning.assert_not_called()

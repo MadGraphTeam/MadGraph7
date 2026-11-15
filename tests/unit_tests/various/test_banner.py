@@ -2797,21 +2797,32 @@ class TestRunCardMG7(unittest.TestCase):
         madevent's choice; set mlm mg7: back to mg7's defaults"""
         default = bannermod.RunCardMG7()
         rc = bannermod.RunCardMG7()
+        # options moved away from madevent's beforehand
+        rc.set('beam.min_scale', 5.0)
+        rc.set('beam.alphas_reweighting', 'none')
         changes, warnings = rc.set_lo_param('mlm', 'madevent')
         self.assertEqual(warnings, [])
         self.assertTrue(rc.is_mlm_merged())
         self.assertEqual(rc['beam']['dynamical_scale_choice'], 'mlm')
         self.assertEqual(rc['phasespace']['xqcut'], rc.default_mlm_xqcut)
-        for key, val in rc._MLM_MODES['madevent'].items():
+        expected = {'beam.scale_scheme': 'madevent',
+                    'beam.clustering_measure': 'madevent',
+                    'beam.clustering_history': 'madevent',
+                    'beam.jet_scale_scheme': 'production',
+                    'beam.parton_line_scheme': 'goodjet',
+                    'beam.alphas_reweighting': 'per_vertex',
+                    'beam.pdf_reweighting': True,
+                    'beam.min_scale': 2.0}
+        for key, val in expected.items():
             self.assertEqual(rc[key], val, key)
             self.assertEqual(changes[key], val, key)
-        # the mg7 mode is exactly the card's defaults, and covers every option
-        # the madevent mode moves
-        self.assertLessEqual(set(rc._MLM_MODES['madevent']),
-                             set(rc._MLM_MODES['mg7']))
+        # mg7 mode: every option the madevent mode sets goes back to the
+        # card's default
         rc.set('phasespace.xqcut', 20.0)
+        rc.set('beam.clustering_mean_pdf_ladder', False)
         rc.set_lo_param('mlm', 'mg7')
-        for key in rc._MLM_MODES['mg7']:
+        self.assertEqual(rc['beam']['dynamical_scale_choice'], 'mlm')
+        for key in list(expected) + ['beam.clustering_mean_pdf_ladder']:
             self.assertEqual(rc[key], default[key], key)
         # a merging cut already set is kept
         self.assertEqual(rc['phasespace']['xqcut'], 20.0)
@@ -2834,6 +2845,24 @@ class TestRunCardMG7(unittest.TestCase):
         mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
         self.assertEqual(mg7['beam']['jet_radius'], 0.7)
         self.assertEqual(mg7['d'], 0.7)
+
+    def test_from_LO_mlm_is_the_madevent_mode(self):
+        """ickkw = 1 converts to the same clustering as "set mlm madevent",
+        with madevent's pdfwgt switch carried over"""
+        lo = bannermod.RunCardLO()
+        lo['ickkw'] = 1
+        lo['xqcut'] = 20
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        for key, val in mg7._MLM_MADEVENT.items():
+            self.assertEqual(mg7[key], val, key)
+        lo['pdfwgt'] = False
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertFalse(mg7['beam']['pdf_reweighting'])
+        self.assertFalse([d for d in dropped if 'pdfwgt' in d], dropped)
+        # without MLM merging pdfwgt has nothing to act on
+        lo['ickkw'] = 0
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertTrue([d for d in dropped if 'pdfwgt' in d], dropped)
 
     def test_set_maxjetflavor_sets_the_mlm_jet_flavours(self):
         rc = bannermod.RunCardMG7()

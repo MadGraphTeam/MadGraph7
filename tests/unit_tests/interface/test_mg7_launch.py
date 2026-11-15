@@ -800,6 +800,19 @@ class MG7CmdTest(unittest.TestCase):
         self.assertIn('run', obj.modified_card)
         self.generic_do_set.assert_not_called()
 
+    def test_set_mlm_without_a_mode_lists_the_modes(self):
+        obj = self.cut_selector()
+        beam = dict(obj.run_card['beam'])
+        with self.assertLogs('madgraph.stdout', level='WARNING') as logs:
+            obj.do_set('mlm')
+        self.assertIn("'madevent'", logs.output[0])
+        self.assertIn("'mg7'", logs.output[0])
+        obj.mother_interface = types.SimpleNamespace(inputfile=iter([]))
+        self.assertRaises(madgraph.InvalidCmd, obj.do_set, 'mlm')
+        self.assertRaises(madgraph.InvalidCmd, obj.do_set, 'mlm ckkw')
+        self.assertEqual(dict(obj.run_card['beam']), beam)
+        self.generic_do_set.assert_not_called()
+
     def test_set_mg7_values_still_reach_the_editor(self):
         obj = self.cut_selector()
         obj.do_set('dynamical_scale_choice transverse_mass')

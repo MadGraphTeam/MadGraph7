@@ -508,12 +508,18 @@ def build_selector_cmd(mother=None):
                         self.modified_card.add("run")
                         return
 
+                    # the "set mlm madevent|mg7" shortcut needs its mode
+                    if nlow == 'mlm' and not rest:
+                        self.invalid_set("set mlm: %s" % run_card.MLM_MODE_HELP)
+                        return
+
                     # madevent parameters that are not a plain rename: the
                     # value is translated ("set dynamical_scale_choice 3") or
                     # several of them make one mg7 entry (fixed_fac_scale1 +
-                    # fixed_fac_scale2 -> beam.fixed_fact_scale). mg7 values
-                    # ("set sde_strategy denominators") come back as None and
-                    # go on to the generic editor.
+                    # fixed_fac_scale2 -> beam.fixed_fact_scale), and the mg7
+                    # shortcut "set mlm <mode>". mg7 values ("set sde_strategy
+                    # denominators") come back as None and go on to the
+                    # generic editor.
                     if rest and nlow in run_card._LO_SET_PARAMS:
                         try:
                             done = run_card.set_lo_param(nlow, rest, masses)

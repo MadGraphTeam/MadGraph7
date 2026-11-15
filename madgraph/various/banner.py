@@ -8471,6 +8471,26 @@ class RunCardMG7(RunCard):
             items.append((key, val))
         return items
 
+    MLM_MODE_HELP = ("the mode is 'madevent' (the MLM clustering as madevent "
+                     "does it) or 'mg7' (mg7's defaults)")
+
+    def set_mlm_mode(self, mode, user=False):
+        """MLM merging (dynamical_scale_choice "mlm") with the clustering
+        options of ``mode``: "madevent" as madevent does it
+        (``_MLM_MADEVENT``), "mg7" back to the card's defaults. The merging
+        cut is left to the caller. Returns the keys set, in order."""
+        if mode == 'madevent':
+            values = self._MLM_MADEVENT
+        elif mode == 'mg7':
+            values = collections.OrderedDict(
+                (key, self.toml_defaults[key]) for key in self._MLM_MODE_KEYS)
+        else:
+            raise InvalidCmd('set mlm %s: %s' % (mode, self.MLM_MODE_HELP))
+        self.set('beam.dynamical_scale_choice', 'mlm', user=user)
+        for key, val in values.items():
+            self.set(key, val, user=user)
+        return ['beam.dynamical_scale_choice'] + list(values)
+
     def set_lo_param(self, name, value, masses=None):
         """Apply ``set <name> <value>`` for a madevent parameter that mg7 does
         not just rename (``_LO_SET_PARAMS``): its value needs translating
@@ -8552,14 +8572,8 @@ class RunCardMG7(RunCard):
         elif name == 'mlm':
             # "set mlm madevent": MLM merging with every clustering option
             # at madevent's choice; "set mlm mg7": with mg7's defaults
-            mode = text.lower()
-            if mode not in self._MLM_MODES:
-                raise InvalidCmd("set mlm %s: the mode is 'madevent' (the MLM "
-                                 "clustering as madevent does it) or 'mg7' "
-                                 "(mg7's defaults)" % text)
-            put('beam.dynamical_scale_choice', 'mlm')
-            for key, val in self._MLM_MODES[mode].items():
-                put(key, val)
+            for key in self.set_mlm_mode(text.lower(), user=True):
+                changes[key] = self[key]
             # no merging cut, no merged sample: take madevent's default
             if float(self['phasespace']['xqcut']) <= 0:
                 put('phasespace.xqcut', self.default_mlm_xqcut)
@@ -9483,30 +9497,22 @@ class RunCardMG7(RunCard):
         # D of the MLM clustering's kt measure (hidden in both cards)
         'd': 'beam.jet_radius',
     }
-    # "set mlm <mode>": the MLM clustering options as madevent chooses them,
-    # or back to mg7's defaults. Both also select dynamical_scale_choice
-    # "mlm" (see set_lo_param).
-    _MLM_MODES = {
-        'madevent': collections.OrderedDict([
-            ('beam.scale_scheme', 'madevent'),
-            ('beam.clustering_measure', 'madevent'),
-            ('beam.clustering_history', 'madevent'),
-            ('beam.jet_scale_scheme', 'production'),
-            ('beam.parton_line_scheme', 'goodjet'),
-            ('beam.alphas_reweighting', 'per_vertex'),
-            ('beam.pdf_reweighting', True),
-        ]),
-        'mg7': collections.OrderedDict([
-            ('beam.scale_scheme', 'clustering_mean'),
-            ('beam.clustering_measure', 'fxfx'),
-            ('beam.clustering_history', 'all_diagrams'),
-            ('beam.jet_scale_scheme', 'production'),
-            ('beam.parton_line_scheme', 'goodjet'),
-            ('beam.alphas_reweighting', 'per_vertex'),
-            ('beam.pdf_reweighting', True),
-            ('beam.clustering_mean_pdf_ladder', True),
-        ]),
-    }
+    # The MLM clustering as madevent does it (set_mlm_mode). min_scale is
+    # setclscales' hard-coded 2 GeV floor. jet_radius, max_jet_flavor and
+    # mlm_shower_start are not here: madevent has them as run_card
+    # parameters too (d, maxjetflavor, mlm_shower_start).
+    _MLM_MADEVENT = collections.OrderedDict([
+        ('beam.scale_scheme', 'madevent'),
+        ('beam.clustering_measure', 'madevent'),
+        ('beam.clustering_history', 'madevent'),
+        ('beam.jet_scale_scheme', 'production'),
+        ('beam.parton_line_scheme', 'goodjet'),
+        ('beam.alphas_reweighting', 'per_vertex'),
+        ('beam.pdf_reweighting', True),
+        ('beam.min_scale', 2.0),
+    ])
+    # what set_mlm_mode('mg7') puts back to the card's defaults
+    _MLM_MODE_KEYS = tuple(_MLM_MADEVENT) + ('beam.clustering_mean_pdf_ladder',)
     # LO dynamical_scale_choice (int) -> MG7 string
     _LO_DYNSCALE_MAP = {1: 'transverse_energy', 2: 'transverse_mass',
                         3: 'half_transverse_mass', 4: 'partonic_energy'}
@@ -9780,11 +9786,17 @@ class RunCardMG7(RunCard):
         # "madevent". mg7 has no MLM with a closed-form scale choice: the
         # clustering scales are used whatever dynamical_scale_choice said.
         ickkw = int(lo['ickkw']) if 'ickkw' in lo else 0
+        # unsupported LO names transferred all the same in this context
+        transferred = set()
         if ickkw == 1:
             xqcut = float(lo['xqcut']) if 'xqcut' in lo else 0.
             if xqcut > 0:
-                mg7.set('beam.dynamical_scale_choice', 'mlm')
-                mg7.set('beam.scale_scheme', 'madevent')
+                # the clustering as madevent does it, as "set mlm madevent",
+                # with madevent's switch for the pdf reweighting
+                mg7.set_mlm_mode('madevent')
+                if 'pdfwgt' in lo:
+                    mg7.set('beam.pdf_reweighting', bool(lo['pdfwgt']))
+                    transferred.add('pdfwgt')
                 mg7.set('phasespace.xqcut', xqcut)
                 if 'mlm_shower_start' in lo:
                     mg7.set('beam.mlm_shower_start', lo['mlm_shower_start'])
@@ -9877,7 +9889,7 @@ class RunCardMG7(RunCard):
 
         # --- report the non-default settings we could not transfer ---
         for name in sorted(cls._LO_UNSUPPORTED):
-            if not nondefault(name):
+            if name in transferred or not nondefault(name):
                 continue
             val = lo[name]
             # skip inactive cut sentinels (they impose no real constraint)
