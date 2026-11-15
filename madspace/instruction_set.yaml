@@ -3226,7 +3226,7 @@ interpolate_pdf:
       type: [float, n]
       desc: "PDF value per requested flavour"
   vectorized: False
-  desc: "Evaluates parton densities by bicubic interpolation of a log-x / log-Q2 grid. See @ref PartonDensity."
+  desc: "Evaluates parton densities by bicubic interpolation of a log-x / log-Q2 grid, and outside of it by the continuation extrapolator of LHAPDF (zero above the last x knot). See @ref PartonDensity."
 
 interpolate_alpha_s:
   inputs:
@@ -3244,7 +3244,7 @@ interpolate_alpha_s:
       type: [float]
       desc: "the strong coupling at q"
   vectorized: False
-  desc: "Evaluates the running coupling by cubic interpolation of a log-Q2 grid. See @ref RunningCoupling."
+  desc: "Evaluates the running coupling by cubic interpolation of a log-Q2 grid, and outside of it as the interpolated alpha_s of LHAPDF. See @ref RunningCoupling."
 
 ---
 title: Normalizing flows and MLPs
