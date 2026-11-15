@@ -595,14 +595,22 @@ def test_refused_combinations_and_the_load_time_default(artifact):
 
 
 @pytest.mark.loop_physics
-def test_escalated_subsets_share_one_double_double_executor(artifact):
+def test_escalated_subsets_run_together_in_unpadded_double_double_lanes(artifact):
     points, scales = _points("gg_gg", 3)
     runtime = _load(artifact, "gg")
     native = runtime._backend._executor._native
+    alone = [
+        runtime.evaluate([point], mu_r2=scales[0], stability=FORCED)
+        for point in points
+    ]
     for size in (1, 3, 5):
         batch = [points[k % 3] for k in range(size)]
         result = runtime.evaluate(batch, mu_r2=scales[0], stability=FORCED)
         assert {record.level for record in result.rescue} == {1}
-    assert [key for key in native if key[0] == "double-double"] == [
-        ("double-double", None, 1)
-    ]
+        # Each point's value and estimate are those of a call of its own.
+        for k in range(size):
+            assert result.values[k] == alone[k % 3].values[0]
+            assert result.stability[k] == alone[k % 3].stability[0]
+    # The level's calls hold whole power-of-two subsets (3 = 2 + 1,
+    # 5 = 4 + 1): no padded double-double lane.
+    assert sorted(key[2] for key in native if key[0] == "double-double") == [1, 2, 4]

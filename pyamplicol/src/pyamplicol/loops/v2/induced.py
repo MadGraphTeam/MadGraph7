@@ -436,10 +436,12 @@ def add_amplitudes(*parts: Mapping, numbers: Any, size: int, width: int) -> dict
         for key, vector in part.items():
             total = out.get(key)
             if total is None:
-                total = out[key] = [[zero] * width for _ in range(size)]
-            for t in range(size):
-                for k in range(width):
-                    total[t][k] = total[t][k] + vector[t][k]
+                total = [[zero] * width for _ in range(size)]
+            # The same sums, entry by entry, as list comprehensions.
+            out[key] = [
+                [a + b for a, b in zip(entries, vector[t], strict=False)]
+                for t, entries in enumerate(total)
+            ]
     return out
 
 
@@ -640,6 +642,8 @@ def native_kets(
     size = len(slice_.amplitude)
     zero = numbers.zero
     three = numbers.real(3)
+    # 3^nc once per N_c power (the same carrier value as at every use).
+    powers: dict[int, Any] = {}
     out: dict[tuple[Orders, rx.Row], list[list[Any]]] = {}
     for r, row in enumerate(exported.rows if rows is None else rows):
         for j, (t, k, order, nc) in enumerate(mapping):
@@ -649,7 +653,10 @@ def native_kets(
             ket = out.get((order, row))
             if ket is None:
                 ket = out[(order, row)] = [[zero] * width for _ in range(size)]
-            ket[t][k] = ket[t][k] + value * three**nc
+            power = powers.get(nc)
+            if power is None:
+                power = powers[nc] = three**nc
+            ket[t][k] = ket[t][k] + value * power
     return out
 
 

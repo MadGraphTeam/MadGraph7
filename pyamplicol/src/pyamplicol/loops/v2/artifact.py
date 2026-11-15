@@ -2654,8 +2654,12 @@ class V2VirtualRuntime:
 
         if not points:
             return [], {}
-        if len({Fraction(scale) for scale in scales}) > 1 and self._scale_partitioned(
-            poles
+        # (Equal texts are one scale: the exact values are compared only when
+        # the texts differ.)
+        if (
+            len(set(scales)) > 1
+            and len({Fraction(scale) for scale in scales}) > 1
+            and self._scale_partitioned(poles)
         ):
             return self._run_per_scale(
                 points, scales, parameters, setting, poles, checks

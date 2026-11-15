@@ -5284,12 +5284,15 @@ class _NativePoint(_PointEvaluation):
         self.poles = True
         self.split_lanes = None
         process = slice_.blocks.process
-        labels = sorted(leg.label for leg in process.legs)
-        initial = {leg.label for leg in process.legs if leg.is_initial}
-        self.incoming = [
-            [x if label in initial else -x for x in point[label - 1]]
-            for label in labels
-        ]
+        # The point as given: exact rationals or the public inputs' exact
+        # decimal texts (the executor parses either exactly); the
+        # all-incoming rationals (``incoming``) are formed on first use.
+        self._point = point
+        self._legs = (
+            sorted(leg.label for leg in process.legs),
+            frozenset(leg.label for leg in process.legs if leg.is_initial),
+        )
+        self._incoming: list[list[Fraction]] | None = None
         self.scale = scale
         self.parameters = parameters
         self.born: dict[Orders, Any] = {}
@@ -5310,6 +5313,40 @@ class _NativePoint(_PointEvaluation):
         self.catani = False
         self.correlations: dict | None = None
 
+
+    @property
+    def incoming(self) -> list[list[Fraction]]:
+        """All-incoming exact momenta (outgoing legs negated), leg order."""
+
+        if self._incoming is None:
+            labels, initial = self._legs
+            point = self._point
+            self._incoming = [
+                [
+                    _fraction(x) if label in initial else -_fraction(x)
+                    for x in point[label - 1]
+                ]
+                for label in labels
+            ]
+        return self._incoming
+
+    @incoming.setter
+    def incoming(self, value: list[list[Fraction]]) -> None:
+        self._incoming = value
+
+    def incoming_texts(self) -> list[str]:
+        """``incoming`` as the executor's exact texts, flattened: a
+        rational's ``n/d``, a decimal text as given (negated by its sign)."""
+
+        if self._incoming is not None:
+            return [_rational_text(x) for p in self._incoming for x in p]
+        labels, initial = self._legs
+        point = self._point
+        return [
+            _signed_text(x, label in initial)
+            for label in labels
+            for x in point[label - 1]
+        ]
     def counterterm_twin(self) -> None:
         # A native point has no Python twin: the executor forms its
         # counterterms at the IR regulator 0 (``counterterms_uv``).
@@ -6496,6 +6533,27 @@ def _fraction(value: Any) -> Fraction:
         except (ArithmeticError, ValueError):
             pass
     return Fraction(str(value))
+
+
+def _rational_text(value: Fraction) -> str:
+    """An exact rational as ``n`` or ``n/d`` (``plan_export._fraction_text``)."""
+
+    if value.denominator == 1:
+        return str(value.numerator)
+    return f"{value.numerator}/{value.denominator}"
+
+
+def _signed_text(value: Any, keep: bool) -> str:
+    """A momentum component as an exact text, negated unless ``keep``: a
+    rational's ``n/d``; a text (exact decimal or ``n/d``) by its sign."""
+
+    if type(value) is not str:
+        exact = _fraction(value)
+        return _rational_text(exact if keep else -exact)
+    text = value.strip()
+    if keep:
+        return text
+    return text[1:] if text.startswith("-") else "-" + text.removeprefix("+")
 
 
 def _to_decimal(value: Fraction) -> Decimal:

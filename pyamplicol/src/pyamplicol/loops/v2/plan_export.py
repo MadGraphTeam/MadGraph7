@@ -94,6 +94,21 @@ def _fraction_text(value: Any) -> str:
     return f"{value.numerator}/{value.denominator}"
 
 
+def _double_pairs(values: Iterable[Sequence[Any]]) -> list[complex]:
+    """A native lane's [re, im] pairs as binary64 complex numbers."""
+
+    return [complex(float(re), float(im)) for re, im in values]
+
+
+def _carrier_pairs(numbers: Any) -> Callable[[Iterable[Sequence[Any]]], list[Any]]:
+    """A native lane's [re, im] decimal texts in ``numbers``' carrier."""
+
+    def read(values: Iterable[Sequence[Any]]) -> list[Any]:
+        return [numbers.pair(Decimal(re), Decimal(im)) for re, im in values]
+
+    return read
+
+
 def _complex_text(value: Any) -> list[str]:
     value = rx.exact(value)
     return [_fraction_text(value.real), _fraction_text(value.imag)]
@@ -2323,9 +2338,10 @@ class NativeExecutor:
         precision = precision or Precision.double()
         wards = wards or [None] * len(points)
         evaluations = []
+        scope = _Numbers(precision)
         for point, scale, ward in zip(points, scales, wards, strict=True):
             exact_point = tuple(tuple(_fraction(x) for x in p) for p in point)
-            with _Numbers(precision).scope():
+            with scope.scope():
                 extra = {}
                 if ward is not None:
                     from .ward import loop_vector, ward_leg
@@ -2441,7 +2457,10 @@ class NativeExecutor:
 
         batch: dict[str, Any] = {
             "momenta": [
-                [_fraction_text(x) for p in e.incoming for x in p] for e in evaluations
+                e.incoming_texts()
+                if hasattr(e, "incoming_texts")
+                else [_fraction_text(x) for p in e.incoming for x in p]
+                for e in evaluations
             ],
             "scales": [_fraction_text(e.scale) for e in evaluations],
             "block_rows": [],
@@ -2699,8 +2718,13 @@ class NativeExecutor:
                 require_full_kernels(self.slice)
             else:
                 wards = None
-        # The exact points, once for the reference and every rotation.
-        exact = [tuple(tuple(_fraction(x) for x in p) for p in point) for point in points]
+        # The exact points, once for the reference and every rotation (the
+        # reference alone reads its texts as given).
+        exact = (
+            [tuple(tuple(_fraction(x) for x in p) for p in point) for point in points]
+            if stability.rotations
+            else points
+        )
         if self._merges_rotations(len(points), precision, stability, wards):
             precision, evaluations, rotated, failures = self._merged_runs(
                 exact, scales, parameters, precision, poles, stability, schedule
@@ -2972,6 +2996,9 @@ class NativeExecutor:
         from .assemble import _fraction, _NativePoint, _Numbers
 
         slice_ = self.slice
+        # One carrier helper for the batch (it holds the precision's
+        # constants only; nothing writes to it).
+        numbers = _Numbers(precision)
         out = []
         for point, scale in zip(points, scales, strict=True):
             scale = _fraction(scale)
@@ -2979,10 +3006,10 @@ class NativeExecutor:
             out.append(
                 _NativePoint(
                     slice_,
-                    tuple(tuple(_fraction(x) for x in p) for p in point),
+                    point,
                     scale,
                     values,
-                    _Numbers(precision),
+                    numbers,
                 )
             )
         return out
@@ -3037,10 +3064,11 @@ class NativeExecutor:
             if self.last_report["counts"].get(FFT_SEED_JOBS)
             else "direct"
         )
+        numbers = _Numbers(precision)
         for index, evaluation in enumerate(evaluations):
             if index in failed:
                 continue
-            with _Numbers(precision).scope():
+            with numbers.scope():
                 evaluation.colour_contraction = algorithm
                 evaluation._assemble()
         return precision, evaluations, failed
@@ -3140,6 +3168,7 @@ class NativeExecutor:
                 twin._inputs(evaluations, arithmetic), schedule="B", **options
             )
         failed: dict[int, list[str]] = {}
+        scope = _Numbers(precision)
         for index, (evaluation, lanes, checks, failures) in enumerate(
             zip(
                 evaluations,
@@ -3159,10 +3188,7 @@ class NativeExecutor:
                 continue
             numbers = evaluation.numbers
 
-            def carrier(values, numbers=numbers):
-                if numbers.double:
-                    return [complex(float(re), float(im)) for re, im in values]
-                return [numbers.pair(Decimal(re), Decimal(im)) for re, im in values]
+            carrier = _double_pairs if numbers.double else _carrier_pairs(numbers)
 
             def label(lane, exported=exported):
                 family, order, column = lane
@@ -3172,12 +3198,12 @@ class NativeExecutor:
                     exported.columns[column],
                 )
 
-            def read(runs, exported=exported):
+            def read(runs, exported=exported, carrier=carrier):
                 if runs is None:
                     return None
                 return {label(lane, exported): carrier(values) for lane, values in runs}
 
-            with _Numbers(precision).scope():
+            with scope.scope():
                 # Every lane (the companion's too) is read at the working
                 # digits: an extended carrier rounds its literals there.
                 scaleless = scaleless_check = None

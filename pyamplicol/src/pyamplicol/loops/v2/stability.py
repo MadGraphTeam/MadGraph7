@@ -840,22 +840,25 @@ def _native_induced_estimate(
     row_ids = {row: r for r, row in enumerate(rows)}
     orders: dict[Any, int] = {}
 
-    def key(item: Any) -> tuple[int, int]:
-        order, row = item
-        return orders.setdefault(order, len(orders)), row_ids[row]
-
+    # (Each (loop order, row) key: the order's first-seen index, the row's.)
     def cells(vectors: Mapping) -> list:
         return [
-            (key(item), [[(z.real, z.imag) for z in cell] for cell in vector])
-            for item, vector in vectors.items()
+            (
+                (orders.setdefault(order, len(orders)), row_ids[row]),
+                [[(z.real, z.imag) for z in cell] for cell in vector],
+            )
+            for (order, row), vector in vectors.items()
         ]
 
     def errors(vectors: Mapping | None) -> list | None:
         if vectors is None:
             return None
         return [
-            (key(item), [[float(x) for x in cell] for cell in vector])
-            for item, vector in vectors.items()
+            (
+                (orders.setdefault(order, len(orders)), row_ids[row]),
+                [[float(x) for x in cell] for cell in vector],
+            )
+            for (order, row), vector in vectors.items()
         ]
 
     def point(evaluation: Any) -> tuple:
