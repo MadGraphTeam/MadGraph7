@@ -752,8 +752,8 @@ rescue; the default backend runs as `auto` (its per-point fallback
 included, as a user gets it) and a refused point is returned with its
 best-effort value and timed as such (the default `on_failure`). The first
 table gives each backend's name (`*`: the default backend of the process
-type), its time per point (median call), the fastest and slowest call and the
-ratio to the fastest; a `best-effort` column appears when some timed points
+type), its time per point (median call), the fastest and slowest call, the
+ratio to the fastest and its `peak RAM`; a `best-effort` column appears when some timed points
 were served best-effort, a `lanes` column when points were served by more
 than one backend, a `failed` column when points got no value. Under the
 table, after a `---` line, the failed or refused points are listed per
@@ -770,28 +770,46 @@ backend's share (and a bar per group) and the ratio between the two backends.
 `--mu-r2` sets the scale (default: per point the squared invariant mass of
 its initial state).
 
-Under the runtime table, per backend, `peak RAM` gives the peak resident set
-size of the process over that backend's profiled calls and its increase over
-the value at their start, with the scope and method: on Linux the kernel's
-high-water mark (`VmHWM` of `/proc/self/status`), reset to the current
-resident size at the start by writing `5` to `/proc/self/clear_refs`, so the
-peak is that of the profiled calls ("profiled region"); where the reset is
-refused, and on macOS and the BSDs (`getrusage` `ru_maxrss`), it is the
-process lifetime's peak ("process lifetime": the peak may predate the
-profile, and the increase is then a lower bound). The stability pool's
-worker processes are not included. With `--arithmetic double-double`
+`peak RAM` is the memory to expect for each Monte Carlo worker evaluating
+the matrix element on that backend: every backend is profiled in its own
+spawned process that loads the artifact and runs that backend's warm-up and
+timed calls only (so no backend's figure holds the other's prepared state),
+and the cell is that process's peak resident set size over those binary64
+calls, at the runtime setup's points per call, on the native threads the
+timing uses. On Linux it is the kernel's high-water
+mark (`VmHWM`), reset when the calls start (`/proc/self/clear_refs`); on
+macOS and the BSDs only the process lifetime's peak is known (`getrusage`
+`ru_maxrss`): it is the calls' peak when they raised it, else the cell shows
+the bound, `<= 2.21 GiB` (the worker's load reached more than the calls).
+`--json` keeps the start value, the increase, the scope and the method
+(`peak_memory`). With `--arithmetic double-double`
 (`evaluation.arithmetic = "double-double"`) the same batches are also timed
 in double-double after the binary64 timing (the same warm-up and timed
-calls; the binary64 timing is unchanged and nothing extra runs without it):
-a `double-double` line per backend gives its time per point (median call),
-the fastest and slowest call, the timed points, the ratio to binary64 and the
-points without an accepted value. `--stability` evaluates in double-double
-anyway (the reference): under its second table a `time / point` line per
-backend gives the cost per point of its binary64 calls (with their stability
-checks) and of its double-double calls, with their point counts and ratio
-(the workers' batch walls per point, each worker's first-call cost left out
-as the progress estimate does). A tree artifact's profile reports the same
-`peak RAM` row (its runtime profile is binary64 only).
+calls; the binary64 timing is unchanged and nothing extra runs without it),
+and the time cell carries how many times longer the double-double median
+call is:
+
+```text
+$ pyamplicol profile artifacts/gg_zz --arithmetic double-double   # g g > z z [noborn=QCD]
++-------------------------------------------------------------------------+
+|                      Runtime per reduction backend                      |
++----------+------------------+-------------------+------------+----------+
+| backend  | time / point     | min - max call    | vs fastest | peak RAM |
++----------+------------------+-------------------+------------+----------+
+| TIRust * | 2.2 ms (dd x15)  | 1.42 ms - 2.98 ms | fastest    | 317 MiB  |
+| NinjaRS  | 5.63 ms (dd x86) | 5.06 ms - 6.5 ms  | x2.56      | 363 MiB  |
++----------+------------------+-------------------+------------+----------+
+```
+
+The multiplier has one decimal below 10 and none from 10 on.
+
+The double-double timing's points, its fastest and slowest call, its peak
+RAM and its points without an accepted value are in `--json`
+(`double_double`); such
+points are listed under the table as `... in double-double` causes. A tree
+artifact's profile reports `peak RAM` as a summary row (its runtime profile
+is binary64 only, in one process). `--fields-description-help` explains
+every column, with how this run measured `peak RAM`.
 
 **Stability.** Over N flat points (`benchmark.stability_points` /
 `--stability-points`, default 1000, drawn with `evaluation.phase_space`'s
@@ -803,7 +821,7 @@ of the points done per backend and precision and an estimated time to
 completion; Ctrl-C stops the run and prints the tables of the points
 evaluated so far with a one-line notice (`stability_setup.requested`,
 `measured_points`, `interrupted` in `--json`; exit code 130), a second Ctrl-C aborts.
-The runtime timing runs before the pool, in one process. Each backend evaluates every point in pure binary64 with the default rotation
+The runtime timing runs before the pool, one process per backend. Each backend evaluates every point in pure binary64 with the default rotation
 test (one default rotation, what `evaluation.stability_checks` gives by
 default; `evaluation.stability_checks` replaces it when set; the rescue's own
 check set, a fixed Euler rotation plus the rescaled-reduction check, is
@@ -847,7 +865,11 @@ measured points, those served best-effort / without a value in binary64, the poi
 reads, or a binary64 failure, which the result reports and so detects), the
 flagged points that are truly inaccurate (true relative error above the
 target, or no binary64 value) and the truly inaccurate points not flagged
-("missed"). No rescue runs: the statistics are those of pure binary64; the
+("missed"), and the wall time of its binary64 calls (with their checks,
+summed over the workers) with how many times longer its double-double
+calls took in total, `128 s (dd x1.8)` (on a second line when the table
+would pass the line width; each precision's points, total and
+time per point are in `--json`, `precision_timing`). No rescue runs: the statistics are those of pure binary64; the
 double-double re-run is the reference only. When a backend served points
 best-effort, a third table shows how accurate those values and their
 uncertainties are: per backend the number of best-effort points, their true
