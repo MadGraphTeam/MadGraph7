@@ -31,13 +31,15 @@ the estimate against the pre-cancellation scale S of its floor,
 its E / S is the floor's FLOOR_UNITS x u (M-LIT LIT-STAB-N, ``tests/unit/
 test_loop_v2_induced_stability.py``).
 
-Escalated levels evaluate one point per call: every lane of a non-binary64
-carrier is a scalar loop that costs as much padded as filled, so a fixed
-lane count of one gives each escalated carrier one native executor, which
-compiles its generic-engine templates once (``plan_export.NativeExecutor.
-lanes_for`` would otherwise build one executor per power-of-two subset
-size). The per-scale partition and flavour members stay inside the level
-evaluator. The rescue is off unless a policy is passed (REQUIREMENTS_ADDENDUM
+The points a level receives go through it together (``level_batches``):
+a binary64 level evaluates them in one call, whose SIMD chunks they fill;
+a level in an extended carrier, whose lanes are scalar loops that cost as
+much padded as filled (``plan_export.NativeExecutor.lanes_for``: the
+smallest power of two holding the call), in calls of whole power-of-two
+sizes (full ``DEFAULT_LANES`` chunks, then the binary digits of the rest),
+so that no padded lane is evaluated and each call costs its points. Every
+point's value is its own lane's: the same as in a call of its own. The
+per-scale partition and flavour members stay inside the level evaluator. The rescue is off unless a policy is passed (REQUIREMENTS_ADDENDUM
 C: never on for timing); it is offered by the Python native ``evaluate``
 only, in no SDK, the CLI or the configuration.
 """
@@ -172,7 +174,7 @@ def rescue(
         if k and not pending:
             break
         last = k == len(levels) - 1
-        batches = [pending] if k == 0 else [(index,) for index in pending]
+        batches = [pending] if k == 0 else level_batches(pending, level)
         retry: list[int] = []
         for batch in batches:
             evaluation = evaluate(batch, level)
@@ -196,6 +198,30 @@ def rescue(
     if template is None:  # pragma: no cover - level 0 always runs
         raise EvaluationError("a rescue policy ran no level")
     return _merged(template, kept, attempts, policy, on_failure)
+
+
+def level_batches(
+    pending: tuple[int, ...], level: VirtualRescueLevel
+) -> list[tuple[int, ...]]:
+    """The calls in which an escalated level evaluates its ``pending`` points
+    (module docstring), in the points' order: one in binary64; in an
+    extended carrier, whole chunks of ``DEFAULT_LANES`` points, then one
+    call per binary digit of the remainder, largest first."""
+
+    from .plan_export import DEFAULT_LANES
+
+    if level.arithmetic == "double" or not pending:
+        return [pending]
+    whole = len(pending) - len(pending) % DEFAULT_LANES
+    batches = [pending[:whole]] if whole else []
+    size = DEFAULT_LANES
+    start = whole
+    while start < len(pending):
+        size //= 2
+        if len(pending) - start >= size:
+            batches.append(pending[start : start + size])
+            start += size
+    return batches
 
 
 def _attempt(
@@ -339,6 +365,7 @@ __all__ = [
     "RESCUE_OWNS_CARRIER",
     "RESCUE_SCOPE",
     "LevelEvaluator",
+    "level_batches",
     "rescue",
     "rescue_policy",
 ]
