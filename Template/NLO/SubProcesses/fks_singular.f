@@ -6534,11 +6534,58 @@ c
       
 
 
+      subroutine virt_surrogate_dp(p_born,dp)
+      use virt_surrogate, only: vs_dp_count
+c The Denner-Pozzorini EW Sudakov terms of the Born at this point, for the
+c 'DP' candidate of the virt-trick surrogate (VirtTrickSurrogate 3): the
+c LSC, SSC, C and parameter-renormalisation parts of EW origin, summed
+c over the amplitude orders and the helicities, in the units of the
+c virtual (as in compute_ewsudakov). The logarithms of the photon are in
+c dimensional regularisation (sud_mod 2), as in the virtual of MadLoop.
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      double precision p_born(0:3,nexternal-1),dp(4),wgt_c
+      double complex amp_split_ewsud_lsc(amp_split_size)
+      common /to_amp_ewsud_lsc/amp_split_ewsud_lsc
+      double complex amp_split_ewsud_ssc(amp_split_size)
+      common /to_amp_ewsud_ssc/amp_split_ewsud_ssc
+      double complex amp_split_ewsud_xxc(amp_split_size)
+      common /to_amp_ewsud_xxc/amp_split_ewsud_xxc
+      double complex amp_split_ewsud_par(amp_split_size)
+      common /to_amp_ewsud_par/amp_split_ewsud_par
+      integer sud_mod
+      common /to_sud_mod/ sud_mod
+      logical sud_mc_hel
+      common /to_mc_hel/ sud_mc_hel
+      integer sud_mod_save
+      logical mc_hel_save
+      double precision cpu0,cpu1
+      call cpu_time(cpu0)
+      sud_mod_save=sud_mod
+      mc_hel_save=sud_mc_hel
+      sud_mod=2
+      sud_mc_hel=.false.
+      call sborn_frame(p_born,wgt_c)
+      call sudakov_wrapper(p_born)
+      dp(1)=2d0*dble(sum(amp_split_ewsud_lsc))
+      dp(2)=2d0*dble(sum(amp_split_ewsud_ssc))
+      dp(3)=2d0*dble(sum(amp_split_ewsud_xxc))
+      dp(4)=2d0*dble(sum(amp_split_ewsud_par))
+      sud_mod=sud_mod_save
+      sud_mc_hel=mc_hel_save
+      call cpu_time(cpu1)
+      call vs_dp_count(cpu1-cpu0)
+      return
+      end
+
+
       subroutine bornsoftvirtual(p,bsv_wgt,virt_wgt,born_wgt)
       use fks_phase_space_data, only: sqrtshat,shat,p_born
       use extra_weights
       use mint_module
       use virt_surrogate, only: vs_clear_links,vs_add_link,vs_features,
+     $     vs_add_ir_link,vs_dp_wanted,vs_set_dp,vs_dp_avail,
      $     vs_select,vs_born,vs_fvirt,vs_virt,
      $     vs_residual_order,vs_residual_reference,vs_single_born_order
       implicit none
@@ -6546,6 +6593,7 @@ c
       include 'nexternal.inc'
       include "coupl.inc"
       include 'q_es.inc'
+      include 'has_ewsudakov.inc'
 c      include "fks.inc"
       integer fks_j_from_i(nexternal,0:nexternal)
      &     ,particle_type(nexternal),pdg_type(nexternal)
@@ -6557,6 +6605,8 @@ c      include "fks.inc"
       include "run.inc"
       include "fks_powers.inc"
       double precision p(0:3,nexternal),bsv_wgt,born_wgt,avv_wgt
+c EW Sudakov (Denner-Pozzorini) features of the virtual surrogate
+      double precision dp_feat(4)
       
       double precision wgt1
       double precision Q,Ej,wgt,contr,eikIreg
@@ -6665,6 +6715,11 @@ C to keep track of the various split orders
      $                         amp_split_wgtwnstmpmur
       double precision coupl_wgtwnstmpmuf
       logical collect_surrogate,use_surrogate
+c gamma_k/C_k of the massless coloured partons, for the infrared surrogate
+      double precision gcr(nexternal)
+c order whose links feed the fitted surrogate: QCD, or QED for processes
+c without colour links (pure EW corrections)
+      integer link_ord
 c Surrogate/Born ratios fixed for all folds of this point.
       double precision ave_ratio(0:amp_split_size)
 
@@ -6836,14 +6891,17 @@ c     helicity contributions for the Q-terms of collinear limit.
       collect_surrogate=VirtTrickSurrogate.ge.1.and.fold.eq.0
      $     .and.born_spread_phase.ne.1.and.born_spread_phase.ne.2
       if (fold.eq.0) call vs_clear_links
+      link_ord=qcd_pos
+      if (.not.need_color_links_used) link_ord=qed_pos
 c Separate virtual events need only the colour links from this loop.
       if (abrv.eq.'virt'.and.(.not.collect_surrogate.or.
-     $     .not.need_color_links_used)) goto 548
+     $     .not.(need_color_links_used.or.need_charge_links_used)))
+     $     goto 548
 c
 c I(reg) terms, eq 5.5 of FKS
       nFKSprocess_save = nFKSprocess
       do iord = 1, nsplitorders
-         if (abrv.eq.'virt'.and.iord.ne.qcd_pos) cycle
+         if (abrv.eq.'virt'.and.iord.ne.link_ord) cycle
          if (iord.eq.qcd_pos) then
             if (.not. need_color_links_used) cycle
             need_color_links=need_color_links_used
@@ -6862,6 +6920,21 @@ C setup the fks i/j info
 C the following call to born is to setup the goodhel(nfksprocess)
          call sborn_frame(p_born,wgt1)
          contr=0d0
+         if (collect_surrogate.and.iord.eq.link_ord) then
+            do i=1,nexternal
+               gcr(i)=0d0
+               if (pmass(i).ne.ZERO) cycle
+               if (iord.eq.qed_pos) then
+c charged massless fermions: gamma/C = (3/2 Q^2)/Q^2
+                  if (particle_charge(i).ne.0d0.and.pdg_type(i).ne.22)
+     $                 gcr(i)=1.5d0
+               elseif (particle_type(i).eq.8) then
+                  gcr(i)=gamma(0)/c(0)
+               elseif (abs(particle_type(i)).eq.3) then
+                  gcr(i)=gamma(1)/c(1)
+               endif
+            enddo
+         endif
          do i=1,fks_j_from_i(i_fks,0)
             do j=1,i
                m=fks_j_from_i(i_fks,i)
@@ -6874,8 +6947,11 @@ c because there is a call above in this subroutine
 C wgt includes the gs/w^2 
                   call sborn_sf_frame(p_born,m,n,wgt)
                   if (wgt.ne.0d0) then
-                     if (collect_surrogate.and.iord.eq.qcd_pos)
-     $                    call vs_add_link(p_born,QES2,i_fks,m,n,wgt)
+                     if (collect_surrogate.and.iord.eq.link_ord) then
+                        call vs_add_link(p_born,QES2,i_fks,m,n,wgt)
+                        call vs_add_ir_link(p_born,QES2,i_fks,m,n,wgt,
+     $                       pmass(m),pmass(n),gcr(m),gcr(n),nincoming)
+                     endif
                      if (abrv.eq.'virt') cycle
                      call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
                      contr=contr+wgt*eikIreg
@@ -6939,6 +7015,11 @@ c polynomial when the channel's fit has not been selected.
          vs_ratio_set=.false.
          if (use_surrogate) then
             call vs_features(p_born,born_wgt,QES2,VirtTrickSurrogate)
+            vs_dp_avail=has_ewsudakov
+            if (vs_dp_wanted(ichan,.false.)) then
+               call virt_surrogate_dp(p_born,dp_feat)
+               call vs_set_dp(born_wgt,dp_feat)
+            endif
             call vs_select(ichan,born_wgt)
          endif
       endif
@@ -6969,6 +7050,10 @@ c polynomial when the channel's fit has not been selected.
             if (use_surrogate) then
                vs_vcomp=.true.
                vs_virt=virt_wgt
+               if (vs_dp_wanted(ichan,.true.)) then
+                  call virt_surrogate_dp(p_born,dp_feat)
+                  call vs_set_dp(born_wgt,dp_feat)
+               endif
             endif
             virtual_over_born=0d0
             if (born_wgt.ne.0d0)

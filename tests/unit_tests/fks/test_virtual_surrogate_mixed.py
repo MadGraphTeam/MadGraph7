@@ -39,6 +39,10 @@ def production_fixture():
       amp_split_virt=amp_split_finite_ML
       amp_split_avv=0d0
 ''' + capture + ratio + residual + fraction + '\n' + approximation + '''      end
+      subroutine virt_surrogate_dp(p,dp)
+      real(8) p(0:3,*),dp(4)
+      error stop 'DP features requested without EW Sudakov matrix elements'
+      end
 '''
 
 
@@ -62,6 +66,9 @@ character(len=4) :: abrv='all '
 real(8) :: p_born(0:3,4),QES2=100d0,born_wgt=2d0,virt_wgt,virtual_over_born,avv_wgt
 real(8) :: amp_split_born_for_virt(2),amp_split_finite_ML(2)=[5d0,3d0]
 real(8) :: amp_split_virt(2),amp_split_avv(2),ave_ratio(0:2)
+! no EW Sudakov matrix elements: the DP candidate is never requested
+logical,parameter :: has_ewsudakov=.false.
+real(8) :: dp_feat(4)=0d0
 contains
 subroutine load_fit
 call vs_reset

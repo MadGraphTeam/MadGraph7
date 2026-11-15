@@ -4,13 +4,14 @@ c c = (residual * virtual_fraction + surrogate) / exact_virtual.
       use weight_lines, only: icontr,itype,amppos,wgts
       use mint_module, only: imode,ichan,use_poly_virtual,
      $     VirtTrickSurrogate,polyfit,average_virtual
-      use virt_surrogate, only: vs_vcomp,vs_featok,vs_virt,vs_fvirt,
-     $     vs_born,vs_accumulate,vs_residual_order,vs_residual_reference
+      use virt_surrogate, only: vs_vcomp,vs_any_featok,vs_virt,vs_fvirt,
+     $     vs_born,vs_accumulate,vs_residual_order,
+     $     vs_residual_reference,vs_dump
       implicit none
       integer i
       double precision s14,s15,c,agrid
       if (VirtTrickSurrogate.lt.1.or.imode.ne.0) return
-      if (.not.vs_vcomp .or. .not.vs_featok) return
+      if (.not.vs_vcomp .or. .not.vs_any_featok()) return
       if (vs_virt.eq.0d0) return
       s14=0d0
       s15=0d0
@@ -38,5 +39,6 @@ c a nonzero raw residual order with all its final flavour/fold records.
          agrid=average_virtual(0,ichan)*vs_born
       endif
       call vs_accumulate(ichan,vs_virt,agrid,c**2)
+      call vs_dump(ichan,c**2,agrid)
       return
       end

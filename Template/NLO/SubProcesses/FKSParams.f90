@@ -17,7 +17,9 @@ module FKSParams
               QCD_squared_selected
   logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual
   ! Native virtual surrogate: 0 = grid/polynomial, 1 = colour dipoles,
-  ! 2 = colour dipoles and logarithms of all Born pairs (default).
+  ! 2 = colour dipoles and logarithms of all Born pairs (default),
+  ! 3 = per channel the best of 2, the infrared (Sudakov) logarithms and,
+  !     with --ewsudakov, the Denner-Pozzorini EW Sudakov terms.
   integer :: VirtTrickSurrogate=2
   logical :: MCExplicitKLSum=.false.
   logical :: MCSubtractionAtFixedFlow=.true.
@@ -119,8 +121,8 @@ contains
              read(68,*,end=999) use_poly_virtual
           else if (buff .eq. '#VirtTrickSurrogate') then
              read(68,*,end=999) VirtTrickSurrogate
-             if (VirtTrickSurrogate.lt.0.or.VirtTrickSurrogate.gt.2) then
-                write(*,*) 'VirtTrickSurrogate must be 0, 1 or 2.'
+             if (VirtTrickSurrogate.lt.0.or.VirtTrickSurrogate.gt.3) then
+                write(*,*) 'VirtTrickSurrogate must be 0, 1, 2 or 3.'
                 stop 1
              endif
           else if (buff .eq. '#VetoedContributionTypes') then

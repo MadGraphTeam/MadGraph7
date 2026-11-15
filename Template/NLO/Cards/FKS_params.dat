@@ -167,7 +167,15 @@
 !     L_kl = log(|2 p_k.p_l|/Q_ES^2).
 ! 2 = 1 plus B L_kl and B L_kl^2 for every pair of Born particles,
 !     coloured or not.
-! For 1 and 2 a channel keeps the grid when the fit does worse: in event
+! 3 = 2, and two more candidates fitted on the same points:
+!     IR: A = t1 V_IR + t2 B + t3 (alpha/2pi) B, with V_IR the finite part
+!     at mu = Q_ES of the one-loop infrared (Sudakov) operator of Catani,
+!     from the colour links (QCD) or the charge links (QED/EW);
+!     DP: A = t1 B + t2 LSC + t3 SSC + t4 C + t5 PR, the Denner-Pozzorini
+!     EW Sudakov terms of the Born, only if the process was generated
+!     with --ewsudakov (EW corrections).
+!     Each channel uses the candidate that does best against the grid.
+! For 1, 2 and 3 a channel keeps the grid when the fit does worse: in event
 ! generation the fit is kept if its residual makes fewer negative virtual
 ! events, in fixed order if its residual variance is smaller. Exact for
 ! any choice.

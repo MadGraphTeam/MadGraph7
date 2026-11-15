@@ -169,6 +169,77 @@ end program
 ''', [('context.f90', modules),
       ('virtual_approximation.f', (TEMPLATE / 'virtual_approximation.f').read_text())])
 
+    def test_mode3_chooses_a_candidate_per_channel_and_saves_it(self):
+        self.compile_and_run('''program check
+use virt_surrogate
+implicit none
+integer i,c
+real(8) p(0:3,4),born,dp(4),virt,q2,th1(16),saved(3),x
+p(:,1)=[50d0,0d0,0d0,50d0]
+p(:,2)=[50d0,0d0,0d0,-50d0]
+p(:,3)=[50d0,50d0,0d0,0d0]
+p(:,4)=[50d0,-50d0,0d0,0d0]
+call vs_reset
+vs_dp_avail=.true.
+! Channel 1 follows the DP terms, channel 2 is the grid itself.
+do c=1,2
+  do i=1,400
+    call vs_begin_point
+    x=real(i,8)
+    q2=50d0+mod(37*i,450)
+    born=1d0+mod(i,7)
+    call vs_add_link(p,q2,5,1,2,-born)
+    call vs_add_ir_link(p,q2,5,1,2,-born,0d0,0d0,1.5d0,1.5d0,2)
+    call vs_features(p,born,q2,3)
+    if(.not.vs_dp_wanted(c,.true.))error stop 'DP features not requested for training'
+    if(vs_dp_wanted(c,.false.))error stop 'DP features requested before DP is chosen'
+    dp=[sin(x),cos(3d0*x),sin(7d0*x)**2,log(1d0+x)]
+    call vs_set_dp(born,dp)
+    virt=3d0*dp(1)-2d0*dp(3)+0.5d0*born
+    if(c==1)then
+      call vs_accumulate(c,virt,born,1d0)
+    else
+      call vs_accumulate(c,virt,virt,1d0)
+    endif
+  enddo
+  call vs_solve(c,.false.)
+enddo
+! channel 1: DP is chosen and reproduces the virtual; channel 2: the grid
+call vs_begin_point
+call vs_add_link(p,100d0,5,1,2,-2d0)
+call vs_features(p,2d0,100d0,3)
+if(.not.vs_dp_wanted(1,.false.))error stop 'DP chosen but its features are not requested'
+if(vs_dp_wanted(2,.false.))error stop 'grid channel requested the DP features'
+dp=[.3d0,-.2d0,.1d0,.4d0]
+call vs_set_dp(2d0,dp)
+call vs_select(1,2d0)
+if(.not.vs_ratio_set)error stop 'DP candidate not selected'
+if(abs(vs_ratio*2d0-(3d0*.3d0-2d0*.1d0+1d0))>1d-6)error stop 'DP fit not exact'
+saved(1)=vs_ratio
+call vs_select(2,2d0)
+if(vs_ratio_set)error stop 'grid channel uses a candidate'
+! the choice and the coefficients survive a write/read of the grids
+open(15,status='scratch',form='formatted')
+call vs_write_grids(15,2)
+call vs_reset
+rewind(15);call vs_read_grids(15,2,.true.);close(15)
+call vs_begin_point
+call vs_add_link(p,100d0,5,1,2,-2d0)
+call vs_features(p,2d0,100d0,3)
+call vs_set_dp(2d0,dp)
+call vs_select(1,2d0)
+if(.not.vs_ratio_set.or.abs(vs_ratio-saved(1))>1d-12)error stop 'lost DP choice'
+call vs_select(2,2d0)
+if(vs_ratio_set)error stop 'lost grid choice'
+! without EW Sudakov matrix elements DP is never requested
+vs_dp_avail=.false.
+call vs_begin_point
+call vs_add_link(p,100d0,5,1,2,-2d0)
+call vs_features(p,2d0,100d0,3)
+if(vs_dp_wanted(1,.true.))error stop 'DP requested without EW Sudakov matrix elements'
+end program
+''')
+
     def test_grid_roundtrip_disabled_mode_and_legacy_fallback(self):
         source = (TEMPLATE / 'mint_module.f90').read_text()
         routines = '\n'.join(re.search(
