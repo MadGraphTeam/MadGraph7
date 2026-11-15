@@ -597,6 +597,28 @@ def test_runtime_and_stability_report_peak_ram_and_reference_timing():
     )
     assert lines[first + 1].endswith("| (arb(57) x42) |"), text
     assert "dd x" not in text and max(len(line) for line in lines) <= 100
+    # A wide runtime table (a lanes column, a long label): the multiplier
+    # goes under the time, within the line width, no new line elsewhere.
+    lanes = {"tirust": 3451, "ninjars": 5}
+    wide_rows = (
+        replace(
+            arb_rows[0],
+            profile=replace(
+                arb_rows[0].profile,
+                reference=replace(arb, seconds_per_point=1.808),
+                reduction={"lanes": lanes},
+            ),
+        ),
+        replace(
+            arb_rows[1],
+            profile=replace(arb_rows[1].profile, reduction={"lanes": {"ninjars": 9}}),
+        ),
+    )
+    wide = render_summary(_report(None, wide_rows, truth), color=False).splitlines()
+    assert max(len(line) for line in wide) <= 100, "\n".join(wide)
+    first = next(i for i, line in enumerate(wide) if line.startswith("| TIRust"))
+    assert wide[first].split("|")[2].strip() == "1 ms"
+    assert wide[first + 1].split("|")[2].strip() == "(arb(57) x1808)"
 
 
 def test_ground_truth_spellings():

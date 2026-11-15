@@ -218,6 +218,9 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         prettytable, tuple(fields), "Runtime per reduction backend", color=color
     )
     summary.max_width = 26
+    # Per row its cells, the time cell as its parts (the time, the
+    # reference multiplier).
+    entries: list[tuple[tuple[str, ...], list[str]]] = []
     for row in rows:
         label = _backend_label(row.backend, report.default_backend, color)
         cells: list[str]
@@ -227,7 +230,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 palette.paint("refused", palette.BAD, color=color, bold=True),
             ]
             cells += [""] * (len(fields) - len(cells))
-            summary.add_row(tuple(cells))
+            entries.append(((cells[1],), cells))
             continue
         profile = row.profile
         timed = profile.batch * profile.samples
@@ -256,15 +259,18 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                     f"x{row.ratio:.2f}", palette.RECOVERED, color=color
                 )
         reference = getattr(profile, "reference", None)
+        time_parts: tuple[str, ...] = (time_cell,)
         if (
             reference is not None
             and profile.seconds_per_point > 0.0
             and reference.points > reference.failed_points
         ):
-            time_cell += " " + _reference_ratio(
-                reference.seconds_per_point / profile.seconds_per_point,
-                _truth(report)[0],
-                color,
+            time_parts += (
+                _reference_ratio(
+                    reference.seconds_per_point / profile.seconds_per_point,
+                    _truth(report)[0],
+                    color,
+                ),
             )
         cells = [label, time_cell, spread, ratio, _peak_cell(profile, color)]
         if show_best:
@@ -303,8 +309,17 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 if profile.failed_points
                 else ""
             )
-        summary.add_row(tuple(cells))
-    blocks = [str(summary.get_string())]
+        entries.append((time_parts, cells))
+    # The multiplier under the time when one line would pass the line
+    # width (as in the stability table's time cell).
+    for joiner in (" ", "\n"):
+        summary.clear_rows()
+        for time_parts, cells in entries:
+            summary.add_row((cells[0], joiner.join(time_parts), *cells[2:]))
+        text = str(summary.get_string())
+        if max(map(len, _ANSI.sub("", text).splitlines())) <= _width():
+            break
+    blocks = [text]
     causes = failure_lines(report.failure_causes, "runtime", color)
     refusals = [
         f"{_backend_label(row.backend, report.default_backend, color)} refused: "
