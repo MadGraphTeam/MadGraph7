@@ -6,6 +6,7 @@ statistics of the reduction backends side by side."""
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 from . import palette
@@ -75,7 +76,7 @@ def failure_lines(causes: Any, table: str, color: bool) -> str | None:
             break_long_words=True,
             break_on_hyphens=False,
         ) or [kind]
-        colour = palette.RECOVERED if kind == "best-effort" else palette.BAD
+        colour = palette.RECOVERED if kind.startswith("best-effort") else palette.BAD
         lines.append(
             palette.paint(label, colour, color=color)
             + body[0]
@@ -137,6 +138,31 @@ def _seconds_text(seconds: float) -> str:
     return f"{seconds / 1e-9:.3g} ns"
 
 
+def _double_double_ratio(ratio: float, color: bool) -> str:
+    """``(dd xN)`` after a binary64 time: double-double takes N times as
+    long (one decimal below 10, none from 10 on); green when double-double
+    is the faster, yellow otherwise, as the stage ratios."""
+
+    text = f"x{ratio:.1f}" if round(ratio, 1) < 10.0 else f"x{ratio:.0f}"
+    return (
+        "(dd "
+        + palette.paint(
+            text, palette.GOOD if ratio < 1.0 else palette.RECOVERED, color=color
+        )
+        + ")"
+    )
+
+
+def _peak_cell(profile: Any, color: bool) -> str:
+    """The ``peak RAM`` cell of a profiled backend (``resources.
+    peak_memory_text``): a muted ``-`` when it is not measurable."""
+
+    from .resources import peak_memory_text
+
+    text = peak_memory_text(getattr(profile, "peak_memory", None))
+    return palette.paint("-", palette.MUTED, color=color) if text is None else text
+
+
 def _lanes(row: Any) -> dict[str, int]:
     profile = row.profile
     return dict(profile.reduction.get("lanes") or {}) if profile is not None else {}
@@ -153,7 +179,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     show_lanes = any(len(_lanes(row)) > 1 for row in rows)
     show_best = any(row.profile and row.profile.best_effort_points for row in rows)
     show_failed = any(row.profile and row.profile.failed_points for row in rows)
-    fields = ["backend", "time / point", "min - max call", "vs fastest"]
+    fields = ["backend", "time / point", "min - max call", "vs fastest", "peak RAM"]
     fields += ["best-effort"] if show_best else []
     fields += ["lanes"] if show_lanes else []
     fields += ["failed"] if show_failed else []
@@ -168,8 +194,6 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             cells = [
                 label,
                 palette.paint("refused", palette.BAD, color=color, bold=True),
-                "",
-                "",
             ]
             cells += [""] * (len(fields) - len(cells))
             summary.add_row(tuple(cells))
@@ -200,7 +224,12 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 ratio = palette.paint(
                     f"x{row.ratio:.2f}", palette.RECOVERED, color=color
                 )
-        cells = [label, time_cell, spread, ratio]
+        dd = getattr(profile, "double_double", None)
+        if dd is not None and profile.seconds_per_point > 0.0:
+            time_cell += " " + _double_double_ratio(
+                dd.seconds_per_point / profile.seconds_per_point, color
+            )
+        cells = [label, time_cell, spread, ratio, _peak_cell(profile, color)]
         if show_best:
             cells.append(
                 palette.paint(
@@ -239,9 +268,6 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             )
         summary.add_row(tuple(cells))
     blocks = [str(summary.get_string())]
-    extra = _runtime_extra_lines(rows, color)
-    if extra:
-        blocks.append("\n".join(extra))
     causes = failure_lines(report.failure_causes, "runtime", color)
     refusals = [
         f"{_backend_label(row.backend, report.default_backend, color)} refused: "
@@ -315,73 +341,26 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     return blocks
 
 
-def _runtime_extra_lines(rows: Any, color: bool) -> list[str]:
-    """Per profiled backend its double-double timing (when the profile ran
-    one) and its peak RAM over the profiled calls."""
-
-    from .resources import peak_memory_text
-
-    lines = []
-    for row in rows:
-        profile = row.profile
-        if profile is None:
-            continue
-        name = _name(row.backend)
-        dd = getattr(profile, "double_double", None)
-        if dd is not None:
-            ratio = (
-                f", x{dd.seconds_per_point / profile.seconds_per_point:.1f} binary64"
-                if profile.seconds_per_point > 0.0
-                else ""
-            )
-            failed = f", {dd.failed_points} failed" if dd.failed_points else ""
-            lines.append(
-                f"{name} double-double: "
-                + palette.paint(
-                    f"{_seconds_text(dd.seconds_per_point)} / point",
-                    None,
-                    color=color,
-                    bold=True,
-                )
-                + f"{ratio} ({dd.points} points{failed})"
-            )
-        text = peak_memory_text(getattr(profile, "peak_memory", None))
-        if text is not None:
-            lines.append(f"{name} peak RAM: {text}")
-    return lines
+# The terminal colour codes of a painted text (not part of its width).
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
-def _stability_timing_lines(rows: Any) -> list[str]:
-    """Per backend the time per point of the stability run in binary64
-    (with its checks) and in double-double (the reference), one line each,
-    with the points evaluated and the ratio."""
+def _stability_time(row: Any, color: bool) -> tuple[str, ...]:
+    """The parts of the ``time`` cell of a backend's stability run: its
+    binary64 calls' total wall time (with their checks, summed over the
+    workers) and how many times longer its double-double calls took in
+    total (``_double_double_ratio``); the sum of both (``row.seconds``)
+    when the run has no split per precision."""
 
-    lines = []
-    for row in rows:
-        timing = getattr(row, "precision_timing", None)
-        if not timing:
-            continue
-        name = _name(row.backend)
-        b64 = timing.get("binary64", {})
-        dd = timing.get("double-double", {})
-        b64_seconds = b64.get("seconds_per_point")
-        dd_seconds = dd.get("seconds_per_point")
-        if b64_seconds is not None:
-            lines.append(
-                f"{name} time / point: binary64 {_seconds_text(float(b64_seconds))}"
-                f" over {b64.get('points')} points (with its checks)"
-            )
-        if dd_seconds is not None:
-            ratio = (
-                f", x{float(dd_seconds) / float(b64_seconds):.1f}"
-                if b64_seconds
-                else ""
-            )
-            lines.append(
-                f"{name} time / point: double-double {_seconds_text(float(dd_seconds))}"
-                f" over {dd.get('points')} points{ratio}"
-            )
-    return lines
+    timing = getattr(row, "precision_timing", None) or {}
+    binary64 = timing.get("binary64", {}).get("seconds")
+    double_double = timing.get("double-double", {}).get("seconds")
+    if binary64 is None:
+        return (_seconds_text(row.seconds),)
+    text = _seconds_text(float(binary64))
+    if double_double is None or not binary64 > 0.0:
+        return (text,)
+    return text, _double_double_ratio(float(double_double) / float(binary64), color)
 
 
 def _digits_colour(digits: float, target_digits: float) -> str:
@@ -529,11 +508,15 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         color=color,
     )
     verdicts.max_width = 14
+    # Room for the time's "(dd xN)" multiplier on its line.
+    verdicts.max_width = {verdicts.field_names[-1]: 18}
+    entries: list[tuple[str, ...]] = []
+    times: list[tuple[str, ...]] = []
     refusals = []
     for row in rows:
         label = _backend_label(row.backend, report.default_backend, color)
         if row.refusal is not None:
-            verdicts.add_row(
+            entries.append(
                 (
                     label,
                     palette.paint("refused", palette.BAD, color=color, bold=True),
@@ -541,9 +524,9 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                     "",
                     "",
                     "",
-                    "",
                 )
             )
+            times.append(("",))
             refusals.append(f"{label} refused: {row.refusal}")
             continue
         measured = str(row.points) + (
@@ -553,7 +536,7 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             if row.failed_reference
             else ""
         )
-        verdicts.add_row(
+        entries.append(
             (
                 label,
                 measured,
@@ -577,13 +560,18 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                     color=color,
                     bold=row.unflagged_inaccurate > 0,
                 ),
-                f"{row.seconds:.1f} s",
             )
         )
-    blocks.append(str(verdicts.get_string()))
-    timing = _stability_timing_lines(report.stability)
-    if timing:
-        blocks.append("\n".join(timing))
+        times.append(_stability_time(row, color))
+    # The multiplier under the time when one line would pass the line width.
+    for joiner in (" ", "\n"):
+        verdicts.clear_rows()
+        for cells, time_parts in zip(entries, times, strict=True):
+            verdicts.add_row((*cells, joiner.join(time_parts)))
+        text = str(verdicts.get_string())
+        if max(map(len, _ANSI.sub("", text).splitlines())) <= _width():
+            break
+    blocks.append(text)
     best = _best_effort_table(report, served, prettytable, color)
     if best is not None:
         blocks.append(best)
