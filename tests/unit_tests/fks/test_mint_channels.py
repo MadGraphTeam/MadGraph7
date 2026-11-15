@@ -131,8 +131,9 @@ for _name in ('accum', 'HwU_accum_iter', 'HwU_add_points', 'initplot',
 PROGRAM = '''
 module integrand_state
 logical :: seed_only=.false.
-logical :: envelope_case=.false.
+logical :: envelope_case=.false.,virtual_point=.false.
 integer :: virtual_calls=0
+double precision :: virtual_share=0d0
 end module
 
 program check_mint
@@ -181,15 +182,16 @@ case('virtual_envelope')
  f=0d0;f(1)=1d0;f(5)=4d0
  call add_point_to_bounding_envelope
  if(ymax_virt(1).ne.0d0)error stop 'single point bootstrapped virtual envelope'
+ ! The mean of f(5) already excludes the virtual_fraction enhancement.
  vtot=0d0;vtot(5,1)=4d0
  call bootstrap_virtual_envelopes
- if(ymax_virt(1).ne.1d0)error stop 'zero virtual envelope did not bootstrap'
- f(5)=12d0
+ if(ymax_virt(1).ne.4d0)error stop 'zero virtual envelope did not bootstrap'
+ f(5)=48d0
  call add_point_to_bounding_envelope
- if(ymax_virt(1).ne.2d0)error stop 'positive virtual envelope growth changed'
+ if(ymax_virt(1).ne.8d0)error stop 'positive virtual envelope growth changed'
  f(5)=0.5d0
  call add_point_to_bounding_envelope
- if(ymax_virt(1).ne.2d0)error stop 'positive virtual envelope decreased'
+ if(ymax_virt(1).ne.8d0)error stop 'positive virtual envelope decreased'
  ymax_virt=0d0;vtot(5,1)=0d0
  call bootstrap_virtual_envelopes
  if(ymax_virt(1).ne.0d0)error stop 'empty virtual envelope changed'
@@ -209,14 +211,21 @@ case('virtual_envelope')
 case('envelope_seed','envelope_recover')
  nchans=1
  envelope_case=.true.
- if(mode.eq.'envelope_recover')imode=1
  itmax=2
  wgt_mult=1d0
+ ! One envelope iteration, so that its bootstrap seed is not grown further.
+ if(mode.eq.'envelope_recover')then
+  imode=1
+  itmax=1
+ endif
  call mint(integrand)
  if(mode.eq.'envelope_seed')then
   if(ans(5,1).ne.0d0)error stop 'virtual bootstrap fixture did not start at zero'
  else
-  if(ymax_virt(1).le.0d0.or.ymax_virt(1).gt.10d0) &
+  ! The seed is the iteration mean, as ans(5) is in setup_imode_1.
+  if(ymax_virt(1).ne.ans(5,1))error stop 'virtual envelope bootstrap is not the mean'
+  ! The outlier alone has an un-enhanced virtual of about 1e4.
+  if(ymax_virt(1).le.0d0.or.ymax_virt(1).gt.1d2) &
     error stop 'isolated outlier dominated virtual envelope bootstrap'
  endif
 case('rms')
@@ -316,9 +325,18 @@ f=0d0
 f(1)=point*vol
 f(2)=f(1)
 if(envelope_case.and.imode.eq.1)then
- f(5)=vol/virtual_fraction(ichan)
- if(virtual_calls.eq.0)f(5)=1d4*f(5)
- if(ifl.eq.2)virtual_calls=virtual_calls+1
+ ! As in the driver, the virtual is evaluated for a virtual_fraction of
+ ! the points only, enhanced by its inverse. The first one is an outlier.
+ if(ifl.eq.0)then
+  virtual_share=virtual_share+virtual_fraction(ichan)
+  virtual_point=virtual_share.ge.1d0
+  if(virtual_point)virtual_share=virtual_share-1d0
+ endif
+ if(virtual_point)then
+  f(5)=vol/virtual_fraction(ichan)
+  if(virtual_calls.eq.0)f(5)=1d4*f(5)
+  if(ifl.eq.2)virtual_calls=virtual_calls+1
+ endif
 endif
 pass_cuts_check=.true.
 integrand=f(2)

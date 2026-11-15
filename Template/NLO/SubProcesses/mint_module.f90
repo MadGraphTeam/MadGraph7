@@ -1529,10 +1529,13 @@ contains
     ! A zero step-zero estimate cannot grow through the factor-two cap.
     ! Seed from an accepted iteration's mean, never from a single point.
     ! This is only needed while setting up the unweighting envelopes.
+    ! f(5)=|V|/virtual_fraction on that fraction of the points and zero
+    ! elsewhere, so its mean already excludes the enhancement. This is
+    ! the same seed as ans(5) in reset_upper_bounding_envelope.
     if(imode.ne.1)return
     do kchan=1,nchans
        if(ymax_virt(kchan).ne.0d0)cycle
-       candidate=vtot(5,kchan)*virtual_fraction(kchan)
+       candidate=vtot(5,kchan)
        if(.not.ieee_is_finite(candidate))cycle
        if(candidate.gt.0d0)ymax_virt(kchan)=candidate
     enddo
