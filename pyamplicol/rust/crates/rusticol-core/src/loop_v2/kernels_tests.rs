@@ -560,6 +560,48 @@ fn extended_precision_carriers_keep_their_precision() {
     }
 }
 
+/// Double-double takes the FMA build of the kernels where the CPU has FMA
+/// (none under the baseline cap), and its values are bitwise those of the
+/// baseline build.
+#[cfg(target_arch = "x86_64")]
+#[test]
+fn double_double_kernels_take_fma_bitwise() {
+    let fma = std::arch::is_x86_feature_detected!("fma");
+    assert_eq!(Simd::fused(Some("baseline")), Simd::Baseline);
+    let expected = if fma { Simd::Fma } else { Simd::Baseline };
+    assert_eq!(Simd::fused(None), expected);
+    assert_eq!(Simd::fused(Some("avx2")), expected);
+    assert_eq!(
+        Simd::detect::<DoubleFloat>(),
+        Simd::fused(std::env::var(KERNEL_SIMD_ENV).ok().as_deref())
+    );
+    let mut rng = Lcg(0xf3a);
+    let products = MonomialProductTable::new(2, 2);
+    let segment = Segment::new(4, 4, 4, 4, &products, 3);
+    let layout = segment.dense_fused_layout();
+    let convert = |values: Vec<Rational>| -> Vec<DoubleFloat> {
+        values.iter().map(DoubleFloat::from).collect()
+    };
+    let input = convert(rng.lane_vectors(4 * segment.input_row_len()));
+    let factor = convert(rng.lane_vectors(2 * layout.entries().len()));
+    let links: Vec<RowLink> = (0..4)
+        .map(|r| RowLink {
+            output: (r / 2) as u32,
+            input: r as u32,
+            block: (r % 2) as u32,
+        })
+        .collect();
+    let zero = DoubleFloat::from(0.0);
+    let len = 2 * segment.output_row_len() * lane_vector_len(L);
+    let mut dispatched = vec![zero; len];
+    fused_edge::<DoubleFloat, L>(&segment, &layout, &input, &factor, &links, &mut dispatched);
+    let mut baseline = vec![zero; len];
+    fused_edge_body::<DoubleFloat, L>(&segment, &layout, &input, &factor, &links, &mut baseline);
+    assert_eq!(dispatched, baseline);
+    assert_eq!(format!("{dispatched:?}"), format!("{baseline:?}"));
+    assert!(dispatched.iter().any(|v| v.to_f64() != 0.0));
+}
+
 #[cfg(target_arch = "x86_64")]
 #[test]
 fn the_simd_cap_only_lowers_the_width() {
