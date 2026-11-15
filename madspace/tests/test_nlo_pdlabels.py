@@ -42,6 +42,19 @@ needs_output = pytest.mark.skipif(
 TABLE_RTOL = 5e-4
 NNPDF_RTOL = 5e-3
 GLOBALS = ("pdf_logx", "pdf_logq2", "pdf_coefficients")
+ALPHA_S_GLOBALS = ("alpha_s_logq2", "alpha_s_coefficients")
+
+
+@pytest.fixture(autouse=True)
+def clean_default_context():
+    """The densities and alpha_s of a test live in the default context, which
+    the tests share. They go after the test, as test_pdf.py uploads its own
+    under the same names."""
+    yield
+    context = default_context()
+    for name in (*GLOBALS, *ALPHA_S_GLOBALS):
+        if context.global_exists(name):
+            context.delete_global(name)
 
 
 def points(pdlabel, count=400, seed=5):
