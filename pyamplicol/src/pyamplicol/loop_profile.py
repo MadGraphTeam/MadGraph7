@@ -66,6 +66,7 @@ is reported with its reason.
 from __future__ import annotations
 
 import contextlib
+import gc
 import math
 import os
 import re
@@ -979,6 +980,8 @@ def _warm_up(backends: Sequence[str]) -> None:
         for precision in _PRECISIONS:
             with contextlib.suppress(Exception):
                 _stability_task(backend, precision, [0])
+    # The timed tasks start without the warm-up's garbage.
+    gc.collect()
 
 
 def _stability_task(
@@ -989,14 +992,28 @@ def _stability_task(
     stability estimate, a refused point served with its best-effort value;
     "reference": the worker's ``GroundTruth``, accepted values only, the
     exact sum of their sectors). Per point a small record, and the call's
-    seconds."""
+    seconds, Python's cyclic garbage collector off during it (as in the
+    runtime's timed calls, ``benchmarking._collector_off``)."""
+
+    from pyamplicol.benchmarking import _collector_off
+
+    with _collector_off():
+        begin = time.perf_counter()
+        records = _stability_records(backend, precision, indices)
+        seconds = time.perf_counter() - begin
+    return backend, precision, records, seconds
+
+
+def _stability_records(
+    backend: str, precision: str, indices: Sequence[int]
+) -> list[tuple[Any, ...]]:
+    """The per-point records of a stability task (``_stability_task``)."""
 
     state = _WORKER
     batch = [state["points"][i] for i in indices]
     scales = state["scales"]
     mu = scales if not isinstance(scales, list) else [scales[i] for i in indices]
     common = {"mu_r2": mu, "poles": "none", "reduction": backend}
-    begin = time.perf_counter()
     if precision == "binary64":
         # A point the backend refuses keeps its best-effort value (the
         # default policy, m-lit ux-besteffort), measured as such.
@@ -1044,7 +1061,7 @@ def _stability_task(
                 indices, result.values, _reasons(result), strict=True
             )
         ]
-    return backend, precision, records, time.perf_counter() - begin
+    return records
 
 
 def usable_cores() -> int:
