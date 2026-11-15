@@ -2777,44 +2777,24 @@ class NativeExecutor:
     def _merges_rotations(self, count, precision, stability, wards) -> bool:
         """Whether ``_runs`` evaluates the rotated copies of its ``count``
         points in the reference's native call (``_merged_runs``): with
-        rotation checks only, the same executor options for every copy (no
-        re-test frame, Ward vectors or Catani prediction, which only the
-        reference runs), and only where that saves work: in binary64 fewer
-        SIMD chunks (a loop-induced plan's, which form the term scale of
-        every lane of a chunk, only where the copies fit in the reference's
-        own chunks: no chunk of rotated copies alone pays it); in an
-        extended carrier (scalar lanes, padded to ``lanes_for``) no more
-        lanes, except for a loop-induced plan (its term scale costs per
-        lane). The values are those of separate calls: every lane is its
-        own point's."""
+        rotation checks only and the same executor options for every copy
+        (no re-test frame, Ward vectors or Catani prediction, which only the
+        reference runs), on a Born-interfered plan. The executor fills its
+        chunks (``lane_chunks``), so the merged call evaluates no more lanes
+        than separate calls and saves a call; a loop-induced plan forms the
+        term scale of every lane of a call (the reference's estimate floor),
+        which its copies would then pay: it keeps separate calls. The values
+        are those of separate calls: every lane is its own point's."""
 
-        from .assemble import Precision
-
-        rotations = len(stability.rotations)
-        if (
-            not rotations
-            or not count
-            or stability.frame is not None
-            or wards is not None
-            or self.catani
-        ):
-            return False
-        arithmetic, _digits = self._arithmetic(precision or Precision.double(), False)
-        total = count * (1 + rotations)
-        induced = self.exported.amplitude is not None
-
-        def chunks(points: int) -> int:
-            return -(-points // self.lanes_for(arithmetic, points))
-
-        if arithmetic == "double":
-            if induced:
-                return chunks(total) == chunks(count)
-            return chunks(total) < (1 + rotations) * chunks(count)
-        if induced:
-            return False
-        merged = chunks(total) * self.lanes_for(arithmetic, total)
-        alone = chunks(count) * self.lanes_for(arithmetic, count)
-        return merged <= (1 + rotations) * alone
+        del precision
+        return bool(
+            stability.rotations
+            and count
+            and stability.frame is None
+            and wards is None
+            and not self.catani
+            and self.exported.amplitude is None
+        )
 
     def _merged_runs(
         self, exact, scales, parameters, precision, poles, stability, schedule
@@ -2823,10 +2803,7 @@ class NativeExecutor:
         reference's native call (``_merges_rotations``): the batch is the
         points, then their copies rotation by rotation; the results, the
         failures (a copy's named by its rotation, after the point's own)
-        and the evaluations are those of separate calls. A loop-induced
-        plan forms the term scale for the whole call (the reference's
-        estimate floor); the copies drop it, as a call of their own does
-        not form it."""
+        and the evaluations are those of separate calls."""
 
         from .stability import ROTATION
 
@@ -2835,37 +2812,19 @@ class NativeExecutor:
         batch = list(exact)
         for rotation in rotations:
             batch.extend(rotation.apply(point) for point in exact)
-        induced = self.exported.amplitude is not None
-        self.term_scale = induced and stability.enabled
-        try:
-            precision, runs, failed = self._evaluated(
-                batch,
-                list(scales) * (1 + len(rotations)),
-                parameters,
-                precision,
-                poles,
-                None,
-                schedule,
-            )
-        finally:
-            self.term_scale = False
+        precision, runs, failed = self._evaluated(
+            batch,
+            list(scales) * (1 + len(rotations)),
+            parameters,
+            precision,
+            poles,
+            None,
+            schedule,
+        )
         evaluations = runs[:count]
         rotated = [
             runs[count * (k + 1) : count * (k + 2)] for k in range(len(rotations))
         ]
-        if induced:
-            from .induced import point_finiteness
-
-            for copies in rotated:
-                for evaluation in copies:
-                    if getattr(evaluation, "native_terms", None) is None:
-                        continue
-                    evaluation.native_terms = None
-                    result = getattr(evaluation, "result", None)
-                    if result is not None:
-                        evaluation.result = replace(
-                            result, finiteness=point_finiteness(evaluation)
-                        )
         failures = {index: failed[index] for index in range(count) if index in failed}
         for position in sorted(index for index in failed if index >= count):
             k, index = divmod(position - count, count)

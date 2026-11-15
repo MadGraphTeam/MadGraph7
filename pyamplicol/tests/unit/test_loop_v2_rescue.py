@@ -49,7 +49,7 @@ from pyamplicol.config import R2Strategy
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
 from pyamplicol.loops.strategy import R2Selection
 from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
-from pyamplicol.loops.v2.rescue import level_batches, rescue, rescue_policy
+from pyamplicol.loops.v2.rescue import rescue, rescue_policy
 from pyamplicol.loops.v2.stability import DEFAULT_RESCUE, Rotation
 
 from .test_loop_v2_artifact import GG_PARAMETERS, _card, _fixture, _generate
@@ -138,12 +138,10 @@ def test_only_failed_or_unconverged_points_escalate_in_order():
     )
     fake = _Fake(THREE, table)
     result = rescue(THREE, 5, fake)
-    # Level 0 on the batch; an escalated level in an extended carrier in
-    # calls of power-of-two sizes (``level_batches``), in order.
+    # Level 0 on the batch; every escalated level on its points in one call.
     assert fake.calls == [
         (0, (0, 1, 2, 3, 4)),
-        (1, (1, 2)),
-        (1, (4,)),
+        (1, (1, 2, 4)),
         (2, (2, 4)),
     ]
     # Accepted points are never evaluated again.
@@ -185,21 +183,6 @@ def test_only_failed_or_unconverged_points_escalate_in_order():
     # A final-level miss keeps the value, with the target marked as missed.
     assert "not met at the final level" in result.diagnostics[4].detail
     assert result.values[4][0].finite == Decimal("204.5")
-
-
-@pytest.mark.loop_fast
-def test_escalated_levels_batch_their_points_without_padded_lanes():
-    double = VirtualRescueLevel("double", reduction="ninjars")
-    extended = THREE.levels[1]
-    pending = tuple(range(3, 3 + 2 * DEFAULT_LANES + 13))
-    # binary64: one call, whose SIMD chunks the points fill.
-    assert level_batches(pending, double) == [pending]
-    # Extended carriers: whole chunks, then the binary digits of the rest.
-    batches = level_batches(pending, extended)
-    assert [len(batch) for batch in batches] == [2 * DEFAULT_LANES, 8, 4, 1]
-    assert sum(batches, ()) == pending
-    assert level_batches((7,), extended) == [(7,)]
-    assert level_batches((), extended) == [()]
 
 
 @pytest.mark.loop_fast
@@ -595,7 +578,7 @@ def test_refused_combinations_and_the_load_time_default(artifact):
 
 
 @pytest.mark.loop_physics
-def test_escalated_subsets_run_together_in_unpadded_double_double_lanes(artifact):
+def test_escalated_subsets_run_together_on_one_double_double_executor(artifact):
     points, scales = _points("gg_gg", 3)
     runtime = _load(artifact, "gg")
     native = runtime._backend._executor._native
@@ -610,6 +593,7 @@ def test_escalated_subsets_run_together_in_unpadded_double_double_lanes(artifact
         for k in range(size):
             assert result.values[k] == alone[k % 3].values[0]
             assert result.stability[k] == alone[k % 3].stability[0]
-    # The level's calls hold whole power-of-two subsets (3 = 2 + 1,
-    # 5 = 4 + 1): no padded double-double lane.
-    assert sorted(key[2] for key in native if key[0] == "double-double") == [1, 2, 4]
+    # One double-double executor (the executor fills its chunks).
+    assert [key for key in native if key[0] == "double-double"] == [
+        ("double-double", None, DEFAULT_LANES)
+    ]
