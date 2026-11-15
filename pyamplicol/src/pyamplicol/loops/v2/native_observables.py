@@ -1975,11 +1975,10 @@ class StoredColumns:
         return executor_program(plan), overlay
 
     def _executor(self, arithmetic: str, digits: int | None, points: int, twin: bool):
+        # One executor per carrier: the executor fills its chunks in every
+        # carrier (``lane_chunks``), so no lane count is derived per batch.
+        del points
         lanes = self.lanes
-        if arithmetic != "double":
-            lanes = 1
-            while lanes < min(points, self.lanes):
-                lanes *= 2
         key = (arithmetic, digits, lanes, twin)
         found = self._native.get(key)
         if found is None:

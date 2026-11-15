@@ -48,6 +48,7 @@ from pyamplicol.api.virtual_results import (
 from pyamplicol.config import R2Strategy
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
 from pyamplicol.loops.strategy import R2Selection
+from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
 from pyamplicol.loops.v2.rescue import rescue, rescue_policy
 from pyamplicol.loops.v2.stability import DEFAULT_RESCUE, Rotation
 
@@ -137,14 +138,11 @@ def test_only_failed_or_unconverged_points_escalate_in_order():
     )
     fake = _Fake(THREE, table)
     result = rescue(THREE, 5, fake)
-    # Level 0 on the batch; escalated levels one point per call, in order.
+    # Level 0 on the batch; every escalated level on its points in one call.
     assert fake.calls == [
         (0, (0, 1, 2, 3, 4)),
-        (1, (1,)),
-        (1, (2,)),
-        (1, (4,)),
-        (2, (2,)),
-        (2, (4,)),
+        (1, (1, 2, 4)),
+        (2, (2, 4)),
     ]
     # Accepted points are never evaluated again.
     assert all(0 not in batch and 3 not in batch for k, batch in fake.calls if k)
@@ -580,14 +578,22 @@ def test_refused_combinations_and_the_load_time_default(artifact):
 
 
 @pytest.mark.loop_physics
-def test_escalated_subsets_share_one_double_double_executor(artifact):
+def test_escalated_subsets_run_together_on_one_double_double_executor(artifact):
     points, scales = _points("gg_gg", 3)
     runtime = _load(artifact, "gg")
     native = runtime._backend._executor._native
+    alone = [
+        runtime.evaluate([point], mu_r2=scales[0], stability=FORCED) for point in points
+    ]
     for size in (1, 3, 5):
         batch = [points[k % 3] for k in range(size)]
         result = runtime.evaluate(batch, mu_r2=scales[0], stability=FORCED)
         assert {record.level for record in result.rescue} == {1}
+        # Each point's value and estimate are those of a call of its own.
+        for k in range(size):
+            assert result.values[k] == alone[k % 3].values[0]
+            assert result.stability[k] == alone[k % 3].stability[0]
+    # One double-double executor (the executor fills its chunks).
     assert [key for key in native if key[0] == "double-double"] == [
-        ("double-double", None, 1)
+        ("double-double", None, DEFAULT_LANES)
     ]

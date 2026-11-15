@@ -436,10 +436,17 @@ def add_amplitudes(*parts: Mapping, numbers: Any, size: int, width: int) -> dict
         for key, vector in part.items():
             total = out.get(key)
             if total is None:
-                total = out[key] = [[zero] * width for _ in range(size)]
-            for t in range(size):
-                for k in range(width):
-                    total[t][k] = total[t][k] + vector[t][k]
+                total = [[zero] * width for _ in range(size)]
+            # The same sums, entry by entry, as list comprehensions.
+            if width == 1:
+                out[key] = [
+                    [entries[0] + vector[t][0]] for t, entries in enumerate(total)
+                ]
+            else:
+                out[key] = [
+                    [a + b for a, b in zip(entries, vector[t], strict=False)]
+                    for t, entries in enumerate(total)
+                ]
     return out
 
 
@@ -550,12 +557,26 @@ def read_native(
     )
     columns = len(rows) * size
 
+    from .plan_export import _double_pairs
+
     def vectors(slots, read):
         out = {}
         for o, order in enumerate(exported.orders):
             for r, row in enumerate(rows):
                 base = o * columns + r * size
-                out[(order, row)] = [read(slots[base + t]) for t in range(size)]
+                cells = slots[base : base + size]
+                if len(cells) != size:
+                    raise IndexError("a native amplitude output misses slots")
+                if read is _double_pairs:
+                    # binary64: a finite-part slot ([[re, im]]) without a call
+                    out[(order, row)] = [
+                        [complex(float(cell[0][0]), float(cell[0][1]))]
+                        if len(cell) == 1
+                        else _double_pairs(cell)
+                        for cell in cells
+                    ]
+                else:
+                    out[(order, row)] = [read(cell) for cell in cells]
         return out
 
     # (An empty amplitude basis, an exact colour zero, has no slot.)
@@ -640,6 +661,8 @@ def native_kets(
     size = len(slice_.amplitude)
     zero = numbers.zero
     three = numbers.real(3)
+    # 3^nc once per N_c power (the same carrier value as at every use).
+    powers: dict[int, Any] = {}
     out: dict[tuple[Orders, rx.Row], list[list[Any]]] = {}
     for r, row in enumerate(exported.rows if rows is None else rows):
         for j, (t, k, order, nc) in enumerate(mapping):
@@ -649,7 +672,10 @@ def native_kets(
             ket = out.get((order, row))
             if ket is None:
                 ket = out[(order, row)] = [[zero] * width for _ in range(size)]
-            ket[t][k] = ket[t][k] + value * three**nc
+            power = powers.get(nc)
+            if power is None:
+                power = powers[nc] = three**nc
+            ket[t][k] = ket[t][k] + value * power
     return out
 
 
@@ -745,15 +771,18 @@ def native_square(
     slot = {order: k for k, order in enumerate(orders)}
     size = len(gram)
     zero = [[0.0, 0.0]] * width
-    values = []
+    values: list[Any] = []
     for order in orders:
         for row in rows:
             vector = amplitudes.get((order, row))
-            for t in range(size):
-                if vector is None:
-                    values.append(zero)
-                    continue
-                values.append([[z.real, z.imag] for z in vector[t][:width]])
+            if vector is None:
+                values.extend([zero] * size)
+            elif width == 1:
+                values.extend([[cell[0].real, cell[0].imag]] for cell in vector[:size])
+            else:
+                values.extend(
+                    [[z.real, z.imag] for z in cell[:width]] for cell in vector[:size]
+                )
     metric_values = [[complex(x).real, complex(x).imag] for line in gram for x in line]
     pairs = [
         sorted((slot[left], slot[right]) for left, right in pairs)

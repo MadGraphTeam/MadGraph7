@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import os
+import weakref
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import Decimal
 from fractions import Fraction
@@ -266,17 +267,48 @@ def _point_selector_ids(
 
 
 def _accepts_keyword_arguments(operation: object, *names: str) -> bool:
-    if not callable(operation):
+    keywords = _keyword_parameters(operation)
+    if keywords is None:
         return False
+    declared, accepts_arbitrary = keywords
+    return accepts_arbitrary or all(name in declared for name in names)
+
+
+# The keyword parameters of a function's signature, per function and
+# binding (``inspect.signature`` costs ~0.1 ms, once per evaluate call before).
+_KEYWORDS: weakref.WeakKeyDictionary[Any, dict[bool, Any]] = weakref.WeakKeyDictionary()
+
+
+def _keyword_parameters(operation: object) -> tuple[frozenset[str], bool] | None:
+    """(declared parameter names, whether it takes ``**kwargs``) of a
+    callable's signature, None when it is not callable or has none; cached
+    for functions and bound methods (by function and binding)."""
+
+    if not callable(operation):
+        return None
+    function = getattr(operation, "__func__", None)
+    bound = function is not None and inspect.ismethod(operation)
+    key = function if bound else operation
+    cache = None
+    if inspect.isfunction(key):
+        cache = _KEYWORDS.setdefault(key, {})
+        if bound in cache:
+            return cast(tuple[frozenset[str], bool] | None, cache[bound])
     try:
         parameters = inspect.signature(operation).parameters.values()
     except (TypeError, ValueError):
-        return False
-    declared = {parameter.name for parameter in parameters}
-    accepts_arbitrary = any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters
-    )
-    return accepts_arbitrary or all(name in declared for name in names)
+        found = None
+    else:
+        found = (
+            frozenset(parameter.name for parameter in parameters),
+            any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters
+            ),
+        )
+    if cache is not None:
+        cache[bound] = found
+    return found
 
 
 class Generator:
