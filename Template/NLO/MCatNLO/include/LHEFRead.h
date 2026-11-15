@@ -1,4 +1,5 @@
 #include "LHEF.h"
+#include <algorithm>
 #include <iomanip>
 #include <string>
 
@@ -12,6 +13,12 @@ const int wgts_info_len_used = 80;
 class MyReader {
 
   private:
+
+  static void copy_fortran_label(char* destination, const std::string& label) {
+    // Fortran CHARACTER arrays use spaces for padding, without a C terminator.
+    std::fill_n(destination, wgts_info_len_used, ' ');
+    label.copy(destination, wgts_info_len_used);
+  }
 
   public:
 
@@ -36,9 +43,7 @@ class MyReader {
     // Read header of event file
     std::stringstream hss;
     std::string hs;
-    std::stringstream format_str;
-    format_str <<"%"<<wgts_info_len_used<<"s";
-    sprintf(cwgtinfo_weights_info[0],format_str.str().c_str(),"central value");
+    copy_fortran_label(cwgtinfo_weights_info[0], "central value");
     cwgtinfo_nn=1;
     hss << reader.headerBlock;
     while (std::getline(hss,hs,'\n')) {
@@ -59,7 +64,7 @@ class MyReader {
 	    int tag;
 	    if ((label >> first) && first == "tag=" && (label >> tag) && tag == 0)
 	      std::getline(label,sRWGT);
-	    sprintf(cwgtinfo_weights_info[cwgtinfo_nn],format_str.str().c_str(),sRWGT.c_str());
+	    copy_fortran_label(cwgtinfo_weights_info[cwgtinfo_nn], sRWGT);
 	    ++cwgtinfo_nn;
 	  }
 	}

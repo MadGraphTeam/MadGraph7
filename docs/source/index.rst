@@ -27,6 +27,7 @@ If you need a stable release, use the
 
    installation
    first_steps
+   standalone
    run_card
    custom_functions
    diagram_filters

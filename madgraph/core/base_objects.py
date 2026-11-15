@@ -1121,12 +1121,18 @@ class Interaction(PhysicsObject):
            """
         
         pdgs = [p.get_pdg_code() for p in self.get('particles')]
+        # 'merged_particles' is keyed by the positive merged code only
+        # ({81: [1,2,3,4], 82: [11,13], ...}) while pdgs holds the *signed* code:
+        # a leg that is an antiparticle instance reports -82, not 82. Membership
+        # must therefore always be tested through abs() -- a bare `pdg in ...`
+        # silently misses an interaction whose merged legs are all antiparticles
+        # (e.g. the l+ pair of a lepton-number-violating H-- l+ l+ vertex).
+        positions = [i for i in range(len(pdgs)) if abs(pdgs[i]) in model.get('merged_particles')]
         flavor = [map_flavor[pdg].pop() if abs(pdg) in model.get('merged_particles') else 0 for pdg in pdgs]
         for coupling in self.get('couplings').values():
             if isinstance(coupling, str):
                 # if no PDG in merge range -> return True
-                if any([pdg in model['merged_particles'] for pdg in pdgs]):
-                    positions = [i for i in range(len(pdgs)) if abs(pdgs[i]) in model['merged_particles']]
+                if positions:
                     if len(positions) != 2:
                         raise Exception
                     elif flavor[positions[0]] == flavor[positions[1]]:
@@ -2755,6 +2761,66 @@ class FLV_Coupling(PhysicsObject):
             'only one or two merged flavor legs are handled.'
             % (len(nonzero), repr(key)))
 
+    def get_shared_partner_slot(self):
+        """(fermion, k, [partners]) for a flavor index k of the first
+        (fermion 1) or the second (fermion 2) fermion of the vertex whose one
+        table slot several keys need, None when there is none.
+
+        The tables every backend fills from get_partner_indices hold ONE
+        partner per flavor on each side, PARTNER(k1) = k2 and PARTNER2(k2) =
+        k1, and ONE value per flavor of the first fermion, VAL(k1). The full
+        vertex (_0, and _3 for a boson output) needs PARTNER(k1) == k2 and
+        reads VAL(k1), a current with an F1 input PARTNER(k1) and VAL(k1),
+        with an F2 input PARTNER2(k2) and VAL(k1). So:
+
+        * a k1 shared by several keys (an unmerged fermion first coupled to
+          several flavors of a merged one second, e.g. a heavy quark mixing
+          into d and s, or a merged flavor with two merged partners) keeps
+          the last key's partner and value: the vertices of the other keys
+          vanish, or take the last key's value (fermion 1);
+        * a k2 shared by keys with two merged legs keeps the last key in
+          PARTNER2, while the flavor of a current is set to the first one at
+          generation (fermion 2). A k2 shared by single-merged-leg keys with
+          the merged leg first is the unmerged partner's index: only a
+          current building the merged fermion from the unmerged one reads
+          it, and the output refuses that one before writing anything
+          (HelasWavefunction.AmbiguousFlavorError, several flavors from no
+          merged input), so those couplings are written as they are (p p >
+          xq z of a heavy quark xq mixing into d and s)."""
+        partners = ({}, {})
+        for key in self['flavors']:
+            k1, k2 = self.get_partner_indices(key)
+            partners[0].setdefault(k1, set()).add(k2)
+            if len([i for i in key if i != 0]) == 2:
+                partners[1].setdefault(k2, set()).add(k1)
+        for fermion, table in enumerate(partners, 1):
+            for k in sorted(table):
+                if len(table[k]) > 1:
+                    return fermion, k, sorted(table[k])
+        return None
+
+    def assert_table_representable(self):
+        """Raise InvalidCmd when the flavor tables cannot hold the keys of
+        this coupling (get_shared_partner_slot): every output (Fortran,
+        C++) would silently drop or mix up all of them but one. p p > xq~ z
+        of a heavy quark xq mixing into d and s gave |M|^2 = 0 for g d~ >
+        xq~ z in the Fortran standalone."""
+        shared = self.get_shared_partner_slot()
+        if shared is None:
+            return
+        fermion, k, partners = shared
+        raise InvalidCmd(
+            "merged-flavor output cannot write the flavor coupling %s: "
+            "flavor %d of its %s fermion couples to flavors %s of the %s, "
+            "and its flavor table holds one partner and one value per flavor "
+            "of the %s fermion. Generate the flavors of this vertex as "
+            "separate processes: 'set apply_flavor_grouping False', import "
+            "the model again and use explicit particles."
+            % (self.get('name'), k, 'first' if fermion == 1 else 'second',
+               ', '.join(str(p) for p in partners),
+               'second' if fermion == 1 else 'first',
+               'first' if fermion == 1 else 'second'))
+
     def __str__(self):
 
         max_flav = max([max([i for i in k]) for k in  self['flavors']])
@@ -3821,6 +3887,9 @@ class Process(PhysicsObject):
         # carrying its own orders, s-channel requirements and exclusions.
         self['interference_mode'] = ''
         self['interference_process'] = None
+        # the gauge this process is generated in when an output mixes gauges
+        # ('FD', 'unitary'); '' is the gauge of the session
+        self['gauge'] = ''
 
     def filter(self, name, value):
         """Filter for valid process property values."""
@@ -3910,6 +3979,10 @@ class Process(PhysicsObject):
             import madgraph.interface.madgraph_interface as mg
             if value not in mg.MadGraphCmd._valid_nlo_modes:
                 raise self.PhysicsObjectError("%s is not a valid NLO_mode" % str(value))
+
+        if name == 'gauge':
+            if value not in ['', 'unitary', 'FD']:
+                raise self.PhysicsObjectError("%s is not a valid gauge" % str(value))
 
         if name == 'interference_mode':
             if value not in ['', 'LIxtree', 'treextree']:
@@ -4013,6 +4086,12 @@ class Process(PhysicsObject):
         a version that did not know about interference processes)."""
 
         return dict.get(self, 'interference_mode', '') or ''
+
+    def get_gauge(self, default=''):
+        """The gauge of this process in an output that mixes gauges, else
+        `default` (the gauge of the session)."""
+
+        return dict.get(self, 'gauge', '') or default
 
     def has_squared_order_selection(self):
         """Whether only some squared orders of this process are kept: an
@@ -5198,7 +5277,8 @@ class ProcessDefinition(Process):
             # the right-hand process stays the ProcessDefinition template:
             # its legs are matched to these ones at generation time
             'interference_mode': self.get_interference_mode(),
-            'interference_process': dict.get(self, 'interference_process')
+            'interference_process': dict.get(self, 'interference_process'),
+            'gauge': self.get_gauge(),
             })
             
     def get_process(self, initial_state_ids, final_state_ids):

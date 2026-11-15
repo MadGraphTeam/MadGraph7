@@ -400,10 +400,12 @@ class MadgraphSubprocess:
         if self.process.run_card["run"]["dummy_matrix_element"]:
             self.matrix_elements = [None] * len(api_path_formats)
         else:
+            parameters = me_parameters(self.process.run_card)
             self.matrix_elements = [
                 self.process.load_matrix_element(
-                    path_format, self.process.param_card_path,
-                    me_parameters(self.process.run_card)
+                    path_format, self.process.param_card_path, parameters,
+                    self.process.helicity_choice(
+                        path_format, self.process.param_card_path, parameters)
                 )
                 for path_format in api_path_formats
             ]

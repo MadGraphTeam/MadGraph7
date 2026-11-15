@@ -470,13 +470,20 @@ def goldstone_mass_mismatches(model):
             return None
 
     def mass_of(particle):
+        # In the complex-mass scheme the couplings are built with the complex
+        # mass CMASS_<mass>, so the relations below hold for those (their
+        # moduli); the real mass would report every massive particle as a
+        # mismatch of order (width/mass)**2.
         name = particle.get('mass')
         if name.lower() == 'zero':
             return 0.
-        try:
-            return abs(complex(parameters[name]))
-        except Exception:
-            return None
+        for key in ('CMASS_' + name, name):
+            if key in parameters:
+                try:
+                    return abs(complex(parameters[key]))
+                except Exception:
+                    return None
+        return None
 
     def structure_of(name):
         try:
@@ -765,6 +772,38 @@ def import_model(model_name, decay=False, restrict=True, prefix='mdl_',
     
 
 _import_once = []
+
+
+def gauge_model_conflicts(base, twin):
+    """The coupling, parameter and Lorentz names the two models (one model in
+    two gauges) define differently: one output cannot hold both then, since
+    the Fortran/C++ model is written once.  Empty for the sm, heft, loop_sm."""
+
+    def couplings(model):
+        return dict((c.name, c.expr) for lst in model['couplings'].values()
+                    for c in lst)
+
+    def parameters(model):
+        # internal parameters by expression, external ones by value and
+        # position in the param_card
+        return dict((p.name, (getattr(p, 'expr', None), getattr(p, 'value', None),
+                              getattr(p, 'lhablock', None),
+                              tuple(getattr(p, 'lhacode', None) or ())))
+                    for lst in model['parameters'].values() for p in lst)
+
+    def lorentz(model):
+        return dict((l.get('name'), (str(l.get('structure')), tuple(l.get('spins'))))
+                    for l in model['lorentz'])
+
+    conflicts = []
+    for get in (couplings, parameters, lorentz):
+        one, two = get(base), get(twin)
+        conflicts.extend(sorted(n for n in one if n in two and one[n] != two[n]))
+    return conflicts
+
+# model['limitations'] tag of a model imported in FD gauge whose goldstone
+# content could not be checked (see UFOMG5Converter.flag_fd_gauge_unverified)
+FD_GAUGE_UNVERIFIED = 'fd_gauge_unverified'
 def import_full_model(model_path, decay=False, prefix='', options={}):
     """ a practical and efficient way to import one of those models 
         (no restriction file use)"""
@@ -1807,7 +1846,16 @@ class UFOMG5Converter(object):
 
         phases = {}
         unknown = []
-        for particle, vector_particle in self.get_goldstone_pairs():
+        pairs = self.get_goldstone_pairs()
+        if not pairs:
+            # a model declaring the Feynman gauge without a goldstone: the
+            # merge below has nothing to merge and the 5th component of the
+            # vectors couples to nothing, so the FD-gauge result is not the
+            # unitary-gauge one.
+            logger.warning('No goldstone boson found in the model: results in '
+                           'FD gauge are not reliable for it.')
+            self.flag_fd_gauge_unverified()
+        for particle, vector_particle in pairs:
             vector = [vector_particle]
             phase = self.measure_goldstone_phase(particle, vector[0])
             if phase is None:
@@ -1822,7 +1870,19 @@ class UFOMG5Converter(object):
                            'against FD gauge: no fermion vertex to read it off. Results '
                            'in FD gauge are only correct if they follow the convention of '
                            'the SM UFO.', ', '.join(unknown))
+            self.flag_fd_gauge_unverified()
         return phases
+
+    def flag_fd_gauge_unverified(self):
+        """Record on the model that its FD-gauge couplings could not be
+        checked (no goldstone, or a goldstone phase that nothing fixes).
+
+        The tag travels with the model (pickle included) in its 'limitations':
+        the interface never picks the FD gauge by itself for such a model, and
+        'set gauge FD' is left to the user, who got the warning above."""
+
+        if FD_GAUGE_UNVERIFIED not in self.model['limitations']:
+            self.model['limitations'].append(FD_GAUGE_UNVERIFIED)
 
     def apply_goldstone_phases(self, phases):
         """Rotate the merged couplings into the goldstone convention FD gauge

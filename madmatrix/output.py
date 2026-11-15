@@ -93,6 +93,14 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # AV - use a custom OneProcessExporter
     oneprocessclass = model_handling.OneProcessExporterMadMatrix
 
+    # Crossing symmetry (extended flavor id) is supported by the madmatrix /
+    # cudacpp backends, cpu/simd and GPU (gated by --use_crossing, default on,
+    # and by the matrix element recording a crossed subprocess: see
+    # ProcessExporterMG7.generate_subprocess_directory). The MG7 (pure-cpp
+    # mg7_v5) exporter keeps supports_crossing=False. When the machinery is off
+    # the generated output is byte-identical to before.
+    supports_crossing = True
+
     # Information to find the template file that we want to include from madgraph
     # you can include additional file from the plugin directory as well
     # AV - use template files from PLUGINDIR instead of MG5DIR and add gpu/mgOnGpuVectors.h
@@ -328,6 +336,16 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             cpp_helas_call_writer.cmd_options = self.opt.get('output_options', {})
         return super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
 
+    def write_aloha_library(self, model, wanted_lorentz, gauge='', **opts):
+        """The HELAS header of the other gauge of an output whose processes
+        are in two gauges, src/HelAmps_<model>_fd.h (called under its
+        aloha.gauge_scope; the parameters are those of the session model)."""
+
+        builder = self.create_model_class(model, pjoin(self.dir_path, 'src'),
+                                          wanted_lorentz, [])
+        builder.helamps_suffix = '_' + gauge.lower()
+        builder.write_aloha_routines()
+
     # AV (default from OM's tutorial) - add a debug printout
     def convert_model(self, model, wanted_lorentz=[], wanted_couplings=[], **opts):
         # **opts: an option meant for one exporter (npwave, for the dual HELAS
@@ -418,6 +436,13 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
 
     format_name = 'standalone'
 
+    # No subprocesses.json (see finalize): the crossed subprocesses are reached
+    # through the extended flavor id alone, and the crossings recorded inside
+    # a decay chain fold as well (the standalone crossing tables span the
+    # decay leaves).
+    writes_subprocess_info = False
+    folds_decay_chain_crossings = True
+
     # Each P* directory links madmatrix_standalone.mk (which itself includes
     # madmatrix.mk) as its 'makefile'; both have to be rendered in SubProcesses/
     p_makefiles = ProcessExporterMadMatrix.p_makefiles + ['madmatrix_standalone.mk']
@@ -467,6 +492,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
         if not hasattr(self, 'processes_of_subprocess'):
             self.processes_of_subprocess = []
+        crossed, crossed_flavors = self.crossed_flavor_ids(
+            matrix_element, os.path.basename(self.process_info[-1]['path']))
         self.processes_of_subprocess.append((
             [[leg.get('id') for leg in process.get_legs_with_decays()]
              for process in matrix_element.get('processes')],
@@ -475,8 +502,47 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
             sorted(wf.get('number_external')
                    for wf in matrix_element.get_external_wavefunctions()
                    if wf.get('offshell')),
-            self.scale_dependence(matrix_element)))
+            # the crossed processes folded onto this one (--use_crossing):
+            # listed nowhere else, and evaluated through the extended flavor
+            # index only
+            crossed, crossed_flavors,
+            self.scale_dependence(matrix_element),
+            # the massive fermions whose spin is quantised along a reference
+            # (--axial_gauge): their states are not helicity states
+            helas_call_writers.get_spin_reference_legs(matrix_element,
+                helas_call_writers.get_output_axial_gauge_refs(matrix_element,
+                                             self.opt.get('output_options')))))
         return out
+
+    def crossed_flavor_ids(self, matrix_element, proc_dir_name):
+        """The crossed processes folded onto matrix_element, as their leg ids
+        (decays expanded to their leaves, merged labels as they are), and
+        [extended flavor id, pdgs] for every pdg combination of theirs, the pdgs
+        in the leg order of the crossed process: the rows of the crossing table
+        (the one ProcessTables.h was written from, in the coupling-class
+        convention of the C++ flavor index, export_cpp get_crossing_table) that
+        serve them. No flavor id when the directory has no crossing machinery."""
+        folded = self.folded_crossed_processes(matrix_element)
+        legs = [[leg.get('id') for leg in process.get_legs_with_decays()]
+                for process in folded]
+        if not folded:
+            return legs, []
+        tables = pjoin(self.dir_path, 'SubProcesses', proc_dir_name, 'ProcessTables.h')
+        try:
+            with open(tables) as fsock:
+                if 'constexpr bool use_crossing = true;' not in fsock.read():
+                    return legs, []
+        except IOError:
+            return legs, []
+        crossing_all = str((self.opt.get('output_options') or {}).get(
+            'crossing_table', '')).lower() == 'all'
+        table = export_v4.ProcessExporterFortran.get_crossing_table(
+            self, matrix_element, 'classes', all_applicable=crossing_all)
+        nflav = len(matrix_element.get_external_flavors_with_iden())
+        # a decay-chain base records its crossings at the production level:
+        # the table's records carry their leaf ids
+        legs = [list(record.labels) for record in table.records]
+        return legs, [[a.index(nflav), list(a.pdgs)] for a in table.assignments()]
 
     @staticmethod
     def scale_dependence(matrix_element):
@@ -528,14 +594,28 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         """SubProcesses/madmatrix_processes.json: per subprocess, its library
         (with the make variables LIBTAG, BACKEND and FPTYPE left as '{libtag}',
         '{backend}' and '{fptype}', as for the common library, common_library),
-        its legs, the processes it evaluates, its off-shell legs
-        and, per flavor index, every pdg combination (in the leg order of the
-        process) that this index stands for, and what of it depends on the
-        renormalisation scale beyond alpha_s (scale_dependence)."""
+        its legs, the processes it evaluates, its off-shell legs, the legs
+        whose two states are not helicity states (spin_reference, output
+        --axial_gauge=True; numbered as the legs of the subprocess), the
+        crossed processes folded onto it, per flavor index, every pdg
+        combination (in the leg order of the process) that this index stands
+        for and, for the crossed processes, [extended flavor id, pdgs] for
+        each of their pdg combinations (crossed_flavors).
+
+        A crossed process is evaluated with an extended flavor index (crossing
+        row K of ProcessTables.h, K*nmaxflavor + flavor). Its selected
+        helicity is the crossed process's own code, but its colour-flow and
+        diagram indices number the BASE subprocess's flows and diagrams: decode
+        them through row K (see the note above umami_matrix_element in
+        umami.cc), as `output mg7` does.
+
+        It also lists what of a subprocess depends on the renormalisation scale
+        beyond alpha_s (scale_dependence)."""
         import json
         subprocesses = []
-        for info, (processes, offshell, scale) in zip(self.process_info,
-                                                      getattr(self, 'processes_of_subprocess', [])):
+        for info, (processes, offshell, crossed, crossed_flavors, scale,
+                   spin_reference) in zip(
+                self.process_info, getattr(self, 'processes_of_subprocess', [])):
             path = os.path.basename(info['path'])
             flavors = []
             for flavor in info['flavors']:
@@ -550,9 +630,12 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 'legs': list(info['incoming']) + list(info['outgoing']),
                 'processes': processes,
                 'offshell': offshell,
+                'crossed': crossed,
+                'spin_reference': spin_reference,
                 # what depends on MU_R besides alpha_s (scale_dependence)
                 'scale_dependence': scale,
-                'flavors': flavors})
+                'flavors': flavors,
+                'crossed_flavors': crossed_flavors})
         with open(pjoin(self.dir_path, 'SubProcesses', self.processes_file), 'w') as fsock:
             json.dump({'common_library': 'libmadmatrix_common{libtag}_%s_{backend}_{fptype}.so'
                                          % self.lib_model_name,
