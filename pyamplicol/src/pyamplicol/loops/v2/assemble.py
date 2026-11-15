@@ -6487,6 +6487,14 @@ def _fraction(value: Any) -> Fraction:
         return value
     if isinstance(value, int):
         return Fraction(value)
+    if type(value) is str and "/" not in value and "_" not in value:
+        # Decimal text (the public inputs' form): exactly the rational
+        # ``Fraction(text)`` parses, through Decimal's C parser at half the
+        # cost; anything Decimal does not take falls through to Fraction.
+        try:
+            return Fraction(Decimal(value))
+        except (ArithmeticError, ValueError):
+            pass
     return Fraction(str(value))
 
 

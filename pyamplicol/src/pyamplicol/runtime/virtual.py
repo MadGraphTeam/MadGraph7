@@ -184,7 +184,15 @@ def _number(value: object, description: str) -> str:
     or ASCII decimal text (``Decimal``'s syntax; other digits and whitespace
     than ASCII are refused, as by the native SDKs'
     ``v2_runtime::decimal_parameter``)."""
-    if isinstance(value, bool) or not isinstance(value, (str, Integral, Real, Decimal)):
+    kind = type(value)
+    if (
+        kind is not float
+        and kind is not str
+        and (
+            isinstance(value, bool)
+            or not isinstance(value, (str, Integral, Real, Decimal))
+        )
+    ):
         raise TypeError(f"{description} must be a real number or decimal string")
     text = str(value)
     if not text.isascii():

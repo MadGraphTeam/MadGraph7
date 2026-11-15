@@ -94,6 +94,7 @@ mq-stab, binary64 against double-double):
 
 from __future__ import annotations
 
+import functools
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -260,16 +261,49 @@ class Rotation:
     def apply(
         self, point: Sequence[Sequence[Fraction]]
     ) -> tuple[tuple[Fraction, ...], ...]:
-        """Rotate the spatial parts of every momentum (E, px, py, pz)."""
+        """Rotate the spatial parts of every momentum (E, px, py, pz).
 
+        Exact: each rotated component is formed in integers over the
+        common denominator of the matrix and the momentum's components, then
+        reduced once (the same rational as the sum of the Fraction
+        products, at a fraction of the cost)."""
+
+        integers, denominator = _integer_matrix(self.matrix)
         out = []
         for momentum in point:
             energy, *space = (Fraction(x) for x in momentum)
-            rotated = [
-                sum(self.matrix[i][k] * space[k] for k in range(3)) for i in range(3)
-            ]
-            out.append((energy, *rotated))
+            common = math.lcm(*(x.denominator for x in space))
+            scaled = [x.numerator * (common // x.denominator) for x in space]
+            over = denominator * common
+            out.append(
+                (
+                    energy,
+                    *(
+                        Fraction(
+                            row[0] * scaled[0] + row[1] * scaled[1] + row[2] * scaled[2],
+                            over,
+                        )
+                        for row in integers
+                    ),
+                )
+            )
         return tuple(out)
+
+
+@functools.lru_cache(maxsize=64)
+def _integer_matrix(
+    matrix: tuple[tuple[Fraction, ...], ...],
+) -> tuple[tuple[tuple[int, ...], ...], int]:
+    """A rational matrix as (integer matrix, common denominator)."""
+
+    denominator = math.lcm(*(x.denominator for row in matrix for x in row))
+    return (
+        tuple(
+            tuple(x.numerator * (denominator // x.denominator) for x in row)
+            for row in matrix
+        ),
+        denominator,
+    )
 
 
 def default_rotation(index: int) -> Rotation:
