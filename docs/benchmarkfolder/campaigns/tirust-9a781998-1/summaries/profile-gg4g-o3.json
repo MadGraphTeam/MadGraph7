@@ -1,0 +1,425 @@
+{
+  "process": "g g > g g g g [virt=QCD] (loop_sm)",
+  "source_revision": "0eb109bbb0",
+  "conditions": "check profile -reuse 1 (timing + 1 stability point), O3 export shared by all reducers, LoopPoleMode=-1, learned helicity filter, energy 1000 GeV, seed 20261113; five reducers run concurrently per repetition, one pinned core each (CPUs 136/152/168/184/200, rotated); shared host",
+  "rows": [
+    {
+      "backend": 1,
+      "name": "CutTools",
+      "runs": [
+        {
+          "tool": "CutTools",
+          "full_ms": 30700.0,
+          "coefs_ms": 28800.0,
+          "loops_ms": 1940.0,
+          "one_helicity_ms": 1120.0,
+          "one_helicity_coefs_ms": 601.0,
+          "one_helicity_loops_ms": 519.0,
+          "helicities": "50/64",
+          "initialization_s": 253.0,
+          "process_compilation_s": 6.12,
+          "ram_mb": 2100.0,
+          "stability_median_accuracy": 1.35e-08,
+          "stability_unstable_points": 0,
+          "run": "b1-r1",
+          "cpu": 152,
+          "wall_s": 3601.5
+        },
+        {
+          "tool": "CutTools",
+          "full_ms": 29600.0,
+          "coefs_ms": 28300.0,
+          "loops_ms": 1340.0,
+          "one_helicity_ms": 1110.0,
+          "one_helicity_coefs_ms": 582.0,
+          "one_helicity_loops_ms": 529.0,
+          "helicities": "50/64",
+          "initialization_s": 251.0,
+          "process_compilation_s": 6.95,
+          "ram_mb": 2100.0,
+          "stability_median_accuracy": 1.35e-08,
+          "stability_unstable_points": 0,
+          "run": "b1-r2",
+          "cpu": 168,
+          "wall_s": 3513.1
+        },
+        {
+          "tool": "CutTools",
+          "full_ms": 30000.0,
+          "coefs_ms": 28500.0,
+          "loops_ms": 1540.0,
+          "one_helicity_ms": 1120.0,
+          "one_helicity_coefs_ms": 582.0,
+          "one_helicity_loops_ms": 540.0,
+          "helicities": "50/64",
+          "initialization_s": 250.0,
+          "process_compilation_s": 6.32,
+          "ram_mb": 2100.0,
+          "stability_median_accuracy": 1.35e-08,
+          "stability_unstable_points": 0,
+          "run": "b1-r3",
+          "cpu": 184,
+          "wall_s": 3546.9
+        }
+      ],
+      "full_ms_median": 30000.0,
+      "full_ms_spread": [
+        29600.0,
+        30700.0
+      ],
+      "coefs_ms_median": 28500.0,
+      "loops_ms_median": 1540.0,
+      "one_helicity_ms_median": 1120.0,
+      "one_helicity_coefs_ms_median": 582.0,
+      "one_helicity_loops_ms_median": 529.0,
+      "one_helicity_loops_ms_spread": [
+        519.0,
+        540.0
+      ],
+      "stability_median_accuracy": [
+        1.35e-08,
+        1.35e-08,
+        1.35e-08
+      ],
+      "initialization_s_median": 251.0,
+      "helicities": "50/64"
+    },
+    {
+      "backend": 6,
+      "name": "Ninja",
+      "runs": [
+        {
+          "tool": "Ninja",
+          "full_ms": 29600.0,
+          "coefs_ms": 28400.0,
+          "loops_ms": 1130.0,
+          "one_helicity_ms": 836.0,
+          "one_helicity_coefs_ms": 584.0,
+          "one_helicity_loops_ms": 251.0,
+          "helicities": "50/64",
+          "initialization_s": 188.0,
+          "process_compilation_s": 7.55,
+          "ram_mb": 2100.0,
+          "stability_median_accuracy": 3.38e-10,
+          "stability_unstable_points": 0,
+          "run": "b6-r1",
+          "cpu": 168,
+          "wall_s": 3433.9
+        },
+        {
+          "tool": "Ninja",
+          "full_ms": 29500.0,
+          "coefs_ms": 28500.0,
+          "loops_ms": 1080.0,
+          "one_helicity_ms": 760.0,
+          "one_helicity_coefs_ms": 594.0,
+          "one_helicity_loops_ms": 166.0,
+          "helicities": "50/64",
+          "initialization_s": 178.0,
+          "process_compilation_s": 6.64,
+          "ram_mb": 2100.0,
+          "stability_median_accuracy": 3.38e-10,
+          "stability_unstable_points": 0,
+          "run": "b6-r2",
+          "cpu": 184,
+          "wall_s": 3411.0
+        },
+        {
+          "tool": "Ninja",
+          "full_ms": 29700.0,
+          "coefs_ms": 28400.0,
+          "loops_ms": 1240.0,
+          "one_helicity_ms": 761.0,
+          "one_helicity_coefs_ms": 582.0,
+          "one_helicity_loops_ms": 178.0,
+          "helicities": "50/64",
+          "initialization_s": 178.0,
+          "process_compilation_s": 6.35,
+          "ram_mb": 2100.0,
+          "stability_median_accuracy": 3.38e-10,
+          "stability_unstable_points": 0,
+          "run": "b6-r3",
+          "cpu": 200,
+          "wall_s": 3413.1
+        }
+      ],
+      "full_ms_median": 29600.0,
+      "full_ms_spread": [
+        29500.0,
+        29700.0
+      ],
+      "coefs_ms_median": 28400.0,
+      "loops_ms_median": 1130.0,
+      "one_helicity_ms_median": 761.0,
+      "one_helicity_coefs_ms_median": 584.0,
+      "one_helicity_loops_ms_median": 178.0,
+      "one_helicity_loops_ms_spread": [
+        166.0,
+        251.0
+      ],
+      "stability_median_accuracy": [
+        3.38e-10,
+        3.38e-10,
+        3.38e-10
+      ],
+      "initialization_s_median": 178.0,
+      "helicities": "50/64"
+    },
+    {
+      "backend": 7,
+      "name": "COLLIER",
+      "runs": [
+        {
+          "tool": "COLLIER",
+          "full_ms": 31700.0,
+          "coefs_ms": 28600.0,
+          "loops_ms": 3030.0,
+          "one_helicity_ms": 2400.0,
+          "one_helicity_coefs_ms": 593.0,
+          "one_helicity_loops_ms": 1810.0,
+          "helicities": "50/64",
+          "initialization_s": 509.0,
+          "process_compilation_s": 6.21,
+          "ram_mb": 2180.0,
+          "stability_median_accuracy": 1.7e-11,
+          "stability_unstable_points": 0,
+          "run": "b7-r1",
+          "cpu": 184,
+          "wall_s": 4029.0
+        },
+        {
+          "tool": "COLLIER",
+          "full_ms": 31100.0,
+          "coefs_ms": 28400.0,
+          "loops_ms": 2690.0,
+          "one_helicity_ms": 2400.0,
+          "one_helicity_coefs_ms": 587.0,
+          "one_helicity_loops_ms": 1810.0,
+          "helicities": "50/64",
+          "initialization_s": 508.0,
+          "process_compilation_s": 6.63,
+          "ram_mb": 2180.0,
+          "stability_median_accuracy": 1.7e-11,
+          "stability_unstable_points": 0,
+          "run": "b7-r2",
+          "cpu": 200,
+          "wall_s": 3985.3
+        },
+        {
+          "tool": "COLLIER",
+          "full_ms": 30900.0,
+          "coefs_ms": 28100.0,
+          "loops_ms": 2780.0,
+          "one_helicity_ms": 2380.0,
+          "one_helicity_coefs_ms": 579.0,
+          "one_helicity_loops_ms": 1800.0,
+          "helicities": "50/64",
+          "initialization_s": 503.0,
+          "process_compilation_s": 6.21,
+          "ram_mb": 2180.0,
+          "stability_median_accuracy": 1.7e-11,
+          "stability_unstable_points": 0,
+          "run": "b7-r3",
+          "cpu": 136,
+          "wall_s": 3950.1
+        }
+      ],
+      "full_ms_median": 31100.0,
+      "full_ms_spread": [
+        30900.0,
+        31700.0
+      ],
+      "coefs_ms_median": 28400.0,
+      "loops_ms_median": 2780.0,
+      "one_helicity_ms_median": 2400.0,
+      "one_helicity_coefs_ms_median": 587.0,
+      "one_helicity_loops_ms_median": 1810.0,
+      "one_helicity_loops_ms_spread": [
+        1800.0,
+        1810.0
+      ],
+      "stability_median_accuracy": [
+        1.7e-11,
+        1.7e-11,
+        1.7e-11
+      ],
+      "initialization_s_median": 508.0,
+      "helicities": "50/64"
+    },
+    {
+      "backend": 8,
+      "name": "NinjaRS",
+      "runs": [
+        {
+          "tool": "NinjaRS",
+          "full_ms": 29700.0,
+          "coefs_ms": 28500.0,
+          "loops_ms": 1240.0,
+          "one_helicity_ms": 712.0,
+          "one_helicity_coefs_ms": 592.0,
+          "one_helicity_loops_ms": 120.0,
+          "helicities": "50/64",
+          "initialization_s": 169.0,
+          "process_compilation_s": 6.18,
+          "ram_mb": 2100.0,
+          "stability_median_accuracy": 7.31e-10,
+          "stability_unstable_points": 0,
+          "run": "b8-r1",
+          "cpu": 200,
+          "wall_s": 3408.6
+        },
+        {
+          "tool": "NinjaRS",
+          "full_ms": 29100.0,
+          "coefs_ms": 28100.0,
+          "loops_ms": 1020.0,
+          "one_helicity_ms": 694.0,
+          "one_helicity_coefs_ms": 580.0,
+          "one_helicity_loops_ms": 114.0,
+          "helicities": "50/64",
+          "initialization_s": 171.0,
+          "process_compilation_s": 6.6,
+          "ram_mb": 2100.0,
+          "stability_median_accuracy": 7.31e-10,
+          "stability_unstable_points": 0,
+          "run": "b8-r2",
+          "cpu": 136,
+          "wall_s": 3356.6
+        },
+        {
+          "tool": "NinjaRS",
+          "full_ms": 29100.0,
+          "coefs_ms": 28200.0,
+          "loops_ms": 904.0,
+          "one_helicity_ms": 691.0,
+          "one_helicity_coefs_ms": 582.0,
+          "one_helicity_loops_ms": 109.0,
+          "helicities": "50/64",
+          "initialization_s": 168.0,
+          "process_compilation_s": 6.12,
+          "ram_mb": 2100.0,
+          "stability_median_accuracy": 7.31e-10,
+          "stability_unstable_points": 0,
+          "run": "b8-r3",
+          "cpu": 152,
+          "wall_s": 3353.3
+        }
+      ],
+      "full_ms_median": 29100.0,
+      "full_ms_spread": [
+        29100.0,
+        29700.0
+      ],
+      "coefs_ms_median": 28200.0,
+      "loops_ms_median": 1020.0,
+      "one_helicity_ms_median": 694.0,
+      "one_helicity_coefs_ms_median": 582.0,
+      "one_helicity_loops_ms_median": 114.0,
+      "one_helicity_loops_ms_spread": [
+        109.0,
+        120.0
+      ],
+      "stability_median_accuracy": [
+        7.31e-10,
+        7.31e-10,
+        7.31e-10
+      ],
+      "initialization_s_median": 169.0,
+      "helicities": "50/64"
+    },
+    {
+      "backend": 9,
+      "name": "TIRust",
+      "runs": [
+        {
+          "tool": "TIRust",
+          "full_ms": 31600.0,
+          "coefs_ms": 28800.0,
+          "loops_ms": 2810.0,
+          "one_helicity_ms": 1890.0,
+          "one_helicity_coefs_ms": 594.0,
+          "one_helicity_loops_ms": 1300.0,
+          "helicities": "50/64",
+          "initialization_s": 159.0,
+          "process_compilation_s": 5.88,
+          "ram_mb": 2510.0,
+          "stability_median_accuracy": 1.22e-10,
+          "stability_unstable_points": 0,
+          "run": "b9-r1",
+          "cpu": 136,
+          "wall_s": 3628.2
+        },
+        {
+          "tool": "TIRust",
+          "full_ms": 30200.0,
+          "coefs_ms": 28100.0,
+          "loops_ms": 2120.0,
+          "one_helicity_ms": 1870.0,
+          "one_helicity_coefs_ms": 579.0,
+          "one_helicity_loops_ms": 1290.0,
+          "helicities": "50/64",
+          "initialization_s": 156.0,
+          "process_compilation_s": 6.33,
+          "ram_mb": 2510.0,
+          "stability_median_accuracy": 1.22e-10,
+          "stability_unstable_points": 0,
+          "run": "b9-r2",
+          "cpu": 152,
+          "wall_s": 3512.4
+        },
+        {
+          "tool": "TIRust",
+          "full_ms": 30600.0,
+          "coefs_ms": 28300.0,
+          "loops_ms": 2320.0,
+          "one_helicity_ms": 1830.0,
+          "one_helicity_coefs_ms": 585.0,
+          "one_helicity_loops_ms": 1240.0,
+          "helicities": "50/64",
+          "initialization_s": 154.0,
+          "process_compilation_s": 6.06,
+          "ram_mb": 2510.0,
+          "stability_median_accuracy": 1.22e-10,
+          "stability_unstable_points": 0,
+          "run": "b9-r3",
+          "cpu": 168,
+          "wall_s": 3536.2
+        }
+      ],
+      "full_ms_median": 30600.0,
+      "full_ms_spread": [
+        30200.0,
+        31600.0
+      ],
+      "coefs_ms_median": 28300.0,
+      "loops_ms_median": 2320.0,
+      "one_helicity_ms_median": 1870.0,
+      "one_helicity_coefs_ms_median": 585.0,
+      "one_helicity_loops_ms_median": 1290.0,
+      "one_helicity_loops_ms_spread": [
+        1240.0,
+        1300.0
+      ],
+      "stability_median_accuracy": [
+        1.22e-10,
+        1.22e-10,
+        1.22e-10
+      ],
+      "initialization_s_median": 156.0,
+      "helicities": "50/64"
+    }
+  ],
+  "tirust_library_sha256_prefix": "a01c763975e6f5c4",
+  "tirust_library": ".tirust-build/q-9a781998-qp512/HEPTools/tirust/lib/libmadloop_tirust.so",
+  "fflags": "-w -fPIC -O3",
+  "ldflags": "-lstdc++ -Wl,--no-relax",
+  "ldflags_reason": "ml5_0_wl_ (2.75 GB) and ml5_0_mp_wl_ (5.5 GB), NLOOPWAVEFUNCS=51123, place data beyond 2 GB; the default link fails converting a GOTPCREL relocation. Same flag as cudacpp_overlay.mk.",
+  "process_size": {
+    "NLOOPS": 43650,
+    "NLOOPGROUPS": 5441,
+    "NLOOPWAVEFUNCS": 51123,
+    "NBORNAMPS": 510,
+    "contributing_helicities": "50/64"
+  },
+  "generation_and_compile_s": 9455
+}

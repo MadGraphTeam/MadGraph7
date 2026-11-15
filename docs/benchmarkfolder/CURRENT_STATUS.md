@@ -1,10 +1,16 @@
-# Current status — 2026-11-13
+# Current status — 2026-11-15
 
 **Current campaign:** [`tirust-9a781998-1`](campaigns/tirust-9a781998-1/). This
 is a rehearsal on TIRust `9a781998e54a39fb06d3621de3cd458da09d2a52`, the head of
-TIRust PR #35, which is not yet merged into TIRust `main`. The final MadGraph pin
-must be a merged `main` commit. Once that exists, rerun the same pipeline with
-`tools/tirust_requalify.sh tirust-<pin8>-1`.
+TIRust PR #35 before its merge.
+
+**Final pin (2026-11-14).** TIRust PR #35 is merged (`a2cfa4b`). MadGraph now pins
+TIRust `main` `a5d4afbf87a0afc155dc57d2ac633af77a932a16` (`32a4a52242`), and the
+bridge keeps a separate QP cache for MadLoop's check pass (`78a03130ec`). A fresh
+install passes `smoke --require-poles`, and all 27 DP and 54 QP C-ABI fixture lanes
+are bit-identical to the `9a781998` runtime. The final requalification
+`tirust-a5d4afbf-1` (`tools/tirust_requalify.sh`) is running; its results will
+replace the rehearsal figures below.
 
 **Return codes.** Since the `madloop_ninjars` merge (2026-11-13), MadLoop uses
 return-code format 2. TIRust reports `U=3`, which it shares with IREGI, so a
@@ -31,6 +37,8 @@ final-pin campaign requalifies the merged source.
 | [Stress](campaigns/tirust-9a781998-1/summaries/stress-summary.md) ([QP 512-bit retry rerun](campaigns/tirust-9a781998-1/summaries/qp-rescue-512.md)) | 38 points (17 real-mass, 21 complex-mass). **No accepted TIRust value disagrees with a reference.** TIRust accepts 27 and refuses 11. Seven refusals are at points where every reducer fails: soft/collinear, the Zgg/ZZgg thresholds and the mixed small-Gram point. At the EW t t̄ γ threshold, Ninja rescues, but the reference reducers disagree with each other. At EW μ⁺μ⁻ and CMS forward-1e-6 small Gram, CutTools QP rescues through the 9\|6\|7\|1 chain. At CMS forward-1e-8, CutTools hangs. |
 | [Stability](campaigns/tirust-9a781998-1/stability/) | All five reducers have 100/100 usable estimates in every process, raw DP and after rescue; the earlier pilot had TIRust at 24/100 for Zgg and 0/100 for ZZgg. No TIRust raw-DP estimate exceeds 1e-6. Fractions above 1e-9: Zgg TIRust 0.03 (Ninja 0.00, NinjaRS 0.01); ZZgg TIRust 0.09 (Ninja 0.20, NinjaRS 0.15, COLLIER 0.03). |
 | [Provisional profile](campaigns/tirust-9a781998-1/summaries/profile-zggg-o3.json) | Stock O3 Zggg FULL: TIRust 1128 ms against NinjaRS 962 ms per point (ratio 1.177, previously 1.558). TIRust initializes fastest (8 s). Not acceptance. |
+| [g g → g g g g profile](campaigns/tirust-9a781998-1/summaries/profile-gg4g-o3.md) | Stock O3 `check profile`: the five reducers are within 7% per helicity-summed point (about 30 s), because coefficient construction takes 91–97%. For one helicity, the TIRust loop evaluation (1.29 s) is 2.4× CutTools, 7× Ninja and 11× NinjaRS, and 0.71× COLLIER. Not acceptance. |
+| [g g → z z z z](campaigns/tirust-9a781998-1/summaries/ggzzzz-tirust.md) | Check of pyAmpliCol's TIRust refusals, which are by design there. In MadLoop, TIRust returns 213 at all 60 ordinary points with no refusal; the double-double tier is needed at 2 of them, where TIRust agrees with COLLIER within 8.6e-8. **No accepted TIRust value disagrees with a reference.** At the small-Gram stress point, the DP value accepted at 1.1e-4 agrees with forced QP within 1.7e-5. The threshold point is a QP rescue at 1.5e-8, which no other reducer can check. The 9\|6\|7\|1 chain equals TIRust everywhere. |
 
 ## Findings outside TIRust
 
@@ -59,12 +67,15 @@ final-pin campaign requalifies the merged source.
   gives the H H point identical to NinjaRS QP. It also lets TIRust accept the
   EW t t̄ γ threshold point, where the reference reducers disagree with each
   other. Every other stress result is unchanged.
+- **Uncached QP check pass (fixed in the bridge, `78a03130ec`).** The g g → z z z z
+  threshold point took 13 h, almost all in MadLoop's QP check pass, which bypassed
+  the bridge's QP cache. The check pass now has its own QP cache.
 
 ## Open items
 
-1. **Final pin.** Once TIRust PR #35 is merged, pin the `main` merge commit
-   ([`tools/tirust_pin`](../../tools/tirust_pin/README.md)) and rerun
-   `tools/tirust_requalify.sh`.
+1. **Final-pin requalification.** `tirust-a5d4afbf-1` on TIRust `main` `a5d4afb`
+   is running. When it completes, its summaries, report pages and the timing
+   handoff replace the rehearsal ones.
 2. **Precise timing acceptance.** This is Hua-Sheng's local TODO:
    [`LOCAL_TIMING_TODO.md`](campaigns/tirust-9a781998-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
    Every main process needs an upper 95% paired candidate/baseline bound of at
