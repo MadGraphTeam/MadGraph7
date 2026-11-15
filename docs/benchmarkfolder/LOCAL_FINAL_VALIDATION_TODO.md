@@ -2,7 +2,7 @@
 
 The current agent-ready task is the newest campaign's local timing handoff.
 [`CURRENT_STATUS.md`](CURRENT_STATUS.md) names that campaign; today it is
-[`campaigns/tirust-9a781998-1/timing-handoff-1/LOCAL_TIMING_TODO.md`](campaigns/tirust-9a781998-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
+[`campaigns/tirust-a5d4afbf-1/timing-handoff-1/LOCAL_TIMING_TODO.md`](campaigns/tirust-a5d4afbf-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
 
 It covers:
 - a fresh `install tirust`;
@@ -14,9 +14,9 @@ It covers:
 - the new backend-9 precision cohorts;
 - the local report.
 
-The shared-host campaign is a rehearsal on an unmerged TIRust pin. Once the pin
-is a merged TIRust `main` commit, a new campaign `tirust-<pin8>-1` replaces it.
-Use that campaign's handoff.
+`tirust-a5d4afbf-1` is the final-pin campaign (TIRust `main` `a5d4afb`). It
+replaces the rehearsal `tirust-9a781998-1`, whose handoff stays in its campaign
+directory.
 
 Earlier versions of this file, for `tirust-native-tiers-1` and before, are in
 git history.

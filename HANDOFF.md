@@ -1,14 +1,14 @@
 # TIRust–MadLoop handoff
 
 **Status: NOT COMPLETE.** Backend 9 is implemented and requalified on the shared
-host for TIRust `9a781998`, the head of TIRust PR #35. Two things are still open:
-1. requalifying a **merged TIRust `main`** pin, once PR #35 is merged;
-2. **precise local timing acceptance**, which is Hua-Sheng's local TODO.
+host for the final pin, TIRust `main` `a5d4afb` (campaign `tirust-a5d4afbf-1`).
+One thing is still open: **precise local timing acceptance**, which is
+Hua-Sheng's local TODO.
 
 Do not mark the integration goal complete, or take PR #437 out of draft, before
-both are done.
+it is done.
 
-Updated 2026-11-13. The current results are in
+Updated 2026-11-15. The current results are in
 [`docs/benchmarkfolder/CURRENT_STATUS.md`](docs/benchmarkfolder/CURRENT_STATUS.md).
 
 ## Working agreement
@@ -68,69 +68,76 @@ QP rescue is `323` (format 1 used `219` and `323`).
   through `ML_GET_RET_CODE_LIBRARY()` in `MadLoopCommons.inc`.
 - `tools/tirust_benchmark_worker.py` (`BACKEND_CODES`) and the benchmark
   drivers' warm-status checks decode both formats.
-- The rehearsal campaign below predates the merge, so its summaries show `219`.
+- The rehearsal campaign `tirust-9a781998-1` predates the merge, so its
+  summaries show `219`; the final campaign shows `213`.
 
-## Results for `9a781998` (campaign `tirust-9a781998-1`)
+## Results for `a5d4afb` (campaign `tirust-a5d4afbf-1`)
+
+The final pin reproduces the rehearsal on `9a781998` and confirms the two bridge
+fixes made since. Details and links are in `CURRENT_STATUS.md`.
 
 - **Ordinary matrix:** 66/66 lanes pass `3e-6`; 54 also meet `1e-8`, with the
-  same misses as before. TIRust's genuine-QP rescues fell to 0 in QCD Zgg and
-  ZZgg and to 1 in EW 2→4; its internal DD/MPFR tiers cover them.
-- **Double-double gate (headroom 26):** 482,376 captured calls replay bit for
-  bit. All 6,131 DD-tier calls agree with 256-bit evaluation within 1.9e-20,
-  including the 482 lanes in the new window. Qualified.
+  same misses as before. TIRust needs no genuine-QP rescue in QCD Zgg and ZZgg
+  and one in EW 2→4; its internal DD/MPFR tiers cover the rest.
+- **Double-double gate (headroom 26):** 1,289,214 captured calls replay bit for
+  bit. All 6,419 DD-tier calls agree with 256-bit evaluation within 1.9e-20,
+  including the 492 lanes in the new window. Qualified.
 - **Caches:** cache-off and a 1 MiB budget reproduce every bit for all 1,100
-  ordinary points.
-- **Stress (38 points):** no accepted TIRust value is wrong. TIRust accepts 27
-  and refuses 11.
+  ordinary points. The cache diagnostic passes 61/61, including the QP
+  check-pass cache.
+- **Stress (38 points):** no accepted TIRust value is wrong. TIRust accepts 28
+  and refuses 10.
   - Seven refusals are at points where every reducer fails.
-  - Three are small-Gram or threshold points that the 9|6|7|1 chain rescues.
-  - One is CMS `forward-1e-08`, where CutTools then hangs.
+  - Two small-Gram points are rescued by the 9|6|7|1 chain (CutTools QP).
+  - At CMS `forward-1e-08`, CutTools then hangs.
   - **CutTools STOP:** a CutTools fallback can `STOP` the process (QCD ZZgg
     soft-collinear point).
-  - **Genuine-QP refusals (fixed in the bridge since):** TIRust's genuine-QP
-    interface refused 48 rank-4 box tensors at the loop-induced H H small-Gram
-    point. The bridge now retries such lanes once at 512 bits (patch from the
-    TIRust upstream session). A stress rerun on the patched bridge
-    ([`qp-rescue-512.md`](docs/benchmarkfolder/campaigns/tirust-9a781998-1/summaries/qp-rescue-512.md))
-    matches NinjaRS QP at that point and lets TIRust accept the EW t t̄ γ
-    threshold point (the references disagree there). Everything else is
-    unchanged. The final-pin requalification covers the patched bridge.
-- **Stability:** every reducer has 100/100 usable estimates. TIRust's raw-DP
-  availability is now 100/100 for Zgg and ZZgg; the earlier pilot had 24 and 0.
-- **Provisional stock O3 Zggg profile:** TIRust/NinjaRS 1.177, initialization
-  8 s. Not acceptance.
+  - **512-bit QP retry confirmed:** the H H small-Gram point now matches the
+    reference in forced QP, and TIRust accepts the EW t t̄ γ threshold point. The
+    checked reducers disagree there, but TIRust agrees with NinjaRS QP within
+    1.1e-9.
+- **Stability:** identical to the rehearsal; every reducer has 100/100 usable
+  estimates, and TIRust's raw-DP availability is 100/100 for Zgg and ZZgg (the
+  earlier pilot had 24 and 0).
+- **Helicity filters:** since `madloop_ninjars`, MadLoop learns and applies
+  helicity filters with `LoopPoleMode = 0`, which baseline `9228fc58` bypasses.
+  This matters for the local paired timing (see its handoff).
+- **Provisional profile:** not rerun on this pin (host overloaded); the
+  rehearsal measured TIRust/NinjaRS 1.177 on stock O3 Zggg.
 - **Report:** `docs/benchmarkfolder/benchmark.pdf` appends 6 current-source
   pages to the preserved 48 pages. Build it with
-  `python3 -B tools/tirust_current_report.py render --campaign tirust-9a781998-1 --publish`
+  `python3 -B tools/tirust_current_report.py render --campaign tirust-a5d4afbf-1 --publish`
   and verify it with `… verify`.
-- **Recovered logs:** the logs behind the b350286, ab31cdf and b71c590 figures
-  are indexed in
-  [`recovered-optimization-evidence.md`](docs/benchmarkfolder/campaigns/tirust-9a781998-1/recovered-optimization-evidence.md).
+- **Rehearsal:** `tirust-9a781998-1` keeps the g g → g g g g and g g → z z z z
+  checks, the QP 512-bit retry rerun and the
+  [recovered optimization logs](docs/benchmarkfolder/campaigns/tirust-9a781998-1/recovered-optimization-evidence.md).
 
 ## Remaining work
 
-1. **Final pin.** When the upstream session reports that TIRust PR #35 is merged:
-   - follow [`tools/tirust_pin/README.md`](tools/tirust_pin/README.md): export
-     the merge commit, hand-merge the poles-only patch if needed, then run
-     `regen_poles_patch.sh` and `pinbump.py`;
-   - install, build and test the bridge;
-   - commit, then run
-     `REASON='…' tools/tirust_requalify.sh tirust-<pin8>-1` (it takes several
-     hours on the shared host);
-   - copy `report/current-source.typ` and `timing-handoff-1/` from
-     `tirust-9a781998-1`, render and publish the report, and update
-     `CURRENT_STATUS.md`, this file and the PR #437 description.
-2. **Hua-Sheng's local timing.** Follow
-   `docs/benchmarkfolder/campaigns/<final>/timing-handoff-1/LOCAL_TIMING_TODO.md`.
+1. **Hua-Sheng's local timing.** Follow
+   [`LOCAL_TIMING_TODO.md`](docs/benchmarkfolder/campaigns/tirust-a5d4afbf-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
    Gate: the upper 95% paired candidate/baseline bound is ≤ 1.05 for every main
    process, plus existing-backend regressions.
-3. **Optional upstream improvements.**
+2. **Shared-host profile** (optional): rerun the stock O3 Zggg profile on this
+   pin when the host is quiet.
+3. **A later pin**, if the upstream session proposes one:
+   - follow [`tools/tirust_pin/README.md`](tools/tirust_pin/README.md): export
+     the commit, hand-merge the poles-only patch if needed, then run
+     `regen_poles_patch.sh` and `pinbump.py`; move `vendor/tirust/pole-kernels`
+     and the bridge's Symbolica `[patch.crates-io]` to TIRust's revisions;
+   - install, build and test the bridge;
+   - commit, then run
+     `REASON='…' tools/tirust_requalify.sh tirust-<pin8>-1` (several hours on
+     the shared host);
+   - copy `report/current-source.typ` and `timing-handoff-1/` from
+     `tirust-a5d4afbf-1`, render and publish the report, and update
+     `CURRENT_STATUS.md`, this file and the PR #437 description.
+4. **Optional upstream improvements.**
    - TIRust's handling of exactly singular Gram matrices from `OSThres`-zeroed
      CMS invariants.
    - A CutTools STOP or hang is a MadLoop/CutTools limitation; it can abort a
      TIRust-first chain that falls back to CutTools.
-4. **Review.** Finish the review of PR #437 (stacked on NinjaRS PR #315) after
-   the final pin.
+5. **Review.** Finish the review of PR #437 (stacked on NinjaRS PR #315).
 
 Earlier campaigns, the audit-style evidence capsules and the older report
 builders are preserved in git history and in the tag
