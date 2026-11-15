@@ -275,7 +275,8 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
         == 0
     )
     assert "Explicit sums over the squared coupling orders" in human.getvalue()
-    for setting in ([], ["--reduction-unchecked"]):
+    for setting in ([], ["--reduction-unchecked"], ["--checked"]):
+        checked = setting == ["--checked"]
         stdout = io.StringIO()
         code = run_cli(
             [
@@ -299,17 +300,21 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
         )
         assert code == 0
         report = json.loads(stdout.getvalue())
-        # Both reduction backends side by side, the type's default first and
-        # profiled as "auto" (the default setup); the stability not asked.
+        # Both reduction backends side by side, the type's default first;
+        # the optimistic pass times each backend alone, the checked mode the
+        # default backend as "auto"; the stability not asked.
         assert [row["backend"] for row in report["runtime"]] == ["ninjars", "tirust"]
-        assert report["runtime"][0]["requested"] == "auto"
+        assert report["runtime"][0]["requested"] == ("auto" if checked else "ninjars")
+        setup = report["runtime_setup"]
+        assert ("checked reduction, refused points served" in setup) is checked
+        assert ("optimistic: unchecked reduction, no checks" in setup) is not checked
         assert report["stability"] is None and report["default_backend"] == "ninjars"
         other = report["runtime"][1]
         assert (other["profile"] is None) is (other["refusal"] is not None)
         profile = report["runtime"][0]["profile"]
         assert set(profile["stages"]) == set(PROFILE_GROUPS)
         assert profile["batch"] == 4 and profile["samples"] == 2
-        assert profile["unchecked"] is bool(setting)
+        assert profile["unchecked"] is not checked
         assert profile["reduction"]["effective"] == "ninjars"
         # Every lane of every timed call counts (none falls back here).
         assert set(profile["reduction"]["lanes"]) == {"ninjars"}
@@ -329,6 +334,14 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
         assert reference["arithmetic"] == "double-double"
         assert reference["digits"] is None and reference["batch"] == 4
         assert reference["samples"] == 2 and reference["warmup"] == 0
+    # The checked mode and the unchecked reduction contradict each other.
+    stderr = io.StringIO()
+    code = run_cli(
+        ["profile", str(uux_ddx), "--checked", "--reduction-unchecked"],
+        stdout=io.StringIO(),
+        stderr=stderr,
+    )
+    assert code != 0 and "benchmark.checked" in stderr.getvalue()
     # --stability on both backends over three flat points (binary64 with the
     # default rotation against a double-double re-run); human and JSON.
     for output in (["--json"], ["--color", "never"]):

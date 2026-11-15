@@ -2977,6 +2977,7 @@ def profile_virtual(
     progress: Callable[[int, int], None] | None = None,
     reference: Mapping[str, Any] | None = None,
     artifact: os.PathLike[str] | str | None = None,
+    optimistic: bool = False,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
     (``VirtualProfileResult``) on ``points`` (default: the distinct flat
@@ -2993,6 +2994,10 @@ def profile_virtual(
     timed calls' policy ("best-effort": a refused point is served, timed and
     counted in ``best_effort_points``); ``progress(done, total)`` is called
     after every warm-up and timed call (``total`` the calls planned so far).
+    ``optimistic``: every timed call is one fully optimistic pass, as the
+    reference's (``_reference_timing``): the unchecked reduction of the
+    backend alone ("auto" resolved, ``_single_backend``), no best-effort
+    re-evaluation (``on_failure`` "return"), no stability checks.
     ``reference``: the ``Runtime.evaluate`` options of a reference carrier
     (``arithmetic`` and, for arbitrary precision, ``precision``) timed after
     the binary64 calls (``_reference_timing``); the peak RAM is the binary64
@@ -3049,9 +3054,15 @@ def profile_virtual(
         ),
     )
     initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
-    options = {"poles": "none", "on_failure": on_failure}
+    options: dict[str, Any] = {"poles": "none", "on_failure": on_failure}
     if reduction is not None:
         options["reduction"] = reduction
+    if optimistic:
+        options["on_failure"] = "return"
+        options["reduction_unchecked"] = True
+        backend = _single_backend(runtime, reduction)
+        if backend is not None:
+            options["reduction"] = backend
 
     def scales(batch: Momenta) -> Any:
         if evaluation is not None and evaluation.mu_r2 is not None:

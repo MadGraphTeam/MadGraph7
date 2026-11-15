@@ -171,17 +171,11 @@ def _seconds_text(seconds: float) -> str:
 def _reference_ratio(ratio: float, label: str, color: bool) -> str:
     """``(<label> xN)`` after a binary64 time: the reference precision
     (``label``: "dd", "arb(D)") takes N times as long (one decimal below 10,
-    none from 10 on); green when the reference is the faster, yellow
-    otherwise, as the stage ratios."""
+    none from 10 on), the whole parenthesis muted so that the time it
+    follows (bold) dominates."""
 
     text = f"x{ratio:.1f}" if round(ratio, 1) < 10.0 else f"x{ratio:.0f}"
-    return (
-        f"({label} "
-        + palette.paint(
-            text, palette.GOOD if ratio < 1.0 else palette.RECOVERED, color=color
-        )
-        + ")"
-    )
+    return palette.paint(f"({label} {text})", palette.MUTED, color=color)
 
 
 def _peak_cell(profile: Any, color: bool) -> str:
@@ -409,8 +403,10 @@ def _stability_time(row: Any, report: Any, color: bool) -> tuple[str, ...]:
     binary64 = timing.get("binary64", {}).get("seconds")
     reference = timing.get(key, {}).get("seconds")
     if binary64 is None:
-        return (_seconds_text(row.seconds),)
-    text = _seconds_text(float(binary64))
+        return (
+            palette.paint(_seconds_text(row.seconds), None, color=color, bold=True),
+        )
+    text = palette.paint(_seconds_text(float(binary64)), None, color=color, bold=True)
     if reference is None or not binary64 > 0.0:
         return (text,)
     return text, _reference_ratio(float(reference) / float(binary64), label, color)

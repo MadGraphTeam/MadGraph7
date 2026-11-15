@@ -568,6 +568,18 @@ def test_runtime_and_stability_report_peak_ram_and_reference_timing():
     timing = payload["stability"][0]["precision_timing"]
     assert timing["double-double"]["points"] == 4
     assert timing["binary64"]["seconds"] == 1.0
+    # Colour: the time bold (green: the fastest), the whole parenthesis
+    # muted (bright black) after it, in both tables; without colour the text.
+    import re
+
+    from pyamplicol.reporting.loop_profile import _ANSI
+
+    coloured = render_summary(report, color=True)
+    assert _ANSI.sub("", coloured) == text
+    assert "\x1b[90m(dd x20)\x1b[0m" in coloured
+    assert "\x1b[90m(dd x1.8)\x1b[0m" in coloured
+    assert re.search(r"\x1b\[1m\x1b\[32m1 ms\x1b\[0m \x1b\[90m\(dd x20\)", coloured)
+    assert "\x1b[1m1 s\x1b[0m \x1b[90m(dd x1.8)" in coloured
     # An arbitrary-precision truth: its label everywhere, its timing key.
     truth = {"arithmetic": "arbitrary", "digits": 57, "label": "arb(57)"}
     arb = replace(dd, arithmetic="arbitrary", digits=57, seconds_per_point=0.21)

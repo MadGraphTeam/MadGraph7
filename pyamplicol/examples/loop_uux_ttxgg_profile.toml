@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: 0BSD
-# Loop example: profile the uux_ttxgg artifact (time per stage, checked
-# default; add --reduction-unchecked for the unchecked timing mode) on both
+# Loop example: profile the uux_ttxgg artifact (time per stage, optimistic
+# default; add --checked for the checked timing mode) on both
 # reduction backends side by side; --stability adds the stable-digit statistics
 # (pyamplicol profile --card loop_uux_ttxgg_profile.toml --stability).
 

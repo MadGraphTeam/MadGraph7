@@ -541,6 +541,11 @@ n_core = 10
 # arbitrary precision, "arbitrary" ("arb", at the built-in rescue's 57
 # digits) or "arbitrary:DIGITS". Default "double-double".
 ground_truth = "double-double"
+# benchmark.checked: Loop artifacts: time the checked mode (`--checked`): the
+# backends' own acceptance checks, a refused point served best-effort, the
+# default backend as auto. Default false: one fully optimistic binary64 pass
+# per point (the backend's unchecked reduction alone, no checks).
+checked = false
 
 [check]
 # check.points: Positive count of seeded phase-space points per process of

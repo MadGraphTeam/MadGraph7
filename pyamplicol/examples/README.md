@@ -459,7 +459,7 @@ pyamplicol loop_gg_zgg_evaluate.toml        # coloured tables (--color never|alw
 pyamplicol loop_gg_zgg_profile.toml         # runtime of TIRust and NinjaRS side by side
 pyamplicol profile --card loop_gg_zgg_profile.toml --stability            # stable-digit statistics
 pyamplicol profile --card loop_gg_zgg_profile.toml --runtime --stability --stability-points 200 --loop-reduction tirust
-pyamplicol profile artifacts/loop_gg_zgg --momenta data/loop_gg_zgg_momenta.json --reduction-unchecked
+pyamplicol profile artifacts/loop_gg_zgg --momenta data/loop_gg_zgg_momenta.json --checked
 make -C native loop                         # the native client of the walkthrough
 python python/loop_walkthrough.py loop_gg_zgg_generate.toml --points 2 --regenerate \
   --native-client native/loop_client

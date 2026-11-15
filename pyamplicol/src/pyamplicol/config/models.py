@@ -1690,9 +1690,14 @@ class BenchmarkConfig:
     # the built-in rescue's arbitrary-precision level's), "dd" and "arb"
     # accepted; read by both tables (``loop_profile.ground_truth``).
     ground_truth: str = field(default="double-double", metadata=_setting("str"))
+    # The runtime timing of a loop profile in the checked mode (``--checked``):
+    # the backends' own acceptance checks, a refused point served best-effort
+    # and the default backend as "auto". False (the default): one fully
+    # optimistic pass per point, the backend's unchecked reduction alone.
+    checked: bool = field(default=False, metadata=_setting("bool"))
 
     def __post_init__(self) -> None:
-        for name in ("runtime", "stability"):
+        for name in ("runtime", "stability", "checked"):
             if type(getattr(self, name)) is not bool:
                 raise ConfigurationError(f"benchmark.{name} must be a boolean")
         object.__setattr__(self, "ground_truth", _ground_truth(self.ground_truth))

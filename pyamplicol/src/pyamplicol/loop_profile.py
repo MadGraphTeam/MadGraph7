@@ -491,13 +491,19 @@ def _served_points(profile: Any) -> int:
 
 
 def _runtime_setup(
-    unchecked: bool, bench: Any, seed: int | None, threads: Sequence[int] = ()
+    checked: bool, bench: Any, seed: int | None, threads: Sequence[int] = ()
 ) -> str:
-    """The runtime setup line; ``seed``: of the flat points (None: the
-    caller's points); ``threads``: the native threads each backend's timed
-    calls report (one: one core, ``one_core``; another count is named)."""
+    """The runtime setup line; ``checked``: the checked mode
+    (``benchmark.checked``), else the optimistic pass; ``seed``: of the flat
+    points (None: the caller's points); ``threads``: the native threads each
+    backend's timed calls report (one: one core, ``one_core``; another count
+    is named)."""
 
-    reduction = "unchecked reduction" if unchecked else "checked reduction"
+    reduction = (
+        "checked reduction, refused points served best-effort"
+        if checked
+        else "optimistic: unchecked reduction, no checks"
+    )
     points = (
         "points of --momenta" if seed is None else f"distinct flat points (seed {seed})"
     )
@@ -550,6 +556,14 @@ def profile_loop(
     want_stability = bench.stability
     want_runtime = bench.runtime or not want_stability
     truth = ground_truth(bench.ground_truth)
+    checked = bench.checked
+    if checked and evaluation.reduction_unchecked:
+        from pyamplicol.config.errors import ConfigurationError
+
+        raise ConfigurationError(
+            "benchmark.checked (--checked) times the checked reduction: drop "
+            "evaluation.reduction_unchecked (--reduction-unchecked)"
+        )
 
     runtime_rows = None
     interrupted = False
@@ -560,16 +574,15 @@ def profile_loop(
         rows = []
         default = DEFAULTS.get(contribution)
         for backend in backends:
-            # The default backend in the default setup: "auto" (with its
-            # per-point fallback), unless one backend was asked for.
+            # The optimistic pass: the backend alone. The checked mode: the
+            # default backend as "auto" (with its per-point fallback), unless
+            # one backend was asked for.
             request = (
                 "auto"
-                if evaluation.reduction is None and backend == default
+                if checked and evaluation.reduction is None and backend == default
                 else backend
             )
             try:
-                # The default policy: a refused point is served with its
-                # best-effort value, and timed as such (m-lit ux-besteffort).
                 profile = _timed(
                     progress,
                     backend,
@@ -673,7 +686,7 @@ def profile_loop(
         DEFAULTS.get(contribution),
         backends,
         _runtime_setup(
-            bool(evaluation.reduction_unchecked),
+            checked,
             bench,
             None if points else evaluation.phase_space.seed,
             [
@@ -786,8 +799,9 @@ def _runtime_worker(
     """The worker process of ``_isolated_profile``: Ctrl-C left to the
     parent, every thread pool at one thread before anything native starts
     (``one_core``: the timing is that of one core), the artifact loaded,
-    one backend profiled (a refused point served with its best-effort value
-    and timed as such, m-lit ux-besteffort) and its reference timing; its
+    one backend profiled (the optimistic pass, or with ``benchmark.checked``
+    the checked call, a refused point served with its best-effort value and
+    timed as such, m-lit ux-besteffort) and its reference timing; its
     progress, then its result or error, sent back."""
 
     import signal
@@ -809,9 +823,12 @@ def _runtime_worker(
             points=points,
             artifact=artifact,
             reduction=request,
-            on_failure="best-effort",
+            # The checked mode: a refused point is served with its
+            # best-effort value and timed as such (m-lit ux-besteffort).
+            on_failure="best-effort" if benchmark.checked else "return",
             progress=lambda done, total: sender.send(("progress", done, total)),
             reference=reference,
+            optimistic=not benchmark.checked,
         )
         sender.send(("result", profile))
     except Exception as error:

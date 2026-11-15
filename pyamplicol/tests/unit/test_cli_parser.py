@@ -878,6 +878,10 @@ def test_profile_takes_the_loop_settings() -> None:
     assert effective.evaluation.reduction == "tirust"
     assert effective.evaluation.reduction_unchecked is True
     assert effective.evaluation.mu_r2 == "1e4"
+    assert effective.benchmark.checked is False
+    checked = parse_cli(("profile", "artifact", "--checked")).resolve().effective
+    assert checked.benchmark.checked is True
+    assert checked.evaluation.reduction_unchecked is False
 
 
 def test_evaluate_profile_and_check_take_the_kinematics_improvement() -> None:

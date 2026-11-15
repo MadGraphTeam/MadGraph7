@@ -112,8 +112,11 @@ def _profile(report: Any) -> list[Block]:
                 (
                     "runtime setup",
                     "what the timed calls compute: binary64, finite part only, "
-                    "the backends' own acceptance checks (the checked "
-                    "reduction), no stability checks and no rescue; the "
+                    "one fully optimistic pass per point (the backend's "
+                    "unchecked reduction alone, no stability checks, no "
+                    "rescue, no best-effort re-evaluation; with --checked the "
+                    "backends' own acceptance checks, a refused point served "
+                    "best-effort, the default backend as auto); the "
                     "distinct points per call (a new batch every call); the "
                     "timed calls: at least --minimum-samples, more until they "
                     "add up to --target-runtime seconds, after --warmup-runs "
@@ -140,12 +143,12 @@ def _profile(report: Any) -> list[Block]:
                     ("backend", "the reduction backend. " + _DEFAULT_MARK),
                     (
                         "time / point",
-                        "the time per phase-space point on one core: the "
-                        "median timed call's wall time over its points; "
-                        f"'({label} xN)': one fully optimistic pass per "
-                        f"point in {name} (the ground truth) on the same "
-                        "backend and core - the unchecked reduction, no "
-                        "stability checks, no rescue, no best-effort "
+                        "the time per phase-space point on one core of the "
+                        "runtime setup's pass: the median timed call's wall "
+                        f"time over its points; '({label} xN)', muted: the "
+                        f"same optimistic pass in {name} (the ground truth) on "
+                        "the same backend and core - the unchecked reduction, "
+                        "no stability checks, no rescue, no best-effort "
                         "re-evaluation - takes N times this time per point: N "
                         "is its median call's time per point over this one, "
                         "its calls of one SIMD chunk (16 points) each, on the "
@@ -167,16 +170,17 @@ def _profile(report: Any) -> list[Block]:
                     ("peak RAM", _peak_ram(report)),
                     (
                         "best-effort",
-                        "shown when some points were refused by the backend's own "
-                        "checks and returned with their best available value "
-                        "(the default policy); those points are timed, their unchecked "
-                        "re-evaluation and the checks of its uncertainty included",
+                        "with --checked, shown when some points were refused by "
+                        "the backend's own checks and returned with their best "
+                        "available value; those points are timed, their "
+                        "unchecked re-evaluation and the checks of its "
+                        "uncertainty included",
                     ),
                     (
                         "lanes",
-                        "shown when points were served by more than one backend: "
-                        "the default backend hands a point it refuses to the "
-                        "other one",
+                        "with --checked, shown when points were served by more "
+                        "than one backend: the default backend (as auto) hands "
+                        "a point it refuses to the other one",
                     ),
                     ("failed", "shown when points got no value at all"),
                 ],

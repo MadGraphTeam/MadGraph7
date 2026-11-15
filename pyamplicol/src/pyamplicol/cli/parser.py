@@ -967,11 +967,25 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--reduction-unchecked",
         dest="evaluation.reduction_unchecked",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: load the runtime with the unchecked reduction, "
+            "so that the stability run's binary64 calls are unchecked too (the "
+            "runtime timing's optimistic pass is unchecked by default); not "
+            "with --checked"
+        ),
+    )
+    parser.add_argument(
+        "--checked",
+        dest="benchmark.checked",
         action=argparse.BooleanOptionalAction,
         default=argparse.SUPPRESS,
         help=(
-            "loop artifacts: profile the unchecked timing mode (no accuracy "
-            "certificate); default off"
+            "loop artifacts: time the checked mode instead of the optimistic "
+            "pass: the backends' own acceptance checks, a refused point served "
+            "best-effort, the default backend as auto (benchmark.checked; "
+            "default off)"
         ),
     )
     _add_kinematics_options(parser)

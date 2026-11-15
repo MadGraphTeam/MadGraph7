@@ -755,17 +755,25 @@ new batch of distinct points: without `--momenta`, the flat points from the
 seed on (seed and energy as above; call k, warm-ups counted, takes the
 points from k x `--batch-size` on, so every call has the same points on
 every backend); with `--momenta`, its points in order, cycled when there are
-fewer. The default setup, which the table header names: binary64, finite part only, the checked reduction (the
-backends' own acceptance checks; `--reduction-unchecked` profiles the
-unchecked timing mode, no accuracy certificate), no stability checks and no
-rescue; the default backend runs as `auto` (its per-point fallback
-included, as a user gets it) and a refused point is returned with its
-best-effort value and timed as such (the default `on_failure`). The first
+fewer. What is timed, which the table header names: binary64, finite part
+only, **one fully optimistic pass per point** (the same pass as the reference
+multiplier's, below): each backend's unchecked reduction alone (no `auto`
+fallback), no stability checks, no rescue, no best-effort re-evaluation of a
+refused point (a point without a value is counted `failed`). `--checked`
+(`benchmark.checked = true`) times the checked mode instead: the backends'
+own acceptance checks, a refused point returned with its best-effort value
+and timed as such (its unchecked re-evaluation and its uncertainty's checks
+included), the default backend as `auto` with its per-point fallback; the
+header then says "checked reduction". `--reduction-unchecked`
+(`evaluation.reduction_unchecked`) loads the runtime unchecked, which also
+makes the stability run's binary64 calls unchecked; it cannot be combined
+with `--checked`. The first
 table gives each backend's name (`*`: the default backend of the process
 type), its time per point (median call), the fastest and slowest call, the
-ratio to the fastest and its `peak RAM`; a `best-effort` column appears when some timed points
-were served best-effort, a `lanes` column when points were served by more
-than one backend, a `failed` column when points got no value. Under the
+ratio to the fastest and its `peak RAM`; with `--checked` a `best-effort`
+column appears when some timed points were served best-effort and a `lanes`
+column when points were served by more than one backend; a `failed` column
+appears when points got no value. Under the
 table, after a `---` line, the failed or refused points are listed per
 backend and cause, most frequent first, in the form
 `<count> (<fraction> %) <backend> | <kind>: <cause>` (causes grouped with
@@ -811,10 +819,11 @@ the same minimum calls and budget (at least `--minimum-samples` timed calls,
 more until `--target-runtime` seconds), in calls of one SIMD
 chunk (16 points: no padded lane in any carrier), call k on the first points
 of the binary64 timing's batch k; N is its median call's time per point over
-the binary64 median call's. The displayed time keeps its meaning (the
-checked reduction, a refused point served best-effort and timed as such):
-the multiplier is the user's question "how much does one plain pass in the
-reference precision cost", not the cost of a rescue.
+the binary64 median call's: the same pass in both, so N compares like with
+like (with `--checked` the denominator is the checked time). In colour the
+time is bold (green for the fastest backend) and the whole parenthesis is
+muted (bright black), in both tables; `--color never` prints the same text
+without escapes.
 
 ```text
 $ pyamplicol profile artifacts/gg_zz   # g g > z z [noborn=QCD]
@@ -969,7 +978,11 @@ to the time per point; the reference multiplier is always timed, as one
 optimistic pass in 16-point calls, and `--ground-truth` selects its
 precision. `profile --arithmetic` is removed (it timed the same batches in
 double-double, checked, only on request) and `profile` no longer reads
-`evaluation.arithmetic`; `--json`'s `double_double` is now `reference`.
+`evaluation.arithmetic`; `--json`'s `double_double` is now `reference`. The
+main time is the optimistic pass by default (before: the checked reduction
+with best-effort serving, now `--checked`); `--no-reduction-unchecked` is gone
+from `profile` (`evaluation.reduction_unchecked = false` is its default and
+no longer selects the checked timing: set `benchmark.checked = true`).
 From Python, `benchmarking.profile_virtual(..., reference={"arithmetic":
 "double-double"})` times a reference; `BenchmarkRunner` times none and runs
 on the loaded runtime's own pools.
