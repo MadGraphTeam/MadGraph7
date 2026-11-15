@@ -67,8 +67,12 @@ Borns have no K and P operators.
 The cuts are those of cuts.f with the photon isolation and the
 recombination of photons (NLOCuts), all photons to be isolated.
 
+The scale of the user (dynamical_scale_choice 0 or 10, user_dynamical_scale
+of dummy_fct.f) comes from the provider, at the Born with a last particle
+without momentum, as at the soft counter-event of MadFKS.
+
 Not covered yet: a final-state gluon with a colored decaying particle, PDF
-schemes other than MSbar, densities of eMELA, photon beams and user scales.
+schemes other than MSbar, densities of eMELA and photon beams.
 """
 
 import argparse
@@ -292,9 +296,9 @@ class CSBornIntegrand:
         ]
         self.born_dim = self.channel_mappings[0].random_dim()
         n = len(self.born_pdgs)
-        self.scale = Runtime(
-            nlo_scale(n, self.incoming, **scale_parameters(run_card)), context
-        )
+        scale = nlo_scale(n, self.incoming, **scale_parameters(run_card))
+        self.user_scale = scale.user()
+        self.scale = Runtime(scale, context)
         self.alpha_s = Runtime(couplings.running, context)
         # the cuts of the Born, with no unresolved parton
         self.cuts = Runtime(
@@ -409,6 +413,14 @@ class CSBornIntegrand:
                 convolved[:, leg, 1] += splitting * at_partner
         return born, convolved
 
+    def references(self, momenta, valid=None):
+        """The reference scale of the user (dynamical_scale_choice 0 or 10)
+        at momenta of the Born or of the real process, from the provider, as
+        the arguments of the scales it takes, none for the other scales."""
+        if not self.user_scale:
+            return []
+        return [self.provider.reference_scales(momenta, valid)]
+
     def evaluate(self, index, x, choice, choice_weight, trick, rng):
         """The weights of a channel at the points x of its random numbers (see
         SubprocessIntegrand.evaluate of nlo/fks.py), with the virtual on
@@ -416,7 +428,7 @@ class CSBornIntegrand:
         count = len(x)
         out = self.forward[index].call([np.ascontiguousarray(x[:, : self.born_dim])])
         momenta, x1, x2, omx, det = mapping_outputs(out, count)
-        scales = self.scale(momenta)
+        scales = self.scale(momenta, *self.references(momenta, det != 0))
         mu_r = scales["ren_scale"]
         alpha_s = self.alpha_s(mu_r)["alpha_s"]
         passes = self.passes_cuts(momenta)
@@ -755,7 +767,7 @@ class CSRealIntegrand:
         )
         # the real emission
         fks_index = np.full(count, self.configuration, dtype=np.int32)
-        scales = self.scale(momenta)
+        scales = self.scale(momenta, *self.source.references(momenta, valid))
         layout = np.zeros(count, dtype=np.int32)
         passes = self.cuts(momenta, layout_index=layout)["mask"] != 0
         points = np.flatnonzero(keep & passes)
@@ -825,7 +837,7 @@ class CSRealIntegrand:
                 spin_weight[points],
                 tuple(part[take] for part in evaluated),
             )
-            born_scales = born.scale(me[points])
+            born_scales = born.scale(me[points], *born.references(me[points]))
             alpha_s = born.alpha_s(born_scales["ren_scale"])["alpha_s"]
             g_s = np.sqrt(4 * math.pi * alpha_s)
             # -D, the term the real emission subtracts

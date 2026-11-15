@@ -4234,6 +4234,9 @@ nlo_scale:
     - name: p
       type: [float, n, 4]
       desc: "momenta of the kinematics, the incoming first"
+    - name: user_reference
+      type: [float]
+      desc: "reference scale of the user (user_dynamical_scale of MadFKS) for dynamical_scale_choice 0 or 10, unused for the others"
     - name: options
       type: [float, single, 10]
       desc: "dynamical_scale_choice, fixed_ren_scale, fixed_fac_scale, mur_ref_fixed, muf1_ref_fixed, muf2_ref_fixed, mur_over_ref, muf1_over_ref, muf2_over_ref and the floor of the dynamical scale"
@@ -4251,7 +4254,7 @@ nlo_scale:
       type: [float]
       desc: "factorization scale of the second beam"
   vectorized: False
-  desc: "The scales of setscales.f of MadFKS at one kinematics. The reference scale of scale_global_reference (dynamical_scale_choice 1: the sum of the transverse energies of the outgoing particles in the partonic center-of-mass frame, 2: the sum of their transverse masses, 3 or -1: half of it, -2: mur_ref_fixed) is raised to the floor, a fixed scale replaces it, and each scale is multiplied by its factor. For a decay the reference scale is the mass of the decaying particle. See @ref NLOScale."
+  desc: "The scales of setscales.f of MadFKS at one kinematics. The reference scale of scale_global_reference (dynamical_scale_choice 1: the sum of the transverse energies of the outgoing particles in the partonic center-of-mass frame, 2: the sum of their transverse masses, 3 or -1: half of it, -2: mur_ref_fixed, 0 or 10: that of the user) is raised to the floor, a fixed scale replaces it, and each scale is multiplied by its factor. For a decay the reference scale is the mass of the decaying particle. See @ref NLOScale."
 
 nlo_jets:
   inputs:

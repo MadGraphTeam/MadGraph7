@@ -61,8 +61,11 @@ pair. With tagged photons and QED corrections the blocks and the QED
 coupling take the factors of tagged_factors of the provider (the couplings
 of the tagged photons in alpha(0), the others in G_mu).
 
+The scale of the user (dynamical_scale_choice 0 or 10, user_dynamical_scale
+of dummy_fct.f) comes from the provider at the event and its counter-events.
+
 Not covered yet: PDF schemes other than MSbar, densities of eMELA, photon
-beams, user scales and FxFx.
+beams and FxFx.
 """
 
 import argparse
@@ -175,6 +178,8 @@ class SubprocessIntegrand:
         scales = scale_parameters(run_card)
         scale = nlo_scale(len(born_pdgs) + 1, self.incoming, **scales)
         self.born_scale = Runtime(scale.with_particle_count(len(born_pdgs)), context)
+        # the scale of the user, from the provider
+        self.user_scale = scale.user()
         self.kernels = Runtime(
             fks_splitting_kernels(born, self.configurations, self.resonance), context
         )
@@ -288,7 +293,26 @@ class SubprocessIntegrand:
             *resonance,
             fks_index=fks_index,
         )
-        ren_scale = self.born_scale(out["born_momenta"])["ren_scale"]
+        references = {}
+        if self.user_scale:
+            # the reference scales of the user at the event and its
+            # counter-events, the Born at the soft counter-event
+            for name, momenta, valid in (
+                ("reference_scale", "momenta", out["weight"] != 0),
+                (
+                    "soft_reference_scale",
+                    "soft_momenta",
+                    (out["soft_det"] != 0) | (out["born_weight"] != 0),
+                ),
+                (
+                    "collinear_reference_scale",
+                    "collinear_momenta",
+                    out["collinear_det"] != 0,
+                ),
+            ):
+                references[name] = self.provider.reference_scales(out[momenta], valid)
+        user = [references["soft_reference_scale"]] if self.user_scale else []
+        ren_scale = self.born_scale(out["born_momenta"], *user)["ren_scale"]
         passes = {
             name: self.pass_cuts(out[name], layout_index=fks_index)["mask"] != 0
             for name in ("momenta", "soft_momenta", "collinear_momenta")
@@ -331,6 +355,7 @@ class SubprocessIntegrand:
         virtual, approximation = trick.inputs(blocks["virtual"], born, evaluated)
         inputs = dict(out)
         inputs.update(blocks)
+        inputs.update(references)
         inputs.update(
             virtual=virtual,
             channel_weight=channel_weight,

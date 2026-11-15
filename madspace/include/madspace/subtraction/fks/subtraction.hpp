@@ -596,7 +596,10 @@ private:
  * real flavors of its configuration (see @ref FKSLuminosity). The
  * soft-collinear remnants take the factorization scales of the collinear
  * counter-event, which equal those of the Born for the scale choices of
- * @ref NLOScale.
+ * @ref NLOScale. With the scale of the user (@ref NLOScale::user()) its
+ * reference scales at the event, at the soft counter-event (for the Born) and
+ * at the collinear counter-event come as arguments before `flavor_index`:
+ * `reference_scale`, `soft_reference_scale` and `collinear_reference_scale`.
  *
  * **Returns**
  * - those of @ref FKSWeights.

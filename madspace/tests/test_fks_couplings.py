@@ -819,9 +819,105 @@ def test_decay_scales(case):
         np.testing.assert_allclose(ours, theirs, rtol=1e-12)
 
 
+@pytest.mark.parametrize("choice", [0, 10])
+def test_user_scale(choice):
+    """With the scale of the user (dynamical_scale_choice 0 or 10) the
+    reference scale is an argument, raised to the floor, a fixed scale
+    replaces it and each scale takes its factor, a decay takes the mass."""
+    rng = np.random.default_rng(13)
+    lab, _ = random_event(rng, 64, 5, False)
+    reference = np.concatenate([[0.5], rng.uniform(1.0, 500.0, 63)])
+    scale = ms.NLOScale(
+        5,
+        dynamical_scale_choice=choice,
+        fixed_fac_scale=True,
+        muf1_ref_fixed=125.0,
+        muf2_ref_fixed=80.0,
+        mur_over_ref=2.0,
+        muf2_over_ref=0.5,
+    )
+    assert scale.user()
+    assert list(scale.arg_types().keys()) == ["momenta", "reference_scale"]
+    assert scale.with_particle_count(4).user()
+    ren, fact1, fact2 = evaluate(scale, lab, reference)
+    np.testing.assert_allclose(
+        ren, 2 * np.maximum(ms.NLOScale.min_scale, reference), rtol=1e-15
+    )
+    np.testing.assert_array_equal(fact1, 125.0)
+    np.testing.assert_array_equal(fact2, 40.0)
+    assert not ms.NLOScale(5).user()
+    decay = ms.NLOScale(4, dynamical_scale_choice=choice, incoming=1)
+    p = np.zeros((2, 4, 4))
+    p[:, 0, 0] = [173.0, 80.0]
+    ren, _, _ = evaluate(decay, p, np.array([10.0, 20.0]))
+    np.testing.assert_allclose(ren, [173.0, 80.0], rtol=1e-15)
+
+
+@needs_nnpdf
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_cross_section_with_user_scale(path, grids):
+    """FKSCrossSection with the scale of the user takes the reference scales
+    of the event, of the soft counter-event (for the Born) and of the
+    collinear counter-event as arguments: with those of the scale choice of
+    the run it gives what it gives with that choice."""
+    pdf_grid, alpha_s_grid = grids(asmz(path))
+    running = ms.RunningCoupling(alpha_s_grid)
+    for channel in channels(path):
+        hadrons = beams(channel) != (0, 0)
+        scales = scale_parameters(channel.run_card)
+        common = dict(
+            running_coupling=running,
+            pdf_grid=pdf_grid if hadrons else None,
+            beams=beams(channel),
+            sum_flavors=True,
+            n_f=channel.n_f,
+            cuts=channel.cuts(),
+        )
+        born, configurations = channel.born, channel.configurations
+        theirs = run_with_couplings(
+            channel, fks_cross_section(born, configurations, scales=scales, **common)
+        )
+        user = fks_cross_section(
+            born,
+            configurations,
+            scales=dict(scales, dynamical_scale_choice=10),
+            **common,
+        )
+        names = list(user.arg_types().keys())
+        assert names[-4:] == [
+            "reference_scale",
+            "soft_reference_scale",
+            "collinear_reference_scale",
+            "fks_index",
+        ]
+        # the reference scales of the choice of the run, raised to the floor
+        reference = nlo_scale(
+            len(configurations["born_pdgs"]) + 1,
+            configurations.get("nincoming", 2),
+            dynamical_scale_choice=scales["dynamical_scale_choice"],
+            mur_ref_fixed=scales["mur_ref_fixed"],
+        )
+        out, index = channel.event
+        inputs = dict(channel.inputs)
+        inputs.update({n: out[n] for names in FRACTIONS.values() for n in names})
+        inputs["reference_scale"] = evaluate(reference, out["momenta"])[0]
+        inputs["collinear_reference_scale"] = evaluate(
+            reference, out["collinear_momenta"]
+        )[0]
+        inputs["soft_reference_scale"] = evaluate(
+            reference.with_particle_count(len(configurations["born_pdgs"])),
+            out["born_momenta"],
+        )[0]
+        outputs = evaluate(
+            user, *[inputs[n] for n in names if n != "fks_index"], fks_index=index
+        )
+        for name, value in zip(user.return_types().keys(), outputs):
+            np.testing.assert_allclose(value, theirs[name], rtol=1e-14, atol=0)
+
+
 def test_scale_errors():
-    with pytest.raises(ValueError, match="dynamical_scale_choice 10"):
-        ms.NLOScale(5, dynamical_scale_choice=10)
+    with pytest.raises(ValueError, match="dynamical_scale_choice 4"):
+        ms.NLOScale(5, dynamical_scale_choice=4)
     with pytest.raises(ValueError, match="an outgoing particle"):
         ms.NLOScale(2)
     with pytest.raises(ValueError, match="an outgoing particle"):

@@ -289,6 +289,34 @@ def test_couplings(path):
         assert p.tagged_factors() is None
 
 
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_reference_scales(path):
+    """The reference scale of the user is user_dynamical_scale of dummy_fct.f,
+    by default mur_ref_fixed of the run card the output was compiled with
+    (run_card.inc), at kinematics of the real process and of the Born, zero
+    where the points are not valid."""
+    data = reference(path)
+    with open(os.path.join(OUTPUTS, name_of(path), "Source", "run_card.inc")) as f:
+        line = next(line for line in f if "MUR_REF_FIXED" in line.upper())
+    fixed = float(line.split("=")[1].strip().upper().replace("D", "E"))
+    for channel in data["channels"]:
+        p = provider(name_of(path), channel["subprocess"])
+        points = points_with_blocks(channel)
+        born = np.array([point["p_born"] for point in points])
+        valid = np.arange(len(points)) % 3 != 0
+        np.testing.assert_array_equal(
+            p.reference_scales(born, valid), np.where(valid, fixed, 0.0)
+        )
+        events = [
+            c["momenta"]
+            for point in points
+            for c in point["contributions"]
+            if c["type"] == 1
+        ]
+        if events:
+            np.testing.assert_array_equal(p.reference_scales(np.array(events)), fixed)
+
+
 def test_extra_counterterms():
     """At the Borns of the reference of p p > a j (configurations with a
     quark pair from a gluon and from a photon, whose Born a u > u a is the

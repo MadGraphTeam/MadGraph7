@@ -442,8 +442,6 @@ def check_run_card(run_card):
     cover."""
     if integer(run_card.get("ickkw", 0)) != 0:
         raise NotImplementedError("nlo.core: no FxFx merging (ickkw)")
-    if integer(run_card["dynamical_scale_choice"]) in (0, 10):
-        raise NotImplementedError("nlo.core: no user scales")
     beams = (integer(run_card["lpp1"]), integer(run_card["lpp2"]))
     hadrons = [abs(beam) == 1 for beam in beams]
     dressed = [beam in DRESSED_LEPTONS for beam in beams]
@@ -523,15 +521,16 @@ class DressedLeptons:
 
 class Couplings:
     """The PdfGrid and AlphaSGrid of the run, uploaded to the context: those
-    of the LHAPDF set of lhaid, or the nodes of the grid of nn23nlo with the
-    2-loop running of alpha_s. Lepton beams take alpha_s(m_Z) of the param
-    card, dressed ones that of pdfwrap.f of MadFKS (DRESSED_ALPHA_S) and the
-    densities of their leptons (leptons, a DressedLeptons, None for the other
-    beams)."""
+    of the LHAPDF set of lhaid, or a built-in set of MadFKS (grids.BUILTIN,
+    its grid or its table) with the running of alpha_s of pdfwrap.f. Lepton
+    beams take alpha_s(m_Z) of the param card, dressed ones that of pdfwrap.f
+    of MadFKS (DRESSED_ALPHA_S) and the densities of their leptons (leptons,
+    a DressedLeptons, None for the other beams)."""
 
     def __init__(self, directory, run_card, param_card, context):
         ms = madspace()
         os.makedirs(directory, exist_ok=True)
+        output = os.path.dirname(os.path.dirname(os.path.realpath(directory)))
         hadrons = beam_kind(run_card) == "hadrons"
         self.pdf = None
         pdlabel = str(run_card["pdlabel"]).lower()
@@ -542,24 +541,22 @@ class Couplings:
             self.alpha_s = ms.AlphaSGrid(info)
             self.asmz = grids.lhapdf_alpha_s_mz(info)
         else:
-            if hadrons and pdlabel != "nn23nlo":
+            if hadrons and pdlabel not in grids.BUILTIN:
                 raise NotImplementedError(f"nlo.core: pdlabel {pdlabel}")
-            self.asmz = (
-                grids.NNPDF_ALPHA_S
-                if hadrons
-                else (
-                    DRESSED_ALPHA_S
-                    if beam_kind(run_card) == "dressed"
-                    else float(param_card["sminputs"]["3"])
-                )
-            )
-            path = os.path.join(directory, f"alpha_s_{self.asmz}.info")
-            grids.write_alpha_s_grid(path, self.asmz)
+            loops = 2
+            if hadrons:
+                self.asmz, loops = grids.BUILTIN[pdlabel]
+            elif beam_kind(run_card) == "dressed":
+                self.asmz = DRESSED_ALPHA_S
+            else:
+                self.asmz = float(param_card["sminputs"]["3"])
+            path = os.path.join(directory, f"alpha_s_{self.asmz}_{loops}.info")
+            grids.write_alpha_s_grid(path, self.asmz, loops)
             self.alpha_s = ms.AlphaSGrid(path)
             if hadrons:
-                grid = os.path.join(directory, "NNPDF23nlo_as_0119_qed_0000.dat")
+                grid = os.path.join(directory, f"{pdlabel}_0000.dat")
                 if not os.path.isfile(grid):
-                    grids.write_lhapdf_grid(grid)
+                    grids.write_builtin_grid(grid, pdlabel, output, directory)
                 self.pdf = ms.PdfGrid(grid)
         grid_names = ("pdf_logx", "pdf_logq2", "pdf_coefficients")
         for name in (
@@ -576,7 +573,6 @@ class Couplings:
         self.running = ms.RunningCoupling(self.alpha_s)
         self.leptons = None
         if beam_kind(run_card) == "dressed":
-            output = os.path.dirname(os.path.dirname(os.path.realpath(directory)))
             self.leptons = DressedLeptons(
                 os.path.join(output, "Source"), directory, run_card, context
             )

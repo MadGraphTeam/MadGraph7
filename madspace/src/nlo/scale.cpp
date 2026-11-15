@@ -5,6 +5,22 @@
 
 using namespace madspace;
 
+namespace {
+
+// the momenta, and the reference scale of the user for dynamical_scale_choice
+// 0 or 10
+NamedVector<Type> scale_args(std::size_t particle_count, int choice) {
+    NamedVector<Type> args{
+        {"momenta", batch_four_vec_array(static_cast<int>(particle_count))}
+    };
+    if (choice == 0 || choice == 10) {
+        args.push_back("reference_scale", batch_float);
+    }
+    return args;
+}
+
+} // namespace
+
 NLOScale::NLOScale(
     std::size_t particle_count,
     int dynamical_scale_choice,
@@ -20,9 +36,7 @@ NLOScale::NLOScale(
 ) :
     FunctionGenerator(
         "NLOScale",
-        NamedVector<Type>{
-            {"momenta", batch_four_vec_array(static_cast<int>(particle_count))}
-        },
+        scale_args(particle_count, dynamical_scale_choice),
         NamedVector<Type>{
             {"ren_scale", batch_float},
             {"fact_scale1", batch_float},
@@ -55,10 +69,12 @@ NLOScale::NLOScale(
         );
     }
     int choice = dynamical_scale_choice;
-    if (choice != -2 && choice != -1 && choice != 1 && choice != 2 && choice != 3) {
+    if (choice != -2 && choice != -1 && choice != 0 && choice != 1 && choice != 2 &&
+        choice != 3 && choice != 10) {
         throw std::invalid_argument(
             std::format(
-                "NLOScale: dynamical_scale_choice {} is not one of -2, -1, 1, 2 and 3",
+                "NLOScale: dynamical_scale_choice {} is not one of -2, -1, 0, 1, 2, 3 "
+                "and 10",
                 choice
             )
         );
@@ -81,11 +97,20 @@ NLOScale NLOScale::with_particle_count(std::size_t particle_count) const {
     );
 }
 
+bool NLOScale::user() const {
+    int choice = static_cast<int>(_options.at(0));
+    return choice == 0 || choice == 10;
+}
+
 NamedVector<Value> NLOScale::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    auto scales =
-        fb.nlo_scale(args.at("momenta"), _options, static_cast<me_int_t>(_incoming));
+    Value reference = user()
+        ? args.at("reference_scale")
+        : fb.full({0., fb.batch_size({args.at("momenta")})});
+    auto scales = fb.nlo_scale(
+        args.at("momenta"), reference, _options, static_cast<me_int_t>(_incoming)
+    );
     return {
         {"ren_scale", scales.at(0)},
         {"fact_scale1", scales.at(1)},

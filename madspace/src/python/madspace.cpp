@@ -3009,6 +3009,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("NLOScale::particle_count")
         )
         .def("incoming", &NLOScale::incoming, pydoc::doc("NLOScale::incoming"))
+        .def("user", &NLOScale::user, pydoc::doc("NLOScale::user"))
         .def("options", &NLOScale::options, pydoc::doc("NLOScale::options"))
         .def(
             "with_particle_count",

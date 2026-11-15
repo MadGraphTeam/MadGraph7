@@ -28,6 +28,9 @@ c - COUPLINGS: the number of tagged photons (get_n_tagged_photons), the QED
 c   coupling gal(1)^2 / (4 pi) of the counterterms, and for the given
 c   powers of e the factor of a contribution with tagged photons
 c   (get_rescale_alpha_factor), by which add_wgt multiplies its weight.
+c - SCALE: the reference scale of the user (user_dynamical_scale of
+c   dummy_fct.f) at kinematics of the real process, for
+c   dynamical_scale_choice 0 and 10.
 c - EXTRA: extra_cnt_frame at the Born of a configuration with an extra
 c   counterterm (born_cnt_<n>.f, the Born of the other mother of a quark
 c   pair), its counterterm parts amp_split_cnt(:,1:2,:), as sborncol_fsr
@@ -139,6 +142,8 @@ c the sizes and the orders of the split-order positions.
             call provider_extra(header(2),header(3))
          case (8)
             call provider_couplings(header(2))
+         case (9)
+            call provider_scale(header(2))
          case default
             call write_status(1)
          end select
@@ -296,6 +301,28 @@ c diagrams of the channels.
       enddo
       call write_status(0)
       call write_reals(width*count,out)
+      deallocate(p,out)
+      end
+
+
+c The reference scale of the user at count kinematics of the real process
+c (nexternal momenta, in the partonic center-of-mass frame as sigint takes
+c them).
+      subroutine provider_scale(count)
+      use fks_provider_io
+      implicit none
+      include 'nexternal.inc'
+      integer count,k
+      double precision, allocatable :: p(:,:,:),out(:)
+      double precision user_dynamical_scale
+      external user_dynamical_scale
+      allocate(p(0:3,nexternal,count),out(count))
+      call read_reals(4*nexternal*count,p)
+      do k=1,count
+         out(k)=user_dynamical_scale(p(0,1,k))
+      enddo
+      call write_status(0)
+      call write_reals(count,out)
       deallocate(p,out)
       end
 

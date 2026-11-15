@@ -28,7 +28,10 @@ coupling g = 1 (see fks_provider.f):
   photon) of a quark pair;
 - couplings: the number of tagged photons, the QED coupling of the
   counterterms (gal(1)^2 / (4 pi)) and the factors by which add_wgt
-  multiplies the contributions of tagged photons per power of e.
+  multiplies the contributions of tagged photons per power of e;
+- reference_scales: the reference scale of the user (user_dynamical_scale of
+  dummy_fct.f, dynamical_scale_choice 0 or 10) at kinematics of the real
+  process, which madspace takes as an argument.
 
 From these it gives the blocks of madspace: the real per NLO order, the
 Born per Born order, the color-correlated Borns of all pairs of Born legs
@@ -78,7 +81,7 @@ SOURCES = {
     "makefile_provider": os.path.join(TEMPLATES, "makefile_fks_provider"),
 }
 
-QUIT, INFO, REAL, BORN, LINKS, VIRTUAL, CHANNELS, EXTRA, COUPLINGS = range(9)
+QUIT, INFO, REAL, BORN, LINKS, VIRTUAL, CHANNELS, EXTRA, COUPLINGS, SCALE = range(10)
 INT = np.dtype(np.int32)
 FLOAT = np.dtype(np.float64)
 
@@ -348,6 +351,27 @@ class FortranProvider:
         return (
             np.ascontiguousarray(out).view(np.complex128).reshape(-1, k, 2, self.size)
         )
+
+    def reference_scales(self, momenta, valid=None):
+        """The reference scale of the user (user_dynamical_scale) at
+        kinematics (batch, n + 1, 4) of the real process or (batch, n, 4) of
+        the Born, which gets a last particle without momentum (as the soft
+        counter-event), boosted to their partonic center-of-mass frame, zero
+        where valid is false."""
+        momenta = np.asarray(momenta, dtype=float)
+        if momenta.ndim == 3 and momenta.shape[1] == self.particle_count - 1:
+            momenta = np.concatenate([momenta, np.zeros_like(momenta[:, :1])], 1)
+        momenta = self._momenta(momenta, self.particle_count)
+        out = np.zeros(len(momenta))
+        points = np.arange(len(momenta))
+        if valid is not None:
+            points = np.flatnonzero(np.asarray(valid, dtype=bool))
+        if len(points):
+            p = momenta[points]
+            p = boost_z(p, -partonic_rapidity(p, self.incoming))
+            self._request(SCALE, len(points), 0, p)
+            out[points] = self._read(FLOAT, len(points))
+        return out
 
     def couplings(self, powers=()):
         """The number of tagged photons, the QED coupling of the counterterms

@@ -13,14 +13,16 @@ namespace kernels {
 // (dynamical_scale_choice 1: sum of the transverse energies E pT / |p| of the
 // outgoing particles in the partonic center-of-mass frame, 2: sum of their
 // transverse masses sqrt((E + pz) (E - pz)), 3 or -1: half of it, -2: the fixed
-// mur_ref_fixed) is raised to the floor (minscaleR and minscaleF, 2 GeV). A
-// fixed scale replaces it, and each scale is multiplied by its factor
-// (mur_over_ref, muf1_over_ref, muf2_over_ref), fixed or not. For a decay (one
-// incoming particle) the reference scale is the mass of the decaying
-// particle, as setscales.f takes it for mu_R and the Ellis-Sexton scale.
+// mur_ref_fixed, 0 or 10: user_reference, that of user_dynamical_scale) is
+// raised to the floor (minscaleR and minscaleF, 2 GeV). A fixed scale replaces
+// it, and each scale is multiplied by its factor (mur_over_ref, muf1_over_ref,
+// muf2_over_ref), fixed or not. For a decay (one incoming particle) the
+// reference scale is the mass of the decaying particle, as setscales.f takes
+// it for mu_R and the Ellis-Sexton scale.
 template <typename T>
 KERNELSPEC void kernel_nlo_scale(
     FIn<T, 2> p,
+    FIn<T, 0> user_reference,
     FIn<T, 1> options,
     IIn<T, 0> incoming,
     FOut<T, 0> ren_scale,
@@ -60,6 +62,8 @@ KERNELSPEC void kernel_nlo_scale(
         if (choice != 2) {
             reference = reference / 2.;
         }
+    } else if (choice == 0 || choice == 10) {
+        reference = user_reference;
     } else {
         reference = mur_ref_fixed;
     }

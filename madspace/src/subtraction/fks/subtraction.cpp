@@ -726,15 +726,18 @@ const std::vector<std::string> KINEMATICS = {
 // those of the weights that the subtraction and the n-body part do not give,
 // fks_index last. With the couplings inside, the scales, the couplings and
 // the luminosities give way to the momentum fractions, with dressed leptons
-// also 1 - x of the beams (the same for every kinematics), and luminosities of
-// one flavor take flavor_index before fks_index.
+// also 1 - x of the beams (the same for every kinematics), the scale of the
+// user takes the reference scales of the event, the soft counter-event and the
+// collinear counter-event, and luminosities of one flavor take flavor_index
+// before fks_index.
 NamedVector<Type> cross_section_args(
     const FKSSubtraction& subtraction,
     const FKSSoftVirtual& soft_virtual,
     const FKSWeights& weights,
     bool couplings = false,
     bool flavor = false,
-    bool lepton = false
+    bool lepton = false,
+    bool user = false
 ) {
     if (subtraction.particle_count() != weights.particle_count() ||
         soft_virtual.particle_count() + 1 != weights.particle_count() ||
@@ -789,6 +792,12 @@ NamedVector<Type> cross_section_args(
         }
         if (!present) {
             args.push_back(name, type);
+        }
+    }
+    if (user) {
+        for (auto name :
+             {"reference_scale", "soft_reference_scale", "collinear_reference_scale"}) {
+            args.push_back(name, batch_float);
         }
     }
     if (flavor) {
@@ -866,7 +875,8 @@ FKSCrossSection::FKSCrossSection(
             weights,
             true,
             !luminosity.sum_flavors(),
-            luminosity.lepton()
+            luminosity.lepton(),
+            scale.user()
         ),
         weights.return_types()
     ),
@@ -922,9 +932,22 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
     }
     auto batch_size = fb.batch_size({args.at("born_weight")});
     if (_scale) {
-        auto born = _born_scale->build_function(fb, {args.at("born_momenta")});
-        auto collinear = _scale->build_function(fb, {args.at("collinear_momenta")});
-        auto event = _scale->build_function(fb, {args.at("momenta")});
+        // the scale of the user comes as reference scales, the Born that of
+        // the soft counter-event, as MadFKS takes it
+        auto scale =
+            [&](const NLOScale& function,
+                const std::string& momenta,
+                const std::string& reference) {
+                ValueVec inputs{args.at(momenta)};
+                if (function.user()) {
+                    inputs.push_back(args.at(reference));
+                }
+                return function.build_function(fb, inputs);
+            };
+        auto born = scale(*_born_scale, "born_momenta", "soft_reference_scale");
+        auto collinear =
+            scale(*_scale, "collinear_momenta", "collinear_reference_scale");
+        auto event = scale(*_scale, "momenta", "reference_scale");
         args["ren_scale"] = born.at("ren_scale");
         args["fact_scale1"] = born.at("fact_scale1");
         args["fact_scale2"] = born.at("fact_scale2");
