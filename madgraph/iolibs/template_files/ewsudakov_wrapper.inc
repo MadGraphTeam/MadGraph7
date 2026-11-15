@@ -105,7 +105,10 @@ call sdk_get_invariants(p, iflist, invariants)
 if (firsttime.or..not.sud_mc_hel) then
  hel_min = 1
  hel_max = ncomb
- hel(:)=0
+C The list of good helicities is filled only at the first call (firsttime_hel):
+C a full helicity sum after it (sud_mc_hel false, e.g. the DP features of the
+C virt-trick surrogate) must keep it for the MC over helicities.
+ if (firsttime) hel(:)=0
  volh=1d0
  firsttime=.false.
 else
