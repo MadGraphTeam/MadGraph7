@@ -522,9 +522,9 @@ color_flow_ids = []
 # profiles the runtime only. Default false.
 runtime = false
 # benchmark.stability: Loop artifacts: the stability statistics of each
-# reduction backend (binary64 stable digits against a double-double re-run,
-# and the accuracy of the default rotation estimate) over flat points.
-# Default false.
+# reduction backend (binary64 stable digits against a re-run in the
+# ground_truth precision, and the accuracy of the default rotation estimate)
+# over flat points. Default false.
 stability = false
 # benchmark.stability_points: Positive count of flat (RAMBO on diet) phase-space
 # points of the stability statistics (drawn with evaluation.phase_space's

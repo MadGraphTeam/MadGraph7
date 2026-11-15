@@ -3,8 +3,9 @@
 side (``LoopProfileReport``).
 
 RUNTIME (``--runtime``, the default): per backend the time per point and per
-stage of ``benchmarking.profile_virtual`` in the default setup (binary64,
-finite part, the checked reduction, no stability checks and no rescue), and
+stage of ``benchmarking.profile_virtual`` of one fully optimistic binary64
+pass per point (finite part, the backend's unchecked reduction alone, no
+stability checks and no rescue; ``benchmark.checked``: the checked mode), and
 the ratio to the fastest backend. Every call times a new batch of distinct
 flat points (``evaluation.phase_space``'s seed and energy, point i from seed
 + i), the same points per call on every backend; at least

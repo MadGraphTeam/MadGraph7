@@ -29,8 +29,9 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
         help=(
             "loop artifacts: stable-digit statistics of each reduction backend "
-            "over flat phase-space points (binary64 against a double-double "
-            "re-run) and the accuracy of the default rotation estimate"
+            "over flat phase-space points (binary64 against a re-run in the "
+            "--ground-truth precision) and the accuracy of the default rotation "
+            "estimate"
         ),
     )
     parser.add_argument(
