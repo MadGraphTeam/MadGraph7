@@ -4813,7 +4813,10 @@ class _PointEvaluation:
 
         pending = self.__dict__.pop("_absolute_pending", None)
         if pending is not None:
-            self.__dict__["_absolute"] = self._lane_budget(*pending)
+            lanes, local, context = pending
+            # In the Decimal context of the assembly that set it.
+            with localcontext(context):
+                self.__dict__["_absolute"] = self._lane_budget(lanes, local)
         return self.__dict__.get("_absolute")
 
     @absolute.setter
@@ -4825,7 +4828,7 @@ class _PointEvaluation:
         """Set ``absolute`` to the budget of ``lanes`` and ``local``, formed
         when it is first read."""
 
-        self.__dict__["_absolute_pending"] = (lanes, local)
+        self.__dict__["_absolute_pending"] = (lanes, local, getcontext().copy())
 
     def _lane_budget(self, lanes, local=()) -> dict[Orders, Budget]:
         """Per sector, sum_lanes |delta bare| <= 2 |delta Omega| / (16 pi^2

@@ -2779,14 +2779,13 @@ class NativeExecutor:
         points in the reference's native call (``_merged_runs``): with
         rotation checks only, the same executor options for every copy (no
         re-test frame, Ward vectors or Catani prediction, which only the
-        reference runs), and only where that saves work: in binary64 fewer
-        SIMD chunks (a loop-induced plan's, which form the term scale of
-        every lane of a chunk, only where the copies fit in the reference's
-        own chunks: no chunk of rotated copies alone pays it); in an
-        extended carrier (scalar lanes, padded to ``lanes_for``) no more
-        lanes, except for a loop-induced plan (its term scale costs per
-        lane). The values are those of separate calls: every lane is its
-        own point's."""
+        reference runs), in binary64 only and only where that saves SIMD
+        chunks (a loop-induced plan's, which form the term scale of every
+        lane of a chunk, only where the copies fit in the reference's own
+        chunks: no chunk of rotated copies alone pays it). The values are
+        those of separate calls: every binary64 lane is its own point's. An
+        extended carrier (scalar lanes: a merged call would save the call
+        only) keeps separate calls."""
 
         from .assemble import Precision
 
@@ -2806,15 +2805,11 @@ class NativeExecutor:
         def chunks(points: int) -> int:
             return -(-points // self.lanes_for(arithmetic, points))
 
-        if arithmetic == "double":
-            if induced:
-                return chunks(total) == chunks(count)
-            return chunks(total) < (1 + rotations) * chunks(count)
-        if induced:
+        if arithmetic != "double":
             return False
-        merged = chunks(total) * self.lanes_for(arithmetic, total)
-        alone = chunks(count) * self.lanes_for(arithmetic, count)
-        return merged <= (1 + rotations) * alone
+        if induced:
+            return chunks(total) == chunks(count)
+        return chunks(total) < (1 + rotations) * chunks(count)
 
     def _merged_runs(
         self, exact, scales, parameters, precision, poles, stability, schedule
