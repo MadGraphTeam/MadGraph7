@@ -60,6 +60,23 @@ CUTS = (
     "mll",
     "mll_sf",
 )
+# the photon cuts and recombination of the run card, numbers and switches,
+# with the defaults of the NLO run card for older cards
+PHOTON_CUTS = {
+    "ptgmin": 20.0,
+    "etagamma": -1.0,
+    "r0gamma": 0.4,
+    "xn": 1.0,
+    "epsgamma": 1.0,
+    "rphreco": 0.1,
+    "etaphreco": -1.0,
+}
+PHOTON_SWITCHES = {
+    "isoem": True,
+    "gamma_is_j": True,
+    "lepphreco": True,
+    "quarkphreco": True,
+}
 # the [multiparticles] names of MG7 of particles by |pdg|, the observables
 # telling no particle from its antiparticle
 GROUPS = {
@@ -310,10 +327,15 @@ def real(value):
 
 
 def run_cuts(run_card):
-    """The cuts of NLOCuts by their names, from the run card."""
+    """The cuts of NLOCuts by their names, from the run card, with the photon
+    cuts and recombination."""
     cuts = {name: real(run_card[name]) for name in CUTS}
     cuts["maxjetflavor"] = integer(cuts["maxjetflavor"])
     cuts["jetalgo"] = integer(cuts["jetalgo"])
+    for name, default in PHOTON_CUTS.items():
+        cuts[name] = real(run_card.get(name, default))
+    for name, default in PHOTON_SWITCHES.items():
+        cuts[name] = flag(run_card.get(name, default))
     return cuts
 
 
@@ -919,10 +941,19 @@ class NLORun:
             }
             jets["jetalgo"] = integer(jets["jetalgo"])
             jets["maxjetflavor"] = integer(jets["maxjetflavor"])
-            for integrand in self.integrands:
-                self.histogram_runtimes[integrand.name] = integrand.histogram_runtime(
-                    self.histograms, jets
-                )
+            try:
+                for integrand in self.integrands:
+                    self.histogram_runtimes[integrand.name] = (
+                        integrand.histogram_runtime(self.histograms, jets)
+                    )
+            except ValueError as error:
+                # the real processes of QED corrections differ in more than
+                # their QCD partons (a photon, a lepton pair from a photon),
+                # which the default histograms do not cover
+                if self.histogram_file:
+                    raise
+                logger.warning("no histograms: %s", error)
+                self.histograms, self.histogram_runtimes = None, {}
 
     def make_integrands(self, directories, n_f, n_l):
         """The integrands of the subprocesses of the output (their P*

@@ -64,9 +64,11 @@ the power p of the sampling of their momentum fractions in PhaseSpaceMapping
 momentum fractions of the Born. The leptons radiate no QCD, so that the
 Borns have no K and P operators.
 
+The cuts are those of cuts.f with the photon isolation and the
+recombination of photons (NLOCuts), all photons to be isolated.
+
 Not covered yet: a final-state gluon with a colored decaying particle, PDF
-schemes other than MSbar, densities of eMELA, photon beams, user scales and
-the photon cuts.
+schemes other than MSbar, densities of eMELA, photon beams and user scales.
 """
 
 import argparse

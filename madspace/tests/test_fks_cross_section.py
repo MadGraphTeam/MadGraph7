@@ -126,13 +126,19 @@ def test_info_json(path):
         sum(c["mean"] for c in channels), result["nlo"]["sigma"], rtol=1e-12
     )
     assert {c["subprocess"] for c in channels} == set(range(len(run.integrands)))
+    hwu = os.path.join(run.run_path, "MADatNLO_madspace.HwU")
+    if not run.histograms:
+        # the default histograms do not cover reals that differ in more than
+        # their QCD partons (QED corrections), the run goes on without them
+        assert not info["histograms"]
+        return
     assert info["histograms"]
     for histogram in info["histograms"]:
         assert len(histogram["bin_values"]) == histogram["bin_count"] + 2
         np.testing.assert_allclose(
             sum(histogram["bin_values"]), result["nlo"]["sigma"], rtol=1e-10
         )
-    assert os.path.isfile(os.path.join(run.run_path, "MADatNLO_madspace.HwU"))
+    assert os.path.isfile(hwu)
     for statistics in info["fks"]["matrix_elements"].values():
         assert 0 < statistics["virtual"]["points"] <= statistics["born"]["points"]
 

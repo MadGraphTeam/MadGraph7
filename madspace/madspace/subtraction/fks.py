@@ -772,11 +772,33 @@ def fks_weights(born, configurations):
     )
 
 
+def fks_isolated_photons(configurations):
+    """The photons of the real process of each FKS configuration that the
+    photon cuts must find isolated, as passcuts_photons of cuts.f: with QED
+    splittings the tagged photons of the final state (get_n_tagged_photons
+    without the initial ones), else all photons (-1)."""
+    entries = configurations["configurations"]
+    if not any("QED" in entry["splitting_type"] for entry in entries):
+        return [-1] * len(entries)
+    nincoming = configurations.get("nincoming", 2)
+    counts = []
+    for entry in entries:
+        tags = entry.get("real_tags") or [False] * len(entry["real_pdgs"])
+        counts.append(
+            sum(
+                1
+                for pdg, tag in zip(entry["real_pdgs"][nincoming:], tags[nincoming:])
+                if pdg == 22 and tag
+            )
+        )
+    return counts
+
+
 def fks_cuts(born, configurations, **cuts):
     """The NLOCuts of the FKS configurations of a Born, the generation cuts of
     cuts.f of MadFKS on one kinematics, with the real process of each
-    configuration as a flavor layout (layout_index the fks_index) and one
-    unresolved parton.
+    configuration as a flavor layout (layout_index the fks_index), one
+    unresolved parton and the isolated photons of fks_isolated_photons.
 
     Args:
         born: the PhaseSpaceMapping of the Born process, for its masses, its
@@ -784,8 +806,10 @@ def fks_cuts(born, configurations, **cuts):
         configurations: the content of fks_configurations.json (see
             read_fks_configurations).
         cuts: the cuts by their names in the run card (jetalgo, jetradius,
-            ptj, etaj, maxjetflavor, ptl, etal, drll, drll_sf, mll, mll_sf),
-            none by default.
+            ptj, etaj, maxjetflavor, ptl, etal, drll, drll_sf, mll, mll_sf,
+            and for photons ptgmin, etagamma, r0gamma, xn, epsgamma, isoem,
+            gamma_is_j, rphreco, etaphreco, lepphreco, quarkphreco), none by
+            default.
 
     Raises:
         ValueError: as fks_configurations.
@@ -795,6 +819,7 @@ def fks_cuts(born, configurations, **cuts):
     return NLOCuts(
         [list(entry.pdgs) for entry in entries],
         incoming=configurations.get("nincoming", 2),
+        isolated_photons=fks_isolated_photons(configurations),
         **cuts,
     )
 

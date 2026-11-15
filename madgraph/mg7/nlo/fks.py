@@ -50,8 +50,13 @@ channel mappings take the resonances of their Born configuration, and the
 splitting kernels and the subtraction the momentum of the resonance of each
 event, zero where it has none.
 
+The cuts are those of cuts.f with the photon isolation and the
+recombination of photons (NLOCuts), the photons that must be isolated those
+of fks_isolated_photons.
+
 Not covered yet: PDF schemes other than MSbar, densities of eMELA, photon
-beams, user scales, FxFx and the photon cuts.
+beams, user scales, FxFx, the extra counterterms of mixed QCD and EW
+corrections and tagged photons with QED corrections.
 """
 
 import argparse
@@ -127,11 +132,6 @@ class SubprocessIntegrand:
             leptonic = integer(run_card["lpp1"]) == 0 or self.leptons is not None
         beams = (integer(run_card["lpp1"]), integer(run_card["lpp2"]))
         self.beams = beams if self.incoming == 2 and beams != (0, 0) else (0, 0)
-        real_pdgs = {
-            p for c in self.configurations["configurations"] for p in c["real_pdgs"]
-        }
-        if 22 in real_pdgs and real(run_card["ptgmin"]) > 0:
-            raise NotImplementedError("nlo.fks: no isolated photons (ptgmin)")
         self.cuts = born_cuts(born_pdgs, run_card) if self.incoming == 2 else None
         minimal = fks_minimal_masses(
             self.configurations,

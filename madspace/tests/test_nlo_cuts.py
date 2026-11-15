@@ -1,5 +1,6 @@
 """The generation cuts of the NLO integrands (NLOCuts), those of cuts.f of
-MadFKS (passcuts_leptons and passcuts_jets).
+MadFKS (passcuts_photons, recombine_momenta, passcuts_leptons and
+passcuts_jets).
 
 NLOCuts on the real processes of the FKS configurations (fks_cuts) is checked
 against the cuts that sigint applied at the points of the integrand
@@ -7,9 +8,12 @@ reference (test_data/fks_integrand), at the event and at the soft
 counter-event, and against madfks_cuts below on random events and
 counter-events of FKS configurations with up to four final-state partons and
 with leptons, for the kT, Cambridge/Aachen, anti-kT and a generalized kT
-algorithm. madfks_cuts is cuts.f in Python, with a clustering written as
-fastjet clusters, which test_clustering_is_fastjet checks where the Python
-bindings of fastjet are installed. On the Born layout without an unresolved
+algorithm, and of processes with photons, with the photon isolation of
+Frixione (with and without the electromagnetic particles), the recombination
+of photons with leptons and quarks and photons as jets. madfks_cuts is
+cuts.f in Python, with a clustering written as fastjet clusters, which
+test_clustering_is_fastjet checks where the Python bindings of fastjet are
+installed. On the Born layout without an unresolved
 parton NLOCuts gives at the Born what it gives at the soft counter-event.
 """
 
@@ -25,15 +29,21 @@ from test_fks_integrand import IDS as INTEGRAND_IDS
 from test_fks_integrand import channels
 
 import madspace as ms
-from madspace.subtraction.fks import fks_configuration_mapping, fks_cuts
+from madspace.subtraction.fks import (
+    fks_configuration_mapping,
+    fks_cuts,
+    fks_isolated_photons,
+)
 
 KINEMATICS = ("momenta", "soft_momenta", "collinear_momenta", "soft_collinear_momenta")
 LEPTONS = {11, 13, 15}
 
 
 def mg_eta(p):
-    """eta of kin_functions.f."""
-    theta = math.acos(p[3] / math.sqrt(p[1] ** 2 + p[2] ** 2 + p[3] ** 2))
+    """eta of kin_functions.f, NaN for a particle without momentum as
+    there."""
+    with np.errstate(invalid="ignore"):
+        theta = math.acos(p[3] / math.sqrt(p[1] ** 2 + p[2] ** 2 + p[3] ** 2))
     if abs(theta) < 1e-5:
         return 25.0
     if abs(theta - math.pi) < 1e-5:
@@ -42,10 +52,12 @@ def mg_eta(p):
 
 
 def mg_delta_phi(p1, p2):
-    """DELTA_PHI of kin_functions.f."""
-    cosine = (p1[1] * p2[1] + p1[2] * p2[2]) / (
-        math.hypot(p1[1], p1[2]) * math.hypot(p2[1], p2[2])
-    )
+    """DELTA_PHI of kin_functions.f, NaN for a particle without transverse
+    momentum as there."""
+    with np.errstate(invalid="ignore"):
+        cosine = (p1[1] * p2[1] + p1[2] * p2[2]) / (
+            math.hypot(p1[1], p1[2]) * math.hypot(p2[1], p2[2])
+        )
     return math.acos(min(max(cosine, -0.99999999), 0.99999999))
 
 
@@ -94,12 +106,132 @@ def genkt_jets(partons, power, radius):
     return jets
 
 
-def madfks_cuts(p, pdgs, cuts):
-    """passcuts_leptons and passcuts_jets of cuts.f on one kinematics in the
-    lab frame."""
+PHOTON_DEFAULTS = dict(
+    ptgmin=0.0,
+    etagamma=-1.0,
+    r0gamma=0.4,
+    xn=1.0,
+    epsgamma=1.0,
+    isoem=True,
+    gamma_is_j=False,
+    rphreco=0.1,
+    etaphreco=-1.0,
+    lepphreco=False,
+    quarkphreco=False,
+)
+
+
+def iso_dr(p1, p2):
+    """iso_getdrv40 of cuts.f in single precision, as its drlist."""
+
+    def pseudorap(p):
+        pt = math.hypot(p[1], p[2])
+        if pt < 1e-5 and abs(p[3]) < 1e-5:
+            return math.copysign(1e8, p[3])
+        # along the beam the Fortran takes the logarithm of zero
+        tangent = math.tan(math.atan2(pt, p[3]) / 2)
+        return -math.log(tangent) if tangent > 0 else math.inf
+
+    pt1, pt2 = math.hypot(p1[1], p1[2]), math.hypot(p2[1], p2[2])
+    if pt1 != 0 and pt2 != 0:
+        tmp = (p1[1] * p2[1] + p1[2] * p2[2]) / (pt1 * pt2)
+        dphi = math.acos(math.copysign(1.0, tmp) if abs(tmp) >= 1 else tmp)
+    else:
+        dphi = 1e8
+    deta = pseudorap(p1) - pseudorap(p2)
+    return float(np.float32(math.sqrt(dphi**2 + deta**2)))
+
+
+def isolated(photon, others, ptg, cuts):
+    """The isolation loop of passcuts_photons: sorted distances, summed
+    transverse momenta within each against chi_gamma_iso."""
+    dr = sorted((iso_dr(photon, q), math.hypot(q[1], q[2])) for q in others)
+    total = 0.0
+    for d, pt in dr:
+        if d > cuts["r0gamma"]:
+            continue
+        total += pt
+        chi = cuts["epsgamma"] * ptg
+        if abs(cuts["xn"]) != 0:
+            ratio = (1 - math.cos(d)) / (1 - math.cos(cuts["r0gamma"]))
+            chi *= ratio ** abs(cuts["xn"])
+        if total > chi:
+            return False
+    return True
+
+
+def madfks_cuts(p, pdgs, cuts, isolated_photons=-1):
+    """passcuts_photons, recombine_momenta, passcuts_leptons and
+    passcuts_jets of cuts.f on one kinematics in the lab frame, with the
+    photons that must be isolated (-1 for all)."""
+    cuts = {**PHOTON_DEFAULTS, **cuts}
     if not p[0][0] > 0 or not np.all(np.abs(p) <= 1e32):
         return False
+    p = [np.array(q, dtype=float) for q in p]
+    pdgs = list(pdgs)
     final = range(2, len(pdgs))
+    iso = [False] * len(pdgs)
+    # passcuts_photons
+    if cuts["ptgmin"] != 0:
+        part = [
+            p[i]
+            for i in final
+            if 1 <= abs(pdgs[i]) <= cuts["maxjetflavor"] or pdgs[i] == 21
+        ]
+        photons = [i for i in final if pdgs[i] == 22 and not cuts["gamma_is_j"]]
+        em = photons + [i for i in final if abs(pdgs[i]) in LEPTONS]
+        if photons:
+            count = 0
+            for j in photons:
+                ptg = math.hypot(p[j][1], p[j][2])
+                if ptg < cuts["ptgmin"]:
+                    continue
+                if cuts["etagamma"] > 0 and abs(mg_eta(p[j])) > cuts["etagamma"]:
+                    continue
+                if not isolated(p[j], part, ptg, cuts):
+                    continue
+                others = [p[k] for k in em if k != j]
+                if (
+                    cuts["isoem"]
+                    and len(em) > 1
+                    and not isolated(p[j], others, ptg, cuts)
+                ):
+                    continue
+                iso[j] = True
+                count += 1
+            needed = len(photons) if isolated_photons < 0 else isolated_photons
+            if count < needed:
+                return False
+    # recombine_momenta
+    if cuts["lepphreco"] or cuts["quarkphreco"]:
+        candidates = [
+            i
+            for i in final
+            if pdgs[i] == 22
+            and math.hypot(p[i][1], p[i][2]) != 0
+            and (cuts["etaphreco"] < 0 or abs(mg_eta(p[i])) < cuts["etaphreco"])
+            and not iso[i]
+        ]
+        if len(candidates) > 1:
+            return False
+        if candidates:
+            g = candidates[0]
+            closest, distance = None, cuts["rphreco"]
+            for i in final:
+                light = (cuts["quarkphreco"] and 1 <= abs(pdgs[i]) <= 5) or (
+                    cuts["lepphreco"] and abs(pdgs[i]) in LEPTONS
+                )
+                if not light:
+                    continue
+                d = math.sqrt(
+                    mg_delta_phi(p[g], p[i]) ** 2 + (mg_eta(p[g]) - mg_eta(p[i])) ** 2
+                )
+                if d <= distance:
+                    closest, distance = i, d
+            if closest is not None:
+                p[closest] = p[closest] + p[g]
+                pdgs[g] = 0
+    # passcuts_leptons
     for i in final:
         if abs(pdgs[i]) not in LEPTONS:
             continue
@@ -123,10 +255,13 @@ def madfks_cuts(p, pdgs, cuts):
                     return False
                 if cuts[mass] > 0 and m2 < cuts[mass] ** 2:
                     return False
+    # passcuts_jets, with the photons that are not isolated
     partons = [
         p[i]
         for i in final
-        if 1 <= abs(pdgs[i]) <= cuts["maxjetflavor"] or abs(pdgs[i]) == 21
+        if 1 <= abs(pdgs[i]) <= cuts["maxjetflavor"]
+        or abs(pdgs[i]) == 21
+        or (pdgs[i] == 22 and (cuts["gamma_is_j"] or not iso[i]))
     ]
     if cuts["ptj"] > 0 and len(partons) > 1:
         if sum(abs(q[0] / p[0][0]) < 1e-8 for q in partons) > 1:
@@ -257,6 +392,105 @@ def test_against_python(name, cuts):
     assert outcomes == {True, False}
 
 
+# processes with photons: u u~ > e- e+ [QED], g u > u a and u u~ > a g
+# (QCD and mixed), u u~ > e- e+ a [QED] (two photons in the real emission)
+PHOTON_DATA = [
+    "pp_epem_qed_P0_uux_emep",
+    "pp_aj_mix_P0_gu_ua",
+    "pp_aj_mix_P0_uux_ag",
+    "pp_epema_qed_P0_uux_emepa",
+]
+# isolation with and without the electromagnetic particles, recombination
+# with photons as jets, and without isolation (all photons not isolated)
+PHOTON_CUTS = [
+    dict(ptj=0.05, ptgmin=0.05),
+    dict(ptj=0.03, ptgmin=0.03, isoem=False, xn=2.0, epsgamma=0.5, r0gamma=0.6),
+    dict(ptj=0.05, ptgmin=0.02, etagamma=2.0, gamma_is_j=True, lepphreco=True),
+    dict(
+        ptj=0.05,
+        ptgmin=0.02,
+        lepphreco=True,
+        quarkphreco=True,
+        rphreco=0.3,
+        etaphreco=2.0,
+        ptl=0.02,
+        mll_sf=0.05,
+    ),
+    dict(ptj=0.05, ptl=0.02, lepphreco=True, quarkphreco=True, rphreco=0.4),
+]
+PHOTON_ENERGIES = ENERGIES + ("ptgmin",)
+
+
+@pytest.mark.parametrize("name", PHOTON_DATA)
+@pytest.mark.parametrize(
+    "cuts", PHOTON_CUTS, ids=["isolation", "hadronic", "as_jets", "both", "no_iso"]
+)
+def test_photons_against_python(name, cuts):
+    """On random events and counter-events of processes with photons, NLOCuts
+    with the photon cuts and the recombination is madfks_cuts, with the
+    isolated photons of fks_isolated_photons, and the cuts pass and fail."""
+    born, configurations, out, index, pdgs, sqrt_s = random_kinematics(name)
+    cuts = dict(cuts)
+    for key in PHOTON_ENERGIES:
+        if key in cuts:
+            cuts[key] *= sqrt_s / 10
+    function = fks_cuts(born, configurations, **cuts)
+    needed = fks_isolated_photons(configurations)
+    assert list(function.isolated_photons()) == needed
+    outcomes = set()
+    full = dict(
+        jetalgo=1.0,
+        jetradius=0.7,
+        ptj=0.0,
+        etaj=-1.0,
+        maxjetflavor=4,
+        ptl=0.0,
+        etal=-1.0,
+        drll=0.0,
+        drll_sf=0.0,
+        mll=0.0,
+        mll_sf=0.0,
+    )
+    full.update(cuts)
+    for kinematics in KINEMATICS:
+        (mask,) = evaluate(function, out[kinematics], layout_index=index)
+        weight = out[{"momenta": "weight"}.get(kinematics, kinematics[:-7] + "det")]
+        for k in np.flatnonzero(weight != 0):
+            expected = madfks_cuts(out[kinematics][k], pdgs[k], full, needed[index[k]])
+            assert bool(mask[k]) == expected, (kinematics, k)
+            outcomes.add(expected)
+    # with QED corrections p p > e+ e- needs no isolated photon and has one
+    # parton at most, only the cuts on the leptons fail there
+    if name != "pp_epem_qed_P0_uux_emep" or "ptl" in cuts:
+        assert outcomes == {True, False}
+    else:
+        assert outcomes == {True}
+
+
+def test_isolated_photons():
+    """fks_isolated_photons: the tagged photons of the final state with QED
+    splittings, all photons without."""
+    qcd = dict(
+        nincoming=2,
+        configurations=[
+            dict(splitting_type=["QCD"], real_pdgs=[2, -2, 22, 21, 21]),
+        ],
+    )
+    assert fks_isolated_photons(qcd) == [-1]
+    qed = dict(
+        nincoming=2,
+        configurations=[
+            dict(
+                splitting_type=["QED"],
+                real_pdgs=[22, -2, 11, -11, 22, -2],
+                real_tags=[True, False, False, False, True, False],
+            ),
+            dict(splitting_type=["QCD"], real_pdgs=[2, -2, 11, -11, 22, 21]),
+        ],
+    )
+    assert fks_isolated_photons(qed) == [1, 0]
+
+
 def test_clustering_is_fastjet():
     """genkt_jets gives the inclusive jets of fastjet on random partons, for
     each algorithm."""
@@ -368,6 +602,13 @@ def test_invalid_cuts():
     partons = [21] * (ms.NLOCuts.jet_parton_max + 1)
     with pytest.raises(ValueError, match="clustering"):
         ms.NLOCuts([[11, -11] + partons])
+    photons = [21] * (ms.NLOCuts.jet_parton_max - 1) + [22, 22]
+    with pytest.raises(ValueError, match="clustering"):
+        ms.NLOCuts([[11, -11] + photons])
+    with pytest.raises(ValueError, match="photon cuts"):
+        ms.NLOCuts([[11, -11] + [12] * ms.NLOCuts.particle_max])
+    with pytest.raises(ValueError, match="isolated photons"):
+        ms.NLOCuts([[11, -11, 22]], isolated_photons=[1, 1])
 
 
 def test_accessors():
@@ -377,5 +618,11 @@ def test_accessors():
     assert cuts.incoming() == 2
     assert cuts.unresolved() == 1
     assert [list(layout) for layout in cuts.layouts()] == layouts
-    assert len(cuts.options()) == 12
-    assert cuts.options()[2] == 20.0 and cuts.options()[-1] == 1.0
+    assert len(cuts.options()) == 23
+    assert cuts.options()[2] == 20.0 and cuts.options()[11] == 1.0
+    assert list(cuts.isolated_photons()) == [-1, -1]
+    photons = ms.NLOCuts(
+        [[2, -2, 22, 21, 21]], ptgmin=20.0, gamma_is_j=True, isolated_photons=[0]
+    )
+    assert photons.options()[12] == 20.0 and photons.options()[18] == 1.0
+    assert list(photons.isolated_photons()) == [0]

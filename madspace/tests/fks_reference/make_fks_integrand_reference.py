@@ -146,12 +146,14 @@ DUMP_CALL = (
 )
 
 
-def generate(name, process, work, log, model=None):
+def generate(name, process, work, log, model=None, complex_mass=False):
     out = os.path.join(work, name)
     if not os.path.isdir(os.path.join(out, "SubProcesses")):
         script = os.path.join(work, f"{name}_gen.mg")
         with open(script, "w") as f:
             f.write("set automatic_html_opening False\n")
+            if complex_mass:
+                f.write("set complex_mass_scheme True\n")
             if model:
                 f.write(f"import model {model}\n")
             f.write(f"generate {process}\n")

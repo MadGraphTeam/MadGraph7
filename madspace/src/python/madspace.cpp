@@ -2716,7 +2716,19 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 double,
-                double>(),
+                double,
+                double,
+                double,
+                double,
+                double,
+                double,
+                bool,
+                bool,
+                double,
+                double,
+                bool,
+                bool,
+                const std::vector<int>&>(),
             py::arg("layouts"),
             py::arg("incoming") = 2,
             py::arg("unresolved") = 1,
@@ -2731,12 +2743,32 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("drll_sf") = 0.,
             py::arg("mll") = 0.,
             py::arg("mll_sf") = 0.,
+            py::arg("ptgmin") = 0.,
+            py::arg("etagamma") = -1.,
+            py::arg("r0gamma") = 0.4,
+            py::arg("xn") = 1.,
+            py::arg("epsgamma") = 1.,
+            py::arg("isoem") = true,
+            py::arg("gamma_is_j") = false,
+            py::arg("rphreco") = 0.1,
+            py::arg("etaphreco") = -1.,
+            py::arg("lepphreco") = false,
+            py::arg("quarkphreco") = false,
+            py::arg("isolated_photons") = std::vector<int>{},
             pydoc::doc("NLOCuts::NLOCuts")
         )
         .def_readonly_static(
             "jet_parton_max",
             &NLOCuts::jet_parton_max,
             pydoc::doc("NLOCuts::jet_parton_max")
+        )
+        .def_readonly_static(
+            "particle_max", &NLOCuts::particle_max, pydoc::doc("NLOCuts::particle_max")
+        )
+        .def(
+            "isolated_photons",
+            &NLOCuts::isolated_photons,
+            pydoc::doc("NLOCuts::isolated_photons")
         )
         .def(
             "particle_count",

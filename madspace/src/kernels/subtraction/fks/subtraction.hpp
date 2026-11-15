@@ -1286,7 +1286,10 @@ KERNELSPEC FVal<T> fks_integrated_eikonal(
     // log(xicut^2 s / mu^2)
     FVal<T> l = 2. * log_xicut + l_s;
     if (mass_m == 0. && mass_n == 0.) {
-        FVal<T> r = k / (2. * e_m * e_n);
+        // (r lies in [0, 1], which rounding leaves for a pair close to
+        // collinear or for a Born boosted far along the beams, at points that
+        // the cuts remove, where the Born vanishes)
+        FVal<T> r = min(max(k / (2. * e_m * e_n), 1e-300), 1.);
         if (fabs(r - 1.) > 1e-6) {
             FVal<T> lr = log(r);
             return 0.5 * l * l + l * lr - dilog<T>(r) + 0.5 * lr * lr -

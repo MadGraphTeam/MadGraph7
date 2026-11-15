@@ -244,6 +244,54 @@ def test_tagged_photons():
     )
 
 
+# Born momenta where the Born vanishes (the cuts remove them): an e- exactly
+# along the incoming u~ of u u~ > e- e+ a, and a Born of p p > e+ e- [QED]
+# boosted far along the beams, as the FKS driver met it, whose massless momenta
+# rounding leaves off the mass shell, with r = p.q / (2 E_p E_q) of the lepton
+# pair above 1
+_PX = np.sqrt(1500.0)
+_BOOSTED = np.array(
+    [
+        [2.32580078e-08, 0.0, 0.0, 2.32580078e-08],
+        [3.20247466e03, 0.0, 0.0, -3.20247466e03],
+        [8.27991317e02, -4.74228845e-03, 5.88426600e-03, -8.27991317e02],
+    ]
+)
+WITHOUT_BORN = {
+    "collinear": (
+        "pp_epema_qed_P0_uux_emepa",
+        [
+            [50.0, 0.0, 0.0, 50.0],
+            [50.0, 0.0, 0.0, -50.0],
+            [20.0, 0.0, 0.0, -20.0],
+            [40.0, _PX, 0.0, 10.0],
+            [40.0, -_PX, 0.0, 10.0],
+        ],
+    ),
+    "boosted": (
+        "pp_epem_qed_P0_uux_emep",
+        [*_BOOSTED, _BOOSTED[0] + _BOOSTED[1] - _BOOSTED[2]],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", WITHOUT_BORN)
+def test_without_born(case):
+    """At Born momenta that make the logarithms of the integrated eikonal of
+    a massless pair singular (its invariant rounds to zero, or r leaves [0, 1])
+    the n-body part vanishes with the Born instead of being NaN."""
+    name, momenta = WITHOUT_BORN[case]
+    data = reference(FKS_DATA[FKS_DATA_IDS.index(name)])
+    _, args = rows_and_arguments(data)
+    momenta = np.array([momenta])
+    born = np.zeros((1,) + args[1].shape[1:])
+    color = np.zeros((1,) + args[2].shape[1:])
+    rest = [a[:1] for a in args[3:]]
+    value, ren, fact = evaluate(soft_virtual(data), momenta, born, color, *rest)
+    np.testing.assert_array_equal(value, 0.0)
+    np.testing.assert_array_equal(fact, 0.0)
+
+
 def test_parameters():
     data = reference(FKS_DATA[FKS_DATA_IDS.index("pp_ttx_P0_gg_ttx")])
     born = born_mapping(data)

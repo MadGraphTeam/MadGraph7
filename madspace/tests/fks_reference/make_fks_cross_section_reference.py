@@ -66,6 +66,10 @@ SETUPS = {
     "epem_ttx_ilc": ("epem_ttx", dict(DRESSED, pdlabel="ilc500ll")),
     # the resonance-local recoil of the u u~ of a Z
     "epem_epemuux": ("epem_epemuux", {}),
+    # isolated photons with QCD corrections, and the QED corrections of a
+    # lepton pair with the recombination of photons
+    "pp_aa": ("pp_aa", {}),
+    "pp_epem_qed": ("pp_epem_qed", {}),
 }
 # outputs of the cross sections alone, without an integrand reference: name
 # -> (process, run_card values, model). p p > e+ e- j has a jet that radiates
@@ -84,7 +88,18 @@ OUTPUTS = {
         dict(ptj=20, ptl=20, mll_sf=30),
         None,
     ),
+    "pp_aa": ("p p > a a [QCD]", dict(mfir.HADRONIC, ptgmin=20), None),
+    "pp_epem_qed": (
+        "p p > e+ e- [QED]",
+        dict(mfir.HADRONIC, mll_sf=30, ptl=10),
+        None,
+    ),
 }
+# the outputs in the complex-mass scheme: the EW corrections of a process
+# with an s-channel Z are gauge invariant only there, as MadGraph warns
+# (arXiv:1804.10017), and close to the Z the single poles of MadLoop and
+# MadFKS differ otherwise, which stops the run
+COMPLEX_MASS = {"pp_epem_qed"}
 # the relative accuracy of the runs (req_acc_FO), per setup where it differs
 ACCURACY = 2e-4
 ACCURACIES = {
@@ -92,6 +107,8 @@ ACCURACIES = {
     "epem_jjj": 1e-3,
     "pp_epemj": 2e-3,
     "epem_epemuux": 1e-3,
+    "pp_aa": 1e-3,
+    "pp_epem_qed": 1e-3,
 }
 # the values of every run, the defaults of the run_card where a setup of
 # the same output changes them
@@ -179,7 +196,12 @@ def main():
         output, values = SETUPS[name]
         process, base, model = OUTPUTS.get(output) or (*mfir.PROCESSES[output], None)
         out = mfir.generate(
-            output, process, work, os.path.join(work, f"{output}_gen.log"), model
+            output,
+            process,
+            work,
+            os.path.join(work, f"{output}_gen.log"),
+            model,
+            complex_mass=output in COMPLEX_MASS,
         )
         mfir.sum_helicities(out)
         accuracy = args.accuracy or ACCURACIES.get(name, ACCURACY)

@@ -416,13 +416,24 @@ class FortranProvider:
         sborn_sf over the pairs of Born legs that the configurations with
         color links register (each from the first of them), the diagonal
         from color conservation. Every pair of colored Born legs must be
-        among them."""
+        among them. Without configurations with color links (the QED
+        corrections alone) they are zero, as are those of the Born orders
+        without a QCD correction."""
         n = self.particle_count - 1
         qcd = self.qcd_pos
+        born_orders = self.orders["born"]
+        out = np.zeros((len(momenta), len(born_orders), n, n))
+        if not any(c["need_color_links"] for c in self.configurations):
+            return out
         if qcd < 0:
             raise ValueError("no QCD in the split orders")
-        positions = [self.counterterm_position(o, qcd) for o in self.orders["born"]]
-        out = np.zeros((len(momenta), len(positions), n, n))
+        positions, taken = [], []
+        for b, order in enumerate(born_orders):
+            try:
+                positions.append(self.counterterm_position(order, qcd))
+                taken.append(b)
+            except ValueError:
+                pass
         seen = set()
         for c, configuration in enumerate(self.configurations):
             if not configuration["need_color_links"]:
@@ -440,7 +451,7 @@ class FortranProvider:
                 continue
             links = self.links(momenta, c, pairs)[:, :, positions]
             for l, (a, b) in enumerate(born_pairs):
-                out[:, :, a, b] = out[:, :, b, a] = links[:, l]
+                out[:, taken, a, b] = out[:, taken, b, a] = links[:, l]
         colors = np.array(self.configurations[0]["real_colors"])
         colored = np.flatnonzero(
             np.delete(colors, self.configurations[0]["i_fks"] - 1) != 1
