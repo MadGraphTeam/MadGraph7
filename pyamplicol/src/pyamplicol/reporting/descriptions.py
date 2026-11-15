@@ -169,7 +169,8 @@ def _profile(report: Any) -> list[Block]:
                         "best-effort",
                         "shown when some points were refused by the backend's own "
                         "checks and returned with their best available value "
-                        "(the default policy); those points are timed",
+                        "(the default policy); those points are timed, their unchecked "
+                        "re-evaluation and the checks of its uncertainty included",
                     ),
                     (
                         "lanes",
@@ -188,7 +189,11 @@ def _profile(report: Any) -> list[Block]:
                     ("dressing", "attaching the loop propagators and vertices"),
                     ("scatter", "collecting the loop numerators"),
                     ("reduction", "the tensor-integral reduction (the backend)"),
-                    ("rest", "everything else in the call"),
+                    (
+                        "rest",
+                        "everything else in the call: its Python part and the "
+                        "native work outside the stages above",
+                    ),
                     (
                         "share",
                         "the stage's fraction of the timed calls' total time, "
