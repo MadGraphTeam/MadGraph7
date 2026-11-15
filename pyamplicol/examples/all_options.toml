@@ -532,8 +532,15 @@ stability = false
 stability_points = 1000
 # benchmark.n_core: Positive count of worker processes of the stability
 # statistics (`--n_core`; at most the usable cores; 1 runs in-process; the
-# result does not depend on it). Default 10.
+# result does not depend on it; the runtime timing always runs on one core).
+# Default 10.
 n_core = 10
+# benchmark.ground_truth: Loop artifacts: the reference precision of the
+# profile (`--ground-truth`): the stability run's true values and the
+# reference time multipliers of both tables. "double-double" ("dd") or
+# arbitrary precision, "arbitrary" ("arb", at the built-in rescue's 57
+# digits) or "arbitrary:DIGITS". Default "double-double".
+ground_truth = "double-double"
 
 [check]
 # check.points: Positive count of seeded phase-space points per process of

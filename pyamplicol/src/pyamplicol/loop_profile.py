@@ -6,11 +6,17 @@ RUNTIME (``--runtime``, the default): per backend the time per point and per
 stage of ``benchmarking.profile_virtual`` in the default setup (binary64,
 finite part, the checked reduction, no stability checks and no rescue), and
 the ratio to the fastest backend. Every call times a new batch of distinct
-flat points (``benchmarking.profile_points``, ``evaluation.phase_space``'s
-seed and energy), the same points on every backend. Each backend is
-profiled in its own spawned process that loads the artifact
-(``_isolated_profile``), so that its peak RAM is that of a worker evaluating
-this matrix element on that backend alone.
+flat points (``evaluation.phase_space``'s seed and energy, point i from seed
++ i), the same points per call on every backend; at least
+``benchmark.minimum_samples`` calls, more until ``target_runtime`` seconds.
+Each backend is profiled in its own spawned process that loads the artifact
+(``_isolated_profile``) on one core (every thread pool at one thread,
+``one_core``: the cost of one Monte Carlo worker), so that its peak RAM is
+that of such a worker evaluating this matrix element on that backend
+alone. After the binary64 calls the same process times the
+reference precision (``benchmark.ground_truth``, ``GroundTruth``) as one
+fully optimistic pass per point (``benchmarking._reference_timing``): the
+multiplier of the time per point.
 
 STABILITY (``--stability``): per backend, over N flat (RAMBO on diet) phase-space
 points (``cli.flat_points``, ``evaluation.phase_space``'s seed and energy),
@@ -20,8 +26,10 @@ measured as in sect. 3.4 of arXiv:1103.0621 (MadLoop) and the section
 reductions" of arXiv:1405.0301 (MadGraph5_aMC@NLO): the number of stable
 digits of a value v against a reference r is -log10(|v - r| / |r|).
 
-- TRUE digits: the binary64 value against a double-double re-run of the same
-  point on the same backend (the reference only: no automatic rescue). A
+- TRUE digits: the binary64 value against a re-run of the same point on the
+  same backend in the reference precision (``benchmark.ground_truth``:
+  double-double by default, or arbitrary precision; the reference only, no
+  automatic rescue). A
   point the backend refused or failed in binary64 has no value: 0 true
   digits (it ranks at the worst end) and no estimate.
 - ESTIMATED digits: the binary64 call's own stability estimate with the
@@ -33,7 +41,7 @@ digits of a value v against a reference r is -log10(|v - r| / |r|).
 Both are read on the finite part of the total (the sum over the
 squared-order sectors; the poles are not computed) and capped to binary64's
 range [0, -log10(2^-53)] (``stable_digits``). The MEASURED points are those
-whose double-double reference exists and those that failed in binary64 (no
+whose reference exists and those that failed in binary64 (no
 value, whatever the reference); a binary64 value without a reference leaves
 the truth unknown and is counted apart. They are sorted by true digits from
 worst to best; at each percentile p of ``PERCENTILES`` the true digits of
@@ -64,7 +72,7 @@ import statistics
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from decimal import Decimal, localcontext
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -80,6 +88,74 @@ PERCENTILES = (Fraction(1, 1000), Fraction(1, 100), Fraction(1, 10), Fraction(1,
 BINARY64_DIGITS = 53 * math.log10(2.0)
 
 
+@dataclass(frozen=True, slots=True)
+class GroundTruth:
+    """The reference precision of a profile (``benchmark.ground_truth``):
+    ``arithmetic`` "double-double" or "arbitrary" at ``digits`` decimal
+    digits (None for double-double). ``label`` names it in the tables:
+    "dd" or "arb(<digits>)"."""
+
+    arithmetic: str
+    digits: int | None = None
+
+    @property
+    def label(self) -> str:
+        return "dd" if self.digits is None else f"arb({self.digits})"
+
+    @property
+    def name(self) -> str:
+        """The name of the precision in titles and prose: "double-double"
+        or "arb(<digits>)"."""
+
+        return "double-double" if self.digits is None else self.label
+
+    @property
+    def options(self) -> dict[str, Any]:
+        """The ``Runtime.evaluate`` options of this precision."""
+
+        if self.digits is None:
+            return {"arithmetic": self.arithmetic}
+        return {"arithmetic": self.arithmetic, "precision": self.digits}
+
+    def record(self) -> dict[str, object]:
+        """The JSON record of the precision: arithmetic, digits, label."""
+
+        return {
+            "arithmetic": self.arithmetic,
+            "digits": self.digits,
+            "label": self.label,
+        }
+
+
+def _truth_prose(truth: GroundTruth) -> str:
+    """The reference precision in words: "double-double" or "arbitrary-
+    precision (D digits)"."""
+
+    if truth.digits is None:
+        return truth.arithmetic
+    return f"arbitrary-precision ({truth.digits} digits)"
+
+
+def ground_truth(text: str) -> GroundTruth:
+    """The ``GroundTruth`` of a ``benchmark.ground_truth`` value (canonical
+    after ``BenchmarkConfig``: "double-double", "arbitrary" or
+    "arbitrary:DIGITS"); "arbitrary" without digits takes the built-in
+    rescue's arbitrary-precision level's digits (``loops.v2.stability.
+    DEFAULT_RESCUE``, the project's truth carrier)."""
+
+    from pyamplicol.config.models import _ground_truth
+    from pyamplicol.loops.v2.stability import DEFAULT_RESCUE
+
+    canonical = _ground_truth(text)
+    if canonical == "double-double":
+        return GroundTruth(canonical)
+    _, _, digits = canonical.partition(":")
+    if digits:
+        return GroundTruth("arbitrary", int(digits))
+    default = next(d for a, d in DEFAULT_RESCUE if a == "arbitrary" and d is not None)
+    return GroundTruth("arbitrary", default)
+
+
 def stable_digits(relative_error: float) -> float:
     """-log10(relative error), capped to [0, ``BINARY64_DIGITS``]: an exact
     agreement (or one below binary64's roundoff) counts all of binary64's
@@ -92,18 +168,26 @@ def stable_digits(relative_error: float) -> float:
     return min(max(-math.log10(relative_error), 0.0), BINARY64_DIGITS)
 
 
-def relative_error(value: float, reference: Decimal | float) -> float:
-    """|value - reference| / |reference|, formed in decimal arithmetic above
-    the reference's precision; 0 for two exact zeros, inf for a nonzero value
-    against a zero reference."""
+def relative_error(value: float, reference: Decimal | Fraction | float) -> float:
+    """|value - reference| / |reference|, formed exactly (rational
+    arithmetic: whatever the reference's precision, nothing is rounded
+    before the final float); 0 for two exact zeros, inf for a nonzero value
+    against a zero reference, nan for a non-finite value or reference."""
 
-    with localcontext() as context:
-        context.prec = 60
-        exact = Decimal(value)
-        ref = Decimal(reference) if not isinstance(reference, Decimal) else reference
-        if ref == 0:
-            return 0.0 if exact == 0 else math.inf
+    if isinstance(reference, Decimal) and not reference.is_finite():
+        return math.nan
+    if not math.isfinite(value) or (
+        isinstance(reference, float) and not math.isfinite(reference)
+    ):
+        return math.nan
+    exact = Fraction(value)
+    ref = Fraction(reference)
+    if ref == 0:
+        return 0.0 if exact == 0 else math.inf
+    try:
         return float(abs(exact - ref) / abs(ref))
+    except OverflowError:
+        return math.inf
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,7 +288,7 @@ class StabilityPoint:
     binary64; "best-effort": refused by the backend's own checks, measured
     with its best-effort value, the unchecked reduction's, m-lit
     ux-besteffort; "binary64-failed": no binary64 value at all, 0 true digits
-    and no estimate; "reference-failed": no double-double reference, not
+    and no estimate; "reference-failed": no reference value, not
     measured), the digits and the refusal or failure ``reason``;
     ``uncertainty_digits``: a best-effort point's stated uncertainty
     (``VirtualBestEffort.uncertainty``, m-lit ux-polish) in digits."""
@@ -251,7 +335,8 @@ class BackendStability:
     best_effort: int = 0
     best_effort_covered: int = 0
     # The evaluations of the run per precision: "binary64" (the checked call
-    # with its stability estimate) and "double-double" (the reference), each
+    # with its stability estimate) and the reference's arithmetic
+    # ("double-double", or "arbitrary" with its "digits"), each
     # with its ``points``, ``seconds`` (the wall time of its batches summed
     # over the workers: its part of ``seconds``) and ``seconds_per_point``
     # (the wall time per point of its batches, the first-call cost of a
@@ -266,9 +351,9 @@ class FailureCause:
     ``backend``, the ``table`` ("runtime" or "stability"), the ``kind``
     ("best-effort": refused by the backend's own checks and served with its
     best-effort value; "no value": no binary64 value at all; "no reference":
-    no double-double reference, stability only; "best-effort in
-    double-double", "no value in double-double": the same for the runtime's
-    double-double timing), the ``count`` of points of
+    no reference value, stability only; "best-effort in <reference>", "no
+    value in <reference>": the same for the runtime's reference timing,
+    <reference> the ``GroundTruth.name``), the ``count`` of points of
     that class among the backend's ``total`` points of the table, and the
     ``reason``: the first message of the class (reasons are grouped with
     their numbers masked, as ``plan_export.bounded_reasons`` groups them)."""
@@ -282,12 +367,15 @@ class FailureCause:
 
 
 def failure_causes(
-    items: Sequence[tuple[str, str, str, str]], totals: Mapping[tuple[str, str], int]
+    items: Sequence[tuple[str, str, str, str]],
+    totals: Mapping[tuple[str, ...], int],
 ) -> tuple[FailureCause, ...]:
     """The ``FailureCause`` classes of ``items`` = (backend, table, kind,
     reason) per failed point, grouped by backend, table, kind and the
     number-masked reason, most frequent first per table (ties: first seen);
-    ``totals[(backend, table)]`` the backend's point count in that table."""
+    ``totals[(backend, table)]`` the backend's point count in that table,
+    ``totals[(backend, table, kind)]`` that of a kind counted over other
+    points (the runtime's reference timing)."""
 
     from pyamplicol.loops.v2.plan_export import _NUMBER
 
@@ -304,7 +392,12 @@ def failure_causes(
     )
     return tuple(
         FailureCause(
-            key[0], key[1], key[2], counts[key], totals[(key[0], key[1])], first[key]
+            key[0],
+            key[1],
+            key[2],
+            counts[key],
+            totals.get(key[:3], totals[(key[0], key[1])]),
+            first[key],
         )
         for key in ranked
     )
@@ -351,6 +444,8 @@ class LoopProfileReport:
     failure_causes: tuple[FailureCause, ...] = ()
     # Ctrl-C stopped the profile: the tables hold what was measured so far.
     interrupted: bool = False
+    # The reference precision of both tables (``GroundTruth.record``).
+    ground_truth: Mapping[str, object] | None = None
 
 
 def _backends(requested: object, contribution: str) -> tuple[str, ...]:
@@ -367,6 +462,13 @@ def _total_finite(row: Any) -> Any:
     for sector in row[1:]:
         total = total + sector[0]
     return total
+
+
+def _exact_total(row: Any) -> Fraction:
+    """The finite part of a reference value's total, its sectors summed
+    exactly (a ``Decimal`` sum would round to its context's precision)."""
+
+    return sum((Fraction(sector[0]) for sector in row), Fraction(0))
 
 
 def _estimated_relative(estimate: Any, total: float) -> float:
@@ -388,18 +490,28 @@ def _served_points(profile: Any) -> int:
     return profile.batch * profile.samples - profile.failed_points
 
 
-def _runtime_setup(unchecked: bool, bench: Any, seed: int | None) -> str:
+def _runtime_setup(
+    unchecked: bool, bench: Any, seed: int | None, threads: Sequence[int] = ()
+) -> str:
     """The runtime setup line; ``seed``: of the flat points (None: the
-    caller's points)."""
+    caller's points); ``threads``: the native threads each backend's timed
+    calls report (one: one core, ``one_core``; another count is named)."""
 
     reduction = "unchecked reduction" if unchecked else "checked reduction"
     points = (
         "points of --momenta" if seed is None else f"distinct flat points (seed {seed})"
     )
+    counts = sorted(set(threads) - {1})
+    core = (
+        "one core"
+        if not counts
+        else f"{'/'.join(map(str, sorted(set(threads))))} native threads"
+    )
     return (
-        f"binary64, finite part, {reduction}; {bench.batch_size} {points} per "
-        f"call, a new batch every call; median of "
-        f"{max(bench.minimum_samples, 1)} calls after {bench.warmup_runs} warm-up"
+        f"binary64, finite part, {reduction}, on {core}; {bench.batch_size} "
+        f"{points} per call, a new batch every call; median of the timed "
+        f"calls (at least {max(bench.minimum_samples, 1)} and "
+        f"{bench.target_runtime:g} s) after {bench.warmup_runs} warm-up"
     )
 
 
@@ -418,7 +530,6 @@ def profile_loop(
 
     from pyamplicol.api import Runtime
     from pyamplicol.api.errors import ReductionUnavailable
-    from pyamplicol.benchmarking import profile_points
     from pyamplicol.loops.v2.reduction import DEFAULTS
 
     bench = config.benchmark
@@ -438,13 +549,14 @@ def profile_loop(
     backends = _backends(evaluation.reduction, contribution)
     want_stability = bench.stability
     want_runtime = bench.runtime or not want_stability
+    truth = ground_truth(bench.ground_truth)
 
     runtime_rows = None
     interrupted = False
     if want_runtime:
-        timed = (
-            list(points) if points else profile_points(path, physics.process_id, config)
-        )
+        # The caller's points, cycled; else the worker draws distinct flat
+        # points as its calls need them (the same per call on every backend).
+        timed = list(points) if points else None
         rows = []
         default = DEFAULTS.get(contribution)
         for backend in backends:
@@ -461,7 +573,7 @@ def profile_loop(
                 profile = _timed(
                     progress,
                     backend,
-                    lambda report, request=request: _isolated_profile(
+                    lambda report, request=request, backend=backend: _isolated_profile(
                         path,
                         evaluation.process,
                         options,
@@ -469,6 +581,7 @@ def profile_loop(
                         timed,
                         request,
                         report,
+                        reference={**truth.options, "reduction": backend},
                     ),
                 )
             except ReductionUnavailable as error:
@@ -515,7 +628,7 @@ def profile_loop(
             progress=progress,
         )
     causes: list[tuple[str, str, str, str]] = []
-    totals: dict[tuple[str, str], int] = {}
+    totals: dict[tuple[str, ...], int] = {}
     for row in runtime_rows or ():
         profile = row.profile
         if profile is None:
@@ -528,15 +641,20 @@ def profile_loop(
             for reason, count in reasons:
                 text = _strip_status(reason, status)
                 causes += [(row.backend, "runtime", kind, text)] * count
-        # The double-double timing's points without an accepted value (the
-        # same batches: the same total).
-        dd = profile.double_double
-        for reason, count in dd.failure_reasons if dd is not None else ():
+        # The reference timing's points without a value (among its own
+        # timed points).
+        timing = profile.reference
+        if timing is None:
+            continue
+        for reason, count in timing.failure_reasons:
             status = "best-effort" if reason.startswith("best-effort") else "failed"
-            kind = "best-effort" if status == "best-effort" else "no value"
+            outcome = "best-effort" if status == "best-effort" else "no value"
+            totals[(row.backend, "runtime", f"{outcome} in {truth.name}")] = (
+                timing.points
+            )
             text = _strip_status(reason, status)
             causes += [
-                (row.backend, "runtime", f"{kind} in double-double", text)
+                (row.backend, "runtime", f"{outcome} in {truth.name}", text)
             ] * count
     for stability_row in stability_rows or ():
         totals[(stability_row.backend, "stability")] = len(stability_row.per_point)
@@ -558,6 +676,11 @@ def profile_loop(
             bool(evaluation.reduction_unchecked),
             bench,
             None if points else evaluation.phase_space.seed,
+            [
+                row.profile.threads
+                for row in runtime_rows or ()
+                if row.profile is not None and row.profile.threads is not None
+            ],
         )
         if want_runtime
         else None,
@@ -567,6 +690,7 @@ def profile_loop(
         failure_causes(causes, totals),
         interrupted
         or bool(stability_setup is not None and stability_setup.get("interrupted")),
+        truth.record(),
     )
 
 
@@ -575,17 +699,22 @@ def _isolated_profile(
     process: str | None,
     options: Mapping[str, Any],
     config: RunConfig,
-    points: Sequence[Any],
+    points: Sequence[Any] | None,
     request: str,
     report: Any,
+    *,
+    reference: Mapping[str, Any] | None = None,
 ) -> VirtualProfileResult:
     """``benchmarking.profile_virtual`` of one backend (``request``) on
-    ``points`` in a fresh spawned process that loads the artifact (with
-    ``options``) and profiles that backend only, so that the profile's
-    peak RAM is that of a Monte Carlo worker evaluating this matrix element
-    on this backend: in a shared process the second backend's peak would
-    hold the first one's prepared state and the memory the allocator kept
-    (or, reusing it, would hide its own). The timing is the same calls'.
+    ``points`` (None: the artifact's distinct flat points) in a fresh
+    spawned process that loads the artifact (with ``options``) and profiles
+    that backend only, so that the profile's peak RAM is that of a Monte
+    Carlo worker evaluating this matrix element on this backend: in a
+    shared process the second backend's peak would hold the first one's
+    prepared state and the memory the allocator kept (or, reusing it, would
+    hide its own). The worker times on one core: every thread pool at one
+    thread (``one_core``). ``reference``: the reference timing's options
+    (``profile_virtual``), timed after the binary64 calls.
     ``report(done, total)`` receives the worker's progress; the worker
     ignores Ctrl-C (this process stops it and raises) and never outlives
     the call."""
@@ -607,8 +736,9 @@ def _isolated_profile(
             dict(options),
             config.evaluation,
             config.benchmark,
-            list(points),
+            None if points is None else list(points),
             request,
+            None if reference is None else dict(reference),
         ),
         name="pyamplicol-loop-runtime-profile",
         daemon=True,
@@ -649,17 +779,21 @@ def _runtime_worker(
     options: Mapping[str, Any],
     evaluation: Any,
     benchmark: Any,
-    points: Sequence[Any],
+    points: Sequence[Any] | None,
     request: str,
+    reference: Mapping[str, Any] | None = None,
 ) -> None:
     """The worker process of ``_isolated_profile``: Ctrl-C left to the
-    parent, the artifact loaded, one backend profiled (a refused point
-    served with its best-effort value and timed as such, m-lit
-    ux-besteffort); its progress, then its result or error, sent back."""
+    parent, every thread pool at one thread before anything native starts
+    (``one_core``: the timing is that of one core), the artifact loaded,
+    one backend profiled (a refused point served with its best-effort value
+    and timed as such, m-lit ux-besteffort) and its reference timing; its
+    progress, then its result or error, sent back."""
 
     import signal
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    one_core()
     try:
         from pyamplicol.api import Runtime
         from pyamplicol.benchmarking import profile_virtual
@@ -673,9 +807,11 @@ def _runtime_worker(
             runtime,
             config,
             points=points,
+            artifact=artifact,
             reduction=request,
             on_failure="best-effort",
             progress=lambda done, total: sender.send(("progress", done, total)),
+            reference=reference,
         )
         sender.send(("result", profile))
     except Exception as error:
@@ -754,8 +890,9 @@ class _EstimateSummary:
 # flat points, their scales and the check set; set once per process.
 _WORKER: dict[str, Any] = {}
 
-# The thread pools of a stability worker: one thread each, so that N
-# workers use about N cores (no oversubscription).
+# The thread pools of a worker process, one thread each (``one_core``): a
+# runtime worker times one core; N stability workers use about N cores (no
+# oversubscription).
 _WORKER_THREADS = (
     "RAYON_NUM_THREADS",
     "OMP_NUM_THREADS",
@@ -774,16 +911,17 @@ def _stability_worker(
     scales: Any,
     checks: Any,
     backends: Sequence[str] = (),
+    truth: GroundTruth | None = None,
 ) -> None:
     """Initialise a stability worker process: one thread per pool, Ctrl-C
     left to the parent (which collects what finished and stops the
-    workers), the artifact loaded once, and warmed up on ``backends``
+    workers), the artifact loaded once with the reference precision
+    ``truth`` (default double-double), and warmed up on ``backends``
     (``_warm_up``)."""
 
     import signal
 
-    for name in _WORKER_THREADS:
-        os.environ[name] = "1"
+    one_core()
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     from pyamplicol.api import Runtime
 
@@ -792,8 +930,20 @@ def _stability_worker(
         points=points,
         scales=scales,
         checks=checks,
+        truth=truth or GroundTruth("double-double"),
     )
     _warm_up(backends)
+
+
+def one_core() -> None:
+    """Size every thread pool this process starts from now on at one
+    thread (``_WORKER_THREADS``: rayon's, used by every native pool that
+    sets no count, and the BLAS/OpenMP ones): set before anything native
+    runs, its evaluations then use one core. A pool already started keeps
+    its threads."""
+
+    for name in _WORKER_THREADS:
+        os.environ[name] = "1"
 
 
 def _warm_up(backends: Sequence[str]) -> None:
@@ -819,8 +969,9 @@ def _stability_task(
     """One batch of a stability run: the flat points ``indices`` on
     ``backend`` in ``precision`` ("binary64": the checked call with its
     stability estimate, a refused point served with its best-effort value;
-    "double-double": the reference, accepted values only). Per point a small
-    record (``_records``), and the call's seconds."""
+    "reference": the worker's ``GroundTruth``, accepted values only, the
+    exact sum of their sectors). Per point a small record, and the call's
+    seconds."""
 
     state = _WORKER
     batch = [state["points"][i] for i in indices]
@@ -864,12 +1015,13 @@ def _stability_task(
                 )
             )
     else:
-        # The double-double reference counts only accepted values.
+        # The reference counts only accepted values, summed exactly.
+        truth = state.get("truth") or GroundTruth("double-double")
         result = state["runtime"].evaluate(
-            batch, arithmetic="double-double", on_failure="return", **common
+            batch, on_failure="return", **truth.options, **common
         )
         records = [
-            (index, None if value is None else [[_total_finite(value)]], reason)
+            (index, None if value is None else [[_exact_total(value)]], reason)
             for index, value, reason in zip(
                 indices, result.values, _reasons(result), strict=True
             )
@@ -916,10 +1068,13 @@ class _StabilityProgress:
         points: int,
         workers: int,
         first: int = 1,
+        reference: str = "dd",
     ) -> None:
         from pyamplicol.reporting.progress import ProgressStart
 
         self.sink = sink
+        # The reference's label in the progress line (``GroundTruth.label``).
+        self.reference = reference
         self.backends = tuple(backends)
         self.points = points
         self.workers = workers
@@ -1030,10 +1185,10 @@ class _StabilityProgress:
         parts = []
         for backend in self.backends:
             b64 = self.done[(backend, "binary64")]
-            dd = self.done[(backend, "double-double")]
+            reference = self.done[(backend, "reference")]
             parts.append(
                 f"{NAMES.get(backend, backend)} b64 {b64}/{self.points} "
-                f"dd {dd}/{self.points}"
+                f"{self.reference} {reference}/{self.points}"
             )
         eta = self.shown_eta()
         details: dict[str, Any] = {"step": " | ".join(parts)}
@@ -1062,7 +1217,9 @@ class _StabilityProgress:
             )
 
 
-_PRECISIONS = ("binary64", "double-double")
+# The two evaluations of a stability run: the binary64 call and the
+# reference (the run's ``GroundTruth``).
+_PRECISIONS = ("binary64", "reference")
 
 
 def _stability(
@@ -1110,6 +1267,7 @@ def _stability(
         else default_target()
     )
     scales = evaluation.mu_r2 if evaluation.mu_r2 is not None else flat.mu_r2()
+    truth = ground_truth(bench.ground_truth)
     count = len(points)
     workers = max(1, min(bench.n_core, usable_cores()))
     chunk = _chunk_size(count, workers, bench.batch_size, DEFAULT_LANES)
@@ -1131,7 +1289,7 @@ def _stability(
         for precision in _PRECISIONS
     ]
     workers = max(1, min(workers, len(tasks)))
-    tracker = _StabilityProgress(progress, backends, count, workers, lead)
+    tracker = _StabilityProgress(progress, backends, count, workers, lead, truth.label)
     b64: dict[str, dict[int, tuple[Any, ...]]] = {b: {} for b in backends}
     dd: dict[str, dict[int, tuple[Any, ...]]] = {b: {} for b in backends}
     seconds = dict.fromkeys(backends, 0.0)
@@ -1156,7 +1314,13 @@ def _stability(
     first_interrupt: list[bool] = []
     try:
         if workers == 1:
-            _WORKER.update(runtime=runtime, points=points, scales=scales, checks=checks)
+            _WORKER.update(
+                runtime=runtime,
+                points=points,
+                scales=scales,
+                checks=checks,
+                truth=truth,
+            )
             try:
                 _warm_up(backends)
                 for backend, precision, indices in tasks:
@@ -1179,6 +1343,7 @@ def _stability(
                     scales,
                     checks,
                     tuple(backends),
+                    truth,
                 ),
                 tasks,
                 harvest,
@@ -1239,10 +1404,15 @@ def _stability(
         else replace(
             row,
             precision_timing={
-                precision: {
+                ("binary64" if precision == "binary64" else truth.arithmetic): {
                     "points": tracker.done[(row.backend, precision)],
                     "seconds": tracker.seconds[(row.backend, precision)],
                     "seconds_per_point": tracker.rate((row.backend, precision)),
+                    **(
+                        {"digits": truth.digits}
+                        if precision != "binary64" and truth.digits is not None
+                        else {}
+                    ),
                 }
                 for precision in _PRECISIONS
             },
@@ -1264,7 +1434,10 @@ def _stability(
             "flat (RAMBO on diet), beams along +-z in the centre-of-mass frame"
         ),
         "measured": "finite part of the total (sum over the squared-order sectors)",
-        "reference": "double-double re-run of the same point on the same backend",
+        "reference": (
+            f"{_truth_prose(truth)} re-run of the same point on the same backend"
+        ),
+        "ground_truth": truth.record(),
         "estimate": (
             "the binary64 call's own estimate, "
             + (
@@ -1480,7 +1653,7 @@ def _backend_statistics(
                     "reference-failed",
                     None,
                     None,
-                    reference_reason or "no double-double value",
+                    reference_reason or "no reference value",
                 )
             )
             continue

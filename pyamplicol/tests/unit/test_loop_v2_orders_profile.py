@@ -23,6 +23,7 @@ from __future__ import annotations
 import io
 import json
 import math
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -286,6 +287,8 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
                 "2",
                 "--warmup-runs",
                 "0",
+                "--target-runtime",
+                "1e-6",
                 "--json",
                 "--progress",
                 "off",
@@ -312,7 +315,20 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
         assert set(profile["reduction"]["lanes"]) == {"ninjars"}
         assert profile["reduction"]["lanes"]["ninjars"] >= 2
         assert profile["seconds_per_point"] > 0 and profile["label"] is None
-        assert sum(profile["stages"].values()) > 0
+        # The stages add up to the reported time per point.
+        assert sum(profile["stages"].values()) == pytest.approx(
+            profile["seconds_per_point"]
+        )
+        # One core: the timed process's pools run one thread each; the
+        # reference (double-double by default) is one unchecked pass of
+        # whole SIMD chunks on the same backend.
+        assert profile["threads"] == 1
+        assert "on one core" in report["runtime_setup"]
+        assert report["ground_truth"]["label"] == "dd"
+        reference = profile["reference"]
+        assert reference["arithmetic"] == "double-double"
+        assert reference["digits"] is None and reference["batch"] == 4
+        assert reference["samples"] == 2 and reference["warmup"] == 0
     # --stability on both backends over three flat points (binary64 with the
     # default rotation against a double-double re-run); human and JSON.
     for output in (["--json"], ["--color", "never"]):
@@ -355,8 +371,9 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
             assert "true digits" in text and "NinjaRS" in text and "50 %" in text
             assert max(len(line) for line in text.splitlines()) <= 100
     from pyamplicol.api import BenchmarkRunner
+    from pyamplicol.config import BenchmarkConfig
 
-    result = BenchmarkRunner().run(uux_ddx)
+    result = BenchmarkRunner(BenchmarkConfig(target_runtime=1e-6)).run(uux_ddx)
     assert isinstance(result, VirtualProfileResult)
     assert result.contribution == "virtual" and result.failed_points == 0
 
@@ -365,13 +382,17 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
 def test_the_runtime_profile_times_distinct_points(uux_ddx, monkeypatch):
     """Every warm-up and timed call of the loop runtime profile takes a new
     batch of distinct flat points at the validation point's energy (no
-    point repeated within or across calls), deterministic in the seed."""
+    point repeated within or across calls), deterministic in the seed: the
+    minimum calls when they reach the time budget, and further calls on the
+    following points of the same sequence until they reach it."""
 
     from pyamplicol.api import Runtime
     from pyamplicol.benchmarking import profile_points, profile_virtual
     from pyamplicol.config import BenchmarkConfig
 
-    bench = BenchmarkConfig(batch_size=4, warmup_runs=1, minimum_samples=2)
+    bench = BenchmarkConfig(
+        batch_size=4, warmup_runs=1, minimum_samples=2, target_runtime=1e-6
+    )
     batches: list = []
     evaluate = Runtime.evaluate
 
@@ -390,47 +411,84 @@ def test_the_runtime_profile_times_distinct_points(uux_ddx, monkeypatch):
     energy = math.sqrt(total[0] ** 2 - total[1] ** 2 - total[2] ** 2 - total[3] ** 2)
     assert all(math.isclose(p[0][0] + p[1][0], energy) for p in flat)
     assert profile_points(uux_ddx, "p", bench) == profile_points(uux_ddx, "p", bench)
+    assert [tuple(map(tuple, p)) for p in profile_points(uux_ddx, "p", bench)] == flat
+    # A budget the minimum calls do not reach: more calls, the points
+    # continuing the sequence (the first calls' points unchanged).
+    batches.clear()
+    longer = replace(bench, target_runtime=10 * 4 * result.high)
+    again = profile_virtual(uux_ddx, longer)
+    assert again.samples > 2
+    more = [point for batch in batches for point in batch]
+    assert more[:12] == flat and len(set(more)) == len(more)
 
 
-def test_the_runtime_profile_reports_peak_ram_and_double_double(uux_ddx):
-    """The runtime profile's peak RAM over its profiled calls, and with
-    ``evaluation.arithmetic = "double-double"`` the same batches timed in
-    double-double after the binary64 timing (the binary64 calls are the
-    same: one extra pass, none without the setting)."""
+def test_the_runtime_profile_reports_peak_ram_and_the_reference(uux_ddx):
+    """The runtime profile's peak RAM over its binary64 calls, and with
+    ``reference=`` the reference carrier timed after them: one unchecked
+    pass on the profiled backend alone (no checks, no rescue, no
+    best-effort re-evaluation), calls of one SIMD chunk on the first points
+    of the binary64 calls' batches, the binary64 protocol's warm-up and
+    minimum calls; nothing extra runs without it."""
 
     from pyamplicol.api import Runtime
     from pyamplicol.benchmarking import profile_virtual
-    from pyamplicol.config import BenchmarkConfig, EvaluationConfig, RunConfig
+    from pyamplicol.config import BenchmarkConfig
 
-    bench = BenchmarkConfig(batch_size=2, warmup_runs=1, minimum_samples=2)
-    runtime = Runtime.load(uux_ddx)
-    plain = profile_virtual(runtime, bench, points=_points(uux_ddx) * 6)
-    assert plain.double_double is None
-    assert plain.peak_memory is not None
-    assert plain.peak_memory.peak_rss_bytes >= plain.peak_memory.start_rss_bytes
-    config = RunConfig(
-        action="benchmark",
-        evaluation=EvaluationConfig(arithmetic="double-double"),
-        benchmark=bench,
+    bench = BenchmarkConfig(
+        batch_size=2, warmup_runs=1, minimum_samples=2, target_runtime=1e-6
     )
+    runtime = Runtime.load(uux_ddx)
+    points = _points(uux_ddx) * 6
     calls: list = []
     evaluate = Runtime.evaluate
 
-    def recorded(self, points, *args, **kwargs):
-        calls.append(kwargs.get("arithmetic"))
-        return evaluate(self, points, *args, **kwargs)
+    def recorded(self, batch, *args, **kwargs):
+        calls.append((len(batch), {k: kwargs.get(k) for k in _KEYS}))
+        return evaluate(self, batch, *args, **kwargs)
 
     Runtime.evaluate = recorded
     try:
-        both = profile_virtual(runtime, config, points=_points(uux_ddx) * 6)
+        plain = profile_virtual(runtime, bench, points=points, reduction="tirust")
+        assert plain.reference is None and len(calls) == 3
+        assert plain.peak_memory is not None
+        assert plain.peak_memory.peak_rss_bytes >= plain.peak_memory.start_rss_bytes
+        calls.clear()
+        both = profile_virtual(
+            runtime,
+            bench,
+            points=points,
+            reduction="tirust",
+            reference={"arithmetic": "double-double"},
+        )
     finally:
         Runtime.evaluate = evaluate
-    assert calls == [None] * 3 + ["double-double"] * 3
-    dd = both.double_double
-    assert dd is not None and dd.arithmetic == "double-double"
-    assert (dd.batch, dd.samples, dd.warmup, dd.points) == (2, 2, 1, 4)
-    assert dd.low <= dd.seconds_per_point <= dd.high and dd.failed_points == 0
+    assert [c[1]["arithmetic"] for c in calls] == [None] * 3 + ["double-double"] * 3
+    assert all(
+        c[1] == {
+            "arithmetic": "double-double",
+            "on_failure": "return",
+            "reduction_unchecked": True,
+            "reduction": "tirust",
+            "stability_checks": None,
+        }
+        for c in calls[3:]
+    )
+    reference = both.reference
+    assert reference is not None and reference.arithmetic == "double-double"
+    assert (reference.batch, reference.samples, reference.warmup) == (2, 2, 1)
+    assert reference.points == 4 and reference.digits is None
+    assert reference.low <= reference.seconds_per_point <= reference.high
+    assert reference.failed_points == 0 and reference.peak_memory is not None
     assert both.samples == plain.samples and both.batch == plain.batch
+
+
+_KEYS = (
+    "arithmetic",
+    "on_failure",
+    "reduction_unchecked",
+    "reduction",
+    "stability_checks",
+)
 
 
 @pytest.mark.loop_physics

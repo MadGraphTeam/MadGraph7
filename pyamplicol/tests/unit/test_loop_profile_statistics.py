@@ -225,7 +225,7 @@ def test_failure_reason_reads_the_first_failed_channel():
     assert failure_reason(None) == "failed"
 
 
-def _report(stability_rows, runtime_rows=None):
+def _report(stability_rows, runtime_rows=None, truth=None):
     setup = {
         "points": 4,
         "seed": 1,
@@ -244,6 +244,7 @@ def _report(stability_rows, runtime_rows=None):
         runtime_rows,
         setup,
         stability_rows,
+        ground_truth=truth,
     )
 
 
@@ -431,12 +432,12 @@ def test_stability_estimate_grows_while_a_stream_has_no_point(monkeypatch):
     # Its first task has been running since 99.2 s: 40.8 s for 4 points.
     clock[0] = 140.0
     assert tracker.eta() == pytest.approx((16 * 0.2 + 20 * 40.8 / 4) / 2)
-    tracker.add("ninjars", "double-double", 4, 280.0)
+    tracker.add("ninjars", "reference", 4, 280.0)
     assert tracker.eta() == pytest.approx((16 * 0.2 + 16 * 70.0) / 2)
     tracker.add("ninjars", "binary64", 8, 2.4)
     # 3.2 s over 12 points.
     assert tracker.eta() == pytest.approx((8 * 3.2 / 12 + 16 * 70.0) / 2)
-    assert tracker.rate(("ninjars", "double-double")) == pytest.approx(70.0)
+    assert tracker.rate(("ninjars", "reference")) == pytest.approx(70.0)
     tracker.drop("ninjars")
     assert tracker.eta() == 0.0
 
@@ -469,12 +470,13 @@ def test_displayed_stability_estimate_is_smoothed(monkeypatch):
     assert tracker.shown_eta() is None
 
 
-def test_runtime_and_stability_report_peak_ram_and_double_double_timing():
+def test_runtime_and_stability_report_peak_ram_and_reference_timing():
     """The runtime table's ``peak RAM`` column (``<=`` for a lifetime bound,
     a muted ``-`` when not measured) and its ``(dd xN)`` time multiplier
-    when the profile timed double-double; the stability table's ``time``:
-    the binary64 total with the double-double multiplier; no free lines
-    under the tables; all in the JSON as fields."""
+    when the profile timed the reference; the stability table's ``time``:
+    the binary64 total with the reference multiplier; no free lines under
+    the tables; all in the JSON as fields. With an arbitrary-precision
+    truth the labels say ``arb(D)`` (header, titles, cells)."""
 
     from pyamplicol.benchmarking import PrecisionTiming, VirtualProfileResult
     from pyamplicol.cli.main import write_result
@@ -503,7 +505,7 @@ def test_runtime_and_stability_report_peak_ram_and_double_double_timing():
     dd = PrecisionTiming("double-double", 4, 2, 1, 8, 2e-2, 1.9e-2, 2.1e-2, 0)
     rows = (
         BackendRuntime(
-            "tirust", replace(base, peak_memory=peak, double_double=dd), ratio=1.0
+            "tirust", replace(base, peak_memory=peak, reference=dd), ratio=1.0
         ),
         BackendRuntime(
             "ninjars",
@@ -561,11 +563,94 @@ def test_runtime_and_stability_report_peak_ram_and_double_double_timing():
     payload = json.loads(machine.getvalue())
     profile = payload["runtime"][0]["profile"]
     assert profile["peak_memory"]["increase_rss_bytes"] == 1024**3
-    assert profile["double_double"]["points"] == 8
-    assert payload["runtime"][1]["profile"]["double_double"] is None
+    assert profile["reference"]["points"] == 8
+    assert payload["runtime"][1]["profile"]["reference"] is None
     timing = payload["stability"][0]["precision_timing"]
     assert timing["double-double"]["points"] == 4
     assert timing["binary64"]["seconds"] == 1.0
+    # An arbitrary-precision truth: its label everywhere, its timing key.
+    truth = {"arithmetic": "arbitrary", "digits": 57, "label": "arb(57)"}
+    arb = replace(dd, arithmetic="arbitrary", digits=57, seconds_per_point=0.21)
+    arb_rows = (
+        replace(rows[0], profile=replace(rows[0].profile, reference=arb)),
+        rows[1],
+    )
+    arb_timed = replace(
+        timed,
+        precision_timing={
+            "binary64": {"points": 4, "seconds": 1.0},
+            "arbitrary": {"points": 4, "seconds": 42.0, "digits": 57},
+        },
+    )
+    text = render_summary(_report((arb_timed,), arb_rows, truth), color=False)
+    lines = text.splitlines()
+    assert "| 1 ms (arb(57) x210) |" in next(
+        line for line in lines if line.startswith("| TIRust")
+    ), text
+    assert any(
+        "| ground truth  | arbitrary precision, 57 digits" in line for line in lines
+    )
+    assert any("Stable digits of binary64 vs arb(57)," in line for line in lines)
+    # Past the line width on one line: the multiplier under the time.
+    first = next(
+        i for i, line in enumerate(lines) if line.endswith("| 1 s           |")
+    )
+    assert lines[first + 1].endswith("| (arb(57) x42) |"), text
+    assert "dd x" not in text and max(len(line) for line in lines) <= 100
+
+
+def test_ground_truth_spellings():
+    """``benchmark.ground_truth``: double-double (dd), arbitrary (arb) at the
+    built-in rescue's digits, or arbitrary:DIGITS; anything else refused."""
+
+    from pyamplicol.config import BenchmarkConfig
+    from pyamplicol.config.errors import ConfigurationError
+    from pyamplicol.loop_profile import GroundTruth, ground_truth
+    from pyamplicol.loops.v2.stability import DEFAULT_RESCUE
+
+    default = dict(DEFAULT_RESCUE)["arbitrary"]
+    assert BenchmarkConfig().ground_truth == "double-double"
+    for text, expected in (
+        ("double-double", GroundTruth("double-double")),
+        ("DD", GroundTruth("double-double")),
+        ("arb", GroundTruth("arbitrary", default)),
+        ("arbitrary", GroundTruth("arbitrary", default)),
+        ("arb:60", GroundTruth("arbitrary", 60)),
+        (" arbitrary:100 ", GroundTruth("arbitrary", 100)),
+    ):
+        canonical = BenchmarkConfig(ground_truth=text).ground_truth
+        assert ground_truth(canonical) == expected == ground_truth(text)
+    assert ground_truth("arb:60").label == "arb(60)"
+    assert ground_truth("dd").label == "dd"
+    assert ground_truth("arb").options == {
+        "arithmetic": "arbitrary",
+        "precision": default,
+    }
+    for bad in ("double", "arb:", "arb:0", "arb:x", "dd:30", "quad", 3):
+        with pytest.raises(ConfigurationError):
+            BenchmarkConfig(ground_truth=bad)
+
+
+def test_relative_error_is_exact():
+    """The true error against a reference of any precision is formed
+    exactly: a 60-digit reference differing from the binary64 value far
+    below a Decimal context's 28 digits is still resolved, non-finite
+    values give nan, a zero reference 0 or inf."""
+
+    from decimal import localcontext
+
+    from pyamplicol.loop_profile import _exact_total, relative_error
+
+    with localcontext() as context:
+        context.prec = 100
+        # binary64's 0.1 exactly, 1e-45 above it.
+        reference = Decimal(0.1) + Decimal("1e-45")  # noqa: RUF032
+    assert relative_error(0.1, reference) == pytest.approx(1e-44, rel=1e-6)
+    assert relative_error(0.5, Fraction(1, 2)) == 0.0
+    assert math.isnan(relative_error(math.nan, Decimal(1)))
+    assert relative_error(1.0, Decimal(0)) == math.inf
+    row = [[Decimal("1e30")], [Decimal("1")], [Decimal("-1e30")]]
+    assert _exact_total(row) == 1
 
 
 def test_peak_memory_measures_the_region():

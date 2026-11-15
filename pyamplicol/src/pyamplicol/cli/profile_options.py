@@ -49,9 +49,22 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
         metavar="N",
         help=(
-            "loop artifacts: worker processes of --stability (default 10, at "
-            "most the usable cores; 1 runs in-process; the result does not "
-            "depend on it)"
+            "loop artifacts: worker processes of --stability only (default "
+            "10, at most the usable cores; 1 runs in-process; the result does "
+            "not depend on it); the runtime timing always runs on one core"
+        ),
+    )
+    parser.add_argument(
+        "--ground-truth",
+        dest="benchmark.ground_truth",
+        default=argparse.SUPPRESS,
+        metavar="{double-double,arbitrary[:DIGITS]}",
+        help=(
+            "loop artifacts: the reference of both tables (benchmark."
+            "ground_truth): the stability run's true values and the "
+            "reference-precision time multipliers; double-double (dd, the "
+            "default) or arbitrary precision (arb) at DIGITS decimal digits "
+            "(default: the built-in rescue's, 57)"
         ),
     )
     parser.add_argument(
