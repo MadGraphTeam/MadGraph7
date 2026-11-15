@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import torch
 from madspace_testing import generator, rand
@@ -44,6 +46,8 @@ def r_in(rng):
         {"power": 1.5},
         {"power": 1.0},
         {"power": 0.5},
+        {"power": 1.5, "shift": 1600.0},
+        {"power": 1.0, "shift": 1600.0},
     ],
     ids=[
         "uniform",
@@ -55,6 +59,8 @@ def r_in(rng):
         "massless, power=1.5",
         "massless, power=1.0",
         "massless, power=0.5",
+        "massless, power=1.5, shift",
+        "massless, power=1.0, shift",
     ],
 )
 def invariant(request):
@@ -113,3 +119,21 @@ def test_flat_window_breit_wigner():
     s_bw, _ = ms.Invariant(0.8, mass, width).map_forward([r_in], [s_min, s_max])
     outside_bw = ((s_bw < lo) | (s_bw > hi)).double().mean()
     assert (~inside).double().mean() > 10 * outside_bw
+
+
+@pytest.mark.parametrize("power", [1.0, 1.5, 2.0])
+def test_shifted_power_law(power):
+    """With a shift delta the density of the power law is (s + delta)^-power
+    from s = 0 on: the Jacobian is its inverse, normalised on [0, s_max]."""
+    shift, s_max = 40.0**2, SQRT_S_MAX**2
+    r = (torch.arange(1000, dtype=torch.float64) + 0.5) / 1000
+    zero = torch.zeros_like(r)
+    s, det = ms.Invariant(power, shift=shift).map_forward(
+        [r], [zero, torch.full_like(r, s_max)]
+    )
+    if power == 1.0:
+        norm = math.log((s_max + shift) / shift)
+    else:
+        p = 1.0 - power
+        norm = ((s_max + shift) ** p - shift**p) / p
+    torch.testing.assert_close(det, (s + shift) ** power * norm, rtol=1e-11, atol=0.0)

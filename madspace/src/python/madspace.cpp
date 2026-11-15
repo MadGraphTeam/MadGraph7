@@ -792,11 +792,12 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<Invariant, Mapping>(m, "Invariant", pydoc::doc("Invariant"))
         .def(
-            py::init<double, double, double, double>(),
+            py::init<double, double, double, double, double>(),
             py::arg("power") = 0.,
             py::arg("mass") = 0.,
             py::arg("width") = 0.,
             py::arg("flat_window") = 0.,
+            py::arg("shift") = 1e-2,
             pydoc::doc("Invariant::Invariant")
         );
 
@@ -1619,7 +1620,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 bool,
                 std::optional<double>,
-                double>(),
+                double,
+                std::optional<double>>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1632,6 +1634,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mirror_beams") = false,
             py::arg("s_hat_power") = std::nullopt,
             py::arg("lepton_sampling_power") = 0.,
+            py::arg("s_hat_shift") = std::nullopt,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping")
         )
         .def(
@@ -1646,7 +1649,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 bool,
                 std::optional<double>,
-                double>(),
+                double,
+                std::optional<double>>(),
             py::arg("external_masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1658,6 +1662,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mirror_beams") = false,
             py::arg("s_hat_power") = std::nullopt,
             py::arg("lepton_sampling_power") = 0.,
+            py::arg("s_hat_shift") = std::nullopt,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping#2")
         )
         .def(

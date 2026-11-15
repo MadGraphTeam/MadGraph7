@@ -229,7 +229,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double beam_rapidity,
     bool mirror_beams,
     std::optional<double> s_hat_power,
-    double lepton_sampling_power
+    double lepton_sampling_power,
+    std::optional<double> s_hat_shift
 ) :
     Mapping(
         "PhaseSpaceMapping",
@@ -309,6 +310,12 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     _lepton_power(lepton_sampling_power),
     _two_to_one(topology.outgoing_masses().size() == 1),
     _t_mapping(std::monostate{}) {
+    if (s_hat_shift && !(*s_hat_shift > 0.)) {
+        throw std::invalid_argument(
+            "PhaseSpaceMapping: s_hat_shift, the shift of the pole of the s_hat "
+            "sampling, must be positive"
+        );
+    }
     // the chain order and settings belong to the color-ordered mode only
     if ((t_channel_mode == PhaseSpaceMapping::color_ordered) !=
         color_ordered.has_value()) {
@@ -637,15 +644,20 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         if (!is_com_decay || _map_luminosity) {
             double mass = decay.width == 0. ? 0. : decay.mass;
             double width = decay.width;
-            // Color-ordered mode samples s_hat with 1/s_hat^1.2 as AmpliCol
-            // does, but only if it is bounded from below.
-            double s_hat_default =
-                t_channel_mode == PhaseSpaceMapping::color_ordered && info.m_min > 0.
+            // s_hat falls with the parton luminosity, steeper than the
+            // propagators. Unset, its power is 1.5 where masses or cuts bound
+            // it from below or s_hat_shift gives it a scale (1.2 for a
+            // color-ordered chain, as AmpliCol), and invariant_power without
+            // either, since 1/s_hat^p from s_hat = 0 needs p < 1 there.
+            bool scaled = info.m_min > 0. || s_hat_shift.has_value();
+            double s_hat_default = !scaled ? invariant_power
+                : t_channel_mode == PhaseSpaceMapping::color_ordered
                 ? 1.2
-                : invariant_power;
+                : 1.5;
             double power =
                 is_com_decay ? s_hat_power.value_or(s_hat_default) : invariant_power;
-            info.invariant = Invariant(power, mass, width, decay.flat_window);
+            double shift = is_com_decay ? s_hat_shift.value_or(1e-2) : 1e-2;
+            info.invariant = Invariant(power, mass, width, decay.flat_window, shift);
         }
     }
     for (std::size_t index : _topology.decay_integration_order()) {
@@ -761,7 +773,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double beam_rapidity,
     bool mirror_beams,
     std::optional<double> s_hat_power,
-    double lepton_sampling_power
+    double lepton_sampling_power,
+    std::optional<double> s_hat_shift
 ) :
     PhaseSpaceMapping(
         Topology([&] {
@@ -816,7 +829,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         beam_rapidity,
         mirror_beams,
         s_hat_power,
-        lepton_sampling_power
+        lepton_sampling_power,
+        s_hat_shift
     ) {}
 
 Mapping::Result PhaseSpaceMapping::build_forward_impl(

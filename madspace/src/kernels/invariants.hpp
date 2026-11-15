@@ -169,12 +169,13 @@ template <typename T>
 KERNELSPEC void kernel_stable_invariant(
     FIn<T, 0> r,
     FSIn<T, 0> mass,
+    FSIn<T, 0> shift,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
     FOut<T, 0> gs
 ) {
-    auto m2 = mass * mass - 1e-2;
+    FVal<T> m2 = FVal<T>(mass) * FVal<T>(mass) - FVal<T>(shift);
     auto q_max = s_max - m2;
     auto q_min = s_min - m2;
 
@@ -186,12 +187,13 @@ template <typename T>
 KERNELSPEC void kernel_stable_invariant_inverse(
     FIn<T, 0> s,
     FSIn<T, 0> mass,
+    FSIn<T, 0> shift,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> r,
     FOut<T, 0> gs
 ) {
-    auto m2 = mass * mass - 1e-2;
+    FVal<T> m2 = FVal<T>(mass) * FVal<T>(mass) - FVal<T>(shift);
     auto q_max = s_max - m2;
     auto q_min = s_min - m2;
     auto q = s - m2;
@@ -205,13 +207,14 @@ template <typename T>
 KERNELSPEC void kernel_stable_invariant_nu(
     FIn<T, 0> r,
     FSIn<T, 0> mass,
+    FSIn<T, 0> shift,
     FSIn<T, 0> nu,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> s,
     FOut<T, 0> gs
 ) {
-    auto m2 = mass * mass - 1e-2;
+    FVal<T> m2 = FVal<T>(mass) * FVal<T>(mass) - FVal<T>(shift);
     auto q_max = s_max - m2;
     auto q_min = s_min - m2;
     auto power = 1.0 - nu;
@@ -227,13 +230,14 @@ template <typename T>
 KERNELSPEC void kernel_stable_invariant_nu_inverse(
     FIn<T, 0> s,
     FSIn<T, 0> mass,
+    FSIn<T, 0> shift,
     FSIn<T, 0> nu,
     FIn<T, 0> s_min,
     FIn<T, 0> s_max,
     FOut<T, 0> r,
     FOut<T, 0> gs
 ) {
-    auto m2 = mass * mass - 1e-2;
+    FVal<T> m2 = FVal<T>(mass) * FVal<T>(mass) - FVal<T>(shift);
     auto q = s - m2;
     auto q_max = s_max - m2;
     auto q_min = s_min - m2;

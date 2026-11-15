@@ -331,7 +331,10 @@ VEGAS grids adapt the phase-space sampling during the survey.
     channels.
 
 ``invariant_power`` (``0.7``)
-    Exponent :math:`p` of the :math:`1/s^p` sampling of time-like invariants.
+    Exponent :math:`p` of the :math:`1/s^p` sampling of time-like invariants. The partonic
+    :math:`\hat s` of a hadron collision falls faster with the parton luminosity and is
+    sampled as :math:`1/\hat s^{1.5}` where masses or cuts bound it from below
+    (:math:`1/\hat s^{1.2}` with ``[amplicol]``), and with this exponent otherwise.
 
 ``bw_cutoff`` (``15``)
     Breit-Wigner propagators are sampled within this many widths of the mass. The same
