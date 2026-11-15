@@ -187,7 +187,7 @@ def _number(value: object, description: str) -> str:
     kind = type(value)
     if kind is float:
         # (A float's text is always ASCII decimal syntax.)
-        if not math.isfinite(value):
+        if not math.isfinite(cast(float, value)):
             raise ValueError(f"{description} must be finite")
         return str(Decimal(str(value)))
     if (
