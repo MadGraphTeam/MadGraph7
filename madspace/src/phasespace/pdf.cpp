@@ -814,6 +814,19 @@ void AlphaSGrid::initialize_globals(
     }
 }
 
+ElasticPhotonDensity::ElasticPhotonDensity() :
+    FunctionGenerator(
+        "ElasticPhotonDensity",
+        {{"x", batch_float}, {"q", batch_float}},
+        {{"pdf", batch_float}}
+    ) {}
+
+NamedVector<Value> ElasticPhotonDensity::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    return {{"pdf", fb.elastic_photon_density(args.at(0), args.at(1))}};
+}
+
 RunningCoupling::RunningCoupling(const AlphaSGrid& grid, const std::string& prefix) :
     FunctionGenerator(
         "RunningCoupling", {{"q", batch_float}}, {{"alpha_s", batch_float}}

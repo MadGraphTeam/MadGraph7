@@ -1230,14 +1230,16 @@ def test_luminosity_errors(grids):
     with pytest.raises(ValueError, match="older FKS exporter"):
         fks_luminosities(configurations)
     configurations.update(born_flavors=[], real_flavors=[])
-    with pytest.raises(ValueError, match="not protons, antiprotons or leptons"):
-        fks_luminosities(configurations, pdf_grid, beams=(2, 2))
+    with pytest.raises(ValueError, match="not protons, antiprotons, photons or"):
+        fks_luminosities(configurations, pdf_grid, beams=(5, 5))
     with pytest.raises(ValueError, match="hadron beams need a PdfGrid"):
         fks_luminosities(configurations, beams=(1, 1))
-    with pytest.raises(ValueError, match="hadron beams need a PdfGrid"):
-        fks_luminosities(configurations, pdf_grid, beams=(0, 0))
-    with pytest.raises(ValueError, match="mix a hadron and a lepton"):
-        fks_luminosities(configurations, pdf_grid, beams=(0, 1))
+    for beams in ((0, 0), (2, 2)):
+        with pytest.raises(ValueError, match="hadron beams need a PdfGrid"):
+            fks_luminosities(configurations, pdf_grid, beams=beams)
+    for beams in ((0, 1), (2, 1), (2, 0)):
+        with pytest.raises(ValueError, match="of two kinds"):
+            fks_luminosities(configurations, pdf_grid, beams=beams)
 
 
 def test_underlying_born():

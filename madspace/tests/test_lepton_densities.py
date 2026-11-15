@@ -276,7 +276,7 @@ def test_run_card():
     base = dict(ickkw=0, dynamical_scale_choice=-1, pdfscheme=0)
     for lpp in ((-3, 3), (3, -3), (3, 3), (0, 0), (1, 1), (1, -1)):
         check_run_card({**base, **run_card("isronlyll", lpp)})
-    for lpp in ((4, -4), (-3, 0), (3, 1), (2, 2)):
+    for lpp in ((4, -4), (-3, 0), (3, 1), (2, 1)):
         with pytest.raises(NotImplementedError):
             check_run_card({**base, **run_card("isronlyll", lpp)})
     with pytest.raises(NotImplementedError, match="eMELA"):

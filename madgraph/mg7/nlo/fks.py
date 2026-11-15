@@ -42,7 +42,8 @@ and eta of each object, the masses of pairs, sqrt_s).
 Beams of dressed electrons and positrons (lpp 3 and -3) take the densities
 of pdlabel among the lep_densities of the output, with their momentum
 fractions sampled as generate_x_ee of genps_fks.f and the leptonic Born at
-the energy they leave.
+the energy they leave. Beams of elastic photons from protons (lpp 2 and -2)
+take the equivalent-photon density of epa_proton of MadFKS.
 
 A final-state emitter inside a resonance of the Born radiates with the
 resonance-local recoil, as MadFKS installs it (fks_resonances): the
@@ -70,8 +71,8 @@ reweight_PDF it gives the cross section with every member of the LHAPDF set
 of lhaid (its densities and alpha_s at the scales of the run) and the PDF
 uncertainty of LHAPDF (FKSCrossSection with pdf_variations).
 
-Not covered yet: PDF schemes other than MSbar, densities of eMELA, photon
-beams and FxFx.
+Not covered yet: PDF schemes other than MSbar, densities of eMELA, photons
+of gamma-UPC and FxFx.
 """
 
 import argparse

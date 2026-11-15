@@ -16,7 +16,8 @@ FKSLuminosity::FKSLuminosity(
     const nested_vector2<double>& factors,
     const std::optional<EELuminosity>& lepton_luminosity,
     const std::array<int, 2>& lepton_pdgs,
-    const std::string& pdf_prefix
+    const std::string& pdf_prefix,
+    const std::array<bool, 2>& photon_beams
 ) :
     FunctionGenerator(
         "FKSLuminosity",
@@ -39,7 +40,8 @@ FKSLuminosity::FKSLuminosity(
     _sum_flavors(sum_flavors),
     _q_min{0., 0.},
     _q_max{0., 0.},
-    _lepton_luminosity(lepton_luminosity) {
+    _lepton_luminosity(lepton_luminosity),
+    _photon_beams(photon_beams) {
     if (flavors.empty()) {
         throw std::invalid_argument("FKSLuminosity: no FKS configurations");
     }
@@ -47,6 +49,15 @@ FKSLuminosity::FKSLuminosity(
         throw std::invalid_argument(
             "FKSLuminosity: dressed leptons take no grid of hadrons"
         );
+    }
+    for (std::size_t beam = 0; beam < 2; ++beam) {
+        if (photon_beams.at(beam) &&
+            (lepton_luminosity || (pdf_grid && densities.at(beam)))) {
+            throw std::invalid_argument(
+                "FKSLuminosity: a beam of elastic photons takes no densities of a "
+                "grid or of dressed leptons"
+            );
+        }
     }
     if (lepton_luminosity && !lepton_luminosity->beam_scales()) {
         throw std::invalid_argument(
@@ -138,6 +149,11 @@ FKSLuminosity::FKSLuminosity(
                 continue;
             }
             for (std::size_t beam = 0; beam < 2; ++beam) {
+                if (photon_beams.at(beam)) {
+                    // the photon, the only parton of the beam
+                    positions.push_back(flavor.at(beam) == 22 ? 0 : -2);
+                    continue;
+                }
                 if (!_pdfs.at(beam)) {
                     positions.push_back(0);
                     continue;
@@ -186,6 +202,14 @@ NamedVector<Value> FKSLuminosity::build_function_impl(
             );
             pdfs.at(beam) = fb.unsqueeze(luminosity.at(0));
             xs.at(beam) = fb.full({1., batch_size});
+            continue;
+        }
+        if (_photon_beams.at(beam)) {
+            Value x = args.at(beam == 0 ? "x1" : "x2");
+            Value q = args.at(beam == 0 ? "fact_scale1" : "fact_scale2");
+            pdfs.at(beam) =
+                fb.unsqueeze(ElasticPhotonDensity().build_function(fb, {x, q}).at(0));
+            xs.at(beam) = x;
             continue;
         }
         if (!_pdfs.at(beam)) {

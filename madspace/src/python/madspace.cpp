@@ -4119,6 +4119,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("AlphaSGrid::initialize_globals")
         );
 
+    py::classh<ElasticPhotonDensity, FunctionGenerator>(
+        m, "ElasticPhotonDensity", pydoc::doc("ElasticPhotonDensity")
+    )
+        .def(py::init<>(), pydoc::doc("ElasticPhotonDensity::ElasticPhotonDensity"));
+
     py::classh<RunningCoupling, FunctionGenerator>(
         m, "RunningCoupling", pydoc::doc("RunningCoupling")
     )
@@ -4145,7 +4150,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const nested_vector2<double>&,
                 const std::optional<EELuminosity>&,
                 const std::array<int, 2>&,
-                const std::string&>(),
+                const std::string&,
+                const std::array<bool, 2>&>(),
             py::arg("flavors"),
             py::arg("pdf_grid") = std::nullopt,
             py::arg("pdf_grid2") = std::nullopt,
@@ -4156,6 +4162,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("lepton_luminosity") = std::nullopt,
             py::arg("lepton_pdgs") = std::array<int, 2>{0, 0},
             py::arg("pdf_prefix") = "",
+            py::arg("photon_beams") = std::array<bool, 2>{false, false},
             pydoc::doc("FKSLuminosity::FKSLuminosity")
         )
         .def(

@@ -314,6 +314,42 @@ struct AlphaSGrid {
 };
 
 /**
+ * The equivalent-photon density of a proton that stays intact, the photon of
+ * a beam of elastic photons (lpp 2 of the run card of MadGraph).
+ *
+ * The improved Weizsaecker-Williams formula of Budnev et al. [1] with the
+ * dipole form factors of the proton, as epa_proton of PhotonFlux.f of
+ * MadGraph (with its alpha = 1/137 and proton mass of 0.938 GeV): the
+ * photon of momentum fraction @f$x@f$ has a virtuality from
+ * @f$m_p^2 x^2 / (1 - x)@f$ to @f$q^2@f$, with @f$q@f$ the factorization
+ * scale, and none where that range is empty.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - `x` – `float`, shape `(batch,)` – momentum fraction of the photon.
+ * - `q` – `float`, shape `(batch,)` – factorization scale.
+ *
+ * **Returns**
+ * - `pdf` – `float`, shape `(batch,)` – @f$x f_\gamma(x, q)@f$, as the
+ *   densities of a @ref PartonDensity.
+ *
+ * **References**
+ * - [1] V. M. Budnev, I. F. Ginzburg, G. V. Meledin, V. G. Serbo, "The two
+ *   photon particle production mechanism", Phys. Rept. 15 (1975) 181
+ */
+class ElasticPhotonDensity : public FunctionGenerator {
+public:
+    /// The density of epa_proton, which has no parameters.
+    ElasticPhotonDensity();
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+};
+
+/**
  * Strong-coupling interpolation as a compute-graph function.
  *
  * Interpolates an @ref AlphaSGrid to return @f$\alpha_s(q)@f$ at the sampled

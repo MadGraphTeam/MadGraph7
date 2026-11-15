@@ -995,7 +995,8 @@ def fks_luminosities(
         pdf_grid: the PdfGrid of the hadron beams, None for none.
         pdf_grid2: the PdfGrid of the second beam where it differs.
         beams: lpp1 and lpp2 of the run card, 1 for protons, -1 for
-            antiprotons, 0 for leptons without densities and 3, -3, 4, -4 for
+            antiprotons, 0 for leptons without densities, 2 and -2 for
+            elastic photons from protons and antiprotons and 3, -3, 4, -4 for
             dressed electrons, positrons, muons and antimuons (both of one
             kind, as MadFKS has no DIS at NLO), ignored for a decay.
         sum_flavors: whether the luminosities sum over the flavors, without a
@@ -1017,19 +1018,19 @@ def fks_luminosities(
     _check_flavors(configurations)
     nincoming = int(configurations.get("nincoming", 2))
     beams = (0, 0) if nincoming == 1 else tuple(int(beam) for beam in beams)
-    if any(beam not in (-1, 0, 1, *LEPTON_BEAMS) for beam in beams):
+    if any(beam not in (-2, -1, 0, 1, 2, *LEPTON_BEAMS) for beam in beams):
         raise ValueError(
-            f"fks_luminosities: beams {beams} are not protons, antiprotons or "
-            "leptons"
+            f"fks_luminosities: beams {beams} are not protons, antiprotons, "
+            "photons or leptons"
         )
     kinds = [
-        "hadron" if abs(beam) == 1 else "dressed" if beam else "lepton"
+        {1: "hadron", 2: "photon", 0: "lepton"}.get(abs(beam), "dressed")
         for beam in beams
     ]
     if kinds[0] != kinds[1]:
         raise ValueError(
-            f"fks_luminosities: beams {beams} mix a hadron and a lepton, DIS has no "
-            "NLO in MadFKS"
+            f"fks_luminosities: beams {beams} are of two kinds, MadFKS has no DIS "
+            "at NLO"
         )
     densities = [kind == "hadron" for kind in kinds]
     if any(densities) != (pdf_grid is not None):
@@ -1048,6 +1049,7 @@ def fks_luminosities(
         densities=densities,
         sum_flavors=sum_flavors,
         pdf_prefix=pdf_prefix,
+        photon_beams=[kind == "photon" for kind in kinds],
     )
     if dressed:
         options.update(

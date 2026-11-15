@@ -40,8 +40,10 @@ c jet-rate distance. To be set to 1 for FxFx
 c Include all the parameters set in the run_card.dat
 
       include 'run_card.inc'
-c Set UPC parameter
-      if(abs(lpp(1)).eq.2.and.abs(lpp(2)).eq.2) then
+c Set UPC parameter, for the photons of gamma-UPC (pdlabel ed* or ch*),
+c whose library is a dummy for the other pdlabels
+      if(abs(lpp(1)).eq.2.and.abs(lpp(2)).eq.2.and.
+     $     (pdlabel(1:2).eq.'ed'.or.pdlabel(1:2).eq.'ch')) then
         xiAI(1:2)=1d0 ! this should be an input in run_card.dat
         call get_nucleus_RA(nb_proton(1),nb_neutron(1),RAI(1))
         call get_nucleus_RA(nb_proton(2),nb_neutron(2),RAI(2))

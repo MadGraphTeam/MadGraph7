@@ -63,8 +63,10 @@ Beams of dressed electrons and positrons (lpp 3 and -3) take the densities
 of pdlabel among the lep_densities of the output, reduced by (1 - x)^p of
 the power p of the sampling of their momentum fractions in PhaseSpaceMapping
 (lepton_sampling_power), with the real emission and its dipoles at the
-momentum fractions of the Born. The leptons radiate no QCD, so that the
-Borns have no K and P operators.
+momentum fractions of the Born. Beams of elastic photons from protons (lpp
+2 and -2) take the equivalent-photon density of epa_proton of MadFKS
+(ElasticPhotonDensity). Neither the leptons nor the photons radiate QCD, so
+that their Borns have no K and P operators.
 
 The cuts are those of cuts.f with the photon isolation and the
 recombination of photons (NLOCuts), all photons to be isolated.
@@ -74,9 +76,9 @@ of dummy_fct.f) comes from the provider, at the Born with a last particle
 without momentum, as at the soft counter-event of MadFKS.
 
 Not covered yet: a final-state gluon with a colored decaying particle, PDF
-schemes other than MSbar, densities of eMELA, photon beams and the scale and
-PDF variations of reweight_scale and reweight_PDF, which the run leaves out
-with a warning.
+schemes other than MSbar, densities of eMELA, photons of gamma-UPC and the
+scale and PDF variations of reweight_scale and reweight_PDF, which the run
+leaves out with a warning.
 """
 
 import argparse
@@ -212,6 +214,26 @@ class DressedLuminosity:
             return np.zeros(len(x1))
         r = np.full(len(x1), 0.5)
         return count * self.runtime(x1, omx[0], x2, omx[1], mu1, mu2, r)["luminosity"]
+
+
+class PhotonLuminosity:
+    """The luminosity of beams of elastic photons over flavors (lists with
+    the PDG codes of the incoming partons first): the product of the
+    densities of the photons of the beams (ElasticPhotonDensity, epa_proton
+    of MadFKS) for each flavor of two photons, none for the others."""
+
+    def __init__(self, context):
+        self.runtime = Runtime(madspace().ElasticPhotonDensity(), context)
+
+    def __call__(self, flavors, x1, x2, omx, mu1, mu2):
+        """The luminosity at the momentum fractions x1, x2 and the
+        factorization scales mu1, mu2 (omx is not used)."""
+        count = sum(1 for flavor in flavors if flavor[0] == 22 and flavor[1] == 22)
+        if not count:
+            return np.zeros(len(x1))
+        f1 = self.runtime(x1, mu1)["pdf"] / x1
+        f2 = self.runtime(x2, mu2)["pdf"] / x2
+        return count * f1 * f2
 
 
 def mapping_outputs(out, count):
@@ -351,6 +373,9 @@ class CSBornIntegrand:
         self.beam_luminosity = None
         if self.leptons is not None:
             self.beam_luminosity = DressedLuminosity(self.leptons, context)
+        elif abs(self.beams[0]) == 2:
+            # photons radiate no QCD, so that the Borns have no K and P
+            self.beam_luminosity = PhotonLuminosity(context)
         elif self.beams != (0, 0):
             self.collinear = Runtime(
                 ms.CSCollinear(

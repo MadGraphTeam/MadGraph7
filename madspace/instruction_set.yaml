@@ -5848,6 +5848,20 @@ interpolate_pdf:
   vectorized: False
   desc: "Evaluates parton densities by bicubic interpolation of a log-x / log-Q2 grid. See @ref PartonDensity."
 
+elastic_photon_density:
+  inputs:
+    - name: x
+      type: [float]
+      desc: "momentum fraction of the photon"
+    - name: q
+      type: [float]
+      desc: "factorization scale, the square root of the largest virtuality of the photon"
+  outputs:
+    - name: pdf
+      type: [float]
+      desc: "x f_gamma(x, q), zero where the virtuality has no range"
+  desc: "The equivalent-photon density of a proton that stays intact, x f_gamma(x, q), as epa_proton of PhotonFlux.f of MadGraph: the improved Weizsaecker-Williams formula of Budnev et al. with the dipole form factors of the proton, its virtuality from m_p^2 x^2 / (1 - x) to q^2. See @ref ElasticPhotonDensity."
+
 interpolate_alpha_s:
   inputs:
     - name: q

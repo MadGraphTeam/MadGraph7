@@ -108,5 +108,36 @@ KERNELSPEC void kernel_interpolate_alpha_s(
     alpha_s = result;
 }
 
+// phi of the equivalent-photon density of a proton (phi_f of PhotonFlux.f of
+// MadGraph) at y = x^2 / (1 - x) and qq = Q^2 / (0.71 GeV^2), with
+// log((1 + qq) / qq) as log1p(1 / qq)
+template <typename T>
+KERNELSPEC FVal<T> epa_proton_phi(FVal<T> y, FVal<T> qq) {
+    constexpr double a = 7.16, b = -3.96, c = 0.028;
+    FVal<T> q1 = 1. + qq;
+    FVal<T> i1 = 1. / q1, i2 = i1 * i1, i3 = i2 * i1;
+    FVal<T> f = (1. + a * y) * (-log1p(1. / qq) + i1 + 0.5 * i2 + i3 / 3.);
+    f = f + (1. - b) * y / (4. * qq) * i3;
+    return f +
+        c * (1. + 0.25 * y) *
+        (log1p(-b * i1) + b * i1 + 0.5 * b * b * i2 + b * b * b * i3 / 3.);
+}
+
+template <typename T>
+KERNELSPEC void
+kernel_elastic_photon_density(FIn<T, 0> x, FIn<T, 0> q, FOut<T, 0> pdf) {
+    // alpha, the proton mass and the scale of the dipole form factor of
+    // epa_proton of PhotonFlux.f
+    constexpr double alpha = 0.0072992701, mass = 0.938, q0 = 0.71;
+    FVal<T> xv = x, qv = q;
+    auto below = xv < 1.;
+    FVal<T> omx = where(below, 1. - xv, FVal<T>(1.));
+    FVal<T> y = xv * xv / omx;
+    FVal<T> q2_min = mass * mass * y, q2_max = qv * qv;
+    FVal<T> f = alpha / PI * omx *
+        (epa_proton_phi<T>(y, q2_max / q0) - epa_proton_phi<T>(y, q2_min / q0));
+    pdf = where(below & (q2_min < q2_max), max(f, FVal<T>(0.)), FVal<T>(0.));
+}
+
 } // namespace kernels
 } // namespace madspace

@@ -79,6 +79,8 @@ SETUPS = {
     # others in the G_mu scheme
     "gu_ua_mix": ("gu_ua_mix", {}),
     "pp_aa_tagged": ("pp_aa_tagged", {}),
+    # elastic photons from protons (epa_proton of PhotonFlux.f)
+    "aa_ttx": ("aa_ttx", {}),
     # the scale variations of the reweighting of MadFKS
     "pp_epem_rw": ("pp_epem", dict(mfir.PROCESSES["pp_epem"][1], reweight_scale=True)),
 }
@@ -117,6 +119,7 @@ OUTPUTS = {
         dict(mfir.HADRONIC, ptgmin=20),
         "loop_qcd_qed_sm_Gmu-a0",
     ),
+    "aa_ttx": ("a a > t t~ [QCD]", dict(mfir.HADRONIC, lpp1=2, lpp2=2), None),
 }
 # the outputs in the complex-mass scheme: the EW corrections of a process
 # with an s-channel Z are gauge invariant only there, as MadGraph warns

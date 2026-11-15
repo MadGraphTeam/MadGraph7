@@ -460,11 +460,11 @@ DRESSED_ALPHA_S = 0.118
 
 def beam_kind(run_card):
     """What the beams of the run card are: "hadrons" (protons and
-    antiprotons, lpp 1 and -1), "dressed" (electrons and positrons with the
-    densities of pdlabel, lpp 3 and -3) or "leptons" (without densities, lpp
-    0)."""
+    antiprotons, lpp 1 and -1), "photons" (the elastic photons of protons, lpp
+    2 and -2), "dressed" (electrons and positrons with the densities of
+    pdlabel, lpp 3 and -3) or "leptons" (without densities, lpp 0)."""
     beam = abs(integer(run_card["lpp1"]))
-    return {1: "hadrons", 3: "dressed"}.get(beam, "leptons")
+    return {1: "hadrons", 2: "photons", 3: "dressed"}.get(beam, "leptons")
 
 
 def check_run_card(run_card):
@@ -472,13 +472,19 @@ def check_run_card(run_card):
     cover."""
     if integer(run_card.get("ickkw", 0)) != 0:
         raise NotImplementedError("nlo.core: no FxFx merging (ickkw)")
+    from madgraph.various.banner import is_upc_label
+
     beams = (integer(run_card["lpp1"]), integer(run_card["lpp2"]))
     hadrons = [abs(beam) == 1 for beam in beams]
+    photons = [abs(beam) == 2 for beam in beams]
     dressed = [beam in DRESSED_LEPTONS for beam in beams]
-    if not (beams == (0, 0) or all(hadrons) or all(dressed)):
+    if not (beams == (0, 0) or all(hadrons) or all(photons) or all(dressed)):
         raise NotImplementedError(f"nlo.core: beams {beams}")
-    if all(dressed) and str(run_card["pdlabel"]).lower().startswith("emela"):
+    pdlabel = str(run_card["pdlabel"]).lower()
+    if all(dressed) and pdlabel.startswith("emela"):
         raise NotImplementedError("nlo.core: no densities of eMELA")
+    if all(photons) and is_upc_label(pdlabel):
+        raise NotImplementedError("nlo.core: no photons of gamma-UPC")
     if integer(run_card.get("pdfscheme", 0)) != 0:
         raise NotImplementedError("nlo.core: only the MSbar PDF scheme")
 
@@ -555,7 +561,9 @@ class Couplings:
     its grid or its table) with the running of alpha_s of pdfwrap.f. Lepton
     beams take alpha_s(m_Z) of the param card, dressed ones that of pdfwrap.f
     of MadFKS (DRESSED_ALPHA_S) and the densities of their leptons (leptons,
-    a DressedLeptons, None for the other beams). With reweight_PDF (only for
+    a DressedLeptons, None for the other beams). Beams of elastic photons
+    take the set of pdlabel and its alpha_s as hadrons do (setrun.f of
+    MadFKS). With reweight_PDF (only for
     an LHAPDF set, as MG5aMC demands) members holds the RunningCoupling,
     the PdfGrid and the prefix of the globals of every member of its set
     (grids.lhapdf_members), pdf_set its name and error type, as
@@ -568,6 +576,8 @@ class Couplings:
         os.makedirs(directory, exist_ok=True)
         output = os.path.dirname(os.path.dirname(os.path.realpath(directory)))
         hadrons = beam_kind(run_card) == "hadrons"
+        # elastic photons take the set of pdlabel for alpha_s, as hadrons do
+        from_set = hadrons or beam_kind(run_card) == "photons"
         self.pdf = None
         self.members, self.pdf_set = [], None
         pdlabel = str(run_card["pdlabel"]).lower()
@@ -576,17 +586,17 @@ class Couplings:
             raise ValueError(
                 "nlo.core: reweight_PDF needs the sets of LHAPDF, as in MG5aMC"
             )
-        if hadrons and pdlabel == "lhapdf":
+        if from_set and pdlabel == "lhapdf":
             lhaid = integer(run_card["lhaid"])
             grid, info = grids.lhapdf_set(lhaid)
             self.pdf = ms.PdfGrid(grid)
             self.alpha_s = ms.AlphaSGrid(info)
             self.asmz = grids.lhapdf_alpha_s_mz(info)
         else:
-            if hadrons and pdlabel not in grids.BUILTIN:
+            if from_set and pdlabel not in grids.BUILTIN:
                 raise NotImplementedError(f"nlo.core: pdlabel {pdlabel}")
             loops = 2
-            if hadrons:
+            if from_set:
                 self.asmz, loops = grids.BUILTIN[pdlabel]
             elif beam_kind(run_card) == "dressed":
                 self.asmz = DRESSED_ALPHA_S
