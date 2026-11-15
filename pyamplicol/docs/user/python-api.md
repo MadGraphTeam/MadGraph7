@@ -1433,6 +1433,23 @@ benchmark with a policy. Double-double and arbitrary-precision levels read the
 artifact's saved Symbolica state under the pyAmpliCol package key, as an
 explicit `arithmetic="double-double"` call does.
 
+## Garbage collector
+
+Every `Runtime` evaluation method (`evaluate`, `evaluate_with_prec`,
+`evaluate_resolved`, `evaluate_resolved_with_prec`, `evaluate_orders`,
+`evaluate_graded`, `evaluate_correlated`, `evaluate_correlated_graded`,
+`evaluate_correlated_many`) pauses Python's cyclic garbage collector while it
+runs and restores the collector's state when it returns (as `timeit` does;
+nested and concurrent calls restore it when the last one returns). A call
+allocates many short-lived containers and creates no reference cycles, so
+reference counting frees all of them when it returns; without the pause the
+collector's young-generation passes would promote them while the call runs, and
+every few calls a full pass would walk every tracked object of the process
+(CPython 3.11: 60-120 ms per pass, up to ~20 % of a repeated binary64 call).
+Values are unchanged. While a call runs, cycles that other threads of the
+process create are collected after it. Set `PYAMPLICOL_GC_PAUSE=0` in the
+environment (read at each call) to leave the collector alone.
+
 ## Profile from Python
 
 ```python

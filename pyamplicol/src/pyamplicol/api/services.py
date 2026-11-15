@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pyamplicol as _pyamplicol
+from pyamplicol import _collector
 from pyamplicol.config import (
     Action,
     BenchmarkConfig,
@@ -777,6 +778,7 @@ class Runtime:
             )
         operation(Path(os.fspath(path)).expanduser().resolve(strict=False))
 
+    @_collector.paused
     def evaluate(
         self,
         momenta: Momenta,
@@ -1125,6 +1127,7 @@ class Runtime:
             raise EvaluationError("runtime backend returned an invalid WarmUpResult")
         return result
 
+    @_collector.paused
     def evaluate_with_prec(
         self,
         momenta: Momenta,
@@ -1164,6 +1167,7 @@ class Runtime:
             kinematics_improvement_binary64=kinematics_improvement_binary64,
         )
 
+    @_collector.paused
     def evaluate_resolved(
         self,
         momenta: Momenta,
@@ -1259,6 +1263,7 @@ class Runtime:
             )
         return result
 
+    @_collector.paused
     def evaluate_resolved_with_prec(
         self,
         momenta: Momenta,
@@ -1300,6 +1305,7 @@ class Runtime:
             color_resolution=color_resolution,
         )
 
+    @_collector.paused
     def evaluate_orders(
         self,
         momenta: Momenta,
@@ -1386,6 +1392,7 @@ class Runtime:
             )
         return result
 
+    @_collector.paused
     def evaluate_graded(
         self,
         momenta: Momenta,
@@ -1558,6 +1565,7 @@ class Runtime:
             return
         self._correlator_evaluator().set_spin_correlation_vectors(vectors)
 
+    @_collector.paused
     def evaluate_correlated(
         self,
         momenta: Momenta,
@@ -1670,6 +1678,7 @@ class Runtime:
         )
         return improved
 
+    @_collector.paused
     def evaluate_correlated_graded(
         self,
         momenta: Momenta,
@@ -1704,6 +1713,7 @@ class Runtime:
             arithmetic=carrier,
         )
 
+    @_collector.paused
     def evaluate_correlated_many(
         self,
         momenta: Momenta,

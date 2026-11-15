@@ -1661,7 +1661,6 @@ class V2VirtualRuntime:
         model_payload = _json_payload(manifest, "model/compiled-model.json")
         self._lock = RLock()
         self._native = native
-        self._model_payload = model_payload
         self._plan_sha256 = str(admission["plan_sha256"])
         self._scaleless_plan_sha256 = admission["scaleless_plan_sha256"]
         self._group_member = group_member
@@ -1677,6 +1676,9 @@ class V2VirtualRuntime:
             for record in compiled.ir.parameters
             if record.nature == "external"
         }
+        # The compiled model's payload is read here only: not kept (~60 k
+        # tracked objects that every full pass of the cyclic collector walks).
+        del compiled, model_payload
         if execution["point_inputs"] != LOOP_V2_NATIVE_POINT_INPUTS:
             # The native admission refuses every other declaration first.
             raise ArtifactError(
