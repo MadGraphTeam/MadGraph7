@@ -44,9 +44,14 @@ of pdlabel among the lep_densities of the output, with their momentum
 fractions sampled as generate_x_ee of genps_fks.f and the leptonic Born at
 the energy they leave.
 
-Not covered yet: the resonance-local recoil of a final-state emitter inside
-a resonance of the Born, PDF schemes other than MSbar, densities of eMELA,
-photon beams, user scales, FxFx and the photon cuts.
+A final-state emitter inside a resonance of the Born radiates with the
+resonance-local recoil, as MadFKS installs it (fks_resonances): the
+channel mappings take the resonances of their Born configuration, and the
+splitting kernels and the subtraction the momentum of the resonance of each
+event, zero where it has none.
+
+Not covered yet: PDF schemes other than MSbar, densities of eMELA, photon
+beams, user scales, FxFx and the photon cuts.
 """
 
 import argparse
@@ -134,14 +139,14 @@ class SubprocessIntegrand:
             **{key: real(run_card[key]) for key in ("ptj", "ptl", "mll", "mll_sf")},
             maxjetflavor=integer(run_card["maxjetflavor"]),
         )
-        self.channel_mappings = []
+        # the resonances of the resonance-local recoil of each channel, as
+        # MadFKS installs them for its Born configuration
+        self.channel_mappings, self.resonances = [], []
         for channel in self.provider.channels():
             topology = born_topology(masses, self.incoming, channel)
-            resonances = fks_resonances(topology, self.configurations, minimal)
-            if any(members for entry in resonances for members in entry):
-                raise NotImplementedError(
-                    f"nlo.fks: {self.name} has a resonance-local recoil"
-                )
+            self.resonances.append(
+                fks_resonances(topology, self.configurations, minimal)
+            )
             self.channel_mappings.append(
                 ms.PhaseSpaceMapping(
                     topology,
@@ -152,12 +157,18 @@ class SubprocessIntegrand:
                 )
             )
         born = self.channel_mappings[0]
+        self.resonance = any(
+            members
+            for channel in self.resonances
+            for entry in channel
+            for members in entry
+        )
         self.alpha = 1 / float(param_card["sminputs"]["1"])
         scales = scale_parameters(run_card)
         scale = nlo_scale(len(born_pdgs) + 1, self.incoming, **scales)
         self.born_scale = Runtime(scale.with_particle_count(len(born_pdgs)), context)
         self.kernels = Runtime(
-            fks_splitting_kernels(born, self.configurations), context
+            fks_splitting_kernels(born, self.configurations, self.resonance), context
         )
         cuts = run_cuts(run_card)
         self.pass_cuts = Runtime(fks_cuts(born, self.configurations, **cuts), context)
@@ -173,6 +184,7 @@ class SubprocessIntegrand:
                 beams=self.beams,
                 sum_flavors=True,
                 lepton_luminosity=None if self.leptons is None else self.leptons.full,
+                resonance=self.resonance,
                 n_f=n_f,
             ),
             context,
@@ -191,9 +203,13 @@ class SubprocessIntegrand:
             )
         mappings = [
             fks_configuration_mapping(
-                b, self.configurations, cuts=self.cuts, luminosity=luminosity
+                b,
+                self.configurations,
+                cuts=self.cuts,
+                luminosity=luminosity,
+                resonances=resonances,
             )
-            for b in self.channel_mappings
+            for b, resonances in zip(self.channel_mappings, self.resonances)
         ]
         self.kinematics = [
             Runtime(ms.FKSKinematics(mapping), context) for mapping in mappings
@@ -252,10 +268,15 @@ class SubprocessIntegrand:
         FKSCrossSection by name, the virtual and the Born of the points with
         the virtual."""
         out = self.kinematics[channel](x, fks_index=fks_index)
+        if self.resonance and "resonance_momentum" not in out:
+            # a channel without resonances
+            out["resonance_momentum"] = np.zeros((len(fks_index), 4))
+        resonance = [out["resonance_momentum"]] if self.resonance else []
         kernels = self.kernels(
             out["collinear_momenta"],
             out["p_i_hat"],
             out["born_momenta"],
+            *resonance,
             fks_index=fks_index,
         )
         ren_scale = self.born_scale(out["born_momenta"])["ren_scale"]

@@ -64,6 +64,8 @@ SETUPS = {
     ),
     "epem_ttx_isr": ("epem_ttx", DRESSED),
     "epem_ttx_ilc": ("epem_ttx", dict(DRESSED, pdlabel="ilc500ll")),
+    # the resonance-local recoil of the u u~ of a Z
+    "epem_epemuux": ("epem_epemuux", {}),
 }
 # outputs of the cross sections alone, without an integrand reference: name
 # -> (process, run_card values, model). p p > e+ e- j has a jet that radiates
@@ -77,10 +79,20 @@ OUTPUTS = {
     ),
     "t_bw_mb0": ("t > b w+ QED=1 [QCD]", {}, "loop_sm-no_b_mass"),
     "epem_ttx": ("e+ e- > t t~ [QCD]", dict(ebeam1=250, ebeam2=250), None),
+    "epem_epemuux": (
+        "e+ e- > e+ e- u u~ [QCD]",
+        dict(ptj=20, ptl=20, mll_sf=30),
+        None,
+    ),
 }
 # the relative accuracy of the runs (req_acc_FO), per setup where it differs
 ACCURACY = 2e-4
-ACCURACIES = {"pp_ttx": 1e-3, "epem_jjj": 1e-3, "pp_epemj": 2e-3}
+ACCURACIES = {
+    "pp_ttx": 1e-3,
+    "epem_jjj": 1e-3,
+    "pp_epemj": 2e-3,
+    "epem_epemuux": 1e-3,
+}
 # the values of every run, the defaults of the run_card where a setup of
 # the same output changes them
 RUN_CARD = {
