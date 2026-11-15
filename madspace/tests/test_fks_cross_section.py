@@ -43,6 +43,10 @@ TO_ACCURACY = os.environ.get("MADSPACE_FKS_ACCURACY") == "reference"
 SLOW = os.environ.get("MADSPACE_FKS_SLOW") == "1"
 # the references that run only with MADSPACE_FKS_SLOW=1
 SLOW_REFERENCES = {"pp_epemj"}
+# the references whose runs take a multiple of POINTS. The LO of p p > a a
+# has rare large weights, with which a subprocess came out 4.2 standard
+# deviations low in the scalar mode otherwise.
+LONGER_RUNS = {"pp_aa": 4}
 PULL = 4.0
 DATA = sorted(
     glob.glob(
@@ -70,11 +74,12 @@ def fks_run(path):
         pytest.skip(f"{name} runs only with MADSPACE_FKS_SLOW=1")
     points = {}
     if not TO_ACCURACY:
+        count = LONGER_RUNS.get(name, 1) * POINTS
         points = {
             "accuracy": 0.0,
-            "grid_points": POINTS,
+            "grid_points": count,
             "grid_iterations": 4,
-            "points": POINTS,
+            "points": count,
             "max_iterations": 6,
         }
     run = FKSRun(
