@@ -72,6 +72,9 @@ inline void masked_store(TensorView<T, 0> view, bool, T value) {
     view = value;
 }
 
+// the value rounded to single precision, as a cast to float and back
+inline double round_to_float32(double arg) { return static_cast<float>(arg); }
+
 using std::acos;
 using std::asinh;
 using std::atan;

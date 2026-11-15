@@ -242,6 +242,9 @@ inline FVec erf(FVec arg1) { return Sleef_erfd8_u10avx512f(arg1); }
 inline FVec fma(FVec arg1, FVec arg2, FVec arg3) {
     return _mm512_fmadd_pd(arg1, arg2, arg3);
 }
+inline FVec round_to_float32(FVec arg1) {
+    return _mm512_cvtps_pd(_mm512_cvtpd_ps(arg1));
+}
 
 // float32 family: sixteen lanes, with int32 indices and masks of the same width
 

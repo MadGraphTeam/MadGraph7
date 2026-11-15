@@ -23,17 +23,22 @@ template <typename T>
 KERNELSPEC void kernel_nlo_scale(
     FIn<T, 2> p,
     FIn<T, 0> user_reference,
-    FIn<T, 1> options,
-    IIn<T, 0> incoming,
+    FSIn<T, 1> options,
+    ISIn<T, 0> incoming,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2
 ) {
-    int choice = static_cast<int>(FVal<T>(options[0]));
-    bool fixed_ren = FVal<T>(options[1]) != 0., fixed_fac = FVal<T>(options[2]) != 0.;
-    FVal<T> mur_ref_fixed = options[3], muf1_ref_fixed = options[4],
-            muf2_ref_fixed = options[5], mur_over_ref = options[6],
-            muf1_over_ref = options[7], muf2_over_ref = options[8], floor = options[9];
+    int choice = static_cast<int>(single_value(options[0]));
+    bool fixed_ren = single_value(options[1]) != 0.;
+    bool fixed_fac = single_value(options[2]) != 0.;
+    double mur_ref_fixed = single_value(options[3]);
+    double muf1_ref_fixed = single_value(options[4]);
+    double muf2_ref_fixed = single_value(options[5]);
+    double mur_over_ref = single_value(options[6]);
+    double muf1_over_ref = single_value(options[7]);
+    double muf2_over_ref = single_value(options[8]);
+    double floor = single_value(options[9]);
     std::size_t n = p.size();
     FVal<T> reference = 0.;
     if (single_index(incoming) == 1) {
@@ -50,9 +55,8 @@ KERNELSPEC void kernel_nlo_scale(
             FVal<T> e = gamma * q[0] - beta_gamma * q[3];
             FVal<T> pz = gamma * q[3] - beta_gamma * q[0];
             FVal<T> pt = sqrt(q[1] * q[1] + q[2] * q[2]);
-            if (pt > 0.) {
-                reference = reference + e * pt / sqrt(pt * pt + pz * pz);
-            }
+            reference = reference +
+                where(pt > 0., e * pt / sqrt(pt * pt + pz * pz), FVal<T>(0.));
         }
     } else if (choice == 2 || choice == 3 || choice == -1) {
         for (std::size_t i = 2; i < n; ++i) {
@@ -67,10 +71,10 @@ KERNELSPEC void kernel_nlo_scale(
     } else {
         reference = mur_ref_fixed;
     }
-    FVal<T> dynamical = max(floor, reference);
-    ren_scale = mur_over_ref * (fixed_ren ? mur_ref_fixed : dynamical);
-    fact_scale1 = muf1_over_ref * (fixed_fac ? muf1_ref_fixed : dynamical);
-    fact_scale2 = muf2_over_ref * (fixed_fac ? muf2_ref_fixed : dynamical);
+    FVal<T> dynamical = max(FVal<T>(floor), reference);
+    ren_scale = mur_over_ref * (fixed_ren ? FVal<T>(mur_ref_fixed) : dynamical);
+    fact_scale1 = muf1_over_ref * (fixed_fac ? FVal<T>(muf1_ref_fixed) : dynamical);
+    fact_scale2 = muf2_over_ref * (fixed_fac ? FVal<T>(muf2_ref_fixed) : dynamical);
 }
 
 } // namespace kernels

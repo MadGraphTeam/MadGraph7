@@ -4209,7 +4209,6 @@ nlo_cuts:
     - name: mask
       type: [float]
       desc: "1 where the kinematics passes the cuts, else 0"
-  vectorized: False
   desc: "The generation cuts of cuts.f of MadFKS on one kinematics (passcuts_photons, recombine_momenta, passcuts_leptons and passcuts_jets). With ptgmin > 0 the photons (unless gamma_is_j) pass ptgmin and etagamma and are isolated as Frixione from the QCD partons and, with isoem, from the other photons and the charged leptons, at least the given number of them. A photon that is not isolated joins the closest charged lepton (lepphreco) or quark (quarkphreco) within rphreco. The charged leptons that are left pass ptl and etal, each pair of opposite charge drll and mll, and the pairs of the same flavor drll_sf and mll_sf. The QCD partons (quarks up to maxjetflavor and gluons) and the photons that are not isolated (all with gamma_is_j) are clustered with the pp generalized kT algorithm of fastjet (power jetalgo, radius jetradius) into jets with pt >= ptj and |eta| <= etaj, and with ptj > 0 and more of them than the unresolved ones, at most that many may be soft and all but at most that many must make jets, as passcuts_jets with one unresolved parton on the real emission. See @ref NLOCuts."
 
 nlo_scale:
@@ -4236,7 +4235,6 @@ nlo_scale:
     - name: fact_scale2
       type: [float]
       desc: "factorization scale of the second beam"
-  vectorized: False
   desc: "The scales of setscales.f of MadFKS at one kinematics. The reference scale of scale_global_reference (dynamical_scale_choice 1: the sum of the transverse energies of the outgoing particles in the partonic center-of-mass frame, 2: the sum of their transverse masses, 3 or -1: half of it, -2: mur_ref_fixed, 0 or 10: that of the user) is raised to the floor, a fixed scale replaces it, and each scale is multiplied by its factor. For a decay the reference scale is the mass of the decaying particle. See @ref NLOScale."
 
 nlo_jets:
@@ -4263,7 +4261,6 @@ nlo_jets:
     - name: jet_count
       type: [int]
       desc: "number of jets"
-  vectorized: False
   desc: "The QCD partons of one kinematics clustered into jets with the pp generalized kT algorithm of fastjet (power jetalgo, radius jetradius, E scheme), those with pt >= ptj and |eta| <= etaj (etaj <= 0 for none), as the cuts of NLOCuts cluster them. Partons without transverse momentum make no jet. See @ref NLOJets."
 
 nlo_histogram_weights:
@@ -4287,7 +4284,6 @@ nlo_histogram_weights:
     - name: merged
       type: [float, k]
       desc: "the sum of the weights of the bin at its first kinematics, else zero"
-  vectorized: False
   desc: "The weights of the kinematics of one point for a histogram, as HwU_fill and HwU_add_points of HwU.f: the kinematics in one bin add up before the square of the point enters the error. A kinematics with fewer jets than needed or an observable that is not finite does not count. The histogram of the centers with the merged weights has the sums per bin of each point, and their squares. See @ref NLOHistograms."
 
 ---
@@ -4989,7 +4985,6 @@ ew_sudakov:
     - name: sudakov
       type: [float, m]
       desc: "the Sudakov approximation of the EW corrections in each mode"
-  vectorized: False
   desc: "The Sudakov approximation of the EW corrections of ewsudakov_wrapper.f and ewsudakov_functions.f, without the factor f_b / g^k of compute_ewsudakov. With a = alpha / (4 pi), L = a log^2(s / M_W^2), l = a log(s / M_W^2) and for every pair the invariant r of sdk_get_invariants (set to +-M_W^2 below it in size with rij_ge_mw), ell = log(|r| / s) and i pi = -i pi for r > 0, F = 2 l (ell + i pi) + a (ell^2 + 2 ell i pi) and G = 2 a ell log(M_W^2 / M_Z^2), the second terms only with s_to_rij. The coefficients C are the combinations of these with the factors of the tables, and the correction is 2 Re(sum_h C_h diagonal_h + sum_t C_t interference_t) + l sum_h sum_p par_p derivatives_hp + 2 Q sum_h lo2_h with Q = alpha_s / (2 pi) (q_1 log(mu_R^2 / m_t^2) + q_2 log(s / m_t^2))."
 
 ---

@@ -21,39 +21,41 @@ KERNELSPEC void kernel_ew_sudakov(
     FIn<T, 2> interference,
     FIn<T, 0> alpha_s,
     FIn<T, 0> ren_scale,
-    FIn<T, 1> signs,
-    IIn<T, 2> modes,
-    FIn<T, 3> diagonal_coefficients,
-    FIn<T, 3> interference_coefficients,
-    FIn<T, 1> par_coefficients,
-    FIn<T, 1> qcd_coefficients,
-    FIn<T, 1> options,
+    FSIn<T, 1> signs,
+    ISIn<T, 2> modes,
+    FSIn<T, 3> diagonal_coefficients,
+    FSIn<T, 3> interference_coefficients,
+    FSIn<T, 1> par_coefficients,
+    FSIn<T, 1> qcd_coefficients,
+    FSIn<T, 1> options,
     FOut<T, 1> sudakov
 ) {
     constexpr double pi = 3.14159265358979323846;
-    FVal<T> mw2 = options[0], mz2 = options[1], mt2 = options[2], a = options[3];
+    double mw2 = single_value(options[0]), mz2 = single_value(options[1]);
+    double mt2 = single_value(options[2]), a = single_value(options[3]);
     std::size_t n = momenta.size();
     std::size_t pairs = n * (n - 1) / 2;
     std::size_t helicities = diagonal.size(), terms = interference.size();
-    FVal<T> log_wz = log(mw2 / mz2);
+    double log_wz = log(mw2 / mz2);
 
     // the parameter renormalisation per unit l and the LO2 summed over the
     // helicities, the same in every mode
     FVal<T> par = 0., lo2_sum = 0.;
     for (std::size_t h = 0; h < helicities; ++h) {
         for (std::size_t k = 0; k < 6; ++k) {
-            par = par + FVal<T>(par_coefficients[k]) * FVal<T>(derivatives[h][k]);
+            par = par + single_value(par_coefficients[k]) * FVal<T>(derivatives[h][k]);
         }
         lo2_sum = lo2_sum + FVal<T>(lo2[h]);
     }
 
     for (std::size_t m = 0; m < sudakov.size(); ++m) {
-        bool s_to_rij = int(modes[m][0]) != 0, rij_ge_mw = int(modes[m][1]) != 0;
+        bool s_to_rij = single_index(modes[m][0]) != 0;
+        bool rij_ge_mw = single_index(modes[m][1]) != 0;
         // the invariants of the pairs as sdk_get_invariants, (p_i + p_j)^2
         // with -p_j for one incoming
         auto invariant = [&](std::size_t i, std::size_t j) {
             auto p_i = load_mom<T>(momenta[i]), p_j = load_mom<T>(momenta[j]);
-            FVal<T> sign = FVal<T>(signs[i]) * FVal<T>(signs[j]);
+            double sign = single_value(signs[i]) * single_value(signs[j]);
             FourMom<T> q{
                 p_i[0] + sign * p_j[0],
                 p_i[1] + sign * p_j[1],
@@ -62,7 +64,7 @@ KERNELSPEC void kernel_ew_sudakov(
             };
             FVal<T> r = lsquare<T>(q);
             if (rij_ge_mw) {
-                r = where(fabs(r) < mw2, where(r < 0., -mw2, mw2), r);
+                r = where(fabs(r) < mw2, where(r < 0., FVal<T>(-mw2), FVal<T>(mw2)), r);
             }
             return r;
         };
@@ -103,8 +105,8 @@ KERNELSPEC void kernel_ew_sudakov(
         for (std::size_t h = 0; h < helicities; ++h) {
             FVal<T> re = 0.;
             for (std::size_t b = 0; b < size; ++b) {
-                FVal<T> c_re = diagonal_coefficients[m][h][2 * b];
-                FVal<T> c_im = diagonal_coefficients[m][h][2 * b + 1];
+                double c_re = single_value(diagonal_coefficients[m][h][2 * b]);
+                double c_im = single_value(diagonal_coefficients[m][h][2 * b + 1]);
                 re = re + c_re * basis_re[b] - c_im * basis_im[b];
             }
             total = total + 2. * re * FVal<T>(diagonal[h]);
@@ -112,8 +114,8 @@ KERNELSPEC void kernel_ew_sudakov(
         for (std::size_t t = 0; t < terms; ++t) {
             FVal<T> re = 0., im = 0.;
             for (std::size_t b = 0; b < size; ++b) {
-                FVal<T> c_re = interference_coefficients[m][t][2 * b];
-                FVal<T> c_im = interference_coefficients[m][t][2 * b + 1];
+                double c_re = single_value(interference_coefficients[m][t][2 * b]);
+                double c_im = single_value(interference_coefficients[m][t][2 * b + 1]);
                 re = re + c_re * basis_re[b] - c_im * basis_im[b];
                 im = im + c_re * basis_im[b] + c_im * basis_re[b];
             }
@@ -125,8 +127,8 @@ KERNELSPEC void kernel_ew_sudakov(
         // the parameter renormalisation and the QCD part on top of the LO2
         FVal<T> mu_r = ren_scale;
         FVal<T> qcd = FVal<T>(alpha_s) / (2. * pi) *
-            (FVal<T>(qcd_coefficients[0]) * log(mu_r * mu_r / mt2) +
-             FVal<T>(qcd_coefficients[1]) * log(s / mt2));
+            (single_value(qcd_coefficients[0]) * log(mu_r * mu_r / mt2) +
+             single_value(qcd_coefficients[1]) * log(s / mt2));
         sudakov[m] = total + small_l * par + 2. * qcd * lo2_sum;
     }
 }

@@ -9,24 +9,38 @@ namespace kernels {
 // (passcuts_leptons and passcuts_jets of passcuts_user), on the momenta of one
 // kinematics in the lab frame, and the jets of the clustering they share with
 // the histograms. The particles are in the order of the flavor layout of the
-// event.
+// event. The kernels vectorize: what depends on the flavor layout runs once
+// per layout among the lanes, what depends on the momenta selects with where,
+// and the lists of each lane (the pseudojets of the clustering, the particles
+// around a photon) are slots with masks.
 
 // most final-state QCD partons that a kinematics clusters into jets
 // (NLOCuts::jet_parton_max, NLOJets::parton_max)
 constexpr std::size_t NLO_JET_PARTONS_MAX = 16;
+
+// p where mask, else q
+template <typename T>
+KERNELSPEC FourMom<T>
+nlo_where(BVal<T> mask, const FourMom<T>& p, const FourMom<T>& q) {
+    return {
+        where(mask, p[0], q[0]),
+        where(mask, p[1], q[1]),
+        where(mask, p[2], q[2]),
+        where(mask, p[3], q[3])
+    };
+}
 
 // pseudorapidity as eta of kin_functions.f, +-25 within 1e-5 of the beam axis
 template <typename T>
 KERNELSPEC FVal<T> nlo_cut_eta(const FourMom<T>& p) {
     constexpr double pi = 3.14159265358979323846;
     FVal<T> theta = acos(p[3] / sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3]));
-    if (fabs(theta) < 1e-5) {
-        return 25.;
-    }
-    if (fabs(theta - pi) < 1e-5) {
-        return -25.;
-    }
-    return -log(tan(theta / 2.));
+    FVal<T> eta = -log(tan(theta / 2.));
+    return where(
+        fabs(theta) < 1e-5,
+        FVal<T>(25.),
+        where(fabs(theta - pi) < 1e-5, FVal<T>(-25.), eta)
+    );
 }
 
 // Delta phi as DELTA_PHI of kin_functions.f, from the cosine clamped to
@@ -44,14 +58,9 @@ template <typename T>
 KERNELSPEC FVal<T> nlo_jet_eta(const FourMom<T>& p) {
     constexpr double pi = 3.14159265358979323846;
     FVal<T> pt = sqrt(p[1] * p[1] + p[2] * p[2]);
-    if (p[3] == 0.) {
-        return 0.;
-    }
     FVal<T> theta = atan(pt / p[3]);
-    if (theta < 0.) {
-        theta = theta + pi;
-    }
-    return -log(tan(theta / 2.));
+    theta = where(theta < 0., theta + pi, theta);
+    return where(p[3] == 0., FVal<T>(0.), FVal<T>(-log(tan(theta / 2.))));
 }
 
 // The rapidity and azimuth of a parton for the clustering, as PseudoJet of
@@ -61,94 +70,143 @@ KERNELSPEC void nlo_jet_rap_phi(const FourMom<T>& p, FVal<T>& rapidity, FVal<T>&
     constexpr double pi = 3.14159265358979323846;
     rapidity = 0.5 * log((p[0] + p[3]) / (p[0] - p[3]));
     phi = atan2(p[2], p[1]);
-    if (phi < 0.) {
-        phi = phi + 2. * pi;
-    }
+    phi = where(phi < 0., phi + 2. * pi, phi);
 }
 
-// The jets of partons (parton_count of them, at most NLO_JET_PARTONS_MAX) with
-// the pp generalized kT algorithm of fastjet (power jetalgo, radius
-// jetradius, rapidity and azimuth, E scheme), those with pt >= ptj and
-// |eta| <= etaj (etaj <= 0 for none), in jets in the order the clustering
-// finds them, and their number. Partons without transverse momentum make no
-// pseudojet (with ptj > 0 they never make a jet).
+// The jets of partons (count of them, each where member) with the pp
+// generalized kT algorithm of fastjet (power jetalgo, radius jetradius,
+// rapidity and azimuth, E scheme), those with pt >= ptj and |eta| <= etaj
+// (etaj <= 0 for none), in jets in the order the clustering finds them, and
+// their number. Partons without transverse momentum make no pseudojet (with
+// ptj > 0 they never make a jet). The pseudojets of each lane take the first
+// slots, at most NLO_JET_PARTONS_MAX of them, and every step takes the
+// closest distance of the slots in use, makes a jet or merges the pair into
+// the first of the two, and moves the last slot into the one that empties.
 template <typename T>
-KERNELSPEC std::size_t nlo_cluster_jets(
+KERNELSPEC IVal<T> nlo_cluster_jets(
     const FourMom<T>* partons,
-    std::size_t parton_count,
-    FVal<T> jetalgo,
-    FVal<T> jetradius,
-    FVal<T> ptj,
-    FVal<T> etaj,
+    const BVal<T>* member,
+    std::size_t count,
+    double jetalgo,
+    double jetradius,
+    double ptj,
+    double etaj,
     FourMom<T>* jets
 ) {
-    FourMom<T> pseudo[NLO_JET_PARTONS_MAX];
-    FVal<T> kt2[NLO_JET_PARTONS_MAX], rap[NLO_JET_PARTONS_MAX],
-        phi[NLO_JET_PARTONS_MAX];
-    std::size_t active = 0;
-    for (std::size_t i = 0; i < parton_count; ++i) {
-        FVal<T> k2 = partons[i][1] * partons[i][1] + partons[i][2] * partons[i][2];
-        if (!(k2 > 0.)) {
-            continue;
-        }
-        pseudo[active] = partons[i];
-        kt2[active] = k2;
-        nlo_jet_rap_phi<T>(partons[i], rap[active], phi[active]);
-        ++active;
-    }
     constexpr double pi = 3.14159265358979323846;
-    FVal<T> r2_jet = jetradius * jetradius;
-    std::size_t jet_count = 0;
-    while (active > 0) {
+    constexpr std::size_t max_slots = NLO_JET_PARTONS_MAX;
+    std::size_t slots = count < max_slots ? count : max_slots;
+    FourMom<T> zero{0., 0., 0., 0.};
+    FourMom<T> pseudo[max_slots];
+    FVal<T> kt2[max_slots], rap[max_slots], phi[max_slots];
+    for (std::size_t s = 0; s < max_slots; ++s) {
+        pseudo[s] = zero;
+        kt2[s] = 0.;
+        rap[s] = 0.;
+        phi[s] = 0.;
+        jets[s] = zero;
+    }
+    IVal<T> active = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto& q = partons[i];
+        FVal<T> k2 = q[1] * q[1] + q[2] * q[2];
+        BVal<T> keep =
+            member[i] & (k2 > 0.) & (active < IVal<T>(static_cast<int>(slots)));
+        FVal<T> r, f;
+        nlo_jet_rap_phi<T>(q, r, f);
+        // the next free slot, one of the first i + 1
+        for (std::size_t s = 0; s < slots && s <= i; ++s) {
+            BVal<T> here = keep & (active == IVal<T>(static_cast<int>(s)));
+            pseudo[s] = nlo_where<T>(here, q, pseudo[s]);
+            kt2[s] = where(here, k2, kt2[s]);
+            rap[s] = where(here, r, rap[s]);
+            phi[s] = where(here, f, phi[s]);
+        }
+        active = active + where(keep, IVal<T>(1), IVal<T>(0));
+    }
+    double r2_jet = jetradius * jetradius;
+    IVal<T> jet_count = 0;
+    for (std::size_t step = 0; step < slots; ++step) {
+        BVal<T> running = active > IVal<T>(0);
         // the smallest of the beam distances and the pair distances
-        std::size_t best_i = 0, best_j = 0;
-        FVal<T> best = pow(kt2[0], jetalgo);
-        for (std::size_t i = 0; i < active; ++i) {
-            FVal<T> d_ib = pow(kt2[i], jetalgo);
-            if (d_ib < best) {
-                best = d_ib;
-                best_i = i;
-                best_j = i;
-            }
-            for (std::size_t j = i + 1; j < active; ++j) {
+        FVal<T> d_beam[max_slots];
+        for (std::size_t s = 0; s < slots; ++s) {
+            d_beam[s] = pow(kt2[s], jetalgo);
+        }
+        FVal<T> best = d_beam[0];
+        IVal<T> best_i = 0, best_j = 0;
+        for (std::size_t i = 0; i < slots; ++i) {
+            IVal<T> index_i = static_cast<int>(i);
+            BVal<T> better = (index_i < active) & (d_beam[i] < best);
+            best = where(better, d_beam[i], best);
+            best_i = where(better, index_i, best_i);
+            best_j = where(better, index_i, best_j);
+            for (std::size_t j = i + 1; j < slots; ++j) {
+                IVal<T> index_j = static_cast<int>(j);
                 FVal<T> dphi = fabs(phi[i] - phi[j]);
-                if (dphi > pi) {
-                    dphi = 2. * pi - dphi;
-                }
+                dphi = where(dphi > pi, 2. * pi - dphi, dphi);
                 FVal<T> drap = rap[i] - rap[j];
-                FVal<T> d_ij = min(d_ib, pow(kt2[j], jetalgo)) *
-                    (drap * drap + dphi * dphi) / r2_jet;
-                if (d_ij < best) {
-                    best = d_ij;
-                    best_i = i;
-                    best_j = j;
-                }
+                FVal<T> d_ij =
+                    min(d_beam[i], d_beam[j]) * (drap * drap + dphi * dphi) / r2_jet;
+                better = (index_j < active) & (d_ij < best);
+                best = where(better, d_ij, best);
+                best_i = where(better, index_i, best_i);
+                best_j = where(better, index_j, best_j);
             }
         }
-        if (best_i == best_j) {
-            // a jet: pt and |eta| of the selection
-            auto jet = pseudo[best_i];
-            if (kt2[best_i] >= ptj * ptj &&
-                (etaj <= 0. || fabs(nlo_jet_eta<T>(jet)) <= etaj)) {
-                jets[jet_count] = jet;
-                ++jet_count;
-            }
-        } else {
-            // E-scheme recombination of the pair into best_i
-            for (std::size_t k = 0; k < 4; ++k) {
-                pseudo[best_i][k] = pseudo[best_i][k] + pseudo[best_j][k];
-            }
-            kt2[best_i] = pseudo[best_i][1] * pseudo[best_i][1] +
-                pseudo[best_i][2] * pseudo[best_i][2];
-            nlo_jet_rap_phi<T>(pseudo[best_i], rap[best_i], phi[best_i]);
+        FourMom<T> p_i = zero, p_j = zero;
+        FVal<T> kt2_i = 0.;
+        for (std::size_t s = 0; s < slots; ++s) {
+            IVal<T> index = static_cast<int>(s);
+            p_i = nlo_where<T>(best_i == index, pseudo[s], p_i);
+            kt2_i = where(best_i == index, kt2[s], kt2_i);
+            p_j = nlo_where<T>(best_j == index, pseudo[s], p_j);
         }
-        // drop best_j: the jet, or the pseudojet merged into best_i
-        std::size_t drop = best_j;
-        --active;
-        pseudo[drop] = pseudo[active];
-        kt2[drop] = kt2[active];
-        rap[drop] = rap[active];
-        phi[drop] = phi[active];
+        // a jet: pt and |eta| of the selection
+        BVal<T> beam = best_i == best_j;
+        BVal<T> jet = running & beam & (kt2_i >= ptj * ptj);
+        if (etaj > 0.) {
+            jet = jet & (fabs(nlo_jet_eta<T>(p_i)) <= etaj);
+        }
+        for (std::size_t s = 0; s < slots; ++s) {
+            BVal<T> here = jet & (jet_count == IVal<T>(static_cast<int>(s)));
+            jets[s] = nlo_where<T>(here, p_i, jets[s]);
+        }
+        jet_count = jet_count + where(jet, IVal<T>(1), IVal<T>(0));
+        // E-scheme recombination of the pair into best_i
+        BVal<T> merge = running & !beam;
+        FourMom<T> sum{
+            p_i[0] + p_j[0], p_i[1] + p_j[1], p_i[2] + p_j[2], p_i[3] + p_j[3]
+        };
+        FVal<T> kt2_sum = sum[1] * sum[1] + sum[2] * sum[2], rap_sum, phi_sum;
+        nlo_jet_rap_phi<T>(sum, rap_sum, phi_sum);
+        for (std::size_t s = 0; s < slots; ++s) {
+            BVal<T> here = merge & (best_i == IVal<T>(static_cast<int>(s)));
+            pseudo[s] = nlo_where<T>(here, sum, pseudo[s]);
+            kt2[s] = where(here, kt2_sum, kt2[s]);
+            rap[s] = where(here, rap_sum, rap[s]);
+            phi[s] = where(here, phi_sum, phi[s]);
+        }
+        // drop best_j, the jet or the pseudojet merged into best_i: the last
+        // slot in use moves there
+        IVal<T> last = active - IVal<T>(1);
+        FourMom<T> p_last = zero;
+        FVal<T> kt2_last = 0., rap_last = 0., phi_last = 0.;
+        for (std::size_t s = 0; s < slots; ++s) {
+            BVal<T> here = last == IVal<T>(static_cast<int>(s));
+            p_last = nlo_where<T>(here, pseudo[s], p_last);
+            kt2_last = where(here, kt2[s], kt2_last);
+            rap_last = where(here, rap[s], rap_last);
+            phi_last = where(here, phi[s], phi_last);
+        }
+        for (std::size_t s = 0; s < slots; ++s) {
+            BVal<T> here = running & (best_j == IVal<T>(static_cast<int>(s)));
+            pseudo[s] = nlo_where<T>(here, p_last, pseudo[s]);
+            kt2[s] = where(here, kt2_last, kt2[s]);
+            rap[s] = where(here, rap_last, rap[s]);
+            phi[s] = where(here, phi_last, phi[s]);
+        }
+        active = active - where(running, IVal<T>(1), IVal<T>(0));
     }
     return jet_count;
 }
@@ -161,10 +219,12 @@ constexpr std::size_t NLO_CUT_PARTICLES_MAX = 32;
 template <typename T>
 KERNELSPEC FVal<T> nlo_iso_eta(const FourMom<T>& p) {
     FVal<T> pt = sqrt(p[1] * p[1] + p[2] * p[2]);
-    if (pt < 1e-5 && fabs(p[3]) < 1e-5) {
-        return p[3] < 0. ? FVal<T>(-1e8) : FVal<T>(1e8);
-    }
-    return -log(tan(atan2(pt, p[3]) / 2.));
+    FVal<T> eta = -log(tan(atan2(pt, p[3]) / 2.));
+    return where(
+        (pt < 1e-5) & (fabs(p[3]) < 1e-5),
+        where(p[3] < 0., FVal<T>(-1e8), FVal<T>(1e8)),
+        eta
+    );
 }
 
 // Delta phi as iso_getdelphi of cuts.f, 1e8 where a transverse momentum
@@ -173,11 +233,12 @@ template <typename T>
 KERNELSPEC FVal<T> nlo_iso_delta_phi(const FourMom<T>& p1, const FourMom<T>& p2) {
     FVal<T> pt1 = sqrt(p1[1] * p1[1] + p1[2] * p1[2]);
     FVal<T> pt2 = sqrt(p2[1] * p2[1] + p2[2] * p2[2]);
-    if (pt1 == 0. || pt2 == 0.) {
-        return 1e8;
-    }
     FVal<T> cosine = (p1[1] * p2[1] + p1[2] * p2[2]) / (pt1 * pt2);
-    return acos(min(max(cosine, FVal<T>(-1.)), FVal<T>(1.)));
+    return where(
+        (pt1 == 0.) | (pt2 == 0.),
+        FVal<T>(1e8),
+        acos(min(max(cosine, FVal<T>(-1.)), FVal<T>(1.)))
+    );
 }
 
 // Delta R of the photon isolation (iso_getdrv40 of cuts.f), rounded to single
@@ -186,58 +247,62 @@ template <typename T>
 KERNELSPEC FVal<T> nlo_iso_dr(const FourMom<T>& p1, const FourMom<T>& p2) {
     FVal<T> deta = nlo_iso_eta<T>(p1) - nlo_iso_eta<T>(p2);
     FVal<T> dphi = nlo_iso_delta_phi<T>(p1, p2);
-    return static_cast<double>(static_cast<float>(sqrt(dphi * dphi + deta * deta)));
+    return round_to_float32(sqrt(dphi * dphi + deta * deta));
 }
 
 // Whether a photon of transverse momentum ptg passes the isolation of
 // Frixione (hep-ph/9801442, eq. 3.4, chi_gamma_iso of cuts.f) against the
 // particles others (count of them, skip the photon itself): for every
 // distance dr <= r0 the summed transverse momenta within dr stay at or below
-// epsgamma ptg ((1 - cos dr) / (1 - cos r0))^|xn|.
+// epsgamma ptg ((1 - cos dr) / (1 - cos r0))^|xn|. The particles go by
+// ascending distance, those beyond r0 last, in a stable sort as the insertion
+// of cuts.f.
 template <typename T>
-KERNELSPEC bool nlo_photon_isolated(
+KERNELSPEC BVal<T> nlo_photon_isolated(
     const FourMom<T>& photon,
     const FourMom<T>* others,
     std::size_t count,
     std::size_t skip,
     FVal<T> ptg,
-    FVal<T> r0,
-    FVal<T> xn,
-    FVal<T> epsgamma
+    double r0,
+    double xn,
+    double epsgamma
 ) {
     FVal<T> dr[NLO_CUT_PARTICLES_MAX], pt[NLO_CUT_PARTICLES_MAX];
-    std::size_t inside = 0;
+    std::size_t size = 0;
     for (std::size_t i = 0; i < count; ++i) {
         if (i == skip) {
             continue;
         }
         FVal<T> d = nlo_iso_dr<T>(photon, others[i]);
-        if (!(d <= r0)) {
-            continue;
-        }
-        // insertion by ascending distance
-        std::size_t k = inside++;
-        while (k > 0 && dr[k - 1] > d) {
-            dr[k] = dr[k - 1];
-            pt[k] = pt[k - 1];
-            --k;
-        }
-        dr[k] = d;
-        pt[k] = sqrt(others[i][1] * others[i][1] + others[i][2] * others[i][2]);
+        dr[size] = where(d <= r0, d, FVal<T>(1e300));
+        pt[size] = sqrt(others[i][1] * others[i][1] + others[i][2] * others[i][2]);
+        ++size;
     }
+    for (std::size_t end = size; end > 1; --end) {
+        for (std::size_t k = 0; k + 1 < end; ++k) {
+            BVal<T> swap = dr[k] > dr[k + 1];
+            FVal<T> dr_k = dr[k], pt_k = pt[k];
+            dr[k] = where(swap, dr[k + 1], dr_k);
+            dr[k + 1] = where(swap, dr_k, dr[k + 1]);
+            pt[k] = where(swap, pt[k + 1], pt_k);
+            pt[k + 1] = where(swap, pt_k, pt[k + 1]);
+        }
+    }
+    BVal<T> isolated = true;
     FVal<T> sum = 0.;
-    FVal<T> axn = fabs(xn);
-    for (std::size_t k = 0; k < inside; ++k) {
-        sum = sum + pt[k];
+    double axn = fabs(xn), norm = 1. - cos(r0);
+    for (std::size_t k = 0; k < size; ++k) {
+        BVal<T> inside = dr[k] <= r0;
+        sum = sum + where(inside, pt[k], FVal<T>(0.));
         FVal<T> chi = epsgamma * ptg;
         if (axn != 0.) {
-            chi = chi * pow((1. - cos(dr[k])) / (1. - cos(r0)), axn);
+            FVal<T> d = where(inside, dr[k], FVal<T>(0.));
+            chi = chi * pow((1. - cos(d)) / norm, axn);
         }
-        if (sum > chi) {
-            return false;
-        }
+        isolated = isolated & !(inside & (sum > chi));
     }
-    return true;
+    return isolated;
 }
 
 template <typename T>
@@ -277,129 +342,145 @@ template <typename T>
 KERNELSPEC void kernel_nlo_cuts(
     FIn<T, 2> p,
     IIn<T, 0> index,
-    IIn<T, 2> pdg,
-    IIn<T, 1> photons,
-    FIn<T, 1> options,
-    IIn<T, 0> incoming,
+    ISIn<T, 2> pdg,
+    ISIn<T, 1> photons,
+    FSIn<T, 1> options,
+    ISIn<T, 0> incoming,
     FOut<T, 0> mask
 ) {
-    std::size_t c = single_index(index);
     std::size_t n_in = single_index(incoming);
-    auto pdgs = pdg[c];
-    FVal<T> jetalgo = options[0], jetradius = options[1], ptj = options[2],
-            etaj = options[3], ptl = options[5], etal = options[6], drll = options[7],
-            drll_sf = options[8], mll = options[9], mll_sf = options[10];
-    int maxjetflavor = static_cast<int>(FVal<T>(options[4]));
-    auto unresolved = static_cast<std::size_t>(FVal<T>(options[11]));
-    FVal<T> ptgmin = options[12], etagamma = options[13], r0gamma = options[14],
-            xn = options[15], epsgamma = options[16];
-    bool isoem = FVal<T>(options[17]) != 0., gamma_is_j = FVal<T>(options[18]) != 0.;
-    FVal<T> rphreco = options[19], etaphreco = options[20];
-    bool lepphreco = FVal<T>(options[21]) != 0.,
-         quarkphreco = FVal<T>(options[22]) != 0.;
+    double jetalgo = single_value(options[0]), jetradius = single_value(options[1]);
+    double ptj = single_value(options[2]), etaj = single_value(options[3]);
+    double ptl = single_value(options[5]), etal = single_value(options[6]);
+    double drll = single_value(options[7]), drll_sf = single_value(options[8]);
+    double mll = single_value(options[9]), mll_sf = single_value(options[10]);
+    int maxjetflavor = static_cast<int>(single_value(options[4]));
+    auto unresolved = static_cast<std::size_t>(single_value(options[11]));
+    double ptgmin = single_value(options[12]), etagamma = single_value(options[13]);
+    double r0gamma = single_value(options[14]), xn = single_value(options[15]);
+    double epsgamma = single_value(options[16]);
+    bool isoem = single_value(options[17]) != 0.;
+    bool gamma_is_j = single_value(options[18]) != 0.;
+    double rphreco = single_value(options[19]), etaphreco = single_value(options[20]);
+    bool lepphreco = single_value(options[21]) != 0.;
+    bool quarkphreco = single_value(options[22]) != 0.;
     std::size_t n = p.size();
-    mask = 0.;
-    FVal<T> e1 = p[0][0];
-    if (!(e1 > 0.) || n > NLO_CUT_PARTICLES_MAX) {
+    if (n > NLO_CUT_PARTICLES_MAX) {
+        mask = 0.;
         return;
     }
-    FourMom<T> mom[NLO_CUT_PARTICLES_MAX];
-    int ids[NLO_CUT_PARTICLES_MAX];
-    bool iso[NLO_CUT_PARTICLES_MAX];
+    // a positive first incoming energy and finite momenta
+    FVal<T> e1 = p[0][0];
+    BVal<T> valid = e1 > 0.;
+    FourMom<T> momenta[NLO_CUT_PARTICLES_MAX];
     for (std::size_t i = 0; i < n; ++i) {
         for (std::size_t k = 0; k < 4; ++k) {
-            FVal<T> v = p[i][k];
-            if (!(fabs(v) <= 1e32)) {
-                return;
-            }
+            valid = valid & (fabs(FVal<T>(p[i][k])) <= 1e32);
         }
-        mom[i] = load_mom<T>(p[i]);
-        ids[i] = single_index(pdgs[i]);
-        iso[i] = false;
+        momenta[i] = load_mom<T>(p[i]);
     }
+    FourMom<T> zero{0., 0., 0., 0.};
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        auto pdgs = pdg[c];
+        // the lanes that pass the cuts so far
+        BVal<T> pass = valid;
+        FourMom<T> mom[NLO_CUT_PARTICLES_MAX];
+        int ids[NLO_CUT_PARTICLES_MAX];
+        // isolated photons, and photons recombined with a fermion
+        BVal<T> iso[NLO_CUT_PARTICLES_MAX], gone[NLO_CUT_PARTICLES_MAX];
+        for (std::size_t i = 0; i < n; ++i) {
+            mom[i] = momenta[i];
+            ids[i] = single_index(pdgs[i]);
+            iso[i] = false;
+            gone[i] = false;
+        }
 
-    // photons, isolated from the bare QCD partons and the electromagnetic
-    // particles
-    if (ptgmin != 0.) {
-        FourMom<T> partons[NLO_CUT_PARTICLES_MAX], em[NLO_CUT_PARTICLES_MAX];
-        std::size_t parton_count = 0, photon_count = 0, em_count = 0;
-        std::size_t em_of[NLO_CUT_PARTICLES_MAX];
-        for (std::size_t i = n_in; i < n; ++i) {
-            int flavor = ids[i] < 0 ? -ids[i] : ids[i];
-            if ((flavor >= 1 && flavor <= maxjetflavor) || flavor == 21) {
-                partons[parton_count++] = mom[i];
-            }
-            if (ids[i] == 22 && !gamma_is_j) {
-                em_of[i] = em_count;
-                em[em_count++] = mom[i];
-                ++photon_count;
-            }
-        }
-        for (std::size_t i = n_in; i < n && isoem; ++i) {
-            if (nlo_is_lepton<T>(ids[i])) {
-                em[em_count++] = mom[i];
-            }
-        }
-        if (photon_count > 0) {
-            std::size_t isolated = 0;
+        // photons, isolated from the bare QCD partons and the electromagnetic
+        // particles
+        if (ptgmin != 0.) {
+            FourMom<T> partons[NLO_CUT_PARTICLES_MAX], em[NLO_CUT_PARTICLES_MAX];
+            std::size_t parton_count = 0, photon_count = 0, em_count = 0;
+            std::size_t em_of[NLO_CUT_PARTICLES_MAX];
             for (std::size_t i = n_in; i < n; ++i) {
-                if (ids[i] != 22 || gamma_is_j) {
+                int flavor = ids[i] < 0 ? -ids[i] : ids[i];
+                if ((flavor >= 1 && flavor <= maxjetflavor) || flavor == 21) {
+                    partons[parton_count++] = mom[i];
+                }
+                if (ids[i] == 22 && !gamma_is_j) {
+                    em_of[i] = em_count;
+                    em[em_count++] = mom[i];
+                    ++photon_count;
+                }
+            }
+            for (std::size_t i = n_in; i < n && isoem; ++i) {
+                if (nlo_is_lepton<T>(ids[i])) {
+                    em[em_count++] = mom[i];
+                }
+            }
+            if (photon_count > 0) {
+                IVal<T> isolated = 0;
+                for (std::size_t i = n_in; i < n; ++i) {
+                    if (ids[i] != 22 || gamma_is_j) {
+                        continue;
+                    }
+                    const auto& g = mom[i];
+                    FVal<T> ptg = sqrt(g[1] * g[1] + g[2] * g[2]);
+                    BVal<T> ok = !(ptg < ptgmin);
+                    if (etagamma > 0.) {
+                        ok = ok & !(fabs(nlo_cut_eta<T>(g)) > etagamma);
+                    }
+                    ok =
+                        ok &
+                        nlo_photon_isolated<T>(
+                            g,
+                            partons,
+                            parton_count,
+                            parton_count,
+                            ptg,
+                            r0gamma,
+                            xn,
+                            epsgamma
+                        );
+                    if (isoem && em_count > 1) {
+                        ok = ok &
+                            nlo_photon_isolated<T>(
+                                 g, em, em_count, em_of[i], ptg, r0gamma, xn, epsgamma
+                            );
+                    }
+                    iso[i] = ok;
+                    isolated = isolated + where(ok, IVal<T>(1), IVal<T>(0));
+                }
+                int needed = static_cast<int>(single_index(photons[c]));
+                int required = needed < 0 ? static_cast<int>(photon_count) : needed;
+                pass = pass & !(isolated < IVal<T>(required));
+            }
+        }
+
+        // recombination of a photon that is not isolated with the closest
+        // light charged fermion
+        if (lepphreco || quarkphreco) {
+            IVal<T> photon = static_cast<int>(n), candidates = 0;
+            for (std::size_t i = n_in; i < n; ++i) {
+                if (ids[i] != 22) {
                     continue;
                 }
                 const auto& g = mom[i];
-                FVal<T> ptg = sqrt(g[1] * g[1] + g[2] * g[2]);
-                if (ptg < ptgmin) {
-                    continue;
+                BVal<T> candidate = (sqrt(g[1] * g[1] + g[2] * g[2]) != 0.) & !iso[i];
+                if (etaphreco >= 0.) {
+                    candidate = candidate & (fabs(nlo_cut_eta<T>(g)) < etaphreco);
                 }
-                if (etagamma > 0. && fabs(nlo_cut_eta<T>(g)) > etagamma) {
-                    continue;
-                }
-                if (!nlo_photon_isolated<T>(
-                        g,
-                        partons,
-                        parton_count,
-                        parton_count,
-                        ptg,
-                        r0gamma,
-                        xn,
-                        epsgamma
-                    )) {
-                    continue;
-                }
-                if (isoem && em_count > 1 &&
-                    !nlo_photon_isolated<T>(
-                        g, em, em_count, em_of[i], ptg, r0gamma, xn, epsgamma
-                    )) {
-                    continue;
-                }
-                iso[i] = true;
-                ++isolated;
+                photon = where(candidate, IVal<T>(static_cast<int>(i)), photon);
+                candidates = candidates + where(candidate, IVal<T>(1), IVal<T>(0));
             }
-            int needed = static_cast<int>(single_index(photons[c]));
-            std::size_t required = needed < 0 ? photon_count : needed;
-            if (isolated < required) {
-                return;
+            pass = pass & !(candidates > IVal<T>(1));
+            FourMom<T> g = zero;
+            for (std::size_t i = n_in; i < n; ++i) {
+                if (ids[i] == 22) {
+                    g = nlo_where<T>(photon == IVal<T>(static_cast<int>(i)), mom[i], g);
+                }
             }
-        }
-    }
-
-    // recombination of a photon that is not isolated with the closest light
-    // charged fermion
-    if (lepphreco || quarkphreco) {
-        std::size_t photon = n, candidates = 0;
-        for (std::size_t i = n_in; i < n; ++i) {
-            const auto& g = mom[i];
-            if (ids[i] == 22 && sqrt(g[1] * g[1] + g[2] * g[2]) != 0. && !iso[i] &&
-                (etaphreco < 0. || fabs(nlo_cut_eta<T>(g)) < etaphreco)) {
-                photon = i;
-                ++candidates;
-            }
-        }
-        if (candidates > 1) {
-            return;
-        }
-        if (candidates == 1) {
-            std::size_t closest = n;
+            FVal<T> eta_g = nlo_cut_eta<T>(g);
+            IVal<T> closest = static_cast<int>(n);
             FVal<T> distance = rphreco;
             for (std::size_t i = n_in; i < n; ++i) {
                 int flavor = ids[i] < 0 ? -ids[i] : ids[i];
@@ -408,105 +489,121 @@ KERNELSPEC void kernel_nlo_cuts(
                 if (!fermion) {
                     continue;
                 }
-                FVal<T> deta = nlo_cut_eta<T>(mom[photon]) - nlo_cut_eta<T>(mom[i]);
-                FVal<T> dphi = nlo_cut_delta_phi<T>(mom[photon], mom[i]);
+                FVal<T> deta = eta_g - nlo_cut_eta<T>(mom[i]);
+                FVal<T> dphi = nlo_cut_delta_phi<T>(g, mom[i]);
                 FVal<T> d = sqrt(dphi * dphi + deta * deta);
-                if (d <= distance) {
-                    distance = d;
-                    closest = i;
-                }
+                BVal<T> closer = d <= distance;
+                distance = where(closer, d, distance);
+                closest = where(closer, IVal<T>(static_cast<int>(i)), closest);
             }
-            if (closest < n) {
-                for (std::size_t k = 0; k < 4; ++k) {
-                    mom[closest][k] = mom[closest][k] + mom[photon][k];
+            BVal<T> recombine =
+                (candidates == IVal<T>(1)) & (closest < IVal<T>(static_cast<int>(n)));
+            for (std::size_t i = n_in; i < n; ++i) {
+                IVal<T> index_i = static_cast<int>(i);
+                FourMom<T> sum{
+                    mom[i][0] + g[0],
+                    mom[i][1] + g[1],
+                    mom[i][2] + g[2],
+                    mom[i][3] + g[3]
+                };
+                mom[i] = nlo_where<T>(recombine & (closest == index_i), sum, mom[i]);
+                if (ids[i] == 22) {
+                    gone[i] = recombine & (photon == index_i);
                 }
-                ids[photon] = 0;
             }
         }
-    }
 
-    // charged leptons
-    for (std::size_t i = n_in; i < n; ++i) {
-        int pdg_i = ids[i];
-        if (!nlo_is_lepton<T>(pdg_i)) {
-            continue;
-        }
-        const auto& p_i = mom[i];
-        FVal<T> pt_i = sqrt(p_i[1] * p_i[1] + p_i[2] * p_i[2]);
-        if (ptl > 0. && pt_i < ptl) {
-            return;
-        }
-        if (etal > 0. && fabs(nlo_cut_eta<T>(p_i)) > etal) {
-            return;
-        }
-        if (pdg_i > 0) {
-            continue;
-        }
-        // a positive lepton with each negative one
-        for (std::size_t j = n_in; j < n; ++j) {
-            int pdg_j = ids[j];
-            if (pdg_j != 11 && pdg_j != 13 && pdg_j != 15) {
-                continue;
-            }
-            const auto& p_j = mom[j];
-            FVal<T> deta = nlo_cut_eta<T>(p_i) - nlo_cut_eta<T>(p_j);
-            FVal<T> dphi = nlo_cut_delta_phi<T>(p_i, p_j);
-            FVal<T> r2 = dphi * dphi + deta * deta;
-            FourMom<T> pair{
-                p_i[0] + p_j[0], p_i[1] + p_j[1], p_i[2] + p_j[2], p_i[3] + p_j[3]
-            };
-            FVal<T> m2 = lsquare<T>(pair);
-            if (drll > 0. && r2 < drll * drll) {
-                return;
-            }
-            if (mll > 0. && m2 < mll * mll) {
-                return;
-            }
-            if (pdg_i == -pdg_j) {
-                if (drll_sf > 0. && r2 < drll_sf * drll_sf) {
-                    return;
-                }
-                if (mll_sf > 0. && m2 < mll_sf * mll_sf) {
-                    return;
-                }
-            }
-        }
-    }
-
-    // jets, of the QCD partons and the photons that are not isolated
-    if (ptj > 0.) {
-        FourMom<T> partons[NLO_JET_PARTONS_MAX];
-        std::size_t parton_count = 0, soft_count = 0;
+        // charged leptons
         for (std::size_t i = n_in; i < n; ++i) {
-            int flavor = ids[i] < 0 ? -ids[i] : ids[i];
-            bool jet = (flavor >= 1 && flavor <= maxjetflavor) || flavor == 21 ||
-                (flavor == 22 && (gamma_is_j || !iso[i]));
-            if (!jet) {
+            int pdg_i = ids[i];
+            if (!nlo_is_lepton<T>(pdg_i)) {
                 continue;
             }
             const auto& p_i = mom[i];
-            if (fabs(p_i[0] / e1) < 1e-8) {
-                ++soft_count;
+            FVal<T> pt_i = sqrt(p_i[1] * p_i[1] + p_i[2] * p_i[2]);
+            if (ptl > 0.) {
+                pass = pass & !(pt_i < ptl);
             }
-            if (parton_count < NLO_JET_PARTONS_MAX) {
-                partons[parton_count] = p_i;
+            if (etal > 0.) {
+                pass = pass & !(fabs(nlo_cut_eta<T>(p_i)) > etal);
             }
-            ++parton_count;
+            if (pdg_i > 0) {
+                continue;
+            }
+            // a positive lepton with each negative one
+            for (std::size_t j = n_in; j < n; ++j) {
+                int pdg_j = ids[j];
+                if (pdg_j != 11 && pdg_j != 13 && pdg_j != 15) {
+                    continue;
+                }
+                const auto& p_j = mom[j];
+                FVal<T> deta = nlo_cut_eta<T>(p_i) - nlo_cut_eta<T>(p_j);
+                FVal<T> dphi = nlo_cut_delta_phi<T>(p_i, p_j);
+                FVal<T> r2 = dphi * dphi + deta * deta;
+                FourMom<T> pair{
+                    p_i[0] + p_j[0], p_i[1] + p_j[1], p_i[2] + p_j[2], p_i[3] + p_j[3]
+                };
+                FVal<T> m2 = lsquare<T>(pair);
+                if (drll > 0.) {
+                    pass = pass & !(r2 < drll * drll);
+                }
+                if (mll > 0.) {
+                    pass = pass & !(m2 < mll * mll);
+                }
+                if (pdg_i == -pdg_j) {
+                    if (drll_sf > 0.) {
+                        pass = pass & !(r2 < drll_sf * drll_sf);
+                    }
+                    if (mll_sf > 0.) {
+                        pass = pass & !(m2 < mll_sf * mll_sf);
+                    }
+                }
+            }
         }
-        if (parton_count > unresolved) {
-            if (soft_count > unresolved || parton_count > NLO_JET_PARTONS_MAX) {
-                return;
+
+        // jets, of the QCD partons and the photons that are not isolated
+        if (ptj > 0.) {
+            FourMom<T> partons[NLO_CUT_PARTICLES_MAX];
+            BVal<T> member[NLO_CUT_PARTICLES_MAX];
+            std::size_t candidate_count = 0;
+            IVal<T> parton_count = 0, soft_count = 0;
+            for (std::size_t i = n_in; i < n; ++i) {
+                int flavor = ids[i] < 0 ? -ids[i] : ids[i];
+                bool qcd = (flavor >= 1 && flavor <= maxjetflavor) || flavor == 21;
+                if (!qcd && flavor != 22) {
+                    continue;
+                }
+                BVal<T> jet = qcd || gamma_is_j ? BVal<T>(true) : BVal<T>(!iso[i]);
+                jet = jet & !gone[i];
+                const auto& p_i = mom[i];
+                BVal<T> soft = jet & (fabs(p_i[0] / e1) < 1e-8);
+                soft_count = soft_count + where(soft, IVal<T>(1), IVal<T>(0));
+                parton_count = parton_count + where(jet, IVal<T>(1), IVal<T>(0));
+                partons[candidate_count] = p_i;
+                member[candidate_count] = jet;
+                ++candidate_count;
             }
-            FourMom<T> jets[NLO_JET_PARTONS_MAX];
-            std::size_t jet_count = nlo_cluster_jets<T>(
-                partons, parton_count, jetalgo, jetradius, ptj, etaj, jets
-            );
-            if (jet_count + unresolved < parton_count) {
-                return;
+            IVal<T> u = static_cast<int>(unresolved);
+            IVal<T> most = static_cast<int>(NLO_JET_PARTONS_MAX);
+            BVal<T> clustered = parton_count > u;
+            pass = pass & !(clustered & ((soft_count > u) | (parton_count > most)));
+            if (candidate_count > unresolved) {
+                FourMom<T> jets[NLO_JET_PARTONS_MAX];
+                IVal<T> jet_count = nlo_cluster_jets<T>(
+                    partons,
+                    member,
+                    candidate_count,
+                    jetalgo,
+                    jetradius,
+                    ptj,
+                    etaj,
+                    jets
+                );
+                pass = pass & !(clustered & (jet_count + u < parton_count));
             }
         }
-    }
-    mask = 1.;
+        masked_store(mask, lanes, where(pass, FVal<T>(1.), FVal<T>(0.)));
+    });
 }
 
 } // namespace kernels

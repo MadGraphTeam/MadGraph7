@@ -21,56 +21,64 @@ template <typename T>
 KERNELSPEC void kernel_nlo_jets(
     FIn<T, 2> p,
     IIn<T, 0> index,
-    IIn<T, 2> parton,
-    FIn<T, 1> options,
+    ISIn<T, 2> parton,
+    FSIn<T, 1> options,
     IIn<T, 0> particle_count,
     FOut<T, 2> jet_momenta,
     IOut<T, 0> jet_count
 ) {
-    std::size_t c = single_index(index);
-    auto partons_of = parton[c];
-    FVal<T> jetalgo = options[0], jetradius = options[1], ptj = options[2],
-            etaj = options[3];
+    double jetalgo = single_value(options[0]), jetradius = single_value(options[1]);
+    double ptj = single_value(options[2]), etaj = single_value(options[3]);
     std::size_t n = p.size(), slots = jet_momenta.size();
-    FourMom<T> partons[NLO_JET_PARTONS_MAX];
-    std::size_t parton_count = 0, kept = 0;
-    for (std::size_t i = 0; i < n; ++i) {
-        auto p_i = load_mom<T>(p[i]);
-        if (single_index(partons_of[i]) == 0) {
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        auto partons_of = parton[c];
+        FourMom<T> partons[NLO_JET_PARTONS_MAX];
+        BVal<T> member[NLO_JET_PARTONS_MAX];
+        std::size_t parton_count = 0, kept = 0;
+        for (std::size_t i = 0; i < n; ++i) {
+            auto p_i = load_mom<T>(p[i]);
+            if (single_index(partons_of[i]) == 0) {
+                for (std::size_t k = 0; k < 4; ++k) {
+                    masked_store(jet_momenta[kept][k], lanes, p_i[k]);
+                }
+                ++kept;
+            } else if (parton_count < NLO_JET_PARTONS_MAX) {
+                partons[parton_count] = p_i;
+                member[parton_count] = true;
+                ++parton_count;
+            }
+        }
+        FourMom<T> jets[NLO_JET_PARTONS_MAX];
+        IVal<T> count = nlo_cluster_jets<T>(
+            partons, member, parton_count, jetalgo, jetradius, ptj, etaj, jets
+        );
+        // by decreasing pt, as sorted_by_pt of fastjet: the insertion of each
+        // jet moves it down while its pt is larger
+        for (std::size_t i = 1; i < parton_count; ++i) {
+            BVal<T> moving = IVal<T>(static_cast<int>(i)) < count;
+            for (std::size_t j = i; j > 0; --j) {
+                FVal<T> pt2_j = jets[j][1] * jets[j][1] + jets[j][2] * jets[j][2];
+                FVal<T> pt2_before =
+                    jets[j - 1][1] * jets[j - 1][1] + jets[j - 1][2] * jets[j - 1][2];
+                moving = moving & (pt2_j > pt2_before);
+                FourMom<T> jet_j = jets[j];
+                jets[j] = nlo_where<T>(moving, jets[j - 1], jet_j);
+                jets[j - 1] = nlo_where<T>(moving, jet_j, jets[j - 1]);
+            }
+        }
+        IVal<T> room = static_cast<int>(slots - kept);
+        IVal<T> shown = where(count < room, count, room);
+        for (std::size_t s = 0; s < slots - kept; ++s) {
+            BVal<T> filled = IVal<T>(static_cast<int>(s)) < shown;
             for (std::size_t k = 0; k < 4; ++k) {
-                jet_momenta[kept][k] = p_i[k];
+                FVal<T> value = s < NLO_JET_PARTONS_MAX
+                    ? where(filled, jets[s][k], FVal<T>(0.))
+                    : FVal<T>(0.);
+                masked_store(jet_momenta[kept + s][k], lanes, value);
             }
-            ++kept;
-        } else if (parton_count < NLO_JET_PARTONS_MAX) {
-            partons[parton_count] = p_i;
-            ++parton_count;
         }
-    }
-    FourMom<T> jets[NLO_JET_PARTONS_MAX];
-    std::size_t count =
-        nlo_cluster_jets<T>(partons, parton_count, jetalgo, jetradius, ptj, etaj, jets);
-    // by decreasing pt, as sorted_by_pt of fastjet
-    for (std::size_t i = 1; i < count; ++i) {
-        for (std::size_t j = i; j > 0; --j) {
-            FVal<T> pt2_j = jets[j][1] * jets[j][1] + jets[j][2] * jets[j][2];
-            FVal<T> pt2_before =
-                jets[j - 1][1] * jets[j - 1][1] + jets[j - 1][2] * jets[j - 1][2];
-            if (!(pt2_j > pt2_before)) {
-                break;
-            }
-            auto swap = jets[j];
-            jets[j] = jets[j - 1];
-            jets[j - 1] = swap;
-        }
-    }
-    std::size_t room = slots - kept;
-    count = count < room ? count : room;
-    for (std::size_t s = 0; s < room; ++s) {
-        for (std::size_t k = 0; k < 4; ++k) {
-            jet_momenta[kept + s][k] = s < count ? jets[s][k] : FVal<T>(0.);
-        }
-    }
-    jet_count = static_cast<int>(count);
+        masked_store(jet_count, lanes, shown);
+    });
 }
 
 // The weights of the kinematics of one point for a histogram, as HwU_fill and
@@ -90,43 +98,51 @@ KERNELSPEC void kernel_nlo_histogram_weights(
     FIn<T, 1> values,
     FIn<T, 1> weights,
     IIn<T, 1> jets,
-    FIn<T, 1> options,
+    FSIn<T, 1> options,
     FOut<T, 1> center,
     FOut<T, 1> merged
 ) {
-    FVal<T> lower = options[0], upper = options[1];
-    int bin_count = static_cast<int>(FVal<T>(options[2]));
-    int needed = static_cast<int>(FVal<T>(options[3]));
-    FVal<T> width = (upper - lower) / bin_count;
+    double lower = single_value(options[0]), upper = single_value(options[1]);
+    int bin_count = static_cast<int>(single_value(options[2]));
+    int needed = static_cast<int>(single_value(options[3]));
+    double width = (upper - lower) / bin_count;
     std::size_t count = values.size();
-    int bins[64];
+    IVal<T> bins[64];
     for (std::size_t k = 0; k < count && k < 64; ++k) {
         FVal<T> x = values[k];
-        if (!(fabs(x) <= 1e300) || single_index(jets[k]) < needed) {
-            // no bin: the kinematics does not count
-            bins[k] = -1;
-            center[k] = lower - 2. * width;
-            merged[k] = 0.;
-            continue;
-        }
+        // without a bin the kinematics does not count
+        BVal<T> counted = (fabs(x) <= 1e300) & !(IVal<T>(jets[k]) < IVal<T>(needed));
         FVal<T> r = (x - lower) / width;
-        int bin =
-            r < 0. ? 0 : (r >= bin_count ? bin_count + 1 : static_cast<int>(r) + 1);
-        bins[k] = bin;
-        center[k] = bin == 0 ? lower - 2. * width
-            : bin == bin_count + 1
-            ? upper + 2. * width
-            : lower + (bin - 0.5) * width;
+        BVal<T> inner = (r >= 0.) & (r < bin_count);
+        IVal<T> bin = where(
+            r < 0.,
+            IVal<T>(0),
+            where(
+                inner,
+                IVal<T>(where(inner, r, FVal<T>(0.))) + IVal<T>(1),
+                IVal<T>(bin_count + 1)
+            )
+        );
+        FVal<T> outside = lower - 2. * width;
+        FVal<T> middle = lower + (FVal<T>(bin) - 0.5) * width;
+        FVal<T> mid_or_edge = where(
+            bin == IVal<T>(0),
+            outside,
+            where(bin == IVal<T>(bin_count + 1), FVal<T>(upper + 2. * width), middle)
+        );
+        bins[k] = where(counted, bin, IVal<T>(-1));
+        center[k] = where(counted, mid_or_edge, outside);
         merged[k] = 0.;
         // the sum of the kinematics of this bin goes to the first of them
-        std::size_t first = k;
-        for (std::size_t l = 0; l < k; ++l) {
-            if (bins[l] == bin) {
-                first = l;
-                break;
-            }
+        IVal<T> first = static_cast<int>(k);
+        for (std::size_t l = k; l > 0; --l) {
+            first = where(bins[l - 1] == bin, IVal<T>(static_cast<int>(l - 1)), first);
         }
-        merged[first] = FVal<T>(merged[first]) + FVal<T>(weights[k]);
+        FVal<T> weight = weights[k];
+        for (std::size_t l = 0; l <= k; ++l) {
+            BVal<T> here = counted & (first == IVal<T>(static_cast<int>(l)));
+            merged[l] = where(here, FVal<T>(merged[l]) + weight, FVal<T>(merged[l]));
+        }
     }
 }
 

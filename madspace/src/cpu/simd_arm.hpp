@@ -183,6 +183,7 @@ inline FVec log1p(FVec arg1) { return Sleef_log1pd2_u10(arg1); }
 inline FVec expm1(FVec arg1) { return Sleef_expm1d2_u10(arg1); }
 inline FVec erf(FVec arg1) { return Sleef_erfd2_u10(arg1); }
 inline FVec fma(FVec arg1, FVec arg2, FVec arg3) { return vfmaq_f64(arg3, arg1, arg2); }
+inline FVec round_to_float32(FVec arg1) { return vcvt_f64_f32(vcvt_f32_f64(arg1)); }
 
 // float32 family: four lanes, with int32 indices and masks of the same width
 

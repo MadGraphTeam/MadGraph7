@@ -74,6 +74,10 @@ masked_store(gpu::GpuTensorView<T, 0, packed> view, bool, T value) {
     view = value;
 }
 
+inline __device__ double round_to_float32(double arg) {
+    return static_cast<float>(arg);
+}
+
 using ::acos;
 using ::asinh;
 using ::atan;
