@@ -581,18 +581,15 @@ impl V2Precision {
     }
 
     /// Lanes per chunk (`plan_export.NativeExecutor.lanes_for`): the SIMD
-    /// lanes in binary64; in the extended carriers, whose lanes are scalar
-    /// loops, the smallest power of two holding the batch (at most the SIMD
-    /// lanes).
+    /// lanes in every carrier and for every batch size. The executor runs a
+    /// batch's last partial chunk without paying for its padded lanes
+    /// (`rusticol_core::loop_execution::v2::lane_chunks`: binary64 in one
+    /// chunk of the narrowest width holding it, the extended carriers, whose
+    /// lanes are scalar loops, in filled chunks), so the runner keeps one
+    /// executor (thread pool, seed FFT) per process.
     pub fn lanes(self, points: usize) -> usize {
-        if self == Self::Double {
-            return V2_LANES;
-        }
-        let mut lanes = 1;
-        while lanes < points.min(V2_LANES) {
-            lanes *= 2;
-        }
-        lanes
+        let _ = (self, points);
+        V2_LANES
     }
 
     /// The `reduction` backend of the carrier (`v2_executor.backend_of`):

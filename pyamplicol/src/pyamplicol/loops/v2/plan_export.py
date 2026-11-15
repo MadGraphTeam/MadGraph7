@@ -2300,16 +2300,19 @@ class NativeExecutor:
         return self._scaleless[0]
 
     def lanes_for(self, arithmetic: Arithmetic, points: int | None) -> int:
-        """Lanes per chunk: the configured count in binary64 (SIMD lanes);
-        in the other carriers, whose lanes are scalar loops that cost as much
-        padded as filled, the smallest supported count holding the batch."""
+        """Lanes per chunk: the configured count in every carrier and for
+        every batch size. The native executor runs a batch's last partial
+        chunk without paying for its padded lanes (binary64, whose SIMD chunk
+        costs about its instruction count, in one chunk of the narrowest
+        width holding it; the other carriers, whose lanes are scalar loops
+        that cost as much padded as filled, in filled chunks of the widths of
+        its binary digits: ``rusticol_core::loop_execution::v2::
+        lane_chunks``), so one executor per carrier serves every batch, and
+        its reduction backends (NinjaRS's generic-engine reductions, TIRust's
+        plans) are built once."""
 
-        if arithmetic == "double" or points is None:
-            return self.lanes
-        lanes = 1
-        while lanes < min(points, self.lanes):
-            lanes *= 2
-        return lanes
+        del arithmetic, points
+        return self.lanes
 
     # -- inputs ---------------------------------------------------------------
 

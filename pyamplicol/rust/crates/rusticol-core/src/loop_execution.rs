@@ -608,11 +608,8 @@ pub mod v2 {
             let threads = self.pool.current_num_threads();
             let fourier = self.contraction(options.contraction)?;
             self.pool.install(|| {
-                let (results, mut report) = with_lanes!(
-                    self.lanes,
-                    evaluate_lanes::<T>(
-                        &self.plan, fourier, batch, zero, backend, options, families, live
-                    )
+                let (results, mut report) = evaluate_lanes::<T>(
+                    &self.plan, fourier, batch, zero, backend, options, families, live, self.lanes,
                 )?;
                 report.threads = threads;
                 Ok((results, report))
@@ -1488,8 +1485,165 @@ pub mod v2 {
         report.peak("merged family accumulators", stats.peak_accumulators, lanes);
     }
 
+    /// The chunks a call of `points` points on `lanes` lanes runs in, as
+    /// (points, chunk width): chunks of `lanes` points, then the rest. With
+    /// `simd` (binary64, whose kernels run the CPU's vector width,
+    /// `loop_v2::kernels::Simd`: a chunk costs about its instruction count,
+    /// so the fewest chunks) the rest in one chunk of the narrowest width
+    /// that holds it, whose unused lanes repeat its last point
+    /// ([`LaneData::new`]), as the tree closures run theirs
+    /// (`loop_v2::trees::lane_runs`); otherwise (double-double and MPFR,
+    /// whose lanes are scalar loops: a padded lane costs as much as a filled
+    /// one) the rest in full chunks of the widths of its binary digits, so
+    /// no lane is padded. Lanes are independent: the chunking leaves every
+    /// value unchanged.
+    fn lane_chunks(points: usize, lanes: usize, simd: bool) -> Vec<(Vec<usize>, usize)> {
+        let lanes = lanes.max(1);
+        let full = points / lanes * lanes;
+        let mut out: Vec<(Vec<usize>, usize)> = (0..full)
+            .step_by(lanes)
+            .map(|first| ((first..first + lanes).collect(), lanes))
+            .collect();
+        let (mut first, mut rest) = (full, points - full);
+        if simd && rest > 0 {
+            out.push(((first..points).collect(), rest.next_power_of_two()));
+            rest = 0;
+        }
+        while rest > 0 {
+            let width = 1 << rest.ilog2();
+            out.push(((first..first + width).collect(), width));
+            first += width;
+            rest -= width;
+        }
+        out
+    }
+
+    /// What every chunk of one evaluation shares ([`evaluate_lanes`]).
+    struct ChunkCall<'a, T> {
+        plan: &'a LoopProgramV4,
+        fourier: Option<&'a SeedFourier>,
+        batch: &'a V2Batch<T>,
+        zero: &'a T,
+        options: V2Options,
+        live: Option<&'a LiveRows>,
+        buckets: &'a [BucketChunk],
+        read_chunks: &'a ReadChunks,
+        input_budget: usize,
+        merged: Option<&'a Merged>,
+        merged_parts: &'a [crate::loop_v2::merged::Part],
+        workspaces: &'a Workspaces<T>,
+    }
+
+    impl<T: Carrier + Real> ChunkCall<'_, T> {
+        /// Dress and reduce the chunk of `points` (at most `W`) on `W`
+        /// lanes, its lanes and failures into `sink`.
+        fn run<const W: usize, B: V2Backend<T>>(
+            &self,
+            points: &[usize],
+            backend: &mut B,
+            sink: &mut Lanes<T>,
+            report: &mut Report,
+        ) -> RusticolResult<()> {
+            let &Self {
+                plan,
+                fourier,
+                batch,
+                zero,
+                options,
+                live,
+                buckets,
+                read_chunks,
+                input_budget,
+                merged,
+                merged_parts,
+                workspaces,
+            } = self;
+            backend.begin();
+            let start = Instant::now();
+            let data = LaneData::<T, W>::new(plan, batch, points, zero)?;
+            let contraction = Instant::now();
+            let mut seeds = match fourier {
+                Some(fourier) => {
+                    report.count(FFT_SEED_JOBS, fourier.jobs() as u64);
+                    seeds_fourier(plan, fourier, &data)
+                }
+                None => seeds(plan, &data),
+            };
+            // Schedule B forms each key where a leaf reads it; schedule M
+            // reads them all.
+            if !merged_parts.is_empty() {
+                seeds.materialise::<W>(zero);
+            }
+            // The contraction alone ("seeds" also gathers the lane data).
+            report.time(SEED_CONTRACTION, contraction);
+            report.time("seeds", start);
+            let mut inputs =
+                ChunkInputs::new(plan).with_rows(live.map(|live| Arc::clone(&live.read)));
+            let masses: Vec<Complex<T>> = batch
+                .masses
+                .iter()
+                .enumerate()
+                .map(|(i, m)| {
+                    let im = batch
+                        .masses_imaginary
+                        .get(i)
+                        .map_or_else(|| data.zero.clone(), |im| data.cast(im));
+                    Complex::new(data.cast(m), im)
+                })
+                .collect();
+            let scales: Vec<Complex<T>> = data
+                .scales
+                .iter()
+                .map(|scale| Complex::new(data.cast(scale), data.zero.clone()))
+                .collect();
+            let mut reduction = Reduction {
+                plan,
+                masses: &masses,
+                scales: &scales,
+                data: &data,
+                backend,
+                options,
+                sink,
+            };
+            for (k, part) in buckets.iter().enumerate() {
+                let numerators = dress_families(
+                    plan,
+                    part,
+                    &mut inputs,
+                    &seeds,
+                    &data,
+                    report,
+                    Some((k, read_chunks, input_budget)),
+                    live,
+                    workspaces,
+                )?;
+                reduction.reduce(&numerators, report)?;
+                let mut pool = workspaces
+                    .numerators
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                for numerator in numerators {
+                    numerator.recycle(&mut pool);
+                }
+            }
+            if !merged_parts.is_empty() {
+                let stats = run_merged(plan, merged_parts, &mut inputs, &seeds, &data, |done| {
+                    reduction.reduce(&done, report)
+                })?;
+                merged_report(report, &stats, W);
+                if let Some(merged) = merged {
+                    report.count(
+                        DRESSING_WORK,
+                        modelled_work(merged.states.iter().map(|state| &state.step)),
+                    );
+                }
+            }
+            Ok(())
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
-    fn evaluate_lanes<T: Carrier + Real, const L: usize>(
+    fn evaluate_lanes<T: Carrier + Real>(
         plan: &LoopProgramV4,
         fourier: Option<&SeedFourier>,
         batch: &V2Batch<T>,
@@ -1498,11 +1652,12 @@ pub mod v2 {
         options: V2Options,
         families: Option<&[bool]>,
         live: Option<&LiveRows>,
+        lanes: usize,
     ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
         let points = batch.points();
         let width = options.poles.width();
         let mut report = Report {
-            lanes: L,
+            lanes,
             real_bytes: std::mem::size_of::<T>(),
             ..Report::default()
         };
@@ -1542,7 +1697,7 @@ pub mod v2 {
         let vectors = if options.input_budget == usize::MAX {
             usize::MAX
         } else {
-            input_budget / crate::loop_v2::kernels::lane_vector_len(L)
+            input_budget / crate::loop_v2::kernels::lane_vector_len(lanes)
         };
         let chunks_of_buckets =
             bucket_chunks(plan, options.chunk_families, &b_families, vectors, live);
@@ -1565,87 +1720,33 @@ pub mod v2 {
         // The call's buffer pools, kept across its family walks and chunks
         // (lit-dress lever E).
         let workspaces = Workspaces::new(rayon::current_num_threads(), zero);
-        for chunk in chunks(points, L) {
-            backend.begin();
-            let start = Instant::now();
-            let data = LaneData::<T, L>::new(plan, batch, &chunk, zero)?;
-            let contraction = Instant::now();
-            let mut seeds = match fourier {
-                Some(fourier) => {
-                    report.count(FFT_SEED_JOBS, fourier.jobs() as u64);
-                    seeds_fourier(plan, fourier, &data)
-                }
-                None => seeds(plan, &data),
-            };
-            // Schedule B forms each key where a leaf reads it; schedule M
-            // reads them all.
-            if !merged_parts.is_empty() {
-                seeds.materialise::<L>(zero);
-            }
-            // The contraction alone ("seeds" also gathers the lane data).
-            report.time(SEED_CONTRACTION, contraction);
-            report.time("seeds", start);
-            let mut inputs =
-                ChunkInputs::new(plan).with_rows(live.map(|live| Arc::clone(&live.read)));
-            let masses: Vec<Complex<T>> = batch
-                .masses
-                .iter()
-                .enumerate()
-                .map(|(i, m)| {
-                    let im = batch
-                        .masses_imaginary
-                        .get(i)
-                        .map_or_else(|| data.zero.clone(), |im| data.cast(im));
-                    Complex::new(data.cast(m), im)
-                })
-                .collect();
-            let scales: Vec<Complex<T>> = data
-                .scales
-                .iter()
-                .map(|scale| Complex::new(data.cast(scale), data.zero.clone()))
-                .collect();
-            let mut reduction = Reduction {
-                plan,
-                masses: &masses,
-                scales: &scales,
-                data: &data,
-                backend: &mut *backend,
-                options,
-                sink: &mut sink,
-            };
-            for (k, part) in chunks_of_buckets.iter().enumerate() {
-                let numerators = dress_families(
-                    plan,
-                    part,
-                    &mut inputs,
-                    &seeds,
-                    &data,
-                    &mut report,
-                    Some((k, &read_chunks, input_budget)),
-                    live,
-                    &workspaces,
-                )?;
-                reduction.reduce(&numerators, &mut report)?;
-                let mut pool = workspaces
-                    .numerators
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                for numerator in numerators {
-                    numerator.recycle(&mut pool);
-                }
-            }
-            if !merged_parts.is_empty() {
-                let stats = run_merged(plan, &merged_parts, &mut inputs, &seeds, &data, |done| {
-                    reduction.reduce(&done, &mut report)
-                })?;
-                merged_report(&mut report, &stats, L);
-                if let Some(merged) = merged {
-                    report.count(
-                        DRESSING_WORK,
-                        modelled_work(merged.states.iter().map(|state| &state.step)),
-                    );
-                }
-            }
+        let chunk = ChunkCall {
+            plan,
+            fourier,
+            batch,
+            zero,
+            options,
+            live,
+            buckets: &chunks_of_buckets,
+            read_chunks: &read_chunks,
+            input_budget,
+            merged,
+            merged_parts: &merged_parts,
+            workspaces: &workspaces,
+        };
+        let simd = (zero as &dyn std::any::Any).is::<f64>();
+        for (points, width) in lane_chunks(points, lanes, simd) {
+            match width {
+                1 => chunk.run::<1, _>(&points, backend, &mut sink, &mut report),
+                2 => chunk.run::<2, _>(&points, backend, &mut sink, &mut report),
+                4 => chunk.run::<4, _>(&points, backend, &mut sink, &mut report),
+                8 => chunk.run::<8, _>(&points, backend, &mut sink, &mut report),
+                16 => chunk.run::<16, _>(&points, backend, &mut sink, &mut report),
+                32 => chunk.run::<32, _>(&points, backend, &mut sink, &mut report),
+                other => Err(RusticolError::internal(format!(
+                    "unsupported chunk width {other}"
+                ))),
+            }?;
         }
         let Lanes {
             mut failures,
@@ -1946,6 +2047,86 @@ pub mod v2 {
                 assert_eq!(value[0], Complex::new(6.0, 0.0));
             }
             assert_eq!(report.counts["reduction lanes"], 3);
+        }
+
+        /// The chunks of a call: full chunks of the executor's lanes, then
+        /// binary64's rest in one chunk of the narrowest width holding it,
+        /// the scalar carriers' in filled chunks of its binary digits.
+        #[test]
+        fn partial_chunks_pay_for_no_padded_lanes() {
+            let widths = |points, lanes, simd| -> Vec<(usize, usize)> {
+                lane_chunks(points, lanes, simd)
+                    .into_iter()
+                    .map(|(points, width)| (points.len(), width))
+                    .collect()
+            };
+            assert_eq!(widths(1, 16, true), [(1, 1)]);
+            assert_eq!(widths(9, 16, true), [(9, 16)]);
+            assert_eq!(widths(37, 16, true), [(16, 16), (16, 16), (5, 8)]);
+            assert_eq!(widths(32, 16, true), [(16, 16), (16, 16)]);
+            assert_eq!(widths(9, 16, false), [(8, 8), (1, 1)]);
+            assert_eq!(
+                widths(31, 16, false),
+                [(16, 16), (8, 8), (4, 4), (2, 2), (1, 1)]
+            );
+            assert_eq!(widths(16, 16, false), [(16, 16)]);
+            for (points, lanes, simd) in [(37, 16, true), (45, 8, false), (3, 1, true)] {
+                let chunks = lane_chunks(points, lanes, simd);
+                let order: Vec<usize> = chunks.iter().flat_map(|(p, _)| p.clone()).collect();
+                assert_eq!(order, (0..points).collect::<Vec<_>>());
+                assert!(chunks.iter().all(|(p, w)| p.len() <= *w && *w <= lanes));
+            }
+        }
+
+        /// A batch's last partial chunk runs narrower and its values are
+        /// those of the same points on one lane each.
+        #[test]
+        fn a_partial_chunk_keeps_the_values() {
+            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
+            let plan = Arc::new(LoopProgramV4::load(text.as_bytes()).unwrap());
+            let momentum = |e: i64| -> Vec<Rational> {
+                [e, 0, 0, e, e, 0, 0, -e].map(Rational::from).to_vec()
+            };
+            let points = 5;
+            let batch = V2Batch {
+                momenta: (1..=points as i64).map(momentum).collect(),
+                scales: vec![Rational::from(1); points],
+                masses: vec![Rational::from(0)],
+                masses_imaginary: Vec::new(),
+                leg_masses: Vec::new(),
+                constants: vec![Complex::new(2.0, 0.0)],
+                block_rows: vec![Vec::new(); points],
+                born: (0..points)
+                    .map(|k| vec![Complex::new(1.0 + k as f64, 0.5)])
+                    .collect(),
+            };
+            let run = |lanes| {
+                let executor = V2Executor::new(plan.clone(), lanes, Some(1)).unwrap();
+                let mut backend = Failing {
+                    calls: vec![Vec::new()],
+                };
+                let (results, report) = executor
+                    .evaluate(&batch, &0.0, &mut backend, V2Options::default())
+                    .unwrap();
+                (results, backend.calls, report.lanes)
+            };
+            let (chunked, calls, lanes) = run(4);
+            assert_eq!(lanes, 4);
+            // Two families per point: one reduction call per chunk.
+            let sorted: Vec<Vec<usize>> = calls[1..]
+                .iter()
+                .map(|call| {
+                    let mut call = call.clone();
+                    call.sort_unstable();
+                    call
+                })
+                .collect();
+            assert_eq!(sorted, [vec![0, 0, 1, 1, 2, 2, 3, 3], vec![4, 4]]);
+            let (single, _, _) = run(1);
+            for (a, b) in chunked.iter().zip(&single) {
+                assert_eq!(a.families, b.families);
+                assert_eq!(a.bare, b.bare);
+            }
         }
 
         /// A family mask (an evaluation-time selection, `V2Executor.
