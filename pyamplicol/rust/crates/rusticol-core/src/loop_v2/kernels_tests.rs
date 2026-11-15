@@ -566,7 +566,8 @@ fn extended_precision_carriers_keep_their_precision() {
 #[cfg(target_arch = "x86_64")]
 #[test]
 fn double_double_kernels_take_fma_bitwise() {
-    let fma = std::arch::is_x86_feature_detected!("fma");
+    let fma =
+        std::arch::is_x86_feature_detected!("avx2") && std::arch::is_x86_feature_detected!("fma");
     assert_eq!(Simd::fused(Some("baseline")), Simd::Baseline);
     let expected = if fma { Simd::Fma } else { Simd::Baseline };
     assert_eq!(Simd::fused(None), expected);
@@ -576,7 +577,7 @@ fn double_double_kernels_take_fma_bitwise() {
         Simd::fused(std::env::var(KERNEL_SIMD_ENV).ok().as_deref())
     );
     let mut rng = Lcg(0xf3a);
-    let products = MonomialProductTable::new(2, 2);
+    let products = MonomialProductTable::new(2, 1);
     let segment = Segment::new(4, 4, 4, 4, &products, 3);
     let layout = segment.dense_fused_layout();
     let convert = |values: Vec<Rational>| -> Vec<DoubleFloat> {

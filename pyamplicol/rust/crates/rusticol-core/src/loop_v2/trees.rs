@@ -4097,7 +4097,7 @@ fn kernel_lanes_avx2<T: Carrier, const L: usize>(
 /// `kernel_lanes` compiled with FMA for double-double (`Simd::Fma`: its
 /// two-product's `mul_add` as the instruction, bitwise the baseline's).
 #[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "fma")]
+#[target_feature(enable = "avx2,fma")]
 fn kernel_lanes_fma<T: Carrier, const L: usize>(
     kernel: &[super::plan::KernelTerm],
     constants: &[Complex<T>],

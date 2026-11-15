@@ -139,7 +139,10 @@ impl Simd {
     /// cap is not the baseline.
     #[cfg(target_arch = "x86_64")]
     fn fused(value: Option<&str>) -> Self {
-        if Self::cap(value) != Self::Baseline && std::arch::is_x86_feature_detected!("fma") {
+        if Self::cap(value) != Self::Baseline
+            && std::arch::is_x86_feature_detected!("avx2")
+            && std::arch::is_x86_feature_detected!("fma")
+        {
             return Self::Fma;
         }
         Self::Baseline
@@ -183,7 +186,7 @@ macro_rules! dispatched {
                     $body::<T $(, $c)?>($($arg),*)
                 }
                 #[allow(clippy::too_many_arguments)]
-                #[target_feature(enable = "fma")]
+                #[target_feature(enable = "avx2,fma")]
                 fn fma<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
                     $body::<T $(, $c)?>($($arg),*)
                 }
@@ -227,7 +230,7 @@ macro_rules! dispatched_avx2 {
                     $body::<T $(, $c)?>($($arg),*)
                 }
                 #[allow(clippy::too_many_arguments)]
-                #[target_feature(enable = "fma")]
+                #[target_feature(enable = "avx2,fma")]
                 fn fma<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
                     $body::<T $(, $c)?>($($arg),*)
                 }
