@@ -57,8 +57,12 @@ def actions(n):
         add(f"dp-poles-mode{mode}", 1, mode, finite=0)
         add(f"dp-full-mode{mode}", 1, mode)
     add("dp-full-after-poles", 1, expectation="dp_hit")
-    for finite in (1, 0):
-        add(f"dp-check-pass-finite{finite}", 2, finite=finite, expectation="bypass")
+    # A DP check pass has its own subintegral store (the bridge's check_store,
+    # counted in the aggregate): its first finite request recomputes every
+    # integral there and never reads the primary entries or complete tensors
+    # above. A poles-only check runs without a store.
+    add("dp-check-pass-finite1", 2, expectation="dp_check_miss")
+    add("dp-check-pass-finite0", 2, finite=0, expectation="bypass")
     add("dp-cache-disabled", 1, cache=0, expectation="bypass")
     add("dp-topology-excluded", 1, cache=n-1, expectation="bypass")
     add("dp-cache-survives-bypass", 1, expectation="dp_hit")
@@ -194,6 +198,9 @@ def parse_results(text, fixture, records):
             elif expectation == "dp_miss":
                 if sum(delta[i] for i in (1,3,5)) <= 0 or delta[6] <= 0:
                     failures.append("cold DP call did not populate cache")
+            elif expectation == "dp_check_miss":
+                if delta[3] <= 0 or delta[6] <= 0 or delta[4] or delta[5]:
+                    failures.append("DP check pass reused primary entries or touched the complete-tensor cache")
             elif expectation == "dp_refused":
                 if delta[8] <= 0 or after[6] != 0 or after[7] != 0:
                     failures.append("zero-budget DP call was stored or refusal unobserved")
@@ -219,9 +226,14 @@ def main():
     parser.add_argument("output", type=Path)
     parser.add_argument("--fixture", type=Path, help="JSON object; defaults to a massless infrared triangle of rank 2")
     parser.add_argument("--label", required=True)
+    parser.add_argument("--campaign", help="activate this campaign first, so its TIRust prefix (not "
+                        "HEPTools/tirust) is loaded and the diagnostic is written under the campaign")
     args = parser.parse_args()
     if Path.cwd() != bench.ROOT or not re.fullmatch(r"[A-Za-z0-9_-]+", args.label):
         parser.error("Run from repository root with a simple label")
+    if args.campaign:
+        from tirust_benchmark_campaign import activate_campaign
+        activate_campaign(bench, args.campaign)
     output = args.output.resolve()
     copies = bench.WORK / "cache-diagnostics" / args.label
     report = bench.REPORT / "experiments/poles-diagnostics" / args.label

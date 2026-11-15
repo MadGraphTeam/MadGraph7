@@ -93,6 +93,22 @@ class TestCacheDiagnostics(unittest.TestCase):
         result = parse_results(text, self.fixture, [reference, cold])[1]
         self.assertIn("finalize did not reinitialize", " ".join(result["failures"]))
 
+    def test_dp_check_pass_must_recompute_in_its_own_store(self):
+        check = self.record(ctmode=2, cache=-1, expectation="dp_check_miss")
+        cold = [0]*15
+        cold[2:4] = [3, 4]
+        cold[6:8] = [4, 720]
+        self.assertEqual(parse_results(self.frame(check, after=cold), self.fixture, [check])[0]["status"], "passed")
+        for index in (3, 4, 5):
+            after = list(cold)
+            if index == 3:
+                after[2:4] = [7, 0]  # every master reused: read from the primary store
+            else:
+                after[index] = 1  # the complete-tensor cache is primary-only
+            result = parse_results(self.frame(check, after=after), self.fixture, [check])[0]
+            self.assertIn("DP check pass reused primary entries or touched the complete-tensor cache",
+                          result["failures"])
+
     def test_missing_and_duplicate_records_fail_closed(self):
         record = self.record()
         with self.assertRaisesRegex(ValueError, "Missing cache frame"):
