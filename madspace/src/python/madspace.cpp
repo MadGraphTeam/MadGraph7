@@ -3026,11 +3026,13 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const FKSSubtraction&,
                 const FKSSoftVirtual&,
                 const FKSWeights&,
+                const std::optional<NLOCuts>&,
                 const std::optional<NLOCuts>&>(),
             py::arg("subtraction"),
             py::arg("soft_virtual"),
             py::arg("weights"),
             py::arg("cuts") = std::nullopt,
+            py::arg("nbody_cuts") = std::nullopt,
             pydoc::doc("FKSCrossSection::FKSCrossSection")
         )
         .def(
@@ -3047,6 +3049,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "weights", &FKSCrossSection::weights, pydoc::doc("FKSCrossSection::weights")
         )
         .def("cuts", &FKSCrossSection::cuts, pydoc::doc("FKSCrossSection::cuts"))
+        .def(
+            "nbody_cuts",
+            &FKSCrossSection::nbody_cuts,
+            pydoc::doc("FKSCrossSection::nbody_cuts")
+        )
         .def("scale", &FKSCrossSection::scale, pydoc::doc("FKSCrossSection::scale"));
 
     py::classh<EWSudakovAmplitude>(
@@ -4171,7 +4178,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const NLOScale&,
                 const RunningCoupling&,
                 const FKSLuminosity&,
-                const FKSLuminosity&>(),
+                const FKSLuminosity&,
+                const std::optional<NLOCuts>&>(),
             py::arg("subtraction"),
             py::arg("soft_virtual"),
             py::arg("weights"),
@@ -4180,6 +4188,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("running_coupling"),
             py::arg("luminosity"),
             py::arg("born_luminosity"),
+            py::arg("nbody_cuts") = std::nullopt,
             pydoc::doc("FKSCrossSection::FKSCrossSection#2")
         )
         .def(

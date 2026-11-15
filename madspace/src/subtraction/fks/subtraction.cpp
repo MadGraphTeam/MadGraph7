@@ -798,13 +798,41 @@ NamedVector<Type> cross_section_args(
     return args;
 }
 
+void check_cuts(
+    const std::optional<NLOCuts>& cuts,
+    const std::optional<NLOCuts>& nbody_cuts,
+    const FKSWeights& weights
+) {
+    for (const auto* item : {&cuts, &nbody_cuts}) {
+        if (*item && (*item)->particle_count() != weights.particle_count()) {
+            throw std::invalid_argument(
+                "FKSCrossSection: the cuts need the particles of the weights"
+            );
+        }
+        if (*item && (*item)->unresolved() != 1) {
+            throw std::invalid_argument(
+                "FKSCrossSection: the cuts need one unresolved parton, that of the "
+                "real emission"
+            );
+        }
+    }
+    if (nbody_cuts &&
+        (!cuts || nbody_cuts->layouts().size() != cuts->layouts().size())) {
+        throw std::invalid_argument(
+            "FKSCrossSection: the cuts of the n-body part need the cuts, with a "
+            "layout per FKS configuration as they have"
+        );
+    }
+}
+
 } // namespace
 
 FKSCrossSection::FKSCrossSection(
     const FKSSubtraction& subtraction,
     const FKSSoftVirtual& soft_virtual,
     const FKSWeights& weights,
-    const std::optional<NLOCuts>& cuts
+    const std::optional<NLOCuts>& cuts,
+    const std::optional<NLOCuts>& nbody_cuts
 ) :
     FunctionGenerator(
         "FKSCrossSection",
@@ -814,18 +842,9 @@ FKSCrossSection::FKSCrossSection(
     _subtraction(subtraction),
     _soft_virtual(soft_virtual),
     _weights(weights),
-    _cuts(cuts) {
-    if (_cuts && _cuts->particle_count() != weights.particle_count()) {
-        throw std::invalid_argument(
-            "FKSCrossSection: the cuts need the particles of the weights"
-        );
-    }
-    if (_cuts && _cuts->unresolved() != 1) {
-        throw std::invalid_argument(
-            "FKSCrossSection: the cuts need one unresolved parton, that of the "
-            "real emission"
-        );
-    }
+    _cuts(cuts),
+    _nbody_cuts(nbody_cuts) {
+    check_cuts(_cuts, _nbody_cuts, weights);
 }
 
 FKSCrossSection::FKSCrossSection(
@@ -836,7 +855,8 @@ FKSCrossSection::FKSCrossSection(
     const NLOScale& scale,
     const RunningCoupling& running_coupling,
     const FKSLuminosity& luminosity,
-    const FKSLuminosity& born_luminosity
+    const FKSLuminosity& born_luminosity,
+    const std::optional<NLOCuts>& nbody_cuts
 ) :
     FunctionGenerator(
         "FKSCrossSection",
@@ -854,22 +874,13 @@ FKSCrossSection::FKSCrossSection(
     _soft_virtual(soft_virtual),
     _weights(weights),
     _cuts(cuts),
+    _nbody_cuts(nbody_cuts),
     _scale(scale.with_particle_count(weights.particle_count())),
     _born_scale(scale.with_particle_count(weights.particle_count() - 1)),
     _running_coupling(running_coupling),
     _luminosity(luminosity),
     _born_luminosity(born_luminosity) {
-    if (_cuts && _cuts->particle_count() != weights.particle_count()) {
-        throw std::invalid_argument(
-            "FKSCrossSection: the cuts need the particles of the weights"
-        );
-    }
-    if (_cuts && _cuts->unresolved() != 1) {
-        throw std::invalid_argument(
-            "FKSCrossSection: the cuts need one unresolved parton, that of the "
-            "real emission"
-        );
-    }
+    check_cuts(_cuts, _nbody_cuts, weights);
     if (scale.incoming() != weights.incoming()) {
         throw std::invalid_argument(
             "FKSCrossSection: the scales need the incoming particles of the weights"
@@ -996,7 +1007,15 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
             return _cuts->build_function(fb, {args.at(momenta), args.at("fks_index")})
                 .at("mask");
         };
-        Value event = mask("momenta"), soft = mask("soft_momenta");
+        Value event = mask("momenta"), soft = mask("soft_momenta"), nbody = soft;
+        if (_nbody_cuts) {
+            nbody =
+                _nbody_cuts
+                    ->build_function(
+                        fb, {args.at("soft_momenta"), args.at("fks_index")}
+                    )
+                    .at("mask");
+        }
         bool projected = true;
         for (const auto& name : _subtraction.arg_types().keys()) {
             projected = projected && name != "collinear_born";
@@ -1005,7 +1024,7 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
             {"event_luminosity", event},
             {"soft_luminosity", soft},
             {"soft_collinear_luminosity", soft},
-            {"born_luminosity", soft},
+            {"born_luminosity", nbody},
             {"collinear_luminosity", projected ? soft : mask("collinear_momenta")},
         };
     }

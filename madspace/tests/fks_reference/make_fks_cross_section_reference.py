@@ -70,6 +70,12 @@ SETUPS = {
     # lepton pair with the recombination of photons
     "pp_aa": ("pp_aa", {}),
     "pp_epem_qed": ("pp_epem_qed", {}),
+    # mixed QCD and EW corrections with an extra counterterm (a u > u a, for
+    # a quark pair from a gluon and from a photon), and tagged photons with
+    # QED corrections, whose couplings are in the alpha(0) scheme and the
+    # others in the G_mu scheme
+    "gu_ua_mix": ("gu_ua_mix", {}),
+    "pp_aa_tagged": ("pp_aa_tagged", {}),
 }
 # outputs of the cross sections alone, without an integrand reference: name
 # -> (process, run_card values, model). p p > e+ e- j has a jet that radiates
@@ -94,12 +100,30 @@ OUTPUTS = {
         dict(mfir.HADRONIC, mll_sf=30, ptl=10),
         None,
     ),
+    "gu_ua_mix": (
+        "g u > u a QED^2<=4 QCD^2<=2 [QCD QED]",
+        dict(mfir.HADRONIC, ptj=20, jetalgo=-1, jetradius=0.4),
+        "loop_qcd_qed_sm",
+    ),
+    # loop_qcd_qed_sm_Gmu of the model database of MadGraph, which import
+    # model downloads
+    "pp_aa_tagged": (
+        "p p > !a! !a! [QED]",
+        dict(mfir.HADRONIC, ptgmin=20),
+        "loop_qcd_qed_sm_Gmu-a0",
+    ),
 }
 # the outputs in the complex-mass scheme: the EW corrections of a process
 # with an s-channel Z are gauge invariant only there, as MadGraph warns
 # (arXiv:1804.10017), and close to the Z the single poles of MadLoop and
 # MadFKS differ otherwise, which stops the run
 COMPLEX_MASS = {"pp_epem_qed"}
+# the setups whose limit tests of MadFKS fail for the sum of all orders
+# while every order passes them (the orders of the collinear d d~ of g u > u
+# d d~ cancel there): the launch stops at the tests after it builds the
+# executables with the cards of the run, which a second launch reuses
+# (launch -x)
+UNTESTED = {"gu_ua_mix"}
 # the relative accuracy of the runs (req_acc_FO), per setup where it differs
 ACCURACY = 2e-4
 ACCURACIES = {
@@ -109,6 +133,8 @@ ACCURACIES = {
     "epem_epemuux": 1e-3,
     "pp_aa": 1e-3,
     "pp_epem_qed": 1e-3,
+    "gu_ua_mix": 1e-3,
+    "pp_aa_tagged": 1e-3,
 }
 # the values of every run, the defaults of the run_card where a setup of
 # the same output changes them
@@ -130,16 +156,22 @@ RUN_CARD = {
 def launch(out, values, order, accuracy, work, name):
     run_name = f"{name}_{order.lower()}"
     script = os.path.join(work, f"{run_name}_launch.mg")
-    with open(script, "w") as f:
-        f.write(f"launch {out} -n {run_name}\nfixed_order=ON\norder={order}\ndone\n")
-        for key, value in {**RUN_CARD, **values, "req_acc_FO": accuracy}.items():
-            f.write(f"set {key} {value}\n")
-        f.write("done\n")
     env = {k: v for k, v in os.environ.items() if k != "MADFKS_INTEGRAND_DUMP"}
     log = os.path.join(work, f"{run_name}_launch.log")
     summary = os.path.join(out, "Events", run_name, "summary.txt")
-    mfir.mfr.madgraph(script, work, log, env=env, expect=summary)
-    return summary
+    for flag in ("", " -x"):
+        with open(script, "w") as f:
+            f.write(f"launch {out} -n {run_name}{flag}\n")
+            f.write(f"fixed_order=ON\norder={order}\ndone\n")
+            for key, value in {**RUN_CARD, **values, "req_acc_FO": accuracy}.items():
+                f.write(f"set {key} {value}\n")
+            f.write("done\n")
+        try:
+            mfir.mfr.madgraph(script, work, log, env=env, expect=summary)
+            return summary
+        except RuntimeError:
+            if flag or name not in UNTESTED:
+                raise
 
 
 def parse_summary(path):

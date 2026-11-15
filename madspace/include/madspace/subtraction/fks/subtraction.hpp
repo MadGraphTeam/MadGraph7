@@ -569,10 +569,15 @@ private:
  * soft-collinear counterterms and the n-body part that of the soft
  * counter-event, and the collinear counterterm that of the soft
  * counter-event with event projection and of its own without (where the
- * subtraction takes `collinear_born`). The n-body part takes the soft
- * counter-event of the configuration of the event, where MadFKS takes that
- * of its n-body configuration: for QCD they differ only in the flavor of the
- * soft parton, which the cuts never see.
+ * subtraction takes `collinear_born`). MadFKS cuts the n-body part at the
+ * soft counter-event of its n-body configuration (get_born_nFKSprocess of
+ * driver_mintFO.f, one with a soft singularity), whose real process can
+ * differ from that of the configuration of the event where the cuts see the
+ * soft parton or the flavor of the emitter, as for a lepton pair from a
+ * photon or a pair of heavy quarks from a gluon. With `nbody_cuts`, NLOCuts
+ * with per configuration the real process of its n-body configuration with
+ * the soft parton at the position of that of the configuration, the n-body
+ * part takes them at the soft counter-event of the event, else the cuts.
  *
  * With @ref NLOScale, a @ref RunningCoupling and the @ref FKSLuminosity of
  * the real emission and of the Born, the integrand takes the scales, the
@@ -608,15 +613,19 @@ public:
      * @param weights       The weights of the contributions.
      * @param cuts          The generation cuts, if any, with one unresolved
      *                      parton.
+     * @param nbody_cuts    Those of the n-body part, if any, with a layout
+     *                      per FKS configuration as the cuts.
      * @throws std::invalid_argument if they do not all have the same numbers
-     *         of particles and orders, or the cuts take another number of
-     *         unresolved partons.
+     *         of particles and orders, the cuts take another number of
+     *         unresolved partons, or the n-body cuts come without the cuts or
+     *         with other layouts.
      */
     FKSCrossSection(
         const FKSSubtraction& subtraction,
         const FKSSoftVirtual& soft_virtual,
         const FKSWeights& weights,
-        const std::optional<NLOCuts>& cuts = std::nullopt
+        const std::optional<NLOCuts>& cuts = std::nullopt,
+        const std::optional<NLOCuts>& nbody_cuts = std::nullopt
     );
     /**
      * With the scales, the couplings and the luminosities inside.
@@ -633,6 +642,7 @@ public:
      * @param born_luminosity   That of the n-body part, per FKS configuration
      *                          (for one flavor, by the real flavor), or once
      *                          for the sum over the flavors.
+     * @param nbody_cuts        The cuts of the n-body part, if any.
      * @throws std::invalid_argument as the other constructor, or if the
      *         luminosities do not have the FKS configurations of the
      *         subtraction, or one sums over the flavors and the other not.
@@ -645,7 +655,8 @@ public:
         const NLOScale& scale,
         const RunningCoupling& running_coupling,
         const FKSLuminosity& luminosity,
-        const FKSLuminosity& born_luminosity
+        const FKSLuminosity& born_luminosity,
+        const std::optional<NLOCuts>& nbody_cuts = std::nullopt
     );
     /// The real emission and its counterterms.
     const FKSSubtraction& subtraction() const { return _subtraction; }
@@ -655,6 +666,8 @@ public:
     const FKSWeights& weights() const { return _weights; }
     /// The generation cuts, if any.
     const std::optional<NLOCuts>& cuts() const { return _cuts; }
+    /// The generation cuts of the n-body part, if any.
+    const std::optional<NLOCuts>& nbody_cuts() const { return _nbody_cuts; }
     /// The scales of the kinematics with n + 1 particles, if inside.
     const std::optional<NLOScale>& scale() const { return _scale; }
     /// @f$\alpha_s@f$, if inside.
@@ -676,7 +689,7 @@ private:
     FKSSubtraction _subtraction;
     FKSSoftVirtual _soft_virtual;
     FKSWeights _weights;
-    std::optional<NLOCuts> _cuts;
+    std::optional<NLOCuts> _cuts, _nbody_cuts;
     std::optional<NLOScale> _scale, _born_scale;
     std::optional<RunningCoupling> _running_coupling;
     std::optional<FKSLuminosity> _luminosity, _born_luminosity;

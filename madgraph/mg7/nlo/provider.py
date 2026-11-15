@@ -19,26 +19,45 @@ coupling g = 1 (see fks_provider.f):
   one configuration (sborn_sf), only for the pairs MadFKS registered, those
   of fks_j_from_i of i_fks;
 - virtual: the finite part, the poles and the accuracy of MadLoop at a
-  renormalization scale per point, summed over helicities;
+  renormalization scale per point, summed over helicities, with the change
+  of scheme of the couplings of tagged photons as BinothLHA adds it;
 - channels: the Born configurations of MadFKS, the diagrams of its
-  integration channels.
+  integration channels;
+- extra: the counterterm parts of the Born of the extra counterterm of a
+  configuration (extra_cnt), the Born of the other mother (a gluon or a
+  photon) of a quark pair;
+- couplings: the number of tagged photons, the QED coupling of the
+  counterterms (gal(1)^2 / (4 pi)) and the factors by which add_wgt
+  multiplies the contributions of tagged photons per power of e.
 
 From these it gives the blocks of madspace: the real per NLO order, the
 Born per Born order, the color-correlated Borns of all pairs of Born legs
 (those of the registered pairs, the diagonal from color conservation), the
 spin-correlated Born B_perp = B / 2 + Re(conj(phase) A) of a gluon or photon
-emitter with k_perp, and the virtual per NLO order. The phase is that of
+emitter with k_perp, both also for the Born of the extra counterterm of the
+configuration of a point (born_inputs), and the virtual per NLO order. The phase is that of
 k_perp about the emitter in the helicity basis of MadGraph, -exp(2 i (psi +
 phi)) with psi the azimuth of k_perp in that basis and phi that of the
 emitter, which is xij_aor of genps_fks.f for xij_kperp. fks_blocks gives
 them at the kinematics of FKSKinematics, by the names of FKSCrossSection.
 
-Extra counterterms (mixed QCD-EW corrections with a second mother) and the
-conversion of tagged photons in the virtual are not covered.
+born_cnt_<n>.f of MadFKS divides the Born of an extra counterterm by the
+identical-particle factor of the Born of the subprocess, born_inputs gives it
+with its own, as FKSLimits takes it.
+
+With tagged photons and QED corrections MadFKS takes the couplings of the
+tagged photons in the alpha(0) scheme and the others in the G_mu scheme: the
+virtual changes the scheme of the Born (get_virtual_a0Gmu_conv), and every
+contribution takes a factor of its power of alpha (get_rescale_alpha_factor),
+a power of the ratio of the two alphas. tagged_factors gives them as factors
+of the blocks per order and of the QED coupling of the counterterms, which
+the counterterms of a QED splitting take with one power of alpha more than
+their Born.
 """
 
 import contextlib
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -59,7 +78,7 @@ SOURCES = {
     "makefile_provider": os.path.join(TEMPLATES, "makefile_fks_provider"),
 }
 
-QUIT, INFO, REAL, BORN, LINKS, VIRTUAL, CHANNELS = range(7)
+QUIT, INFO, REAL, BORN, LINKS, VIRTUAL, CHANNELS, EXTRA, COUPLINGS = range(9)
 INT = np.dtype(np.int32)
 FLOAT = np.dtype(np.float64)
 
@@ -150,7 +169,8 @@ class FortranProvider:
     aMC@NLO output) from its Fortran, at g = 1. Use it as a context manager
     or call close. statistics counts per block (real, born, links, virtual)
     the requests, the points, the evaluations (points times pairs for the
-    links) and the seconds they took, the time of the pipes included."""
+    links) and the seconds they took, the time of the pipes included, the
+    Borns of the extra counterterms with those of the Born."""
 
     def __init__(self, directory, rebuild=True, log=None):
         self.directory = os.path.realpath(directory)
@@ -161,8 +181,6 @@ class FortranProvider:
         with open(os.path.join(self.directory, "fks_configurations.json")) as f:
             self.fks_configurations = json.load(f)
         self.configurations = self.fks_configurations["configurations"]
-        if self.fks_configurations["extra_counterterms"]:
-            raise NotImplementedError("extra counterterms are not covered")
         requests, child_in = os.pipe()
         child_out, answers = os.pipe()
         with open(self.log, "a") as out:
@@ -309,6 +327,64 @@ class FortranProvider:
         parts = parts.view(np.complex128).reshape(-1, k, 2, self.size)
         return out[:, : self.size], parts, out[:, self.size + counterterm :]
 
+    def extra(self, momenta, fks_index):
+        """The counterterm parts of the Born of the extra counterterm of the
+        configurations fks_index at Born kinematics (batch, n, 4), as those
+        of born (batch, split orders, 2, positions), zero for the points of a
+        configuration without one."""
+        momenta = self._momenta(momenta, self.particle_count - 1)
+        k = self.split_order_count
+        width = 4 * self.size * k
+
+        def evaluate(points, c):
+            if self.configurations[c].get("extra_cnt_index", -1) < 0:
+                return np.zeros((len(points), width))
+            with self._timed("born", len(points)):
+                self._request(EXTRA, len(points), c + 1, momenta[points])
+                out = self._read(FLOAT, len(points) * width)
+            return out.reshape(-1, width)
+
+        out = self._by_configuration(fks_index, evaluate)
+        return (
+            np.ascontiguousarray(out).view(np.complex128).reshape(-1, k, 2, self.size)
+        )
+
+    def couplings(self, powers=()):
+        """The number of tagged photons, the QED coupling of the counterterms
+        (gal(1)^2 / (4 pi) of the model) and the factors of the
+        contributions of the given powers of e (get_rescale_alpha_factor), 1
+        without tagged photons."""
+        powers = np.ascontiguousarray(powers, dtype=INT).reshape(-1)
+        self._request(COUPLINGS, len(powers), 0, powers)
+        (tagged,) = self._read(INT, 1)
+        out = self._read(FLOAT, len(powers) + 1)
+        return int(tagged), float(out[0]), out[1:]
+
+    def tagged_factors(self):
+        """With tagged photons and QED corrections, the factors of the
+        contributions of MadFKS as factors of the blocks: per NLO order (the
+        real and the virtual), per Born input (the Born and its correlated
+        versions) and of the QED coupling of the counterterms, the ratio of
+        the factors of two powers of alpha. A QED counterterm then takes the
+        factor of its NLO order, its Born that of one power of alpha less.
+        None without tagged photons or QED corrections."""
+        qed = self.qed_pos
+        splittings = {t for c in self.configurations for t in c["splitting_type"]}
+        if qed < 0 or "QED" not in splittings:
+            return None
+        nlo = [o[qed] for o in self.orders["nlo"]]
+        inputs = [o[qed] for o in self.orders["born"]]
+        inputs += [o[qed] for e in self.orders.get("extra_born", []) for o in e]
+        tagged, _, factors = self.couplings(nlo + inputs + [0, 2])
+        if tagged == 0:
+            return None
+        n = len(nlo)
+        return dict(
+            nlo=factors[:n],
+            born=factors[n:-2],
+            alpha=factors[-1] / factors[-2],
+        )
+
     def links(self, momenta, configuration, pairs):
         """sborn_sf (batch, pairs, positions) at Born kinematics for pairs
         (m, n) of legs of the real process of configuration (from 0), from 1
@@ -411,6 +487,40 @@ class FortranProvider:
         """The Born per Born order (batch, b) from the Born per position."""
         return born[:, [self.position(o) for o in self.orders["born"]]]
 
+    def born_input_count(self):
+        """The number of Born inputs of FKSLimits: the Born orders, then the
+        orders of the Born of each extra counterterm."""
+        extra = self.orders.get("extra_born", [])
+        return len(self.orders["born"]) + sum(len(e) for e in extra)
+
+    def extra_columns(self, configuration):
+        """The Born inputs of the extra counterterm of a configuration (from
+        0): per order of its Born the column among the Born inputs, the split
+        order of the second splitting type (the row of the counterterm
+        parts), the position of the counterterm (None where the NLO orders do
+        not reach it) and the ratio of the identical-particle factors of the
+        Born of the subprocess and of the extra counterterm. None without an
+        extra counterterm."""
+        c = self.configurations[configuration]
+        extra = c.get("extra_cnt_index", -1)
+        if extra < 0:
+            return None
+        orders = self.orders.get("extra_born", [])
+        column = len(self.orders["born"]) + sum(len(e) for e in orders[:extra])
+        row = self.orders["split_orders"].index(c["splitting_type"][1])
+        pdgs = self.fks_configurations["extra_counterterms"][extra]["born_pdgs"]
+        factor = identical_factor(
+            self.fks_configurations["born_pdgs"], self.incoming
+        ) / identical_factor(pdgs, self.incoming)
+        columns = []
+        for k, order in enumerate(orders[extra]):
+            try:
+                position = self.counterterm_position(order, row)
+            except ValueError:
+                position = None
+            columns.append((column + k, row, position, factor))
+        return columns
+
     def color_correlated(self, momenta):
         """<T_m . T_n> B per Born order (batch, b, n, n) at Born kinematics:
         sborn_sf over the pairs of Born legs that the configurations with
@@ -501,11 +611,60 @@ class FortranProvider:
                 out[points, o] = plain[points, o] / 2 + (phase * a).real
         return out
 
+    def born_inputs(self, momenta, k_perp, fks_index, born=None):
+        """The Born and B_perp per Born input (each (batch, B), see
+        born_input_count) at Born kinematics with k_perp (batch, 4) in the
+        same frame: per Born order those of born_orders_of and
+        spin_correlated, then per order of the Born of each extra
+        counterterm that of the configuration of the point, zero for the
+        others. B_perp of an extra counterterm is that of spin_correlated
+        with the azimuthal part of its Born at the counterterm of its
+        splitting type, the mother of the other type at the same leg."""
+        momenta = self._momenta(momenta, self.particle_count - 1)
+        k_perp = np.asarray(k_perp, dtype=float)
+        fks_index = np.asarray(fks_index, dtype=int)
+        if born is None:
+            born = self.born(momenta, fks_index)
+        count, b = len(momenta), len(self.orders["born"])
+        plain = np.zeros((count, self.born_input_count()))
+        perp = np.zeros_like(plain)
+        plain[:, :b] = self.born_orders_of(born[0])
+        perp[:, :b] = self.spin_correlated(momenta, k_perp, fks_index, born=born)
+        extra = [self.extra_columns(int(c)) for c in range(self.configuration_count)]
+        if not any(extra[c] for c in np.unique(fks_index)):
+            return plain, perp
+        parts = self.extra(momenta, fks_index)
+        for c in np.unique(fks_index):
+            if not extra[c]:
+                continue
+            points = np.flatnonzero(fks_index == c)
+            configuration = self.configurations[c]
+            i_fks, j_fks = configuration["i_fks"], configuration["j_fks"]
+            leg = j_fks - 1 - (j_fks > i_fks)
+            phase, _ = helicity_phase(momenta[points, leg], k_perp[points])
+            if leg < self.incoming:
+                phase = np.conj(phase)
+            for column, row, position, factor in extra[c]:
+                if position is None:
+                    continue
+                value = factor * parts[points, row, 0, position].real
+                a = factor * parts[points, row, 1, position]
+                plain[points, column] = value
+                perp[points, column] = value / 2 + (phase * a).real
+        return plain, perp
+
     def virtual_orders(self, momenta, ren_scale):
         """The finite part of the virtual per NLO order (batch, o) at the
         renormalization scale."""
         values, _ = self.virtual(momenta, ren_scale)
         return values["finite"][:, [self.position(o) for o in self.orders["nlo"]]]
+
+
+def identical_factor(pdgs, incoming=2):
+    """The identical-particle factor of the final state of a process, the
+    product of k! over its flavors of k particles."""
+    final = list(pdgs[incoming:])
+    return float(np.prod([math.factorial(final.count(p)) for p in set(final)]))
 
 
 def fks_blocks(
@@ -523,8 +682,9 @@ def fks_blocks(
     FKSSplittingKernels at the collinear counter-event: matrix_element
     (the real at the event, where its weight is not zero), born,
     color_correlated and spin_correlated (at the Born, where the Born
-    weight is not zero) and, with ren_scale, virtual, and amp2 of the Born
-    diagrams of the channels (zero where the Born weight is). real_mask and
+    weight is not zero, per Born input, those of the extra counterterms
+    included, see born_inputs) and, with ren_scale, virtual, and amp2 of
+    the Born diagrams of the channels (zero where the Born weight is). real_mask and
     born_mask leave out the points where they are false, for example those
     that the cuts reject, and virtual_mask the points of the Born without the
     virtual (zero there), for the virtual on a fraction of the points. The
@@ -534,12 +694,13 @@ def fks_blocks(
     fks_index = np.asarray(fks_index, dtype=int)
     count = len(fks_index)
     o, b = len(provider.orders["nlo"]), len(provider.orders["born"])
+    inputs = provider.born_input_count()
     n = provider.particle_count - 1
     blocks = dict(
         matrix_element=np.zeros((count, o)),
-        born=np.zeros((count, b)),
+        born=np.zeros((count, inputs)),
         color_correlated=np.zeros((count, b, n, n)),
-        spin_correlated=np.zeros((count, b)),
+        spin_correlated=np.zeros((count, inputs)),
         amp2=np.zeros((count, provider.channel_count)),
     )
     if ren_scale is not None:
@@ -562,12 +723,11 @@ def fks_blocks(
         born = boost_z(born, y)
         direction = boost_z(np.asarray(k_perp)[valid][:, None], y)[:, 0]
         evaluated = provider.born(born, fks_index[valid])
-        blocks["born"][valid] = provider.born_orders_of(evaluated[0])
-        blocks["amp2"][valid] = evaluated[2]
-        blocks["color_correlated"][valid] = provider.color_correlated(born)
-        blocks["spin_correlated"][valid] = provider.spin_correlated(
+        blocks["born"][valid], blocks["spin_correlated"][valid] = provider.born_inputs(
             born, direction, fks_index[valid], born=evaluated
         )
+        blocks["amp2"][valid] = evaluated[2]
+        blocks["color_correlated"][valid] = provider.color_correlated(born)
         if ren_scale is not None:
             take = np.ones(len(valid), dtype=bool)
             if virtual_mask is not None:

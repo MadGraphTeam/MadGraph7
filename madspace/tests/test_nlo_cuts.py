@@ -15,6 +15,10 @@ cuts.f in Python, with a clustering written as fastjet clusters, which
 test_clustering_is_fastjet checks where the Python bindings of fastjet are
 installed. On the Born layout without an unresolved
 parton NLOCuts gives at the Born what it gives at the soft counter-event.
+The cuts of the n-body part (fks_nbody_cuts) give at the soft counter-event
+of each configuration what fks_cuts gives at that of its n-body
+configuration, which is that of MadFKS at the points of the integrand
+reference.
 """
 
 import functools
@@ -33,6 +37,8 @@ from madspace.subtraction.fks import (
     fks_configuration_mapping,
     fks_cuts,
     fks_isolated_photons,
+    fks_nbody_configurations,
+    fks_nbody_cuts,
 )
 
 KINEMATICS = ("momenta", "soft_momenta", "collinear_momenta", "soft_collinear_momenta")
@@ -567,6 +573,91 @@ def test_born_layout(name, cuts):
     valid = (out["soft_det"] != 0) & same
     np.testing.assert_array_equal(ours[valid], soft[valid])
     assert set(ours[valid]) == {0.0, 1.0}
+
+
+@pytest.mark.parametrize("path", INTEGRAND_DATA, ids=INTEGRAND_IDS)
+def test_nbody_configurations(path):
+    """The n-body configuration of each configuration is the one MadFKS takes
+    for the n-body part (nfks_born under nfks_picked) at the points of the
+    integrand reference."""
+    for channel in reference(path)["channels"]:
+        nbody = fks_nbody_configurations(channel["fks_configurations"])
+        for point in channel["points"]:
+            assert nbody[point["nfks_picked"] - 1] == point["nfks_born"] - 1
+
+
+def test_nbody_configurations_fallbacks():
+    """Without a configuration with links and the same j, the first with j
+    on the same side, else the last with links, else itself."""
+
+    def entry(j_fks, links):
+        return dict(j_fks=j_fks, need_color_links=links, need_charge_links=False)
+
+    configurations = dict(
+        nincoming=2,
+        configurations=[
+            entry(1, False),
+            entry(4, True),
+            entry(3, True),
+            entry(4, False),
+            entry(2, True),
+            entry(1, False),
+        ],
+    )
+    assert fks_nbody_configurations(configurations) == [4, 1, 2, 1, 4, 4]
+    outgoing = dict(
+        nincoming=2, configurations=[entry(1, False), entry(3, True), entry(4, True)]
+    )
+    assert fks_nbody_configurations(outgoing) == [2, 1, 2]
+    none = dict(nincoming=2, configurations=[entry(1, False), entry(3, False)])
+    assert fks_nbody_configurations(none) == [0, 1]
+
+
+NBODY_CUTS = [
+    dict(ptj=0.05, mll_sf=0.05, gamma_is_j=True),
+    dict(ptj=0.03, ptgmin=0.03, ptl=0.02, maxjetflavor=2),
+]
+
+
+@pytest.mark.parametrize("name", PHOTON_DATA + RANDOM_DATA)
+@pytest.mark.parametrize("cuts", NBODY_CUTS, ids=["photon_jets", "isolation"])
+def test_nbody_cuts(name, cuts):
+    """fks_nbody_cuts at the soft counter-event of the configuration of each
+    event is fks_cuts at the soft counter-event of its n-body configuration,
+    the Born with a soft parton of no momentum at the position of its i. For
+    configurations without a soft singularity (a lepton or quark pair from a
+    photon or a gluon) that can differ from fks_cuts at their own soft
+    counter-event."""
+    born, configurations, out, index, pdgs, sqrt_s = random_kinematics(name)
+    cuts = dict(cuts)
+    for key in PHOTON_ENERGIES:
+        if key in cuts:
+            cuts[key] *= sqrt_s / 10
+    real = fks_cuts(born, configurations, **cuts)
+    nbody_cuts = fks_nbody_cuts(born, configurations, **cuts)
+    nbody = np.array(fks_nbody_configurations(configurations))
+    entries = configurations["configurations"]
+    assert len(nbody_cuts.layouts()) == len(entries)
+    (ours,) = evaluate(nbody_cuts, out["soft_momenta"], layout_index=index)
+    (own,) = evaluate(real, out["soft_momenta"], layout_index=index)
+    born_momenta = out["born_momenta"]
+    i_fks = np.array([entries[k]["i_fks"] - 1 for k in nbody[index]])
+    theirs_momenta = np.array(
+        [np.insert(p, i, 0.0, axis=0) for p, i in zip(born_momenta, i_fks)]
+    )
+    (theirs,) = evaluate(real, theirs_momenta, layout_index=nbody[index])
+    valid = out["soft_det"] != 0
+    np.testing.assert_array_equal(ours[valid], theirs[valid])
+    assert set(ours[valid]) == {0.0, 1.0}
+    np.testing.assert_array_equal(
+        ours[nbody[index] == index], own[nbody[index] == index]
+    )
+    if name == "pp_aj_mix_P0_gu_ua":
+        # a lepton pair from the photon of the Born fails the cuts on
+        # leptons at its own soft counter-event (one lepton without
+        # momentum), where the n-body part has the photon
+        pair = np.array([abs(pdgs[k][-1]) == 11 for k in range(len(index))])
+        assert (valid & pair & (own != ours)).any()
 
 
 def test_layouts_per_event():

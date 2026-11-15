@@ -9,6 +9,11 @@ blocks of MadFKS, the latter with the phase of k_perp in place of xij_aor. At
 the madspace kinematics of these points FKSCrossSection with its blocks gives
 the weights it gives with those of MadFKS.
 
+The Borns of the extra counterterms come from an output of g u > u a with
+QCD and QED corrections at the orders of p p > a j of test_data/fks
+(pp_aj_mix_P0_gu_ua.json), against its blocks of pyAmpliCol and the
+counterterm parts of extra_cnt of MadFKS at its Borns.
+
 The provider is compiled in the aMC@NLO outputs of the references, as a
 fixed-order run leaves them (make_fks_integrand_reference.py --keep DIR
 keeps them, one output per reference, DIR/epem_jj and so on). The tests run
@@ -22,7 +27,7 @@ import os
 
 import numpy as np
 import pytest
-from fks_testing import evaluate, reference
+from fks_testing import born_inputs, evaluate, reference
 from madgraph.mg7.nlo.fks import born_topology
 from madgraph.mg7.nlo.provider import FortranProvider, azimuthal_phase, fks_blocks
 from test_fks_integrand import DATA, IDS, WEIGHTS, channels
@@ -41,6 +46,15 @@ VIRTUAL_RTOL = 1e-10
 # rounding of the Born (see test_fks_integrand.RTOL): a real 2e-9 apart at a
 # soft event (xi = 6e-5 on e+ e- > j j)
 WEIGHT_RTOL = 1e-8
+# the output with extra counterterms, a subprocess of the process of the
+# reference of test_data/fks with the same configurations, and the rounding
+# of pyAmpliCol and MadFKS
+EXTRA_OUTPUT = "gu_ua_mix"
+EXTRA_SUBPROCESS = "P0_gu_ua"
+EXTRA_REFERENCE = os.path.join(
+    os.path.dirname(__file__), "test_data", "fks", "pp_aj_mix_P0_gu_ua.json"
+)
+EXTRA_RTOL = 1e-10
 
 
 def name_of(path):
@@ -257,3 +271,86 @@ def test_cross_section(path):
         for key, value in theirs.items():
             scale = parts if key == "cross_section" else np.abs(value)
             assert (np.abs(ours[key] - value) <= WEIGHT_RTOL * scale).all(), key
+
+
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_couplings(path):
+    """Without tagged photons the factors of the contributions are 1 and
+    there are no tagged_factors, and the QED coupling of the counterterms is
+    gal(1)^2 / (4 pi) of the model, 1 / aEWM1 of the param card."""
+    data = reference(path)
+    for channel in data["channels"]:
+        p = provider(name_of(path), channel["subprocess"])
+        tagged, alpha, factors = p.couplings([0, 2, 4])
+        assert tagged == 0
+        np.testing.assert_array_equal(factors, 1.0)
+        aewm1 = data["param_card"]["sminputs"]["1"]
+        assert alpha == pytest.approx(1 / aewm1, rel=1e-14)
+        assert p.tagged_factors() is None
+
+
+def test_extra_counterterms():
+    """At the Borns of the reference of p p > a j (configurations with a
+    quark pair from a gluon and from a photon, whose Born a u > u a is the
+    extra counterterm), the Born inputs of the provider (the Born orders,
+    then the Born of the extra counterterm of the configuration of the
+    point) and their B_perp with k_perp of the point are those of pyAmpliCol
+    (fks_testing.born_inputs) over g^b, and its counterterm parts of the
+    extra counterterm are those of extra_cnt of MadFKS there."""
+    directory = os.path.join(OUTPUTS, EXTRA_OUTPUT, "SubProcesses", EXTRA_SUBPROCESS)
+    if not os.path.isdir(directory):
+        pytest.skip(f"no output {EXTRA_OUTPUT}")
+    data = reference(EXTRA_REFERENCE)
+    p = provider(EXTRA_OUTPUT, EXTRA_SUBPROCESS)
+    ours_configurations = p.fks_configurations
+    theirs_configurations = data["fks_configurations"]
+    for key in ("born_pdgs", "extra_counterterms", "orders"):
+        assert ours_configurations[key] == theirs_configurations[key], key
+    for ours, theirs in zip(
+        ours_configurations["configurations"], theirs_configurations["configurations"]
+    ):
+        for key in ("i_fks", "j_fks", "real_pdgs", "splitting_type", "extra_cnt_index"):
+            assert ours[key] == theirs[key], key
+    rows = [
+        (conf, point)
+        for conf in data["configs"]
+        for point in conf["points"]
+        if "born_blocks" in point
+    ]
+    momenta = np.array([point["p_born"] for _, point in rows])
+    k_perp = np.array([point["kperp"] for _, point in rows])
+    fks_index = np.array([conf["nfks"] - 1 for conf, _ in rows])
+    extra = fks_index[[p.extra_columns(c) is not None for c in fks_index]]
+    assert len(extra) and len(extra) < len(fks_index)
+    born, _, spin = born_inputs(data, rows, k_perp)
+    orders = theirs_configurations["orders"]
+    qcd = orders["split_orders"].index("QCD")
+    powers = [o[qcd] for o in orders["born"]]
+    powers += [o[qcd] for e in orders["extra_born"] for o in e]
+    g = math.sqrt(4 * math.pi * data["born_blocks"]["alpha_s"])
+    scale = g ** np.array(powers)
+    assert p.tagged_factors() is None
+    ours_born, ours_spin = p.born_inputs(momenta, k_perp, fks_index)
+    assert ours_born.shape == born.shape == (len(rows), p.born_input_count())
+    assert_close(ours_born * scale, born, EXTRA_RTOL)
+    # pyAmpliCol has no B_perp for a quark emitter, the provider B / 2
+    tensor = spin != 0
+    assert tensor[:, -1].any()
+    assert_close(np.where(tensor, ours_spin * scale, 0), spin, EXTRA_RTOL)
+    np.testing.assert_allclose(ours_spin[~tensor], ours_born[~tensor] / 2, rtol=1e-15)
+    # the counterterm parts of the extra counterterm per row of the split
+    # orders and position, the coupling of the Born of the extra
+    # counterterm divided out
+    parts = p.extra(momenta, fks_index)
+    has = np.array([p.extra_columns(c) is not None for c in fks_index])
+    np.testing.assert_array_equal(parts[~has], 0)
+    theirs = np.array([point["extra_born_orders"] for _, point in rows])[has]
+    rows_of = [p.qcd_pos, p.qed_pos]
+    powers = np.array(
+        [
+            [o[p.qcd_pos] - 2 * (row == p.qcd_pos) for o in p.positions]
+            for row in rows_of
+        ]
+    )
+    ours = parts[has][:, rows_of, 0].real * data["g"] ** powers
+    assert_close(ours, theirs, EXTRA_RTOL)

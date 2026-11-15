@@ -52,11 +52,17 @@ event, zero where it has none.
 
 The cuts are those of cuts.f with the photon isolation and the
 recombination of photons (NLOCuts), the photons that must be isolated those
-of fks_isolated_photons.
+of fks_isolated_photons, and the n-body part takes them at the n-body
+configuration of MadFKS (fks_nbody_cuts).
+
+Mixed QCD and EW corrections take the Borns of their extra counterterms from
+the provider, the Born of the other mother (a gluon or a photon) of a quark
+pair. With tagged photons and QED corrections the blocks and the QED
+coupling take the factors of tagged_factors of the provider (the couplings
+of the tagged photons in alpha(0), the others in G_mu).
 
 Not covered yet: PDF schemes other than MSbar, densities of eMELA, photon
-beams, user scales, FxFx, the extra counterterms of mixed QCD and EW
-corrections and tagged photons with QED corrections.
+beams, user scales and FxFx.
 """
 
 import argparse
@@ -117,6 +123,9 @@ class SubprocessIntegrand:
         self.context = context
         self.provider = FortranProvider(directory)
         self.configurations = self.provider.fks_configurations
+        # the QED coupling of the model, and the factors of tagged photons
+        _, self.alpha, _ = self.provider.couplings()
+        self.tagged = self.provider.tagged_factors()
         self.incoming = self.configurations["nincoming"]
         born_pdgs = self.configurations["born_pdgs"]
         masses = [
@@ -163,7 +172,6 @@ class SubprocessIntegrand:
             for entry in channel
             for members in entry
         )
-        self.alpha = 1 / float(param_card["sminputs"]["1"])
         scales = scale_parameters(run_card)
         scale = nlo_scale(len(born_pdgs) + 1, self.incoming, **scales)
         self.born_scale = Runtime(scale.with_particle_count(len(born_pdgs)), context)
@@ -217,6 +225,7 @@ class SubprocessIntegrand:
         self.dimension = mappings[0].random_dim()
         self.configuration_count = len(self.configurations["configurations"])
         self.nlo_count = len(self.configurations["orders"]["nlo"])
+        self.born_count = len(self.configurations["orders"]["born"])
         self.born = born
         self.born_pdgs = born_pdgs
         self.energy = energy
@@ -301,21 +310,32 @@ class SubprocessIntegrand:
             born_mask=born_mask,
             virtual_mask=evaluated,
         )
+        alpha = self.alpha
+        if self.tagged is not None:
+            # the couplings of tagged photons in alpha(0), the others in G_mu
+            for name in ("matrix_element", "virtual"):
+                blocks[name] = blocks[name] * self.tagged["nlo"]
+            for name in ("born", "spin_correlated"):
+                blocks[name] = blocks[name] * self.tagged["born"]
+            b = self.born_count
+            factors = self.tagged["born"][:b, None, None]
+            blocks["color_correlated"] = blocks["color_correlated"] * factors
+            alpha = alpha * self.tagged["alpha"]
         amp2 = blocks["amp2"]
         total = amp2.sum(1)
         channel_weight = np.where(
             total > 0, amp2[:, channel] / np.where(total > 0, total, 1), 0.0
         )
-        virtual, approximation = trick.inputs(
-            blocks["virtual"], blocks["born"], evaluated
-        )
+        # the Born orders, without the Borns of the extra counterterms
+        born = blocks["born"][:, : self.born_count]
+        virtual, approximation = trick.inputs(blocks["virtual"], born, evaluated)
         inputs = dict(out)
         inputs.update(blocks)
         inputs.update(
             virtual=virtual,
             channel_weight=channel_weight,
             configuration_weight=configuration_weight,
-            alpha=np.full(count, self.alpha),
+            alpha=np.full(count, alpha),
         )
         result = self.cross_section.by_name(inputs, fks_index=fks_index)
         inputs["virtual"] = approximation
@@ -328,7 +348,7 @@ class SubprocessIntegrand:
             outputs=result,
             kinematics=out,
             virtual=blocks["virtual"],
-            born=blocks["born"],
+            born=born,
             evaluated=evaluated,
         )
 

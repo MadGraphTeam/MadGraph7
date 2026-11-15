@@ -75,7 +75,9 @@ Born and its correlated versions, fks_subtraction the real emission with
 its counterterms, fks_soft_virtual the n-body part of the subtraction
 without the virtual, fks_weights the weights of the integrand from them and
 the couplings and luminosities of each kinematics, fks_cuts the generation
-cuts of each kinematics (NLOCuts on the real processes),
+cuts of each kinematics (NLOCuts on the real processes), fks_nbody_cuts
+those of the n-body part at the n-body configuration of MadFKS of each
+configuration (fks_nbody_configurations),
 fks_luminosities the parton luminosities of the real emission and of the
 n-body part, per flavor or summed, fks_born_flavor_indices the flavor of the
 Born under each real flavor, and fks_cross_section the integrand from the matrix-element
@@ -794,6 +796,36 @@ def fks_isolated_photons(configurations):
     return counts
 
 
+def fks_nbody_configurations(configurations):
+    """The FKS configuration of the n-body part of each FKS configuration (from
+    0), as get_born_nFKSprocess of driver_mintFO.f: the configuration itself
+    where it has color or charge links (a soft singularity), else the first
+    with links and the same j, else the first with links and j on the same
+    side (incoming or outgoing), else the last with links, else itself.
+    MadFKS takes the cuts of the n-body part at the soft counter-event of
+    that configuration."""
+    entries = configurations["configurations"]
+    nincoming = configurations.get("nincoming", 2)
+    soft = [
+        k
+        for k, entry in enumerate(entries)
+        if entry["need_color_links"] or entry["need_charge_links"]
+    ]
+    result = []
+    for k, entry in enumerate(entries):
+        j_fks = entry["j_fks"]
+        candidates = [k] if k in soft else []
+        candidates += [m for m in soft if entries[m]["j_fks"] == j_fks]
+        candidates += [
+            m
+            for m in soft
+            if (entries[m]["j_fks"] <= nincoming) == (j_fks <= nincoming)
+        ]
+        candidates += soft[-1:] + [k]
+        result.append(candidates[0])
+    return result
+
+
 def fks_cuts(born, configurations, **cuts):
     """The NLOCuts of the FKS configurations of a Born, the generation cuts of
     cuts.f of MadFKS on one kinematics, with the real process of each
@@ -820,6 +852,35 @@ def fks_cuts(born, configurations, **cuts):
         [list(entry.pdgs) for entry in entries],
         incoming=configurations.get("nincoming", 2),
         isolated_photons=fks_isolated_photons(configurations),
+        **cuts,
+    )
+
+
+def fks_nbody_cuts(born, configurations, **cuts):
+    """The NLOCuts of the n-body part of the FKS configurations of a Born, as
+    fks_cuts at the soft counter-event of the n-body configuration of each
+    configuration (fks_nbody_configurations): per configuration (layout_index
+    the fks_index) the real process of its n-body configuration, with its
+    soft parton at the position of that of the configuration, so that it
+    takes the soft counter-event of the configuration, whose other momenta
+    are the Born, and the isolated photons of the n-body configuration.
+
+    Args and Raises: as fks_cuts.
+    """
+    entries = fks_configurations(born, configurations)
+    nbody = fks_nbody_configurations(configurations)
+    photons = fks_isolated_photons(configurations)
+    layouts = []
+    for entry, k in zip(entries, nbody):
+        other = entries[k]
+        pdgs = list(other.pdgs)
+        soft = pdgs.pop(other.i_fks)
+        pdgs.insert(entry.i_fks, soft)
+        layouts.append(pdgs)
+    return NLOCuts(
+        layouts,
+        incoming=configurations.get("nincoming", 2),
+        isolated_photons=[photons[k] for k in nbody],
         **cuts,
     )
 
@@ -1037,7 +1098,8 @@ def fks_cross_section(
             read_fks_configurations).
         n_l: the number of massless leptons, for the n-body part.
         cuts: the generation cuts by their names in the run card (see
-            fks_cuts), or None for none.
+            fks_cuts), or None for none, those of the n-body part at the
+            n-body configurations of MadFKS (fks_nbody_cuts).
         scales: the scales by their names in the run card (see nlo_scale), or
             None for the scales, couplings and luminosities as arguments. With
             them, the integrand takes them itself from running_coupling,
@@ -1062,8 +1124,9 @@ def fks_cross_section(
         fks_weights(born, configurations),
         None if cuts is None else fks_cuts(born, configurations, **cuts),
     ]
+    nbody_cuts = None if cuts is None else fks_nbody_cuts(born, configurations, **cuts)
     if scales is None:
-        return FKSCrossSection(*arguments)
+        return FKSCrossSection(*arguments, nbody_cuts=nbody_cuts)
     if running_coupling is None:
         raise ValueError("fks_cross_section: the scales need a running_coupling")
     luminosity, born_luminosity = fks_luminosities(
@@ -1079,6 +1142,7 @@ def fks_cross_section(
         running_coupling,
         luminosity,
         born_luminosity,
+        nbody_cuts=nbody_cuts,
     )
 
 

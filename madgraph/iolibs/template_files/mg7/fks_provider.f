@@ -17,11 +17,21 @@ c - LINKS: sborn_sf_frame for the given pairs of legs of the real
 c   process of one configuration, amp_split_soft per position.
 c - VIRTUAL: sloopmatrix_thres of MadLoop at the Born with mu_R given,
 c   the finite part, the poles and the accuracy per position, for the
-c   orders of the NLO, with the return code of MadLoop.
+c   orders of the NLO, with the return code of MadLoop, and with tagged
+c   photons and QED corrections the change between alpha(0) and G_mu of
+c   their couplings (get_virtual_a0Gmu_conv), as BinothLHA adds it.
 c - CHANNELS: the Born configurations (born_conf.inc, born_props.inc),
 c   per configuration its diagram, for each propagator its two daughters,
 c   sprop and tprid, then the masses and widths of the propagators, as
 c   write_born_forest of fks_kinematics_dump.f writes them.
+c - COUPLINGS: the number of tagged photons (get_n_tagged_photons), the QED
+c   coupling gal(1)^2 / (4 pi) of the counterterms, and for the given
+c   powers of e the factor of a contribution with tagged photons
+c   (get_rescale_alpha_factor), by which add_wgt multiplies its weight.
+c - EXTRA: extra_cnt_frame at the Born of a configuration with an extra
+c   counterterm (born_cnt_<n>.f, the Born of the other mother of a quark
+c   pair), its counterterm parts amp_split_cnt(:,1:2,:), as sborncol_fsr
+c   and sborncol_isr of fks_singular.f take them.
 c A request is three integers (command, number of points, argument)
 c then its data, an answer is a status (0 for success) then its data,
 c all in the native byte order. Command 0 stops the server, 1 gives
@@ -125,6 +135,10 @@ c the sizes and the orders of the split-order positions.
             call provider_virtual(header(2))
          case (6)
             call provider_channels
+         case (7)
+            call provider_extra(header(2),header(3))
+         case (8)
+            call provider_couplings(header(2))
          case default
             call write_status(1)
          end select
@@ -286,6 +300,71 @@ c diagrams of the channels.
       end
 
 
+c The number of tagged photons, the QED coupling and the factors of the
+c contributions with tagged photons for count powers of e.
+      subroutine provider_couplings(count)
+      use fks_provider_io
+      implicit none
+      include 'coupl.inc'
+      integer count,k
+      integer(c_int32_t) ntag(1)
+      integer(c_int32_t), allocatable :: powers(:)
+      double precision, allocatable :: out(:)
+      integer get_n_tagged_photons
+      double precision get_rescale_alpha_factor
+      external get_n_tagged_photons,get_rescale_alpha_factor
+      double precision pi
+      parameter (pi=3.1415926535897932385d0)
+      allocate(powers(count),out(count+1))
+      call read_ints(count,powers)
+      call provider_configuration(1)
+      ntag(1)=get_n_tagged_photons()
+      out(1)=abs(gal(1))**2/(4d0*pi)
+      do k=1,count
+         out(k+1)=get_rescale_alpha_factor(ntag(1),powers(k))
+      enddo
+      call write_status(0)
+      call write_ints(1,ntag)
+      call write_reals(count+1,out)
+      deallocate(powers,out)
+      end
+
+
+c The counterterm parts amp_split_cnt of the Born of the extra counterterm
+c of configuration nfks at count Born kinematics (real and imaginary parts
+c in the order of memory), status 2 for a configuration without one.
+      subroutine provider_extra(count,nfks)
+      use fks_provider_io
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      integer iextra_cnt,isplitorder_born,isplitorder_cnt
+      common /c_extra_cnt/iextra_cnt,isplitorder_born,isplitorder_cnt
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+      integer count,nfks,k,size_cnt
+      double precision, allocatable :: p(:,:,:),out(:,:)
+      double complex cnts(2,nsplitorders)
+      size_cnt=4*amp_split_size*nsplitorders
+      allocate(p(0:3,nexternal-1,count),out(size_cnt,count))
+      call read_reals(4*(nexternal-1)*count,p)
+      call provider_configuration(nfks)
+      if (iextra_cnt.le.0) then
+         call write_status(2)
+         deallocate(p,out)
+         return
+      endif
+      do k=1,count
+         calculatedBorn=.false.
+         call extra_cnt_frame(p(0,1,k),iextra_cnt,cnts)
+         out(:,k)=transfer(amp_split_cnt,0d0,size_cnt)
+      enddo
+      call write_status(0)
+      call write_reals(size_cnt*count,out)
+      deallocate(p,out)
+      end
+
+
 c The colour- or charge-linked Borns of sborn_sf at count Born
 c kinematics for npairs pairs of legs of the real process of
 c configuration nfks (that sbornsoft takes, fks_j_from_i of i_fks),
@@ -343,8 +422,13 @@ c check of BinothLHA and the conversion of tagged photons.
       logical updateloop
       common /to_updateloop/updateloop
       integer count,k,i,j,ret_code,amp_orders(nsplitorders),pos
-      integer nsqso,MLResArrayDim
+      integer nsqso,MLResArrayDim,ntagph,qed_pow_b
       integer getordpowfromindex_ml5,orders_to_amp_split_pos
+      integer get_n_tagged_photons
+      double precision get_virtual_a0Gmu_conv,born_wgt
+      external get_n_tagged_photons,get_virtual_a0Gmu_conv
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
       double precision, allocatable :: p(:,:,:),out(:,:,:),scales(:)
       double precision pf(0:3,nexternal-1)
       integer ids(nexternal-1)
@@ -354,9 +438,12 @@ c check of BinothLHA and the conversion of tagged photons.
       logical, allocatable, save :: keep_order(:)
       logical firsttime
       data firsttime/.true./
-      save firsttime,nsqso,MLResArrayDim
+      save firsttime,nsqso,MLResArrayDim,ntagph
       if (firsttime) then
          firsttime=.false.
+c the tagged photons of the Born, those of every configuration
+         call provider_configuration(1)
+         ntagph=get_n_tagged_photons()
          call set_forbid_hel_doublecheck(.true.)
          call get_nsqso_loop(nsqso)
          call get_answer_dimension(MLResArrayDim)
@@ -399,6 +486,24 @@ c the couplings of the loops as well, as BinothLHA updates them
             out(1:3,pos,k)=virt_wgts(1:3,i)
             out(4,pos,k)=accuracies(i)
          enddo
+c the change of scheme of the couplings of tagged photons, per Born order
+c at the order of its QED correction
+         if (ntagph.ne.0 .and. qed_pos.gt.0) then
+            calculatedBorn=.false.
+            call sborn_frame(p(0,1,k),born_wgt)
+            do i=1,amp_split_size_born
+               call amp_split_pos_to_orders(i,amp_orders)
+               born_wgt=amp_split(i)
+               qed_pow_b=amp_orders(qed_pos)
+               amp_orders(qed_pos)=amp_orders(qed_pos)+2
+               if (amp_orders(qed_pos).gt.nlo_orders(qed_pos)) cycle
+               pos=orders_to_amp_split_pos(amp_orders)
+               out(1,pos,k)=out(1,pos,k)+
+     $              get_virtual_a0Gmu_conv(qed_pow_b,ntagph,0,born_wgt)
+               out(2,pos,k)=out(2,pos,k)+
+     $              get_virtual_a0Gmu_conv(qed_pow_b,ntagph,1,born_wgt)
+            enddo
+         endif
       enddo
       call write_status(0)
       call write_ints(count,codes)

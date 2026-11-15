@@ -871,6 +871,60 @@ def test_cross_section_with_extra_counterterms():
     assert np.isfinite(outputs["cross_section"]).all()
 
 
+def test_cross_section_nbody_cuts():
+    """With cuts the n-body part of FKSCrossSection takes those at the soft
+    counter-event of the n-body configuration of MadFKS (fks_nbody_cuts):
+    with a cut on lepton pairs the Born and n-body weights of g u > u a are
+    those without cuts, also for the configurations of a lepton pair from the
+    photon of the Born, whose own soft counter-event fails the cut."""
+    path = os.path.join(
+        os.path.dirname(__file__), "test_data", "fks", "pp_aj_mix_P0_gu_ua.json"
+    )
+    data = reference(path)
+    born = reference_born_mapping(data)
+    configurations = data["fks_configurations"]
+    cuts = dict(mll_sf=10.0)
+    plain = fks_cross_section(born, configurations)
+    function = fks_cross_section(born, configurations, cuts=cuts)
+    assert plain.nbody_cuts() is None and function.nbody_cuts() is not None
+    types = function.arg_types()
+    mapping = fks_configuration_mapping(born, configurations, 0.0)
+    kinematics = ms.FKSKinematics(mapping)
+    count = 256
+    rng = np.random.default_rng(4712)
+    r = rng.random((count, born.random_dim() + 3))
+    index = rng.integers(len(configurations["configurations"]), size=count)
+    names = list(mapping.counter_event_types().keys())
+    inputs = dict(zip(names, evaluate(kinematics, r, fks_index=index)))
+    args = []
+    for name in types.keys():
+        if name == "fks_index":
+            continue
+        if name in inputs:
+            args.append(inputs[name])
+        else:
+            shape = [count, *types[name].shape]
+            args.append(rng.random(shape) + 0.5)
+    outputs = [
+        dict(zip(f.return_types().keys(), evaluate(f, *args, fks_index=index)))
+        for f in (plain, function)
+    ]
+    (own,) = evaluate(
+        fks_cuts(born, configurations, **cuts),
+        inputs["soft_momenta"],
+        layout_index=index,
+    )
+    valid = inputs["born_weight"] != 0
+    pairs = np.array(
+        [11 in configurations["configurations"][k]["real_pdgs"] for k in index]
+    )
+    assert (valid & pairs & (own == 0)).any()
+    assert not (valid & ~pairs & (own == 0)).any()
+    for key in ("lo_weight", "nbody_weight"):
+        assert (outputs[0][key][valid] != 0).all()
+        np.testing.assert_array_equal(outputs[1][key], outputs[0][key])
+
+
 def test_decay_round_trip():
     """The FKS mapping of a decay maps the random numbers to the real emission
     of the decaying particle at rest, with momentum fractions one, and back,
