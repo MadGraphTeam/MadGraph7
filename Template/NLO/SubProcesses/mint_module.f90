@@ -208,6 +208,8 @@ module mint_module
   integer,parameter,public :: sl_nodes=16
   ! Fixed method tag stored in the native10 archive and the SCL10 table.
   integer,parameter,private :: sl_method_id=29
+  ! Layout version of that archive and table; an older table needs a new MINT0.
+  integer,parameter,private :: sl_format_version=11
   type,private :: sector_learning_entry
      integer :: slot=0,ntrain=0,nflavours=0
      integer,allocatable :: ids(:),providers(:),pdgs(:,:),groups(:)
@@ -1211,8 +1213,7 @@ contains
     integer,allocatable :: a(:,:),bmap(:,:)
     double precision :: started,finished,before,aa,bb,dummy
     double precision,allocatable :: fit_b(:,:,:),fit_r(:,:,:,:)
-    ! Close the last partial block of ordinary calls.
-    call sl_online_ordinary_clock(started)
+    call cpu_time(started)
     call sl_unified_ensure()
     if(any(xgrid(0:online_nint_before,1:ndim,1:nchans).ne.online_grid_before)) &
          error stop 'Grid changed inside online iteration'
@@ -1285,7 +1286,7 @@ contains
     call cpu_time(started)
     if(.not.allocated(sl_entries))return
     if(.not.sector_learning_archive)goto 10
-    write(online_unit)73110620,10,sl_method_id,online_epoch,online_nint_before,nint_used, &
+    write(online_unit)73110620,sl_format_version,sl_method_id,online_epoch,online_nint_before,nint_used, &
          ndim,nchans,size(sl_entries),online_ordinary_calls,online_probes,online_reused_nodes, &
          online_record_rejections
     write(online_unit)online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
@@ -1342,7 +1343,7 @@ contains
     if(.not.sl_ready.or..not.allocated(sl_grid_snapshot))error stop 'Missing frozen online state'
     call sl_unified_ensure()
     ! Explicit formats keep one record per line (the reader counts tokens).
-    write(unit,'(a,*(1x,i0))')'SCL10 H',10,sl_method_id,size(sl_entries),sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
+    write(unit,'(a,*(1x,i0))')'SCL10 H',sl_format_version,sl_method_id,size(sl_entries),sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
          online_epoch,online_ordinary_calls,online_probes,online_reused_nodes,online_record_rejections, &
          64,16,1,3,3,1
     write(unit,'(a,*(1x,es24.16))')'SCL10 C',online_budget,online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
@@ -1402,11 +1403,15 @@ contains
        if(index(line,'SCL10 H').eq.1)exit
        if(index(line,'SCL').eq.1)error stop 'Unexpected learning metadata before SCL10'
     enddo
+    ! The version comes first: another version may have another layout.
+    read(line,*,iostat=ios)marker,tag,version
+    if(ios.ne.0)error stop 'Malformed SCL10 header'
+    if(version.ne.sl_format_version)error stop 'SCL10 table from another code version; rerun MINT0'
     call sl_epoch_replay_validate_line(line,'H',19)
     read(line,*,iostat=ios)marker,tag,version,mode,count_entries,sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
          online_epoch,online_ordinary_calls,online_probes,online_reused_nodes,online_record_rejections, &
          warm,stride,gauge_version,phase_passes,tile_passes,selection_version
-    if(ios.ne.0.or.version.ne.10.or.mode.ne.sl_method_id.or.count_entries.lt.1.or. &
+    if(ios.ne.0.or.mode.ne.sl_method_id.or.count_entries.lt.1.or. &
          sl_grid_nint.ne.nintervals.or.sl_grid_ndim.ne.ndim.or.sl_grid_nchans.ne.nchans.or. &
          min(online_epoch,online_ordinary_calls,online_probes,online_reused_nodes, &
          online_record_rejections).lt.0.or.count_entries.gt.100000.or. &
@@ -1505,9 +1510,10 @@ contains
   end subroutine sl_epoch_replay_read_table
 
   subroutine sl_online_observe_ordinary()
+    ! Called once an ordinary MINT0 point is accumulated.
     integer :: d
     online_ordinary_calls=online_ordinary_calls+1
-    ! The clock is read per block of 16 calls, when a probe may follow.
+    ! The clock is read per block of 16 calls, where a probe may follow.
     if(mod(online_ordinary_calls,16).eq.0)call sl_online_ordinary_clock()
     if(.not.sector_learning_archive)return
     do d=1,ndim
@@ -1516,14 +1522,12 @@ contains
     enddo
   end subroutine sl_online_observe_ordinary
 
-  subroutine sl_online_ordinary_clock(now)
+  subroutine sl_online_ordinary_clock()
     ! Charge the time since the last mark to ordinary MINT0 points.
-    double precision,intent(out),optional :: now
-    double precision :: finished
-    call cpu_time(finished)
-    online_ordinary_cpu=online_ordinary_cpu+finished-online_clock
-    online_clock=finished
-    if(present(now))now=finished
+    double precision :: now
+    call cpu_time(now)
+    online_ordinary_cpu=online_ordinary_cpu+now-online_clock
+    online_clock=now
   end subroutine sl_online_ordinary_clock
 
   subroutine sl_unified_maybe_probe(fun)
@@ -1537,7 +1541,8 @@ contains
     if(online_ordinary_calls.lt.64.or.mod(online_ordinary_calls,16).ne.0)return
     if(online_extra_cpu.ge.online_budget*online_ordinary_cpu)return
     if(mod(nint_used,4).ne.0.or.mod(nint_used_virt,4).ne.0)return
-    call sl_online_ordinary_clock(started)
+    ! sl_online_observe_ordinary marked the clock just before this call.
+    started=online_clock
     saved_current=sl_current
     saved_folds=ifold; saved_even=even_rn
     saved_f=f; saved_ncell=ncell; saved_icell=icell; saved_rand=rand
@@ -1736,19 +1741,21 @@ contains
 10  continue
     do while (nit.lt.itmax)
        call start_iteration
-       if(sl_train)then
-          call sl_epoch_replay_begin_iteration()
-          call cpu_time(online_clock)
-       endif
+       if(sl_train)call sl_epoch_replay_begin_iteration()
 2      kpoint_iter=kpoint_iter+1
+       ! The probe budget counts only the ordinary points of this loop.
+       if(sl_train)call cpu_time(online_clock)
        do kpoint=1,ncalls
           new_point=.true.
           call get_random_x(x,vol,kfold)
           call compute_integrand(fun,x,vol)
-          if(sl_train)call sl_online_observe_ordinary()
           call accumulate_the_point(x)
-          if(sl_train)call sl_unified_maybe_probe(fun)
+          if(sl_train)then
+             call sl_online_observe_ordinary()
+             call sl_unified_maybe_probe(fun)
+          endif
        enddo
+       if(sl_train)call sl_online_ordinary_clock()
        call get_amount_of_points(enough_points)
        if (.not.enough_points) goto 2
        ! Only a grid reset installs the unit channel markers for this scan.

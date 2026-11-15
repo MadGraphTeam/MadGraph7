@@ -20,6 +20,7 @@ import math
 import struct
 
 MAGIC = 73110620
+VERSION = 11  # layout of the archive and the SCL10 table
 COEFFICIENT = .5
 GEOMETRIES = ((2, 2, 1), (4, 2, 1), (2, 4, 1), (4, 4, 1))
 SHAPES = ((1, 1), (2, 2), (4, 2), (2, 4), (4, 4))
@@ -706,7 +707,9 @@ def read_archive(path):
         if magic != MAGIC:
             raise ValueError('Corrupt epoch record marker')
         row = dict(zip(names, reader.ints(12)))
-        if (row['version'] != 10 or row['mode'] != 29 or row['epoch'] < 1 or
+        if row['version'] != VERSION:
+            raise ValueError('Epoch archive from another code version; rerun MINT0')
+        if (row['mode'] != 29 or row['epoch'] < 1 or
                 not 4 <= row['npre'] <= 10000 or not 4 <= row['npost'] <= 10000 or
                 row['npre'] % 4 or row['npost'] % 4 or not 3 <= row['ndim'] <= 100 or
                 not 1 <= row['nchans'] <= 10000 or not 1 <= row['nentries'] <= 10000 or
@@ -777,7 +780,7 @@ def read_archive(path):
         records.append(row)
     if not footer or reader.offset != len(payload) or not records:
         raise ValueError('Missing end marker, trailing bytes or empty archive')
-    return dict(version=10, mode=records[0]['mode'], byte_order='little' if endian == '<' else 'big',
+    return dict(version=VERSION, mode=records[0]['mode'], byte_order='little' if endian == '<' else 'big',
                 records=records, path=str(Path(path).resolve()), sha256=hashlib.sha256(payload).hexdigest())
 
 
@@ -790,13 +793,18 @@ def read_table(path):
     if any(line and line[0] != 'SCL10' for line in tokens[positions[0]:]):
         raise ValueError('Trailing nonblank record within/after SCL10 table')
     lines = [line for line in tokens[positions[0]:] if line]
-    if lines[0][:2] != ['SCL10', 'H'] or len(lines[0]) != 19:
-        raise ValueError('Missing/malformed SCL10 header')
+    if lines[0][:2] != ['SCL10', 'H']:
+        raise ValueError('Missing SCL10 header')
+    # The version comes first: another version may have another layout.
+    if lines[0][2:3] != [str(VERSION)]:
+        raise ValueError('SCL10 table from another code version; rerun MINT0')
+    if len(lines[0]) != 19:
+        raise ValueError('Malformed SCL10 header')
     names = ('version', 'mode', 'nentries', 'nint', 'ndim', 'nchans', 'epoch', 'ordinary', 'probes', 'reused',
              'rejections', 'warmup', 'stride', 'gauge_version', 'phase_passes', 'tile_passes',
              'selection_version')
     result = dict(zip(names, map(int, lines[0][2:])))
-    if (result['version'] != 10 or result['mode'] != 29 or
+    if (result['mode'] != 29 or
             min(result[k] for k in ('nentries', 'nint', 'ndim', 'nchans', 'epoch')) < 1 or
             result['ndim'] < 3 or result['nint'] % 4 or
             min(result[k] for k in ('ordinary', 'probes', 'reused', 'rejections')) < 0 or
@@ -1137,7 +1145,7 @@ def audit_archive(path, table_path, *, expected_budget=None):
                                 pdgs=e['pdgs'][i], q=e['q'][i]):
                 raise ValueError('Final static metadata differs')
     ratio = sum(table['cpu'][1:]) / table['cpu'][0] if table['cpu'][0] > 0 else None
-    return dict(passed=True, native_version=10, mode=archive['mode'], replay_coefficient=COEFFICIENT,
+    return dict(passed=True, native_version=VERSION, mode=archive['mode'], replay_coefficient=COEFFICIENT,
                 archive_sha256=archive['sha256'], mint_grids_sha256=table['sha256'], epoch_count=len(reports),
                 epochs=reports, counters=totals, cpu_cumulative=table['cpu'],
                 extra_over_ordinary_integrand_cpu=ratio, budget_target=table['budget'])

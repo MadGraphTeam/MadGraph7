@@ -2048,8 +2048,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             if mode_dict[mode] == 'all':
                 error = sector_learning_card_error(
                     pjoin(self.me_dir, 'Cards', 'FKS_params.dat'), self.run_card,
-                    [d for d in misc.glob(pjoin(self.me_dir, 'SubProcesses', 'P*'))
-                     if os.path.isdir(d)])
+                    [pjoin(self.me_dir, 'SubProcesses', d) for d in p_dirs])
                 if error:
                     raise aMCatNLOError(error)
 

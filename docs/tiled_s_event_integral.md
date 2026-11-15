@@ -22,8 +22,10 @@ The maps are learned inside ordinary MINT0:
 - At regular points (after 64 ordinary calls, every 16th), a probe evaluates
   one Born point at all 16 nodes of a (4,4,1) stencil. Probes are admitted
   while their CPU, plus fitting and archiving, stays below
-  `FKSSectorLearningBudget` times the CPU of the ordinary MINT0 points
-  (timed per block of 16 points). A probe
+  `FKSSectorLearningBudget` times the CPU of the ordinary MINT0 points:
+  their sampling, integrand and grid accumulation, timed per block of 16
+  points. The work between passes and iterations (point-count checks,
+  channel scans, combining results) is not counted. A probe
   stores the routed S contributions before the absolute value, split into
   the Born part `B` and per-sector parts `R`, per canonical flavour. The
   separately generated virtual-residual lane (type 14) is excluded, so
@@ -73,7 +75,8 @@ Learning applies to complete MC@NLO runs. At LO (`aMC@LO`, `noshowerLO`,
 Run fresh MINT0 and MINT1 before generation whenever the method or credit
 changes. `mint_grids` stores the frozen maps (`SCL10` table); MINT1 and
 generation verify the setting, the fold counts and the adaptive grid
-against it. With `sector_learning_archive` set in `mint_module` (the tests
+against it, and stop with "rerun MINT0" on a table written by another code
+version. With `sector_learning_archive` set in `mint_module` (the tests
 do this), MINT0 also writes `sector_learning_online.bin`, a binary
 per-iteration record of the probes, fits and grid feeds for auditing;
 production runs neither write nor read it, and do not keep its grid

@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from tests.unit_tests.fks.test_born_spreading import mint_support,TEMPLATE
-from tests.input_files.tiled_s_event_reference import audit_archive,read_archive,reassemble,objective
+from tests.input_files.tiled_s_event_reference import audit_archive,read_archive,read_table,reassemble,objective
 
 PROGRAM = r'''
 
@@ -408,6 +408,14 @@ class TestEpochReplayIteration(unittest.TestCase):
                     words=lines[row].split();words[index]=value;lines[row]=' '.join(words)
                     (work/'mint_grids').write_text('\n'.join(lines)+'\n')
                     self.run_case('restart',work,'ERROR STOP')
+            # A table of another version (here the 20-column version 10)
+            # stops on its version before its layout is read.
+            lines=original.splitlines();row=next(i for i,line in enumerate(lines)if line.strip().startswith('SCL10 H'))
+            words=lines[row].split();words[2]='10';words.insert(13,words[10]);lines[row]=' '.join(words)
+            (work/'mint_grids').write_text('\n'.join(lines)+'\n')
+            self.run_case('restart',work,'SCL10 table from another code version; rerun MINT0')
+            with self.assertRaisesRegex(ValueError,'rerun MINT0'):
+                read_table(work/'mint_grids')
             for addition in ('SCL7 C .65 0 0 0 0\n','SCL10 P 3 1 '+' '.join(map(str,range(1,17)))+'\n'):
                 (work/'mint_grids').write_text(original+addition)
                 self.run_case('restart',work,'Trailing unified learning metadata')
