@@ -710,9 +710,13 @@ class DefaultCliServices:
 
     def benchmark(self, config: RunConfig, progress: ProgressSink) -> object:
         from pyamplicol.api import BenchmarkRunner
+        from pyamplicol.loop_profile import one_core
 
         if config.evaluation.artifact is None:
             raise ConfigurationError("benchmark requires an artifact target")
+        # Every time a profile prints is that of one core (a Monte Carlo
+        # worker's): the pools this process starts run one thread each.
+        one_core()
         points = None
         if config.evaluation.momenta is not None:
             raw_points = _read_json(config.evaluation.momenta)

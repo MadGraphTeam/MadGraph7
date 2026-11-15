@@ -1462,14 +1462,19 @@ The runnable reference is
 [`examples/python/benchmark.py`](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/python/benchmark.py).
 
 A one-loop artifact or runtime returns a `benchmarking.VirtualProfileResult`
-instead: the per-point time of `minimum_samples` calls of `batch_size`
-points each, a new batch every call (a path without `points`: the distinct flat
-points `benchmarking.profile_points` draws with `evaluation.phase_space`'s
-seed and energy; given `points` are taken in order, cycled when there are
-fewer than the calls need) (`seconds_per_point`, the median call; `low`,
-`high`) and `stages`, the time
+instead: the per-point time of at least `minimum_samples` calls of
+`batch_size` points each, more until they add up to `target_runtime`
+seconds, after `warmup_runs` untimed ones, a new batch every call (a path
+without `points`: the distinct flat points drawn with
+`evaluation.phase_space`'s seed and energy, point i from seed + i,
+`benchmarking.profile_points` gives the first ones; given `points` are taken
+in order, cycled when there are fewer than the calls need)
+(`seconds_per_point`, the median call; `low`, `high`) and `stages`, the time
 per point in each stage group (trees, dressing, scatter, reduction, rest)
-read from the native executor's stage report of the same calls, with the
+in the shares read from the native executor's stage report of the same
+calls (they add up to `seconds_per_point`), on the loaded runtime's own
+thread pools (`pyamplicol profile` times one core; `threads` says what the
+calls ran on), with the
 backend record (`reduction`) and the setting (`unchecked`). A `RunConfig`'s
 `evaluation.reduction`, `reduction_unchecked` and `mu_r2` select the backend,
 the unchecked timing mode and the scale when a path is loaded:

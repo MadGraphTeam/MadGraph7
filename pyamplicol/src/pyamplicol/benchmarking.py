@@ -2758,18 +2758,21 @@ def _sample_statistics(samples: list[float]) -> tuple[float, float, float, float
 class VirtualProfileResult:
     """The profile of a v2 virtual (loop) runtime (``pyamplicol profile`` of a
     loop artifact, :class:`pyamplicol.BenchmarkRunner`): ``samples`` timed
-    calls of ``batch`` points each (distinct flat points, a new batch every
-    call: ``profile_points``; or the caller's), finite part only, at the
-    runtime's reduction setting.
+    calls of ``batch`` points each after ``warmup`` untimed ones (distinct
+    flat points, a new batch every call: ``_PointBatches``; or the
+    caller's), finite part only, at the runtime's reduction setting, at
+    least ``benchmark.minimum_samples`` calls and more until the timed calls
+    reach ``benchmark.target_runtime`` seconds (``_timed_calls``).
     ``seconds_per_point`` is the median call's wall time per point (``low``
-    and ``high`` the fastest and slowest call's); ``stages`` splits the
-    timed calls' total wall time per point into the groups of
-    ``runtime.virtual.PROFILE_GROUPS`` from the executor's always-on stage
+    and ``high`` the fastest and slowest call's); ``stages`` splits it into
+    the groups of ``runtime.virtual.PROFILE_GROUPS`` in the shares of the
+    timed calls' total wall time read from the executor's always-on stage
     reports of the same calls, every native batch of a call counted
     (``runtime.virtual.collected_stage_seconds``; no other timer runs, so
-    ``label`` is None).
+    ``label`` is None): the stages add up to ``seconds_per_point``.
     ``reduction`` is the requested, effective backend and reason of the
-    last call; ``unchecked`` the reduction_unchecked setting."""
+    last call; ``unchecked`` the reduction_unchecked setting; ``threads``
+    the native threads of the timed calls (the executor's report)."""
 
     process_id: str
     process_expression: str | None
@@ -2796,22 +2799,33 @@ class VirtualProfileResult:
     # The peak resident set size of this process over the binary64 warm-up
     # and timed calls (``reporting.resources.peak_memory``).
     peak_memory: PeakMemory | None = None
-    # The same timed batches in double-double when the profiled
-    # configuration requests it (``evaluation.arithmetic = "double-double"``),
-    # timed after the binary64 calls; None otherwise (nothing extra runs).
-    double_double: PrecisionTiming | None = None
+    # The reference precision's timing when ``profile_virtual`` is given one
+    # (``reference=``; ``pyamplicol profile``: its ground truth), timed after
+    # the binary64 calls (``_reference_timing``); None otherwise (nothing
+    # extra runs).
+    reference: PrecisionTiming | None = None
+    # The native threads of the timed calls (the executor's report; None:
+    # not reported).
+    threads: int | None = None
+    # The process's CPU time over the wall time of the timed calls: at most
+    # about 1 on one core (below 1 when the host took the core from it).
+    cpu_per_wall: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class PrecisionTiming:
-    """The timed calls of a profile in one carrier (``VirtualProfileResult.
-    double_double``): ``samples`` calls of ``batch`` points after ``warmup``
-    warm-up calls, the same batches as the binary64 timing;
-    ``seconds_per_point`` the median call's wall time per point, ``low`` and
-    ``high`` the fastest and slowest call's; ``points`` the timed points;
-    ``failed_points`` those without an accepted value, ``failure_reasons``
-    their reasons (``failure_reason``: a best-effort value or none), most
-    frequent first."""
+    """The timed calls of a profile in a reference carrier
+    (``VirtualProfileResult.reference``, ``_reference_timing``): one
+    optimistic pass per point (the unchecked reduction of the profiled
+    backend alone, no stability checks, no rescue, no best-effort
+    re-evaluation), ``samples`` calls of ``batch`` points after ``warmup``
+    warm-up calls, each call on the first ``batch`` points of the binary64
+    timing's batch of the same index; ``seconds_per_point`` the median
+    call's wall time per point, ``low`` and ``high`` the fastest and slowest
+    call's; ``points`` the timed points; ``failed_points`` those without a
+    value, ``failure_reasons`` their reasons (``failure_reason``), most
+    frequent first; ``digits`` the decimal digits of arbitrary precision
+    (None for double-double)."""
 
     arithmetic: str
     batch: int
@@ -2826,6 +2840,7 @@ class PrecisionTiming:
     # The peak resident set size over these calls, made after the binary64
     # ones in the same process (their state resident).
     peak_memory: PeakMemory | None = None
+    digits: int | None = None
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -2879,43 +2894,77 @@ def profile_points(
     process_id: str,
     config: RunConfig | BenchmarkConfig | None,
 ) -> Momenta:
-    """The timed points of a loop runtime profile (``profile_virtual``): one
-    distinct flat (RAMBO on diet) point per point of every warm-up and timed call,
+    """The first timed points of a loop runtime profile
+    (``profile_virtual``): one distinct flat (RAMBO on diet) point per point
+    of every warm-up call and of the ``minimum_samples`` first timed calls,
     ``batch_size x (warmup_runs + max(minimum_samples, 1))`` of them, drawn
     by ``cli.flat_points`` with ``evaluation.phase_space``'s seed and energy
     (point i from seed + i; without a RunConfig: its defaults, seed 1 at the
-    validation point's energy)."""
-
-    from pyamplicol.cli.flat_points import draw_flat_points
-    from pyamplicol.config import EvaluationPhaseSpaceConfig
+    validation point's energy). A profile drawing its own points continues
+    the sequence for its further calls (``_PointBatches``)."""
 
     if isinstance(config, RunConfig):
-        bench, space = config.benchmark, config.evaluation.phase_space
+        bench = config.benchmark
     else:
-        bench, space = config or BenchmarkConfig(), EvaluationPhaseSpaceConfig()
+        bench = config or BenchmarkConfig()
     calls = bench.warmup_runs + max(bench.minimum_samples, 1)
-    return cast(
-        Momenta,
-        draw_flat_points(
+    batches = _PointBatches(bench.batch_size, flat=(artifact, process_id, config))
+    return tuple(point for k in range(calls) for point in batches(k))
+
+
+class _PointBatches:
+    """The batch of every profiled call: call k (warm-ups counted) takes
+    the ``batch_size`` points from k x ``batch_size`` on (``size``: the first
+    ``size`` of them), of ``points`` cycled, or of the distinct flat points
+    drawn as ``profile_points`` draws them (``flat``: the artifact, the
+    process id and the configuration; point i from seed + i, drawn in
+    growing blocks as the calls need them, so every call index has the same
+    points in every profile of the same seed)."""
+
+    def __init__(
+        self,
+        batch_size: int,
+        points: Momenta | None = None,
+        *,
+        flat: tuple[Path, str, RunConfig | BenchmarkConfig | None] | None = None,
+    ) -> None:
+        self.batch_size = batch_size
+        self.source: list[Any] = list(points or ())
+        self.flat = flat
+        if flat is None and not self.source:
+            raise EvaluationError("profiling needs at least one phase-space point")
+
+    def _draw(self, count: int) -> None:
+        from pyamplicol.cli.flat_points import draw_flat_points
+        from pyamplicol.config import EvaluationPhaseSpaceConfig
+
+        assert self.flat is not None
+        artifact, process_id, config = self.flat
+        space = (
+            config.evaluation.phase_space
+            if isinstance(config, RunConfig)
+            else EvaluationPhaseSpaceConfig()
+        )
+        # Blocks at least as large as what is held: the drawing stays a
+        # small part of the profile however many calls it makes.
+        count = max(count - len(self.source), len(self.source), self.batch_size)
+        self.source += draw_flat_points(
             artifact,
             process=process_id,
-            points=bench.batch_size * calls,
-            seed=space.seed,
+            points=count,
+            seed=space.seed + len(self.source),
             sqrt_s=space.sqrt_s,
-        ).as_inputs(exact=False),
-    )
+        ).as_inputs(exact=False)
 
-
-def _call_batches(points: Momenta, batch_size: int, calls: int) -> list[Momenta]:
-    """The batch of every profiled call: call k takes the ``batch_size``
-    points from k x ``batch_size`` on, through ``points`` cycled (all
-    distinct when ``points`` has ``batch_size x calls`` distinct points)."""
-
-    source = tuple(points)
-    return [
-        tuple(source[(k * batch_size + i) % len(source)] for i in range(batch_size))
-        for k in range(calls)
-    ]
+    def __call__(self, k: int, size: int | None = None) -> Momenta:
+        size = self.batch_size if size is None else size
+        start = k * self.batch_size
+        if self.flat is not None:
+            if len(self.source) < start + size:
+                self._draw(start + size)
+            return tuple(self.source[start : start + size])
+        source = self.source
+        return tuple(source[(start + i) % len(source)] for i in range(size))
 
 
 def profile_virtual(
@@ -2926,19 +2975,33 @@ def profile_virtual(
     reduction: str | None = None,
     on_failure: str = "return",
     progress: Callable[[int, int], None] | None = None,
+    reference: Mapping[str, Any] | None = None,
+    artifact: os.PathLike[str] | str | None = None,
+    optimistic: bool = False,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
-    (``VirtualProfileResult``) on ``points`` (default for a path:
-    ``profile_points``), a new batch of them every call (``_call_batches``).
-    Settings: ``benchmark.batch_size``,
-    ``warmup_runs`` and ``minimum_samples``; ``evaluation.process``,
+    (``VirtualProfileResult``) on ``points`` (default: the distinct flat
+    points of the artifact, the path or ``artifact`` for a loaded runtime,
+    ``_PointBatches``), a new batch of them every call: ``benchmark.
+    warmup_runs`` untimed calls, then at least ``minimum_samples`` timed
+    calls, more until they reach ``target_runtime`` seconds
+    (``_timed_calls``), of ``batch_size`` points each.
+    Settings: ``evaluation.process``,
     ``reduction``, ``reduction_target`` and ``reduction_unchecked`` when a path
     is loaded; ``evaluation.mu_r2`` (default: per point the squared
     invariant mass of its initial state). ``reduction`` names the backend of
     every profiled call (the runtime's otherwise). ``on_failure`` is the
     timed calls' policy ("best-effort": a refused point is served, timed and
     counted in ``best_effort_points``); ``progress(done, total)`` is called
-    after every warm-up and timed call."""
+    after every warm-up and timed call (``total`` the calls planned so far).
+    ``optimistic``: every timed call is one fully optimistic pass, as the
+    reference's (``_reference_timing``): the unchecked reduction of the
+    backend alone ("auto" resolved, ``_single_backend``), no best-effort
+    re-evaluation (``on_failure`` "return"), no stability checks.
+    ``reference``: the ``Runtime.evaluate`` options of a reference carrier
+    (``arithmetic`` and, for arbitrary precision, ``precision``) timed after
+    the binary64 calls (``_reference_timing``); the peak RAM is the binary64
+    calls'."""
 
     from pyamplicol.api import Runtime
 
@@ -2951,9 +3014,13 @@ def profile_virtual(
     evaluation = run.evaluation if run is not None else None
     if isinstance(target, Runtime):
         runtime = target
-        artifact = None
+        source = (
+            None
+            if artifact is None
+            else Path(os.fspath(artifact)).expanduser().resolve(strict=False)
+        )
     else:
-        artifact = Path(os.fspath(target)).expanduser().resolve(strict=False)
+        source = Path(os.fspath(target)).expanduser().resolve(strict=False)
         options: dict[str, Any] = {}
         if evaluation is not None:
             if evaluation.reduction is not None:
@@ -2963,106 +3030,203 @@ def profile_virtual(
             if evaluation.reduction_unchecked:
                 options["reduction_unchecked"] = True
         runtime = Runtime.load(
-            artifact,
+            source,
             process=None if evaluation is None else evaluation.process,
             **options,
         )
     physics = runtime.physics
-    if points is None:
-        if artifact is None:
-            raise EvaluationError(
-                "profiling a loaded virtual runtime needs its points (points=)"
-            )
-        points = profile_points(artifact, physics.process_id, config)
-    if not points:
+    if points is None and source is None:
+        raise EvaluationError(
+            "profiling a loaded virtual runtime needs its points (points=) "
+            "or its artifact (artifact=)"
+        )
+    if points is not None and not points:
         raise EvaluationError("profiling needs at least one phase-space point")
-    calls = bench.warmup_runs + max(bench.minimum_samples, 1)
-    batches = _call_batches(points, bench.batch_size, calls)
+    batches = _PointBatches(
+        bench.batch_size,
+        points,
+        flat=None
+        if points is not None or source is None
+        else (
+            source,
+            physics.process_id,
+            config,
+        ),
+    )
     initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
-    options = {"poles": "none", "on_failure": on_failure}
+    options: dict[str, Any] = {"poles": "none", "on_failure": on_failure}
     if reduction is not None:
         options["reduction"] = reduction
+    if optimistic:
+        options["on_failure"] = "return"
+        options["reduction_unchecked"] = True
+        backend = _single_backend(runtime, reduction)
+        if backend is not None:
+            options["reduction"] = backend
 
     def scales(batch: Momenta) -> Any:
         if evaluation is not None and evaluation.mu_r2 is not None:
             return evaluation.mu_r2
         return [_initial_invariant(point, initial) for point in batch]
 
-    double_double = evaluation is not None and evaluation.arithmetic == "double-double"
     with peak_memory() as peak:
         profile = _profile_virtual_calls(
-            runtime, batches, bench, options, scales, progress, calls
+            runtime, batches, bench, options, scales, progress
         )
-    dd_timing = None
-    if double_double:
-        with peak_memory() as dd_peak:
-            dd_timing = _precision_timing(
-                runtime, batches, bench, options, scales, "double-double"
+    timing = None
+    if reference is not None:
+        with peak_memory() as reference_peak:
+            timing = _reference_timing(
+                runtime, batches, bench, reduction, scales, reference
             )
-        dd_timing = replace(dd_timing, peak_memory=dd_peak.result)
-    return replace(profile, peak_memory=peak.result, double_double=dd_timing)
+        timing = replace(timing, peak_memory=reference_peak.result)
+    return replace(profile, peak_memory=peak.result, reference=timing)
 
 
-def _precision_timing(
-    runtime: Any,
-    batches: Sequence[Momenta],
+def _timed_calls(
     bench: BenchmarkConfig,
-    options: Mapping[str, Any],
-    scales: Callable[[Momenta], Any],
-    arithmetic: str,
-) -> PrecisionTiming:
-    """The profile's batches timed in ``arithmetic`` with the binary64
-    protocol (the same warm-up calls, then the same timed batches)."""
+    call: Callable[[int], float],
+    progress: Callable[[int, int], None] | None = None,
+) -> list[float]:
+    """The profile protocol: ``warmup_runs`` untimed calls, then timed calls
+    until there are at least ``max(minimum_samples, 1)`` and their wall
+    times add up to ``target_runtime`` (the budget: the next call is made
+    while the timed ones are short of it). ``call(k)`` makes call k
+    (warm-ups counted) and returns its wall seconds; ``progress(done,
+    total)`` after each call, ``total`` the calls planned from the mean
+    timed call so far. The timed calls' seconds."""
 
-    carrier = {**options, "arithmetic": arithmetic}
-    for batch in batches[: bench.warmup_runs]:
-        runtime.evaluate(batch, mu_r2=scales(batch), **carrier)
+    warmup = bench.warmup_runs
+    minimum = max(bench.minimum_samples, 1)
+    planned = warmup + minimum
+    for k in range(warmup):
+        call(k)
+        if progress is not None:
+            progress(k + 1, planned)
     walls: list[float] = []
+    while len(walls) < minimum or sum(walls) < bench.target_runtime:
+        walls.append(call(warmup + len(walls)))
+        mean = sum(walls) / len(walls)
+        remaining = max(bench.target_runtime - sum(walls), 0.0)
+        planned = warmup + max(minimum, len(walls) + math.ceil(remaining / mean))
+        if progress is not None:
+            progress(warmup + len(walls), planned)
+    return walls
+
+
+def _reference_timing(
+    runtime: Any,
+    batches: _PointBatches,
+    bench: BenchmarkConfig,
+    reduction: str | None,
+    scales: Callable[[Momenta], Any],
+    reference: Mapping[str, Any],
+) -> PrecisionTiming:
+    """The reference carrier's time per point (``PrecisionTiming``): one
+    fully optimistic pass per point, the unchecked reduction of the profiled
+    backend alone (``reduction``, "auto" resolved to the runtime's
+    effective backend so that no per-point fallback or guard runs), no
+    stability checks, no rescue and no best-effort re-evaluation of a
+    refused point (``on_failure="return"``), with the binary64 timing's
+    protocol (``_timed_calls``: its minimum calls and time budget) after one
+    untimed call (none with ``warmup_runs`` 0: the process is warm and the
+    first call of a carrier builds what it builds lazily, its executor of
+    this lane count included; a second one changes nothing measurable, and
+    an extended-precision call is dear) on calls of one SIMD chunk of
+    points each, ``DEFAULT_LANES``
+    (binary64's chunk and the extended carriers' widest lane count: no
+    padded lane is timed in any carrier; at most ``batch_size``), call k on
+    the first points of the binary64 timing's batch k."""
+
+    from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
+
+    size = max(min(bench.batch_size, DEFAULT_LANES), 1)
+    options: dict[str, Any] = {
+        "poles": "none",
+        "on_failure": "return",
+        "reduction_unchecked": True,
+        **reference,
+    }
+    backend = _single_backend(runtime, reference.get("reduction", reduction))
+    if backend is not None:
+        options["reduction"] = backend
     reasons: dict[str, int] = {}
-    for batch in batches[bench.warmup_runs :]:
+    protocol = replace(bench, warmup_runs=min(bench.warmup_runs, 1))
+    timed = protocol.warmup_runs
+
+    def call(k: int) -> float:
+        batch = batches(k, size)
         mu_r2 = scales(batch)
         begin = time.perf_counter()
-        result = runtime.evaluate(batch, mu_r2=mu_r2, **carrier)
-        walls.append(time.perf_counter() - begin)
-        for valid, lane in zip(result.valid, result.diagnostics, strict=True):
-            if not valid:
-                reason = failure_reason(lane)
-                reasons[reason] = reasons.get(reason, 0) + 1
-    size = bench.batch_size
+        result = runtime.evaluate(batch, mu_r2=mu_r2, **options)
+        wall = time.perf_counter() - begin
+        if k >= timed:
+            for valid, lane in zip(result.valid, result.diagnostics, strict=True):
+                if not valid:
+                    reason = failure_reason(lane)
+                    reasons[reason] = reasons.get(reason, 0) + 1
+        return wall
+
+    walls = _timed_calls(protocol, call)
     return PrecisionTiming(
-        arithmetic,
+        str(reference["arithmetic"]),
         size,
         len(walls),
-        bench.warmup_runs,
+        protocol.warmup_runs,
         size * len(walls),
         statistics.median(walls) / size,
         min(walls) / size,
         max(walls) / size,
         sum(reasons.values()),
         tuple(sorted(reasons.items(), key=lambda item: (-item[1], item[0]))),
+        digits=cast("int | None", options.get("precision")),
     )
+
+
+def _single_backend(runtime: Any, reduction: str | None) -> str | None:
+    """The one backend a reference pass runs on: ``reduction`` unless it is
+    "auto" (or None: the runtime's request), else the backend "auto"
+    resolves to on this runtime (``auto_default`` of its reduction record),
+    so that no per-point fallback or guard runs; None when it cannot be read
+    (the call keeps the runtime's request)."""
+
+    summary = getattr(getattr(runtime, "_backend", runtime), "_reduction_summary", None)
+    try:
+        record = summary() if callable(summary) else {}
+    except Exception:
+        record = {}
+    request = reduction if reduction is not None else record.get("requested")
+    if request not in (None, "auto"):
+        return str(request)
+    default = record.get("auto_default")
+    return str(default) if default else None
+
+
+def _native_threads(runtime: Any) -> int | None:
+    """The native threads of a loaded v2 runtime's last call (its executor's
+    always-on report, as ``runtime.virtual.collected_stage_seconds`` reads
+    it); None when it is not reported."""
+
+    executor = getattr(getattr(runtime, "_backend", runtime), "_executor", None)
+    report = getattr(executor, "last_report", None)
+    threads = report.get("threads") if isinstance(report, Mapping) else None
+    return int(threads) if isinstance(threads, int) and threads > 0 else None
 
 
 def _profile_virtual_calls(
     runtime: Any,
-    batches: Sequence[Momenta],
+    batches: _PointBatches,
     bench: BenchmarkConfig,
     options: Mapping[str, Any],
     scales: Callable[[Momenta], Any],
     progress: Callable[[int, int], None] | None,
-    calls: int,
 ) -> VirtualProfileResult:
-    """The binary64 warm-up and timed calls of ``profile_virtual``."""
+    """The binary64 warm-up and timed calls of ``profile_virtual``
+    (``_timed_calls``)."""
 
     from pyamplicol.runtime.virtual import collected_stage_seconds, profile_stages
 
     physics = runtime.physics
-    for done in range(bench.warmup_runs):
-        batch = batches[done]
-        runtime.evaluate(batch, mu_r2=scales(batch), **options)
-        if progress is not None:
-            progress(done + 1, calls)
-    walls: list[float] = []
     totals: dict[str, float] = {}
     failed = 0
     reasons: dict[str, int] = {}
@@ -3070,15 +3234,23 @@ def _profile_virtual_calls(
     served_reasons: dict[str, int] = {}
     contribution = runtime.contribution_kind
     reductions: list[Any] = []
-    for batch in batches[bench.warmup_runs :]:
+    warmup = bench.warmup_runs
+    cpu_seconds = [0.0]
+
+    def call(k: int) -> float:
+        nonlocal failed, served
+        batch = batches(k)
         mu_r2 = scales(batch)
+        if k < warmup:
+            begin = time.perf_counter()
+            runtime.evaluate(batch, mu_r2=mu_r2, **options)
+            return time.perf_counter() - begin
         with collected_stage_seconds(runtime) as seconds:
+            cpu = time.process_time()
             begin = time.perf_counter()
             result = runtime.evaluate(batch, mu_r2=mu_r2, **options)
             wall = time.perf_counter() - begin
-        walls.append(wall)
-        if progress is not None:
-            progress(bench.warmup_runs + len(walls), calls)
+            cpu_seconds[0] += time.process_time() - cpu
         for valid, lane in zip(result.valid, result.diagnostics, strict=True):
             if valid:
                 continue
@@ -3096,19 +3268,26 @@ def _profile_virtual_calls(
             for lane in result.diagnostics
             if getattr(lane, "reduction", None) is not None
         )
+        return wall
+
+    walls = _timed_calls(bench, call, progress)
     size = bench.batch_size
-    count = size * len(walls)
+    median = statistics.median(walls) / size
+    # The stages in the timed calls' shares of their total, scaled to the
+    # reported (median) time per point.
+    total = sum(totals.values())
+    scale = median / total if total > 0.0 else 0.0
     return VirtualProfileResult(
         physics.process_id,
         physics.process,
         contribution,
         size,
         len(walls),
-        bench.warmup_runs,
-        statistics.median(walls) / size,
+        warmup,
+        median,
         min(walls) / size,
         max(walls) / size,
-        {group: value / count for group, value in totals.items()},
+        {group: value * scale for group, value in totals.items()},
         _reduction_record(reductions),
         any(bool(getattr(r, "unchecked", False)) for r in reductions),
         failed,
@@ -3119,6 +3298,8 @@ def _profile_virtual_calls(
         best_effort_reasons=tuple(
             sorted(served_reasons.items(), key=lambda item: (-item[1], item[0]))
         ),
+        threads=_native_threads(runtime),
+        cpu_per_wall=cpu_seconds[0] / sum(walls) if sum(walls) > 0.0 else None,
     )
 
 

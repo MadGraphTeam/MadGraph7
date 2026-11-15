@@ -85,12 +85,41 @@ def failure_lines(causes: Any, table: str, color: bool) -> str | None:
     return "\n".join(lines)
 
 
+def _truth(report: Any) -> tuple[str, str, str]:
+    """The reference precision of a report (``LoopProfileReport.
+    ground_truth``; double-double when it has none): its label ("dd",
+    "arb(D)"), its name in titles ("double-double", "arb(D)") and its
+    ``precision_timing`` key (the arithmetic)."""
+
+    record = getattr(report, "ground_truth", None) or {}
+    digits = record.get("digits")
+    if digits is None:
+        return "dd", "double-double", "double-double"
+    label = str(record.get("label") or f"arb({digits})")
+    return label, label, str(record.get("arithmetic") or "arbitrary")
+
+
+def _truth_cell(report: Any) -> str | None:
+    """The header's ``ground truth`` value: the precision in words and its
+    label in the tables."""
+
+    record = getattr(report, "ground_truth", None)
+    if not record:
+        return None
+    digits = record.get("digits")
+    if digits is None:
+        return "double-double (dd)"
+    return f"arbitrary precision, {digits} digits ({_truth(report)[0]})"
+
+
 def _header(report: Any, prettytable: Any, color: bool) -> str:
     setup = (
         (("runtime setup", report.runtime_setup),)
         if report.runtime_setup is not None
         else ()
     )
+    truth = _truth_cell(report)
+    reference = (("ground truth", truth),) if truth is not None else ()
     table = palette.table(
         prettytable, ("field", "value"), "pyAmpliCol loop profile", color=color
     )
@@ -103,6 +132,7 @@ def _header(report: Any, prettytable: Any, color: bool) -> str:
             ),
             ("contribution", report.contribution),
             *setup,
+            *reference,
             (
                 "backends",
                 ", ".join(
@@ -138,19 +168,14 @@ def _seconds_text(seconds: float) -> str:
     return f"{seconds / 1e-9:.3g} ns"
 
 
-def _double_double_ratio(ratio: float, color: bool) -> str:
-    """``(dd xN)`` after a binary64 time: double-double takes N times as
-    long (one decimal below 10, none from 10 on); green when double-double
-    is the faster, yellow otherwise, as the stage ratios."""
+def _reference_ratio(ratio: float, label: str, color: bool) -> str:
+    """``(<label> xN)`` after a binary64 time: the reference precision
+    (``label``: "dd", "arb(D)") takes N times as long (one decimal below 10,
+    none from 10 on), the whole parenthesis muted so that the time it
+    follows (bold) dominates."""
 
     text = f"x{ratio:.1f}" if round(ratio, 1) < 10.0 else f"x{ratio:.0f}"
-    return (
-        "(dd "
-        + palette.paint(
-            text, palette.GOOD if ratio < 1.0 else palette.RECOVERED, color=color
-        )
-        + ")"
-    )
+    return palette.paint(f"({label} {text})", palette.MUTED, color=color)
 
 
 def _peak_cell(profile: Any, color: bool) -> str:
@@ -187,6 +212,9 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         prettytable, tuple(fields), "Runtime per reduction backend", color=color
     )
     summary.max_width = 26
+    # Per row its cells, the time cell as its parts (the time, the
+    # reference multiplier).
+    entries: list[tuple[tuple[str, ...], list[str]]] = []
     for row in rows:
         label = _backend_label(row.backend, report.default_backend, color)
         cells: list[str]
@@ -196,7 +224,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 palette.paint("refused", palette.BAD, color=color, bold=True),
             ]
             cells += [""] * (len(fields) - len(cells))
-            summary.add_row(tuple(cells))
+            entries.append(((cells[1],), cells))
             continue
         profile = row.profile
         timed = profile.batch * profile.samples
@@ -224,10 +252,19 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 ratio = palette.paint(
                     f"x{row.ratio:.2f}", palette.RECOVERED, color=color
                 )
-        dd = getattr(profile, "double_double", None)
-        if dd is not None and profile.seconds_per_point > 0.0:
-            time_cell += " " + _double_double_ratio(
-                dd.seconds_per_point / profile.seconds_per_point, color
+        reference = getattr(profile, "reference", None)
+        time_parts: tuple[str, ...] = (time_cell,)
+        if (
+            reference is not None
+            and profile.seconds_per_point > 0.0
+            and reference.points > reference.failed_points
+        ):
+            time_parts += (
+                _reference_ratio(
+                    reference.seconds_per_point / profile.seconds_per_point,
+                    _truth(report)[0],
+                    color,
+                ),
             )
         cells = [label, time_cell, spread, ratio, _peak_cell(profile, color)]
         if show_best:
@@ -266,8 +303,17 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 if profile.failed_points
                 else ""
             )
-        summary.add_row(tuple(cells))
-    blocks = [str(summary.get_string())]
+        entries.append((time_parts, cells))
+    # The multiplier under the time when one line would pass the line
+    # width (as in the stability table's time cell).
+    for joiner in (" ", "\n"):
+        summary.clear_rows()
+        for time_parts, cells in entries:
+            summary.add_row((cells[0], joiner.join(time_parts), *cells[2:]))
+        text = str(summary.get_string())
+        if max(map(len, _ANSI.sub("", text).splitlines())) <= _width():
+            break
+    blocks = [text]
     causes = failure_lines(report.failure_causes, "runtime", color)
     refusals = [
         f"{_backend_label(row.backend, report.default_backend, color)} refused: "
@@ -345,22 +391,25 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
-def _stability_time(row: Any, color: bool) -> tuple[str, ...]:
+def _stability_time(row: Any, report: Any, color: bool) -> tuple[str, ...]:
     """The parts of the ``time`` cell of a backend's stability run: its
     binary64 calls' total wall time (with their checks, summed over the
-    workers) and how many times longer its double-double calls took in
-    total (``_double_double_ratio``); the sum of both (``row.seconds``)
-    when the run has no split per precision."""
+    workers) and how many times longer its reference calls took in total
+    (``_reference_ratio``); the sum of both (``row.seconds``) when the run
+    has no split per precision."""
 
+    label, _, key = _truth(report)
     timing = getattr(row, "precision_timing", None) or {}
     binary64 = timing.get("binary64", {}).get("seconds")
-    double_double = timing.get("double-double", {}).get("seconds")
+    reference = timing.get(key, {}).get("seconds")
     if binary64 is None:
-        return (_seconds_text(row.seconds),)
-    text = _seconds_text(float(binary64))
-    if double_double is None or not binary64 > 0.0:
+        return (
+            palette.paint(_seconds_text(row.seconds), None, color=color, bold=True),
+        )
+    text = palette.paint(_seconds_text(float(binary64)), None, color=color, bold=True)
+    if reference is None or not binary64 > 0.0:
         return (text,)
-    return text, _double_double_ratio(float(double_double) / float(binary64), color)
+    return text, _reference_ratio(float(reference) / float(binary64), label, color)
 
 
 def _digits_colour(digits: float, target_digits: float) -> str:
@@ -433,7 +482,7 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         else str(setup["points"])
     )
     title = (
-        f"Stable digits of binary64 vs double-double, {points} flat "
+        f"Stable digits of binary64 vs {_truth(report)[1]}, {points} flat "
         f"points (sqrt(s) = {setup['sqrt_s']:g}, seed {setup['seed']})"
     )
     table = palette.table(
@@ -508,8 +557,6 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         color=color,
     )
     verdicts.max_width = 14
-    # Room for the time's "(dd xN)" multiplier on its line.
-    verdicts.max_width = {verdicts.field_names[-1]: 18}
     entries: list[tuple[str, ...]] = []
     times: list[tuple[str, ...]] = []
     refusals = []
@@ -562,8 +609,14 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 ),
             )
         )
-        times.append(_stability_time(row, color))
-    # The multiplier under the time when one line would pass the line width.
+        times.append(_stability_time(row, report, color))
+    # Room for the time and its multiplier on one line, else the multiplier
+    # under the time when one line would pass the line width.
+    verdicts.max_width = {
+        verdicts.field_names[-1]: max(
+            (len(_ANSI.sub("", " ".join(parts))) for parts in times), default=14
+        )
+    }
     for joiner in (" ", "\n"):
         verdicts.clear_rows()
         for cells, time_parts in zip(entries, times, strict=True):
