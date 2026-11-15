@@ -18,9 +18,16 @@ and the scales are those of the Born.
 
 The I operator is that of CDR with the normalization (4 pi)^eps / Gamma(1 -
 eps) of the virtual of MadLoop at the renormalization scale, with the n_f
-light flavors of the model (coupl.inc). The Catani-Seymour corrections are
-those of QCD to every Born order (an NLO order is a Born order with two more
-powers of g_s).
+light flavors of the model (coupl.inc). The corrections are those of QCD
+and of QED that the configurations of the output have (their splitting
+types), each to the Born orders whose correction (two more powers of g_s or
+of e and the same others) is an NLO order of the output, which then sums
+them. The operators of QED (CSInsertion and CSCollinear with qed) take the
+Born and the charges in place of the colors, with the photon splitting into
+the n_f light quarks and the n_l massless leptons, the QED coupling of the
+model (that of the counterterms of MadFKS), and K and P the photon of the
+PDFs and the quarks weighted by their charges. The virtual is the sum of the
+NLO orders, each with its powers of g_s.
 
 The real stream of a real process (a real matrix element of the cs block of
 madspace.subtraction.cs, with its flavor lines) is the real emission minus
@@ -35,9 +42,14 @@ form <T_j . T_k> B(k_t) / B, with B(k_t) the Born of the provider with the
 azimuthal part of an FKS configuration whose mother is the emitter. MadFKS
 keeps one FKS configuration of identical partons, so a gluon without one
 takes that of an identical gluon on the same side with the momenta of the
-two exchanged, at which the Born is the same. The real emission has the
-cuts and scales of the real process, each dipole those of its Born, and both
-the densities at the momentum fractions of the real emission.
+two exchanged, at which the Born is the same. A dipole of QED takes the
+charges of its emitter and spectator times the Born (a photon that splits
+the weight of its spectator), the factor of its kernel over that of QCD
+(qed_kernel_factor), e^2 in place of g_s^2 and only the Born orders whose
+QED correction the output has, as one of QCD only those with a QCD
+correction. The real emission has the cuts and scales of the real process,
+each dipole those of its Born, and both the densities at the momentum
+fractions of the real emission.
 
 The technical cut is the cutoff of the CSMapping of every channel: a channel
 covers only the events where both variables of its dipole (y and z_i, 1 - x
@@ -146,53 +158,104 @@ def dipole_variables(momenta, entry):
     return pipa / papb, pipb / papb
 
 
-def spin_configuration(provider, leg):
-    """The first FKS configuration of a provider whose mother is a gluon at
-    the Born leg leg (from 0), None without one."""
+def spin_configuration(provider, leg, mother=21):
+    """The first FKS configuration of a provider whose mother is a gluon (or
+    the boson mother) at the Born leg leg (from 0), None without one."""
     for c, configuration in enumerate(provider.configurations):
         i_fks, j_fks = configuration["i_fks"], configuration["j_fks"]
-        if configuration["ij_pdg"] == 21 and j_fks - 1 - (j_fks > i_fks) == leg:
+        if configuration["ij_pdg"] == mother and j_fks - 1 - (j_fks > i_fks) == leg:
             return c
     return None
 
 
-def identical_spin_configuration(provider, pdgs, incoming, leg):
-    """For a gluon at the Born leg leg without an FKS configuration, the
-    first other gluon on the same side (incoming or outgoing) with one and
-    that configuration, as (leg, configuration), None without one. MadFKS
-    keeps one configuration of identical partons, and the Born with the two
-    gluons exchanged is the same."""
+def identical_spin_configuration(provider, pdgs, incoming, leg, mother=21):
+    """For a gluon (or the boson mother) at the Born leg leg without an FKS
+    configuration, the first other one on the same side (incoming or
+    outgoing) with one and that configuration, as (leg, configuration), None
+    without one. MadFKS keeps one configuration of identical partons, and the
+    Born with the two exchanged is the same."""
     side = leg < incoming
     for other, pdg in enumerate(pdgs):
-        if other == leg or pdg != 21 or (other < incoming) != side:
+        if other == leg or pdg != mother or (other < incoming) != side:
             continue
-        configuration = spin_configuration(provider, other)
+        configuration = spin_configuration(provider, other, mother)
         if configuration is not None:
             return other, configuration
     return None
 
 
-def qcd_orders(orders):
-    """The NLO order of each Born order of fks_configurations.json, which has
-    two more powers of g_s (the first split order) and the same others.
+# the factors of the kernels of CSDipoles for the QED splittings, in which a
+# photon takes the place of the gluon. With the Borns averaged over their own
+# colors, as the provider gives them, the kernels of QCD have T_R for g -> q
+# q~ and for an incoming g -> q~ q, and C_F for an incoming q -> g q, and
+# those of QED N_c Q_f^2 for gamma -> f f~ and an incoming gamma -> f~ f (the
+# colors of the pair, and of the antifermion of the Born over the colorless
+# photon of the real) and Q_f^2 for an incoming f -> gamma f. The weights of
+# CSDipoles divide by the Casimir of the Born emitter, C_A for a gluon and
+# C_F for a quark, which a photon has not (its spectators share it) and a
+# fermion has as Q_f^2.
+CA, CF, TR = 3.0, 4.0 / 3.0, 0.5
+
+
+def qed_kernel_factor(kernel, incoming, flavor):
+    """The factor of the weights of CSDipoles for a QED splitting (kernel of
+    madspace.subtraction.cs) of an incoming or final emitter, with flavor the
+    emitted fermion."""
+    from madspace.subtraction.cs import COLORS, charge
+
+    colors = COLORS.get(abs(flavor), 1)
+    q2 = charge(flavor) ** 2
+    if kernel == "qg":
+        return 1.0
+    if kernel == "gq" and not incoming:
+        # gamma -> f f~: N_c Q_f^2 over T_R / C_A
+        return colors * q2 * CA / TR
+    if kernel == "gq":
+        # f -> gamma f: Q_f^2 over C_F / C_A
+        return q2 * CA / CF
+    # gamma -> f~ f: N_c Q_f^2 / Q_f^2 over T_R / C_F
+    return colors * CF / TR
+
+
+def qcd_powers(orders, kind):
+    """The powers of g_s of the Born or NLO orders (kind) of
+    fks_configurations.json, zero without a QCD split order."""
+    split = orders["split_orders"]
+    if "QCD" not in split:
+        return [0] * len(orders[kind])
+    q = split.index("QCD")
+    return [int(o[q]) for o in orders[kind]]
+
+
+def correction_orders(orders, groups=("QCD",)):
+    """Per group of corrections (QCD, QED) and Born order of
+    fks_configurations.json the index of the NLO order of its correction, two
+    more powers of g_s or of e and the same others, None where the NLO orders
+    have none or the output not the group.
 
     Raises:
-        NotImplementedError: for NLO orders other than the QCD corrections
-            of the Born orders.
+        NotImplementedError: for NLO orders that are no correction of a Born
+            order.
     """
-    if orders["split_orders"][0] != "QCD":
-        raise NotImplementedError("nlo.cs: the first split order is not QCD")
+    split = orders["split_orders"]
     nlo = [list(o) for o in orders["nlo"]]
-    out = []
-    for born in orders["born"]:
-        target = [born[0] + 2] + list(born[1:])
-        if target not in nlo:
-            raise NotImplementedError(
-                f"nlo.cs: the Born order {born} has no QCD correction"
-            )
-        out.append(nlo.index(target))
-    if sorted(out) != list(range(len(nlo))):
-        raise NotImplementedError("nlo.cs: NLO orders other than QCD corrections")
+    out, covered = {}, set()
+    for group in ("QCD", "QED"):
+        out[group] = []
+        for born in orders["born"]:
+            target = list(born)
+            if group not in groups or group not in split:
+                out[group].append(None)
+                continue
+            target[split.index(group)] += 2
+            index = nlo.index(target) if target in nlo else None
+            out[group].append(index)
+            if index is not None:
+                covered.add(index)
+    if covered != set(range(len(nlo))):
+        raise NotImplementedError(
+            "nlo.cs: NLO orders other than the corrections of the Born orders"
+        )
     return out
 
 
@@ -250,13 +313,17 @@ def mapping_outputs(out, count):
 
 class Densities:
     """The densities f(x, q) (not x f) of the light partons of a beam, lpp 1
-    for protons and -1 for antiprotons, by PDG code of the parton."""
+    for protons and -1 for antiprotons, by PDG code of the parton, with the
+    photon where the grid has one."""
 
     def __init__(self, pdf, lpp, n_f, context):
         ms = madspace()
         self.pids = [21] + [q for k in range(1, int(n_f) + 1) for q in (k, -k)]
+        self.quark_count = len(self.pids) - 1
+        if 22 in pdf.pids:
+            self.pids.append(22)
         sign = -1 if lpp == -1 else 1
-        grid_pids = [p if p == 21 else sign * p for p in self.pids]
+        grid_pids = [p if p in (21, 22) else sign * p for p in self.pids]
         self.runtime = Runtime(ms.PartonDensity(pdf, grid_pids), context)
         self.column = {p: k for k, p in enumerate(self.pids)}
 
@@ -271,7 +338,7 @@ class Densities:
     def quarks(self, values):
         """The sum over the light quarks and antiquarks of values (batch,
         partons)."""
-        return values[:, 1:].sum(1)
+        return values[:, 1 : 1 + self.quark_count].sum(1)
 
 
 class CSBornIntegrand:
@@ -291,6 +358,7 @@ class CSBornIntegrand:
         n_f,
         alpha,
         kappa,
+        n_l=0.0,
     ):
         ms = madspace()
         from madspace.nlo import nlo_scale
@@ -321,8 +389,18 @@ class CSBornIntegrand:
         )
         self.lepton_power = 0.0 if self.leptons is None else LEPTON_POWER
         orders = self.configurations["orders"]
-        self.nlo_of_born = qcd_orders(orders)
-        self.qcd_powers = [int(o[0]) for o in orders["born"]]
+        groups = {
+            t
+            for c in self.configurations["configurations"]
+            for t in c.get("splitting_type", ["QCD"])
+        }
+        self.corrections = correction_orders(orders, groups)
+        self.qcd_powers = qcd_powers(orders, "born")
+        self.nlo_powers = qcd_powers(orders, "nlo")
+        # the QED coupling of the counterterms and the factors of tagged
+        # photons
+        _, self.alpha, _ = self.provider.couplings()
+        self.tagged = self.provider.tagged_factors()
         self.nlo_count = len(orders["nlo"])
         self.channels = self.provider.channels()
         self.channel_mappings = [
@@ -356,17 +434,44 @@ class CSBornIntegrand:
         )
         b = len(orders["born"])
         options = dict(born_orders=b, n_f=n_f)
-        self.insertion = Runtime(
-            ms.CSInsertion(
-                self.born_pdgs,
-                self.masses,
-                kappa=kappa,
-                alpha_ff=alpha["ff"],
-                incoming=self.incoming,
-                **options,
-            ),
-            context,
-        )
+        # the operators of the QCD and of the QED corrections, of the groups
+        # with corrections of a Born order
+        self.groups = [
+            group
+            for group in ("QCD", "QED")
+            if any(n is not None for n in self.corrections[group])
+        ]
+        qed = dict(qed=True, n_l=n_l)
+        self.insertion = self.insertion_qed = None
+        if "QCD" in self.groups:
+            self.insertion = Runtime(
+                ms.CSInsertion(
+                    self.born_pdgs,
+                    self.masses,
+                    kappa=kappa,
+                    alpha_ff=alpha["ff"],
+                    incoming=self.incoming,
+                    **options,
+                ),
+                context,
+            )
+        if "QED" in self.groups:
+            if self.tagged is not None:
+                raise NotImplementedError(
+                    "nlo.cs: no QED corrections with tagged photons"
+                )
+            self.insertion_qed = Runtime(
+                ms.CSInsertion(
+                    self.born_pdgs,
+                    self.masses,
+                    kappa=kappa,
+                    alpha_ff=alpha["ff"],
+                    incoming=self.incoming,
+                    **options,
+                    **qed,
+                ),
+                context,
+            )
         # the densities of hadrons, or the luminosity of other beams with
         # densities
         self.densities = None
@@ -377,17 +482,22 @@ class CSBornIntegrand:
             # photons radiate no QCD, so that the Borns have no K and P
             self.beam_luminosity = PhotonLuminosity(context)
         elif self.beams != (0, 0):
-            self.collinear = Runtime(
-                ms.CSCollinear(
-                    self.born_pdgs,
-                    self.masses,
-                    alpha_fi=alpha["fi"],
-                    alpha_if=alpha["if"],
-                    alpha_ii=alpha["ii"],
-                    **options,
-                ),
-                context,
+            alphas = dict(
+                alpha_fi=alpha["fi"], alpha_if=alpha["if"], alpha_ii=alpha["ii"]
             )
+            self.collinear = self.collinear_qed = None
+            if "QCD" in self.groups:
+                self.collinear = Runtime(
+                    ms.CSCollinear(self.born_pdgs, self.masses, **alphas, **options),
+                    context,
+                )
+            if "QED" in self.groups:
+                self.collinear_qed = Runtime(
+                    ms.CSCollinear(
+                        self.born_pdgs, self.masses, **alphas, **options, **qed
+                    ),
+                    context,
+                )
             self.densities = [
                 Densities(couplings.pdf, lpp, n_f, context) for lpp in self.beams
             ]
@@ -425,9 +535,13 @@ class CSBornIntegrand:
     def luminosities(self, x1, x2, mu1, mu2, z=None, omx=None):
         """The luminosity of the Born over its flavors and, with the points z
         (batch, 2) of the convolution, those of the K and P operators of each
-        beam: the same parton at x_i / z, the partons that split into it at
-        x_i / z, each times the density of the Born parton of the other beam
-        (batch, 2, 2). Dressed leptons take 1 - x of omx."""
+        beam per group of corrections: the same parton at x_i / z, the
+        partons that split into it at x_i / z (QCD: the gluon for a quark,
+        the quarks for a gluon, QED: the photon for a quark, the quarks times
+        Q_q^2 for a photon), each times the density of the Born parton of the
+        other beam (batch, 2, 2). Dressed leptons take 1 - x of omx."""
+        from madspace.subtraction.cs import charge
+
         if self.beam_luminosity is not None:
             return self.beam_luminosity(self.flavors, x1, x2, omx, mu1, mu2), None
         if self.densities is None:
@@ -444,20 +558,34 @@ class CSBornIntegrand:
             )
         if z is None:
             return born, None
-        convolved = np.zeros((len(x1), 2, 2))
+        convolved = {group: np.zeros((len(x1), 2, 2)) for group in self.groups}
         for leg in range(2):
             d = self.densities[leg]
             values = d(x[leg] / z[:, leg], mu[leg]) / z[:, leg][:, None]
             other = self.densities[1 - leg]
+            zero = np.zeros(len(x1))
+            photon = values[:, d.column[22]] if 22 in d.column else zero
             for flavor in self.flavors:
                 parton, partner = flavor[leg], flavor[1 - leg]
                 at_partner = at_born[1 - leg][:, other.column[partner]]
-                same = values[:, d.column[parton]]
-                splitting = (
-                    d.quarks(values) if parton == 21 else values[:, d.column[21]]
-                )
-                convolved[:, leg, 0] += same * at_partner
-                convolved[:, leg, 1] += splitting * at_partner
+                same = values[:, d.column[parton]] if parton in d.column else zero
+                for group, out in convolved.items():
+                    if group == "QCD":
+                        splitting = (
+                            d.quarks(values)
+                            if parton == 21
+                            else values[:, d.column[21]]
+                        )
+                    elif parton == 22:
+                        splitting = sum(
+                            charge(q) ** 2 * values[:, d.column[q]]
+                            for q in d.pids
+                            if q not in (21, 22)
+                        )
+                    else:
+                        splitting = photon
+                    out[:, leg, 0] += same * at_partner
+                    out[:, leg, 1] += splitting * at_partner
         return born, convolved
 
     def references(self, momenta, valid=None):
@@ -506,21 +634,31 @@ class CSBornIntegrand:
             total > 0, amp2[:, index] / np.where(total > 0, total, 1), 0.0
         )
         used, approximation = trick.inputs(virtual, born, evaluated)
-        insertion = self.insertion(momenta, colors, alpha_s, mu_r)["insertion"]
-        z = weights = None
-        if self.densities is not None:
-            collinear = self.collinear(
-                momenta,
-                born,
-                colors,
-                alpha_s,
-                scales["fact_scale1"],
-                scales["fact_scale2"],
-                x1,
-                x2,
-                np.ascontiguousarray(x[:, self.born_dim]),
-            )
-            z, weights = collinear["z"], collinear["weights"]
+        # the operators of each group of corrections, I and the weights of K
+        # and P, with alpha_s or alpha
+        alpha = np.full(count, self.alpha)
+        insertions, collinears = {}, {}
+        if self.insertion is not None:
+            insertions["QCD"] = self.insertion(momenta, colors, alpha_s, mu_r)[
+                "insertion"
+            ]
+        if self.insertion_qed is not None:
+            insertions["QED"] = self.insertion_qed(momenta, born, alpha, mu_r)[
+                "insertion"
+            ]
+        z = None
+        r = (
+            None
+            if self.densities is None
+            else np.ascontiguousarray(x[:, self.born_dim])
+        )
+        scale_args = (scales["fact_scale1"], scales["fact_scale2"], x1, x2, r)
+        if self.densities is not None and self.collinear is not None:
+            collinear = self.collinear(momenta, born, colors, alpha_s, *scale_args)
+            z, collinears["QCD"] = collinear["z"], collinear["weights"]
+        if self.densities is not None and self.collinear_qed is not None:
+            collinear = self.collinear_qed(momenta, born, alpha, *scale_args)
+            z, collinears["QED"] = collinear["z"], collinear["weights"]
         born_lum, convolved = self.luminosities(
             x1, x2, scales["fact_scale1"], scales["fact_scale2"], z, omx
         )
@@ -531,18 +669,23 @@ class CSBornIntegrand:
             total, lo = np.zeros(count), np.zeros(count)
             for k, power in enumerate(self.qcd_powers):
                 coupling = g_s**power
-                nlo = coupling * g_s**2
-                parts = born[:, k] + insertion[:, k]
                 lo += born_lum * coupling * born[:, k]
-                total += born_lum * coupling * parts
-                total += born_lum * nlo * virtual_part[:, self.nlo_of_born[k]]
-                if weights is not None:
-                    kp = (
-                        weights[:, k, :, 0] * convolved[:, :, 0]
-                        + weights[:, k, :, 1] * convolved[:, :, 1]
-                        + weights[:, k, :, 2] * born_lum[:, None]
-                    )
-                    total += coupling * kp.sum(1)
+                total += born_lum * coupling * born[:, k]
+                for group in self.groups:
+                    if self.corrections[group][k] is None:
+                        continue
+                    total += born_lum * coupling * insertions[group][:, k]
+                    if group in collinears:
+                        weights, lums = collinears[group], convolved[group]
+                        kp = (
+                            weights[:, k, :, 0] * lums[:, :, 0]
+                            + weights[:, k, :, 1] * lums[:, :, 1]
+                            + weights[:, k, :, 2] * born_lum[:, None]
+                        )
+                        total += coupling * kp.sum(1)
+            # the virtual of each NLO order, with its powers of g_s
+            for n, power in enumerate(self.nlo_powers):
+                total += born_lum * g_s**power * virtual_part[:, n]
             return norm * total, norm * lo
 
         nlo, lo = weight(used)
@@ -580,12 +723,18 @@ class CSDipole:
     """One dipole of a real process (an entry of the cs block of
     madspace.subtraction.cs) with the CSBornIntegrand of the subprocess of its
     Born: the Born legs (from 0, in the order of the matrix element) of its
-    emitter and its spectator and, for a gluon emitter, the FKS configuration
-    of the spin correlation, with swap the leg of the identical gluon whose
-    configuration it takes (see identical_spin_configuration), None for its
-    own."""
+    emitter and its spectator and, for a gluon emitter (a photon in QED), the
+    FKS configuration of the spin correlation, with swap the leg of the
+    identical boson whose configuration it takes (see
+    identical_spin_configuration), None for its own. A QED dipole (group QED)
+    takes the charges of its emitter and spectator, or the weight of its
+    spectator, in place of the color-correlated Born, the factor of its
+    kernel (qed_kernel_factor) and the Born orders with a QED correction
+    (orders), real_pdgs the flavors of its real process."""
 
-    def __init__(self, entry, born):
+    def __init__(self, entry, born, real_pdgs=None):
+        from madspace.subtraction.cs import charge
+
         self.entry = entry
         self.born = born
         self.order = list(entry["born_order"])
@@ -593,21 +742,53 @@ class CSDipole:
         emitter = entry["j"] - (entry["j"] > i)
         spectator = entry["k"] - (entry["k"] > i)
         self.legs = self.order.index(emitter), self.order.index(spectator)
-        self.gluon = born.born_pdgs[self.legs[0]] == 21
+        self.group = entry.get("group", "QCD")
+        self.weight = entry.get("weight")
+        # the Born orders whose correction of the group the NLO orders have
+        self.orders = [n is not None for n in born.corrections.get(self.group, [])] or [
+            True
+        ] * len(born.qcd_powers)
+        self.factor, self.charges = 1.0, None
+        mother = 21
+        if self.group == "QED":
+            mother = 22
+            if born.tagged is not None:
+                raise NotImplementedError("nlo.cs: no QED dipoles with tagged photons")
+            # the charges flowing out of the Born
+            outgoing = [
+                (-1 if n < born.incoming else 1) * charge(pdg)
+                for n, pdg in enumerate(born.born_pdgs)
+            ]
+            self.charges = outgoing[self.legs[0]] * outgoing[self.legs[1]]
+            flavor = real_pdgs[i] if real_pdgs is not None else 0
+            self.factor = qed_kernel_factor(
+                entry["kernel"], entry["j"] < born.incoming, flavor
+            )
+        self.gluon = born.born_pdgs[self.legs[0]] == mother
         self.configuration, self.swap = 0, None
         if self.gluon:
-            self.configuration = spin_configuration(born.provider, self.legs[0])
+            self.configuration = spin_configuration(born.provider, self.legs[0], mother)
             if self.configuration is None:
                 identical = identical_spin_configuration(
-                    born.provider, born.born_pdgs, born.incoming, self.legs[0]
+                    born.provider, born.born_pdgs, born.incoming, self.legs[0], mother
                 )
                 if identical is None:
                     raise NotImplementedError(
                         f"nlo.cs: no FKS configuration of {born.name} with the "
-                        f"gluon {self.legs[0] + 1} or an identical one as its "
+                        f"boson {self.legs[0] + 1} or an identical one as its "
                         "mother"
                     )
                 self.swap, self.configuration = identical
+
+    def correlated(self, provider, cm, plain):
+        """The Born correlated in color (QCD) or charge (QED) of the emitter
+        and the spectator per Born order (points, b), -weight B for a photon
+        that splits."""
+        if self.group == "QCD":
+            return provider.color_correlated(cm)[:, :, self.legs[0], self.legs[1]]
+        if self.weight is not None:
+            return -self.weight * plain
+        return self.charges * plain
 
 
 class CSRealIntegrand:
@@ -657,7 +838,7 @@ class CSRealIntegrand:
         leptonic = self.beams == (0, 0)
         orders = configurations["orders"]
         self.nlo_count = len(orders["nlo"])
-        self.real_powers = [int(o[0]) for o in orders["nlo"]]
+        self.real_powers = qcd_powers(orders, "nlo")
         self.technical_cut = technical_cut
         self.masses = [
             float(param_card["mass"].get(str(abs(pdg)), 0.0)) for pdg in self.pdgs
@@ -679,7 +860,7 @@ class CSRealIntegrand:
             if d["real"] != index:
                 continue
             born = subprocesses[block["borns"][d["born"]]["subprocess"]]
-            dipole = CSDipole(d, born)
+            dipole = CSDipole(d, born, self.pdgs)
             line_masses = list(np.delete(self.masses, d["i"]))
             for b, channel in enumerate(born.channels):
                 topology = born_topology(
@@ -764,7 +945,9 @@ class CSRealIntegrand:
         the weights of CSDipoles and born the output of the provider."""
         provider = dipole.born.provider
         plain = provider.born_orders_of(born[0])
-        colors = provider.color_correlated(cm)[:, :, dipole.legs[0], dipole.legs[1]]
+        colors = dipole.correlated(provider, cm, plain)
+        color_weight = dipole.factor * color_weight
+        spin_weight = dipole.factor * spin_weight
         value = color_weight[:, None] * colors
         if dipole.gluon:
             configuration = np.full(len(cm), dipole.configuration)
@@ -899,10 +1082,14 @@ class CSRealIntegrand:
             born_scales = born.scale(me[points], *born.references(me[points]))
             alpha_s = born.alpha_s(born_scales["ren_scale"])["alpha_s"]
             g_s = np.sqrt(4 * math.pi * alpha_s)
-            # -D, the term the real emission subtracts
+            # -D, the term the real emission subtracts, with g_s^2 or e^2 of
+            # its splitting for the Born orders whose correction the NLO
+            # orders have
+            coupling = 4 * math.pi * born.alpha if dipole.group == "QED" else g_s**2
             weight = sum(
-                g_s ** (power + 2) * value[:, o]
+                coupling * g_s**power * value[:, o]
                 for o, power in enumerate(born.qcd_powers)
+                if dipole.orders[o]
             )
             lum = self.luminosity(
                 x1[points],
@@ -1088,6 +1275,7 @@ class CSRun(NLORun):
                 n_f,
                 self.alpha,
                 self.kappa,
+                n_l,
             )
             self.subprocesses[born.name] = born
         integrands = []

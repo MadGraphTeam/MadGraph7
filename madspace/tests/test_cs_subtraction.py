@@ -7,16 +7,20 @@ here, each flavor line of a real once over the subprocesses.
 """
 
 import collections
+import json
 import os
 
 import pytest
 
 from madspace.subtraction.cs import (
     born_order,
+    charge,
     cs_dipoles,
     cs_subtraction,
     final_splitting,
     initial_splitting,
+    qed_final_splitting,
+    qed_initial_splitting,
     read_cs_subtraction,
     symmetry,
 )
@@ -133,7 +137,27 @@ def test_subtraction_block():
         TOP,
     )
     assert [d["real"] for d in block["cs"]] == [0] * 12 + [1] * 12
-    with pytest.raises(ValueError):
+    # the lines of a real whose dipoles go to other Borns make reals of their
+    # own
+    split = cs_subtraction(
+        [
+            dict(
+                pdgs=[-1, 22, 13, -13, -1],
+                flavors=[[-1, 22, 13, -13, -1], [-3, 22, 13, -13, -3]],
+            )
+        ],
+        [
+            dict(pdgs=[-1, 1, 13, -13], flavors=[[-1, 1, 13, -13]]),
+            dict(pdgs=[-3, 3, 13, -13], flavors=[[-3, 3, 13, -13]]),
+        ],
+        groups=("QED",),
+    )
+    assert [real["flavors"] for real in split["reals"]] == [
+        [[-1, 22, 13, -13, -1]],
+        [[-3, 22, 13, -13, -3]],
+    ]
+    assert {(d["real"], d["born"]) for d in split["cs"]} == {(0, 0), (1, 1)}
+    with pytest.raises(ValueError, match="other dipoles"):
         cs_subtraction(
             [
                 dict(
@@ -170,6 +194,107 @@ def test_decays():
     assert families(dipoles) == {("ff", "qg"): 2}
     with pytest.raises(NotImplementedError, match="gluon"):
         cs_dipoles([6, 5, 24, 21, 21], borns([6, 5, 24, 21]), masses, nincoming=1)
+
+
+def test_qed_splittings():
+    """The QED splittings: a photon from a charged particle (also a massive
+    W), a massless charged fermion pair from a photon, and for an incoming
+    particle a photon splitting into the antifermion of i and a fermion that
+    gives a photon to the Born."""
+    masses = [0.0] * 6
+    assert charge(2) == pytest.approx(2 / 3) and charge(-11) == 1.0
+    assert charge(-24) == -1.0 and charge(22) == 0.0 and charge(21) == 0.0
+    assert qed_final_splitting([2, -2, 11, 22], masses, 2, 3) == (3, 2, 11, "qg")
+    assert qed_final_splitting([2, -2, 22, -24], [0, 0, 0, 80], 2, 3) == (
+        2,
+        3,
+        -24,
+        "qg",
+    )
+    assert qed_final_splitting([2, -2, 11, -11], masses, 2, 3) == (3, 2, 22, "gq")
+    assert qed_final_splitting([2, -2, 6, -6], [0, 0, 173, 173], 2, 3) is None
+    assert qed_final_splitting([2, -2, 22, 22], masses, 2, 3) is None
+    assert qed_final_splitting([2, -2, 21, 2], masses, 2, 3) is None
+    assert qed_initial_splitting([2, -2, 11, -11, 22], masses, 0, 4) == (
+        4,
+        0,
+        2,
+        "qg",
+    )
+    assert qed_initial_splitting([22, 2, 11, -11, 2], masses, 0, 4) == (
+        4,
+        0,
+        -2,
+        "qq",
+    )
+    assert qed_initial_splitting([2, 22, 11, -11, 2], masses, 0, 4) == (
+        4,
+        0,
+        22,
+        "gq",
+    )
+    assert qed_initial_splitting([21, 2, 11, -11, 2], masses, 0, 4) is None
+
+
+def test_qed_dipoles():
+    """The QED dipoles of p p > e+ e- with their groups: a photon from every
+    charged particle with every other one as the spectator, the photon of
+    the Born of a fermion that gives it up shared by the charged spectators,
+    and with QCD the gluon emissions of the same real too."""
+    born_list = borns([2, -2, 11, -11], [22, 22, 11, -11], [-2, 2, 11, -11])
+    photon = cs_dipoles([2, -2, 11, -11, 22], born_list, groups=("QED",))
+    assert families(photon) == {
+        ("fi", "qg"): 4,
+        ("ff", "qg"): 2,
+        ("ii", "qg"): 2,
+        ("if", "qg"): 4,
+    }
+    assert all(d["group"] == "QED" and d["weight"] is None for d in photon)
+    assert cs_dipoles([2, -2, 11, -11, 22], born_list) == []
+    fermion = cs_dipoles([2, 22, 11, -11, 2], born_list, groups=("QCD", "QED"))
+    shared = [d for d in fermion if d["kernel"] == "gq"]
+    assert [(d["j"], d["k"], d["weight"], d["born"]) for d in shared] == [
+        (0, 2, 0.5, 1),
+        (0, 3, 0.5, 1),
+    ]
+    split = [d for d in fermion if d["kernel"] == "qq"]
+    assert [(d["j"], d["k"], d["weight"], d["born"]) for d in split] == [
+        (1, 0, None, 0),
+        (1, 2, None, 0),
+        (1, 3, None, 0),
+    ]
+    # a final-state pair from a photon of the Born, shared by the quarks
+    pair = cs_dipoles(
+        [2, -2, 22, 11, -11], borns([2, -2, 22, 22], [2, -2, 11, -11]), groups=("QED",)
+    )
+    shared = [d for d in pair if d["kernel"] == "gq"]
+    assert [(d["i"], d["j"], d["k"], d["weight"]) for d in shared] == [
+        (4, 3, 0, 0.5),
+        (4, 3, 1, 0.5),
+    ]
+    mixed = cs_dipoles([2, -2, 11, -11, 21], born_list, groups=("QCD", "QED"))
+    assert {d["group"] for d in mixed} == {"QCD"}
+    with pytest.raises(ValueError, match="EW"):
+        cs_dipoles([2, -2, 11, -11, 22], born_list, groups=("EW",))
+
+
+def test_read_groups(tmp_path):
+    """read_cs_subtraction takes the dipoles of the splitting types of the
+    configurations of the output."""
+    directory = tmp_path / "SubProcesses" / "P0_uux_epem"
+    directory.mkdir(parents=True)
+    data = dict(
+        nincoming=2,
+        born_pdgs=[2, -2, 11, -11],
+        configurations=[
+            dict(real_me=1, real_pdgs=[2, -2, 11, -11, 22], splitting_type=["QED"]),
+            dict(real_me=2, real_pdgs=[2, -2, 11, -11, 21], splitting_type=["QCD"]),
+        ],
+    )
+    (directory / "fks_configurations.json").write_text(json.dumps(data))
+    block = read_cs_subtraction(str(tmp_path))
+    groups = collections.Counter(d["group"] for d in block["cs"])
+    assert groups == {"QED": 12, "QCD": 2}
 
 
 @pytest.mark.skipif(not OUTPUTS, reason="MADSPACE_FKS_OUTPUTS names no aMC@NLO outputs")

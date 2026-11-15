@@ -2172,7 +2172,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 double,
-                std::size_t>(),
+                std::size_t,
+                bool,
+                double>(),
             py::arg("pdgs"),
             py::arg("masses"),
             py::arg("born_orders") = 1,
@@ -2180,6 +2182,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("alpha_ff") = 1.,
             py::arg("n_f") = 5.,
             py::arg("incoming") = 2,
+            py::arg("qed") = false,
+            py::arg("n_l") = 0.,
             pydoc::doc("CSInsertion::CSInsertion")
         )
         .def(
@@ -2191,7 +2195,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             "born_order_count",
             &CSInsertion::born_order_count,
             pydoc::doc("CSInsertion::born_order_count")
-        );
+        )
+        .def("qed", &CSInsertion::qed, pydoc::doc("CSInsertion::qed"));
 
     py::classh<CSCollinear, FunctionGenerator>(
         m, "CSCollinear", pydoc::doc("CSCollinear")
@@ -2204,6 +2209,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 double,
+                double,
+                bool,
                 double>(),
             py::arg("pdgs"),
             py::arg("masses"),
@@ -2212,6 +2219,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("alpha_if") = 1.,
             py::arg("alpha_ii") = 1.,
             py::arg("n_f") = 5.,
+            py::arg("qed") = false,
+            py::arg("n_l") = 0.,
             pydoc::doc("CSCollinear::CSCollinear")
         )
         .def(
@@ -2223,7 +2232,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             "born_order_count",
             &CSCollinear::born_order_count,
             pydoc::doc("CSCollinear::born_order_count")
-        );
+        )
+        .def("qed", &CSCollinear::qed, pydoc::doc("CSCollinear::qed"));
 
     m.def(
         "fks_sqrt_s_hat_min",

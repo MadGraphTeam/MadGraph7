@@ -47,37 +47,48 @@ KERNELSPEC void cs_v_singular(FVal<T> s, FVal<T> mj, FVal<T> mk, FVal<T> (&v_s)[
 }
 
 // V^(NS)_j(s, m_j, m_k; kappa) of CDST eqs. 6.22 to 6.26 for a quark or a
-// massless gluon j with the gamma_j / T_j^2 of j, without the splitting of
-// a gluon into heavy quarks (they decouple from the virtual)
+// massless gluon j, without the splitting of a gluon into heavy quarks (they
+// decouple from the virtual), in two parts: the soft part per unit <T_j .
+// T_k>, and the collinear part per unit <T_j . T_k> / T_j^2 with gamma_j of j
+// and for a gluon its self coupling C_A and its coupling to the light quark
+// pairs T_R n_f (the photon of QED has none and sum_f N_c Q_f^2), so that
+// the photon, whose T_j^2 is zero, keeps the collinear part
 template <typename T>
-KERNELSPEC FVal<T> cs_v_nonsingular(
-    bool gluon,
+struct CSVNonsingular {
+    FVal<T> soft, collinear;
+};
+
+template <typename T>
+KERNELSPEC CSVNonsingular<T> cs_v_nonsingular(
+    bool boson,
     FVal<T> s,
     FVal<T> mj,
     FVal<T> mk,
-    FVal<T> gamma_over_t2,
+    FVal<T> gamma_j,
     FVal<T> kappa,
-    FVal<T> n_f
+    FVal<T> self_coupling,
+    FVal<T> pair_splitting
 ) {
     FVal<T> mj2 = mj * mj, mk2 = mk * mk, q2 = s + mj2 + mk2, q = sqrt(q2);
     FVal<T> l_sq = log(s / q2);
     if (mk > 0. && mj == 0.) {
-        FVal<T> value =
-            gamma_over_t2 * (l_sq - 2. * log((q - mk) / q) - 2. * mk / (q + mk)) +
-            CS_PI2 / 6. - dilog<T>(s / q2);
-        if (gluon) {
-            value = value +
-                (kappa - 2. / 3.) * mk2 / s * (2. * CS_TR * n_f / CS_CA - 1.) *
+        FVal<T> collinear =
+            gamma_j * (l_sq - 2. * log((q - mk) / q) - 2. * mk / (q + mk));
+        if (boson) {
+            collinear = collinear +
+                (kappa - 2. / 3.) * mk2 / s * (2. * pair_splitting - self_coupling) *
                     log(2. * mk / (q + mk));
         }
-        return value;
+        return {CS_PI2 / 6. - dilog<T>(s / q2), collinear};
     }
-    if (gluon || mj == 0.) {
-        return 0.;
+    if (boson || mj == 0.) {
+        return {FVal<T>(0.), FVal<T>(0.)};
     }
     if (mk == 0.) {
-        return gamma_over_t2 * l_sq + CS_PI2 / 6. - dilog<T>(s / q2) - 2. * l_sq -
-            mj2 / s * log(mj2 / q2);
+        return {
+            CS_PI2 / 6. - dilog<T>(s / q2) - 2. * l_sq - mj2 / s * log(mj2 / q2),
+            gamma_j * l_sq
+        };
     }
     FVal<T> d = 4. * mj2 * mk2 / (s * s);
     FVal<T> v = sqrt(1. - d), omv = d / (1. + v);
@@ -85,12 +96,15 @@ KERNELSPEC FVal<T> cs_v_nonsingular(
     FVal<T> rhoj2 = (omv + 2. * mj2 / s) / (1. + v + 2. * mj2 / s);
     FVal<T> rhok2 = (omv + 2. * mk2 / s) / (1. + v + 2. * mk2 / s);
     FVal<T> qmk = q - mk;
-    return gamma_over_t2 * l_sq +
+    return {
         (log(rho2) * log(1. + rho2) + 2. * dilog<T>(rho2) - dilog<T>(1. - rhoj2) -
          dilog<T>(1. - rhok2) - CS_PI2 / 6.) /
-        v +
-        log(qmk / q) - 2. * log((qmk * qmk - mj2) / q2) - 2. * mj2 / s * log(mj / qmk) -
-        mk / qmk + 2. * mk * (2. * mk - q) / s + CS_PI2 / 2.;
+                v +
+            log(qmk / q) - 2. * log((qmk * qmk - mj2) / q2) -
+            2. * mj2 / s * log(mj / qmk) - mk / qmk + 2. * mk * (2. * mk - q) / s +
+            CS_PI2 / 2.,
+        gamma_j * l_sq
+    };
 }
 
 // An antiderivative of log|u + c| / u for real c that stays well conditioned
@@ -199,13 +213,15 @@ cs_alpha_integrals(FVal<T> muj2, FVal<T> muk2, FVal<T> alpha) {
 // 4 mu_k^2 y / (D (1 - y)^2).
 template <typename T>
 KERNELSPEC FVal<T> cs_removed_final_final(
-    bool gluon,
+    bool boson,
     FVal<T> s,
     FVal<T> mj,
     FVal<T> mk,
     FVal<T> alpha,
     FVal<T> kappa,
-    FVal<T> n_f
+    FVal<T> casimir,
+    FVal<T> self_coupling,
+    FVal<T> pair_splitting
 ) {
     if (alpha >= 1.) {
         return 0.;
@@ -222,14 +238,15 @@ KERNELSPEC FVal<T> cs_removed_final_final(
     FVal<T> j_log = cs_alpha_integrals<T>(muj2, muk2, alpha).j_log;
     // int dy (1 - y) / y
     FVal<T> a_0 = -l_alpha - y_plus * (1. - alpha);
-    if (gluon) {
-        // with (1 - y) (1 - v^2) / y = 4 mu_k^2 / (D (1 - y))
-        FVal<T> gamma_g = 11. / 6. * CS_CA - 2. / 3. * CS_TR * n_f;
-        FVal<T> c_v = CS_CA * (1. / 12. - 0.25 * (1. - kappa)) +
-            n_f * CS_TR * (0.5 * (1. - kappa) - 1. / 6.);
+    if (boson) {
+        // with (1 - y) (1 - v^2) / y = 4 mu_k^2 / (D (1 - y)), the self
+        // coupling C_A and the light pairs T_R n_f of a gluon
+        FVal<T> gamma_g = 11. / 6. * self_coupling - 2. / 3. * pair_splitting;
+        FVal<T> c_v = self_coupling * (1. / 12. - 0.25 * (1. - kappa)) +
+            pair_splitting * (0.5 * (1. - kappa) - 1. / 6.);
         FVal<T> x_1 =
             mk == 0. ? FVal<T>(0.) : 4. * muk2 / av * log((1. - y_alpha) / omy_plus);
-        return CS_CA * j_log - gamma_g * a_0 + c_v * x_1;
+        return self_coupling * j_log - gamma_g * a_0 + c_v * x_1;
     }
     // int dy (1 - y) z_1 / y with z_1 = 2 z_0^2 = D^2 y^2 / (2 (mu_j^2 + D y)^2)
     // in u = mu_j^2 + D y
@@ -238,7 +255,7 @@ KERNELSPEC FVal<T> cs_removed_final_final(
         (u_alpha - u_plus + (e + muj2) * log(u_plus / u_alpha) +
          e * muj2 * (1. / u_plus - 1. / u_alpha)) /
         (2. * av);
-    return CS_CF * (j_log / vel_born - 2. * a_0 + z_1);
+    return casimir * (j_log / vel_born - 2. * a_0 + z_1);
 }
 
 // The integral of the dipole of a final-state quark j with the decaying
@@ -414,18 +431,24 @@ template <typename T>
 KERNELSPEC void kernel_cs_insertion(
     FIn<T, 2> momenta,
     FIn<T, 3> color_correlated,
+    FIn<T, 1> born,
     FIn<T, 0> alpha_s,
     FIn<T, 0> ren_scale,
     FIn<T, 1> casimir,
     FIn<T, 1> gamma,
     FIn<T, 1> k_constant,
+    FIn<T, 1> self_coupling,
+    FIn<T, 1> pair_splitting,
+    FIn<T, 1> charges,
+    FIn<T, 1> spectator_weights,
     FIn<T, 1> masses,
     FIn<T, 1> options,
     IIn<T, 0> incoming,
     FOut<T, 1> insertion,
     FOut<T, 2> poles
 ) {
-    FVal<T> kappa = options[0], alpha_ff = options[1], n_f = options[2];
+    FVal<T> kappa = options[0], alpha_ff = options[1];
+    bool qed = FVal<T>(options[3]) != 0.;
     std::size_t n_in = single_index(incoming);
     FVal<T> mu2 = FVal<T>(ren_scale) * FVal<T>(ren_scale);
     FVal<T> a = FVal<T>(alpha_s) / (2. * 3.14159265358979323846);
@@ -439,15 +462,16 @@ KERNELSPEC void kernel_cs_insertion(
     bool decay = n_in == 1;
     for (std::size_t j = decay ? 1 : 0; j < momenta.size(); ++j) {
         FVal<T> t2 = casimir[j];
-        if (t2 == 0.) {
+        FVal<T> ca = self_coupling[j], trnf = pair_splitting[j];
+        // a gluon, or a photon, which has no T_j^2 but splits into pairs
+        bool boson = ca != 0. || trnf != 0.;
+        if (t2 == 0. && !boson) {
             continue;
         }
-        bool gluon = t2 == CS_CA;
         FVal<T> mj = masses[j], g = gamma[j], k = k_constant[j];
         // Gamma_j of CDST eqs. 6.27 to 6.29 (no heavy quarks for a gluon)
-        FVal<T> gamma_1 = mj > 0. ? FVal<T>(CS_CF) : g;
-        FVal<T> gamma_0 =
-            mj > 0. ? CS_CF * (0.5 * log(mj * mj / mu2) - 2.) : FVal<T>(0.);
+        FVal<T> gamma_1 = mj > 0. ? t2 : g;
+        FVal<T> gamma_0 = mj > 0. ? t2 * (0.5 * log(mj * mj / mu2) - 2.) : FVal<T>(0.);
         auto p_j = load_mom<T>(momenta[j]);
         for (std::size_t m = 0; m < momenta.size(); ++m) {
             if (m == j || FVal<T>(casimir[m]) == 0.) {
@@ -464,23 +488,32 @@ KERNELSPEC void kernel_cs_insertion(
                 s = 2. * (pjpa - mj * mj);
                 mk = sqrt(max(ma * ma - 2. * pjpa + mj * mj, 0.));
             } else {
-                s = 2. * ldot<T>(p_j, load_mom<T>(momenta[m]));
+                // (s of a massless pair close to collinear rounds to zero or
+                // below at points that the cuts remove, where the Born
+                // vanishes)
+                s = max(2. * ldot<T>(p_j, load_mom<T>(momenta[m])), 1e-300);
             }
             FVal<T> l = log(mu2 / s);
             FVal<T> v_s[3];
             cs_v_singular<T>(s, mj, mk, v_s);
             // an incoming emitter has kappa = 2/3 (CDST)
-            FVal<T> v_ns = cs_v_nonsingular<T>(
-                gluon, s, mj, mk, g / t2, j < n_in ? FVal<T>(2. / 3.) : kappa, n_f
+            auto v_ns = cs_v_nonsingular<T>(
+                boson, s, mj, mk, g, j < n_in ? FVal<T>(2. / 3.) : kappa, ca, trnf
             );
             FVal<T> removed = (j >= n_in && m >= n_in) || spectator_decay
-                ? cs_removed_final_final<T>(gluon, s, mj, mk, alpha_ff, kappa, n_f)
+                ? cs_removed_final_final<T>(
+                      boson, s, mj, mk, alpha_ff, kappa, t2, ca, trnf
+                  )
                 : FVal<T>(0.);
+            // the parts per unit <T_j . T_k> (the soft ones) and per unit
+            // <T_j . T_k> / T_j^2 (the collinear ones)
             FVal<T> double_pole = -v_s[0];
-            FVal<T> single_pole = -(v_s[1] + v_s[0] * l) - gamma_1 / t2;
+            FVal<T> single_pole = -(v_s[1] + v_s[0] * l);
             FVal<T> finite =
-                -(v_s[2] + v_s[1] * l + 0.5 * v_s[0] * l * l + v_ns - CS_PI2 / 3.) -
-                (gamma_0 + g * l + g + k - removed) / t2;
+                -(v_s[2] + v_s[1] * l + 0.5 * v_s[0] * l * l + v_ns.soft - CS_PI2 / 3.);
+            FVal<T> single_pole_collinear = -gamma_1;
+            FVal<T> finite_collinear =
+                -(gamma_0 + g * l + g + k + v_ns.collinear - removed);
             if (spectator_decay) {
                 // the rest of the integral of the decay dipole, per unit
                 // <T_j . T_a>, with (mu^2 / s)^eps expanded
@@ -491,11 +524,19 @@ KERNELSPEC void kernel_cs_insertion(
                     0.5 * rest.first * l * l +
                     cs_removed_decay_soft<T>(s, mj, mk, alpha_ff);
             }
+            // in QED the charges of j and m, and the spectators of a photon,
+            // which has no charge, each with its weight
+            FVal<T> qq = FVal<T>(charges[j]) * FVal<T>(charges[m]);
             for (std::size_t b = 0; b < insertion.size(); ++b) {
-                FVal<T> cc = color_correlated[b][j][m];
-                insertion[b] = insertion[b] + a * cc * finite;
+                FVal<T> cc = qed ? qq * FVal<T>(born[b]) : color_correlated[b][j][m];
+                FVal<T> ncc = t2 != 0.
+                    ? cc / t2
+                    : -FVal<T>(spectator_weights[m]) * FVal<T>(born[b]);
+                insertion[b] =
+                    insertion[b] + a * (cc * finite + ncc * finite_collinear);
                 poles[b][0] = poles[b][0] + a * cc * double_pole;
-                poles[b][1] = poles[b][1] + a * cc * single_pole;
+                poles[b][1] =
+                    poles[b][1] + a * (cc * single_pole + ncc * single_pole_collinear);
             }
         }
     }
@@ -503,67 +544,80 @@ KERNELSPEC void kernel_cs_insertion(
 
 // the kinds of a splitting of a parton a of the hadron into the parton a' of
 // the Born: q -> q, g -> g, g -> q (a' a quark) and q -> g (a' a gluon), the
-// order of P^{aa'} of CS
+// order of P^{aa'} of CS. In QED a charged fermion takes the place of the
+// quark and the photon that of the gluon, each kernel with its coefficient c
+// (C_F, C_A, T_R and C_F of QCD, Q_f^2, none, N_c Q_f^2 and one per unit Q_f^2
+// of the luminosity of the fermions in QED)
 constexpr int CS_QQ = 0, CS_GG = 1, CS_GQ = 2, CS_QG = 3;
 
-// P^{aa'}(x) without its plus distribution and delta(1 - x) (CS eq. 10.12)
+// P^{aa'}(x) without its plus distribution and delta(1 - x) (CS eq. 10.12),
+// with its coefficient c
 template <typename T>
-KERNELSPEC FVal<T> cs_p_regular(int kind, FVal<T> x) {
+KERNELSPEC FVal<T> cs_p_regular(int kind, FVal<T> c, FVal<T> x) {
     FVal<T> omx = 1. - x;
     switch (kind) {
     case CS_QQ:
-        return -CS_CF * (1. + x);
+        return -c * (1. + x);
     case CS_GG:
-        return 2. * CS_CA * (omx / x - 1. + x * omx);
+        return 2. * c * (omx / x - 1. + x * omx);
     case CS_GQ:
-        return CS_TR * (x * x + omx * omx);
+        return c * (x * x + omx * omx);
     default:
-        return CS_CF * (1. + omx * omx) / x;
+        return c * (1. + omx * omx) / x;
     }
 }
 
 // P^{aa'}(x) at x < 1 (the four-dimensional Altarelli-Parisi kernel)
 template <typename T>
-KERNELSPEC FVal<T> cs_p_full(int kind, FVal<T> x) {
+KERNELSPEC FVal<T> cs_p_full(int kind, FVal<T> c, FVal<T> x) {
     FVal<T> omx = 1. - x;
     switch (kind) {
     case CS_QQ:
-        return CS_CF * (1. + x * x) / omx;
+        return c * (1. + x * x) / omx;
     case CS_GG:
-        return 2. * CS_CA * (x / omx + omx / x + x * omx);
+        return 2. * c * (x / omx + omx / x + x * omx);
     case CS_GQ:
-        return CS_TR * (x * x + omx * omx);
+        return c * (x * x + omx * omx);
     default:
-        return CS_CF * (1. + omx * omx) / x;
+        return c * (1. + omx * omx) / x;
     }
 }
 
-// What alpha_fi removes from the final-state emitter j (a quark of mass m or a
-// massless gluon) with the incoming spectator: the dipoles over 1 - x > alpha,
-// at x per unit <T_j . T_a> / T_j^2, with the invariant s = 2 p_j p_a of the
-// real emission
+// What alpha_fi removes from the final-state emitter j (a quark of mass m and
+// Casimir t2, or a massless gluon with self coupling ca and gamma_j) with the
+// incoming spectator: the dipoles over 1 - x > alpha, at x per unit <T_j .
+// T_a> / T_j^2, with the invariant s = 2 p_j p_a of the real emission
 template <typename T>
 KERNELSPEC FVal<T> cs_removed_final_initial(
-    bool gluon, FVal<T> x, FVal<T> s, FVal<T> m, FVal<T> alpha, FVal<T> gamma_g
+    bool boson,
+    FVal<T> x,
+    FVal<T> s,
+    FVal<T> m,
+    FVal<T> alpha,
+    FVal<T> t2,
+    FVal<T> ca,
+    FVal<T> gamma_j
 ) {
     FVal<T> omx = 1. - x;
     if (!(omx > alpha)) {
         return 0.;
     }
-    if (gluon) {
-        return (2. * CS_CA * log((1. + omx) / omx) - gamma_g) / omx;
+    if (boson) {
+        return (2. * ca * log((1. + omx) / omx) - gamma_j) / omx;
     }
     FVal<T> mu2 = m * m / s, zp = omx / (omx + mu2);
-    return CS_CF / omx *
+    return t2 / omx *
         (2. * log((omx + zp) / omx) - 2. * zp + 0.5 * zp * zp - 2. * mu2 * zp / omx);
 }
 
 // What alpha_if removes from the incoming emitter a with the final-state
 // spectator j of mass m: the dipoles over u > alpha, at x per unit <T_j . T_a>
-// / T_a^2, with s = 2 p_j p_a of the real emission
+// / T_a^2, with s = 2 p_j p_a of the real emission, the kernel with its
+// coefficient c
 template <typename T>
-KERNELSPEC FVal<T>
-cs_removed_initial_final(int kind, FVal<T> x, FVal<T> s, FVal<T> m, FVal<T> alpha) {
+KERNELSPEC FVal<T> cs_removed_initial_final(
+    int kind, FVal<T> c, FVal<T> x, FVal<T> s, FVal<T> m, FVal<T> alpha
+) {
     FVal<T> omx = 1. - x, mu2 = m * m / s, zp = omx / (omx + mu2);
     if (!(zp > alpha)) {
         return 0.;
@@ -574,13 +628,13 @@ cs_removed_initial_final(int kind, FVal<T> x, FVal<T> s, FVal<T> m, FVal<T> alph
         m > 0. ? mu2 * log((1. - alpha) * (omx + mu2) / mu2) / x : FVal<T>(0.);
     switch (kind) {
     case CS_QQ:
-        return CS_CF * (2. * e - (1. + x) * l_u);
+        return c * (2. * e - (1. + x) * l_u);
     case CS_GQ:
-        return CS_TR * (x * x + omx * omx) * l_u;
+        return c * (x * x + omx * omx) * l_u;
     case CS_QG:
-        return CS_CF * ((x + 2. * omx / x) * l_u - 2. * l_m);
+        return c * ((x + 2. * omx / x) * l_u - 2. * l_m);
     default:
-        return 2. * CS_CA * (e + (-1. + x * omx + omx / x) * l_u - l_m);
+        return 2. * c * (e + (-1. + x * omx + omx / x) * l_u - l_m);
     }
 }
 
@@ -612,14 +666,18 @@ struct CSConvolution {
 
 // The terms of a massive final-state quark j of CDST eqs. 6.55-6.62, -<T_j .
 // T_a'> K_j^{a,a'}(x; s, m) and the mass terms of the collinear part, per
-// coefficient coef = <T_j . T_a'> B, with s = 2 p_j p~_a' of the Born (s / z
-// inside the convolution)
+// coefficient coef = <T_j . T_a'> B and per normalized coefficient norm =
+// <T_j . T_a'> B / T_a'^2 (the same with the weight of j for a photon a'),
+// with s = 2 p_j p~_a' of the Born (s / z inside the convolution), the kernel
+// with its coefficient c and the self coupling ca of a'
 template <typename T>
 KERNELSPEC void cs_massive_spectator(
     CSConvolution<T>& conv,
     int kind,
+    FVal<T> c,
     FVal<T> coef,
-    FVal<T> t2,
+    FVal<T> norm,
+    FVal<T> ca,
     FVal<T> gamma_a,
     FVal<T> s,
     FVal<T> m
@@ -646,18 +704,17 @@ KERNELSPEC void cs_massive_spectator(
         conv.delta(-coef, -1.5 + mu2 * log(mu2 / (1. + mu2)) + 0.5 * mu2 / (1. + mu2));
         FVal<T> rq = sqrt(s + m2);
         conv.delta(
-            -coef * gamma_a / t2,
-            log((s - 2. * m * rq + 2. * m2) / s) + 2. * m / (rq + m)
+            -norm * gamma_a, log((s - 2. * m * rq + 2. * m2) / s) + 2. * m / (rq + m)
         );
     }
     if (kind == CS_QG || kind == CS_GG) {
-        FVal<T> factor = kind == CS_GG ? CS_CA / CS_CF : 1.;
-        conv.regular(
-            -coef * factor, 2. * CS_CF / CS_CA * mu2_z / z * log(mu2_z / (omz + mu2_z))
-        );
+        // 2 C_F mu^2 / z log(mu^2 / (1 - z + mu^2)) for q -> g, 2 C_A for g -> g,
+        // per unit <T_j . T_a'> / T_a'^2
+        FVal<T> factor = kind == CS_GG ? ca : c;
+        conv.regular(-norm, 2. * factor * mu2_z / z * log(mu2_z / (omz + mu2_z)));
     }
     conv.regular(
-        -coef / t2, cs_p_regular<T>(kind, z) * log(omz * s_z / (omz * s_z + m2))
+        -norm, cs_p_regular<T>(kind, c, z) * log(omz * s_z / (omz * s_z + m2))
     );
 }
 
@@ -674,6 +731,11 @@ KERNELSPEC void kernel_cs_collinear(
     FIn<T, 0> r,
     FIn<T, 1> casimir,
     FIn<T, 1> gamma,
+    FIn<T, 1> self_coupling,
+    FIn<T, 1> pair_splitting,
+    FIn<T, 1> other_coefficient,
+    FIn<T, 1> charges,
+    FIn<T, 1> spectator_weights,
     FIn<T, 1> masses,
     FIn<T, 1> options,
     FOut<T, 1> z,
@@ -681,26 +743,44 @@ KERNELSPEC void kernel_cs_collinear(
 ) {
     constexpr double pi2 = CS_PI2;
     FVal<T> alpha_fi = options[0], alpha_if = options[1], alpha_ii = options[2];
-    FVal<T> n_f = options[3];
-    FVal<T> gamma_g = 11. / 6. * CS_CA - 2. / 3. * CS_TR * n_f;
+    bool qed = FVal<T>(options[4]) != 0.;
     FVal<T> a = FVal<T>(alpha_s) / (2. * 3.14159265358979323846);
     std::size_t n = momenta.size();
+    // <T_j . T_k> B of QCD, or Q_j Q_k B of the charges in QED, and the same
+    // over T_j^2, with the weight of k for a photon j
+    auto correlated = [&](std::size_t b, std::size_t j, std::size_t k) -> FVal<T> {
+        return qed
+            ? FVal<T>(charges[j]) * FVal<T>(charges[k]) * FVal<T>(born[b])
+            : FVal<T>(color_correlated[b][j][k]);
+    };
+    auto normalized = [&](std::size_t b, std::size_t j, std::size_t k) -> FVal<T> {
+        FVal<T> t2 = casimir[j];
+        return t2 != 0.
+            ? correlated(b, j, k) / t2
+            : -FVal<T>(spectator_weights[k]) * FVal<T>(born[b]);
+    };
     for (std::size_t l = 0; l < 2; ++l) {
         FVal<T> eta = l == 0 ? FVal<T>(x1) : FVal<T>(x2);
         FVal<T> mu_f = l == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
         FVal<T> rv = r, zl = eta + (1. - eta) * rv;
         z[l] = zl;
         FVal<T> t2 = casimir[l];
+        FVal<T> ca = self_coupling[l], trnf = pair_splitting[l];
+        FVal<T> c_other = other_coefficient[l], gamma_l = gamma[l];
         for (std::size_t b = 0; b < weights.size(); ++b) {
             for (std::size_t c = 0; c < 3; ++c) {
                 weights[b][l][c] = 0.;
             }
         }
-        if (t2 == 0.) {
+        // a gluon, or a photon, which has no T^2 but takes the fermions
+        bool boson = ca != 0. || trnf != 0.;
+        if (t2 == 0. && !boson) {
             continue;
         }
-        bool gluon = t2 == CS_CA;
-        int same = gluon ? CS_GG : CS_QQ, other = gluon ? CS_QG : CS_GQ;
+        int same = boson ? CS_GG : CS_QQ, other = boson ? CS_QG : CS_GQ;
+        // the coefficients of the kernels of a' from the same parton (the
+        // self coupling of a boson, T^2 of a fermion) and from the other one
+        FVal<T> c_same = boson ? ca : t2;
         FVal<T> omz = 1. - zl, l_omz = log(omz), l_eta = log(1. - eta);
         FVal<T> l_ratio = log(omz / zl);
         auto p_l = load_mom<T>(momenta[l]);
@@ -715,84 +795,103 @@ KERNELSPEC void kernel_cs_collinear(
                 if (j == l || FVal<T>(casimir[j]) == 0.) {
                     continue;
                 }
-                FVal<T> s = 2. * ldot<T>(p_l, load_mom<T>(momenta[j]));
-                coef_p =
-                    coef_p + FVal<T>(color_correlated[b][j][l]) * log(mu_f * mu_f / s);
+                FVal<T> s = max(2. * ldot<T>(p_l, load_mom<T>(momenta[j])), 1e-300);
+                coef_p = coef_p + normalized(b, l, j) * log(mu_f * mu_f / s);
             }
-            coef_p = coef_p / t2;
-            conv_same.regular(coef_p, cs_p_regular<T>(same, zl));
+            conv_same.regular(coef_p, cs_p_regular<T>(same, c_same, zl));
             conv_same.plus(2. * coef_p * t2, 1. / omz, 1. / omz, -l_eta);
-            conv_same.delta(coef_p, gluon ? gamma_g : FVal<T>(1.5 * CS_CF));
-            conv_other.regular(coef_p, cs_p_regular<T>(other, zl));
+            conv_same.delta(coef_p, boson ? gamma_l : 1.5 * t2);
+            conv_other.regular(coef_p, cs_p_regular<T>(other, c_other, zl));
             // Kbar of CS eqs. 10.27-10.28 times the Born
             FVal<T> int_ratio = -0.5 * l_eta * l_eta - dilog<T>(1. - eta) + pi2 / 6.;
-            if (gluon) {
-                conv_same.regular(born_b, cs_p_regular<T>(CS_GG, zl) * l_ratio);
+            if (boson) {
+                conv_same.regular(born_b, cs_p_regular<T>(CS_GG, ca, zl) * l_ratio);
                 conv_same.plus(
-                    2. * CS_CA * born_b, l_ratio / omz, l_ratio / omz, int_ratio
+                    2. * ca * born_b, l_ratio / omz, l_ratio / omz, int_ratio
                 );
-                conv_same.delta(
-                    -born_b, (50. / 9. - pi2) * CS_CA - 16. / 9. * CS_TR * n_f
-                );
+                conv_same.delta(-born_b, (50. / 9. - pi2) * ca - 16. / 9. * trnf);
                 conv_other.regular(
-                    born_b, cs_p_regular<T>(CS_QG, zl) * l_ratio + CS_CF * zl
+                    born_b, cs_p_regular<T>(CS_QG, c_other, zl) * l_ratio + c_other * zl
                 );
             } else {
-                conv_same.regular(born_b, CS_CF * (-(1. + zl) * l_ratio + omz));
+                conv_same.regular(born_b, t2 * (-(1. + zl) * l_ratio + omz));
                 conv_same.plus(
-                    2. * CS_CF * born_b, l_ratio / omz, l_ratio / omz, int_ratio
+                    2. * t2 * born_b, l_ratio / omz, l_ratio / omz, int_ratio
                 );
-                conv_same.delta(-born_b, CS_CF * (5. - pi2));
+                conv_same.delta(-born_b, t2 * (5. - pi2));
                 conv_other.regular(
-                    born_b, cs_p_regular<T>(CS_GQ, zl) * l_ratio + 2. * CS_TR * zl * omz
+                    born_b,
+                    cs_p_regular<T>(CS_GQ, c_other, zl) * l_ratio +
+                        2. * c_other * zl * omz
                 );
             }
             // Ktilde of CS eq. 10.29 with the other incoming parton, and what
             // alpha_ii removes
             if (FVal<T>(casimir[o]) != 0.) {
-                FVal<T> coef = -FVal<T>(color_correlated[b][o][l]) / t2;
-                conv_same.regular(coef, cs_p_regular<T>(same, zl) * l_omz);
+                FVal<T> coef = -normalized(b, l, o);
+                conv_same.regular(coef, cs_p_regular<T>(same, c_same, zl) * l_omz);
                 conv_same.plus(
                     2. * t2 * coef, l_omz / omz, l_omz / omz, -0.5 * l_eta * l_eta
                 );
                 conv_same.delta(coef, -t2 * pi2 / 3.);
-                conv_other.regular(coef, cs_p_regular<T>(other, zl) * l_omz);
+                conv_other.regular(coef, cs_p_regular<T>(other, c_other, zl) * l_omz);
                 if (omz > alpha_ii) {
                     FVal<T> l_alpha = log(omz / alpha_ii);
-                    conv_same.regular(-coef, cs_p_full<T>(same, zl) * l_alpha);
-                    conv_other.regular(-coef, cs_p_full<T>(other, zl) * l_alpha);
+                    conv_same.regular(-coef, cs_p_full<T>(same, c_same, zl) * l_alpha);
+                    conv_other.regular(
+                        -coef, cs_p_full<T>(other, c_other, zl) * l_alpha
+                    );
                 }
             }
             // the final-state partons j as emitters with the spectator a' and as
             // spectators of a'
             for (std::size_t j = 2; j < n; ++j) {
                 FVal<T> cj = casimir[j];
-                if (cj == 0.) {
+                FVal<T> ca_j = self_coupling[j], trnf_j = pair_splitting[j];
+                bool boson_j = ca_j != 0. || trnf_j != 0.;
+                if (cj == 0. && !boson_j) {
                     continue;
                 }
-                FVal<T> cc = color_correlated[b][j][l];
                 FVal<T> mj = masses[j];
-                FVal<T> s = 2. * ldot<T>(p_l, load_mom<T>(momenta[j]));
-                if (mj == 0.) {
-                    FVal<T> coef = cc * FVal<T>(gamma[j]) / cj;
+                FVal<T> s = max(2. * ldot<T>(p_l, load_mom<T>(momenta[j])), 1e-300);
+                // a photon j emits with the spectator a', but is none of a'
+                if (cj != 0.) {
+                    FVal<T> cc = correlated(b, j, l);
+                    FVal<T> norm = normalized(b, l, j);
+                    if (mj == 0.) {
+                        FVal<T> coef = normalized(b, j, l) * FVal<T>(gamma[j]);
+                        conv_same.plus(coef, 1. / omz, 1. / omz, -l_eta);
+                        conv_same.delta(coef, 1.);
+                    } else {
+                        cs_massive_spectator<T>(
+                            conv_same, same, c_same, cc, norm, ca, gamma_l, s, mj
+                        );
+                        cs_massive_spectator<T>(
+                            conv_other, other, c_other, cc, norm, ca, gamma_l, s, mj
+                        );
+                    }
+                    conv_same.regular(
+                        norm,
+                        cs_removed_initial_final<T>(
+                            same, c_same, zl, s / zl, mj, alpha_if
+                        )
+                    );
+                    conv_other.regular(
+                        norm,
+                        cs_removed_initial_final<T>(
+                            other, c_other, zl, s / zl, mj, alpha_if
+                        )
+                    );
+                } else {
+                    FVal<T> coef = normalized(b, j, l) * FVal<T>(gamma[j]);
                     conv_same.plus(coef, 1. / omz, 1. / omz, -l_eta);
                     conv_same.delta(coef, 1.);
-                } else {
-                    cs_massive_spectator<T>(conv_same, same, cc, t2, gamma[l], s, mj);
-                    cs_massive_spectator<T>(conv_other, other, cc, t2, gamma[l], s, mj);
                 }
                 conv_same.regular(
-                    cc / cj,
+                    normalized(b, j, l),
                     cs_removed_final_initial<T>(
-                        cj == CS_CA, zl, s / zl, mj, alpha_fi, gamma_g
+                        boson_j, zl, s / zl, mj, alpha_fi, cj, ca_j, gamma[j]
                     )
-                );
-                conv_same.regular(
-                    cc / t2, cs_removed_initial_final<T>(same, zl, s / zl, mj, alpha_if)
-                );
-                conv_other.regular(
-                    cc / t2,
-                    cs_removed_initial_final<T>(other, zl, s / zl, mj, alpha_if)
                 );
             }
             weights[b][l][0] = a * conv_same.at_z;

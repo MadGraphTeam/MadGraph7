@@ -2,9 +2,9 @@
 
 The dipoles are combinatorics on the flavors and masses of a real process
 (Catani, Seymour, arXiv:hep-ph/9605323; masses: Catani, Dittmaier, Seymour,
-Trocsanyi, arXiv:hep-ph/0201036). A dipole has an emitted parton i, an
-emitter j and a spectator k, all colored, with the positions of the real
-process (0-based). i is massless and emitted in the final state. The family
+Trocsanyi, arXiv:hep-ph/0201036). A dipole of the QCD corrections has an
+emitted parton i, an emitter j and a spectator k, all colored, with the
+positions of the real process (0-based). i is massless and emitted in the final state. The family
 is ff, fi, if or ii by whether the emitter and the spectator are in the
 final (f) or the initial (i) state, and fd for a final-state emitter with
 the decaying particle of a decay as the spectator (Basso, Dittmaier, Huss,
@@ -18,6 +18,17 @@ antiquark and g for a gluon:
     gg  g -> g g                   gg  g -> g g
     gq  g -> q q~, massless        qq  g -> q~ q, the q~ enters the Born
                                    gq  q -> g q, the gluon enters the Born
+
+The dipoles of the QED corrections (Dittmaier, arXiv:hep-ph/9904440) have
+the same kernels with the charged particles in place of the colored ones: a
+photon from a charged particle (qg, also from a massive W), a massless
+charged fermion pair from a photon (gq), and for an incoming particle a
+photon splitting into the antifermion of i (qq) and a charged fermion that
+gives a photon to the Born (gq). Their Born has two powers of e less in
+place of two of g_s, and their spectators k are the charged particles. A
+photon that splits has no charge in the Born, its one term (Dittmaier,
+Kabelschacht, Kasprzik, arXiv:0802.1405) goes to its spectators with equal
+weights, which take the place of -<T_j . T_k> / T_j^2.
 
 Each pair of final partons with a splitting has one dipole per spectator,
 as has each incoming parton with each final parton i it can emit. The Born of
@@ -35,12 +46,14 @@ block of the NLO output that the MG7 exporter is to write:
     reals[]: pdgs, flavors (those of one real matrix element, the first is
         pdgs), subprocess and configuration (0-based) of a configuration of
         the FKS exporter with this real matrix element
-    cs[]: real, born (indices), family, i, j, k, kernel, born_order (the Born
-        leg n of the matrix element is leg born_order[n] of the Born of the
-        dipole, the real process without i), symmetry (S_B / S_R, the
-        factors n! of the identical final-state particles of the Born over
-        those of the real, which the normalization of the matrix elements of
-        MadGraph divides out)
+    cs[]: real, born (indices), group (QCD or QED), family, i, j, k, kernel,
+        born_order (the Born leg n of the matrix element is leg
+        born_order[n] of the Born of the dipole, the real process without
+        i), symmetry (S_B / S_R, the factors n! of the identical final-state
+        particles of the Born over those of the real, which the
+        normalization of the matrix elements of MadGraph divides out) and
+        weight (that of the spectator of a photon that splits, None for the
+        correlated Born)
 
 The alpha parameters of the families and kappa of CDST are parameters of
 the subtraction, not of the dipoles: they stay in the run card.
@@ -53,6 +66,24 @@ import os
 FAMILIES = ("ff", "fi", "if", "ii", "fd")
 FINAL_KERNELS = ("qg", "gg", "gq")
 INITIAL_KERNELS = ("qg", "gg", "qq", "gq")
+GROUPS = ("QCD", "QED")
+# the electric charges of the charged particles of the SM in units of e, by
+# PDG code, those of the antiparticles opposite
+CHARGES = {
+    1: -1 / 3,
+    2: 2 / 3,
+    3: -1 / 3,
+    4: 2 / 3,
+    5: -1 / 3,
+    6: 2 / 3,
+    11: -1.0,
+    13: -1.0,
+    15: -1.0,
+    24: 1.0,
+    37: 1.0,
+}
+# the colors of the charged fermions, for the splittings of a photon
+COLORS = {1: 3, 2: 3, 3: 3, 4: 3, 5: 3, 6: 3, 11: 1, 13: 1, 15: 1}
 
 
 def is_quark(pdg):
@@ -61,6 +92,16 @@ def is_quark(pdg):
 
 def is_colored(pdg):
     return is_quark(pdg) or pdg == 21
+
+
+def charge(pdg):
+    """The electric charge of a particle in units of e."""
+    value = CHARGES.get(abs(pdg), 0.0)
+    return value if pdg > 0 else -value
+
+
+def is_charged_fermion(pdg):
+    return abs(pdg) in COLORS
 
 
 def final_splitting(pdgs, masses, a, b):
@@ -77,6 +118,39 @@ def final_splitting(pdgs, masses, a, b):
         return a, b, fb, "qg"
     if is_quark(fa) and fb == -fa and masses[a] == 0.0:
         return b, a, 21, "gq"
+    return None
+
+
+def qed_final_splitting(pdgs, masses, a, b):
+    """(i, j, the Born flavor of i + j, kernel) of the QED splitting of the
+    final-state pair a < b, None without one: a photon i from a charged
+    particle j (qg), or a massless charged fermion pair from a photon (gq,
+    the second one is i)."""
+    fa, fb = pdgs[a], pdgs[b]
+    if fb == 22 and charge(fa) != 0:
+        return b, a, fa, "qg"
+    if fa == 22 and charge(fb) != 0:
+        return a, b, fb, "qg"
+    if is_charged_fermion(fa) and fb == -fa and masses[a] == 0.0:
+        return b, a, 22, "gq"
+    return None
+
+
+def qed_initial_splitting(pdgs, masses, a, i):
+    """(i, a, the flavor of the incoming particle of the Born, kernel) of
+    the QED splitting of an incoming particle a emitting the final-state
+    particle i, None without one: a photon from a charged particle (qg), a
+    photon splitting into the antifermion of i (qq) and a charged fermion
+    giving a photon to the Born (gq)."""
+    fa, fi = pdgs[a], pdgs[i]
+    if masses[i] != 0.0:
+        return None
+    if fi == 22 and charge(fa) != 0:
+        return i, a, fa, "qg"
+    if fa == 22 and is_charged_fermion(fi):
+        return i, a, -fi, "qq"
+    if is_charged_fermion(fa) and fi == fa:
+        return i, a, 22, "gq"
     return None
 
 
@@ -144,91 +218,147 @@ def mass_list(pdgs, masses):
     return [float(masses.get(abs(pdg), masses.get(pdg, 0.0))) for pdg in pdgs]
 
 
-def cs_dipoles(real_pdgs, borns, masses=None, nincoming=2):
-    """The dipoles of a real process, ff, fi, if, ii, in that order of the
-    emitters, each with its spectators: dicts with born (an index of borns),
-    family, i, j, k, kernel, born_order and symmetry (see the module). borns
-    are dicts with pdgs and flavors, the masses {pdg: mass} (zero by default).
-    In a decay (nincoming 1) a colored decaying particle is the spectator of
-    the final-state emitters (fd), which have to be quarks.
+def cs_dipoles(real_pdgs, borns, masses=None, nincoming=2, groups=("QCD",)):
+    """The dipoles of a real process, for each group of corrections (QCD,
+    QED) ff, fi, if, ii, in that order of the emitters, each with its
+    spectators: dicts with born (an index of borns), group, family, i, j, k,
+    kernel, born_order, symmetry and weight (see the module). borns are dicts
+    with pdgs and flavors, the masses {pdg: mass} (zero by default). In a
+    decay (nincoming 1) a colored decaying particle is the spectator of the
+    final-state emitters (fd), which have to be quarks, and a charged one
+    that of the emitters of photons.
 
     Raises:
         NotImplementedError: for a gluon emitter with a colored decaying
-            particle as the spectator.
+            particle as the spectator, or a photon that splits with no
+            charged particle as the spectator.
+        ValueError: for a group other than QCD and QED.
     """
+    unknown = set(groups) - set(GROUPS)
+    if unknown:
+        raise ValueError(f"cs_dipoles: groups {sorted(unknown)} not in {GROUPS}")
     pdgs = list(real_pdgs)
     m = mass_list(pdgs, masses)
     count = len(pdgs)
-    splittings = [
-        final_splitting(pdgs, m, a, b)
-        for a in range(nincoming, count)
-        for b in range(a + 1, count)
-    ]
-    if nincoming == 2:
-        splittings += [
-            initial_splitting(pdgs, m, a, i)
-            for a in range(nincoming)
-            for i in range(nincoming, count)
-        ]
     dipoles = []
-    for i, j, flavor, kernel in filter(None, splittings):
-        line = list(pdgs)
-        line[j] = flavor
-        del line[i]
-        b, order = _find_born(line, borns, nincoming)
-        if b is None:
-            # a Born without matrix element at the order of the output, as
-            # g g > e+ e- for the dipole of g d~ > e+ e- d~ with i the d~
+    for group in GROUPS:
+        if group not in groups:
             continue
-        factor = symmetry(line, nincoming) / symmetry(pdgs, nincoming)
-        for k in range(count):
-            if k in (i, j) or not is_colored(pdgs[k]):
-                continue
-            if nincoming == 1 and k == 0:
-                if kernel != "qg":
-                    raise NotImplementedError(
-                        "dipoles of a final-state gluon with a decaying particle "
-                        "as the spectator"
-                    )
-                family = "fd"
-            else:
-                family = ("i" if j < nincoming else "f") + (
-                    "i" if k < nincoming else "f"
-                )
-            dipoles.append(
-                dict(
-                    born=b,
-                    family=family,
-                    i=i,
-                    j=j,
-                    k=k,
-                    kernel=kernel,
-                    born_order=order,
-                    symmetry=factor,
-                )
+        final, initial = (
+            (final_splitting, initial_splitting)
+            if group == "QCD"
+            else (qed_final_splitting, qed_initial_splitting)
+        )
+        splittings = [
+            final(pdgs, m, a, b)
+            for a in range(nincoming, count)
+            for b in range(a + 1, count)
+        ]
+        if nincoming == 2:
+            splittings += [
+                initial(pdgs, m, a, i)
+                for a in range(nincoming)
+                for i in range(nincoming, count)
+            ]
+        for i, j, flavor, kernel in filter(None, splittings):
+            dipoles += _splitting_dipoles(
+                pdgs, borns, nincoming, group, i, j, flavor, kernel
             )
     return dipoles
 
 
-def cs_subtraction(reals, borns, masses=None, nincoming=2):
-    """The cs block for reals and borns (lists of dicts with pdgs and
-    flavors): borns, reals and their dipoles (see the module). Every flavor
-    line of a real has to give its dipoles the same Borns in the same order
-    as the first."""
+def _spectators(pdgs, nincoming, group, i, j, kernel):
+    """The spectators of a splitting with their weights, None for those of
+    the correlated Born (the color-correlated Born for QCD, the charges for
+    QED). A photon that splits (gq of QED) has no charge in the Born, so its
+    one term (Dittmaier, Kabelschacht, Kasprzik, arXiv:0802.1405) goes to
+    the charged particles other than a decaying one in equal parts."""
+    if group == "QCD":
+        return [(k, None) for k in range(len(pdgs)) if is_colored(pdgs[k])]
+    charged = [k for k in range(len(pdgs)) if charge(pdgs[k]) != 0]
+    if kernel != "gq":
+        return [(k, None) for k in charged]
+    candidates = [k for k in charged if k not in (i, j) and k >= (nincoming == 1)]
+    if not candidates:
+        raise NotImplementedError(
+            f"cs_dipoles: no charged spectator for the photon of {pdgs}"
+        )
+    return [(k, 1.0 / len(candidates)) for k in candidates]
+
+
+def _splitting_dipoles(pdgs, borns, nincoming, group, i, j, flavor, kernel):
+    """The dipoles of the splitting of j into i and j, one per spectator."""
+    line = list(pdgs)
+    line[j] = flavor
+    del line[i]
+    b, order = _find_born(line, borns, nincoming)
+    if b is None:
+        # a Born without matrix element at the order of the output, as
+        # g g > e+ e- for the dipole of g d~ > e+ e- d~ with i the d~
+        return []
+    factor = symmetry(line, nincoming) / symmetry(pdgs, nincoming)
     dipoles = []
-    for r, real in enumerate(reals):
-        first = cs_dipoles(real["pdgs"], borns, masses, nincoming)
-        for flavors in real.get("flavors", [])[1:]:
-            other = cs_dipoles(flavors, borns, masses, nincoming)
-            if [(d["born"], d["born_order"]) for d in other] != [
-                (d["born"], d["born_order"]) for d in first
-            ]:
+    for k, weight in _spectators(pdgs, nincoming, group, i, j, kernel):
+        if k in (i, j):
+            continue
+        if nincoming == 1 and k == 0:
+            if kernel != "qg":
+                raise NotImplementedError(
+                    "dipoles of a final-state gluon with a decaying particle "
+                    "as the spectator"
+                )
+            family = "fd"
+        else:
+            family = ("i" if j < nincoming else "f") + ("i" if k < nincoming else "f")
+        dipoles.append(
+            dict(
+                born=b,
+                group=group,
+                family=family,
+                i=i,
+                j=j,
+                k=k,
+                kernel=kernel,
+                born_order=order,
+                symmetry=factor,
+                weight=weight,
+            )
+        )
+    return dipoles
+
+
+def cs_subtraction(reals, borns, masses=None, nincoming=2, groups=("QCD",)):
+    """The cs block for reals and borns (lists of dicts with pdgs and
+    flavors): borns, reals and their dipoles of the groups of corrections
+    (see the module). Every flavor line of a real has to give it the same
+    dipoles in the same order as the first. Lines whose dipoles go to other
+    Borns (a b of its own subprocess beside the d and s of another) make
+    reals of their own, with the same matrix element."""
+    out, dipoles = [], []
+
+    def structure(entries):
+        return [
+            (d["group"], d["i"], d["j"], d["k"], d["kernel"], d["born_order"])
+            for d in entries
+        ]
+
+    for real in reals:
+        lines = real.get("flavors") or [real["pdgs"]]
+        first = cs_dipoles(lines[0], borns, masses, nincoming, groups)
+        by_borns = {}
+        for flavors in lines:
+            other = cs_dipoles(flavors, borns, masses, nincoming, groups)
+            if structure(other) != structure(first):
                 raise ValueError(
                     f"the flavors {flavors} of the real {real['pdgs']} have other "
-                    "Borns or orders"
+                    "dipoles or orders"
                 )
-        dipoles += [dict(real=r, **d) for d in first]
-    return dict(borns=borns, reals=reals, cs=dipoles)
+            key = tuple(d["born"] for d in other)
+            by_borns.setdefault(key, (other, []))[1].append(flavors)
+        for entries, group in by_borns.values():
+            dipoles += [dict(real=len(out), **d) for d in entries]
+            out.append(dict(real, pdgs=list(group[0]), flavors=group))
+    return dict(borns=borns, reals=out, cs=dipoles)
 
 
 def _final_key(pdgs, nincoming):
@@ -240,10 +370,12 @@ def read_cs_subtraction(output, masses=None):
     [QCD]) from the fks_configurations.json of its P* directories: each
     subprocess a Born, each real matrix element of a configuration a real,
     each flavor line once over the subprocesses (the final state in any
-    order)."""
+    order), with the dipoles of the splitting types of the configurations
+    (QCD, QED)."""
     root = os.path.join(output, "SubProcesses")
     names = sorted(d for d in os.listdir(root) if d.startswith("P"))
     borns, reals, seen, nincoming = [], [], set(), None
+    groups = set()
     for name in names:
         with open(os.path.join(root, name, "fks_configurations.json")) as f:
             data = json.load(f)
@@ -258,6 +390,7 @@ def read_cs_subtraction(output, masses=None):
             )
         )
         for c, configuration in enumerate(data["configurations"]):
+            groups.update(configuration.get("splitting_type", ["QCD"]))
             me = configuration["real_me"]
             flavors = data.get("real_flavors", [])
             flavors = flavors[me - 1] if me <= len(flavors) else []
@@ -277,4 +410,5 @@ def read_cs_subtraction(output, masses=None):
                     configuration=c,
                 )
             )
-    return cs_subtraction(reals, borns, masses, nincoming)
+    groups = tuple(group for group in GROUPS if group in groups) or ("QCD",)
+    return cs_subtraction(reals, borns, masses, nincoming, groups)

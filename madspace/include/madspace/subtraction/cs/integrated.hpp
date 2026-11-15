@@ -43,6 +43,18 @@ namespace madspace {
  * only their sum needs, the dipole of one ordering its own. A final-state
  * gluon with a colored decaying particle is not covered.
  *
+ * The operator of the QED corrections (`qed`) is the same with the charges
+ * in place of the colors [5]: @f$Q_j Q_k B@f$ of the charges flowing out of
+ * @f$j@f$ and @f$k@f$ in place of @f$\langle T_j \cdot T_k \rangle@f$,
+ * @f$Q_j^2@f$ in place of @f$T_j^2@f$ for every charged particle, also a
+ * massive W (with @f$\gamma_j@f$ and @f$K_j@f$ of a quark, as its dipoles
+ * of @ref CSDipoles), and for a photon, which has no charge but splits into
+ * the light fermions @f$f@f$, @f$\gamma_\gamma = -\frac{2}{3} \sum_f N_{c,f}
+ * Q_f^2@f$ and @f$K_\gamma = -\frac{10}{9} \sum_f N_{c,f} Q_f^2@f$ with
+ * @f$-w_k B@f$ in place of @f$\langle T_j \cdot T_k \rangle B / T_j^2@f$,
+ * the weights @f$w_k@f$ of its spectators, one over the number of charged
+ * particles (but a decaying one) each [6].
+ *
  * `batch` is the leading batch dimension, `n` the number of particles of the
  * Born, incoming included, and `b` the number of Born orders.
  *
@@ -51,8 +63,11 @@ namespace madspace {
  *   frame (the rest frame of the decaying particle for a decay).
  * - `color_correlated` – `float`, shape `(batch, b, n, n)` – the
  *   color-correlated Borns @f$\langle T_j \cdot T_k \rangle B@f$ per Born
- *   order, as for @ref FKSSoftVirtual.
- * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
+ *   order, as for @ref FKSSoftVirtual (QCD).
+ * - `born` – `float`, shape `(batch, b)` – the Born per Born order (QED, in
+ *   place of `color_correlated`).
+ * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling (`alpha`,
+ *   the QED coupling, for QED).
  * - `ren_scale` – `float`, shape `(batch,)` – the renormalization scale.
  *
  * **Returns**
@@ -70,6 +85,9 @@ namespace madspace {
  * - [3] Z. Nagy, https://arxiv.org/abs/hep-ph/0307268
  * - [4] L. Basso, S. Dittmaier, A. Huss, L. Oggero,
  *   https://arxiv.org/abs/1507.04676 (decays)
+ * - [5] S. Dittmaier, https://arxiv.org/abs/hep-ph/9904440 (QED)
+ * - [6] S. Dittmaier, A. Kabelschacht, T. Kasprzik,
+ *   https://arxiv.org/abs/0802.1405 (photon splittings)
  */
 class CSInsertion : public FunctionGenerator {
 public:
@@ -84,6 +102,12 @@ public:
     /// @param alpha_ff     The alpha of the final-final dipoles, in (0, 1].
     /// @param n_f          Number of light quark flavors.
     /// @param incoming     Number of incoming particles, 1 for a decay.
+    /// @param qed          The operator of the QED corrections, with the Born
+    ///                     (`born`) in place of the color-correlated Born and
+    ///                     the QED coupling (`alpha`) in place of the strong
+    ///                     one.
+    /// @param n_l          Number of massless charged leptons, into which a
+    ///                     photon splits besides the light quarks (QED).
     CSInsertion(
         const std::vector<int>& pdgs,
         const std::vector<double>& masses,
@@ -91,12 +115,16 @@ public:
         double kappa = 2. / 3.,
         double alpha_ff = 1.,
         double n_f = 5.,
-        std::size_t incoming = 2
+        std::size_t incoming = 2,
+        bool qed = false,
+        double n_l = 0.
     );
     /// Number of particles of the Born, incoming included.
     std::size_t particle_count() const { return _masses.size(); }
     /// Number of Born orders.
     std::size_t born_order_count() const { return _born_orders; }
+    /// Whether the operator is that of the QED corrections.
+    bool qed() const { return _qed; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -105,8 +133,10 @@ private:
 
     std::size_t _born_orders;
     std::vector<double> _casimir, _gamma, _k_constant, _masses;
+    std::vector<double> _self_coupling, _pair_splitting, _charges, _weights;
     double _kappa, _alpha_ff, _n_f;
     std::size_t _incoming;
+    bool _qed;
 };
 
 /**
@@ -139,6 +169,17 @@ private:
  * rest, a regular function of @f$z@f$, the four-dimensional alpha terms of
  * Nagy [3].
  *
+ * The operators of the QED corrections (`qed`) take the charges in place of
+ * the colors as @ref CSInsertion does, with the kernels of QED [4]:
+ * @f$Q_f^2@f$ in place of @f$C_F@f$ for @f$f \to f@f$, @f$N_{c,f} Q_f^2@f$ in
+ * place of @f$T_R@f$ for @f$\gamma \to f@f$, @f$f \to \gamma@f$ per unit
+ * @f$Q_f^2@f$ (the luminosity of the partons that split into a photon is
+ * @f$\sum_f Q_f^2 f_f(x_i / z) / z@f$ over the charged fermions, that of a
+ * charged fermion the photon), and for @f$\gamma \to \gamma@f$ only
+ * @f$-\frac{2}{3} \sum_f N_{c,f} Q_f^2\,\delta(1 - x)@f$ in P and
+ * @f$\frac{16}{9} \sum_f N_{c,f} Q_f^2\,\delta(1 - x)@f$ in
+ * @f$\overline{K}@f$, over the light fermions.
+ *
  * `batch` is the leading batch dimension, `n` the number of particles of the
  * Born, incoming included, and `b` the number of Born orders.
  *
@@ -148,8 +189,9 @@ private:
  * - `born` – `float`, shape `(batch, b)` – the Born per Born order.
  * - `color_correlated` – `float`, shape `(batch, b, n, n)` – the
  *   color-correlated Borns @f$\langle T_j \cdot T_k \rangle B@f$ per Born
- *   order, as for @ref FKSSoftVirtual.
- * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling.
+ *   order, as for @ref FKSSoftVirtual (QCD only).
+ * - `alpha_s` – `float`, shape `(batch,)` – the strong coupling (`alpha`,
+ *   the QED coupling, for QED).
  * - `fact_scale1`, `fact_scale2` – `float`, shape `(batch,)` – the
  *   factorization scales of the two beams.
  * - `x1`, `x2` – `float`, shape `(batch,)` – the momentum fractions of the
@@ -168,6 +210,8 @@ private:
  * - [2] S. Catani, S. Dittmaier, M. H. Seymour, Z. Trocsanyi,
  *   https://arxiv.org/abs/hep-ph/0201036 (Sec. 6)
  * - [3] Z. Nagy, https://arxiv.org/abs/hep-ph/0307268
+ * - [4] S. Dittmaier, A. Kabelschacht, T. Kasprzik,
+ *   https://arxiv.org/abs/0802.1405 (QED)
  */
 class CSCollinear : public FunctionGenerator {
 public:
@@ -180,6 +224,10 @@ public:
     /// @param alpha_fi, alpha_if, alpha_ii  The alpha of the families with an
     ///                     incoming parton, in (0, 1], as for @ref CSDipoles.
     /// @param n_f          Number of light quark flavors.
+    /// @param qed          The operators of the QED corrections, without the
+    ///                     color-correlated Born and with the QED coupling
+    ///                     (`alpha`) in place of the strong one.
+    /// @param n_l          Number of massless charged leptons (QED).
     CSCollinear(
         const std::vector<int>& pdgs,
         const std::vector<double>& masses,
@@ -187,12 +235,16 @@ public:
         double alpha_fi = 1.,
         double alpha_if = 1.,
         double alpha_ii = 1.,
-        double n_f = 5.
+        double n_f = 5.,
+        bool qed = false,
+        double n_l = 0.
     );
     /// Number of particles of the Born, incoming included.
     std::size_t particle_count() const { return _masses.size(); }
     /// Number of Born orders.
     std::size_t born_order_count() const { return _born_orders; }
+    /// Whether the operators are those of the QED corrections.
+    bool qed() const { return _qed; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -201,6 +253,9 @@ private:
 
     std::size_t _born_orders;
     std::vector<double> _casimir, _gamma, _masses, _options;
+    std::vector<double> _self_coupling, _pair_splitting, _other_coefficient;
+    std::vector<double> _charges, _weights;
+    bool _qed;
 };
 
 } // namespace madspace
