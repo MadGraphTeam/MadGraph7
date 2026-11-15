@@ -20,7 +20,10 @@ on alpha, also for p p > e+ e- j, whose jet radiates against the incoming
 partons and the incoming partons against it, for the decays t > b w+ with a
 massive and a massless b, whose b radiates against the top, and for dressed
 electrons and positrons (e+ e- > j j at the Z pole and e+ e- > t t~ at 500
-GeV with ISR, and the latter with the beamstrahlung of the ILC).
+GeV with ISR, and the latter with the beamstrahlung of the ILC). They agree
+with those of MG5aMC also for a W at rest in the partonic frame (p p > w+),
+isolated photons (p p > a a, with longer runs), elastic photon beams (a a >
+t t~) and QED corrections in the complex-mass scheme (p p > e+ e- [QED]).
 MADSPACE_FKS_POINTS sets the number of points per channel of an iteration,
 POINTS by default, with which the tests take about four minutes on one
 core, most of it for the real streams of p p > t t~ (108 channels) and e+
@@ -37,6 +40,7 @@ import tempfile
 
 import numpy as np
 import pytest
+from fks_testing import fks_output
 from madgraph.mg7.nlo.core import Runtime
 from madgraph.mg7.nlo.cs import (
     STREAMS,
@@ -54,6 +58,11 @@ POINTS = int(os.environ.get("MADSPACE_FKS_POINTS", "1000"))
 SLOW = os.environ.get("MADSPACE_FKS_SLOW") == "1"
 # the references that run only with MADSPACE_FKS_SLOW=1
 SLOW_REFERENCES = {"pp_epemj"}
+# the references whose runs take a multiple of POINTS and more grid and
+# integration iterations than 2 and 3: (factor, grid iterations, iterations).
+# The LO of p p > a a has rare large weights, with which a subprocess came out
+# 4.7 standard deviations low otherwise.
+LONGER_RUNS = {"pp_aa": (4, 4, 6)}
 PULL = 4.0
 TESTS = os.path.dirname(__file__)
 DATA = os.path.join(TESTS, "test_data", "fks_cross_section")
@@ -77,8 +86,9 @@ def make_run(name, alpha=1.0, streams=STREAMS, points=POINTS, **options):
         pytest.skip(f"{name} runs only with MADSPACE_FKS_SLOW=1")
     data = reference(name)
     tag = "_".join([name, str(alpha), *streams])
+    factor, grid_iterations, max_iterations = LONGER_RUNS.get(name, (1, 2, 3))
     return CSRun(
-        os.path.join(OUTPUTS, data["output"]),
+        fks_output(data["output"]),
         alpha=alpha,
         streams=streams,
         run_card=data["run_card"],
@@ -86,10 +96,10 @@ def make_run(name, alpha=1.0, streams=STREAMS, points=POINTS, **options):
         run_path=os.path.join(tempfile.gettempdir(), "madspace_cs_runs", tag),
         seed=4711,
         accuracy=0.0,
-        grid_points=points,
-        grid_iterations=2,
-        points=points,
-        max_iterations=3,
+        grid_points=factor * points,
+        grid_iterations=grid_iterations,
+        points=factor * points,
+        max_iterations=max_iterations,
         **options,
     )
 
@@ -173,6 +183,9 @@ def test_epem_jj_real(alpha):
         "epem_ttx_isr",
         "epem_ttx_ilc",
         "pp_wp",
+        "pp_aa",
+        "aa_ttx",
+        "pp_epem_qed",
     ],
 )
 def test_against_mg5amc(name):

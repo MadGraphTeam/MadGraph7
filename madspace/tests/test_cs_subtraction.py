@@ -11,6 +11,7 @@ import json
 import os
 
 import pytest
+from fks_testing import fks_output
 
 from madspace.subtraction.cs import (
     born_order,
@@ -302,7 +303,7 @@ def test_read_groups(tmp_path):
 def test_outputs(output):
     """The reals of the subprocesses of an output, each flavor line once, and
     their dipoles onto the Borns of the output."""
-    block = read_cs_subtraction(os.path.join(OUTPUTS, output), TOP)
+    block = read_cs_subtraction(fks_output(output), TOP)
     lines = [tuple(f) for real in block["reals"] for f in real["flavors"]]
     assert len(lines) == len(set(lines))
     assert {d["real"] for d in block["cs"]} == set(range(len(block["reals"])))

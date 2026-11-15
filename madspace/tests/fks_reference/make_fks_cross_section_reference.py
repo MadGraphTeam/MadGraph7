@@ -19,6 +19,10 @@ madspace/tests/test_data/fks_cross_section/<name>.json:
     (scale_variations, mu_r, mu_f and sigma, from the total rate of the
     histograms of the run).
 
+The outputs of BUILT have no cross section here. The script only compiles
+their executables with the cards of a fixed-order run at NLO, as the tests of
+the provider need them.
+
 Run from anywhere with a gfortran in the PATH:
 
     python madspace/tests/fks_reference/make_fks_cross_section_reference.py
@@ -30,6 +34,8 @@ import glob
 import json
 import os
 import re
+import subprocess
+import sys
 
 import make_fks_integrand_reference as mfir
 
@@ -73,11 +79,8 @@ SETUPS = {
     # lepton pair with the recombination of photons
     "pp_aa": ("pp_aa", {}),
     "pp_epem_qed": ("pp_epem_qed", {}),
-    # mixed QCD and EW corrections with an extra counterterm (a u > u a, for
-    # a quark pair from a gluon and from a photon), and tagged photons with
-    # QED corrections, whose couplings are in the alpha(0) scheme and the
-    # others in the G_mu scheme
-    "gu_ua_mix": ("gu_ua_mix", {}),
+    # tagged photons with QED corrections, whose couplings are in the
+    # alpha(0) scheme and the others in the G_mu scheme
     "pp_aa_tagged": ("pp_aa_tagged", {}),
     # elastic photons from protons (epa_proton of PhotonFlux.f)
     "aa_ttx": ("aa_ttx", {}),
@@ -109,6 +112,8 @@ OUTPUTS = {
         dict(mfir.HADRONIC, mll_sf=30, ptl=10),
         None,
     ),
+    # mixed QCD and EW corrections with an extra counterterm (a u > u a, for
+    # a quark pair from a gluon and from a photon), in BUILT
     "gu_ua_mix": (
         "g u > u a QED^2<=4 QCD^2<=2 [QCD QED]",
         dict(mfir.HADRONIC, ptj=20, jetalgo=-1, jetradius=0.4),
@@ -129,12 +134,16 @@ OUTPUTS = {
 # (arXiv:1804.10017), and close to the Z the single poles of MadLoop and
 # MadFKS differ otherwise, which stops the run
 COMPLEX_MASS = {"pp_epem_qed"}
-# the setups whose limit tests of MadFKS fail for the sum of all orders
-# while every order passes them (the orders of the collinear d d~ of g u > u
-# d d~ cancel there): the launch stops at the tests after it builds the
-# executables with the cards of the run, which a second launch reuses
-# (launch -x)
-UNTESTED = {"gu_ua_mix"}
+# the outputs of OUTPUTS without a cross section, whose executables the
+# tests of the provider take. The untagged photon of g u > u a splits into
+# lepton pairs at NLO, which no setting of MadFKS turns back into a photon or
+# a jet, so that the real emission with a collinear pair and its
+# counter-event see different cuts and the cross section diverges. With the
+# recombination of photons, cuts.f stops on two photons to recombine
+# instead. Its limit tests fail for the sum of all orders while every order
+# passes them (the orders of the collinear d d~ of g u > u d d~ cancel
+# there), which stops compile FO after the executables.
+BUILT = {"gu_ua_mix"}
 # the relative accuracy of the runs (req_acc_FO), per setup where it differs
 ACCURACY = 2e-4
 ACCURACIES = {
@@ -144,7 +153,6 @@ ACCURACIES = {
     "epem_epemuux": 1e-3,
     "pp_aa": 1e-3,
     "pp_epem_qed": 1e-3,
-    "gu_ua_mix": 1e-3,
     "pp_aa_tagged": 1e-3,
 }
 # the values of every run, the defaults of the run_card where a setup of
@@ -170,19 +178,38 @@ def launch(out, values, order, accuracy, work, name):
     env = {k: v for k, v in os.environ.items() if k != "MADFKS_INTEGRAND_DUMP"}
     log = os.path.join(work, f"{run_name}_launch.log")
     summary = os.path.join(out, "Events", run_name, "summary.txt")
-    for flag in ("", " -x"):
-        with open(script, "w") as f:
-            f.write(f"launch {out} -n {run_name}{flag}\n")
-            f.write(f"fixed_order=ON\norder={order}\ndone\n")
-            for key, value in {**RUN_CARD, **values, "req_acc_FO": accuracy}.items():
-                f.write(f"set {key} {value}\n")
-            f.write("done\n")
-        try:
-            mfir.mfr.madgraph(script, work, log, env=env, expect=summary)
-            return summary
-        except RuntimeError:
-            if flag or name not in UNTESTED:
-                raise
+    with open(script, "w") as f:
+        f.write(f"launch {out} -n {run_name}\n")
+        f.write(f"fixed_order=ON\norder={order}\ndone\n")
+        for key, value in {**RUN_CARD, **values, "req_acc_FO": accuracy}.items():
+            f.write(f"set {key} {value}\n")
+        f.write("done\n")
+    mfir.mfr.madgraph(script, work, log, env=env, expect=summary)
+    return summary
+
+
+def build(out, values, work, name):
+    """Compiles the executables of the output out with the cards of a
+    fixed-order run at NLO (compile FO of aMC@NLO) without running them. The
+    tests of MadFKS that follow may fail."""
+    script = os.path.join(work, f"{name}_build.mg")
+    with open(script, "w") as f:
+        f.write("compile FO\n")
+        for key, value in {**RUN_CARD, **values}.items():
+            f.write(f"set {key} {value}\n")
+        f.write("done\n")
+    executables = glob.glob(os.path.join(out, "SubProcesses", "P*", "madevent_mintFO"))
+    for stale in executables:
+        os.remove(stale)
+    log = os.path.join(work, f"{name}_build.log")
+    with open(log, "w") as f:
+        command = [sys.executable, os.path.join(out, "bin", "aMCatNLO"), script]
+        subprocess.run(
+            command, cwd=work, stdout=f, stderr=subprocess.STDOUT, check=True
+        )
+    for directory in glob.glob(os.path.join(out, "SubProcesses", "P*")):
+        if not os.path.isfile(os.path.join(directory, "madevent_mintFO")):
+            raise RuntimeError(f"{script} built no madevent_mintFO in {directory}")
 
 
 def parse_summary(path):
@@ -260,8 +287,17 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     work = args.keep
     os.makedirs(work, exist_ok=True)
-    names = [args.only] if args.only else list(SETUPS)
+    names = [args.only] if args.only else [*SETUPS, *BUILT]
     for name in names:
+        if name in BUILT:
+            process, values, model = OUTPUTS[name]
+            out = mfir.generate(
+                name, process, work, os.path.join(work, f"{name}_gen.log"), model
+            )
+            mfir.sum_helicities(out)
+            build(out, values, work, name)
+            print(f"{out}: built")
+            continue
         output, values = SETUPS[name]
         process, base, model = OUTPUTS.get(output) or (*mfir.PROCESSES[output], None)
         out = mfir.generate(

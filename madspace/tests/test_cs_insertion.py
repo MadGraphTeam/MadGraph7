@@ -18,7 +18,7 @@ import os
 import numpy as np
 import pytest
 import torch
-from fks_testing import reference
+from fks_testing import fks_output, reference
 from madspace_testing import default_context
 
 import madspace as ms
@@ -454,7 +454,9 @@ def provider_points(name):
         momenta = np.array([p["p_born"] for p in channel["points"] if "p_born" in p])
         squares = dot(momenta[0], momenta[0])
         masses = list(np.where(squares > 1.0, np.sqrt(np.abs(squares)), 0.0))
-        directory = os.path.join(OUTPUTS, name, "SubProcesses", channel["subprocess"])
+        directory = os.path.join(
+            fks_output(name), "SubProcesses", channel["subprocess"]
+        )
         provider = FortranProvider(
             directory,
             rebuild=not os.path.isfile(os.path.join(directory, "fks_provider")),
@@ -519,7 +521,7 @@ def test_poles_massless_decay():
     rest, with the W mass of MadGraph (from M_Z, G_F and alpha)."""
     from madgraph.mg7.nlo.provider import FortranProvider
 
-    root = os.path.join(OUTPUTS, "t_bw_mb0", "SubProcesses")
+    root = os.path.join(fks_output("t_bw_mb0"), "SubProcesses")
     (name,) = [d for d in os.listdir(root) if d.startswith("P")]
     directory = os.path.join(root, name)
     provider = FortranProvider(

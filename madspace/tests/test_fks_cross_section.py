@@ -26,6 +26,7 @@ import tempfile
 
 import numpy as np
 import pytest
+from fks_testing import fks_output
 from madgraph.mg7.nlo.fks import FKSRun, default_histograms, read_histograms
 from madspace_testing import default_context
 from test_fks_couplings import alpha_s_madfks
@@ -77,7 +78,7 @@ def fks_run(path):
             "max_iterations": 6,
         }
     run = FKSRun(
-        os.path.join(OUTPUTS, data["output"]),
+        fks_output(data["output"]),
         run_card=data["run_card"],
         param_card=data["param_card"],
         run_path=os.path.join(tempfile.gettempdir(), "madspace_fks_runs", name),
@@ -214,7 +215,7 @@ def test_pdf_variations(tmp_path, monkeypatch):
     # the running of alpha_s of the last member differs, that of the others
     # is the central one
     run = FKSRun(
-        os.path.join(OUTPUTS, data["output"]),
+        fks_output(data["output"]),
         run_card=run_card,
         param_card=data["param_card"],
         run_path=str(tmp_path / "run"),

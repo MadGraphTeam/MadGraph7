@@ -16,8 +16,10 @@ counterterm parts of extra_cnt of MadFKS at its Borns.
 
 The provider is compiled in the aMC@NLO outputs of the references, as a
 fixed-order run leaves them (make_fks_integrand_reference.py --keep DIR
-keeps them, one output per reference, DIR/epem_jj and so on). The tests run
-where MADSPACE_FKS_OUTPUTS names that directory and are skipped otherwise.
+keeps them, one output per reference, DIR/epem_jj and so on, and
+make_fks_cross_section_reference.py --keep DIR those of g u > u a, gu_ua_mix,
+and of p p > w+, pp_wp). The tests run where MADSPACE_FKS_OUTPUTS names that
+directory, and a test is skipped where its output is not there.
 """
 
 import atexit
@@ -27,7 +29,7 @@ import os
 
 import numpy as np
 import pytest
-from fks_testing import born_inputs, evaluate, reference
+from fks_testing import born_inputs, evaluate, fks_output, reference
 from madgraph.mg7.nlo.fks import born_topology
 from madgraph.mg7.nlo.provider import (
     FortranProvider,
@@ -69,7 +71,7 @@ def name_of(path):
 
 @functools.cache
 def provider(name, subprocess):
-    p = FortranProvider(os.path.join(OUTPUTS, name, "SubProcesses", subprocess))
+    p = FortranProvider(os.path.join(fks_output(name), "SubProcesses", subprocess))
     atexit.register(p.close)
     return p
 
@@ -302,7 +304,7 @@ def test_reference_scales(path):
     (run_card.inc), at kinematics of the real process and of the Born, zero
     where the points are not valid."""
     data = reference(path)
-    with open(os.path.join(OUTPUTS, name_of(path), "Source", "run_card.inc")) as f:
+    with open(os.path.join(fks_output(name_of(path)), "Source", "run_card.inc")) as f:
         line = next(line for line in f if "MUR_REF_FIXED" in line.upper())
     fixed = float(line.split("=")[1].strip().upper().replace("D", "E"))
     for channel in data["channels"]:
@@ -331,9 +333,6 @@ def test_extra_counterterms():
     point) and their B_perp with k_perp of the point are those of pyAmpliCol
     (fks_testing.born_inputs) over g^b, and its counterterm parts of the
     extra counterterm are those of extra_cnt of MadFKS there."""
-    directory = os.path.join(OUTPUTS, EXTRA_OUTPUT, "SubProcesses", EXTRA_SUBPROCESS)
-    if not os.path.isdir(directory):
-        pytest.skip(f"no output {EXTRA_OUTPUT}")
     data = reference(EXTRA_REFERENCE)
     p = provider(EXTRA_OUTPUT, EXTRA_SUBPROCESS)
     ours_configurations = p.fks_configurations
@@ -431,8 +430,6 @@ def test_born_at_rest():
     otherwise the helicity vectors of MadGraph would follow that direction,
     and the helicities that its filter dropped at the first points would be
     missing (up to all of the Born)."""
-    if not os.path.isdir(os.path.join(OUTPUTS, REST_OUTPUT, "SubProcesses")):
-        pytest.skip(f"MADSPACE_FKS_OUTPUTS has no {REST_OUTPUT}")
     p = provider(REST_OUTPUT, REST_SUBPROCESS)
     mass = 80.419
     rest = np.array(

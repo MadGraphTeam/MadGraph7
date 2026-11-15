@@ -6,6 +6,7 @@ import math
 import os
 
 import numpy as np
+import pytest
 import torch
 from madspace_testing import default_context
 
@@ -47,6 +48,19 @@ FKS_RESONANCE_DATA = sorted(
         )
     )
 )
+# the directory of the aMC@NLO outputs of the references, which
+# make_fks_integrand_reference.py and make_fks_cross_section_reference.py
+# keep with --keep
+FKS_OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
+
+
+def fks_output(name):
+    """The output name in MADSPACE_FKS_OUTPUTS. A test that needs an output
+    the directory lacks is skipped."""
+    path = os.path.join(FKS_OUTPUTS or "", name)
+    if not os.path.isdir(os.path.join(path, "SubProcesses")):
+        pytest.skip(f"MADSPACE_FKS_OUTPUTS has no output {name}")
+    return path
 
 
 def data_id(path):
