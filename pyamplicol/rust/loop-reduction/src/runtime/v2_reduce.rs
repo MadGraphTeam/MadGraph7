@@ -289,6 +289,7 @@ impl<T: Carrier> BucketInput<T> {
         rank: usize,
         members: &[(usize, usize)],
         frame: Option<ReductionFrame>,
+        prototype: &T,
     ) -> Self {
         let width = ncoeff(rank);
         let lanes = members.len();
@@ -302,11 +303,7 @@ impl<T: Carrier> BucketInput<T> {
             s_matrix: Vec::with_capacity(lanes * n * n),
             coefficients: Vec::with_capacity(lanes * width),
         };
-        let map = FrameMap::new(
-            frame,
-            n,
-            members.first().map(|&(g, _)| &groups[g].shifts[0]),
-        );
+        let map = FrameMap::new(frame, n, prototype);
         for &(group, row) in members {
             let lanes = &groups[group];
             let origin = map.shifts(
@@ -379,6 +376,9 @@ trait BucketEngine<T> {
     /// The carrier's working precision in binary digits (the UV residue
     /// lifts its inputs to it).
     fn precision(&self) -> u32;
+    /// A value of the carrier at its working precision (a rescaled frame's
+    /// factor and undo, `FrameMap::new`).
+    fn prototype(&self) -> T;
 }
 
 /// Reduce every lane of `groups` (optionally in `frame`); outcomes per group
@@ -395,10 +395,11 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
         .map(|g| (0..g.ids.len()).map(|_| None).collect())
         .collect();
     let precision = engine.precision();
+    let prototype = engine.prototype();
     for (&(n, rank), members) in buckets {
-        let input = BucketInput::gather(groups, n, rank, members, frame);
+        let input = BucketInput::gather(groups, n, rank, members, frame, &prototype);
         // A rescaled frame's integrals are x^(4-2N) times the family's.
-        let undo = FrameMap::new(frame, n, input.shifts.first()).undo();
+        let undo = FrameMap::new(frame, n, &prototype).undo();
         let width = ncoeff(rank);
         let residues = (poles == Poles::Split).then(|| TensorUvResidues::new(n, rank));
         for (lane, (&(group, row), mut outcome)) in
@@ -557,6 +558,10 @@ fn real(value: &Complex<f64>, name: &str) -> ExecutionResult<f64> {
 impl BucketEngine<f64> for FastEngine {
     fn precision(&self) -> u32 {
         f64::MANTISSA_DIGITS
+    }
+
+    fn prototype(&self) -> f64 {
+        0.0
     }
 
     fn reduce(&mut self, input: &BucketInput<f64>) -> ExecutionResult<Vec<Outcome<f64>>> {
@@ -768,6 +773,10 @@ where
 {
     fn precision(&self) -> u32 {
         self.prototype.get_precision()
+    }
+
+    fn prototype(&self) -> T {
+        self.prototype.clone()
     }
 
     fn reduce(&mut self, input: &BucketInput<T>) -> ExecutionResult<Vec<Outcome<T>>> {

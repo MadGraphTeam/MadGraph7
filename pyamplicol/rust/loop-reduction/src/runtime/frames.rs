@@ -71,13 +71,20 @@ impl ReductionFrame {
 }
 
 /// Coefficients of `N(q + d)` from those of `N(q)`, rank preserved: one exact
-/// binomial (Taylor) shift per loop-momentum component.
+/// binomial (Taylor) shift per loop-momentum component. `prototype` is a value
+/// of the carrier at the call's working precision: the binomial weights and
+/// the powers of `d` start from it. Never a coefficient's: numerica's MPFR
+/// values track their significant bits, a dressed coefficient whose sum
+/// cancelled carries fewer, and every product would be rounded to them
+/// (FINDING V1: TIRust's rescaled check, whose frame moves the origin, at
+/// 3e4 relative on g g > z z at 57 digits).
 pub fn shift_coefficients<T: Carrier>(
     coefficients: &[Complex<T>],
     rank: usize,
     d: &[Complex<T>; 4],
+    prototype: &T,
 ) -> Vec<Complex<T>> {
-    let zero = coefficients[0].re.zero();
+    let zero = prototype.zero();
     let czero = Complex::new(zero.clone(), zero.clone());
     let exponents = monomials(rank);
     let mut current = coefficients[..ncoeff(rank)].to_vec();
@@ -116,9 +123,14 @@ pub(crate) fn reverse_coefficients<T: Carrier>(coefficients: &mut [Complex<T>], 
     }
 }
 
-/// The rescaling factor [`RESCALING`] in the carrier of `like`.
-pub(crate) fn rescaling<T: Carrier>(like: &Complex<T>) -> Complex<T> {
-    let zero = like.re.zero();
+/// The rescaling factor [`RESCALING`] at the working precision of
+/// `prototype` (a value of the carrier at the call's precision, never a
+/// lane's input: numerica's MPFR values track their significant bits, so an
+/// input whose computation cancelled carries fewer bits than the carrier, and
+/// a factor taken from it would round every rescaled input and the undo to
+/// those bits).
+pub(crate) fn rescaling<T: Carrier>(prototype: &T) -> Complex<T> {
+    let zero = prototype.zero();
     let (numerator, denominator) = RESCALING;
     Complex::new(
         zero.from_i64(numerator) / &zero.from_i64(denominator),
@@ -136,6 +148,8 @@ pub(crate) struct FrameMap<T> {
     shift: bool,
     scale: Option<Complex<T>>,
     scale_squared: Option<Complex<T>>,
+    /// Zero at the call's working precision (the origin shift's weights).
+    zero: T,
 }
 
 fn scaled<T: Carrier>(v: Complex<T>, factor: &Option<Complex<T>>) -> Complex<T> {
@@ -146,16 +160,15 @@ fn scaled<T: Carrier>(v: Complex<T>, factor: &Option<Complex<T>>) -> Complex<T> 
 }
 
 impl<T: Carrier> FrameMap<T> {
-    /// `frame` (None: the direct frame) over `n` propagators; `like` is any
-    /// value of the carrier (the rescaling factor's precision), needed only
-    /// for a rescaled frame.
-    pub(crate) fn new(frame: Option<ReductionFrame>, n: usize, like: Option<&Complex<T>>) -> Self {
+    /// `frame` (None: the direct frame) over `n` propagators; `prototype` is
+    /// a value of the carrier at the call's working precision, the precision
+    /// of a rescaled frame's factor and undo ([`rescaling`]).
+    pub(crate) fn new(frame: Option<ReductionFrame>, n: usize, prototype: &T) -> Self {
         let identity: Vec<_> = (0..n).collect();
         let order = frame.map_or(identity, |f| f.order(n));
         let scale = frame
             .is_some_and(|f| f.rescale)
-            .then(|| like.map(rescaling))
-            .flatten();
+            .then(|| rescaling(prototype));
         let scale_squared = scale.clone().map(|x| x.clone() * &x);
         Self {
             n,
@@ -164,6 +177,7 @@ impl<T: Carrier> FrameMap<T> {
             shift: frame.is_some_and(|f| f.shift),
             scale,
             scale_squared,
+            zero: prototype.zero(),
         }
     }
 
@@ -226,7 +240,7 @@ impl<T: Carrier> FrameMap<T> {
         let start = out.len();
         if self.shift {
             let d = origin.clone().map(|v| -v);
-            out.extend(shift_coefficients(source, rank, &d));
+            out.extend(shift_coefficients(source, rank, &d, &self.zero));
         } else {
             out.extend_from_slice(&source[..ncoeff(rank)]);
         }
@@ -289,7 +303,7 @@ impl<T: Carrier> FrameMap<T> {
         }
         if self.shift {
             let d = origin.clone().map(|v| -v);
-            let zero = origin[0].re.zero();
+            let zero = self.zero.clone();
             let czero = Complex::new(zero.clone(), zero.clone());
             let exponents = monomials(rank);
             let mut next = current.clone();
@@ -360,7 +374,7 @@ mod tests {
         // Dyadic values keep every operation below exact in binary64.
         let d = [0.5, -1.25, 2.0, 0.75].map(|x| Complex::new(x, 0.));
         let q = [1.5, 0.25, -0.5, 2.0];
-        let shifted = shift_coefficients(&coefficients, rank, &d);
+        let shifted = shift_coefficients(&coefficients, rank, &d, &0.0);
         let moved = std::array::from_fn(|mu| q[mu] + d[mu].re);
         assert_eq!(evaluate(&shifted, q), evaluate(&coefficients, moved));
         let mut reversed = coefficients.clone();
@@ -403,7 +417,7 @@ mod tests {
                 shift,
                 rescale,
             };
-            let map = FrameMap::new(Some(frame), 4, Some(&origin[0]));
+            let map = FrameMap::new(Some(frame), 4, &0.0);
             let mut shifted = Vec::new();
             map.coefficients(&c, rank, &origin, &mut shifted);
             let moments = map.moments(&m, rank, &origin);
