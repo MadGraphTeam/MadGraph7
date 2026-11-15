@@ -6,7 +6,7 @@ extrapolator of LHAPDF and alpha_s as the interpolated alpha_s of LHAPDF
 two subgrids in q, a flavor that vanishes below the threshold between them,
 one that stays below 1e-3 and one that changes sign) and compare at points in
 and around the grid with the values LHAPDF gives for it, stored in
-test_data/pdf_extrapolation.json. With LHAPDF installed they also compare with
+test_data/pdf/extrapolation.json. With LHAPDF installed they also compare with
 LHAPDF directly, and
 
     python madspace/tests/test_pdf_extrapolation.py
@@ -27,8 +27,10 @@ from madspace_testing import default_context
 import madspace as ms
 
 SET_NAME = "MadSpaceExtrapolationTest"
+# in a folder of its own, since test_processes.py reads every JSON file
+# directly in test_data as a list of diagrams
 REFERENCE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "test_data", "pdf_extrapolation.json"
+    os.path.dirname(os.path.abspath(__file__)), "test_data", "pdf", "extrapolation.json"
 )
 # the globals of the set in the default context, under their own prefix
 PREFIX = "extrapolation_test"
