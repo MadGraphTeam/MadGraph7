@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import gc
 import math
 import os
 import platform
@@ -11,7 +13,7 @@ import threading
 import time
 import tomllib
 import warnings
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, fields, replace
 from pathlib import Path
@@ -3083,6 +3085,20 @@ def profile_virtual(
     return replace(profile, peak_memory=peak.result, reference=timing)
 
 
+@contextlib.contextmanager
+def _collector_off() -> Iterator[None]:
+    """Python's cyclic garbage collector off for the block, its previous
+    state restored afterwards (also on an error or Ctrl-C)."""
+
+    enabled = gc.isenabled()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if enabled:
+            gc.enable()
+
+
 def _timed_calls(
     bench: BenchmarkConfig,
     call: Callable[[int], float],
@@ -3094,7 +3110,11 @@ def _timed_calls(
     while the timed ones are short of it). ``call(k)`` makes call k
     (warm-ups counted) and returns its wall seconds; ``progress(done,
     total)`` after each call, ``total`` the calls planned from the mean
-    timed call so far. The timed calls' seconds."""
+    timed call so far. Python's cyclic garbage collector stays out of the
+    timed calls, as ``timeit`` keeps it out: one collection before them,
+    the collector off during each (``_collector_off``; a generation-2
+    collection inside a call cost 80-120 ms on gg_zz). The timed calls'
+    seconds."""
 
     warmup = bench.warmup_runs
     minimum = max(bench.minimum_samples, 1)
@@ -3104,8 +3124,10 @@ def _timed_calls(
         if progress is not None:
             progress(k + 1, planned)
     walls: list[float] = []
+    gc.collect()
     while len(walls) < minimum or sum(walls) < bench.target_runtime:
-        walls.append(call(warmup + len(walls)))
+        with _collector_off():
+            walls.append(call(warmup + len(walls)))
         mean = sum(walls) / len(walls)
         remaining = max(bench.target_runtime - sum(walls), 0.0)
         planned = warmup + max(minimum, len(walls) + math.ceil(remaining / mean))
