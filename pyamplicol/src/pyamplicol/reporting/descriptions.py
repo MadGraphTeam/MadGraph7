@@ -225,12 +225,17 @@ def _profile(report: Any) -> list[Block]:
                     ("missed", "truly inaccurate points the checks did not flag"),
                     (
                         "time",
-                        "the wall time of the backend's binary64 calls (with "
-                        "their stability checks), summed over the workers; "
-                        "'(dd xN)': its double-double reference calls took N "
-                        "times as long in total, under the time when the table "
-                        "would pass the line width (the points and time per "
-                        "point of each precision are in --json, precision_timing)",
+                        "the wall time of the backend's binary64 calls with "
+                        "their stability checks (the default rotation test "
+                        "evaluates each point twice), summed over the workers, "
+                        "after each worker's untimed start-up (loading, first "
+                        "calls); '(dd xN)': its double-double reference calls "
+                        "(one evaluation per point) took N times as long in "
+                        "total, so N is not the cost ratio of one evaluation "
+                        "(the runtime table's '(dd xN)'); under the time when "
+                        "the table would pass the line width (the points and "
+                        "time per point of each precision are in --json, "
+                        "precision_timing)",
                     ),
                 ],
             ),

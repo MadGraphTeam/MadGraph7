@@ -869,7 +869,14 @@ target, or no binary64 value) and the truly inaccurate points not flagged
 summed over the workers) with how many times longer its double-double
 calls took in total, `128 s (dd x1.8)` (on a second line when the table
 would pass the line width; each precision's points, total and
-time per point are in `--json`, `precision_timing`). No rescue runs: the statistics are those of pure binary64; the
+time per point are in `--json`, `precision_timing`). Every worker loads the
+artifact and makes one untimed call per backend and precision before any
+timed one, so start-up costs stay out of both totals, and the points go in
+tasks of whole binary64 SIMD chunks. The binary64 calls
+include their stability checks (the default rotation test evaluates each
+point twice) while the reference evaluates each point once, so this
+multiplier is not the cost ratio of one evaluation: that is the runtime
+table's `(dd xN)`. No rescue runs: the statistics are those of pure binary64; the
 double-double re-run is the reference only. When a backend served points
 best-effort, a third table shows how accurate those values and their
 uncertainties are: per backend the number of best-effort points, their true

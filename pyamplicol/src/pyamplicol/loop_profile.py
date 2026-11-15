@@ -56,6 +56,7 @@ is reported with its reason.
 
 from __future__ import annotations
 
+import contextlib
 import math
 import os
 import re
@@ -772,10 +773,12 @@ def _stability_worker(
     points: Sequence[Any],
     scales: Any,
     checks: Any,
+    backends: Sequence[str] = (),
 ) -> None:
     """Initialise a stability worker process: one thread per pool, Ctrl-C
     left to the parent (which collects what finished and stops the
-    workers), the artifact loaded once."""
+    workers), the artifact loaded once, and warmed up on ``backends``
+    (``_warm_up``)."""
 
     import signal
 
@@ -790,6 +793,24 @@ def _stability_worker(
         scales=scales,
         checks=checks,
     )
+    _warm_up(backends)
+
+
+def _warm_up(backends: Sequence[str]) -> None:
+    """Pay this process's first-call costs before any timed task, untimed:
+    the stability task of point 0 on every backend and precision (the
+    process's first evaluation, each backend's and carrier's first call and
+    what it builds lazily), its result dropped. An evaluation does not
+    depend on what ran before it (bit-identical values and estimates), so
+    the statistics are unchanged; only the timings lose that cost. A
+    backend's error is left to its timed tasks, which report it."""
+
+    if not _WORKER.get("points"):
+        return
+    for backend in backends:
+        for precision in _PRECISIONS:
+            with contextlib.suppress(Exception):
+                _stability_task(backend, precision, [0])
 
 
 def _stability_task(
@@ -866,20 +887,35 @@ def usable_cores() -> int:
         return max(os.cpu_count() or 1, 1)
 
 
-def _chunk_size(points: int, workers: int, batch_size: int) -> int:
+def _chunk_size(points: int, workers: int, batch_size: int, lanes: int = 1) -> int:
     """The points of one stability task: about eight tasks per worker and
-    precision (progress and load balance), at most one batch."""
+    precision (progress and load balance), in whole SIMD chunks of
+    ``lanes`` points (binary64 evaluates ``lanes`` points at a time, and a
+    padded lane costs as much as a filled one: a task of fewer points
+    would time empty lanes), at most one batch (whole chunks of a batch
+    that holds one)."""
 
-    return max(1, min(max(batch_size, 1), math.ceil(points / (8 * workers))))
+    lanes = max(lanes, 1)
+    batch = max(batch_size, 1)
+    if batch >= lanes:
+        batch -= batch % lanes
+    size = lanes * math.ceil(points / (8 * workers * lanes))
+    return max(1, min(batch, size))
 
 
 class _StabilityProgress:
     """The progress of a stability run (``profile --stability``): points done
     per backend and precision, and the estimated time to completion from the
-    measured cost per point of each backend and precision."""
+    measured cost per point of each backend and precision (the workers
+    warmed up first, ``_warm_up``: a task's seconds are its points' cost)."""
 
     def __init__(
-        self, sink: Any, backends: Sequence[str], points: int, workers: int
+        self,
+        sink: Any,
+        backends: Sequence[str],
+        points: int,
+        workers: int,
+        first: int = 1,
     ) -> None:
         from pyamplicol.reporting.progress import ProgressStart
 
@@ -889,16 +925,15 @@ class _StabilityProgress:
         self.workers = workers
         self.done = {(b, p): 0 for b in backends for p in _PRECISIONS}
         self.seconds = {key: 0.0 for key in self.done}
-        # Per backend and precision the seconds of its two probes (point 0;
-        # points 1 and 2), started together, and the points and seconds of
-        # its later tasks.
-        self.probes: dict[tuple[str, str], dict[int, float]] = {
-            key: {} for key in self.done
-        }
-        self.later = {key: [0, 0.0] for key in self.done}
+        # Per backend and precision the points and seconds of its returned
+        # tasks (a refused backend's points count as done, not timed).
+        self.timed = {key: [0, 0.0] for key in self.done}
+        # The points of every stream's first task, started together.
+        self.first = max(first, 1)
         self.begin = time.perf_counter()
-        # When the first task came back: the workers were computing by then.
-        self.first_return: float | None = None
+        # When the first task came back, and its seconds: the workers were
+        # computing since the difference.
+        self.first_return: tuple[float, float] | None = None
         # The displayed estimate and when it was shown (shown_eta).
         self._shown: tuple[float, float] | None = None
         if sink is not None:
@@ -909,28 +944,18 @@ class _StabilityProgress:
                     f"{workers} core(s)",
                     total=points * len(self.done),
                     unit="evaluations",
-                    details={"step": "loading the artifact in the workers"},
+                    details={"step": "loading and warming up the workers"},
                 )
             )
 
-    def add(
-        self,
-        backend: str,
-        precision: str,
-        count: int,
-        seconds: float,
-        first: int | None = None,
-    ) -> None:
-        """A finished task of ``count`` points from point ``first``."""
+    def add(self, backend: str, precision: str, count: int, seconds: float) -> None:
+        """A finished task of ``count`` points."""
 
         if self.first_return is None:
-            self.first_return = time.perf_counter()
+            self.first_return = (time.perf_counter(), seconds)
         key = (backend, precision)
-        if first in (0, 1) and count == first + 1:
-            self.probes[key][count] = seconds
-        else:
-            self.later[key][0] += count
-            self.later[key][1] += seconds
+        self.timed[key][0] += count
+        self.timed[key][1] += seconds
         self.done[key] += count
         self.seconds[key] += seconds
         self.emit()
@@ -942,74 +967,24 @@ class _StabilityProgress:
             self.done[(backend, precision)] = self.points
         self.emit()
 
-    def rate(self, key: tuple[str, str]) -> float:
-        """The cost per point of a stream that returned: from its later
-        tasks once there are some; else the difference of its two probes
-        (one point more, the same first-call cost); else its one probe."""
+    def rate(self, key: tuple[str, str]) -> float | None:
+        """The measured cost per point of a stream (None: nothing back)."""
 
-        points, seconds = self.later[key]
-        if points:
-            return seconds / points
-        probes = self.probes[key]
-        if 1 in probes and 2 in probes and probes[2] > probes[1]:
-            return probes[2] - probes[1]
-        size, spent = max(probes.items())
-        return spent / size
+        points, seconds = self.timed[key]
+        return seconds / points if points else None
 
     def eta(self) -> float | None:
-        known = {
-            key: self.rate(key)
-            for key in self.done
-            if self.probes[key] or self.later[key][0]
-        }
+        known = {key: rate for key in self.done if (rate := self.rate(key)) is not None}
         if not known:
             return None
-        warm = [
-            rate
-            for key, rate in known.items()
-            if self.later[key][0] or len(self.probes[key]) == 2
-        ]
-        if warm and self.first_return is not None:
-            # A stream with only its one-point probe back: its cost per
-            # point lies between the time its two-point probe has been
-            # running beyond the one-point probe (a lower bound) and the
-            # one-point probe (an upper bound, with the first-call cost);
-            # the other streams' warm mean, within those bounds.
-            shortest = min(
-                (spent for probes in self.probes.values() for spent in probes.values()),
-                default=0.0,
-            )
-            running = time.perf_counter() - (self.first_return - shortest)
-            for key, probes in self.probes.items():
-                if list(probes) == [1] and not self.later[key][0]:
-                    one = probes[1]
-                    known[key] = min(one, max(running - one, statistics.mean(warm)))
         fallback = statistics.mean(known.values())
-        if not all(self.done.values()) and self.first_return is not None:
-            # A stream whose probes are still running costs at least their
-            # running time per point, less the first-call cost seen on the
-            # streams that returned (a probe over its points' warm cost).
-            shortest = (
-                min(
-                    spent
-                    for probes in self.probes.values()
-                    for spent in probes.values()
-                )
-                if any(self.probes.values())
-                else 0.0
-            )
-            started = self.first_return - shortest
-            warm_up = max(
-                (
-                    spent - size * known[key]
-                    for key, probes in self.probes.items()
-                    if key in known
-                    for size, spent in probes.items()
-                ),
-                default=0.0,
-            )
-            pending = time.perf_counter() - started - max(warm_up, 0.0)
-            fallback = max(fallback, pending)
+        if len(known) < len(self.done) and self.first_return is not None:
+            # A stream with nothing back costs at least the running time of
+            # its first task (started with the one that returned first) per
+            # point of it.
+            at, spent = self.first_return
+            running = time.perf_counter() - (at - spent)
+            fallback = max(fallback, running / self.first)
         remaining = 0.0
         for key, done in self.done.items():
             remaining += (self.points - done) * known.get(key, fallback)
@@ -1021,8 +996,8 @@ class _StabilityProgress:
 
     def shown_eta(self) -> float | None:
         """The displayed estimate: :meth:`eta` smoothed over time, so the
-        refinements of the first returns (a stream's cost known first from
-        its probes, then from its later tasks) do not make it jump. The
+        refinements of the first returns (a stream's cost bounded while
+        nothing of it is back, then measured) do not make it jump. The
         remaining time is averaged in logarithm, with weight
         ``1 - exp(-dt / ETA_SMOOTHING_SECONDS)`` for an estimate ``dt``
         seconds after the previous one: a factor-ten jump moves it by about
@@ -1113,6 +1088,7 @@ def _stability(
     from pyamplicol.api.errors import ReductionUnavailable
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
     from pyamplicol.cli.flat_points import draw_flat_points
+    from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import default_target
 
     bench = config.benchmark
@@ -1136,15 +1112,15 @@ def _stability(
     scales = evaluation.mu_r2 if evaluation.mu_r2 is not None else flat.mu_r2()
     count = len(points)
     workers = max(1, min(bench.n_core, usable_cores()))
-    chunk = _chunk_size(count, workers, bench.batch_size)
-    # Two probes first, point 0 alone and points 1-2, started together on
-    # every backend and precision: their difference is the cost per point
-    # without the worker's first-call cost (the time estimate, early);
-    # then batches of ``chunk``.
-    chunks = [[0], [1, 2]] if count >= 3 else [[0]] if count else []
+    chunk = _chunk_size(count, workers, bench.batch_size, DEFAULT_LANES)
+    # One SIMD chunk of points first on every backend and precision, started
+    # together (the time estimate, early), then tasks of ``chunk`` points:
+    # every task but the last in whole chunks of binary64 lanes.
+    lead = min(chunk, DEFAULT_LANES, count)
+    chunks = [list(range(lead))] if count else []
     chunks += [
         list(range(start, min(start + chunk, count)))
-        for start in range(3 if count >= 3 else 1, count, chunk)
+        for start in range(lead, count, chunk)
     ]
     # Interleaved: every backend and precision is sampled from the start,
     # so the time estimate covers the slowest early.
@@ -1155,7 +1131,7 @@ def _stability(
         for precision in _PRECISIONS
     ]
     workers = max(1, min(workers, len(tasks)))
-    tracker = _StabilityProgress(progress, backends, count, workers)
+    tracker = _StabilityProgress(progress, backends, count, workers, lead)
     b64: dict[str, dict[int, tuple[Any, ...]]] = {b: {} for b in backends}
     dd: dict[str, dict[int, tuple[Any, ...]]] = {b: {} for b in backends}
     seconds = dict.fromkeys(backends, 0.0)
@@ -1168,7 +1144,7 @@ def _stability(
         for record in records:
             store[backend][record[0]] = record
         seconds[backend] += wall
-        tracker.add(backend, precision, len(records), wall, records[0][0])
+        tracker.add(backend, precision, len(records), wall)
 
     def refuse(backend: str, error: Exception) -> None:
         if backend not in refused:
@@ -1182,6 +1158,7 @@ def _stability(
         if workers == 1:
             _WORKER.update(runtime=runtime, points=points, scales=scales, checks=checks)
             try:
+                _warm_up(backends)
                 for backend, precision, indices in tasks:
                     if backend in refused:
                         continue
@@ -1201,6 +1178,7 @@ def _stability(
                     points,
                     scales,
                     checks,
+                    tuple(backends),
                 ),
                 tasks,
                 harvest,
@@ -1264,11 +1242,7 @@ def _stability(
                 precision: {
                     "points": tracker.done[(row.backend, precision)],
                     "seconds": tracker.seconds[(row.backend, precision)],
-                    "seconds_per_point": (
-                        tracker.rate((row.backend, precision))
-                        if tracker.done[(row.backend, precision)]
-                        else None
-                    ),
+                    "seconds_per_point": tracker.rate((row.backend, precision)),
                 }
                 for precision in _PRECISIONS
             },
