@@ -238,11 +238,12 @@ class PeakMemory:
     ``start_rss_bytes`` the value at the start of the region,
     ``increase_rss_bytes`` the peak less the start (the memory the region
     added at its peak), in bytes. ``scope`` says what the peak covers:
-    "profiled region" (the kernel's high-water mark reset at the start of
-    the region) or "process lifetime" (the high-water mark could not be
-    reset: the peak may predate the region, so the increase is that of the
-    lifetime peak, a lower bound of the region's); ``method`` names the
-    source. None fields: not measurable on this platform."""
+    "profiled region" (the region's own peak: the kernel's high-water mark
+    reset at its start, or a lifetime peak the region raised) or "process
+    lifetime" (the lifetime peak, which the region did not raise: the
+    region's peak is at most that, and the increase is that of the lifetime
+    peak); ``method`` names the source. None fields: not measurable on this
+    platform."""
 
     peak_rss_bytes: int | None
     start_rss_bytes: int | None
@@ -294,6 +295,16 @@ def _current_rss_bytes() -> int | None:
     return None if record is None else record.rss_bytes
 
 
+def _lifetime_peak_bytes() -> tuple[int | None, str]:
+    """The process lifetime's peak resident set size and its source:
+    /proc/self/status VmHWM (Linux), else getrusage's ru_maxrss."""
+
+    hwm = _proc_status_kib("VmHWM")
+    if hwm is not None:
+        return hwm, "VmHWM"
+    return _rusage_peak_bytes(), "ru_maxrss"
+
+
 class peak_memory:
     """Measure the peak resident set size of this process over a ``with``
     block (``PeakMemory`` in ``result`` once it exits).
@@ -301,18 +312,25 @@ class peak_memory:
     Linux: the kernel's high-water mark VmHWM of /proc/self/status, reset
     to the current resident set size at the start of the block by writing
     "5" to /proc/self/clear_refs (the peak resident set size only: page
-    reference bits are untouched), so the peak is the block's exactly
-    (every page the kernel accounted, sampled by no timer); where the reset
-    is refused (an old kernel, a restricted /proc) VmHWM is the process
-    lifetime's peak. Elsewhere getrusage's ru_maxrss (process lifetime;
-    bytes on macOS) with ``ps`` for the start value. The measurement adds
-    two small file reads (or one ``ps`` call) outside the block's work."""
+    reference bits are untouched), so the peak is the block's, sampled by
+    no timer. The kernel records the mark from its per-CPU batched
+    resident counters when memory is released, so a peak released before
+    the end of the block can read short by up to the counters' batch on
+    each CPU the process ran on; the resident size at the end is read
+    exactly (VmHWM is at least VmRSS in one read). Where the reset is
+    refused (an old kernel, a restricted /proc), and elsewhere (getrusage's
+    ru_maxrss, bytes on macOS, with ``ps`` for the start value), only the
+    lifetime peak is known: it is the block's peak when the block raised
+    it, else an upper bound of the block's peak ("process lifetime"). The
+    measurement adds two small file reads (or one ``ps`` call) outside the
+    block's work."""
 
     def __init__(self) -> None:
         self.result: PeakMemory | None = None
         self._start: int | None = None
         self._start_method = "VmRSS"
         self._region = False
+        self._lifetime: int | None = None
 
     def __enter__(self) -> peak_memory:
         self._start = _proc_status_kib("VmRSS")
@@ -321,6 +339,7 @@ class peak_memory:
             self._start = _current_rss_bytes()
             self._start_method = "ps"
         self._region = False
+        self._lifetime, _ = _lifetime_peak_bytes()
         if _proc_status_kib("VmHWM") is not None:
             try:
                 _PROC_CLEAR_REFS.write_text("5")
@@ -330,18 +349,24 @@ class peak_memory:
         if self._start is None:
             # No current resident set size: the lifetime peak before the
             # block (its increase is what the block can be credited with).
-            self._start = _rusage_peak_bytes()
+            self._start = self._lifetime
             self._start_method = "ru_maxrss"
         return self
 
     def __exit__(self, *exc: object) -> None:
-        hwm = _proc_status_kib("VmHWM")
-        if hwm is not None:
-            peak = hwm
-            method = "VmHWM after clear_refs" if self._region else "VmHWM"
+        peak, source = _lifetime_peak_bytes()
+        if self._region:
+            method = "VmHWM after clear_refs"
         else:
-            peak = _rusage_peak_bytes()
-            method = f"ru_maxrss, start from {self._start_method}"
+            method = (
+                source
+                if source == "VmHWM"
+                else f"{source}, start from {self._start_method}"
+            )
+        # The lifetime peak is the block's when the block raised it.
+        region = self._region or (
+            peak is not None and self._lifetime is not None and peak > self._lifetime
+        )
         start = self._start
         if peak is not None and start is not None:
             peak = max(peak, start)
@@ -351,7 +376,7 @@ class peak_memory:
             increase_rss_bytes=(
                 None if peak is None or start is None else max(peak - start, 0)
             ),
-            scope="profiled region" if self._region else "process lifetime",
+            scope="profiled region" if region else "process lifetime",
             method=method if peak is not None else "unavailable",
         )
 

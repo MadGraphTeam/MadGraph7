@@ -7,7 +7,10 @@ stage of ``benchmarking.profile_virtual`` in the default setup (binary64,
 finite part, the checked reduction, no stability checks and no rescue), and
 the ratio to the fastest backend. Every call times a new batch of distinct
 flat points (``benchmarking.profile_points``, ``evaluation.phase_space``'s
-seed and energy), the same points on every backend.
+seed and energy), the same points on every backend. Each backend is
+profiled in its own spawned process that loads the artifact
+(``_isolated_profile``), so that its peak RAM is that of a worker evaluating
+this matrix element on that backend alone.
 
 STABILITY (``--stability``): per backend, over N flat (RAMBO on diet) phase-space
 points (``cli.flat_points``, ``evaluation.phase_space``'s seed and energy),
@@ -63,7 +66,7 @@ from dataclasses import dataclass, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from pyamplicol.benchmarking import VirtualProfileResult
@@ -414,7 +417,7 @@ def profile_loop(
 
     from pyamplicol.api import Runtime
     from pyamplicol.api.errors import ReductionUnavailable
-    from pyamplicol.benchmarking import profile_points, profile_virtual
+    from pyamplicol.benchmarking import profile_points
     from pyamplicol.loops.v2.reduction import DEFAULTS
 
     bench = config.benchmark
@@ -457,13 +460,14 @@ def profile_loop(
                 profile = _timed(
                     progress,
                     backend,
-                    lambda report, request=request: profile_virtual(
-                        runtime,
+                    lambda report, request=request: _isolated_profile(
+                        path,
+                        evaluation.process,
+                        options,
                         config,
-                        points=timed,
-                        reduction=request,
-                        on_failure="best-effort",
-                        progress=report,
+                        timed,
+                        request,
+                        report,
                     ),
                 )
             except ReductionUnavailable as error:
@@ -563,6 +567,129 @@ def profile_loop(
         interrupted
         or bool(stability_setup is not None and stability_setup.get("interrupted")),
     )
+
+
+def _isolated_profile(
+    artifact: Path,
+    process: str | None,
+    options: Mapping[str, Any],
+    config: RunConfig,
+    points: Sequence[Any],
+    request: str,
+    report: Any,
+) -> VirtualProfileResult:
+    """``benchmarking.profile_virtual`` of one backend (``request``) on
+    ``points`` in a fresh spawned process that loads the artifact (with
+    ``options``) and profiles that backend only, so that the profile's
+    peak RAM is that of a Monte Carlo worker evaluating this matrix element
+    on this backend: in a shared process the second backend's peak would
+    hold the first one's prepared state and the memory the allocator kept
+    (or, reusing it, would hide its own). The timing is the same calls'.
+    ``report(done, total)`` receives the worker's progress; the worker
+    ignores Ctrl-C (this process stops it and raises) and never outlives
+    the call."""
+
+    import multiprocessing
+
+    from pyamplicol.api.errors import EvaluationError
+
+    context = multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    # The profile reads the evaluation and benchmark sections only (the
+    # process section holds mapping proxies, which do not pickle).
+    worker = context.Process(
+        target=_runtime_worker,
+        args=(
+            sender,
+            str(artifact),
+            process,
+            dict(options),
+            config.evaluation,
+            config.benchmark,
+            list(points),
+            request,
+        ),
+        name="pyamplicol-loop-runtime-profile",
+        daemon=True,
+    )
+    worker.start()
+    sender.close()
+    try:
+        while True:
+            try:
+                kind, *payload = receiver.recv()
+            except EOFError:
+                worker.join(timeout=10)
+                raise EvaluationError(
+                    "the runtime profile's worker process ended without a result "
+                    f"(exit code {worker.exitcode})"
+                ) from None
+            if kind == "progress":
+                if report is not None:
+                    report(*payload)
+            elif kind == "result":
+                return cast("VirtualProfileResult", payload[0])
+            else:
+                raise payload[0]
+    finally:
+        receiver.close()
+        if worker.is_alive():
+            worker.terminate()
+        worker.join(timeout=10)
+        if worker.is_alive():
+            worker.kill()
+            worker.join(timeout=5)
+
+
+def _runtime_worker(
+    sender: Any,
+    artifact: str,
+    process: str | None,
+    options: Mapping[str, Any],
+    evaluation: Any,
+    benchmark: Any,
+    points: Sequence[Any],
+    request: str,
+) -> None:
+    """The worker process of ``_isolated_profile``: Ctrl-C left to the
+    parent, the artifact loaded, one backend profiled (a refused point
+    served with its best-effort value and timed as such, m-lit
+    ux-besteffort); its progress, then its result or error, sent back."""
+
+    import signal
+
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        from pyamplicol.api import Runtime
+        from pyamplicol.benchmarking import profile_virtual
+        from pyamplicol.config import Action, RunConfig
+
+        config = RunConfig(
+            action=Action.BENCHMARK, evaluation=evaluation, benchmark=benchmark
+        )
+        runtime = Runtime.load(artifact, process=process, **options)
+        profile = profile_virtual(
+            runtime,
+            config,
+            points=points,
+            reduction=request,
+            on_failure="best-effort",
+            progress=lambda done, total: sender.send(("progress", done, total)),
+        )
+        sender.send(("result", profile))
+    except Exception as error:
+        import pickle
+
+        from pyamplicol.api.errors import EvaluationError
+
+        try:
+            # Sent as raised when it survives the trip, else by its text.
+            pickle.loads(pickle.dumps(error))
+        except Exception:
+            error = EvaluationError(f"{type(error).__name__}: {error}")
+        sender.send(("error", error))
+    finally:
+        sender.close()
 
 
 def _timed(progress: Any, backend: str, call: Any) -> Any:

@@ -2793,9 +2793,8 @@ class VirtualProfileResult:
     # and their reasons, most frequent first.
     best_effort_points: int = 0
     best_effort_reasons: tuple[tuple[str, int], ...] = ()
-    # The peak resident set size of this process over the profiled calls
-    # (warm-up, timed and double-double calls; ``reporting.resources.
-    # peak_memory``).
+    # The peak resident set size of this process over the binary64 warm-up
+    # and timed calls (``reporting.resources.peak_memory``).
     peak_memory: PeakMemory | None = None
     # The same timed batches in double-double when the profiled
     # configuration requests it (``evaluation.arithmetic = "double-double"``),
@@ -2824,6 +2823,9 @@ class PrecisionTiming:
     high: float
     failed_points: int
     failure_reasons: tuple[tuple[str, int], ...] = ()
+    # The peak resident set size over these calls, made after the binary64
+    # ones in the same process (their state resident).
+    peak_memory: PeakMemory | None = None
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -2991,11 +2993,13 @@ def profile_virtual(
         profile = _profile_virtual_calls(
             runtime, batches, bench, options, scales, progress, calls
         )
-        dd_timing = (
-            _precision_timing(runtime, batches, bench, options, scales, "double-double")
-            if double_double
-            else None
-        )
+    dd_timing = None
+    if double_double:
+        with peak_memory() as dd_peak:
+            dd_timing = _precision_timing(
+                runtime, batches, bench, options, scales, "double-double"
+            )
+        dd_timing = replace(dd_timing, peak_memory=dd_peak.result)
     return replace(profile, peak_memory=peak.result, double_double=dd_timing)
 
 
