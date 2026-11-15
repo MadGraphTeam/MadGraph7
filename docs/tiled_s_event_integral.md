@@ -27,7 +27,10 @@ The maps are learned inside ordinary MINT0:
   the Born part `B` and per-sector parts `R`, per canonical flavour. The
   separately generated virtual-residual lane (type 14) is excluded, so
   probes evaluate neither the exact one-loop virtual nor any H-event
-  contribution.
+  contribution. A probe is an ordinary MINT0 call with its own fold loop
+  (`sector_learning_collect`); the grid sees only its S-only proxy (below),
+  and neither the MC-integer channel weights nor the virtual surrogate see
+  it.
 - At each iteration boundary, the maps are refitted to minimise the negative
   part of the summed S weight,
   `Σ max(-B(node) - Σ_s R_s(P_s(node)), 0)`, over the current bank of probes
@@ -72,7 +75,8 @@ generation verify the setting, the fold counts and the adaptive grid
 against it. With `sector_learning_archive` set in `mint_module` (the tests
 do this), MINT0 also writes `sector_learning_online.bin`, a binary
 per-iteration record of the probes, fits and grid feeds for auditing;
-production runs neither write nor read it. Probe admission depends on measured CPU time, so a seed alone does not reproduce
+production runs neither write nor read it, and do not keep its grid
+accounting or fit traces. Probe admission depends on measured CPU time, so a seed alone does not reproduce
 the training schedule.
 
 ## Measured effect

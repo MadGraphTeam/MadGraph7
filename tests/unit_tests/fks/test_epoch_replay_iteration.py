@@ -218,7 +218,7 @@ if(.not.collect.and.imode.eq.0)then
  endif
 elseif(collect)then
  if(any(xgrid(0:32,1:4,1).ne.old_grid))stop 225
- if(imode.ne.1)stop 226
+ if(imode.ne.0)stop 226 ! probes stay in MINT0 mode
  if(ifl.eq.0)then
   fold_count=0;call sector_learning_begin_point
   have_probe_snapshot=.true.

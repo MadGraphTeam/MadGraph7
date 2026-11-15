@@ -215,6 +215,9 @@ module mint_module
      double precision,allocatable :: b(:,:,:),r(:,:,:,:)
   end type
   type(sector_learning_entry),allocatable,private :: sl_entries(:)
+  ! True only while a MINT0 learning probe evaluates its (4,4,1) folds.
+  ! The probe runs in MINT0 (imode=0) but loops over folds, adds no grid
+  ! hits of its own and leaves the MC-integer and surrogate fits alone.
   logical,public :: sector_learning_collect=.false.
   ! FKSSectorLearning as applied to this run: set by the MC@NLO driver for
   ! complete (abrv=all) runs; off at LO and at fixed order.
@@ -265,7 +268,6 @@ module mint_module
   integer,private :: online_ordinary_calls=0,online_probes=0,online_reused_nodes=0
   integer,private :: online_epoch=0,online_nint_before=0,online_unit=0,online_record_rejections=0
   integer,private :: online_probe_cells(ndimmax,sl_nodes)=0
-  logical,private :: online_probe_active=.false.
   double precision,private :: online_ordinary_cpu=0d0,online_probe_cpu=0d0,online_fit_cpu=0d0
   double precision,private :: online_write_cpu=0d0,online_extra_cpu=0d0,online_clock=0d0
   double precision,private :: online_budget=.20d0
@@ -761,7 +763,7 @@ contains
     integer,intent(in) :: gx,gy,start(:,:)
     integer,intent(out) :: maps(size(start,1),size(start,2))
     double precision,intent(out) :: before,after
-    integer,allocatable,intent(out) :: trace(:,:)
+    integer,allocatable,intent(out),optional :: trace(:,:)
     integer :: ns,nt,s,pass,c,best,old,steps,hx,hy,orbit,node
     integer,allocatable :: codes(:),check(:,:),history(:,:)
     integer :: column(sl_nodes,1)
@@ -776,7 +778,8 @@ contains
     if(.not.all(ieee_is_finite(b)).or..not.all(ieee_is_finite(r)))error stop 'Nonfinite unified phase data'
     if(.not.sl_valid_capacity(gx,gy))error stop 'Invalid unified phase capacity'
     hx=4/gx;hy=4/gy
-    allocate(codes(ns),check(sl_nodes,ns),history(sl_nodes+2,3*ns),losses(nt), &
+    if(present(trace))allocate(history(sl_nodes+2,3*ns))
+    allocate(codes(ns),check(sl_nodes,ns),losses(nt), &
          total(size(b,1),sl_nodes,nt),fixed(size(b,1),sl_nodes,nt))
     do s=1,ns
        if(start(1,s).lt.1.or.start(1,s).gt.sl_nodes)error stop 'Invalid unified phase start'
@@ -822,7 +825,8 @@ contains
              call sl_unified_translation([best],gx,gy,column)
              maps(:,s)=column(:,1)
           endif
-          steps=steps+1;history(:,steps)=[pass,s,maps(:,s)]
+          steps=steps+1
+          if(present(trace))history(:,steps)=[pass,s,maps(:,s)]
           do orbit=1,nt
              do node=1,sl_nodes
                 total(:,node,orbit)=fixed(:,node,orbit)+r(:,maps(node,s),s,orbit)
@@ -833,7 +837,7 @@ contains
     enddo
     ! The returned loss is exact: the tile fit compares it bit for bit.
     call sl_tile_losses_unchecked(b,r,maps,losses);after=sum(losses)
-    allocate(trace(sl_nodes+2,steps));trace=history(:,1:steps)
+    if(present(trace))trace=history(:,1:steps)
   end subroutine sector_learning_unified_phase
 
   subroutine sector_learning_unified_fit(b,r,current,gx,gy,qcodes,maps,before,after,selected,attempts)
@@ -894,8 +898,14 @@ contains
              attempts(a)%loss_start=before;attempts(a)%loss_phase=before
              allocate(attempts(a)%phase_trace(sl_nodes+2,0))
           else
-             call sector_learning_unified_phase(b,r,gx,gy,attempts(a)%initial_map, &
-                  attempts(a)%phase_map,attempts(a)%loss_start,attempts(a)%loss_phase,attempts(a)%phase_trace)
+             ! The step traces are kept only for the archive audit.
+             if(sector_learning_archive)then
+                call sector_learning_unified_phase(b,r,gx,gy,attempts(a)%initial_map, &
+                     attempts(a)%phase_map,attempts(a)%loss_start,attempts(a)%loss_phase,attempts(a)%phase_trace)
+             else
+                call sector_learning_unified_phase(b,r,gx,gy,attempts(a)%initial_map, &
+                     attempts(a)%phase_map,attempts(a)%loss_start,attempts(a)%loss_phase)
+             endif
           endif
           ref=0
           do prior=1,a-1
@@ -910,8 +920,13 @@ contains
              attempts(a)%loss_final=attempts(ref)%loss_final
              allocate(attempts(a)%tile_trace(sl_nodes+2,0))
           else
-             call sector_learning_online_fit(b,r,attempts(a)%phase_map,gx,gy,attempts(a)%final_map, &
-                  ignored,attempts(a)%loss_final,attempts(a)%tile_trace)
+             if(sector_learning_archive)then
+                call sector_learning_online_fit(b,r,attempts(a)%phase_map,gx,gy,attempts(a)%final_map, &
+                     ignored,attempts(a)%loss_final,attempts(a)%tile_trace)
+             else
+                call sector_learning_online_fit(b,r,attempts(a)%phase_map,gx,gy,attempts(a)%final_map, &
+                     ignored,attempts(a)%loss_final)
+             endif
              if(ignored.ne.attempts(a)%loss_phase)error stop 'Unified phase/tile loss mismatch'
           endif
        endif
@@ -1146,20 +1161,18 @@ contains
     endif
     online_epoch=online_epoch+1
     online_nint_before=nint_used
-    if(allocated(online_grid_before))then
-       deallocate(online_grid_before,online_base_acc,online_ordinary_acc,online_proxy_acc,online_total_acc)
-       deallocate(online_base_hits,online_ordinary_hits,online_proxy_hits,online_total_hits)
-    endif
-    allocate(online_grid_before(0:nint_used,ndim,nchans),online_base_acc(0:nint_used,ndim,nchans), &
-         online_ordinary_acc(0:nint_used,ndim,nchans),online_proxy_acc(0:nint_used,ndim,nchans), &
-         online_total_acc(0:nint_used,ndim,nchans),online_base_hits(nint_used,ndim,nchans), &
-         online_ordinary_hits(nint_used,ndim,nchans),online_proxy_hits(nint_used,ndim,nchans), &
-         online_total_hits(nint_used,ndim,nchans))
+    ! Production keeps only the grid snapshot and the proxy sums; the
+    ! complete grid accounting exists only for the archive audit.
     online_grid_before=xgrid(0:nint_used,1:ndim,1:nchans)
+    if(allocated(online_proxy_acc))deallocate(online_proxy_acc)
+    allocate(online_proxy_acc(0:nint_used,ndim,nchans))
     online_proxy_acc=0d0
     if(sector_learning_archive)then
        online_base_acc=xacc(0:nint_used,1:ndim,1:nchans)
        online_base_hits=nhits(1:nint_used,1:ndim,1:nchans)
+       if(allocated(online_ordinary_acc))deallocate(online_ordinary_acc,online_ordinary_hits,online_proxy_hits)
+       allocate(online_ordinary_acc(0:nint_used,ndim,nchans),online_ordinary_hits(nint_used,ndim,nchans), &
+            online_proxy_hits(nint_used,ndim,nchans))
        online_ordinary_acc=0d0
        online_ordinary_hits=0
        online_proxy_hits=0
@@ -1518,7 +1531,7 @@ contains
 
   subroutine sl_unified_maybe_probe(fun)
     double precision,external :: fun
-    integer :: saved_mode,saved_folds(ndimmax),saved_ncell(ndimmax),saved_icell(ndimmax),saved_channel
+    integer :: saved_folds(ndimmax),saved_ncell(ndimmax),saved_icell(ndimmax),saved_channel
     integer :: folds(ndimmax),entry,nf,ns,number,node,d,cell,capacity,saved_config,saved_current
     integer,allocatable :: cells(:,:,:),channels(:),sample_ids(:)
     double precision :: x(ndimmax),vol,started,finished,proxy
@@ -1529,15 +1542,14 @@ contains
     if(mod(nint_used,4).ne.0.or.mod(nint_used_virt,4).ne.0)return
     call cpu_time(started)
     saved_current=sl_current
-    saved_mode=imode; saved_folds=ifold; saved_even=even_rn
+    saved_folds=ifold; saved_even=even_rn
     saved_f=f; saved_ncell=ncell; saved_icell=icell; saved_rand=rand
     saved_channel=ichan;saved_config=iconfig
     saved_vol_chan=vol_chan; saved_pass=pass_cuts_check; saved_hwu=HwU_values
-    imode=1; ifold=1; ifold(ndim-2:ndim)=[4,4,1]; even_rn=.false.
-    sector_learning_collect=.true.; online_probe_active=.true.; new_point=.true.
+    ifold=1; ifold(ndim-2:ndim)=[4,4,1]; even_rn=.false.
+    sector_learning_collect=.true.; new_point=.true.
     call get_random_x(x,vol,folds)
     call compute_integrand(fun,x,vol)
-    online_probe_active=.false.
     online_probes=online_probes+1
     if(sl_point_rejected)then
        online_record_rejections=online_record_rejections+1
@@ -1579,7 +1591,7 @@ contains
        online_reused_nodes=online_reused_nodes+sl_nodes
     endif
     sector_learning_collect=.false.
-    imode=saved_mode;ifold=saved_folds;even_rn=saved_even
+    ifold=saved_folds;even_rn=saved_even
     f=saved_f;ncell=saved_ncell;icell=saved_icell;rand=saved_rand
     ichan=saved_channel;iconfig=saved_config
     vol_chan=saved_vol_chan;pass_cuts_check=saved_pass;HwU_values=saved_hwu
@@ -1621,7 +1633,7 @@ contains
     integer,intent(in) :: current(:,:),gx,gy
     integer,intent(out) :: maps(size(current,1),size(current,2))
     double precision,intent(out) :: before,after
-    integer,allocatable,intent(out) :: trace(:,:)
+    integer,allocatable,intent(out),optional :: trace(:,:)
     double precision,allocatable :: base(:,:,:),total(:,:,:),loss(:),candidate_loss(:),cost(:,:)
     integer,allocatable :: history(:,:)
     double precision :: proposed,current_loss
@@ -1640,8 +1652,8 @@ contains
             error stop 'Current map not representable at requested capacity'
     enddo
     maps=current
-    allocate(base(nf,sl_nodes,nt),total(nf,sl_nodes,nt),loss(nt),candidate_loss(nt),cost(k,k), &
-         history(sl_nodes+2,3*ns))
+    allocate(base(nf,sl_nodes,nt),total(nf,sl_nodes,nt),loss(nt),candidate_loss(nt),cost(k,k))
+    if(present(trace))allocate(history(sl_nodes+2,3*ns))
     call sl_tile_losses_unchecked(b,r,maps,loss)
     before=sum(loss);after=before;steps=0
     ! total = B plus every sector at its current tile; base removes s.
@@ -1683,7 +1695,8 @@ contains
           if(proposed.lt.current_loss)then
              maps(:,s)=fine;changed=.true.
           endif
-          steps=steps+1;history(:,steps)=[pass,s,maps(:,s)]
+          steps=steps+1
+          if(present(trace))history(:,steps)=[pass,s,maps(:,s)]
           do node=1,sl_nodes
              total(:,node,:)=base(:,node,:)+r(:,maps(node,s),s,:)
           enddo
@@ -1692,7 +1705,7 @@ contains
     enddo
     ! The returned loss is exact: the unified fit compares it bit for bit.
     call sl_tile_losses_unchecked(b,r,maps,loss);after=sum(loss)
-    allocate(trace(sl_nodes+2,steps));trace=history(:,1:steps)
+    if(present(trace))trace=history(:,1:steps)
   end subroutine sector_learning_online_fit
 
   subroutine sl_verify_grid()
@@ -3036,7 +3049,7 @@ contains
     call timing_begin_point()
     ! contribution to integral
     ifirst=0
-    if(imode.eq.0) then
+    if(imode.eq.0.and..not.sector_learning_collect) then
        dummy=fun(x,vol,ifirst,f1)
        if (.not. fixed_order) dummy=fun(x,vol,2,f1)
        f(1:nintegrals)=f1(1:nintegrals)
@@ -3126,7 +3139,7 @@ contains
     enddo
     kfold(1:ndim)=1
     entry get_random_x_next_fold(x,vol,kfold)
-    if(online_probe_active)then
+    if(sector_learning_collect)then
        node=0
        do kdim=1,ndim
           node=node*ifold(kdim)+kfold(kdim)-1
@@ -3140,11 +3153,11 @@ contains
        dx=xgrid(icell(kdim),kdim,ichan)-xgrid(icell(kdim)-1,kdim,ichan)
        vol=vol*dx*nintcurr
        x(kdim)=xgrid(icell(kdim)-1,kdim,ichan)+rand(kdim)*dx
-       if(imode.eq.0.and..not.born_spread_calibrating) &
+       if(imode.eq.0.and..not.(born_spread_calibrating.or.sector_learning_collect)) &
             nhits(icell(kdim),kdim,ichan)= &
             nhits(icell(kdim),kdim,ichan)+1
     enddo
-    if(online_probe_active)online_probe_cells(1:ndim,node+1)=icell(1:ndim)
+    if(sector_learning_collect)online_probe_cells(1:ndim,node+1)=icell(1:ndim)
     do k_ord_virt=0,n_ord_virt
        if (use_poly_virtual) then
           call get_polyfit(ichan,k_ord_virt,x(1:ndim-3),polyfit(k_ord_virt))

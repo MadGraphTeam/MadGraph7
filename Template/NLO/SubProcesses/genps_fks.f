@@ -154,7 +154,10 @@ c An optional cached Born is reused under the same rules as below.
       type(fks_born_point),intent(inout),optional :: cached_born
 
       if(timing_sampled)call timing_enter(timing_phase_space)
-      if(present(cached_born))point%born=cached_born
+      if(present(cached_born))then
+c An empty cache keeps the caller's Born, which may still match.
+         if(cached_born%valid)point%born=cached_born
+      endif
       call initialize_fks_phase_space(iconfig)
       call generate_prepared_fks_point(ndim,x,.true.,wgt,
      $     point)
@@ -240,7 +243,7 @@ c must use generate_born_contribution instead.
      $     point,cached_born)
 c Reuse the caller's sampled Born point only when its sampling context
 c agrees. Otherwise sample a new one, including the coupled lepton map.
-c An optional cached Born replaces the caller's and is updated after.
+c A valid optional cached Born replaces the caller's; it is updated after.
       implicit none
       include 'timing_variables.inc'
       integer ndim,iconfig
@@ -249,7 +252,10 @@ c An optional cached Born replaces the caller's and is updated after.
       type(fks_born_point),intent(inout),optional :: cached_born
 
       if(timing_sampled)call timing_enter(timing_phase_space)
-      if(present(cached_born))point%born=cached_born
+      if(present(cached_born))then
+c An empty cache keeps the caller's Born, which may still match.
+         if(cached_born%valid)point%born=cached_born
+      endif
       call initialize_fks_phase_space(iconfig)
       call generate_prepared_fks_point(ndim,x,.false.,wgt,
      $     point)
