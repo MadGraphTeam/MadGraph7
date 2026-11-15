@@ -2779,17 +2779,22 @@ class NativeExecutor:
         points in the reference's native call (``_merged_runs``): with
         rotation checks only and the same executor options for every copy
         (no re-test frame, Ward vectors or Catani prediction, which only the
-        reference runs), on a Born-interfered plan. The executor fills its
-        chunks (``lane_chunks``), so the merged call evaluates no more lanes
-        than separate calls and saves a call; a loop-induced plan forms the
-        term scale of every lane of a call (the reference's estimate floor),
-        which its copies would then pay: it keeps separate calls. The values
-        are those of separate calls: every lane is its own point's."""
+        reference runs), in binary64, on a Born-interfered plan. The
+        executor fills its chunks (``lane_chunks``), so the merged call
+        evaluates no more lanes than separate calls and saves a call; a
+        loop-induced plan forms the term scale of every lane of a call (the
+        reference's estimate floor), which its copies would then pay: it
+        keeps separate calls, as an extended carrier does (a merged call
+        would save the call only). The values are those of separate calls:
+        every binary64 lane is its own point's."""
 
-        del precision
+        from .assemble import Precision
+
+        arithmetic, _digits = self._arithmetic(precision or Precision.double(), False)
         return bool(
             stability.rotations
             and count
+            and arithmetic == "double"
             and stability.frame is None
             and wards is None
             and not self.catani
