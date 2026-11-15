@@ -4144,7 +4144,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 const nested_vector2<double>&,
                 const std::optional<EELuminosity>&,
-                const std::array<int, 2>&>(),
+                const std::array<int, 2>&,
+                const std::string&>(),
             py::arg("flavors"),
             py::arg("pdf_grid") = std::nullopt,
             py::arg("pdf_grid2") = std::nullopt,
@@ -4154,6 +4155,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("factors") = nested_vector2<double>{},
             py::arg("lepton_luminosity") = std::nullopt,
             py::arg("lepton_pdgs") = std::array<int, 2>{0, 0},
+            py::arg("pdf_prefix") = "",
             pydoc::doc("FKSLuminosity::FKSLuminosity")
         )
         .def(
@@ -4180,7 +4182,10 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const RunningCoupling&,
                 const FKSLuminosity&,
                 const FKSLuminosity&,
-                const std::optional<NLOCuts>&>(),
+                const std::optional<NLOCuts>&,
+                const std::vector<std::pair<double, double>>&,
+                const std::vector<
+                    std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>&>(),
             py::arg("subtraction"),
             py::arg("soft_virtual"),
             py::arg("weights"),
@@ -4190,7 +4195,21 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("luminosity"),
             py::arg("born_luminosity"),
             py::arg("nbody_cuts") = std::nullopt,
+            py::arg("scale_variations") = std::vector<std::pair<double, double>>{},
+            py::arg("pdf_variations") =
+                std::vector<std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>{
+                },
             pydoc::doc("FKSCrossSection::FKSCrossSection#2")
+        )
+        .def(
+            "pdf_variation_count",
+            [](const FKSCrossSection& self) { return self.pdf_variations().size(); },
+            pydoc::doc("FKSCrossSection::pdf_variations")
+        )
+        .def(
+            "scale_variations",
+            &FKSCrossSection::scale_variations,
+            pydoc::doc("FKSCrossSection::scale_variations")
         )
         .def(
             "running_coupling",

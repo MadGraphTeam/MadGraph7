@@ -72,7 +72,9 @@ of dummy_fct.f) comes from the provider, at the Born with a last particle
 without momentum, as at the soft counter-event of MadFKS.
 
 Not covered yet: a final-state gluon with a colored decaying particle, PDF
-schemes other than MSbar, densities of eMELA and photon beams.
+schemes other than MSbar, densities of eMELA, photon beams and the scale and
+PDF variations of reweight_scale and reweight_PDF, which the run leaves out
+with a warning.
 """
 
 import argparse
@@ -94,9 +96,11 @@ from madgraph.mg7.nlo.core import (
     born_topology,
     integer,
     madspace,
+    pdf_reweight,
     real,
     run_cuts,
     scale_parameters,
+    scale_variations,
 )
 
 logger = logging.getLogger("madgraph.mg7.nlo.cs")
@@ -1009,6 +1013,12 @@ class CSRun(NLORun):
             raise ValueError(f"nlo.cs: streams of {STREAMS} expected, not {streams}")
         self.streams = tuple(streams)
         self.subprocesses = {}
+        if scale_variations(self.run_card) or pdf_reweight(self.run_card):
+            logger.warning(
+                "nlo.cs: no scale and PDF variations yet, the run gives the "
+                "central cross section"
+            )
+            self.run_card.update(reweight_scale=False, reweight_pdf=False)
 
     def make_integrands(self, directories, n_f, n_l):
         from madspace.subtraction.cs import read_cs_subtraction

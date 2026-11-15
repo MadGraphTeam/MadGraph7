@@ -14,7 +14,10 @@ madspace/tests/test_data/fks_cross_section/<name>.json:
     cross section and its error in pb (a width in GeV for a decay) and per
     subprocess (the P* directory) the sum of its channels with their errors
     added in quadrature, from the last res_*.txt of the run (summary.txt
-    rounds the total to four digits).
+    rounds the total to four digits), and with reweight_scale at NLO the
+    cross section at each pair of factors of mu_R and mu_F
+    (scale_variations, mu_r, mu_f and sigma, from the total rate of the
+    histograms of the run).
 
 Run from anywhere with a gfortran in the PATH:
 
@@ -76,6 +79,8 @@ SETUPS = {
     # others in the G_mu scheme
     "gu_ua_mix": ("gu_ua_mix", {}),
     "pp_aa_tagged": ("pp_aa_tagged", {}),
+    # the scale variations of the reweighting of MadFKS
+    "pp_epem_rw": ("pp_epem", dict(mfir.PROCESSES["pp_epem"][1], reweight_scale=True)),
 }
 # outputs of the cross sections alone, without an integrand reference: name
 # -> (process, run_card values, model). p p > e+ e- j has a jet that radiates
@@ -209,6 +214,32 @@ def parse_summary(path):
     )
 
 
+def parse_scale_variations(path):
+    """The cross section at each pair of factors of mu_R and mu_F of the
+    first dynamical scale choice, the first bin of the total rate of the
+    HwU histograms of the run at path, whose columns are the weights."""
+    with open(path) as f:
+        lines = f.read().splitlines()
+    # the header "##& xmin & xmax & central value & ..." names the columns
+    names = [n.strip() for n in lines[0].lstrip("#&").split("&")]
+    rate = next(k for k, line in enumerate(lines) if "total rate" in line)
+    values = [float(v) for v in lines[rate + 1].split()]
+    if len(values) != len(names):
+        raise ValueError(f"the columns of {path} do not match its header")
+    variations, choice = [], None
+    for name, value in zip(names, values):
+        found = re.search(r"dyn=\s*(-?\d+)\s+muR=\s*(\S+)\s+muF=\s*(\S+)", name)
+        if found is None:
+            continue
+        dyn, ren, fact = int(found[1]), float(found[2]), float(found[3])
+        choice = dyn if choice is None else choice
+        if dyn == choice:
+            variations.append(dict(mu_r=ren, mu_f=fact, sigma=value))
+    if not variations:
+        raise ValueError(f"no scale variations in {path}")
+    return variations
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--keep", required=True, help="directory of the outputs")
@@ -245,6 +276,9 @@ def main():
             if not (args.reuse and os.path.isfile(summary)):
                 summary = launch(out, values, order, accuracy, work, name)
             results[order.lower()] = parse_summary(summary)
+            if order == "NLO" and values.get("reweight_scale"):
+                histograms = os.path.join(os.path.dirname(summary), "MADatNLO.HwU")
+                results["nlo"]["scale_variations"] = parse_scale_variations(histograms)
         run_card, param_card = mfir.read_cards(out)
         data = dict(
             process=process,

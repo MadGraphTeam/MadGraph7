@@ -11,6 +11,10 @@ the difference of the interpolations of madspace and of NNPDFDriver.f (see
 test_fks_couplings.py). The tables need the libraries of a built output with
 hadron beams, those of MADSPACE_FKS_OUTPUTS (pp_epem), and are skipped
 otherwise.
+
+The members of an LHAPDF set for reweight_PDF and the PDF uncertainty of
+LHAPDF come from a set of members of the NNPDF grid times factors
+(write_test_set), the formulas of PDFSet.uncertainty for the uncertainty.
 """
 
 import math
@@ -22,6 +26,7 @@ from fks_testing import evaluate
 from madgraph.mg7.nlo import grids
 from madgraph.mg7.nlo.core import Couplings, check_run_card
 from madspace_testing import default_context
+from test_fks_couplings import scaled_lhapdf_grid
 
 import madspace as ms
 
@@ -147,3 +152,124 @@ def test_user_scales_in_run_card():
     base = dict(ickkw=0, pdfscheme=0, lpp1=1, lpp2=1, pdlabel="nn23nlo")
     for choice in (0, 10, -1):
         check_run_card({**base, "dynamical_scale_choice": choice})
+
+
+# the lhaid of the set of write_test_set
+TEST_LHAID = 90000
+
+
+def write_test_set(directory, factors, error_type="hessian", asmz=0.119):
+    """An LHAPDF data directory with the set TestSet of lhaid TEST_LHAID,
+    whose members are the NNPDF grid times factors, the running of alpha_s
+    from asmz in its info file and from asmz + 0.001 in the header of its
+    last member. Returns the directory."""
+    os.makedirs(os.path.join(directory, "TestSet"), exist_ok=True)
+    with open(os.path.join(directory, "pdfsets.index"), "w") as f:
+        f.write(f"{TEST_LHAID} TestSet 1\n")
+    alpha_s = os.path.join(directory, "alpha_s.info")
+    grids.write_alpha_s_grid(alpha_s, asmz)
+    with open(alpha_s) as f:
+        running = f.read()
+    info = os.path.join(directory, "TestSet", "TestSet.info")
+    with open(info, "w") as f:
+        f.write(
+            "SetDesc: a set of tests\n"
+            "Format: lhagrid1\n"
+            f"NumMembers: {len(factors)}\n"
+            f"ErrorType: {error_type}\n"
+            f"AlphaS_MZ: {asmz}\n" + running
+        )
+    grids.write_alpha_s_grid(alpha_s, asmz + 0.001)
+    with open(alpha_s) as f:
+        last = [line for line in f.read().splitlines() if line.startswith("AlphaS_")]
+    central = os.path.join(directory, "central.dat")
+    grids.write_lhapdf_grid(central)
+    for member, factor in enumerate(factors):
+        header = ["PdfType: error"]
+        if member == len(factors) - 1:
+            header += last
+        path = os.path.join(directory, "TestSet", f"TestSet_{member:04d}.dat")
+        scaled_lhapdf_grid(central, path, factor, header=header)
+    return directory
+
+
+def test_lhapdf_members(tmp_path):
+    """The members of a set, each with the running of alpha_s of its header
+    where it has one, and its error type."""
+    directory = write_test_set(str(tmp_path), [1.0, 1.1, 0.9], "symmhessian")
+    pdf_set = grids.lhapdf_members(TEST_LHAID + 1, paths=[directory])
+    assert pdf_set["name"] == "TestSet"
+    assert pdf_set["error_type"] == "symmhessian"
+    members = pdf_set["members"]
+    assert [os.path.basename(grid) for grid, _ in members] == [
+        f"TestSet_000{k}.dat" for k in range(3)
+    ]
+    assert [alpha_s for _, alpha_s in members[:2]] == [pdf_set["info"]] * 2
+    assert members[2][1] == members[2][0]
+    assert grids.lhapdf_header(members[2][0])["PdfType"] == "error"
+    with pytest.raises(FileNotFoundError, match="lhaid 1"):
+        grids.lhapdf_members(1, paths=[directory])
+
+
+def test_pdf_uncertainty():
+    """The central value and the uncertainties of PDFSet.uncertainty of
+    LHAPDF at the confidence level of the set."""
+    values = [1.0, 1.1, 0.9, 1.05, 0.97]
+    central, plus, minus = grids.pdf_uncertainty(values, "hessian")
+    assert central == 1.0
+    assert plus == pytest.approx(math.sqrt(0.1**2 + 0.05**2), rel=1e-12)
+    assert minus == pytest.approx(math.sqrt(0.1**2 + 0.03**2), rel=1e-12)
+    central, plus, minus = grids.pdf_uncertainty(values, "symmhessian")
+    expected = math.sqrt(0.1**2 + 0.1**2 + 0.05**2 + 0.03**2)
+    assert (plus, minus) == pytest.approx((expected, expected), rel=1e-12)
+    replicas = [1.0, 1.1, 0.9, 1.05, 0.97]
+    central, plus, minus = grids.pdf_uncertainty(replicas, "replicas")
+    assert central == pytest.approx(np.mean(replicas[1:]), rel=1e-14)
+    error = np.std(replicas[1:], ddof=1)
+    assert (plus, minus) == pytest.approx((error, error), rel=1e-12)
+    # the last pair varies alpha_s, in quadrature
+    central, plus, minus = grids.pdf_uncertainty(values + [1.02, 0.99], "hessian+as")
+    assert plus == pytest.approx(math.sqrt(0.1**2 + 0.05**2 + 0.02**2), rel=1e-12)
+    assert minus == pytest.approx(math.sqrt(0.1**2 + 0.03**2 + 0.01**2), rel=1e-12)
+    with pytest.raises(ValueError, match="unknown error type"):
+        grids.pdf_uncertainty(values, "gaussian")
+    with pytest.raises(ValueError, match="members for error type hessian"):
+        grids.pdf_uncertainty(values[:4], "hessian")
+
+
+def test_couplings_with_members(tmp_path, monkeypatch):
+    """Couplings with reweight_PDF uploads every member of the set under its
+    own prefix with its running of alpha_s, and reweight_PDF needs a set of
+    LHAPDF, as in MG5aMC."""
+    directory = write_test_set(str(tmp_path / "lhapdf"), [1.0, 1.1, 0.9])
+    monkeypatch.setenv("LHAPDF_DATA_PATH", directory)
+    run_card = dict(
+        lpp1=1, lpp2=1, pdlabel="lhapdf", lhaid=TEST_LHAID, reweight_pdf=True
+    )
+    context = default_context()
+    work = str(tmp_path / "work" / "SubProcesses" / "madspace_fks")
+    couplings = Couplings(work, run_card, {}, context)
+    try:
+        assert couplings.pdf_set == dict(name="TestSet", error_type="hessian")
+        assert [prefix for *_, prefix in couplings.members] == [
+            f"{Couplings.member_prefix}{k}" for k in range(3)
+        ]
+        x, q = points("nn23nlo", count=20)
+        (central,) = evaluate(ms.PartonDensity(couplings.pdf, grids.PIDS), x, q)
+        for (running, grid, prefix), factor in zip(couplings.members, [1, 1.1, 0.9]):
+            density = ms.PartonDensity(grid, grids.PIDS, False, prefix)
+            (ours,) = evaluate(density, x, q)
+            np.testing.assert_allclose(ours, factor * central, rtol=1e-13, atol=0)
+        scales = np.array([5.0, 91.188, 500.0])
+        (ours,) = evaluate(couplings.members[0][0], scales)
+        (theirs,) = evaluate(couplings.running, scales)
+        np.testing.assert_array_equal(ours, theirs)
+        (last,) = evaluate(couplings.members[2][0], scales)
+        expected = [grids.alpha_s_2loop(0.12, s) for s in scales]
+        np.testing.assert_allclose(last, expected, rtol=1e-6)
+    finally:
+        for name in context.global_names():
+            if name.startswith(Couplings.member_prefix):
+                context.delete_global(name)
+    with pytest.raises(ValueError, match="reweight_PDF needs the sets of LHAPDF"):
+        Couplings(work, dict(run_card, pdlabel="nn23nlo"), {}, context)

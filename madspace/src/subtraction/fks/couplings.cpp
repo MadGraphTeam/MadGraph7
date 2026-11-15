@@ -15,7 +15,8 @@ FKSLuminosity::FKSLuminosity(
     bool sum_flavors,
     const nested_vector2<double>& factors,
     const std::optional<EELuminosity>& lepton_luminosity,
-    const std::array<int, 2>& lepton_pdgs
+    const std::array<int, 2>& lepton_pdgs,
+    const std::string& pdf_prefix
 ) :
     FunctionGenerator(
         "FKSLuminosity",
@@ -114,7 +115,10 @@ FKSLuminosity::FKSLuminosity(
             pids.at(beam).push_back(grid->pids.at(0));
         }
         _pdfs.at(beam) = PartonDensity(
-            *grid, pids.at(beam), false, beam == 1 && pdf_grid2 ? pdf2_prefix : ""
+            *grid,
+            pids.at(beam),
+            false,
+            beam == 1 && pdf_grid2 ? pdf2_prefix : pdf_prefix
         );
         _q_min.at(beam) = grid->q.front();
         _q_max.at(beam) = grid->q.back();

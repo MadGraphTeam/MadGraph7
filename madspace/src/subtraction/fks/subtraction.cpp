@@ -865,7 +865,10 @@ FKSCrossSection::FKSCrossSection(
     const RunningCoupling& running_coupling,
     const FKSLuminosity& luminosity,
     const FKSLuminosity& born_luminosity,
-    const std::optional<NLOCuts>& nbody_cuts
+    const std::optional<NLOCuts>& nbody_cuts,
+    const std::vector<std::pair<double, double>>& scale_variations,
+    const std::vector<std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>&
+        pdf_variations
 ) :
     FunctionGenerator(
         "FKSCrossSection",
@@ -878,7 +881,22 @@ FKSCrossSection::FKSCrossSection(
             luminosity.lepton(),
             scale.user()
         ),
-        weights.return_types()
+        [&] {
+            auto types = weights.return_types();
+            if (!scale_variations.empty()) {
+                types.push_back(
+                    "scale_variations",
+                    batch_float_array(static_cast<int>(scale_variations.size()))
+                );
+            }
+            if (!pdf_variations.empty()) {
+                types.push_back(
+                    "pdf_variations",
+                    batch_float_array(static_cast<int>(pdf_variations.size()))
+                );
+            }
+            return types;
+        }()
     ),
     _subtraction(subtraction),
     _soft_virtual(soft_virtual),
@@ -889,35 +907,53 @@ FKSCrossSection::FKSCrossSection(
     _born_scale(scale.with_particle_count(weights.particle_count() - 1)),
     _running_coupling(running_coupling),
     _luminosity(luminosity),
-    _born_luminosity(born_luminosity) {
+    _born_luminosity(born_luminosity),
+    _scale_variations(scale_variations),
+    _pdf_variations(pdf_variations) {
     check_cuts(_cuts, _nbody_cuts, weights);
+    for (auto [ren_factor, fact_factor] : scale_variations) {
+        if (!(ren_factor > 0.) || !(fact_factor > 0.)) {
+            throw std::invalid_argument(
+                "FKSCrossSection: the factors of the scale variations must be "
+                "positive"
+            );
+        }
+    }
     if (scale.incoming() != weights.incoming()) {
         throw std::invalid_argument(
             "FKSCrossSection: the scales need the incoming particles of the weights"
         );
     }
     std::size_t count = subtraction.configuration_count();
-    if (luminosity.sum_flavors() != born_luminosity.sum_flavors()) {
-        throw std::invalid_argument(
-            "FKSCrossSection: the luminosities both sum over the flavors or both "
-            "take a flavor index"
-        );
-    }
-    if (luminosity.lepton() != born_luminosity.lepton()) {
-        throw std::invalid_argument(
-            "FKSCrossSection: the luminosities both take dressed leptons or "
-            "neither"
-        );
-    }
-    // with a flavor index the n-body part takes the Born of the real flavor,
-    // per configuration
-    if (luminosity.configuration_count() != count ||
-        (born_luminosity.configuration_count() != count &&
-         (born_luminosity.configuration_count() != 1 || !luminosity.sum_flavors()))) {
-        throw std::invalid_argument(
-            "FKSCrossSection: the luminosities need the FKS configurations of the "
-            "subtraction"
-        );
+    auto check_luminosities =
+        [&](const FKSLuminosity& real, const FKSLuminosity& nbody) {
+            if (real.sum_flavors() != nbody.sum_flavors() ||
+                real.sum_flavors() != luminosity.sum_flavors()) {
+                throw std::invalid_argument(
+                    "FKSCrossSection: the luminosities all sum over the flavors or all "
+                    "take a flavor index"
+                );
+            }
+            if (real.lepton() != nbody.lepton() ||
+                real.lepton() != luminosity.lepton()) {
+                throw std::invalid_argument(
+                    "FKSCrossSection: the luminosities all take dressed leptons or none"
+                );
+            }
+            // with a flavor index the n-body part takes the Born of the real
+            // flavor, per configuration
+            if (real.configuration_count() != count ||
+                (nbody.configuration_count() != count &&
+                 (nbody.configuration_count() != 1 || !real.sum_flavors()))) {
+                throw std::invalid_argument(
+                    "FKSCrossSection: the luminosities need the FKS configurations of "
+                    "the subtraction"
+                );
+            }
+        };
+    check_luminosities(luminosity, born_luminosity);
+    for (const auto& [running_coupling, real, nbody] : pdf_variations) {
+        check_luminosities(real, nbody);
     }
 }
 
@@ -931,6 +967,8 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
         args[name] = value;
     }
     auto batch_size = fb.batch_size({args.at("born_weight")});
+    // the scales of the event, the Born and the collinear counter-event
+    std::map<std::string, NamedVector<Value>> scales;
     if (_scale) {
         // the scale of the user comes as reference scales, the Born that of
         // the soft counter-event, as MadFKS takes it
@@ -944,26 +982,39 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
                 }
                 return function.build_function(fb, inputs);
             };
-        auto born = scale(*_born_scale, "born_momenta", "soft_reference_scale");
-        auto collinear =
+        scales["born"] = scale(*_born_scale, "born_momenta", "soft_reference_scale");
+        scales["collinear"] =
             scale(*_scale, "collinear_momenta", "collinear_reference_scale");
-        auto event = scale(*_scale, "momenta", "reference_scale");
-        args["ren_scale"] = born.at("ren_scale");
-        args["fact_scale1"] = born.at("fact_scale1");
-        args["fact_scale2"] = born.at("fact_scale2");
-        args["collinear_fact_scale1"] = collinear.at("fact_scale1");
-        args["collinear_fact_scale2"] = collinear.at("fact_scale2");
-        auto coupling = [&](const NamedVector<Value>& scales) {
-            return _running_coupling->build_function(fb, {scales.at("ren_scale")})
-                .at(0);
-        };
-        args["event_alpha_s"] = coupling(event);
-        args["born_alpha_s"] = coupling(born);
-        args["collinear_alpha_s"] = coupling(collinear);
-        auto luminosity =
-            [&](const std::string& kinematics, const NamedVector<Value>& scales) {
+        scales["event"] = scale(*_scale, "momenta", "reference_scale");
+        args["ren_scale"] = scales["born"].at("ren_scale");
+        args["fact_scale1"] = scales["born"].at("fact_scale1");
+        args["fact_scale2"] = scales["born"].at("fact_scale2");
+        args["collinear_fact_scale1"] = scales["collinear"].at("fact_scale1");
+        args["collinear_fact_scale2"] = scales["collinear"].at("fact_scale2");
+    }
+    // the couplings and luminosities of each kinematics at the scales times
+    // factors of mu_R and mu_F
+    auto couplings =
+        [&](double ren_factor,
+            double fact_factor,
+            const RunningCoupling& running_coupling,
+            const FKSLuminosity& real_luminosity,
+            const FKSLuminosity& born_luminosity) {
+            std::map<std::string, Value> out;
+            auto factor = [&](Value value, double f) {
+                return f == 1. ? value : fb.mul(value, fb.full({f, batch_size}));
+            };
+            auto coupling = [&](const std::string& kinematics) {
+                Value ren = factor(scales.at(kinematics).at("ren_scale"), ren_factor);
+                return running_coupling.build_function(fb, {ren}).at(0);
+            };
+            out["event_alpha_s"] = coupling("event");
+            out["born_alpha_s"] = coupling("born");
+            out["collinear_alpha_s"] = coupling("collinear");
+            auto luminosity = [&](const std::string& kinematics,
+                                  const std::string& at) {
                 bool nbody = kinematics == "born_";
-                const auto& function = nbody ? *_born_luminosity : *_luminosity;
+                const auto& function = nbody ? born_luminosity : real_luminosity;
                 Value index = args.at("fks_index");
                 if (function.configuration_count() == 1) {
                     index = fb.full({static_cast<me_int_t>(0), batch_size});
@@ -975,33 +1026,49 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
                     inputs.push_back(args.at("one_minus_x1"));
                     inputs.push_back(args.at("one_minus_x2"));
                 }
-                inputs.push_back(scales.at("fact_scale1"));
-                inputs.push_back(scales.at("fact_scale2"));
+                inputs.push_back(factor(scales.at(at).at("fact_scale1"), fact_factor));
+                inputs.push_back(factor(scales.at(at).at("fact_scale2"), fact_factor));
                 if (!function.sum_flavors()) {
                     inputs.push_back(args.at("flavor_index"));
                 }
                 inputs.push_back(index);
                 return function.build_function(fb, inputs).at(0);
             };
-        args["event_luminosity"] = luminosity("", event);
-        args["soft_luminosity"] = luminosity("soft_", born);
-        args["soft_collinear_luminosity"] = luminosity("soft_collinear_", born);
-        args["collinear_luminosity"] = luminosity("collinear_", collinear);
-        args["born_luminosity"] = luminosity("born_", born);
-    }
-    // the subtraction and the n-body part at g_s = 1
-    Value alpha_s = fb.full({1. / (4. * PI), batch_size});
-    ValueVec subtraction_args;
-    for (const auto& name : _subtraction.arg_types().keys()) {
-        if (name == "alpha_s") {
-            subtraction_args.push_back(alpha_s);
-        } else if (name == "fact_scale1" || name == "fact_scale2") {
-            subtraction_args.push_back(args.at("collinear_" + name));
-        } else {
-            subtraction_args.push_back(args.at(name));
+            out["event_luminosity"] = luminosity("", "event");
+            out["soft_luminosity"] = luminosity("soft_", "born");
+            out["soft_collinear_luminosity"] = luminosity("soft_collinear_", "born");
+            out["collinear_luminosity"] = luminosity("collinear_", "collinear");
+            out["born_luminosity"] = luminosity("born_", "born");
+            return out;
+        };
+    if (_scale) {
+        auto central =
+            couplings(1., 1., *_running_coupling, *_luminosity, *_born_luminosity);
+        for (auto& [name, value] : central) {
+            args[name] = value;
         }
     }
-    auto subtraction = _subtraction.build_function(fb, subtraction_args);
+    // the subtraction and the n-body part at g_s = 1, the subtraction with the
+    // factorization scales of the collinear counter-event times a factor
+    Value alpha_s = fb.full({1. / (4. * PI), batch_size});
+    auto subtraction_at = [&](double fact_factor) {
+        ValueVec subtraction_args;
+        for (const auto& name : _subtraction.arg_types().keys()) {
+            if (name == "alpha_s") {
+                subtraction_args.push_back(alpha_s);
+            } else if (name == "fact_scale1" || name == "fact_scale2") {
+                Value scale = args.at("collinear_" + name);
+                if (fact_factor != 1.) {
+                    scale = fb.mul(scale, fb.full({fact_factor, batch_size}));
+                }
+                subtraction_args.push_back(scale);
+            } else {
+                subtraction_args.push_back(args.at(name));
+            }
+        }
+        return _subtraction.build_function(fb, subtraction_args);
+    };
+    auto subtraction = subtraction_at(1.);
     // the Born orders among the Borns of the subtraction
     Value born = args.at("born"), color_correlated = args.at("color_correlated");
     std::size_t born_orders = _weights.born_order_count();
@@ -1051,20 +1118,88 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
             {"collinear_luminosity", projected ? soft : mask("collinear_momenta")},
         };
     }
-    ValueVec weight_args;
-    for (const auto& name : _weights.arg_types().keys()) {
-        if (name == "real" || name == "soft" || name == "collinear" ||
-            name == "soft_collinear") {
-            weight_args.push_back(subtraction.at(name));
-        } else if (name == "soft_virtual") {
-            weight_args.push_back(soft_virtual.at("soft_virtual"));
-        } else if (name == "born") {
-            weight_args.push_back(born);
-        } else if (cut.count(name) != 0) {
-            weight_args.push_back(fb.mul(args.at(name), cut.at(name)));
-        } else {
-            weight_args.push_back(args.at(name));
-        }
+    auto weights =
+        [&](const NamedVector<Value>& subtraction,
+            Value soft_virtual,
+            const std::map<std::string, Value>& couplings) {
+            ValueVec weight_args;
+            for (const auto& name : _weights.arg_types().keys()) {
+                if (name == "real" || name == "soft" || name == "collinear" ||
+                    name == "soft_collinear") {
+                    weight_args.push_back(subtraction.at(name));
+                } else if (name == "soft_virtual") {
+                    weight_args.push_back(soft_virtual);
+                } else if (name == "born") {
+                    weight_args.push_back(born);
+                } else {
+                    Value value =
+                        couplings.count(name) != 0 ? couplings.at(name) : args.at(name);
+                    weight_args.push_back(
+                        cut.count(name) != 0 ? fb.mul(value, cut.at(name)) : value
+                    );
+                }
+            }
+            return _weights.build_function(fb, weight_args);
+        };
+    std::map<std::string, Value> central;
+    auto result = weights(subtraction, soft_virtual.at("soft_virtual"), central);
+    // the members of the PDF variations at the scales of the run
+    ValueVec members;
+    for (const auto& [running_coupling, real_luminosity, born_luminosity] :
+         _pdf_variations) {
+        auto member = weights(
+            subtraction,
+            soft_virtual.at("soft_virtual"),
+            couplings(1., 1., running_coupling, real_luminosity, born_luminosity)
+        );
+        members.push_back(member.at("cross_section"));
     }
-    return _weights.build_function(fb, weight_args);
+    if (_scale_variations.empty()) {
+        if (!members.empty()) {
+            result.push_back("pdf_variations", fb.stack(members));
+        }
+        return result;
+    }
+    // the variations of mu_R and mu_F, the n-body part with the Ellis-Sexton
+    // scale at mu_R: the coefficients of log(mu_R'^2 / mu_R^2) and
+    // log(mu_F'^2 / mu_F^2) of the soft-virtual part
+    auto parts = fb.unstack(soft_virtual.at("soft_virtual"));
+    auto ren = fb.unstack(soft_virtual.at("ren_coefficient"));
+    auto fact = fb.unstack(soft_virtual.at("fact_coefficients"));
+    ValueVec variations;
+    std::map<double, NamedVector<Value>> subtractions;
+    for (auto [ren_factor, fact_factor] : _scale_variations) {
+        if (subtractions.count(fact_factor) == 0) {
+            subtractions.emplace(fact_factor, subtraction_at(fact_factor));
+        }
+        ValueVec shifted;
+        for (std::size_t o = 0; o < parts.size(); ++o) {
+            auto beams = fb.unstack(fact.at(o));
+            Value logs = fb.add(
+                fb.mul(ren.at(o), fb.full({2. * std::log(ren_factor), batch_size})),
+                fb.mul(
+                    fb.add(beams.at(0), beams.at(1)),
+                    fb.full({2. * std::log(fact_factor), batch_size})
+                )
+            );
+            shifted.push_back(fb.add(parts.at(o), logs));
+        }
+        auto varied = weights(
+            subtractions.at(fact_factor),
+            fb.stack(shifted),
+            couplings(
+                ren_factor,
+                fact_factor,
+                *_running_coupling,
+                *_luminosity,
+                *_born_luminosity
+            )
+        );
+        variations.push_back(varied.at("cross_section"));
+    }
+    result.push_back("scale_variations", fb.stack(variations));
+    if (!members.empty()) {
+        result.push_back("pdf_variations", fb.stack(members));
+    }
+    return result;
 }

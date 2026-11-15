@@ -1,8 +1,10 @@
 """The PDFs and alpha_s of the fixed-order NLO driver of madspace
 (nlo/fks.py), as madspace PdfGrid and AlphaSGrid files.
 
-With pdlabel lhapdf they are those of the LHAPDF set of lhaid. The built-in
-sets of MadFKS (BUILTIN) take alpha_s(m_Z) and the loops of its running from
+With pdlabel lhapdf they are those of the LHAPDF set of lhaid, with
+reweight_PDF also those of every member of its set (lhapdf_members), whose
+cross sections give the PDF uncertainty of LHAPDF (pdf_uncertainty). The
+built-in sets of MadFKS (BUILTIN) take alpha_s(m_Z) and the loops of its running from
 pdfwrap.f, the running of alfas_functions.f on 200 nodes per decade. For the
 NNPDF 2.3 grids that MadGraph ships (nn23nlo, nn23lo, nn23lo1) their nodes
 are written as an LHAPDF grid (lhagrid1, the flavours fdist of pdf.f takes),
@@ -130,18 +132,40 @@ def alpha_s_2loop(asmz, q, loops=2):
 
 def write_alpha_s_grid(path, asmz, loops=2):
     """The 2-loop (or 1-loop) running from asmz as an LHAPDF alpha_s grid:
-    200 nodes per decade from 1 GeV to 100 TeV, with a doubled node at the c
-    and b thresholds (the boundary of two subgrids), below and above it."""
+    200 nodes per decade from 0.5 GeV to 100 TeV, with a doubled node at the
+    c and b thresholds (the boundary of two subgrids), below and above it.
+    Below its first node madspace takes alpha_s as zero, and a run reaches
+    1 GeV with the floor of the scales (2 GeV) times a factor 1/2 of a scale
+    variation, where alfas_functions.f of MadFKS still runs. Where the
+    running has its pole above 0.5 GeV (0.66 GeV at two loops from 0.130),
+    the grid begins at the first node above it."""
     thresholds = (1.42, 4.7)
-    nodes = [10 ** (k / 200) for k in range(1001)]
+    nodes = [10 ** (k / 200) for k in range(-60, 1001)]
     nodes = sorted([q for q in nodes if min(abs(q / t - 1) for t in thresholds) > 1e-9])
+
+    def running(q):
+        try:
+            value = alpha_s_2loop(asmz, q, loops)
+        except (ZeroDivisionError, OverflowError, ValueError):
+            return None
+        return value if math.isfinite(value) and value > 0 else None
+
     qs, values = [], []
     for q in sorted(nodes + list(thresholds)):
         if q in thresholds:
             qs.append(q)
             values.append(alpha_s_2loop(asmz, q * (1 - 1e-15), loops))
+        value = running(q)
+        if value is None:
+            if q > 1.0:
+                raise ValueError(
+                    f"nlo.grids: no running of alpha_s from {asmz} at {q} GeV"
+                )
+            # below the pole, before the first node of the grid
+            qs, values = [], []
+            continue
         qs.append(q)
-        values.append(alpha_s_2loop(asmz, q, loops))
+        values.append(value)
     with open(path, "w") as f:
         f.write(f"AlphaS_Qs: [{', '.join(f'{q:.17e}' for q in qs)}]\n")
         f.write(f"AlphaS_Vals: [{', '.join(f'{v:.17e}' for v in values)}]\n")
@@ -275,3 +299,98 @@ def lhapdf_alpha_s_mz(info):
             if line.split(":")[0].strip() == "AlphaS_MZ":
                 return float(line.split(":")[1])
     raise ValueError(f"no AlphaS_MZ in {info}")
+
+
+def lhapdf_header(path):
+    """The keys of the header of an LHAPDF info or member file (up to its
+    first ---) with their values as strings, the lists with their
+    brackets."""
+    header, key = {}, None
+    with open(path) as f:
+        for line in f:
+            if line.strip() == "---":
+                break
+            if ":" in line and not line[0].isspace():
+                key, value = line.split(":", 1)
+                key = key.strip()
+                header[key] = value.strip()
+            elif key is not None and line.strip():
+                # a list over several lines
+                header[key] += " " + line.strip()
+    return header
+
+
+def lhapdf_members(lhaid, paths=None):
+    """The members of the LHAPDF set of lhaid, as reweight_PDF of MadFKS
+    takes them: its info file, its ErrorType and per member its grid (.dat)
+    and the file of its running of alpha_s (the member where its header has
+    AlphaS_Vals, the info file otherwise).
+
+    Raises:
+        FileNotFoundError: if no data directory has the set or one of its
+            members.
+    """
+    grid, info = lhapdf_set(lhaid, paths)
+    directory = os.path.dirname(info)
+    name = os.path.basename(directory)
+    header = lhapdf_header(info)
+    count = int(header.get("NumMembers", "1"))
+    members = []
+    for member in range(count):
+        path = os.path.join(directory, f"{name}_{member:04d}.dat")
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"no member {member} of {name} in {directory}")
+        alpha_s = path if "AlphaS_Vals" in lhapdf_header(path) else info
+        members.append((path, alpha_s))
+    error_type = header.get("ErrorType", "unknown").strip("'\"").lower()
+    return dict(name=name, info=info, error_type=error_type, members=members)
+
+
+def pdf_uncertainty(values, error_type):
+    """The central value and the upper and lower uncertainty of a quantity
+    from its values with the members of a set of PDFs (the first the central
+    one), as PDFSet.uncertainty of LHAPDF at the confidence level of the set
+    (cl -1, as MG5aMC calls it): for replicas their mean and standard
+    deviation, for hessian the asymmetric sums over the pairs of eigenvectors,
+    for symmhessian the symmetric sum. The last two members of each parameter
+    of a combined set (an error type with +as) are its variations, which add
+    in quadrature as a pair of eigenvectors about the first member.
+
+    Raises:
+        ValueError: for an unknown error type or too few members.
+    """
+    values = np.asarray(values, dtype=float)
+    parts = error_type.split("+")
+    kind, parameters = parts[0], len(parts) - 1
+    count = len(values) - 1 - 2 * parameters
+    if count < 1 or (kind == "hessian" and count % 2):
+        raise ValueError(
+            f"pdf_uncertainty: {len(values)} members for error type {error_type}"
+        )
+    central, members = values[0], values[1 : 1 + count]
+
+    def pairs(values):
+        plus = minus = 0.0
+        for a, b in zip(values[0::2], values[1::2]):
+            plus += max(a - values_0, b - values_0, 0.0) ** 2
+            minus += max(values_0 - a, values_0 - b, 0.0) ** 2
+        return plus, minus
+
+    values_0 = central
+
+    if kind == "replicas":
+        central = members.mean()
+        error = members.std(ddof=1) if count > 1 else 0.0
+        plus = minus = error**2
+    elif kind == "symmhessian":
+        plus = minus = float(((members - values_0) ** 2).sum())
+    elif kind == "hessian":
+        plus, minus = pairs(members)
+    else:
+        raise ValueError(f"pdf_uncertainty: unknown error type {error_type}")
+    extra_plus, extra_minus = pairs(values[1 + count :])
+    return (
+        float(central),
+        math.sqrt(plus + extra_plus),
+        math.sqrt(minus + extra_minus),
+    )

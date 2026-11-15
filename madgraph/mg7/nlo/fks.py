@@ -63,6 +63,12 @@ of the tagged photons in alpha(0), the others in G_mu).
 
 The scale of the user (dynamical_scale_choice 0 or 10, user_dynamical_scale
 of dummy_fct.f) comes from the provider at the event and its counter-events.
+With reweight_scale the run gives the cross section at the factors of
+rw_rscale and rw_fscale of mu_R and mu_F too, and their envelope, as the
+reweighting of MadFKS (FKSCrossSection with scale_variations). With
+reweight_PDF it gives the cross section with every member of the LHAPDF set
+of lhaid (its densities and alpha_s at the scales of the run) and the PDF
+uncertainty of LHAPDF (FKSCrossSection with pdf_variations).
 
 Not covered yet: PDF schemes other than MSbar, densities of eMELA, photon
 beams and FxFx.
@@ -89,6 +95,7 @@ from madgraph.mg7.nlo.core import (  # noqa: F401 (the names the tests import)
     real,
     run_cuts,
     scale_parameters,
+    scale_variations,
 )
 
 logger = logging.getLogger("madgraph.mg7.nlo.fks")
@@ -185,6 +192,12 @@ class SubprocessIntegrand:
         )
         cuts = run_cuts(run_card)
         self.pass_cuts = Runtime(fks_cuts(born, self.configurations, **cuts), context)
+        # the factors of mu_R and mu_F of the scale variations, and the
+        # members of the PDF set
+        self.scale_variations = scale_variations(run_card)
+        hadrons = abs(self.beams[0]) == 1
+        members = couplings.members if hadrons else []
+        self.pdf_members = len(members)
         self.cross_section = Runtime(
             fks_cross_section(
                 born,
@@ -193,10 +206,12 @@ class SubprocessIntegrand:
                 cuts=cuts,
                 scales=scales,
                 running_coupling=couplings.running,
-                pdf_grid=couplings.pdf if abs(self.beams[0]) == 1 else None,
+                pdf_grid=couplings.pdf if hadrons else None,
                 beams=self.beams,
                 sum_flavors=True,
                 lepton_luminosity=None if self.leptons is None else self.leptons.full,
+                scale_variations=self.scale_variations,
+                pdf_variations=members,
                 resonance=self.resonance,
                 n_f=n_f,
             ),
@@ -375,6 +390,12 @@ class SubprocessIntegrand:
             virtual=blocks["virtual"],
             born=born,
             evaluated=evaluated,
+            variations=np.hstack(
+                [
+                    result.get("scale_variations", np.zeros((count, 0))),
+                    result.get("pdf_variations", np.zeros((count, 0))),
+                ]
+            ),
         )
 
 
@@ -430,6 +451,15 @@ def main(argv=None):
     unit = result["unit"]
     print(f"NLO: {result['nlo']['sigma']:.6e} +- {result['nlo']['error']:.2e} {unit}")
     print(f"LO:  {result['lo']['sigma']:.6e} +- {result['lo']['error']:.2e} {unit}")
+    if "scale_uncertainty" in result:
+        band = result["scale_uncertainty"]
+        print(f"scale variation: +{band['up']:.1f}% -{band['down']:.1f}%")
+    if "pdf_uncertainty" in result:
+        band = result["pdf_uncertainty"]
+        print(
+            f"PDF variation ({band['name']}, {band['error_type']}): "
+            f"+{band['up']:.1f}% -{band['down']:.1f}%"
+        )
     for name, entry in result["subprocesses"].items():
         nlo = entry["nlo"]
         print(f"  {name}: {nlo['sigma']:.6e} +- {nlo['error']:.2e}")

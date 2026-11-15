@@ -976,6 +976,7 @@ def fks_luminosities(
     beams=(1, 1),
     sum_flavors=False,
     lepton_luminosity=None,
+    pdf_prefix="",
 ):
     """The FKSLuminosity of the real emission (per FKS configuration, over the
     flavors of its real matrix element) and that of the n-body part, as the
@@ -1002,6 +1003,8 @@ def fks_luminosities(
         lepton_luminosity: for dressed leptons, the EELuminosity of their
             densities, with the scales of the beams (beam_scales) and the
             full densities (see FKSLuminosity).
+        pdf_prefix: the prefix of the globals of pdf_grid, for a member of a
+            set of PDFs (see PdfGrid.initialize_globals).
 
     Raises:
         ValueError: for a fks_configurations.json of an older exporter, for
@@ -1044,6 +1047,7 @@ def fks_luminosities(
         pdf_grid2=pdf_grid2,
         densities=densities,
         sum_flavors=sum_flavors,
+        pdf_prefix=pdf_prefix,
     )
     if dressed:
         options.update(
@@ -1085,6 +1089,8 @@ def fks_cross_section(
     beams=(1, 1),
     sum_flavors=False,
     lepton_luminosity=None,
+    scale_variations=(),
+    pdf_variations=(),
     **parameters,
 ):
     """The FKSCrossSection of the FKS configurations of a Born, the FKS
@@ -1108,12 +1114,22 @@ def fks_cross_section(
             unless it sums over the flavors, and with dressed leptons
             one_minus_x1 and one_minus_x2 of FKSKinematics.
         running_coupling: the RunningCoupling of alpha_s, with scales.
+        scale_variations: with scales, pairs of factors of mu_R and mu_F, at
+            which the integrand gives the cross section too
+            (scale_variations among its outputs).
+        pdf_variations: with scales, the members of a set of PDFs as triples
+            of their RunningCoupling, PdfGrid and the prefix of its globals,
+            with each of which the integrand gives the cross section at the
+            scales of the run too (pdf_variations among its outputs), one
+            set for both beams.
         parameters: those of fks_subtraction, of which xicut, delta_o and n_f
             also go to the n-body part.
 
     Raises:
         ValueError: as fks_subtraction, fks_soft_virtual and
-            fks_luminosities, or for scales without running_coupling.
+            fks_luminosities, for scales without running_coupling, for scale
+            or PDF variations without scales, or for PDF variations with a
+            second grid.
     """
     shared = {
         key: parameters[key] for key in ("xicut", "delta_o", "n_f") if key in parameters
@@ -1126,12 +1142,35 @@ def fks_cross_section(
     ]
     nbody_cuts = None if cuts is None else fks_nbody_cuts(born, configurations, **cuts)
     if scales is None:
+        if scale_variations or pdf_variations:
+            raise ValueError(
+                "fks_cross_section: the scale and PDF variations need scales"
+            )
         return FKSCrossSection(*arguments, nbody_cuts=nbody_cuts)
     if running_coupling is None:
         raise ValueError("fks_cross_section: the scales need a running_coupling")
+    if pdf_variations and pdf_grid2 is not None:
+        raise ValueError(
+            "fks_cross_section: the PDF variations take one set for both beams"
+        )
     luminosity, born_luminosity = fks_luminosities(
         configurations, pdf_grid, pdf_grid2, beams, sum_flavors, lepton_luminosity
     )
+    members = [
+        (
+            member_coupling,
+            *fks_luminosities(
+                configurations,
+                member_grid,
+                None,
+                beams,
+                sum_flavors,
+                lepton_luminosity,
+                pdf_prefix=prefix,
+            ),
+        )
+        for member_coupling, member_grid, prefix in pdf_variations
+    ]
     return FKSCrossSection(
         *arguments,
         nlo_scale(
@@ -1143,6 +1182,8 @@ def fks_cross_section(
         luminosity,
         born_luminosity,
         nbody_cuts=nbody_cuts,
+        scale_variations=[tuple(pair) for pair in scale_variations],
+        pdf_variations=members,
     )
 
 

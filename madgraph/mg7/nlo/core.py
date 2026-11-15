@@ -17,7 +17,11 @@ channels of one subprocess (a P* directory of the output) and
 - evaluate(index, x, choice, choice_weight, trick, rng): the NLO weight per
   point, its LO part and its virtual residual (nlo, lo, residual), the
   virtual and the Born of the points with the virtual (virtual, born,
-  evaluated), as SubprocessIntegrand.evaluate of nlo/fks.py,
+  evaluated), as SubprocessIntegrand.evaluate of nlo/fks.py, and with
+  scale_variations, the pairs of factors of mu_R and mu_F of the run card
+  (scale_variations of this module), and pdf_members, the number of
+  members of the PDF set of reweight_PDF (0 without), the NLO weight at each
+  scale variation, then with each member (variations),
 - histogram_runtime(histograms, jets) and histogram_sums(runtime, result,
   jacobian, choice), the weights of the histograms of a batch,
 - name, incoming, beams, energy, born_pdgs, matrix_element_calls() and
@@ -312,6 +316,32 @@ def first(value):
     return value[0] if isinstance(value, (list, tuple)) else value
 
 
+def scale_variations(run_card):
+    """The pairs of factors of mu_R and mu_F of the scale variations of the
+    run card (reweight_scale with rw_rscale and rw_fscale), in the order of
+    reweight_scale of fks_singular.f (mu_F outer, mu_R inner), none without
+    reweight_scale."""
+    if not flag(first(run_card.get("reweight_scale", False))):
+        return []
+
+    def factors(name):
+        value = run_card.get(name, "1.0")
+        if isinstance(value, str):
+            value = value.replace(",", " ").replace("[", " ").replace("]", " ")
+            value = value.split()
+        if not isinstance(value, (list, tuple)):
+            value = [value]
+        return [real(v) for v in value]
+
+    return [(r, f) for f in factors("rw_fscale") for r in factors("rw_rscale")]
+
+
+def pdf_reweight(run_card):
+    """Whether the run card reweights with the members of the PDF set
+    (reweight_PDF, of the first set of lhaid)."""
+    return flag(first(run_card.get("reweight_pdf", False)))
+
+
 def flag(value):
     if isinstance(value, str):
         return value.strip().lower() in ("true", ".true.", "t", "1")
@@ -525,7 +555,13 @@ class Couplings:
     its grid or its table) with the running of alpha_s of pdfwrap.f. Lepton
     beams take alpha_s(m_Z) of the param card, dressed ones that of pdfwrap.f
     of MadFKS (DRESSED_ALPHA_S) and the densities of their leptons (leptons,
-    a DressedLeptons, None for the other beams)."""
+    a DressedLeptons, None for the other beams). With reweight_PDF (only for
+    an LHAPDF set, as MG5aMC demands) members holds the RunningCoupling,
+    the PdfGrid and the prefix of the globals of every member of its set
+    (grids.lhapdf_members), pdf_set its name and error type, as
+    pdf_variations of fks_cross_section takes them."""
+
+    member_prefix = "pdf_member"
 
     def __init__(self, directory, run_card, param_card, context):
         ms = madspace()
@@ -533,7 +569,13 @@ class Couplings:
         output = os.path.dirname(os.path.dirname(os.path.realpath(directory)))
         hadrons = beam_kind(run_card) == "hadrons"
         self.pdf = None
+        self.members, self.pdf_set = [], None
         pdlabel = str(run_card["pdlabel"]).lower()
+        reweight = hadrons and pdf_reweight(run_card)
+        if reweight and pdlabel != "lhapdf":
+            raise ValueError(
+                "nlo.core: reweight_PDF needs the sets of LHAPDF, as in MG5aMC"
+            )
         if hadrons and pdlabel == "lhapdf":
             lhaid = integer(run_card["lhaid"])
             grid, info = grids.lhapdf_set(lhaid)
@@ -571,6 +613,20 @@ class Couplings:
             self.pdf.initialize_globals(context)
         self.alpha_s.initialize_globals(context)
         self.running = ms.RunningCoupling(self.alpha_s)
+        if reweight:
+            pdf_set = grids.lhapdf_members(integer(run_card["lhaid"]))
+            self.pdf_set = dict(name=pdf_set["name"], error_type=pdf_set["error_type"])
+            for member, (path, alpha_s) in enumerate(pdf_set["members"]):
+                prefix = f"{self.member_prefix}{member}"
+                for name in (*grid_names, "alpha_s_logq2", "alpha_s_coefficients"):
+                    if context.global_exists(f"{prefix}.{name}"):
+                        context.delete_global(f"{prefix}.{name}")
+                grid, alpha_s_grid = ms.PdfGrid(path), ms.AlphaSGrid(alpha_s)
+                grid.initialize_globals(context, prefix)
+                alpha_s_grid.initialize_globals(context, prefix)
+                self.members.append(
+                    (ms.RunningCoupling(alpha_s_grid, prefix), grid, prefix)
+                )
         self.leptons = None
         if beam_kind(run_card) == "dressed":
             self.leptons = DressedLeptons(
@@ -599,11 +655,14 @@ class Channel:
 
     def reset(self):
         self.count = 0
-        # the sums of the NLO weight, its LO part and its virtual residual,
-        # and the sums over the iterations of their products about the means
-        # of each iteration
-        self.sums = np.zeros(3)
-        self.covariance = np.zeros((3, 3))
+        # the sums of the NLO weight, its LO part, its virtual residual and the
+        # NLO weight at each scale variation and with each PDF member, and the
+        # sums over the iterations of their products about the means of each
+        # iteration
+        size = 3 + len(getattr(self.integrand, "scale_variations", []))
+        size += getattr(self.integrand, "pdf_members", 0)
+        self.sums = np.zeros(size)
+        self.covariance = np.zeros((size, size))
         self.histograms = None
 
     @property
@@ -617,7 +676,8 @@ class Channel:
         points add to the estimates of the channel, with the variance of
         this iteration, and to its histograms."""
         weights, residuals = [], []
-        count, sums, products = 0, np.zeros(3), np.zeros((3, 3))
+        size = len(self.sums)
+        count, sums, products = 0, np.zeros(size), np.zeros((size, size))
         for start in range(0, points, batch):
             n = min(batch, points - start)
             u = rng.random((n, self.dimension))
@@ -636,7 +696,8 @@ class Channel:
             self.choice.add(choice, nlo / choice_weight)
             if not keep:
                 continue
-            values = np.stack([nlo, lo, residual])
+            variations = result.get("variations", np.zeros((n, 0))) * jacobian[:, None]
+            values = np.vstack([nlo, lo, residual, variations.T])
             count += n
             sums += values.sum(1)
             products += values @ values.T
@@ -663,10 +724,11 @@ class Channel:
         self.std = weights.std()
 
     def result(self, k):
-        """The estimate and its error of the k-th sum (NLO, LO, residual)."""
+        """The estimate and its error of the k-th sum (NLO, LO, residual, then
+        the scale variations and the PDF members)."""
         if self.count == 0:
             return 0.0, 0.0
-        coefficients = np.zeros(3)
+        coefficients = np.zeros(len(self.sums))
         coefficients[k] = 1.0
         return self.combination(coefficients)
 
@@ -675,7 +737,8 @@ class Channel:
         weight, its LO part and its virtual residual on the same points."""
         if self.count == 0:
             return 0.0, 0.0
-        c = np.asarray(coefficients, dtype=float)
+        c = np.zeros(len(self.sums))
+        c[: len(coefficients)] = coefficients
         variance = max(c @ self.covariance @ c, 0.0) / self.count**2
         return c @ self.sums / self.count, math.sqrt(variance)
 
@@ -962,7 +1025,7 @@ class NLORun:
             integrand.close()
 
     def total(self, k):
-        coefficients = np.zeros(3)
+        coefficients = np.zeros(k + 1)
         coefficients[k] = 1.0
         return self.combination(coefficients)
 
@@ -1097,12 +1160,46 @@ class NLORun:
                 sigma, error = self.combination(coefficients, integrand.name)
                 entry[key] = dict(sigma=sigma, error=error)
             subprocesses[integrand.name] = entry
-        return dict(
+        result = dict(
             nlo=dict(sigma=nlo, error=nlo_error),
             lo=dict(sigma=lo, error=lo_error),
             subprocesses=subprocesses,
             unit="GeV" if self.integrands[0].incoming == 1 else "pb",
         )
+        variations = getattr(self.integrands[0], "scale_variations", [])
+        if variations:
+            # the cross section at each pair of factors, and the envelope in
+            # percent of the central one, as MG5aMC prints it
+            entries = []
+            for k, (ren, fact) in enumerate(variations):
+                sigma, error = self.total(3 + k)
+                entries.append(dict(mu_r=ren, mu_f=fact, sigma=sigma, error=error))
+            values = [entry["sigma"] for entry in entries]
+            up = (max(values) / nlo - 1) * 100 if nlo else 0.0
+            down = (1 - min(values) / nlo) * 100 if nlo else 0.0
+            result["scale_variations"] = entries
+            result["scale_uncertainty"] = dict(up=up, down=down)
+        members = getattr(self.integrands[0], "pdf_members", 0)
+        if members:
+            # the cross section with each member and the uncertainty of LHAPDF
+            # in percent of its central value, as MG5aMC prints it
+            first = 3 + len(variations)
+            entries = []
+            for k in range(members):
+                sigma, error = self.total(first + k)
+                entries.append(dict(member=k, sigma=sigma, error=error))
+            pdf_set = self.couplings.pdf_set
+            central, plus, minus = grids.pdf_uncertainty(
+                [entry["sigma"] for entry in entries], pdf_set["error_type"]
+            )
+            result["pdf_variations"] = entries
+            result["pdf_uncertainty"] = dict(
+                pdf_set,
+                central=central,
+                up=abs(plus / central) * 100 if central else 0.0,
+                down=abs(minus / central) * 100 if central else 0.0,
+            )
+        return result
 
     def matrix_element_calls(self):
         return {

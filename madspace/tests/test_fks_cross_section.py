@@ -29,6 +29,7 @@ import pytest
 from madgraph.mg7.nlo.fks import FKSRun, default_histograms, read_histograms
 from madspace_testing import default_context
 from test_fks_couplings import alpha_s_madfks
+from test_nlo_pdlabels import TEST_LHAID, write_test_set
 
 from madspace.nlo import histogram_jet_count
 
@@ -106,6 +107,40 @@ def test_against_mg5amc(path):
         assert abs(pull(ours[order], data[order])) < PULL, (order, ours, data[order])
 
 
+# the references with the scale variations of reweight_scale
+VARIED = [path for path in DATA if "scale_variations" in reference(path)["nlo"]]
+
+
+@needs_outputs
+@pytest.mark.parametrize(
+    "path", VARIED, ids=[os.path.basename(path)[:-5] for path in VARIED]
+)
+def test_scale_variations_against_mg5amc(path):
+    """The cross section at each pair of factors of mu_R and mu_F relative to
+    the central one, against that of the total rate of the histograms of
+    MG5aMC within PULL relative errors of the NLO of both (the ratio of the
+    same points has less), and their envelope."""
+    data = reference(path)
+    ours = fks_run(path).result()
+    theirs = data["nlo"]["scale_variations"]
+    pairs = [(entry["mu_r"], entry["mu_f"]) for entry in ours["scale_variations"]]
+    assert pairs == [(entry["mu_r"], entry["mu_f"]) for entry in theirs]
+    our_central = ours["nlo"]["sigma"]
+    (their_central,) = [e["sigma"] for e in theirs if (e["mu_r"], e["mu_f"]) == (1, 1)]
+    error = math.hypot(
+        ours["nlo"]["error"] / our_central, data["nlo"]["error"] / data["nlo"]["sigma"]
+    )
+    for mine, other in zip(ours["scale_variations"], theirs):
+        ratio = mine["sigma"] / our_central
+        expected = other["sigma"] / their_central
+        assert abs(ratio - expected) < PULL * error * expected, (mine, other)
+    up = (max(e["sigma"] for e in theirs) / their_central - 1) * 100
+    down = (1 - min(e["sigma"] for e in theirs) / their_central) * 100
+    band = ours["scale_uncertainty"]
+    assert abs(band["up"] - up) < PULL * error * 100 * (1 + up / 100)
+    assert abs(band["down"] - down) < PULL * error * 100
+
+
 @needs_outputs
 @pytest.mark.parametrize("path", DATA, ids=IDS)
 def test_info_json(path):
@@ -159,6 +194,51 @@ def test_epem_jj_k_factor():
         np.testing.assert_allclose(
             result["nlo"]["sigma"] / result["lo"]["sigma"], k, rtol=1e-2
         )
+
+
+@needs_outputs
+def test_pdf_variations(tmp_path, monkeypatch):
+    """With reweight_PDF the run gives the cross section with every member
+    of the set on the same points: that of a member with the central
+    densities (those of nn23nlo) is the NLO, that of a member with the
+    densities times f the NLO times f^2, and their uncertainty that of
+    LHAPDF."""
+    (path,) = (p for p in DATA if p.endswith("pp_epem.json"))
+    data = reference(path)
+    factors = [1.0, 1.1, 0.95]
+    directory = write_test_set(str(tmp_path / "lhapdf"), factors)
+    monkeypatch.setenv("LHAPDF_DATA_PATH", directory)
+    run_card = dict(
+        data["run_card"], pdlabel="lhapdf", lhaid=TEST_LHAID, reweight_pdf=True
+    )
+    # the running of alpha_s of the last member differs, that of the others
+    # is the central one
+    run = FKSRun(
+        os.path.join(OUTPUTS, data["output"]),
+        run_card=run_card,
+        param_card=data["param_card"],
+        run_path=str(tmp_path / "run"),
+        seed=4711,
+        accuracy=0.0,
+        grid_points=500,
+        grid_iterations=2,
+        points=500,
+        max_iterations=2,
+    )
+    result = run.run()
+    members = result["pdf_variations"]
+    assert [m["member"] for m in members] == [0, 1, 2]
+    nlo = result["nlo"]["sigma"]
+    np.testing.assert_allclose(members[0]["sigma"], nlo, rtol=1e-12)
+    np.testing.assert_allclose(members[1]["sigma"], 1.21 * nlo, rtol=1e-10)
+    # the alpha_s of the last member changes the NLO part a little
+    assert members[2]["sigma"] == pytest.approx(0.95**2 * nlo, rel=1e-2)
+    band = result["pdf_uncertainty"]
+    assert (band["name"], band["error_type"]) == ("TestSet", "hessian")
+    np.testing.assert_allclose(band["central"], nlo, rtol=1e-12)
+    np.testing.assert_allclose(band["up"], 21.0, rtol=1e-8)
+    expected = (1 - members[2]["sigma"] / nlo) * 100
+    np.testing.assert_allclose(band["down"], expected, rtol=1e-8)
 
 
 def test_histograms_of_run_card(tmp_path):

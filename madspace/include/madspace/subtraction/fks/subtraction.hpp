@@ -1,6 +1,8 @@
 #pragma once
 
 #include <optional>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "madspace/nlo/cuts.hpp"
@@ -601,8 +603,24 @@ private:
  * at the collinear counter-event come as arguments before `flavor_index`:
  * `reference_scale`, `soft_reference_scale` and `collinear_reference_scale`.
  *
+ * With scale variations, pairs of factors @f$(\xi_R, \xi_F)@f$, the cross
+ * section comes also at @f$\xi_R \mu_R@f$ and @f$\xi_F \mu_{F,i}@f$ of each
+ * kinematics, as the reweighting of MadFKS gives it: the couplings and the
+ * luminosities at the scales of each pair, the subtraction with the
+ * factorization scales of its collinear remnants, and the n-body part with
+ * the virtual at @f$\mu_R@f$ (the Ellis-Sexton scale of MadFKS held fixed),
+ * its soft-virtual part plus @f$c_R \log \xi_R^2 + (c_{F,1} + c_{F,2})
+ * \log \xi_F^2@f$ of @ref FKSSoftVirtual. With PDF variations, the
+ * @f$\alpha_s@f$ and the luminosities of the members of a set of PDFs, it
+ * comes with each of them at the scales of the run, as the PDF reweighting of
+ * MadFKS gives it.
+ *
  * **Returns**
  * - those of @ref FKSWeights.
+ * - `scale_variations` – `float`, shape `(batch, k)` – the cross section at
+ *   each of the k scale variations, only with them.
+ * - `pdf_variations` – `float`, shape `(batch, m)` – the cross section with
+ *   each of the m PDF variations, only with them.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -646,6 +664,14 @@ public:
      *                          (for one flavor, by the real flavor), or once
      *                          for the sum over the flavors.
      * @param nbody_cuts        The cuts of the n-body part, if any.
+     * @param scale_variations  Pairs of factors of @f$\mu_R@f$ and
+     *                          @f$\mu_F@f$, the cross section at each of
+     *                          which is the output `scale_variations`.
+     * @param pdf_variations    @f$\alpha_s@f$ and the luminosities of the
+     *                          real emission and of the n-body part of each
+     *                          member of a set of PDFs, the cross section
+     *                          with each of which is the output
+     *                          `pdf_variations`.
      * @throws std::invalid_argument as the other constructor, or if the
      *         luminosities do not have the FKS configurations of the
      *         subtraction, or one sums over the flavors and the other not.
@@ -659,7 +685,10 @@ public:
         const RunningCoupling& running_coupling,
         const FKSLuminosity& luminosity,
         const FKSLuminosity& born_luminosity,
-        const std::optional<NLOCuts>& nbody_cuts = std::nullopt
+        const std::optional<NLOCuts>& nbody_cuts = std::nullopt,
+        const std::vector<std::pair<double, double>>& scale_variations = {},
+        const std::vector<std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>&
+            pdf_variations = {}
     );
     /// The real emission and its counterterms.
     const FKSSubtraction& subtraction() const { return _subtraction; }
@@ -683,6 +712,17 @@ public:
     const std::optional<FKSLuminosity>& born_luminosity() const {
         return _born_luminosity;
     }
+    /// The pairs of factors of @f$\mu_R@f$ and @f$\mu_F@f$ of the scale
+    /// variations, empty for none.
+    const std::vector<std::pair<double, double>>& scale_variations() const {
+        return _scale_variations;
+    }
+    /// @f$\alpha_s@f$ and the luminosities of the real emission and of the
+    /// n-body part of the PDF variations, empty for none.
+    const std::vector<std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>&
+    pdf_variations() const {
+        return _pdf_variations;
+    }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -696,6 +736,9 @@ private:
     std::optional<NLOScale> _scale, _born_scale;
     std::optional<RunningCoupling> _running_coupling;
     std::optional<FKSLuminosity> _luminosity, _born_luminosity;
+    std::vector<std::pair<double, double>> _scale_variations;
+    std::vector<std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>
+        _pdf_variations;
 };
 
 } // namespace madspace

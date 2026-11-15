@@ -54,6 +54,7 @@ from madspace.subtraction.fks import (
     fks_born_flavor_indices,
     fks_cross_section,
     fks_luminosities,
+    fks_soft_virtual,
     underlying_born,
 )
 
@@ -389,6 +390,21 @@ def test_strong_coupling(path, grids):
             (ours,) = evaluate(running, ren)
             expected = [alpha_s_2loop(asmz(path), q) for q in ren]
             np.testing.assert_allclose(ours, expected, rtol=1e-7)
+
+
+def test_strong_coupling_at_low_scales(grids):
+    """RunningCoupling has the running down to 0.5 GeV, where the grids of
+    ALPHAS of MadFKS begin, and so at 1 GeV, the floor of the scales (2 GeV)
+    times a factor 1/2 of a scale variation: below its first node madspace
+    takes alpha_s as zero, which once cut out that region of a run."""
+    _, grid = grids(0.119)
+    scales = np.array([0.51, 0.7, 1.0, 1.42, 2.0])
+    (ours,) = evaluate(ms.RunningCoupling(grid), scales)
+    expected = [alpha_s_madfks(0.119, q) for q in scales]
+    np.testing.assert_allclose(ours, expected, rtol=2e-4)
+    np.testing.assert_allclose(
+        ours, [alpha_s_2loop(0.119, q) for q in scales], rtol=1e-5
+    )
 
 
 @needs_nnpdf
@@ -913,6 +929,205 @@ def test_cross_section_with_user_scale(path, grids):
         )
         for name, value in zip(user.return_types().keys(), outputs):
             np.testing.assert_allclose(value, theirs[name], rtol=1e-14, atol=0)
+
+
+@needs_nnpdf
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_scale_variations(path, grids):
+    """FKSCrossSection with scale variations gives at the factors (1, 1) its
+    cross section, and at (xi_R, xi_F) that with mur_over_ref and
+    muf_over_ref times them where the virtual moves to the Ellis-Sexton scale
+    xi_R mu_R: V' = V + SV(mu_R, mu_F) + c_R log xi_R^2 + (c_F1 + c_F2)
+    log xi_F^2 - SV(xi_R mu_R, xi_F mu_F) with the soft-virtual part SV and
+    its coefficients of FKSSoftVirtual. That is the reweighting of MadFKS,
+    whose virtual stays at the Ellis-Sexton scale of the central scales."""
+    pdf_grid, alpha_s_grid = grids(asmz(path))
+    running = ms.RunningCoupling(alpha_s_grid)
+    pairs = [(1.0, 1.0), (2.0, 1.0), (0.5, 1.0), (1.0, 2.0), (1.0, 0.5), (2.0, 0.5)]
+    for channel in channels(path):
+        hadrons = beams(channel) != (0, 0)
+        scales = scale_parameters(channel.run_card)
+        common = dict(
+            running_coupling=running,
+            pdf_grid=pdf_grid if hadrons else None,
+            beams=beams(channel),
+            sum_flavors=True,
+            n_f=channel.n_f,
+            cuts=channel.cuts(),
+        )
+        born, configurations = channel.born, channel.configurations
+        varied = fks_cross_section(
+            born, configurations, scales=scales, scale_variations=pairs, **common
+        )
+        assert varied.scale_variations() == pairs
+        ours = run_with_couplings(channel, varied)
+        variations = ours["scale_variations"]
+        assert variations.shape == (len(channel.points), len(pairs))
+        np.testing.assert_array_equal(variations[:, 0], ours["cross_section"])
+        # the soft-virtual part at the central scales and at those of a pair
+        out, index = channel.event
+        inputs = dict(channel.inputs)
+        inputs.update({n: out[n] for names in FRACTIONS.values() for n in names})
+        b = len(configurations["orders"]["born"])
+        ren, fact1, fact2 = madspace_scales(channel)["born"]
+        soft_virtual = fks_soft_virtual(born, configurations, n_f=channel.n_f)
+        count = len(index)
+
+        def at(ren_factor, fact_factor):
+            return evaluate(
+                soft_virtual,
+                out["born_momenta"],
+                inputs["born"][:, :b],
+                inputs["color_correlated"],
+                np.full(count, 1 / (4 * math.pi)),
+                inputs["alpha"],
+                ren * ren_factor,
+                fact1 * fact_factor,
+                fact2 * fact_factor,
+            )
+
+        central, ren_coefficient, fact_coefficients = at(1.0, 1.0)
+        for k, (ren_factor, fact_factor) in enumerate(pairs):
+            moved = fks_cross_section(
+                born,
+                configurations,
+                scales=dict(
+                    scales,
+                    mur_over_ref=scales["mur_over_ref"] * ren_factor,
+                    muf_over_ref=scales["muf_over_ref"] * fact_factor,
+                ),
+                **common,
+            )
+            shifted, _, _ = at(ren_factor, fact_factor)
+            virtual = inputs["virtual"] + central - shifted
+            virtual = virtual + ren_coefficient * math.log(ren_factor**2)
+            virtual = virtual + fact_coefficients.sum(-1) * math.log(fact_factor**2)
+            names = [n for n in moved.arg_types().keys() if n != "fks_index"]
+            values = dict(inputs, virtual=virtual)
+            theirs, *_ = evaluate(moved, *[values[n] for n in names], fks_index=index)
+            scale = np.abs(theirs).max()
+            np.testing.assert_allclose(
+                variations[:, k], theirs, rtol=1e-11, atol=1e-11 * scale
+            )
+
+
+def scaled_lhapdf_grid(source, path, factor, header=()):
+    """The LHAPDF grid source with its densities times factor, and the lines
+    of header (keys of a member) in place of those of its own header."""
+    with open(source) as f:
+        lines = f.read().splitlines()
+    keys = {line.split(":")[0] for line in header}
+    out, block = list(header), None
+    for line in lines:
+        if line.strip() == "---":
+            block = 0
+        elif block is None:
+            if line.split(":")[0] in keys:
+                continue
+        else:
+            # the nodes in x and Q and the flavors, then the densities
+            block += 1
+            if block > 3:
+                line = " ".join(f"{float(v) * factor:.17e}" for v in line.split())
+        out.append(line)
+    with open(path, "w") as f:
+        f.write("\n".join(out) + "\n")
+
+
+def delete_prefixed_globals(context, prefixes):
+    for prefix in prefixes:
+        for name in GLOBALS:
+            if context.global_exists(f"{prefix}.{name}"):
+                context.delete_global(f"{prefix}.{name}")
+
+
+@needs_nnpdf
+@pytest.mark.parametrize("path", DATA, ids=IDS)
+def test_pdf_variations(path, grids, tmp_path):
+    """FKSCrossSection with PDF variations gives with a member of the central
+    densities and alpha_s its cross section, with the densities times 1.1
+    the cross section times 1.21 (every part goes with the luminosity), and
+    with another running of alpha_s the cross section with that running,
+    each member on the globals of its own prefix."""
+    hadronic = [c for c in channels(path) if all(abs(b) == 1 for b in beams(c))]
+    if not hadronic:
+        pytest.skip("lepton beams have no PDF variations")
+    pdf_grid, alpha_s_grid = grids(asmz(path))
+    running = ms.RunningCoupling(alpha_s_grid)
+    central = str(tmp_path / "central.dat")
+    write_lhapdf_grid(central)
+    scaled = str(tmp_path / "scaled.dat")
+    scaled_lhapdf_grid(central, scaled, 1.1)
+    other = str(tmp_path / "alpha_s.info")
+    write_alpha_s_grid(other, asmz(path) + 0.005)
+    grids_of = {
+        "member_a": (pdf_grid, alpha_s_grid),
+        "member_b": (ms.PdfGrid(scaled), alpha_s_grid),
+        "member_c": (pdf_grid, ms.AlphaSGrid(other)),
+    }
+    context = default_context()
+    delete_prefixed_globals(context, grids_of)
+    try:
+        members = []
+        for prefix, (grid, alpha_s) in grids_of.items():
+            grid.initialize_globals(context, prefix)
+            alpha_s.initialize_globals(context, prefix)
+            members.append((ms.RunningCoupling(alpha_s, prefix), grid, prefix))
+        for channel in hadronic:
+            common = dict(
+                pdf_grid=pdf_grid,
+                beams=beams(channel),
+                sum_flavors=True,
+                n_f=channel.n_f,
+                cuts=channel.cuts(),
+            )
+            born, configurations = channel.born, channel.configurations
+            scales = scale_parameters(channel.run_card)
+            varied = fks_cross_section(
+                born,
+                configurations,
+                scales=scales,
+                running_coupling=running,
+                pdf_variations=members,
+                scale_variations=[(2.0, 0.5)],
+                **common,
+            )
+            assert varied.pdf_variation_count() == len(members)
+            ours = run_with_couplings(channel, varied)
+            variations = ours["pdf_variations"]
+            sigma = ours["cross_section"]
+            assert variations.shape == (len(channel.points), len(members))
+            assert ours["scale_variations"].shape == (len(channel.points), 1)
+            atol = 1e-13 * np.abs(sigma).max()
+            np.testing.assert_allclose(variations[:, 0], sigma, rtol=1e-14, atol=0)
+            np.testing.assert_allclose(
+                variations[:, 1], 1.21 * sigma, rtol=1e-12, atol=atol
+            )
+            with_other = fks_cross_section(
+                born,
+                configurations,
+                scales=scales,
+                running_coupling=members[2][0],
+                **common,
+            )
+            theirs = run_with_couplings(channel, with_other)["cross_section"]
+            atol = 1e-13 * np.abs(theirs).max()
+            np.testing.assert_allclose(variations[:, 2], theirs, rtol=1e-13, atol=atol)
+            if np.abs(sigma).max() > 0:
+                assert not np.allclose(theirs, sigma, rtol=1e-3)
+        with pytest.raises(ValueError, match="need scales"):
+            fks_cross_section(born, configurations, pdf_variations=members)
+        with pytest.raises(ValueError, match="one set for both beams"):
+            fks_cross_section(
+                born,
+                configurations,
+                scales=scales,
+                running_coupling=running,
+                pdf_variations=members,
+                **dict(common, pdf_grid2=pdf_grid),
+            )
+    finally:
+        delete_prefixed_globals(context, grids_of)
 
 
 def test_scale_errors():

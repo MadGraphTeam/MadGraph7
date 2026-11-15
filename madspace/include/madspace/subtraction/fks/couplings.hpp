@@ -84,6 +84,8 @@ public:
      *                     takes. Not with a grid.
      * @param lepton_pdgs  The PDG codes of the leptons of the two beams, the
      *                     flavor of @p lepton_luminosity.
+     * @param pdf_prefix   Prefix of the global names of @p pdf_grid, for the
+     *                     members of a set of PDFs beside its central one.
      * @throws std::invalid_argument without configurations, with a
      *         configuration without flavors or a flavor that is not a pair,
      *         with factors that do not match the flavors, with @p pdf_grid2
@@ -100,7 +102,8 @@ public:
         bool sum_flavors = false,
         const nested_vector2<double>& factors = {},
         const std::optional<EELuminosity>& lepton_luminosity = std::nullopt,
-        const std::array<int, 2>& lepton_pdgs = {0, 0}
+        const std::array<int, 2>& lepton_pdgs = {0, 0},
+        const std::string& pdf_prefix = ""
     );
     /// Number of FKS configurations.
     std::size_t configuration_count() const { return _positions.size(); }
