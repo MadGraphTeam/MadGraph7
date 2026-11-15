@@ -107,7 +107,7 @@ else
  if(epoch_replay_previous(1)%nt.ne.64.or.epoch_replay_previous(1)%nf.ne.2)stop 516
  f=29d0;vtot=13d0;etot=17d0;HwU_values=19d0;ans=23d0;unc=31d0
  rand=.13d0;icell=2;ncell=4;sl_current=1
- online_ordinary_calls=64;online_probes=1;online_reused_nodes=16
+ online_ordinary_calls=64;online_probes=1
  if(trim(action).eq.'runtime_empty')then
   call sl_epoch_replay_fit_epoch()
   if(online_slots(1)%gx.ne.1.or.online_slots(1)%gy.ne.1.or.unified_slots(1)%fit_status.ne.0)stop 517
@@ -123,8 +123,6 @@ else
  sl_entries(1)%ntrain=1;sl_entries(1)%nflavours=1
  allocate(sl_entries(1)%b(1,16,1),sl_entries(1)%r(1,16,2,1))
  sl_entries(1)%b=-1d0;sl_entries(1)%r=0d0
- allocate(online_slots(1)%cells(4,16,1),online_slots(1)%channels(1),online_slots(1)%sample_ids(1))
- online_slots(1)%cells=1;online_slots(1)%channels=1;online_slots(1)%sample_ids=64
  call random_seed(size=nseed);allocate(seed_a(nseed),seed_b(nseed));call random_seed(get=seed_a)
  call sl_epoch_replay_fit_epoch()
  call random_seed(get=seed_b)
@@ -135,15 +133,15 @@ else
  if(any(sl_entries(1)%b.ne.-1d0).or.any(sl_entries(1)%r.ne.0d0))stop 524
  if(any(f.ne.29d0).or.any(vtot.ne.13d0).or.any(etot.ne.17d0).or.any(HwU_values.ne.19d0))stop 525
  if(any(ans.ne.23d0).or.any(unc.ne.31d0).or.any(rand.ne..13d0).or.any(icell.ne.2))stop 526
- if(any(nhits.ne.0).or.online_ordinary_calls.ne.64.or.online_probes.ne.1.or. &
-      online_reused_nodes.ne.16)stop 527
- if(any(abs(xacc(1,1:4,1)-256d0).gt.1d-12))stop 528
+ if(any(nhits.ne.0).or.online_ordinary_calls.ne.64.or.online_probes.ne.1)stop 527
+ ! Probes never feed the grid.
+ if(any(xacc.ne.0d0))stop 528
  if(trim(action).eq.'empty_intervening')then
   if(online_slots(1)%loss_before.ne.16d0.or.online_slots(1)%loss_after.ne.16d0)stop 529
   print *,'PASS empty intervening epoch removes stale history exactly'
  else
   if(online_slots(1)%loss_before.ne.48d0.or.online_slots(1)%loss_after.ne.48d0)stop 530
-  print *,'PASS mixed diagnostic-only loss with CURRENT support/counters/proxy and ordinary isolation'
+  print *,'PASS mixed diagnostic-only loss with CURRENT support/counters and grid/ordinary isolation'
  endif
 endif
 end program
@@ -181,7 +179,7 @@ class TestEpochReplayFortran(unittest.TestCase):
     def test_scaled_current_first_canonical_padding_and_immutability(self):self.run_case('normal')
     def test_empty_previous_exact_maps_losses_and_traces(self):self.run_case('empty_previous')
     def test_empty_current_does_not_replay_old_observations(self):self.run_case('empty_current')
-    def test_current_support_not_increased_and_old_points_never_update_proxy_or_integral(self):self.run_case('runtime')
+    def test_current_support_not_increased_and_probes_never_update_grid_or_integral(self):self.run_case('runtime')
     def test_positive_history_cannot_fit_empty_current_epoch(self):self.run_case('runtime_empty')
     def test_empty_intervening_epoch_clears_history(self):self.run_case('empty_intervening')
     def test_nonfinite_and_incompatible_shapes_rejected(self):

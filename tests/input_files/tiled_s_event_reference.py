@@ -8,8 +8,8 @@ max(-(B(node) + sum_s R_s(map_s(node))), 0).
 
 The audit replays the native10 epoch archive (sector_learning_online.bin) and
 the frozen SCL10 table in mint_grids: static gauges, capacity/support policy,
-every phase and assignment candidate trace, the strict TRAIN-loss selection,
-the half-weight immediate-previous replay bank and the S-only grid proxy.
+every phase and assignment candidate trace, the strict TRAIN-loss selection
+and the half-weight immediate-previous replay bank.
 Assignment optimality is checked with a dual (potential) certificate. Loss
 comparisons allow round-off, since the producer may sum in another order.
 """
@@ -20,7 +20,7 @@ import math
 import struct
 
 MAGIC = 73110620
-VERSION = 11  # layout of the archive and the SCL10 table
+VERSION = 12  # layout of the archive and the SCL10 table
 COEFFICIENT = .5
 GEOMETRIES = ((2, 2, 1), (4, 2, 1), (2, 4, 1), (4, 4, 1))
 SHAPES = ((1, 1), (2, 2), (4, 2), (2, 4), (4, 4))
@@ -211,12 +211,6 @@ def _sector_objectives(b, r, maps, sector, columns):
                     answer += max(-(v + tile[f]), 0.)
         results.append(answer)
     return results
-
-
-def grid_proxy(b, r, maps):
-    """S-only grid feed per orbit and node: 16*sum_F |B + sum_s R_s(map)|."""
-    maps = permutation(maps)
-    return [[_ordered_sum(16. * abs(v) for v in node) for node in orbit] for orbit in _base(b, r, maps)]
 
 
 # ------------------------------------------------- assignment with certificate
@@ -567,38 +561,6 @@ def fit_epoch(b, r, previous_b, previous_r, current, q, oldshape, epoch):
                 bank=value, before=before, after=chosen.after)
 
 
-def reassemble(entries, shape, map_key='after'):
-    """S-only proxy and hits from probe rows, in global sample order."""
-    if map_key not in ('before', 'after') or len(shape) != 3 or min(shape) < 1 or shape[0] < 2:
-        raise ValueError('Invalid map selector/accumulator shape')
-    n, ndim, nchannels = map(int, shape)
-    acc, hits, ordered, seen = Array3(shape), Array3((n - 1, ndim, nchannels), fill=0), [], set()
-    for entry in entries:
-        nt = int(entry['nt'])
-        if not nt:
-            continue
-        cells, channels, ids = entry['cells'], entry['channels'], entry['sample_ids']
-        if len(cells) != nt or len(channels) != nt or len(ids) != nt or any(
-                len(c) != 16 or any(len(node) != ndim for node in c) for c in cells):
-            raise ValueError('Invalid original cell/channel/sample shapes')
-        if (any(not 1 <= x < n for c in cells for node in c for x in node) or
-                any(not 0 <= c < nchannels for c in channels) or min(ids) < 1):
-            raise ValueError('Original cell/channel/sample out of range')
-        proxy = grid_proxy(entry['b'], entry['r'], entry[map_key])
-        for i, sample in enumerate(ids):
-            if sample in seen:
-                raise ValueError('Repeated global sample ID across slots')
-            seen.add(sample)
-            ordered.append((sample, cells[i], channels[i], proxy[i]))
-    for _, cells, channel, proxy in sorted(ordered, key=lambda row: row[0]):
-        for node in range(16):
-            for dim in range(ndim):
-                cell = cells[node][dim]
-                acc[cell, dim, channel] += proxy[node]
-                hits[cell - 1, dim, channel] += 1
-    return acc, hits
-
-
 # ------------------------------------------------------- native10 reader
 
 class _Reader:
@@ -697,8 +659,8 @@ def read_archive(path):
         raise ValueError('Invalid epoch archive magic/native int32 representation')
     reader, records, footer = _Reader(payload, endian), [], False
     names = ('version', 'mode', 'epoch', 'npre', 'npost', 'ndim', 'nchans', 'nentries',
-             'ordinary', 'probes', 'reused', 'rejections')
-    counters = ('ordinary', 'probes', 'reused', 'rejections')
+             'ordinary', 'probes', 'rejections')
+    counters = ('ordinary', 'probes', 'rejections')
     while reader.offset < len(payload):
         magic = reader.ints(1)[0]
         if magic == -MAGIC:
@@ -706,15 +668,14 @@ def read_archive(path):
             break
         if magic != MAGIC:
             raise ValueError('Corrupt epoch record marker')
-        row = dict(zip(names, reader.ints(12)))
+        row = dict(zip(names, reader.ints(11)))
         if row['version'] != VERSION:
             raise ValueError('Epoch archive from another code version; rerun MINT0')
         if (row['mode'] != 29 or row['epoch'] < 1 or
                 not 4 <= row['npre'] <= 10000 or not 4 <= row['npost'] <= 10000 or
                 row['npre'] % 4 or row['npost'] % 4 or not 3 <= row['ndim'] <= 100 or
                 not 1 <= row['nchans'] <= 10000 or not 1 <= row['nentries'] <= 10000 or
-                min(row[k] for k in counters) < 0 or row['rejections'] > row['probes'] or
-                row['reused'] != 16 * (row['probes'] - row['rejections'])):
+                min(row[k] for k in counters) < 0 or row['rejections'] > row['probes']):
             raise ValueError('Unsupported epoch header/counts')
         row['cpu'] = reader.doubles(4)
         if not _finite(row['cpu']) or min(row['cpu']) < 0.:
@@ -724,9 +685,8 @@ def read_archive(path):
         row['grid_after'] = Array3((row['npost'] + 1, d, c), reader.doubles((row['npost'] + 1) * d * c))
         _grid(row['grid_before'])
         _grid(row['grid_after'])
-        row['acc'] = {k: Array3((n + 1, d, c), reader.doubles((n + 1) * d * c))
-                      for k in ('base', 'total', 'ordinary', 'proxy')}
-        row['hits'] = {k: Array3((n, d, c), reader.ints(n * d * c)) for k in ('base', 'total', 'ordinary', 'proxy')}
+        row['acc'] = {k: Array3((n + 1, d, c), reader.doubles((n + 1) * d * c)) for k in ('base', 'total', 'ordinary')}
+        row['hits'] = {k: Array3((n, d, c), reader.ints(n * d * c)) for k in ('base', 'total', 'ordinary')}
         if (any(not _finite(a.data) or min(a.data) < 0. for a in row['acc'].values()) or
                 any(min(a.data) < 0 for a in row['hits'].values())):
             raise ValueError('Nonfinite/negative grid accumulation')
@@ -760,19 +720,8 @@ def read_archive(path):
                 entry['r'] = [[[[fr[f + nf * (node + 16 * (s + ns * o))] for f in range(nf)] for node in range(16)]
                                for s in range(ns)] for o in range(nt)]
                 arrays(entry['b'], entry['r'])
-                cells = reader.ints(d * 16 * nt)
-                entry['cells'] = [[[cells[x + d * (node + 16 * o)] for x in range(d)] for node in range(16)]
-                                  for o in range(nt)]
-                entry['channels'] = [x - 1 for x in reader.ints(nt)]
-                entry['sample_ids'] = reader.ints(nt)
-                ids = entry['sample_ids']
-                if (any(not 1 <= x <= n for cell in entry['cells'] for node in cell for x in node) or
-                        any(not 0 <= x < c for x in entry['channels']) or
-                        any(b <= a for a, b in zip(ids, ids[1:])) or min(ids) < 64 or
-                        any(x % 16 for x in ids) or max(ids) > row['ordinary']):
-                    raise ValueError('Invalid original probe cells/channels/sample IDs')
             else:
-                entry['b'], entry['r'], entry['cells'], entry['channels'], entry['sample_ids'] = [], [], [], [], []
+                entry['b'], entry['r'] = [], []
             entries.append(entry)
         if len({e['slot'] for e in entries}) != len(entries):
             raise ValueError('Duplicate static slot')
@@ -798,18 +747,17 @@ def read_table(path):
     # The version comes first: another version may have another layout.
     if lines[0][2:3] != [str(VERSION)]:
         raise ValueError('SCL10 table from another code version; rerun MINT0')
-    if len(lines[0]) != 19:
+    if len(lines[0]) != 18:
         raise ValueError('Malformed SCL10 header')
-    names = ('version', 'mode', 'nentries', 'nint', 'ndim', 'nchans', 'epoch', 'ordinary', 'probes', 'reused',
+    names = ('version', 'mode', 'nentries', 'nint', 'ndim', 'nchans', 'epoch', 'ordinary', 'probes',
              'rejections', 'warmup', 'stride', 'gauge_version', 'phase_passes', 'tile_passes',
              'selection_version')
     result = dict(zip(names, map(int, lines[0][2:])))
     if (result['mode'] != 29 or
             min(result[k] for k in ('nentries', 'nint', 'ndim', 'nchans', 'epoch')) < 1 or
             result['ndim'] < 3 or result['nint'] % 4 or
-            min(result[k] for k in ('ordinary', 'probes', 'reused', 'rejections')) < 0 or
+            min(result[k] for k in ('ordinary', 'probes', 'rejections')) < 0 or
             result['rejections'] > result['probes'] or
-            result['reused'] != 16 * (result['probes'] - result['rejections']) or
             (result['warmup'], result['stride']) != (64, 16)):
         raise ValueError('Unsupported SCL10 header/counts')
     if tuple(result[k] for k in ('gauge_version', 'phase_passes', 'tile_passes', 'selection_version')) != (1, 3, 3, 1):
@@ -1049,7 +997,7 @@ def audit_archive(path, table_path, *, expected_budget=None):
     if expected_budget is not None and table['budget'] != expected_budget:
         raise ValueError('SCL10 budget differs from the runtime card')
     previous, slots, reports = None, {}, []
-    totals = dict(ordinary=0, probes=0, reused=0, rejections=0)
+    totals = dict(ordinary=0, probes=0, rejections=0)
     for index, record in enumerate(archive['records']):
         if record['epoch'] != len(reports) + 1:
             raise ValueError('Epoch sequence differs')
@@ -1064,17 +1012,16 @@ def audit_archive(path, table_path, *, expected_budget=None):
         if sum(e['nt'] for e in record['entries']) != delta['probes'] - delta['rejections']:
             raise ValueError('Orbit coverage differs from probe/rejection counts')
         acc, hits = record['acc'], record['hits']
-        _close(acc['total'], [x + y + z for x, y, z in zip(acc['base'].data, acc['ordinary'].data, acc['proxy'].data)],
+        # Ordinary points alone feed the grid; probes add nothing to it.
+        _close(acc['total'], [x + y for x, y in zip(acc['base'].data, acc['ordinary'].data)],
                'Float grid accounting differs')
-        if hits['total'].data != [x + y + z for x, y, z in zip(hits['base'].data, hits['ordinary'].data, hits['proxy'].data)]:
+        if hits['total'].data != [x + y for x, y in zip(hits['base'].data, hits['ordinary'].data)]:
             raise ValueError('Hit accounting differs')
         n, d, c = hits['ordinary'].shape
         # Each ordinary point is recorded once per dimension, in its own channel.
         for j in range(d):
             if sum(hits['ordinary'][i, j, k] for i in range(n) for k in range(c)) != delta['ordinary']:
                 raise ValueError('Ordinary point count differs from grid hits')
-            if sum(hits['proxy'][i, j, k] for i in range(n) for k in range(c)) != delta['reused']:
-                raise ValueError('Reused-node total differs from grid hits')
         if previous is not None and {e['slot'] for e in record['entries']} != set(slots):
             raise ValueError('Registered slot coverage changed or omitted a slot')
         entry_reports = []
@@ -1090,25 +1037,13 @@ def audit_archive(path, table_path, *, expected_budget=None):
                 raise ValueError('New slot must start at identity')
             if e['total_samples'] != (prior['total_samples'] if prior else 0) + e['nt']:
                 raise ValueError('Per-slot sample accounting differs')
-            if e['nt'] and min(e['sample_ids']) <= totals['ordinary']:
-                raise ValueError('Fit reuses observations from a previous epoch')
             history = immediate_previous(archive['records'], index, e['slot'])
             compatible(e, history)
             fit_bank = bank(e['b'], e['r'], history['b'] if history else None, history['r'] if history else None)
             before, after = bank_objective(fit_bank, e['before']), bank_objective(fit_bank, e['after'])
             _close(e['diagnostics'][:2], [before, after], 'Reported mixed current/prior TRAIN loss differs')
-            # The fit includes history; support and proxy use CURRENT probes only.
+            # The fit includes history; its support uses CURRENT probes only.
             replay = _audit_fit(dict(e, b=fit_bank.b, r=fit_bank.r), record['epoch'])
-            stride = record['npre'] // 4
-            for cells in e['cells']:
-                first = cells[0]
-                for node, cell in enumerate(cells):
-                    if cell[:-3] != first[:-3] or cell[-1] != first[-1]:
-                        raise ValueError('Probe changed Born/phi cell within the 441 orbit')
-                    if (cell[-3] != first[-3] + (node // 4) * stride or cell[-2] != first[-2] + (node % 4) * stride):
-                        raise ValueError('Raw441 node order/cell strata differ')
-                if not 1 <= first[-3] <= stride or not 1 <= first[-2] <= stride:
-                    raise ValueError('Raw441 base cell outside its stratum')
             entry_reports.append(dict(
                 slot=e['slot'], training_orbits=e['nt'], fit_current_orbits=fit_bank.current_n,
                 fit_previous_orbits=fit_bank.previous_n, fit_previous_scale=fit_bank.previous_scale,
@@ -1117,15 +1052,11 @@ def audit_archive(path, table_path, *, expected_budget=None):
                 loss_before=before, loss_after=after, trace_audit=replay, alias_gauge=e['alias_gauge'],
                 quarter_codes=e['q']))
             slots[e['slot']] = e
-        expected_acc, expected_hits = reassemble(record['entries'], acc['proxy'].shape, 'after')
-        _close(expected_acc, acc['proxy'], 'Reused S-only grid proxy differs')
-        if expected_hits.data != hits['proxy'].data:
-            raise ValueError('Proxy grid hits differ')
         reports.append(dict(epoch=record['epoch'], ordinary_calls=delta['ordinary'], probes=delta['probes'],
-                            reused_nodes=delta['reused'], probe_rejections=delta['rejections'], slots=entry_reports))
+                            probe_rejections=delta['rejections'], slots=entry_reports))
         totals, previous = {key: record[key] for key in totals}, record
     final = archive['records'][-1]
-    for key in ('epoch', 'ordinary', 'probes', 'reused', 'rejections', 'nentries'):
+    for key in ('epoch', 'ordinary', 'probes', 'rejections', 'nentries'):
         if table[key] != final[key]:
             raise ValueError('Final SCL10 counters differ from native epochs')
     if table['grid'].data != final['grid_after'].data or set(table['entries']) != set(slots):

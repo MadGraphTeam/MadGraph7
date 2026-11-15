@@ -209,7 +209,7 @@ module mint_module
   ! Fixed method tag stored in the native10 archive and the SCL10 table.
   integer,parameter,private :: sl_method_id=29
   ! Layout version of that archive and table; an older table needs a new MINT0.
-  integer,parameter,private :: sl_format_version=11
+  integer,parameter,private :: sl_format_version=12
   type,private :: sector_learning_entry
      integer :: slot=0,ntrain=0,nflavours=0
      integer,allocatable :: ids(:),providers(:),pdgs(:,:),groups(:)
@@ -218,8 +218,8 @@ module mint_module
   end type
   type(sector_learning_entry),allocatable,private :: sl_entries(:)
   ! True only while a MINT0 learning probe evaluates its (4,4,1) folds.
-  ! The probe runs in MINT0 (imode=0) but loops over folds, adds no grid
-  ! hits of its own and leaves the MC-integer and surrogate fits alone.
+  ! The probe runs in MINT0 (imode=0) but loops over folds and leaves the
+  ! grid, the MC-integer and the surrogate fits alone.
   logical,public :: sector_learning_collect=.false.
   ! FKSSectorLearning as applied to this run: set by the MC@NLO driver for
   ! complete (abrv=all) runs; off at LO and at fixed order.
@@ -259,24 +259,22 @@ module mint_module
   end type
   type(epoch_replay_bank_entry),allocatable,private :: epoch_replay_previous(:)
 
-  ! Online maps: epoch-local raw441 probes; ordinary points alone enter
-  ! integral/error sums. Probe reuse is an explicitly S-only grid proxy.
+  ! Online maps: epoch-local raw441 probes; ordinary points alone enter the
+  ! grid and the integral/error sums.
   type,private :: online_slot_entry
      integer :: gx=1,gy=1,oldgx=1,oldgy=1,total_samples=0
-     integer,allocatable :: before(:,:),cells(:,:,:),channels(:),sample_ids(:)
+     integer,allocatable :: before(:,:)
      double precision :: loss_before=0d0,loss_after=0d0,alternative_x=0d0,alternative_y=0d0
   end type
   type(online_slot_entry),allocatable,private :: online_slots(:)
-  integer,private :: online_ordinary_calls=0,online_probes=0,online_reused_nodes=0
+  integer,private :: online_ordinary_calls=0,online_probes=0
   integer,private :: online_epoch=0,online_nint_before=0,online_unit=0,online_record_rejections=0
-  integer,private :: online_probe_cells(ndimmax,sl_nodes)=0
   double precision,private :: online_ordinary_cpu=0d0,online_probe_cpu=0d0,online_fit_cpu=0d0
   double precision,private :: online_write_cpu=0d0,online_extra_cpu=0d0,online_clock=0d0
   double precision,private :: online_budget=.20d0
   double precision,allocatable,private :: online_grid_before(:,:,:),online_base_acc(:,:,:)
-  double precision,allocatable,private :: online_ordinary_acc(:,:,:),online_proxy_acc(:,:,:),online_total_acc(:,:,:)
-  integer,allocatable,private :: online_base_hits(:,:,:),online_ordinary_hits(:,:,:)
-  integer,allocatable,private :: online_proxy_hits(:,:,:),online_total_hits(:,:,:)
+  double precision,allocatable,private :: online_ordinary_acc(:,:,:),online_total_acc(:,:,:)
+  integer,allocatable,private :: online_base_hits(:,:,:),online_ordinary_hits(:,:,:),online_total_hits(:,:,:)
   double precision, dimension(0:nintervals,ndimmax) :: xgrid_new
 
 ! Common blocks used elsewhere in the code
@@ -1019,74 +1017,6 @@ contains
     if(any(expected.ne.groups))error stop 'Saved unified canonical groups differ'
   end subroutine sl_unified_check_groups
 
-  double precision function sl_node_proxy(b,r,permutations,node,nf,ns) result(proxy)
-    ! S-only grid feed of one probe node: the Born term stays at its input
-    ! node, each sector's radiation value follows its mapped target tile.
-    double precision,intent(in) :: b(:,:),r(:,:,:)
-    integer,intent(in) :: permutations(:,:),node,nf,ns
-    integer :: flavour,s
-    double precision :: value
-    proxy=0d0
-    do flavour=1,nf
-       value=b(flavour,node)
-       do s=1,ns
-          value=value+r(flavour,permutations(node,s),s)
-       enddo
-       proxy=proxy+dble(sl_nodes)*abs(value)
-    enddo
-  end function sl_node_proxy
-
-  subroutine sl_postfit_reassemble_proxy()
-    use,intrinsic :: ieee_arithmetic,only:ieee_is_finite
-    integer :: i,entry,sample,number,nf,ns,node,d,cell,channel,minimum,previous,total
-    integer,allocatable :: next_sample(:)
-    double precision,allocatable :: replacement(:,:,:)
-    double precision :: proxy
-    if(.not.allocated(sl_entries))return
-    total=sum(sl_entries%ntrain)
-    if(total.eq.0)return
-    ! Earlier carried history and ordinary samples are retained. Only this
-    ! epoch's S-only probe feed changes from its old map to its selected map.
-    allocate(replacement(0:nint_used,ndim,nchans),next_sample(size(sl_entries)))
-    replacement=0d0;next_sample=1;previous=-1
-    ! Merge the per-slot ordered lists: preserve actual global probe order
-    ! without allocating a dense array indexed by all ordinary calls.
-    do sample=1,total
-       entry=0;minimum=huge(1)
-       do i=1,size(sl_entries)
-          if(next_sample(i).gt.sl_entries(i)%ntrain)cycle
-          if(.not.allocated(online_slots(i)%sample_ids))error stop 'Missing postfit probe IDs'
-          if(online_slots(i)%sample_ids(next_sample(i)).lt.minimum)then
-             minimum=online_slots(i)%sample_ids(next_sample(i));entry=i
-          endif
-       enddo
-       if(entry.eq.0.or.minimum.le.previous)error stop 'Invalid postfit global probe order'
-       previous=minimum;number=next_sample(entry)
-       nf=sl_entries(entry)%nflavours;ns=size(sl_entries(entry)%ids)
-       channel=online_slots(entry)%channels(number)
-       if(nf.lt.1.or.channel.lt.1.or.channel.gt.nchans)error stop 'Invalid postfit probe support'
-       do node=1,sl_nodes
-          proxy=sl_node_proxy(sl_entries(entry)%b(:,:,number),sl_entries(entry)%r(:,:,:,number), &
-               sl_entries(entry)%permutations,node,nf,ns)
-          if(.not.ieee_is_finite(proxy))error stop 'Nonfinite postfit S-only proxy'
-          do d=1,ndim
-             cell=online_slots(entry)%cells(d,node,number)
-             if(cell.lt.1.or.cell.gt.nint_used)error stop 'Invalid original postfit probe cell'
-             replacement(cell,d,channel)=replacement(cell,d,channel)+proxy
-          enddo
-       enddo
-       next_sample(entry)=next_sample(entry)+1
-    enddo
-    ! Replace, rather than add, so repeated assembly is idempotent. Hit and
-    ! reused-node counters are unchanged, as are all physical moment sums.
-    xacc(0:nint_used,1:ndim,1:nchans)=xacc(0:nint_used,1:ndim,1:nchans)-online_proxy_acc+replacement
-    online_proxy_acc=replacement
-    if(sector_learning_archive)then
-       online_total_acc=xacc(0:nint_used,1:ndim,1:nchans)
-       online_total_hits=nhits(1:nint_used,1:ndim,1:nchans)
-    endif
-  end subroutine sl_postfit_reassemble_proxy
-
   subroutine sector_learning_epoch_replay_bank(b,r,previous_b,previous_r,fit_b,fit_r)
     use,intrinsic :: ieee_arithmetic,only:ieee_is_finite
     double precision,intent(in) :: b(:,:,:),r(:,:,:,:),previous_b(:,:,:),previous_r(:,:,:,:)
@@ -1144,27 +1074,22 @@ contains
     if(online_epoch.eq.0)then
        online_budget=FKSSectorLearningBudget
        write(*,*)'ONLINE MINT0: mixed-map ABS summaries are TRAINING heuristics; MINT1 recomputes final normalization.'
-       write(*,*)'ONLINE policy: (4,4,1) probes; S-only grid proxy; CPU fraction:',online_budget,' stride16 warmup64.'
+       write(*,*)'ONLINE policy: (4,4,1) probes; CPU fraction:',online_budget,' stride16 warmup64.'
        if(sector_learning_archive)open(newunit=online_unit,file='sector_learning_online.bin', &
             access='stream',form='unformatted',status='replace')
     endif
     online_epoch=online_epoch+1
     online_nint_before=nint_used
-    ! Production keeps only the grid snapshot and the proxy sums; the
-    ! complete grid accounting exists only for the archive audit.
-    online_grid_before=xgrid(0:nint_used,1:ndim,1:nchans)
-    if(allocated(online_proxy_acc))deallocate(online_proxy_acc)
-    allocate(online_proxy_acc(0:nint_used,ndim,nchans))
-    online_proxy_acc=0d0
+    ! The grid accounting exists only for the archive audit, which checks
+    ! that ordinary points alone feed the grid.
     if(sector_learning_archive)then
+       online_grid_before=xgrid(0:nint_used,1:ndim,1:nchans)
        online_base_acc=xacc(0:nint_used,1:ndim,1:nchans)
        online_base_hits=nhits(1:nint_used,1:ndim,1:nchans)
-       if(allocated(online_ordinary_acc))deallocate(online_ordinary_acc,online_ordinary_hits,online_proxy_hits)
-       allocate(online_ordinary_acc(0:nint_used,ndim,nchans),online_ordinary_hits(nint_used,ndim,nchans), &
-            online_proxy_hits(nint_used,ndim,nchans))
+       if(allocated(online_ordinary_acc))deallocate(online_ordinary_acc,online_ordinary_hits)
+       allocate(online_ordinary_acc(0:nint_used,ndim,nchans),online_ordinary_hits(nint_used,ndim,nchans))
        online_ordinary_acc=0d0
        online_ordinary_hits=0
-       online_proxy_hits=0
     endif
     if(allocated(sl_entries))then
        do i=1,size(sl_entries)
@@ -1174,8 +1099,6 @@ contains
           online_slots(i)%before=sl_entries(i)%permutations
           online_slots(i)%oldgx=online_slots(i)%gx
           online_slots(i)%oldgy=online_slots(i)%gy
-          if(allocated(online_slots(i)%cells))deallocate(online_slots(i)%cells, &
-               online_slots(i)%channels,online_slots(i)%sample_ids)
        enddo
     endif
     if(.not.allocated(unified_slots))return
@@ -1215,15 +1138,15 @@ contains
     double precision,allocatable :: fit_b(:,:,:),fit_r(:,:,:,:)
     call cpu_time(started)
     call sl_unified_ensure()
-    if(any(xgrid(0:online_nint_before,1:ndim,1:nchans).ne.online_grid_before)) &
-         error stop 'Grid changed inside online iteration'
     if(sector_learning_archive)then
+       if(any(xgrid(0:online_nint_before,1:ndim,1:nchans).ne.online_grid_before)) &
+            error stop 'Grid changed inside online iteration'
        online_total_acc=xacc(0:nint_used,1:ndim,1:nchans)
        online_total_hits=nhits(1:nint_used,1:ndim,1:nchans)
-       if(any(online_total_hits.ne.online_base_hits+online_ordinary_hits+online_proxy_hits)) &
+       if(any(online_total_hits.ne.online_base_hits+online_ordinary_hits)) &
             error stop 'Unified grid hit accounting differs'
-       if(maxval(abs(online_total_acc-online_base_acc-online_ordinary_acc-online_proxy_acc)).gt. &
-            1d-10*max(1d0,maxval(abs(online_total_acc))))error stop 'Unified grid proxy accounting differs'
+       if(maxval(abs(online_total_acc-online_base_acc-online_ordinary_acc)).gt. &
+            1d-10*max(1d0,maxval(abs(online_total_acc))))error stop 'Unified grid accounting differs'
     endif
     if(.not.allocated(sl_entries))return
     do i=1,size(sl_entries)
@@ -1275,7 +1198,6 @@ contains
        online_slots(i)%loss_after=aa;sl_entries(i)%permutations=a
        deallocate(a,bmap,fit_b,fit_r)
     enddo
-    call sl_postfit_reassemble_proxy()
     call cpu_time(finished)
     online_fit_cpu=online_fit_cpu+finished-started;online_extra_cpu=online_extra_cpu+finished-started
   end subroutine sl_epoch_replay_fit_epoch
@@ -1287,12 +1209,11 @@ contains
     if(.not.allocated(sl_entries))return
     if(.not.sector_learning_archive)goto 10
     write(online_unit)73110620,sl_format_version,sl_method_id,online_epoch,online_nint_before,nint_used, &
-         ndim,nchans,size(sl_entries),online_ordinary_calls,online_probes,online_reused_nodes, &
-         online_record_rejections
+         ndim,nchans,size(sl_entries),online_ordinary_calls,online_probes,online_record_rejections
     write(online_unit)online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
     write(online_unit)online_grid_before,xgrid(0:nint_used,1:ndim,1:nchans)
-    write(online_unit)online_base_acc,online_total_acc,online_ordinary_acc,online_proxy_acc
-    write(online_unit)online_base_hits,online_total_hits,online_ordinary_hits,online_proxy_hits
+    write(online_unit)online_base_acc,online_total_acc,online_ordinary_acc
+    write(online_unit)online_base_hits,online_total_hits,online_ordinary_hits
     do i=1,size(sl_entries)
        nf=sl_entries(i)%nflavours;ns=size(sl_entries(i)%ids);nt=sl_entries(i)%ntrain
        nlegs=size(sl_entries(i)%pdgs,2)
@@ -1304,18 +1225,14 @@ contains
        write(online_unit)online_slots(i)%loss_before,online_slots(i)%loss_after, &
             online_slots(i)%alternative_x,online_slots(i)%alternative_y
        call sl_unified_write_extension(online_unit,i)
-       if(nt.gt.0)then
-          write(online_unit)sl_entries(i)%b(1:nf,:,1:nt),sl_entries(i)%r(1:nf,:,:,1:nt)
-          write(online_unit)online_slots(i)%cells(:,:,1:nt),online_slots(i)%channels(1:nt), &
-               online_slots(i)%sample_ids(1:nt)
-       endif
+       if(nt.gt.0)write(online_unit)sl_entries(i)%b(1:nf,:,1:nt),sl_entries(i)%r(1:nf,:,:,1:nt)
     enddo
     flush(online_unit)
     call cpu_time(finished)
     online_write_cpu=online_write_cpu+finished-started;online_extra_cpu=online_extra_cpu+finished-started
 10  continue
-    write(*,*)'ONLINE epoch:',online_epoch,' ordinary/probes/reused/rejects:',online_ordinary_calls, &
-         online_probes,online_reused_nodes,online_record_rejections
+    write(*,*)'ONLINE epoch:',online_epoch,' ordinary/probes/rejects:',online_ordinary_calls, &
+         online_probes,online_record_rejections
     write(*,*)'ONLINE CPU ordinary/probe/fit/archive:',online_ordinary_cpu,online_probe_cpu, &
          online_fit_cpu,online_write_cpu
   end subroutine sl_epoch_replay_write_epoch
@@ -1344,7 +1261,7 @@ contains
     call sl_unified_ensure()
     ! Explicit formats keep one record per line (the reader counts tokens).
     write(unit,'(a,*(1x,i0))')'SCL10 H',sl_format_version,sl_method_id,size(sl_entries),sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
-         online_epoch,online_ordinary_calls,online_probes,online_reused_nodes,online_record_rejections, &
+         online_epoch,online_ordinary_calls,online_probes,online_record_rejections, &
          64,16,1,3,3,1
     write(unit,'(a,*(1x,es24.16))')'SCL10 C',online_budget,online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
     do i=1,size(sl_entries)
@@ -1407,15 +1324,15 @@ contains
     read(line,*,iostat=ios)marker,tag,version
     if(ios.ne.0)error stop 'Malformed SCL10 header'
     if(version.ne.sl_format_version)error stop 'SCL10 table from another code version; rerun MINT0'
-    call sl_epoch_replay_validate_line(line,'H',19)
+    call sl_epoch_replay_validate_line(line,'H',18)
     read(line,*,iostat=ios)marker,tag,version,mode,count_entries,sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
-         online_epoch,online_ordinary_calls,online_probes,online_reused_nodes,online_record_rejections, &
+         online_epoch,online_ordinary_calls,online_probes,online_record_rejections, &
          warm,stride,gauge_version,phase_passes,tile_passes,selection_version
     if(ios.ne.0.or.mode.ne.sl_method_id.or.count_entries.lt.1.or. &
          sl_grid_nint.ne.nintervals.or.sl_grid_ndim.ne.ndim.or.sl_grid_nchans.ne.nchans.or. &
-         min(online_epoch,online_ordinary_calls,online_probes,online_reused_nodes, &
-         online_record_rejections).lt.0.or.count_entries.gt.100000.or. &
-         warm.ne.64.or.stride.ne.16.or.online_reused_nodes.ne.sl_nodes*(online_probes-online_record_rejections)) &
+         min(online_epoch,online_ordinary_calls,online_record_rejections).lt.0.or. &
+         online_record_rejections.gt.online_probes.or.count_entries.gt.100000.or. &
+         warm.ne.64.or.stride.ne.16) &
          error stop 'Malformed SCL10 header'
     if(gauge_version.ne.1.or.phase_passes.ne.3.or.tile_passes.ne.3.or.selection_version.ne.1) &
          error stop 'Unknown unified map convention'
@@ -1533,9 +1450,8 @@ contains
   subroutine sl_unified_maybe_probe(fun)
     double precision,external :: fun
     integer :: saved_folds(ndimmax),saved_ncell(ndimmax),saved_icell(ndimmax),saved_channel
-    integer :: folds(ndimmax),entry,nf,ns,number,node,d,cell,capacity,saved_config,saved_current
-    integer,allocatable :: cells(:,:,:),channels(:),sample_ids(:)
-    double precision :: x(ndimmax),vol,started,finished,proxy
+    integer :: folds(ndimmax),saved_config,saved_current
+    double precision :: x(ndimmax),vol,started,finished
     double precision :: saved_f(nintegrals),saved_rand(ndimmax),saved_vol_chan,saved_hwu(2)
     logical :: saved_even,saved_pass
     if(online_ordinary_calls.lt.64.or.mod(online_ordinary_calls,16).ne.0)return
@@ -1557,40 +1473,6 @@ contains
        online_record_rejections=online_record_rejections+1
     else
        call sl_append_orbit()
-       entry=sl_point_slot
-       nf=sl_point_flavours;ns=size(sl_entries(entry)%ids);number=sl_entries(entry)%ntrain
-       ! Probe records 1..ntrain are valid; capacity grows geometrically.
-       capacity=0
-       if(allocated(online_slots(entry)%channels))capacity=size(online_slots(entry)%channels)
-       if(number.gt.capacity)then
-          allocate(cells(ndim,sl_nodes,max(64,2*capacity)),channels(max(64,2*capacity)), &
-               sample_ids(max(64,2*capacity)))
-          if(number.gt.1)then
-             cells(:,:,1:number-1)=online_slots(entry)%cells(:,:,1:number-1)
-             channels(1:number-1)=online_slots(entry)%channels(1:number-1)
-             sample_ids(1:number-1)=online_slots(entry)%sample_ids(1:number-1)
-          endif
-          call move_alloc(cells,online_slots(entry)%cells)
-          call move_alloc(channels,online_slots(entry)%channels)
-          call move_alloc(sample_ids,online_slots(entry)%sample_ids)
-       endif
-       online_slots(entry)%cells(:,:,number)=online_probe_cells(1:ndim,:)
-       online_slots(entry)%channels(number)=ichan
-       online_slots(entry)%sample_ids(number)=online_ordinary_calls
-       do node=1,sl_nodes
-          ! A probe can record no S contribution at all (e.g. every fold cut).
-          proxy=0d0
-          if(nf.gt.0)proxy=sl_node_proxy(sl_point_b,sl_point_r,sl_entries(entry)%permutations,node,nf,ns)
-          do d=1,ndim
-             cell=online_probe_cells(d,node)
-             xacc(cell,d,ichan)=xacc(cell,d,ichan)+proxy
-             nhits(cell,d,ichan)=nhits(cell,d,ichan)+1
-             online_proxy_acc(cell,d,ichan)=online_proxy_acc(cell,d,ichan)+proxy
-             if(sector_learning_archive) &
-                  online_proxy_hits(cell,d,ichan)=online_proxy_hits(cell,d,ichan)+1
-          enddo
-       enddo
-       online_reused_nodes=online_reused_nodes+sl_nodes
     endif
     sector_learning_collect=.false.
     ifold=saved_folds;even_rn=saved_even
@@ -3126,7 +3008,7 @@ contains
   
   subroutine get_random_x(x,vol,kfold)
     implicit none
-    integer :: kdim,k_ord_virt,nintcurr,node
+    integer :: kdim,k_ord_virt,nintcurr
     integer, dimension(ndimmax) :: kfold
     double precision :: vol,dx
     double precision, dimension(ndimmax) :: x
@@ -3145,12 +3027,6 @@ contains
     enddo
     kfold(1:ndim)=1
     entry get_random_x_next_fold(x,vol,kfold)
-    if(sector_learning_collect)then
-       node=0
-       do kdim=1,ndim
-          node=node*ifold(kdim)+kfold(kdim)-1
-       enddo
-    endif
     vol=1d0/vol_chan * wgt_mult
 ! convert 'flat x' ('rand') to 'vegas x' ('x') and include jacobian ('vol')
     do kdim=1,ndim
@@ -3163,7 +3039,6 @@ contains
             nhits(icell(kdim),kdim,ichan)= &
             nhits(icell(kdim),kdim,ichan)+1
     enddo
-    if(sector_learning_collect)online_probe_cells(1:ndim,node+1)=icell(1:ndim)
     do k_ord_virt=0,n_ord_virt
        if (use_poly_virtual) then
           call get_polyfit(ichan,k_ord_virt,x(1:ndim-3),polyfit(k_ord_virt))

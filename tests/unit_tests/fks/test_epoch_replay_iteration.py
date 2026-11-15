@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from tests.unit_tests.fks.test_born_spreading import mint_support,TEMPLATE
-from tests.input_files.tiled_s_event_reference import audit_archive,read_archive,read_table,reassemble,objective
+from tests.input_files.tiled_s_event_reference import audit_archive,read_archive,read_table,objective
 
 PROGRAM = r'''
 
@@ -93,7 +93,6 @@ if(trim(action).eq.'train'.or.trim(action).eq.'zero_train')then
  call mint(integrand)
  if(online_ordinary_calls.ne.ordinary_nodes)stop 201
  if(online_probes.le.0.or.probe_nodes.ne.16*online_probes.or.probe_ends.ne.online_probes)stop 202
- if(online_reused_nodes.ne.16*online_probes)stop 203
  if(online_probes.gt.(online_ordinary_calls-48)/16)stop 204
  if(online_record_rejections.ne.0.or..not.sl_ready.or.sector_learning_collect)stop 205
  if(grid_changes.lt.1.or.last_iteration.ne.4)stop 206
@@ -107,13 +106,12 @@ if(trim(action).eq.'train'.or.trim(action).eq.'zero_train')then
  if(abs(ans(2,0)).gt.2d0)stop 208
  if(plot_points.ne.ordinary_nodes)stop 209
  if(sum(online_ordinary_hits(:,1,:)).ne.ordinary_epoch(last_iteration))stop 210
- if(sum(online_proxy_hits(:,1,:)).ne.probe_epoch(last_iteration))stop 211
  if(online_extra_cpu.lt.online_probe_cpu+online_fit_cpu.or.online_ordinary_cpu.le.0d0)stop 212
- if(any(online_total_hits.ne.online_base_hits+online_ordinary_hits+online_proxy_hits))stop 213
+ if(any(online_total_hits.ne.online_base_hits+online_ordinary_hits))stop 213
  inquire(file='sector_learning_online.bin',exist=exists)
  if(.not.exists)stop 215
  call write_grids_to_file
- print *,'CHECK',ordinary_nodes,probe_nodes,online_probes,online_reused_nodes,grid_changes,map_changes
+ print *,'CHECK',ordinary_nodes,probe_nodes,online_probes,grid_changes,map_changes
  print *,'CHECKCPU',online_ordinary_cpu,online_extra_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
  print *,'PASS native mint iteration/integral isolation'
 else
@@ -329,12 +327,6 @@ class TestEpochReplayIteration(unittest.TestCase):
             self.assertEqual(parsed['records'][2]['entries'][1]['nt'],0)
             self.assertEqual(parsed['records'][2]['entries'][0]['nf'],3)
             self.assertGreater(parsed['records'][3]['entries'][1]['nt'],0)
-            changed=False
-            for epoch in parsed['records']:
-                before,_=reassemble(epoch['entries'],epoch['acc']['proxy'].shape,map_key='before')
-                delta=max(abs(x-y)for x,y in zip(before.data,epoch['acc']['proxy'].data))
-                changed=changed or delta>1e-8*max(1e-300,max(abs(x)for x in before.data))
-            self.assertTrue(changed,'Actual fitted fixture must distinguish AFTER from BEFORE proxy feed')
             for epoch in parsed['records']:
                 self.assertEqual(len(epoch['entries']),3)
                 unused=epoch['entries'][2]
@@ -408,10 +400,11 @@ class TestEpochReplayIteration(unittest.TestCase):
                     words=lines[row].split();words[index]=value;lines[row]=' '.join(words)
                     (work/'mint_grids').write_text('\n'.join(lines)+'\n')
                     self.run_case('restart',work,'ERROR STOP')
-            # A table of another version (here the 20-column version 10)
-            # stops on its version before its layout is read.
+            # A table of another version (here version 11, which also had a
+            # reused-node column) stops on its version before its layout is read.
             lines=original.splitlines();row=next(i for i,line in enumerate(lines)if line.strip().startswith('SCL10 H'))
-            words=lines[row].split();words[2]='10';words.insert(13,words[10]);lines[row]=' '.join(words)
+            words=lines[row].split();words[2]='11';words.insert(11,str(16*(int(words[10])-int(words[11]))))
+            lines[row]=' '.join(words)
             (work/'mint_grids').write_text('\n'.join(lines)+'\n')
             self.run_case('restart',work,'SCL10 table from another code version; rerun MINT0')
             with self.assertRaisesRegex(ValueError,'rerun MINT0'):

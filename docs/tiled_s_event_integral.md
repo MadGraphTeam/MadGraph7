@@ -31,9 +31,8 @@ The maps are learned inside ordinary MINT0:
   separately generated virtual-residual lane (type 14) is excluded, so
   probes evaluate neither the exact one-loop virtual nor any H-event
   contribution. A probe is an ordinary MINT0 call with its own fold loop
-  (`sector_learning_collect`); the grid sees only its S-only proxy (below),
-  and neither the MC-integer channel weights nor the virtual surrogate see
-  it.
+  (`sector_learning_collect`); neither the grid, the MC-integer channel
+  weights nor the virtual surrogate see it.
 - At each iteration boundary, the maps are refitted to minimise the negative
   part of the summed S weight,
   `Σ max(-B(node) - Σ_s R_s(P_s(node)), 0)`, over the current bank of probes
@@ -46,9 +45,8 @@ The maps are learned inside ordinary MINT0:
   cancel the gauge), refines each with tile translations and per-sector
   assignment passes, and keeps the lowest loss. Map capacity grows from 4
   to 8 to 16 tiles once enough probes support it.
-- The probes also feed an S-only proxy, recomputed with the newly fitted
-  maps, into the grid adaptation; ordinary points alone determine the
-  integral and its error.
+- Probes only train the maps: ordinary points alone adapt the grid and
+  determine the integral and its error.
 
 The final maps are frozen. MINT1 recomputes the normalisation and event
 generation uses the frozen maps; no extra matrix elements are evaluated
@@ -78,7 +76,7 @@ generation verify the setting, the fold counts and the adaptive grid
 against it, and stop with "rerun MINT0" on a table written by another code
 version. With `sector_learning_archive` set in `mint_module` (the tests
 do this), MINT0 also writes `sector_learning_online.bin`, a binary
-per-iteration record of the probes, fits and grid feeds for auditing;
+per-iteration record of the probes, fits and grid accumulators for auditing;
 production runs neither write nor read it, and do not keep its grid
 accounting. Probe admission depends on measured CPU time, so a seed alone does not reproduce
 the training schedule.
@@ -87,8 +85,9 @@ the training schedule.
 
 These numbers come from the research implementation this branch was taken
 from. There, the per-sector radiation and fixed Sobol offsets were separate
-options, and the samples used an experimental weighted correction for
-envelope violations; neither is part of this branch. Mean negative S events
+options, the samples used an experimental weighted correction for
+envelope violations, and the probes also fed an S-only proxy into the grid
+adaptation; none of these is part of this branch. Mean negative S events
 per 50,000 unshowered events, with credit .20, folding 111, no
 `mcatnlo_delta` and the same settings in all processes, against fixed Sobol
 sector offsets without learning:
