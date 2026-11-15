@@ -28,6 +28,7 @@ e- > j j j (192). p p > e+ e- j (1072 channels, seven minutes a run there)
 runs only with MADSPACE_FKS_SLOW=1.
 """
 
+import copy
 import functools
 import json
 import math
@@ -37,7 +38,12 @@ import tempfile
 import numpy as np
 import pytest
 from madgraph.mg7.nlo.core import Runtime
-from madgraph.mg7.nlo.cs import STREAMS, CSRun, dipole_variables
+from madgraph.mg7.nlo.cs import (
+    STREAMS,
+    CSRun,
+    dipole_variables,
+    spin_configuration,
+)
 from madgraph.mg7.nlo.provider import boost_z, partonic_rapidity
 
 OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
@@ -318,6 +324,51 @@ def test_dipole_blocks(real_stream, name, reference, rtol):
                 checked += 1
             power = dipole.born.qcd_powers[0] // 2
             np.testing.assert_allclose(ours, theirs / g2**power, rtol=rtol, atol=0)
+    assert checked
+
+
+@needs_outputs
+def test_identical_gluon_spin(real_stream):
+    """A gluon dipole with the FKS configuration of the identical gluon on
+    the same side and the momenta of the two exchanged (as for a gluon
+    without a configuration of its own, see identical_spin_configuration) is
+    the dipole with its own configuration: the two incoming gluons of g g >
+    t t~."""
+    data = dipole_reference("pp_ttx")
+    run = real_stream("pp_ttx", 1e-6)
+    checked = 0
+    for real in {point["real"] for point in data["points"]}:
+        points = [p for p in data["points"] if p["real"] == real]
+        integrand = real_integrand(run, data["reals"][real]["pdgs"])
+        if integrand is None:
+            continue
+        momenta = np.array([p["momenta"] for p in points])
+        x1 = np.array([p["x1"] for p in points])
+        x2 = np.array([p["x2"] for p in points])
+        out = integrand.subtraction(momenta, x1, x2)
+        for m, dipole in enumerate(integrand.dipoles):
+            emitter = dipole.legs[0]
+            if not dipole.gluon or emitter >= 2:
+                continue
+            other = 1 - emitter
+            if dipole.born.born_pdgs[other] != 21:
+                continue
+            me = out["born_momenta"][:, m][:, dipole.order]
+            y = -partonic_rapidity(me, 2)
+            cm = boost_z(me, y)
+            k_t = boost_z(out["spin_vector"][:, m], y)
+            provider = dipole.born.provider
+            born = provider.born(cm, np.full(len(points), dipole.configuration))
+            weights = out["color_weight"][:, m], out["spin_weight"][:, m]
+            own = integrand.dipole_value(dipole, cm, k_t, *weights, born)
+            exchanged = copy.copy(dipole)
+            exchanged.swap = other
+            exchanged.configuration = spin_configuration(provider, other)
+            assert exchanged.configuration != dipole.configuration
+            theirs = integrand.dipole_value(exchanged, cm, k_t, *weights, born)
+            scale = np.abs(own).max()
+            np.testing.assert_allclose(theirs, own, rtol=1e-10, atol=1e-12 * scale)
+            checked += 1
     assert checked
 
 

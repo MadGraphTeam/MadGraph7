@@ -32,10 +32,12 @@ Born diagram over that of all Born diagrams at the Born of the dipole, so
 that the weights add up to one at every event. Each dipole takes the blocks
 of the Born of its own subprocess, the spin correlation in the factorized
 form <T_j . T_k> B(k_t) / B, with B(k_t) the Born of the provider with the
-azimuthal part of an FKS configuration whose mother is the emitter. The real
-emission has the cuts and scales of the real process, each dipole those of
-its Born, and both the densities at the momentum fractions of the real
-emission.
+azimuthal part of an FKS configuration whose mother is the emitter. MadFKS
+keeps one FKS configuration of identical partons, so a gluon without one
+takes that of an identical gluon on the same side with the momenta of the
+two exchanged, at which the Born is the same. The real emission has the
+cuts and scales of the real process, each dipole those of its Born, and both
+the densities at the momentum fractions of the real emission.
 
 The technical cut is the cutoff of the CSMapping of every channel: a channel
 covers only the events where both variables of its dipole (y and z_i, 1 - x
@@ -149,6 +151,22 @@ def spin_configuration(provider, leg):
         i_fks, j_fks = configuration["i_fks"], configuration["j_fks"]
         if configuration["ij_pdg"] == 21 and j_fks - 1 - (j_fks > i_fks) == leg:
             return c
+    return None
+
+
+def identical_spin_configuration(provider, pdgs, incoming, leg):
+    """For a gluon at the Born leg leg without an FKS configuration, the
+    first other gluon on the same side (incoming or outgoing) with one and
+    that configuration, as (leg, configuration), None without one. MadFKS
+    keeps one configuration of identical partons, and the Born with the two
+    gluons exchanged is the same."""
+    side = leg < incoming
+    for other, pdg in enumerate(pdgs):
+        if other == leg or pdg != 21 or (other < incoming) != side:
+            continue
+        configuration = spin_configuration(provider, other)
+        if configuration is not None:
+            return other, configuration
     return None
 
 
@@ -538,7 +556,9 @@ class CSDipole:
     madspace.subtraction.cs) with the CSBornIntegrand of the subprocess of its
     Born: the Born legs (from 0, in the order of the matrix element) of its
     emitter and its spectator and, for a gluon emitter, the FKS configuration
-    of the spin correlation."""
+    of the spin correlation, with swap the leg of the identical gluon whose
+    configuration it takes (see identical_spin_configuration), None for its
+    own."""
 
     def __init__(self, entry, born):
         self.entry = entry
@@ -549,14 +569,20 @@ class CSDipole:
         spectator = entry["k"] - (entry["k"] > i)
         self.legs = self.order.index(emitter), self.order.index(spectator)
         self.gluon = born.born_pdgs[self.legs[0]] == 21
-        self.configuration = 0
+        self.configuration, self.swap = 0, None
         if self.gluon:
             self.configuration = spin_configuration(born.provider, self.legs[0])
             if self.configuration is None:
-                raise NotImplementedError(
-                    f"nlo.cs: no FKS configuration of {born.name} with the "
-                    f"gluon {self.legs[0] + 1} as its mother"
+                identical = identical_spin_configuration(
+                    born.provider, born.born_pdgs, born.incoming, self.legs[0]
                 )
+                if identical is None:
+                    raise NotImplementedError(
+                        f"nlo.cs: no FKS configuration of {born.name} with the "
+                        f"gluon {self.legs[0] + 1} or an identical one as its "
+                        "mother"
+                    )
+                self.swap, self.configuration = identical
 
 
 class CSRealIntegrand:
@@ -716,12 +742,16 @@ class CSRealIntegrand:
         colors = provider.color_correlated(cm)[:, :, dipole.legs[0], dipole.legs[1]]
         value = color_weight[:, None] * colors
         if dipole.gluon:
-            perp = provider.spin_correlated(
-                cm,
-                k_t,
-                np.full(len(cm), dipole.configuration),
-                born=born,
-            )
+            configuration = np.full(len(cm), dipole.configuration)
+            if dipole.swap is None:
+                perp = provider.spin_correlated(cm, k_t, configuration, born=born)
+            else:
+                # the Born with the emitter and its identical gluon exchanged
+                exchanged = cm.copy()
+                exchanged[:, [dipole.legs[0], dipole.swap]] = cm[
+                    :, [dipole.swap, dipole.legs[0]]
+                ]
+                perp = provider.spin_correlated(exchanged, k_t, configuration)
             square = -minkowski(k_t, k_t)
             ratio = np.divide(
                 colors, plain, out=np.zeros_like(colors), where=plain != 0
