@@ -2523,8 +2523,11 @@ RESTART = %(mint_mode)s
                 sum_job[key]+=math.pow(job[key],2)
         for key in keys2:
             sum_job[key]=math.sqrt(sum_job[key])
-        sum_job['err_percABS'] = sum_job['errorABS']/sum_job['resultABS']*100.
-        sum_job['err_perc'] = sum_job['error']/sum_job['result']*100.
+        # a channel whose integrand vanishes at every point has zero results
+        sum_job['err_percABS'] = (sum_job['errorABS']/sum_job['resultABS']*100.
+                                  if sum_job['resultABS'] != 0 else 0.)
+        sum_job['err_perc'] = (sum_job['error']/sum_job['result']*100.
+                               if sum_job['result'] != 0 else 0.)
         sum_job['niters']=int(sum_job['niters_done']/len(job_group))
         sum_job['niters_done']=int(sum_job['niters_done']/len(job_group))
         return sum_job
@@ -2898,7 +2901,8 @@ RESTART = %(mint_mode)s
             job['time_spend']=float(results[6])
             if job['resultABS'] != 0:
                 job['err_percABS'] = job['errorABS']/job['resultABS']*100.
-                job['err_perc'] = job['error']/job['result']*100.
+                job['err_perc'] = (job['error']/job['result']*100.
+                                   if job['result'] != 0 else 0.)
             else:
                 job['err_percABS'] = 0.
                 job['err_perc'] = 0.

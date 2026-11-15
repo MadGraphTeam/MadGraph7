@@ -1182,7 +1182,17 @@ contains
        do kchan=nchans,0,-1 ! go backwards so that kchan=0 goes last
                             ! (this makes sure central value is correctly updated).
           do i=1,nintegrals
-             if (i.ne.1 .and. (etot(i,0).eq.0d0 .or. iteration_weight_unc(i).eq.0d0)) then
+             if (i.eq.1 .and. etot(1,0).eq.0d0) then
+                ! The ABS integrand vanished at every point of this
+                ! iteration (with a fixed number of points the zero-integral
+                ! exit is never tried): it carries no information.
+                continue
+             elseif (i.eq.1 .and. iteration_weight_unc(1).eq.0d0) then
+                ! Every earlier iteration vanished at every point: start from this one.
+                ans(1,kchan)=vtot(1,kchan)
+                unc(1,kchan)=etot(1,kchan)
+                if (kchan.eq.0) iteration_weight_unc(1)=etot(1,0)
+             elseif (i.ne.1 .and. (etot(i,0).eq.0d0 .or. iteration_weight_unc(i).eq.0d0)) then
                 continue ! do not do anything
              else
                 old_weight=etot(i,0)/(iteration_weight_unc(i)+etot(i,0))
@@ -1202,7 +1212,11 @@ contains
           enddo
           ans_chan(kchan)=ans(1,kchan)
        enddo
-       write (*,'(a,1x,e10.4)') 'Chi^2=',(vtot(1,0)-ans(1,0))**2/etot(1,0)**2
+       if (etot(1,0).gt.0d0) then
+          write (*,'(a,1x,e10.4)') 'Chi^2=',(vtot(1,0)-ans(1,0))**2/etot(1,0)**2
+       else
+          write (*,'(a,1x,e10.4)') 'Chi^2=',0d0
+       endif
     endif
     nit_included=nit_included+1
     call print_results_accumulated

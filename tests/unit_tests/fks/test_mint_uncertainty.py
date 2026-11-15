@@ -141,6 +141,21 @@ class TestMintUncertainty(unittest.TestCase):
         self.assertEqual(result['RESET'], [0., 0., 0.])
         self.assertEqual(result['RESTART'], [3., 2., 2.])
 
+    def test_vanishing_abs_iterations_stay_zero(self):
+        # With a fixed number of points (req_acc_FO = -1) MINT never tries
+        # its zero-integral exit: a channel whose integrand vanishes at every
+        # point must give zero, not 0/0 (the check traps invalid operations).
+        result = self.run_case('zeroabs')
+        self.assertEqual(result['ABS'], [0., 0., 0.])
+        self.assertEqual(result['SIGNED'], [0., 0.])
+        # ... and once points stop vanishing, the ABS estimate starts there.
+        result = self.run_case('zerofirst')
+        mean, error, harmonic, _ = combine([4., 11.], [3., 1.5])
+        for key in ('ABS', 'ABSCHANNEL1'):
+            self.assertAlmostEqual(result[key][0], mean, places=13)
+            self.assertAlmostEqual(result[key][1], error, places=13)
+        self.assertAlmostEqual(result['ABS'][2], harmonic, places=13)
+
     def test_mint1_resumes_after_rejected_iterations(self):
         for mode, rejected in (('reject', (4,)), ('reject_fo', (4,)),
                                ('reject_twice', (4, 5)),
@@ -226,6 +241,26 @@ if(mode.eq.'ensemble') then
   total_squared=total_squared+ans(2,0)**2
  enddo
  write(*,*) 'CHECK ENSEMBLE',total/32d0,total_squared/32d0-(total/32d0)**2,unc(2,0)**2
+ stop
+endif
+if(mode.eq.'zeroabs'.or.mode.eq.'zerofirst') then
+ call setup_common
+ do j=1,3
+  nit=j
+  vtot=0d0
+  etot=0d0
+  if(mode.eq.'zerofirst'.and.j.eq.2) then
+   vtot(1:2,0:1)=4d0
+   etot(1:2,0:1)=3d0
+  elseif(mode.eq.'zerofirst'.and.j.eq.3) then
+   vtot(1:2,0:1)=11d0
+   etot(1:2,0:1)=1.5d0
+  endif
+  call combine_iterations
+ enddo
+ write(*,*) 'CHECK ABS',ans(1,0),unc(1,0),iteration_weight_unc(1)
+ write(*,*) 'CHECK ABSCHANNEL1',ans(1,1),unc(1,1)
+ write(*,*) 'CHECK SIGNED',ans(2,0),unc(2,0)
  stop
 endif
 call setup_common
