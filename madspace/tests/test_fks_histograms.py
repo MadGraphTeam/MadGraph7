@@ -539,3 +539,20 @@ def test_photon_emission():
     item = ms.FKSObservableHistograms.HistItem(observable, 0.0, 1.0, 2)
     with pytest.raises(ValueError, match="outside their QCD partons"):
         ms.FKSObservableHistograms([configuration], [item])
+
+
+def test_eta_along_the_beam():
+    """The pseudorapidity of a particle along the beam (the Born of a single
+    particle has it) is +-99, as for no momentum, so that the histograms,
+    which skip values that are not finite, have every kinematics."""
+    observable = ms.Observable([2, -1, 24], "eta", [[24]])
+    momenta = np.array(
+        [
+            [[50, 0, 0, 50], [40, 0, 0, -40], [90, 0, 0, 10]],
+            [[40, 0, 0, 40], [50, 0, 0, -50], [90, 0, 0, -10]],
+            [[45, 0, 0, 45], [45, 0, 0, -45], [90, 3, 4, 12]],
+        ],
+        dtype=float,
+    )
+    (value,) = evaluate(observable, momenta)
+    np.testing.assert_allclose(value[:, 0], [99.0, -99.0, math.log(5.0)], rtol=1e-14)

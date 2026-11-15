@@ -594,7 +594,7 @@ obs_eta:
       type: [float, ...]
       desc: "pseudorapidity"
   dims: 0
-  desc: "Pseudorapidity of a four-momentum; 99 if the momentum is (nearly) zero. See @ref Observable."
+  desc: "Pseudorapidity of a four-momentum; 99 if the momentum is (nearly) zero, +-99 along the beam. See @ref Observable."
 
 obs_eta_abs:
   inputs:
@@ -606,7 +606,7 @@ obs_eta_abs:
       type: [float, ...]
       desc: "absolute pseudorapidity"
   dims: 0
-  desc: "Absolute pseudorapidity of a four-momentum; 99 if the momentum is (nearly) zero. See @ref Observable."
+  desc: "Absolute pseudorapidity of a four-momentum; 99 if the momentum is (nearly) zero or along the beam. See @ref Observable."
 
 obs_delta_eta:
   inputs:

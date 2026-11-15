@@ -83,6 +83,8 @@ SETUPS = {
     "aa_ttx": ("aa_ttx", {}),
     # the scale variations of the reweighting of MadFKS
     "pp_epem_rw": ("pp_epem", dict(mfir.PROCESSES["pp_epem"][1], reweight_scale=True)),
+    # a Born of one final-state particle, a W at rest in the partonic frame
+    "pp_wp": ("pp_wp", {}),
 }
 # outputs of the cross sections alone, without an integrand reference: name
 # -> (process, run_card values, model). p p > e+ e- j has a jet that radiates
@@ -120,6 +122,7 @@ OUTPUTS = {
         "loop_qcd_qed_sm_Gmu-a0",
     ),
     "aa_ttx": ("a a > t t~ [QCD]", dict(mfir.HADRONIC, lpp1=2, lpp2=2), None),
+    "pp_wp": ("p p > w+ [QCD]", dict(mfir.HADRONIC), None),
 }
 # the outputs in the complex-mass scheme: the EW corrections of a process
 # with an s-channel Z are gauge invariant only there, as MadGraph warns

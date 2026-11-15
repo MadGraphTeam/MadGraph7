@@ -13,6 +13,9 @@ KERNELSPEC FVal<T> eta(FIn<T, 1> p) {
     auto px = p[1], py = p[2], pz = p[3];
     auto p_mag = sqrt(px * px + py * py + pz * pz);
     auto eta = 0.5 * log((p_mag + pz) / (p_mag - pz));
+    // +-99 along the beam, where the logarithm is infinite (as the Born of a
+    // single particle has it), as for no momentum at all
+    eta = where(fabs(eta) < 99.0, eta, where(pz > 0.0, FVal<T>(99.0), FVal<T>(-99.0)));
     return where(p_mag < EPS, 99.0, eta);
 }
 

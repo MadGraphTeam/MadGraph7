@@ -111,6 +111,29 @@ def build(directory, log=None):
     return os.path.join(directory, "fks_provider")
 
 
+def momenta_at_rest(p):
+    """The momenta (batch, 3, 4) of a 2 > 1 process in its partonic frame
+    exactly: the incoming along the beam with the energies of their masses
+    at s = (p_1 + p_2)^2, the final-state particle at rest."""
+    p = np.asarray(p, dtype=float)
+
+    def square(q):
+        return q[:, 0] ** 2 - (q[:, 1:] ** 2).sum(-1)
+
+    s = np.maximum(square(p[:, 0] + p[:, 1]), 0.0)
+    masses = [np.maximum(square(p[:, k]), 0.0) for k in range(2)]
+    rs = np.sqrt(s)
+    safe = np.where(rs > 0, rs, 1.0)
+    e1 = (s + masses[0] - masses[1]) / (2 * safe)
+    e2 = (s - masses[0] + masses[1]) / (2 * safe)
+    k = np.sqrt(np.maximum(e1 * e1 - masses[0], 0.0))
+    out = np.zeros_like(p)
+    out[:, 0, 0], out[:, 0, 3] = e1, k
+    out[:, 1, 0], out[:, 1, 3] = e2, -k
+    out[:, 2, 0] = rs
+    return out
+
+
 def boost_z(p, y):
     """The momenta p (..., 4) boosted along z by the rapidity y (per point)."""
     y = np.asarray(y, dtype=float).reshape(np.shape(p)[:1] + (1,) * (p.ndim - 2))
@@ -278,6 +301,16 @@ class FortranProvider:
         momenta = np.ascontiguousarray(momenta, dtype=float)
         if momenta.ndim != 3 or momenta.shape[1:] != (legs, 4):
             raise ValueError(f"momenta of shape (batch, {legs}, 4) expected")
+        if legs == 3 and self.incoming == 2:
+            # one final-state particle, at rest in the partonic frame: the
+            # helicity vectors of MadGraph follow the direction of its
+            # three-momentum, which rounding would choose, and the helicities
+            # that the filter of the matrix element dropped at the first
+            # points would then be missing (a W of u d~ > w+ loses 3/4 of its
+            # Born for a direction across the beam, all of it for the
+            # opposite one). The points take the partonic frame exactly, the
+            # particle at rest and the incoming ones along the beam.
+            momenta = momenta_at_rest(momenta)
         return momenta
 
     def _by_configuration(self, fks_index, evaluate):

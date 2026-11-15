@@ -29,7 +29,13 @@ import numpy as np
 import pytest
 from fks_testing import born_inputs, evaluate, reference
 from madgraph.mg7.nlo.fks import born_topology
-from madgraph.mg7.nlo.provider import FortranProvider, azimuthal_phase, fks_blocks
+from madgraph.mg7.nlo.provider import (
+    FortranProvider,
+    azimuthal_phase,
+    boost_z,
+    fks_blocks,
+    momenta_at_rest,
+)
 from test_fks_integrand import DATA, IDS, WEIGHTS, channels
 
 from madspace.subtraction.fks import fks_cross_section, fks_splitting_kernels
@@ -382,3 +388,62 @@ def test_extra_counterterms():
     )
     ours = parts[has][:, rows_of, 0].real * data["g"] ** powers
     assert_close(ours, theirs, EXTRA_RTOL)
+
+
+def test_momenta_at_rest():
+    """momenta_at_rest gives the partonic frame of a 2 > 1 process exactly,
+    at the s and the masses of the points: the final-state particle at rest
+    and the incoming particles along the beam."""
+    rng = np.random.default_rng(29)
+    count = 50
+    m1, m2 = 0.0, 1.2
+    s = rng.uniform(100.0, 1e4, count)
+    rs = np.sqrt(s)
+    e1 = (s + m1**2 - m2**2) / (2 * rs)
+    k = np.sqrt(e1**2 - m1**2)
+    p = np.zeros((count, 3, 4))
+    p[:, 0] = np.stack([e1, 0 * k, 0 * k, k], 1)
+    p[:, 1] = np.stack([rs - e1, 0 * k, 0 * k, -k], 1)
+    # a boost along the beam and back, and the rounding of a mapping
+    y = rng.uniform(-3, 3, count)
+    p = boost_z(boost_z(p, y), -y)
+    p[:, 2] = p[:, 0] + p[:, 1] + rng.normal(scale=1e-12, size=(count, 4))
+    out = momenta_at_rest(p)
+    np.testing.assert_array_equal(out[:, :, 1:3], 0.0)
+    np.testing.assert_array_equal(out[:, 2, 3], 0.0)
+    np.testing.assert_array_equal(out[:, 0, 3], -out[:, 1, 3])
+    # (the boosts round the momenta, rapidities up to 3 by 1e-14)
+    np.testing.assert_allclose(out[:, 2, 0], rs, rtol=1e-12)
+    # the masses of the points, which the boosts round by 1e-13 s
+    for leg, mass in ((0, m1), (1, m2)):
+        square = out[:, leg, 0] ** 2 - out[:, leg, 3] ** 2
+        assert np.all(np.abs(square - mass**2) < 1e-12 * s)
+
+
+# an output with a Born of one final-state particle, a W at rest in the
+# partonic frame (pp_wp of make_fks_cross_section_reference.py)
+REST_OUTPUT, REST_SUBPROCESS = "pp_wp", "P0_udx_wp"
+
+
+def test_born_at_rest():
+    """The Born of u d~ > w+ does not depend on the direction that rounding
+    gives the W at rest: the provider takes the partonic frame exactly, where
+    otherwise the helicity vectors of MadGraph would follow that direction,
+    and the helicities that its filter dropped at the first points would be
+    missing (up to all of the Born)."""
+    if not os.path.isdir(os.path.join(OUTPUTS, REST_OUTPUT, "SubProcesses")):
+        pytest.skip(f"MADSPACE_FKS_OUTPUTS has no {REST_OUTPUT}")
+    p = provider(REST_OUTPUT, REST_SUBPROCESS)
+    mass = 80.419
+    rest = np.array(
+        [[mass / 2, 0, 0, mass / 2], [mass / 2, 0, 0, -mass / 2], [mass, 0, 0, 0]]
+    )
+    directions = np.array(
+        [[0, 0, 0], [0, 0, 1], [0, 0, -1], [1, 0, 0], [0, 1, 0], [1, -2, 3]],
+        dtype=float,
+    )
+    momenta = np.repeat(rest[None], len(directions), axis=0)
+    momenta[:, 2, 1:] += 1e-13 * directions
+    born = p.born_orders_of(p.born(momenta, np.zeros(len(momenta), dtype=np.int32))[0])
+    assert born[0, 0] > 0
+    np.testing.assert_allclose(born, np.broadcast_to(born[:1], born.shape), rtol=1e-13)

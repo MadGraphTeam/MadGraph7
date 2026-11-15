@@ -172,6 +172,7 @@ def test_epem_jj_real(alpha):
         "epem_jj_isr",
         "epem_ttx_isr",
         "epem_ttx_ilc",
+        "pp_wp",
     ],
 )
 def test_against_mg5amc(name):
