@@ -18,6 +18,7 @@ from madgraph.various import misc
 from madgraph.various.banner import RunCardMG7
 from madgraph.models.check_param_card import ParamCard
 from madgraph.models.model_reader import Alphas_Runner
+from madgraph.mg7 import helicity_choice as helicity_choice_module
 from madgraph.mg7 import hwu_output
 from madgraph.mg7 import lepton_density as lepton_density_module
 import madgraph.various.py8_bstrahl as py8_bstrahl
@@ -564,8 +565,12 @@ class MadgraphProcess:
         self.contexts = []
         # AmpliCol libraries, shared by all channels of their process
         self.amplicol_apis = {}
-        # [path format, init path, parameters] of every load_matrix_element, in order
+        # [path format, init path, parameters, helicity choice] of every
+        # load_matrix_element, in order
         self.loaded_matrix_elements = []
+        # the helicity choice of each madmatrix library (by path format), see
+        # helicity_choice()
+        self.helicity_choices = {}
         self.device_types = []
         self.devices = []
         self.pool_sizes = []
@@ -590,18 +595,55 @@ class MadgraphProcess:
             self.pool_sizes.append(pool_size)
             self.contexts.append(ms.Context(device=device, thread_count=pool_size))
 
-    def load_matrix_element(self, path_format: str, init_path: str, parameters: dict):
+    def load_matrix_element(self, path_format: str, init_path: str, parameters: dict,
+                            helicity_choice=None):
         """Load a matrix-element library into every context, recorded for the
         gridpack to load the same ones at the same indices. The init path is
-        the param card, or the artifact of an AmpliCol library."""
+        the param card, or the artifact of an AmpliCol library. A madmatrix
+        library is given its helicity choice (see helicity_choice())."""
+        helicity_choice = list(helicity_choice or [])
         for context, backend in zip(self.contexts, self.backends):
             api = context.load_matrix_element(
                 path_format.format(device=backend, fptype=self.fptype),
                 os.path.abspath(init_path),
-                parameters
+                parameters,
+                helicity_choice
             )
-        self.loaded_matrix_elements.append([path_format, init_path, parameters])
+        self.loaded_matrix_elements.append(
+            [path_format, init_path, parameters, helicity_choice])
         return api
+
+    def helicity_choice(self, path_format: str, param_card: str, parameters: dict):
+        """The good helicities of a madmatrix library for every context,
+        chosen once, from the cards, on a CPU build (see
+        madgraph/mg7/helicity_choice.py): on 16 RAMBO points of the collider
+        of the run card, up to its centre-of-mass energy, from just above the
+        threshold of the process when the beams have PDFs, ISR or
+        beamstrahlung, and in the partonic centre-of-mass and lab frames. None
+        if the library cannot choose so: each instance then chooses on its
+        first events."""
+        if path_format not in self.helicity_choices:
+            backend, fptype = self.helicity_choice_build
+            spread = not self.is_decay and (
+                not self.leptonic or bool(self._lepton_density_name))
+            choice = helicity_choice_module.choose(
+                path_format.format(device=backend, fptype=fptype), param_card,
+                parameters, self.e_cm, self.beam_rapidity, spread)
+            if choice is not None and not any(self.helicity_choices.values()):
+                logger.info(
+                    "good helicities chosen from the cards on the %s build (16 points "
+                    "at sqrt(s) = %g GeV%s), for every thread and device",
+                    backend, self.e_cm, " and down to threshold" if spread else "")
+            if choice is None:
+                logger.debug("%s: the good helicities are chosen on the first "
+                             "events of each instance", os.path.basename(path_format))
+            else:
+                logger.debug(
+                    "%s: %d good helicities, chosen on the %s %s build at sqrt(s) = %g GeV%s",
+                    os.path.basename(path_format), len(choice) - 1, backend, fptype,
+                    self.e_cm, " and below" if spread else "")
+            self.helicity_choices[path_format] = choice
+        return self.helicity_choices[path_format]
 
     CUSTOM_FUNCTION_KINDS = ("cut", "scale", "pdf", "bias")
 
@@ -1339,6 +1381,9 @@ class MadgraphProcess:
             "nominal_info_file": info_path,
             # matrix elements re-evaluated for the mixed-order subprocesses
             "me_paths": [meta["me_path"] for meta in self.subprocess_data],
+            # and their helicity choices, see helicity_choice()
+            "helicity_choices": [self.helicity_choices.get(meta["me_path"]) or []
+                                 for meta in self.subprocess_data],
             "me_backend": me_backend,
             "flavor_remap": flavor_remap,
             "me_frame": self.me_frame,
@@ -1413,7 +1458,8 @@ class MadgraphProcess:
             api = context.load_matrix_element(
                 meta["me_path"].format(device=backend, fptype=self.fptype),
                 self.param_card_path,
-                me_parameters(self.run_card))
+                me_parameters(self.run_card),
+                self.helicity_choices.get(meta["me_path"]) or [])
             matrix_elements.append(ms.MatrixElement(
                 api,
                 [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
@@ -1749,6 +1795,7 @@ class MadgraphProcess:
         madmatrix_data = [
             meta for meta in self.subprocess_data if not is_amplicol(meta)
         ]
+        self.helicity_choice_build = None
         if not madmatrix_data:
             return backends
 
@@ -1804,7 +1851,15 @@ class MadgraphProcess:
                 {"": "10 (default)", "0": "<no limit>"}.get(limit, limit)
             )
         hr_flags = ":".join(arg.split("=", 1)[1] for arg in hr_args)
-        for backend in resolved:
+        # the good helicities are chosen on a CPU build (helicity_choice()):
+        # the CPU one of the run, else one in scalar double precision
+        cpu_backends = [b for b in resolved if not b.startswith(("cuda", "hip"))]
+        self.helicity_choice_build = (
+            (cpu_backends[0], fptype) if cpu_backends else ("scalar", "d"))
+        builds = [(backend, fptype) for backend in resolved]
+        if not cpu_backends and not self.run_card["run"]["dummy_matrix_element"]:
+            builds.append(self.helicity_choice_build)
+        for backend, fptype in builds:
             # by library: the flavours of a split subprocess share one; a library
             # built with other recycling settings is rebuilt too: its SigmaKin.o
             # records them in build.<backend>/.hrflags (madmatrix.mk)

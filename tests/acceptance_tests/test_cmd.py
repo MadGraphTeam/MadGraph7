@@ -1927,30 +1927,39 @@ class TestCmdShell2(unittest.TestCase,
     def test_standalone_umami_first_call(self):
         """the helicities kept, and the |M|^2, do not depend on the first umami call.
 
-        The good helicities are chosen once per library: a helicity is kept if
-        its |M|^2 is not 0 for one of the first events. They were chosen at
-        the first umami_matrix_element call, so that
+        The good helicities of an instance are chosen at run time, as in the
+        Fortran standalone output: every helicity is evaluated on the first 16
+        events, and a helicity is kept if it contributes to one of them. They
+        were once chosen on the first umami_matrix_element call alone, so that
         * a first call of special points dropped, for the rest of the run, the
           helicities that vanish there: after one event in the exact forward
           direction, u u~ > e+ e- came out wrong by factors 5 to 100;
         * a first call shorter than a SIMD page was padded with zero events,
           which evaluate to nan, and every helicity was kept (twice the work
           for a q q~ initial state).
-        They are now chosen at initialization, on RAMBO points, and the
-        padding events of a batch are copies of real ones.
+        A first call is now one of the 16 events, and the padding lanes of a
+        batch are copies of real events, which do not count among them.
 
         p p > e+ e- has two flavor indices (d and u type) and only 4 of its 16
         helicities do not vanish. For the scalar backend and simd_128 in double
         and in mixed precision (one and two SIMD pages at a time), with a first
-        call of one generic event, of 16 events, or of one forward event:
+        call of one generic event, of 16 events, or of one forward event, then
+        16 generic events (the choice is made):
         * the same helicities are kept, fewer than 16
           (madmatrix_good_helicity_count);
         * the same |M|^2 come out afterwards, and a batch whose flavors
           alternate, leaving partial pages, gives the |M|^2 of single-event
           calls, event by event.
 
-        The helicities are chosen once per instance (umami_initialize), so each
-        first call runs in its own process, with an instance of its own.
+        The helicities are chosen per instance, so each first call runs in its
+        own process, with an instance of its own. The choice of an mg7 run (see
+        test_madmatrix_helicity_choice_every_thread) is checked too:
+        madmatrix_get_helicity_choice says -1 while an instance is still
+        choosing; madmatrix_choose_good_helicities chooses the same helicities
+        on RAMBO points of a collider; an instance given a choice
+        (madmatrix_set_helicity_choice) keeps it, here that of 16 forward
+        events, on generic events; a choice of a helicity the process does not
+        have is refused.
         """
         self._check_umami_first_call([('scalar', 'd', 1e-12),
                                       ('simd_128', 'd', 1e-12),
@@ -2106,8 +2115,8 @@ class TestCmdShell2(unittest.TestCase,
     def test_standalone_umami_first_call_gpu(self):
         """test_standalone_umami_first_call on GPUs (BACKEND=cuda, hip).
 
-        There, umami_matrix_element takes device buffers, and umami_initialize
-        copies its RAMBO points over to choose the good helicities. Skipped
+        There, umami_matrix_element takes device buffers, on which the good
+        helicities are chosen (sigmaKin_getGoodHel on the device). Skipped
         without nvcc and hipcc on the PATH, or without a device.
         """
         builds = [(backend, fptype, rtol)
@@ -2117,6 +2126,111 @@ class TestCmdShell2(unittest.TestCase,
         if not builds:
             raise unittest.SkipTest('neither nvcc nor hipcc on the PATH')
         self._check_umami_first_call(builds)
+
+    def test_madmatrix_helicity_choice_every_thread(self):
+        """every thread of madspace evaluates the helicities chosen from the cards.
+
+        A MadMatrix instance left to itself chooses its good helicities on the
+        first 16 events it evaluates, and madspace calls a matrix element
+        through one instance per thread: each thread would choose on the
+        events it happens to get first. An mg7 run instead chooses them before
+        the run, from its cards, on 16 RAMBO points on a CPU build
+        (madgraph/mg7/helicity_choice.py), and madspace gives that choice to
+        every instance (Context.load_matrix_element(helicity_choice=...)).
+
+        u u~ > e+ e- at 1 TeV: the choice of a scalar build for e+ e- beams
+        without PDFs, given to a madspace context of 4 threads that evaluates a
+        batch cut into 4 jobs of 256 events, each opening with 16 events in the
+        exact forward direction, where the (1 - cos theta) helicities vanish,
+        then generic events. A thread that chose on its own first events would
+        drop those helicities and get its generic events wrong, as a
+        single-thread context whose first events are forward does (checked).
+        Every |M|^2 of the batch is that of a single-thread context whose first
+        events are generic.
+        """
+        import glob
+        import json
+        import textwrap
+        from madgraph.mg7 import bootstrap
+        if not bootstrap.madspace_is_installed():
+            raise unittest.SkipTest('madspace is not installed (madspace/install)')
+
+        self.do('import model sm')
+        self.do('generate u u~ > e+ e-')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        make = subprocess.run(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              cwd=proc_dir)
+        self.assertEqual(0, make.returncode, 'the library did not build:\n%s'
+                         % make.stdout.decode(errors='replace')[-3000:])
+        lib = glob.glob(pjoin(self.out_dir, 'lib',
+                              'libmadmatrix_*_P*_scalar_d.so'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        helper = pjoin(self.out_dir, 'madspace_threads.py')
+        with open(helper, 'w') as fsock:
+            fsock.write(textwrap.dedent('''\
+                import json, math, sys
+                import numpy as np
+                import madspace as ms
+                from madgraph.mg7 import helicity_choice
+
+                def point(k):  # u u~ > e+ e- at sqrt(s) = 1 TeV: k-th direction, or forward
+                    e = 500.
+                    ct, phi = (1., 0.) if k == 'forward' else (math.cos(0.3 + 0.37 * k), 0.7 * k)
+                    st = math.sqrt(1 - ct * ct)
+                    p3 = [e * st * math.cos(phi), e * st * math.sin(phi), e * ct]
+                    return [[e, 0, 0, e], [e, 0, 0, -e], [e] + p3, [e] + [-x for x in p3]]
+
+                # 4 jobs of 256 events with 4 threads, each opening with 16 forward events
+                batch = ['forward' if k % 256 < 16 else k for k in range(1024)]
+
+                def run(threads, first, choice=()):
+                    context = ms.Context(ms.cpu_device(), threads)
+                    api = context.load_matrix_element(sys.argv[1], sys.argv[2], {}, list(choice))
+                    me = ms.MatrixElement(
+                        api.index(), 4,
+                        [ms.MatrixElement.momenta_in, ms.MatrixElement.flavor_in],
+                        [ms.MatrixElement.matrix_element_out])
+                    runtime = ms.FunctionRuntime(me.function(), context)
+                    def evaluate(ks):
+                        momenta = np.array([point(k) for k in ks])
+                        flavors = np.zeros(len(ks), dtype=np.int32)
+                        return np.asarray(runtime(momenta, flavors)).ravel().tolist()
+                    if first:
+                        evaluate(first)
+                    return evaluate(batch)
+
+                choice = helicity_choice.choose(sys.argv[1], sys.argv[2], {}, 1000., 0., False)
+                print(json.dumps({
+                    'choice': choice,
+                    'threads': run(4, [], choice),
+                    'reference': run(1, list(range(16))),
+                    'forward_first': run(1, ['forward'] * 16),
+                    'generic': [k != 'forward' for k in batch]}))
+                '''))
+        env = dict(os.environ)
+        env['PYTHONPATH'] = os.pathsep.join(
+            [str(bootstrap.INSTALL_DIR), MG5DIR]
+            + ([env['PYTHONPATH']] if env.get('PYTHONPATH') else []))
+        out = subprocess.run([sys.executable, helper, lib, card], env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(0, out.returncode, out.stdout.decode(errors='replace')[-3000:])
+        run = json.loads(out.stdout.decode().strip().splitlines()[-1])
+        self.assertTrue(run['choice'], 'no helicity choice from the cards')
+        # (not all: the dropped helicities are small for directions near the beam)
+        wrong = [abs(f - r) > 1e-3 * r for f, r, g in
+                 zip(run['forward_first'], run['reference'], run['generic']) if g]
+        self.assertGreater(sum(wrong), len(wrong) // 2, 'choosing on forward '
+                           'events alone keeps the helicities: the test cannot '
+                           'see a thread do so')
+        for k, (value, ref) in enumerate(zip(run['threads'], run['reference'])):
+            self.assertGreater(ref, 0)
+            self.assertAlmostEqual(value, ref, delta=1e-12 * ref,
+                                   msg='event %d: a thread did not evaluate the '
+                                       'helicities chosen from the cards' % k)
 
     def _check_umami_first_call(self, builds):
         """test_standalone_umami_first_call for these (backend, fptype, rtol)"""
@@ -2181,7 +2295,7 @@ class TestCmdShell2(unittest.TestCase,
                     p3 = [e * st * math.cos(phi), e * st * math.sin(phi), e * ct]
                     return [[e, 0, 0, e], [e, 0, 0, -e], [e] + p3, [e] + [-x for x in p3]]
 
-                def evaluate(ks, flavors):
+                def evaluate(ks, flavors, instance=None):
                     n = len(ks)
                     mom = (ctypes.c_double * (4 * npar * n))()
                     for i, k in enumerate(ks):  # momenta[n * (npar * mu + ipart) + i]
@@ -2194,7 +2308,8 @@ class TestCmdShell2(unittest.TestCase,
                     # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_FLAVOR_INDEX = 2,
                     # UMAMI_OUT_MATRIX_ELEMENT = 0
                     status = lib.umami_matrix_element(
-                        handle, ctypes.c_size_t(n), ctypes.c_size_t(n), ctypes.c_size_t(0),
+                        handle if instance is None else instance,
+                        ctypes.c_size_t(n), ctypes.c_size_t(n), ctypes.c_size_t(0),
                         ctypes.c_size_t(2), (ctypes.c_int * 2)(0, 2),
                         (ctypes.c_void_p * 2)(pointers[0], pointers[1]),
                         ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
@@ -2205,11 +2320,46 @@ class TestCmdShell2(unittest.TestCase,
 
                 first = {'single': [0], 'batch': list(range(16)), 'forward': ['forward']}[sys.argv[3]]
                 evaluate(first, [k % 2 if k != 'forward' else 1 for k in first])
+                # 16 more events: the good helicities are chosen on the first 16 (nlearn)
+                evaluate(range(16, 32), [k % 2 for k in range(16, 32)])
                 flavors = [0, 1, 1, 0, 1, 0, 0]
+                batch = evaluate(range(7), flavors)
+                single = [evaluate([k], [f])[0] for k, f in enumerate(flavors)]
+
+                # the choice of an mg7 run: made on RAMBO points of a collider, read
+                # off one instance and given to another, which keeps it
+                def instance():
+                    new = ctypes.c_void_p()
+                    assert lib.umami_initialize(ctypes.byref(new), sys.argv[2].encode()) == 0
+                    return new
+                def get(source):
+                    size = lib.madmatrix_get_helicity_choice(source, None, 0)
+                    if size < 0:
+                        return None
+                    choice = (ctypes.c_int * size)()
+                    lib.madmatrix_get_helicity_choice(source, choice, size)
+                    return list(choice)
+                def given(choice):
+                    taker = instance()
+                    status = lib.madmatrix_set_helicity_choice(
+                        taker, (ctypes.c_int * len(choice))(*choice), len(choice))
+                    return taker, status
+                rambo, forward = instance(), instance()
+                choosing = get(rambo)
+                choose = lib.madmatrix_choose_good_helicities
+                choose.argtypes = [ctypes.c_void_p, ctypes.c_double, ctypes.c_double, ctypes.c_int]
+                assert choose(rambo, 1000., 0., 0) == 0
+                evaluate(['forward'] * 16, [1] * 16, forward)
+                taker, status = given(get(forward))
+                assert status == 0
+                evaluate(range(16, 32), [k % 2 for k in range(16, 32)], taker)
+                refused = given([0, 1 << 20])[1]
                 print(json.dumps({
                     'good': lib.madmatrix_good_helicity_count(handle),
-                    'batch': evaluate(range(7), flavors),
-                    'single': [evaluate([k], [f])[0] for k, f in enumerate(flavors)]}))
+                    'batch': batch, 'single': single,
+                    'choice': {'choosing': choosing, 'rambo': get(rambo),
+                               'mine': get(handle), 'forward': get(forward),
+                               'taker': get(taker), 'refused': refused}}))
                 '''))
 
         devnull = open(os.devnull, 'w')
@@ -2236,6 +2386,16 @@ class TestCmdShell2(unittest.TestCase,
             self.assertGreater(reference['good'], 0, build)
             self.assertLess(reference['good'], 16,
                             '%s: no helicity was filtered out' % build)
+            choice = reference['choice']
+            self.assertIsNone(choice['choosing'], build)
+            self.assertEqual(choice['rambo'], choice['mine'], '%s: RAMBO points '
+                             'choose other helicities than generic events' % build)
+            self.assertEqual(len(choice['mine']), reference['good'] + 1, build)
+            self.assertLess(len(choice['forward']), len(choice['mine']),
+                            '%s: the forward events keep every helicity' % build)
+            self.assertEqual(choice['taker'], choice['forward'], '%s: an instance '
+                             'given a choice did not keep it' % build)
+            self.assertNotEqual(choice['refused'], 0, build)
             for first, run in runs.items():
                 self.assertEqual(run['good'], reference['good'],
                                  '%s: a first call of %s events keeps other '
@@ -4178,6 +4338,152 @@ print(json.dumps(out))
                 self.assertLessEqual(abs(me - expected), 1e-4 * expected,
                                      'alpha_s = %s: %s instead of %s'
                                      % (value, me, expected))
+
+    def test_madmatrix_heft_ggh_vs_analytic(self):
+        """standalone (madmatrix) g g > h g in the heft model against the analytic result.
+
+        With C = alpha_s P / (6 pi v) the coefficient of H tr(G G)/2 (P the
+        finite-m_t factor of the model's GH), the H + 3 gluon helicity
+        amplitudes (Dixon, Glover, Khoze, hep-th/0411092) give
+
+          |M|^2 = alpha_s^3 P^2 / (24 pi v^2) (m_H^8 + s^4 + t^4 + u^4) / (s t u)
+
+        averaged over the initial helicities and colours. The all-plus
+        helicities (all outgoing) give the m_H^8 term: (m_H^2/s)^4 of the others,
+        1e-9 at sqrt(s) = 1.5 TeV and 42% at 130 GeV. The good helicities were
+        chosen at initialization, on RAMBO points at 1.5 TeV, where they fell
+        under the filter's relative threshold (limhel/ncomb): they were dropped
+        for the whole run, and |M|^2 came out 42% low at 130 GeV, 2% at 200 GeV
+        and 4e-8 at 1 TeV. They are now chosen at run time, on the first events
+        the matrix element is called with (here these points), as in the
+        Fortran standalone output.
+
+        16 points in the partonic centre-of-mass frame, sqrt(s) from 130 GeV to
+        3 TeV, scalar and simd_128 in double precision. Then the choice of an mg7
+        run (madgraph/mg7/helicity_choice.py), made from the cards on 16 RAMBO
+        points on a CPU build before the run and given to every instance: for
+        13 TeV beams with PDFs, the points go down to just above threshold and
+        the same 16 points come out right with it. On points at 13 TeV only
+        (beams without PDFs), where the all-plus helicities are 1e-14 of |M|^2,
+        they are kept too: with a massive external leg (the Higgs) the filter
+        keeps every row that is not exactly 0 (ProcessTables hel_massive), so
+        both choices are the same and both give the analytic |M|^2.
+        """
+        import array
+        import math
+        import madgraph.models.check_param_card as check_param_card
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        self.do('import model heft')
+        self.do('generate g g > h g')
+        self.do('output standalone %s' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        dirs = [d for d in os.listdir(proc_root)
+                if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))]
+        self.assertEqual(len(dirs), 1, dirs)
+        proc_dir = pjoin(proc_root, dirs[0])
+
+        card = check_param_card.ParamCard(pjoin(self.out_dir, 'Cards', 'param_card.dat'))
+        alpha_s = card['sminputs'].get(3).value
+        gf = card['sminputs'].get(2).value
+        mt = card['mass'].get(6).value
+        mh = card['mass'].get(25).value
+        vev = 1. / math.sqrt(math.sqrt(2.) * gf)  # = 2 MW sw / ee in the model
+        tau = mh**2 / mt**2
+        poly = 1. + 7. * tau / 120. + tau**2 / 168. + 13. * tau**3 / 16800.
+
+        rng = random.Random(4242)
+        points, expected = [], []
+        for energy in (130., 150., 200., 300., 500., 1000., 1500., 3000.):
+            for _ in range(2):
+                pabs = (energy**2 - mh**2) / (2 * energy)  # the gluon's
+                cth = rng.uniform(-0.95, 0.95)
+                sth = math.sqrt(1. - cth**2)
+                phi = rng.uniform(0., 2 * math.pi)
+                k = [pabs, pabs * sth * math.cos(phi), pabs * sth * math.sin(phi),
+                     pabs * cth]
+                h = [energy - pabs, -k[1], -k[2], -k[3]]
+                points.extend([energy / 2, 0., 0., energy / 2,
+                               energy / 2, 0., 0., -energy / 2] + h + k)
+                s = energy**2
+                t = -energy * (k[0] - k[3])  # (p1 - k)^2
+                u = -energy * (k[0] + k[3])  # (p2 - k)^2
+                expected.append(alpha_s**3 * poly**2 / (24 * math.pi * vev**2)
+                                * (mh**8 + s**4 + t**4 + u**4) / (s * t * u))
+        nevt = len(expected)
+        with open(pjoin(proc_dir, 'pts.bin'), 'wb') as fsock:
+            array.array('d', points).tofile(fsock)
+
+        devnull = open(os.devnull, 'w')
+        for backend in ('scalar', 'simd_128'):
+            subprocess.call(['make', 'BACKEND=%s' % backend, 'FPTYPE=d'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, 'check_sa.exe')),
+                            'check_sa.exe did not build for %s' % backend)
+            dump = 'me_%s.bin' % backend
+            subprocess.call(['./check_sa.exe', 'perf', '--momenta', 'pts.bin',
+                             '--dump-me', dump, '1', str(nevt), '1'],
+                            stdout=devnull, stderr=devnull, cwd=proc_dir)
+            self.assertTrue(os.path.exists(pjoin(proc_dir, dump)),
+                            'check_sa.exe perf wrote no %s' % dump)
+            mes = array.array('d')
+            with open(pjoin(proc_dir, dump), 'rb') as fsock:
+                mes.frombytes(fsock.read())
+            self.assertEqual(len(mes), nevt)
+            for ievt, (me, ref) in enumerate(zip(mes, expected)):
+                energy = 2 * points[16 * ievt]  # 2 E of the first gluon
+                self.assertLessEqual(abs(me / ref - 1), 1e-10,
+                                     '%s, sqrt(s) = %g GeV: %r instead of %r'
+                                     % (backend, energy, me, ref))
+
+        # the choice of an mg7 run, on the scalar build
+        import ctypes
+        import glob
+        from madgraph.mg7 import helicity_choice
+        lib_path = glob.glob(pjoin(self.out_dir, 'lib',
+                                   'libmadmatrix_*_P*_scalar_d.so'))[0]
+        param_card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        with_pdfs = helicity_choice.choose(lib_path, param_card, {}, 13000., 0., True)
+        no_pdfs = helicity_choice.choose(lib_path, param_card, {}, 13000., 0., False)
+        self.assertIsNotNone(with_pdfs)
+        self.assertIsNotNone(no_pdfs)
+        self.assertEqual(no_pdfs[1:], with_pdfs[1:],
+                         'with a massive leg, the choice at 13 TeV only keeps '
+                         'the all-plus helicities too')
+        lib = ctypes.CDLL(lib_path)
+        mom = (ctypes.c_double * (16 * nevt))()  # mom[nevt * (4 * mu + ipart) + i]
+        for i in range(nevt):
+            for ipart in range(4):
+                for mu in range(4):
+                    mom[nevt * (4 * mu + ipart) + i] = points[16 * i + 4 * ipart + mu]
+        alphas = (ctypes.c_double * nevt)(*([alpha_s] * nevt))
+
+        def evaluate(choice):
+            handle = ctypes.c_void_p()
+            self.assertEqual(0, lib.umami_initialize(ctypes.byref(handle),
+                                                     param_card.encode()))
+            self.assertEqual(0, lib.madmatrix_set_helicity_choice(
+                handle, (ctypes.c_int * len(choice))(*choice), len(choice)))
+            me = (ctypes.c_double * nevt)()
+            # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_ALPHA_S = 1,
+            # UMAMI_OUT_MATRIX_ELEMENT = 0
+            status = lib.umami_matrix_element(
+                handle, ctypes.c_size_t(nevt), ctypes.c_size_t(nevt),
+                ctypes.c_size_t(0), ctypes.c_size_t(2), (ctypes.c_int * 2)(0, 1),
+                (ctypes.c_void_p * 2)(ctypes.addressof(mom), ctypes.addressof(alphas)),
+                ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                (ctypes.c_void_p * 1)(ctypes.addressof(me)))
+            self.assertEqual(0, status)
+            lib.umami_free(handle)
+            return list(me)
+
+        for tag, choice in (('with PDFs', with_pdfs), ('without PDFs', no_pdfs)):
+            for ievt, (me, ref) in enumerate(zip(evaluate(choice), expected)):
+                self.assertLessEqual(abs(me / ref - 1), 1e-10,
+                                     'the choice for 13 TeV %s, sqrt(s) = %g GeV: '
+                                     '%r instead of %r'
+                                     % (tag, 2 * points[16 * ievt], me, ref))
 
     def test_madmatrix_vs_fortran(self):
         """Cross-check that standalone (madmatrix) reproduces the
