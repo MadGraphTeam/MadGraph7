@@ -3398,7 +3398,6 @@ fks_sector_function:
     - name: s
       type: [float]
       desc: "the sector function S_ij of the configuration"
-  vectorized: False
   desc: "FKS sector function S_ij of fks_Sij.f, 1 / sum_kl d_ij / d_kl over the FKS pairs (k, l) of the real process with d_kl = (E_k E_l / (sqrt_s / 2)^2)^fks_a (1 - beta_k beta_l cos theta_kl)^fks_b, times h_damp(E_i / (E_i + E_j)) for a final-state pair (i, j) of two gluons or photons. Energies and angles are those in the partonic center-of-mass frame of the momenta, from invariants. i enters with the direction of p_i_hat and the energy of its momentum in p, so that at a soft counter-event the pairs without i drop out. As in fks_Sij.f, S_ij is zero where an energy or the angle of a pair in a denominator falls below 1e-8."
 
 fks_eikonals:
@@ -3437,7 +3436,6 @@ fks_eikonals:
     - name: eik
       type: [float, k]
       desc: "reduced eikonal factor of each pair, zero past the pairs of the configuration"
-  vectorized: False
   desc: "Reduced eikonal factors of eikonal_reduced in fks_singular.f, (p_m p_n) (1 - y) / ((p_m p_i_hat) (p_n p_i_hat)) for the pairs (m, n) of the soft limit of the configuration of the event. For a massless j, (p_j p_i_hat) / (1 - y) is sqrt_s E_j / 2 in the partonic center-of-mass frame, so that the factors are finite at y = 1. With the color-linked Borns of the pairs they give the soft limit of xi^2 (1 - y) times the real matrix element."
 
 fks_eikonals_resonance:
@@ -3479,7 +3477,6 @@ fks_eikonals_resonance:
     - name: eik
       type: [float, k]
       desc: "reduced eikonal factor of each pair, zero past the pairs of the configuration"
-  vectorized: False
   desc: "Reduced eikonal factors of eikonal_reduced in fks_singular.f, (p_m p_n) (1 - y) / ((p_m p_i_hat) (p_n p_i_hat)) for the pairs (m, n) of the soft limit of the configuration of the event. For a massless j, (p_j p_i_hat) / (1 - y) is sqrt_s E_j / 2 in the partonic center-of-mass frame, so that the factors are finite at y = 1. With the color-linked Borns of the pairs they give the soft limit of xi^2 (1 - y) times the real matrix element. With the resonance-local recoil (eikonal_reduced of its MadGraph7 branch), (p_j p_i_hat) / (1 - y) is (k p_j) / 2 with the momentum k of the resonance where the event has one."
 
 fks_splitting_kernels:
@@ -3515,7 +3512,6 @@ fks_splitting_kernels:
     - name: q
       type: [float, 2]
       desc: "QCD and QED azimuthal terms of Qterms_reduced_timelike or Qterms_reduced_spacelike, without the couplings"
-  vectorized: False
   desc: "The collinear factors of sborncol_fsr and sborncol_isr in fks_singular.f: z = 1 - E_i / (E_i + E_j) in the partonic center-of-mass frame for a final-state j, 1 - xi = 1 - 2 E_i / sqrt(s) for an initial-state one, the Altarelli-Parisi kernel of the splitting and its azimuthal terms, timelike for a final-state j and spacelike for an initial-state one, with t = z s / 4 and without the couplings."
 
 fks_splitting_kernels_resonance:
@@ -3554,7 +3550,6 @@ fks_splitting_kernels_resonance:
     - name: q
       type: [float, 2]
       desc: "QCD and QED azimuthal terms of Qterms_reduced_timelike or Qterms_reduced_spacelike, without the couplings"
-  vectorized: False
   desc: "The collinear factors of sborncol_fsr and sborncol_isr in fks_singular.f: z = 1 - E_i / (E_i + E_j) in the partonic center-of-mass frame for a final-state j, 1 - xi = 1 - 2 E_i / sqrt(s) for an initial-state one, the Altarelli-Parisi kernel of the splitting and its azimuthal terms, timelike for a final-state j and spacelike for an initial-state one, with t = z s / 4 and without the couplings. With the resonance-local recoil (sborncol_fsr of its MadGraph7 branch), the energies and s of a final-state j are those in the rest frame of the momentum k of the resonance where the event has one, t = z k^2 / 4."
 
 fks_transverse_vector:
@@ -3578,7 +3573,6 @@ fks_transverse_vector:
     - name: k_perp
       type: [float, 4]
       desc: "transverse direction of the emission, k_perp^2 = -1"
-  vectorized: False
   desc: "Transverse direction of the emission (xij_kperp of genps_fks.f): the momentum of i per unit xi made orthogonal to the Born emitter and to the sum of the incoming Born momenta, normalized to k_perp^2 = -1. It is the vector that the spin-correlated Born of a gluon (or photon) emitter is contracted with in the collinear limit, and in the partonic center-of-mass frame it is (0, cos phi, sin phi, 0) in the frame of the emitter, up to its sign."
 
 fks_transverse_vector_resonance:
@@ -3605,7 +3599,6 @@ fks_transverse_vector_resonance:
     - name: k_perp
       type: [float, 4]
       desc: "transverse direction of the emission, k_perp^2 = -1"
-  vectorized: False
   desc: "Transverse direction of the emission (xij_kperp of genps_fks.f): the momentum of i per unit xi made orthogonal to the Born emitter and to the sum of the incoming Born momenta, normalized to k_perp^2 = -1. It is the vector that the spin-correlated Born of a gluon (or photon) emitter is contracted with in the collinear limit, and in the partonic center-of-mass frame it is (0, cos phi, sin phi, 0) in the frame of the emitter, up to its sign. With the resonance-local recoil, orthogonal to the momentum k of the resonance where the event has one, in place of the sum of the incoming Born momenta: the transverse direction in the rest frame of the resonance, boosted with the momenta (resonance_collinear_phase of its MadGraph7 branch)."
 
 fks_prefactors:
@@ -3668,7 +3661,6 @@ fks_prefactors:
     - name: f_pdf
       type: [float, 3]
       desc: "prefactors of the delta, plus and log-plus parts of a change of the PDF scheme at the soft-collinear counter-event"
-  vectorized: False
   desc: "The prefactors f_r, f_s, f_c, f_dc, f_sc and f_dsc of compute_prefactors_n1body in fks_singular.f, the plus distributions in xi and 1 - y with xicut, xiScut, delta and deltaS, for the Jacobians of the events and counter-events without the factor xi and without the symmetry factors: f_r = 1 / (xi (1 - y)) and f_s = (1 / xi + log(xicut / xi_l) / xi_l) / (1 - y) with xi_l = min(xi_max, xiScut), the collinear ones with xi and xi_max of the collinear counter-event and 32 pi^2 / s for the remnants, zero for a massive emitter, and those of a change of the PDF scheme, 32 pi^2 / (s deltaS xi_lc) times 1, log(xi_lc) and log(xi_lc)^2 / 2 with xi_lc = min(xi_max, xiScut) of the collinear counter-event (MadFKS takes xiScut)."
 
 fks_prefactors_resonance:
@@ -3743,7 +3735,6 @@ fks_prefactors_resonance:
     - name: f_pdf
       type: [float, 3]
       desc: "prefactors of the delta, plus and log-plus parts of a change of the PDF scheme at the soft-collinear counter-event"
-  vectorized: False
   desc: "The prefactors f_r, f_s, f_c, f_dc, f_sc and f_dsc of compute_prefactors_n1body in fks_singular.f, the plus distributions in xi and 1 - y with xicut, xiScut, delta and deltaS, for the Jacobians of the events and counter-events without the factor xi and without the symmetry factors: f_r = 1 / (xi (1 - y)) and f_s = (1 / xi + log(xicut / xi_l) / xi_l) / (1 - y) with xi_l = min(xi_max, xiScut), the collinear ones with xi and xi_max of the collinear counter-event and 32 pi^2 / s for the remnants, zero for a massive emitter, and those of a change of the PDF scheme, 32 pi^2 / (s deltaS xi_lc) times 1, log(xi_lc) and log(xi_lc)^2 / 2 with xi_lc = min(xi_max, xiScut) of the collinear counter-event (MadFKS takes xiScut). With the resonance-local recoil (compute_prefactors_n1body and resonance_subtraction_scales of its MadGraph7 branch), where the event has a resonance of momentum k the soft cut is xicut a(p_i_hat_s), the collinear one xicut a(p_j) and the cut in 1 - y delta s / (k^2 a(p_j)^2), with a(q) = s (k q) / (k^2 (P q)) and P, s = P^2, p_j and p_i_hat_s at the soft counter-event."
 
 fks_soft_limit:
@@ -3788,7 +3779,6 @@ fks_soft_limit:
     - name: soft
       type: [float, o]
       desc: "soft limit of xi^2 (1 - y) times the real matrix element per NLO order"
-  vectorized: False
   desc: "Soft limit of xi^2 (1 - y) times the real matrix element per NLO order, as sbornsoft in fks_singular.f: for a gluon i 4 pi alpha_s sum_(m, n) f_mn E_mn <T_m . T_n> B and for a photon i 4 pi alpha sum_(m, n) f_mn E_mn B over the pairs of the configuration of the event, with the reduced eikonal factors E_mn, the Born of the order of the counterterms and f_mn = -2 iden_comp, half that for m = n (whose color-linked Born of MadFKS has a factor 1/2), times eta_m Q_m eta_n Q_n for a photon i with the charges Q and eta = -1 for an incoming particle."
 
 fks_collinear_limit:
@@ -3827,7 +3817,6 @@ fks_collinear_limit:
     - name: collinear
       type: [float, o]
       desc: "collinear limit of xi^2 (1 - y) times the real matrix element per NLO order"
-  vectorized: False
   desc: "Collinear limit of xi^2 (1 - y) times the real matrix element per NLO order, as sborncol_fsr and sborncol_isr in fks_singular.f: the sum over the splitting types of the configuration (the second with the Born of the extra counterterm) of 4 pi alpha iden_comp (AP B + Q (B / 2 - B_kperp)) with the kernels and the coupling alpha of the splitting (QCD or QED) and the Born input of the counterterms, where B_kperp, the Born with the polarization vector of the emitter replaced by k_perp, enters only where Q is not zero."
 
 fks_collinear_remnants:
@@ -3917,7 +3906,6 @@ fks_collinear_remnants:
     - name: soft_collinear
       type: [float, o]
       desc: "collinear remnant at the soft-collinear counter-event per NLO order"
-  vectorized: False
   desc: "The collinear remnants of an incoming emitter of sreal_deg, compute_collinear_counter_term and compute_soft_collinear_counter_term in fks_singular.f per NLO order, with the factorization scale of the beam of the emitter, summed over the splitting types of the configuration (the second with the Born of the extra counterterm) with their kernels and couplings (QCD or QED). With N = 4 pi alpha B iden_comp / (8 pi^2 z) and the Born input of the counterterms (at the collinear counter-event that of collinear_born), D_xi = N ((1 - z) P log(s deltaI / (2 mu_F^2)) - (1 - z) P'), D_lxi = 2 N (1 - z) P and the parts K_p, K_l, K_d = -N k_p, k_l, k_d of the change of the PDF scheme (xkplus, xklog, xkdelta, zero in MSbar), the collinear remnant is f_dc (D_xi + K_p + (D_lxi + K_l) log xi_c) at z = 1 - xi_c and s of the collinear counter-event and the soft-collinear one -f_dsc1 (D_xi + K_p + (D_lxi + K_l) log xi_c) - f_dsc2 D_xi - f_dsc3 D_lxi + f_pdf_d K_d + f_pdf_p K_p + f_pdf_l K_l at z = 1 and s of the soft-collinear counter-event. Each is zero where its sector function is."
 
 fks_real_emission:
@@ -3965,7 +3953,6 @@ fks_real_emission:
     - name: real
       type: [float, o]
       desc: "real matrix element times the sector function per NLO order"
-  vectorized: False
   desc: "The real matrix element per NLO order times the sector function at the event, with the switches of sreal and fks_Sij: below tiny in 1 - y the collinear limit at the event over xi^2 (1 - y), else below tiny in xi the soft one, in place of the matrix element. For xi <= tiny the sector function takes the direction of i at the soft counter-event, or at the soft-collinear one where also 1 - y < tiny and the emitter is massless. Without that counter-event the event keeps its own direction and matrix element."
 
 fks_subtraction:
@@ -4058,7 +4045,6 @@ fks_subtraction:
     - name: soft_collinear_out
       type: [float, o]
       desc: "contribution of the soft-collinear counterterm per NLO order, per unit Jacobian of its counter-event"
-  vectorized: False
   desc: "The real emission and its FKS counterterms per NLO order with their sector functions, prefactors, signs, symmetry factors and conditions, as compute_real_emission and compute_soft_counter_term and its siblings in fks_singular.f, the collinear remnants added to the collinear counterterms: the soft counterterm where xi_hat xi_max_s <= xiScut and xi <= xiScut, the collinear one where y > 1 - deltaS, the soft-collinear one where both xi_hat xi_max_c and xi_c are below xiScut and y > 1 - deltaS, each zero where its momenta are not generated."
 
 fks_soft_virtual:
@@ -4130,7 +4116,6 @@ fks_soft_virtual:
     - name: fact_coefficients
       type: [float, o, 2]
       desc: "coefficients of log mu_F^2 of the two beams per NLO order"
-  vectorized: False
   desc: "The n-body part of bornsoftvirtual in fks_singular.f without the virtual per NLO order, for QCD and QED and with the Ellis-Sexton scale at mu_R. With a = alpha_s / (2 pi) for QCD and alpha / (2 pi) for QED and the Born B of the order of the counterterms, each is a B sum_j Q_j over the massless particles with Q terms plus a sum_(m, n) f_mn L_mn I_mn over the pairs of linked particles, with L_mn = <T_m . T_n> B for QCD and B for QED and the integrated eikonals I_mn of eikonal_Ireg. Q_j = gamma'_j - log(s deltaO / (2 mu_R^2)) (gamma_j - 2 C_j log(2 E_j / (xicut sqrt_s))) + 2 C_j (log^2(2 E_j / sqrt_s) - log^2 xicut) - 2 gamma_j log(2 E_j / sqrt_s) for a final-state particle with its energy in the partonic center-of-mass frame, -log(mu_F^2 / mu_R^2) (gamma_j + 2 C_j log xicut) for an incoming one with the factorization scale of its beam. The coefficients of log mu_R^2 and log mu_F^2 of the weight lines of MadFKS are a b gamma_g B of QCD and the sum of -a (gamma_j + 2 C_j log xicut) B over QCD and QED."
 
 fks_contribution_weight:
@@ -4163,7 +4148,6 @@ fks_contribution_weight:
     - name: weight
       type: [float]
       desc: "the weight in pb (a width in GeV for a decay), zero where det is zero"
-  vectorized: False
   desc: "The weight of one contribution of the FKS integrand at its own kinematics, INV_GEV2_TO_PB luminosity factor det / (2 s) sum_o g_s^powers[o] coefficients[o] with g_s = sqrt(4 pi alpha_s) and s = (p_1 + p_2)^2 of its momenta. A decay of mass M = sqrt(p_1^2) has the flux 1 / (2 M) in place of 1 / (2 s) and no conversion to pb. As sigint of driver_mintFO.f, which multiplies the weight lines without the strong coupling by g_strong^QCDpower at the scales of their own kinematics and by the luminosity of their momentum fractions. See @ref FKSWeights."
 
 fks_luminosity:
@@ -4196,7 +4180,6 @@ fks_luminosity:
     - name: luminosity
       type: [float]
       desc: "f_1(x_1) f_2(x_2) of the flavor, or the sum over the flavors, times the factors"
-  vectorized: False
   desc: "The parton luminosity of one kinematics, PD of the parton_lum_*.f files of MadFKS for the flavor of the event or summed over the flavors of its FKS configuration, each times its factor, without the conversion to pb. See @ref FKSLuminosity."
 
 ---

@@ -24,29 +24,33 @@ KERNELSPEC void kernel_fks_luminosity(
     FIn<T, 0> x2,
     IIn<T, 0> index,
     IIn<T, 0> flavor,
-    IIn<T, 2> flavors,
-    FIn<T, 2> factors,
+    ISIn<T, 2> flavors,
+    FSIn<T, 2> factors,
     FOut<T, 0> luminosity
 ) {
-    std::size_t c = single_index(index);
-    auto pairs = flavors[c];
-    auto weights = factors[c];
-    int picked = single_index(flavor);
-    FVal<T> sum = 0.;
-    for (std::size_t k = 0; k + 1 < pairs.size(); k += 2) {
-        int a = single_index(pairs[k]), b = single_index(pairs[k + 1]);
-        if (a == -1) {
-            break;
+    IVal<T> picked = flavor;
+    FVal<T> f1 = FVal<T>(x1), f2 = FVal<T>(x2);
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        auto pairs = flavors[c];
+        auto weights = factors[c];
+        FVal<T> sum = 0.;
+        for (std::size_t k = 0; k + 1 < pairs.size(); k += 2) {
+            int a = single_index(pairs[k]), b = single_index(pairs[k + 1]);
+            if (a == -1) {
+                break;
+            }
+            if (a < 0 || b < 0) {
+                // a flavor without density
+                continue;
+            }
+            // the flavor of the event, or all of them
+            auto mine = (picked < 0) | (picked == IVal<T>(int(k / 2)));
+            FVal<T> term = single_value(weights[k / 2]) * (FVal<T>(pdf1[a]) / f1) *
+                (FVal<T>(pdf2[b]) / f2);
+            sum = sum + where(mine, term, FVal<T>(0.));
         }
-        if ((picked >= 0 && static_cast<int>(k / 2) != picked) || a < 0 || b < 0) {
-            // another flavor, or one without density
-            continue;
-        }
-        sum = sum +
-            FVal<T>(weights[k / 2]) * (FVal<T>(pdf1[a]) / FVal<T>(x1)) *
-                (FVal<T>(pdf2[b]) / FVal<T>(x2));
-    }
-    luminosity = sum;
+        masked_store(luminosity, lanes, sum);
+    });
 }
 
 } // namespace kernels

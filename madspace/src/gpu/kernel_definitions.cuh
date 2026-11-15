@@ -57,6 +57,23 @@ inline __device__ float max(float arg1, float arg2) {
 }
 inline __device__ std::size_t single_index(me_int_t arg) { return arg; }
 
+// as in cpu/kernel_definitions.hpp: one pass with the index of the event
+template <class F>
+inline __device__ void for_each_value(me_int_t value, F&& body) {
+    body(static_cast<std::size_t>(value), true);
+}
+
+template <ScalarType T, bool packed>
+inline __device__ T single_value(const gpu::GpuTensorView<T, 0, packed>& view) {
+    return view;
+}
+
+template <ScalarType T, bool packed>
+inline __device__ void
+masked_store(gpu::GpuTensorView<T, 0, packed> view, bool, T value) {
+    view = value;
+}
+
 using ::acos;
 using ::asinh;
 using ::atan;

@@ -41,46 +41,39 @@ KERNELSPEC FourMom<T> fks_incoming_sum(FIn<T, 2> p, std::size_t incoming) {
 // energy factor; q1 can be the momentum of i per unit xi with the energy of
 // i), masses m1, m2 and color octets o1, o2. With both, the energy of 1 is
 // in d_kl (d_ij / d_kl of a pair without i), else only that of 2. zero is set
-// where an energy or the angle falls below vtiny, as get_dkl_Sij does.
+// where an energy or the angle falls below vtiny, as get_dkl_Sij does, and
+// d_kl is zero where an energy does.
 template <typename T>
 KERNELSPEC FVal<T> fks_dkl(
     FourMom<T> q1,
     FVal<T> e1,
-    FVal<T> m1,
+    double m1,
     bool o1,
     FourMom<T> q2,
     FVal<T> e2,
-    FVal<T> m2,
+    double m2,
     bool o2,
     bool both,
     FourMom<T> p_tot,
     FVal<T> half,
-    FVal<T> fks_a,
-    FVal<T> fks_b,
+    double fks_a,
+    double fks_b,
     bool use_energy,
     bool use_beta,
-    bool& zero
+    BVal<T>& zero
 ) {
     constexpr double vtiny = 1e-8;
-    zero = false;
     FVal<T> energy = 1.;
+    BVal<T> small_energy = false;
     if (both && (o1 || use_energy)) {
         energy = energy * e1 / half;
-        if (e1 < vtiny * half) {
-            zero = true;
-            return 0.;
-        }
+        small_energy = small_energy | (e1 < vtiny * half);
     }
     if (o2 || use_energy) {
         energy = energy * e2 / half;
-        if (e2 < vtiny * half) {
-            zero = true;
-            return 0.;
-        }
+        small_energy = small_energy | (e2 < vtiny * half);
     }
-    if (energy > 0.) {
-        energy = pow(energy, fks_a);
-    }
+    energy = where(energy > 0., pow(energy, FVal<T>(fks_a)), energy);
     // the angle in the frame of p_tot: with q's own energy E and length k,
     // 1 - cos = (q1 q2) / (E1 E2) for massless momenta and 1 - beta_1 beta_2
     // cos = (q1 q2) / (E1 E2) for massive ones whose velocity counts
@@ -95,26 +88,19 @@ KERNELSPEC FVal<T> fks_dkl(
     FVal<T> g2 = (!o2 && m2 != 0. && use_beta) || m2 == 0. ? FVal<T>(1.) : f2 / k2;
     auto c0 = dot12 / (f1 * f2);
     auto g12 = g1 * g2;
-    FVal<T> angle = g12 == 1. ? c0 : 1. - g12 * (1. - c0);
+    FVal<T> angle = where(g12 == 1., c0, 1. - g12 * (1. - c0));
     angle = max(angle, 0.);
-    zero = angle < vtiny;
-    if (angle > 0.) {
-        angle = pow(angle, fks_b);
-    }
-    return energy * angle;
+    zero = small_energy | (angle < vtiny);
+    angle = where(angle > 0., pow(angle, FVal<T>(fks_b)), angle);
+    return where(small_energy, FVal<T>(0.), energy * angle);
 }
 
 template <typename T>
-KERNELSPEC FVal<T> fks_h_damp(FVal<T> x, FVal<T> one, FVal<T> a) {
-    if (x <= one) {
-        return 1.;
-    }
-    if (x >= 1. - one) {
-        return 0.;
-    }
-    auto y = (x - one) / (1. - 2. * one);
-    auto u = pow(1. - y, 2. * a), v = pow(y, 2. * a);
-    return u / (u + v);
+KERNELSPEC FVal<T> fks_h_damp(FVal<T> x, double one, double a) {
+    // (y within [0, 1] where it counts, clamped elsewhere)
+    FVal<T> y = min(max((x - one) / (1. - 2. * one), 0.), 1.);
+    auto u = pow(1. - y, FVal<T>(2. * a)), v = pow(y, FVal<T>(2. * a));
+    return where(x <= one, FVal<T>(1.), where(x >= 1. - one, FVal<T>(0.), u / (u + v)));
 }
 
 template <typename T>
@@ -122,155 +108,153 @@ KERNELSPEC void kernel_fks_sector_function(
     FIn<T, 2> p,
     FIn<T, 1> p_i_hat,
     IIn<T, 0> index,
-    IIn<T, 1> fks_i,
-    IIn<T, 1> fks_j,
-    IIn<T, 3> pairs,
-    IIn<T, 2> octet,
-    IIn<T, 2> aorg,
-    FIn<T, 2> masses,
-    FIn<T, 1> options,
-    IIn<T, 0> incoming,
+    ISIn<T, 1> fks_i,
+    ISIn<T, 1> fks_j,
+    ISIn<T, 3> pairs,
+    ISIn<T, 2> octet,
+    ISIn<T, 2> aorg,
+    FSIn<T, 2> masses,
+    FSIn<T, 1> options,
+    ISIn<T, 0> incoming,
     FOut<T, 0> s
 ) {
-    std::size_t c = single_index(index);
-    std::size_t ii = single_index(fks_i[c]), jj = single_index(fks_j[c]);
-    auto pair = pairs[c];
-    auto oct = octet[c];
-    auto ag = aorg[c];
-    auto mass = masses[c];
-    FVal<T> fks_a = options[0], fks_b = options[1];
-    bool use_energy = FVal<T>(options[2]) != 0., use_beta = FVal<T>(options[3]) != 0.;
-    FVal<T> h_one = options[4], h_a = options[5];
+    double fks_a = single_value(options[0]), fks_b = single_value(options[1]);
+    bool use_energy = single_value(options[2]) != 0.;
+    bool use_beta = single_value(options[3]) != 0.;
+    double h_one = single_value(options[4]), h_a = single_value(options[5]);
 
     std::size_t n_in = single_index(incoming);
     auto p1 = load_mom<T>(p[0]);
     auto p_tot = fks_incoming_sum<T>(p, n_in);
     auto rs = sqrt(max(lsquare<T>(p_tot), 0.));
-    if (p1[0] <= 0. || rs <= 0.) {
-        // unphysical kinematics, as fks_Sij.f
-        s = 0.;
-        return;
-    }
+    // unphysical kinematics, as fks_Sij.f
+    auto unphysical = (p1[0] <= 0.) | (rs <= 0.);
     auto half = 0.5 * rs;
     // i: the direction from its momentum per unit xi, its energy from its
     // momentum (0 at a soft counter-event)
     auto i_hat = load_mom<T>(p_i_hat);
-    auto e_i = fks_frame_energy<T>(load_mom<T>(p[ii]), p_tot, rs);
     auto e_hat = fks_frame_energy<T>(i_hat, p_tot, rs);
-
-    FVal<T> inverse = 0., hfact = 1.;
     std::size_t n = p.size();
-    for (std::size_t k = 0; k < n; ++k) {
-        for (std::size_t l = 0; l < n; ++l) {
-            if (single_index(pair[k][l]) == 0) {
-                continue;
-            }
-            bool zero_num = false, zero_den = false;
-            auto qk = load_mom<T>(p[k]), ql = load_mom<T>(p[l]);
-            auto qj = load_mom<T>(p[jj]);
-            bool ok = single_index(oct[k]) != 0, ol = single_index(oct[l]) != 0;
-            bool oi = single_index(oct[ii]) != 0, oj = single_index(oct[jj]) != 0;
-            FVal<T> mk = mass[k], ml = mass[l], mi = mass[ii], mj = mass[jj];
-            if ((k == ii && l == jj) || (l == ii && k == jj)) {
-                inverse = inverse + 1.;
-                if (single_index(ag[k]) != 0 && single_index(ag[l]) != 0 &&
-                    jj >= n_in) {
-                    auto e_j = fks_frame_energy<T>(qj, p_tot, rs);
-                    hfact = hfact * fks_h_damp<T>(e_i / (e_i + e_j), h_one, h_a);
+
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        std::size_t ii = single_index(fks_i[c]), jj = single_index(fks_j[c]);
+        auto pair = pairs[c];
+        auto oct = octet[c];
+        auto ag = aorg[c];
+        auto mass = masses[c];
+        auto e_i = fks_frame_energy<T>(load_mom<T>(p[ii]), p_tot, rs);
+        auto qj = load_mom<T>(p[jj]);
+        auto e_j = fks_frame_energy<T>(qj, p_tot, rs);
+        bool oi = single_index(oct[ii]) != 0, oj = single_index(oct[jj]) != 0;
+        double mi = single_value(mass[ii]), mj = single_value(mass[jj]);
+
+        FVal<T> inverse = 0., hfact = 1.;
+        // where a d_kl of a denominator vanishes S_ij is zero
+        BVal<T> zero = false;
+        for (std::size_t k = 0; k < n; ++k) {
+            for (std::size_t l = 0; l < n; ++l) {
+                if (single_index(pair[k][l]) == 0) {
+                    continue;
                 }
-            } else if (k == ii || l == ii) {
-                // d_ij / d_il: the energy of i cancels
-                std::size_t other = k == ii ? l : k;
-                auto qo = load_mom<T>(p[other]);
-                bool oo = single_index(oct[other]) != 0;
-                FVal<T> mo = mass[other];
-                auto num = fks_dkl<T>(
-                    i_hat,
-                    e_hat,
-                    mi,
-                    oi,
-                    qj,
-                    fks_frame_energy<T>(qj, p_tot, rs),
-                    mj,
-                    oj,
-                    false,
-                    p_tot,
-                    half,
-                    fks_a,
-                    fks_b,
-                    use_energy,
-                    use_beta,
-                    zero_num
-                );
-                auto den = fks_dkl<T>(
-                    i_hat,
-                    e_hat,
-                    mi,
-                    oi,
-                    qo,
-                    fks_frame_energy<T>(qo, p_tot, rs),
-                    mo,
-                    oo,
-                    false,
-                    p_tot,
-                    half,
-                    fks_a,
-                    fks_b,
-                    use_energy,
-                    use_beta,
-                    zero_den
-                );
-                if (zero_den) {
-                    s = 0.;
-                    return;
+                BVal<T> zero_num = false, zero_den = false;
+                if ((k == ii && l == jj) || (l == ii && k == jj)) {
+                    inverse = inverse + 1.;
+                    if (single_index(ag[k]) != 0 && single_index(ag[l]) != 0 &&
+                        jj >= n_in) {
+                        hfact = hfact * fks_h_damp<T>(e_i / (e_i + e_j), h_one, h_a);
+                    }
+                    continue;
                 }
-                inverse = inverse + num / den;
-            } else {
-                auto num = fks_dkl<T>(
-                    i_hat,
-                    e_i,
-                    mi,
-                    oi,
-                    qj,
-                    fks_frame_energy<T>(qj, p_tot, rs),
-                    mj,
-                    oj,
-                    true,
-                    p_tot,
-                    half,
-                    fks_a,
-                    fks_b,
-                    use_energy,
-                    use_beta,
-                    zero_num
-                );
-                auto den = fks_dkl<T>(
-                    qk,
-                    fks_frame_energy<T>(qk, p_tot, rs),
-                    mk,
-                    ok,
-                    ql,
-                    fks_frame_energy<T>(ql, p_tot, rs),
-                    ml,
-                    ol,
-                    true,
-                    p_tot,
-                    half,
-                    fks_a,
-                    fks_b,
-                    use_energy,
-                    use_beta,
-                    zero_den
-                );
-                if (zero_den) {
-                    s = 0.;
-                    return;
+                FVal<T> num, den;
+                if (k == ii || l == ii) {
+                    // d_ij / d_il: the energy of i cancels
+                    std::size_t other = k == ii ? l : k;
+                    auto qo = load_mom<T>(p[other]);
+                    bool oo = single_index(oct[other]) != 0;
+                    double mo = single_value(mass[other]);
+                    num = fks_dkl<T>(
+                        i_hat,
+                        e_hat,
+                        mi,
+                        oi,
+                        qj,
+                        e_j,
+                        mj,
+                        oj,
+                        false,
+                        p_tot,
+                        half,
+                        fks_a,
+                        fks_b,
+                        use_energy,
+                        use_beta,
+                        zero_num
+                    );
+                    den = fks_dkl<T>(
+                        i_hat,
+                        e_hat,
+                        mi,
+                        oi,
+                        qo,
+                        fks_frame_energy<T>(qo, p_tot, rs),
+                        mo,
+                        oo,
+                        false,
+                        p_tot,
+                        half,
+                        fks_a,
+                        fks_b,
+                        use_energy,
+                        use_beta,
+                        zero_den
+                    );
+                } else {
+                    auto qk = load_mom<T>(p[k]), ql = load_mom<T>(p[l]);
+                    bool ok = single_index(oct[k]) != 0, ol = single_index(oct[l]) != 0;
+                    double mk = single_value(mass[k]), ml = single_value(mass[l]);
+                    num = fks_dkl<T>(
+                        i_hat,
+                        e_i,
+                        mi,
+                        oi,
+                        qj,
+                        e_j,
+                        mj,
+                        oj,
+                        true,
+                        p_tot,
+                        half,
+                        fks_a,
+                        fks_b,
+                        use_energy,
+                        use_beta,
+                        zero_num
+                    );
+                    den = fks_dkl<T>(
+                        qk,
+                        fks_frame_energy<T>(qk, p_tot, rs),
+                        mk,
+                        ok,
+                        ql,
+                        fks_frame_energy<T>(ql, p_tot, rs),
+                        ml,
+                        ol,
+                        true,
+                        p_tot,
+                        half,
+                        fks_a,
+                        fks_b,
+                        use_energy,
+                        use_beta,
+                        zero_den
+                    );
                 }
+                zero = zero | zero_den;
                 inverse = inverse + num / den;
             }
         }
-    }
-    s = hfact / inverse;
+        masked_store(s, lanes, where(unphysical | zero, FVal<T>(0.), hfact / inverse));
+    });
 }
 
 // the momentum k of the resonance of the resonance-local recoil where the event
@@ -300,44 +284,44 @@ KERNELSPEC void fks_eikonals_in_frame(
     FIn<T, 0> y,
     FourMom<T> p_tot,
     IIn<T, 0> index,
-    IIn<T, 1> fks_j,
-    IIn<T, 1> pair_count,
-    IIn<T, 2> pair_m,
-    IIn<T, 2> pair_n,
-    FIn<T, 2> masses,
+    ISIn<T, 1> fks_j,
+    ISIn<T, 1> pair_count,
+    ISIn<T, 2> pair_m,
+    ISIn<T, 2> pair_n,
+    FSIn<T, 2> masses,
     FOut<T, 1> eik
 ) {
-    std::size_t c = single_index(index);
-    std::size_t jj = single_index(fks_j[c]);
-    std::size_t count = single_index(pair_count[c]);
-    FVal<T> mj = masses[c][jj];
-    bool massless_j = mj == 0.;
     auto i_hat = load_mom<T>(p_i_hat);
     FVal<T> one_minus_y = 1. - FVal<T>(y);
-    for (std::size_t k = 0; k < eik.size(); ++k) {
-        if (k >= count) {
-            eik[k] = 0.;
-            continue;
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        std::size_t jj = single_index(fks_j[c]);
+        std::size_t count = single_index(pair_count[c]);
+        bool massless_j = single_value(masses[c][jj]) == 0.;
+        for (std::size_t k = 0; k < eik.size(); ++k) {
+            if (k >= count) {
+                masked_store(eik[k], lanes, FVal<T>(0.));
+                continue;
+            }
+            std::size_t m = single_index(pair_m[c][k]), n = single_index(pair_n[c][k]);
+            auto pm = load_mom<T>(p[m]), pn = load_mom<T>(p[n]);
+            auto dot_nm = ldot<T>(pn, pm);
+            FVal<T> dot_mi, dot_ni, fact;
+            if ((m != jj && n != jj) || !massless_j) {
+                dot_mi = ldot<T>(pm, i_hat);
+                dot_ni = ldot<T>(pn, i_hat);
+                fact = one_minus_y;
+            } else if (m == jj) {
+                dot_ni = ldot<T>(pn, i_hat);
+                dot_mi = 0.5 * ldot<T>(pm, p_tot);
+                fact = 1.;
+            } else {
+                dot_ni = 0.5 * ldot<T>(pn, p_tot);
+                dot_mi = ldot<T>(pm, i_hat);
+                fact = 1.;
+            }
+            masked_store(eik[k], lanes, FVal<T>(dot_nm / (dot_ni * dot_mi) * fact));
         }
-        std::size_t m = single_index(pair_m[c][k]), n = single_index(pair_n[c][k]);
-        auto pm = load_mom<T>(p[m]), pn = load_mom<T>(p[n]);
-        auto dot_nm = ldot<T>(pn, pm);
-        FVal<T> dot_mi, dot_ni, fact;
-        if ((m != jj && n != jj) || !massless_j) {
-            dot_mi = ldot<T>(pm, i_hat);
-            dot_ni = ldot<T>(pn, i_hat);
-            fact = one_minus_y;
-        } else if (m == jj) {
-            dot_ni = ldot<T>(pn, i_hat);
-            dot_mi = 0.5 * ldot<T>(pm, p_tot);
-            fact = 1.;
-        } else {
-            dot_ni = 0.5 * ldot<T>(pn, p_tot);
-            dot_mi = ldot<T>(pm, i_hat);
-            fact = 1.;
-        }
-        eik[k] = dot_nm / (dot_ni * dot_mi) * fact;
-    }
+    });
 }
 
 template <typename T>
@@ -346,12 +330,12 @@ KERNELSPEC void kernel_fks_eikonals(
     FIn<T, 1> p_i_hat,
     FIn<T, 0> y,
     IIn<T, 0> index,
-    IIn<T, 1> fks_j,
-    IIn<T, 1> pair_count,
-    IIn<T, 2> pair_m,
-    IIn<T, 2> pair_n,
-    FIn<T, 2> masses,
-    IIn<T, 0> incoming,
+    ISIn<T, 1> fks_j,
+    ISIn<T, 1> pair_count,
+    ISIn<T, 2> pair_m,
+    ISIn<T, 2> pair_n,
+    FSIn<T, 2> masses,
+    ISIn<T, 0> incoming,
     FOut<T, 1> eik
 ) {
     fks_eikonals_in_frame<T>(
@@ -378,12 +362,12 @@ KERNELSPEC void kernel_fks_eikonals_resonance(
     FIn<T, 0> y,
     FIn<T, 1> k,
     IIn<T, 0> index,
-    IIn<T, 1> fks_j,
-    IIn<T, 1> pair_count,
-    IIn<T, 2> pair_m,
-    IIn<T, 2> pair_n,
-    FIn<T, 2> masses,
-    IIn<T, 0> incoming,
+    ISIn<T, 1> fks_j,
+    ISIn<T, 1> pair_count,
+    ISIn<T, 2> pair_m,
+    ISIn<T, 2> pair_n,
+    FSIn<T, 2> masses,
+    ISIn<T, 0> incoming,
     FOut<T, 1> eik
 ) {
     fks_eikonals_in_frame<T>(
@@ -437,48 +421,49 @@ KERNELSPEC void fks_splitting_kernels_in_frame(
     FIn<T, 2> p,
     FourMom<T> p_tot,
     IIn<T, 0> index,
-    IIn<T, 1> fks_i,
-    IIn<T, 1> fks_j,
-    IIn<T, 1> kind,
-    FIn<T, 2> factors,
+    ISIn<T, 1> fks_i,
+    ISIn<T, 1> fks_j,
+    ISIn<T, 1> kind,
+    FSIn<T, 2> factors,
     FOut<T, 0> z,
     FOut<T, 1> ap,
     FOut<T, 1> q
 ) {
-    std::size_t c = single_index(index);
-    std::size_t ii = single_index(fks_i[c]), jj = single_index(fks_j[c]);
     auto s = lsquare<T>(p_tot);
-    // energies in the rest frame of p_tot, up to the common 1 / sqrt(s)
-    auto e_i = ldot<T>(load_mom<T>(p[ii]), p_tot);
-    bool final_state = jj >= 2;
-    FVal<T> zz;
-    if (final_state) {
-        auto e_j = ldot<T>(load_mom<T>(p[jj]), p_tot);
-        zz = 1. - e_i / (e_i + e_j);
-    } else {
-        zz = 1. - 2. * e_i / s;
-    }
-    auto t = 0.25 * zz * s;
-    auto w = 1. - zz;
-    FVal<T> f_ap = fks_ap_shape<T>(single_index(kind[c]), zz);
-    FVal<T> f_q = final_state ? zz * w * w : w * w / zz;
-    auto factor = factors[c];
-    ap[0] = FVal<T>(factor[0]) * f_ap / t;
-    ap[1] = FVal<T>(factor[1]) * f_ap / t;
-    q[0] = FVal<T>(factor[2]) * f_q / t;
-    q[1] = FVal<T>(factor[3]) * f_q / t;
-    z = zz;
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        std::size_t ii = single_index(fks_i[c]), jj = single_index(fks_j[c]);
+        // energies in the rest frame of p_tot, up to the common 1 / sqrt(s)
+        auto e_i = ldot<T>(load_mom<T>(p[ii]), p_tot);
+        bool final_state = jj >= 2;
+        FVal<T> zz;
+        if (final_state) {
+            auto e_j = ldot<T>(load_mom<T>(p[jj]), p_tot);
+            zz = 1. - e_i / (e_i + e_j);
+        } else {
+            zz = 1. - 2. * e_i / s;
+        }
+        auto t = 0.25 * zz * s;
+        auto w = 1. - zz;
+        FVal<T> f_ap = fks_ap_shape<T>(single_index(kind[c]), zz);
+        FVal<T> f_q = final_state ? FVal<T>(zz * w * w) : FVal<T>(w * w / zz);
+        auto factor = factors[c];
+        masked_store(ap[0], lanes, FVal<T>(single_value(factor[0]) * f_ap / t));
+        masked_store(ap[1], lanes, FVal<T>(single_value(factor[1]) * f_ap / t));
+        masked_store(q[0], lanes, FVal<T>(single_value(factor[2]) * f_q / t));
+        masked_store(q[1], lanes, FVal<T>(single_value(factor[3]) * f_q / t));
+        masked_store(z, lanes, zz);
+    });
 }
 
 template <typename T>
 KERNELSPEC void kernel_fks_splitting_kernels(
     FIn<T, 2> p,
     IIn<T, 0> index,
-    IIn<T, 1> fks_i,
-    IIn<T, 1> fks_j,
-    IIn<T, 1> kind,
-    FIn<T, 2> factors,
-    IIn<T, 0> incoming,
+    ISIn<T, 1> fks_i,
+    ISIn<T, 1> fks_j,
+    ISIn<T, 1> kind,
+    FSIn<T, 2> factors,
+    ISIn<T, 0> incoming,
     FOut<T, 0> z,
     FOut<T, 1> ap,
     FOut<T, 1> q
@@ -504,11 +489,11 @@ KERNELSPEC void kernel_fks_splitting_kernels_resonance(
     FIn<T, 2> p,
     FIn<T, 1> k,
     IIn<T, 0> index,
-    IIn<T, 1> fks_i,
-    IIn<T, 1> fks_j,
-    IIn<T, 1> kind,
-    FIn<T, 2> factors,
-    IIn<T, 0> incoming,
+    ISIn<T, 1> fks_i,
+    ISIn<T, 1> fks_j,
+    ISIn<T, 1> kind,
+    FSIn<T, 2> factors,
+    ISIn<T, 0> incoming,
     FOut<T, 0> z,
     FOut<T, 1> ap,
     FOut<T, 1> q
@@ -541,26 +526,30 @@ KERNELSPEC void fks_transverse_vector_in_frame(
     FIn<T, 2> p_born,
     FourMom<T> P,
     IIn<T, 0> index,
-    IIn<T, 1> born_j,
+    ISIn<T, 1> born_j,
     FOut<T, 1> k_perp
 ) {
-    std::size_t c = single_index(index);
-    auto q = load_mom<T>(p_born[single_index(born_j[c])]);
     auto v = load_mom<T>(p_i_hat);
-    // v - a q - b P orthogonal to q and P
-    auto qq = ldot<T>(q, q), qP = ldot<T>(q, P), PP = ldot<T>(P, P);
-    auto vq = ldot<T>(v, q), vP = ldot<T>(v, P);
-    auto det = qq * PP - qP * qP;
-    auto a = (vq * PP - vP * qP) / det;
-    auto b = (vP * qq - vq * qP) / det;
-    FourMom<T> k;
-    for (std::size_t mu = 0; mu < 4; ++mu) {
-        k[mu] = v[mu] - a * q[mu] - b * P[mu];
-    }
-    auto norm = sqrt(max(-lsquare<T>(k), 0.));
-    for (std::size_t mu = 0; mu < 4; ++mu) {
-        k_perp[mu] = norm > 0. ? FVal<T>(k[mu] / norm) : FVal<T>(0.);
-    }
+    auto PP = ldot<T>(P, P), vP = ldot<T>(v, P);
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        auto q = load_mom<T>(p_born[single_index(born_j[c])]);
+        // v - a q - b P orthogonal to q and P
+        auto qq = ldot<T>(q, q), qP = ldot<T>(q, P);
+        auto vq = ldot<T>(v, q);
+        auto det = qq * PP - qP * qP;
+        auto a = (vq * PP - vP * qP) / det;
+        auto b = (vP * qq - vq * qP) / det;
+        FourMom<T> k;
+        for (std::size_t mu = 0; mu < 4; ++mu) {
+            k[mu] = v[mu] - a * q[mu] - b * P[mu];
+        }
+        auto norm = sqrt(max(-lsquare<T>(k), 0.));
+        for (std::size_t mu = 0; mu < 4; ++mu) {
+            masked_store(
+                k_perp[mu], lanes, where(norm > 0., k[mu] / norm, FVal<T>(0.))
+            );
+        }
+    });
 }
 
 template <typename T>
@@ -568,8 +557,8 @@ KERNELSPEC void kernel_fks_transverse_vector(
     FIn<T, 1> p_i_hat,
     FIn<T, 2> p_born,
     IIn<T, 0> index,
-    IIn<T, 1> born_j,
-    IIn<T, 0> incoming,
+    ISIn<T, 1> born_j,
+    ISIn<T, 0> incoming,
     FOut<T, 1> k_perp
 ) {
     fks_transverse_vector_in_frame<T>(
@@ -590,8 +579,8 @@ KERNELSPEC void kernel_fks_transverse_vector_resonance(
     FIn<T, 2> p_born,
     FIn<T, 1> k,
     IIn<T, 0> index,
-    IIn<T, 1> born_j,
-    IIn<T, 0> incoming,
+    ISIn<T, 1> born_j,
+    ISIn<T, 0> incoming,
     FOut<T, 1> k_perp
 ) {
     fks_transverse_vector_in_frame<T>(
@@ -611,7 +600,8 @@ KERNELSPEC void kernel_fks_transverse_vector_resonance(
 // deltaS. The collinear ones vanish for a massive emitter. soft_cut and
 // coll_cut are the cuts of the plus distribution in xi of the soft and of the
 // collinear counter-events, delta_c that in 1 - y: xicut and delta, or those
-// of the resonance-local recoil.
+// of the resonance-local recoil. The outputs are written in the lanes of the
+// mask lanes.
 template <typename T>
 KERNELSPEC void fks_prefactors_with_cuts(
     FIn<T, 0> xi,
@@ -625,8 +615,9 @@ KERNELSPEC void fks_prefactors_with_cuts(
     FVal<T> coll_cut,
     FVal<T> delta_c,
     bool collinear,
-    FIn<T, 1> options,
+    FSIn<T, 1> options,
     std::size_t n_in,
+    BVal<T> lanes,
     FOut<T, 0> f_r,
     FOut<T, 0> f_s,
     FOut<T, 0> f_c,
@@ -636,50 +627,55 @@ KERNELSPEC void fks_prefactors_with_cuts(
     FOut<T, 1> f_pdf
 ) {
     constexpr double pi = 3.14159265358979323846;
-    FVal<T> xicut = options[0], xi_s_cut = options[1], delta_s = options[2];
+    double xicut = single_value(options[0]), xi_s_cut = single_value(options[1]);
+    double delta_s = single_value(options[2]);
     FVal<T> omy = 1. - FVal<T>(y);
     FVal<T> x = xi;
-    f_r = 1. / (x * omy);
+    masked_store(f_r, lanes, FVal<T>(1. / (x * omy)));
     auto xi_lim = min(FVal<T>(xi_max), xi_s_cut);
-    f_s = (1. / x + log(soft_cut / xi_lim) / xi_lim) / omy;
+    masked_store(f_s, lanes, FVal<T>((1. / x + log(soft_cut / xi_lim) / xi_lim) / omy));
     if (!collinear) {
-        f_c = 0.;
-        f_dc = 0.;
-        f_sc = 0.;
+        masked_store(f_c, lanes, FVal<T>(0.));
+        masked_store(f_dc, lanes, FVal<T>(0.));
+        masked_store(f_sc, lanes, FVal<T>(0.));
         for (std::size_t k = 0; k < 4; ++k) {
-            f_dsc[k] = 0.;
+            masked_store(f_dsc[k], lanes, FVal<T>(0.));
         }
         for (std::size_t k = 0; k < 3; ++k) {
-            f_pdf[k] = 0.;
+            masked_store(f_pdf[k], lanes, FVal<T>(0.));
         }
         return;
     }
     FVal<T> x_c = xi_c;
     auto l_delta = log(delta_c / delta_s) / delta_s;
     auto in_y = 1. / omy + l_delta;
-    f_c = in_y / x_c;
+    masked_store(f_c, lanes, FVal<T>(in_y / x_c));
     auto s_c = lsquare<T>(fks_incoming_sum<T>(p_c, n_in));
-    f_dc = 32. * pi * pi / (s_c * x_c * delta_s);
+    masked_store(f_dc, lanes, FVal<T>(32. * pi * pi / (s_c * x_c * delta_s)));
     auto xi_lim_c = min(FVal<T>(xi_max_c), xi_s_cut);
     auto l_xi = log(coll_cut / xi_lim_c);
-    f_sc = in_y * (1. / x_c + l_xi / xi_lim_c);
+    masked_store(f_sc, lanes, FVal<T>(in_y * (1. / x_c + l_xi / xi_lim_c)));
     auto s_sc = lsquare<T>(fks_incoming_sum<T>(p_sc, n_in));
     auto g = 32. * pi * pi / (s_sc * delta_s);
-    auto log_cut = log(xicut), log_lim = log(xi_lim_c);
-    f_dsc[0] = g / x_c;
-    f_dsc[1] = g * l_xi / xi_lim_c;
+    FVal<T> log_cut = log(xicut), log_lim = log(xi_lim_c);
+    masked_store(f_dsc[0], lanes, FVal<T>(g / x_c));
+    masked_store(f_dsc[1], lanes, FVal<T>(g * l_xi / xi_lim_c));
     // as a product, which vanishes exactly for xi_lim_c = xicut
-    f_dsc[2] = g * (log_cut - log_lim) * (log_cut + log_lim) / (2. * xi_lim_c);
-    f_dsc[3] = g * (1. / x_c + l_xi / xi_lim_c);
+    masked_store(
+        f_dsc[2],
+        lanes,
+        FVal<T>(g * (log_cut - log_lim) * (log_cut + log_lim) / (2. * xi_lim_c))
+    );
+    masked_store(f_dsc[3], lanes, FVal<T>(g * (1. / x_c + l_xi / xi_lim_c)));
     // the delta, plus and log-plus parts of a change of the PDF scheme:
     // delta(xi) spread over the range of the soft-collinear counterterm, up to
     // xi_lim_c, and log(xi_lim_c) and log^2(xi_lim_c) / 2 that turn its
     // [1/xi] and [log(xi)/xi] into [1/(1 - z)]_+ and [log(1 - z)/(1 - z)]_+.
     // MadFKS takes xiScut for xi_lim_c, which misses part of them where the
     // range of xi ends below xiScut.
-    f_pdf[0] = g / xi_lim_c;
-    f_pdf[1] = g * log_lim / xi_lim_c;
-    f_pdf[2] = g * log_lim * log_lim / (2. * xi_lim_c);
+    masked_store(f_pdf[0], lanes, FVal<T>(g / xi_lim_c));
+    masked_store(f_pdf[1], lanes, FVal<T>(g * log_lim / xi_lim_c));
+    masked_store(f_pdf[2], lanes, FVal<T>(g * log_lim * log_lim / (2. * xi_lim_c)));
 }
 
 template <typename T>
@@ -692,10 +688,10 @@ KERNELSPEC void kernel_fks_prefactors(
     FIn<T, 2> p_c,
     FIn<T, 2> p_sc,
     IIn<T, 0> index,
-    IIn<T, 1> collinear,
-    FIn<T, 1> delta,
-    FIn<T, 1> options,
-    IIn<T, 0> incoming,
+    ISIn<T, 1> collinear,
+    FSIn<T, 1> delta,
+    FSIn<T, 1> options,
+    ISIn<T, 0> incoming,
     FOut<T, 0> f_r,
     FOut<T, 0> f_s,
     FOut<T, 0> f_c,
@@ -704,30 +700,32 @@ KERNELSPEC void kernel_fks_prefactors(
     FOut<T, 1> f_dsc,
     FOut<T, 1> f_pdf
 ) {
-    std::size_t c = single_index(index);
-    FVal<T> xicut = options[0];
-    fks_prefactors_with_cuts<T>(
-        xi,
-        y,
-        xi_max,
-        xi_c,
-        xi_max_c,
-        p_c,
-        p_sc,
-        xicut,
-        xicut,
-        FVal<T>(delta[c]),
-        single_index(collinear[c]) != 0,
-        options,
-        single_index(incoming),
-        f_r,
-        f_s,
-        f_c,
-        f_dc,
-        f_sc,
-        f_dsc,
-        f_pdf
-    );
+    FVal<T> xicut = single_value(options[0]);
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        fks_prefactors_with_cuts<T>(
+            xi,
+            y,
+            xi_max,
+            xi_c,
+            xi_max_c,
+            p_c,
+            p_sc,
+            xicut,
+            xicut,
+            FVal<T>(single_value(delta[c])),
+            single_index(collinear[c]) != 0,
+            options,
+            single_index(incoming),
+            lanes,
+            f_r,
+            f_s,
+            f_c,
+            f_dc,
+            f_sc,
+            f_dsc,
+            f_pdf
+        );
+    });
 }
 
 // The same with the cuts of the resonance-local recoil where the event has a
@@ -753,11 +751,11 @@ KERNELSPEC void kernel_fks_prefactors_resonance(
     FIn<T, 1> p_i_hat_s,
     FIn<T, 1> k,
     IIn<T, 0> index,
-    IIn<T, 1> fks_j,
-    IIn<T, 1> collinear,
-    FIn<T, 1> delta,
-    FIn<T, 1> options,
-    IIn<T, 0> incoming,
+    ISIn<T, 1> fks_j,
+    ISIn<T, 1> collinear,
+    FSIn<T, 1> delta,
+    FSIn<T, 1> options,
+    ISIn<T, 0> incoming,
     FOut<T, 0> f_r,
     FOut<T, 0> f_s,
     FOut<T, 0> f_c,
@@ -766,13 +764,11 @@ KERNELSPEC void kernel_fks_prefactors_resonance(
     FOut<T, 1> f_dsc,
     FOut<T, 1> f_pdf
 ) {
-    std::size_t c = single_index(index);
-    FVal<T> xicut = options[0], delta_c = delta[c];
+    FVal<T> xicut = single_value(options[0]);
     auto res = load_mom<T>(k);
     auto resonant = res[0] > 0.;
     auto total = fks_incoming_sum<T>(p_s, single_index(incoming));
     auto phat = load_mom<T>(p_i_hat_s);
-    auto pj = load_mom<T>(p_s[single_index(fks_j[c])]);
     // as resonance_subtraction_scales, at a pass-through k without a resonance
     FourMom<T> q;
     for (int mu = 0; mu < 4; ++mu) {
@@ -780,32 +776,37 @@ KERNELSPEC void kernel_fks_prefactors_resonance(
     }
     auto s = lsquare<T>(total), mass2 = lsquare<T>(q);
     auto kq = ldot<T>(phat, q), kt = ldot<T>(phat, total);
-    auto jq = ldot<T>(pj, q), jt = ldot<T>(pj, total);
     auto soft_scale = (s / mass2) * (kq / kt);
-    auto coll_scale = (s / mass2) * (jq / jt);
-    auto angular_scale = (s / mass2) / (coll_scale * coll_scale);
-    fks_prefactors_with_cuts<T>(
-        xi,
-        y,
-        xi_max,
-        xi_c,
-        xi_max_c,
-        p_c,
-        p_sc,
-        where(resonant, xicut * soft_scale, xicut),
-        where(resonant, xicut * coll_scale, xicut),
-        where(resonant, delta_c * angular_scale, delta_c),
-        single_index(collinear[c]) != 0,
-        options,
-        single_index(incoming),
-        f_r,
-        f_s,
-        f_c,
-        f_dc,
-        f_sc,
-        f_dsc,
-        f_pdf
-    );
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        FVal<T> delta_c = single_value(delta[c]);
+        auto pj = load_mom<T>(p_s[single_index(fks_j[c])]);
+        auto jq = ldot<T>(pj, q), jt = ldot<T>(pj, total);
+        auto coll_scale = (s / mass2) * (jq / jt);
+        auto angular_scale = (s / mass2) / (coll_scale * coll_scale);
+        fks_prefactors_with_cuts<T>(
+            xi,
+            y,
+            xi_max,
+            xi_c,
+            xi_max_c,
+            p_c,
+            p_sc,
+            where(resonant, xicut * soft_scale, xicut),
+            where(resonant, xicut * coll_scale, xicut),
+            where(resonant, delta_c * angular_scale, delta_c),
+            single_index(collinear[c]) != 0,
+            options,
+            single_index(incoming),
+            lanes,
+            f_r,
+            f_s,
+            f_c,
+            f_dc,
+            f_sc,
+            f_dsc,
+            f_pdf
+        );
+    });
 }
 
 // The soft limit of xi^2 (1 - y) times the real matrix element of sbornsoft
@@ -825,46 +826,51 @@ KERNELSPEC void kernel_fks_soft_limit(
     FIn<T, 0> alpha_s,
     FIn<T, 0> alpha,
     IIn<T, 0> index,
-    IIn<T, 1> pair_count,
-    IIn<T, 2> pair_m,
-    IIn<T, 2> pair_n,
-    FIn<T, 2> pair_factor,
-    IIn<T, 2> coupling,
-    IIn<T, 3> born_index,
+    ISIn<T, 1> pair_count,
+    ISIn<T, 2> pair_m,
+    ISIn<T, 2> pair_n,
+    FSIn<T, 2> pair_factor,
+    ISIn<T, 2> coupling,
+    ISIn<T, 3> born_index,
     FOut<T, 1> soft
 ) {
     constexpr double pi = 3.14159265358979323846;
-    std::size_t c = single_index(index);
-    std::size_t count = single_index(pair_count[c]);
-    // the soft limit has the splitting of the Born only
-    bool qed = single_index(coupling[c][0]) == 1;
-    FVal<T> g2 = 4. * pi * (qed ? FVal<T>(alpha) : FVal<T>(alpha_s));
-    // the sum without the Born of the charge links
-    FVal<T> charge_sum = 0.;
-    if (qed) {
-        for (std::size_t k = 0; k < count; ++k) {
-            charge_sum = charge_sum + FVal<T>(pair_factor[c][k]) * FVal<T>(eik[k]);
-        }
-    }
-    for (std::size_t o = 0; o < soft.size(); ++o) {
-        int b = born_index[c][0][o];
-        if (b < 0 || count == 0) {
-            soft[o] = 0.;
-            continue;
-        }
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        std::size_t count = single_index(pair_count[c]);
+        // the soft limit has the splitting of the Born only
+        bool qed = single_value(coupling[c][0]) == 1;
+        FVal<T> g2 = 4. * pi * (qed ? FVal<T>(alpha) : FVal<T>(alpha_s));
+        // the sum without the Born of the charge links
+        FVal<T> charge_sum = 0.;
         if (qed) {
-            soft[o] = g2 * charge_sum * FVal<T>(born[b]);
-            continue;
+            for (std::size_t k = 0; k < count; ++k) {
+                charge_sum =
+                    charge_sum + single_value(pair_factor[c][k]) * FVal<T>(eik[k]);
+            }
         }
-        FVal<T> sum = 0.;
-        for (std::size_t k = 0; k < count; ++k) {
-            std::size_t m = single_index(pair_m[c][k]), n = single_index(pair_n[c][k]);
-            sum = sum +
-                FVal<T>(pair_factor[c][k]) * FVal<T>(eik[k]) *
-                    FVal<T>(color_correlated[b][m][n]);
+        for (std::size_t o = 0; o < soft.size(); ++o) {
+            int b = single_value(born_index[c][0][o]);
+            if (b < 0 || count == 0) {
+                masked_store(soft[o], lanes, FVal<T>(0.));
+                continue;
+            }
+            if (qed) {
+                masked_store(
+                    soft[o], lanes, FVal<T>(g2 * charge_sum * FVal<T>(born[b]))
+                );
+                continue;
+            }
+            FVal<T> sum = 0.;
+            for (std::size_t k = 0; k < count; ++k) {
+                std::size_t m = single_index(pair_m[c][k]);
+                std::size_t n = single_index(pair_n[c][k]);
+                sum = sum +
+                    single_value(pair_factor[c][k]) * FVal<T>(eik[k]) *
+                        FVal<T>(color_correlated[b][m][n]);
+            }
+            masked_store(soft[o], lanes, FVal<T>(g2 * sum));
         }
-        soft[o] = g2 * sum;
-    }
+    });
 }
 
 // The collinear limit of xi^2 (1 - y) times the real matrix element of
@@ -887,40 +893,44 @@ KERNELSPEC void kernel_fks_collinear_limit(
     FIn<T, 0> alpha_s,
     FIn<T, 0> alpha,
     IIn<T, 0> index,
-    FIn<T, 2> factor,
-    IIn<T, 2> coupling,
-    IIn<T, 3> born_index,
+    FSIn<T, 2> factor,
+    ISIn<T, 2> coupling,
+    ISIn<T, 3> born_index,
     FOut<T, 1> collinear
 ) {
     constexpr double pi = 3.14159265358979323846;
-    std::size_t c = single_index(index);
-    for (std::size_t o = 0; o < collinear.size(); ++o) {
-        collinear[o] = 0.;
-    }
-    for (std::size_t entry = 0; entry < 2; ++entry) {
-        int type = coupling[c][entry];
-        FVal<T> f = factor[c][entry];
-        if (type < 0) {
-            continue;
-        }
-        std::size_t t = static_cast<std::size_t>(type);
-        FVal<T> g2 = 4. * pi * (t == 1 ? FVal<T>(alpha) : FVal<T>(alpha_s));
-        FVal<T> kernel = ap[t], azimuthal = q[t];
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
         for (std::size_t o = 0; o < collinear.size(); ++o) {
-            int b = born_index[c][entry][o];
-            if (b < 0 || f == 0.) {
-                // no collinear limit (a massive emitter) or no counterterm
+            masked_store(collinear[o], lanes, FVal<T>(0.));
+        }
+        for (std::size_t entry = 0; entry < 2; ++entry) {
+            int type = single_value(coupling[c][entry]);
+            double f = single_value(factor[c][entry]);
+            if (type < 0) {
                 continue;
             }
-            FVal<T> born_b = born[b];
-            FVal<T> value = kernel * born_b;
-            if (azimuthal != 0.) {
-                value =
-                    value + azimuthal * (0.5 * born_b - FVal<T>(spin_correlated[b]));
+            std::size_t t = static_cast<std::size_t>(type);
+            FVal<T> g2 = 4. * pi * (t == 1 ? FVal<T>(alpha) : FVal<T>(alpha_s));
+            FVal<T> kernel = ap[t], azimuthal = q[t];
+            for (std::size_t o = 0; o < collinear.size(); ++o) {
+                int b = single_value(born_index[c][entry][o]);
+                if (b < 0 || f == 0.) {
+                    // no collinear limit (a massive emitter) or no counterterm
+                    continue;
+                }
+                FVal<T> born_b = born[b];
+                FVal<T> value = kernel * born_b;
+                value = where(
+                    azimuthal != 0.,
+                    value + azimuthal * (0.5 * born_b - FVal<T>(spin_correlated[b])),
+                    value
+                );
+                masked_store(
+                    collinear[o], lanes, FVal<T>(FVal<T>(collinear[o]) + g2 * f * value)
+                );
             }
-            collinear[o] = FVal<T>(collinear[o]) + g2 * f * value;
         }
-    }
+    });
 }
 
 // (1 - z) P'(z) of AP_reduced_prime (the O(epsilon) part) without its color
@@ -1049,62 +1059,21 @@ KERNELSPEC void kernel_fks_collinear_remnants(
     FIn<T, 0> fact_scale1,
     FIn<T, 0> fact_scale2,
     IIn<T, 0> index,
-    IIn<T, 1> remnant,
-    IIn<T, 1> beam,
-    IIn<T, 1> kind,
-    IIn<T, 2> coupling,
-    IIn<T, 3> born_index,
-    FIn<T, 2> factor,
-    FIn<T, 2> ap_factor,
-    FIn<T, 2> scheme_factor,
-    FIn<T, 1> delta,
-    FIn<T, 1> options,
+    ISIn<T, 1> remnant,
+    ISIn<T, 1> beam,
+    ISIn<T, 1> kind,
+    ISIn<T, 2> coupling,
+    ISIn<T, 3> born_index,
+    FSIn<T, 2> factor,
+    FSIn<T, 2> ap_factor,
+    FSIn<T, 2> scheme_factor,
+    FSIn<T, 1> delta,
+    FSIn<T, 1> options,
     FOut<T, 1> collinear,
     FOut<T, 1> soft_collinear
 ) {
     constexpr double pi = 3.14159265358979323846;
-    std::size_t c = single_index(index);
-    for (std::size_t o = 0; o < collinear.size(); ++o) {
-        collinear[o] = 0.;
-        soft_collinear[o] = 0.;
-    }
-    if (single_index(remnant[c]) == 0) {
-        return;
-    }
-    std::size_t k = single_index(kind[c]);
-    int scheme = static_cast<int>(FVal<T>(options[0]));
-    std::size_t b = single_index(beam[c]);
-    FVal<T> mu_f = b == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
-    FVal<T> upc_log = 0.;
-    if (scheme == 7) {
-        FVal<T> mu_r = ren_scale;
-        upc_log = log(mu_r * mu_r * FVal<T>(options[1 + b]));
-    }
-    FVal<T> d = delta[c];
-    FVal<T> norm, color, scheme_color;
-    // the remnants per unit Born
-    auto pieces =
-        [&](FVal<T> z,
-            FVal<T> s,
-            FVal<T>& d_xi,
-            FVal<T>& d_lxi,
-            FVal<T>& k_p,
-            FVal<T>& k_l,
-            FVal<T>& k_d) {
-            auto n = norm / z;
-            auto ap = fks_ap_shape<T>(k, z), ap_prime = fks_ap_prime_shape<T>(k, z);
-            d_xi = n * color * (ap * log(s * d / (2. * mu_f * mu_f)) - ap_prime);
-            d_lxi = 2. * n * color * ap;
-            k_p = 0.;
-            k_l = 0.;
-            k_d = 0.;
-            if (scheme_color != 0.) {
-                fks_scheme_shapes<T>(scheme, k, z, upc_log, k_p, k_l, k_d);
-                k_p = -n * scheme_color * k_p;
-                k_l = -n * scheme_color * k_l;
-                k_d = -n * scheme_color * k_d;
-            }
-        };
+    int scheme = static_cast<int>(single_value(options[0]));
     auto invariant_mass = [](FIn<T, 2> p) {
         auto p1 = load_mom<T>(p[0]), p2 = load_mom<T>(p[1]);
         return lsquare<T>(
@@ -1112,39 +1081,96 @@ KERNELSPEC void kernel_fks_collinear_remnants(
         );
     };
     FVal<T> x_c = xi_c, log_xi = log(x_c);
-    for (std::size_t entry = 0; entry < 2; ++entry) {
-        int type = coupling[c][entry];
-        if (type < 0) {
-            continue;
-        }
-        FVal<T> g2 = 4. * pi * (type == 1 ? FVal<T>(alpha) : FVal<T>(alpha_s));
-        // N g^2 for z = 1 and a unit Born
-        norm = FVal<T>(factor[c][entry]) * g2 / (8. * pi * pi);
-        color = ap_factor[c][entry];
-        scheme_color = scheme_factor[c][entry];
-        FVal<T> d_xi, d_lxi, k_p, k_l, k_d;
-        FVal<T> unit_c = 0., unit_sc = 0.;
-        if (FVal<T>(s_c) > 0.) {
-            pieces(1. - x_c, invariant_mass(p_c), d_xi, d_lxi, k_p, k_l, k_d);
-            unit_c = FVal<T>(f_dc) * (d_xi + k_p + (d_lxi + k_l) * log_xi);
-        }
-        if (FVal<T>(s_sc) > 0.) {
-            pieces(1., invariant_mass(p_sc), d_xi, d_lxi, k_p, k_l, k_d);
-            unit_sc = -FVal<T>(f_dsc[0]) * (d_xi + k_p + (d_lxi + k_l) * log_xi) -
-                FVal<T>(f_dsc[1]) * d_xi - FVal<T>(f_dsc[2]) * d_lxi +
-                FVal<T>(f_pdf[0]) * k_d + FVal<T>(f_pdf[1]) * k_p +
-                FVal<T>(f_pdf[2]) * k_l;
-        }
+    // the counter-events that were generated
+    auto with_c = FVal<T>(s_c) > 0., with_sc = FVal<T>(s_sc) > 0.;
+    FVal<T> s_coll = invariant_mass(p_c), s_soft_coll = invariant_mass(p_sc);
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
         for (std::size_t o = 0; o < collinear.size(); ++o) {
-            int b = born_index[c][entry][o];
-            if (b < 0) {
+            masked_store(collinear[o], lanes, FVal<T>(0.));
+            masked_store(soft_collinear[o], lanes, FVal<T>(0.));
+        }
+        if (single_index(remnant[c]) == 0) {
+            return;
+        }
+        std::size_t k = single_index(kind[c]);
+        std::size_t b = single_index(beam[c]);
+        FVal<T> mu_f = b == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
+        FVal<T> upc_log = 0.;
+        if (scheme == 7) {
+            FVal<T> mu_r = ren_scale;
+            upc_log = log(mu_r * mu_r * single_value(options[1 + b]));
+        }
+        double d = single_value(delta[c]);
+        FVal<T> norm;
+        double color, scheme_color;
+        // the remnants per unit Born
+        auto pieces =
+            [&](FVal<T> z,
+                FVal<T> s,
+                FVal<T>& d_xi,
+                FVal<T>& d_lxi,
+                FVal<T>& k_p,
+                FVal<T>& k_l,
+                FVal<T>& k_d) {
+                auto n = norm / z;
+                auto ap = fks_ap_shape<T>(k, z), ap_prime = fks_ap_prime_shape<T>(k, z);
+                d_xi = n * color * (ap * log(s * d / (2. * mu_f * mu_f)) - ap_prime);
+                d_lxi = 2. * n * color * ap;
+                k_p = 0.;
+                k_l = 0.;
+                k_d = 0.;
+                if (scheme_color != 0.) {
+                    fks_scheme_shapes<T>(scheme, k, z, upc_log, k_p, k_l, k_d);
+                    k_p = -n * scheme_color * k_p;
+                    k_l = -n * scheme_color * k_l;
+                    k_d = -n * scheme_color * k_d;
+                }
+            };
+        for (std::size_t entry = 0; entry < 2; ++entry) {
+            int type = single_value(coupling[c][entry]);
+            if (type < 0) {
                 continue;
             }
-            FVal<T> born_c = collinear_born[b], born_sc = born[b];
-            collinear[o] = FVal<T>(collinear[o]) + unit_c * born_c;
-            soft_collinear[o] = FVal<T>(soft_collinear[o]) + unit_sc * born_sc;
+            FVal<T> g2 = 4. * pi * (type == 1 ? FVal<T>(alpha) : FVal<T>(alpha_s));
+            // N g^2 for z = 1 and a unit Born
+            norm = single_value(factor[c][entry]) * g2 / (8. * pi * pi);
+            color = single_value(ap_factor[c][entry]);
+            scheme_color = single_value(scheme_factor[c][entry]);
+            FVal<T> d_xi, d_lxi, k_p, k_l, k_d;
+            pieces(1. - x_c, s_coll, d_xi, d_lxi, k_p, k_l, k_d);
+            FVal<T> unit_c = where(
+                with_c,
+                FVal<T>(f_dc) * (d_xi + k_p + (d_lxi + k_l) * log_xi),
+                FVal<T>(0.)
+            );
+            pieces(FVal<T>(1.), s_soft_coll, d_xi, d_lxi, k_p, k_l, k_d);
+            FVal<T> unit_sc = where(
+                with_sc,
+                -FVal<T>(f_dsc[0]) * (d_xi + k_p + (d_lxi + k_l) * log_xi) -
+                    FVal<T>(f_dsc[1]) * d_xi - FVal<T>(f_dsc[2]) * d_lxi +
+                    FVal<T>(f_pdf[0]) * k_d + FVal<T>(f_pdf[1]) * k_p +
+                    FVal<T>(f_pdf[2]) * k_l,
+                FVal<T>(0.)
+            );
+            for (std::size_t o = 0; o < collinear.size(); ++o) {
+                int bi = single_value(born_index[c][entry][o]);
+                if (bi < 0) {
+                    continue;
+                }
+                FVal<T> born_c = collinear_born[bi], born_sc = born[bi];
+                masked_store(
+                    collinear[o],
+                    lanes,
+                    FVal<T>(FVal<T>(collinear[o]) + unit_c * born_c)
+                );
+                masked_store(
+                    soft_collinear[o],
+                    lanes,
+                    FVal<T>(FVal<T>(soft_collinear[o]) + unit_sc * born_sc)
+                );
+            }
         }
-    }
+    });
 }
 
 // The real matrix element per NLO order times the sector function at the
@@ -1170,32 +1196,42 @@ KERNELSPEC void kernel_fks_real_emission(
     FIn<T, 0> det_s,
     FIn<T, 0> det_sc,
     IIn<T, 0> index,
-    IIn<T, 1> massless,
-    FIn<T, 1> options,
+    ISIn<T, 1> massless,
+    FSIn<T, 1> options,
     FOut<T, 1> real
 ) {
-    std::size_t c = single_index(index);
-    FVal<T> tiny = options[0], x = xi, omy = 1. - FVal<T>(y);
+    double tiny = single_value(options[0]);
+    FVal<T> x = xi, omy = 1. - FVal<T>(y);
     bool on = tiny > 0.;
-    bool with_soft = FVal<T>(det_s) > 0.;
-    bool with_soft_collinear = FVal<T>(det_sc) > 0. && single_index(massless[c]) != 0;
-    FVal<T> sector = s;
-    if (on && x <= tiny) {
-        if (omy < tiny && with_soft_collinear) {
-            sector = s_soft_collinear;
-        } else if (with_soft) {
-            sector = s_soft;
+    auto with_soft = FVal<T>(det_s) > 0.;
+    auto small_xi = x <= tiny, small_omy = omy < tiny;
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        BVal<T> with_soft_collinear = false;
+        if (single_index(massless[c]) != 0) {
+            with_soft_collinear = FVal<T>(det_sc) > 0.;
         }
-    }
-    for (std::size_t o = 0; o < real.size(); ++o) {
-        FVal<T> value = matrix_element[o];
-        if (on && omy < tiny) {
-            value = FVal<T>(collinear[o]) / (x * x * omy);
-        } else if (on && x < tiny && with_soft) {
-            value = FVal<T>(soft[o]) / (x * x * omy);
+        FVal<T> sector = s;
+        if (on) {
+            sector = where(
+                small_xi & small_omy & with_soft_collinear,
+                FVal<T>(s_soft_collinear),
+                where(small_xi & with_soft, FVal<T>(s_soft), sector)
+            );
         }
-        real[o] = sector * value;
-    }
+        for (std::size_t o = 0; o < real.size(); ++o) {
+            FVal<T> value = matrix_element[o];
+            if (on) {
+                value = where(
+                    small_omy,
+                    FVal<T>(collinear[o]) / (x * x * omy),
+                    where(
+                        (x < tiny) & with_soft, FVal<T>(soft[o]) / (x * x * omy), value
+                    )
+                );
+            }
+            masked_store(real[o], lanes, FVal<T>(sector * value));
+        }
+    });
 }
 
 // The real emission and its counterterms of compute_real_emission and
@@ -1230,38 +1266,62 @@ KERNELSPEC void kernel_fks_subtraction(
     FIn<T, 0> det_c,
     FIn<T, 0> det_sc,
     IIn<T, 0> index,
-    FIn<T, 1> symmetry,
-    FIn<T, 1> options,
+    FSIn<T, 1> symmetry,
+    FSIn<T, 1> options,
     FOut<T, 1> real_out,
     FOut<T, 1> soft_out,
     FOut<T, 1> collinear_out,
     FOut<T, 1> soft_collinear_out
 ) {
-    std::size_t c = single_index(index);
-    FVal<T> sym = symmetry[c], xi_s_cut = options[0], delta_s = options[1];
+    double xi_s_cut = single_value(options[0]), delta_s = single_value(options[1]);
     FVal<T> x = xi, x_hat = xi_hat, x_c = xi_c, yy = y;
-    bool in_y = yy > 1. - delta_s;
-    bool with_real = FVal<T>(weight) > 0.;
-    bool with_soft =
-        FVal<T>(det_s) > 0. && x_hat * FVal<T>(xi_max_s) <= xi_s_cut && x <= xi_s_cut;
-    bool with_collinear = FVal<T>(det_c) > 0. && in_y;
-    bool with_soft_collinear = FVal<T>(det_sc) > 0. && in_y &&
-        x_hat * FVal<T>(xi_max_c) < xi_s_cut && x_c < xi_s_cut;
+    auto in_y = yy > 1. - delta_s;
+    auto with_real = FVal<T>(weight) > 0.;
+    auto with_soft = (FVal<T>(det_s) > 0.) & (x_hat * FVal<T>(xi_max_s) <= xi_s_cut) &
+        (x <= xi_s_cut);
+    auto with_collinear = (FVal<T>(det_c) > 0.) & in_y;
+    auto with_soft_collinear = (FVal<T>(det_sc) > 0.) & in_y &
+        (x_hat * FVal<T>(xi_max_c) < xi_s_cut) & (x_c < xi_s_cut);
     FVal<T> soft_factor = FVal<T>(s_s) * FVal<T>(f_s);
     FVal<T> collinear_factor = FVal<T>(s_c) * FVal<T>(f_c);
     FVal<T> soft_collinear_factor = FVal<T>(s_sc) * FVal<T>(f_sc);
-    for (std::size_t o = 0; o < real_out.size(); ++o) {
-        real_out[o] = with_real ? sym * FVal<T>(real[o]) : FVal<T>(0.);
-        soft_out[o] = with_soft ? -sym * soft_factor * FVal<T>(soft[o]) : FVal<T>(0.);
-        collinear_out[o] = with_collinear
-            ? sym * (FVal<T>(remnant_c[o]) - collinear_factor * FVal<T>(collinear[o]))
-            : FVal<T>(0.);
-        soft_collinear_out[o] = with_soft_collinear
-            ? sym *
-                (soft_collinear_factor * FVal<T>(soft_collinear[o]) +
-                 FVal<T>(remnant_sc[o]))
-            : FVal<T>(0.);
-    }
+    for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {
+        double sym = single_value(symmetry[c]);
+        for (std::size_t o = 0; o < real_out.size(); ++o) {
+            masked_store(
+                real_out[o],
+                lanes,
+                where(with_real, sym * FVal<T>(real[o]), FVal<T>(0.))
+            );
+            masked_store(
+                soft_out[o],
+                lanes,
+                where(with_soft, -sym * soft_factor * FVal<T>(soft[o]), FVal<T>(0.))
+            );
+            masked_store(
+                collinear_out[o],
+                lanes,
+                where(
+                    with_collinear,
+                    sym *
+                        (FVal<T>(remnant_c[o]) -
+                         collinear_factor * FVal<T>(collinear[o])),
+                    FVal<T>(0.)
+                )
+            );
+            masked_store(
+                soft_collinear_out[o],
+                lanes,
+                where(
+                    with_soft_collinear,
+                    sym *
+                        (soft_collinear_factor * FVal<T>(soft_collinear[o]) +
+                         FVal<T>(remnant_sc[o])),
+                    FVal<T>(0.)
+                )
+            );
+        }
+    });
 }
 
 // The integrated eikonal I_mn of eikonal_Ireg (fks_singular.f) of the
@@ -1275,14 +1335,14 @@ KERNELSPEC FVal<T> fks_integrated_eikonal(
     FVal<T> e_m,
     FVal<T> e_n,
     FVal<T> k,
-    FVal<T> mass_m,
-    FVal<T> mass_n,
+    double mass_m,
+    double mass_n,
     bool same,
     FVal<T> l_s,
-    FVal<T> xicut
+    double xicut
 ) {
     constexpr double pi = 3.14159265358979323846;
-    FVal<T> log_xicut = log(xicut);
+    double log_xicut = log(xicut);
     // log(xicut^2 s / mu^2)
     FVal<T> l = 2. * log_xicut + l_s;
     if (mass_m == 0. && mass_n == 0.) {
@@ -1290,17 +1350,21 @@ KERNELSPEC FVal<T> fks_integrated_eikonal(
         // collinear or for a Born boosted far along the beams, at points that
         // the cuts remove, where the Born vanishes)
         FVal<T> r = min(max(k / (2. * e_m * e_n), 1e-300), 1.);
-        if (fabs(r - 1.) > 1e-6) {
-            FVal<T> lr = log(r);
-            return 0.5 * l * l + l * lr - dilog<T>(r) + 0.5 * lr * lr -
-                log(1. - r) * lr;
-        }
-        return 0.5 * l * l - pi * pi / 6.;
+        auto apart = fabs(r - 1.) > 1e-6;
+        // (r = 1 elsewhere, where the logarithm of 1 - r is not finite)
+        FVal<T> r_apart = where(apart, r, FVal<T>(0.5));
+        FVal<T> lr = log(r_apart);
+        return where(
+            apart,
+            0.5 * l * l + l * lr - dilog<T>(r_apart) + 0.5 * lr * lr -
+                log(1. - r_apart) * lr,
+            0.5 * l * l - pi * pi / 6.
+        );
     }
     if (mass_m == 0. || mass_n == 0.) {
         bool m_massless = mass_m == 0.;
         FVal<T> e_i = m_massless ? e_m : e_n, e_j = m_massless ? e_n : e_m;
-        FVal<T> mass = m_massless ? mass_n : mass_m;
+        double mass = m_massless ? mass_n : mass_m;
         FVal<T> beta = sqrt(1. - mass * mass / (e_j * e_j));
         FVal<T> r = k / (2. * e_i * e_j);
         FVal<T> lk = log(k / (mass * e_i));
@@ -1313,21 +1377,25 @@ KERNELSPEC FVal<T> fks_integrated_eikonal(
     }
     if (same) {
         FVal<T> beta = sqrt(1. - mass_n * mass_n / (e_n * e_n));
-        if (beta > 1e-6) {
-            return l - log((1. + beta) / (1. - beta)) / beta;
-        }
+        auto moving = beta > 1e-6;
+        FVal<T> beta_moving = where(moving, beta, FVal<T>(0.5));
         FVal<T> b2 = beta * beta;
-        return l - 2. * (1. + b2 / 3. + b2 * b2 / 5.);
+        return where(
+            moving,
+            l - log((1. + beta_moving) / (1. - beta_moving)) / beta_moving,
+            l - 2. * (1. + b2 / 3. + b2 * b2 / 5.)
+        );
     }
     FVal<T> e_i = e_n, e_j = e_m;
-    FVal<T> mi2 = mass_n * mass_n, mj2 = mass_m * mass_m;
+    double mi2 = mass_n * mass_n, mj2 = mass_m * mass_m;
     FVal<T> beta_i = sqrt(1. - mi2 / (e_i * e_i));
     FVal<T> beta_j = sqrt(1. - mj2 / (e_j * e_j));
     FVal<T> v = sqrt(1. - mi2 * mj2 / (k * k));
     FVal<T> al = k * (1. + v) / mi2;
     FVal<T> t_vl = (al * al * mi2 - mj2) / 2.;
     FVal<T> t_v = t_vl / (al * e_i - e_j);
-    FVal<T> xi0 = v < 1. ? log((1. + v) / (1. - v)) / v : log(4. * k * k / (mi2 * mj2));
+    FVal<T> xi0 =
+        where(v < 1., log((1. + v) / (1. - v)) / v, log(4. * k * k / (mi2 * mj2)));
     auto j1a = [&](FVal<T> x, FVal<T> y) {
         FVal<T> lxy = log((x - y) / (x + y));
         return (lxy * lxy + 4. * dilog<T>(1. - (x + y) / t_v) +
@@ -1369,39 +1437,41 @@ KERNELSPEC void kernel_fks_soft_virtual(
     FIn<T, 0> ren_scale,
     FIn<T, 0> fact_scale1,
     FIn<T, 0> fact_scale2,
-    FIn<T, 2> casimir,
-    FIn<T, 2> gamma,
-    FIn<T, 2> gamma_prime,
-    FIn<T, 1> masses,
-    IIn<T, 2> pair_m,
-    IIn<T, 2> pair_n,
-    FIn<T, 2> pair_factor,
-    IIn<T, 2> born_index,
-    FIn<T, 1> ren_factor,
-    FIn<T, 1> options,
-    IIn<T, 0> incoming,
+    FSIn<T, 2> casimir,
+    FSIn<T, 2> gamma,
+    FSIn<T, 2> gamma_prime,
+    FSIn<T, 1> masses,
+    ISIn<T, 2> pair_m,
+    ISIn<T, 2> pair_n,
+    FSIn<T, 2> pair_factor,
+    ISIn<T, 2> born_index,
+    FSIn<T, 1> ren_factor,
+    FSIn<T, 1> options,
+    ISIn<T, 0> incoming,
     FOut<T, 1> soft_virtual,
     FOut<T, 1> ren_coefficient,
     FOut<T, 2> fact_coefficients
 ) {
     constexpr double pi = 3.14159265358979323846;
-    FVal<T> xicut = options[0], delta_o = options[1];
+    double xicut = single_value(options[0]), delta_o = single_value(options[1]);
     std::size_t n_in = single_index(incoming);
     auto p_tot = fks_incoming_sum<T>(momenta, n_in);
     FVal<T> s = lsquare<T>(p_tot), rs = sqrt(s);
     FVal<T> mu_r = ren_scale, mu_r2 = mu_r * mu_r;
-    FVal<T> l_s = log(s / mu_r2), log_xicut = log(xicut);
+    FVal<T> l_s = log(s / mu_r2);
+    double log_xicut = log(xicut);
     FVal<T> l_o = log(s * delta_o / (2. * mu_r2));
-    for (std::size_t o = 0; o < soft_virtual.size(); ++o) {
-        soft_virtual[o] = 0.;
-        ren_coefficient[o] = 0.;
-        fact_coefficients[o][0] = 0.;
-        fact_coefficients[o][1] = 0.;
+    std::size_t orders = soft_virtual.size();
+    for (std::size_t o = 0; o < orders; ++o) {
+        soft_virtual[o] = FVal<T>(0.);
+        ren_coefficient[o] = FVal<T>(0.);
+        fact_coefficients[o][0] = FVal<T>(0.);
+        fact_coefficients[o][1] = FVal<T>(0.);
     }
     for (std::size_t t = 0; t < 2; ++t) {
         bool used = false;
-        for (std::size_t o = 0; o < soft_virtual.size(); ++o) {
-            used = used || int(born_index[t][o]) >= 0;
+        for (std::size_t o = 0; o < orders; ++o) {
+            used = used || single_value(born_index[t][o]) >= 0;
         }
         if (!used) {
             continue;
@@ -1413,11 +1483,14 @@ KERNELSPEC void kernel_fks_soft_virtual(
         FVal<T> fact[2] = {0., 0.};
         for (std::size_t j = 0; j < n_in; ++j) {
             FVal<T> mu_f = j == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
-            fact[j] = -(FVal<T>(gamma[t][j]) + 2. * FVal<T>(casimir[t][j]) * log_xicut);
+            fact[j] = -(
+                single_value(gamma[t][j]) + 2. * single_value(casimir[t][j]) * log_xicut
+            );
             q = q + fact[j] * log(mu_f * mu_f / mu_r2);
         }
         for (std::size_t j = n_in; j < momenta.size(); ++j) {
-            FVal<T> c = casimir[t][j], g = gamma[t][j], g_prime = gamma_prime[t][j];
+            double c = single_value(casimir[t][j]), g = single_value(gamma[t][j]);
+            double g_prime = single_value(gamma_prime[t][j]);
             if (c == 0. && g == 0. && g_prime == 0.) {
                 continue;
             }
@@ -1426,23 +1499,25 @@ KERNELSPEC void kernel_fks_soft_virtual(
             q = q + g_prime - l_o * (g - 2. * c * (l_e - log_xicut)) +
                 2. * c * (l_e * l_e - log_xicut * log_xicut) - 2. * g * l_e;
         }
-        for (std::size_t o = 0; o < soft_virtual.size(); ++o) {
-            int b = born_index[t][o];
+        for (std::size_t o = 0; o < orders; ++o) {
+            int b = single_value(born_index[t][o]);
             if (b < 0) {
                 continue;
             }
             FVal<T> born_b = born[b];
-            soft_virtual[o] = soft_virtual[o] + a * born_b * q;
-            fact_coefficients[o][0] = fact_coefficients[o][0] + a * born_b * fact[0];
-            fact_coefficients[o][1] = fact_coefficients[o][1] + a * born_b * fact[1];
+            soft_virtual[o] = FVal<T>(soft_virtual[o]) + a * born_b * q;
+            fact_coefficients[o][0] =
+                FVal<T>(fact_coefficients[o][0]) + a * born_b * fact[0];
+            fact_coefficients[o][1] =
+                FVal<T>(fact_coefficients[o][1]) + a * born_b * fact[1];
             if (t == 0) {
-                ren_coefficient[o] = a * born_b * FVal<T>(ren_factor[o]);
+                ren_coefficient[o] = a * born_b * single_value(ren_factor[o]);
             }
         }
         // the integrated eikonals of the pairs, with the color-linked Born
         // (QCD) or the Born (QED)
         for (std::size_t k = 0; k < pair_factor[t].size(); ++k) {
-            FVal<T> factor = pair_factor[t][k];
+            double factor = single_value(pair_factor[t][k]);
             if (factor == 0.) {
                 continue;
             }
@@ -1452,16 +1527,23 @@ KERNELSPEC void kernel_fks_soft_virtual(
             FVal<T> e_m = fks_frame_energy<T>(p_m, p_tot, rs);
             FVal<T> e_n = fks_frame_energy<T>(p_n, p_tot, rs);
             FVal<T> i_mn = fks_integrated_eikonal<T>(
-                e_m, e_n, ldot<T>(p_m, p_n), masses[m], masses[n], m == n, l_s, xicut
+                e_m,
+                e_n,
+                ldot<T>(p_m, p_n),
+                single_value(masses[m]),
+                single_value(masses[n]),
+                m == n,
+                l_s,
+                xicut
             );
-            for (std::size_t o = 0; o < soft_virtual.size(); ++o) {
-                int b = born_index[t][o];
+            for (std::size_t o = 0; o < orders; ++o) {
+                int b = single_value(born_index[t][o]);
                 if (b < 0) {
                     continue;
                 }
                 FVal<T> link =
                     t == 0 ? FVal<T>(color_correlated[b][m][n]) : FVal<T>(born[b]);
-                soft_virtual[o] = soft_virtual[o] + a * factor * link * i_mn;
+                soft_virtual[o] = FVal<T>(soft_virtual[o]) + a * factor * link * i_mn;
             }
         }
     }
@@ -1483,28 +1565,29 @@ KERNELSPEC void kernel_fks_contribution_weight(
     FIn<T, 0> alpha_s,
     FIn<T, 0> luminosity,
     FIn<T, 0> factor,
-    IIn<T, 1> powers,
-    IIn<T, 0> incoming,
+    ISIn<T, 1> powers,
+    ISIn<T, 0> incoming,
     FOut<T, 0> weight
 ) {
     constexpr double pi = 3.14159265358979323846;
-    bool decay = single_index(incoming) == 1;
-    FVal<T> s = lsquare<T>(fks_incoming_sum<T>(momenta, single_index(incoming)));
+    std::size_t n_in = single_index(incoming);
+    bool decay = n_in == 1;
+    FVal<T> s = lsquare<T>(fks_incoming_sum<T>(momenta, n_in));
     FVal<T> g_s = sqrt(4. * pi * FVal<T>(alpha_s));
     FVal<T> sum = 0.;
     for (std::size_t o = 0; o < coefficients.size(); ++o) {
         FVal<T> coupling = 1.;
-        for (int k = 0; k < int(powers[o]); ++k) {
+        for (int k = 0; k < int(single_index(powers[o])); ++k) {
             coupling = coupling * g_s;
         }
         sum = sum + coupling * FVal<T>(coefficients[o]);
     }
     FVal<T> d = det;
-    FVal<T> safe_s = where(d == 0., 1., s);
+    FVal<T> safe_s = where(d == 0., FVal<T>(1.), s);
     FVal<T> product = FVal<T>(luminosity) * FVal<T>(factor) * d * sum;
     weight = where(
         d == 0.,
-        0.,
+        FVal<T>(0.),
         decay ? FVal<T>(product / (2. * sqrt(safe_s)))
               : FVal<T>(INV_GEV2_TO_PB * product / (2. * safe_s))
     );

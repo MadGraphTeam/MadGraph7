@@ -49,6 +49,29 @@ inline float min(float arg1, float arg2) { return arg1 < arg2 ? arg1 : arg2; }
 inline float max(float arg1, float arg2) { return arg1 > arg2 ? arg1 : arg2; }
 inline std::size_t single_index(me_int_t arg) { return arg; }
 
+// Kernels with tables per configuration (or another per-event index) run
+// their body once per value of the index among the lanes of a vector, with
+// the mask of the lanes of that value, so that the tables are those of one
+// configuration in each pass. Outside of SIMD, and on the GPU, the body runs
+// once with the index of the event.
+template <class F>
+inline void for_each_value(me_int_t value, F&& body) {
+    body(static_cast<std::size_t>(value), true);
+}
+
+// a single (not batched) input of dimension zero as a plain value, e.g. a
+// table entry of the configuration of a pass of for_each_value
+template <ScalarType T>
+inline T single_value(const TensorView<T, 0>& view) {
+    return view;
+}
+
+// writes value to an output in the lanes of mask (all of them outside of SIMD)
+template <ScalarType T>
+inline void masked_store(TensorView<T, 0> view, bool, T value) {
+    view = value;
+}
+
 using std::acos;
 using std::asinh;
 using std::atan;
@@ -108,6 +131,32 @@ struct SimdTypes32 {
     using IVal = IVec32;
     using BVal = BVec32;
 };
+
+template <class F>
+inline void for_each_value(IVec value, F&& body) {
+    int lanes[simd_vec_size];
+    vstore(lanes, value);
+    for (int k = 0; k < simd_vec_size; ++k) {
+        bool seen = false;
+        for (int l = 0; l < k; ++l) {
+            seen = seen || lanes[l] == lanes[k];
+        }
+        if (!seen) {
+            body(static_cast<std::size_t>(lanes[k]), value == IVec(lanes[k]));
+        }
+    }
+}
+
+template <class V, ScalarType T, bool is_batch>
+inline T single_value(const cpu::SingleVectorizedTensorView<V, T, 0, is_batch>& view) {
+    return view.value();
+}
+
+template <class V, ScalarType T, bool is_batch>
+inline void
+masked_store(cpu::VectorizedTensorView<V, T, 0, is_batch> view, BVec mask, V value) {
+    view = where(mask, value, V(view));
+}
 #else  // USE_SIMD
 using SimdTypes = CpuTypes;
 using SimdTypes32 = CpuTypes32;
