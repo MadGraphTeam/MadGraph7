@@ -53,6 +53,49 @@ def _render(blocks: Sequence[Block]) -> str:
     return "\n".join(out)
 
 
+# How ``resources.peak_memory`` read a peak (``PeakMemory.method``).
+_PEAK_METHODS = {
+    "VmHWM after clear_refs": (
+        "the kernel's high-water mark VmHWM, reset when the calls start "
+        "(/proc/self/clear_refs)"
+    ),
+    "VmHWM": "the kernel's lifetime high-water mark VmHWM (its reset was refused)",
+}
+
+
+def _peak_ram(report: Any) -> str:
+    """The ``peak RAM`` column's description, with how this run measured
+    it."""
+
+    methods = dict.fromkeys(
+        row.profile.peak_memory.method
+        for row in report.runtime
+        if row.profile is not None and row.profile.peak_memory is not None
+    )
+    measured = "; ".join(
+        _PEAK_METHODS.get(
+            method,
+            "getrusage's lifetime peak ru_maxrss (no resettable mark on this platform)"
+            if method.startswith("ru_maxrss")
+            else method,
+        )
+        for method in methods
+    )
+    return (
+        "the memory to expect for each Monte Carlo worker evaluating this "
+        "matrix element on this backend: the peak resident set size of a "
+        "process that loads the artifact and evaluates on this backend alone "
+        "(each backend is profiled in its own such process), at the runtime "
+        "setup's points per call, over its binary64 warm-up and timed calls "
+        "(the double-double timing's own peak is in --json), on the "
+        "timing's native threads (the usable cores or RAYON_NUM_THREADS; a "
+        "worker evaluating on one thread can need somewhat more)"
+        + (f"; measured from {measured}" if measured else "")
+        + "; '<= x': the platform only knows the process's lifetime peak x, "
+        "which these calls did not raise; '-': not measurable here"
+    )
+
+
 def _profile(report: Any) -> list[Block]:
     blocks: list[Block] = [
         (
@@ -80,13 +123,21 @@ def _profile(report: Any) -> list[Block]:
                 "Runtime per reduction backend",
                 [
                     ("backend", "the reduction backend. " + _DEFAULT_MARK),
-                    ("time / point", "wall time per phase-space point, median call"),
+                    (
+                        "time / point",
+                        "wall time per phase-space point, median call; "
+                        "'(dd xN)' with --arithmetic double-double: the same "
+                        "calls in double-double took N times as long (median "
+                        "call; their points and failures are in --json, "
+                        "double_double)",
+                    ),
                     ("min - max call", "the fastest and the slowest call, per point"),
                     (
                         "vs fastest",
                         "time relative to the fastest backend; 'all failed' when "
                         "no point got a value",
                     ),
+                    ("peak RAM", _peak_ram(report)),
                     (
                         "best-effort",
                         "shown when some points were refused by the backend's own "
@@ -174,8 +225,12 @@ def _profile(report: Any) -> list[Block]:
                     ("missed", "truly inaccurate points the checks did not flag"),
                     (
                         "time",
-                        "the backend's binary64 and double-double calls, summed over "
-                        "the workers",
+                        "the wall time of the backend's binary64 calls (with "
+                        "their stability checks), summed over the workers; "
+                        "'(dd xN)': its double-double reference calls took N "
+                        "times as long in total, under the time when the table "
+                        "would pass the line width (the points and time per "
+                        "point of each precision are in --json, precision_timing)",
                     ),
                 ],
             ),
@@ -203,7 +258,9 @@ def _profile(report: Any) -> list[Block]:
                     "number of points, their share of the backend's points, the "
                     "backend, and the cause. 'best-effort': refused, returned "
                     "with the best available value; 'no value': no result; 'no "
-                    "reference': the double-double re-run failed.",
+                    "reference': the double-double re-run failed; '... in "
+                    "double-double': the same in the runtime's double-double "
+                    "timing.",
                 ),
                 (None, _COLOURS),
             ],
@@ -468,6 +525,13 @@ def _benchmark() -> list[Block]:
                 (
                     "value",
                     "its value; times per point are means with their standard error",
+                ),
+                (
+                    None,
+                    "peak RAM: the peak resident set size of this process over "
+                    "the profiled region (warm-ups, calibration and timed "
+                    "blocks); '<= x': the platform only knows the process's "
+                    "lifetime peak x, which the region did not raise.",
                 ),
             ],
         ),

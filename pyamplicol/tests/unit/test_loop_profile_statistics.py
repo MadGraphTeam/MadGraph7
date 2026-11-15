@@ -484,10 +484,11 @@ def test_displayed_stability_estimate_is_smoothed(monkeypatch):
 
 
 def test_runtime_and_stability_report_peak_ram_and_double_double_timing():
-    """The runtime table's lines per backend: the double-double timing (when
-    the profile ran one) and the peak RAM of its profiled calls; the
-    stability run's time per point in binary64 and double-double; all in
-    the JSON as fields, nothing printed when not measured."""
+    """The runtime table's ``peak RAM`` column (``<=`` for a lifetime bound,
+    a muted ``-`` when not measured) and its ``(dd xN)`` time multiplier
+    when the profile timed double-double; the stability table's ``time``:
+    the binary64 total with the double-double multiplier; no free lines
+    under the tables; all in the JSON as fields."""
 
     from pyamplicol.benchmarking import PrecisionTiming, VirtualProfileResult
     from pyamplicol.cli.main import write_result
@@ -509,41 +510,66 @@ def test_runtime_and_stability_report_peak_ram_and_double_double_timing():
         False,
         0,
     )
-    peak = PeakMemory(3 * 1024**3, 2 * 1024**3, 1024**3, "profiled region", "VmHWM")
-    dd = PrecisionTiming("double-double", 4, 2, 1, 8, 2e-2, 1.9e-2, 2.1e-2, 1)
+    peak = PeakMemory(
+        int(2.212 * 1024**3), 2 * 1024**3, 1024**3, "profiled region", "VmHWM"
+    )
+    bound = replace(peak, peak_rss_bytes=3 * 1024**3, scope="process lifetime")
+    dd = PrecisionTiming("double-double", 4, 2, 1, 8, 2e-2, 1.9e-2, 2.1e-2, 0)
     rows = (
         BackendRuntime(
             "tirust", replace(base, peak_memory=peak, double_double=dd), ratio=1.0
         ),
-        BackendRuntime("ninjars", replace(base, seconds_per_point=2e-3), ratio=2.0),
+        BackendRuntime(
+            "ninjars",
+            replace(base, seconds_per_point=2e-3, peak_memory=bound),
+            ratio=2.0,
+        ),
     )
     timed = replace(
-        BackendStability("tirust", points=4, true_digits=(9.0,) * 4),
+        BackendStability("tirust", points=4, true_digits=(9.0,) * 4, seconds=2.8),
         precision_timing={
-            "binary64": {"points": 4, "seconds_per_point": 2e-3},
-            "double-double": {"points": 4, "seconds_per_point": 4e-2},
+            "binary64": {"points": 4, "seconds": 1.0, "seconds_per_point": 2e-3},
+            "double-double": {"points": 4, "seconds": 1.8, "seconds_per_point": 4e-2},
         },
     )
     report = _report((timed,), rows)
     text = render_summary(report, color=False)
     lines = text.splitlines()
-    assert (
-        "TIRust double-double: 20 ms / point, x20.0 binary64 (8 points, 1 failed)"
-        in lines
-    ), text
-    assert any(
-        line.startswith("TIRust peak RAM: 3.000 GiB, +1.000 GiB over start")
-        and "(profiled region, VmHWM)" in line
-        for line in lines
-    ), text
-    # Nothing measured, nothing printed (NinjaRS here).
-    assert not any(line.startswith("NinjaRS double-double") for line in lines)
-    assert not any(line.startswith("NinjaRS peak RAM") for line in lines)
-    assert (
-        "TIRust time / point: binary64 2 ms over 4 points (with its checks)" in lines
-    )
-    assert "TIRust time / point: double-double 40 ms over 4 points, x20.0" in lines
+    runtime = next(line for line in lines if line.startswith("| TIRust"))
+    assert "| 1 ms (dd x20) |" in runtime and "| 2.21 GiB |" in runtime, text
+    slower = next(line for line in lines if line.startswith("| NinjaRS"))
+    assert "| 2 ms " in slower and "dd x" not in slower
+    assert "| <= 3 GiB |" in slower, text
+    header = next(line for line in lines if "| time / point" in line)
+    assert header.index("vs fastest") < header.index("peak RAM")
+    assert any(line.endswith("| 1 s (dd x1.8) |") for line in lines), text
+    assert not any("peak RAM:" in line or "time / point:" in line for line in lines)
     assert max(len(line) for line in lines) <= 100
+    # Wide verdict cells: the multiplier goes under the time, within the
+    # line width.
+    wide = replace(
+        timed,
+        points=1000,
+        flagged=120,
+        flagged_inaccurate=100,
+        unflagged_inaccurate=12,
+        failed_binary64=2,
+        precision_timing={
+            "binary64": {"points": 1000, "seconds": 1.47},
+            "double-double": {"points": 1000, "seconds": 26.3},
+        },
+    )
+    wrapped = render_summary(_report((wide,), rows), color=False).splitlines()
+    assert max(len(line) for line in wrapped) <= 100
+    first = next(i for i, line in enumerate(wrapped) if "| 1.47 s" in line)
+    assert wrapped[first + 1].rstrip(" |").endswith("(dd x18)")
+    # Not measured: a muted dash.
+    unmeasured = render_summary(
+        _report(None, (BackendRuntime("tirust", base, ratio=1.0),)), color=False
+    )
+    assert next(
+        line for line in unmeasured.splitlines() if line.startswith("| TIRust")
+    ).endswith("| -        |")
     machine = io.StringIO()
     write_result(report, format="json", stream=machine, color=False)
     payload = json.loads(machine.getvalue())
@@ -551,30 +577,44 @@ def test_runtime_and_stability_report_peak_ram_and_double_double_timing():
     assert profile["peak_memory"]["increase_rss_bytes"] == 1024**3
     assert profile["double_double"]["points"] == 8
     assert payload["runtime"][1]["profile"]["double_double"] is None
-    assert payload["stability"][0]["precision_timing"]["double-double"]["points"] == 4
+    timing = payload["stability"][0]["precision_timing"]
+    assert timing["double-double"]["points"] == 4
+    assert timing["binary64"]["seconds"] == 1.0
 
 
 def test_peak_memory_measures_the_region():
-    """``peak_memory`` over a block that touches 256 MiB: the peak and its
-    increase over the start cover it (Linux: VmHWM reset at the start;
-    elsewhere the lifetime peak, a lower bound of the increase)."""
+    """``peak_memory`` over a block that maps and touches every page of 256
+    MiB and holds it to the end: the peak covers the resident size the
+    kernel counts with the block in (VmHWM is at least VmRSS in one read).
+    The block is not released inside the region: the kernel records the
+    high-water mark of released memory from its per-CPU batched counters,
+    which can read short of the exact peak by up to a batch per CPU (the
+    cause of the old 0.9-of-the-block assertion's failures on a busy host)."""
 
-    import sys
+    import gc
+    import mmap
 
+    from pyamplicol.reporting import resources
     from pyamplicol.reporting.resources import peak_memory, peak_memory_text
 
     size = 256 * 1024**2
-    with peak_memory() as before:
-        pass
-    with peak_memory() as peak:
-        block = bytearray(size)
-        block[::4096] = b"\x01" * len(block[::4096])
-        del block
+    page = mmap.PAGESIZE
+    gc.disable()
+    try:
+        with peak_memory() as peak:
+            block = mmap.mmap(-1, size)
+            for offset in range(0, size, page):
+                block[offset] = 1
+            held = resources._proc_status_kib("VmRSS")
+        block.close()
+    finally:
+        gc.enable()
     result = peak.result
     assert result is not None and result.peak_rss_bytes is not None
     assert result.peak_rss_bytes >= result.start_rss_bytes
-    if sys.platform.startswith("linux") and result.scope == "profiled region":
-        assert result.increase_rss_bytes >= 0.9 * size
-        # A block that allocates nothing has (almost) no increase.
-        assert before.result.increase_rss_bytes < 0.1 * size
-    assert "GiB" in peak_memory_text(result)
+    assert result.increase_rss_bytes == result.peak_rss_bytes - result.start_rss_bytes
+    if held is not None and result.scope == "profiled region":
+        assert result.peak_rss_bytes >= held
+    text = peak_memory_text(result)
+    assert text.endswith(("MiB", "GiB"))
+    assert text.startswith("<= ") == (result.scope != "profiled region")
