@@ -94,7 +94,6 @@ mq-stab, binary64 against double-double):
 
 from __future__ import annotations
 
-import functools
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -280,7 +279,9 @@ class Rotation:
                     energy,
                     *(
                         Fraction(
-                            row[0] * scaled[0] + row[1] * scaled[1] + row[2] * scaled[2],
+                            row[0] * scaled[0]
+                            + row[1] * scaled[1]
+                            + row[2] * scaled[2],
                             over,
                         )
                         for row in integers
@@ -290,20 +291,32 @@ class Rotation:
         return tuple(out)
 
 
-@functools.lru_cache(maxsize=64)
+# Per rotation matrix (by identity, the matrix kept alive with its entry):
+# its integer form. Hashing the Fraction entries per call cost more than the
+# lookup saves.
+_INTEGER_MATRICES: dict[int, tuple[Any, tuple[tuple[tuple[int, ...], ...], int]]] = {}
+
+
 def _integer_matrix(
     matrix: tuple[tuple[Fraction, ...], ...],
 ) -> tuple[tuple[tuple[int, ...], ...], int]:
     """A rational matrix as (integer matrix, common denominator)."""
 
+    found = _INTEGER_MATRICES.get(id(matrix))
+    if found is not None and found[0] is matrix:
+        return found[1]
     denominator = math.lcm(*(x.denominator for row in matrix for x in row))
-    return (
+    integers = (
         tuple(
             tuple(x.numerator * (denominator // x.denominator) for x in row)
             for row in matrix
         ),
         denominator,
     )
+    if len(_INTEGER_MATRICES) >= 256:
+        _INTEGER_MATRICES.clear()
+    _INTEGER_MATRICES[id(matrix)] = (matrix, integers)
+    return integers
 
 
 def default_rotation(index: int) -> Rotation:

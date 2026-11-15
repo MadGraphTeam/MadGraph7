@@ -600,8 +600,7 @@ def test_escalated_subsets_run_together_in_unpadded_double_double_lanes(artifact
     runtime = _load(artifact, "gg")
     native = runtime._backend._executor._native
     alone = [
-        runtime.evaluate([point], mu_r2=scales[0], stability=FORCED)
-        for point in points
+        runtime.evaluate([point], mu_r2=scales[0], stability=FORCED) for point in points
     ]
     for size in (1, 3, 5):
         batch = [points[k % 3] for k in range(size)]

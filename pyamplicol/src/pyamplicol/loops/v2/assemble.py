@@ -5335,7 +5335,6 @@ class _NativePoint(_PointEvaluation):
         self.catani = False
         self.correlations: dict | None = None
 
-
     @property
     def incoming(self) -> list[list[Fraction]]:
         """All-incoming exact momenta (outgoing legs negated), leg order."""
@@ -5369,6 +5368,7 @@ class _NativePoint(_PointEvaluation):
             for label in labels
             for x in point[label - 1]
         ]
+
     def counterterm_twin(self) -> None:
         # A native point has no Python twin: the executor forms its
         # counterterms at the IR regulator 0 (``counterterms_uv``).

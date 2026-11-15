@@ -276,9 +276,7 @@ def _accepts_keyword_arguments(operation: object, *names: str) -> bool:
 
 # The keyword parameters of a function's signature, per function and
 # binding (``inspect.signature`` costs ~0.1 ms, once per evaluate call before).
-_KEYWORDS: weakref.WeakKeyDictionary[Any, dict[bool, Any]] = (
-    weakref.WeakKeyDictionary()
-)
+_KEYWORDS: weakref.WeakKeyDictionary[Any, dict[bool, Any]] = weakref.WeakKeyDictionary()
 
 
 def _keyword_parameters(operation: object) -> tuple[frozenset[str], bool] | None:

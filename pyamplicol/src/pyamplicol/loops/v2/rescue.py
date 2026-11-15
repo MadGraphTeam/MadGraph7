@@ -39,8 +39,9 @@ smallest power of two holding the call), in calls of whole power-of-two
 sizes (full ``DEFAULT_LANES`` chunks, then the binary digits of the rest),
 so that no padded lane is evaluated and each call costs its points. Every
 point's value is its own lane's: the same as in a call of its own. The
-per-scale partition and flavour members stay inside the level evaluator. The rescue is off unless a policy is passed (REQUIREMENTS_ADDENDUM
-C: never on for timing); it is offered by the Python native ``evaluate``
+per-scale partition and flavour members stay inside the level evaluator.
+The rescue is off unless a policy is passed (REQUIREMENTS_ADDENDUM C:
+never on for timing); it is offered by the Python native ``evaluate``
 only, in no SDK, the CLI or the configuration.
 """
 
