@@ -22,7 +22,8 @@ The maps are learned inside ordinary MINT0:
 - At regular points (after 64 ordinary calls, every 16th), a probe evaluates
   one Born point at all 16 nodes of a (4,4,1) stencil. Probes are admitted
   while their CPU, plus fitting and archiving, stays below
-  `FKSSectorLearningBudget` times the ordinary MINT0 integrand CPU. A probe
+  `FKSSectorLearningBudget` times the CPU of the ordinary MINT0 points
+  (timed per block of 16 points). A probe
   stores the routed S contributions before the absolute value, split into
   the Born part `B` and per-sector parts `R`, per canonical flavour. The
   separately generated virtual-residual lane (type 14) is excluded, so
@@ -76,7 +77,7 @@ against it. With `sector_learning_archive` set in `mint_module` (the tests
 do this), MINT0 also writes `sector_learning_online.bin`, a binary
 per-iteration record of the probes, fits and grid feeds for auditing;
 production runs neither write nor read it, and do not keep its grid
-accounting or fit traces. Probe admission depends on measured CPU time, so a seed alone does not reproduce
+accounting. Probe admission depends on measured CPU time, so a seed alone does not reproduce
 the training schedule.
 
 ## Measured effect

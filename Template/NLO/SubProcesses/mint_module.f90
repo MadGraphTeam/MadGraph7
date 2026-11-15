@@ -763,7 +763,7 @@ contains
     integer,intent(in) :: gx,gy,start(:,:)
     integer,intent(out) :: maps(size(start,1),size(start,2))
     double precision,intent(out) :: before,after
-    integer,allocatable,intent(out),optional :: trace(:,:)
+    integer,allocatable,intent(out) :: trace(:,:)
     integer :: ns,nt,s,pass,c,best,old,steps,hx,hy,orbit,node
     integer,allocatable :: codes(:),check(:,:),history(:,:)
     integer :: column(sl_nodes,1)
@@ -778,8 +778,7 @@ contains
     if(.not.all(ieee_is_finite(b)).or..not.all(ieee_is_finite(r)))error stop 'Nonfinite unified phase data'
     if(.not.sl_valid_capacity(gx,gy))error stop 'Invalid unified phase capacity'
     hx=4/gx;hy=4/gy
-    if(present(trace))allocate(history(sl_nodes+2,3*ns))
-    allocate(codes(ns),check(sl_nodes,ns),losses(nt), &
+    allocate(codes(ns),check(sl_nodes,ns),history(sl_nodes+2,3*ns),losses(nt), &
          total(size(b,1),sl_nodes,nt),fixed(size(b,1),sl_nodes,nt))
     do s=1,ns
        if(start(1,s).lt.1.or.start(1,s).gt.sl_nodes)error stop 'Invalid unified phase start'
@@ -825,8 +824,7 @@ contains
              call sl_unified_translation([best],gx,gy,column)
              maps(:,s)=column(:,1)
           endif
-          steps=steps+1
-          if(present(trace))history(:,steps)=[pass,s,maps(:,s)]
+          steps=steps+1;history(:,steps)=[pass,s,maps(:,s)]
           do orbit=1,nt
              do node=1,sl_nodes
                 total(:,node,orbit)=fixed(:,node,orbit)+r(:,maps(node,s),s,orbit)
@@ -837,7 +835,7 @@ contains
     enddo
     ! The returned loss is exact: the tile fit compares it bit for bit.
     call sl_tile_losses_unchecked(b,r,maps,losses);after=sum(losses)
-    if(present(trace))trace=history(:,1:steps)
+    trace=history(:,1:steps)
   end subroutine sector_learning_unified_phase
 
   subroutine sector_learning_unified_fit(b,r,current,gx,gy,qcodes,maps,before,after,selected,attempts)
@@ -898,14 +896,8 @@ contains
              attempts(a)%loss_start=before;attempts(a)%loss_phase=before
              allocate(attempts(a)%phase_trace(sl_nodes+2,0))
           else
-             ! The step traces are kept only for the archive audit.
-             if(sector_learning_archive)then
-                call sector_learning_unified_phase(b,r,gx,gy,attempts(a)%initial_map, &
-                     attempts(a)%phase_map,attempts(a)%loss_start,attempts(a)%loss_phase,attempts(a)%phase_trace)
-             else
-                call sector_learning_unified_phase(b,r,gx,gy,attempts(a)%initial_map, &
-                     attempts(a)%phase_map,attempts(a)%loss_start,attempts(a)%loss_phase)
-             endif
+             call sector_learning_unified_phase(b,r,gx,gy,attempts(a)%initial_map, &
+                  attempts(a)%phase_map,attempts(a)%loss_start,attempts(a)%loss_phase,attempts(a)%phase_trace)
           endif
           ref=0
           do prior=1,a-1
@@ -920,13 +912,8 @@ contains
              attempts(a)%loss_final=attempts(ref)%loss_final
              allocate(attempts(a)%tile_trace(sl_nodes+2,0))
           else
-             if(sector_learning_archive)then
-                call sector_learning_online_fit(b,r,attempts(a)%phase_map,gx,gy,attempts(a)%final_map, &
-                     ignored,attempts(a)%loss_final,attempts(a)%tile_trace)
-             else
-                call sector_learning_online_fit(b,r,attempts(a)%phase_map,gx,gy,attempts(a)%final_map, &
-                     ignored,attempts(a)%loss_final)
-             endif
+             call sector_learning_online_fit(b,r,attempts(a)%phase_map,gx,gy,attempts(a)%final_map, &
+                  ignored,attempts(a)%loss_final,attempts(a)%tile_trace)
              if(ignored.ne.attempts(a)%loss_phase)error stop 'Unified phase/tile loss mismatch'
           endif
        endif
@@ -1224,7 +1211,8 @@ contains
     integer,allocatable :: a(:,:),bmap(:,:)
     double precision :: started,finished,before,aa,bb,dummy
     double precision,allocatable :: fit_b(:,:,:),fit_r(:,:,:,:)
-    call cpu_time(started)
+    ! Close the last partial block of ordinary calls.
+    call sl_online_ordinary_clock(started)
     call sl_unified_ensure()
     if(any(xgrid(0:online_nint_before,1:ndim,1:nchans).ne.online_grid_before)) &
          error stop 'Grid changed inside online iteration'
@@ -1299,7 +1287,7 @@ contains
     if(.not.sector_learning_archive)goto 10
     write(online_unit)73110620,10,sl_method_id,online_epoch,online_nint_before,nint_used, &
          ndim,nchans,size(sl_entries),online_ordinary_calls,online_probes,online_reused_nodes, &
-         online_record_rejections,online_probes
+         online_record_rejections
     write(online_unit)online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
     write(online_unit)online_grid_before,xgrid(0:nint_used,1:ndim,1:nchans)
     write(online_unit)online_base_acc,online_total_acc,online_ordinary_acc,online_proxy_acc
@@ -1356,7 +1344,7 @@ contains
     ! Explicit formats keep one record per line (the reader counts tokens).
     write(unit,'(a,*(1x,i0))')'SCL10 H',10,sl_method_id,size(sl_entries),sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
          online_epoch,online_ordinary_calls,online_probes,online_reused_nodes,online_record_rejections, &
-         online_probes,64,16,1,3,3,1
+         64,16,1,3,3,1
     write(unit,'(a,*(1x,es24.16))')'SCL10 C',online_budget,online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
     do i=1,size(sl_entries)
        write(unit,'(a,*(1x,i0))')'SCL10 L',sl_entries(i)%slot,size(sl_entries(i)%ids),size(sl_entries(i)%pdgs,2), &
@@ -1401,7 +1389,7 @@ contains
     character(len=8192) :: line
     character(len=64) :: marker,tag
     integer :: ios,version,mode,count_entries,i,s,slot,ns,nlegs,nf,gx,gy,total,read_slot,read_index,node,c,d,n
-    integer :: warm,stride,restore_checks
+    integer :: warm,stride
     double precision :: budget
     integer :: gauge,gauge_version,phase_passes,tile_passes,selection_version,expected_gauge
     integer,allocatable :: expected_q(:,:)
@@ -1414,16 +1402,16 @@ contains
        if(index(line,'SCL10 H').eq.1)exit
        if(index(line,'SCL').eq.1)error stop 'Unexpected learning metadata before SCL10'
     enddo
-    call sl_epoch_replay_validate_line(line,'H',20)
+    call sl_epoch_replay_validate_line(line,'H',19)
     read(line,*,iostat=ios)marker,tag,version,mode,count_entries,sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
          online_epoch,online_ordinary_calls,online_probes,online_reused_nodes,online_record_rejections, &
-         restore_checks,warm,stride,gauge_version,phase_passes,tile_passes,selection_version
+         warm,stride,gauge_version,phase_passes,tile_passes,selection_version
     if(ios.ne.0.or.version.ne.10.or.mode.ne.sl_method_id.or.count_entries.lt.1.or. &
          sl_grid_nint.ne.nintervals.or.sl_grid_ndim.ne.ndim.or.sl_grid_nchans.ne.nchans.or. &
          min(online_epoch,online_ordinary_calls,online_probes,online_reused_nodes, &
-         online_record_rejections,restore_checks).lt.0.or.count_entries.gt.100000.or. &
-         warm.ne.64.or.stride.ne.16.or.online_reused_nodes.ne.sl_nodes*(online_probes-online_record_rejections).or. &
-         restore_checks.ne.online_probes)error stop 'Malformed SCL10 header'
+         online_record_rejections).lt.0.or.count_entries.gt.100000.or. &
+         warm.ne.64.or.stride.ne.16.or.online_reused_nodes.ne.sl_nodes*(online_probes-online_record_rejections)) &
+         error stop 'Malformed SCL10 header'
     if(gauge_version.ne.1.or.phase_passes.ne.3.or.tile_passes.ne.3.or.selection_version.ne.1) &
          error stop 'Unknown unified map convention'
     read(unit,'(a)',iostat=ios)line
@@ -1517,17 +1505,26 @@ contains
   end subroutine sl_epoch_replay_read_table
 
   subroutine sl_online_observe_ordinary()
-    double precision :: finished
     integer :: d
-    call cpu_time(finished)
-    online_ordinary_cpu=online_ordinary_cpu+finished-online_clock
     online_ordinary_calls=online_ordinary_calls+1
+    ! The clock is read per block of 16 calls, when a probe may follow.
+    if(mod(online_ordinary_calls,16).eq.0)call sl_online_ordinary_clock()
     if(.not.sector_learning_archive)return
     do d=1,ndim
        online_ordinary_acc(icell(d),d,ichan)=online_ordinary_acc(icell(d),d,ichan)+f(1)
        online_ordinary_hits(icell(d),d,ichan)=online_ordinary_hits(icell(d),d,ichan)+1
     enddo
   end subroutine sl_online_observe_ordinary
+
+  subroutine sl_online_ordinary_clock(now)
+    ! Charge the time since the last mark to ordinary MINT0 points.
+    double precision,intent(out),optional :: now
+    double precision :: finished
+    call cpu_time(finished)
+    online_ordinary_cpu=online_ordinary_cpu+finished-online_clock
+    online_clock=finished
+    if(present(now))now=finished
+  end subroutine sl_online_ordinary_clock
 
   subroutine sl_unified_maybe_probe(fun)
     double precision,external :: fun
@@ -1540,7 +1537,7 @@ contains
     if(online_ordinary_calls.lt.64.or.mod(online_ordinary_calls,16).ne.0)return
     if(online_extra_cpu.ge.online_budget*online_ordinary_cpu)return
     if(mod(nint_used,4).ne.0.or.mod(nint_used_virt,4).ne.0)return
-    call cpu_time(started)
+    call sl_online_ordinary_clock(started)
     saved_current=sl_current
     saved_folds=ifold; saved_even=even_rn
     saved_f=f; saved_ncell=ncell; saved_icell=icell; saved_rand=rand
@@ -1599,6 +1596,7 @@ contains
     call cpu_time(finished)
     online_probe_cpu=online_probe_cpu+finished-started
     online_extra_cpu=online_extra_cpu+finished-started
+    online_clock=finished
   end subroutine sl_unified_maybe_probe
 
   logical function sl_map_representable(map,gx,gy) result(ok)
@@ -1633,7 +1631,7 @@ contains
     integer,intent(in) :: current(:,:),gx,gy
     integer,intent(out) :: maps(size(current,1),size(current,2))
     double precision,intent(out) :: before,after
-    integer,allocatable,intent(out),optional :: trace(:,:)
+    integer,allocatable,intent(out) :: trace(:,:)
     double precision,allocatable :: base(:,:,:),total(:,:,:),loss(:),candidate_loss(:),cost(:,:)
     integer,allocatable :: history(:,:)
     double precision :: proposed,current_loss
@@ -1652,8 +1650,8 @@ contains
             error stop 'Current map not representable at requested capacity'
     enddo
     maps=current
-    allocate(base(nf,sl_nodes,nt),total(nf,sl_nodes,nt),loss(nt),candidate_loss(nt),cost(k,k))
-    if(present(trace))allocate(history(sl_nodes+2,3*ns))
+    allocate(base(nf,sl_nodes,nt),total(nf,sl_nodes,nt),loss(nt),candidate_loss(nt),cost(k,k), &
+         history(sl_nodes+2,3*ns))
     call sl_tile_losses_unchecked(b,r,maps,loss)
     before=sum(loss);after=before;steps=0
     ! total = B plus every sector at its current tile; base removes s.
@@ -1695,8 +1693,7 @@ contains
           if(proposed.lt.current_loss)then
              maps(:,s)=fine;changed=.true.
           endif
-          steps=steps+1
-          if(present(trace))history(:,steps)=[pass,s,maps(:,s)]
+          steps=steps+1;history(:,steps)=[pass,s,maps(:,s)]
           do node=1,sl_nodes
              total(:,node,:)=base(:,node,:)+r(:,maps(node,s),s,:)
           enddo
@@ -1705,7 +1702,7 @@ contains
     enddo
     ! The returned loss is exact: the unified fit compares it bit for bit.
     call sl_tile_losses_unchecked(b,r,maps,loss);after=sum(loss)
-    if(present(trace))trace=history(:,1:steps)
+    trace=history(:,1:steps)
   end subroutine sector_learning_online_fit
 
   subroutine sl_verify_grid()
@@ -1739,12 +1736,14 @@ contains
 10  continue
     do while (nit.lt.itmax)
        call start_iteration
-       if(sl_train)call sl_epoch_replay_begin_iteration()
+       if(sl_train)then
+          call sl_epoch_replay_begin_iteration()
+          call cpu_time(online_clock)
+       endif
 2      kpoint_iter=kpoint_iter+1
        do kpoint=1,ncalls
           new_point=.true.
           call get_random_x(x,vol,kfold)
-          if(sl_train)call cpu_time(online_clock)
           call compute_integrand(fun,x,vol)
           if(sl_train)call sl_online_observe_ordinary()
           call accumulate_the_point(x)

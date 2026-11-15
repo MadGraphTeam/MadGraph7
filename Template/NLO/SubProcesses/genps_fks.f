@@ -145,7 +145,7 @@ c cnbody is true, so this entry must not mean "Born momenta only".
 c Born/virtual integration still uses the regulated FKS soft-endpoint
 c measure and massive-branch support. Keep that adapter distinct from
 c sampling a plain Born point, whose measure contains no radiation.
-c An optional cached Born is reused under the same rules as below.
+c A valid optional cached Born is reused under the same rules as below.
       implicit none
       include 'timing_variables.inc'
       integer ndim,iconfig
@@ -154,8 +154,8 @@ c An optional cached Born is reused under the same rules as below.
       type(fks_born_point),intent(inout),optional :: cached_born
 
       if(timing_sampled)call timing_enter(timing_phase_space)
+c point is intent(out): without a valid cache the Born is resampled.
       if(present(cached_born))then
-c An empty cache keeps the caller's Born, which may still match.
          if(cached_born%valid)point%born=cached_born
       endif
       call initialize_fks_phase_space(iconfig)
@@ -168,15 +168,12 @@ c An empty cache keeps the caller's Born, which may still match.
 
 
       subroutine keep_cached_born(point,cached_born)
-c A Born sample reused across radiation trials must not depend on them.
+c A Born sample reused across radiation trials must not depend on them:
+c without event projection it does, so the cache is left empty.
       implicit none
       type(fks_phase_space_point),intent(in) :: point
       type(fks_born_point),intent(out) :: cached_born
-      if(.not.point%born%event_projection)then
-         write(*,*) 'A cached Born sample requires event projection'
-         stop 1
-      endif
-      cached_born=point%born
+      if(point%born%event_projection)cached_born=point%born
       end subroutine keep_cached_born
 
 

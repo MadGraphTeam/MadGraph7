@@ -127,10 +127,15 @@ def stdhep_status(me_dir, mg5_path=None):
     return 'missing', None
 
 
-def sector_learning_card_error(fks_params, run_card):
+def sector_learning_card_error(fks_params, run_card, subprocess_dirs=()):
     """Why the cards cannot train FKSSectorLearning maps, or None. MINT0
     always runs at folding 1 1 1, so the Fortran sees the run-card folding
-    only after the training step has been spent."""
+    only after the training step has been spent. Learning is ignored when
+    every subprocess is [LOonly] (marked by parton_lum_0.f, as for
+    check_poles): the driver then integrates the Born alone."""
+    if subprocess_dirs and all(os.path.exists(pjoin(d, 'parton_lum_0.f'))
+                               for d in subprocess_dirs):
+        return None
     def flag(name, default):
         # Fortran list-directed logical input: an optional '.', then T or F.
         value = mcatnlo_shower.read_fks_param(fks_params, name, default)
@@ -2042,7 +2047,9 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
 
             if mode_dict[mode] == 'all':
                 error = sector_learning_card_error(
-                    pjoin(self.me_dir, 'Cards', 'FKS_params.dat'), self.run_card)
+                    pjoin(self.me_dir, 'Cards', 'FKS_params.dat'), self.run_card,
+                    [d for d in misc.glob(pjoin(self.me_dir, 'SubProcesses', 'P*'))
+                     if os.path.isdir(d)])
                 if error:
                     raise aMCatNLOError(error)
 

@@ -696,8 +696,8 @@ def read_archive(path):
         raise ValueError('Invalid epoch archive magic/native int32 representation')
     reader, records, footer = _Reader(payload, endian), [], False
     names = ('version', 'mode', 'epoch', 'npre', 'npost', 'ndim', 'nchans', 'nentries',
-             'ordinary', 'probes', 'reused', 'rejections', 'restores')
-    counters = ('ordinary', 'probes', 'reused', 'rejections', 'restores')
+             'ordinary', 'probes', 'reused', 'rejections')
+    counters = ('ordinary', 'probes', 'reused', 'rejections')
     while reader.offset < len(payload):
         magic = reader.ints(1)[0]
         if magic == -MAGIC:
@@ -705,13 +705,13 @@ def read_archive(path):
             break
         if magic != MAGIC:
             raise ValueError('Corrupt epoch record marker')
-        row = dict(zip(names, reader.ints(13)))
+        row = dict(zip(names, reader.ints(12)))
         if (row['version'] != 10 or row['mode'] != 29 or row['epoch'] < 1 or
                 not 4 <= row['npre'] <= 10000 or not 4 <= row['npost'] <= 10000 or
                 row['npre'] % 4 or row['npost'] % 4 or not 3 <= row['ndim'] <= 100 or
                 not 1 <= row['nchans'] <= 10000 or not 1 <= row['nentries'] <= 10000 or
                 min(row[k] for k in counters) < 0 or row['rejections'] > row['probes'] or
-                row['reused'] != 16 * (row['probes'] - row['rejections']) or row['restores'] != row['probes']):
+                row['reused'] != 16 * (row['probes'] - row['rejections'])):
             raise ValueError('Unsupported epoch header/counts')
         row['cpu'] = reader.doubles(4)
         if not _finite(row['cpu']) or min(row['cpu']) < 0.:
@@ -790,19 +790,19 @@ def read_table(path):
     if any(line and line[0] != 'SCL10' for line in tokens[positions[0]:]):
         raise ValueError('Trailing nonblank record within/after SCL10 table')
     lines = [line for line in tokens[positions[0]:] if line]
-    if lines[0][:2] != ['SCL10', 'H'] or len(lines[0]) != 20:
+    if lines[0][:2] != ['SCL10', 'H'] or len(lines[0]) != 19:
         raise ValueError('Missing/malformed SCL10 header')
     names = ('version', 'mode', 'nentries', 'nint', 'ndim', 'nchans', 'epoch', 'ordinary', 'probes', 'reused',
-             'rejections', 'restores', 'warmup', 'stride', 'gauge_version', 'phase_passes', 'tile_passes',
+             'rejections', 'warmup', 'stride', 'gauge_version', 'phase_passes', 'tile_passes',
              'selection_version')
     result = dict(zip(names, map(int, lines[0][2:])))
     if (result['version'] != 10 or result['mode'] != 29 or
             min(result[k] for k in ('nentries', 'nint', 'ndim', 'nchans', 'epoch')) < 1 or
             result['ndim'] < 3 or result['nint'] % 4 or
-            min(result[k] for k in ('ordinary', 'probes', 'reused', 'rejections', 'restores')) < 0 or
+            min(result[k] for k in ('ordinary', 'probes', 'reused', 'rejections')) < 0 or
             result['rejections'] > result['probes'] or
             result['reused'] != 16 * (result['probes'] - result['rejections']) or
-            result['restores'] != result['probes'] or (result['warmup'], result['stride']) != (64, 16)):
+            (result['warmup'], result['stride']) != (64, 16)):
         raise ValueError('Unsupported SCL10 header/counts')
     if tuple(result[k] for k in ('gauge_version', 'phase_passes', 'tile_passes', 'selection_version')) != (1, 3, 3, 1):
         raise ValueError('Wrong gauge/solver/selection versions')
@@ -1041,7 +1041,7 @@ def audit_archive(path, table_path, *, expected_budget=None):
     if expected_budget is not None and table['budget'] != expected_budget:
         raise ValueError('SCL10 budget differs from the runtime card')
     previous, slots, reports = None, {}, []
-    totals = dict(ordinary=0, probes=0, reused=0, rejections=0, restores=0)
+    totals = dict(ordinary=0, probes=0, reused=0, rejections=0)
     for index, record in enumerate(archive['records']):
         if record['epoch'] != len(reports) + 1:
             raise ValueError('Epoch sequence differs')
@@ -1117,7 +1117,7 @@ def audit_archive(path, table_path, *, expected_budget=None):
                             reused_nodes=delta['reused'], probe_rejections=delta['rejections'], slots=entry_reports))
         totals, previous = {key: record[key] for key in totals}, record
     final = archive['records'][-1]
-    for key in ('epoch', 'ordinary', 'probes', 'reused', 'rejections', 'restores', 'nentries'):
+    for key in ('epoch', 'ordinary', 'probes', 'reused', 'rejections', 'nentries'):
         if table[key] != final[key]:
             raise ValueError('Final SCL10 counters differ from native epochs')
     if table['grid'].data != final['grid_after'].data or set(table['entries']) != set(slots):

@@ -1,4 +1,4 @@
-"""Memoized integrated soft scalars are rechecked against every physical input per call."""
+"""Memoized integrated soft scalars are rechecked against every physical input on every call."""
 
 from pathlib import Path
 import shutil
@@ -19,8 +19,6 @@ common/to_mass/pmass
 common/qes/QES2
 character(4) abrv
 common/to_abrv/abrv
-logical checked
-common/c_eikonal_cache/checked
 integer i,j,before
 p=0d0
 p(:,1)=[1000d0,0d0,0d0,1000d0]
@@ -35,7 +33,6 @@ QES2=10000d0
 xicut=0.1d0
 abrv='all'
 sector_learning_active=.true.
-checked=.false.
 ! Cover all massless, mixed-mass, massive-pair and massive-self links.
 do i=1,6
  do j=1,i
@@ -61,11 +58,12 @@ QES2=11000d0
 call miss_and_hit(.true.)
 xicut=0.15d0
 call miss_and_hit(.true.)
-! Within one call the inputs are not rechecked: links are reused.
+! A changed input is caught even without any reset between the calls.
 p(0,1)=p(0,1)+1d0
 before=kernel_calls
+call raw_eikonal_Ireg(p,3,1,xicut,expected)
 call cached_eikonal_Ireg(p,3,1,xicut,actual)
-if(kernel_calls.ne.before)error stop 'inputs rechecked within one call'
+if(actual.ne.expected.or.kernel_calls.ne.before+1)error stop 'stale link returned'
 p(0,1)=p(0,1)-1d0
 sector_learning_active=.false.
 before=kernel_calls
@@ -82,7 +80,6 @@ integer expected_calls
 before=kernel_calls
 expected_calls=before
 if(miss)expected_calls=expected_calls+1
-checked=.false.
 call raw_eikonal_Ireg(p,3,1,xicut,expected)
 call cached_eikonal_Ireg(p,3,1,xicut,actual)
 if(actual.ne.expected.or.kernel_calls.ne.expected_calls)error stop 'cache guard missed changed input'

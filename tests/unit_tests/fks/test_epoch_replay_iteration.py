@@ -466,6 +466,12 @@ class TestSectorLearningCards(unittest.TestCase):
             self.assertIn('born_spreading',sector_learning_card_error(str(card),dict(good,born_spreading=True)))
             card.write_text('#FKSSectorLearning\n.true.\n#MCSubtractionAtFixedFlow\n.false.\n')
             self.assertIn('MCSubtractionAtFixedFlow',sector_learning_card_error(str(card),good))
+            # Learning is ignored when every subprocess is [LOonly].
+            lo,nlo=Path(temporary)/'P0_lo',Path(temporary)/'P1_nlo'
+            lo.mkdir();nlo.mkdir();(lo/'parton_lum_0.f').write_text('')
+            bad=dict(good,folding=[2,2,1])
+            self.assertIsNone(sector_learning_card_error(str(card),bad,[str(lo)]))
+            self.assertIn('MCSubtractionAtFixedFlow',sector_learning_card_error(str(card),good,[str(lo),str(nlo)]))
             card.write_text('#FKSSectorLearning\nF\n')
             self.assertIsNone(sector_learning_card_error(str(card),dict(good,folding=[2,2,1])))
             self.assertIsNone(sector_learning_card_error(str(Path(temporary)/'missing.dat'),dict(good,folding=[2,2,1])))

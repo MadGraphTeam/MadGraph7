@@ -6632,8 +6632,6 @@ c For the MINT folding
       common /cfl/fold,ifold_counter
       logical virtual_fold_ready,first_virtual_evaluation
       common /c_folded_virtual/ virtual_fold_ready
-      logical eikonal_inputs_checked
-      common /c_eikonal_cache/ eikonal_inputs_checked
       double precision virt_wgt_save
       save virt_wgt_save
 
@@ -6698,8 +6696,6 @@ c after the driver has reset the complete point, not by its fold index.
 c Fixed-order callers retain their ordinary fold-zero initialization.
       if (fold.eq.0) call reset_folded_virtual
       first_virtual_evaluation=.not.virtual_fold_ready
-c The I(reg) link cache checks its physical inputs once per call.
-      eikonal_inputs_checked=.false.
       
       if (firsttime) then
 C check if any real emission need cahrge/color links
@@ -7204,7 +7200,7 @@ c         stop
 c I(reg) is a scalar function of the physical Born state. With sector
 c learning, its link table is cached across a probe's radiation folds.
 c Native contexts can replace active state, so every input read by the
-c scalar kernel is compared once per bornsoftvirtual call.
+c scalar kernel is compared on every call.
       use fks_phase_space_data, only: shat
       use mint_module, only: sector_learning_active
       implicit none
@@ -7213,8 +7209,6 @@ c scalar kernel is compared once per bornsoftvirtual call.
       double precision p(0:3,nexternal),xicut_used,eikIreg,
      $     pmass(nexternal)
       integer m,n
-      logical eikonal_inputs_checked
-      common /c_eikonal_cache/ eikonal_inputs_checked
       logical eikonal_point_ready,link_ready(nexternal,nexternal)
       double precision cached_p(0:3,nexternal),cached_mass(nexternal),
      $     cached_shat,cached_qes2,cached_xicut,
@@ -7229,22 +7223,19 @@ c scalar kernel is compared once per bornsoftvirtual call.
          call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
          return
       endif
-      if (.not.eikonal_inputs_checked) then
-         eikonal_inputs_checked=.true.
 c Separate tests: the cached inputs are undefined before the first fill.
-         if (eikonal_point_ready) eikonal_point_ready=
-     $        all(cached_p.eq.p).and.all(cached_mass.eq.pmass).and.
-     $        cached_shat.eq.shat.and.cached_qes2.eq.QES2.and.
-     $        cached_xicut.eq.xicut_used
-         if (.not.eikonal_point_ready) then
-            link_ready=.false.
-            cached_p=p
-            cached_mass=pmass
-            cached_shat=shat
-            cached_qes2=QES2
-            cached_xicut=xicut_used
-            eikonal_point_ready=.true.
-         endif
+      if (eikonal_point_ready) eikonal_point_ready=
+     $     all(cached_p.eq.p).and.all(cached_mass.eq.pmass).and.
+     $     cached_shat.eq.shat.and.cached_qes2.eq.QES2.and.
+     $     cached_xicut.eq.xicut_used
+      if (.not.eikonal_point_ready) then
+         link_ready=.false.
+         cached_p=p
+         cached_mass=pmass
+         cached_shat=shat
+         cached_qes2=QES2
+         cached_xicut=xicut_used
+         eikonal_point_ready=.true.
       endif
       if (.not.link_ready(m,n)) then
          call eikonal_Ireg(p,m,n,xicut_used,link_value(m,n))

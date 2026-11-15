@@ -802,7 +802,7 @@ c "npNLO".
             call vs_begin_point
             call reset_folded_virtual
             born_flow_picked=0
-            if(sector_learning_active)fold_born%valid=.false.
+            fold_born%valid=.false.
          endif
          MCcntcalled=0
          wgt_me_real=0d0
@@ -846,14 +846,9 @@ c Also the Born needs to be included in the Importance Sampling over the
 c FKS configurations (for the shower scale) (multiply by
 c 1/proc_map(0,0)*vol1)
          jac=jac/(proc_map(0,0)*vol1)
-c Sector learning reuses each sector's Born sample across a probe's folds.
-         if (sector_learning_active) then
-            call generate_born_contribution(nndim,iconfig,jac,x_local,
-     $           phase_space,fold_born(nFKS_picked_nbody))
-         else
-            call generate_born_contribution(nndim,iconfig,jac,x_local,
-     $           phase_space)
-         endif
+c Each sector reuses its Born sample across the folds of a point.
+         call generate_born_contribution(nndim,iconfig,jac,x_local,
+     $        phase_space,fold_born(nFKS_picked_nbody))
          p=phase_space%p
          p_lab=phase_space%p_lab
          p_cms=phase_space%p_cms
@@ -991,12 +986,9 @@ c replay it (get_event_coordinates).
                x_sector_save(:,ifold_counter,iFKS)=
      $              x_sector(ndim-2:ndim-1)
                sector_vegas_wgt=vegas_wgt*sector_wgt_ratio
-               call generate_real_phase_space(nndim,iconfig,jacPS,
-     $              x_local,phase_space,fold_born(iFKS))
-            else
-               call generate_real_phase_space(nndim,iconfig,jacPS,
-     $              x_local,phase_space)
             endif
+            call generate_real_phase_space(nndim,iconfig,jacPS,
+     $           x_local,phase_space,fold_born(iFKS))
             p=phase_space%p
             p_lab=phase_space%p_lab
             p_cms=phase_space%p_cms
