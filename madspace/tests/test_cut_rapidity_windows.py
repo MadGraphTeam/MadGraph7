@@ -93,6 +93,18 @@ def jet_cuts(pids, pt=PT_JET, eta=ETA_JET):
     return items
 
 
+def phasespace_mapping(*args, **kwargs):
+    """PhaseSpaceMapping with s_hat sampled as 1/s_hat^invariant_power, outside of
+    the color-ordered mode. The windows do not depend on it, but the acceptances
+    and the errors of the integrals below were bounded with it. With cuts the
+    default is 1/s_hat^1.5, which piles the points up at the threshold the cuts
+    set, where fewer of them pass, and the free mapping has no threshold to
+    compare with."""
+    if kwargs.get("mode") != ms.PhaseSpaceMapping.color_ordered:
+        kwargs.setdefault("s_hat_power", kwargs.get("invariant_power", 0.8))
+    return ms.PhaseSpaceMapping(*args, **kwargs)
+
+
 def finite(p_ext):
     return torch.isfinite(p_ext).all(dim=2).all(dim=1)
 
@@ -154,8 +166,8 @@ def weighted_cut_integral(mapping, cuts, seed, n=400_000):
 
 
 def assert_same_integral(topology, cuts, n=400_000):
-    free = ms.PhaseSpaceMapping(topology, CM_ENERGY)
-    piped = ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=cuts)
+    free = phasespace_mapping(topology, CM_ENERGY)
+    piped = phasespace_mapping(topology, CM_ENERGY, cuts=cuts)
     mean_free, err_free = weighted_cut_integral(free, cuts, SEED, n)
     mean_piped, err_piped = weighted_cut_integral(piped, cuts, SEED + 1, n)
     error = math.hypot(err_free, err_piped)
@@ -179,11 +191,11 @@ def test_dy_every_generated_point_passes():
     with a weight passes them, while without them most fail."""
     c = dy_cuts()
     _, p_free, _, _, det_free = sample(
-        ms.PhaseSpaceMapping(s_channel_two_body(), CM_ENERGY)
+        phasespace_mapping(s_channel_two_body(), CM_ENERGY)
     )
     assert fraction(passes(c, p_free)[det_free > 0]) < 0.9
     _, p_ext, _, _, det = sample(
-        ms.PhaseSpaceMapping(s_channel_two_body(), CM_ENERGY, cuts=c)
+        phasespace_mapping(s_channel_two_body(), CM_ENERGY, cuts=c)
     )
     assert fraction(det > 0) > 0.999
     assert fraction(passes(c, p_ext)[det > 0]) > 0.999
@@ -193,7 +205,7 @@ def test_dy_windows_are_reached():
     """The bounds sampled are the cuts themselves, not something stricter."""
     # all sampled points, as the weight already contains the cut mask
     _, p_ext, x1, x2, _ = sample(
-        ms.PhaseSpaceMapping(s_channel_two_body(), CM_ENERGY, cuts=dy_cuts())
+        phasespace_mapping(s_channel_two_body(), CM_ENERGY, cuts=dy_cuts())
     )
     leptons = p_ext[:, 2:4]
     y = beam_rapidity(x1, x2)
@@ -210,7 +222,7 @@ def test_dy_cut_integral_unchanged():
 
 
 def test_dy_round_trip():
-    mapping = ms.PhaseSpaceMapping(s_channel_two_body(), CM_ENERGY, cuts=dy_cuts())
+    mapping = phasespace_mapping(s_channel_two_body(), CM_ENERGY, cuts=dy_cuts())
     r, p_ext, x1, x2, det = sample(mapping, n=10_000)
     keep = det > 0
     r_back, det_back = mapping.map_inverse([p_ext, x1, x2], [])
@@ -232,9 +244,9 @@ def test_massive_partner_without_cuts(pt_jet):
     are those where |Y| is so large that no angle is left (weight zero)."""
     c = ms.Cuts(jet_cuts(ZG_PIDS, pt=pt_jet))
     topology = s_channel_two_body((M_Z, 0.0))
-    _, p_free, _, _, _ = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY))
+    _, p_free, _, _, _ = sample(phasespace_mapping(topology, CM_ENERGY))
     assert fraction(passes(c, p_free)) < 0.9
-    _, p_ext, x1, x2, det = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=c))
+    _, p_ext, x1, x2, det = sample(phasespace_mapping(topology, CM_ENERGY, cuts=c))
     assert fraction(passes(c, p_ext)) > 0.99
     assert fraction(passes(c, p_ext)[det > 0]) > 0.999
     # Y is not restricted
@@ -249,7 +261,7 @@ def test_balanced_transverse_mass_floor():
     pt_jet = 200.0
     c = ms.Cuts(jet_cuts(ZG_PIDS, pt=pt_jet))
     topology = s_channel_two_body((M_Z, 0.0))
-    _, _, x1, x2, _ = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=c))
+    _, _, x1, x2, _ = sample(phasespace_mapping(topology, CM_ENERGY, cuts=c))
     floor = math.hypot(M_Z, pt_jet) + pt_jet
     assert sqrt_s_hat(x1, x2).min() >= floor * (1 - 1e-9)
     assert sqrt_s_hat(x1, x2).min() < 1.01 * floor
@@ -268,7 +280,7 @@ def test_balanced_floor_with_massless_partners():
         )
     )
     c = ms.Cuts(lepton_cuts(WG_PIDS) + jet_cuts(WG_PIDS, pt=200.0, eta=None))
-    _, _, x1, x2, _ = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=c))
+    _, _, x1, x2, _ = sample(phasespace_mapping(topology, CM_ENERGY, cuts=c))
     assert sqrt_s_hat(x1, x2).min() >= 400.0 * (1 - 1e-9)
     assert sqrt_s_hat(x1, x2).min() < 1.01 * 400.0
 
@@ -288,7 +300,7 @@ def test_composite_rapidity_windows():
     the largest eta cut, and the cut integral does not move."""
     c = eegg_cuts()
     topology = s_channel_four_body()
-    _, p_ext, x1, x2, det = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=c))
+    _, p_ext, x1, x2, det = sample(phasespace_mapping(topology, CM_ENERGY, cuts=c))
     # all sampled points, as the weight already contains the cut mask
     keep = finite(p_ext)
     eta_max = max(ETA_LEPTON, ETA_JET)
@@ -300,7 +312,7 @@ def test_composite_rapidity_windows():
 
 
 def test_composite_round_trip():
-    mapping = ms.PhaseSpaceMapping(s_channel_four_body(), CM_ENERGY, cuts=eegg_cuts())
+    mapping = phasespace_mapping(s_channel_four_body(), CM_ENERGY, cuts=eegg_cuts())
     r, p_ext, x1, x2, det = sample(mapping, n=10_000)
     keep = det > 0
     r_back, det_back = mapping.map_inverse([p_ext, x1, x2], [])
@@ -324,7 +336,7 @@ def test_no_rapidity_window_with_an_uncut_particle():
     rapidity is bounded, and both go beyond the lepton cut."""
     c = ms.Cuts(lepton_cuts(EEGG_PIDS) + jet_cuts(EEGG_PIDS, eta=None))
     _, p_ext, x1, x2, det = sample(
-        ms.PhaseSpaceMapping(s_channel_four_body(), CM_ENERGY, cuts=c)
+        phasespace_mapping(s_channel_four_body(), CM_ENERGY, cuts=c)
     )
     keep = det > 0
     assert torch.abs(beam_rapidity(x1, x2)[keep]).max() > ETA_LEPTON + 1.0
@@ -335,8 +347,8 @@ def test_no_rapidity_window_with_an_uncut_particle():
 def test_no_cuts_no_change():
     """Empty cuts give the same mapping as no cuts."""
     topology = s_channel_two_body()
-    a = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY))
-    b = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=ms.Cuts(4)))
+    a = sample(phasespace_mapping(topology, CM_ENERGY))
+    b = sample(phasespace_mapping(topology, CM_ENERGY, cuts=ms.Cuts(4)))
     for u, v in zip(a, b):
         assert torch.equal(u, v)
 
@@ -383,8 +395,8 @@ def test_every_passing_event_is_inside_the_windows(topology, cuts):
     the cuts all map back, through the windowed mapping's inverse, to random
     numbers inside the unit cube. With the round trip above this means the
     windowed mapping covers the whole cut region with the right density."""
-    free = ms.PhaseSpaceMapping(topology, CM_ENERGY)
-    windowed = ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=cuts)
+    free = phasespace_mapping(topology, CM_ENERGY)
+    windowed = phasespace_mapping(topology, CM_ENERGY, cuts=cuts)
     _, p_ext, x1, x2, det = sample(free, n=400_000)
     keep = passes(cuts, p_ext) & (det > 0)
     assert keep.sum() > 1000
@@ -445,9 +457,9 @@ def test_t_channel_every_generated_point_passes():
     cuts handed over many do not."""
     c = ms.Cuts(photon_cuts(AA_PIDS))
     topology = t_channel_two_body()
-    _, p_free, _, _, _ = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY))
+    _, p_free, _, _, _ = sample(phasespace_mapping(topology, CM_ENERGY))
     assert fraction(passes(c, p_free)) < 0.9
-    _, p_ext, _, _, det = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=c))
+    _, p_ext, _, _, det = sample(phasespace_mapping(topology, CM_ENERGY, cuts=c))
     assert fraction(passes(c, p_ext)) > 0.999
     photons = p_ext[:, 2:4]
     assert torch.abs(eta(photons)).max() <= ETA_PHOTON + 1e-6
@@ -456,7 +468,7 @@ def test_t_channel_every_generated_point_passes():
 
 def test_t_channel_round_trip():
     c = ms.Cuts(photon_cuts(AA_PIDS))
-    mapping = ms.PhaseSpaceMapping(t_channel_two_body(), CM_ENERGY, cuts=c)
+    mapping = phasespace_mapping(t_channel_two_body(), CM_ENERGY, cuts=c)
     r, p_ext, x1, x2, det = sample(mapping, n=10_000)
     keep = det > 0
     r_back, det_back = mapping.map_inverse([p_ext, x1, x2], [])
@@ -483,8 +495,8 @@ def test_t_channel_round_trip():
 def test_t_channel_window_is_exact(topology, cuts):
     """Every event passing the cuts lies inside the windows (it maps back into
     the unit cube), and the integral over the cut region is unchanged."""
-    free = ms.PhaseSpaceMapping(topology, CM_ENERGY)
-    windowed = ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=cuts)
+    free = phasespace_mapping(topology, CM_ENERGY)
+    windowed = phasespace_mapping(topology, CM_ENERGY, cuts=cuts)
     _, p_ext, x1, x2, det = sample(free, n=400_000)
     keep = passes(cuts, p_ext) & (det > 0)
     assert keep.sum() > 1000
@@ -507,7 +519,7 @@ def test_t_channel_first_step_only_bounds_what_it_peels():
     assert peeled in (0, 2)  # a photon
     other = 2 - peeled
     cuts = ms.Cuts(photon_cuts(AAG_PIDS) + jet_cuts(AAG_PIDS, eta=None))
-    _, p_ext, _, _, _ = sample(ms.PhaseSpaceMapping(topology, CM_ENERGY, cuts=cuts))
+    _, p_ext, _, _, _ = sample(phasespace_mapping(topology, CM_ENERGY, cuts=cuts))
     outside = torch.abs(eta(p_ext[:, 2:5])) > ETA_PHOTON + 1e-6
     assert fraction(outside[:, peeled]) < 0.03
     assert fraction(outside[:, other]) > 0.2
@@ -562,7 +574,7 @@ def test_color_ordered_window_is_exact(name):
     masses = [0.0] * 6
 
     def mapping(c):
-        return ms.PhaseSpaceMapping(
+        return phasespace_mapping(
             masses,
             CM_ENERGY,
             mode=ms.PhaseSpaceMapping.color_ordered,
@@ -716,8 +728,8 @@ def test_windows_hold_for_every_permutation(index):
     back into the unit cube, and the cut-region integral is unchanged."""
     cuts = lepton_photon_cuts()
     topology = s_channel_two_body()
-    free = ms.PhaseSpaceMapping(topology, CM_ENERGY, permutations=PERMUTATIONS)
-    windowed = ms.PhaseSpaceMapping(
+    free = phasespace_mapping(topology, CM_ENERGY, permutations=PERMUTATIONS)
+    windowed = phasespace_mapping(
         topology, CM_ENERGY, cuts=cuts, permutations=PERMUTATIONS
     )
     n = 200_000
@@ -747,10 +759,10 @@ def test_strongest_bounds_would_lose_permuted_events():
     permutation, which the test above would catch."""
     cuts = lepton_photon_cuts()
     topology = s_channel_two_body()
-    free = ms.PhaseSpaceMapping(topology, CM_ENERGY, permutations=PERMUTATIONS)
+    free = phasespace_mapping(topology, CM_ENERGY, permutations=PERMUTATIONS)
     _, _, p_free, y1, y2, det = permuted_sample(free, 1, 200_000, SEED)
     keep = passes(cuts, p_free) & (det > 0)
-    too_tight = ms.PhaseSpaceMapping(
+    too_tight = phasespace_mapping(
         topology,
         CM_ENERGY,
         cuts=ms.Cuts(
@@ -783,8 +795,8 @@ def test_leptonic_windows(topology):
     # |eta| < 1 so that the window has something to remove at this energy
     cuts = ms.Cuts(lepton_cuts(MUMU_PIDS, eta=1.0))
     n = 50_000
-    windowed = ms.PhaseSpaceMapping(topology, LEPTONIC_ENERGY, leptonic=True, cuts=cuts)
-    free = ms.PhaseSpaceMapping(topology, LEPTONIC_ENERGY, leptonic=True)
+    windowed = phasespace_mapping(topology, LEPTONIC_ENERGY, leptonic=True, cuts=cuts)
+    free = phasespace_mapping(topology, LEPTONIC_ENERGY, leptonic=True)
     r = rand((n, windowed.random_dim()), generator=generator(SEED))
     p_ext, _, _, det = windowed.map_forward([r])
     assert fraction(passes(cuts, p_ext)) > 0.999
