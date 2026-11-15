@@ -2780,6 +2780,16 @@ class V2VirtualRuntime:
         diagnostics: list[VirtualLaneDiagnostic] = []
         estimates: list[VirtualStabilityEstimate | None] = []
         parts: list[VirtualPoleParts | None] = []
+        # The canonical form of each order, once per call (every point has
+        # the same orders).
+        orders: dict[Any, Any] = {}
+
+        def canonical(order: Any) -> Any:
+            found = orders.get(order)
+            if found is None:
+                found = orders[order] = canonical_order(order)
+            return found
+
         for index, result in enumerate(results):
             if result is None:
                 reason = "; ".join(failures.get(index, ["failed"]))
@@ -2804,11 +2814,9 @@ class V2VirtualRuntime:
                     )
                 )
                 continue
-            born = {
-                canonical_order(order): value for order, value in result.born.items()
-            }
+            born = {canonical(order): value for order, value in result.born.items()}
             virtual = {
-                canonical_order(sector): laurent
+                canonical(sector): laurent
                 for sector, laurent in result.components["virtual"].items()
             }
             born_values.append(

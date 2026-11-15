@@ -185,6 +185,11 @@ def _number(value: object, description: str) -> str:
     than ASCII are refused, as by the native SDKs'
     ``v2_runtime::decimal_parameter``)."""
     kind = type(value)
+    if kind is float:
+        # (A float's text is always ASCII decimal syntax.)
+        if not math.isfinite(value):
+            raise ValueError(f"{description} must be finite")
+        return str(Decimal(str(value)))
     if (
         kind is not float
         and kind is not str

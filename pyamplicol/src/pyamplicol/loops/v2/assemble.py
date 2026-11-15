@@ -4783,7 +4783,7 @@ class _PointEvaluation:
             pole_origins=origins,
             loop_born=self.loop_born,
         )
-        self.absolute = self._lane_budget(
+        self._absolute_from(
             {lane: value.coefficients for lane, value in self.families.items()},
             [components[name] for name in LOCAL_COMPONENTS],
         )
@@ -4804,6 +4804,28 @@ class _PointEvaluation:
             self.retest_budget = self._lane_budget(self.family_deviations)
 
     # -- stability budgets (``stability``) -------------------------------------------
+
+    @property
+    def absolute(self) -> Any:
+        """The absolute budget per sector (``_lane_budget`` of the lanes and
+        the local components): the scale of the estimate's floor, formed on
+        first read (an evaluation without stability checks never reads it)."""
+
+        pending = self.__dict__.pop("_absolute_pending", None)
+        if pending is not None:
+            self.__dict__["_absolute"] = self._lane_budget(*pending)
+        return self.__dict__.get("_absolute")
+
+    @absolute.setter
+    def absolute(self, value: Any) -> None:
+        self.__dict__.pop("_absolute_pending", None)
+        self.__dict__["_absolute"] = value
+
+    def _absolute_from(self, lanes, local=()) -> None:
+        """Set ``absolute`` to the budget of ``lanes`` and ``local``, formed
+        when it is first read."""
+
+        self.__dict__["_absolute_pending"] = (lanes, local)
 
     def _lane_budget(self, lanes, local=()) -> dict[Orders, Budget]:
         """Per sector, sum_lanes |delta bare| <= 2 |delta Omega| / (16 pi^2
@@ -5501,7 +5523,7 @@ class _NativePoint(_PointEvaluation):
             colour_contraction=self.colour_contraction,
             loop_born=self.loop_born,
         )
-        self.absolute = self._lane_budget(
+        self._absolute_from(
             {lane: value.coefficients for lane, value in self.families.items()}
         )
         self.retest_budget = None
