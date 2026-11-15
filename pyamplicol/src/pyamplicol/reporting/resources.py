@@ -356,20 +356,24 @@ class peak_memory:
         )
 
 
+def memory_text(size: float) -> str:
+    """A memory size in bytes with three significant digits."""
+
+    for unit, scale in (("GiB", 1024.0**3), ("MiB", 1024.0**2), ("KiB", 1024.0)):
+        if abs(size) >= scale:
+            return f"{size / scale:.3g} {unit}"
+    return f"{size:.3g} B"
+
+
 def peak_memory_text(peak: PeakMemory | None) -> str | None:
-    """The peak's report text, "1.234 GiB, +0.456 GiB over start (profiled
-    region, <method>)", None when nothing was measured."""
+    """The peak's report text: "2.21 GiB", "<= 2.21 GiB" when only the
+    lifetime peak bounds it (scope "process lifetime"); None when nothing
+    was measured."""
 
     if peak is None or peak.peak_rss_bytes is None:
         return None
-    gib = 1024.0**3
-    increase = (
-        ""
-        if peak.increase_rss_bytes is None
-        else f", +{peak.increase_rss_bytes / gib:.3f} GiB over start"
-    )
-    scope = f"({peak.scope}, {peak.method})"
-    return f"{peak.peak_rss_bytes / gib:.3f} GiB{increase} {scope}"
+    bound = "<= " if peak.scope != "profiled region" else ""
+    return bound + memory_text(peak.peak_rss_bytes)
 
 
 __all__ = [
@@ -379,6 +383,7 @@ __all__ = [
     "ResourceProbeError",
     "ResourceUsage",
     "ResourceUsageMonitor",
+    "memory_text",
     "peak_memory",
     "peak_memory_text",
     "process_snapshot",

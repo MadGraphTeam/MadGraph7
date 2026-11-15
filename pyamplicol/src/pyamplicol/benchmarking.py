@@ -2810,7 +2810,9 @@ class PrecisionTiming:
     warm-up calls, the same batches as the binary64 timing;
     ``seconds_per_point`` the median call's wall time per point, ``low`` and
     ``high`` the fastest and slowest call's; ``points`` the timed points;
-    ``failed_points`` those without an accepted value."""
+    ``failed_points`` those without an accepted value, ``failure_reasons``
+    their reasons (``failure_reason``: a best-effort value or none), most
+    frequent first."""
 
     arithmetic: str
     batch: int
@@ -2821,6 +2823,7 @@ class PrecisionTiming:
     low: float
     high: float
     failed_points: int
+    failure_reasons: tuple[tuple[str, int], ...] = ()
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -3011,13 +3014,16 @@ def _precision_timing(
     for batch in batches[: bench.warmup_runs]:
         runtime.evaluate(batch, mu_r2=scales(batch), **carrier)
     walls: list[float] = []
-    failed = 0
+    reasons: dict[str, int] = {}
     for batch in batches[bench.warmup_runs :]:
         mu_r2 = scales(batch)
         begin = time.perf_counter()
         result = runtime.evaluate(batch, mu_r2=mu_r2, **carrier)
         walls.append(time.perf_counter() - begin)
-        failed += sum(1 for valid in result.valid if not valid)
+        for valid, lane in zip(result.valid, result.diagnostics, strict=True):
+            if not valid:
+                reason = failure_reason(lane)
+                reasons[reason] = reasons.get(reason, 0) + 1
     size = bench.batch_size
     return PrecisionTiming(
         arithmetic,
@@ -3028,7 +3034,8 @@ def _precision_timing(
         statistics.median(walls) / size,
         min(walls) / size,
         max(walls) / size,
-        failed,
+        sum(reasons.values()),
+        tuple(sorted(reasons.items(), key=lambda item: (-item[1], item[0]))),
     )
 
 

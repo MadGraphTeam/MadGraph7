@@ -248,9 +248,10 @@ class BackendStability:
     best_effort_covered: int = 0
     # The evaluations of the run per precision: "binary64" (the checked call
     # with its stability estimate) and "double-double" (the reference), each
-    # with its ``points`` and ``seconds_per_point`` (the wall time per point
-    # of its batches in the workers, the first-call cost of a worker left
-    # out as the progress estimate does: ``_StabilityProgress``).
+    # with its ``points``, ``seconds`` (the wall time of its batches summed
+    # over the workers: its part of ``seconds``) and ``seconds_per_point``
+    # (the wall time per point of its batches, the first-call cost of a
+    # worker left out as the progress estimate does: ``_StabilityProgress``).
     precision_timing: Mapping[str, Mapping[str, float | int | None]] | None = None
 
 
@@ -261,7 +262,9 @@ class FailureCause:
     ``backend``, the ``table`` ("runtime" or "stability"), the ``kind``
     ("best-effort": refused by the backend's own checks and served with its
     best-effort value; "no value": no binary64 value at all; "no reference":
-    no double-double reference, stability only), the ``count`` of points of
+    no double-double reference, stability only; "best-effort in
+    double-double", "no value in double-double": the same for the runtime's
+    double-double timing), the ``count`` of points of
     that class among the backend's ``total`` points of the table, and the
     ``reason``: the first message of the class (reasons are grouped with
     their numbers masked, as ``plan_export.bounded_reasons`` groups them)."""
@@ -520,6 +523,16 @@ def profile_loop(
             for reason, count in reasons:
                 text = _strip_status(reason, status)
                 causes += [(row.backend, "runtime", kind, text)] * count
+        # The double-double timing's points without an accepted value (the
+        # same batches: the same total).
+        dd = profile.double_double
+        for reason, count in dd.failure_reasons if dd is not None else ():
+            status = "best-effort" if reason.startswith("best-effort") else "failed"
+            kind = "best-effort" if status == "best-effort" else "no value"
+            text = _strip_status(reason, status)
+            causes += [
+                (row.backend, "runtime", f"{kind} in double-double", text)
+            ] * count
     for stability_row in stability_rows or ():
         totals[(stability_row.backend, "stability")] = len(stability_row.per_point)
         for point in stability_row.per_point:
@@ -1123,6 +1136,7 @@ def _stability(
             precision_timing={
                 precision: {
                     "points": tracker.done[(row.backend, precision)],
+                    "seconds": tracker.seconds[(row.backend, precision)],
                     "seconds_per_point": (
                         tracker.rate((row.backend, precision))
                         if tracker.done[(row.backend, precision)]
