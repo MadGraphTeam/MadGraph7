@@ -1171,7 +1171,9 @@ c Use the final, finite PDF/bias weights of the complete point for the fit.
       if(.not.rejected_point)call sector_learning_reject_point
 ! Nothing from this point may enter integration, unweighting, or the
 ! Born-spreading fit, including records made before the failure.
-      if(nonfinite_contribution.and..not.rejected_point)then
+! Learning probes count their rejections separately (online_record_rejections).
+      if(nonfinite_contribution.and..not.rejected_point.and.
+     $     .not.sector_learning_collect)then
          rejected_nonfinite_points=rejected_nonfinite_points+1
          if(rejected_nonfinite_points.le.5.or.
      $        mod(rejected_nonfinite_points,100).eq.0)then

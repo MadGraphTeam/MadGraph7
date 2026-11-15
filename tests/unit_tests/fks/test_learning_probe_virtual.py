@@ -94,6 +94,49 @@ end subroutine
 
 @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
 class TestLearningProbeVirtual(unittest.TestCase):
+    def run_program(self, program, marker):
+        """Compile one check program with the production block and run it."""
+        with tempfile.TemporaryDirectory(prefix='mg5_folded_virtual_') as tmp:
+            work = Path(tmp)
+            (work / 'context.f90').write_text(CONTEXT)
+            (work / 'cache.f').write_text(production_fixture())
+            (work / 'check.f90').write_text(program)
+            result = subprocess.run([
+                shutil.which('gfortran'), '-O2', '-fcheck=all',
+                '-ffpe-trap=invalid,zero,overflow', '-ffixed-line-length-none',
+                str(TEMPLATE / 'virtual_surrogate.f90'), str(work / 'context.f90'),
+                str(work / 'cache.f'), str(work / 'check.f90'), '-o', str(work / 'check')],
+                cwd=work, text=True, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            result = subprocess.run([str(work / 'check')], cwd=work,
+                                    text=True, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn(marker, result.stdout)
+
+    def test_learning_probe_skips_the_exact_virtual(self):
+        self.run_program('''program check
+use point_fixture
+implicit none
+! A probe records no one-loop residual (type 14): it neither draws the
+! stochastic virtual selection nor evaluates the virtual, at any fold.
+sector_learning_collect=.true.
+call new_point(5d0,200d0)
+fold=0
+call evaluate_fold
+call expect(0d0,5d0,0,0)
+fold=1
+call evaluate_fold
+call expect(0d0,5d0,0,0)
+! The same point outside a probe draws once and evaluates the virtual.
+sector_learning_collect=.false.
+call new_point(5d0,200d0)
+fold=0
+call evaluate_fold
+call expect(195d0,5d0,1,1)
+write(*,*) 'PASS probe skips the virtual'
+end program
+''', 'PASS probe skips the virtual')
+
     def test_delayed_endpoint_resets_previous_virtual_and_draws_once(self):
         program = '''program check
 use point_fixture
@@ -157,19 +200,4 @@ call expect(29d0,2d0,5,6)
 write(*,*) 'PASS folded virtual cache'
 end program
 '''
-        with tempfile.TemporaryDirectory(prefix='mg5_folded_virtual_') as tmp:
-            work = Path(tmp)
-            (work / 'context.f90').write_text(CONTEXT)
-            (work / 'cache.f').write_text(production_fixture())
-            (work / 'check.f90').write_text(program)
-            result = subprocess.run([
-                shutil.which('gfortran'), '-O2', '-fcheck=all',
-                '-ffpe-trap=invalid,zero,overflow', '-ffixed-line-length-none',
-                str(TEMPLATE / 'virtual_surrogate.f90'), str(work / 'context.f90'),
-                str(work / 'cache.f'), str(work / 'check.f90'), '-o', str(work / 'check')],
-                cwd=work, text=True, capture_output=True, timeout=60)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            result = subprocess.run([str(work / 'check')], cwd=work,
-                                    text=True, capture_output=True, timeout=60)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn('PASS folded virtual cache', result.stdout)
+        self.run_program(program, 'PASS folded virtual cache')

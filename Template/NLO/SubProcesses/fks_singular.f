@@ -7197,12 +7197,12 @@ c         stop
 
 
       subroutine cached_eikonal_Ireg(p,m,n,xicut_used,eikIreg)
-c I(reg) is a scalar function of the physical Born state. With sector
-c learning, its link table is cached across a probe's radiation folds.
-c Native contexts can replace active state, so every input read by the
-c scalar kernel is compared on every call.
+c I(reg) is a scalar function of the physical Born state. A learning
+c probe caches its link table across the probe's radiation folds; other
+c points evaluate each link once. Native contexts can replace active
+c state, so every input read by the scalar kernel is compared on every call.
       use fks_phase_space_data, only: shat
-      use mint_module, only: sector_learning_active
+      use mint_module, only: sector_learning_collect
       implicit none
       include 'nexternal.inc'
       include 'q_es.inc'
@@ -7217,12 +7217,11 @@ c scalar kernel is compared on every call.
      $     cached_mass,cached_shat,cached_qes2,cached_xicut
       data eikonal_point_ready /.false./
 
-      include 'pmass.inc'
-
-      if (.not.sector_learning_active) then
+      if (.not.sector_learning_collect) then
          call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
          return
       endif
+      include 'pmass.inc'
 c Separate tests: the cached inputs are undefined before the first fill.
       if (eikonal_point_ready) eikonal_point_ready=
      $     all(cached_p.eq.p).and.all(cached_mass.eq.pmass).and.
@@ -8412,6 +8411,7 @@ c     reset the default dynamical_scale_choice
       use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
       use fks_phase_space_data, only: p_born
       use weight_lines, only: rejected_born_flow_points
+      use mint_module, only: sector_learning_collect
       implicit none
       include 'born_nhel.inc'
       double precision flow_weights(max_bcol),sumborn
@@ -8435,6 +8435,8 @@ c     reset the default dynamical_scale_choice
       return
  900  continue
       sumborn=0d0
+c Learning probes count their rejections separately.
+      if(sector_learning_collect)return
       rejected_born_flow_points=rejected_born_flow_points+1
       if(rejected_born_flow_points.le.5.or.
      $     mod(rejected_born_flow_points,100).eq.0)then

@@ -299,16 +299,16 @@
 ! ==========================================================================
 ! Tiled S-event integral (opt-in, research). With an explicit FKS-sector sum,
 ! .true. gives each outer FKS sector of each S event its own radiation sample
-! of the flat xi/y coordinates. Every sector of a Born slot gets a static
-! quarter-period Sobol offset and a 16-tile bijection of these coordinates,
-! learned inside MINT0 to reduce the negative part of the summed S-event
-! weight. Training uses budgeted 16-node (4,4,1) probes of a common Born
-! point; the current iteration's probes, plus the previous iteration's at
-! half weight, fit the maps at each iteration boundary. MINT1 and event
-! generation use the frozen final maps, stored in mint_grids. Requires
-! folding = 1, 1, 1, born_spreading = False, FKSExplicitSum and
-! MCSubtractionAtFixedFlow. Ignored at LO and fixed order. Rerun
-! integration/grid setup after changing it.
+! of the flat xi/y coordinates: a static offset (its Sobol offset when those
+! of all sectors of the Born slot are quarter-aligned, zero otherwise) and a
+! 16-tile bijection of these coordinates, learned inside MINT0 to reduce the
+! negative part of the summed S-event weight. Training uses budgeted 16-node
+! (4,4,1) probes of a common Born point; the current iteration's probes, plus
+! the previous iteration's at half weight, fit the maps at each iteration
+! boundary. MINT1 and event generation use the frozen final maps, stored in
+! mint_grids. Requires folding = 1, 1, 1, born_spreading = False,
+! FKSExplicitSum and MCSubtractionAtFixedFlow. Ignored at LO and fixed
+! order. Rerun integration/grid setup after changing it.
 #FKSSectorLearning
 .false.
 ! Default :: .false.

@@ -40,6 +40,11 @@ module weight_lines
   integer :: rejected_born_flow_points=0
 end module
 
+module mint_module
+  implicit none
+  logical :: sector_learning_collect=.false.
+end module
+
 module flow_test_state
   use weight_lines, only: nonfinite_contribution
   use scale_module

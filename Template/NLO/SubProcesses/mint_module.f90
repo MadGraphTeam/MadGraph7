@@ -1164,19 +1164,21 @@ contains
        elseif(nt.ge.16.and.k.lt.4)then
           gx=2;gy=2
        endif
-       call sl_epoch_replay_build_bank(i,fit_b,fit_r)
-       ! Each capacity needs four probes per tile.
+       ! Each capacity needs four probes per tile. A slot without a fit
+       ! builds its replay bank only for the archive's loss diagnostic.
        if(gx*gy.lt.4.or.nt.lt.4*gx*gy)then
           if(sector_learning_archive)then
+             call sl_epoch_replay_build_bank(i,fit_b,fit_r)
              block
                double precision :: losses(size(fit_b,3))
                call sl_tile_losses_unchecked(fit_b,fit_r,sl_entries(i)%permutations,losses)
                online_slots(i)%loss_before=sum(losses);online_slots(i)%loss_after=sum(losses)
              end block
+             deallocate(fit_b,fit_r)
           endif
-          deallocate(fit_b,fit_r)
           cycle
        endif
+       call sl_epoch_replay_build_bank(i,fit_b,fit_r)
        allocate(a(sl_nodes,ns),bmap(sl_nodes,ns))
        unified_slots(i)%fit_status=2;unified_slots(i)%selected_orientation=1
        unified_slots(i)%primary_gx=gx;unified_slots(i)%primary_gy=gy
@@ -1311,7 +1313,6 @@ contains
     double precision :: budget
     integer :: gauge,gauge_version,phase_passes,tile_passes,selection_version,expected_gauge
     integer,allocatable :: expected_q(:,:)
-    online_budget=FKSSectorLearningBudget
     rewind(unit)
     do
        read(unit,'(a)',iostat=ios)line
@@ -1323,7 +1324,11 @@ contains
     ! The version comes first: another version may have another layout.
     read(line,*,iostat=ios)marker,tag,version
     if(ios.ne.0)error stop 'Malformed SCL10 header'
-    if(version.ne.sl_format_version)error stop 'SCL10 table from another code version; rerun MINT0'
+    ! Expected after a code update, so reported like a setting mismatch.
+    if(version.ne.sl_format_version)then
+       write(*,*)'ERROR: SCL10 table from another code version; rerun MINT0.'
+       stop 1
+    endif
     call sl_epoch_replay_validate_line(line,'H',18)
     read(line,*,iostat=ios)marker,tag,version,mode,count_entries,sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
          online_epoch,online_ordinary_calls,online_probes,online_record_rejections, &
@@ -1453,17 +1458,20 @@ contains
     integer :: folds(ndimmax),saved_config,saved_current
     double precision :: x(ndimmax),vol,started,finished
     double precision :: saved_f(nintegrals),saved_rand(ndimmax),saved_vol_chan,saved_hwu(2)
-    logical :: saved_even,saved_pass
+    double precision :: saved_average_virtual(0:n_ave_virt,maxchannels),saved_polyfit(0:n_ave_virt)
+    logical :: saved_even,saved_pass,saved_new_point
     if(online_ordinary_calls.lt.64.or.mod(online_ordinary_calls,16).ne.0)return
     if(online_extra_cpu.ge.online_budget*online_ordinary_cpu)return
     if(mod(nint_used,4).ne.0.or.mod(nint_used_virt,4).ne.0)return
     ! sl_online_observe_ordinary marked the clock just before this call.
     started=online_clock
+    ! The probe leaves the per-point state as the last ordinary point set it.
     saved_current=sl_current
     saved_folds=ifold; saved_even=even_rn
     saved_f=f; saved_ncell=ncell; saved_icell=icell; saved_rand=rand
     saved_channel=ichan;saved_config=iconfig
     saved_vol_chan=vol_chan; saved_pass=pass_cuts_check; saved_hwu=HwU_values
+    saved_average_virtual=average_virtual; saved_polyfit=polyfit; saved_new_point=new_point
     ifold=1; ifold(ndim-2:ndim)=[4,4,1]; even_rn=.false.
     sector_learning_collect=.true.; new_point=.true.
     call get_random_x(x,vol,folds)
@@ -1479,6 +1487,7 @@ contains
     f=saved_f;ncell=saved_ncell;icell=saved_icell;rand=saved_rand
     ichan=saved_channel;iconfig=saved_config
     vol_chan=saved_vol_chan;pass_cuts_check=saved_pass;HwU_values=saved_hwu
+    average_virtual=saved_average_virtual;polyfit=saved_polyfit;new_point=saved_new_point
     sl_current=saved_current
     call cpu_time(finished)
     online_probe_cpu=online_probe_cpu+finished-started

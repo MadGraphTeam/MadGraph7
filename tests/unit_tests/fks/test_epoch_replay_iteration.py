@@ -473,6 +473,11 @@ class TestSectorLearningCards(unittest.TestCase):
             bad=dict(good,folding=[2,2,1])
             self.assertIsNone(sector_learning_card_error(str(card),bad,[str(lo)]))
             self.assertIn('MCSubtractionAtFixedFlow',sector_learning_card_error(str(card),good,[str(lo),str(nlo)]))
+            # A repeated entry takes its last value, as FKSParamReader does.
+            card.write_text('#FKSSectorLearning\n.false.\n#FKSSectorLearning\n.true.\n')
+            self.assertIn('folding = 1, 1, 1',sector_learning_card_error(str(card),bad))
+            card.write_text('#FKSSectorLearning\n.true.\n#FKSSectorLearning\n.false.\n')
+            self.assertIsNone(sector_learning_card_error(str(card),bad))
             card.write_text('#FKSSectorLearning\nF\n')
             self.assertIsNone(sector_learning_card_error(str(card),dict(good,folding=[2,2,1])))
             self.assertIsNone(sector_learning_card_error(str(Path(temporary)/'missing.dat'),dict(good,folding=[2,2,1])))

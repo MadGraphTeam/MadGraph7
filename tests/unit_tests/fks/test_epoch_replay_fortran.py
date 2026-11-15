@@ -134,7 +134,7 @@ else
  if(any(f.ne.29d0).or.any(vtot.ne.13d0).or.any(etot.ne.17d0).or.any(HwU_values.ne.19d0))stop 525
  if(any(ans.ne.23d0).or.any(unc.ne.31d0).or.any(rand.ne..13d0).or.any(icell.ne.2))stop 526
  if(any(nhits.ne.0).or.online_ordinary_calls.ne.64.or.online_probes.ne.1)stop 527
- ! Probes never feed the grid.
+ ! The fit leaves the grid accumulators alone.
  if(any(xacc.ne.0d0))stop 528
  if(trim(action).eq.'empty_intervening')then
   if(online_slots(1)%loss_before.ne.16d0.or.online_slots(1)%loss_after.ne.16d0)stop 529
@@ -179,7 +179,7 @@ class TestEpochReplayFortran(unittest.TestCase):
     def test_scaled_current_first_canonical_padding_and_immutability(self):self.run_case('normal')
     def test_empty_previous_exact_maps_losses_and_traces(self):self.run_case('empty_previous')
     def test_empty_current_does_not_replay_old_observations(self):self.run_case('empty_current')
-    def test_current_support_not_increased_and_probes_never_update_grid_or_integral(self):self.run_case('runtime')
+    def test_current_support_not_increased_and_fit_leaves_grid_and_integral_alone(self):self.run_case('runtime')
     def test_positive_history_cannot_fit_empty_current_epoch(self):self.run_case('runtime_empty')
     def test_empty_intervening_epoch_clears_history(self):self.run_case('empty_intervening')
     def test_nonfinite_and_incompatible_shapes_rejected(self):

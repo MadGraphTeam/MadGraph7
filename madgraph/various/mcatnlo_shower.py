@@ -75,23 +75,26 @@ def _fortran_float(text):
     return float(str(text).strip().lower().replace('d', 'e'))
 
 
-def read_fks_param(path, name, default=None):
-    """Value following the line '#name' in an FKS_params.dat card."""
+def read_fks_param(path, name, default=None, last=False):
+    """Value following the line '#name' in an FKS_params.dat card. For a
+    repeated '#name' this is the first value, or with last=True the last
+    one, which is the value FKSParamReader uses."""
     if not path or not os.path.isfile(path):
         return default
-    want = False
+    found, want = default, False
     with open(path) as card:
         for line in card:
             stripped = line.strip()
             if not stripped:
                 continue
             if want:
-                if stripped.startswith(('!', '#')):
-                    return default
-                return stripped.split()[0]
-            if stripped.split()[0] == '#' + name:
+                want = False
+                found = default if stripped.startswith(('!', '#')) else stripped.split()[0]
+                if not last:
+                    return found
+            elif stripped.split()[0] == '#' + name:
                 want = True
-    return default
+    return found
 
 
 def pythia8_mmaxgamma(fks_params):

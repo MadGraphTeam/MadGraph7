@@ -10,7 +10,7 @@ from tests.unit_tests.fks.test_momentum_maps import TEMPLATE, fortran_routine
 
 
 PROGRAM = '''program check
-use mint_module,only: sector_learning_active
+use mint_module,only: sector_learning_collect
 use fks_phase_space_data,only: shat
 use kernel_counter
 implicit none
@@ -32,7 +32,7 @@ shat=4d6
 QES2=10000d0
 xicut=0.1d0
 abrv='all'
-sector_learning_active=.true.
+sector_learning_collect=.true.
 ! Cover all massless, mixed-mass, massive-pair and massive-self links.
 do i=1,6
  do j=1,i
@@ -65,7 +65,7 @@ call raw_eikonal_Ireg(p,3,1,xicut,expected)
 call cached_eikonal_Ireg(p,3,1,xicut,actual)
 if(actual.ne.expected.or.kernel_calls.ne.before+1)error stop 'stale link returned'
 p(0,1)=p(0,1)-1d0
-sector_learning_active=.false.
+sector_learning_collect=.false.
 before=kernel_calls
 call cached_eikonal_Ireg(p,3,1,xicut,actual)
 call cached_eikonal_Ireg(p,3,1,xicut,actual)
@@ -114,7 +114,7 @@ class TestLearningProbeIregCache(unittest.TestCase):
 integer :: kernel_calls=0
 end module
 module mint_module
-logical :: sector_learning_active=.false.
+logical :: sector_learning_collect=.false.
 end module
 subroutine fixture_external_masses(pmass)
 implicit none

@@ -138,7 +138,8 @@ def sector_learning_card_error(fks_params, run_card, subprocess_dirs=()):
         return None
     def flag(name, default):
         # Fortran list-directed logical input: an optional '.', then T or F.
-        value = mcatnlo_shower.read_fks_param(fks_params, name, default)
+        # Like FKSParamReader, a repeated entry takes its last value.
+        value = mcatnlo_shower.read_fks_param(fks_params, name, default, last=True)
         return str(value).lstrip('.')[:1].lower() == 't'
     if not flag('FKSSectorLearning', '.false.'):
         return None
