@@ -12,19 +12,26 @@ namespace kernels {
 // virtual of MadLoop. The alpha terms are what the gates of the dipoles of
 // mapping.hpp remove from them at alpha = 1, in four dimensions, per unit
 // <T_j . T_k> / T_j^2 and alpha_s / (2 pi).
+//
+// The kernels vectorize: the masses, couplings and options are the same for
+// all events, so that whether a mass vanishes is a flag of the call (the mass
+// of the recoil system of a decay, which varies, is massive unless it is a
+// single massless particle), and what depends on the event selects with where.
 
 constexpr double CS_PI2 = 3.14159265358979323846 * 3.14159265358979323846;
 
 // V^(S)(s, m_j, m_k) of CDST eqs. 6.20 and 6.21, its coefficients of eps^-2,
 // eps^-1 and eps^0
 template <typename T>
-KERNELSPEC void cs_v_singular(FVal<T> s, FVal<T> mj, FVal<T> mk, FVal<T> (&v_s)[3]) {
+KERNELSPEC void cs_v_singular(
+    FVal<T> s, FVal<T> mj, FVal<T> mk, bool massive_j, bool massive_k, FVal<T> (&v_s)[3]
+) {
     FVal<T> mj2 = mj * mj, mk2 = mk * mk, q2 = s + mj2 + mk2;
-    if (mj == 0. && mk == 0.) {
+    if (!massive_j && !massive_k) {
         v_s[0] = 1.;
         v_s[1] = 0.;
         v_s[2] = 0.;
-    } else if (mj > 0. && mk > 0.) {
+    } else if (massive_j && massive_k) {
         // the velocity v_jk and 1 - v_jk, rho^2 = (1 - v) / (1 + v) and the
         // rho_n^2 of eq. 5.30
         FVal<T> d = 4. * mj2 * mk2 / (s * s);
@@ -37,7 +44,7 @@ KERNELSPEC void cs_v_singular(FVal<T> s, FVal<T> mj, FVal<T> mk, FVal<T> (&v_s)[
         v_s[2] = (-0.25 * (l_rhoj2 * l_rhoj2 + l_rhok2 * l_rhok2) - CS_PI2 / 6.) / v +
             0.5 * l_rho2 * log(q2 / s) / v;
     } else {
-        FVal<T> m2 = mj > 0. ? mj2 : mk2;
+        FVal<T> m2 = massive_j ? mj2 : mk2;
         FVal<T> l_ms = log(m2 / s), l_sq = log(s / q2);
         v_s[0] = 0.5;
         v_s[1] = 0.5 * l_ms;
@@ -64,14 +71,16 @@ KERNELSPEC CSVNonsingular<T> cs_v_nonsingular(
     FVal<T> s,
     FVal<T> mj,
     FVal<T> mk,
-    FVal<T> gamma_j,
-    FVal<T> kappa,
-    FVal<T> self_coupling,
-    FVal<T> pair_splitting
+    bool massive_j,
+    bool massive_k,
+    double gamma_j,
+    double kappa,
+    double self_coupling,
+    double pair_splitting
 ) {
     FVal<T> mj2 = mj * mj, mk2 = mk * mk, q2 = s + mj2 + mk2, q = sqrt(q2);
     FVal<T> l_sq = log(s / q2);
-    if (mk > 0. && mj == 0.) {
+    if (massive_k && !massive_j) {
         FVal<T> collinear =
             gamma_j * (l_sq - 2. * log((q - mk) / q) - 2. * mk / (q + mk));
         if (boson) {
@@ -81,10 +90,10 @@ KERNELSPEC CSVNonsingular<T> cs_v_nonsingular(
         }
         return {CS_PI2 / 6. - dilog<T>(s / q2), collinear};
     }
-    if (boson || mj == 0.) {
+    if (boson || !massive_j) {
         return {FVal<T>(0.), FVal<T>(0.)};
     }
-    if (mk == 0.) {
+    if (!massive_k) {
         return {
             CS_PI2 / 6. - dilog<T>(s / q2) - 2. * l_sq - mj2 / s * log(mj2 / q2),
             gamma_j * l_sq
@@ -108,21 +117,21 @@ KERNELSPEC CSVNonsingular<T> cs_v_nonsingular(
 }
 
 // An antiderivative of log|u + c| / u for real c that stays well conditioned
-// for |c| << |u|: 1/2 log^2|u| + Li2(-c/u) for |u| >= |c| and log|c| log|u| -
-// Li2(-u/c) - 1/2 log^2|c| - K otherwise, with the constant K = pi^2/6 for u/c >
-// 0 and -pi^2/3 for u/c < 0 that joins the two (u does not cross zero)
+// for |c| << |u|: 1/2 log^2|u| + Li2(-c/u) for |u| >= |c| (c = 0 among them)
+// and log|c| log|u| - Li2(-u/c) - 1/2 log^2|c| - K otherwise, with the
+// constant K = pi^2/6 for u/c > 0 and -pi^2/3 for u/c < 0 that joins the two
+// (u does not cross zero). Each dilogarithm takes zero on the other side.
 template <typename T>
 KERNELSPEC FVal<T> cs_log_over_primitive(FVal<T> u, FVal<T> c) {
     FVal<T> l_u = log(fabs(u));
-    if (c == 0.) {
-        return 0.5 * l_u * l_u;
-    }
-    if (fabs(u) >= fabs(c)) {
-        return 0.5 * l_u * l_u + dilog<T>(-c / u);
-    }
-    FVal<T> l_c = log(fabs(c));
-    FVal<T> k = u / c > 0. ? FVal<T>(CS_PI2 / 6.) : FVal<T>(-CS_PI2 / 3.);
-    return l_c * l_u - dilog<T>(-u / c) - 0.5 * l_c * l_c - k;
+    auto outer = fabs(u) >= fabs(c);
+    FVal<T> c_in = where(outer, FVal<T>(1.), c);
+    FVal<T> l_c = log(fabs(c_in));
+    FVal<T> k = where(u / c_in > 0., FVal<T>(CS_PI2 / 6.), FVal<T>(-CS_PI2 / 3.));
+    FVal<T> big = 0.5 * l_u * l_u + dilog<T>(where(outer, -c / u, FVal<T>(0.)));
+    FVal<T> small = l_c * l_u - dilog<T>(where(outer, FVal<T>(0.), -u / c_in)) -
+        0.5 * l_c * l_c - k;
+    return where(outer, big, small);
 }
 
 // int_u0^u1 du log|u + c| / u
@@ -150,18 +159,19 @@ struct CSAlphaIntegrals {
 };
 
 template <typename T>
-KERNELSPEC CSAlphaIntegrals<T>
-cs_alpha_integrals(FVal<T> muj2, FVal<T> muk2, FVal<T> alpha) {
+KERNELSPEC CSAlphaIntegrals<T> cs_alpha_integrals(
+    FVal<T> muj2, FVal<T> muk2, bool massive_j, bool massive_k, double alpha
+) {
     FVal<T> muk = sqrt(muk2);
     FVal<T> av = 1. - muj2 - muk2;
     FVal<T> lam = sqrt(max(av * av - 4. * muj2 * muk2, 0.));
     FVal<T> omy_plus = 2. * muk * (1. - muk) / av, y_plus = 1. - omy_plus;
     FVal<T> y_alpha = alpha * y_plus;
-    FVal<T> l_alpha = log(alpha);
-    if (muk2 == 0.) {
+    double l_alpha = log(alpha);
+    if (!massive_k) {
         // R = 1 / (mu_j^2 + D y), v = 1 and y_+ = 1
-        FVal<T> j_log = muj2 == 0.
-            ? l_alpha * l_alpha
+        FVal<T> j_log = !massive_j
+            ? FVal<T>(l_alpha * l_alpha)
             : -2. * (-log(av) * l_alpha + cs_log_over<T>(y_alpha, y_plus, muj2 / av));
         return {j_log, av * (-l_alpha - y_plus * (1. - alpha))};
     }
@@ -217,11 +227,13 @@ KERNELSPEC FVal<T> cs_removed_final_final(
     FVal<T> s,
     FVal<T> mj,
     FVal<T> mk,
-    FVal<T> alpha,
-    FVal<T> kappa,
-    FVal<T> casimir,
-    FVal<T> self_coupling,
-    FVal<T> pair_splitting
+    bool massive_j,
+    bool massive_k,
+    double alpha,
+    double kappa,
+    double casimir,
+    double self_coupling,
+    double pair_splitting
 ) {
     if (alpha >= 1.) {
         return 0.;
@@ -234,18 +246,20 @@ KERNELSPEC FVal<T> cs_removed_final_final(
     FVal<T> vel_born = lam / av;
     FVal<T> omy_plus = 2. * muk * (1. - muk) / av, y_plus = 1. - omy_plus;
     FVal<T> y_alpha = alpha * y_plus;
-    FVal<T> l_alpha = log(alpha);
-    FVal<T> j_log = cs_alpha_integrals<T>(muj2, muk2, alpha).j_log;
+    double l_alpha = log(alpha);
+    FVal<T> j_log =
+        cs_alpha_integrals<T>(muj2, muk2, massive_j, massive_k, alpha).j_log;
     // int dy (1 - y) / y
     FVal<T> a_0 = -l_alpha - y_plus * (1. - alpha);
     if (boson) {
         // with (1 - y) (1 - v^2) / y = 4 mu_k^2 / (D (1 - y)), the self
         // coupling C_A and the light pairs T_R n_f of a gluon
-        FVal<T> gamma_g = 11. / 6. * self_coupling - 2. / 3. * pair_splitting;
-        FVal<T> c_v = self_coupling * (1. / 12. - 0.25 * (1. - kappa)) +
+        double gamma_g = 11. / 6. * self_coupling - 2. / 3. * pair_splitting;
+        double c_v = self_coupling * (1. / 12. - 0.25 * (1. - kappa)) +
             pair_splitting * (0.5 * (1. - kappa) - 1. / 6.);
-        FVal<T> x_1 =
-            mk == 0. ? FVal<T>(0.) : 4. * muk2 / av * log((1. - y_alpha) / omy_plus);
+        FVal<T> x_1 = !massive_k
+            ? FVal<T>(0.)
+            : FVal<T>(4. * muk2 / av * log((1. - y_alpha) / omy_plus));
         return self_coupling * j_log - gamma_g * a_0 + c_v * x_1;
     }
     // int dy (1 - y) z_1 / y with z_1 = 2 z_0^2 = D^2 y^2 / (2 (mu_j^2 + D y)^2)
@@ -301,7 +315,10 @@ KERNELSPEC FVal<T> cs_removed_final_final(
 // at every E.
 template <typename T>
 KERNELSPEC FVal<T> cs_decay_eta(FVal<T> beta) {
-    if (beta < 0.1) {
+    // the series below beta = 0.1, the closed form above
+    auto small = beta < 0.1;
+    FVal<T> series = 0.;
+    {
         constexpr double c[8] = {
             2. / 9.,
             94. / 675.,
@@ -312,15 +329,16 @@ KERNELSPEC FVal<T> cs_decay_eta(FVal<T> beta) {
             1458381727046. / 28761812454375.,
             511730469371542. / 11334768817246875.,
         };
-        FVal<T> b2 = beta * beta, out = 0.;
+        FVal<T> b2 = beta * beta;
         for (int n = 7; n >= 0; --n) {
-            out = (out + c[n]) * b2;
+            series = (series + c[n]) * b2;
         }
-        return out;
     }
-    FVal<T> l = log((1. + beta) / (1. - beta));
-    return 2. * log(2.) - 2. - log((1. - beta) * (1. + beta)) - 0.5 * l +
-        (CS_PI2 / 3. - 2. * dilog<T>((1. - beta) / (1. + beta))) / l + 2. * log(beta);
+    FVal<T> b = where(small, FVal<T>(0.5), beta);
+    FVal<T> l = log((1. + b) / (1. - b));
+    FVal<T> closed = 2. * log(2.) - 2. - log((1. - b) * (1. + b)) - 0.5 * l +
+        (CS_PI2 / 3. - 2. * dilog<T>((1. - b) / (1. + b))) / l + 2. * log(b);
+    return where(small, series, closed);
 }
 
 // int_0^{1 - x_a} du log(1 + u / c) / (u + q) for q != 0 and c - q = c_q > 0
@@ -335,13 +353,14 @@ KERNELSPEC FVal<T> cs_decay_log_over(FVal<T> xa, FVal<T> c, FVal<T> q, FVal<T> c
 // particle of mass m_y (see above)
 template <typename T>
 KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>>
-cs_decay_eikonal(FVal<T> ma, FVal<T> mx, FVal<T> my) {
-    FVal<T> ma2 = ma * ma, mx2 = mx * mx, my2 = my * my;
+cs_decay_eikonal(double ma, FVal<T> mx, FVal<T> my, bool massive_x, bool massive_y) {
+    double ma2 = ma * ma;
+    FVal<T> mx2 = mx * mx, my2 = my * my;
     FVal<T> s = ma2 - mx2 - my2;
     FVal<T> rl = sqrt(max(s * s - 4. * mx2 * my2, 0.));
     FVal<T> e_max = (ma - mx - my) * (ma + mx + my) / (2. * ma);
     FVal<T> l_x = log(s / (4. * e_max * e_max));
-    if (mx == 0.) {
+    if (!massive_x) {
         return {
             1., l_x, 0.5 * l_x * l_x - 5. * CS_PI2 / 6. + 2. * dilog<T>(1. - my2 / ma2)
         };
@@ -351,7 +370,7 @@ cs_decay_eikonal(FVal<T> ma, FVal<T> mx, FVal<T> my) {
     // T_x with the logs of x + 1 / rho, x and x + rho (rho = m_x / m_y) and the
     // poles of dE / E, each log taken relative to its value at x_a
     FVal<T> t;
-    if (my == 0.) {
+    if (!massive_y) {
         t = -dilog<T>(1. - mx2 / ma2);
     } else {
         FVal<T> xa = 2. * mx * my / (s + rl);
@@ -381,8 +400,9 @@ cs_decay_eikonal(FVal<T> ma, FVal<T> mx, FVal<T> my) {
 // relative to the pair term of CDST, (s / 2 + 2 m_j^2) H_j - (s / 2) H_k - I_a
 template <typename T>
 KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>>
-cs_decay_soft(FVal<T> ma, FVal<T> mj, FVal<T> mk) {
-    FVal<T> ma2 = ma * ma, mj2 = mj * mj, mk2 = mk * mk;
+cs_decay_soft(double ma, FVal<T> mj, FVal<T> mk, bool massive_j, bool massive_k) {
+    double ma2 = ma * ma;
+    FVal<T> mj2 = mj * mj, mk2 = mk * mk;
     FVal<T> s = ma2 - mj2 - mk2;
     FVal<T> rl = sqrt(max(s * s - 4. * mj2 * mk2, 0.));
     FVal<T> w = s + rl;
@@ -392,15 +412,15 @@ cs_decay_soft(FVal<T> ma, FVal<T> mj, FVal<T> mk) {
     FVal<T> kk = 4. * ma2 * mk2 / (ma2 - mj2 + mk2 + rl);
     FVal<T> kj = 4. * ma2 * mj2 / (ma2 + mj2 - mk2 + rl);
     FVal<T> t = (mj2 - mk2) * log((w + 2. * mk2) / (w + 2. * mj2));
-    if (mk > 0.) {
+    if (massive_k) {
         t = t + 0.5 * kk * log(2. * mk2 / w);
     }
-    if (mj > 0.) {
+    if (massive_j) {
         t = t + 0.5 * kj * log(2. * mj2 / w);
     }
     FVal<T> i_a = -log(s / (4. * e_max * e_max)) - 2. + 2. * (2. * log1p(xa) + t / rl);
-    auto h_j = cs_decay_eikonal<T>(ma, mj, mk);
-    auto h_k = cs_decay_eikonal<T>(ma, mk, mj);
+    auto h_j = cs_decay_eikonal<T>(ma, mj, mk, massive_j, massive_k);
+    auto h_k = cs_decay_eikonal<T>(ma, mk, mj, massive_k, massive_j);
     FVal<T> c_j = 0.5 + 2. * mj2 / s;
     return {
         c_j * h_j.first - 0.5 * h_k.first,
@@ -414,8 +434,9 @@ cs_decay_soft(FVal<T> ma, FVal<T> mj, FVal<T> mk) {
 // unit <T_j . T_a> and alpha_s / (2 pi): 2 / sqrt(lambda(1, mu_j^2, mu_k^2))
 // (mu_j^2 J - S) with J and S of cs_alpha_integrals
 template <typename T>
-KERNELSPEC FVal<T>
-cs_removed_decay_soft(FVal<T> s, FVal<T> mj, FVal<T> mk, FVal<T> alpha) {
+KERNELSPEC FVal<T> cs_removed_decay_soft(
+    FVal<T> s, FVal<T> mj, FVal<T> mk, bool massive_j, bool massive_k, double alpha
+) {
     if (alpha >= 1.) {
         return 0.;
     }
@@ -423,7 +444,7 @@ cs_removed_decay_soft(FVal<T> s, FVal<T> mj, FVal<T> mk, FVal<T> alpha) {
     FVal<T> muj2 = mj * mj / q2, muk2 = mk * mk / q2;
     FVal<T> av = 1. - muj2 - muk2;
     FVal<T> lam = sqrt(max(av * av - 4. * muj2 * muk2, 0.));
-    auto integrals = cs_alpha_integrals<T>(muj2, muk2, alpha);
+    auto integrals = cs_alpha_integrals<T>(muj2, muk2, massive_j, massive_k, alpha);
     return 2. / lam * (muj2 * integrals.j_log - integrals.s_over_y);
 }
 
@@ -434,22 +455,23 @@ KERNELSPEC void kernel_cs_insertion(
     FIn<T, 1> born,
     FIn<T, 0> alpha_s,
     FIn<T, 0> ren_scale,
-    FIn<T, 1> casimir,
-    FIn<T, 1> gamma,
-    FIn<T, 1> k_constant,
-    FIn<T, 1> self_coupling,
-    FIn<T, 1> pair_splitting,
-    FIn<T, 1> charges,
-    FIn<T, 1> spectator_weights,
-    FIn<T, 1> masses,
-    FIn<T, 1> options,
-    IIn<T, 0> incoming,
+    FSIn<T, 1> casimir,
+    FSIn<T, 1> gamma,
+    FSIn<T, 1> k_constant,
+    FSIn<T, 1> self_coupling,
+    FSIn<T, 1> pair_splitting,
+    FSIn<T, 1> charges,
+    FSIn<T, 1> spectator_weights,
+    FSIn<T, 1> masses,
+    FSIn<T, 1> options,
+    ISIn<T, 0> incoming,
     FOut<T, 1> insertion,
     FOut<T, 2> poles
 ) {
-    FVal<T> kappa = options[0], alpha_ff = options[1];
-    bool qed = FVal<T>(options[3]) != 0.;
+    double kappa = single_value(options[0]), alpha_ff = single_value(options[1]);
+    bool qed = single_value(options[3]) != 0.;
     std::size_t n_in = single_index(incoming);
+    std::size_t n = momenta.size();
     FVal<T> mu2 = FVal<T>(ren_scale) * FVal<T>(ren_scale);
     FVal<T> a = FVal<T>(alpha_s) / (2. * 3.14159265358979323846);
     for (std::size_t b = 0; b < insertion.size(); ++b) {
@@ -460,33 +482,42 @@ KERNELSPEC void kernel_cs_insertion(
     // a decaying particle emits no collinear parton, its soft terms belong to
     // the dipoles of the final-state partons with it as the spectator
     bool decay = n_in == 1;
-    for (std::size_t j = decay ? 1 : 0; j < momenta.size(); ++j) {
-        FVal<T> t2 = casimir[j];
-        FVal<T> ca = self_coupling[j], trnf = pair_splitting[j];
+    for (std::size_t j = decay ? 1 : 0; j < n; ++j) {
+        double t2 = single_value(casimir[j]);
+        double ca = single_value(self_coupling[j]),
+               trnf = single_value(pair_splitting[j]);
         // a gluon, or a photon, which has no T_j^2 but splits into pairs
         bool boson = ca != 0. || trnf != 0.;
         if (t2 == 0. && !boson) {
             continue;
         }
-        FVal<T> mj = masses[j], g = gamma[j], k = k_constant[j];
+        double mj = single_value(masses[j]), g = single_value(gamma[j]);
+        double k = single_value(k_constant[j]);
+        bool massive_j = mj > 0.;
         // Gamma_j of CDST eqs. 6.27 to 6.29 (no heavy quarks for a gluon)
-        FVal<T> gamma_1 = mj > 0. ? t2 : g;
-        FVal<T> gamma_0 = mj > 0. ? t2 * (0.5 * log(mj * mj / mu2) - 2.) : FVal<T>(0.);
+        double gamma_1 = massive_j ? t2 : g;
+        FVal<T> gamma_0 =
+            massive_j ? FVal<T>(t2 * (0.5 * log(mj * mj / mu2) - 2.)) : FVal<T>(0.);
         auto p_j = load_mom<T>(momenta[j]);
-        for (std::size_t m = 0; m < momenta.size(); ++m) {
-            if (m == j || FVal<T>(casimir[m]) == 0.) {
+        for (std::size_t m = 0; m < n; ++m) {
+            if (m == j || single_value(casimir[m]) == 0.) {
                 continue;
             }
-            FVal<T> mk = masses[m];
+            FVal<T> mk = single_value(masses[m]);
+            bool massive_k = single_value(masses[m]) > 0.;
             FVal<T> s;
             bool spectator_decay = decay && m == 0;
             if (spectator_decay) {
                 // the final-final dipole with the recoil system K~ = p_a - p_j
-                // of the other final-state particles as the spectator
+                // of the other final-state particles as the spectator, massive
+                // unless it is a single massless particle
                 FVal<T> pjpa = ldot<T>(p_j, load_mom<T>(momenta[0]));
-                FVal<T> ma = masses[0];
+                double ma = single_value(masses[0]);
                 s = 2. * (pjpa - mj * mj);
-                mk = sqrt(max(ma * ma - 2. * pjpa + mj * mj, 0.));
+                massive_k = n > 3 || single_value(masses[j == 1 ? 2 : 1]) > 0.;
+                mk = massive_k
+                    ? FVal<T>(sqrt(max(ma * ma - 2. * pjpa + mj * mj, 0.)))
+                    : FVal<T>(0.);
             } else {
                 // (s of a massless pair close to collinear rounds to zero or
                 // below at points that the cuts remove, where the Born
@@ -495,14 +526,33 @@ KERNELSPEC void kernel_cs_insertion(
             }
             FVal<T> l = log(mu2 / s);
             FVal<T> v_s[3];
-            cs_v_singular<T>(s, mj, mk, v_s);
+            cs_v_singular<T>(s, mj, mk, massive_j, massive_k, v_s);
             // an incoming emitter has kappa = 2/3 (CDST)
             auto v_ns = cs_v_nonsingular<T>(
-                boson, s, mj, mk, g, j < n_in ? FVal<T>(2. / 3.) : kappa, ca, trnf
+                boson,
+                s,
+                mj,
+                mk,
+                massive_j,
+                massive_k,
+                g,
+                j < n_in ? 2. / 3. : kappa,
+                ca,
+                trnf
             );
             FVal<T> removed = (j >= n_in && m >= n_in) || spectator_decay
                 ? cs_removed_final_final<T>(
-                      boson, s, mj, mk, alpha_ff, kappa, t2, ca, trnf
+                      boson,
+                      s,
+                      mj,
+                      mk,
+                      massive_j,
+                      massive_k,
+                      alpha_ff,
+                      kappa,
+                      t2,
+                      ca,
+                      trnf
                   )
                 : FVal<T>(0.);
             // the parts per unit <T_j . T_k> (the soft ones) and per unit
@@ -517,21 +567,23 @@ KERNELSPEC void kernel_cs_insertion(
             if (spectator_decay) {
                 // the rest of the integral of the decay dipole, per unit
                 // <T_j . T_a>, with (mu^2 / s)^eps expanded
-                auto rest = cs_decay_soft<T>(FVal<T>(masses[0]), mj, mk);
+                double ma = single_value(masses[0]);
+                auto rest = cs_decay_soft<T>(ma, mj, mk, massive_j, massive_k);
                 double_pole = double_pole - rest.first;
                 single_pole = single_pole - rest.second - rest.first * l;
                 finite = finite - rest.third - rest.second * l -
                     0.5 * rest.first * l * l +
-                    cs_removed_decay_soft<T>(s, mj, mk, alpha_ff);
+                    cs_removed_decay_soft<T>(s, mj, mk, massive_j, massive_k, alpha_ff);
             }
             // in QED the charges of j and m, and the spectators of a photon,
             // which has no charge, each with its weight
-            FVal<T> qq = FVal<T>(charges[j]) * FVal<T>(charges[m]);
+            double qq = single_value(charges[j]) * single_value(charges[m]);
+            double weight_m = single_value(spectator_weights[m]);
             for (std::size_t b = 0; b < insertion.size(); ++b) {
-                FVal<T> cc = qed ? qq * FVal<T>(born[b]) : color_correlated[b][j][m];
-                FVal<T> ncc = t2 != 0.
-                    ? cc / t2
-                    : -FVal<T>(spectator_weights[m]) * FVal<T>(born[b]);
+                FVal<T> born_b = born[b];
+                FVal<T> cc =
+                    qed ? FVal<T>(qq * born_b) : FVal<T>(color_correlated[b][j][m]);
+                FVal<T> ncc = t2 != 0. ? FVal<T>(cc / t2) : FVal<T>(-weight_m * born_b);
                 insertion[b] =
                     insertion[b] + a * (cc * finite + ncc * finite_collinear);
                 poles[b][0] = poles[b][0] + a * cc * double_pole;
@@ -553,7 +605,7 @@ constexpr int CS_QQ = 0, CS_GG = 1, CS_GQ = 2, CS_QG = 3;
 // P^{aa'}(x) without its plus distribution and delta(1 - x) (CS eq. 10.12),
 // with its coefficient c
 template <typename T>
-KERNELSPEC FVal<T> cs_p_regular(int kind, FVal<T> c, FVal<T> x) {
+KERNELSPEC FVal<T> cs_p_regular(int kind, double c, FVal<T> x) {
     FVal<T> omx = 1. - x;
     switch (kind) {
     case CS_QQ:
@@ -569,7 +621,7 @@ KERNELSPEC FVal<T> cs_p_regular(int kind, FVal<T> c, FVal<T> x) {
 
 // P^{aa'}(x) at x < 1 (the four-dimensional Altarelli-Parisi kernel)
 template <typename T>
-KERNELSPEC FVal<T> cs_p_full(int kind, FVal<T> c, FVal<T> x) {
+KERNELSPEC FVal<T> cs_p_full(int kind, double c, FVal<T> x) {
     FVal<T> omx = 1. - x;
     switch (kind) {
     case CS_QQ:
@@ -592,22 +644,23 @@ KERNELSPEC FVal<T> cs_removed_final_initial(
     bool boson,
     FVal<T> x,
     FVal<T> s,
-    FVal<T> m,
-    FVal<T> alpha,
-    FVal<T> t2,
-    FVal<T> ca,
-    FVal<T> gamma_j
+    double m,
+    double alpha,
+    double t2,
+    double ca,
+    double gamma_j
 ) {
     FVal<T> omx = 1. - x;
-    if (!(omx > alpha)) {
-        return 0.;
-    }
+    FVal<T> out;
     if (boson) {
-        return (2. * ca * log((1. + omx) / omx) - gamma_j) / omx;
+        out = (2. * ca * log((1. + omx) / omx) - gamma_j) / omx;
+    } else {
+        FVal<T> mu2 = m * m / s, zp = omx / (omx + mu2);
+        out = t2 / omx *
+            (2. * log((omx + zp) / omx) - 2. * zp + 0.5 * zp * zp -
+             2. * mu2 * zp / omx);
     }
-    FVal<T> mu2 = m * m / s, zp = omx / (omx + mu2);
-    return t2 / omx *
-        (2. * log((omx + zp) / omx) - 2. * zp + 0.5 * zp * zp - 2. * mu2 * zp / omx);
+    return where(omx > alpha, out, FVal<T>(0.));
 }
 
 // What alpha_if removes from the incoming emitter a with the final-state
@@ -616,26 +669,28 @@ KERNELSPEC FVal<T> cs_removed_final_initial(
 // coefficient c
 template <typename T>
 KERNELSPEC FVal<T> cs_removed_initial_final(
-    int kind, FVal<T> c, FVal<T> x, FVal<T> s, FVal<T> m, FVal<T> alpha
+    int kind, double c, FVal<T> x, FVal<T> s, double m, double alpha
 ) {
     FVal<T> omx = 1. - x, mu2 = m * m / s, zp = omx / (omx + mu2);
-    if (!(zp > alpha)) {
-        return 0.;
-    }
     FVal<T> l_u = log(zp / alpha);
     FVal<T> e = log(zp * (omx + alpha) / (alpha * (omx + zp))) / omx;
     FVal<T> l_m =
-        m > 0. ? mu2 * log((1. - alpha) * (omx + mu2) / mu2) / x : FVal<T>(0.);
+        m > 0. ? FVal<T>(mu2 * log((1. - alpha) * (omx + mu2) / mu2) / x) : FVal<T>(0.);
+    FVal<T> out;
     switch (kind) {
     case CS_QQ:
-        return c * (2. * e - (1. + x) * l_u);
+        out = c * (2. * e - (1. + x) * l_u);
+        break;
     case CS_GQ:
-        return c * (x * x + omx * omx) * l_u;
+        out = c * (x * x + omx * omx) * l_u;
+        break;
     case CS_QG:
-        return c * ((x + 2. * omx / x) * l_u - 2. * l_m);
+        out = c * ((x + 2. * omx / x) * l_u - 2. * l_m);
+        break;
     default:
-        return 2. * c * (e + (-1. + x * omx + omx / x) * l_u - l_m);
+        out = 2. * c * (e + (-1. + x * omx + omx / x) * l_u - l_m);
     }
+    return where(zp > alpha, out, FVal<T>(0.));
 }
 
 // The convolution of a distribution in x with the luminosity g(x) of a beam,
@@ -674,15 +729,16 @@ template <typename T>
 KERNELSPEC void cs_massive_spectator(
     CSConvolution<T>& conv,
     int kind,
-    FVal<T> c,
+    double c,
     FVal<T> coef,
     FVal<T> norm,
-    FVal<T> ca,
-    FVal<T> gamma_a,
+    double ca,
+    double gamma_a,
     FVal<T> s,
-    FVal<T> m
+    double m
 ) {
-    FVal<T> z = conv.z, omz = 1. - z, m2 = m * m;
+    FVal<T> z = conv.z, omz = 1. - z;
+    double m2 = m * m;
     FVal<T> s_z = s / z, mu2 = m2 / s, mu2_z = m2 / s_z;
     bool same = kind == CS_QQ || kind == CS_GG;
     if (same) {
@@ -710,7 +766,7 @@ KERNELSPEC void cs_massive_spectator(
     if (kind == CS_QG || kind == CS_GG) {
         // 2 C_F mu^2 / z log(mu^2 / (1 - z + mu^2)) for q -> g, 2 C_A for g -> g,
         // per unit <T_j . T_a'> / T_a'^2
-        FVal<T> factor = kind == CS_GG ? ca : c;
+        double factor = kind == CS_GG ? ca : c;
         conv.regular(-norm, 2. * factor * mu2_z / z * log(mu2_z / (omz + mu2_z)));
     }
     conv.regular(
@@ -729,44 +785,49 @@ KERNELSPEC void kernel_cs_collinear(
     FIn<T, 0> x1,
     FIn<T, 0> x2,
     FIn<T, 0> r,
-    FIn<T, 1> casimir,
-    FIn<T, 1> gamma,
-    FIn<T, 1> self_coupling,
-    FIn<T, 1> pair_splitting,
-    FIn<T, 1> other_coefficient,
-    FIn<T, 1> charges,
-    FIn<T, 1> spectator_weights,
-    FIn<T, 1> masses,
-    FIn<T, 1> options,
+    FSIn<T, 1> casimir,
+    FSIn<T, 1> gamma,
+    FSIn<T, 1> self_coupling,
+    FSIn<T, 1> pair_splitting,
+    FSIn<T, 1> other_coefficient,
+    FSIn<T, 1> charges,
+    FSIn<T, 1> spectator_weights,
+    FSIn<T, 1> masses,
+    FSIn<T, 1> options,
     FOut<T, 1> z,
     FOut<T, 3> weights
 ) {
     constexpr double pi2 = CS_PI2;
-    FVal<T> alpha_fi = options[0], alpha_if = options[1], alpha_ii = options[2];
-    bool qed = FVal<T>(options[4]) != 0.;
+    double alpha_fi = single_value(options[0]), alpha_if = single_value(options[1]);
+    double alpha_ii = single_value(options[2]);
+    bool qed = single_value(options[4]) != 0.;
     FVal<T> a = FVal<T>(alpha_s) / (2. * 3.14159265358979323846);
     std::size_t n = momenta.size();
     // <T_j . T_k> B of QCD, or Q_j Q_k B of the charges in QED, and the same
     // over T_j^2, with the weight of k for a photon j
     auto correlated = [&](std::size_t b, std::size_t j, std::size_t k) -> FVal<T> {
         return qed
-            ? FVal<T>(charges[j]) * FVal<T>(charges[k]) * FVal<T>(born[b])
+            ? FVal<T>(
+                  single_value(charges[j]) * single_value(charges[k]) * FVal<T>(born[b])
+              )
             : FVal<T>(color_correlated[b][j][k]);
     };
     auto normalized = [&](std::size_t b, std::size_t j, std::size_t k) -> FVal<T> {
-        FVal<T> t2 = casimir[j];
+        double t2 = single_value(casimir[j]);
         return t2 != 0.
-            ? correlated(b, j, k) / t2
-            : -FVal<T>(spectator_weights[k]) * FVal<T>(born[b]);
+            ? FVal<T>(correlated(b, j, k) / t2)
+            : FVal<T>(-single_value(spectator_weights[k]) * FVal<T>(born[b]));
     };
     for (std::size_t l = 0; l < 2; ++l) {
         FVal<T> eta = l == 0 ? FVal<T>(x1) : FVal<T>(x2);
         FVal<T> mu_f = l == 0 ? FVal<T>(fact_scale1) : FVal<T>(fact_scale2);
         FVal<T> rv = r, zl = eta + (1. - eta) * rv;
         z[l] = zl;
-        FVal<T> t2 = casimir[l];
-        FVal<T> ca = self_coupling[l], trnf = pair_splitting[l];
-        FVal<T> c_other = other_coefficient[l], gamma_l = gamma[l];
+        double t2 = single_value(casimir[l]);
+        double ca = single_value(self_coupling[l]),
+               trnf = single_value(pair_splitting[l]);
+        double c_other = single_value(other_coefficient[l]);
+        double gamma_l = single_value(gamma[l]);
         for (std::size_t b = 0; b < weights.size(); ++b) {
             for (std::size_t c = 0; c < 3; ++c) {
                 weights[b][l][c] = 0.;
@@ -780,9 +841,12 @@ KERNELSPEC void kernel_cs_collinear(
         int same = boson ? CS_GG : CS_QQ, other = boson ? CS_QG : CS_GQ;
         // the coefficients of the kernels of a' from the same parton (the
         // self coupling of a boson, T^2 of a fermion) and from the other one
-        FVal<T> c_same = boson ? ca : t2;
+        double c_same = boson ? ca : t2;
         FVal<T> omz = 1. - zl, l_omz = log(omz), l_eta = log(1. - eta);
         FVal<T> l_ratio = log(omz / zl);
+        // what alpha_ii removes, from 1 - z > alpha_ii
+        auto removed_ii = omz > alpha_ii;
+        FVal<T> l_alpha = log(omz / alpha_ii);
         auto p_l = load_mom<T>(momenta[l]);
         std::size_t o = 1 - l;
         for (std::size_t b = 0; b < weights.size(); ++b) {
@@ -792,7 +856,7 @@ KERNELSPEC void kernel_cs_collinear(
             // P: (1 / T_a'^2) sum_j <T_j . T_a'> log(mu_F^2 / s_ja') P^{aa'}
             FVal<T> coef_p = 0.;
             for (std::size_t j = 0; j < n; ++j) {
-                if (j == l || FVal<T>(casimir[j]) == 0.) {
+                if (j == l || single_value(casimir[j]) == 0.) {
                     continue;
                 }
                 FVal<T> s = max(2. * ldot<T>(p_l, load_mom<T>(momenta[j])), 1e-300);
@@ -827,7 +891,7 @@ KERNELSPEC void kernel_cs_collinear(
             }
             // Ktilde of CS eq. 10.29 with the other incoming parton, and what
             // alpha_ii removes
-            if (FVal<T>(casimir[o]) != 0.) {
+            if (single_value(casimir[o]) != 0.) {
                 FVal<T> coef = -normalized(b, l, o);
                 conv_same.regular(coef, cs_p_regular<T>(same, c_same, zl) * l_omz);
                 conv_same.plus(
@@ -835,31 +899,42 @@ KERNELSPEC void kernel_cs_collinear(
                 );
                 conv_same.delta(coef, -t2 * pi2 / 3.);
                 conv_other.regular(coef, cs_p_regular<T>(other, c_other, zl) * l_omz);
-                if (omz > alpha_ii) {
-                    FVal<T> l_alpha = log(omz / alpha_ii);
-                    conv_same.regular(-coef, cs_p_full<T>(same, c_same, zl) * l_alpha);
-                    conv_other.regular(
-                        -coef, cs_p_full<T>(other, c_other, zl) * l_alpha
-                    );
-                }
+                conv_same.regular(
+                    -coef,
+                    where(
+                        removed_ii,
+                        cs_p_full<T>(same, c_same, zl) * l_alpha,
+                        FVal<T>(0.)
+                    )
+                );
+                conv_other.regular(
+                    -coef,
+                    where(
+                        removed_ii,
+                        cs_p_full<T>(other, c_other, zl) * l_alpha,
+                        FVal<T>(0.)
+                    )
+                );
             }
             // the final-state partons j as emitters with the spectator a' and as
             // spectators of a'
             for (std::size_t j = 2; j < n; ++j) {
-                FVal<T> cj = casimir[j];
-                FVal<T> ca_j = self_coupling[j], trnf_j = pair_splitting[j];
+                double cj = single_value(casimir[j]);
+                double ca_j = single_value(self_coupling[j]);
+                double trnf_j = single_value(pair_splitting[j]);
+                double gamma_j = single_value(gamma[j]);
                 bool boson_j = ca_j != 0. || trnf_j != 0.;
                 if (cj == 0. && !boson_j) {
                     continue;
                 }
-                FVal<T> mj = masses[j];
+                double mj = single_value(masses[j]);
                 FVal<T> s = max(2. * ldot<T>(p_l, load_mom<T>(momenta[j])), 1e-300);
                 // a photon j emits with the spectator a', but is none of a'
                 if (cj != 0.) {
                     FVal<T> cc = correlated(b, j, l);
                     FVal<T> norm = normalized(b, l, j);
                     if (mj == 0.) {
-                        FVal<T> coef = normalized(b, j, l) * FVal<T>(gamma[j]);
+                        FVal<T> coef = normalized(b, j, l) * gamma_j;
                         conv_same.plus(coef, 1. / omz, 1. / omz, -l_eta);
                         conv_same.delta(coef, 1.);
                     } else {
@@ -883,14 +958,14 @@ KERNELSPEC void kernel_cs_collinear(
                         )
                     );
                 } else {
-                    FVal<T> coef = normalized(b, j, l) * FVal<T>(gamma[j]);
+                    FVal<T> coef = normalized(b, j, l) * gamma_j;
                     conv_same.plus(coef, 1. / omz, 1. / omz, -l_eta);
                     conv_same.delta(coef, 1.);
                 }
                 conv_same.regular(
                     normalized(b, j, l),
                     cs_removed_final_initial<T>(
-                        boson_j, zl, s / zl, mj, alpha_fi, cj, ca_j, gamma[j]
+                        boson_j, zl, s / zl, mj, alpha_fi, cj, ca_j, gamma_j
                     )
                 );
             }

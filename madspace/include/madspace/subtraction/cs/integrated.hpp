@@ -37,7 +37,8 @@ namespace madspace {
  * final-final dipole with the recoil system @f$K@f$ of the other final-state
  * particles as the spectator, and the soft terms of @f$a@f$). Its integral is
  * the pair term above with @f$s_{jK} = m_a^2 - m_j^2 - m_K^2@f$ and the mass
- * @f$m_K@f$ of the recoil system of the Born, plus the rest in closed form
+ * @f$m_K@f$ of the recoil system of the Born (massless only if it is a single
+ * massless particle), plus the rest in closed form
  * (see the instruction `cs_insertion`): the pair term of CDST has the mean of
  * the integrals of the eikonal terms of both orderings of the pair, which
  * only their sum needs, the dipole of one ordering its own. A final-state
