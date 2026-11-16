@@ -79,8 +79,9 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # --runtime / --stability` of loop artifacts); 152: benchmark.ground_truth
     # (`profile --ground-truth`); 153: benchmark.checked (`profile --checked`).
     # 154: benchmark.completion_time (`profile --completion-time`); 155:
-    # benchmark.samples_output (`profile --samples-output`).
-    assert len(FIELD_REGISTRY) == 155
+    # benchmark.samples_output (`profile --samples-output`); 156:
+    # benchmark.runtime_threads (`profile --runtime-threads`).
+    assert len(FIELD_REGISTRY) == 156
     assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()
     assert FIELD_REGISTRY["loop.external_widths"].default == "model"
     assert FIELD_REGISTRY["evaluation.phase_space.points"].default == 2
@@ -92,6 +93,7 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["benchmark.checked"].default is False
     assert FIELD_REGISTRY["benchmark.completion_time"].default is None
     assert FIELD_REGISTRY["benchmark.samples_output"].default is None
+    assert FIELD_REGISTRY["benchmark.runtime_threads"].default == 1
     # m-lit lit-examples: `pyamplicol check` (the check action's section).
     assert FIELD_REGISTRY["check.points"].default == 3
     assert FIELD_REGISTRY["check.seed"].nullable

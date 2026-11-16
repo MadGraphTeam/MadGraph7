@@ -55,7 +55,24 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "loop artifacts: worker processes of --stability only (default "
             "10, at most the usable cores; 1 runs in-process; the result does "
-            "not depend on it); the runtime timing always runs on one core"
+            "not depend on it, each worker runs one thread); the runtime "
+            "timing runs on one core unless --runtime-threads is given"
+        ),
+    )
+    parser.add_argument(
+        "--runtime-threads",
+        dest="benchmark.runtime_threads",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="N",
+        help=(
+            "loop artifacts: native threads of each runtime timing call "
+            "(benchmark.runtime_threads; default 1: the time per point of one "
+            "core, what a Monte Carlo worker pays). N threads work inside each "
+            "call, the calls stay one at a time; the binary64 calls and the "
+            "reference pass, with a short one-thread timing for the gain. At "
+            "most the usable cores. The --stability workers stay at one "
+            "thread each"
         ),
     )
     parser.add_argument(

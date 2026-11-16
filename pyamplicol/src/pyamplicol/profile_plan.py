@@ -52,6 +52,9 @@ RECORD_SECONDS_PER_RECORD = 20e-6
 RECORD_SECONDS_PER_INPUT = 20e-6
 # The calls a stable median is planned on when the budget affords them.
 STABLE_CALLS = 5
+# With --runtime-threads N > 1: the share of a backend's binary64 budget for
+# the one-thread timing of the same calls (the gain against one thread).
+ONE_THREAD_SHARE = 0.25
 # The reference pass's share of a backend's runtime budget.
 REFERENCE_SHARE = 0.25
 # A stability point's cost relative to one optimistic binary64 pass before
@@ -524,6 +527,7 @@ __all__ = [
     "DEFAULT_RUNTIME_SECONDS",
     "DEFAULT_STABILITY_SECONDS_PER_CORE",
     "MEASURE_REPEAT_SECONDS",
+    "ONE_THREAD_SHARE",
     "POST_SECONDS_PER_RECORD",
     "RECORD_SECONDS_PER_INPUT",
     "RECORD_SECONDS_PER_RECORD",

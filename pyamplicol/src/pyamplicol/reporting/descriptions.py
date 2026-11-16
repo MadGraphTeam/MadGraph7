@@ -70,6 +70,14 @@ def _peak_ram(report: Any) -> str:
     """The ``peak RAM`` column's description, with how this run measured
     it."""
 
+    threads = max(
+        (
+            int(getattr(row.profile, "threads", None) or 1)
+            for row in report.runtime
+            if row.profile is not None
+        ),
+        default=1,
+    )
     methods = dict.fromkeys(
         row.profile.peak_memory.method
         for row in report.runtime
@@ -96,6 +104,13 @@ def _peak_ram(report: Any) -> str:
         + (f"; measured from {measured}" if measured else "")
         + "; '<= x': the platform only knows the process's lifetime peak x, "
         "which these calls did not raise; '-': not measurable here"
+        + (
+            f"; with --runtime-threads {threads}: that process's on {threads} "
+            "threads (its per-thread work space included), before the "
+            "one-thread timing"
+            if threads > 1
+            else ""
+        )
     )
 
 
@@ -103,6 +118,24 @@ def _profile(report: Any) -> list[Block]:
     from .loop_profile import _truth
 
     label, name, _ = _truth(report)
+    # --runtime-threads N > 1: the timed calls ran on N threads.
+    threads = max(
+        (
+            int(getattr(row.profile, "threads", None) or 1)
+            for row in report.runtime or ()
+            if getattr(row, "profile", None) is not None
+        ),
+        default=1,
+    )
+    many = (
+        f"; with --runtime-threads {threads}: on {threads} threads, the pools "
+        f"of each backend's process at {threads} threads working inside each "
+        "call, the calls still one at a time (not the cost of one core: a "
+        "Monte Carlo run giving each worker one core should use the default), "
+        "then a short one-thread timing of the same calls for the gain"
+        if threads > 1
+        else ""
+    )
     blocks: list[Block] = [
         (
             "pyAmpliCol loop profile",
@@ -127,7 +160,7 @@ def _profile(report: Any) -> list[Block]:
                     "backend is timed in its "
                     "own process whose thread pools all run one thread (what "
                     "one Monte Carlo worker pays; --n_core is the stability "
-                    "run's worker count only)",
+                    "run's worker count only)" + many,
                 ),
                 (
                     "counts",
@@ -172,7 +205,19 @@ def _profile(report: Any) -> list[Block]:
                         "calls' batches, at least one call, more while they "
                         "fit its budget (a quarter of the backend's runtime "
                         f"share); '({label} -)': no reference call ran (its "
-                        "points, calls and failures are in --json, reference)",
+                        "points, calls and failures are in --json, reference)"
+                        + (
+                            f"; on {threads} threads the time per point is the "
+                            f"call's wall time with {threads} threads working "
+                            "over its points, the multiplier the reference "
+                            f"pass's on {threads} threads too; '(xS vs 1 "
+                            "thread)', muted: the same calls on one thread take "
+                            "S times as long (a short timing of its own after "
+                            f"them, a quarter of the binary64 budget, at least "
+                            "one call; --json one_thread_seconds_per_point)"
+                            if threads > 1
+                            else ""
+                        ),
                     ),
                     (
                         "min - max call",

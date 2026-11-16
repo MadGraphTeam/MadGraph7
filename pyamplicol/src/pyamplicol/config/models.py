@@ -1766,11 +1766,26 @@ class BenchmarkConfig:
     samples_output: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
     )
+    # The native threads of the runtime timing's evaluation calls
+    # (``--runtime-threads``): its process's pools at that many threads, the
+    # calls still one at a time. 1 (default): the time per point of one
+    # core, a Monte Carlo worker's. The stability workers stay at one
+    # thread each (``n_core`` is their count).
+    runtime_threads: int = field(default=1, metadata=_setting("int"))
 
     def __post_init__(self) -> None:
         for name in ("runtime", "stability", "checked"):
             if type(getattr(self, name)) is not bool:
                 raise ConfigurationError(f"benchmark.{name} must be a boolean")
+        if (
+            isinstance(self.runtime_threads, bool)
+            or not isinstance(self.runtime_threads, int)
+            or self.runtime_threads < 1
+        ):
+            raise ConfigurationError(
+                "benchmark.runtime_threads must be a positive thread count "
+                "(1: one core, the default)"
+            )
         object.__setattr__(self, "ground_truth", _ground_truth(self.ground_truth))
         if self.completion_time is not None:
             object.__setattr__(
