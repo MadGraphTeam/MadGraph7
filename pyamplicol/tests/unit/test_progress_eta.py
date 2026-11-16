@@ -214,3 +214,30 @@ def test_a_long_description_gives_way_to_the_clocks() -> None:
     assert len(line) <= 60
     assert line.endswith("elapsed 12s  RSS 1.47/1.47G")
     assert line.startswith("Loading pro") and "..." in line
+
+
+def test_a_phase_line_never_shows_eta_zero_while_work_remains() -> None:
+    from pyamplicol.reporting.progress import _phase_line, _TaskState
+
+    task = _TaskState(
+        task_id="phase",
+        description="Exporting",
+        total=4,
+        parent_task_id="root",
+        unit="items",
+        details={},
+        started_at=0.0,
+        updated_at=6.0,
+        completed=3,
+        marks=[[2.0, 1], [4.0, 2], [6.0, 3]],
+    )
+    for now in (6.0, 7.5, 8.5, 12.0, 60.0):
+        line = _phase_line(task, now=now, active_children=0, width=200, color=False)
+        assert "ETA 0s" not in line
+        assert "ETA" in line or "overdue" in line
+    assert "overdue" in _phase_line(
+        task, now=60.0, active_children=0, width=200, color=False
+    )
+    task.completed = 4
+    done = _phase_line(task, now=61.0, active_children=0, width=200, color=False)
+    assert "ETA" not in done and "overdue" not in done
