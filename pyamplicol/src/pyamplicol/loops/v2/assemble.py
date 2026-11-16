@@ -2601,7 +2601,8 @@ class LoopSlice:
                 families, loop_catalogue, colour, policy=_frame_policy(rows)
             )
 
-        colour, plan = schedules()
+        with step("schedules", "Building the loop schedules"):
+            colour, plan = schedules()
         program = None
         if request.counterterms == "recursion":
             # Production form of the counterterms (design §6.1): the tree
@@ -2760,7 +2761,8 @@ class LoopSlice:
         if program is not None:
             # The program's root terms and the Born close the same vertices
             # on blocks of the same words: one colour cache serves both.
-            program.bind(ordinary, data, catalogue, colours=closure)
+            with step("bind", "Binding the counterterm program"):
+                program.bind(ordinary, data, catalogue, colours=closure)
         born_terms = _born_terms(blocks, table, closure, ordinary)
         if missing := set(blocks.born_orders) - set(born_terms):
             # The Born program has roots there, so their virtual sectors would
@@ -2783,9 +2785,10 @@ class LoopSlice:
                 born_terms, closure.legs, request.selection.flows
             )
         basis = _born_tensors(closure, born_terms)
-        seed_table, class_of = build_seed_table(
-            colour, readings, basis, compress=request.compress_colour
-        )
+        with step("seeds", "Building the colour seed table"):
+            seed_table, class_of = build_seed_table(
+                colour, readings, basis, compress=request.compress_colour
+            )
         born_orders = blocks.born_orders
         sectors: dict[Orders, set[tuple[Orders, Orders]]] = defaultdict(set)
         if request.contribution == "loop-induced":
