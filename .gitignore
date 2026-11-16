@@ -1,4 +1,9 @@
 *~
+.ninjars-build/
+vendor/ninjars/target/
+vendor/ninjars/smoke
+vendor/ninjars/ninjars-native-libs.txt
+vendor/ninjars/ninjars-link-before.txt
 __pycache__
 *.o
 *.pyc
@@ -82,6 +87,9 @@ tests/input_files/IOTestsComparison/**/*.BackUp
 
 # output of ./tests/test_manager.py
 UNITTEST_proc/
+
+# Local development references.
+/references/
 
 # LHAPDF-format re-tabulations of the dressed-lepton densities, produced from
 # the shipped eepdf.f by vendor/eepdfgrid/gen_eepdf_lhagrid.py in under a

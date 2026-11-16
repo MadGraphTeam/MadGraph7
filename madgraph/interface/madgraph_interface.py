@@ -827,6 +827,17 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --cuda-arch=ARCHS  Semicolon-separated CUDA compute capabilities, e.g. 75;80;86.")
         logger.info("     --hip-arch=ARCHS   Semicolon-separated HIP architectures, e.g. gfx900;gfx906.")
         logger.info(" ")
+        logger.info("   \"install ninjars [options]\"",'$MG:BOLD')
+        logger.info("   Build the pinned NinjaRS/oneloopmaster Fortran interface (MLReductionLib=8).")
+        logger.info("   Requires Cargo/Rust >= 1.96, GNU make and a Fortran compiler with REAL(16).")
+        logger.info("     --source=DIR          Use a local NinjaRS checkout (copied before building).")
+        logger.info("     --oneloop-source=DIR  Use a local oneloopmaster checkout.")
+        logger.info("     --prefix=DIR          Override the HEPTools installation prefix.")
+        logger.info("     -j N/--jobs=N         Parallel compilation jobs (default: nb_core).")
+        logger.info("     --update              Rebuild with this checkout's committed dependency pins (after git pull).")
+        logger.info("                           Replace the installation after DP and QP smoke tests pass.")
+        logger.info("     --force               Equivalent backward-compatible alias for --update.")
+        logger.info(" ")
         logger.info("   \"install pyamplicol [options]\"",'$MG:BOLD')
         logger.info("   Install pyAmpliCol, the matrix-element generator of the [amplicol] backend.")
         logger.info("   Without options an interactive installer is launched. Available options:")
@@ -1172,6 +1183,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   optional argument.")
         logger.info(" > Notice multiparticle labels cannot be used with these checks.")
         logger.info(" > \"--reduction=\" allows to change what reduction methods should be used.")
+        logger.info(" > Timing/profile: --timing_provenance=True archives timing sources and")
+        logger.info("   hashes linked libraries for reproducible benchmarks (default: False).")
+        logger.info("   This opt-in mode requires those runtime files to remain unchanged.")
         logger.info(" > \"--split_orders=\" allows to change what specific combination of coupling orders to consider.")
         logger.info(" > For process syntax, please see help generate.")
         logger.info(" > In order to save the directory generated or the reuse an existing one")
@@ -1876,6 +1890,9 @@ class CheckValidForCmd(cmd.CheckCmd):
                    # 'check crossing --exporter=standalone' float precision:
                    # m mixed (default), d double, f float.
                    '--precision':'m'}
+
+        if args[0] in ['timing', 'profile']:
+            user_options['--timing_provenance'] = 'False'
 
         if args[0] == 'precision':
             user_options['--nb_event'] = '1000000'
@@ -3400,6 +3417,8 @@ class CompleteForCmd(cmd.CompleteCmd):
           '--loop_filter=','--resonances=']
 
         options = ['--energy=']
+        if len(args) >= 2 and args[1] in ['timing', 'profile']:
+            options.append('--timing_provenance=')
         if len(args) >= 2 and args[1] == 'precision':
             options.extend(['--nb_event=', '--backend='])
         if cms_options:
@@ -4186,7 +4205,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
                      'looptools', 'cuttools_iregi', 'MadSTR', 'RunningCoupling',
-                     'madspace', 'pyamplicol', 'madtrex']
+                     'madspace', 'ninjars', 'pyamplicol', 'madtrex']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
@@ -4288,6 +4307,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'golem':'auto',
                        'samurai':None,
                        'ninja':'./HEPTools/lib',
+                       'ninjars':None,
                        'collier':'./HEPTools/lib',
                        'dmtcp': None,
                        'lhapdf':'lhapdf-config',
@@ -6456,6 +6476,8 @@ This implies that with decay chains:
         self.set_color_basis_mode()
 
         args = self.split_arg(line)
+        automatic_reduction = (args and args[0] in ('timing', 'profile') and
+                               not any(arg.startswith('--reduction=') for arg in args))
         # Check args validity
         param_card = self.check_check(args)
 
@@ -6519,6 +6541,13 @@ This implies that with decay chains:
                                        " must be an integer, not %s."%option[1])
             elif option[0]=='--reduction':
                 MLoptions['MLReductionLib']=[int(ir) for ir in option[1].split('|')]
+                if 2 in MLoptions['MLReductionLib']:
+                    raise self.InvalidCmd('PJFry (reduction ID 2) is retired; '
+                                          'use 8 for NinjaRS or 6 for Ninja.')
+            elif option[0]=='--timing_provenance':
+                if len(option) != 2 or option[1].lower() not in ('true', 'false'):
+                    raise self.InvalidCmd("The value of 'timing_provenance' must be True or False.")
+                options['timing_provenance'] = option[1].lower() == 'true'
             elif option[0]=='--collier_mode':
                 MLoptions['COLLIERMode']=int(option[1])
             elif option[0]=='--collier_cache':
@@ -6917,6 +6946,11 @@ This implies that with decay chains:
         # check modes for which no process could be checked at all
         not_checked = []
 
+        if automatic_reduction and myprocdef and myprocdef.get('has_born'):
+            from madgraph.various import ninjars_install
+            MLoptions['MLReductionLib'] = ninjars_install.default_reduction_library(
+                myprocdef.get('has_born'), self.options.get('ninjars'))
+
         if "_cuttools_dir" in dir(self):
             CT_dir = self._cuttools_dir
         else:
@@ -6935,10 +6969,9 @@ This implies that with decay chains:
                     MLoptions["MLReductionLib"].remove(3)
 
 
-        if "MLReductionLib" in MLoptions:
-            if 2 in MLoptions["MLReductionLib"]:
-                logger_check.warning('PJFRY not supported anymore; it will be skipped.')                    
-                MLoptions["MLReductionLib"].remove(2)
+        if 2 in MLoptions.get('MLReductionLib', []):
+            raise self.InvalidCmd('PJFry (reduction ID 2) is retired; '
+                                  'use 8 for NinjaRS or 6 for Ninja.')
                     
         if 'golem' in self.options and isinstance(self.options['golem'],str):
             TIR_dir['golem_dir']=self.options['golem']
@@ -6971,6 +7004,18 @@ This implies that with decay chains:
                 if 6 in MLoptions["MLReductionLib"]:
                     logger_check.warning('Ninja not available on your system; it will be skipped.')
                     MLoptions["MLReductionLib"].remove(6)
+
+        if isinstance(self.options.get('ninjars'), str):
+            from madgraph.various import ninjars_install
+            TIR_dir['ninjars_dir'] = self.options['ninjars']
+            if 8 in MLoptions.get('MLReductionLib', []) and not ninjars_install.is_available(
+                    self.options['ninjars']):
+                raise self.InvalidCmd("NinjaRS is unavailable or unusable at %s. "
+                                      "Run 'install ninjars --update'." %
+                                      self.options['ninjars'])
+        elif 8 in MLoptions.get('MLReductionLib', []):
+            raise self.InvalidCmd("NinjaRS is disabled. Run 'install ninjars' "
+                                  "or set ninjars to its library directory.")
         
         if args[0] in ['timing']:
             timings = process_checks.check_timing(myprocdef,
@@ -10034,6 +10079,22 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
         elif args[0] == 'looptools':
             self.install_reduction_library(force=True)
             return
+        elif args[0] == 'ninjars':
+            from madgraph.various import ninjars_install
+            prefix, config_file = self.heptools_install_target(
+                self.options['heptools_install_dir'])
+            libdir = ninjars_install.install(
+                MG5DIR, prefix,
+                arguments=install_options['options_for_HEPToolsInstaller'] + add_options,
+                fortran_compiler=self.options['fortran_compiler'],
+                jobs=self.options['nb_core'])
+            if libdir is not None:
+                self.options['ninjars'] = libdir
+                _, config_file = self.heptools_install_target(
+                    os.path.dirname(os.path.dirname(libdir)))
+                self.exec_cmd('save options %s ninjars' % config_file,
+                              printcmd=False, log=False)
+            return
         elif args[0] == 'cuttools_iregi':
             self.install_cuttools_iregi()
             return
@@ -13029,12 +13090,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
 
     def setup_path_for_options(self,name, args, log=True):
-        """Set the path for golem/samurai/ninja/collier options.
+        """Set the path for golem/samurai/ninja/ninjars/collier options.
         Example: set golem /PATH/TO/golem/lib
         or: set golem None
         """
         args = [name] + args[:]
-        if not (args[0] in ['ninja','collier'] and args[1]=='./HEPTools/lib'):
+        if not (args[0] in ['ninja','ninjars','collier'] and args[1]=='./HEPTools/lib'):
             if args[1] in ['None',"''",'""']:
                 self.options[args[0]] = None
             else:
@@ -13057,6 +13118,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     set2_golem = lambda self, *args, **opts : self.setup_path_for_options('golem'   , *args, **opts)
     set2_samurai = lambda self, *args, **opts : self.setup_path_for_options('samurai' , *args, **opts)  
     set2_ninja = lambda self, *args, **opts : self.setup_path_for_options('ninja'   , *args,   **opts)
+    set2_ninjars = lambda self, *args, **opts : self.setup_path_for_options('ninjars', *args, **opts)
     set2_collier = lambda self,*args, **opts : self.setup_path_for_options('collier' , *args, **opts)
 
     def set2_lhapdf(self, args, log=True):
@@ -13831,7 +13893,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         elif args[0] == 'fastjet':
             raise Exception('This option is now handled by a dedicated function.')
             # set_fastjet(args[1:], log=log)
-        elif args[0] in ['golem','samurai','ninja','collier']:
+        elif args[0] in ['golem','samurai','ninja','ninjars','collier']:
             raise Exception('This option is now handled by a dedicated function.')
             # setup_path_for_options(args, log=log)
         elif args[0].startswith('lhapdf'):
