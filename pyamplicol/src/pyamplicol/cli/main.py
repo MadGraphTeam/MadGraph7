@@ -197,7 +197,14 @@ def run_cli(
     try:
         invocation = parse_cli(argv)
         if isinstance(invocation, RecurrenceExportInvocation):
-            result = invocation.run()
+            sink = progress_sink(
+                "auto",
+                stream=diagnostic_stream,
+                color=_color_enabled(invocation.output_color, diagnostic_stream),
+            )
+            result = invocation.run(progress=sink)
+            close_progress_sink(sink)
+            sink = None
             write_result(
                 result,
                 format=invocation.output_format,

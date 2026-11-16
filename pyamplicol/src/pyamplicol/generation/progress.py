@@ -388,6 +388,7 @@ class GenerationPhaseReporter:
         total: int,
         details: Mapping[str, ProgressDetailValue],
         signature: str | None = None,
+        description: str = "Generating processes",
     ) -> None:
         """Open the generation; ``signature`` (``GenerationHistory.
         signature_of`` of the request's settings) names its history: the
@@ -405,7 +406,7 @@ class GenerationPhaseReporter:
             self.sink.emit(
                 ProgressStart(
                     task_id,
-                    "Generating processes",
+                    description,
                     total=total,
                     unit="phases",
                     details=root_details,
