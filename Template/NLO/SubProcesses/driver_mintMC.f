@@ -660,7 +660,8 @@ c
       logical firsttime,passcuts,passcuts_native_born,
      $     passcuts_nbody,passcuts_n1body
       logical rejected_point,weights_valid,born_cuts_for_flow,
-     $     calibrating_spread
+     $     calibrating_spread,folded
+      save folded
       save rejected_point
       data rejected_point/.false./
       integer i,ifl,proc_map(0:fks_configs,0:fks_configs),nFKS_picked_nbody,nFKS_in,nFKS_out,izero,mohdr,iFKS,sum,
@@ -674,6 +675,7 @@ c
       external passcuts,passcuts_native_born
       parameter (izero=0,mohdr=-100)
       data firsttime/.true./
+c fold is unused; it keeps the /cfl/ layout shared with other files.
       integer     fold,ifold_counter
       common /cfl/fold,ifold_counter
       integer              MCcntcalled
@@ -730,6 +732,7 @@ c Each fold owns its Born sample; compatible sectors can reuse it.
 c Find the nFKSprocess for which we compute the Born-like contributions
       if (firsttime) then
          firsttime=.false.
+         folded=any(ifold(1:ndim).gt.1)
 c Determines the proc_map that sets which FKS configuration can be
 c summed explicitly and which by MC-ing.
          call setup_proc_map(sum,proc_map,ini_fin_fks)
@@ -756,7 +759,6 @@ c "npNLO".
          ifold_counter=ifold_counter+1
       endif
 
-      fold=ifl
 ! A failed colour draw or MC map invalidates the entire folded point.
 ! Keep advancing fold counters, but never retain a later fold by itself.
       if(rejected_point)goto 900
@@ -767,6 +769,7 @@ c "npNLO".
             born_wgt_mint(0:amp_split_size)=0d0
             virtual_over_born=0d0
             call vs_begin_point
+            call reset_folded_virtual
             born_flow_picked=0
          endif
          MCcntcalled=0
@@ -816,6 +819,7 @@ c 1/proc_map(0,0)*vol1)
          p_lab=phase_space%p_lab
          p_cms=phase_space%p_cms
          if (p_born(0,1).lt.0d0) goto 12
+         call check_event_projection(.false.)
          if (FKSExplicitSum) then
             sum_born=phase_space%born%p
             sum_xbjrk=phase_space%born%xbjrk
@@ -878,12 +882,15 @@ c 1/proc_map(0,0)*vol1)
             call sborn_frame(p_born,wgt1)
             call get_born_flow(born_flow_picked,born_flow_factor)
             if(born_flow_picked.eq.0)goto 900
-! A second massive solution has no soft endpoint, but another sector
-! in an explicit FKS sum can have one at the same Born point. Check
+! A second massive solution has no soft endpoint, but another fold or
+! sector can have one at the same Born point. Check
 ! the physical Born cuts before marking its shared flow negative.
+! Without folding or an explicit FKS sum no other fold or sector can
+! give an S event at this Born, so H events keep their dipole scale.
 ! Born/virtual weights still require the reference sector's endpoint.
             born_cuts_for_flow=.false.
-            if(FKSExplicitSum.and.p1_cnt(0,1,0).lt.0d0)then
+            if(p1_cnt(0,1,0).lt.0d0.and.(folded.or.FKSExplicitSum)
+     $           .and.phase_space%born%event_projection)then
                p_born_flow(:,1:i_fks-1)=p_born(:,1:i_fks-1)
                p_born_flow(:,i_fks)=0d0
                p_born_flow(:,i_fks+1:nexternal)=
@@ -948,13 +955,10 @@ c the active Born. Starting scales still belong to the shared sample.
 c Every contribution has to have a viable set of Born momenta (even if
 c counter-event momenta do not exist).
             if (p_born(0,1).lt.0d0) cycle
+            call check_event_projection(.true.)
             if (FKSExplicitSum) then
 c All S records in this fold must describe the same underlying event.
 c Check the sampled Born before native H histories change active data.
-               if (.not.phase_space%born%event_projection) then
-                  write(*,*) 'FKSExplicitSum requires event projection'
-                  stop 1
-               endif
                if (have_sum_born) then
                   if (maxval(abs(phase_space%born%p-sum_born)).gt.
      $                1d-10*max(1d0,maxval(abs(sum_born))).or.
@@ -1143,6 +1147,21 @@ c Use the final, finite PDF/bias weights of the complete point for the fit.
       f=0d0
       if(ifl.eq.2)call fill_MC_integer(1,proc_map(0,1),0d0)
       return
+      contains
+      subroutine check_event_projection(sector_sum)
+c Folds must share their Born point, also in Born-only and virtual-only
+c runs. FKSExplicitSum only matters where sectors are summed: Born-only
+c and virtual-only runs never reach the real-emission sector loop.
+      logical,intent(in) :: sector_sum
+      if (phase_space%born%event_projection) return
+      if (folded) then
+         write(*,*) 'Folding requires event projection'
+         stop 1
+      elseif (sector_sum.and.FKSExplicitSum) then
+         write(*,*) 'FKSExplicitSum requires event projection'
+         stop 1
+      endif
+      end subroutine check_event_projection
       end
 
       subroutine repartition_MC_H(first_native,p,p_lab,p_cms,
