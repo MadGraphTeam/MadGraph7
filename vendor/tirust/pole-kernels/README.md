@@ -7,10 +7,11 @@ origin separation belongs to TIRust's tensor executor; these scalar outputs are
 the total poles, including the cancellation in a scaleless bubble.
 
 The committed Rust kernels are generated from oneloopmaster revision
-`bd703d09a78f7849a6b86a07096e6f222fc01193`. The crate builds against
-`07fc754f656c4744c9464f7c0f47d00b708b37e6`, the revision TIRust `2b9ba96` uses; it
-changes only oneloopmaster's Symbolica dependency, Python bindings and one test, so
-`src/` and the generated kernels are unchanged. The generator requests only the Laurent
+`07fc754f656c4744c9464f7c0f47d00b708b37e6`, the revision TIRust `2b9ba96` uses,
+with Symbolica community `d0424f9e414d3007889f8a98b404a1b1a91b37a7`. Regenerating
+them there gave kernel sources byte-identical to the earlier generation from
+`bd703d09a78f7849a6b86a07096e6f222fc01193`; only the revision recorded in
+`generated_manifest.txt` changed. The generator requests only the Laurent
 tags `[-1, -2]` through the public `OneLoopExpressions::evaluator` and
 `RustEmitter` APIs. The kernels use oneloopmaster's public native numeric runtime.
 No master formula, numerical primitive, or Symbolica source is copied or patched.

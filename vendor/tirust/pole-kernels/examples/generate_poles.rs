@@ -6,7 +6,7 @@ use oneloop::{A0, B0, C0, D0, OneLoopExpressions, ScalarIntegral};
 use std::path::PathBuf;
 use symbolica::atom::Atom;
 
-const SOURCE_REVISION: &str = "bd703d09a78f7849a6b86a07096e6f222fc01193";
+const SOURCE_REVISION: &str = "07fc754f656c4744c9464f7c0f47d00b708b37e6";
 const LAURENT_TAGS: [i32; 2] = [-1, -2];
 
 fn generate(directory: PathBuf) -> Result<(), String> {
