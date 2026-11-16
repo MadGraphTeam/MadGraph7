@@ -909,11 +909,11 @@ FKSCrossSection::FKSCrossSection(
     const std::optional<NLOCuts>& cuts,
     const NLOScale& scale,
     const RunningCoupling& running_coupling,
-    const FKSLuminosity& luminosity,
-    const FKSLuminosity& born_luminosity,
+    const NLOLuminosity& luminosity,
+    const NLOLuminosity& born_luminosity,
     const std::optional<NLOCuts>& nbody_cuts,
     const std::vector<std::pair<double, double>>& scale_variations,
-    const std::vector<std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>&
+    const std::vector<std::tuple<RunningCoupling, NLOLuminosity, NLOLuminosity>>&
         pdf_variations
 ) :
     FunctionGenerator(
@@ -972,7 +972,7 @@ FKSCrossSection::FKSCrossSection(
     }
     std::size_t count = subtraction.configuration_count();
     auto check_luminosities =
-        [&](const FKSLuminosity& real, const FKSLuminosity& nbody) {
+        [&](const NLOLuminosity& real, const NLOLuminosity& nbody) {
             if (real.sum_flavors() != nbody.sum_flavors() ||
                 real.sum_flavors() != luminosity.sum_flavors()) {
                 throw std::invalid_argument(
@@ -988,12 +988,13 @@ FKSCrossSection::FKSCrossSection(
             }
             // with a flavor index the n-body part takes the Born of the real
             // flavor, per configuration
-            if (real.configuration_count() != count ||
-                (nbody.configuration_count() != count &&
-                 (nbody.configuration_count() != 1 || !real.sum_flavors()))) {
+            if (real.all_groups() || nbody.all_groups() ||
+                real.group_count() != count ||
+                (nbody.group_count() != count &&
+                 (nbody.group_count() != 1 || !real.sum_flavors()))) {
                 throw std::invalid_argument(
-                    "FKSCrossSection: the luminosities need the FKS configurations of "
-                    "the subtraction"
+                    "FKSCrossSection: the luminosities need one group per FKS "
+                    "configuration of the subtraction"
                 );
             }
         };
@@ -1044,8 +1045,8 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
         [&](double ren_factor,
             double fact_factor,
             const RunningCoupling& running_coupling,
-            const FKSLuminosity& real_luminosity,
-            const FKSLuminosity& born_luminosity) {
+            const NLOLuminosity& real_luminosity,
+            const NLOLuminosity& born_luminosity) {
             std::map<std::string, Value> out;
             auto factor = [&](Value value, double f) {
                 return f == 1. ? value : fb.mul(value, fb.full({f, batch_size}));
@@ -1062,7 +1063,7 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
                 bool nbody = kinematics == "born_";
                 const auto& function = nbody ? born_luminosity : real_luminosity;
                 Value index = args.at("fks_index");
-                if (function.configuration_count() == 1) {
+                if (function.group_count() == 1) {
                     index = fb.full({static_cast<me_int_t>(0), batch_size});
                 }
                 std::vector<Value> inputs{

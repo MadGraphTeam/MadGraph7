@@ -1,7 +1,7 @@
 """Beams of elastic photons from protons at NLO (lpp 2 of the run card): the
 equivalent-photon density of a proton that stays intact
 (ElasticPhotonDensity), the luminosity of the FKS integrand with it
-(FKSLuminosity with photon_beams, and fks_luminosities for lpp 2 and -2),
+(NLOLuminosity with photon_beams, and fks_luminosities for lpp 2 and -2),
 and the beams the NLO drivers take.
 
 The density must be epa_proton of PhotonFlux.f of MadGraph (the improved
@@ -95,8 +95,8 @@ def test_density():
     np.testing.assert_allclose(ours, fortran, rtol=1e-6, atol=atol)
 
 
-def test_fks_luminosity():
-    """FKSLuminosity of beams of elastic photons: the product of the
+def test_nlo_luminosity():
+    """NLOLuminosity of beams of elastic photons: the product of the
     densities of the photons for a flavor of two photons, with its factor,
     none for the flavors with another parton."""
     x, q = points(count=100, seed=2)
@@ -107,7 +107,7 @@ def test_fks_luminosity():
     f2 = call(density, x2, q2)["pdf"] / x2
     flavors = [[[22, 22], [22, 1]], [[1, 22], [22, 22]]]
     factors = [[2.0, 1.0], [1.0, 0.5]]
-    luminosity = ms.FKSLuminosity(
+    luminosity = ms.NLOLuminosity(
         flavors, sum_flavors=True, factors=factors, photon_beams=[True, True]
     )
     assert not luminosity.has_pdf()
@@ -139,13 +139,13 @@ def test_fks_luminosities():
         np.testing.assert_allclose(out, f * f, rtol=1e-15)
 
 
-def test_fks_luminosity_invalid(tmp_path):
+def test_nlo_luminosity_invalid(tmp_path):
     """A beam of elastic photons takes no densities of a grid."""
     path = str(tmp_path / "NNPDF23nlo_as_0119_qed_0000.dat")
     write_lhapdf_grid(path)
     grid_less = dict(photon_beams=[True, False], densities=[True, True])
     with pytest.raises(ValueError, match="elastic photons"):
-        ms.FKSLuminosity([[[22, 1]]], ms.PdfGrid(path), **grid_less)
+        ms.NLOLuminosity([[[22, 1]]], ms.PdfGrid(path), **grid_less)
 
 
 def test_run_card():

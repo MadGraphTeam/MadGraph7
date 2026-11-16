@@ -41,7 +41,7 @@ import tempfile
 import numpy as np
 import pytest
 from fks_testing import fks_output
-from madgraph.mg7.nlo.core import Runtime
+from madgraph.mg7.nlo.core import Runtime, light_flavors, madspace
 from madgraph.mg7.nlo.cs import (
     STREAMS,
     CSRun,
@@ -509,3 +509,74 @@ def test_technical_cut(real_stream):
         assert (smallest[inside] >= 1e-6 * (1 - 1e-6)).all()
         out = integrand.evaluate(index, x, None, None, None, None)
         assert (out["real_weight"][inside] != 0).all(), index
+
+
+@needs_outputs
+@pytest.mark.parametrize("name", ["pp_ttx", "pp_epem_qed"])
+def test_convolution_luminosities(real_stream, name):
+    """The luminosity of the Born is the sum over its flavors of the
+    densities of PartonDensity at x_i, and those of the K and P operators of
+    each beam (NLOLuminosity with every group at once) the sums of the
+    density of the same parton and of the partons that split into it (QCD:
+    the gluon for a quark, the quarks for a gluon, QED: the photon for a
+    quark, the quarks with Q_q^2 for a photon) at x_i / z over z, zero for
+    x_i / z above one, times the density of the Born parton of the other
+    beam."""
+    from madspace.nlo.cs import charge
+
+    run = real_stream(name, 1e-6)
+    n_f, _ = light_flavors(run.output)
+    quarks = [q for k in range(1, int(n_f) + 1) for q in (k, -k)]
+    pids = [p for p in run.couplings.pdf.pids if p in (21, 22, *quarks)]
+    density = Runtime(madspace().PartonDensity(run.couplings.pdf, pids), run.context)
+    count = 500
+    zero = np.zeros(count)
+
+    def densities(x, q):
+        values = density(x, q)["pdf"] / x[:, None]
+        return {p: values[:, k] for k, p in enumerate(pids)}
+
+    def close(ours, theirs):
+        scale = np.abs(theirs).max()
+        np.testing.assert_allclose(ours, theirs, rtol=1e-13, atol=1e-14 * scale)
+
+    rng = np.random.default_rng(3)
+    for born in run.subprocesses.values():
+        assert born.groups
+        x = 10 ** rng.uniform(-4, -1e-3, (2, count))
+        mu = 10 ** rng.uniform(0.5, 3.5, (2, count))
+        # z between x_i and one, some just below x_i
+        z = x.T + (1 - x.T) * rng.uniform(0, 1, (count, 2))
+        z = np.where(rng.random((count, 2)) < 0.05, x.T * (1 - 1e-3), z)
+        ours, convolved = born.luminosities(*x, *mu, z)
+        at = [densities(x[leg], mu[leg]) for leg in range(2)]
+        close(
+            ours,
+            sum(at[0].get(a, zero) * at[1].get(b, zero) for a, b, *_ in born.flavors),
+        )
+        assert set(convolved) == set(born.groups)
+        for leg in range(2):
+            inside = x[leg] / z[:, leg] <= 1
+            assert inside.any() and not inside.all()
+            shifted = densities(np.where(inside, x[leg] / z[:, leg], 0.5), mu[leg])
+            shifted = {
+                p: np.where(inside, value / z[:, leg], 0.0)
+                for p, value in shifted.items()
+            }
+            for group in born.groups:
+                mother = 21 if group == "QCD" else 22
+                same = splitting = zero
+                for flavor in born.flavors:
+                    parton, partner = flavor[leg], flavor[1 - leg]
+                    other = at[1 - leg].get(partner, zero)
+                    same = same + shifted.get(parton, zero) * other
+                    if parton != mother:
+                        split = shifted.get(mother, zero)
+                    else:
+                        split = sum(
+                            (1.0 if group == "QCD" else charge(q) ** 2) * shifted[q]
+                            for q in quarks
+                        )
+                    splitting = splitting + split * other
+                close(convolved[group][:, leg, 0], same)
+                close(convolved[group][:, leg, 1], splitting)

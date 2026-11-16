@@ -252,7 +252,7 @@ CASES = {
         muf2_over_ref=1.0,
         incoming=2,
     ),
-    "FKSLuminosity": dict(flavors=[[[2, -2], [4, -4]], [[21, -2]]]),
+    "NLOLuminosity": dict(flavors=[[[2, -2], [4, -4]], [[21, -2]]]),
     "FKSCrossSection": dict(
         subtraction=ms.FKSSubtraction(
             FKS_CONFIGURATIONS, ms.FKSCouplingOrders(**FKS_COUPLING_ORDERS)

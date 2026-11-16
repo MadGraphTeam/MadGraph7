@@ -248,7 +248,7 @@ add_library(
     src/nlo/common.cpp
     src/nlo/fks_configuration.cpp
     src/nlo/fks_limits.cpp
-    src/nlo/fks_luminosity.cpp
+    src/nlo/luminosity.cpp
     src/nlo/fks_histograms.cpp
     src/nlo/fks_mapping.cpp
     src/nlo/fks_radiation.cpp
@@ -325,7 +325,7 @@ add_library(
     include/madspace/nlo/scale.hpp
     include/madspace/nlo/common.hpp
     include/madspace/nlo/fks_configuration.hpp
-    include/madspace/nlo/fks_luminosity.hpp
+    include/madspace/nlo/luminosity.hpp
     include/madspace/nlo/fks_histograms.hpp
     include/madspace/nlo/fks_limits.hpp
     include/madspace/nlo/fks_mapping.hpp
@@ -423,7 +423,7 @@ set(
     src/kernels/nlo/histograms.hpp
     src/kernels/nlo/scale.hpp
     src/kernels/nlo/common.hpp
-    src/kernels/nlo/fks_luminosity.hpp
+    src/kernels/nlo/luminosity.hpp
     src/kernels/nlo/fks_radiation.hpp
     src/kernels/nlo/fks_subtraction.hpp
     src/kernels/nlo/cs_integrated.hpp

@@ -8,8 +8,8 @@
 #include "madspace/nlo/cuts.hpp"
 #include "madspace/nlo/fks_configuration.hpp"
 #include "madspace/nlo/fks_limits.hpp"
-#include "madspace/nlo/fks_luminosity.hpp"
 #include "madspace/nlo/fks_sector.hpp"
+#include "madspace/nlo/luminosity.hpp"
 #include "madspace/nlo/scale.hpp"
 #include "madspace/phasespace/base.hpp"
 #include "madspace/util.hpp"
@@ -608,7 +608,7 @@ private:
  * the soft parton at the position of that of the configuration, the n-body
  * part takes them at the soft counter-event of the event, else the cuts.
  *
- * With @ref NLOScale, a @ref RunningCoupling and the @ref FKSLuminosity of
+ * With @ref NLOScale, a @ref RunningCoupling and the @ref NLOLuminosity of
  * the real emission and of the Born, the integrand takes the scales, the
  * couplings and the luminosities itself, as sigint: the scales of the Born
  * for the n-body part and the soft and soft-collinear counterterms (MadFKS
@@ -622,7 +622,7 @@ private:
  * `soft_x1`, `soft_x2`, `collinear_x1`, `collinear_x2`, `soft_collinear_x1`,
  * `soft_collinear_x2`, `born_x1` and `born_x2`, and with luminosities of one
  * flavor `flavor_index` before `fks_index`, the flavor of the event among the
- * real flavors of its configuration (see @ref FKSLuminosity). The
+ * real flavors of its configuration (see @ref NLOLuminosity). The
  * soft-collinear remnants take the factorization scales of the collinear
  * counter-event, which equal those of the Born for the scale choices of
  * @ref NLOScale. With the scale of the user (@ref NLOScale::user()) its
@@ -710,11 +710,11 @@ public:
         const std::optional<NLOCuts>& cuts,
         const NLOScale& scale,
         const RunningCoupling& running_coupling,
-        const FKSLuminosity& luminosity,
-        const FKSLuminosity& born_luminosity,
+        const NLOLuminosity& luminosity,
+        const NLOLuminosity& born_luminosity,
         const std::optional<NLOCuts>& nbody_cuts = std::nullopt,
         const std::vector<std::pair<double, double>>& scale_variations = {},
-        const std::vector<std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>&
+        const std::vector<std::tuple<RunningCoupling, NLOLuminosity, NLOLuminosity>>&
             pdf_variations = {}
     );
     /// The real emission and its counterterms.
@@ -734,9 +734,9 @@ public:
         return _running_coupling;
     }
     /// The luminosity of the real emission, if inside.
-    const std::optional<FKSLuminosity>& luminosity() const { return _luminosity; }
+    const std::optional<NLOLuminosity>& luminosity() const { return _luminosity; }
     /// The luminosity of the n-body part, if inside.
-    const std::optional<FKSLuminosity>& born_luminosity() const {
+    const std::optional<NLOLuminosity>& born_luminosity() const {
         return _born_luminosity;
     }
     /// The pairs of factors of @f$\mu_R@f$ and @f$\mu_F@f$ of the scale
@@ -746,7 +746,7 @@ public:
     }
     /// @f$\alpha_s@f$ and the luminosities of the real emission and of the
     /// n-body part of the PDF variations, empty for none.
-    const std::vector<std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>&
+    const std::vector<std::tuple<RunningCoupling, NLOLuminosity, NLOLuminosity>>&
     pdf_variations() const {
         return _pdf_variations;
     }
@@ -762,9 +762,9 @@ private:
     std::optional<NLOCuts> _cuts, _nbody_cuts;
     std::optional<NLOScale> _scale, _born_scale;
     std::optional<RunningCoupling> _running_coupling;
-    std::optional<FKSLuminosity> _luminosity, _born_luminosity;
+    std::optional<NLOLuminosity> _luminosity, _born_luminosity;
     std::vector<std::pair<double, double>> _scale_variations;
-    std::vector<std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>
+    std::vector<std::tuple<RunningCoupling, NLOLuminosity, NLOLuminosity>>
         _pdf_variations;
 };
 

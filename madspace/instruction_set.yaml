@@ -4150,7 +4150,10 @@ fks_contribution_weight:
       desc: "the weight in pb (a width in GeV for a decay), zero where det is zero"
   desc: "The weight of one contribution of the FKS integrand at its own kinematics, INV_GEV2_TO_PB luminosity factor det / (2 s) sum_o g_s^powers[o] coefficients[o] with g_s = sqrt(4 pi alpha_s) and s = (p_1 + p_2)^2 of its momenta. A decay of mass M = sqrt(p_1^2) has the flux 1 / (2 M) in place of 1 / (2 s) and no conversion to pb. As sigint of driver_mintFO.f, which multiplies the weight lines without the strong coupling by g_strong^QCDpower at the scales of their own kinematics and by the luminosity of their momentum fractions. See @ref FKSWeights."
 
-fks_luminosity:
+---
+title: NLO cuts, scales and histograms
+
+nlo_luminosity:
   inputs:
     - name: pdf1
       type: [float, a]
@@ -4166,24 +4169,21 @@ fks_luminosity:
       desc: "momentum fraction of the second beam"
     - name: index
       type: [int]
-      desc: "FKS configuration of the event"
+      desc: "group of flavors of the event"
     - name: flavor
       type: [int]
-      desc: "flavor of the event among those of its configuration, negative for their sum"
+      desc: "flavor of the event among those of its group, negative for their sum"
     - name: flavors
       type: [int, single, c, f]
-      desc: "for each configuration the positions in pdf1 and pdf2 of its flavors, in pairs, -2 for a flavor without density, -1 after the last"
+      desc: "for each group the positions in pdf1 and pdf2 of its flavors, in pairs, -2 for a flavor without density, -1 after the last"
     - name: factors
       type: [float, single, c, g]
-      desc: "for each configuration the factor of each of its flavors"
+      desc: "for each group the factor of each of its flavors"
   outputs:
     - name: luminosity
       type: [float]
       desc: "f_1(x_1) f_2(x_2) of the flavor, or the sum over the flavors, times the factors"
-  desc: "The parton luminosity of one kinematics, PD of the parton_lum_*.f files of MadFKS for the flavor of the event or summed over the flavors of its FKS configuration, each times its factor, without the conversion to pb. See @ref FKSLuminosity."
-
----
-title: NLO cuts, scales and histograms
+  desc: "The parton luminosity of one kinematics, PD of the parton_lum_*.f files of MadFKS for the flavor of the event or summed over the flavors of its group (the flavors of an FKS configuration or of a Catani-Seymour subprocess), each times its factor, without the conversion to pb. See @ref NLOLuminosity."
 
 nlo_cuts:
   inputs:

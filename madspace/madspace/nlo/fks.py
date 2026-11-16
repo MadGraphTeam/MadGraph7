@@ -106,7 +106,6 @@ from .._madspace_py import (
     FKSCrossSection,
     FKSEikonals,
     FKSLimits,
-    FKSLuminosity,
     FKSMapping,
     FKSObservableHistograms,
     FKSPrefactors,
@@ -120,7 +119,13 @@ from .._madspace_py import (
     Observable,
     fks_sqrt_s_hat_min,
 )
-from . import JET_NAMES, histogram_jet_count, jet_observable, nlo_scale
+from . import (
+    JET_NAMES,
+    histogram_jet_count,
+    jet_observable,
+    nlo_luminosity,
+    nlo_scale,
+)
 
 FILE_NAME = "fks_configurations.json"
 
@@ -917,22 +922,6 @@ def fks_nbody_cuts(born, configurations, **cuts):
     )
 
 
-def _beam_flavors(flavors, beams, nincoming=2):
-    """The PDG codes of the two incoming partons of each flavor, those of a
-    beam of antiprotons (-1) charge conjugated, the decaying particle and 0
-    for a decay."""
-    if nincoming == 1:
-        return [[flavor[0], 0] for flavor in flavors]
-    result = []
-    for flavor in flavors:
-        pair = []
-        for pdg, beam in zip(flavor[:2], beams):
-            conjugate = beam == -1 and abs(pdg) not in (21, 22)
-            pair.append(-pdg if conjugate else pdg)
-        result.append(pair)
-    return result
-
-
 def _check_flavors(configurations):
     if "born_flavors" not in configurations or "real_flavors" not in configurations:
         raise ValueError(
@@ -998,9 +987,6 @@ def fks_born_flavor_indices(configurations):
 
 
 # the leptons of the beams of dressed leptons by lpp of the run card
-LEPTON_BEAMS = {3: 11, -3: -11, 4: 13, -4: -13}
-
-
 def fks_luminosities(
     configurations,
     pdf_grid=None,
@@ -1010,7 +996,7 @@ def fks_luminosities(
     lepton_luminosity=None,
     pdf_prefix="",
 ):
-    """The FKSLuminosity of the real emission (per FKS configuration, over the
+    """The NLOLuminosity of the real emission (per FKS configuration, over the
     flavors of its real matrix element) and that of the n-body part, as the
     parton_lum_*.f files of MadFKS.
 
@@ -1035,7 +1021,7 @@ def fks_luminosities(
             flavor index.
         lepton_luminosity: for dressed leptons, the EELuminosity of their
             densities, with the scales of the beams (beam_scales) and the
-            full densities (see FKSLuminosity).
+            full densities (see NLOLuminosity).
         pdf_prefix: the prefix of the globals of pdf_grid, for a member of a
             set of PDFs (see PdfGrid.initialize_globals).
 
@@ -1048,56 +1034,23 @@ def fks_luminosities(
             any real flavor of a configuration.
     """
     _check_flavors(configurations)
-    nincoming = int(configurations.get("nincoming", 2))
-    beams = (0, 0) if nincoming == 1 else tuple(int(beam) for beam in beams)
-    if any(beam not in (-2, -1, 0, 1, 2, *LEPTON_BEAMS) for beam in beams):
-        raise ValueError(
-            f"fks_luminosities: beams {beams} are not protons, antiprotons, "
-            "photons or leptons"
-        )
-    kinds = [
-        {1: "hadron", 2: "photon", 0: "lepton"}.get(abs(beam), "dressed")
-        for beam in beams
-    ]
-    if kinds[0] != kinds[1]:
-        raise ValueError(
-            f"fks_luminosities: beams {beams} are of two kinds, MadFKS has no DIS "
-            "at NLO"
-        )
-    densities = [kind == "hadron" for kind in kinds]
-    if any(densities) != (pdf_grid is not None):
-        raise ValueError(
-            "fks_luminosities: hadron beams need a PdfGrid and lepton beams none"
-        )
-    dressed = kinds[0] == "dressed"
-    if dressed != (lepton_luminosity is not None):
-        raise ValueError(
-            "fks_luminosities: dressed leptons need their EELuminosity and other "
-            "beams none"
-        )
     options = dict(
+        beams=beams,
         pdf_grid=pdf_grid,
         pdf_grid2=pdf_grid2,
-        densities=densities,
+        nincoming=int(configurations.get("nincoming", 2)),
         sum_flavors=sum_flavors,
+        lepton_luminosity=lepton_luminosity,
         pdf_prefix=pdf_prefix,
-        photon_beams=[kind == "photon" for kind in kinds],
     )
-    if dressed:
-        options.update(
-            lepton_luminosity=lepton_luminosity,
-            lepton_pdgs=[LEPTON_BEAMS[beam] for beam in beams],
-        )
     reals = [
         configurations["real_flavors"][c["real_me"] - 1]
         for c in configurations["configurations"]
     ]
-    real = FKSLuminosity(
-        [_beam_flavors(flavors, beams, nincoming) for flavors in reals], **options
-    )
-    born_flavors = _beam_flavors(configurations["born_flavors"], beams, nincoming)
+    real = nlo_luminosity(reals, **options)
+    born_flavors = configurations["born_flavors"]
     if sum_flavors:
-        return real, FKSLuminosity([born_flavors], **options)
+        return real, nlo_luminosity([born_flavors], **options)
     flavors, factors = [], []
     for k, indices in enumerate(fks_born_flavor_indices(configurations)):
         missing = set(range(len(born_flavors))) - set(indices)
@@ -1108,7 +1061,7 @@ def fks_luminosities(
             )
         flavors.append([born_flavors[b] for b in indices])
         factors.append([1.0 / indices.count(b) for b in indices])
-    return real, FKSLuminosity(flavors, factors=factors, **options)
+    return real, nlo_luminosity(flavors, factors=factors, **options)
 
 
 def fks_cross_section(

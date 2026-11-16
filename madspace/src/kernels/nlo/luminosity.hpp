@@ -5,19 +5,18 @@
 namespace madspace {
 namespace kernels {
 
-// The parton luminosity of one kinematics of the FKS integrand, that of the
+// The parton luminosity of one kinematics of an NLO integrand, that of the
 // parton_lum_*.f files of MadFKS.
 
 // The parton luminosity of one kinematics, f_1(x_1) f_2(x_2) of the flavor of
-// the event among those of its FKS configuration, or their sum for a negative
-// flavor index (PD of parton_lum_*.f, without the conversion to pb), each
-// times its factor, from the densities x f(x) of the two beams. flavors holds
-// for each configuration the positions in pdf1 and pdf2 of its flavors, in
-// pairs, -2 for a flavor without density and -1 after the last, and factors
-// the factor of each. A flavor index beyond the flavors of the configuration
-// gives zero.
+// the event among those of its group, or their sum for a negative flavor
+// index (PD of parton_lum_*.f, without the conversion to pb), each times its
+// factor, from the densities x f(x) of the two beams. flavors holds for each
+// group the positions in pdf1 and pdf2 of its flavors, in pairs, -2 for a
+// flavor without density and -1 after the last, and factors the factor of
+// each. A flavor index beyond the flavors of the group gives zero.
 template <typename T>
-KERNELSPEC void kernel_fks_luminosity(
+KERNELSPEC void kernel_nlo_luminosity(
     FIn<T, 1> pdf1,
     FIn<T, 1> pdf2,
     FIn<T, 0> x1,

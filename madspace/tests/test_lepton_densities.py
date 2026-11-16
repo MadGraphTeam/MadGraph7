@@ -1,6 +1,6 @@
 """Dressed electrons and positrons at NLO: the luminosity of their densities
 with the scale of each beam (EELuminosity with beam_scales, as DressedLeptons
-of the NLO drivers builds it), that of the FKS integrand (FKSLuminosity with
+of the NLO drivers builds it), that of the FKS integrand (NLOLuminosity with
 lepton_luminosity, and fks_luminosities for lpp 3 and -3), the CSMapping of
 a Born of dressed leptons, which keeps 1 - x of the beams, and the beams the
 NLO drivers take.
@@ -131,8 +131,8 @@ def test_reduced(pdlabel, tmp_root):
     )
 
 
-def test_fks_luminosity(tmp_root):
-    """FKSLuminosity of dressed leptons: the luminosity of the leptons of the
+def test_nlo_luminosity(tmp_root):
+    """NLOLuminosity of dressed leptons: the luminosity of the leptons of the
     beams for their flavor, with its factor, none for the other flavors (the
     photons of compute_eepdf of MadFKS), summed or per flavor."""
     dressed, context = leptons("ilc500ll", tmp_root)
@@ -144,7 +144,7 @@ def test_fks_luminosity(tmp_root):
     options = dict(
         factors=factors, lepton_luminosity=dressed.full, lepton_pdgs=[-11, 11]
     )
-    summed = ms.FKSLuminosity(flavors, sum_flavors=True, **options)
+    summed = ms.NLOLuminosity(flavors, sum_flavors=True, **options)
     assert summed.lepton()
     assert list(summed.arg_types().keys())[:4] == [
         "x1",
@@ -156,7 +156,7 @@ def test_fks_luminosity(tmp_root):
         index = np.full(len(x1), configuration, dtype=np.int32)
         out = call(summed, context, x1, x2, omx1, omx2, q1, q2, index)
         np.testing.assert_allclose(out["luminosity"], factor * expected, rtol=1e-15)
-    flavored = ms.FKSLuminosity(flavors, **options)
+    flavored = ms.NLOLuminosity(flavors, **options)
     for configuration, flavor, factor in ((0, 0, 2.0), (0, 1, 0.0), (1, 1, 0.5)):
         index = np.full(len(x1), configuration, dtype=np.int32)
         picked = np.full(len(x1), flavor, dtype=np.int32)
@@ -164,14 +164,14 @@ def test_fks_luminosity(tmp_root):
         np.testing.assert_allclose(out["luminosity"], factor * expected, rtol=1e-15)
 
 
-def test_fks_luminosity_invalid(tmp_root):
+def test_nlo_luminosity_invalid(tmp_root):
     dressed, _ = leptons("isronlyll", tmp_root)
     single = dressed.luminosity(0.0, beam_scales=False)
     with pytest.raises(ValueError, match="scales of the beams"):
-        ms.FKSLuminosity([[[-11, 11]]], lepton_luminosity=single)
+        ms.NLOLuminosity([[[-11, 11]]], lepton_luminosity=single)
     grid = ms.PdfGrid(dressed_grid_path(tmp_root))
     with pytest.raises(ValueError, match="no grid of hadrons"):
-        ms.FKSLuminosity([[[-11, 11]]], grid, lepton_luminosity=dressed.full)
+        ms.NLOLuminosity([[[-11, 11]]], grid, lepton_luminosity=dressed.full)
 
 
 def dressed_grid_path(tmp_root):

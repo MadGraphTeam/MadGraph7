@@ -1,4 +1,4 @@
-#include "madspace/nlo/fks_luminosity.hpp"
+#include "madspace/nlo/luminosity.hpp"
 
 #include <algorithm>
 #include <set>
@@ -6,7 +6,7 @@
 
 using namespace madspace;
 
-FKSLuminosity::FKSLuminosity(
+NLOLuminosity::NLOLuminosity(
     const nested_vector3<me_int_t>& flavors,
     const std::optional<PdfGrid>& pdf_grid,
     const std::optional<PdfGrid>& pdf_grid2,
@@ -17,10 +17,11 @@ FKSLuminosity::FKSLuminosity(
     const std::optional<EELuminosity>& lepton_luminosity,
     const std::array<int, 2>& lepton_pdgs,
     const std::string& pdf_prefix,
-    const std::array<bool, 2>& photon_beams
+    const std::array<bool, 2>& photon_beams,
+    bool all_groups
 ) :
     FunctionGenerator(
-        "FKSLuminosity",
+        "NLOLuminosity",
         [&] {
             NamedVector<Type> args{{"x1", batch_float}, {"x2", batch_float}};
             if (lepton_luminosity) {
@@ -32,76 +33,86 @@ FKSLuminosity::FKSLuminosity(
             if (!sum_flavors) {
                 args.push_back("flavor_index", batch_int);
             }
-            args.push_back("fks_index", batch_int);
+            if (!all_groups) {
+                args.push_back("group_index", batch_int);
+            }
             return args;
         }(),
-        NamedVector<Type>{{"luminosity", batch_float}}
+        NamedVector<Type>{
+            {"luminosity",
+             all_groups ? batch_float_array(static_cast<int>(flavors.size()))
+                        : batch_float}
+        }
     ),
     _sum_flavors(sum_flavors),
+    _all_groups(all_groups),
     _q_min{0., 0.},
     _q_max{0., 0.},
     _lepton_luminosity(lepton_luminosity),
     _photon_beams(photon_beams) {
     if (flavors.empty()) {
-        throw std::invalid_argument("FKSLuminosity: no FKS configurations");
+        throw std::invalid_argument("NLOLuminosity: no groups of flavors");
+    }
+    if (all_groups && !sum_flavors) {
+        throw std::invalid_argument(
+            "NLOLuminosity: the luminosity of all groups sums over their flavors"
+        );
     }
     if (lepton_luminosity && pdf_grid) {
         throw std::invalid_argument(
-            "FKSLuminosity: dressed leptons take no grid of hadrons"
+            "NLOLuminosity: dressed leptons take no grid of hadrons"
         );
     }
     for (std::size_t beam = 0; beam < 2; ++beam) {
         if (photon_beams.at(beam) &&
             (lepton_luminosity || (pdf_grid && densities.at(beam)))) {
             throw std::invalid_argument(
-                "FKSLuminosity: a beam of elastic photons takes no densities of a "
+                "NLOLuminosity: a beam of elastic photons takes no densities of a "
                 "grid or of dressed leptons"
             );
         }
     }
     if (lepton_luminosity && !lepton_luminosity->beam_scales()) {
         throw std::invalid_argument(
-            "FKSLuminosity: the luminosity of dressed leptons needs the scales "
+            "NLOLuminosity: the luminosity of dressed leptons needs the scales "
             "of the beams"
         );
     }
     if (pdf_grid2 && !pdf_grid) {
         throw std::invalid_argument(
-            "FKSLuminosity: a grid for the second beam needs one for the first"
+            "NLOLuminosity: a grid for the second beam needs one for the first"
         );
     }
     if (pdf_grid && !densities.at(0) && !densities.at(1)) {
         throw std::invalid_argument(
-            "FKSLuminosity: a grid needs a beam with densities"
+            "NLOLuminosity: a grid needs a beam with densities"
         );
     }
     if (!factors.empty() && factors.size() != flavors.size()) {
         throw std::invalid_argument(
-            "FKSLuminosity: the factors need the FKS configurations of the flavors"
+            "NLOLuminosity: the factors need the groups of the flavors"
         );
     }
     std::size_t flavor_max = 0;
     for (std::size_t c = 0; c < flavors.size(); ++c) {
-        const auto& configuration = flavors.at(c);
-        if (configuration.empty()) {
+        const auto& group = flavors.at(c);
+        if (group.empty()) {
+            throw std::invalid_argument("NLOLuminosity: a group without flavors");
+        }
+        if (!factors.empty() && factors.at(c).size() != group.size()) {
             throw std::invalid_argument(
-                "FKSLuminosity: an FKS configuration without flavors"
+                "NLOLuminosity: a factor for each flavor of each group"
             );
         }
-        if (!factors.empty() && factors.at(c).size() != configuration.size()) {
-            throw std::invalid_argument(
-                "FKSLuminosity: a factor for each flavor of each FKS configuration"
-            );
-        }
-        for (const auto& flavor : configuration) {
+        for (const auto& flavor : group) {
             if (flavor.size() != 2) {
                 throw std::invalid_argument(
-                    "FKSLuminosity: a flavor needs the PDG codes of the two "
+                    "NLOLuminosity: a flavor needs the PDG codes of the two "
                     "incoming partons"
                 );
             }
         }
-        flavor_max = std::max(flavor_max, configuration.size());
+        flavor_max = std::max(flavor_max, group.size());
     }
     // the flavors of each beam with densities in the grid, in their order
     std::array<std::vector<int>, 2> pids;
@@ -111,8 +122,8 @@ FKSLuminosity::FKSLuminosity(
             continue;
         }
         std::set<int> beam_pids;
-        for (const auto& configuration : flavors) {
-            for (const auto& flavor : configuration) {
+        for (const auto& group : flavors) {
+            for (const auto& flavor : group) {
                 int pid = static_cast<int>(flavor.at(beam));
                 if (std::find(grid->pids.begin(), grid->pids.end(), pid) !=
                     grid->pids.end()) {
@@ -182,7 +193,7 @@ FKSLuminosity::FKSLuminosity(
     }
 }
 
-NamedVector<Value> FKSLuminosity::build_function_impl(
+NamedVector<Value> NLOLuminosity::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     auto batch_size = fb.batch_size({args.at("x1")});
@@ -231,17 +242,25 @@ NamedVector<Value> FKSLuminosity::build_function_impl(
     Value flavor = _sum_flavors
         ? fb.full({static_cast<me_int_t>(-1), batch_size})
         : args.at("flavor_index");
-    return {
-        {"luminosity",
-         fb.fks_luminosity(
-             pdfs.at(0),
-             pdfs.at(1),
-             xs.at(0),
-             xs.at(1),
-             args.at("fks_index"),
-             flavor,
-             _positions,
-             _factors
-         )}
+    auto luminosity = [&](Value group) {
+        return fb.nlo_luminosity(
+            pdfs.at(0),
+            pdfs.at(1),
+            xs.at(0),
+            xs.at(1),
+            group,
+            flavor,
+            _positions,
+            _factors
+        );
     };
+    if (!_all_groups) {
+        return {{"luminosity", luminosity(args.at("group_index"))}};
+    }
+    // every group from the same densities
+    ValueVec groups;
+    for (std::size_t c = 0; c < _positions.size(); ++c) {
+        groups.push_back(luminosity(fb.full({static_cast<me_int_t>(c), batch_size})));
+    }
+    return {{"luminosity", fb.stack(groups)}};
 }

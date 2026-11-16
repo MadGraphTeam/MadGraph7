@@ -4162,8 +4162,8 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     // the parts of the FKS integrand that take a PdfGrid or a RunningCoupling,
     // after these for their names in the signatures
-    py::classh<FKSLuminosity, FunctionGenerator>(
-        m, "FKSLuminosity", pydoc::doc("FKSLuminosity")
+    py::classh<NLOLuminosity, FunctionGenerator>(
+        m, "NLOLuminosity", pydoc::doc("NLOLuminosity")
     )
         .def(
             py::init<
@@ -4177,7 +4177,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<EELuminosity>&,
                 const std::array<int, 2>&,
                 const std::string&,
-                const std::array<bool, 2>&>(),
+                const std::array<bool, 2>&,
+                bool>(),
             py::arg("flavors"),
             py::arg("pdf_grid") = std::nullopt,
             py::arg("pdf_grid2") = std::nullopt,
@@ -4189,20 +4190,26 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("lepton_pdgs") = std::array<int, 2>{0, 0},
             py::arg("pdf_prefix") = "",
             py::arg("photon_beams") = std::array<bool, 2>{false, false},
-            pydoc::doc("FKSLuminosity::FKSLuminosity")
+            py::arg("all_groups") = false,
+            pydoc::doc("NLOLuminosity::NLOLuminosity")
         )
         .def(
             "sum_flavors",
-            &FKSLuminosity::sum_flavors,
-            pydoc::doc("FKSLuminosity::sum_flavors")
+            &NLOLuminosity::sum_flavors,
+            pydoc::doc("NLOLuminosity::sum_flavors")
         )
-        .def("lepton", &FKSLuminosity::lepton, pydoc::doc("FKSLuminosity::lepton"))
+        .def("lepton", &NLOLuminosity::lepton, pydoc::doc("NLOLuminosity::lepton"))
         .def(
-            "configuration_count",
-            &FKSLuminosity::configuration_count,
-            pydoc::doc("FKSLuminosity::configuration_count")
+            "group_count",
+            &NLOLuminosity::group_count,
+            pydoc::doc("NLOLuminosity::group_count")
         )
-        .def("has_pdf", &FKSLuminosity::has_pdf, pydoc::doc("FKSLuminosity::has_pdf"));
+        .def(
+            "all_groups",
+            &NLOLuminosity::all_groups,
+            pydoc::doc("NLOLuminosity::all_groups")
+        )
+        .def("has_pdf", &NLOLuminosity::has_pdf, pydoc::doc("NLOLuminosity::has_pdf"));
 
     fks_cross_section
         .def(
@@ -4213,12 +4220,12 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<NLOCuts>&,
                 const NLOScale&,
                 const RunningCoupling&,
-                const FKSLuminosity&,
-                const FKSLuminosity&,
+                const NLOLuminosity&,
+                const NLOLuminosity&,
                 const std::optional<NLOCuts>&,
                 const std::vector<std::pair<double, double>>&,
                 const std::vector<
-                    std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>&>(),
+                    std::tuple<RunningCoupling, NLOLuminosity, NLOLuminosity>>&>(),
             py::arg("subtraction"),
             py::arg("soft_virtual"),
             py::arg("weights"),
@@ -4229,9 +4236,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("born_luminosity"),
             py::arg("nbody_cuts") = std::nullopt,
             py::arg("scale_variations") = std::vector<std::pair<double, double>>{},
-            py::arg("pdf_variations") =
-                std::vector<std::tuple<RunningCoupling, FKSLuminosity, FKSLuminosity>>{
-                },
+            py::arg("pdf_variations") = std::vector<
+                std::tuple<RunningCoupling, NLOLuminosity, NLOLuminosity>>{},
             pydoc::doc("FKSCrossSection::FKSCrossSection#2")
         )
         .def(

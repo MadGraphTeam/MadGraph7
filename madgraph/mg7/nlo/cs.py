@@ -78,7 +78,10 @@ the power p of the sampling of their momentum fractions in PhaseSpaceMapping
 momentum fractions of the Born. Beams of elastic photons from protons (lpp
 2 and -2) take the equivalent-photon density of epa_proton of MadFKS
 (ElasticPhotonDensity). Neither the leptons nor the photons radiate QCD, so
-that their Borns have no K and P operators.
+that their Borns have no K and P operators. The luminosities of all beams
+are those of NLOLuminosity (nlo_luminosity of madspace.nlo), which the FKS
+integrand takes too: the Born and the real over their flavors, and those of
+K and P per beam at x_i / z with every group of partons at once.
 
 The cuts are those of cuts.f with the photon isolation and the
 recombination of photons (NLOCuts), all photons to be isolated.
@@ -260,44 +263,65 @@ def correction_orders(orders, groups=("QCD",)):
     return out
 
 
-class DressedLuminosity:
-    """The luminosity of the dressed leptons of a DressedLeptons over flavors
-    (lists with the PDG codes of the incoming partons first): its reduced
-    EELuminosity for each flavor with the leptons of the beams, none for the
-    others (compute_eepdf of MadFKS has no photon)."""
+class Luminosity:
+    """The luminosity of groups of flavors (lists with the PDG codes of the
+    incoming partons first) on the beams of a subprocess, each summed over
+    its flavors times their factors (NLOLuminosity with all_groups): the
+    densities of hadrons, the reduced densities of dressed leptons (at 1 - x
+    of omx), the densities of elastic photons, or one per flavor for leptons
+    without densities and for a decay."""
 
-    def __init__(self, leptons, context):
-        self.pdgs = list(leptons.pdgs)
-        self.runtime = Runtime(leptons.reduced, context)
+    def __init__(self, groups, beams, incoming, couplings, context, factors=None):
+        from madspace.nlo import nlo_luminosity
 
-    def __call__(self, flavors, x1, x2, omx, mu1, mu2):
-        """The luminosity at the momentum fractions x1, x2 with 1 - x of omx
-        (omx1, omx2) and the factorization scales mu1, mu2."""
-        count = sum(1 for flavor in flavors if list(flavor[:2]) == self.pdgs)
-        if not count:
-            return np.zeros(len(x1))
-        r = np.full(len(x1), 0.5)
-        return count * self.runtime(x1, omx[0], x2, omx[1], mu1, mu2, r)["luminosity"]
+        leptons = couplings.leptons if incoming == 2 else None
+        self.dressed = leptons is not None
+        function = nlo_luminosity(
+            groups,
+            beams=beams,
+            pdf_grid=couplings.pdf if abs(beams[0]) == 1 else None,
+            nincoming=incoming,
+            factors=factors,
+            sum_flavors=True,
+            all_groups=True,
+            lepton_luminosity=None if leptons is None else leptons.reduced,
+        )
+        self.runtime = Runtime(function, context)
+
+    def __call__(self, x1, x2, mu1, mu2, omx=None):
+        """The luminosity of each group (batch, groups) at the momentum
+        fractions x1, x2 and the factorization scales mu1, mu2, for dressed
+        leptons with 1 - x of omx (omx1, omx2)."""
+        fractions = (x1, x2, *omx) if self.dressed else (x1, x2)
+        return self.runtime(*fractions, mu1, mu2)["luminosity"]
 
 
-class PhotonLuminosity:
-    """The luminosity of beams of elastic photons over flavors (lists with
-    the PDG codes of the incoming partons first): the product of the
-    densities of the photons of the beams (ElasticPhotonDensity, epa_proton
-    of MadFKS) for each flavor of two photons, none for the others."""
+def convolution_groups(flavors, leg, groups, n_f):
+    """The groups of flavors of the K and P operators of the beam leg at x_i
+    / z, with their factors: the flavors of the Born, then per group of
+    corrections those with the partons of the beam that split into the
+    parton of the Born (QCD: the gluon for a quark, the light quarks for a
+    gluon, QED: the photon for a quark, the light quarks with Q_q^2 for a
+    photon), the parton of the other beam that of the Born."""
+    from madspace.nlo.cs import charge
 
-    def __init__(self, context):
-        self.runtime = Runtime(madspace().ElasticPhotonDensity(), context)
-
-    def __call__(self, flavors, x1, x2, omx, mu1, mu2):
-        """The luminosity at the momentum fractions x1, x2 and the
-        factorization scales mu1, mu2 (omx is not used)."""
-        count = sum(1 for flavor in flavors if flavor[0] == 22 and flavor[1] == 22)
-        if not count:
-            return np.zeros(len(x1))
-        f1 = self.runtime(x1, mu1)["pdf"] / x1
-        f2 = self.runtime(x2, mu2)["pdf"] / x2
-        return count * f1 * f2
+    quarks = [q for k in range(1, int(n_f) + 1) for q in (k, -k)]
+    out, factors = [[list(f[:2]) for f in flavors]], [[1.0] * len(flavors)]
+    for group in groups:
+        mother = 21 if group == "QCD" else 22
+        weights = {q: 1.0 if group == "QCD" else charge(q) ** 2 for q in quarks}
+        pairs, values = [], []
+        for flavor in flavors:
+            parton = flavor[leg]
+            partons = quarks if parton == mother else [mother]
+            for split in partons:
+                pair = list(flavor[:2])
+                pair[leg] = split
+                pairs.append(pair)
+                values.append(weights[split] if parton == mother else 1.0)
+        out.append(pairs)
+        factors.append(values)
+    return out, factors
 
 
 def mapping_outputs(out, count):
@@ -478,16 +502,16 @@ class CSBornIntegrand:
                 ),
                 context,
             )
-        # the densities of hadrons, or the luminosity of other beams with
-        # densities
-        self.densities = None
-        self.beam_luminosity = None
-        if self.leptons is not None:
-            self.beam_luminosity = DressedLuminosity(self.leptons, context)
-        elif abs(self.beams[0]) == 2:
-            # photons radiate no QCD, so that the Borns have no K and P
-            self.beam_luminosity = PhotonLuminosity(context)
-        elif self.beams != (0, 0):
+        self.flavors = [list(f) for f in self.configurations["born_flavors"]]
+        self.couplings = couplings
+        self.luminosity = Luminosity(
+            [self.flavors], self.beams, self.incoming, couplings, context
+        )
+        # the K and P operators of hadrons, per beam at x_i / z (leptons and
+        # photons radiate no QCD, so that their Borns have none)
+        self.hadrons = self.incoming == 2 and abs(self.beams[0]) == 1
+        self.convolution = None
+        if self.hadrons:
             alphas = dict(
                 alpha_fi=alpha["fi"], alpha_if=alpha["if"], alpha_ii=alpha["ii"]
             )
@@ -504,18 +528,24 @@ class CSBornIntegrand:
                     ),
                     context,
                 )
-            self.densities = [
-                Densities(couplings.pdf, lpp, n_f, context) for lpp in self.beams
-            ]
-        self.flavors = [list(f) for f in self.configurations["born_flavors"]]
+            self.convolution = []
+            for leg in range(2):
+                groups, factors = convolution_groups(
+                    self.flavors, leg, self.groups, n_f
+                )
+                self.convolution.append(
+                    Luminosity(
+                        groups, self.beams, 2, couplings, context, factors=factors
+                    )
+                )
 
     @property
     def channel_count(self):
         return len(self.channel_mappings)
 
     def channel_dimension(self, index):
-        # the Born and, with densities, the point of the convolution of K, P
-        return self.born_dim + (self.densities is not None)
+        # the Born and, for hadrons, the point of the convolution of K, P
+        return self.born_dim + self.hadrons
 
     def channel_name(self, index):
         return f"{self.name} n-body channel {index + 1}"
@@ -544,54 +574,23 @@ class CSBornIntegrand:
         beam per group of corrections: the same parton at x_i / z, the
         partons that split into it at x_i / z (QCD: the gluon for a quark,
         the quarks for a gluon, QED: the photon for a quark, the quarks times
-        Q_q^2 for a photon), each times the density of the Born parton of the
-        other beam (batch, 2, 2). Dressed leptons take 1 - x of omx."""
-        from madspace.nlo.cs import charge
-
-        if self.beam_luminosity is not None:
-            return self.beam_luminosity(self.flavors, x1, x2, omx, mu1, mu2), None
-        if self.densities is None:
-            return np.full(len(x1), float(len(self.flavors))), None
-        x = (x1, x2)
-        mu = (mu1, mu2)
-        at_born = [d(xi, m) for d, xi, m in zip(self.densities, x, mu)]
-        born = np.zeros(len(x1))
-        for flavor in self.flavors:
-            a, b = flavor[0], flavor[1]
-            born += (
-                at_born[0][:, self.densities[0].column[a]]
-                * at_born[1][:, self.densities[1].column[b]]
-            )
-        if z is None:
+        Q_q^2 for a photon), each over z and times the density of the Born
+        parton of the other beam (batch, 2, 2). Dressed leptons take 1 - x of
+        omx."""
+        born = self.luminosity(x1, x2, mu1, mu2, omx)[:, 0]
+        if z is None or self.convolution is None:
             return born, None
         convolved = {group: np.zeros((len(x1), 2, 2)) for group in self.groups}
         for leg in range(2):
-            d = self.densities[leg]
-            values = d(x[leg] / z[:, leg], mu[leg]) / z[:, leg][:, None]
-            other = self.densities[1 - leg]
-            zero = np.zeros(len(x1))
-            photon = values[:, d.column[22]] if 22 in d.column else zero
-            for flavor in self.flavors:
-                parton, partner = flavor[leg], flavor[1 - leg]
-                at_partner = at_born[1 - leg][:, other.column[partner]]
-                same = values[:, d.column[parton]] if parton in d.column else zero
-                for group, out in convolved.items():
-                    if group == "QCD":
-                        splitting = (
-                            d.quarks(values)
-                            if parton == 21
-                            else values[:, d.column[21]]
-                        )
-                    elif parton == 22:
-                        splitting = sum(
-                            charge(q) ** 2 * values[:, d.column[q]]
-                            for q in d.pids
-                            if q not in (21, 22)
-                        )
-                    else:
-                        splitting = photon
-                    out[:, leg, 0] += same * at_partner
-                    out[:, leg, 1] += splitting * at_partner
+            shifted = [x1, x2][leg] / z[:, leg]
+            inside = shifted <= 1
+            fractions = [x1, x2]
+            fractions[leg] = np.where(inside, shifted, 0.5)
+            values = self.convolution[leg](*fractions, mu1, mu2)
+            values = np.where(inside[:, None], values / z[:, leg][:, None], 0.0)
+            for k, group in enumerate(self.groups):
+                convolved[group][:, leg, 0] = values[:, 0]
+                convolved[group][:, leg, 1] = values[:, 1 + k]
         return born, convolved
 
     def references(self, momenta, valid=None):
@@ -653,16 +652,12 @@ class CSBornIntegrand:
                 "insertion"
             ]
         z = None
-        r = (
-            None
-            if self.densities is None
-            else np.ascontiguousarray(x[:, self.born_dim])
-        )
+        r = np.ascontiguousarray(x[:, self.born_dim]) if self.hadrons else None
         scale_args = (scales["fact_scale1"], scales["fact_scale2"], x1, x2, r)
-        if self.densities is not None and self.collinear is not None:
+        if self.hadrons and self.collinear is not None:
             collinear = self.collinear(momenta, born, colors, alpha_s, *scale_args)
             z, collinears["QCD"] = collinear["z"], collinear["weights"]
-        if self.densities is not None and self.collinear_qed is not None:
+        if self.hadrons and self.collinear_qed is not None:
             collinear = self.collinear_qed(momenta, born, alpha, *scale_args)
             z, collinears["QED"] = collinear["z"], collinear["weights"]
         born_lum, convolved = self.luminosities(
@@ -840,7 +835,6 @@ class CSRealIntegrand:
         self.born_pdgs = source.born_pdgs
         self.energy = source.energy
         self.beams = source.beams
-        self.beam_luminosity = source.beam_luminosity
         leptonic = self.beams == (0, 0)
         orders = configurations["orders"]
         self.nlo_count = len(orders["nlo"])
@@ -859,7 +853,9 @@ class CSRealIntegrand:
             context,
         )
         self.alpha_s = source.alpha_s
-        self.densities = source.densities
+        self.luminosity_function = Luminosity(
+            [self.flavors], self.beams, self.incoming, source.couplings, context
+        )
         self.dipoles, self.channels, self.forward, self.dimensions = [], [], [], []
         mappings, kernels, symmetry = [], [], []
         for d in block["cs"]:
@@ -926,14 +922,7 @@ class CSRealIntegrand:
         """The luminosity of the real over its flavor lines, at the momentum
         fractions of the real and the factorization scales mu1, mu2, for
         dressed leptons with 1 - x of omx."""
-        if self.beam_luminosity is not None:
-            return self.beam_luminosity(self.flavors, x1, x2, omx, mu1, mu2)
-        if self.densities is None:
-            return np.full(len(x1), float(len(self.flavors)))
-        f1 = self.densities[0](x1, mu1)
-        f2 = self.densities[1](x2, mu2)
-        c1, c2 = self.densities[0].column, self.densities[1].column
-        return sum(f1[:, c1[a]] * f2[:, c2[b]] for a, b, *_ in self.flavors)
+        return self.luminosity_function(x1, x2, mu1, mu2, omx)[:, 0]
 
     def covered(self, index, momenta):
         """Whether real emissions are in the region of the channel index, both

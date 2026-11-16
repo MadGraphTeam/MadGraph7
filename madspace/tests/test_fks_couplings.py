@@ -482,7 +482,7 @@ def channel_pids(channel):
 @needs_nnpdf
 @pytest.mark.parametrize("path", DATA, ids=IDS)
 def test_luminosity_function(path, grids):
-    """FKSLuminosity of the real emission at each of its kinematics and of the
+    """NLOLuminosity of the real emission at each of its kinematics and of the
     n-body part, for each flavor and summed, is f_1 f_2 of PartonDensity, and
     within the interpolation the NNPDF luminosity of MadFKS. With a flavor
     index the n-body part takes the underlying Born of the real flavor over
@@ -505,7 +505,7 @@ def test_luminosity_function(path, grids):
             nbody = kinematics == "born"
             f1 = f2 = n1 = n2 = None
             if hadrons:
-                # within the grid, as FKSLuminosity
+                # within the grid, as NLOLuminosity
                 q_range = (pdf_grid.q[0], pdf_grid.q[-1])
                 (xf1,) = evaluate(density, x1, np.clip(fact1, *q_range))
                 (xf2,) = evaluate(density, x2, np.clip(fact2, *q_range))
@@ -587,7 +587,7 @@ def run_with_couplings(channel, function, flavor_index=None):
 @needs_nnpdf
 @pytest.mark.parametrize("path", DATA, ids=IDS)
 def test_cross_section_with_couplings(path, grids):
-    """FKSCrossSection with NLOScale, RunningCoupling and FKSLuminosity inside
+    """FKSCrossSection with NLOScale, RunningCoupling and NLOLuminosity inside
     is FKSCrossSection with their outputs as arguments, and within the
     interpolation of the PDFs the weights of MadFKS."""
     pdf_grid, alpha_s_grid = grids(asmz(path))
@@ -1146,15 +1146,15 @@ def test_scale_errors():
 @needs_nnpdf
 def test_luminosity_flavors(grids):
     """A flavor without density (a lepton of a proton) adds nothing, lepton
-    beams count each flavor once, and the luminosity picks the configuration
-    of the event."""
+    beams count each flavor once, the luminosity picks the group of the event,
+    and with all_groups it stacks the luminosity of each group."""
     pdf_grid, _ = grids(0.118)
     flavors_ = [[[2, -2], [4, -4]], [[21, -2], [11, -2]], [[2, 21]]]
     x1, x2 = np.array([0.1, 0.2, 0.3]), np.array([0.05, 0.01, 0.4])
     q = np.array([91.0, 200.0, 50.0])
     index = np.array([0, 1, 2])
     (ours,) = evaluate(
-        ms.FKSLuminosity(flavors_, pdf_grid, sum_flavors=True),
+        ms.NLOLuminosity(flavors_, pdf_grid, sum_flavors=True),
         x1,
         x2,
         q,
@@ -1172,10 +1172,31 @@ def test_luminosity_flavors(grids):
         f1[2][2] * f2[21][2],
     ]
     np.testing.assert_allclose(ours, expected, rtol=1e-15)
+    # every group at once, from one evaluation of the densities
+    stacked = ms.NLOLuminosity(flavors_, pdf_grid, sum_flavors=True, all_groups=True)
+    assert stacked.all_groups() and stacked.group_count() == 3
+    assert list(stacked.arg_types().keys()) == [
+        "x1",
+        "x2",
+        "fact_scale1",
+        "fact_scale2",
+    ]
+    (groups,) = evaluate(stacked, x1, x2, q, q)
+    assert groups.shape == (3, 3)
+    for group in range(3):
+        (one,) = evaluate(
+            ms.NLOLuminosity(flavors_, pdf_grid, sum_flavors=True),
+            x1,
+            x2,
+            q,
+            q,
+            fks_index=np.full(3, group),
+        )
+        np.testing.assert_array_equal(groups[:, group], one)
     # one flavor of each event, with factors, beyond the flavors zero
     factors = [[0.5, 2.0], [1.0, 3.0], [4.0]]
     (picked,) = evaluate(
-        ms.FKSLuminosity(flavors_, pdf_grid, factors=factors),
+        ms.NLOLuminosity(flavors_, pdf_grid, factors=factors),
         x1,
         x2,
         q,
@@ -1188,7 +1209,7 @@ def test_luminosity_flavors(grids):
     )
     # leptons count one, and so does a beam without densities
     (leptons,) = evaluate(
-        ms.FKSLuminosity([[[-11, 11], [-11, 11]], [[-11, 11]]], sum_flavors=True),
+        ms.NLOLuminosity([[[-11, 11], [-11, 11]], [[-11, 11]]], sum_flavors=True),
         x1,
         x2,
         q,
@@ -1197,7 +1218,7 @@ def test_luminosity_flavors(grids):
     )
     np.testing.assert_array_equal(leptons, [2.0, 1.0, 2.0])
     (dis,) = evaluate(
-        ms.FKSLuminosity(
+        ms.NLOLuminosity(
             [[[11, 2], [11, 4]]], pdf_grid, densities=[False, True], sum_flavors=True
         ),
         x1,
@@ -1212,20 +1233,22 @@ def test_luminosity_flavors(grids):
 @needs_nnpdf
 def test_luminosity_errors(grids):
     pdf_grid, _ = grids(0.118)
-    with pytest.raises(ValueError, match="no FKS configurations"):
-        ms.FKSLuminosity([])
+    with pytest.raises(ValueError, match="no groups of flavors"):
+        ms.NLOLuminosity([])
     with pytest.raises(ValueError, match="without flavors"):
-        ms.FKSLuminosity([[]])
+        ms.NLOLuminosity([[]])
     with pytest.raises(ValueError, match="two incoming partons"):
-        ms.FKSLuminosity([[[1, 2, 3]]])
+        ms.NLOLuminosity([[[1, 2, 3]]])
     with pytest.raises(ValueError, match="needs one for the first"):
-        ms.FKSLuminosity([[[1, -1]]], pdf_grid2=pdf_grid)
+        ms.NLOLuminosity([[[1, -1]]], pdf_grid2=pdf_grid)
     with pytest.raises(ValueError, match="a beam with densities"):
-        ms.FKSLuminosity([[[1, -1]]], pdf_grid, densities=[False, False])
-    with pytest.raises(ValueError, match="factors need the FKS configurations"):
-        ms.FKSLuminosity([[[1, -1]]], factors=[[1.0], [1.0]])
+        ms.NLOLuminosity([[[1, -1]]], pdf_grid, densities=[False, False])
+    with pytest.raises(ValueError, match="factors need the groups"):
+        ms.NLOLuminosity([[[1, -1]]], factors=[[1.0], [1.0]])
     with pytest.raises(ValueError, match="a factor for each flavor"):
-        ms.FKSLuminosity([[[1, -1]]], factors=[[1.0, 2.0]])
+        ms.NLOLuminosity([[[1, -1]]], factors=[[1.0, 2.0]])
+    with pytest.raises(ValueError, match="all groups sums over their flavors"):
+        ms.NLOLuminosity([[[1, -1]]], all_groups=True)
     configurations = {"configurations": []}
     with pytest.raises(ValueError, match="older FKS exporter"):
         fks_luminosities(configurations)
