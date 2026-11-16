@@ -646,6 +646,8 @@ def soft_current_data(born_me):
 #      factor, C_F (-2/eps^2 - 3/eps + pi^2 - 8) in FKS normalisation
 #   5  a Born that vanishes identically (Landau-Yang, C or P parity): no
 #      virtual at this order
+#   6  g g -> 1P1[8]: A = -C_A, B = -b_0 - C_A/2 - C_A, the last term the
+#      P -> S pole of appendix B of arXiv:2402.19221 (getpoles_onia)
 #   0  no built-in virtual: BinothLHA_onia stops and points to the user hook
 _CA, _CF = 3., 4. / 3.
 _PI2 = 9.869604401089358618834490999876151135314
@@ -659,11 +661,17 @@ PETRELLI_GG = {
     ((1, 1, 0), 8): _CF * (-7. / 3 + _PI2 / 4) + _CA * (17. / 54 + 35. / 27 * _LOG2 + 7 * _PI2 / 24),
     ((1, 1, 2), 8): -4 * _CF + _CA * (23. / 36 + 7. / 9 * _LOG2 + 5 * _PI2 / 12),
 }
+# g g -> 1P1[8] (not in Petrelli et al.): recomputed in CDR with Larin's gamma5
+# in the spin-singlet projector (no Z_5), threshold derivative on the integrand,
+# 31 one-loop diagrams (docs/scripts/virt3pj in the onia_fks study); equal to
+# the ResumOnia author's own one-loop result. Bare, n_f = 0, mu = M:
+# -C_A/eps^2 - 3/2 C_A/eps + B_n. No s-channel gluon: g* -> QQbar[1S0, 1P1]
+# vanishes, so there is no n_f bubble beyond b_0
+ONIA_GG_1P18 = _CF * (_PI2 / 2 - 5 - 4 * _LOG2) + _CA * (1 + _LOG2 + _PI2 / 6)
 # the n_f-independent part of eq. (133); BinothLHA_onia adds -10/9 n_f T_F
 PETRELLI_QQ_3S18 = _CF * (-8 + 2 * _PI2 / 3) + _CA * (50. / 9 + 2. / 3 * _LOG2 - _PI2 / 4)
 # Borns that vanish identically, by initial state and (L, S, J, colour);
-# g g -> 1P1[8] does not (HELAC-Onia: an LO process), and has no built-in
-# virtual
+# g g -> 1P1[8] does not (HELAC-Onia: an LO process; built-in virtual case 6)
 _ZERO_GG = set([(0, 1, 1, 1), (0, 1, 1, 8), (1, 1, 1, 1), (1, 1, 1, 8), (1, 0, 1, 1)])
 _ZERO_QQ = set([(0, 0, 0, 1), (0, 0, 0, 8), (0, 1, 1, 1), (1, 0, 1, 1), (1, 0, 1, 8)]
                + [(1, 1, j, c) for j in (0, 1, 2) for c in (1, 8)])
@@ -724,6 +732,8 @@ def builtin_virtual(legs, model):
         return none
     colour = onium.get('C')
     label = '%s -> %s[%d]' % ('g g' if gg else 'q qbar', name, colour)
+    if gg and key == (1, 0, 1) and colour == 8:
+        return dict(case=6, bconst=ONIA_GG_1P18, label=label + ' (recomputed in CDR, Larin gamma5)')
     if gg and (key, colour) in PETRELLI_GG:
         return dict(case=1 if colour == 1 else 2, bconst=PETRELLI_GG[(key, colour)],
                     label=label + ' (Petrelli et al., hep-ph/9707223)')

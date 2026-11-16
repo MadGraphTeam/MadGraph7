@@ -118,8 +118,8 @@ class TestFKSOniaGeneration(unittest.TestCase):
 
     def test_builtin_virtuals(self):
         """[QCD] with bound states: which 2 -> 1 Borns get a built-in virtual
-        (BinothLHA_onia.f, Petrelli et al.), which vanish, and which need the
-        user hook (fks_onia.builtin_virtual)."""
+        (BinothLHA_onia.f: Petrelli et al., and g g -> 1P1[8] recomputed),
+        which vanish, and which need the user hook (fks_onia.builtin_virtual)."""
         model = self.cmd._curr_model
         cases = {'g g > etac(1|1S01) [QCD]': (1, fks_onia.PETRELLI_GG[((0, 0, 0), 1)]),
                  'g g > chic2(1|3P21) [QCD]': (1, fks_onia.PETRELLI_GG[((1, 1, 2), 1)]),
@@ -128,7 +128,7 @@ class TestFKSOniaGeneration(unittest.TestCase):
                  'u u~ > tata(1|3S1) [QCD]': (4, 0.),
                  'u u~ > chic0(1|3P01) [QCD]': (5, 0.),
                  'g g > hc(1|1P11) [QCD]': (5, 0.),
-                 'g g > etac(1|1P18) [QCD]': (0, 0.),
+                 'g g > etac(1|1P18) [QCD]': (6, fks_onia.ONIA_GG_1P18),
                  'g g > etac(1|1S01) g [QCD]': (0, 0.)}
         for line, (case, bconst) in cases.items():
             borns = self.generate(line)
@@ -139,6 +139,8 @@ class TestFKSOniaGeneration(unittest.TestCase):
                 self.assertAlmostEqual(info['bconst'], bconst, places=12)
         # eq. (125) of hep-ph/9707223 for 1S0[1], C_F (-5 + pi^2/4) + C_A (1 + 5 pi^2/12)
         self.assertAlmostEqual(fks_onia.PETRELLI_GG[((0, 0, 0), 1)], 11.96020697, places=7)
+        # g g -> 1P1[8], recomputed: (7 pi^2 - 22 - 14 log 2)/6 for N_c = 3
+        self.assertAlmostEqual(fks_onia.ONIA_GG_1P18, 6.2305283799644, places=12)
         # [real=QCD] keeps the user hook
         for born in self.generate('g g > etac(1|1S01) [real=QCD]'):
             self.assertFalse(getattr(born, 'onia_virtual', False))

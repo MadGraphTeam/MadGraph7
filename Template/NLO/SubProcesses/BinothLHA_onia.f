@@ -24,6 +24,9 @@ c          decoupling scheme)
 c       4  q qbar -> leptonium: (-C_F, -3/2 C_F, C_F (pi^2 - 8)/2
 c                                + C_F pi^2/6), n = 0
 c       5  vanishing Born: no virtual
+c       6  g g -> 1P1[8]: (-C_A, -b_0 - 3/2 C_A, B_n), the extra -C_A being
+c          the P -> S pole (arXiv:2402.19221, appendix B; getpoles_onia);
+c          B_n recomputed (fks_onia.ONIA_GG_1P18), not in Petrelli et al.
 c       0  none: stop, unless the Born vanishes at this point
 c     with b_0 = (11 C_A - 2 n_f)/6 (n_f = NF of coupl.inc, as in
 c     setfksfactor) and B_n = onia_virt_b (onia_virtual.inc).
@@ -99,6 +102,10 @@ c the virtual at mu_r = Q_ES
          a=-cf
          b=-1.5d0*cf
          c=cf*(pi**2-8d0)/2d0+cf*pi**2/6d0
+      elseif (onia_virt_case.eq.6) then
+         a=-ca
+         b=-b0-1.5d0*ca
+         c=onia_virt_b
       else
          write (*,*) 'ERROR in BinothLHA_onia: unknown case',
      &        onia_virt_case
