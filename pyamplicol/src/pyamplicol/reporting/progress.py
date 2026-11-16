@@ -1939,6 +1939,7 @@ def _paint_fragments(
     enabled: bool,
 ) -> str:
     remaining = max(width, 1)
+    fragments = _shorten_lead(fragments, remaining)
     rendered: list[str] = []
     for text, color_name in fragments:
         if not text or remaining <= 0:
@@ -1954,6 +1955,31 @@ def _paint_fragments(
             else clipped
         )
     return "".join(rendered)
+
+
+# A line's leading description keeps at least this many characters when it
+# gives way to the clocks and counts after it.
+_LEAD_MINIMUM = 24
+
+
+def _shorten_lead(
+    fragments: list[tuple[str, str | None]], width: int
+) -> list[tuple[str, str | None]]:
+    """A line too wide for ``width``: its first fragment (a description, a
+    path) shortened in the middle first, so the clocks, counts and
+    resources after it stay visible."""
+
+    if len(fragments) < 2 or not fragments[0][0]:
+        return fragments
+    excess = sum(len(text) for text, _ in fragments) - width
+    lead, color_name = fragments[0]
+    if excess <= 0 or len(lead) <= _LEAD_MINIMUM:
+        return fragments
+    keep = max(len(lead) - excess, _LEAD_MINIMUM) - 3
+    head = (keep + 1) // 2
+    tail = keep - head
+    shortened = lead[:head] + "..." + (lead[-tail:] if tail > 0 else "")
+    return [(shortened, color_name), *fragments[1:]]
 
 
 def _duration_text(seconds: float | None) -> str:

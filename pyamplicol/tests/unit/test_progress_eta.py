@@ -197,3 +197,20 @@ def test_fitted_tables_never_break_numbers_or_headers() -> None:
     # It cannot fit in 60 columns without breaking a number: natural width.
     assert "-0.00016690271388525922" in text
     assert "virtual squared order" in text
+
+
+def test_a_long_description_gives_way_to_the_clocks() -> None:
+    from pyamplicol.reporting.progress import _paint_fragments
+
+    line = _paint_fragments(
+        [
+            ("Loading process output /a/very/long/path/to/an/artifact/OUT", "CYAN"),
+            ("  elapsed 12s", None),
+            ("  RSS 1.47/1.47G", None),
+        ],
+        width=60,
+        enabled=False,
+    )
+    assert len(line) <= 60
+    assert line.endswith("elapsed 12s  RSS 1.47/1.47G")
+    assert line.startswith("Loading pro") and "..." in line
