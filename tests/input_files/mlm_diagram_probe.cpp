@@ -34,6 +34,9 @@ struct Functions {
     LOAD(matrix, umami_matrix_element);
     LOAD(free, umami_free);
 #undef LOAD
+    using SetHelicityChoice = UmamiStatus (*)(UmamiHandle, const int*, int);
+    SetHelicityChoice set_helicity_choice = reinterpret_cast<SetHelicityChoice>(
+        dlsym(library, "madmatrix_set_helicity_choice"));
 };
 Functions& api() { static Functions functions; return functions; }
 
@@ -60,6 +63,11 @@ UmamiStatus umami_set_parameter(UmamiHandle handle, const char* name, double re,
 }
 UmamiStatus umami_get_parameter(UmamiHandle handle, const char* name, double* re, double* im) {
     return api().get(static_cast<State*>(handle)->real, name, re, im);
+}
+extern "C" UmamiStatus madmatrix_set_helicity_choice(
+    UmamiHandle handle, const int* choice, int size) {
+    if (!api().set_helicity_choice) return UMAMI_ERROR_NOT_IMPLEMENTED;
+    return api().set_helicity_choice(static_cast<State*>(handle)->real, choice, size);
 }
 UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride, size_t offset,
     size_t ni, const UmamiInputKey* ik, const void* const* in,

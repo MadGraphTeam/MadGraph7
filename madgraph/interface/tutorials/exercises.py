@@ -167,7 +167,7 @@ def check_forbidden_particle(interface, line):
 
 
 def mistake_dollar_not_slash(interface, line):
-    """`$ a` removes the on-shell photon; `/ a` forbids it everywhere."""
+    """`$$ a` drops the s-channel photon; `/ a` forbids it everywhere."""
 
     return any_process(interface,
                        lambda p: bool(p.get('forbidden_onsh_s_channels')
@@ -347,8 +347,9 @@ is the whole lesson.)
      mistakes=[
         (mistake_dollar_not_slash,
          "You used `$` (or `$$`), which talks about the s-channel:\n"
-         "  `$ a`   keeps the diagram, removes the on-shell photon. Gauge-safe.\n"
-         "  `$$ a`  drops the s-channel photon diagram entirely.\n\n"
+         "  `$$ a`  drops the s-channel photon diagram entirely.\n"
+         "  `$`     keeps the diagram and removes only the on-shell peak of a\n"
+         "          massive particle (`$ z`); a photon has none.\n\n"
          "To forbid the photon *anywhere*, internal lines included, the\n"
          "operator is `/`:\n"
          "  generate p p > e+ e- / a"),

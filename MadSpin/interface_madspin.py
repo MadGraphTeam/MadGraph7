@@ -879,6 +879,14 @@ def ms_phase(obj, name):
         ms_phase_add(obj, name, time.time() - start)
 
 
+def set_line_is_gauge(line):
+    """Whether a 'set' line of the proc_card chooses the gauge ('set gauge X',
+    'set auto_gauge X'): MadSpin runs its matrix elements in its own gauge
+    and skips those in both passes over the proc_card (do_import_events)."""
+
+    return line.split()[:2] in (['set', 'gauge'], ['set', 'auto_gauge'])
+
+
 class MadSpinInterface(extended_cmd.Cmd):
     """Basic interface for madspin"""
 
@@ -942,6 +950,10 @@ class MadSpinInterface(extended_cmd.Cmd):
         self._decay_groups = None
         self.to_decay={}
         self.mg5cmd = master_interface.MasterCmd()
+        # MadSpin runs its matrix elements in its own gauge (the proc_card
+        # 'set gauge' line is skipped below): the automatic choice of the
+        # FD gauge for electroweak processes stays out of here as well
+        self.mg5cmd.options['auto_gauge'] = False
         self.seed = None
         self.err_branching_ratio = 0
         self.me_run_name = "" # Events directory where the events are stored (used by madevent, not used internally)
@@ -1200,6 +1212,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         # Read the banner of the inputfile
         self.events_file = open(os.path.realpath(inputfile))
         self.banner = banner.Banner(self.events_file)
+        # processes in two gauges ('--gauge=FD' lines): MadSpin has its own
+        self.banner.proc_card_in_one_gauge()
 
 
         # Check the validity of the banner:
@@ -1273,7 +1287,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         complex_mass = False   
         has_cms = re.compile(r'''set\s+complex_mass_scheme\s*(True|T|1|true|$|;)''')
         for line in self.banner.proc_card:
-            if line.startswith('set'):
+            if line.startswith('set') and not set_line_is_gauge(line):
                 try:
                     self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False,
                                          postcmd=False)
@@ -1318,7 +1332,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                         key = line.split()[1]
                         if key in self.multiparticles_ms:
                             del self.multiparticles_ms[key]            
-            elif line.startswith('set') and not line.startswith('set gauge'):
+            elif line.startswith('set') and not set_line_is_gauge(line):
                 try:
                     self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False,
                                          postcmd=False)
@@ -13030,6 +13044,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                   allow_hel=allow_hel,
                                                   alphas=event.aqcd,
                                                   scale2=ren_scale2(event))
+            self._check_f2py_density(density_array, pdgs)
 
 
         #print(f"density_array = {density_array}") 
@@ -13050,6 +13065,18 @@ class MadSpinInterface(extended_cmd.Cmd):
                 density_matrix.set_hel_restriction_trace(hel_restriction_trace)
         return density_matrix
 
+
+    @staticmethod
+    def _check_f2py_density(density_array, pdgs):
+        """Refuse the NaN that the f2py density answers for PDG codes no
+        matrix element of the module evaluates in this order
+        (f77_no_process in all_matrix.f), as the madmatrix backend raises
+        MadDensityError in that case. A NaN density would otherwise spread
+        into the MadSpin weights of every event contracted against it."""
+        if any(z != z for z in density_array):
+            raise madmatrix_density.MadDensityError(
+                'no matrix element of the f2py module evaluates the process '
+                '%s (NaN density)' % (list(pdgs),))
 
     def get_density_batch(self, events, position, allow_hel, ncomb, dimension):
         """get_density for a list of events sharing one helicity structure.
@@ -13167,6 +13194,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                nbatch=nbatch,
                                                next=next_)
             for c, k in enumerate(idx):
+                self._check_f2py_density(inter[:, c], pdgs[k])
                 out[k] = madspin.DensityMatrix(inter[:, c],
                                                n_changing,
                                                allow_hel,
@@ -13258,11 +13286,20 @@ class MadSpinInterface(extended_cmd.Cmd):
         pdir = self.all_me[tag]['pdir']
 
         if self.all_me[tag]['type'] == 'production':
-            prefix, pos = self.pdg2prefix[0][tuple(list(orig_order[0]) + list(orig_order[1]))]
+            pdg2prefix = self.pdg2prefix[0]
         elif self.all_me[tag]['type'] == 'decay':
-            prefix, pos = self.pdg2prefix[1][tuple(list(orig_order[0]) + list(orig_order[1]))]
+            pdg2prefix = self.pdg2prefix[1]
         else:
             raise ValueError("The key 'type' of self.all_me can only take as values 'production' or 'decay'.")
+        # a crossed process folded onto a base (decay.crossed_processes_with_decays)
+        # is not in the module's process list: its library and slot are the base's
+        # (the iden of that slot cancels in the density normalisation, see
+        # _density_basis); its density and |M|^2 come from its own pdg codes
+        key = tuple(list(orig_order[0]) + list(orig_order[1]))
+        if key not in pdg2prefix and 'base_order' in self.all_me[tag]:
+            base_order = self.all_me[tag]['base_order']
+            key = tuple(list(base_order[0]) + list(base_order[1]))
+        prefix, pos = pdg2prefix[key]
         #misc.sprint(f"get_pdir: pdir = {pdir} , orig_order = {orig_order} , prefix = {prefix}")
         # Cache under the tag we were asked about, not the anti-particle tag the
         # fallback above may have rewritten it to.
@@ -13313,7 +13350,8 @@ class MadSpinInterface(extended_cmd.Cmd):
             # When the ME legs use merged-particle IDs (apply_flavor_grouping
             # is on for MadSpin), smatrixhel still needs the concrete raw PDGs
             # from the event for the current permutation; otherwise it cannot
-            # pick the right flavor branch and returns 0.  See the analogous
+            # pick the right flavor branch and answers NaN (an ERROR line, no
+            # matrix element for those PDG codes).  See the analogous
             # logic in ReweightInterface.calculate_matrix_element.
             pdg_template = list(orig_order[0]) + list(orig_order[1])
             merged_particles = self.model.get('merged_particles') or {}

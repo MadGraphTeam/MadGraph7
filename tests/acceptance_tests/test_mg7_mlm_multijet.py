@@ -34,10 +34,16 @@ def _launch_with_probe():
     from madgraph.mg7.launch import main
     original = MadgraphProcess.load_matrix_element
     template = (Path(MG5DIR) / 'tests/input_files/mlm_diagram_probe.cpp').read_text()
+    load_indices = collections.Counter()
 
-    def load(process, path_format, card, parameters):
-        index, meta = next((i, m) for i, m in enumerate(process.subprocess_data)
-                           if m['me_path'] == path_format)
+    def load(process, path_format, card, parameters, helicity_choice=None):
+        # MLM initializes unmerged subprocesses in metadata order. Crossed
+        # entries can share a library, but each needs its own mask and counter.
+        assert process.merged_subprocess_data is None
+        index = load_indices[process]
+        meta = process.subprocess_data[index]
+        assert meta['me_path'] == path_format
+        load_indices[process] += 1
         assert process.backends == ['scalar']
         target = Path(path_format.format(device='scalar', fptype=process.fptype)).resolve()
         directory = Path('mlm_probes')
@@ -64,7 +70,7 @@ def _launch_with_probe():
             if sys.platform != 'darwin':
                 command.append('-ldl')
             subprocess.run(command, check=True)
-        return original(process, str(proxy), card, parameters)
+        return original(process, str(proxy), card, parameters, helicity_choice)
 
     MadgraphProcess.load_matrix_element = load
     main()
@@ -182,6 +188,8 @@ class MG7MLMMultijetTest(unittest.TestCase):
                 if history == 'all_diagrams':
                     union_events = (infos[-1].parent / 'events.npy').read_bytes()
                 summary = {'sample': name, 'history': history, 'subprocesses': len(metadata),
+                           'crossed_subprocesses': sum('crossing' in m for m in metadata),
+                           'libraries': len({m['me_path'] for m in metadata}),
                            'jet_counts': sorted(jet_counts), 'events': len(events),
                            'cross_section': info['process']['mean'], 'error': info['process']['error'],
                            'forced_events': sum(c['forced'] for c in counts.values()),

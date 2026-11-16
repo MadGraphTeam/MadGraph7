@@ -198,6 +198,21 @@ class TestMomentumMaps(unittest.TestCase):
     def test_initial_state_recoil_and_endpoints(self):
         self.check_map("isr")
 
+    def test_matched_initial_state_recoil_inverse_and_measure(self):
+        self.check_map("isr_nlops")
+
+    def test_matched_initial_state_log_sampling_and_exclusions(self):
+        self.check_map("isr_nlops_sampling")
+
+    def test_matched_initial_state_log_tail_and_soft_integrals(self):
+        self.check_map("isr_nlops_integrals")
+
+    def test_public_initial_state_mode_overrides_legacy_common(self):
+        self.check_map("isr_nlops_api")
+
+    def test_matched_initial_state_log_upper_endpoint(self):
+        self.check_map("isr_nlops_endpoints")
+
     def test_symmetric_initial_state_recoil_inverse_measure_and_endpoints(self):
         self.check_map("isr_symmetric")
 
