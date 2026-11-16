@@ -346,6 +346,14 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                     color,
                 ),
             )
+        single = getattr(profile, "one_thread_seconds_per_point", None)
+        if single and profile.seconds_per_point > 0.0:
+            # --runtime-threads N: the same calls' time on one thread over
+            # this one (the gain of the N threads), muted as the multiplier.
+            gain = single / profile.seconds_per_point
+            time_parts += (
+                palette.paint(f"(x{gain:.1f} vs 1 thread)", palette.MUTED, color=color),
+            )
         cells = [
             label,
             time_parts,

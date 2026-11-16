@@ -918,3 +918,142 @@ def test_a_stale_history_only_seeds_the_estimate(uux_ddx, tmp_path, monkeypatch)
         assert cost.reference <= 3 * true[(name, "double-double")]
     assert seen[1][1] <= 3 * sum(16 * t for t in true.values()) + 1.0
     assert costs["ninjars"].binary64 == pytest.approx(0.006, rel=0.5)
+
+
+def _normalised(text: str) -> str:
+    """A rendered profile without what timing changes (numbers, units,
+    bars, padding)."""
+
+    import re
+
+    text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+    text = re.sub(r"[0-9]+(\.[0-9]+)?(e[-+][0-9]+)?", "N", text)
+    text = re.sub(r"\b(s|ms|us|KiB|MiB|GiB)\b", "U", text)
+    text = re.sub(r"#+", "B", text)
+    text = re.sub(r"-+", "-", text)
+    return re.sub(r" +", " ", text)
+
+
+@pytest.mark.loop_physics
+def test_the_runtime_threads_are_in_force(uux_ddx, monkeypatch):
+    """--runtime-threads N: the timed calls report N threads (and the
+    header says so), a one-thread timing of the same calls gives the gain;
+    N is capped by the usable cores with a plain line; the values do not
+    depend on the threads."""
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.cli.main import run_cli
+
+    monkeypatch.setattr(lp, "usable_cores", lambda: 2)
+    stdout, stderr = io.StringIO(), io.StringIO()
+    args = [
+        "profile",
+        str(uux_ddx),
+        "--runtime",
+        "--target-runtime",
+        "0.4",
+        "--runtime-threads",
+        "64",
+        "--progress",
+        "log",
+    ]
+    assert run_cli([*args, "--json"], stdout=stdout, stderr=stderr) == 0
+    assert "--runtime-threads 64 reduced to 2, the usable cores" in stderr.getvalue()
+    report = json.loads(stdout.getvalue())
+    assert "on 2 threads;" in report["runtime_setup"]
+    for row in report["runtime"]:
+        profile = row["profile"]
+        assert profile["threads"] == 2
+        assert profile["one_thread_seconds_per_point"] > 0.0
+        assert profile["one_thread_calls"] >= 1
+
+
+@pytest.mark.loop_physics
+def test_values_do_not_depend_on_the_threads(uux_ddx):
+    """A runtime loaded with its pools at 4 threads evaluates bit-identically
+    to one at one thread (binary64 and double-double, both backends)."""
+
+    import os
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import _initial_invariant
+    from pyamplicol.loop_profile import _WORKER_THREADS, pin_threads
+
+    points = _points(uux_ddx) * 8
+    scales = [_initial_invariant(point, 2) for point in points]
+    saved = {name: os.environ.get(name) for name in _WORKER_THREADS}
+    results = {}
+    try:
+        for threads in (1, 4):
+            pin_threads(threads)
+            runtime = Runtime.load(uux_ddx)
+            results[threads] = [
+                repr(
+                    runtime.evaluate(
+                        points,
+                        mu_r2=scales,
+                        reduction=backend,
+                        poles="none",
+                        **precision,
+                    ).values
+                )
+                for backend in ("tirust", "ninjars")
+                for precision in ({}, {"arithmetic": "double-double"})
+            ]
+            del runtime
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+    assert results[1] == results[4]
+
+
+@pytest.mark.loop_physics
+def test_one_runtime_thread_is_the_default(uux_ddx):
+    """--runtime-threads 1 prints what the default prints (the tables, the
+    field descriptions, the JSON's fields), timings aside."""
+
+    from pyamplicol.cli.main import run_cli
+
+    def keys(value, path=""):
+        if isinstance(value, dict):
+            found = set()
+            for key, entry in value.items():
+                found |= {f"{path}/{key}"} | keys(entry, f"{path}/{key}")
+            return found
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            return keys(value[0], f"{path}[]")
+        return set()
+
+    outputs = {}
+    for extra in ((), ("--runtime-threads", "1")):
+        args = [
+            "profile",
+            str(uux_ddx),
+            "--runtime",
+            "--target-runtime",
+            "0.3",
+            "--progress",
+            "off",
+            *extra,
+        ]
+        text, machine = io.StringIO(), io.StringIO()
+        assert (
+            run_cli(
+                [*args, "--fields-description-help", "--color", "never"],
+                stdout=text,
+                stderr=io.StringIO(),
+            )
+            == 0
+        )
+        assert run_cli([*args, "--json"], stdout=machine, stderr=io.StringIO()) == 0
+        outputs[extra] = (text.getvalue(), json.loads(machine.getvalue()))
+    (default_text, default_json), (one_text, one_json) = outputs.values()
+    assert _normalised(default_text) == _normalised(one_text)
+    assert "on one core;" in default_json["runtime_setup"]
+    assert "vs 1 thread" not in default_text
+    assert keys(default_json) == keys(one_json)
+    assert all(row["profile"]["threads"] == 1 for row in one_json["runtime"])
+    assert "one_thread_seconds_per_point" not in json.dumps(one_json)

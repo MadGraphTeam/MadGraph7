@@ -2814,8 +2814,24 @@ class VirtualProfileResult:
     # not reported).
     threads: int | None = None
     # The process's CPU time over the wall time of the timed calls: at most
-    # about 1 on one core (below 1 when the host took the core from it).
+    # about 1 on one core (below 1 when the host took the core from it),
+    # approaching N on N native threads.
     cpu_per_wall: float | None = None
+    # With N > 1 native threads (``profile --runtime-threads``): the time per
+    # point of the same calls' points on one thread (a short timing of its
+    # own, ``one_thread_profile``) and its timed calls; None: not measured.
+    one_thread_seconds_per_point: float | None = None
+    one_thread_calls: int = 0
+
+    def cli_json(self) -> dict[str, object]:
+        """The JSON form (``cli.main``): every field, the one-thread timing's
+        only when it ran (one thread: the document as before it existed)."""
+
+        out = {item.name: getattr(self, item.name) for item in fields(self)}
+        if self.one_thread_seconds_per_point is None:
+            out.pop("one_thread_seconds_per_point")
+            out.pop("one_thread_calls")
+        return out
 
 
 @dataclass(frozen=True, slots=True)
@@ -3128,6 +3144,46 @@ def profile_virtual(
             )
         timing = replace(timing, peak_memory=reference_peak.result)
     return replace(profile, reference=timing)
+
+
+def one_thread_profile(
+    runtime: Any,
+    config: RunConfig,
+    *,
+    budget: float,
+    points: Momenta | None = None,
+    artifact: os.PathLike[str] | str | None = None,
+    reduction: str | None = None,
+    on_failure: str = "return",
+    optimistic: bool = False,
+    monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
+) -> VirtualProfileResult:
+    """The one-thread timing beside an N-thread profile (``profile
+    --runtime-threads``): ``runtime`` loaded with its pools at one thread,
+    the same calls (the same first batches of ``batch_size`` points) after
+    one warm-up, at least one timed call, more while they fit ``budget``
+    seconds; ``monitor`` receives its events as "one-thread" (and
+    "one-thread-result")."""
+
+    bench = replace(
+        config.benchmark,
+        warmup_runs=1,
+        minimum_samples=1,
+        target_runtime=max(budget, 1e-9),
+    )
+    renamed = {"binary64": "one-thread", "binary64-result": "one-thread-result"}
+    return profile_virtual(
+        runtime,
+        replace(config, benchmark=bench),
+        points=points,
+        artifact=artifact,
+        reduction=reduction,
+        on_failure=on_failure,
+        optimistic=optimistic,
+        monitor=None
+        if monitor is None
+        else lambda kind, payload: monitor(renamed.get(kind, kind), payload),
+    )
 
 
 @contextlib.contextmanager

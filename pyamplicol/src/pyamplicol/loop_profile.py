@@ -679,7 +679,7 @@ def _runtime_setup(
     core = (
         "one core"
         if not counts
-        else f"{'/'.join(map(str, sorted(set(threads))))} native threads"
+        else f"{'/'.join(map(str, sorted(set(threads))))} threads"
     )
     profiled = [row for row in rows if getattr(row, "profile", None) is not None]
     calls = ", ".join(
@@ -760,6 +760,7 @@ def profile_loop(
         DEFAULT_RUNTIME_SECONDS,
         DEFAULT_STABILITY_SECONDS_PER_CORE,
         MEASURE_REPEAT_SECONDS,
+        ONE_THREAD_SHARE,
         POST_SECONDS_PER_RECORD,
         RECORD_SECONDS_PER_INPUT,
         RECORD_SECONDS_PER_RECORD,
@@ -841,6 +842,16 @@ def profile_loop(
     want_stability = bench.stability
     want_runtime = bench.runtime or not want_stability
     workers = max(1, min(bench.n_core, usable_cores()))
+    # The runtime timing's native threads (--runtime-threads), at most the
+    # usable cores (said once when reduced); the stability workers keep one.
+    threads = min(int(bench.runtime_threads), usable_cores())
+    if threads < bench.runtime_threads:
+        _notice(
+            f"--runtime-threads {bench.runtime_threads} reduced to {threads}, "
+            "the usable cores"
+        )
+        bench = replace(bench, runtime_threads=threads)
+        config = replace(config, benchmark=bench)
     runtime_given = any(
         not is_default(getattr(bench, name))
         for name in ("target_runtime", "minimum_samples", "batch_size", "warmup_runs")
@@ -1044,6 +1055,12 @@ def profile_loop(
                 # runtime's part of it.
                 left = completion - monitor.elapsed() - future.get("stability", 0.0)
                 share = left / max(len(backends) - position, 1)
+                if threads > 1:
+                    # The one-thread timing's reload, warm-up and minimum
+                    # call (at the measurement's one-thread cost).
+                    share -= costs[backend].start + 2 * DEFAULT_LANES * (
+                        costs[backend].binary64
+                    )
                 counts = runtime_counts(
                     costs[backend],
                     max(share - costs[backend].start, 0.0),
@@ -1059,6 +1076,17 @@ def profile_loop(
                     target_runtime=max(counts.budget, 1e-9),
                 )
                 reference_budget = counts.reference_budget
+            one_thread = None
+            if threads > 1:
+                # A share of the binary64 budget for the one-thread timing of
+                # the same calls (the gain), at least one call.
+                one_thread = ONE_THREAD_SHARE * float(backend_bench.target_runtime)
+                backend_bench = replace(
+                    backend_bench,
+                    target_runtime=max(
+                        float(backend_bench.target_runtime) - one_thread, 1e-9
+                    ),
+                )
             future.pop(f"runtime:{backend}", None)
             # The planned seconds of this backend's phases after its
             # start-up: the root ETA counts them until they run.
@@ -1079,6 +1107,14 @@ def profile_loop(
                     later["reference"] = cost.reference + max(
                         reference_budget, cost.reference
                     )
+                if one_thread is not None:
+                    # Its reload, one-point warm-up and calls (one-thread costs:
+                    # the measurement's).
+                    later["one-thread"] = (
+                        cost.start
+                        + warmup_seconds(call, cost.binary64)
+                        + max(one_thread, call)
+                    )
             run = _BackendRun(
                 monitor,
                 backend,
@@ -1091,6 +1127,7 @@ def profile_loop(
                 ),
                 backend_bench.batch_size,
                 later,
+                threads,
             )
             current[0] = run
             reference = (
@@ -1117,6 +1154,7 @@ def profile_loop(
                     request,
                     run,
                     reference=reference,
+                    one_thread=one_thread,
                 )
             except ReductionUnavailable as error:
                 run.abort()
@@ -1513,6 +1551,10 @@ def _multiplier_text(ratio: float) -> str:
     return f"x{ratio:.1f}" if round(ratio, 1) < 10.0 else f"x{ratio:.0f}"
 
 
+# The worker events that carry calls of a phase (``_BackendRun.event``).
+_CALL_PHASES = ("binary64", "reference", "one-thread")
+
+
 class _BackendRun:
     """One backend's runtime timing seen from this process: its worker's
     events (``_runtime_worker``) turned into the live display's phases
@@ -1531,10 +1573,15 @@ class _BackendRun:
         expected_call: float | None = None,
         batch: int = 1,
         later: Mapping[str, float] | None = None,
+        threads: int = 1,
     ) -> None:
         from pyamplicol.loops.v2.reduction import NAMES
 
         self.monitor = monitor
+        # The native threads of the timed calls (``--runtime-threads``) and
+        # the one-thread timing's time per point (None: not measured).
+        self.threads = threads
+        self.one_thread: float | None = None
         # The planned seconds of one binary64 call (the measured cost per
         # point times the batch): the first call's expected cost and ETA
         # until one is back.
@@ -1574,7 +1621,7 @@ class _BackendRun:
         down since its last event, never below a fraction of a call while it
         runs) and the planned ones of the phases still to come."""
 
-        order = ("start", "binary64", "between", "reference")
+        order = ("start", "binary64", "between", "reference", "one-thread")
         position = order.index(self.kind) if self.kind in order else len(order)
         to_come = sum(
             seconds
@@ -1606,8 +1653,28 @@ class _BackendRun:
         if kind == "loaded":
             self.load_seconds = float(payload.get("seconds") or 0.0)
             return
-        if kind in ("binary64", "reference") and kind != self.kind:
+        if kind in _CALL_PHASES and kind != self.kind:
             self._next(kind)
+        if kind == "reference-result":
+            # The reference pass is over; the one-thread timing follows.
+            self.finish(payload["profile"])
+            return
+        if kind == "one-thread-result":
+            single = payload["profile"]
+            self.one_thread = single.seconds_per_point
+            if self.phase is not None:
+                gain = (
+                    f": x{single.seconds_per_point / self.binary64:.2f} on "
+                    f"{self.threads} threads"
+                    if self.binary64
+                    else ""
+                )
+                self.phase.end(
+                    f"{_per_point_text(single.seconds_per_point)} per point on "
+                    f"one thread{gain}"
+                )
+            self.phase = None
+            return
         if kind == "binary64-result":
             self.profile = payload["profile"]
             self.binary64 = self.profile.seconds_per_point
@@ -1620,7 +1687,7 @@ class _BackendRun:
             self.kind = "between"
             self.phase = None
             return
-        if kind not in ("binary64", "reference"):
+        if kind not in _CALL_PHASES:
             return
         walls = payload.get("walls") or []
         points = int(payload.get("points") or 1)
@@ -1643,7 +1710,9 @@ class _BackendRun:
             "total": total,
             "eta": eta,
             "rate": rate,
-            "warmup": int(payload.get("warmup") or 0) if kind == "binary64" else 0,
+            "warmup": int(payload.get("warmup") or 0)
+            if kind in ("binary64", "one-thread")
+            else 0,
         }
         self.last = now
         self._show(heartbeat=False)
@@ -1658,11 +1727,10 @@ class _BackendRun:
                     else None
                 )
             self.phase.end(summary)
-        label = (
-            "binary64 calls"
-            if kind == "binary64"
-            else f"{self.truth.name} reference calls"
-        )
+        label = {
+            "binary64": "binary64 calls",
+            "one-thread": "one-thread calls (the gain)",
+        }.get(kind, f"{self.truth.name} reference calls")
         self.kind = kind
         self.phase = self.monitor.phase(f"{self.name}-{kind}", f"{self.name}: {label}")
         self.state = {"done": 0, "total": None, "eta": None, "rate": None}
@@ -1693,7 +1761,9 @@ class _BackendRun:
                 running=since,
             )
             return
-        what = "reference" if self.kind == "reference" else "binary64"
+        what = {"reference": "reference", "one-thread": "one thread"}.get(
+            self.kind, "binary64"
+        )
         shown = None if total is None else max(int(total), int(done) + 1)
         running = f"call {done + 1}" + (f"/{shown}" if shown else "")
         # The running call's expected cost: the recent calls', else the
@@ -2201,6 +2271,7 @@ def _isolated_profile(
     run: _BackendRun | None,
     *,
     reference: Mapping[str, Any] | None = None,
+    one_thread: float | None = None,
 ) -> VirtualProfileResult:
     """``benchmarking.profile_virtual`` of one backend (``request``) on
     ``points`` (None: the artifact's distinct flat points) in a fresh
@@ -2238,6 +2309,7 @@ def _isolated_profile(
             None if points is None else list(points),
             request,
             None if reference is None else dict(reference),
+            one_thread,
         ),
         name="pyamplicol-loop-runtime-profile",
         daemon=True,
@@ -2299,20 +2371,26 @@ def _runtime_worker(
     points: Sequence[Any] | None,
     request: str,
     reference: Mapping[str, Any] | None = None,
+    one_thread: float | None = None,
 ) -> None:
     """The worker process of ``_isolated_profile``: Ctrl-C left to the
-    parent, every thread pool at one thread before anything native starts
-    (``one_core``: the timing is that of one core), the artifact loaded,
+    parent, every thread pool at ``benchmark.runtime_threads`` threads
+    before anything native starts (``pin_threads``; the default one: the
+    timing is that of one core), the artifact loaded,
     one backend profiled (the optimistic pass, or with ``benchmark.checked``
     the checked call, a refused point served with its best-effort value and
     timed as such, m-lit ux-besteffort) and its reference timing; its
     events (``profile_virtual``'s monitor, and "loaded"), then its result or
-    error, sent back."""
+    error, sent back. ``one_thread`` (with more threads): the seconds of a
+    one-thread timing of the same calls after them, the runtime reloaded
+    with its pools at one thread (``benchmarking.one_thread_profile``; at
+    least one timed call), its time per point in the result."""
 
     import signal
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    one_core()
+    threads = max(int(getattr(benchmark, "runtime_threads", 1) or 1), 1)
+    pin_threads(threads)
     # This spawned process is the profile's own: its peak RAM is measured
     # from the reset high-water mark.
     from pyamplicol.reporting.resources import own_process_accounting
@@ -2342,6 +2420,33 @@ def _runtime_worker(
             optimistic=not benchmark.checked,
             monitor=lambda kind, payload: sender.send(("monitor", kind, payload)),
         )
+        if threads > 1 and one_thread is not None:
+            # The gain: the same calls on one thread, after the N-thread
+            # calls and their peak RAM (the N-thread runtime released first).
+            import gc
+
+            from pyamplicol.benchmarking import one_thread_profile
+
+            sender.send(("monitor", "reference-result", {"profile": profile}))
+            del runtime
+            gc.collect()
+            pin_threads(1)
+            single = one_thread_profile(
+                Runtime.load(artifact, process=process, **options),
+                config,
+                budget=one_thread,
+                points=points,
+                artifact=artifact,
+                reduction=request,
+                on_failure="best-effort" if benchmark.checked else "return",
+                optimistic=not benchmark.checked,
+                monitor=lambda kind, payload: sender.send(("monitor", kind, payload)),
+            )
+            profile = replace(
+                profile,
+                one_thread_seconds_per_point=single.seconds_per_point,
+                one_thread_calls=single.samples,
+            )
         sender.send(("result", profile))
     except Exception as error:
         import pickle
@@ -2436,13 +2541,20 @@ def _stability_worker(
 
 def one_core() -> None:
     """Size every thread pool this process starts from now on at one
-    thread (``_WORKER_THREADS``: rayon's, used by every native pool that
-    sets no count, and the BLAS/OpenMP ones): set before anything native
-    runs, its evaluations then use one core. A pool already started keeps
-    its threads."""
+    thread (``pin_threads``): its evaluations then use one core."""
+
+    pin_threads(1)
+
+
+def pin_threads(threads: int) -> None:
+    """Size every thread pool this process starts from now on at
+    ``threads`` threads (``_WORKER_THREADS``: rayon's, used by every native
+    pool that sets no count, and the BLAS/OpenMP ones): set before anything
+    native starts; a runtime loaded afterwards builds its executor's pool at
+    that size. A pool already started keeps its threads."""
 
     for name in _WORKER_THREADS:
-        os.environ[name] = "1"
+        os.environ[name] = str(int(threads))
 
 
 def _precisions(truth: GroundTruth | None) -> tuple[str, ...]:
