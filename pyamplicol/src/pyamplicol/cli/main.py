@@ -197,8 +197,13 @@ def run_cli(
     try:
         invocation = parse_cli(argv)
         if isinstance(invocation, RecurrenceExportInvocation):
+            # The live display on a terminal (the command has no --progress:
+            # a script's stderr stays quiet), never with a JSON result.
             sink = progress_sink(
-                "auto",
+                "tty"
+                if invocation.output_format != "json"
+                and bool(getattr(diagnostic_stream, "isatty", lambda: False)())
+                else "off",
                 stream=diagnostic_stream,
                 color=_color_enabled(invocation.output_color, diagnostic_stream),
             )
