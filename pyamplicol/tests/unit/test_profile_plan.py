@@ -305,45 +305,43 @@ def test_an_infeasible_budget_runs_the_minimums_and_estimates_them():
     assert TOLERANCE[0] <= ratio <= TOLERANCE[1] * 1.5, (total, planned.minimum_seconds)
 
 
-def test_the_eta_estimator():
-    """The shared estimator: a prior marked estimated, then the recent
-    median rate (a slow first item and one outlier do not move it, a drift
-    is followed within a few items), never 0 while items remain."""
+def test_the_profile_eta_on_synthetic_sequences(monkeypatch):
+    """The profile's phase ETA (``recent_rate``, ``_BackendRun.remaining``): a
+    prior until a call is back, then the median of the recent calls (a slow
+    first call and one outlier do not move it, a drift is followed within a
+    few calls), counted down while a call runs and never 0 while one
+    remains; the whole command's ETA adds the later phases (a points-weighted
+    mix: each backend's own calls at its own cost)."""
 
-    from pyamplicol.reporting.progress import EtaEstimator
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.benchmarking import recent_rate
 
-    eta = EtaEstimator(prior=2.0)
-    first = eta.observe(0, 20, now=0.0)
-    assert first == {"eta_seconds": 40.0, "eta_estimated": True}
-    # A slow first item (10 s), then 1 s items.
-    clock = 10.0
-    eta.observe(1, 20, now=clock)
-    for k in range(2, 7):
-        clock += 1.0
-        out = eta.observe(k, 20, now=clock)
-    assert out["eta_estimated"] is False
-    assert out["eta_seconds"] == pytest.approx(14.0)
-    # One outlier does not move it.
-    clock += 30.0
-    out = eta.observe(7, 20, now=clock)
-    assert out["eta_seconds"] == pytest.approx(13.0)
-    # A drift to 3 s per item is followed within a few items.
-    for k in range(8, 12):
-        clock += 3.0
-        out = eta.observe(k, 20, now=clock)
-    assert out["eta_seconds"] == pytest.approx(9 * 3.0)
-    # Never 0 while an item remains.
-    assert eta.observe(19, 20, now=clock + 1e-3)["eta_seconds"] > 0.0
-    assert eta.observe(20, 20, now=clock + 2e-3)["eta_seconds"] == 0.0
-    # Heterogeneous items (two backends, a points-weighted mix): the
-    # remaining work at the recent mix, not at the cheap backend's rate.
-    mixed = EtaEstimator()
-    t = 0.0
-    mixed.observe(0, 10, now=t)
-    for k, cost in enumerate((1.0, 3.0, 1.0, 3.0), start=1):
-        t += cost
-        out = mixed.observe(k, 10, now=t)
-    assert 6.0 <= out["eta_seconds"] <= 18.0
+    assert recent_rate([]) is None
+    assert recent_rate([10.0, 1.0, 1.0, 1.0, 1.0, 1.0]) == 1.0
+    assert recent_rate([1.0, 1.0, 1.0, 30.0, 1.0]) == 1.0
+    assert recent_rate([1.0, 1.0, 3.0, 3.0, 3.0]) == 3.0
+    clock = [0.0]
+    monkeypatch.setattr(lp.time, "perf_counter", lambda: clock[0])
+    monkeypatch.setattr(lp, "_process_age", lambda: 0.0)
+    monitor = lp._Monitor(None, "x", None)
+    run = lp._BackendRun(monitor, "tirust", lp.GroundTruth("double-double"), 2.0)
+    run.event(
+        "binary64",
+        {"done": 1, "total": 6, "eta_seconds": 50.0, "walls": [], "points": 16},
+    )
+    # A prior (the warm-up's 10 s per call): 5 calls left.
+    assert run.remaining() == pytest.approx(50.0)
+    clock[0] += 4.0
+    assert run.remaining() == pytest.approx(46.0)
+    walls = [1.0, 1.0, 1.0]
+    run.event(
+        "binary64",
+        {"done": 4, "total": 6, "eta_seconds": 2.0, "walls": walls, "points": 16},
+    )
+    assert run.remaining() == pytest.approx(2.0)
+    # A call overrunning its expected second: never 0, a tenth of a call.
+    clock[0] += 5.0
+    assert run.remaining() == pytest.approx(1.0 + 0.1)
 
 
 class _Sink:
