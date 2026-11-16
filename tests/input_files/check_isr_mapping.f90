@@ -52,7 +52,7 @@ subroutine check_isr_mapping(mode)
   double precision :: nodes(64),weights(64),split(3),lo,hi,xx,tmp_xmax,tmp_norm,tmp_xi,tmp_y
   double precision :: tmp_hat,tmp_ps,tmp_jac,tmp_s,tmp_sqrt,tmp_tau,tmp_ycm,tmp_xb(2),tmp_pi(0:3)
   double precision :: radii(4),angles(4),fractions(2,4),saved_jac
-  double precision :: max_replay,max_inverse,expected_xb(2),omega,expected_jac
+  double precision :: max_replay,max_inverse,expected_xb(2),omega,expected_jac,ctiny_used
   integer :: which,side,ir,ia,native,k,segment,cut,kind
   logical :: pass
 
@@ -227,7 +227,14 @@ subroutine check_isr_mapping(mode)
             ! azimuth and sampled energy/angle derivatives. FKS inserts
             ! the omitted xi and xi-range factors when assembling weights.
             expected_jac=2d0*pi*8d0*x(1)*x(2)/(2d0*(4d0*pi)**3*(2d0*pi)**2*z)
-            if(native.eq.0)expected_jac=expected_jac*(1d0-1d-6)*(1d0-5d-7)
+            ! The fixed-order asymmetric map scales its collinear
+            ! cut-off with z (isr_collinear_cutoff): 1-y >= 2*ctiny.
+            ctiny_used=5d-7
+            if(.not.symmetric_map)ctiny_used=5d-7*min(1d0,max(z,2d-6))
+            if(native.eq.0)expected_jac=expected_jac*(1d0-1d-6)*(1d0-ctiny_used)
+            if(native.eq.0.and..not.symmetric_map.and. &
+                 abs((1d0-y)-2d0*(ctiny_used+(1d0-ctiny_used)*x(2)**2)).gt.1d-15) &
+                 error stop 'ISR collinear cut-off'
             ! Fixed order samples log(1-xi) uniformly in u=xi_hat at x=1:
             ! xi_hat=(1-xbar**u)/(1-xbar), u=1d-6+(1-1d-6)*x(1)**2.
             if(native.eq.0.and..not.symmetric_map)expected_jac=expected_jac* &

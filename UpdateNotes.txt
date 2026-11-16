@@ -5,6 +5,10 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   HS: fixed-order NLO: the collinear cut-off of the initial-state radiation angle
+       (1-y >= 1e-6) now scales with z = shat_born/shat. The real leaves its collinear
+       limit on 1-y ~ z, so for light systems at high energy (z down to 1e-7) the fixed
+       cut-off dropped part of real minus counterterm: +0.2% on p p > eta_c at 13 TeV.
    HS: onium decays and onium production in particle decays (LO NRQCD/NRQED, S and P
        waves, colour singlet and octet, with 'output madevent' and 'output
        standalone_fortran'):

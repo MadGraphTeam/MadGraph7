@@ -108,6 +108,22 @@ c exp(-el*u)=1-s
       end subroutine isr_xi_hat_log_inverse
 
 
+      double precision function isr_collinear_cutoff(ctiny,z)
+c Lower bound ctiny on (1-y)/2 for the asymmetric ISR map at fixed
+c order, scaled with z=1-xi=shat_born/shat. The real departs from its
+c collinear limit once |t| ~ shat_born, i.e. on 1-y ~ z, so a fixed
+c 1-y >= 2*ctiny removes real minus local counterterm on 1-y < 2*ctiny
+c (the integrated counterterms cover it) at the relative size
+c log(2*ctiny/z) once z < ctiny: +0.2% on p p > eta_c at 13 TeV, where
+c z reaches 5d-8. Scaled with z the removed part stays ~ctiny. The
+c floor 1-y = 2d-12 keeps the real, in the Born frame of the map, at a
+c round-off below ~1d-5 (eta_c reals at z = 1d-5 ... 5d-8).
+      implicit none
+      double precision ctiny,z
+      isr_collinear_cutoff=ctiny*min(1d0,max(z,2d-6))
+      end function isr_collinear_cutoff
+
+
       double precision function fsr_born_cutoff_factor()
 c The Born uses the soft map as a normalized auxiliary measure. Remove
 c its finite sampling-volume reduction only from the n-body prefactor.
@@ -1075,6 +1091,25 @@ c soft and emitter-collinear limits leave the underlying Born unchanged.
          sstiny=0d0
          cctiny=0d0
       endif
+      call get_isr_radiation_bounds(j_fks,xbjrk_born,tau_born,
+     &     xiimin,xiimax)
+      xinorm=xiimax-xiimin
+      if(xinorm.le.0d0)then
+         xjac=-342d0
+         pass=.false.
+         return
+      endif
+c The event and its counterevents share x(1), hence xi_hat and its weight.
+      u=sstiny+(1d0-sstiny)*x(1)**2
+      xi_hat_u=u
+      dxi_hat_du=1d0
+      if(use_log_isr_xi_sampling())then
+         call isr_xi_hat_log(u,xiimin,xiimax,xi_hat_u,dxi_hat_du)
+c From the shared xi_hat, so that the soft counterevent keeps the y of
+c the event.
+         cctiny=isr_collinear_cutoff(cctiny,
+     &        1d0-(xiimin+xinorm*xi_hat_u))
+      endif
 c The angular domain is independent of the incoming fractions, even
 c when the real invariant mass has a larger lower bound than the Born.
       if(abs(icountevts).eq.2.or.abs(icountevts).eq.1)then
@@ -1090,21 +1125,6 @@ c when the real invariant mass has a larger lower bound than the Born.
          return
       endif
       if(.not.colltest)xjac=xjac*4d0*x(2)*(1d0-cctiny)
-
-      call get_isr_radiation_bounds(j_fks,xbjrk_born,tau_born,
-     &     xiimin,xiimax)
-      xinorm=xiimax-xiimin
-      if(xinorm.le.0d0)then
-         xjac=-342d0
-         pass=.false.
-         return
-      endif
-c The event and its counterevents share x(1), hence xi_hat and its weight.
-      u=sstiny+(1d0-sstiny)*x(1)**2
-      xi_hat_u=u
-      dxi_hat_du=1d0
-      if(use_log_isr_xi_sampling())
-     &     call isr_xi_hat_log(u,xiimin,xiimax,xi_hat_u,dxi_hat_du)
       if(abs(icountevts).eq.2.or.icountevts.eq.0)then
          xi_i_fks=0d0
 c These endpoints cannot pass the cuts below the supplied lower bound.
@@ -1541,6 +1561,7 @@ c Use the same run-level choice for the event and every counterevent.
       xbjrk_born=xbjrk
       xbjrk_born(j_fks)=z*xbjrk(j_fks)
 
+      if(use_log_isr_xi_sampling())cctiny=isr_collinear_cutoff(cctiny,z)
       x(2)=((1d0-y_ij_fks)/2d0-cctiny)/(1d0-cctiny)
       if(x(2).lt.-1d-12.or.x(2).gt.1d0+1d-12)then
          xjac=-33d0
