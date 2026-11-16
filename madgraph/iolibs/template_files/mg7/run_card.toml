@@ -144,6 +144,12 @@ t_channel = %(phasespace.t_channel)s # options: propagator, rambo, chili
 flat_mode = %(phasespace.flat_mode)s # options: propagator, rambo, chili
 combine_channel_threshold = %(phasespace.combine_channel_threshold)s
 drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s # channel count above which QCD-less channels are dropped, -1 keeps all
+# channel count above which channels differing only in their off-shell electroweak
+# bosons are merged and redundant ones dropped, -1 keeps all
+ew_channel_reduction = %(phasespace.ew_channel_reduction)s
+ew_channel_reduction_mode = %(phasespace.ew_channel_reduction_mode)s # options: full, partial, t_channel
+# also reduce the channels when the run is certain to use VEGAS
+channel_reduction_with_vegas = %(phasespace.channel_reduction_with_vegas)s
 invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
 cut_decays = %(phasespace.cut_decays)s # apply the [cuts] to decay products of on-shell particles
@@ -250,6 +256,7 @@ uniform_channel_ratio = %(madnis.uniform_channel_ratio)s
 integration_history_length = %(madnis.integration_history_length)s
 channel_dropping_threshold = %(madnis.channel_dropping_threshold)s
 channel_dropping_interval = %(madnis.channel_dropping_interval)s
+resonance_guard = %(madnis.resonance_guard)s # never drop the last channel of a resonance
 drop_zero_integrands = %(madnis.drop_zero_integrands)s
 fixed_cwnet_fraction = %(madnis.fixed_cwnet_fraction)s
 softclip_threshold = %(madnis.softclip_threshold)s

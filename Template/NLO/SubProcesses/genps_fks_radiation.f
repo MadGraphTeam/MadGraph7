@@ -1145,7 +1145,10 @@ c nonzero. Preserve its physical interval for a valid sampled coordinate.
          return
       endif
 
-      z=1d0-xi_i_fks
+c The validated endpoint implies z >= xbar, including when a dressed
+c lepton's 1-xbar was retained separately. Enforce the inequality after
+c subtracting xi, without relying on how the bounds were computed.
+      z=max(1d0-xi_i_fks,xbjrk_born(j_fks))
       sqrtz=sqrt(z)
       sqrtborn=sqrt(shat_born)
       tau=tau_born/z
@@ -1157,7 +1160,7 @@ c nonzero. Preserve its physical interval for a valid sampled coordinate.
 c Work in the underlying Born CM (the common tilde frame), so that
 c the usual single Born-to-lab boost also applies to the real event.
       call prepare_isr_recoil_boost(xi_i_fks,y_ij_fks,phi_i_fks,
-     &     recoil_boost)
+     &     recoil_boost,z)
       do i=3,nexternal
          if(i.ne.i_fks)call apply_isr_recoil_boost(xp(0,i),xp(0,i),
      &        recoil_boost,idir,.false.)
@@ -1418,12 +1421,17 @@ c
       omega=sqrt( (2-xi_i_fks*(1+yijdir))/
      &     (2-xi_i_fks*(1-yijdir)) )
       if (icountevts.ne.0) then
-         tau=tau_born/(1-xi_i_fks)
-         ycm=ycm_born-log(omega)
+c xi has already been checked against both physical beam bounds. At
+c an endpoint the divisions can still overshoot one through roundoff.
+c Keep the fractions, invariant mass and rapidity consistent.
+         xbjrk(1)=min(1d0,
+     $        xbjrk_born(1)/(sqrt(1-xi_i_fks)*omega))
+         xbjrk(2)=min(1d0,
+     $        xbjrk_born(2)*omega/sqrt(1-xi_i_fks))
+         tau=xbjrk(1)*xbjrk(2)
+         ycm=log(xbjrk(1)/xbjrk(2))/2d0
          shat=tau*stot
          sqrtshat=sqrt(shat)
-         xbjrk(1)=xbjrk_born(1)/(sqrt(1-xi_i_fks)*omega)
-         xbjrk(2)=xbjrk_born(2)*omega/sqrt(1-xi_i_fks)
       else
          tau=tau_born
          ycm=ycm_born

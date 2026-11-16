@@ -454,7 +454,9 @@ Integrand::Integrand(
             }
         }
         for (std::size_t i = 0; bool active : mask_all) {
-            _active_flavors.push_back(i);
+            if (active) {
+                _active_flavors.push_back(i);
+            }
             ++i;
         }
     }
