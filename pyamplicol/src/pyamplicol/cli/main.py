@@ -342,9 +342,14 @@ def run_cli(
             diagnostic_stream.flush()
         return 2
     except KeyboardInterrupt:
+        from pyamplicol.reporting.progress import progress_whereabouts
+
+        whereabouts = progress_whereabouts(sink)
         close_progress_sink(sink)
         sink = None
-        message = "interrupted (Ctrl-C) before a complete result was available"
+        message = "interrupted (Ctrl-C) " + (
+            f"{whereabouts}, " if whereabouts else ""
+        ) + "before a complete result was available"
         if config is not None and str(config.action) == "generate":
             # The writer stages the artifact privately and publishes it only
             # when complete (``artifacts.writer``).
@@ -362,7 +367,37 @@ def run_cli(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    return run_cli(argv)
+    code = run_cli(argv)
+    if argv is None and code == 130:
+        # The command line after Ctrl-C (not an in-process call): work
+        # threads that cannot be interrupted (a native call of a process
+        # phase) would hold the exit until they finish; the result was
+        # already reported, nothing was published.
+        _exit_without_lingering_threads(code)
+    return code
+
+
+def _exit_without_lingering_threads(code: int, *, grace: float = 2.0) -> None:
+    import os
+    import threading
+    import time
+
+    deadline = time.monotonic() + grace
+    for thread in threading.enumerate():
+        if thread is threading.main_thread() or thread.daemon:
+            continue
+        thread.join(timeout=max(deadline - time.monotonic(), 0.0))
+    if any(
+        thread.is_alive() and not thread.daemon
+        for thread in threading.enumerate()
+        if thread is not threading.main_thread()
+    ):
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                stream.flush()
+            except (OSError, ValueError):
+                pass
+        os._exit(code)
 
 
 __all__ = ["main", "run_cli", "write_result"]

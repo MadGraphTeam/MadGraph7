@@ -1117,8 +1117,15 @@ def _kept_line(task: _TaskState, *, color: bool) -> str:
     elapsed = task.elapsed_seconds or max(
         (task.finished_at or task.updated_at) - task.started_at, 0.0
     )
-    mark = "done" if task.success is not False else "failed"
     cost = f"{elapsed:.1f}s" if elapsed < 10.0 else _duration_text(elapsed)
+    if task.success is False and task.message == "interrupted":
+        # Ctrl-C: where the run stood, not a failure.
+        return _paint_fragments(
+            [(task.description, "CYAN"), (f"  interrupted after {cost}", "YELLOW")],
+            width=10_000,
+            enabled=color,
+        )
+    mark = "done" if task.success is not False else "failed"
     fragments = [
         (task.description, "CYAN"),
         (f"  {task.message}" if task.message else "", None),
@@ -1919,6 +1926,45 @@ def _log_detail_text(details: ProgressDetails) -> str:
     return "" if not fragments else " [" + " ".join(fragments) + "]"
 
 
+def progress_whereabouts(sink: ProgressSink | None) -> str | None:
+    """Where a run stands, for an interruption message: "after 1m02s, in
+    Generating the loop processes > Exporting the loop families (1 of 3
+    phases done)"; None when the sink keeps no task state."""
+
+    states: dict[str, _TaskState] | None = None
+    if isinstance(sink, TtyProgressSink):
+        states = sink._tasks if sink._line_sink is None else sink._line_sink._states
+    elif isinstance(sink, _LineProgressSink):
+        states = sink._states
+    if not states:
+        return None
+    tasks = tuple(states.values())
+    active = tuple(task for task in tasks if task.finished_at is None)
+    roots = [task for task in active if task.parent_task_id is None]
+    if not roots:
+        return None
+    root = max(roots, key=lambda task: task.started_at)
+    chain = [root]
+    while True:
+        children = [task for task in active if task.parent_task_id == chain[-1].task_id]
+        if not children:
+            break
+        chain.append(max(children, key=lambda task: task.started_at))
+    text = f"after {_duration_text(time.monotonic() - root.started_at)}"
+    if len(chain) > 1:
+        text += ", in " + " > ".join(task.description for task in chain[1:])
+    if root.unit == "phases" and root.total:
+        done = sum(
+            1
+            for task in tasks
+            if task.parent_task_id == root.task_id
+            and task.finished_at is not None
+            and task.success is not False
+        )
+        text += f" ({done} of {root.total} phases done)"
+    return text
+
+
 def close_progress_sink(sink: ProgressSink | None) -> None:
     """Close an interactive sink without requiring custom sinks to implement it."""
 
@@ -1966,4 +2012,5 @@ __all__ = [
     "TtyProgressSink",
     "close_progress_sink",
     "progress_sink",
+    "progress_whereabouts",
 ]

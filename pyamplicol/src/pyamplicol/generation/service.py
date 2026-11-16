@@ -170,7 +170,7 @@ from .process_grouping import (
     flavor_blind_mapping,
     particle_table,
 )
-from .progress import GenerationPhaseReporter, PhaseHandle
+from .progress import GenerationPhaseReporter, PhaseHandle, history_signature
 from .recurrence_color import (
     RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
     encode_recurrence_color_contraction,
@@ -3207,6 +3207,18 @@ def _numerical_current_warning_required(value: object) -> bool:
     return isinstance(warning, Mapping) and warning.get("required") is True
 
 
+def _shutdown_process_executor(executor: ThreadPoolExecutor) -> None:
+    """Shut a process-phase pool down: wait for its running processes,
+    except on Ctrl-C (the interrupt is reported at once; a running process
+    cannot be stopped and is abandoned, the command line exits without
+    waiting for it, ``cli.main``)."""
+
+    import sys
+
+    interrupted = isinstance(sys.exc_info()[1], KeyboardInterrupt)
+    executor.shutdown(wait=not interrupted, cancel_futures=True)
+
+
 def _map_process_phase(
     items: Sequence[_ProcessInput],
     operation: Callable[[_ProcessInput], _ProcessOutput],
@@ -3516,6 +3528,7 @@ class GenerationBackend:
                 "backend": backend.upper(),
                 "optimization": optimization.upper(),
             },
+            signature=history_signature("tree", run_config),
         )
         generation_started = time.perf_counter()
         try:
@@ -3545,6 +3558,9 @@ class GenerationBackend:
                 total=len(processes.requests),
             ) as phase:
                 expanded = self._expand_process_set(processes, resolved_model, phase)
+                phase.summary = f"{len(expanded):,} concrete " + (
+                    "process" if len(expanded) == 1 else "processes"
+                )
             self._apply_symbolica_resource_policy(
                 license_state,
                 process_count=len(expanded),
@@ -3728,7 +3744,7 @@ class GenerationBackend:
                             )
                 finally:
                     if executor is not None:
-                        executor.shutdown(wait=True, cancel_futures=True)
+                        _shutdown_process_executor(executor)
 
                 with reporter.phase(
                     "artifact-writing",
@@ -4347,7 +4363,7 @@ class GenerationBackend:
                     )
             finally:
                 if executor is not None:
-                    executor.shutdown(wait=True, cancel_futures=True)
+                    _shutdown_process_executor(executor)
 
             artifact_processes = tuple(item.artifact for item in generated)
             recurrence_warnings: list[tuple[str, str]] = []
