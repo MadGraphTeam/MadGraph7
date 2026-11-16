@@ -12,6 +12,7 @@ import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+import threading
 from threading import Event, RLock, Thread
 from types import MappingProxyType
 from typing import Any, Literal, Protocol, TextIO, TypeAlias, runtime_checkable
@@ -227,6 +228,8 @@ class TtyProgressSink:
                     self._line_sink = _LineProgressSink(
                         self.stream,
                         color=False,
+                        minimum_interval=2.0,
+                        heartbeat=True,
                     )
                 self._line_sink.emit(event)
                 return
@@ -302,8 +305,11 @@ class TtyProgressSink:
         with self._lock:
             dashboard = self._dashboard
             self._dashboard = None
+            line_sink = self._line_sink
         if dashboard is not None:
             dashboard.close()
+        if line_sink is not None:
+            line_sink.close()
 
     @property
     def message_stream(self) -> TextIO:
@@ -402,11 +408,25 @@ class _TaskState:
                 del self.marks[_MARKS_HEAD]
 
 
+# The longest silence of a line log while work runs, by the run's age: a
+# status line after 5 s in the first minute, then every 10 s, 20 s from
+# 5 minutes, 30 s from 20 minutes (``_LineProgressSink`` heartbeat).
+_LOG_CADENCE = ((60.0, 5.0), (300.0, 10.0), (1200.0, 20.0), (math.inf, 30.0))
+# A step's start line is written once it has run this long (a step that
+# ends sooner leaves no line, unless it fails).
+_LOG_START_DELAY = 1.0
+
+
 @dataclass(slots=True)
 class _LineProgressSink:
     """One plain line per progress event (``--progress log`` and a
-    non-terminal ``tty``): starts and ends always, updates at most every
-    ``minimum_interval`` seconds per task (and at completion)."""
+    non-terminal ``tty``): starts and ends of the top tasks always, of a
+    sub-task once it has run ``_LOG_START_DELAY`` (its end then too),
+    updates at most every ``minimum_interval`` seconds per task (and at
+    completion), with the estimated time left. With ``heartbeat``, a
+    status line of the running task (count, "no progress for", ETA,
+    elapsed, memory, busy cores) whenever the log has been silent for the
+    ``_LOG_CADENCE`` interval."""
 
     stream: TextIO
     color: bool = False
@@ -417,10 +437,23 @@ class _LineProgressSink:
     # The cadence of a task's heartbeat updates (``details["heartbeat"]``:
     # the same counts, its clocks moved on) in a line log: alive, not noisy.
     heartbeat_interval: float = 10.0
+    heartbeat: bool = False
+    _states: dict[str, _TaskState] = field(default_factory=dict)
+    _announced: set[str] = field(default_factory=set)
+    _lock: RLock = field(default_factory=RLock)
+    _last_line: float = field(default_factory=time.monotonic)
+    _thread: Thread | None = None
+    _stop: Event = field(default_factory=Event)
+    _monitor: ResourceUsageMonitor | None = None
 
     def emit(self, event: ProgressEvent) -> None:
+        with self._lock:
+            self._emit_locked(event)
+
+    def _emit_locked(self, event: ProgressEvent) -> None:
+        now = time.monotonic()
+        state = self._track(event, now)
         if isinstance(event, ProgressUpdate):
-            now = time.monotonic()
             complete = event.total is not None and event.completed == event.total
             last = self._last.get(event.task_id, float("-inf"))
             interval = (
@@ -431,19 +464,200 @@ class _LineProgressSink:
             if not complete and now - last < interval:
                 return
             self._last[event.task_id] = now
+            if (
+                state is not None
+                and "eta_seconds" not in event.details
+                and not complete
+            ):
+                estimate = _task_estimate(state, now)
+                if estimate is not None and estimate.seconds is not None:
+                    event = ProgressUpdate(
+                        event.task_id,
+                        event.completed,
+                        event.total,
+                        event.message,
+                        {
+                            **event.details,
+                            "eta_seconds": estimate.seconds,
+                            "eta_estimated": estimate.estimated,
+                        },
+                    )
         if isinstance(event, ProgressStart):
             self.descriptions[event.task_id] = event.description
+            if self.heartbeat and event.parent_task_id is not None:
+                # Announced once it has run a while (``_announce``).
+                return
+            self._announced.add(event.task_id)
+        elif event.task_id not in self._announced:
+            if isinstance(event, ProgressUpdate):
+                self._announce(event.task_id, now)
+            elif event.success and not event.details.get("keep"):
+                self._forget(event.task_id)
+                return
         description = self.descriptions.get(event.task_id)
-        rendered = _format_event(event, description=description)
+        self._write(_format_event(event, description=description), event)
+        if isinstance(event, ProgressEnd):
+            self._forget(event.task_id)
+
+    def _write(self, rendered: str, event: ProgressEvent | None = None) -> None:
         color_name = (
-            "RED" if isinstance(event, ProgressEnd) and not event.success else "CYAN"
+            "RED"
+            if isinstance(event, ProgressEnd) and not event.success
+            else "LIGHTBLACK_EX"
+            if event is None
+            else "CYAN"
         )
         painted = _terminal_paint(rendered, color_name, enabled=self.color)
         self.stream.write(f"{painted}\n")
         self.stream.flush()
-        if isinstance(event, ProgressEnd):
-            self.descriptions.pop(event.task_id, None)
-            self._last.pop(event.task_id, None)
+        self._last_line = time.monotonic()
+
+    def _forget(self, task_id: str) -> None:
+        self.descriptions.pop(task_id, None)
+        self._last.pop(task_id, None)
+        self._announced.discard(task_id)
+        state = self._states.pop(task_id, None)
+        if state is not None and not any(
+            task.finished_at is None for task in self._states.values()
+        ):
+            self._states.clear()
+            self._stop_heartbeat()
+
+    def _track(self, event: ProgressEvent, now: float) -> _TaskState | None:
+        if not self.heartbeat:
+            return None
+        if isinstance(event, ProgressStart):
+            self._states[event.task_id] = _TaskState(
+                task_id=event.task_id,
+                description=event.description,
+                total=event.total,
+                parent_task_id=event.parent_task_id,
+                unit=event.unit,
+                details=dict(event.details),
+                started_at=now,
+                updated_at=now,
+            )
+            self._start_heartbeat()
+            return self._states[event.task_id]
+        state = self._states.get(event.task_id)
+        if state is None:
+            return None
+        if isinstance(event, ProgressUpdate):
+            state.record(event.completed, now)
+            state.completed = max(state.completed, event.completed)
+            state.total = event.total if event.total is not None else state.total
+            state.details.update(event.details)
+            state.updated_at = now
+        else:
+            state.finished_at = now
+            state.updated_at = now
+        return state
+
+    def _announce(self, task_id: str, now: float) -> None:
+        state = self._states.get(task_id)
+        if state is None or task_id in self._announced:
+            return
+        parent = state.parent_task_id
+        if parent is not None and parent not in self._announced:
+            self._announce(parent, now)
+        self._announced.add(task_id)
+        self._write(
+            _format_event(
+                ProgressStart(
+                    task_id,
+                    state.description,
+                    total=state.total,
+                    parent_task_id=state.parent_task_id,
+                )
+            )
+        )
+
+    # --- heartbeat --------------------------------------------------------
+    def _start_heartbeat(self) -> None:
+        if self._thread is not None:
+            return
+        self._stop = Event()
+        if self._monitor is None:
+            self._monitor = ResourceUsageMonitor(interval_seconds=1.0)
+            self._monitor.start()
+        self._thread = Thread(
+            target=self._beat, name="pyamplicol-progress-log-heartbeat", daemon=True
+        )
+        self._thread.start()
+
+    def _stop_heartbeat(self) -> None:
+        self._stop.set()
+        thread, self._thread = self._thread, None
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=1.0)
+        if self._monitor is not None:
+            self._monitor.close()
+            self._monitor = None
+
+    def close(self) -> None:
+        with self._lock:
+            self._states.clear()
+        self._stop_heartbeat()
+
+    def _beat(self) -> None:
+        while not self._stop.wait(0.5):
+            with self._lock:
+                now = time.monotonic()
+                for state in list(self._states.values()):
+                    if (
+                        state.finished_at is None
+                        and state.parent_task_id is not None
+                        and state.task_id not in self._announced
+                        and now - state.started_at >= _LOG_START_DELAY
+                    ):
+                        self._announce(state.task_id, now)
+                active = [t for t in self._states.values() if t.finished_at is None]
+                if not active:
+                    continue
+                roots = [t for t in active if t.parent_task_id is None] or active
+                age = now - min(t.started_at for t in roots)
+                cadence = next(limit for bound, limit in _LOG_CADENCE if age < bound)
+                if now - self._last_line < cadence:
+                    continue
+                self._write(self._status_line(active, now))
+
+    def _status_line(self, active: list[_TaskState], now: float) -> str:
+        """The running task's status: the deepest running task (by start),
+        its count, the silence since the last event, its ETA, the run's
+        elapsed time, memory and busy cores."""
+
+        parents = {task.parent_task_id for task in active}
+        leaves = [task for task in active if task.task_id not in parents] or active
+        task = max(leaves, key=lambda item: item.started_at)
+        roots = [t for t in active if t.parent_task_id is None] or active
+        parts: list[str] = []
+        if task.total is not None:
+            parts.append(f"{min(task.completed, task.total)}/{task.total}")
+        quiet = now - max(t.updated_at for t in self._states.values())
+        parts.append(
+            "running" if quiet < _QUIET_SECONDS else f"no progress for {_duration_text(quiet)}"
+        )
+        estimate = (
+            None if "eta_seconds" in task.details else _task_estimate(task, now)
+        )
+        counted = _counted_down(task, "eta_seconds", now)
+        if counted is not None:
+            parts.append(f"ETA {_eta_text(max(counted, 0.0), estimated=bool(task.details.get('eta_estimated')))}")
+        elif estimate is not None:
+            parts.append(
+                f"ETA {_eta_text(estimate.seconds, estimated=estimate.estimated)}"
+                if estimate.seconds is not None
+                else f"overdue {_duration_text(estimate.overdue)}"
+            )
+        parts.append(f"elapsed {_duration_text(now - min(t.started_at for t in roots))}")
+        usage = self._monitor.usage if self._monitor is not None else None
+        if usage is not None and usage.current_rss_bytes is not None:
+            parts.append(f"RSS {_rss_text(usage)}")
+        if usage is not None and usage.busy_cores is not None:
+            parts.append(
+                "idle" if usage.busy_cores < _IDLE_CORES else f"cores {usage.busy_cores:.1f}"
+            )
+        return f"{task.description}: " + "; ".join(parts)
 
 
 class _TtyMessageStream(io.TextIOBase, TextIO):
@@ -1135,6 +1349,10 @@ def _task_estimate(task: _TaskState, now: float) -> Estimate | None:
     ``prior_seconds`` detail (its expected duration), or None."""
 
     prior = _detail_float(task.details, "prior_seconds")
+    if task.unit == "phases":
+        # Phases are not alike: their count says nothing of the time left
+        # (a whole command's estimate comes from its phases' priors).
+        return remaining_estimate(prior_seconds=prior, started_at=task.started_at, now=now)
     if task.total is not None and task.total > 0:
         marks = [(float(t), int(c)) for t, c in task.marks]
         if not marks and task.completed > 0:
@@ -1727,7 +1945,9 @@ def progress_sink(
         # Plain lines on the stream, never in the logger format (the CLI
         # shows no logger records at its default level).
         del logger
-        return _LineProgressSink(stream, color=bool(color), minimum_interval=2.0)
+        return _LineProgressSink(
+            stream, color=bool(color), minimum_interval=2.0, heartbeat=True
+        )
     if selected == "tty":
         return TtyProgressSink(stream, color=color)
     raise ValueError(f"unknown progress mode {mode!r}")

@@ -153,3 +153,29 @@ def test_summary_tables_fit_the_terminal_width() -> None:
     assert "| field  |" in text  # the narrow column is not wrapped
     with table_width(None):
         pass
+
+
+def test_log_heartbeat_breaks_every_silence(monkeypatch) -> None:
+    import io
+    import time as clock
+
+    from pyamplicol.reporting import progress
+    from pyamplicol.reporting.progress import ProgressEnd, ProgressStart
+
+    monkeypatch.setattr(progress, "_LOG_CADENCE", ((float("inf"), 0.6),))
+    stream = io.StringIO()
+    sink = progress.progress_sink("log", stream=stream)
+    sink.emit(ProgressStart("root", "Generating processes", total=1))
+    sink.emit(ProgressStart("root:a", "A quick step", parent_task_id="root"))
+    sink.emit(ProgressEnd("root:a"))
+    sink.emit(ProgressStart("root:b", "A long step", parent_task_id="root"))
+    clock.sleep(3.6)
+    sink.emit(ProgressEnd("root:b", elapsed_seconds=3.6, details={"keep": True}))
+    sink.emit(ProgressEnd("root"))
+    progress.close_progress_sink(sink)
+    lines = stream.getvalue().splitlines()
+    assert not any("A quick step" in line for line in lines)
+    assert lines[1] == "A long step"
+    beats = [line for line in lines if line.startswith("A long step: ")]
+    assert len(beats) >= 2 and all("elapsed" in line for line in beats)
+    assert lines[-2] == "A long step done in 3s"
