@@ -973,6 +973,15 @@ def profile_loop(
         {
             **planned.record(),
             "overruled": overruled if completion is not None else [],
+            # Which counts were given (the rest from the time budgets).
+            "given": {
+                "runtime": bool(want_runtime and runtime_given and completion is None),
+                "stability": bool(
+                    want_stability
+                    and stability_given is not None
+                    and completion is None
+                ),
+            },
             "runtime_counts": {
                 row.backend: {
                     "batch": row.profile.batch,

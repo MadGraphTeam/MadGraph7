@@ -698,6 +698,8 @@ def test_the_stability_run_without_a_ground_truth(uux_ddx):
     )
     rendered = text.getvalue()
     assert "none (estimates only)" in rendered
+    # The counts row names what was given (only the stability points here).
+    assert "6 stability points as given" in rendered
     assert "Estimated digits of binary64 (no ground truth)" in rendered
     assert "Default checks, estimates only" in rendered
     assert "true digits" not in rendered.split("Field descriptions")[0]
