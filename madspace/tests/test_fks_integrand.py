@@ -816,8 +816,16 @@ def test_cross_section(path):
             channel.born, channel.configurations, cuts=channel.cuts(), n_f=channel.n_f
         )
         ours = channel.run(function)
+        # to the rounding of the parts of each point, which cancel. A change of
+        # the rounding alone (scalar against simd_512 on x86) moves the weights
+        # by up to 1.2e-12 of the summed parts, and on NEON the two evaluations
+        # here round differently.
+        parts = [channel.weights[name] for name in WEIGHTS if name != "lo_weight"]
+        scale = np.abs(parts).sum(0)
         for name, value in channel.weights.items():
-            np.testing.assert_allclose(ours[name], value, rtol=1e-13, atol=0)
+            tolerance = 1e-13 * np.abs(value) + 1e-11 * scale
+            bad = np.flatnonzero(np.abs(ours[name] - value) > tolerance)
+            assert bad.size == 0, (name, bad, ours[name][bad], value[bad], scale[bad])
 
 
 def test_cross_section_with_extra_counterterms():
