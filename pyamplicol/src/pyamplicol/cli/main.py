@@ -380,13 +380,37 @@ def run_cli(
 
 def main(argv: Sequence[str] | None = None) -> int:
     code = run_cli(argv)
-    if argv is None and code == 130:
-        # The command line after Ctrl-C (not an in-process call): work
-        # threads that cannot be interrupted (a native call of a process
-        # phase) would hold the exit until they finish; the result was
-        # already reported, nothing was published.
-        _exit_without_lingering_threads(code)
+    if argv is None:
+        # The command line (not an in-process call): the result is written.
+        if code == 130:
+            # After Ctrl-C, work threads that cannot be interrupted (a
+            # native call of a process phase) would hold the exit until
+            # they finish; nothing was published.
+            _exit_without_lingering_threads(code)
+        _exit_promptly(code)
     return code
+
+
+def _exit_promptly(code: int) -> None:
+    """End the command line once its result is out: the exit handlers run
+    and the streams are flushed, but the interpreter's teardown (freeing
+    every module and a generation's millions of objects: 1-7 s after the
+    final table) is skipped. Threads still running are waited for."""
+
+    import atexit
+    import os
+    import threading
+
+    for thread in threading.enumerate():
+        if thread is not threading.main_thread() and not thread.daemon:
+            thread.join()
+    atexit._run_exitfuncs()
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except (OSError, ValueError):
+            pass
+    os._exit(code)
 
 
 def _exit_without_lingering_threads(code: int, *, grace: float = 2.0) -> None:
