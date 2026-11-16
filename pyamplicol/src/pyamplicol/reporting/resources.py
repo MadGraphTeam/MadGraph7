@@ -150,10 +150,13 @@ def process_snapshot(system: str | None = None) -> dict[int, ProcessInfo]:
 class ProcessTreeSampler:
     """Sample one root and its descendants, retaining live re-parented children."""
 
-    def __init__(self, root_pid: int) -> None:
+    def __init__(self, root_pid: int, *, exclude: frozenset[int] = frozenset()) -> None:
         if root_pid < 1:
             raise ValueError("resource sampler root PID must be positive")
         self.root_pid = root_pid
+        # Processes left out with their descendants (a progress renderer
+        # process measures the tree it belongs to without itself).
+        self.exclude = frozenset(exclude)
         self._known_pids = {root_pid}
 
     def sample(self, records: dict[int, ProcessInfo]) -> tuple[int, int]:
@@ -168,7 +171,7 @@ class ProcessTreeSampler:
         while pending:
             parent = pending.pop()
             for child in children.get(parent, ()):
-                if child not in selected:
+                if child not in selected and child not in self.exclude:
                     selected.add(child)
                     pending.append(child)
 
@@ -219,10 +222,11 @@ class ResourceUsageMonitor:
         root_pid: int | None = None,
         interval_seconds: float = 1.0,
         snapshotter: ProcessSnapshot | None = None,
+        exclude: frozenset[int] = frozenset(),
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("resource monitor interval must be positive")
-        self._sampler = ProcessTreeSampler(root_pid or os.getpid())
+        self._sampler = ProcessTreeSampler(root_pid or os.getpid(), exclude=exclude)
         self._interval_seconds = float(interval_seconds)
         # Default: the monitored tree only (a scan of every process costs
         # ~0.1 ms per process, 0.6 s of Python per sample on a host running

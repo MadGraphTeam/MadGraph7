@@ -15,6 +15,7 @@ from threading import Event, RLock, Thread
 from types import MappingProxyType
 from typing import Any, Literal, Protocol, TextIO, TypeAlias, runtime_checkable
 
+from .eta import Estimate, combined, count_estimate, remaining_estimate
 from .logging import get_logger
 from .resources import ResourceUsage, ResourceUsageMonitor
 
@@ -203,7 +204,9 @@ class TtyProgressSink:
     stream: TextIO
     color: bool | None = None
     _tasks: dict[str, _TaskState] = field(default_factory=dict, init=False, repr=False)
-    _dashboard: _Dashboard | None = field(default=None, init=False, repr=False)
+    _dashboard: _Dashboard | _SidecarDashboard | None = field(
+        default=None, init=False, repr=False
+    )
     _line_sink: _LineProgressSink | None = field(default=None, init=False, repr=False)
     _lock: RLock = field(default_factory=RLock, init=False, repr=False)
     _output_lock: RLock = field(default_factory=RLock, init=False, repr=False)
@@ -213,7 +216,7 @@ class TtyProgressSink:
         self._message_stream = _TtyMessageStream(self)
 
     def emit(self, event: ProgressEvent) -> None:
-        dashboard: _Dashboard | None = None
+        dashboard: _Dashboard | _SidecarDashboard | None = None
         start_dashboard = False
         stop_dashboard = False
         kept: str | None = None
@@ -242,7 +245,7 @@ class TtyProgressSink:
                     updated_at=now,
                 )
                 if self._dashboard is None:
-                    self._dashboard = _Dashboard(
+                    self._dashboard = _new_dashboard(
                         stream=self.stream,
                         color=self._color_enabled,
                         snapshot=self._snapshot,
@@ -255,6 +258,7 @@ class TtyProgressSink:
                     # Keep custom sinks forgiving when a backend emits a late pulse.
                     return
                 if isinstance(event, ProgressUpdate):
+                    task.record(event.completed, now)
                     task.completed = max(task.completed, event.completed)
                     task.total = event.total if event.total is not None else task.total
                     task.message = event.message
@@ -341,6 +345,14 @@ class TtyProgressSink:
             return tuple(task.copy() for task in self._tasks.values())
 
 
+_MARKS_KEPT = 64
+# The silence after which the detail line says "no progress for", and the
+# busy cores below which the process tree counts as idle.
+_QUIET_SECONDS = 5.0
+_IDLE_CORES = 0.05
+_MARKS_HEAD = 4
+
+
 @dataclass(slots=True)
 class _TaskState:
     task_id: str
@@ -356,6 +368,10 @@ class _TaskState:
     success: bool | None = None
     finished_at: float | None = None
     elapsed_seconds: float | None = None
+    # Completion marks [time, completed] of the counted items (the ETA
+    # estimator's input, ``eta.count_estimate``): the first ones and the
+    # recent ones.
+    marks: list[list[float]] = field(default_factory=list)
 
     def copy(self) -> _TaskState:
         return _TaskState(
@@ -372,7 +388,17 @@ class _TaskState:
             success=self.success,
             finished_at=self.finished_at,
             elapsed_seconds=self.elapsed_seconds,
+            marks=[list(mark) for mark in self.marks],
         )
+
+    def record(self, completed: int, now: float) -> None:
+        """Keep a completion mark when the count moves (at most
+        ``_MARKS_KEPT``: the first marks and the most recent ones)."""
+
+        if completed > self.completed or (not self.marks and completed > 0):
+            self.marks.append([now, completed])
+            if len(self.marks) > _MARKS_KEPT:
+                del self.marks[_MARKS_HEAD]
 
 
 @dataclass(slots=True)
@@ -449,11 +475,14 @@ class _Dashboard:
         color: bool,
         snapshot: Callable[[], tuple[_TaskState, ...]],
         render_lock: RLock,
+        resource_monitor: ResourceUsageMonitor | None = None,
     ) -> None:
         self._stream = stream
         self._color = color
         self._snapshot = snapshot
-        self._resource_monitor = ResourceUsageMonitor(interval_seconds=1.0)
+        self._resource_monitor = resource_monitor or ResourceUsageMonitor(
+            interval_seconds=1.0
+        )
         self._stop = Event()
         self._thread: Thread | None = None
         self._render_lock = render_lock
@@ -526,6 +555,303 @@ class _Dashboard:
             self.render_now()
 
 
+# The renderer process: the dashboard is drawn by a small child process fed
+# with the task states over a pipe, so it keeps moving (clocks, resources,
+# "no progress for") while the main process is inside native code that
+# holds the GIL (a Symbolica expression load of 25 s, for example) and the
+# terminal is restored even when the main process dies.
+_RENDERER_ENV = "PYAMPLICOL_PROGRESS_RENDERER"
+_TASK_FIELDS = tuple(
+    name for name in _TaskState.__dataclass_fields__  # type: ignore[attr-defined]
+)
+_RENDERER_BOOTSTRAP = (
+    "import sys, types\n"
+    "for name, path in (('pyamplicol', sys.argv[1]), "
+    "('pyamplicol.reporting', sys.argv[2])):\n"
+    "    module = types.ModuleType(name)\n"
+    "    module.__path__ = [path]\n"
+    "    sys.modules[name] = module\n"
+    "from pyamplicol.reporting.progress import _renderer_main\n"
+    "_renderer_main(sys.argv[3:])\n"
+)
+
+
+def _new_dashboard(
+    *,
+    stream: TextIO,
+    color: bool,
+    snapshot: Callable[[], tuple[_TaskState, ...]],
+    render_lock: RLock,
+) -> _Dashboard | _SidecarDashboard:
+    """The renderer-process dashboard on a real terminal (unless
+    PYAMPLICOL_PROGRESS_RENDERER=inline), else the in-process one."""
+
+    if os.environ.get(_RENDERER_ENV, "process") != "inline":
+        sidecar = _SidecarDashboard.spawn(
+            stream=stream, color=color, snapshot=snapshot, render_lock=render_lock
+        )
+        if sidecar is not None:
+            return sidecar
+    return _Dashboard(
+        stream=stream, color=color, snapshot=snapshot, render_lock=render_lock
+    )
+
+
+class _SidecarDashboard:
+    """The ``_Dashboard`` interface, drawn by a renderer process
+    (``_renderer_main``) that owns the dashboard lines of the terminal:
+    task states and messages go to it as JSON lines; at close it clears its
+    lines and acknowledges before the caller writes again. Any failure of
+    the renderer falls back to the in-process dashboard."""
+
+    _MIN_INTERVAL = 0.05
+
+    def __init__(
+        self,
+        *,
+        stream: TextIO,
+        color: bool,
+        snapshot: Callable[[], tuple[_TaskState, ...]],
+        render_lock: RLock,
+        process: Any,
+        ack_fd: int,
+    ) -> None:
+        self._stream = stream
+        self._color = color
+        self._snapshot = snapshot
+        self._render_lock = render_lock
+        self._process = process
+        self._ack_fd = ack_fd
+        self._fallback: _Dashboard | None = None
+        self._last_sent = float("-inf")
+        self._pending = False
+        self._stop = Event()
+        self._thread: Thread | None = None
+        self._closed = False
+
+    @classmethod
+    def spawn(
+        cls,
+        *,
+        stream: TextIO,
+        color: bool,
+        snapshot: Callable[[], tuple[_TaskState, ...]],
+        render_lock: RLock,
+    ) -> _SidecarDashboard | None:
+        import subprocess
+        import sys
+
+        try:
+            fd = stream.fileno()
+            if not os.isatty(fd) or not sys.executable:
+                return None
+            here = os.path.dirname(os.path.abspath(__file__))
+            ack_read, ack_write = os.pipe()
+            try:
+                process = subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-I",
+                        "-c",
+                        _RENDERER_BOOTSTRAP,
+                        os.path.dirname(here),
+                        here,
+                        str(os.getpid()),
+                        "1" if color else "0",
+                        getattr(stream, "encoding", None) or "utf-8",
+                        str(ack_write),
+                    ],
+                    stdin=subprocess.PIPE,
+                    stdout=fd,
+                    stderr=subprocess.DEVNULL,
+                    pass_fds=(ack_write,),
+                    close_fds=True,
+                )
+            finally:
+                os.close(ack_write)
+        except (AttributeError, OSError, ValueError, io.UnsupportedOperation):
+            return None
+        return cls(
+            stream=stream,
+            color=color,
+            snapshot=snapshot,
+            render_lock=render_lock,
+            process=process,
+            ack_fd=ack_read,
+        )
+
+    # --- the _Dashboard interface -------------------------------------------
+    def start(self) -> None:
+        self._send_state()
+        self._thread = Thread(
+            target=self._run, name="pyamplicol-progress-renderer-feed", daemon=True
+        )
+        self._thread.start()
+
+    def render_now(self) -> None:
+        if self._fallback is not None:
+            self._fallback.render_now()
+            return
+        if time.monotonic() - self._last_sent >= self._MIN_INTERVAL:
+            self._send_state()
+        else:
+            self._pending = True
+
+    def write_message(self, text: str) -> None:
+        if self._fallback is not None:
+            self._fallback.write_message(text)
+            return
+        with self._render_lock:
+            if self._closed:
+                self._stream.write(text)
+                return
+            self._send({"op": "state", "tasks": self._states()})
+            self._send({"op": "msg", "text": text})
+
+    def close(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+            self._thread = None
+        if self._fallback is not None:
+            self._fallback.close()
+            return
+        with self._render_lock:
+            if self._closed:
+                return
+            self._send({"op": "state", "tasks": self._states()})
+            self._send({"op": "close"})
+            self._closed = True
+            self._finish()
+
+    # --- internals ------------------------------------------------------
+    def _run(self) -> None:
+        while not self._stop.wait(self._MIN_INTERVAL):
+            if self._pending and self._fallback is None:
+                self._send_state()
+
+    def _states(self) -> list[dict[str, object]]:
+        return [
+            {name: getattr(task, name) for name in _TASK_FIELDS}
+            for task in self._snapshot()
+        ]
+
+    def _send_state(self) -> None:
+        with self._render_lock:
+            if self._closed or self._fallback is not None:
+                return
+            self._pending = False
+            self._last_sent = time.monotonic()
+            self._send({"op": "state", "tasks": self._states()})
+
+    def _send(self, message: dict[str, object]) -> None:
+        import json
+
+        if self._fallback is not None:
+            return
+        try:
+            pipe = self._process.stdin
+            pipe.write((json.dumps(message, separators=(",", ":")) + "\n").encode())
+            pipe.flush()
+        except (OSError, ValueError):
+            self._take_over()
+
+    def _finish(self) -> None:
+        """Wait (bounded) for the renderer to clear its lines and exit."""
+
+        import select
+
+        try:
+            self._process.stdin.close()
+        except (OSError, ValueError):
+            pass
+        try:
+            ready, _, _ = select.select([self._ack_fd], [], [], 2.0)
+            if ready:
+                os.read(self._ack_fd, 1)
+        except (OSError, ValueError):
+            pass
+        finally:
+            try:
+                os.close(self._ack_fd)
+            except OSError:
+                pass
+        try:
+            self._process.wait(timeout=1.0)
+        except Exception:  # noqa: BLE001 - never fail the caller's close
+            self._process.kill()
+
+    def _take_over(self) -> None:
+        """The renderer is gone: draw in this process from now on."""
+
+        if self._fallback is not None:
+            return
+        try:
+            self._process.kill()
+        except OSError:
+            pass
+        self._fallback = _Dashboard(
+            stream=self._stream,
+            color=self._color,
+            snapshot=self._snapshot,
+            render_lock=self._render_lock,
+        )
+        self._fallback.start()
+
+
+def _renderer_main(argv: list[str]) -> None:
+    """The renderer process (``_SidecarDashboard``): argv = parent pid,
+    colour flag, stream encoding, acknowledgement fd. Ctrl-C is the
+    parent's to handle; end of input (the parent closed the pipe or died)
+    clears the dashboard."""
+
+    import json
+    import signal
+    import sys
+
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    parent, color, encoding, ack_fd = int(argv[0]), argv[1] == "1", argv[2], int(argv[3])
+    stream = io.TextIOWrapper(
+        io.FileIO(1, "w", closefd=False),
+        encoding=encoding,
+        errors="replace",
+        write_through=True,
+    )
+    holder: list[tuple[_TaskState, ...]] = [()]
+    dashboard = _Dashboard(
+        stream=stream,
+        color=color,
+        snapshot=lambda: holder[0],
+        render_lock=RLock(),
+        resource_monitor=ResourceUsageMonitor(
+            root_pid=parent, interval_seconds=1.0, exclude=frozenset({os.getpid()})
+        ),
+    )
+    started = False
+    try:
+        for line in sys.stdin.buffer:
+            message = json.loads(line)
+            op = message.get("op")
+            if op == "state":
+                holder[0] = tuple(_TaskState(**task) for task in message["tasks"])
+                if not started:
+                    dashboard.start()
+                    started = True
+                else:
+                    dashboard.render_now()
+            elif op == "msg":
+                dashboard.write_message(str(message["text"]))
+            elif op == "close":
+                break
+    finally:
+        dashboard.close()
+        stream.flush()
+        try:
+            os.write(ack_fd, b"x")
+        except OSError:
+            pass
+
+
 def _kept_line(task: _TaskState, *, color: bool) -> str:
     """The scroll-back line of a finished phase that asks for one
     (``details["keep"]``): its description, its summary message and what
@@ -548,9 +874,13 @@ def _kept_line(task: _TaskState, *, color: bool) -> str:
 
 def _terminal_width(stream: TextIO) -> int:
     try:
-        return max(1, os.get_terminal_size(stream.fileno()).columns)
+        columns = os.get_terminal_size(stream.fileno()).columns
     except (AttributeError, OSError, ValueError):
-        return max(1, shutil.get_terminal_size(fallback=(120, 24)).columns)
+        columns = 0
+    if columns <= 0:
+        # Unknown (a terminal reporting no size counts as unknown too).
+        columns = shutil.get_terminal_size(fallback=(120, 24)).columns
+    return max(1, columns)
 
 
 def _dashboard_lines(
@@ -578,6 +908,8 @@ def _dashboard_lines(
         detail = ordered[int(max(now - rotation_anchor, 0.0) / 2.0) % len(ordered)]
     else:
         detail = max(tasks, key=lambda task: task.updated_at)
+    root = _with_total_estimate(root, phase, now)
+    last_event = max(task.updated_at for task in tasks)
     return (
         _overall_line(root, now=now, usage=usage, width=width, color=color),
         _phase_line(
@@ -589,8 +921,41 @@ def _dashboard_lines(
             width=width,
             color=color,
         ),
-        _detail_line(detail, now=now, width=width, color=color),
+        _detail_line(
+            detail,
+            now=now,
+            width=width,
+            color=color,
+            usage=usage,
+            last_event=last_event,
+        ),
     )
+
+
+def _with_total_estimate(root: _TaskState, phase: _TaskState, now: float) -> _TaskState:
+    """The root with the whole command's estimate as its ``eta_seconds``
+    when it reports none itself but declares the priors of its phases still
+    to come (``later_prior_seconds``; ``later_unknown`` when a phase to
+    come has no prior: a lower bound, shown as an estimate)."""
+
+    if (
+        root.finished_at is not None
+        or "eta_seconds" in root.details
+        or "later_prior_seconds" not in root.details
+    ):
+        return root
+    later = _detail_float(root.details, "later_prior_seconds") or 0.0
+    active = _task_estimate(phase, now) if phase is not root else None
+    total = combined(
+        active, later, later_known=not bool(root.details.get("later_unknown"))
+    )
+    if total is None or total.seconds is None:
+        return root
+    derived = root.copy()
+    derived.details["eta_seconds"] = total.seconds
+    derived.details["eta_estimated"] = total.estimated
+    derived.updated_at = now
+    return derived
 
 
 def _overall_line(
@@ -682,6 +1047,10 @@ def _total_eta_fragments(
                 "YELLOW" if over else "GREEN",
             )
         )
+        if eta >= 60.0:
+            # When it should be done, on the wall clock.
+            done_at = time.strftime("%H:%M", time.localtime(time.time() + eta))
+            fragments.append((f" (done ~{done_at})", "LIGHTBLACK_EX"))
     if budget is not None:
         fragments.append(
             (
@@ -692,6 +1061,43 @@ def _total_eta_fragments(
             )
         )
     return fragments
+
+
+def _task_estimate(task: _TaskState, now: float) -> Estimate | None:
+    """A task's remaining time from its completion marks and its
+    ``prior_seconds`` detail (its expected duration), or None."""
+
+    prior = _detail_float(task.details, "prior_seconds")
+    if task.total is not None and task.total > 0:
+        marks = [(float(t), int(c)) for t, c in task.marks]
+        if not marks and task.completed > 0:
+            marks = [(task.updated_at, task.completed)]
+        return count_estimate(
+            total=task.total,
+            completed=task.completed,
+            started_at=task.started_at,
+            marks=marks,
+            now=now,
+            prior_seconds=prior,
+        )
+    return remaining_estimate(prior_seconds=prior, started_at=task.started_at, now=now)
+
+
+def _estimate_fragments(estimate: Estimate | None) -> list[tuple[str, str | None]]:
+    """"ETA 1m20s", "ETA ~1m20s" (a prior), or "overdue 12s" in the warning
+    colour once the expected end has passed with work left."""
+
+    if estimate is None:
+        return []
+    if estimate.seconds is None:
+        return [
+            (
+                ("  ~" if estimate.estimated else "  ")
+                + f"overdue {_duration_text(estimate.overdue)}",
+                "YELLOW",
+            )
+        ]
+    return [("  ETA " + _eta_text(estimate.seconds, estimated=estimate.estimated), None)]
 
 
 def _phase_line(
@@ -717,16 +1123,20 @@ def _phase_line(
         percent = f" {fraction:>5.1%}"
         # A task that knows its costs reports its own estimate (counted down
         # between its updates); a task reporting none (the key present) has
-        # none, never an extrapolation of its counts.
+        # none; otherwise the estimator (``eta.count_estimate``) on its
+        # completion marks and its prior.
         eta = _counted_down(phase, "eta_seconds", now)
-        if eta is None and completed > 0 and "eta_seconds" not in phase.details:
-            eta = elapsed * (total - completed) / completed
         if eta is not None and completed < total and phase.finished_at is None:
             eta = max(eta, 0.0)
     else:
         bar = "[...]"
         percent = ""
         eta = None
+    estimate = (
+        _task_estimate(phase, now)
+        if "eta_seconds" not in phase.details and phase.finished_at is None
+        else None
+    )
     active_text = f"  active {active_children}" if active_children else ""
     fragments = [
         (phase.description, "CYAN"),
@@ -735,15 +1145,16 @@ def _phase_line(
         (percent, None),
         (
             ""
-            if eta is None
+            if eta is None or completed >= (total or 0)
             else "  ETA "
             + (
                 _eta_text(eta, estimated=bool(phase.details.get("eta_estimated")))
-                if completed < (total or 0) and phase.finished_at is None
+                if phase.finished_at is None
                 else _duration_text(eta)
             ),
             None,
         ),
+        *_estimate_fragments(estimate),
         (f"  phase {_duration_text(elapsed)}", None),
         (active_text, None),
     ]
@@ -756,6 +1167,8 @@ def _detail_line(
     now: float,
     width: int,
     color: bool,
+    usage: ResourceUsage | None = None,
+    last_event: float | None = None,
 ) -> str:
     details = _display_details(task)
     process = details.get("process") or details.get("process_id")
@@ -837,11 +1250,20 @@ def _detail_line(
     elif (
         task.finished_at is None
         and "running_seconds" not in details
-        and now - task.updated_at >= 5.0
+        and now - (last_event or task.updated_at) >= _QUIET_SECONDS
     ):
+        # The work's liveness: the time since any task last reported, and
+        # whether the process tree is computing (busy cores) or idle.
+        quiet = now - (last_event or task.updated_at)
+        busy = None if usage is None else usage.busy_cores
+        idle = busy is not None and busy < _IDLE_CORES
         fragments.append(
-            (f"  no update for {_duration_text(now - task.updated_at)}", "YELLOW")
+            (f"  no progress for {_duration_text(quiet)}", "RED" if idle else "YELLOW")
         )
+        if busy is not None:
+            fragments.append(
+                ("  idle", "RED") if idle else (f"  busy {busy:.1f} cores", None)
+            )
     native_current_rss = _detail_int(details, "native_current_rss_bytes")
     native_peak_rss = _detail_int(details, "native_peak_rss_bytes")
     if native_current_rss is not None or native_peak_rss is not None:
