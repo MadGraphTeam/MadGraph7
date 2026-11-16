@@ -62,11 +62,12 @@ class MultiChannelData(NamedTuple):
 class TopologyStructure(NamedTuple):
     """What the EW channel reduction compares channels by, from one topology:
     its resonances as (|pdg|, outgoing legs) pairs, its number of non-resonant
-    s-channel propagators, and a key of its tree that ignores which boson an
-    off-shell propagator is."""
+    s-channel propagators, a key of its tree that ignores which boson an
+    off-shell propagator is, and one that only ignores that in the t-channel."""
     resonances: frozenset
     nonres_s_count: int
     key: tuple
+    t_channel_key: tuple
 
 
 def topology_structure(
@@ -84,7 +85,7 @@ def topology_structure(
             if index == 0:
                 break
             index = decays[index].parent_index
-    resonances, nonres_s_count, s_splits = set(), 0, set()
+    resonances, nonres_s_count, s_splits, s_typed = set(), 0, set(), set()
     for decay in decays:
         if not decay.child_indices:
             continue
@@ -96,11 +97,13 @@ def topology_structure(
         else:
             nonres_s_count += 1
             s_splits.add(decay_legs)
+            s_typed.add((decay_legs, abs(decay.pdg_id)))
     t_chain = ()
     if topo.t_propagator_count > 0:
         t_chain = tuple(frozenset(legs[child]) for child in decays[0].child_indices)
     key = (t_chain, frozenset(s_splits), frozenset(resonances))
-    return TopologyStructure(frozenset(resonances), nonres_s_count, key)
+    t_channel_key = (t_chain, frozenset(s_typed), frozenset(resonances))
+    return TopologyStructure(frozenset(resonances), nonres_s_count, key, t_channel_key)
 
 
 def resonance_keys(
@@ -846,20 +849,30 @@ class MadgraphSubprocess:
         """Reduce the channel count of processes with many electroweak diagrams,
         the counterpart of drop_qcd_s_channels.
 
-        Channels with the same tree and the same resonances, differing only in
-        the bosons of their off-shell propagators (a t-channel photon, Z or W),
-        are merged into one representative, which takes over their channel
-        weights. Of the merged groups, those with the fewest non-resonant
-        s-channel propagators are kept, and any other group only if it maps a
-        (flavor, resonance) pair or a flavor that none of the kept ones does.
-        Channel weights of dropped groups are left unmapped."""
+        With ew_channel_reduction_mode = "full", channels with the same tree and
+        the same resonances, differing only in the bosons of their off-shell
+        propagators (a t-channel photon, Z or W), are merged into one
+        representative, which takes over their channel weights. Of the merged
+        groups, those with the fewest non-resonant s-channel propagators are
+        kept, and any other group only if it maps a (flavor, resonance) pair or
+        a flavor that none of the kept ones does. Channel weights of dropped
+        groups are left unmapped.
+
+        "t_channel" only merges channels that differ in the bosons of their
+        t-channel propagators; every s-channel structure keeps its channel and
+        nothing is dropped. "partial" (the default) merges as "t_channel" does,
+        and keeps the groups with at most one non-resonant s-channel more than
+        the fewest, plus those that map an otherwise unmapped flavor or
+        resonance."""
         n_in = len(self.meta["incoming"])
+        mode = self.process.run_card["phasespace"]["ew_channel_reduction_mode"]
+        t_channel_only = mode == "t_channel"
+        extra_s_channels = 1 if mode == "partial" else 0
         groups = {}
         for index, topos in enumerate(mcdata.topologies):
             structure = topology_structure(topos[0], None, n_in)
-            groups.setdefault(structure.key, []).append(
-                (index, structure.nonres_s_count)
-            )
+            key = structure.key if mode == "full" else structure.t_channel_key
+            groups.setdefault(key, []).append((index, structure.nonres_s_count))
 
         def pairs_of(index):
             return resonance_keys(
@@ -888,13 +901,15 @@ class MadgraphSubprocess:
                 set().union(*(pairs_of(i) for i in indices)),
                 set().union(*(flavors_of(i) for i in indices)),
             ))
-        min_count = min(entry[0] for entry in merged)
+        # t_channel mode: every group is kept, as if all had the fewest
+        min_count = None if t_channel_only else min(entry[0] for entry in merged)
         covered_pairs, covered_flavors = set(), set()
         kept, merge_into = [], {}
         for count, rep, indices, pairs, flavors in sorted(
             merged, key=lambda entry: (entry[0], -len(entry[3]), -len(entry[4]), entry[1])
         ):
-            if count == min_count or not pairs <= covered_pairs \
+            if t_channel_only or count <= min_count + extra_s_channels \
+                    or not pairs <= covered_pairs \
                     or not flavors <= covered_flavors:
                 kept.append(rep)
                 covered_pairs |= pairs

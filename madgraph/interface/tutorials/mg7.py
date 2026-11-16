@@ -101,7 +101,8 @@ rescued by a better integrator:
                         with too many channels
   ew_channel_reduction  the same for electroweak channels: merge those that
                         differ only in their off-shell bosons, keep the
-                        resonances and flavors
+                        resonances and flavors (ew_channel_reduction_mode:
+                        full, partial or t_channel)
   combine_channel_threshold, adaptive_symmetry_sampling
 
 The symptom of bad channelling is a survey that will not converge and an

@@ -331,13 +331,23 @@ VEGAS grids adapt the phase-space sampling during the survey.
     channels.
 
 ``ew_channel_reduction`` (``20``)
-    If a subprocess still has more channels than this, channels with the same tree and
-    resonances that differ only in the bosons of their off-shell propagators (a t-channel
-    photon, Z or W) are merged into one, which takes over their channel weights. Of these,
-    the channels with the fewest non-resonant s-channel propagators are kept, and others
-    only if they map a flavor or a (flavor, resonance) pair no kept channel does. ``-1``
-    keeps all channels. This is the counterpart of ``drop_qcd_s_channel`` for processes with
-    many electroweak diagrams.
+    If a subprocess still has more channels than this, channels that differ only in the
+    bosons of some of their off-shell propagators are merged into one, which takes over
+    their channel weights, and redundant ones are dropped (see
+    ``ew_channel_reduction_mode``). Channels that map a flavor or a (flavor, resonance) pair
+    no kept channel does are always kept. ``-1`` keeps all channels. This is the
+    counterpart of ``drop_qcd_s_channel`` for processes with many electroweak diagrams.
+
+``ew_channel_reduction_mode`` (``"partial"``)
+    How far ``ew_channel_reduction`` goes:
+
+    - ``"t_channel"``: merge channels that differ only in the bosons of their t-channel
+      propagators (a photon, Z or W); every s-channel structure keeps its channel.
+    - ``"partial"``: merge as ``"t_channel"``, and keep only the channels with at most one
+      non-resonant s-channel propagator more than the fewest.
+    - ``"full"``: also merge channels that differ in their off-shell s-channel bosons, and
+      keep only the channels with the fewest non-resonant s-channel propagators. This
+      gives the fewest channels, but trains to lower unweighting efficiencies.
 
 ``channel_reduction_with_vegas`` (``false``)
     ``ew_channel_reduction`` is meant for MadNIS, which trains poorly with many channels.

@@ -7674,6 +7674,9 @@ class RunCardMG7(RunCard):
             comment="channel count above which channels without a QCD s-channel resonance are dropped; -1 keeps all")
         self.add_toml_param('phasespace', 'ew_channel_reduction', 20,
             comment="channel count above which channels differing only in their off-shell electroweak bosons are merged and redundant ones dropped; -1 keeps all")
+        self.add_toml_param('phasespace', 'ew_channel_reduction_mode', "partial",
+            allowed=['full', 'partial', 't_channel'],
+            comment="full: merge off-shell boson variants and drop redundant s-channel structures; partial: merge t-channel variants, keep one more non-resonant s-channel; t_channel: only merge t-channel variants")
         self.add_toml_param('phasespace', 'channel_reduction_with_vegas', False,
             comment="also apply ew_channel_reduction when the run is certain to use VEGAS (madnis.enable false, or auto for 2 -> 2)")
         self.add_toml_param('phasespace', 'invariant_power', 0.7,

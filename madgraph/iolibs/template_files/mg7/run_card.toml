@@ -147,6 +147,7 @@ drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s # channel count above whi
 # channel count above which channels differing only in their off-shell electroweak
 # bosons are merged and redundant ones dropped, -1 keeps all
 ew_channel_reduction = %(phasespace.ew_channel_reduction)s
+ew_channel_reduction_mode = %(phasespace.ew_channel_reduction_mode)s # options: full, partial, t_channel
 # also reduce the channels when the run is certain to use VEGAS
 channel_reduction_with_vegas = %(phasespace.channel_reduction_with_vegas)s
 invariant_power = %(phasespace.invariant_power)s
