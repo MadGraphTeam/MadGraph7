@@ -625,10 +625,14 @@ def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
     text = render(texts, limits)
     while _visible(text) > width:
         roomy = [name for name in names if limits[name] > floor[name]]
+        if not roomy and width < _LINE_WIDTH:
+            # A terminal narrower than the report's width: words and numbers
+            # stay whole (the terminal wraps the rest).
+            break
         if not roomy:
             # Every column at its floor: break the words of a column wider
             # than its header (a header is never narrowed), down to the
-            # narrowest.
+            # narrowest: the report's own width holds in every case.
             roomy = [
                 name
                 for name in names

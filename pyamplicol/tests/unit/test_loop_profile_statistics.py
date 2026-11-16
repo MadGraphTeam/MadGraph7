@@ -1009,3 +1009,26 @@ def test_a_fitted_table_wraps_its_headers_and_ignores_colour_codes(monkeypatch, 
     assert max(len(line) for line in lines) <= 66
     assert any("min/med/max" in line for line in lines)
     assert "12.65" in text and "4.42" in text and "1000)" in text
+
+
+def test_a_narrow_terminal_never_breaks_words(monkeypatch):
+    """recheck2 M4: below the report's 100 columns a table narrows to its
+    longest words and numbers, never through them (the terminal wraps the
+    rest): the stage table at 60 columns broke "dressing"."""
+
+    import prettytable
+
+    import pyamplicol.reporting.loop_profile as rendering
+    from pyamplicol.reporting import palette
+
+    monkeypatch.setattr(rendering, "_width", lambda: 30)
+    table = palette.table(
+        prettytable, ("stage", "TIRust", "NinjaRS / TIRust"), "stages", color=False
+    )
+    rows = [
+        (("dressing", "735 us", "1.13"), False),
+        (("reduction", "219 us", "18.94"), False),
+    ]
+    text = rendering._fit(table, rows)
+    assert "dressing" in text and "reduction" in text and "735 us" in text
+    assert max(len(line) for line in text.splitlines()) > 30
