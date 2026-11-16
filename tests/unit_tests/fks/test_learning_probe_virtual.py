@@ -131,6 +131,8 @@ call expect(0d0,5d0,0,0)
 fold=1
 call evaluate_fold
 call expect(0d0,5d0,0,0)
+! Without the exact virtual the surrogate fit returns at once.
+if(vs_vcomp)error stop 'probe marked the exact virtual as computed'
 ! The same point outside a probe draws once and evaluates the virtual.
 point_evaluation%integration=.true.
 call new_point(5d0,200d0)

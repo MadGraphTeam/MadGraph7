@@ -201,6 +201,7 @@ class TestLearningProbeBornCache(unittest.TestCase):
                 'generate_prepared_fks_point', 'prepare_fks_beam_point',
                 'sample_prepared_fks_born', 'fks_born_matches')
             module = fks_test_module(names)
+            self.assertEqual(module.count('      end module fks_phase_space'), 1)
             module = module.replace('      end module fks_phase_space', INITIALIZER + '      end module fks_phase_space')
             (work / 'phase_space.f').write_text(module)
             routines = []

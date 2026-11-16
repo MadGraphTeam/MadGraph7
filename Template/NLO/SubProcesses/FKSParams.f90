@@ -118,8 +118,8 @@ contains
              endif
           else if (buff .eq. '#FKSSectorLearningBudget') then
              read(68,*,end=999,iostat=ios) FKSSectorLearningBudget
-             if(ios.ne.0.or..not.(FKSSectorLearningBudget.gt.0d0.and.FKSSectorLearningBudget.le.1d0))then
-                write(*,*) 'FKSSectorLearningBudget must be in (0,1].'
+             if(ios.ne.0)then
+                write(*,*) 'FKSSectorLearningBudget must be a number in (0,1].'
                 stop 1
              endif
           else if (buff .eq. '#MCExplicitKLSum') then
@@ -201,6 +201,12 @@ contains
        endif
     enddo
 999 continue
+! The budget only steers learning; with learning off it is not used.
+    if (FKSSectorLearning.and..not.(FKSSectorLearningBudget.gt.0d0.and. &
+         FKSSectorLearningBudget.le.1d0)) then
+       write(*,*) 'FKSSectorLearningBudget must be in (0,1].'
+       stop 1
+    endif
     couldRead=.True.
     goto 998      
 

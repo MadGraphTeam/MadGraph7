@@ -149,6 +149,9 @@ def sector_learning_card_error(fks_params, run_card, subprocess_dirs=()):
         if not (flag('FKSExplicitSum', True) and flag('MCSubtractionAtFixedFlow', True)):
             return ('FKSSectorLearning requires FKSExplicitSum and MCSubtractionAtFixedFlow '
                     '(Cards/FKS_params.dat).')
+        budget = mcatnlo_shower.read_fks_real(fks_params, 'FKSSectorLearningBudget', .2)
+        if not 0. < budget <= 1.:
+            return 'FKSSectorLearningBudget (Cards/FKS_params.dat) must be in (0,1].'
     except ValueError as error:
         return 'Cards/FKS_params.dat: %s' % error
     return None

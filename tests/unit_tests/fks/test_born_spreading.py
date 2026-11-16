@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[3]
 TEMPLATE = ROOT / 'Template/NLO/SubProcesses'
 
 
-def mint_support(work, real_weight_lines=False, real_fks_params=False):
+def mint_support(work, real_weight_lines=False, real_fks_params=False, real_ranmar=False):
     (work / 'params.f90').write_text(
         ('' if real_fks_params else 'module FKSParams\n'
         'logical :: use_poly_virtual=.false.\n'
@@ -30,6 +30,9 @@ def mint_support(work, real_weight_lines=False, real_fks_params=False):
               'empty_mc_integer', 'regrid_mc_integer', 'reset_mc_grid')
     if not real_weight_lines:
         unused += ('deallocate_born_spread_lines',)
+    # The learning probes' random stream is seeded with ranmar's rmarin.
+    if not real_ranmar:
+        unused += ('rmarin',)
     polyfit = ('add_point_polyfit', 'do_polyfit', 'get_polyfit',
                'init_polyfit', 'restore_polyfit', 'save_polyfit')
     (work / 'stubs.f90').write_text(
@@ -41,7 +44,8 @@ def mint_support(work, real_weight_lines=False, real_fks_params=False):
             '      integer nsplitorders\n      parameter(nsplitorders=1)\n')
         support.append(str(TEMPLATE / 'FKSParams.f90'))
     return support + [str(TEMPLATE.parent / 'Source/timing.f'), str(work / 'params.f90'),
-            str(TEMPLATE / 'virtual_surrogate.f90'), str(TEMPLATE / 'sector_learning.f90'),
+            str(TEMPLATE / 'virtual_surrogate.f90'), str(TEMPLATE / 'mint_evaluation.f90'),
+            str(TEMPLATE / 'sector_learning.f90'),
             str(TEMPLATE / 'mint_module.f90'),
             str(work / 'stubs.f90')]
 

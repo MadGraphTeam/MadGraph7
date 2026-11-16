@@ -1,8 +1,12 @@
 # Tiled S-event integral (`FKSSectorLearning`)
 
 An opt-in MC@NLO sampler that reduces negative S-event weights at folding
-`(1,1,1)`. It is off by default; with `FKSSectorLearning=.false.` the event
-generation is unchanged.
+`(1,1,1)`. It is off by default. With `FKSSectorLearning=.false.` the
+sampling is unchanged; the one change that reaches such runs is that the
+virtual is initialised on the first fold of a point that reaches it, not at
+fold 0. That differs only at folding > 1 when the first fold has no soft
+endpoint (a massive emitter), where the previous point's virtual was
+reused.
 
 ## What it does
 
@@ -86,8 +90,11 @@ version. With `sector_learning_archive` set in `mint_module` (the tests
 do this), MINT0 also writes `sector_learning_online.bin`, a binary
 per-iteration record of the probes, fits and grid accumulators for auditing;
 production runs neither write nor read it, and do not keep its grid
-accounting. Probe admission depends on measured CPU time, so a seed alone does not reproduce
-the training schedule.
+accounting. Probes draw from their own random-number stream, seeded from the run's,
+so the ordinary points' random numbers do not depend on how many probes
+run. Probe admission depends on measured CPU time, however, so the number
+of probes, and with it the fitted maps, the grids and the events, differ
+between runs with the same seed.
 
 ## Measured effect
 

@@ -90,23 +90,14 @@ end module
 module mint_module
   use FKSParams
   use flow_fixture,only: sector_draws
+  ! The production evaluation modes, not a copy.
+  use mint_evaluation
   implicit none
   integer,parameter :: ndimmax=5,nintegrals=6,max_fold=32
   integer :: iconfig=1,ndim=5,ifold(5)=[1,1,3,1,1]
   integer :: ifold_energy=3,ifold_yij=4,ifold_phi=5
   integer :: born_spread_current_bin=1,born_spread_bin_fold(32),born_spread_sector_fold(32)
   integer :: born_spread_phase=0
-  type evaluation_mode
-    logical :: integration=.true.,h_events=.true.,channel_grid=.true.,rejection_stats=.true.
-    logical :: all_folds=.false.,born_spread_samples=.false.,learning_probe=.false.
-  end type
-  type(evaluation_mode),parameter :: integration_evaluation=evaluation_mode()
-  type(evaluation_mode),parameter :: born_spread_evaluation=evaluation_mode( &
-       integration=.false.,h_events=.false.,born_spread_samples=.true.)
-  type(evaluation_mode),parameter :: learning_probe_evaluation=evaluation_mode( &
-       integration=.false.,h_events=.false.,channel_grid=.false.,rejection_stats=.false., &
-       all_folds=.true.,learning_probe=.true.)
-  type(evaluation_mode) :: point_evaluation=evaluation_mode()
   logical :: sector_learning_active=.false.
   integer :: learning_registers=0,learning_begins=0,learning_selects=0,learning_rejects=0
   integer :: learning_selected_slot=0
@@ -177,8 +168,7 @@ end subroutine
 
 subroutine virt_surrogate_fit_point
   use flow_fixture,only: surrogate_fit_calls
-  use mint_module,only: point_evaluation
-  ! Production fits only points with the exact virtual, which only
-  ! integration points evaluate; it returns at once otherwise.
-  if(point_evaluation%integration)surrogate_fit_calls=surrogate_fit_calls+1
+  ! Production fits only points with the exact virtual (vs_vcomp), which a
+  ! probe never evaluates (test_learning_probe_virtual); count the calls.
+  surrogate_fit_calls=surrogate_fit_calls+1
 end subroutine

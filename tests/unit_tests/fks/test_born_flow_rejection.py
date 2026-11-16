@@ -56,6 +56,7 @@ class TestBornFlowRejection(unittest.TestCase):
             '-ffixed-line-length-none', '-I', str(work),
             str(TEMPLATE / 'FKSParams.f90'),
             str(TEMPLATE / 'weight_lines.f'),
+            str(TEMPLATE / 'mint_evaluation.f90'),
             str(ROOT / 'tests/input_files/born_flow_rejection_context.f90'),
             str(work / 'routines.f'), str(work / 'noops.f90'),
             str(ROOT / 'tests/input_files/check_born_flow_rejection.f90'),

@@ -10,6 +10,13 @@ import unittest
 from tests.unit_tests.fks.test_born_spreading import mint_support,TEMPLATE
 from tests.input_files.tiled_s_event_reference import audit_archive,read_archive,read_table,objective
 
+
+def splice(text,old,new):
+    """Replace the single occurrence of old. A renamed or reformatted
+    production line must fail the test, not silently drop its hook."""
+    if text.count(old)!=1:raise AssertionError('Expected one %r to splice'%old)
+    return text.replace(old,new)
+
 PROGRAM = r'''
 
 module online_fixture
@@ -47,16 +54,19 @@ if(index(trim(action),'card_').eq.1)then
  elseif(trim(action).eq.'card_switch')then
   write(99,'(a)')'#FKSSectorLearning','.true.'
  else
+  ! The budget's range is checked only with learning on.
+  if(trim(action).ne.'card_high_off')write(99,'(a)')'#FKSSectorLearning','.true.'
   write(99,'(a)')'#FKSSectorLearningBudget'
   if(trim(action).eq.'card_value')write(99,*) .95d0
   if(trim(action).eq.'card_zero')write(99,*) 0d0
-  if(trim(action).eq.'card_high')write(99,*) 1.01d0
+  if(trim(action).eq.'card_high'.or.trim(action).eq.'card_high_off')write(99,*) 20d0
  endif
  close(99)
  call FKSParamReader('budget-card.dat',.false.,.true.)
  if(trim(action).eq.'card_default'.and.(FKSSectorLearningBudget.ne..20d0.or.FKSSectorLearning))stop 229
  if(trim(action).eq.'card_switch'.and..not.FKSSectorLearning)stop 231
  if(trim(action).eq.'card_value'.and.FKSSectorLearningBudget.ne..95d0)stop 230
+ if(trim(action).eq.'card_high_off'.and.(FKSSectorLearning.or.FKSSectorLearningBudget.ne.20d0))stop 232
  print *,'PASS native CPU budget card',trim(action)
  stop 0
 endif
@@ -281,14 +291,18 @@ class TestEpochReplayIteration(unittest.TestCase):
         cls.work=Path(cls.temporary.name)
         support=mint_support(cls.work,real_fks_params=True)
         stubs=cls.work/'stubs.f90'
-        text=stubs.read_text().replace('subroutine hwu_add_points\nend subroutine',
+        text=splice(stubs.read_text(),'subroutine hwu_add_points\nend subroutine',
             'subroutine hwu_add_points\nuse online_fixture,only:plot_points\nplot_points=plot_points+1\nend subroutine')
         # Place the fixture module before production/stubs without changing MINT.
         module_text,program_text=PROGRAM.split('program exercise_online',1)
         fixture=cls.work/'fixture.f90';fixture.write_text(module_text)
         stubs.write_text(text)
         exposed=cls.work/'exposed_mint.f90'
-        exposed.write_text((TEMPLATE/'mint_module.f90').read_text().replace('private','public').replace('module mint_module','module mint_module\nuse online_fixture,only:ordinary_slot_saved',1).replace('call sl_unified_maybe_probe(fun)','call sl_unified_maybe_probe(fun)\n          if(sl_current.ne.ordinary_slot_saved)error stop "Ordinary Born slot was not restored"'))
+        source=(TEMPLATE/'mint_module.f90').read_text().replace('private','public')
+        source=splice(source,'\nmodule mint_module\n','\nmodule mint_module\nuse online_fixture,only:ordinary_slot_saved\n')
+        source=splice(source,'call sl_unified_maybe_probe(fun)','call sl_unified_maybe_probe(fun)\n'
+                      '          if(sl_current.ne.ordinary_slot_saved)error stop "Ordinary Born slot was not restored"')
+        exposed.write_text(source)
         support=[str(exposed)if p==str(TEMPLATE/'mint_module.f90')else p for p in support]
         check=cls.work/'check.f90';check.write_text('program exercise_online'+program_text)
         cls.executable=cls.work/'check'
@@ -436,6 +450,7 @@ class TestEpochReplayIteration(unittest.TestCase):
             self.run_case('card_value',work)
             self.run_case('card_zero',work,'FKSSectorLearningBudget must be in (0,1]')
             self.run_case('card_high',work,'FKSSectorLearningBudget must be in (0,1]')
+            self.run_case('card_high_off',work)
             self.run_case('card_switch',work)
             self.run_case('card_legacy',work,'FKSSectorLearning must be .true. or .false.')
 
@@ -483,6 +498,17 @@ class TestSectorLearningCards(unittest.TestCase):
             self.assertIsNone(sector_learning_card_error(str(card),bad))
             card.write_text('#FKSSectorLearning\nF\n')
             self.assertIsNone(sector_learning_card_error(str(card),dict(good,folding=[2,2,1])))
+            # The budget is checked before launch, with learning on only.
+            card.write_text('#FKSSectorLearning\n.true.\n#FKSSectorLearningBudget\n2d-1\n')
+            self.assertIsNone(sector_learning_card_error(str(card),good))
+            for budget in ('20','0d0'):
+                card.write_text('#FKSSectorLearning\n.true.\n#FKSSectorLearningBudget\n%s\n'%budget)
+                self.assertIn('FKSSectorLearningBudget',sector_learning_card_error(str(card),good))
+            card.write_text('#FKSSectorLearning\n.true.\n#FKSSectorLearningBudget\n20%\n')
+            self.assertIn('must be a number',sector_learning_card_error(str(card),good))
+            card.write_text('#FKSSectorLearning\n.false.\n#FKSSectorLearningBudget\n20\n')
+            self.assertIsNone(sector_learning_card_error(str(card),good))
+            card.write_text('#FKSSectorLearning\nF\n')
             # Values as the Fortran list-directed read takes them: a repeat
             # count, any case, and a key line with a trailing comment.
             for text in ('#FKSSectorLearning\n1*T\n','#FKSSectorLearning\n\n  .TRUE.\n',

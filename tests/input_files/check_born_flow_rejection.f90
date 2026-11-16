@@ -7,7 +7,7 @@ program check_born_flow_rejection
   character(16) :: mode
   double precision :: factor,nan,inf,answer(6),dummy,x(5),sigintF,virtual_over_born,replayed(5),xs(5,3)
   integer :: flow,i,old_draws,old_calls,fold,ifold_counter,nndim,ickkw,ifks,jfks
-  integer :: phase,old_rejections,j
+  integer :: phase,old_rejections,j,old_fits
   logical :: leading(3),mcatnlo_delta
   integer :: nleading
   common/c_leading_cflows/leading,nleading
@@ -81,6 +81,7 @@ program check_born_flow_rejection
     endif
     do phase=1,2
       old_calls=learning_selects
+      old_fits=surrogate_fit_calls
       last_grid_weight=-19d0
       dummy=sigintF(x,1d0,0,answer)
       do i=1,15
@@ -89,7 +90,9 @@ program check_born_flow_rejection
       dummy=sigintF(x,1d0,2,answer)
       if(learning_registers.ne.1.or.learning_begins.ne.phase)error stop 'learning layout/point lifecycle wrong'
       if(last_grid_weight.ne.-19d0)error stop 'probe changed frozen MC-integer accumulators'
-      if(surrogate_fit_calls.ne.0)error stop 'probe changed frozen virtual surrogate'
+      ! One closing call per completed point, none for a rejected one.
+      if(surrogate_fit_calls-old_fits.ne.merge(0,1,trim(mode).eq.'learning_reject'.and.phase.eq.1)) &
+           error stop 'surrogate fit not called once per completed point'
       if(trim(mode).eq.'learning_reject'.and.phase.eq.1)then
         if(learning_rejects.ne.1.or.icontr.ne.0.or.any(answer.ne.0d0))error stop 'partial rejected orbit survived'
         fail_weight_fold=0

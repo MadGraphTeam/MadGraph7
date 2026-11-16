@@ -786,6 +786,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'analysis_dummy.f',
                      'analysis_lhe.f',
                      'mint_module.f90',
+                     'mint_evaluation.f90',
                      'sector_learning.f90',
                      'virtual_surrogate.f90',
                      'virtual_approximation.f',

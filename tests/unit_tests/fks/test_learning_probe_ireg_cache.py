@@ -106,8 +106,9 @@ class TestLearningProbeIregCache(unittest.TestCase):
                 (work / name).write_text(''.join('      '+line+'\n' for line in body.splitlines()))
             source = ''.join(fortran_routine(TEMPLATE / 'fks_singular.f', name)
                              for name in ('cached_eikonal_Ireg', 'reset_folded_virtual', 'xj1a', 'ddilog'))
-            source += fortran_routine(TEMPLATE / 'fks_singular.f', 'eikonal_Ireg').replace(
-                'subroutine eikonal_Ireg(', 'subroutine raw_eikonal_Ireg(', 1)
+            raw = fortran_routine(TEMPLATE / 'fks_singular.f', 'eikonal_Ireg')
+            self.assertEqual(raw.count('subroutine eikonal_Ireg('), 1)
+            source += raw.replace('subroutine eikonal_Ireg(', 'subroutine raw_eikonal_Ireg(')
             source += fortran_routine(TEMPLATE.parent / 'Source/kin_functions.f', 'dot')
             (work / 'kernels.f').write_text(source)
             (work / 'counter.f90').write_text('''module kernel_counter

@@ -26,6 +26,7 @@ class TestMintChannels(unittest.TestCase):
         result = subprocess.run(
             ['gfortran', '-O0', '-g', '-fcheck=all', '-ffree-line-length-none',
              '-o', 'check', 'support.f90', str(ROOT / 'Template/NLO/SubProcesses/virtual_surrogate.f90'),
+             str(ROOT / 'Template/NLO/SubProcesses/mint_evaluation.f90'),
              str(ROOT / 'Template/NLO/SubProcesses/sector_learning.f90'),
              'mint_module.f90', 'check.f90'],
             cwd=cls.path, capture_output=True, text=True)
@@ -119,7 +120,7 @@ for _name in ('accum', 'HwU_accum_iter', 'HwU_add_points', 'initplot',
               'regrid_MC_integer', 'empty_MC_integer', 'reset_MC_grid',
               'init_polyfit', 'get_polyfit', 'add_point_polyfit', 'do_polyfit',
               'save_polyfit', 'restore_polyfit', 'timing_begin_point',
-              'timing_end_point', 'deallocate_born_spread_lines'):
+              'timing_end_point', 'deallocate_born_spread_lines', 'rmarin'):
     SUPPORT += '\nsubroutine %s\nend subroutine\n' % _name
 
 

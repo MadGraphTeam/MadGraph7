@@ -70,6 +70,8 @@ module mint_module
   use FKSParams ! contains use_poly_virtual
   use virt_surrogate, only: vs_begin_point,vs_vcomp,vs_ratio_set,vs_ratio, &
        vs_reset,vs_solve,vs_write_grids,vs_read_grids
+  ! Integration points and side evaluations (point_evaluation).
+  use mint_evaluation
   ! FKSSectorLearning; its hooks into the grids and the integrand are below.
   use sector_learning
   implicit none
@@ -110,34 +112,6 @@ module mint_module
   double precision, dimension(nintegrals,0:maxchannels), public :: ans,unc
   logical, public :: born_spread_active=.false.,born_spread_ready=.false.
 
-  ! What an integrand evaluation does besides returning its weights.
-  ! Ordinary points are integration points; Born-spreading calibration
-  ! points and sector-learning probes are side evaluations. The call site
-  ! of each side effect checks its field of point_evaluation.
-  type,public :: evaluation_mode
-     ! Counted in the grid hits, split over the learned sector cells, and
-     ! evaluates the exact one-loop virtual.
-     logical :: integration=.true.
-     ! Evaluates H events, not only the S weights.
-     logical :: h_events=.true.
-     ! Fills the MC-integer channel grid.
-     logical :: channel_grid=.true.
-     ! Counts and reports rejected points.
-     logical :: rejection_stats=.true.
-     ! In MINT0, evaluates every fold of the point (the probe stencil).
-     logical :: all_folds=.false.
-     ! Records Born-spreading calibration samples.
-     logical :: born_spread_samples=.false.
-     ! Records sector-learning probe contributions.
-     logical :: learning_probe=.false.
-  end type evaluation_mode
-  type(evaluation_mode),parameter,public :: integration_evaluation=evaluation_mode()
-  type(evaluation_mode),parameter,public :: born_spread_evaluation=evaluation_mode( &
-       integration=.false.,h_events=.false.,born_spread_samples=.true.)
-  type(evaluation_mode),parameter,public :: learning_probe_evaluation=evaluation_mode( &
-       integration=.false.,h_events=.false.,channel_grid=.false.,rejection_stats=.false., &
-       all_folds=.true.,learning_probe=.true.)
-  type(evaluation_mode),public :: point_evaluation=evaluation_mode()
   ! The per-point state a side evaluation between two integration points
   ! leaves as the last point set it (save_point_state, restore_point_state).
   type,private :: mint_point_state
@@ -147,6 +121,10 @@ module mint_module
      logical :: even_rn,pass_cuts_check,new_point
      type(evaluation_mode) :: evaluation
   end type mint_point_state
+  ! The learning probes' own ranmar state (swap_probe_random_numbers).
+  double precision,private :: probe_ranu(97)=0d0,probe_ranc=0d0,probe_rancd=0d0,probe_rancm=0d0
+  integer,private :: probe_iranmr=0,probe_jranmr=0
+  logical,private :: probe_rng_ready=.false.
   integer, public :: born_spread_phase=0,born_spread_current_bin=1
   integer, public :: born_spread_bin_fold(max_fold)=1
   integer, public :: born_spread_current_sector=1
@@ -816,6 +794,35 @@ contains
     point_evaluation=state%evaluation
   end subroutine restore_point_state
 
+  subroutine swap_probe_random_numbers()
+    ! Exchange the ranmar state (ran2) with the learning probes' own stream.
+    ! That stream is seeded once, from the ordinary stream at the first
+    ! probe (a fixed number of ordinary points into MINT0), so the run's
+    ! seed fixes both streams.
+    double precision :: ranu(97),ranc,rancd,rancm,su(97),sc,scd,scm
+    integer :: iranmr,jranmr,si,sj
+    common/raset1/ranu,ranc,rancd,rancm
+    common/raset2/iranmr,jranmr
+    if(.not.probe_rng_ready)then
+       probe_ranu=ranu;probe_ranc=ranc;probe_rancd=rancd;probe_rancm=rancm
+       probe_iranmr=iranmr;probe_jranmr=jranmr
+       call rmarin(int(ranu(1)*31328d0),int(ranu(2)*30081d0))
+       su=ranu;ranu=probe_ranu;probe_ranu=su
+       sc=ranc;ranc=probe_ranc;probe_ranc=sc
+       scd=rancd;rancd=probe_rancd;probe_rancd=scd
+       scm=rancm;rancm=probe_rancm;probe_rancm=scm
+       si=iranmr;iranmr=probe_iranmr;probe_iranmr=si
+       sj=jranmr;jranmr=probe_jranmr;probe_jranmr=sj
+       probe_rng_ready=.true.
+    endif
+    su=ranu;ranu=probe_ranu;probe_ranu=su
+    sc=ranc;ranc=probe_ranc;probe_ranc=sc
+    scd=rancd;rancd=probe_rancd;probe_rancd=scd
+    scm=rancm;rancm=probe_rancm;probe_rancm=scm
+    si=iranmr;iranmr=probe_iranmr;probe_iranmr=si
+    sj=jranmr;jranmr=probe_jranmr;probe_jranmr=sj
+  end subroutine swap_probe_random_numbers
+
   subroutine sl_unified_maybe_probe(fun)
     double precision,external :: fun
     type(mint_point_state) :: saved
@@ -830,8 +837,12 @@ contains
     call save_point_state(saved)
     ifold=1; ifold(ndim-2:ndim)=[4,4,1]; even_rn=.false.
     point_evaluation=learning_probe_evaluation; new_point=.true.
+    ! Probes draw from their own stream: the ordinary points' random numbers
+    ! do not depend on how many probes the CPU budget admits.
+    call swap_probe_random_numbers()
     call get_random_x(x,vol,folds)
     call compute_integrand(fun,x,vol)
+    call swap_probe_random_numbers()
     online_probes=online_probes+1
     if(sl_point_rejected)then
        online_record_rejections=online_record_rejections+1
