@@ -475,6 +475,20 @@ def _visible(text: str) -> int:
     return max((len(line) for line in _ANSI.sub("", text).splitlines()), default=0)
 
 
+def _wrap_painted(text: str, width: int) -> str:
+    """``text`` (one colour run around it, or none) wrapped at its spaces
+    within ``width`` columns, each line painted as the whole was."""
+
+    import textwrap
+
+    found = re.fullmatch(r"((?:\x1b\[[0-9;]*m)*)(.*?)((?:\x1b\[[0-9;]*m)*)", text, re.S)
+    if found is None:
+        return text
+    head, body, tail = found.groups()
+    lines = textwrap.wrap(body, max(width, 1), break_on_hyphens=False) or [body]
+    return "\n".join(head + line + tail for line in lines)
+
+
 def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
     """``table`` with ``rows`` (its cells, and whether a divider follows the
     row) within the line width (``_width``): every cell's parts on one line;
@@ -510,6 +524,7 @@ def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
     def render(texts: list[tuple[list[str], bool]], limits: dict[str, int]) -> str:
         table.clear_rows()
         raw = dict.fromkeys(names, 1)
+        body = []
         for cells, divider in texts:
             narrowed = []
             for name, text in zip(names, cells, strict=True):
@@ -526,8 +541,25 @@ def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
                         )
                         for line in _ANSI.sub("", text).splitlines()
                     )
-                raw[name] = max([raw[name], *map(len, text.splitlines())])
+                raw[name] = max(raw[name], _visible(text))
                 narrowed.append(text)
+            body.append((narrowed, divider))
+        # A header wider than its column goes on several lines (at its
+        # spaces, painted as it is): the headers are then the first row,
+        # a rule under them (a table header holds one line).
+        widths = {name: max(limits[name], raw[name]) for name in names}
+        table.header = all(_visible(name) <= widths[name] for name in names)
+        if not table.header:
+            shown = [
+                _wrap_painted(name, widths[name])
+                if _visible(name) > widths[name]
+                else name
+                for name in names
+            ]
+            for label, name in zip(shown, names, strict=True):
+                raw[name] = max(raw[name], _visible(label))
+            body.insert(0, (shown, True))
+        for narrowed, divider in body:
             table.add_row(narrowed, divider=divider)
         table.max_width = raw
         return str(table.get_string())
@@ -574,11 +606,11 @@ def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
     if _visible(text) <= width:
         return text
     limits = natural(texts)
-    # A column's floor: its header and its longest word.
+    # A column's floor: the longest word of its header and of its cells.
     floor.update(
         {
             name: max(
-                [_visible(name)]
+                [len(word) for word in _ANSI.sub("", name).split()]
                 + [
                     len(word)
                     for cells, _ in texts
@@ -596,7 +628,12 @@ def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
             # than its header (a header is never narrowed), down to the
             # narrowest.
             roomy = [
-                name for name in names if limits[name] > max(_visible(name), _NARROWEST)
+                name
+                for name in names
+                if limits[name]
+                > max(
+                    [_NARROWEST] + [len(word) for word in _ANSI.sub("", name).split()]
+                )
             ]
             if not roomy:
                 break

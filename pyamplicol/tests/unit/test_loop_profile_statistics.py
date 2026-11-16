@@ -920,3 +920,90 @@ def test_human_output_skips_the_json_conversion_and_large_dumps_say_so(
     small = encode_rows([[0, "x"]], 1)
     samples = {"fields": ["index", "pad"], "tasks": [], "rows": small}
     assert _report((replace(row, samples=samples),)).json_notice() is None
+
+
+@pytest.mark.parametrize("color", [False, True])
+def test_the_tables_fit_an_80_column_terminal(monkeypatch, color):
+    """verify2 M4: on a terminal narrower than 100 columns the tables fit it
+    (headers wrap at their spaces, colour codes take no width; numbers never
+    break); 100 stays the widest."""
+
+    import os
+    import re
+
+    from pyamplicol.cli.main import write_result
+
+    digits = tuple(float(d) for d in range(1, 41))
+    estimated = tuple(d - 0.5 for d in digits)
+    served = BackendStability(
+        "tirust",
+        points=40,
+        true_digits=digits,
+        estimated_digits=estimated,
+        percentiles=percentile_table(digits, estimated),
+        flagged=3,
+        flagged_inaccurate=2,
+        unflagged_inaccurate=1,
+        truly_inaccurate=3,
+        seconds=1.5,
+    )
+    other = replace(served, backend="ninjars")
+    report = _report((served, other))
+    for columns, widest in ((80, 80), (200, 100)):
+        monkeypatch.setattr(
+            "shutil.get_terminal_size",
+            lambda fallback=(80, 24), columns=columns: os.terminal_size((columns, 24)),
+        )
+        out = io.StringIO()
+        write_result(report, format="human", stream=out, color=color)
+        lines = re.sub(r"\x1b\[[0-9;]*m", "", out.getvalue()).splitlines()
+        assert max(len(line) for line in lines) <= widest, columns
+        assert any("|est-true|" in line for line in lines)
+
+
+@pytest.mark.parametrize("color", [False, True])
+def test_a_fitted_table_wraps_its_headers_and_ignores_colour_codes(monkeypatch, color):
+    """The fit routine narrows a table to its line width: a header wraps at
+    its spaces (the headers then make the first row), a coloured cell's codes
+    take no width (they made the stability table 75 wide at 66)."""
+
+    import re
+
+    import prettytable
+
+    import pyamplicol.reporting.loop_profile as rendering
+    from pyamplicol.reporting import palette
+
+    monkeypatch.setattr(rendering, "_width", lambda: 66)
+    fields = (
+        "percentile",
+        "backend",
+        "true digits",
+        "class",
+        "|est-true| min/med/max",
+        "est-true med",
+    )
+    table = palette.table(prettytable, fields, "Stable digits", color=color)
+
+    def muted(text):
+        return palette.paint(text, palette.MUTED, color=color)
+
+    rows = [
+        (("1 per mil", "TIRust *", muted("- (N >= 1000)"), "0", muted("-"), "-"), True),
+        (
+            (
+                "10 %",
+                "TIRust *",
+                palette.paint("12.65", palette.GOOD, color=color),
+                "4",
+                "4.42 / 4.62 / 6.93",
+                palette.paint("-4.62", palette.BAD, color=color),
+            ),
+            False,
+        ),
+    ]
+    text = re.sub(r"\x1b\[[0-9;]*m", "", rendering._fit(table, rows))
+    lines = text.splitlines()
+    assert max(len(line) for line in lines) <= 66
+    assert any("min/med/max" in line for line in lines)
+    assert "12.65" in text and "4.42" in text and "1000)" in text
