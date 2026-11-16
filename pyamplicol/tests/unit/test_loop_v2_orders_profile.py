@@ -861,3 +861,60 @@ def test_a_second_profile_estimates_the_whole_run_from_its_start(
     monkeypatch.setenv("PYAMPLICOL_CACHE_DIR", str(tmp_path / "quiet"))
     profile_loop(uux_ddx, config)
     assert not (tmp_path / "quiet").exists()
+
+
+@pytest.mark.loop_physics
+def test_a_stale_history_only_seeds_the_estimate(uux_ddx, tmp_path, monkeypatch):
+    """recheck2 N3: a history 100x off seeds the measurement's priors until
+    this run's first measured step; from then on the costs expected of the
+    steps to come are rescaled by how far off it was (a 100x-stale history
+    showed ~3 h for a 5 min run)."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import GroundTruth, _measure, _Monitor
+    from pyamplicol.profile_plan import Costs
+
+    true = {("tirust", None): 0.004, ("tirust", "double-double"): 0.02}
+    true |= {("ninjars", None): 0.006, ("ninjars", "double-double"): 0.06}
+    runtime = Runtime.load(uux_ddx)
+
+    class Timed:
+        physics = runtime.physics
+
+        def evaluate(self, batch, **options):
+            key = (options["reduction"], options.get("arithmetic"))
+            time.sleep(true[key] * len(batch))
+
+    class Stale:
+        backends = ("tirust", "ninjars")
+
+        def cost(self, backend, precision):
+            arithmetic = None if precision == "binary64" else "double-double"
+            return 100.0 * true[(backend, arithmetic)]
+
+    config = resolve_config(
+        {"action": "benchmark", "evaluation": {"artifact": str(uux_ddx)}}
+    ).effective
+    seen: list = []
+    costs = _measure(
+        Timed(),
+        uux_ddx,
+        runtime.physics,
+        config,
+        ("tirust", "ninjars"),
+        GroundTruth("double-double"),
+        _Monitor(None, "x", None),
+        0.5,
+        history=Stale(),
+        provisional=lambda expected, left: seen.append((dict(expected), left)),
+    )
+    # Before any step: the history alone (100x). After the first: rescaled.
+    first, after = seen[0][0], seen[1][0]
+    assert first["ninjars"].reference == pytest.approx(6.0)
+    for name, cost in after.items():
+        assert isinstance(cost, Costs)
+        assert cost.binary64 <= 3 * true[(name, None)]
+        assert cost.reference <= 3 * true[(name, "double-double")]
+    assert seen[1][1] <= 3 * sum(16 * t for t in true.values()) + 1.0
+    assert costs["ninjars"].binary64 == pytest.approx(0.006, rel=0.5)

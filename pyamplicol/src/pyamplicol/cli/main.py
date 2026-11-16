@@ -177,8 +177,13 @@ def write_result(
             _FRAGMENTS.clear()
         # One write: ``json.dump`` streams thousands of small chunks, slow on
         # a profile's per-sample records; their rows are pre-encoded.
-        stream.write(splice(text, fragments))
+        document = splice(text, fragments)
+        stream.write(document)
         stream.write("\n")
+        if line:
+            # The size written, after the estimate announced.
+            sys.stderr.write(f"Wrote the JSON result ({len(document) / 1e6:.0f} MB)\n")
+            sys.stderr.flush()
         from .partial_evaluation import PartialEvaluation
 
         if isinstance(value, PartialEvaluation) and not isinstance(plain, dict):

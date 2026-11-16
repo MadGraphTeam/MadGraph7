@@ -570,22 +570,43 @@ class LoopProfileReport:
 
     def json_notice(self) -> str | None:
         """The line ``--json`` prints on stderr before a large dump (its
-        per-sample records take seconds to write: never a silent tail)."""
+        per-sample records take seconds to write: never a silent tail), with
+        its size estimated from the rows already encoded (the samples' and
+        the inputs'), the per-point tables and digit lists at their row size
+        (``json_size``); ``cli.main`` states the size written after it."""
+
+        size, records = self.json_size()
+        if size < 20_000_000:
+            return None
+        return (
+            f"Writing the JSON result ({records} sample records, about "
+            f"{size / 1e6:.0f} MB)"
+        )
+
+    def json_size(self) -> tuple[int, int]:
+        """The estimated bytes of the --json document's per-sample parts and
+        the number of sample records."""
 
         from pyamplicol.reporting.raw_json import RawJson
 
-        rows = [
-            row.samples.get("rows")
-            for row in self.stability or ()
-            if isinstance(row.samples, Mapping)
-        ]
-        size = sum(len(r.text) for r in rows if isinstance(r, RawJson))
-        if size < 20_000_000:
+        def encoded(table: object) -> RawJson | None:
+            if isinstance(table, Mapping):
+                rows = table.get("rows")
+                if isinstance(rows, RawJson):
+                    return rows
             return None
-        records = sum(r.rows for r in rows if isinstance(r, RawJson))
-        return (
-            f"Writing the JSON result ({records} sample records, {size / 1e6:.0f} MB)"
-        )
+
+        tables = [encoded(row.samples) for row in self.stability or ()]
+        setup = self.stability_setup or {}
+        inputs = encoded(setup.get("samples"))
+        size = sum(len(t.text) for t in tables if t is not None)
+        size += 0 if inputs is None else len(inputs.text)
+        for row in self.stability or ():
+            # One per-point row (~45 B) and two digit numbers (~20 B each).
+            size += 45 * len(row.per_point)
+            size += 20 * (len(row.true_digits) + len(row.estimated_digits))
+        records = sum(t.rows for t in tables if t is not None)
+        return size, records
 
 
 def _backends(requested: object, contribution: str) -> tuple[str, ...]:
@@ -735,6 +756,7 @@ def profile_loop(
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import DEFAULTS
     from pyamplicol.profile_plan import (
+        BUDGET_TOLERANCE,
         DEFAULT_RUNTIME_SECONDS,
         DEFAULT_STABILITY_SECONDS_PER_CORE,
         MEASURE_REPEAT_SECONDS,
@@ -876,6 +898,7 @@ def profile_loop(
                 runtime_counts_given=runtime_given and completion is None,
                 stability_points_given=given_points,
                 tail_seconds_per_point=tail if completion is not None else 0.0,
+                runtime_target=float(bench.target_runtime),
             ),
             start,
         )
@@ -931,36 +954,61 @@ def profile_loop(
     planned, stability_start = planning(costs, monitor.elapsed())
     if not planned.feasible:
         # One number, the header's too: the whole command with the minimums.
-        asked = (
-            f"--completion-time {_duration(completion)}"
-            if completion is not None
-            else "the default time budgets ("
-            + ", ".join(
-                part
-                for part, wanted in (
-                    (
-                        f"{DEFAULT_RUNTIME_SECONDS:g} s for the runtime timing",
-                        want_runtime,
-                    ),
-                    (
-                        f"{_duration(DEFAULT_STABILITY_SECONDS_PER_CORE)} per "
-                        "stability worker",
-                        want_stability,
-                    ),
-                )
-                if wanted
+        if completion is not None:
+            asked = f"--completion-time {_duration(completion)}"
+        else:
+            budgets = {
+                "runtime": (
+                    f"{_duration(float(bench.target_runtime))} per backend for the "
+                    "runtime timing (--target-runtime)"
+                    if runtime_given
+                    else f"{DEFAULT_RUNTIME_SECONDS:g} s for the runtime timing"
+                ),
+                "stability": (
+                    f"{_duration(DEFAULT_STABILITY_SECONDS_PER_CORE)} per "
+                    "stability worker"
+                ),
+            }
+            asked = (
+                "the time budget"
+                + ("s" if len(planned.unmet) > 1 else "")
+                + " ("
+                + ", ".join(budgets[part] for part in planned.unmet)
+                + ")"
             )
-            + ")"
-        )
+        unmet_stability = completion is not None or "stability" in planned.unmet
         _notice(
             f"{asked} cannot be met on this process: the minimums (one timed "
             "call of one chunk per backend and its reference point"
-            + (", five stability points per backend" if want_stability else "")
+            + (
+                ", five stability points per backend"
+                if want_stability and unmet_stability
+                else ""
+            )
             + f") take about {_duration(planned.minimum_seconds)} in all; "
             "running the minimums",
             warning=True,
         )
     future = future_of(planned, costs)
+    if completion is None and (runtime_given or given_points is not None):
+        # The counts given make the run as long as they are: said once, as
+        # information (the user's own choice), when that is long.
+        chosen = (
+            sum(v for k, v in future.items() if k.startswith("runtime:"))
+            if runtime_given
+            else 0.0
+        ) + (future.get("stability", 0.0) if given_points is not None else 0.0)
+        defaults = (DEFAULT_RUNTIME_SECONDS if runtime_given else 0.0) + (
+            stability_start + DEFAULT_STABILITY_SECONDS_PER_CORE
+            if given_points is not None
+            else 0.0
+        )
+        if chosen > BUDGET_TOLERANCE * defaults:
+            _notice(
+                "the counts given take about "
+                f"{_duration(monitor.elapsed() + sum(future.values()))} in all "
+                "(estimated)"
+            )
     current: list[Any] = [None]
 
     def remaining() -> tuple[float, bool] | None:
@@ -1878,7 +1926,10 @@ def _measure(
         if history is not None:
             remembered = history.cost(backend, precision)
             if remembered is not None:
-                return remembered
+                # The history seeds the priors until this run measures: then
+                # it is rescaled by how far off it was on the steps measured
+                # (a 100x-stale history showed ~3 h for a 5 min run).
+                return remembered * history_ratio()
         if precision == "binary64":
             # The other carrier's binary64 point: the same matrix element.
             others = [v for (_, p), v in known.items() if p == "binary64"]
@@ -1892,6 +1943,19 @@ def _measure(
             else REFERENCE_PRIOR.get(truth.arithmetic, REFERENCE_PRIOR["arbitrary"])
         )
         return binary64 * factor
+
+    def history_ratio() -> float:
+        """This run's measured costs over the history's, the median of the
+        steps measured so far (1 before any)."""
+
+        if history is None:
+            return 1.0
+        ratios = [
+            value / remembered
+            for (backend, precision), value in known.items()
+            if (remembered := history.cost(backend, precision)) is not None
+        ]
+        return statistics.median(ratios) if ratios else 1.0
 
     def step_seconds(per_point: float | None) -> float:
         """A step's expected seconds at ``per_point``: its one-point calls

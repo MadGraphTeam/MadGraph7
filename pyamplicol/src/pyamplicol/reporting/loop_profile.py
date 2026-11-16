@@ -168,15 +168,17 @@ def _counts_cell(report: Any, color: bool) -> str | None:
                 else "stability points from "
                 f"{duration_text(DEFAULT_STABILITY_SECONDS_PER_CORE)} per worker"
             )
-        return "; ".join(parts) + took_text
-    if rule == "counts":
-        return f"as given{took_text}"
-    text = (
-        f"from the time budgets: {DEFAULT_RUNTIME_SECONDS:g} s for the runtime "
-        f"timing, {duration_text(DEFAULT_STABILITY_SECONDS_PER_CORE)} per "
-        f"stability worker{took_text}"
-    )
+        text = "; ".join(parts) + took_text
+    elif rule == "counts":
+        text = f"as given{took_text}"
+    else:
+        text = (
+            f"from the time budgets: {DEFAULT_RUNTIME_SECONDS:g} s for the runtime "
+            f"timing, {duration_text(DEFAULT_STABILITY_SECONDS_PER_CORE)} per "
+            f"stability worker{took_text}"
+        )
     if not plan.get("feasible", True):
+        # A budget in force the minimums exceed (``Plan.unmet``).
         text += palette.paint(
             "; cannot be met: the minimums take about "
             + duration_text(float(plan.get("minimum_seconds") or 0.0)),
@@ -623,10 +625,14 @@ def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
     text = render(texts, limits)
     while _visible(text) > width:
         roomy = [name for name in names if limits[name] > floor[name]]
+        if not roomy and width < _LINE_WIDTH:
+            # A terminal narrower than the report's width: words and numbers
+            # stay whole (the terminal wraps the rest).
+            break
         if not roomy:
             # Every column at its floor: break the words of a column wider
             # than its header (a header is never narrowed), down to the
-            # narrowest.
+            # narrowest: the report's own width holds in every case.
             roomy = [
                 name
                 for name in names

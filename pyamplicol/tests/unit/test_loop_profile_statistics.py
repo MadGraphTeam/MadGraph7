@@ -911,9 +911,11 @@ def test_human_output_skips_the_json_conversion_and_large_dumps_say_so(
     monkeypatch.setattr(main, "_json_value", converted)
     machine = io.StringIO()
     main.write_result(report, format="json", stream=machine, color=False)
-    assert "Writing the JSON result (120000 sample records, 25 MB)" in (
-        capsys.readouterr().err
-    )
+    err = capsys.readouterr().err
+    assert "Writing the JSON result (120000 sample records, about 25 MB)" in err
+    # Then the size written (recheck2: "78 MB" was announced for 144 MB).
+    written = len(machine.getvalue()) / 1e6
+    assert f"Wrote the JSON result ({written:.0f} MB)" in err
     # The pre-encoded rows are spliced in: one valid document.
     rows = json.loads(machine.getvalue())["stability"][0]["samples"]["rows"]
     assert len(rows) == 120_000 and rows[7] == [7, "x" * 200]
@@ -1007,3 +1009,26 @@ def test_a_fitted_table_wraps_its_headers_and_ignores_colour_codes(monkeypatch, 
     assert max(len(line) for line in lines) <= 66
     assert any("min/med/max" in line for line in lines)
     assert "12.65" in text and "4.42" in text and "1000)" in text
+
+
+def test_a_narrow_terminal_never_breaks_words(monkeypatch):
+    """recheck2 M4: below the report's 100 columns a table narrows to its
+    longest words and numbers, never through them (the terminal wraps the
+    rest): the stage table at 60 columns broke "dressing"."""
+
+    import prettytable
+
+    import pyamplicol.reporting.loop_profile as rendering
+    from pyamplicol.reporting import palette
+
+    monkeypatch.setattr(rendering, "_width", lambda: 30)
+    table = palette.table(
+        prettytable, ("stage", "TIRust", "NinjaRS / TIRust"), "stages", color=False
+    )
+    rows = [
+        (("dressing", "735 us", "1.13"), False),
+        (("reduction", "219 us", "18.94"), False),
+    ]
+    text = rendering._fit(table, rows)
+    assert "dressing" in text and "reduction" in text and "735 us" in text
+    assert max(len(line) for line in text.splitlines()) > 30
