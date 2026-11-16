@@ -41,6 +41,11 @@ cd "$WORKDIR"
 STATUS=0
 python3 "$HERE/madmatrix_checks.py" --repo "$REPO" --backend "$BACKEND" 2>&1 | tee checks.log || STATUS=1
 
+section "Running HELAS propagator parameters"
+PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}" MG7_TEST_GPU_BACKEND="$BACKEND" \
+    python3 -m unittest tests.acceptance_tests.test_madmatrix_running_helas -v \
+    2>&1 | tee running_helas.log || STATUS=1
+
 section "Summary"
 cat summary.txt 2> /dev/null || echo "no summary.txt"
 exit $STATUS
