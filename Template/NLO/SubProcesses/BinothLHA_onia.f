@@ -16,7 +16,9 @@ c          + 2C + A pi^2/3 + (2B + n b_0) L + A L^2] Born,
 c     L = log(Q_ES^2/M^2), M^2 = (p1+p2)^2. The Born is taken at
 c     alpha_s(Q_ES), as MadLoop does here (mu_r = Q_ES). Cases (A, B, C):
 c       1  g g -> 1S0, 3P0, 3P2 [1]: (-C_A, -b_0, B_n)
-c       2  g g -> 1S0, 3P0, 3P2 [8]: (-C_A, -b_0 - C_A/2, B_n)
+c       2  g g -> 1S0, 3P0, 3P2 [8]: (-C_A, -b_0 - C_A/2, B_n), B_n of
+c          3P0[8], 3P2[8] recomputed (fks_onia.RECOMPUTED_GG), not
+c          Petrelli's eqs. (130), (131)
 c       3  q qbar -> 3S1[8]: (-C_F, -3/2 C_F - C_A/2,
 c                             B_n - 10/9 n_f T_F - 16/9 T_F)
 c          (-16/9 T_F: the bound heavy quark in the s-channel gluon,

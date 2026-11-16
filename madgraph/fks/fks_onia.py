@@ -652,14 +652,25 @@ def soft_current_data(born_me):
 _CA, _CF = 3., 4. / 3.
 _PI2 = 9.869604401089358618834490999876151135314
 _LOG2 = 0.6931471805599453094172321214581765680755
-# B_n of Petrelli et al., eqs. (125)-(131), by (L, S, J) and colour
+# B_n of Petrelli et al., eqs. (125)-(129), by (L, S, J) and colour
 PETRELLI_GG = {
     ((0, 0, 0), 1): _CF * (-5 + _PI2 / 4) + _CA * (1 + 5 * _PI2 / 12),
     ((1, 1, 0), 1): _CF * (-7. / 3 + _PI2 / 4) + _CA * (1. / 3 + 5 * _PI2 / 12),
     ((1, 1, 2), 1): -4 * _CF + _CA * (1. / 3 + 5. / 3 * _LOG2 + _PI2 / 6),
     ((0, 0, 0), 8): _CF * (-5 + _PI2 / 4) + _CA * (2 + 7 * _PI2 / 24),
-    ((1, 1, 0), 8): _CF * (-7. / 3 + _PI2 / 4) + _CA * (17. / 54 + 35. / 27 * _LOG2 + 7 * _PI2 / 24),
-    ((1, 1, 2), 8): -4 * _CF + _CA * (23. / 36 + 7. / 9 * _LOG2 + 5 * _PI2 / 12),
+}
+# g g -> 3P0[8], 3P2[8]: B_n recomputed (FeynArts + FeynCalc + Package-X, 31
+# one-loop diagrams, threshold derivative on the integrand, CDR with
+# D-dimensional projectors, bare, n_f = 0, mu = M; docs/scripts/virt3pj in the
+# onia_fks study). The same calculation reproduces Petrelli's colour singlets
+# 3P0[1], 3P2[1] exactly, but not their octet eqs. (130), (131): the C_A parts
+# differ by 19/54 - 35/27 log 2 (3P0[8]) and 5/18 + 5/9 log 2 (3P2[8]). The
+# recomputed values are those of the ResumOnia notes and HELAC-Onia 2.8.9
+# (pp_oniumX), whose total NLO cross sections they reproduce. Exactly,
+# (87 pi^2 - 80)/72 and -31/12 + 5 pi^2/4 + 4 log 2 for N_c = 3.
+RECOMPUTED_GG = {
+    ((1, 1, 0), 8): _CF * (-7. / 3 + _PI2 / 4) + _CA * (2. / 3 + 7 * _PI2 / 24),
+    ((1, 1, 2), 8): -4 * _CF + _CA * (11. / 12 + 4. / 3 * _LOG2 + 5 * _PI2 / 12),
 }
 # g g -> 1P1[8] (not in Petrelli et al.): recomputed in CDR with Larin's gamma5
 # in the spin-singlet projector (no Z_5), threshold derivative on the integrand,
@@ -734,6 +745,9 @@ def builtin_virtual(legs, model):
     label = '%s -> %s[%d]' % ('g g' if gg else 'q qbar', name, colour)
     if gg and key == (1, 0, 1) and colour == 8:
         return dict(case=6, bconst=ONIA_GG_1P18, label=label + ' (recomputed in CDR, Larin gamma5)')
+    if gg and (key, colour) in RECOMPUTED_GG:
+        return dict(case=2, bconst=RECOMPUTED_GG[(key, colour)],
+                    label=label + ' (recomputed; differs from Petrelli et al., eqs. 130-131)')
     if gg and (key, colour) in PETRELLI_GG:
         return dict(case=1 if colour == 1 else 2, bconst=PETRELLI_GG[(key, colour)],
                     label=label + ' (Petrelli et al., hep-ph/9707223)')

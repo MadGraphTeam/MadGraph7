@@ -14,6 +14,7 @@
 arXiv:2402.19221): category checks, constituent pairs, soft partners and the
 translation to physical numbering."""
 
+import math
 import os
 import unittest
 
@@ -123,7 +124,9 @@ class TestFKSOniaGeneration(unittest.TestCase):
         model = self.cmd._curr_model
         cases = {'g g > etac(1|1S01) [QCD]': (1, fks_onia.PETRELLI_GG[((0, 0, 0), 1)]),
                  'g g > chic2(1|3P21) [QCD]': (1, fks_onia.PETRELLI_GG[((1, 1, 2), 1)]),
-                 'g g > Jpsi(1|3P08) [QCD]': (2, fks_onia.PETRELLI_GG[((1, 1, 0), 8)]),
+                 'g g > Jpsi(1|3P08) [QCD]': (2, fks_onia.RECOMPUTED_GG[((1, 1, 0), 8)]),
+                 'g g > Jpsi(1|3P28) [QCD]': (2, fks_onia.RECOMPUTED_GG[((1, 1, 2), 8)]),
+                 'g g > Jpsi(1|1S08) [QCD]': (2, fks_onia.PETRELLI_GG[((0, 0, 0), 8)]),
                  'u u~ > Jpsi(1|3S18) [QCD]': (3, fks_onia.PETRELLI_QQ_3S18),
                  'u u~ > tata(1|3S1) [QCD]': (4, 0.),
                  'u u~ > chic0(1|3P01) [QCD]': (5, 0.),
@@ -139,6 +142,12 @@ class TestFKSOniaGeneration(unittest.TestCase):
                 self.assertAlmostEqual(info['bconst'], bconst, places=12)
         # eq. (125) of hep-ph/9707223 for 1S0[1], C_F (-5 + pi^2/4) + C_A (1 + 5 pi^2/12)
         self.assertAlmostEqual(fks_onia.PETRELLI_GG[((0, 0, 0), 1)], 11.96020697, places=7)
+        # g g -> 3P0[8], 3P2[8], recomputed (not Petrelli's eqs. 130-131):
+        # (87 pi^2 - 80)/72 and -31/12 + 5 pi^2/4 + 4 log 2 for N_c = 3
+        self.assertAlmostEqual(fks_onia.RECOMPUTED_GG[((1, 1, 0), 8)], (87 * math.pi ** 2 - 80) / 72, places=12)
+        self.assertAlmostEqual(fks_onia.RECOMPUTED_GG[((1, 1, 2), 8)],
+                               -31. / 12 + 5 * math.pi ** 2 / 4 + 4 * math.log(2), places=12)
+        self.assertFalse(set(fks_onia.RECOMPUTED_GG) & set(fks_onia.PETRELLI_GG))
         # g g -> 1P1[8], recomputed: (7 pi^2 - 22 - 14 log 2)/6 for N_c = 3
         self.assertAlmostEqual(fks_onia.ONIA_GG_1P18, 6.2305283799644, places=12)
         # [real=QCD] keeps the user hook
