@@ -18,13 +18,13 @@ default = []
 poles-only = []
 
 [dependencies]
-iregi-rust = { git = "https://github.com/huashengshao/TIRust", rev = "a5d4afbf87a0afc155dc57d2ac633af77a932a16" }
+iregi-rust = { git = "https://github.com/huashengshao/TIRust", rev = "2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1" }
 symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "native_code_generation", "bincode", "serde", "tracing_max_level_info"] }
 
 [patch.crates-io]
-symbolica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7" }
-numerica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7" }
-graphica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7" }
+symbolica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "d0424f9e414d3007889f8a98b404a1b1a91b37a7" }
+numerica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "d0424f9e414d3007889f8a98b404a1b1a91b37a7" }
+graphica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "d0424f9e414d3007889f8a98b404a1b1a91b37a7" }
 
 [profile.release]
 lto = "thin"
