@@ -7,6 +7,12 @@ PR #35 was merged as `a2cfa4b` (Symbolica community `0e2ad04c`, oneloopmaster
 [`tirust-9a781998-1`](campaigns/tirust-9a781998-1/) on the unmerged PR head, whose
 summaries stay in its directory.
 
+**Pin after the 2026-11-16 Symbolica `community` rebase.** `0e2ad04c` is no
+longer on any Symbolica branch. The bridge now pins TIRust `main`
+`2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1`: `a5d4afb` plus one pin-only commit
+(Symbolica community `d0424f9e`, oneloopmaster `07fc754f`, no TIRust source
+change). The campaign above was measured on `a5d4afb`; it was not rerun.
+
 **Return codes.** MadLoop uses return-code format 2 since the `madloop_ninjars`
 merge (`c667b8d569`). TIRust reports `U=3`, which it shares with IREGI: a stable
 DP result is `213` and a QP rescue is `323`. This campaign runs under format 2;
