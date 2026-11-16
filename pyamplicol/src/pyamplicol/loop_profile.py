@@ -1074,6 +1074,25 @@ class _Phase:
             )
 
 
+def _exclude_resource_tracker() -> None:
+    """Leave multiprocessing's resource tracker (started with the first
+    spawned process) out of the display's process tree: "children N" counts
+    the profile's workers."""
+
+    try:
+        from multiprocessing import resource_tracker
+
+        from pyamplicol.reporting.resources import register_monitor_process
+
+        pid = getattr(
+            getattr(resource_tracker, "_resource_tracker", None), "_pid", None
+        )
+        if isinstance(pid, int) and pid > 0:
+            register_monitor_process(pid)
+    except Exception:  # the display only: never fails the profile
+        return
+
+
 class _Monitor:
     """The live display of a loop profile (``--progress``): a root task with
     the whole command's elapsed time, ETA and budget (``remaining``: a
@@ -1135,6 +1154,7 @@ class _Monitor:
 
         if self.sink is None:
             return
+        _exclude_resource_tracker()
         details: dict[str, Any] = {"heartbeat": True}
         remaining = self.remaining() if self.remaining is not None else None
         if remaining is not None:
@@ -1523,6 +1543,7 @@ def _measure(
             options["reduction_unchecked"] = True
         else:
             options.update(truth.options)
+
         def seconds(size: int) -> float:
             batch = points[:size]
             mu = scales[:size] if isinstance(scales, list) else scales
@@ -2360,13 +2381,13 @@ def _stability(
                 return float(cost.stability)
             return float(cost.stability_reference or 0.0)
 
-        tasks = sum(
+        planned_tasks = sum(
             math.ceil((end - start) / task_points(prior(b, p), end - start))
             for start, end in bounds
             for b in backends
             for p in precisions
         )
-        workers = max(1, min(workers, tasks))
+        workers = max(1, min(workers, planned_tasks))
     else:
         # A deadline: chunks of one SIMD chunk while they fit it; the first
         # holds the minimum, a whole chunk only when the plan affords several
