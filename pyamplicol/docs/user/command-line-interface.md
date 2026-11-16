@@ -216,8 +216,13 @@ the generation:
   included) and of every process it started (compilers of the `cpp` backend).
 
 On Linux the process's peak is the kernel's high-water mark `VmHWM`, reset at
-the start of the generation (`/proc/self/clear_refs`): exact. Where the reset
-is refused, and on macOS (`getrusage` `ru_maxrss`), only the process's
+the start of the generation (`/proc/self/clear_refs`): exact. The reset is
+process-wide, so pyAmpliCol does it only in a process it owns (the
+`pyamplicol` command and its worker processes): called as a library
+(`Generator.generate`, `BenchmarkRunner`, from MadGraph7 or a script), it
+never lowers the calling program's own peak (`VmHWM`, `ru_maxrss`, what
+`time -v` reports) and reads the lifetime peak instead, as below. Where the
+reset is refused, and on macOS (`getrusage` `ru_maxrss`), only the process's
 lifetime peak is known: it is the generation's when the generation raised it,
 else an upper bound, shown `<= x`. Started processes are followed by a thread
 that sums the resident sizes of the process tree every second (Linux: the

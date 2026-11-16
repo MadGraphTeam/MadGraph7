@@ -1837,6 +1837,11 @@ def _runtime_worker(
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     one_core()
+    # This spawned process is the profile's own: its peak RAM is measured
+    # from the reset high-water mark.
+    from pyamplicol.reporting.resources import own_process_accounting
+
+    own_process_accounting()
     try:
         from pyamplicol.api import Runtime
         from pyamplicol.benchmarking import profile_virtual
