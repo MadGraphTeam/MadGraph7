@@ -777,9 +777,13 @@ def profile_loop(
     # command's estimate from the first second, then the measurement's
     # priors; without one, a time budget stands for the estimate until the
     # first measured call.
+    # Only when progress is shown (``--progress off`` passes a
+    # NullProgressSink): as generate's history.
+    from pyamplicol.reporting.progress import NullProgressSink
+
     history = (
         _ProfileHistory(path, evaluation.process, truth)
-        if progress is not None
+        if progress is not None and not isinstance(progress, NullProgressSink)
         else None
     )
     settings = "total:" + _settings_key(bench, config)
