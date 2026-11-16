@@ -1114,25 +1114,6 @@ class _Phase:
             )
 
 
-def _exclude_resource_tracker() -> None:
-    """Leave multiprocessing's resource tracker (started with the first
-    spawned process) out of the display's process tree: "children N" counts
-    the profile's workers."""
-
-    try:
-        from multiprocessing import resource_tracker
-
-        from pyamplicol.reporting.resources import register_monitor_process
-
-        pid = getattr(
-            getattr(resource_tracker, "_resource_tracker", None), "_pid", None
-        )
-        if isinstance(pid, int) and pid > 0:
-            register_monitor_process(pid)
-    except Exception:  # the display only: never fails the profile
-        return
-
-
 class _Monitor:
     """The live display of a loop profile (``--progress``): a root task with
     the whole command's elapsed time, ETA and budget (``remaining``: a
@@ -1194,7 +1175,6 @@ class _Monitor:
 
         if self.sink is None:
             return
-        _exclude_resource_tracker()
         details: dict[str, Any] = {"heartbeat": True}
         remaining = self.remaining() if self.remaining is not None else None
         if remaining is not None:

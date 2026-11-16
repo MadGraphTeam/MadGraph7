@@ -193,6 +193,21 @@ class ProcessTreeSampler:
         # process measures the tree it belongs to without itself).
         self.exclude = frozenset(exclude)
         self._known_pids = {root_pid}
+        # Per process: whether it is multiprocessing's resource tracker (a
+        # helper the first spawned process starts, not a worker: "children
+        # N" counts the workers), read once from its command line.
+        self._helpers: dict[int, bool] = {}
+
+    def _helper(self, pid: int) -> bool:
+        known = self._helpers.get(pid)
+        if known is None:
+            try:
+                command = (Path("/proc") / str(pid) / "cmdline").read_bytes()
+            except OSError:
+                command = b""
+            known = b"multiprocessing.resource_tracker" in command
+            self._helpers[pid] = known
+        return known
 
     def sample(self, records: dict[int, ProcessInfo]) -> tuple[int, int]:
         children: dict[int, list[int]] = defaultdict(list)
@@ -209,11 +224,18 @@ class ProcessTreeSampler:
         while pending:
             parent = pending.pop()
             for child in children.get(parent, ()):
-                if child not in selected and child not in excluded:
+                if (
+                    child not in selected
+                    and child not in excluded
+                    and not self._helper(child)
+                ):
                     selected.add(child)
                     pending.append(child)
 
         self._known_pids = selected
+        self._helpers = {
+            pid: self._helpers[pid] for pid in records if pid in self._helpers
+        }
         return sum(records[pid].rss_bytes for pid in selected), len(selected)
 
     def known_pids(self) -> frozenset[int]:
@@ -766,7 +788,9 @@ def memory_text(size: float) -> str:
         if abs(size) >= scale:
             value = size / scale
             # 1000-1023 of a unit: four digits, not "1.01e+03".
-            return f"{value:.0f} {unit}" if abs(value) >= 999.5 else f"{value:.3g} {unit}"
+            return (
+                f"{value:.0f} {unit}" if abs(value) >= 999.5 else f"{value:.3g} {unit}"
+            )
     return f"{size:.0f} B" if abs(size) >= 999.5 else f"{size:.3g} B"
 
 
