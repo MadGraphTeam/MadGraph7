@@ -28,7 +28,7 @@ call sector_learning_register_layout(1,[1,2],[1,2],pdgs)
 unified_slots(1)%qcodes(:,1)=[0,0]
 unified_slots(1)%qcodes(:,2)=[1,2]
 if(trim(action).eq.'noshift')unified_slots(1)%qcodes(:,2)=[0,0]
-if(trim(action).eq.'probe')sector_learning_collect=.true.
+if(trim(action).eq.'probe')point_evaluation=learning_probe_evaluation
 if(trim(action).eq.'mint1')then
  imode=1;sl_ready=.true.
 endif
@@ -41,19 +41,26 @@ call resample_sector_radiation(xin,xout,ratio,2)
 if(trim(action).ne.'noshift')then
  if(abs(xout(ndim-2)-.35d0).gt.1d-15.or.abs(xout(ndim-1)-.6d0).gt.1d-15.or.ratio.ne.1d0)stop 502
 endif
-! Contribution 1 is the Born part; 2-3 belong to sector 1, 4-5 to sector 2.
-call sector_learning_mark_range(2,3,1)
-call sector_learning_mark_range(4,5,2)
-call sector_learning_split_add(1,1,3d0)
-call sector_learning_split_add(2,1,-1d0)
-call sector_learning_split_add(4,1,2d0)
-call sector_learning_split_add(1,2,-1d0)
-call sector_learning_split_add(4,2,-1d0)
-call sector_learning_split_add_h(3,.5d0)
-call sector_learning_split_add_h(5,.25d0)
-! S events |3-1+2|=4 and |-1-1|=2, H events .5 and .25.
-f=0d0;f(1)=6.75d0
-if(trim(action).eq.'mismatch')f(1)=7d0
+if(trim(action).eq.'cancel')then
+ ! Sector 2's counterterms of 5e7 cancel to R=3; the ABS weight, summed in
+ ! another order, differs by more than 1e-10 of |B|+|R| but not of the terms.
+ call sector_learning_split_add(0,1,1d0)
+ call sector_learning_split_add(2,1,5d7)
+ call sector_learning_split_add(2,1,-5d7+3d0)
+ f=0d0;f(1)=4d0*(1d0+1d-9)
+else
+ ! Owner 0 is the Born part; sectors 1 and 2 have an S part and an H event.
+ call sector_learning_split_add(0,1,3d0)
+ call sector_learning_split_add(1,1,-1d0)
+ call sector_learning_split_add(2,1,2d0)
+ call sector_learning_split_add(0,2,-1d0)
+ call sector_learning_split_add(2,2,-1d0)
+ call sector_learning_split_add_h(1,.5d0)
+ call sector_learning_split_add_h(2,.25d0)
+ ! S events |3-1+2|=4 and |-1-1|=2, H events .5 and .25.
+ f=0d0;f(1)=6.75d0
+ if(trim(action).eq.'mismatch')f(1)=7d0
+endif
 call sector_learning_split_close(f(1))
 if(trim(action).eq.'reject')call sector_learning_reject_point()
 call add_point_to_grids(xin)
@@ -61,7 +68,12 @@ do kdim=1,ndim
  if(abs(sum(xacc(1:4,kdim,1))-f(1)).gt.1d-12)stop 503
 enddo
 if(any(xacc(2:4,ndim,1).ne.0d0).or.xacc(1,ndim,1).ne.f(1))stop 504
-if(trim(action).eq.'split')then
+if(trim(action).eq.'cancel')then
+ ! |B|:|R_2| = 1:3, sector 2 in its shifted cells.
+ if(abs(xacc(1,ndim-2,1)-f(1)/4d0).gt.1d-12.or.abs(xacc(2,ndim-2,1)-3d0*f(1)/4d0).gt.1d-12)stop 508
+ if(abs(xacc(1,ndim-1,1)-f(1)/4d0).gt.1d-12.or.abs(xacc(3,ndim-1,1)-3d0*f(1)/4d0).gt.1d-12)stop 509
+ print *,'PASS cancelling counterterms keep the split'
+elseif(trim(action).eq.'split')then
  ! Each S event is split in proportion to |B| and the |R_s|: 4 as 3:1:2, 2 as 1:0:1.
  born=4d0*3d0/6d0+1d0
  sector1=4d0*1d0/6d0+.5d0
@@ -112,6 +124,9 @@ class TestSectorLearningGridSplit(unittest.TestCase):
 
     def test_shares_go_to_the_cells_where_they_were_evaluated(self):
         self.assertNotIn('Grid split differs', self.run_case('split'))
+
+    def test_cancelling_counterterms_keep_the_split(self):
+        self.assertNotIn('Grid split differs', self.run_case('cancel'))
 
     def test_unshifted_sectors_match_the_sampled_cell_accumulation(self):
         self.run_case('noshift')

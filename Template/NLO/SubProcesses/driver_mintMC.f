@@ -676,8 +676,7 @@ c
       include 'mc_histories.inc'
       logical firsttime,passcuts,passcuts_native_born,
      $     passcuts_nbody,passcuts_n1body
-      logical rejected_point,weights_valid,born_cuts_for_flow,
-     $     calibrating_spread
+      logical rejected_point,weights_valid,born_cuts_for_flow
       save rejected_point
       data rejected_point/.false./
       integer i,ifl,proc_map(0:fks_configs,0:fks_configs),nFKS_picked_nbody,nFKS_in,nFKS_out,izero,mohdr,iFKS,sum,
@@ -708,11 +707,8 @@ c
       integer ifold_picked
       double precision x_save(ndimmax,max_fold)
       common /c_vegas_x_fold/x_save,ifold_picked
-      double precision x_sector_save(2,max_fold,fks_configs)
-      common /c_sector_radiation/x_sector_save
       double precision x_sector(ndimmax),sector_wgt_ratio,
      $     sector_vegas_wgt
-      integer learning_first_contribution
       logical s_only_point
       integer icolup_s(2,nexternal-1),icolup_h(2,nexternal)
       common /colour_connections/ icolup_s,icolup_h
@@ -747,10 +743,9 @@ c learning also reuses the typed Born inputs across a probe's folds;
 c radiation and endpoint data are always regenerated.
       phase_space%born%valid=.false.
       have_sum_born=.false.
-      calibrating_spread=born_spread_phase.eq.1.or.
-     $                   born_spread_phase.eq.2
-c Born-spreading calibration and sector-learning probes fit S weights only.
-      s_only_point=calibrating_spread.or.sector_learning_collect
+c Side evaluations (Born-spreading calibration, learning probes) fit S
+c weights only.
+      s_only_point=.not.point_evaluation%h_events
       if (new_point .and. ifl.ne.2) then
          pass_cuts_check=.false.
       endif
@@ -938,7 +933,6 @@ c The n+1-body contributions (including counter terms)
          if (abrv.eq.'born'.or.abrv(1:2).eq.'vi') goto 12
          nbody=.false.
          do i=1,proc_map(proc_map(0,1),0)
-            learning_first_contribution=icontr+1
             wgt_me_real=0d0
             wgt_me_born=0d0
             iFKS=proc_map(proc_map(0,1),i)
@@ -983,8 +977,6 @@ c replay it (get_event_coordinates).
                call resample_sector_radiation(xx,x_sector,
      $              sector_wgt_ratio,iFKS)
                x_local(ndim-2:ndim-1)=x_sector(ndim-2:ndim-1)
-               x_sector_save(:,ifold_counter,iFKS)=
-     $              x_sector(ndim-2:ndim-1)
                sector_vegas_wgt=vegas_wgt*sector_wgt_ratio
             endif
             call generate_real_phase_space(nndim,iconfig,jacPS,
@@ -1114,8 +1106,6 @@ c check if event or counter-event passes cuts
                endif
             endif
             call mc_end_real_point()
-            call sector_learning_mark_range(learning_first_contribution,
-     $           icontr,iFKS)
          enddo
          call apply_born_spread_weight(ifold_counter)
  12      continue
@@ -1158,12 +1148,12 @@ c Sum the contributions that can be summed before taking the ABS value
          call sum_identical_contributions
          call fill_mint_function_NLOPS(f,n1body_wgt)
          if(nonfinite_contribution)goto 900
-c Learning probes observe the frozen Born-slot and surrogate models.
-         if(.not.sector_learning_collect)then
-            call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
-c Use the final, finite PDF/bias weights of the complete point for the fit.
-            call virt_surrogate_fit_point
-         endif
+c Learning probes observe the frozen Born-slot model.
+         if(point_evaluation%channel_grid)
+     $        call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
+c Use the final, finite PDF/bias weights of the complete point for the fit
+c (nothing to fit without the exact virtual, as for side evaluations).
+         call virt_surrogate_fit_point
       endif
 
       return
@@ -1173,7 +1163,7 @@ c Use the final, finite PDF/bias weights of the complete point for the fit.
 ! Born-spreading fit, including records made before the failure.
 ! Learning probes count their rejections separately (online_record_rejections).
       if(nonfinite_contribution.and..not.rejected_point.and.
-     $     .not.sector_learning_collect)then
+     $     point_evaluation%rejection_stats)then
          rejected_nonfinite_points=rejected_nonfinite_points+1
          if(rejected_nonfinite_points.le.5.or.
      $        mod(rejected_nonfinite_points,100).eq.0)then
@@ -1198,7 +1188,7 @@ c Use the final, finite PDF/bias weights of the complete point for the fit.
       virtual_over_born=0d0
       pass_cuts_check=.false.
       f=0d0
-      if(ifl.eq.2.and..not.sector_learning_collect)
+      if(ifl.eq.2.and.point_evaluation%channel_grid)
      $     call fill_MC_integer(1,proc_map(0,1),0d0)
       return
       end
@@ -2129,21 +2119,23 @@ c     include all quarks (except top quark) and the gluon.
 
       subroutine get_event_coordinates(x,selected_fold,selected_sector,
      $     is_H_event)
-c Replay the radiation of the selected outer sector for H events. The
-c common Born coordinates and S-event output retain the original draw.
+c Replay the radiation of the selected outer sector for H events. With
+c the learned maps and the grid frozen, it is a function of the fold's
+c integration point. The common Born coordinates and S-event output
+c retain the original draw.
       use mint_module
       implicit none
-      include 'nFKSconfigs.inc'
       double precision x(ndimmax),x_save(ndimmax,max_fold),
-     $     x_sector_save(2,max_fold,fks_configs)
+     $     x_sector(ndimmax),ratio
       integer selected_fold,selected_sector,ifold_picked
       logical is_H_event
       common /c_vegas_x_fold/x_save,ifold_picked
-      common /c_sector_radiation/x_sector_save
       x=x_save(:,selected_fold)
-      if(sector_learning_active.and.is_H_event)
-     $     x(ndim-2:ndim-1)=
-     $     x_sector_save(:,selected_fold,selected_sector)
+      if(sector_learning_active.and.is_H_event)then
+         call resample_sector_radiation(x_save(:,selected_fold),
+     $        x_sector,ratio,selected_sector)
+         x(ndim-2:ndim-1)=x_sector(ndim-2:ndim-1)
+      endif
       end
 
 

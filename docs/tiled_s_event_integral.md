@@ -30,9 +30,9 @@ The maps are learned inside ordinary MINT0:
   the Born part `B` and per-sector parts `R`, per canonical flavour. The
   separately generated virtual-residual lane (type 14) is excluded, so
   probes evaluate neither the exact one-loop virtual nor any H-event
-  contribution. A probe is an ordinary MINT0 call with its own fold loop
-  (`sector_learning_collect`); neither the grid, the MC-integer channel
-  weights nor the virtual surrogate see it.
+  contribution. A probe is a side evaluation between two MINT0 points, with
+  its own fold loop (`learning_probe_evaluation` in `mint_module`); neither
+  the grid, the MC-integer channel weights nor the virtual surrogate see it.
 - At each iteration boundary, the maps are refitted to minimise the negative
   part of the summed S weight,
   `Σ max(-B(node) - Σ_s R_s(P_s(node)), 0)`, over the current bank of probes
@@ -128,6 +128,18 @@ was also tested and not adopted: Drell–Yan worsened significantly and W+jet
 MINT0 CPU increased. That study also found that part of the remaining
 negative S weight comes from the Born-based virtual-residual lane, which the
 radiation maps cannot move: about 48% in top pair and 58% in W+bb.
+
+## Code
+
+`Template/NLO/SubProcesses/sector_learning.f90` holds the learning state,
+the probe records, the map fits, the epoch replay bank, the grid-split
+shares and the `SCL10` table writer; it uses no MINT state. `mint_module.f90`
+holds the hooks that need MINT's grids or integrand: probes, resampling,
+grid accumulation, epoch boundaries and table reading. Probes and
+Born-spreading calibration points are side evaluations
+(`point_evaluation` in `mint_module`): S weights only, outside the grid
+hits; probes also leave the MC-integer grid and the rejection statistics
+alone.
 
 ## Tests
 

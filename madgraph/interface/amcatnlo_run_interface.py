@@ -137,19 +137,20 @@ def sector_learning_card_error(fks_params, run_card, subprocess_dirs=()):
                                for d in subprocess_dirs):
         return None
     def flag(name, default):
-        # Fortran list-directed logical input: an optional '.', then T or F.
-        # Like FKSParamReader, a repeated entry takes its last value.
-        value = mcatnlo_shower.read_fks_param(fks_params, name, default, last=True)
-        return str(value).lstrip('.')[:1].lower() == 't'
-    if not flag('FKSSectorLearning', '.false.'):
-        return None
-    if list(run_card['folding']) != [1, 1, 1] or \
-            ('born_spreading' in run_card and run_card['born_spreading']):
-        return ('FKSSectorLearning (Cards/FKS_params.dat) requires folding = 1, 1, 1 '
-                'and born_spreading = False in the run_card.')
-    if not (flag('FKSExplicitSum', '.true.') and flag('MCSubtractionAtFixedFlow', '.true.')):
-        return ('FKSSectorLearning requires FKSExplicitSum and MCSubtractionAtFixedFlow '
-                '(Cards/FKS_params.dat).')
+        # As FKSParamReader reads it; an invalid value would stop every job.
+        return mcatnlo_shower.read_fks_logical(fks_params, name, default)
+    try:
+        if not flag('FKSSectorLearning', False):
+            return None
+        if list(run_card['folding']) != [1, 1, 1] or \
+                ('born_spreading' in run_card and run_card['born_spreading']):
+            return ('FKSSectorLearning (Cards/FKS_params.dat) requires folding = 1, 1, 1 '
+                    'and born_spreading = False in the run_card.')
+        if not (flag('FKSExplicitSum', True) and flag('MCSubtractionAtFixedFlow', True)):
+            return ('FKSSectorLearning requires FKSExplicitSum and MCSubtractionAtFixedFlow '
+                    '(Cards/FKS_params.dat).')
+    except ValueError as error:
+        return 'Cards/FKS_params.dat: %s' % error
     return None
 
 

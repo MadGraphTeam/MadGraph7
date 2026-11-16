@@ -94,7 +94,7 @@ if(trim(action).eq.'train'.or.trim(action).eq.'zero_train')then
  if(online_ordinary_calls.ne.ordinary_nodes)stop 201
  if(online_probes.le.0.or.probe_nodes.ne.16*online_probes.or.probe_ends.ne.online_probes)stop 202
  if(online_probes.gt.(online_ordinary_calls-48)/16)stop 204
- if(online_record_rejections.ne.0.or..not.sl_ready.or.sector_learning_collect)stop 205
+ if(online_record_rejections.ne.0.or..not.sl_ready.or.point_evaluation%learning_probe)stop 205
  if(grid_changes.lt.1.or.last_iteration.ne.4)stop 206
  if(map_changes.lt.1)stop 207
  if(size(sl_entries).ne.3.or.size(unified_slots).ne.3)stop 231
@@ -147,7 +147,7 @@ else
   stop 0
  endif
  call mint(integrand)
- if(probe_nodes.ne.0.or.sector_learning_collect)stop 217
+ if(probe_nodes.ne.0.or.point_evaluation%learning_probe)stop 217
  print *,'PASS fresh MINT1 restart without refit'
 endif
 end program
@@ -168,19 +168,21 @@ double precision function integrand(x,vol,ifl,fout)
 use mint_module
 use online_fixture
 implicit none
-integer :: ifl,j,sector,first,slot,ns,ids(4),flavour
+integer :: ifl,j,sector,slot,ns,ids(4),flavour
 double precision :: x(ndimmax),vol,fout(nintegrals),mapped(ndimmax),ratio,value,total,anchor(ndimmax),pi
 logical :: collect
 if(ifl.eq.2)then
- if(sector_learning_collect)then
+ if(point_evaluation%learning_probe)then
   if(fold_count.ne.16)stop 221
   probe_ends=probe_ends+1
  endif
  integrand=fout(2);return
 endif
-collect=sector_learning_collect;pi=acos(-1d0)
+collect=point_evaluation%learning_probe;pi=acos(-1d0)
 call register_fixture_layouts
-if(collect.and.ifl.eq.0)call sector_learning_begin_point
+! Probes and, as in the MC@NLO driver, ordinary points open a point here;
+! ordinary MINT0 points then split their ABS weight over the sector cells.
+if(ifl.eq.0)call sector_learning_begin_point
 slot=1+mod(ordinary_nodes,2)
 if(collect)slot=1+mod(online_probes,2)
 if(collect.and.nit.eq.2)then
@@ -234,11 +236,11 @@ do j=1,20000
  delay_sink=delay_sink+sin(dble(j)+x(1))
 enddo
 total=.1d0*vol
+if(.not.(collect.or.zero_integrand))call sector_learning_split_add(0,1,total)
 if(collect)then
- first=(ns+1)*(fold_count-1)+1
- call sector_learning_add_contribution(first,fold_count,1,total)
- if(nit.ne.2)call sector_learning_add_contribution(first,fold_count,2,-.2d0*total)
- if(nit.eq.3)call sector_learning_add_contribution(first,fold_count,3,.15d0*total)
+ call sector_learning_add_contribution(0,fold_count,1,total)
+ if(nit.ne.2)call sector_learning_add_contribution(0,fold_count,2,-.2d0*total)
+ if(nit.eq.3)call sector_learning_add_contribution(0,fold_count,3,.15d0*total)
 endif
 do sector=1,ns
  call resample_sector_radiation(x,mapped,ratio,ids(sector))
@@ -246,11 +248,11 @@ do sector=1,ns
  if(mod(sector,2).eq.0)value=-.9d0*value
  value=value/dble(sector)
  total=total+value
+ if(.not.(collect.or.zero_integrand))call sector_learning_split_add(ids(sector),1,value)
  if(collect)then
-  call sector_learning_mark_range(first+sector,first+sector,ids(sector))
-  call sector_learning_add_contribution(first+sector,fold_count,1,value)
-  if(nit.ne.2)call sector_learning_add_contribution(first+sector,fold_count,2,-.3d0*value)
-  if(nit.eq.3)call sector_learning_add_contribution(first+sector,fold_count,3,-.1d0*value)
+  call sector_learning_add_contribution(ids(sector),fold_count,1,value)
+  if(nit.ne.2)call sector_learning_add_contribution(ids(sector),fold_count,2,-.3d0*value)
+  if(nit.eq.3)call sector_learning_add_contribution(ids(sector),fold_count,3,-.1d0*value)
  endif
 enddo
 fout=0d0
@@ -259,6 +261,7 @@ if(collect)then
  fout(1)=1d12*vol;fout(2)=-1d12*vol
 elseif(.not.zero_integrand)then
  fout(1)=abs(total);fout(2)=total
+ call sector_learning_split_close(fout(1))
 endif
 pass_cuts_check=.true.
 integrand=fout(2)
@@ -478,6 +481,22 @@ class TestSectorLearningCards(unittest.TestCase):
             self.assertIn('folding = 1, 1, 1',sector_learning_card_error(str(card),bad))
             card.write_text('#FKSSectorLearning\n.true.\n#FKSSectorLearning\n.false.\n')
             self.assertIsNone(sector_learning_card_error(str(card),bad))
+            card.write_text('#FKSSectorLearning\nF\n')
+            self.assertIsNone(sector_learning_card_error(str(card),dict(good,folding=[2,2,1])))
+            # Values as the Fortran list-directed read takes them: a repeat
+            # count, any case, and a key line with a trailing comment.
+            for text in ('#FKSSectorLearning\n1*T\n','#FKSSectorLearning\n\n  .TRUE.\n',
+                         '#FKSSectorLearning ! learn the maps\ntrue\n'):
+                card.write_text(text)
+                self.assertIn('folding = 1, 1, 1',sector_learning_card_error(str(card),bad))
+            # A null value keeps the default; a value the Fortran rejects,
+            # such as a comment line, stops the launch instead of every job.
+            card.write_text('#FKSSectorLearning\n,\n')
+            self.assertIsNone(sector_learning_card_error(str(card),bad))
+            for text in ('#FKSSectorLearning\n! .true. to enable\n.true.\n','#FKSSectorLearning\n1\n',
+                         '#FKSSectorLearning\n.true.\n#FKSExplicitSum\nyes\n'):
+                card.write_text(text)
+                self.assertIn('must be .true. or .false.',sector_learning_card_error(str(card),good))
             card.write_text('#FKSSectorLearning\nF\n')
             self.assertIsNone(sector_learning_card_error(str(card),dict(good,folding=[2,2,1])))
             self.assertIsNone(sector_learning_card_error(str(Path(temporary)/'missing.dat'),dict(good,folding=[2,2,1])))

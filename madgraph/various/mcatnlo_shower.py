@@ -75,26 +75,60 @@ def _fortran_float(text):
     return float(str(text).strip().lower().replace('d', 'e'))
 
 
-def read_fks_param(path, name, default=None, last=False):
-    """Value following the line '#name' in an FKS_params.dat card. For a
-    repeated '#name' this is the first value, or with last=True the last
-    one, which is the value FKSParamReader uses."""
+def read_fks_param(path, name, default=None):
+    """Value following the line '#name' in an FKS_params.dat card."""
     if not path or not os.path.isfile(path):
         return default
-    found, want = default, False
+    want = False
     with open(path) as card:
         for line in card:
             stripped = line.strip()
             if not stripped:
                 continue
             if want:
-                want = False
-                found = default if stripped.startswith(('!', '#')) else stripped.split()[0]
-                if not last:
-                    return found
-            elif stripped.split()[0] == '#' + name:
+                if stripped.startswith(('!', '#')):
+                    return default
+                return stripped.split()[0]
+            if stripped.split()[0] == '#' + name:
                 want = True
-    return found
+    return default
+
+
+def _list_directed_item(record):
+    """The first value of a Fortran list-directed record: its characters
+    before the first blank, comma or slash ('' for a null value)."""
+    return re.split(r'[\s,/]', record.strip(), 1)[0]
+
+
+def read_fks_logical(path, name, default):
+    """The logical '#name' of an FKS_params.dat card, read as FKSParamReader
+    reads it. The key is the first item of a record and its value the first
+    item of the next non-blank record, read list-directed: an optional
+    repeat count 'r*', an optional '.', then T or F in either case; a null
+    value keeps the previous one. A repeated key takes its last value. A
+    value that the Fortran read rejects raises ValueError."""
+    if not path or not os.path.isfile(path):
+        return default
+    value = default
+    with open(path) as card:
+        records = iter(card)
+        for record in records:
+            if _list_directed_item(record) != '#' + name:
+                continue
+            for record in records:
+                if record.strip():
+                    break
+            else:
+                break
+            item = re.sub(r'^\d+\*', '', _list_directed_item(record))
+            if not item:
+                continue
+            match = re.match(r'\.?([tTfF])', item)
+            if not match:
+                raise ValueError('#%s must be .true. or .false., not %r'
+                                 % (name, record.strip()))
+            value = match.group(1) in 'tT'
+    return value
 
 
 def pythia8_mmaxgamma(fks_params):

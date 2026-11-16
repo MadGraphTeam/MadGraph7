@@ -39,6 +39,20 @@
          if (event_nFKS(ict).gt.0) event_owner=event_nFKS(ict)
          end function event_owner
 
+         integer function learning_owner(ict)
+! The outer FKS sector whose radiation a contribution depends on, for
+! FKSSectorLearning: 0 for the Born-level types (Born, integrated
+! counterterms, virtual, average-Born virt-trick term, EW Sudakov), which
+! are made before the sector loop; the event owner otherwise.
+         integer, intent(in) :: ict
+         if (itype(ict).eq.2 .or. itype(ict).eq.3 .or. itype(ict).eq.14
+     $        .or. itype(ict).eq.15 .or. itype(ict).ge.20) then
+            learning_owner=0
+         else
+            learning_owner=event_owner(ict)
+         endif
+         end function learning_owner
+
          subroutine add_group_member(igroup,ict)
          integer, intent(in) :: igroup,ict
          group_size(igroup)=group_size(igroup)+1

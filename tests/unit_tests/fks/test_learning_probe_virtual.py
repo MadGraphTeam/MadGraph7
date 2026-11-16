@@ -35,7 +35,11 @@ def production_fixture():
 
 CONTEXT = '''module mint_module
 integer :: ichan=1,VirtTrickSurrogate=0,born_spread_phase=0
-logical :: use_poly_virtual=.false.,sector_learning_collect=.false.
+logical :: use_poly_virtual=.false.
+type evaluation_mode
+logical :: integration=.true.,born_spread_samples=.false.
+end type
+type(evaluation_mode) :: point_evaluation
 real(8) :: polyfit(0:1)=0d0,average_virtual(0:1,1)=1d0,virtual_fraction(1)=1d0
 end module
 module point_fixture
@@ -119,7 +123,7 @@ use point_fixture
 implicit none
 ! A probe records no one-loop residual (type 14): it neither draws the
 ! stochastic virtual selection nor evaluates the virtual, at any fold.
-sector_learning_collect=.true.
+point_evaluation%integration=.false.
 call new_point(5d0,200d0)
 fold=0
 call evaluate_fold
@@ -128,7 +132,7 @@ fold=1
 call evaluate_fold
 call expect(0d0,5d0,0,0)
 ! The same point outside a probe draws once and evaluates the virtual.
-sector_learning_collect=.false.
+point_evaluation%integration=.true.
 call new_point(5d0,200d0)
 fold=0
 call evaluate_fold
@@ -170,11 +174,15 @@ call evaluate_fold
 call expect(0d0,4d0,2,3)
 ! Calibration records no residual, and must consume no virtual draw.
 born_spread_phase=1
+point_evaluation%integration=.false.
+point_evaluation%born_spread_samples=.true.
 call new_point(5d0,200d0)
 call evaluate_fold
 call expect(0d0,5d0,2,3)
 ! A later supported fold must initialize the fit's Born and fraction.
 born_spread_phase=0
+point_evaluation%integration=.true.
+point_evaluation%born_spread_samples=.false.
 VirtTrickSurrogate=1
 virtual_fraction=0.5d0
 call new_point(6d0,19d0)

@@ -5,9 +5,9 @@ program check_born_flow_rejection
   use scale_module
   implicit none
   character(16) :: mode
-  double precision :: factor,nan,inf,answer(6),dummy,x(5),sigintF,virtual_over_born,replayed(5)
+  double precision :: factor,nan,inf,answer(6),dummy,x(5),sigintF,virtual_over_born,replayed(5),xs(5,3)
   integer :: flow,i,old_draws,old_calls,fold,ifold_counter,nndim,ickkw,ifks,jfks
-  integer :: phase,old_rejections
+  integer :: phase,old_rejections,j
   logical :: leading(3),mcatnlo_delta
   integer :: nleading
   common/c_leading_cflows/leading,nleading
@@ -72,7 +72,7 @@ program check_born_flow_rejection
     x=0.5d0
     FKSExplicitSum=.true.
     sector_learning_active=.true.
-    sector_learning_collect=.true.
+    point_evaluation=learning_probe_evaluation
     ifold(3)=16
     call weight_lines_allocated(5,256,1,1)
     if(trim(mode).eq.'learning_reject')then
@@ -97,7 +97,7 @@ program check_born_flow_rejection
       else
         if(learning_selects-old_calls.ne.16.or.learning_selected_slot.ne.1)error stop 'Born slot was not selected per fold'
         do i=0,15
-          if(any(learning_owners(3*i+1:3*i+3).ne.[0,0,1])) &
+          if(any([(learning_owner(j),j=3*i+1,3*i+3)].ne.[0,0,1])) &
                error stop 'nbody/outer history owner tags wrong across folds'
         enddo
         ! Probes record S only: no H records and no H-history reconstruction.
@@ -121,6 +121,7 @@ program check_born_flow_rejection
       MCExplicitKLSum=flow.eq.1
       do phase=1,2
         born_spread_phase=phase
+        point_evaluation=born_spread_evaluation
         nlo_calls=0
         s_only_calls=0
         native_calls=0
@@ -152,6 +153,7 @@ program check_born_flow_rejection
         endif
         ! The next production point must recover the complete H/S path.
         born_spread_phase=3
+        point_evaluation=integration_evaluation
         fail_native_fold=0
         fail_weight_fold=0
         fail_weight_stage=0
@@ -179,7 +181,10 @@ program check_born_flow_rejection
     FKSExplicitSum=.true.
     sector_learning_active=.true.
     call weight_lines_allocated(5,32,1,1)
+    ! Each fold has its own xi; sector 1's radiation is xi+0.1.
     do i=0,2
+      x(3)=0.1d0*(i+1)
+      xs(:,i+1)=x
       dummy=sigintF(x,1d0,min(i,1),answer)
       if(last_prefactor_weight.ne.2d0)error stop 'lost sector Jacobian in real prefactor'
     enddo
@@ -189,10 +194,10 @@ program check_born_flow_rejection
       call get_event_coordinates(replayed,i,1,.true.)
       if(abs(replayed(3)-(0.1d0+i*0.1d0)).gt.1d-12.or.replayed(4).ne.0.3d0) &
            error stop 'H event lost selected fold/sector radiation'
-      if(any(replayed(1:2).ne.x(1:2)).or.replayed(5).ne.x(5)) &
+      if(any(replayed(1:2).ne.xs(1:2,i)).or.replayed(5).ne.xs(5,i)) &
            error stop 'H replay changed Born or phi'
       call get_event_coordinates(replayed,i,1,.false.)
-      if(any(replayed.ne.x))error stop 'S replay changed Born input'
+      if(any(replayed.ne.xs(:,i)))error stop 'S replay changed Born input'
     enddo
     call deallocate_weight_lines()
   elseif(index(mode,'massive').eq.1)then
@@ -366,7 +371,7 @@ subroutine compute_born()
   use mint_module
   born_calls=born_calls+1
   born_wgt_mint=5d0
-  call add_record(1d0)
+  call add_record(1d0,2,1)
 end subroutine
 subroutine compute_nbody_noborn()
   use flow_fixture
@@ -375,7 +380,7 @@ subroutine compute_nbody_noborn()
   common/c_vob/virtual_over_born
   virt_wgt_mint=7d0
   virtual_over_born=9d0
-  call add_record(2d0)
+  call add_record(2d0,3,1)
 end subroutine
 subroutine sborn_frame(p,weight)
   double precision :: p(0:3,4),weight
@@ -403,7 +408,7 @@ subroutine compute_NLOPS_flow_weights(p,pc,cb,cr,probne,valid)
   valid=.true.
   nlo_calls=nlo_calls+1
   if(mc_S_only)s_only_calls=s_only_calls+1
-  call add_record(3d0*last_prefactor_weight)
+  call add_record(3d0*last_prefactor_weight,4,1)
   if(fail_weight_stage.eq.6.and.ifold_counter.eq.fail_weight_fold)then
     nonfinite_contribution=.true.
     valid=.false.
@@ -420,7 +425,7 @@ subroutine repartition_MC_H(first,p,pl,pc,jac,vw,sw,bf,point,valid)
   type(fks_phase_space_point),intent(in) :: point
   logical,intent(out) :: valid
   native_calls=native_calls+1
-  call add_record(4d0*vw)
+  call add_record(4d0*vw,1,1)
   if(ifold_counter.eq.fail_weight_fold)then
     if(fail_weight_stage.eq.1)nonfinite_contribution=.true.
     if(fail_weight_stage.eq.2)wgt(1,icontr)=bad_weight

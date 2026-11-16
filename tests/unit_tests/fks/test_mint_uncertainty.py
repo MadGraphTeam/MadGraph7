@@ -44,6 +44,7 @@ class TestMintUncertainty(unittest.TestCase):
              '-ffree-line-length-none',
              '-o', 'check', 'support.f90',
              str(ROOT / 'Template/NLO/SubProcesses/virtual_surrogate.f90'),
+             str(ROOT / 'Template/NLO/SubProcesses/sector_learning.f90'),
              'mint_module.f90', 'check.f90'],
             cwd=cls.path, capture_output=True, text=True)
         if result.returncode:

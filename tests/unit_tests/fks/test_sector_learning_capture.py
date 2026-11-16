@@ -26,7 +26,7 @@ program routed_capture
  sector_learning_active=.true.
  pdgs=21
  call sector_learning_register_layout(1,ids,providers,pdgs)
- sector_learning_collect=.true.
+ point_evaluation=learning_probe_evaluation
  call sector_learning_begin_point
  call sector_learning_select_slot(1)
  ndim=5;ifold=1;imode=1;only_virt=.false.
@@ -38,27 +38,24 @@ program routed_capture
    ! Node-dependent Born, integrated, average-virtual and excluded residual.
    do t=1,4
      value=[dble(fold+t),-dble(2*fold+t),dble(3*t)]/16d0
-     call record(merge(14,merge(15,t+1,t.eq.3),t.eq.4),2,.false.,value)
+     call record(merge(14,merge(15,t+1,t.eq.3),t.eq.4),2,2,.false.,value)
      if(t.ne.4)call accumulate(expected_b(:,fold),2,value)
    enddo
    do s=1,3
-     first=icontr+1
-     ! Native sector identity differs from the OUTER owner. Capture follows
-     ! existing eto routing but associates both S terms with that owner.
+     ! The flavour route follows the native sector (nFKS); the learning
+     ! owner is the OUTER sector recorded as the event owner.
      k=mod(ids(s),3)+1
      value=[dble(fold+2*s),-dble(fold+s),dble(s)]/16d0
-     call record(4,k,.false.,value)
+     call record(4,k,ids(s),.false.,value)
      call accumulate(expected_r(:,fold,s),k,value)
      value=[-dble(3*fold+s),dble(fold),-dble(s)]/32d0
-     call record(5,k,.false.,value)
+     call record(5,k,ids(s),.false.,value)
      call accumulate(expected_r(:,fold,s),k,value)
      value=999d0
-     call record(1,k,.true.,value)
-     call sector_learning_mark_range(first,icontr,ids(s))
+     call record(1,k,ids(s),.true.,value)
    enddo
  enddo
- ! Exercise tag growth beyond64 and flavour-buffer growth from1 to2.
- if(size(sl_owners).lt.icontr)stop 1
+ ! Exercise flavour-buffer growth from1 to2.
  call sum_identical_contributions
  if(maxval(abs(sl_point_b(1:2,:)-expected_b)).gt.1d-12)stop 2
  if(maxval(abs(sl_point_r(1:2,:,:)-expected_r)).gt.1d-12)stop 3
@@ -88,8 +85,8 @@ program routed_capture
  if(.not.sl_point_rejected)stop 5
  call sector_learning_begin_point
  call sector_learning_select_slot(1)
- if(sl_point_rejected.or.any(sl_point_b.ne.0d0).or.any(sl_point_r.ne.0d0).or.any(sl_owners.ne.0))stop 6
- call sector_learning_add_contribution(1,16,4,-7d0)
+ if(sl_point_rejected.or.any(sl_point_b.ne.0d0).or.any(sl_point_r.ne.0d0))stop 6
+ call sector_learning_add_contribution(0,16,4,-7d0)
  if(sl_point_b(4,16).ne.-7d0.or.any(sl_point_r.ne.0d0).or.sl_point_flavours.ne.4)stop 7
  write(*,*)'PASS routed capture'
  contains
@@ -100,14 +97,14 @@ program routed_capture
      target(eto(l,sector))=target(eto(l,sector))+values(l)
    enddo
  end subroutine
- subroutine record(kind,sector,is_h,values)
-   integer :: kind,sector
+ subroutine record(kind,sector,owner,is_h,values)
+   integer :: kind,sector,owner
    logical :: is_h
    real(8) :: values(3)
    icontr=icontr+1
    itype(icontr)=kind;nFKS(icontr)=sector;niproc(icontr)=3;ifold_cnt(icontr)=fold
    H_event(icontr)=is_h;parton_iproc(1:3,icontr)=values
-   event_nFKS(icontr)=sector;parton_pdg(:,:,icontr)=21;momenta(:,:,icontr)=0d0
+   event_nFKS(icontr)=owner;parton_pdg(:,:,icontr)=21;momenta(:,:,icontr)=0d0
  end subroutine
 end program
 real(8) function ran2()

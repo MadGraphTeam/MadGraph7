@@ -32,6 +32,7 @@ program check_born_sectors
   pdg_type_d=21
   fks_i_d=5
   born_spread_phase=1
+  point_evaluation=born_spread_evaluation
   ! Interleave two sectors with opposite optima and different Born sizes.
   ! Sector 3 has no samples and must retain a unit table.
   do iy=1,born_spread_ny
@@ -59,6 +60,7 @@ program check_born_sectors
      enddo
   enddo
   born_spread_phase=0
+  point_evaluation=integration_evaluation
   call solve_born_spreading_table
   call check_tables
   call born_spread_write_table
@@ -68,6 +70,7 @@ program check_born_sectors
 
   ! Generation still excludes the virtual stream only at imode=1.
   born_spread_phase=2
+  point_evaluation=born_spread_evaluation
   imode=1
   call sum_identical_contributions
   if (maxval(abs(unwgt(1:2,1)-(b+c))).gt.1d-12) stop 4
@@ -75,6 +78,7 @@ program check_born_sectors
 
   ! Saved Born sector/fold controls application after later maps changed it.
   born_spread_phase=3
+  point_evaluation=integration_evaluation
   icontr=5
   itype(1:5)=[2,3,14,2,2]
   H_event(4)=.true.

@@ -42,7 +42,10 @@ end module
 
 module mint_module
   implicit none
-  logical :: sector_learning_collect=.false.
+  type evaluation_mode
+    logical :: rejection_stats=.true.
+  end type
+  type(evaluation_mode) :: point_evaluation
 end module
 
 module flow_test_state

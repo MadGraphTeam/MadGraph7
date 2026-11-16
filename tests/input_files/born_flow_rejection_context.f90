@@ -12,9 +12,13 @@ module flow_fixture
   integer :: fail_weight_fold=0,fail_weight_stage=0
   double precision :: bad_weight=0d0
 contains
-  subroutine add_record(value)
+  subroutine add_record(value,kind,owner)
     double precision :: value
+    integer :: kind,owner
     icontr=icontr+1
+    itype(icontr)=kind
+    nFKS(icontr)=owner
+    event_nFKS(icontr)=owner
     wgt(:,icontr)=value
     wgts(1,icontr)=value
     niproc(icontr)=1
@@ -92,16 +96,26 @@ module mint_module
   integer :: ifold_energy=3,ifold_yij=4,ifold_phi=5
   integer :: born_spread_current_bin=1,born_spread_bin_fold(32),born_spread_sector_fold(32)
   integer :: born_spread_phase=0
-  logical :: sector_learning_collect=.false.,sector_learning_active=.false.
-  integer :: learning_registers=0,learning_begins=0,learning_selects=0,learning_marks=0,learning_rejects=0
-  integer :: learning_owners(1024)=0,learning_selected_slot=0
+  type evaluation_mode
+    logical :: integration=.true.,h_events=.true.,channel_grid=.true.,rejection_stats=.true.
+    logical :: all_folds=.false.,born_spread_samples=.false.,learning_probe=.false.
+  end type
+  type(evaluation_mode),parameter :: integration_evaluation=evaluation_mode()
+  type(evaluation_mode),parameter :: born_spread_evaluation=evaluation_mode( &
+       integration=.false.,h_events=.false.,born_spread_samples=.true.)
+  type(evaluation_mode),parameter :: learning_probe_evaluation=evaluation_mode( &
+       integration=.false.,h_events=.false.,channel_grid=.false.,rejection_stats=.false., &
+       all_folds=.true.,learning_probe=.true.)
+  type(evaluation_mode) :: point_evaluation=evaluation_mode()
+  logical :: sector_learning_active=.false.
+  integer :: learning_registers=0,learning_begins=0,learning_selects=0,learning_rejects=0
+  integer :: learning_selected_slot=0
   logical :: new_point=.true.,pass_cuts_check=.false.
   double precision :: virt_wgt_mint(0:1)=0d0,born_wgt_mint(0:1)=0d0
 contains
   subroutine sector_learning_begin_point
-    if(.not.sector_learning_collect)return
+    if(.not.point_evaluation%learning_probe)return
     learning_begins=learning_begins+1
-    learning_owners=0
     learning_selected_slot=0
   end subroutine
   subroutine sector_learning_select_slot(slot)
@@ -111,24 +125,18 @@ contains
     learning_selected_slot=slot
     learning_selects=learning_selects+1
   end subroutine
-  subroutine sector_learning_mark_range(first,last,owner)
-    integer :: first,last,owner
-    if(.not.sector_learning_collect)return
-    if(first.lt.1.or.last.gt.size(learning_owners))error stop 'bad owner range'
-    learning_marks=learning_marks+1
-    learning_owners(first:last)=owner
-  end subroutine
   subroutine sector_learning_reject_point
-    if(sector_learning_collect)learning_rejects=learning_rejects+1
+    if(point_evaluation%learning_probe)learning_rejects=learning_rejects+1
   end subroutine
   subroutine resample_sector_radiation(x,updated,ratio,sector_id)
+    ! Like production, a function of the point and the sector only.
     double precision :: x(ndimmax),updated(ndimmax),ratio
-    integer,optional :: sector_id
+    integer :: sector_id
     updated=x
     ratio=1d0
     if(sector_learning_active)then
       sector_draws=sector_draws+1
-      updated(3:4)=[0.1d0+sector_draws*0.1d0,0.3d0]
+      updated(3:4)=[x(3)+0.1d0*sector_id,0.3d0]
       ratio=2d0
     endif
   end subroutine
@@ -169,5 +177,8 @@ end subroutine
 
 subroutine virt_surrogate_fit_point
   use flow_fixture,only: surrogate_fit_calls
-  surrogate_fit_calls=surrogate_fit_calls+1
+  use mint_module,only: point_evaluation
+  ! Production fits only points with the exact virtual, which only
+  ! integration points evaluate; it returns at once otherwise.
+  if(point_evaluation%integration)surrogate_fit_calls=surrogate_fit_calls+1
 end subroutine

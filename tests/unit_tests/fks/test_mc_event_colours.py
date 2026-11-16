@@ -50,7 +50,9 @@ class TestMCEventColours(unittest.TestCase):
             (work / 'contexts.f90').write_text(
                 'module mc_native_context\ninteger :: history_flavours(1,1)=1\nend module\n'
                 'module mint_module\ninteger :: imode=0,born_spread_phase=0\n'
-                'integer :: ndim=1,ifold(1)=1\nlogical :: only_virt=.false.,sector_learning_collect=.false.\nend module\n'
+                'integer :: ndim=1,ifold(1)=1\nlogical :: only_virt=.false.\n'
+                'type evaluation_mode\nlogical :: born_spread_samples=.false.,learning_probe=.false.\nend type\n'
+                'type(evaluation_mode) :: point_evaluation\nend module\n'
                 'subroutine sector_learning_add_contribution(i,f,j,v)\ninteger i,f,j\ndouble precision v\n'
                 'error stop "no learning probes in the colour test"\nend subroutine\n'
                 # Without learned maps the grid split ignores every contribution.
