@@ -873,3 +873,41 @@ def test_unchecked_is_what_the_timed_calls_did():
     assert _timed_unchecked([optimistic], {"reduction_unchecked": True}) is True
     assert _timed_unchecked([served], {}) is False
     assert _timed_unchecked([], {"reduction_unchecked": True}) is True
+
+
+def test_human_output_skips_the_json_conversion_and_large_dumps_say_so(
+    monkeypatch, capsys
+):
+    """A profile's per-sample records are tens of MB of JSON: the tables
+    never convert them (the 25 s silent tail after "done" of a 60 000-point
+    run), and ``--json`` says on stderr that it is writing them."""
+
+    import importlib
+
+    main = importlib.import_module("pyamplicol.cli.main")
+
+    digits = (1.0, 3.0, 5.0, 9.0)
+    row = BackendStability(
+        "tirust",
+        points=4,
+        true_digits=digits,
+        estimated_digits=digits,
+        percentiles=percentile_table(digits, digits),
+        seconds=1.0,
+        samples=tuple({"index": index, "values": [1.0]} for index in range(6000)),
+    )
+    report = _report((row,))
+    converted = main._json_value
+
+    def refuse(value):
+        raise AssertionError("human output converted the report to JSON")
+
+    monkeypatch.setattr(main, "_json_value", refuse)
+    main.write_result(report, format="human", stream=io.StringIO(), color=False)
+    assert capsys.readouterr().err == ""
+    monkeypatch.setattr(main, "_json_value", converted)
+    machine = io.StringIO()
+    main.write_result(report, format="json", stream=machine, color=False)
+    assert "Writing the JSON result (6000 sample records)" in capsys.readouterr().err
+    assert len(json.loads(machine.getvalue())["stability"][0]["samples"]) == 6000
+    assert _report((replace(row, samples=row.samples[:10]),)).json_notice() is None

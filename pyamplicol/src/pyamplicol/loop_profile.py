@@ -477,6 +477,15 @@ class LoopProfileReport:
     plan: Mapping[str, object] | None = None
     seconds: float | None = None
 
+    def json_notice(self) -> str | None:
+        """The line ``--json`` prints on stderr before a large dump (its
+        per-sample records take seconds to write: never a silent tail)."""
+
+        samples = sum(len(row.samples) for row in self.stability or ())
+        if samples < 5000:
+            return None
+        return f"Writing the JSON result ({samples} sample records)"
+
 
 def _backends(requested: object, contribution: str) -> tuple[str, ...]:
     from pyamplicol.loops.v2.reduction import BACKENDS, DEFAULTS
@@ -2452,7 +2461,29 @@ def _stability(
     # are taken over the points every backend evaluated (a complete run
     # evaluates them all).
     common = set.intersection(*evaluated.values()) if evaluated else set()
-    for backend in backends:
+    # The statistics and the per-sample records take seconds on large runs
+    # (a few per 10^4 points): a phase of their own, never a silent tail.
+    from pyamplicol.loops.v2.reduction import NAMES
+
+    collecting = (
+        None
+        if monitor is None
+        else monitor.phase(
+            "statistics",
+            "Stability statistics and per-sample records",
+            len(backends),
+            unit="backends",
+        )
+    )
+    for position, backend in enumerate(backends):
+        if collecting is not None:
+            collecting.update(
+                position,
+                len(backends),
+                eta=None,
+                step=f"{NAMES.get(backend, backend)}: "
+                f"{len(evaluated.get(backend, ()))} points",
+            )
         if backend in refused:
             rows.append(BackendStability(backend, refusal=refused[backend]))
             continue
@@ -2504,6 +2535,9 @@ def _stability(
                 samples=samples,
             )
         )
+    sampled = sorted(set().union(*evaluated.values())) if evaluated else []
+    if collecting is not None:
+        collecting.end(f"{len(sampled)} points")
     rows = [
         row
         if row.refusal is not None
@@ -2525,7 +2559,6 @@ def _stability(
         )
         for row in rows
     ]
-    sampled = sorted(set().union(*evaluated.values())) if evaluated else []
     setup = {
         "points": count,
         "requested": count,

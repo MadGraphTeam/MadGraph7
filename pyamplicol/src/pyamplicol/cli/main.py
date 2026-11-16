@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, cast
 
 from pyamplicol.config import PyAmpliColError
 from pyamplicol.licensing import detect_symbolica_license
@@ -30,6 +30,18 @@ from .utilities import UtilityInvocation, example_card, execute_utility
 
 
 def _json_value(value: object) -> object:
+    # The leaves first: a loop profile's per-sample records are millions of
+    # them, each converted in a few isinstance checks.
+    if type(value) in (str, int, bool) or value is None:
+        return value
+    if type(value) is float:
+        # JSON has no infinity: an estimate on an exact zero is "inf".
+        return value if math.isfinite(value) else str(value)
+    if type(value) in (list, tuple):
+        return [_json_value(entry) for entry in cast("Sequence[object]", value)]
+    if type(value) is dict:
+        mapping = cast("dict[object, object]", value)
+        return {str(key): _json_value(entry) for key, entry in mapping.items()}
     from pyamplicol.api.results import GenerationStatistics, TreeOrderEvaluation
     from pyamplicol.api.virtual_results import (
         ResolvedVirtualEvaluation,
@@ -119,9 +131,16 @@ def write_result(
 ) -> None:
     if value is None:
         return
-    plain = _json_value(value)
     if format == "json":
-        json.dump(plain, stream, indent=2, sort_keys=True, allow_nan=False)
+        notice = getattr(value, "json_notice", None)
+        line = notice() if callable(notice) else None
+        if line:
+            sys.stderr.write(f"{line}\n")
+            sys.stderr.flush()
+        plain = _json_value(value)
+        # One write: ``json.dump`` streams thousands of small chunks, slow on
+        # a profile's per-sample records (tens of MB).
+        stream.write(json.dumps(plain, indent=2, sort_keys=True, allow_nan=False))
         stream.write("\n")
         from .partial_evaluation import PartialEvaluation
 
