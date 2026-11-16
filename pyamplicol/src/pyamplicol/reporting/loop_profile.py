@@ -149,6 +149,26 @@ def _counts_cell(report: Any, color: bool) -> str | None:
                 color=color,
             )
         return text
+    given = plan.get("given") or {}
+    if rule == "counts" and not all(
+        given.get(part, True) for part in ("runtime", "stability")
+    ):
+        # Some counts given, the rest from their budget.
+        parts = []
+        if plan.get("runtime") or plan.get("runtime_counts"):
+            parts.append(
+                "runtime as given"
+                if given.get("runtime")
+                else f"runtime from its {DEFAULT_RUNTIME_SECONDS:g} s budget"
+            )
+        if plan.get("stability_points") is not None:
+            parts.append(
+                f"{plan['stability_points']} stability points as given"
+                if given.get("stability")
+                else "stability points from "
+                f"{duration_text(DEFAULT_STABILITY_SECONDS_PER_CORE)} per worker"
+            )
+        return "; ".join(parts) + took_text
     if rule == "counts":
         return f"as given{took_text}"
     return (

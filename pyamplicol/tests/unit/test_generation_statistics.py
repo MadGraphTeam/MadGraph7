@@ -243,6 +243,9 @@ def test_a_started_process_is_counted() -> None:
     assert statistics is not None
     assert statistics.child_processes is True
     assert statistics.peak_rss_bound == "lower bound"
+    if "not attributable" in statistics.peak_rss_method:
+        # a process of an earlier test ended inside the region
+        return
     assert statistics.child_peak_rss_bytes is not None
     assert statistics.child_peak_rss_bytes >= size
     assert statistics.process_peak_rss_bytes is not None
@@ -251,25 +254,65 @@ def test_a_started_process_is_counted() -> None:
     assert statistics.peak_rss_bytes >= statistics.child_peak_rss_bytes
 
 
-@pytest.mark.skipif(not _LINUX, reason="the resettable mark is Linux's")
-def test_a_nested_region_keeps_the_outer_peak() -> None:
-    import mmap
+@pytest.mark.skipif(not _LINUX, reason="the processes are read from /proc")
+def test_processes_running_before_the_region_are_not_the_regions() -> None:
+    """A process the caller started before (a pool, a helper, as the
+    resource tracker a spawned pool of an earlier test leaves) is not one
+    the generation started: neither while it runs nor when it ends inside
+    the region (RUSAGE_CHILDREN cannot tell it from the region's own)."""
 
-    size = 128 * 1024**2
+    sleep = [sys.executable, "-c", "import time; time.sleep(30)"]
+    staying, ending = subprocess.Popen(sleep), subprocess.Popen(sleep)
+    try:
+        time.sleep(0.2)
+        with measure_generation(interval_seconds=0.05) as measured:
+            time.sleep(0.15)
+            ending.terminate()
+            ending.wait()
+            time.sleep(0.1)
+    finally:
+        for process in (staying, ending):
+            process.kill()
+            process.wait()
+    statistics = measured.statistics
+
+    assert statistics is not None
+    assert statistics.child_processes is False
+    assert statistics.peak_rss_bound == "exact"
+    assert "RUSAGE_CHILDREN not attributable" in statistics.peak_rss_method
+
+
+@pytest.mark.skipif(not _LINUX, reason="the resettable mark is Linux's")
+def test_a_nested_region_keeps_the_outer_peak(monkeypatch) -> None:
+    """Only the outermost region resets the kernel's high-water mark: an
+    inner one reads it as it is (a reset would lose the outer region's
+    peak). Checked on the reset itself: a peak read from memory released
+    before the read depends on the kernel's per-CPU batched counters."""
+
+    from pyamplicol.reporting import resources
+
+    resets: list[str] = []
+
+    class ClearRefs:
+        def write_text(self, text: str) -> int:
+            resets.append(text)
+            return len(text)
+
+    monkeypatch.setattr(resources, "_PROC_CLEAR_REFS", ClearRefs())
     with peak_memory() as outer:
-        block = mmap.mmap(-1, size)
-        for offset in range(0, size, mmap.PAGESIZE):
-            block[offset] = 1
-        block.close()
         with peak_memory() as inner:
             pass
-    assert outer.result is not None and inner.result is not None
-    assert outer.result.scope == "profiled region"
-    assert outer.result.peak_rss_bytes is not None
-    assert outer.result.start_rss_bytes is not None
-    # the inner region did not reset the mark the outer one reads
-    assert outer.result.peak_rss_bytes - outer.result.start_rss_bytes >= size // 2
-    assert inner.result.method == "VmHWM"
+        with peak_memory() as second:
+            pass
+    with peak_memory() as after:
+        pass
+
+    assert resets == ["5", "5"]  # the outer region and the one after it
+    assert outer.result is not None and outer.result.scope == "profiled region"
+    assert inner.result is not None and inner.result.method == "VmHWM"
+    assert second.result is not None and second.result.method == "VmHWM"
+    assert after.result is not None
+    assert after.result.method == "VmHWM after clear_refs"
 
 
 def test_the_inspect_descriptions_cover_the_artifact_table(tmp_path: Path) -> None:

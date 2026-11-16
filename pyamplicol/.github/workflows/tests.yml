@@ -186,8 +186,10 @@ jobs:
             tests/unit/test_correlat*.py \
             tests/unit/test_nlo_limit_study.py \
             tests/unit/test_exact_vertex_normalization.py \
+            tests/unit/test_examples.py \
             tests/unit/test_external_model_independence.py \
             tests/unit/test_generation_config_provenance.py \
+            tests/unit/test_generation_statistics.py \
             tests/unit/test_generation_execution_schema.py \
             tests/unit/test_generation_stage_contract.py \
             tests/unit/test_model_loading.py \

@@ -72,7 +72,7 @@ import os
 import re
 import statistics
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from fractions import Fraction
@@ -604,8 +604,12 @@ def profile_loop(
     from pyamplicol.config.models import is_default
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import DEFAULTS
+    from pyamplicol.profile_plan import (
+        MEASURE_REPEAT_SECONDS,
+        runtime_counts,
+        warmup_seconds,
+    )
     from pyamplicol.profile_plan import plan as plan_profile
-    from pyamplicol.profile_plan import runtime_counts
 
     bench = config.benchmark
     evaluation = config.evaluation
@@ -681,10 +685,17 @@ def profile_loop(
         monitor.close(False)
         raise
     batch_max = int(bench.batch_size)
+    # A stability worker's start: the load and its warm-up (one point per
+    # stream; none for a stream dearer than MEASURE_REPEAT_SECONDS).
     stability_start = (
         load_seconds
         + 1.0
-        + sum(c.stability + (c.stability_reference or 0.0) for c in costs.values())
+        + sum(
+            seconds
+            for c in costs.values()
+            for seconds in (c.stability, c.stability_reference or 0.0)
+            if seconds <= MEASURE_REPEAT_SECONDS
+        )
     )
     planned = plan_profile(
         costs,
@@ -778,6 +789,25 @@ def profile_loop(
                 )
                 reference_budget = counts.reference_budget
             future.pop(f"runtime:{backend}", None)
+            # The planned seconds of this backend's phases after its
+            # start-up: the root ETA counts them until they run.
+            later: dict[str, float] = {}
+            if backend in costs:
+                cost = costs[backend]
+                call = backend_bench.batch_size * cost.binary64
+                warmups = int(backend_bench.warmup_runs)
+                later["binary64"] = (
+                    (warmup_seconds(call, cost.binary64) + (warmups - 1) * call)
+                    if warmups
+                    else 0.0
+                ) + max(
+                    float(backend_bench.target_runtime),
+                    max(int(backend_bench.minimum_samples), 1) * call,
+                )
+                if truth.present and cost.reference is not None:
+                    later["reference"] = cost.reference + max(
+                        reference_budget, cost.reference
+                    )
             run = _BackendRun(
                 monitor,
                 backend,
@@ -789,6 +819,7 @@ def profile_loop(
                     else None
                 ),
                 backend_bench.batch_size,
+                later,
             )
             current[0] = run
             reference = (
@@ -973,6 +1004,15 @@ def profile_loop(
         {
             **planned.record(),
             "overruled": overruled if completion is not None else [],
+            # Which counts were given (the rest from the time budgets).
+            "given": {
+                "runtime": bool(want_runtime and runtime_given and completion is None),
+                "stability": bool(
+                    want_stability
+                    and stability_given is not None
+                    and completion is None
+                ),
+            },
             "runtime_counts": {
                 row.backend: {
                     "batch": row.profile.batch,
@@ -1074,25 +1114,6 @@ class _Phase:
             )
 
 
-def _exclude_resource_tracker() -> None:
-    """Leave multiprocessing's resource tracker (started with the first
-    spawned process) out of the display's process tree: "children N" counts
-    the profile's workers."""
-
-    try:
-        from multiprocessing import resource_tracker
-
-        from pyamplicol.reporting.resources import register_monitor_process
-
-        pid = getattr(
-            getattr(resource_tracker, "_resource_tracker", None), "_pid", None
-        )
-        if isinstance(pid, int) and pid > 0:
-            register_monitor_process(pid)
-    except Exception:  # the display only: never fails the profile
-        return
-
-
 class _Monitor:
     """The live display of a loop profile (``--progress``): a root task with
     the whole command's elapsed time, ETA and budget (``remaining``: a
@@ -1154,7 +1175,6 @@ class _Monitor:
 
         if self.sink is None:
             return
-        _exclude_resource_tracker()
         details: dict[str, Any] = {"heartbeat": True}
         remaining = self.remaining() if self.remaining is not None else None
         if remaining is not None:
@@ -1224,6 +1244,7 @@ class _BackendRun:
         expected_start: float | None,
         expected_call: float | None = None,
         batch: int = 1,
+        later: Mapping[str, float] | None = None,
     ) -> None:
         from pyamplicol.loops.v2.reduction import NAMES
 
@@ -1232,6 +1253,9 @@ class _BackendRun:
         # point times the batch): the first call's expected cost and ETA
         # until one is back.
         self.expected_call = expected_call
+        # The planned seconds of the phases to come ("binary64",
+        # "reference"): part of ``remaining`` until each one starts.
+        self.later = dict(later or {})
         self.batch = max(int(batch), 1)
         self.name = NAMES.get(backend, backend)
         self.truth = truth
@@ -1260,9 +1284,23 @@ class _BackendRun:
         self.monitor.set_reading(self.name, _per_point_text(self.binary64), note)
 
     def remaining(self) -> float | None:
-        """The seconds the current phase has left (counted down since its
-        last event, never below a fraction of a call while it runs)."""
+        """The seconds this backend has left: the current phase's (counted
+        down since its last event, never below a fraction of a call while it
+        runs) and the planned ones of the phases still to come."""
 
+        order = ("start", "binary64", "between", "reference")
+        position = order.index(self.kind) if self.kind in order else len(order)
+        to_come = sum(
+            seconds
+            for kind, seconds in self.later.items()
+            if order.index(kind) > position
+        )
+        now = self._phase_remaining()
+        if now is None:
+            return to_come or None
+        return now + to_come
+
+    def _phase_remaining(self) -> float | None:
         eta = self.state.get("eta")
         if eta is None:
             return None
@@ -1350,7 +1388,7 @@ class _BackendRun:
         since = time.perf_counter() - self.last
         done, total = self.state["done"], self.state["total"]
         rate = self.state.get("rate")
-        eta = self.remaining()
+        eta = self._phase_remaining()
         if self.kind == "start":
             step = f"{self.name}: starting its process and loading the artifact"
             stalled = (
@@ -1504,7 +1542,7 @@ def _measure(
     reports the refusal)."""
 
     from pyamplicol.api.errors import ReductionUnavailable
-    from pyamplicol.benchmarking import _initial_invariant
+    from pyamplicol.benchmarking import REFERENCE_PRIOR, _initial_invariant
     from pyamplicol.cli.flat_points import draw_flat_points
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import NAMES
@@ -1544,28 +1582,54 @@ def _measure(
         else:
             options.update(truth.options)
 
-        def seconds(size: int) -> float:
+        label = "binary64" if precision == "binary64" else truth.name
+        name = NAMES.get(backend, backend)
+
+        def seconds(size: int, expected: float | None) -> float:
             batch = points[:size]
             mu = scales[:size] if isinstance(scales, list) else scales
             begin = time.perf_counter()
-            runtime.evaluate(batch, mu_r2=mu, **options)
+            _while_ticking(
+                lambda: runtime.evaluate(batch, mu_r2=mu, **options),
+                lambda since: phase.update(
+                    done,
+                    steps,
+                    eta=None
+                    if expected is None
+                    else max(expected - since, 0.1 * expected),
+                    step=f"{name}: {label} call of {size} point"
+                    + ("s" if size > 1 else "")
+                    + f" running {_duration(since)}"
+                    + ("" if expected is None else f" of ~{_duration(expected)}"),
+                    estimated=True,
+                    heartbeat=True,
+                    running=since,
+                ),
+                monitor.tick,
+            )
             return (time.perf_counter() - begin) / size
 
         # One point; again when it was cheap (a first call carries seconds of
         # lazy set-up, negligible against a dearer point); one full chunk
         # when that costs at most WARMUP_CALL_SECONDS at the point's price.
-        per_point = seconds(1)
+        prior = None
+        if precision != "binary64" and "binary64" in measured:
+            prior = measured["binary64"] * REFERENCE_PRIOR.get(
+                truth.arithmetic, REFERENCE_PRIOR["arbitrary"]
+            )
+        per_point = seconds(1, prior)
         if per_point <= MEASURE_REPEAT_SECONDS:
-            per_point = seconds(1)
+            per_point = seconds(1, per_point)
         if per_point * len(points) <= WARMUP_CALL_SECONDS:
-            per_point = seconds(len(points))
+            per_point = seconds(len(points), per_point * len(points))
         return per_point
 
     costs: dict[str, Any] = {}
     done = 0
+    measured: dict[str, float] = {}
     for backend in backends:
         name = NAMES.get(backend, backend)
-        measured: dict[str, float] = {}
+        measured.clear()
         try:
             for precision in precisions:
                 label = "binary64" if precision == "binary64" else truth.name
@@ -1615,6 +1679,40 @@ def _measure(
     )
     monitor.clear_readings()
     return costs
+
+
+def _while_ticking(
+    call: Callable[[], Any],
+    show: Callable[[float], None],
+    tick: Callable[[], None],
+) -> Any:
+    """``call()`` in a thread (the evaluation releases the GIL), and every
+    second meanwhile ``show(seconds running)`` and ``tick()``: a long
+    in-process call is never a silent phase. Its result, or its exception."""
+
+    import threading
+
+    outcome: list[Any] = []
+
+    def run() -> None:
+        try:
+            outcome.append((True, call()))
+        except BaseException as error:  # handed to the caller
+            outcome.append((False, error))
+
+    begin = time.perf_counter()
+    worker = threading.Thread(target=run, name="profile-measure", daemon=True)
+    worker.start()
+    while True:
+        worker.join(1.0)
+        if not worker.is_alive():
+            break
+        show(time.perf_counter() - begin)
+        tick()
+    ok, value = outcome[0]
+    if not ok:
+        raise value
+    return value
 
 
 def _isolated_profile(
@@ -1831,12 +1929,14 @@ def _stability_worker(
     checks: Any,
     backends: Sequence[str] = (),
     truth: GroundTruth | None = None,
+    cold: Sequence[tuple[str, str]] = (),
 ) -> None:
     """Initialise a stability worker process: one thread per pool, Ctrl-C
     left to the parent (which collects what finished and stops the
     workers), the artifact loaded once with the reference precision
     ``truth`` (default double-double; "none": no reference), and warmed up
-    on ``backends`` with ``warm`` (a point and its scale, ``_warm_up``)."""
+    on ``backends`` with ``warm`` (a point and its scale, ``_warm_up``;
+    the ``cold`` streams not)."""
 
     import signal
 
@@ -1850,7 +1950,7 @@ def _stability_worker(
         checks=checks,
         truth=truth or GroundTruth("double-double"),
     )
-    _warm_up(backends)
+    _warm_up(backends, cold)
 
 
 def one_core() -> None:
@@ -1873,14 +1973,17 @@ def _precisions(truth: GroundTruth | None) -> tuple[str, ...]:
     return _PRECISIONS
 
 
-def _warm_up(backends: Sequence[str]) -> None:
+def _warm_up(backends: Sequence[str], cold: Sequence[tuple[str, str]] = ()) -> None:
     """Pay this process's first-call costs before any timed task, untimed:
     the stability task of one point on every backend and precision (the
     process's first evaluation, each backend's and carrier's first call and
     what it builds lazily; after native's fix one point per carrier builds
     the engine of every batch size), its result dropped. An evaluation does
     not depend on what ran before it (bit-identical values and estimates),
-    so the statistics are unchanged; only the timings lose that cost. A
+    so the statistics are unchanged; only the timings lose that cost. The
+    ``cold`` streams (backend, precision) are left out: a point dearer than
+    ``profile_plan.MEASURE_REPEAT_SECONDS`` makes its first-call cost
+    negligible, and its warm-up would cost a whole point per worker. A
     backend's error is left to its timed tasks, which report it."""
 
     warm = _WORKER.get("warm")
@@ -1889,6 +1992,8 @@ def _warm_up(backends: Sequence[str]) -> None:
     point, scale = warm
     for backend in backends:
         for precision in _precisions(_WORKER.get("truth")):
+            if (backend, precision) in cold:
+                continue
             with contextlib.suppress(Exception):
                 _stability_task(backend, precision, [0], [point], [scale])
     # The timed tasks start without the warm-up's garbage.
@@ -2316,6 +2421,7 @@ def _stability(
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import default_target
     from pyamplicol.profile_plan import (
+        MEASURE_REPEAT_SECONDS,
         STABILITY_MINIMUM,
         affordable_chunk,
         task_points,
@@ -2405,6 +2511,11 @@ def _stability(
             priors[(backend, "binary64")] = cost.stability
             if cost.stability_reference is not None:
                 priors[(backend, "reference")] = cost.stability_reference
+    # The streams whose point is dear enough that the workers skip their
+    # warm-up (``_warm_up``).
+    cold = tuple(
+        key for key, seconds in priors.items() if seconds > MEASURE_REPEAT_SECONDS
+    )
     tracker = _StabilityProgress(
         progress,
         backends,
@@ -2533,7 +2644,7 @@ def _stability(
         if workers == 1:
             _WORKER.update(runtime=runtime, warm=warm, checks=checks, truth=truth)
             try:
-                _warm_up(backends)
+                _warm_up(backends, cold)
                 while (tasks := next_tasks()) is not None:
                     for backend, precision, indices, batch, scales in tasks:
                         if backend in refused:
@@ -2560,6 +2671,7 @@ def _stability(
                     checks,
                     tuple(backends),
                     truth,
+                    cold,
                 ),
                 next_tasks,
                 harvest,

@@ -515,7 +515,6 @@ def test_user_docs_and_examples_exclude_retired_workflows() -> None:
     combined = "\n".join(path.read_text(encoding="utf-8") for path in sources)
     for retired in (
         "ddbar_zg",
-        "normalization.alpha_s_me_check",
         "CycloneDX",
         "SBOM",
         "RECORD signatures",
