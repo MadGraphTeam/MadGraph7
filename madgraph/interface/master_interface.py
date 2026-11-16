@@ -37,6 +37,7 @@ sys.path.insert(0, root_path)
 pjoin = os.path.join
 
 import madgraph
+import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.core.helas_objects as helas_objects
 import madgraph.loop.loop_base_objects as loop_base_objects
@@ -279,8 +280,13 @@ class Switcher(object):
                 self.change_principal_cmd('MadLoop')
         else:
             self.change_principal_cmd('MadGraph')
-        
-        return self.cmd.do_check(self, line, *args, **opts)
+
+        try:
+            return self.cmd.do_check(self, line, *args, **opts)
+        finally:
+            # check sets the color basis itself (set_color_basis_mode, DDM after
+            # 'set color_basis ddm'): it must not leak to the next command
+            color_amp.set_ddm_basis(False)
 
     def do_generate(self, line, *args, **opts):
 

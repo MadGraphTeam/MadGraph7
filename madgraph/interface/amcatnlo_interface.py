@@ -999,6 +999,9 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
     def export(self, nojpeg=False, group_processes=False):
         """Export a generated amplitude to file"""
 
+        # The FKS exporters keep the trace color basis (ddm_color_basis): this
+        # also turns off a DDM basis left on by an earlier 'check'
+        self.set_color_basis_mode(self._curr_exporter)
         self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
         def generate_matrix_elements(self, group=False):
             """Helper function to generate the matrix elements before

@@ -11,9 +11,11 @@ ANNOUNCEMENT:
        scalars or pseudoscalars). The adjoint delta of the g g H vertex made these
        processes fall back silently on the (n-1)! trace basis (120 instead of 24 colour
        structures for g g > h + 4g). With 'set color_basis ddm' the processes that keep
-       the trace basis, and why, are now listed at info level. The Matchbox outputs
-       (matchbox, matchbox_cpp, madloop_matchbox) keep the trace basis even after an
-       explicit 'set color_basis ddm', since they pass its color strings on.
+       the trace basis, and why, are now listed at info level. An explicit 'set
+       color_basis ddm' now only applies to the outputs which can use that basis: the
+       others keep the trace basis and say so (the Matchbox outputs, which pass its
+       color strings on; mg7_v5, which crashed on it; the loop and NLO outputs), and
+       'check' no longer leaves it on for the next command.
    OM: 'output pythia8' (dropped in MadGraph7) is now refused by the NLO interface too,
        where 'pythia8' was taken as the name of the output directory, and the message
        says how to use Pythia 8 instead: shower the events of a madevent, mg7 or NLO

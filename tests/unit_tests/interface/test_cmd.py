@@ -585,32 +585,71 @@ class TestValidCmd(unittest.TestCase):
         self.assertRaisesRegex(master.InvalidCmd, refused,
                                master.check_launch, [py8_dir], options)
 
-    def test_color_basis_ddm_keeps_trace_for_matchbox(self):
-        """The Matchbox outputs pass the color strings of the trace basis on:
-        they keep it even after 'set color_basis ddm', which still selects the
-        DDM basis for the other formats."""
+    def test_color_basis_follows_exporter_capability(self):
+        """'set color_basis' gives the DDM basis according to what every
+        exporter involved can do with it (ddm_color_basis): 'auto' takes it
+        only when all use it by default, an explicit 'ddm' unless one can
+        never use it. The formats which read a color flow from each element of
+        their color basis (madweight, mg7_v5, NLO) or pass its color strings
+        on (Matchbox) keep the trace basis even after 'ddm', where they used to
+        be forced into it."""
 
         import madgraph.core.color_amp as color_amp
         import madgraph.iolibs.export_v4 as export_v4
         import madgraph.iolibs.export_cpp as export_cpp
+        import madgraph.iolibs.export_fks as export_fks
         import madgraph.loop.loop_exporters as loop_exporters
+        import madmatrix.output as madmatrix_output
 
         self.addCleanup(color_amp.set_ddm_basis, False)
         master = cmd.MasterCmd()
         master.no_notification()
-        sa = export_v4.ProcessExporterFortranSA
-        for mode in ('ddm', 'auto'):
+
+        class OnRequest(export_v4.ProcessExporterFortranSA):
+            ddm_color_basis = 'on_request'
+
+        default = [export_v4.ProcessExporterFortranSA,
+                   export_v4.ProcessExporterFortranME,
+                   export_v4.ProcessExporterFortranMEGroup,
+                   madmatrix_output.ProcessExporterMadMatrix,
+                   madmatrix_output.ProcessExporterMadMatrixStandalone]
+        never = [export_v4.ProcessExporterFortranMatchBox,
+                 export_cpp.ProcessExporterMatchbox,
+                 loop_exporters.LoopProcessExporterFortranMatchBox,
+                 export_v4.ProcessExporterFortranMW,
+                 export_v4.ProcessExporterFortranMWGroup,
+                 export_cpp.ProcessExporterMG7,
+                 export_fks.ProcessExporterFortranFKS,
+                 export_fks.ProcessOptimizedExporterFortranFKS,
+                 loop_exporters.LoopProcessExporterFortranSA,
+                 loop_exporters.LoopInducedExporterMEGroup,
+                 loop_exporters.LoopInducedExporterMENoGroup,
+                 export_v4.VirtualExporter]
+        expected = {'trace': {}, 'auto': {'default': True},
+                    'ddm': {'default': True, 'on_request': True}}
+        cases = [([e], 'default') for e in default] + \
+                [([e], 'never') for e in never] + \
+                [([OnRequest], 'on_request'),
+                 ([default[0], OnRequest], 'on_request'),
+                 ([default[0], never[0]], 'never'),
+                 ([OnRequest, never[0]], 'never')]
+        for mode in expected:
             master.options['color_basis'] = mode
-            for exporters in ([export_v4.ProcessExporterFortranMatchBox],
-                              [export_cpp.ProcessExporterMatchbox],
-                              [loop_exporters.LoopProcessExporterFortranMatchBox],
-                              [sa, export_v4.ProcessExporterFortranMatchBox]):
-                with misc.MuteLogger(['madgraph'], [40]):
+            for exporters, kind in cases:
+                with self.assertLogs('cmdprint', 'INFO') as logs:
                     master.set_color_basis_mode(*exporters)
-                self.assertFalse(color_amp.ddm_basis,
-                                 '%s, %s' % (mode, [e.__name__ for e in exporters]))
-            master.set_color_basis_mode(sa)
-            self.assertTrue(color_amp.ddm_basis, mode)
+                    # assertLogs needs one record
+                    logging.getLogger('cmdprint').info('done')
+                name = '%s, %s' % (mode, [e.__name__ for e in exporters])
+                self.assertEqual(color_amp.ddm_basis,
+                                 expected[mode].get(kind, False), name)
+                # an explicit 'ddm' says when the output keeps the trace basis
+                self.assertEqual(
+                    any('keeps the trace color basis' in l for l in logs.output),
+                    mode == 'ddm' and kind == 'never', name)
+            # without any exporter (check): only an explicit 'ddm' uses it
+            master.set_color_basis_mode()
+            self.assertEqual(color_amp.ddm_basis, mode == 'ddm', mode)
 
     @test_aloha.set_global()
     def test_simple_generate(self):

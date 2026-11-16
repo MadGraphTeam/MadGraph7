@@ -13697,11 +13697,13 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         logger.info(" > trace: the (n-1)! basis of traces of fundamental generators")
         logger.info(" > ddm:   the (n-2)! Del Duca-Dixon-Maltoni half-ladder basis")
         logger.info("          (n-1 times fewer JAMPs, (n-1)^2 times smaller color matrix)")
-        logger.info(" > auto:  ddm for the output formats which support it (madevent, mg7,")
-        logger.info("          standalone and standalone_fortran; the trace basis is still")
-        logger.info("          used next to it for the color flow of each event), trace")
-        logger.info("          otherwise (NLO, matchbox, ...)")
-        logger.info("   The matchbox outputs keep the trace basis even with 'ddm'.")
+        logger.info("          for the output formats which can use it. The others keep")
+        logger.info("          the trace basis, with an info message (loop processes,")
+        logger.info("          NLO, matchbox, mg7_v5, ...)")
+        logger.info(" > auto:  ddm for the output formats which use it by default (madevent,")
+        logger.info("          mg7, standalone and standalone_fortran; the trace basis is")
+        logger.info("          still used next to it for the color flow of each event),")
+        logger.info("          trace otherwise")
 
     def set2_color_basis(self, args, log=True):
         """Set the color basis used for fully adjoint (multi-gluon) processes.
@@ -14624,28 +14626,27 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
     # Export a matrix element
     def set_color_basis_mode(self, *exporters):
-        """Set the color basis used for fully adjoint (multi-gluon) processes.
-        The (n-2)! Del Duca-Dixon-Maltoni basis can only be used by the output
-        formats which never need a color flow decomposition, so in 'auto' mode
-        every exporter involved must support it."""
+        """Set the color basis used for fully adjoint (multi-gluon) processes,
+        from the color_basis option and what every exporter involved can do
+        with the (n-2)! Del Duca-Dixon-Maltoni basis (their ddm_color_basis):
+        'auto' uses it when all of them take it by default, 'ddm' unless one of
+        them can never use it. Without any exporter (check), 'auto' is the
+        trace basis and 'ddm' the DDM one."""
 
         mode = self.options.get('color_basis', 'auto')
         exporters = [exporter for exporter in exporters if exporter]
+        support = [getattr(exporter, 'ddm_color_basis', 'never')
+                   for exporter in exporters]
         if mode == 'auto':
-            use_ddm = bool(exporters) and \
-                all(getattr(exporter, 'support_ddm_color_basis', False)
-                    for exporter in exporters)
-        else:
-            use_ddm = (mode == 'ddm')
-        # The formats which can only write the trace basis (Matchbox) keep it,
-        # even when the DDM one is requested explicitly
-        if use_ddm and any(getattr(exporter, 'trace_color_basis_only', False)
-                           for exporter in exporters):
-            use_ddm = False
-            if mode == 'ddm':
+            use_ddm = bool(support) and all(s == 'auto' for s in support)
+        elif mode == 'ddm':
+            use_ddm = 'never' not in support
+            if not use_ddm:
                 logger.info("color_basis ddm: output %s keeps the trace color "
-                            "basis, the only one it can write",
+                            "basis, the only one it can use",
                             getattr(self, '_export_format', None))
+        else:
+            use_ddm = False
 
         # An exporter which has to write a color flow per event also needs the
         # trace basis next to the DDM one

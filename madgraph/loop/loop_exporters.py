@@ -78,6 +78,13 @@ class LoopExporterFortran(object):
         ProcessExporterFortran but give access to arguments like dir_path and
         clean using options. This avoids method resolution object ambiguity"""
 
+    # The loop color bases (LoopColorBasis) are always trace ones, and the FKS
+    # exporters, which inherit this, read the color flow of their Born and real
+    # color bases directly (color_flow_decomposition): placed before the
+    # ProcessExporterFortran(SA, ME, ...) in the MRO, this keeps every loop
+    # output (MadLoop, loop-induced, NLO) on the trace basis.
+    ddm_color_basis = 'never'
+
     default_opt = dict(export_v4.ProcessExporterFortran.default_opt)
     default_opt.update({'clean': False, 'complex_mass':False,
                         'export_format':'madloop', 'mp':True,
