@@ -398,7 +398,9 @@ def test_the_runtime_profile_times_distinct_points(uux_ddx, monkeypatch):
     batch of distinct flat points at the validation point's energy (no
     point repeated within or across calls), deterministic in the seed: the
     minimum calls when they reach the time budget, and further calls on the
-    following points of the same sequence until they reach it."""
+    following points of the same sequence until they reach it. The first
+    warm-up probes one point of its batch first (``WARMUP_CALL_SECONDS``: a
+    dear full call keeps that point as the warm-up)."""
 
     from pyamplicol.api import Runtime
     from pyamplicol.benchmarking import profile_points, profile_virtual
@@ -417,8 +419,9 @@ def test_the_runtime_profile_times_distinct_points(uux_ddx, monkeypatch):
     monkeypatch.setattr(Runtime, "evaluate", recorded)
     result = profile_virtual(uux_ddx, bench)
     assert result.batch == 4 and result.samples == 2 and result.warmup == 1
-    assert [len(batch) for batch in batches] == [4, 4, 4]
-    flat = [point for batch in batches for point in batch]
+    assert [len(batch) for batch in batches] == [1, 4, 4, 4]
+    assert batches[0] == batches[1][:1]
+    flat = [point for batch in batches[1:] for point in batch]
     assert len(set(flat)) == len(flat) == 12
     validation = _points(uux_ddx)[0]
     total = [sum(float(leg[i]) for leg in validation[:2]) for i in range(4)]
@@ -432,7 +435,7 @@ def test_the_runtime_profile_times_distinct_points(uux_ddx, monkeypatch):
     longer = replace(bench, target_runtime=10 * 4 * result.high)
     again = profile_virtual(uux_ddx, longer)
     assert again.samples > 2
-    more = [point for batch in batches for point in batch]
+    more = [point for batch in batches[1:] for point in batch]
     assert more[:12] == flat and len(set(more)) == len(more)
 
 
@@ -463,7 +466,9 @@ def test_the_runtime_profile_reports_peak_ram_and_the_reference(uux_ddx):
     Runtime.evaluate = recorded
     try:
         plain = profile_virtual(runtime, bench, points=points, reduction="tirust")
-        assert plain.reference is None and len(calls) == 4
+        # The one-point probe, two warm-ups and two timed calls.
+        assert plain.reference is None and len(calls) == 5
+        assert [c[0] for c in calls] == [1, 2, 2, 2, 2]
         assert plain.peak_memory is not None
         assert plain.peak_memory.peak_rss_bytes >= plain.peak_memory.start_rss_bytes
         calls.clear()
@@ -476,10 +481,11 @@ def test_the_runtime_profile_reports_peak_ram_and_the_reference(uux_ddx):
         )
     finally:
         Runtime.evaluate = evaluate
-    # Two binary64 warm-ups and two timed calls; one reference warm-up of
-    # one point, then one call of what the 1e-6 s budget affords (a point).
-    assert [c[1]["arithmetic"] for c in calls] == [None] * 4 + ["double-double"] * 2
-    assert [c[0] for c in calls[4:]] == [1, 1]
+    # The probe, two binary64 warm-ups and two timed calls; one reference
+    # warm-up of one point, then one call of what the 1e-6 s budget affords
+    # (a point).
+    assert [c[1]["arithmetic"] for c in calls] == [None] * 5 + ["double-double"] * 2
+    assert [c[0] for c in calls[5:]] == [1, 1]
     assert all(
         c[1]
         == {
@@ -489,7 +495,7 @@ def test_the_runtime_profile_reports_peak_ram_and_the_reference(uux_ddx):
             "reduction": "tirust",
             "stability_checks": None,
         }
-        for c in calls[4:]
+        for c in calls[5:]
     )
     reference = both.reference
     assert reference is not None and reference.arithmetic == "double-double"

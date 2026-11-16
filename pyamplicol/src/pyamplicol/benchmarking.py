@@ -3096,12 +3096,16 @@ def profile_virtual(
                     "eta_seconds": eta,
                     "walls": list(walls),
                     "points": size,
+                    "warmup": bench.warmup_runs,
                     "seconds_per_point": (
                         statistics.median(walls) / size if walls else None
                     ),
                 },
             )
 
+    # The binary64 phase starts before its first (warm-up) call: on an
+    # expensive process that call alone takes minutes.
+    report(0, bench.warmup_runs + max(bench.minimum_samples, 1), None, ())
     with peak_memory() as peak:
         profile = _profile_virtual_calls(
             runtime, batches, bench, options, scales, report
@@ -3305,7 +3309,11 @@ def _reference_timing(
         "poles": "none",
         "on_failure": "return",
         "reduction_unchecked": True,
-        **{k: v for k, v in reference.items() if k not in ("points", "budget")},
+        **{
+            k: v
+            for k, v in reference.items()
+            if k not in ("points", "budget", "seconds_per_point")
+        },
     }
     backend = _single_backend(runtime, reference.get("reduction", reduction))
     if backend is not None:
@@ -3332,8 +3340,12 @@ def _reference_timing(
         return wall
 
     arithmetic = str(reference["arithmetic"])
+    # The caller's measured cost per point (``seconds_per_point``), else the
+    # binary64 cost times the prior multiplier.
     prior = (
-        None
+        float(reference["seconds_per_point"])
+        if reference.get("seconds_per_point") is not None
+        else None
         if binary64 is None
         else binary64 * REFERENCE_PRIOR.get(arithmetic, REFERENCE_PRIOR["arbitrary"])
     )
@@ -3440,12 +3452,29 @@ def _profile_virtual_calls(
     warmup = bench.warmup_runs
     cpu_seconds = [0.0]
 
+    from pyamplicol.profile_plan import WARMUP_CALL_SECONDS
+
     def call(k: int) -> float:
         nonlocal failed, served
         batch = batches(k)
         mu_r2 = scales(batch)
         if k < warmup:
+            # One point first: when a full call would cost more than
+            # WARMUP_CALL_SECONDS its first-call costs are negligible and the
+            # point is the warm-up (its cost scaled to the batch stands for
+            # the full call's), else one full call.
             begin = time.perf_counter()
+            if k == 0 and len(batch) > 1:
+                one = batch[:1]
+                runtime.evaluate(
+                    one,
+                    mu_r2=mu_r2 if not isinstance(mu_r2, list) else mu_r2[:1],
+                    **options,
+                )
+                estimate = (time.perf_counter() - begin) * len(batch)
+                if estimate > WARMUP_CALL_SECONDS:
+                    return estimate
+                begin = time.perf_counter()
             runtime.evaluate(batch, mu_r2=mu_r2, **options)
             return time.perf_counter() - begin
         with collected_stage_seconds(runtime) as seconds:

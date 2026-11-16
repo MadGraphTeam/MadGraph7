@@ -48,6 +48,15 @@ REFERENCE_SHARE = 0.25
 # the stability run measured it: the checked call with the default
 # rotation test evaluates the point twice, plus the checks' work.
 STABILITY_PRIOR = 2.5
+# A stability task (one backend and precision) holds about this many
+# seconds of work: a point that costs more is a task of its own, so that an
+# expensive process's few points spread over the workers (a one-point call
+# costs one to three times a full chunk's per-point price, a fixed cost of
+# 0.03-0.3 s per call), a cheap one keeps whole SIMD chunks.
+TASK_SECONDS = 4.0
+# The binary64 warm-up is one point when a full call costs more than this
+# (its first-call costs are then negligible), else one full call.
+WARMUP_CALL_SECONDS = 2.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +137,27 @@ class Plan:
         }
 
 
+def warmup_seconds(call: float, per_point: float) -> float:
+    """The binary64 warm-up's seconds: one full call of ``call`` seconds,
+    one point (``per_point``) when the full call costs more than
+    ``WARMUP_CALL_SECONDS``."""
+
+    return per_point if call > WARMUP_CALL_SECONDS else call
+
+
+def task_points(point_seconds: float, points: int) -> int:
+    """The points of one stability task (one backend and precision) out of
+    a chunk of ``points``: about ``TASK_SECONDS`` of work at
+    ``point_seconds`` each, at least one, at most the chunk (0 or unknown
+    costs: the chunk)."""
+
+    if points <= 0:
+        return 0
+    if point_seconds <= 0.0:
+        return points
+    return max(1, min(points, math.ceil(TASK_SECONDS / point_seconds)))
+
+
 def runtime_counts(
     costs: Costs, budget: float, *, lanes: int, batch_max: int
 ) -> RuntimeCounts:
@@ -151,8 +181,9 @@ def runtime_counts(
     chunks = min(max(chunks, 1), chunks_max)
     batch = chunks * lanes
     call = batch * costs.binary64
-    timed = max(left - call, RUNTIME_MINIMUM_CALLS * call)
-    expected = costs.start + call + timed
+    warm = warmup_seconds(call, costs.binary64)
+    timed = max(left - warm, RUNTIME_MINIMUM_CALLS * call)
+    expected = costs.start + warm + timed
     if costs.reference is not None:
         expected += costs.reference + reference
     return RuntimeCounts(batch, 1, RUNTIME_MINIMUM_CALLS, timed, reference, expected)
@@ -160,10 +191,11 @@ def runtime_counts(
 
 def runtime_minimum(costs: Costs, *, lanes: int) -> float:
     """The seconds of a backend's minimal runtime timing: its start-up, one
-    warm-up and one timed call of one chunk, and the reference's one-point
-    warm-up and one timed point."""
+    warm-up (``warmup_seconds``) and one timed call of one chunk, and the
+    reference's one-point warm-up and one timed point."""
 
-    seconds = costs.start + 2 * lanes * costs.binary64
+    call = lanes * costs.binary64
+    seconds = costs.start + call + warmup_seconds(call, costs.binary64)
     if costs.reference is not None:
         seconds += 2 * costs.reference
     return seconds
@@ -181,14 +213,17 @@ def stability_wall(
 ) -> float:
     """The wall seconds of ``points`` stability points on ``workers``
     workers: their work shared by the workers, no less than the dearest
-    single task (one chunk of up to ``lanes`` points of one backend and
-    precision runs on one worker)."""
+    single task (``task_points`` of a chunk of up to ``lanes`` points of
+    one backend and precision run on one worker)."""
 
     if not costs or points <= 0:
         return 0.0
     work = points * stability_work(costs)
-    single = min(points, lanes) * max(
-        max(c.stability, c.stability_reference or 0.0) for c in costs
+    chunk = min(points, lanes)
+    single = max(
+        task_points(seconds, chunk) * seconds
+        for c in costs
+        for seconds in (c.stability, c.stability_reference or 0.0)
     )
     return max(work / max(workers, 1), min(single, work))
 
@@ -379,8 +414,9 @@ def affordable_chunk(
     fit, at most one whole SIMD chunk of ``lanes``: their work shared by the
     ``workers`` after the queued work (``point_seconds``: one point on every
     backend and precision), and their dearest single task (``stream_seconds``
-    per point: one backend and precision, run by one worker) started when a
-    worker frees up, both ending by the deadline; 0 when none fits."""
+    per point: one backend and precision, ``task_points`` of the chunk run
+    by one worker) started when a worker frees up, both ending by the
+    deadline; 0 when none fits."""
 
     if points < minimum:
         return minimum - points
@@ -389,7 +425,9 @@ def affordable_chunk(
     room = (deadline - now) * workers - queued_seconds
     fits = lanes if point_seconds <= 0.0 else int(room // point_seconds)
     if stream_seconds > 0.0:
-        fits = min(fits, int(max(deadline - start, 0.0) // stream_seconds))
+        window = max(deadline - start, 0.0)
+        if task_points(stream_seconds, lanes) * stream_seconds > window:
+            fits = min(fits, int(window // stream_seconds))
     return max(min(fits, lanes), 0)
 
 
@@ -411,6 +449,8 @@ __all__ = [
     "DEFAULT_STABILITY_SECONDS_PER_CORE",
     "RUNTIME_MINIMUM_CALLS",
     "STABILITY_MINIMUM",
+    "TASK_SECONDS",
+    "WARMUP_CALL_SECONDS",
     "Costs",
     "Plan",
     "RuntimeCounts",
@@ -420,4 +460,6 @@ __all__ = [
     "runtime_counts",
     "stability_points",
     "stability_wall",
+    "task_points",
+    "warmup_seconds",
 ]

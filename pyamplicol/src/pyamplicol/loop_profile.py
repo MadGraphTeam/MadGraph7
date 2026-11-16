@@ -783,6 +783,12 @@ def profile_loop(
                 backend,
                 truth,
                 None if backend not in costs else costs[backend].start,
+                (
+                    costs[backend].binary64 * backend_bench.batch_size
+                    if backend in costs
+                    else None
+                ),
+                backend_bench.batch_size,
             )
             current[0] = run
             reference = (
@@ -792,6 +798,11 @@ def profile_loop(
                     **truth.options,
                     "reduction": backend,
                     "budget": max(reference_budget, 1e-9),
+                    **(
+                        {"seconds_per_point": costs[backend].reference}
+                        if backend in costs and costs[backend].reference is not None
+                        else {}
+                    ),
                 }
             )
             try:
@@ -1191,10 +1202,17 @@ class _BackendRun:
         backend: str,
         truth: GroundTruth,
         expected_start: float | None,
+        expected_call: float | None = None,
+        batch: int = 1,
     ) -> None:
         from pyamplicol.loops.v2.reduction import NAMES
 
         self.monitor = monitor
+        # The planned seconds of one binary64 call (the measured cost per
+        # point times the batch): the first call's expected cost and ETA
+        # until one is back.
+        self.expected_call = expected_call
+        self.batch = max(int(batch), 1)
         self.name = NAMES.get(backend, backend)
         self.truth = truth
         self.profile: Any = None
@@ -1274,7 +1292,15 @@ class _BackendRun:
                 self.multiplier = float(per) / self.binary64
         self.reading()
         eta = payload.get("eta_seconds")
-        self.state = {"done": done, "total": total, "eta": eta, "rate": rate}
+        if eta is None and kind == "binary64" and self.expected_call:
+            eta = max(int(total or 0) - done, 1) * self.expected_call
+        self.state = {
+            "done": done,
+            "total": total,
+            "eta": eta,
+            "rate": rate,
+            "warmup": int(payload.get("warmup") or 0) if kind == "binary64" else 0,
+        }
         self.last = now
         self._show(heartbeat=False)
 
@@ -1331,6 +1357,16 @@ class _BackendRun:
         expected = rate
         if not expected and self.state.get("eta") is not None:
             expected = float(self.state["eta"]) / max(int(total or 0) - int(done), 1)
+        if int(done) < int(self.state.get("warmup") or 0):
+            # The untimed warm-up: one point when a full call is dear
+            # (``profile_plan.warmup_seconds``), else one full call.
+            from pyamplicol.profile_plan import warmup_seconds
+
+            running = "warm-up call"
+            if self.expected_call:
+                expected = warmup_seconds(
+                    self.expected_call, self.expected_call / self.batch
+                )
         step = f"{self.name} {what}: {running} running {_duration(since)}" + (
             f" of ~{_duration(float(expected))}" if expected else ""
         )
@@ -1436,20 +1472,22 @@ def _measure(
     monitor: _Monitor,
     load_seconds: float,
 ) -> dict[str, Any]:
-    """The measurement phase of a time-budgeted profile: per backend one
-    optimistic binary64 call of one filled SIMD chunk on this process's
-    loaded runtime (its first call: an upper estimate), the binary64 cost
-    per point; the reference's and the stability run's costs from it and
-    the priors (``REFERENCE_PRIOR``, ``STABILITY_PRIOR``); a process's
-    start-up from this process's load. A backend that refuses the process
-    is left out (its timing reports the refusal)."""
+    """The measurement phase of a time-budgeted profile, on this process's
+    loaded runtime, per backend: the binary64 cost per point of an
+    optimistic call and the reference's (none without a ground truth), each
+    from one point and, when a full SIMD chunk costs at most
+    ``WARMUP_CALL_SECONDS`` at that price, from one call of a full chunk
+    (first calls: upper estimates); the stability run's binary64 cost from
+    the prior ``STABILITY_PRIOR``; a process's start-up from this process's
+    load. A backend that refuses the process is left out (its timing
+    reports the refusal)."""
 
     from pyamplicol.api.errors import ReductionUnavailable
-    from pyamplicol.benchmarking import REFERENCE_PRIOR, _initial_invariant
+    from pyamplicol.benchmarking import _initial_invariant
     from pyamplicol.cli.flat_points import draw_flat_points
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import NAMES
-    from pyamplicol.profile_plan import STABILITY_PRIOR, Costs
+    from pyamplicol.profile_plan import STABILITY_PRIOR, WARMUP_CALL_SECONDS, Costs
 
     space = config.evaluation.phase_space
     points = draw_flat_points(
@@ -1465,41 +1503,64 @@ def _measure(
         if config.evaluation.mu_r2 is not None
         else [_initial_invariant(point, initial) for point in points]
     )
-    phase = monitor.phase("measure", "Measuring the cost per point", len(backends))
+    precisions = ["binary64"] + ([] if truth.arithmetic == "none" else ["reference"])
+    steps = len(backends) * len(precisions)
+    phase = monitor.phase("measure", "Measuring the cost per point", steps)
+
+    def cost(backend: str, precision: str) -> float:
+        options: dict[str, Any] = {
+            "poles": "none",
+            "on_failure": "return",
+            "reduction": backend,
+        }
+        if precision == "binary64":
+            options["reduction_unchecked"] = True
+        else:
+            options.update(truth.options)
+        per_point = 0.0
+        for size in (1, len(points)):
+            batch = points[:size]
+            mu = scales[:size] if isinstance(scales, list) else scales
+            begin = time.perf_counter()
+            runtime.evaluate(batch, mu_r2=mu, **options)
+            per_point = (time.perf_counter() - begin) / size
+            if size == len(points) or per_point * len(points) > WARMUP_CALL_SECONDS:
+                break
+        return per_point
+
     costs: dict[str, Any] = {}
-    for done, backend in enumerate(backends):
+    done = 0
+    for backend in backends:
         name = NAMES.get(backend, backend)
-        phase.update(
-            done,
-            len(backends),
-            eta=None,
-            step=f"{name}: one binary64 call of {len(points)} points",
-        )
-        walls = []
+        measured: dict[str, float] = {}
         try:
-            # One call: its first-call costs make it an upper estimate (the
-            # timed loops measure as they go; a second call would double this
-            # phase on an expensive process).
-            for _ in range(1):
-                begin = time.perf_counter()
-                runtime.evaluate(
-                    points,
-                    mu_r2=scales,
-                    poles="none",
-                    on_failure="return",
-                    reduction=backend,
-                    reduction_unchecked=True,
+            for precision in precisions:
+                label = "binary64" if precision == "binary64" else truth.name
+                phase.update(
+                    done,
+                    steps,
+                    eta=None,
+                    step=f"{name}: {label} cost per point",
                 )
-                walls.append(time.perf_counter() - begin)
+                measured[precision] = cost(backend, precision)
+                done += 1
+                ratio = (
+                    measured["reference"] / measured["binary64"]
+                    if "reference" in measured
+                    else None
+                )
+                monitor.set_reading(
+                    name,
+                    _per_point_text(measured["binary64"]),
+                    None
+                    if ratio is None
+                    else f"({truth.label} {_multiplier_text(ratio)})",
+                )
         except ReductionUnavailable:
+            done = (backends.index(backend) + 1) * len(precisions)
             continue
-        binary64 = min(walls) / len(points)
-        reference = (
-            None
-            if truth.arithmetic == "none"
-            else binary64
-            * REFERENCE_PRIOR.get(truth.arithmetic, REFERENCE_PRIOR["arbitrary"])
-        )
+        binary64 = measured["binary64"]
+        reference = measured.get("reference")
         costs[backend] = Costs(
             binary64,
             reference,
@@ -1507,10 +1568,15 @@ def _measure(
             reference,
             load_seconds + 1.0,
         )
-        monitor.set_reading(name, _per_point_text(binary64), "(measured)")
     phase.end(
         ", ".join(
-            f"{NAMES.get(b, b)} {_per_point_text(c.binary64)}" for b, c in costs.items()
+            f"{NAMES.get(b, b)} {_per_point_text(c.binary64)}"
+            + (
+                ""
+                if c.reference is None
+                else f" ({truth.label} {_multiplier_text(c.reference / c.binary64)})"
+            )
+            for b, c in costs.items()
         )
         + " per point"
     )
@@ -2216,7 +2282,11 @@ def _stability(
     from pyamplicol.cli.flat_points import draw_flat_points
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import default_target
-    from pyamplicol.profile_plan import STABILITY_MINIMUM, affordable_chunk
+    from pyamplicol.profile_plan import (
+        STABILITY_MINIMUM,
+        affordable_chunk,
+        task_points,
+    )
 
     bench = config.benchmark
     evaluation = config.evaluation
@@ -2269,7 +2339,22 @@ def _stability(
         bounds = [(0, lead)] + [
             (start, min(start + chunk, count)) for start in range(lead, count, chunk)
         ]
-        workers = max(1, min(workers, len(bounds) * len(backends) * len(precisions)))
+
+        def prior(backend: str, precision: str) -> float:
+            cost = (costs or {}).get(backend)
+            if cost is None:
+                return 0.0
+            if precision == "binary64":
+                return float(cost.stability)
+            return float(cost.stability_reference or 0.0)
+
+        tasks = sum(
+            math.ceil((end - start) / task_points(prior(b, p), end - start))
+            for start, end in bounds
+            for b in backends
+            for p in precisions
+        )
+        workers = max(1, min(workers, tasks))
     else:
         # A deadline: chunks of one SIMD chunk while they fit it; the first
         # holds the minimum, a whole chunk only when the plan affords several
@@ -2352,12 +2437,27 @@ def _stability(
         submitted[0] = max(submitted[0], end)
         tracker.set_points(max(submitted[0], count if deadline is None else 0))
         indices = list(range(start, end))
-        return [
-            (backend, precision, indices, batch, scales)
-            for backend in backends
-            for precision in precisions
-            if backend not in refused
-        ]
+        tasks = []
+        for backend in backends:
+            if backend in refused:
+                continue
+            for precision in precisions:
+                # About TASK_SECONDS of work per task: an expensive point is
+                # a task of its own, spread over the workers.
+                size = task_points(stream_rate((backend, precision)), len(indices))
+                for at in range(0, len(indices), size):
+                    tasks.append(
+                        (
+                            backend,
+                            precision,
+                            indices[at : at + size],
+                            batch[at : at + size],
+                            scales[at : at + size]
+                            if isinstance(scales, list)
+                            else scales,
+                        )
+                    )
+        return tasks
 
     def harvest(backend: str, precision: str, records: Any, wall: float) -> None:
         if backend in refused:

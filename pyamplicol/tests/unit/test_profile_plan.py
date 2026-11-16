@@ -15,11 +15,16 @@ import pytest
 from pyamplicol.config import BenchmarkConfig
 from pyamplicol.profile_plan import (
     STABILITY_MINIMUM,
+    TASK_SECONDS,
+    WARMUP_CALL_SECONDS,
     Costs,
     affordable_chunk,
     plan,
     runtime_counts,
     stability_points,
+    stability_wall,
+    task_points,
+    warmup_seconds,
 )
 
 LANES = 16
@@ -109,12 +114,14 @@ class _World:
 def _simulate(
     world: _World, budget: float, workers: int, prior_error: float
 ) -> tuple[float, dict]:
-    """The whole profile under a fake clock: measurement (two calls), each
-    backend's runtime (``_timed_calls`` and ``_reference_calls`` on the
-    counts re-planned from what is left) and the stability run (the real
-    admission gate, ``workers`` workers taking tasks in order), the plan
-    from measured costs that are off by ``prior_error``. The achieved
-    seconds and the counts."""
+    """The whole profile under a fake clock: measurement (one point, then a
+    full chunk when that is cheap, in binary64 and the reference), each
+    backend's runtime (``_timed_calls`` with the adaptive warm-up and
+    ``_reference_calls`` on the counts re-planned from what is left) and
+    the stability run (the real admission gate; tasks of ``task_points``
+    per backend and precision, ``workers`` workers taking them in order),
+    the plan from measured costs that are off by ``prior_error``. The
+    achieved seconds and the counts."""
 
     from dataclasses import replace
 
@@ -128,9 +135,11 @@ def _simulate(
     measured = {}
     for b in backends:
         cost = world.binary64 * scale[b]
-        # Two calls of one chunk, the faster (the second) measured.
-        clock[0] += LANES * cost * (world.slow + 1.0)
-        measured[b] = _costs(cost * prior_error, 60.0, world.start)
+        for per_point in (cost, cost * world.multiplier):
+            clock[0] += per_point * world.slow
+            if LANES * per_point <= WARMUP_CALL_SECONDS:
+                clock[0] += LANES * per_point
+        measured[b] = _costs(cost * prior_error, world.multiplier, world.start)
     planned = plan(
         measured,
         runtime=True,
@@ -158,8 +167,14 @@ def _simulate(
         calls = [0]
 
         def call(k: int, counts=counts, cost=cost, calls=calls) -> float:
+            # The warm-up: one point when a full call is dear.
+            points = (
+                1
+                if k < counts.warmup and counts.batch * cost > WARMUP_CALL_SECONDS
+                else counts.batch
+            )
             wall = (
-                counts.batch
+                points
                 * cost
                 * world.factor(clock[0])
                 * (world.slow if k == 0 else 1.0)
@@ -205,11 +220,13 @@ def _simulate(
     clock[0] += world.start
     free = [clock[0]] * workers
     points = 0
-    per_point = sum(
-        (2.5 + world.multiplier) * world.binary64 * scale[b] for b in backends
-    )
-    rates = {b: (2.5 + world.multiplier) * world.binary64 * scale[b] for b in backends}
-    estimate = per_point * prior_error
+    streams = {
+        (b, precision): factor * world.binary64 * scale[b]
+        for b in backends
+        for precision, factor in (("binary64", 2.5), ("reference", world.multiplier))
+    }
+    rates = {b: streams[(b, "binary64")] + streams[(b, "reference")] for b in backends}
+    estimate = sum(rates.values()) * prior_error
     while True:
         now = min(free)
         queued = sum(max(f - now, 0.0) for f in free)
@@ -229,13 +246,15 @@ def _simulate(
                 workers=workers,
                 points=points,
                 lanes=LANES,
-                stream_seconds=max(rates[b] * world.factor(now) for b in backends),
+                stream_seconds=max(r * world.factor(now) for r in streams.values()),
             )
         if not size:
             break
-        for b in backends:
-            k = free.index(min(free))
-            free[k] += size * rates[b] * world.factor(free[k])
+        for rate in streams.values():
+            piece = task_points(rate * prior_error if points == 0 else rate, size)
+            for at in range(0, size, piece):
+                k = free.index(min(free))
+                free[k] += min(piece, size - at) * rate * world.factor(free[k])
         points += size
     clock[0] = max(free)
     counts_out["stability"] = points
@@ -251,9 +270,12 @@ def _simulate(
         _World(3e-3, 60.0, 2.0),
         _World(3e-2, 40.0, 3.0, drift=1.8, drift_at=60.0),
         _World(0.3, 80.0, 5.0, slow=1.5),
+        # The user's u u~ > z g g g g: seconds per binary64 point, a
+        # reference point of a minute on the dearer backend.
+        _World(1.0, 20.0, 13.0, slow=1.2),
     ],
 )
-@pytest.mark.parametrize("workers", [1, 4])
+@pytest.mark.parametrize("workers", [1, 4, 8])
 def test_the_completion_time_is_honoured(world, prior_error, workers):
     """Across costs from a cheap process to the user's 7-point one, priors
     off by a factor 2, a drift mid-run and 1 or 4 workers: when the minimums
@@ -429,3 +451,51 @@ def test_a_slow_reference_pass_reports_progress(monkeypatch):
     # Ctrl-C now keeps the binary64 result, with a reference of no call.
     partial = run.partial()
     assert partial.seconds_per_point == 0.44 and partial.reference.samples == 0
+
+
+def test_stability_tasks_and_warmups_follow_the_cost_of_a_point():
+    """A stability task holds about TASK_SECONDS of work (an expensive
+    point is a task of its own, a cheap chunk stays whole); the binary64
+    warm-up is one point when a full call is dear; the wall of an expensive
+    process's few points is that of its dearest point, not of a serial
+    chunk."""
+
+    assert task_points(1e-3, 16) == 16 and task_points(0.0, 16) == 16
+    assert task_points(TASK_SECONDS / 4, 16) == 4
+    assert task_points(35.0, 5) == 1 and task_points(35.0, 0) == 0
+    assert warmup_seconds(1.0, 0.1) == 1.0
+    assert warmup_seconds(48.0, 3.0) == 3.0
+    dear = [Costs(0.6, 35.0, 1.5, 35.0, 4.0), Costs(3.0, 11.0, 7.5, 11.0, 4.0)]
+    wall = stability_wall(dear, STABILITY_MINIMUM, 8)
+    work = STABILITY_MINIMUM * sum(c.stability + c.stability_reference for c in dear)
+    assert wall == pytest.approx(max(work / 8, 35.0))
+    assert stability_wall(dear, STABILITY_MINIMUM, 1) == pytest.approx(work)
+
+
+def test_the_users_process_fits_ten_minutes():
+    """The user's u u~ > z g g g g on 8 cores (measured: NinjaRS 0.67 s and
+    a 35 s dd point, TIRust 3.0 s and an 11 s dd point, 13 s per process
+    start-up): --completion-time 10m is feasible, its minimums a few
+    minutes (they ran in 10 minutes and were estimated at 29 before the
+    reference was measured and the stability points spread over the
+    workers)."""
+
+    costs = {
+        "ninjars": Costs(0.67, 35.0, 2.5 * 0.67, 35.0, 13.0),
+        "tirust": Costs(3.0, 11.0, 7.5, 11.0, 13.0),
+    }
+    planned = plan(
+        costs,
+        runtime=True,
+        stability=True,
+        workers=8,
+        lanes=LANES,
+        batch_max=128,
+        completion=600.0,
+        elapsed=60.0,
+        stability_start=23.0,
+    )
+    assert planned.feasible
+    assert 150.0 <= planned.minimum_seconds <= 400.0, planned.minimum_seconds
+    assert planned.stability_points is not None
+    assert planned.stability_points >= STABILITY_MINIMUM
