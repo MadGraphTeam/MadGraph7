@@ -2773,7 +2773,10 @@ class VirtualProfileResult:
     (``runtime.virtual.collected_stage_seconds``; no other timer runs, so
     ``label`` is None): the stages add up to ``seconds_per_point``.
     ``reduction`` is the requested, effective backend and reason of the
-    last call; ``unchecked`` the reduction_unchecked setting; ``threads``
+    last call; ``unchecked`` whether the timed calls reduced unchecked (the
+    setting of the calls, ``_timed_unchecked``: a best-effort point's own
+    unchecked re-evaluation does not make a checked call unchecked);
+    ``threads``
     the native threads of the timed calls (the executor's report)."""
 
     process_id: str
@@ -2794,8 +2797,9 @@ class VirtualProfileResult:
     # first.
     failure_reasons: tuple[tuple[str, int], ...] = ()
     # The timed points the backend refused and served with their best-effort
-    # value (``on_failure="best-effort"``; not counted in ``failed_points``)
-    # and their reasons, most frequent first.
+    # value (``on_failure="best-effort"``, the checked mode; never in the
+    # optimistic pass; not counted in ``failed_points``) and their reasons,
+    # most frequent first.
     best_effort_points: int = 0
     best_effort_reasons: tuple[tuple[str, int], ...] = ()
     # The peak resident set size of this process over the binary64 warm-up
@@ -3224,6 +3228,19 @@ def _single_backend(runtime: Any, reduction: str | None) -> str | None:
     return str(default) if default else None
 
 
+def _timed_unchecked(reductions: Sequence[Any], options: Mapping[str, Any]) -> bool:
+    """Whether the timed calls reduced unchecked: the setting their lanes
+    record (``VirtualReduction.unchecked``) on the lanes served by the
+    call itself, a best-effort lane (``best_effort`` set: re-evaluated
+    unchecked whatever the call's setting) left out; the calls' own option
+    when every lane was served best-effort or none recorded one."""
+
+    own = [r for r in reductions if getattr(r, "best_effort", None) is None]
+    if own:
+        return any(bool(getattr(r, "unchecked", False)) for r in own)
+    return bool(options.get("reduction_unchecked"))
+
+
 def _native_threads(runtime: Any) -> int | None:
     """The native threads of a loaded v2 runtime's last call (its executor's
     always-on report, as ``runtime.virtual.collected_stage_seconds`` reads
@@ -3311,7 +3328,7 @@ def _profile_virtual_calls(
         max(walls) / size,
         {group: value * scale for group, value in totals.items()},
         _reduction_record(reductions),
-        any(bool(getattr(r, "unchecked", False)) for r in reductions),
+        _timed_unchecked(reductions, options),
         failed,
         failure_reasons=tuple(
             sorted(reasons.items(), key=lambda item: (-item[1], item[0]))

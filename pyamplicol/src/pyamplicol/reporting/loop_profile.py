@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Sequence
 from typing import Any
 
 from . import palette
@@ -211,20 +212,16 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     summary = palette.table(
         prettytable, tuple(fields), "Runtime per reduction backend", color=color
     )
-    summary.max_width = 26
-    # Per row its cells, the time cell as its parts (the time, the
-    # reference multiplier).
-    entries: list[tuple[tuple[str, ...], list[str]]] = []
+    entries: list[list[Cell]] = []
     for row in rows:
         label = _backend_label(row.backend, report.default_backend, color)
-        cells: list[str]
+        cells: list[Cell]
         if row.profile is None:
             cells = [
                 label,
                 palette.paint("refused", palette.BAD, color=color, bold=True),
             ]
-            cells += [""] * (len(fields) - len(cells))
-            entries.append(((cells[1],), cells))
+            entries.append([*cells, *[""] * (len(fields) - len(cells))])
             continue
         profile = row.profile
         timed = profile.batch * profile.samples
@@ -235,7 +232,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 _seconds_text(profile.seconds_per_point), palette.MUTED, color=color
             )
             ratio = palette.paint("all failed", palette.BAD, color=color, bold=True)
-            spread = ""
+            spread: Cell = ""
         else:
             time_cell = palette.paint(
                 _seconds_text(profile.seconds_per_point),
@@ -266,7 +263,13 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                     color,
                 ),
             )
-        cells = [label, time_cell, spread, ratio, _peak_cell(profile, color)]
+        cells = [
+            label,
+            time_parts,
+            spread,
+            ratio,
+            _peak_cell(profile, color),
+        ]
         if show_best:
             cells.append(
                 palette.paint(
@@ -278,7 +281,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 else ""
             )
         if show_lanes:
-            lanes = _lanes(row)
+            ordered = sorted(_lanes(row).items(), key=lambda i: i[0] != row.backend)
             cells.append(
                 ", ".join(
                     palette.paint(
@@ -288,9 +291,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                         else palette.RECOVERED,
                         color=color,
                     )
-                    for name, count in sorted(
-                        lanes.items(), key=lambda i: i[0] != row.backend
-                    )
+                    for name, count in ordered
                 )
             )
         if show_failed:
@@ -303,17 +304,8 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 if profile.failed_points
                 else ""
             )
-        entries.append((time_parts, cells))
-    # The multiplier under the time when one line would pass the line
-    # width (as in the stability table's time cell).
-    for joiner in (" ", "\n"):
-        summary.clear_rows()
-        for time_parts, cells in entries:
-            summary.add_row((cells[0], joiner.join(time_parts), *cells[2:]))
-        text = str(summary.get_string())
-        if max(map(len, _ANSI.sub("", text).splitlines())) <= _width():
-            break
-    blocks = [text]
+        entries.append(cells)
+    blocks = [_fit(summary, [(cells, False) for cells in entries])]
     causes = failure_lines(report.failure_causes, "runtime", color)
     refusals = [
         f"{_backend_label(row.backend, report.default_backend, color)} refused: "
@@ -351,6 +343,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         color=color,
     )
     totals = [sum(row.profile.stages.values()) or 1.0 for row in served]
+    stage_rows: list[tuple[Sequence[Cell], bool]] = []
     for group in [*groups, "total"]:
         colour = _STAGE_COLOURS.get(group)
         cells = [palette.paint(group, colour, color=color, bold=True)]
@@ -382,13 +375,158 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 )
             else:
                 cells.append("-")
-        stages.add_row(tuple(cells))
-    blocks.append(str(stages.get_string()))
+        stage_rows.append((cells, False))
+    blocks.append(_fit(stages, stage_rows))
     return blocks
 
 
 # The terminal colour codes of a painted text (not part of its width).
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+# A table cell: one text, or its parts (a value, then what annotates it),
+# on one line or one part per line (``_fit``).
+Cell = str | tuple[str, ...]
+
+
+def _visible(text: str) -> int:
+    """The widest line of ``text`` without its colour codes."""
+
+    return max((len(line) for line in _ANSI.sub("", text).splitlines()), default=0)
+
+
+def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
+    """``table`` with ``rows`` (its cells, and whether a divider follows the
+    row) within the line width (``_width``): every cell's parts on one line;
+    else, column by column (the one that saves the most width first), one
+    part per line (a value over its annotation, as the time over its
+    multiplier); else, as a last resort, the widest column narrowed
+    step by step until the table fits, its texts wrapped at their spaces
+    (uncoloured: the table's own wrapping would count the colour codes),
+    never below its header or longest word unless nothing else is left. A
+    column is as wide as its widest text or header: nothing that fits is
+    wrapped."""
+
+    import textwrap
+
+    width = _width()
+    names = list(table.field_names)
+    floor = dict.fromkeys(names, 1)
+
+    def joined(wrapped: set[int]) -> list[tuple[list[str], bool]]:
+        return [
+            (
+                [
+                    cell
+                    if isinstance(cell, str)
+                    else ("\n" if k in wrapped else " ").join(cell)
+                    for k, cell in enumerate(cells)
+                ],
+                divider,
+            )
+            for cells, divider in rows
+        ]
+
+    def render(texts: list[tuple[list[str], bool]], limits: dict[str, int]) -> str:
+        table.clear_rows()
+        raw = dict.fromkeys(names, 1)
+        for cells, divider in texts:
+            narrowed = []
+            for name, text in zip(names, cells, strict=True):
+                if _visible(text) > limits[name]:
+                    text = "\n".join(
+                        "\n".join(
+                            textwrap.wrap(
+                                line,
+                                limits[name],
+                                break_on_hyphens=False,
+                                break_long_words=limits[name] < floor[name],
+                            )
+                            or [""]
+                        )
+                        for line in _ANSI.sub("", text).splitlines()
+                    )
+                raw[name] = max([raw[name], *map(len, text.splitlines())])
+                narrowed.append(text)
+            table.add_row(narrowed, divider=divider)
+        table.max_width = raw
+        return str(table.get_string())
+
+    def natural(texts: list[tuple[list[str], bool]]) -> dict[str, int]:
+        return {
+            name: max([_visible(name)] + [_visible(t[k]) for t, _ in texts])
+            for k, name in enumerate(names)
+        }
+
+    # A title wider than the line goes on several lines, each painted as
+    # the title is.
+    title = table.title or ""
+    if _visible(title) > width - 4:
+        found = re.fullmatch(
+            r"((?:\x1b\[[0-9;]*m)*)(.*?)((?:\x1b\[[0-9;]*m)*)", title, re.S
+        )
+        if found is not None:
+            head, body, tail = found.groups()
+            table.title = "\n".join(
+                head + line + tail
+                for line in textwrap.wrap(body, width - 4, break_on_hyphens=False)
+            )
+    # One line per cell; else the annotated columns wrapped one at a time,
+    # the one that saves the most width first, until the table fits.
+    wrapped: set[int] = set()
+    texts = joined(wrapped)
+    text = render(texts, natural(texts))
+    candidates = {
+        k
+        for cells, _ in rows
+        for k, cell in enumerate(cells)
+        if not isinstance(cell, str) and len(cell) > 1
+    }
+    while _visible(text) > width and candidates - wrapped:
+        now = natural(texts)
+        savings = {
+            k: now[names[k]] - natural(joined(wrapped | {k}))[names[k]]
+            for k in sorted(candidates - wrapped)
+        }
+        wrapped.add(max(savings, key=lambda k: savings[k]))
+        texts = joined(wrapped)
+        text = render(texts, natural(texts))
+    if _visible(text) <= width:
+        return text
+    limits = natural(texts)
+    # A column's floor: its header and its longest word.
+    floor.update(
+        {
+            name: max(
+                [_visible(name)]
+                + [
+                    len(word)
+                    for cells, _ in texts
+                    for word in _ANSI.sub("", cells[k]).split()
+                ]
+            )
+            for k, name in enumerate(names)
+        }
+    )
+    text = render(texts, limits)
+    while _visible(text) > width:
+        roomy = [name for name in names if limits[name] > floor[name]]
+        if not roomy:
+            # Every column at its floor: break the words of a column wider
+            # than its header (a header is never narrowed), down to the
+            # narrowest.
+            roomy = [
+                name for name in names if limits[name] > max(_visible(name), _NARROWEST)
+            ]
+            if not roomy:
+                break
+        widest = max(roomy, key=lambda name: limits[name] - floor[name])
+        limits[widest] -= 1
+        text = render(texts, limits)
+    return text
+
+
+# The narrowest a column is made to fit the line (a display constant).
+_NARROWEST = 6
 
 
 def _stability_time(row: Any, report: Any, color: bool) -> tuple[str, ...]:
@@ -440,22 +578,27 @@ def _signed(value: float | None, color: bool) -> str:
     return palette.paint(f"{value:+.2f}", colour, color=color)
 
 
-def _percent(part: int, whole: int) -> str:
-    return f"{part} ({100 * part / whole:.1f} %)" if whole else str(part)
+def _percent_parts(part: int, whole: int) -> tuple[str, ...]:
+    """``part`` and its share of ``whole`` (the parts of a ``Cell``)."""
+
+    return (str(part), f"({100 * part / whole:.1f} %)") if whole else (str(part),)
 
 
 _LABELS = {0.001: "1 per mil", 0.01: "1 %", 0.1: "10 %", 0.5: "50 %"}
 
 
 def interrupted_line(setup: Any, color: bool) -> str | None:
-    """The one-line notice of an interrupted stability run (Ctrl-C): how
-    many of the requested points were measured; None otherwise."""
+    """The notice of an interrupted stability run (Ctrl-C): how many of the
+    requested points were measured, wrapped to the line width; None
+    otherwise."""
+
+    import textwrap
 
     if not setup or not setup.get("interrupted"):
         return None
     per = setup.get("evaluated_per_backend") or {}
     detail = ", ".join(f"{_name(name)} {count}" for name, count in per.items())
-    return palette.paint(
+    text = (
         f"interrupted: {setup.get('measured_points', 0)} of "
         f"{setup.get('requested', 0)} "
         "requested points evaluated"
@@ -463,10 +606,11 @@ def interrupted_line(setup: Any, color: bool) -> str | None:
             f" by every backend ({detail}); the tables compare those points"
             if len(set(per.values())) > 1
             else "; the tables hold those points"
-        ),
-        palette.RECOVERED,
-        color=color,
-        bold=True,
+        )
+    )
+    return "\n".join(
+        palette.paint(line, palette.RECOVERED, color=color, bold=True)
+        for line in textwrap.wrap(text, _width(), break_on_hyphens=False)
     )
 
 
@@ -498,8 +642,8 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         title,
         color=color,
     )
-    table.max_width = 30
     count = len(served[0].percentiles) if served else 0
+    percentile_rows: list[tuple[Sequence[Cell], bool]] = []
     for index in range(count):
         for position, row in enumerate(served):
             item = row.percentiles[index]
@@ -522,25 +666,27 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                     )
                 )
             )
-            points = str(item.count) + (
-                palette.paint(f" ({item.failed} failed)", palette.BAD, color=color)
+            counted: Cell = (str(item.count),) + (
+                (palette.paint(f"({item.failed} failed)", palette.BAD, color=color),)
                 if item.failed
-                else ""
+                else ()
             )
-            table.add_row(
+            percentile_rows.append(
                 (
-                    _LABELS.get(item.percentile, f"{100 * item.percentile:g} %")
-                    if position == 0
-                    else "",
-                    _backend_label(row.backend, report.default_backend, color),
-                    digits,
-                    points,
-                    spread,
-                    _signed(item.signed_median, color),
-                ),
-                divider=position == len(served) - 1 and index < count - 1,
+                    (
+                        _LABELS.get(item.percentile, f"{100 * item.percentile:g} %")
+                        if position == 0
+                        else "",
+                        _backend_label(row.backend, report.default_backend, color),
+                        digits,
+                        counted,
+                        spread,
+                        _signed(item.signed_median, color),
+                    ),
+                    position == len(served) - 1 and index < count - 1,
+                )
             )
-    blocks = [str(table.get_string())]
+    blocks = [_fit(table, percentile_rows)]
     verdicts = palette.table(
         prettytable,
         (
@@ -556,9 +702,7 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         f"{target_digits:.2f} digits)",
         color=color,
     )
-    verdicts.max_width = 14
-    entries: list[tuple[str, ...]] = []
-    times: list[tuple[str, ...]] = []
+    entries: list[Sequence[Cell]] = []
     refusals = []
     for row in rows:
         label = _backend_label(row.backend, report.default_backend, color)
@@ -571,17 +715,19 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                     "",
                     "",
                     "",
+                    "",
                 )
             )
-            times.append(("",))
             refusals.append(f"{label} refused: {row.refusal}")
             continue
-        measured = str(row.points) + (
-            palette.paint(
-                f" (+{row.failed_reference} no ref.)", palette.MUTED, color=color
+        measured: Cell = (str(row.points),) + (
+            (
+                palette.paint(
+                    f"(+{row.failed_reference} no ref.)", palette.MUTED, color=color
+                ),
             )
             if row.failed_reference
-            else ""
+            else ()
         )
         entries.append(
             (
@@ -599,32 +745,21 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                     color=color,
                     bold=row.failed_binary64 > 0,
                 ),
-                _percent(row.flagged, row.points),
+                _percent_parts(row.flagged, row.points),
                 f"{row.flagged_inaccurate} of {row.flagged}",
-                palette.paint(
-                    _percent(row.unflagged_inaccurate, row.points),
-                    palette.GOOD if row.unflagged_inaccurate == 0 else palette.BAD,
-                    color=color,
-                    bold=row.unflagged_inaccurate > 0,
+                tuple(
+                    palette.paint(
+                        part,
+                        palette.GOOD if row.unflagged_inaccurate == 0 else palette.BAD,
+                        color=color,
+                        bold=row.unflagged_inaccurate > 0,
+                    )
+                    for part in _percent_parts(row.unflagged_inaccurate, row.points)
                 ),
+                _stability_time(row, report, color),
             )
         )
-        times.append(_stability_time(row, report, color))
-    # Room for the time and its multiplier on one line, else the multiplier
-    # under the time when one line would pass the line width.
-    verdicts.max_width = {
-        verdicts.field_names[-1]: max(
-            (len(_ANSI.sub("", " ".join(parts))) for parts in times), default=14
-        )
-    }
-    for joiner in (" ", "\n"):
-        verdicts.clear_rows()
-        for cells, time_parts in zip(entries, times, strict=True):
-            verdicts.add_row((*cells, joiner.join(time_parts)))
-        text = str(verdicts.get_string())
-        if max(map(len, _ANSI.sub("", text).splitlines())) <= _width():
-            break
-    blocks.append(text)
+    blocks.append(_fit(verdicts, [(cells, False) for cells in entries]))
     best = _best_effort_table(report, served, prettytable, color)
     if best is not None:
         blocks.append(best)
@@ -672,7 +807,7 @@ def _best_effort_table(
         "Best-effort values (refused in binary64) against the truth",
         color=color,
     )
-    table.max_width = 20
+    best_rows: list[tuple[Sequence[Cell], bool]] = []
     for row in rows:
         points = [item for item in row.per_point if item.status == "best-effort"]
         true = sorted(float(item.true_digits) for item in points)
@@ -692,26 +827,31 @@ def _best_effort_table(
                 return palette.paint("-", palette.MUTED, color=color)
             return _number(value, color, palette.ESTIMATE)
 
-        table.add_row(
+        best_rows.append(
             (
-                _backend_label(row.backend, report.default_backend, color),
-                str(len(points)),
-                " / ".join(cell(v) for v in (true[0], med(true), true[-1])),
-                cell(med(known)),
-                cell(med(gaps)),
-                f"{row.best_effort_covered} of {len(known)}"
-                + (
-                    palette.paint(
-                        f" ({len(points) - len(known)} without)",
-                        palette.MUTED,
-                        color=color,
-                    )
-                    if len(known) < len(points)
-                    else ""
+                (
+                    _backend_label(row.backend, report.default_backend, color),
+                    str(len(points)),
+                    " / ".join(cell(v) for v in (true[0], med(true), true[-1])),
+                    cell(med(known)),
+                    cell(med(gaps)),
+                    (f"{row.best_effort_covered} of {len(known)}",)
+                    + (
+                        (
+                            palette.paint(
+                                f"({len(points) - len(known)} without)",
+                                palette.MUTED,
+                                color=color,
+                            ),
+                        )
+                        if len(known) < len(points)
+                        else ()
+                    ),
                 ),
+                False,
             )
         )
-    return str(table.get_string())
+    return _fit(table, best_rows)
 
 
 def loop_profile_summary(report: Any, *, prettytable: Any, color: bool) -> str:

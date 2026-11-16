@@ -277,9 +277,9 @@ class BackendRuntime:
     profile: VirtualProfileResult | None
     refusal: str | None = None
     ratio: float | None = None
-    # The reduction request of the timed calls: "auto" for the process
-    # type's default backend (its per-point fallback included, the default
-    # setup), the backend itself otherwise.
+    # The reduction request of the timed calls: the backend itself (the
+    # optimistic pass, the default), or with ``benchmark.checked`` "auto" for
+    # the process type's default backend (its per-point fallback included).
     requested: str | None = None
 
 

@@ -723,3 +723,153 @@ def test_peak_memory_measures_the_region():
     text = peak_memory_text(result)
     assert text.endswith(("MiB", "GiB"))
     assert text.startswith("<= ") == (result.scope != "profiled region")
+
+
+def test_every_table_fits_the_line_in_the_worst_case():
+    """Worst-case contents (an arbitrary-precision label of three digits,
+    six-digit counts, every optional runtime column as --checked shows
+    them, reference failures, best-effort points, failed points in the
+    percentile classes, an interrupted run, a long failure cause): every
+    table fits the 100-column line, with and without colour, and the cells
+    wrap at their parts (a value over its annotation), never inside one."""
+
+    from pyamplicol.benchmarking import PrecisionTiming, VirtualProfileResult
+    from pyamplicol.loop_profile import FailureCause, StabilityPoint, percentile_table
+    from pyamplicol.reporting import render_summary
+    from pyamplicol.reporting.loop_profile import _ANSI
+    from pyamplicol.reporting.resources import PeakMemory
+
+    n = 999_999
+    peak = PeakMemory(
+        123 * 1024**3, 1024**3, 122 * 1024**3, "process lifetime", "VmHWM"
+    )
+    profile = VirtualProfileResult(
+        "gg_zgg",
+        "g g > z g g",
+        "loop-induced",
+        1_000_000,
+        1,
+        1,
+        0.987654,
+        0.123456,
+        9.87654,
+        {"trees": 0.5, "dressing": 0.2, "scatter": 0.1, "reduction": 0.1, "rest": 0.1},
+        {"lanes": {"tirust": n, "ninjars": n}},
+        False,
+        n,
+        best_effort_points=n,
+        peak_memory=peak,
+        reference=PrecisionTiming(
+            "arbitrary", 16, 5, 1, 80, 98.7654, 98.0, 99.0, 0, digits=120
+        ),
+    )
+    rows = (
+        BackendRuntime("tirust", profile, ratio=1.0, requested="auto"),
+        BackendRuntime(
+            "ninjars", replace(profile, seconds_per_point=9.87654), ratio=10.0
+        ),
+    )
+    digits = [1.0, 7.5, 13.2, 15.9] * 250
+    estimated = [2.0, None, 12.0, 15.0] * 250
+    best = tuple(
+        StabilityPoint(i, "best-effort", 3.0, 4.0, "refused", 5.0) for i in range(50)
+    )
+    stability = BackendStability(
+        "tirust",
+        points=n,
+        failed_binary64=n,
+        failed_reference=n,
+        true_digits=tuple(digits),
+        estimated_digits=tuple(estimated),
+        percentiles=tuple(
+            replace(item, count=n, failed=n)
+            for item in percentile_table(digits, estimated)
+        ),
+        flagged=n,
+        flagged_inaccurate=n,
+        unflagged_inaccurate=n,
+        truly_inaccurate=n,
+        seconds=123456.0,
+        per_point=best,
+        best_effort=n,
+        best_effort_covered=n,
+        precision_timing={
+            "binary64": {"points": n, "seconds": 98765.4},
+            "arbitrary": {"points": n, "seconds": 98765.4 * 12345, "digits": 120},
+        },
+    )
+    truth = {"arithmetic": "arbitrary", "digits": 120, "label": "arb(120)"}
+    report = replace(
+        _report((stability, replace(stability, backend="ninjars")), rows, truth),
+        stability_setup={
+            "points": 1_000_000,
+            "requested": 1_000_000,
+            "measured_points": n,
+            "evaluated_per_backend": {"tirust": n, "ninjars": n - 1},
+            "interrupted": True,
+            "seed": 123456,
+            "sqrt_s": 13000.0,
+            "target": 1e-5,
+        },
+        failure_causes=(
+            FailureCause("tirust", "stability", "no reference", n, n + 1, "x " * 200),
+            FailureCause(
+                "ninjars", "runtime", "no value in arb(120)", n, n, "y " * 200
+            ),
+        ),
+    )
+    for color in (False, True):
+        text = _ANSI.sub("", render_summary(report, color=color))
+        widths = [len(line) for line in text.splitlines()]
+        assert max(widths) <= 100, text
+        assert "(arb(120)" in text and "x12345)" in text
+    # The case that reached 101 columns (FINDINGS M1): a backend with
+    # points without a reference; the annotation goes whole under its count,
+    # as the multiplier under its time.
+    usual = replace(
+        stability,
+        points=196,
+        failed_binary64=0,
+        failed_reference=4,
+        flagged=15,
+        flagged_inaccurate=0,
+        unflagged_inaccurate=0,
+        best_effort=15,
+        best_effort_covered=15,
+        per_point=best[:15],
+        precision_timing={
+            "binary64": {"points": 200, "seconds": 44.9},
+            "double-double": {"points": 200, "seconds": 139.2},
+        },
+    )
+    seen = replace(
+        report,
+        ground_truth=None,
+        runtime=None,
+        failure_causes=(),
+        stability=(replace(usual, backend="ninjars", failed_reference=0), usual),
+        stability_setup={**report.stability_setup, "interrupted": False},
+    )
+    lines = render_summary(seen, color=False).splitlines()
+    assert max(len(line) for line in lines) <= 100
+    first = next(i for i, line in enumerate(lines) if line.startswith("| TIRust"))
+    assert lines[first].split("|")[2].strip() == "196"
+    assert lines[first + 1].split("|")[2].strip() == "(+4 no ref.)"
+
+
+def test_unchecked_is_what_the_timed_calls_did():
+    """``VirtualProfileResult.unchecked`` is the timed calls' setting: a
+    checked call whose refused points were served best-effort (re-evaluated
+    unchecked) stays checked; the optimistic pass is unchecked."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.benchmarking import _timed_unchecked
+
+    checked = SimpleNamespace(unchecked=False, best_effort=None)
+    served = SimpleNamespace(unchecked=True, best_effort=object())
+    optimistic = SimpleNamespace(unchecked=True, best_effort=None)
+    assert _timed_unchecked([checked, served, served], {}) is False
+    assert _timed_unchecked([optimistic], {"reduction_unchecked": True}) is True
+    assert _timed_unchecked([served], {}) is False
+    assert _timed_unchecked([], {"reduction_unchecked": True}) is True
