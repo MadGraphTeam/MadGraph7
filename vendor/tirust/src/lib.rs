@@ -148,7 +148,22 @@ impl State {
                 // tier accepts conditioning down to 2^-80 (26 bits of headroom):
                 // on MadLoop's Zggg its results round to the 256-bit binary64
                 // values, at a fifth of their cost.
-                EmbedderOptions { precision_tiers: true, tier_margin_bits: 0, double_double_headroom_bits: 26, ..EmbedderOptions::default() },
+                // Lanes the binary64 gates refuse go to the tiers, never to
+                // TIRust's a priori method choice. Its small-Gram expansions
+                // stop at a relative change of 2^-30 and are unchecked, and
+                // MadLoop's direction check cannot see their error: the form
+                // factors depend only on the invariants, so both directions
+                // repeat it. On Zggg such tensors were up to 7e-6 off; on
+                // forward e+e- > mu+mu- (scattering angle 5e-4) the matrix
+                // element was 2.8e-5 off while MadLoop reported 1e-15. The
+                // tiers' gates bound their error instead.
+                EmbedderOptions {
+                    method_choice: false,
+                    precision_tiers: true,
+                    tier_margin_bits: 0,
+                    double_double_headroom_bits: 26,
+                    ..EmbedderOptions::default()
+                },
             ).map_err(|e| e.to_string())?;
             self.dp.insert(workspace_key, workspace);
         }
@@ -1396,6 +1411,77 @@ mod tests {
             )
         };
         (status, output)
+    }
+    // Forward e+e- > mu+mu- at a scattering angle of 5e-4 (t/s = 6.25e-8,
+    // complex-mass scheme), as MadLoop supplies it: a box with one Z
+    // propagator that the binary64 gates refuse. TIRust's method choice would
+    // serve it unchecked, 5e-10 off.
+    const FORWARD_BOX_P: [u64; 16] = [
+        0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+        0x407f400000000000, 0x0000000000000000, 0x0000000000000000, 0x407f400000000000,
+        0x408f400000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+        0x407f400000000000, 0x3fcfffffe9a16084, 0x0000000000000000, 0x407f3fffbe76c8cb,
+    ];
+    const FORWARD_BOX_S: [u64; 16] = [
+        0x0000000000000000, 0x0000000000000000, 0x412e848000000000, 0x0000000000000000,
+        0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0xbfaffffff4d0b042,
+        0x412e848000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+        0x0000000000000000, 0xbfaffffff4d0b042, 0x0000000000000000, 0x0000000000000000,
+    ];
+    const FORWARD_BOX_M: [u64; 8] = [
+        0x40c03da02c0a4a06, 0xc06c7b736a456e1e, 0x0000000000000000, 0x0000000000000000,
+        0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+    ];
+    const FORWARD_BOX_MU2: u64 = 0x412e848000000000;
+    #[test]
+    fn gate_refused_forward_box_takes_a_precision_tier_not_the_method_choice() {
+        use symbolica::domains::float::RealLike;
+        let bits = |b: &[u64]| b.iter().map(|&x| f64::from_bits(x)).collect::<Vec<_>>();
+        let (p, s) = (bits(&FORWARD_BOX_P), bits(&FORWARD_BOX_S));
+        let m: Vec<C64> = bits(&FORWARD_BOX_M).chunks_exact(2).map(|z| C64 { re: z[0], im: z[1] }).collect();
+        let mu2 = f64::from_bits(FORWARD_BOX_MU2);
+        let (key, nc) = dimensions(4, 2).unwrap();
+        let c = handle();
+        assert_eq!(unsafe { ml_tirust_register_plan(c, 4, 2) }, SUCCESS);
+        let mut out = vec![C64::default(); 4 * nc];
+        let status = unsafe {
+            ml_tirust_evaluate_dp(
+                c, 4, 2, p.as_ptr(), p.len(), s.as_ptr(), s.len(), m.as_ptr(), m.len(), mu2,
+                out.as_mut_ptr(), out.len(), 0, 1, 0, 1,
+            )
+        };
+        assert_eq!(status, SUCCESS);
+        // Primary block: refused by the binary64 gates, served by the
+        // double-double tier at its first attempt, never by the method choice.
+        let mut routes = [0u64; DP_ROUTE_STATS_COUNT];
+        assert_eq!(unsafe { ml_tirust_dp_route_statistics(c, routes.as_mut_ptr(), DP_ROUTE_STATS_COUNT) }, SUCCESS);
+        assert_eq!(routes[..DP_ROUTE_FIELDS], [0, 0, 1, 0, 0, 0, 0, 1, 0, 0]);
+        // Every slot agrees with a 1024-bit evaluation of the same binary64
+        // inputs to binary64 accuracy.
+        let state = unsafe { context(c).unwrap() }.state.lock().unwrap();
+        let mut reference = state.plans[&key].workspace(Float::new(1024)).unwrap();
+        reference.set_input_precision(53);
+        reference.set_stability_threshold(mp_threshold(1024));
+        let lifted = dp_batch(4, &p, &s, &m, mu2).unwrap();
+        let batch = KinematicsBatch {
+            rows: 1,
+            components: 1,
+            values: lifted.values.iter().map(|z| Complex::new(Float::with_val(1024, z.re), Float::with_val(1024, z.im))).collect(),
+        };
+        let values = reference.reduce_batch(&batch).unwrap();
+        let exact = values.lane(0).unwrap();
+        for slot in 0..4 {
+            let at = |k: usize| (exact[k * 4 + slot].re.to_f64(), exact[k * 4 + slot].im.to_f64());
+            let scale = (0..nc).map(|k| at(k).0.hypot(at(k).1)).fold(0.0, f64::max);
+            for k in 0..nc {
+                let (re, im) = at(k);
+                let got = out[slot * nc + k];
+                let error = (got.re - re).hypot(got.im - im);
+                assert!(error <= 1e-13 * scale, "slot {slot}, coefficient {k}: error {error:e}, slot scale {scale:e}");
+            }
+        }
+        drop(state);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
     }
     #[test]
     fn qp_gram_refusal_is_evaluated_again_at_512_bits() {

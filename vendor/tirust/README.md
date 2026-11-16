@@ -86,7 +86,7 @@ results. A failed full-DP reduction clears its numerical stores and its
 repeated-tensor cache. Ordinary numerical refusals retain warmed structural
 workspaces; a Rust reduction error or invalid lane discards both directional
 owners while retaining the immutable plan. Entries computed on any accepted
-route (direct, method choice or a precision tier) stay in the store: every
+route (direct or a precision tier) stay in the store: every
 entry is a pure function of its exact key (method, settings and input bits),
 so TIRust returns the same bits with or without it, and a later integral or
 retry receives exactly what it would compute itself.
@@ -100,6 +100,16 @@ of headroom, `double_double_headroom_bits`; its rounding amplified by at most
 2^-26); the MPFR tiers keep 40 bits. On MadLoop's QCD Zggg the double-double
 values of the lanes this admits round to the 256-bit binary64 values (all but
 2 of 53,200 recorded tensors bit-identical, those within 3e-28).
+
+Lanes the binary64 gates refuse go to the tiers, never to TIRust's a priori
+method choice (`method_choice: false`). Its small-Gram expansions stop at a
+relative change of 2^-30 and are unchecked, and MadLoop's loop-direction check
+cannot see their error: the form factors depend only on the invariants, so
+both directions repeat it. With the method choice, Zggg tensors were up to
+7e-6 from the tiers' values (which agree with 512-bit evaluations within
+4e-14), and forward e+e- > mu+mu- at a scattering angle of 5e-4 was 2.8e-5 off
+while MadLoop reported 1e-15. On MadLoop's Zggg traces the tiers cost about
+5% (check profile) to 22% (default card) more TIRust time per point.
 
 Register each `(N,rank)` plan before reducing a point. Clear numerical caches at
 the end of each phase-space point while retaining plans/workspaces. Full and
@@ -168,9 +178,10 @@ metadata. `tirust_dp_route_statistics(counts,status)` returns twenty cumulative
 **bridge execution** counters, with a primary block followed by an independent
 check block. Each block contains `[Direct, MethodChoice, Tier106, Tier256,
 Tier512, Refused, unreported/reduction-error, attempted106, attempted256,
-attempted512]`. Event-cache clearing preserves these counters. Fortran coefficient
-cache hits bypass the bridge and are outside their scope. A nonzero unreported
-bucket makes attempted-tier totals lower bounds.
+attempted512]`. This bridge never uses the method choice, so both MethodChoice
+counters stay zero. Event-cache clearing preserves these counters. Fortran
+coefficient cache hits bypass the bridge and are outside their scope. A nonzero
+unreported bucket makes attempted-tier totals lower bounds.
 
 Tier106 is DD. Tier256/512 process binary64 inputs with a DP numerator. None of
 these routes is the genuine binary128-input QP interface (256 bits, with one
