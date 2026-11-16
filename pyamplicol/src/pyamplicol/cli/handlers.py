@@ -985,18 +985,42 @@ class DefaultCliServices:
         }
 
     def group_processes(self, config: RunConfig, progress: ProgressSink) -> object:
-        del progress
         if config.evaluation.artifact is None:
             raise ConfigurationError("group-processes requires an artifact")
 
         from pyamplicol.api.process_groups import group_processes
-
-        return group_processes(
-            config.evaluation.artifact,
-            analysis=str(config.process.analyze_process_groups),
-            only_unit_multiplier=config.process.only_unit_multiplier,
-            consider_charge_conjugation=config.process.consider_charge_conjugation,
+        from pyamplicol.generation.progress import (
+            GenerationHistory,
+            GenerationPhaseReporter,
         )
+
+        artifact = config.evaluation.artifact
+        reporter = GenerationPhaseReporter(progress)
+        reporter.start_generation(
+            total=1,
+            details={},
+            signature=GenerationHistory.signature_of(
+                "group-processes",
+                str(Path(artifact).expanduser().resolve()),
+                config.process,
+            ),
+            description="Grouping processes",
+        )
+        try:
+            with reporter.phase("analysis", "Analysing the process groups"):
+                result = group_processes(
+                    artifact,
+                    analysis=str(config.process.analyze_process_groups),
+                    only_unit_multiplier=config.process.only_unit_multiplier,
+                    consider_charge_conjugation=(
+                        config.process.consider_charge_conjugation
+                    ),
+                )
+        except BaseException as error:
+            reporter.finish_generation(success=False, message=str(error))
+            raise
+        reporter.finish_generation()
+        return result
 
 
 __all__ = ["CliServices", "DefaultCliServices", "dispatch"]

@@ -633,10 +633,52 @@ def analyse_process_groups(
         (member.process for member in group_map.representatives if member.generated),
         key=lambda process: representative_key(process, model.table),
     )
+    from .progress import step
+
     kept: list[_Reference] = []
     relations: list[dict[str, object]] = []
     skipped: list[dict[str, str]] = []
-    for process in processes:
+    with step(
+        "compare", "Comparing the representatives", total=len(processes)
+    ) as counter:
+        _compare_all(
+            root,
+            processes,
+            model,
+            seed,
+            kept,
+            relations,
+            skipped,
+            group_map,
+            only_unit_multiplier,
+            consider_charge_conjugation,
+            counter,
+        )
+    return {
+        "processes_analysed": len(processes) - len(skipped),
+        "new_relations": relations,
+        "skipped": skipped,
+    }
+
+
+def _compare_all(
+    root: Path,
+    processes: Sequence[Any],
+    model: _Model,
+    seed: int,
+    kept: list[_Reference],
+    relations: list[dict[str, object]],
+    skipped: list[dict[str, str]],
+    group_map: ProcessGroupMap,
+    only_unit_multiplier: bool,
+    consider_charge_conjugation: bool,
+    counter: Any,
+) -> None:
+    """``analyse_process_groups``' comparison of each representative with
+    the earlier kept ones (``counter`` counts them)."""
+
+    for done, process in enumerate(processes, start=1):
+        counter.update(done - 1, message=process.process_id)
         try:
             probe = _Probe(root, process, model, seed)
             key = coarse_key(process, model.table)
@@ -683,11 +725,7 @@ def analyse_process_groups(
                 "conjugated": mapping.conjugated,
             }
         )
-    return {
-        "processes_analysed": len(processes) - len(skipped),
-        "new_relations": relations,
-        "skipped": skipped,
-    }
+    counter.update(len(processes))
 
 
 def _analysis_record(
