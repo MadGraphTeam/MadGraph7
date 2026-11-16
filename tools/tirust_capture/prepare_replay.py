@@ -48,7 +48,7 @@ def set_headroom(source, headroom):
 
 def cargo_manifest(bridge, sources, symbolica_rev):
     bridge, sources = Path(bridge).resolve(), Path(sources).resolve()
-    git = "https://github.com/ValentinHirschi/symbolica.git"
+    git = "https://github.com/symbolica-dev/symbolica.git"
     lines = [
         "[package]", 'name = "tirust-replay"', 'version = "0.1.0"', 'edition = "2024"', "publish = false", "",
         "[[bin]]", 'name = "replay"', f"path = {json.dumps(str(HERE / 'replay' / 'src' / 'main.rs'))}", "",
