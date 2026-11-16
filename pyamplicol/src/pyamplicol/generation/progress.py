@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock, current_thread, main_thread
 
 from pyamplicol.reporting import (
     NullProgressSink,
@@ -74,6 +74,51 @@ _CURRENT: ContextVar[PhaseHandle | None] = ContextVar(
 # time still counts in its phase and in the history).
 _KEEP_SECONDS = 1.0
 
+# Set on Ctrl-C (``cancel_generation``): a worker thread of the generation
+# stops at its next progress report instead of computing on, which would
+# starve the main thread's cleanup of the GIL.
+_CANCELLED = Event()
+
+
+class GenerationCancelled(Exception):
+    """Raised in a generation worker thread that reports progress after
+    Ctrl-C (``cancel_generation``)."""
+
+
+def cancel_generation() -> None:
+    """Ctrl-C: stop the generation's worker threads at their next report."""
+
+    _CANCELLED.set()
+
+
+def interrupt_threads(threads: tuple[object, ...]) -> None:
+    """Ctrl-C: raise ``GenerationCancelled`` in the generation's worker
+    ``threads`` at their next bytecode (CPython; a thread inside a native
+    call stops when it returns). Their ``with`` and ``finally`` blocks run;
+    their results are abandoned."""
+
+    import ctypes
+    import logging
+    import sys
+
+    if sys.implementation.name != "cpython":
+        return
+    # An idle worker stopped this way is reported by the pool as "Exception
+    # in worker" with a traceback, past the display: the pool is abandoned.
+    logging.getLogger("concurrent.futures").disabled = True
+    for thread in threads:
+        ident = getattr(thread, "ident", None)
+        if ident is None or thread is current_thread():
+            continue
+        ctypes.pythonapi.PyThreadState_SetAsyncExc(
+            ctypes.c_ulong(ident), ctypes.py_object(GenerationCancelled)
+        )
+
+
+def _stop_if_cancelled() -> None:
+    if _CANCELLED.is_set() and current_thread() is not main_thread():
+        raise GenerationCancelled("interrupted")
+
 
 @dataclass(slots=True)
 class PhaseHandle:
@@ -96,6 +141,7 @@ class PhaseHandle:
         total: int | None = None,
         details: Mapping[str, ProgressDetailValue] | None = None,
     ) -> None:
+        _stop_if_cancelled()
         with self._lock:
             self._update_locked(
                 completed,
@@ -110,6 +156,7 @@ class PhaseHandle:
         message: str | None = None,
         details: Mapping[str, ProgressDetailValue] | None = None,
     ) -> None:
+        _stop_if_cancelled()
         with self._lock:
             self._update_locked(
                 self.completed + 1,
@@ -159,6 +206,7 @@ class PhaseHandle:
         line in the scroll-back (when it lasted ``_KEEP_SECONDS``) and whose
         time is kept in the generation history."""
 
+        _stop_if_cancelled()
         task_id = f"{self.task_id}:{key}"
         path = f"{self.path}/{key}" if self.path else key
         prior = self.history.prior(path) if keep and self.history else None
@@ -418,6 +466,7 @@ class GenerationPhaseReporter:
         previous generation's phase and step times are this one's priors."""
 
         task_id = "generation"
+        _CANCELLED.clear()
         self._root_started_at = time.perf_counter()
         if self.sink is not None and signature is not None:
             self.history = GenerationHistory(signature)
@@ -567,13 +616,16 @@ class GenerationPhaseReporter:
 
 
 __all__ = [
+    "GenerationCancelled",
     "GenerationHistory",
     "GenerationPhaseReporter",
     "PhaseHandle",
     "PhaseTimes",
     "adopt_task",
+    "cancel_generation",
     "collect_phase_times",
     "history_signature",
+    "interrupt_threads",
     "record_phase",
     "release_task",
     "step",

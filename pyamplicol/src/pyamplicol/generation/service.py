@@ -3216,6 +3216,14 @@ def _shutdown_process_executor(executor: ThreadPoolExecutor) -> None:
     import sys
 
     interrupted = isinstance(sys.exc_info()[1], KeyboardInterrupt)
+    if interrupted:
+        from .progress import cancel_generation, interrupt_threads
+
+        # Its running processes stop: at their next progress report, and
+        # (pure-Python work that would starve the main thread's cleanup of
+        # the GIL) at their next bytecode.
+        cancel_generation()
+        interrupt_threads(tuple(getattr(executor, "_threads", ())))
     executor.shutdown(wait=not interrupted, cancel_futures=True)
 
 
