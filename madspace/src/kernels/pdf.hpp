@@ -85,10 +85,13 @@ KERNELSPEC FVal<T> pdf_extrapolate_linear(FVal<T> u, FVal<T> y_low, FVal<T> y_hi
 // at 1.01 Q0^2, at least -2.5, and 1 where |xf(Q0^2)| < 1e-5), which goes over
 // into xf(Q0^2) r for Q^2 << Q0^2. Above the last x knot, where LHAPDF stops
 // with an error, and for x or Q that is not positive the density is zero. It
-// takes the bicubic at two points in x (a and b) and two in Q^2 (c and d): the
-// point itself, below the grid x_min and the second x knot (t = 0 and 1 of the
-// first segment), above it Q^2_max and the knot before it (t = 1 and 0 of the
-// last segment), and below it Q^2_min and 1.01 Q^2_min.
+// takes the bicubic at up to two points in x (a and b) and two in Q^2 (c and d):
+// the point itself, below the grid x_min and the second x knot (t = 0 and 1 of
+// the first segment), above it Q^2_max and the knot before it (t = 1 and 0 of
+// the last segment), and below it Q^2_min and 1.01 Q^2_min. Each point takes
+// only the bicubics and the continuation of its own region, in a branch, since
+// the logarithms and exponentials of the continuations cost far more than the
+// bicubics.
 template <typename T>
 KERNELSPEC void pdf_outside_grid(
     FVal<T> x,
@@ -105,78 +108,105 @@ KERNELSPEC void pdf_outside_grid(
     std::size_t q2_index = binary_search<T>(logq2, grid_logq2, logq2_low, logq2_high);
 
     std::size_t x_knots = grid_logx.size() - 2, q2_knots = grid_logq2.size() - 2;
-    auto below_x = x_index == 0, above_x = x_index == x_knots;
-    auto below_q2 = q2_index == 0, above_q2 = q2_index == q2_knots;
+    bool below_x = x_index == 0, above_x = x_index == x_knots;
+    bool below_q2 = q2_index == 0, above_q2 = q2_index == q2_knots;
+    // zero above the grid in x, and for x or q that is not positive (as in
+    // the padding of a batch), where the logarithms above are not finite
+    if (above_x || !(x > 0.) || !(q > 0.)) {
+        for (std::size_t i = 0; i < pid_indices.size(); ++i) {
+            pdf[i] = FVal<T>(0.);
+        }
+        return;
+    }
     FVal<T> logx_min = grid_logx[1], logx_min_1 = grid_logx[2];
     FVal<T> logq2_min = grid_logq2[1];
     FVal<T> logq2_max = grid_logq2[q2_knots], logq2_max_1 = grid_logq2[q2_knots - 1];
 
-    std::size_t x_segment = below_x ? 1 : (above_x ? x_knots - 1 : x_index);
+    std::size_t x_segment = below_x ? 1 : x_index;
     FVal<T> t_x = (logx - logx_low) / (logx_high - logx_low);
-    FVal<T> t_a = where(below_x, FVal<T>(0.), where(above_x, FVal<T>(1.), t_x));
-    FVal<T> t_b = where(below_x, FVal<T>(1.), t_a);
+    FVal<T> t_a = where(below_x, FVal<T>(0.), t_x);
+    FVal<T> t_b(1.);
 
-    FVal<T> logq2_min_1 = logq2_min + log(1.01), logq2_d_low, logq2_d_high;
-    std::size_t q2_segment_d =
-        binary_search<T>(logq2_min_1, grid_logq2, logq2_d_low, logq2_d_high);
-    FVal<T> t_min_1 = (logq2_min_1 - logq2_d_low) / (logq2_d_high - logq2_d_low);
     std::size_t q2_segment_c = below_q2 ? 1 : (above_q2 ? q2_knots - 1 : q2_index);
-    q2_segment_d = below_q2 ? q2_segment_d : q2_segment_c;
+    std::size_t q2_segment_d = q2_segment_c;
     FVal<T> t_q2 = (logq2 - logq2_low) / (logq2_high - logq2_low);
     FVal<T> t_c = where(below_q2, FVal<T>(0.), where(above_q2, FVal<T>(1.), t_q2));
-    FVal<T> t_d = where(below_q2, t_min_1, where(above_q2, FVal<T>(0.), t_c));
+    FVal<T> t_d(0.);
+    FVal<T> log_r = logq2 - logq2_min, r(0.);
+    if (below_q2) {
+        FVal<T> logq2_min_1 = logq2_min + log(1.01), logq2_d_low, logq2_d_high;
+        q2_segment_d =
+            binary_search<T>(logq2_min_1, grid_logq2, logq2_d_low, logq2_d_high);
+        t_d = (logq2_min_1 - logq2_d_low) / (logq2_d_high - logq2_d_low);
+        r = exp(log_r);
+    }
 
+    // the second x point (b) only below the grid in x, the second Q^2 point (d)
+    // only below or above it in Q^2
+    bool need_b = below_x, need_d = below_q2 || above_q2;
     FVal<T> basis_ac[16], basis_bc[16], basis_ad[16], basis_bd[16];
     pdf_basis<T>(t_a, t_c, basis_ac);
-    pdf_basis<T>(t_b, t_c, basis_bc);
-    pdf_basis<T>(t_a, t_d, basis_ad);
-    pdf_basis<T>(t_b, t_d, basis_bd);
+    if (need_b) {
+        pdf_basis<T>(t_b, t_c, basis_bc);
+    }
+    if (need_d) {
+        pdf_basis<T>(t_a, t_d, basis_ad);
+    }
+    if (need_b && need_d) {
+        pdf_basis<T>(t_b, t_d, basis_bd);
+    }
     std::size_t row = grid_logx.size() - 1;
     std::size_t node_c = row * q2_segment_c + x_segment;
     std::size_t node_d = row * q2_segment_d + x_segment;
 
     FVal<T> u_x = (logx - logx_min) / (logx_min_1 - logx_min);
     FVal<T> u_q2 = (logq2 - logq2_max) / (logq2_max_1 - logq2_max);
-    FVal<T> log_r = logq2 - logq2_min, r = exp(log_r);
-    // zero above the grid in x, and for x or q that is not positive (as in
-    // the padding of a batch), where the logarithms above are not finite
-    auto zero = above_x | !(x > 0.) | !(q > 0.);
 
     for (std::size_t i = 0; i < pid_indices.size(); ++i) {
         std::size_t pid_index = pid_indices[i];
         FVal<T> f_ac = pdf_segment<T>(grid_coeffs, pid_index, node_c, basis_ac);
-        FVal<T> f_bc = pdf_segment<T>(grid_coeffs, pid_index, node_c, basis_bc);
-        FVal<T> f_ad = pdf_segment<T>(grid_coeffs, pid_index, node_d, basis_ad);
-        FVal<T> f_bd = pdf_segment<T>(grid_coeffs, pid_index, node_d, basis_bd);
+        FVal<T> f_bc(0.), f_ad(0.), f_bd(0.);
+        if (need_b) {
+            f_bc = pdf_segment<T>(grid_coeffs, pid_index, node_c, basis_bc);
+        }
+        if (need_d) {
+            f_ad = pdf_segment<T>(grid_coeffs, pid_index, node_d, basis_ad);
+        }
+        if (need_b && need_d) {
+            f_bd = pdf_segment<T>(grid_coeffs, pid_index, node_d, basis_bd);
+        }
 
-        // in Q^2 within the grid, and below it at Q^2_min and 1.01 Q^2_min
-        FVal<T> f_c = where(below_x, pdf_extrapolate_linear<T>(u_x, f_ac, f_bc), f_ac);
-        FVal<T> f_d = where(below_x, pdf_extrapolate_linear<T>(u_x, f_ad, f_bd), f_ad);
-        // above the grid in Q^2
-        FVal<T> f_a = pdf_extrapolate_linear<T>(u_q2, f_ac, f_ad);
-        FVal<T> f_b = pdf_extrapolate_linear<T>(u_q2, f_bc, f_bd);
-        FVal<T> f_above = where(below_x, pdf_extrapolate_linear<T>(u_x, f_a, f_b), f_a);
-        // below the grid in Q^2
-        auto finite = fabs(f_c) >= 1e-5;
-        FVal<T> f_c_safe = where(finite, f_c, FVal<T>(1.));
-        FVal<T> anom = where(
-            finite, max((f_d - f_c) / f_c_safe / 0.01, FVal<T>(-2.5)), FVal<T>(1.)
-        );
-        FVal<T> f_below = f_c * exp((anom * r + 1. - r) * log_r);
-
-        pdf[i] = where(
-            zero, FVal<T>(0.), where(below_q2, f_below, where(above_q2, f_above, f_c))
-        );
+        // in Q^2 within the grid, and below it at Q^2_min
+        FVal<T> f_c = below_x ? pdf_extrapolate_linear<T>(u_x, f_ac, f_bc) : f_ac;
+        if (below_q2) {
+            // and at 1.01 Q^2_min
+            FVal<T> f_d = below_x ? pdf_extrapolate_linear<T>(u_x, f_ad, f_bd) : f_ad;
+            auto finite = fabs(f_c) >= 1e-5;
+            FVal<T> f_c_safe = where(finite, f_c, FVal<T>(1.));
+            FVal<T> anom = where(
+                finite, max((f_d - f_c) / f_c_safe / 0.01, FVal<T>(-2.5)), FVal<T>(1.)
+            );
+            pdf[i] = f_c * exp((anom * r + 1. - r) * log_r);
+        } else if (above_q2) {
+            FVal<T> f_a = pdf_extrapolate_linear<T>(u_q2, f_ac, f_ad);
+            if (below_x) {
+                FVal<T> f_b = pdf_extrapolate_linear<T>(u_q2, f_bc, f_bd);
+                pdf[i] = pdf_extrapolate_linear<T>(u_x, f_a, f_b);
+            } else {
+                pdf[i] = f_a;
+            }
+        } else {
+            pdf[i] = f_c;
+        }
     }
 }
 
 // The bicubic interpolation in log x and log Q^2 of the grid, and outside of it
-// the extrapolation of pdf_outside_grid. Its four interpolations run only for
-// the points outside of the grid (in a vectorized kernel, for the vectors with a
-// lane outside of it). The knots of the grid are padded by -inf and +inf, so
-// that the segments of the n knots are 1 to n - 1, with the points below the
-// grid in segment 0 and those above it in segment n, whose coefficients are
-// zero.
+// the extrapolation of pdf_outside_grid, which runs only for the points outside
+// of the grid. The kernel is not vectorized, so both branch per point. The knots of the
+// grid are padded by -inf and +inf, so that the segments of the n knots are 1 to n - 1,
+// with the points below the grid in segment 0 and those above it in segment n, whose
+// coefficients are zero.
 template <typename T>
 KERNELSPEC void kernel_interpolate_pdf(
     FIn<T, 0> x,
