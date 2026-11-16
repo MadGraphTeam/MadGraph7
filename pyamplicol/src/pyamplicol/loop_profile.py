@@ -797,6 +797,7 @@ def profile_loop(
         return max(end - time.perf_counter(), 1.0), True
 
     monitor.remaining = provisional_remaining
+    monitor.tick()
     loading = monitor.phase("load", "Loading the artifact", None, "steps")
     loading.update(0, None, eta=None, step=f"loading {path.name}")
     load_begin = time.perf_counter()

@@ -23,6 +23,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -801,3 +802,62 @@ def test_the_samples_output_holds_every_record(uux_ddx, tmp_path):
     text = io.StringIO()
     assert run_cli(common, stdout=text, stderr=io.StringIO()) == 0
     assert "true digits" in text.getvalue() and path.is_file()
+
+
+class _Events:
+    def __init__(self) -> None:
+        self.events: list = []
+
+    def emit(self, event) -> None:
+        self.events.append(event)
+
+
+@pytest.mark.loop_physics
+def test_a_second_profile_estimates_the_whole_run_from_its_start(
+    uux_ddx, tmp_path, monkeypatch
+):
+    """A profile remembers the artifact's costs and its total (the history
+    in the pyAmpliCol cache, written with progress only): the next profile
+    with the same settings has a whole-run ETA before the artifact is even
+    loaded, near the first one's time; costs as small as 0.1 ms survive."""
+
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import GroundTruth, _ProfileHistory, profile_loop
+    from pyamplicol.reporting.progress import ProgressStart, ProgressUpdate
+
+    monkeypatch.setenv("PYAMPLICOL_CACHE_DIR", str(tmp_path / "cache"))
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "target_runtime": 0.5, "n_core": 1},
+        }
+    ).effective
+
+    def first_root_eta(sink):
+        for event in sink.events:
+            if isinstance(event, ProgressStart) and event.task_id != "loop-profile":
+                return None  # a phase started before any estimate
+            if (
+                isinstance(event, ProgressUpdate)
+                and event.task_id == "loop-profile"
+                and event.details.get("eta_seconds") is not None
+            ):
+                return float(event.details["eta_seconds"])
+        return None
+
+    first, second = _Events(), _Events()
+    before = time.perf_counter()
+    profile_loop(uux_ddx, config, progress=first)
+    took = time.perf_counter() - before
+    assert first_root_eta(first) is None
+    remembered = _ProfileHistory(uux_ddx, None, GroundTruth("double-double"))
+    assert remembered.cost("tirust", "binary64") is not None
+    assert 0.0 < remembered.cost("tirust", "binary64") < 0.1
+    profile_loop(uux_ddx, config, progress=second)
+    estimate = first_root_eta(second)
+    assert estimate is not None and 0.3 * took <= estimate <= 3.0 * took
+    # Without progress (a library call): nothing is written.
+    monkeypatch.setenv("PYAMPLICOL_CACHE_DIR", str(tmp_path / "quiet"))
+    profile_loop(uux_ddx, config)
+    assert not (tmp_path / "quiet").exists()
