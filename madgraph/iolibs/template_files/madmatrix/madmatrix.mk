@@ -73,10 +73,6 @@ endif
 
 #=== Configure MADMATRIX_BUILDDIR
 
-# Build directory "full" tag (used for build lockfiles to prevent mixing builds with different options)
-# NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...), see TAG below.
-override DIRTAG := $(BACKEND)_$(FPTYPE)_inl$(HELINL)
-
 # Build directory: build.<BACKEND> by default (USEBUILDDIR=1), or current directory if USEBUILDDIR=0
 # NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after the potential 'auto' resolution
 ifeq ($(USEBUILDDIR),1)
@@ -766,7 +762,7 @@ endif
 #=== Configure build directories and build lockfiles ===
 
 # Build lockfile "full" tag (defines full specification of object-file builds that cannot be intermixed)
-# NB: the backend name is used as-is, so it matches DIRTAG above (there is no common prefix to strip)
+# NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...)
 override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)
 
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
