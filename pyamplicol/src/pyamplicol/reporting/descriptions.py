@@ -515,7 +515,75 @@ def _check(report: Any) -> list[Block]:
     ]
 
 
-def _generation() -> list[Block]:
+def _statistics_method(statistics: Any) -> str:
+    """How a generation's peak RAM was measured, in words."""
+
+    method = str(getattr(statistics, "peak_rss_method", "") or "")
+    if not method or method == "unavailable":
+        return ""
+    process, _, descendants = method.partition("; ")
+    words = {
+        "VmHWM after clear_refs": (
+            "the kernel's high-water mark VmHWM, reset when the generation "
+            "starts (/proc/self/clear_refs)"
+        ),
+        "VmHWM": (
+            "the kernel's lifetime high-water mark VmHWM (not reset: the "
+            "reset was refused, or the generation ran inside another measured "
+            "region)"
+        ),
+    }.get(
+        process,
+        "getrusage's lifetime peak ru_maxrss (no resettable mark on this platform)"
+        if process.startswith("ru_maxrss")
+        else process,
+    )
+    if descendants.startswith("descendants every "):
+        interval, _, source = descendants.removeprefix("descendants every ").partition(
+            " from "
+        )
+        sampler, _, rusage = source.partition(" and ")
+        descendants = f"the started processes summed every {interval} ({sampler})" + (
+            ", and their largest peak from getrusage RUSAGE_CHILDREN" if rusage else ""
+        )
+    return f"; measured from {words}" + (f"; {descendants}" if descendants else "")
+
+
+def _generation_statistics(statistics: Any) -> list[tuple[str | None, str]]:
+    """The descriptions of the ``generation time`` and ``peak RAM`` rows
+    (``summary._generation_statistics_rows``)."""
+
+    return [
+        (
+            "generation time",
+            "the wall-clock time of the generation: the whole generate call, "
+            "from reading the processes to the last validation (the start-up "
+            "of the command before it is not included); in brackets each "
+            "generation phase (setup: reading the request and loading the "
+            "generation engine; then the phases of the progress display) and "
+            "the unattributed rest (between and around the phases), which add "
+            "up to it; '-': not recorded (an artifact written before "
+            "pyAmpliCol recorded it)",
+        ),
+        (
+            "peak RAM",
+            "the most memory the generation needed at once: the peak resident "
+            "memory of the generating process, its threads (native thread "
+            "pools included), and every process it started (compilers)"
+            + _statistics_method(statistics)
+            + "; '<= x': only the process's lifetime peak x is known, which "
+            "the generation did not raise; '>= x': the generation started "
+            "processes, so the peak of all of them together is at least x "
+            "(in brackets the generating process's own peak when the peak is "
+            "not it and, when above it, the largest one of a started process: "
+            "the system credits a started process with the memory of the "
+            "process that starts it); "
+            "'-': not recorded",
+        ),
+    ]
+
+
+def _generation(statistics: Any = None) -> list[Block]:
     return [
         (
             "Generation summary",
@@ -525,6 +593,7 @@ def _generation() -> list[Block]:
                 ("existing-output policy", "what happens to an existing output"),
                 ("schema version", "the artifact format version"),
                 ("files", "the files written and their total size"),
+                *_generation_statistics(statistics),
             ],
         ),
         (
@@ -534,6 +603,41 @@ def _generation() -> list[Block]:
                 ("process", "the process as generated"),
             ],
         ),
+    ]
+
+
+# The columns of a table without a description of its own.
+_GENERIC_COLUMNS: list[tuple[str | None, str]] = [
+    ("field", "the name of the quantity"),
+    (
+        "value",
+        "its value; signed numbers carry an explicit + so that the digits align",
+    ),
+]
+
+
+def _inspection(statistics: Any) -> list[Block]:
+    return [
+        (
+            "Artifact",
+            [
+                ("path", "the artifact directory"),
+                ("artifact type", "a process artifact or a process set"),
+                ("artifact ID", "the digest of the payloads the runtime loads"),
+                ("created", "when the artifact was written (UTC)"),
+                *_generation_statistics(statistics),
+                ("producer", "the pyAmpliCol version that wrote it"),
+                ("target", "the platform its payloads are built for"),
+                ("model", "the model, its restriction and its source"),
+                ("default process", "the process evaluated when none is named"),
+                ("contents", "the processes and aliases it holds"),
+                ("runtime", "the runtime engine and its version"),
+                ("capabilities", "the runtime features it requires"),
+                ("payloads", "its files and their total size"),
+                ("integrity", "whether every payload matches its digest"),
+            ],
+        ),
+        ("Other tables", _GENERIC_COLUMNS),
     ]
 
 
@@ -661,6 +765,7 @@ def field_descriptions(value: Any) -> str:
         VirtualEvaluation,
         VirtualOrderEvaluation,
     )
+    from pyamplicol.artifacts.inspection import ArtifactInspection
     from pyamplicol.diagnostics import DiagnosticReport
     from pyamplicol.loop_profile import LoopProfileReport
     from pyamplicol.loops.v2.checks import CheckReport
@@ -675,7 +780,9 @@ def field_descriptions(value: Any) -> str:
     elif isinstance(value, CheckReport):
         blocks = _check(value)
     elif isinstance(value, GenerationResult):
-        blocks = _generation()
+        blocks = _generation(value.statistics)
+    elif isinstance(value, ArtifactInspection):
+        blocks = _inspection(value.generation_statistics)
     elif isinstance(value, ResolvedEvaluation):
         blocks = _tree_evaluation(True)
     elif (
@@ -699,19 +806,7 @@ def field_descriptions(value: Any) -> str:
     ):
         blocks = _examples()
     else:
-        blocks = [
-            (
-                "Tables",
-                [
-                    ("field", "the name of the quantity"),
-                    (
-                        "value",
-                        "its value; signed numbers carry an explicit + so that "
-                        "the digits align",
-                    ),
-                ],
-            )
-        ]
+        blocks = [("Tables", _GENERIC_COLUMNS)]
     return _render(blocks)
 
 

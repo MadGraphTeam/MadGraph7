@@ -3862,8 +3862,8 @@ class GenerationBackend:
 
         inputs_started = time.perf_counter()
         model_inputs = self._recurrence_model_inputs(resolved_model)
-        reporter.timings["on-the-fly-model-input-preparation"] = (
-            time.perf_counter() - inputs_started
+        reporter.record(
+            "on-the-fly-model-input-preparation", time.perf_counter() - inputs_started
         )
         with TemporaryDirectory(prefix="pyamplicol-on-the-fly-generation-") as root:
             temporary_root = Path(root)
@@ -4301,8 +4301,9 @@ class GenerationBackend:
         expanded = self._drop_processes_without_amplitudes(expanded, generation_model)
         model_inputs_started = time.perf_counter()
         model_inputs = self._recurrence_model_inputs(resolved_model)
-        reporter.timings["recurrence-model-input-preparation"] = (
-            time.perf_counter() - model_inputs_started
+        reporter.record(
+            "recurrence-model-input-preparation",
+            time.perf_counter() - model_inputs_started,
         )
         with TemporaryDirectory(
             prefix="pyamplicol-recurrence-generation-"

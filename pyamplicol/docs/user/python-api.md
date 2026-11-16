@@ -59,7 +59,10 @@ print(result.output)
 
 `plan()` resolves the model/process/color/evaluator contract without writing a
 process artifact. `generate()` returns an immutable `GenerationResult` with the
-absolute output, stored process set, schema version, and file inventory.
+absolute output, stored process set, schema version, and file inventory, and
+`statistics`, a `GenerationStatistics` with the wall time of the call, its
+phases and the peak RAM of the generation (also stored in the artifact; see
+[the generate summary](command-line-interface.md#generate)).
 
 The packaged scalar HEFT model uses the same public selector:
 
