@@ -206,7 +206,11 @@ The release inventory is exactly one source distribution and one wheel per
 supported target. Publication never rebuilds these files.
 
 The validated-artifact workflow is manually dispatched with read-only source
-permissions. A separate manual publishing workflow downloads the successful
+permissions. Every wheel is built from the one retained sdist. The manylinux
+job also builds a comparison wheel from the checkout and requires the same
+filename, version, tags and target; the macOS jobs build the sdist wheel only
+(`--skip-checkout-wheel`): two native builds do not fit the six-hour job limit
+on `macos-15-intel`, and the sdist wheel's own audit pins the same fields. A separate manual publishing workflow downloads the successful
 validated inventory, verifies the expected platforms and non-candidate version,
 and publishes through a protected TestPyPI or PyPI environment using OIDC
 Trusted Publishing. Only that final job receives `id-token: write`.
