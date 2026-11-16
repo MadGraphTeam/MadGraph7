@@ -346,11 +346,16 @@ class ResourceUsageMonitor:
             self._sample_once()
 
     def _sample_once(self) -> None:
+        # A failed sample keeps the last usage: the monitor never fails the
+        # work it watches, nor stops on one bad read.
         try:
             rss_bytes, process_count = self._sampler.sample(self._snapshotter())
-        except (OSError, ResourceProbeError, subprocess.SubprocessError, ValueError):
+        except Exception:
             return
-        busy = self._busy_cores()
+        try:
+            busy = self._busy_cores()
+        except Exception:
+            busy = None
         with self._lock:
             peak = max(self._usage.peak_rss_bytes or 0, rss_bytes)
             self._usage = ResourceUsage(

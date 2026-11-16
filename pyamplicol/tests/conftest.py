@@ -203,6 +203,16 @@ for _name in _EXTERNAL_INPUTS:
     globals()[_name] = _input_fixture(_name)
 
 
+@pytest.fixture(autouse=True)
+def _a_capable_terminal(monkeypatch):
+    """Tests see a capable terminal whatever the developer's shell says
+    (``TERM=dumb`` gets the line display and no colour, ``NO_COLOR`` no
+    colour); a test about those sets them itself."""
+
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.delenv("NO_COLOR", raising=False)
+
+
 @pytest.fixture(scope="session")
 def loop_sm_compiled_model(loop_sm_ufo, tmp_path_factory):
     """loop_sm compiled once per session with the checked scalar-arity view."""

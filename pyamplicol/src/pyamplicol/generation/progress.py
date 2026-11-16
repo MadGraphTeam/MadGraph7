@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
 import os
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -22,7 +23,7 @@ from pyamplicol.reporting import (
     ProgressStart,
     ProgressUpdate,
 )
-from pyamplicol.reporting.progress import ProgressDetailValue
+from pyamplicol.reporting.progress import ProgressDetailValue, ProgressEvent
 
 
 @dataclass(slots=True)
@@ -92,6 +93,18 @@ def cancel_generation() -> None:
     _CANCELLED.set()
 
 
+class _AbandonedPoolFilter:
+    """Drop the "Exception in worker" records of pyAmpliCol's process-phase
+    pools stopped after Ctrl-C (``interrupt_threads``)."""
+
+    def filter(self, record: object) -> bool:
+        thread = str(getattr(record, "threadName", ""))
+        message = getattr(record, "msg", "")
+        return not (
+            thread.startswith("pyamplicol-") and message == "Exception in worker"
+        )
+
+
 def interrupt_threads(threads: tuple[object, ...]) -> None:
     """Ctrl-C: raise ``GenerationCancelled`` in the generation's worker
     ``threads`` at their next bytecode (CPython; a thread inside a native
@@ -104,9 +117,12 @@ def interrupt_threads(threads: tuple[object, ...]) -> None:
 
     if sys.implementation.name != "cpython":
         return
-    # An idle worker stopped this way is reported by the pool as "Exception
-    # in worker" with a traceback, past the display: the pool is abandoned.
-    logging.getLogger("concurrent.futures").disabled = True
+    # A worker stopped this way is reported by the pool as "Exception in
+    # worker" with a traceback, past the display: those records of the
+    # abandoned pyAmpliCol pools are dropped (nothing else of the logger).
+    pool_logger = logging.getLogger("concurrent.futures")
+    if not any(isinstance(item, _AbandonedPoolFilter) for item in pool_logger.filters):
+        pool_logger.addFilter(_AbandonedPoolFilter())
     for thread in threads:
         ident = getattr(thread, "ident", None)
         if ident is None or thread is current_thread():
@@ -119,6 +135,21 @@ def interrupt_threads(threads: tuple[object, ...]) -> None:
 def _stop_if_cancelled() -> None:
     if _CANCELLED.is_set() and current_thread() is not main_thread():
         raise GenerationCancelled("interrupted")
+
+
+def _emit(sink: ProgressSink | None, event: Callable[[], ProgressEvent]) -> None:
+    """Build and emit one progress event; a failure of either (a value the
+    event refuses, a sink that raises) is the display's, never the
+    generation's: it is reported once and the work goes on."""
+
+    if sink is None:
+        return
+    try:
+        sink.emit(event())
+    except Exception as error:  # the display never fails the work
+        from pyamplicol.reporting.progress import _display_failed
+
+        _display_failed(None, error, "the other progress events")
 
 
 @dataclass(slots=True)
@@ -182,14 +213,15 @@ class PhaseHandle:
             bounded = min(completed, active_total)
         self.completed = max(self.completed, bounded)
         if self.sink is not None:
-            self.sink.emit(
-                ProgressUpdate(
+            _emit(
+                self.sink,
+                lambda: ProgressUpdate(
                     self.task_id,
                     completed=self.completed,
                     total=active_total,
                     message=message,
                     details={} if details is None else details,
-                )
+                ),
             )
 
     @contextmanager
@@ -215,15 +247,16 @@ class PhaseHandle:
             start_details = dict(details or {})
             if prior is not None:
                 start_details["prior_seconds"] = prior
-            self.sink.emit(
-                ProgressStart(
+            _emit(
+                self.sink,
+                lambda: ProgressStart(
                     task_id,
                     description,
                     total=total,
                     parent_task_id=self.task_id,
                     unit=unit,
                     details=start_details,
-                )
+                ),
             )
         handle = PhaseHandle(task_id, self.sink, total, history=self.history, path=path)
         token = _CURRENT.set(handle) if keep else None
@@ -232,15 +265,17 @@ class PhaseHandle:
             yield handle
         except BaseException as exc:
             elapsed = time.perf_counter() - started
+            failure = _failure_message(exc)
             if self.sink is not None:
-                self.sink.emit(
-                    ProgressEnd(
+                _emit(
+                    self.sink,
+                    lambda: ProgressEnd(
                         task_id,
                         success=False,
-                        message=_failure_message(exc),
+                        message=failure,
                         elapsed_seconds=elapsed,
                         details={"keep": keep},
-                    )
+                    ),
                 )
             raise
         finally:
@@ -252,13 +287,14 @@ class PhaseHandle:
         if total is not None and handle.completed < total:
             handle.update(total)
         if self.sink is not None:
-            self.sink.emit(
-                ProgressEnd(
+            _emit(
+                self.sink,
+                lambda: ProgressEnd(
                     task_id,
                     message=handle.summary,
                     elapsed_seconds=elapsed,
                     details={"keep": keep and elapsed >= _KEEP_SECONDS},
-                )
+                ),
             )
 
 
@@ -320,6 +356,13 @@ def history_signature(kind: str, run_config: object | None) -> str | None:
 
     if run_config is None:
         return None
+    try:
+        return _signature(kind, run_config)
+    except Exception:  # no history rather than a failure
+        return None
+
+
+def _signature(kind: str, run_config: object) -> str:
     import dataclasses
 
     generation = getattr(run_config, "generation", None)
@@ -358,6 +401,12 @@ class GenerationHistory:
         self.previous: dict[str, float] = {}
         self.order: list[str] = []
         self.current: dict[str, float] = {}
+        try:
+            self._read(signature)
+        except Exception:  # a history that cannot be read: no priors
+            self.previous, self.order = {}, []
+
+    def _read(self, signature: str | None) -> None:
         if signature is not None:
             record = self._load().get(signature)
             if isinstance(record, dict):
@@ -383,7 +432,8 @@ class GenerationHistory:
         ).hexdigest()
 
     def prior(self, path: str) -> float | None:
-        return self.previous.get(path)
+        value = self.previous.get(path)
+        return value if isinstance(value, float) and math.isfinite(value) else None
 
     def later(self, started: set[str]) -> tuple[float, bool] | None:
         """The previous run's time of the phases not started yet (None
@@ -391,13 +441,19 @@ class GenerationHistory:
 
         if not self.order:
             return None
-        seconds = sum(
-            self.previous.get(name, 0.0) for name in self.order if name not in started
-        )
+        try:
+            seconds = sum(
+                self.previous.get(name, 0.0)
+                for name in self.order
+                if name not in started
+            )
+        except Exception:
+            return None
         return (seconds, True) if math.isfinite(seconds) else None
 
     def observe(self, path: str, seconds: float) -> None:
-        self.current[path] = self.current.get(path, 0.0) + seconds
+        with contextlib.suppress(Exception):
+            self.current[path] = self.current.get(path, 0.0) + seconds
 
     def store(self, phases: list[str]) -> None:
         if self.signature is None:
@@ -417,7 +473,7 @@ class GenerationHistory:
             temporary = path.with_name(f".{path.name}.{os.getpid()}")
             temporary.write_text(json.dumps(data), encoding="utf-8")
             os.replace(temporary, path)
-        except (OSError, TypeError, ValueError):
+        except Exception:  # an unwritable history: none stored
             return
 
     def _path(self) -> Path:
@@ -435,7 +491,7 @@ class GenerationHistory:
     def _load(self) -> dict[str, object]:
         try:
             data = json.loads(self._path().read_text(encoding="utf-8"))
-        except (OSError, ValueError, ImportError):
+        except Exception:  # unreadable: no history
             return {}
         return data if isinstance(data, dict) else {}
 
@@ -476,14 +532,15 @@ class GenerationPhaseReporter:
         if later is not None:
             root_details["later_prior_seconds"] = later[0]
         if self.sink is not None:
-            self.sink.emit(
-                ProgressStart(
+            _emit(
+                self.sink,
+                lambda: ProgressStart(
                     task_id,
                     description,
                     total=total,
                     unit="phases",
                     details=root_details,
-                )
+                ),
             )
         self.root = PhaseHandle(task_id, self.sink, total, history=self.history)
 
@@ -505,13 +562,14 @@ class GenerationPhaseReporter:
         if success and self.history is not None:
             self.history.store(self._phases)
         if self.sink is not None:
-            self.sink.emit(
-                ProgressEnd(
+            _emit(
+                self.sink,
+                lambda: ProgressEnd(
                     self.root.task_id,
                     success=success,
                     message=message,
                     elapsed_seconds=elapsed,
-                )
+                ),
             )
         self._root_started_at = None
 
@@ -533,22 +591,24 @@ class GenerationPhaseReporter:
                 later = history.later(set(self._phases))
                 if later is not None:
                     # The root's estimate: this phase's plus the phases to come.
-                    self.sink.emit(
-                        ProgressUpdate(
+                    _emit(
+                        self.sink,
+                        lambda: ProgressUpdate(
                             self.root.task_id,
                             completed=self.root.completed,
                             total=self.root.total,
                             details={"later_prior_seconds": later[0]},
-                        )
+                        ),
                     )
-            self.sink.emit(
-                ProgressStart(
+            _emit(
+                self.sink,
+                lambda: ProgressStart(
                     task_id,
                     description,
                     total=total,
                     parent_task_id=None if self.root is None else self.root.task_id,
                     details={} if prior is None else {"prior_seconds": prior},
-                )
+                ),
             )
         handle = PhaseHandle(task_id, self.sink, total, history=history, path=name)
         token = _CURRENT.set(handle)
@@ -564,15 +624,17 @@ class GenerationPhaseReporter:
             _CURRENT.reset(token)
             self._close_phase(times, top, name, elapsed)
             self.timings[name] = elapsed
+            failure = _failure_message(exc)
             if self.sink is not None:
-                self.sink.emit(
-                    ProgressEnd(
+                _emit(
+                    self.sink,
+                    lambda: ProgressEnd(
                         task_id,
                         success=False,
-                        message=_failure_message(exc),
+                        message=failure,
                         elapsed_seconds=elapsed,
                         details={"keep": True},
-                    )
+                    ),
                 )
             raise
         _CURRENT.reset(token)
@@ -584,13 +646,14 @@ class GenerationPhaseReporter:
         if total is not None and handle.completed < total:
             handle.update(total)
         if self.sink is not None:
-            self.sink.emit(
-                ProgressEnd(
+            _emit(
+                self.sink,
+                lambda: ProgressEnd(
                     task_id,
                     message=handle.summary,
                     elapsed_seconds=elapsed,
                     details={"keep": True},
-                )
+                ),
             )
         if self.root is not None:
             self.root.advance(
