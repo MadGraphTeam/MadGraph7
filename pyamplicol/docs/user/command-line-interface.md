@@ -201,6 +201,40 @@ Useful generation options include:
   see [Configuration](configuration.md)), and `--allow-failed-probes` to
   store a process whose probe failed (it acts only with the probes on).
 
+The summary table after a generation lists the output, the processes, the
+existing-output policy, the schema version, the files, and two measurements of
+the generation:
+
+- `generation time`: the wall-clock time of the whole generate call, from
+  reading the processes to the last validation (the start-up of the command
+  before it is not included), in bold, then, in brackets, each generation phase
+  (`setup`: reading the request and loading the generation engine; then the
+  phases of the progress display) and the unattributed rest, which add up to
+  it;
+- `peak RAM`: the most memory the generation needed at once, the peak
+  resident memory of the generating process (its threads, native thread pools
+  included) and of every process it started (compilers of the `cpp` backend).
+
+On Linux the process's peak is the kernel's high-water mark `VmHWM`, reset at
+the start of the generation (`/proc/self/clear_refs`): exact. Where the reset
+is refused, and on macOS (`getrusage` `ru_maxrss`), only the process's
+lifetime peak is known: it is the generation's when the generation raised it,
+else an upper bound, shown `<= x`. Started processes are followed by a thread
+that sums the resident sizes of the process tree every second (Linux: the
+`/proc` children lists; macOS: `ps`) and, on Linux, by the largest peak of an
+ended one (`getrusage` `RUSAGE_CHILDREN`); with started processes the peak is
+shown `>= x` (processes running together may have needed more), followed by
+the generating process's own peak and the largest one of a started process. The
+default `jit` backend and the one-loop engine start no process, so their peak
+is exact on Linux. `--fields-description-help` describes each row, and
+`--json` carries the same values under `statistics`: `wall_seconds`, `phases`
+(a list of `{"phase", "seconds"}`), `unattributed_seconds`, `peak_rss_bytes`,
+`peak_rss_bound` (`exact`, `upper bound`, `lower bound`, `approximate` or
+`unknown`), `peak_rss_method`, `process_peak_rss_bytes`, `child_processes` and
+`child_peak_rss_bytes`. The artifact stores them too (see
+[Artifacts and Portability](artifacts-and-portability.md#generation-statistics)),
+so `inspect` shows them later.
+
 Planning is non-writing:
 
 ```console
@@ -309,6 +343,12 @@ the ordering contract.
 
 Inspection does not execute evaluator state. Human output uses compact colored
 tables; machine output is available with `--json`.
+
+The `Artifact` table shows, after `created`, the `generation time` and the
+`peak RAM` of the generation that wrote the artifact, as the generate summary
+showed them; an artifact written before pyAmpliCol recorded them shows a muted
+`-`. `--json` carries them as `generation_statistics` (`null` when not
+recorded).
 
 The `Process groups` section shows the artifact's
 [process-group map](process-grouping.md): an overview row, then one table of

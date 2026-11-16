@@ -97,6 +97,22 @@ Artifacts must explicitly carry the current identity-contract marker and
 runtime ABI. Old internal process-artifact formats are not automatically
 migrated; regenerate them with the current pyAmpliCol version.
 
+## Generation statistics
+
+`artifact.json` records the wall time and the peak memory of the generation
+that wrote the artifact (the last one, after an append) under
+`extensions.generation.statistics`: `wall_seconds`, `phases` (the generation
+phases in order, `{"phase", "seconds"}`), `unattributed_seconds` (the rest of
+the wall time), `peak_rss_bytes` with `peak_rss_bound` and `peak_rss_method`,
+`process_peak_rss_bytes`, `child_processes` and `child_peak_rss_bytes`, with
+`schema_version` 1 (the [generate summary](command-line-interface.md#generate)
+says what each one measures). They are report-only metadata outside the
+runtime identity: recording them leaves `artifact_id` unchanged, and readers
+that do not know them ignore them. `phase_timings_seconds` next to them keeps
+the detailed timings known when the payloads were written (per-process
+sub-steps included). Artifacts written before pyAmpliCol recorded the
+statistics have none; `inspect` shows `-` for them.
+
 ## Fast loading versus an explicit checksum audit
 
 Normal loading validates the inexpensive authoritative boundary:
