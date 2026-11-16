@@ -2984,6 +2984,7 @@ def profile_virtual(
     reference: Mapping[str, Any] | None = None,
     artifact: os.PathLike[str] | str | None = None,
     optimistic: bool = False,
+    monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
     (``VirtualProfileResult``) on ``points`` (default: the distinct flat
@@ -3007,7 +3008,11 @@ def profile_virtual(
     ``reference``: the ``Runtime.evaluate`` options of a reference carrier
     (``arithmetic`` and, for arbitrary precision, ``precision``) timed after
     the binary64 calls (``_reference_timing``); the peak RAM is the binary64
-    calls'."""
+    calls'. ``monitor(phase, payload)``: "binary64" after every binary64
+    call (``done``, ``total``, ``eta_seconds``, the timed ``walls``, the
+    running ``seconds_per_point``), "binary64-result" with the binary64
+    ``profile`` before the reference pass starts, "reference" after every
+    reference call (``_reference_timing``)."""
 
     from pyamplicol.api import Runtime
 
@@ -3060,7 +3065,7 @@ def profile_virtual(
         ),
     )
     initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
-    options: dict[str, Any] = {"poles": "none", "on_failure": on_failure}
+    options = {"poles": "none", "on_failure": on_failure}
     if reduction is not None:
         options["reduction"] = reduction
     if optimistic:
@@ -3075,18 +3080,50 @@ def profile_virtual(
             return evaluation.mu_r2
         return [_initial_invariant(point, initial) for point in batch]
 
+    size = bench.batch_size
+
+    def report(
+        done: int, total: int, eta: float | None, walls: Sequence[float]
+    ) -> None:
+        if progress is not None:
+            progress(done, total)
+        if monitor is not None:
+            monitor(
+                "binary64",
+                {
+                    "done": done,
+                    "total": total,
+                    "eta_seconds": eta,
+                    "walls": list(walls),
+                    "points": size,
+                    "seconds_per_point": (
+                        statistics.median(walls) / size if walls else None
+                    ),
+                },
+            )
+
     with peak_memory() as peak:
         profile = _profile_virtual_calls(
-            runtime, batches, bench, options, scales, progress
+            runtime, batches, bench, options, scales, report
         )
+    profile = replace(profile, peak_memory=peak.result)
+    if monitor is not None:
+        monitor("binary64-result", {"profile": profile})
     timing = None
     if reference is not None:
         with peak_memory() as reference_peak:
             timing = _reference_timing(
-                runtime, batches, bench, reduction, scales, reference
+                runtime,
+                batches,
+                bench,
+                reduction,
+                scales,
+                reference,
+                binary64=profile.seconds_per_point,
+                monitor=monitor,
             )
         timing = replace(timing, peak_memory=reference_peak.result)
-    return replace(profile, peak_memory=peak.result, reference=timing)
+    return replace(profile, reference=timing)
 
 
 @contextlib.contextmanager
@@ -3103,41 +3140,125 @@ def _collector_off() -> Iterator[None]:
             gc.enable()
 
 
+def recent_rate(walls: Sequence[float], window: int = 5) -> float | None:
+    """The cost of the next call from the calls so far: the median of the
+    last ``window`` (robust to one outlier, and following a drift within a
+    few calls); None before the first."""
+
+    if not walls:
+        return None
+    return float(statistics.median(walls[-window:]))
+
+
 def _timed_calls(
     bench: BenchmarkConfig,
     call: Callable[[int], float],
-    progress: Callable[[int, int], None] | None = None,
+    progress: Callable[[int, int, float | None, Sequence[float]], None] | None = None,
 ) -> list[float]:
     """The profile protocol: ``warmup_runs`` untimed calls, then timed calls
     until there are at least ``max(minimum_samples, 1)`` and their wall
     times add up to ``target_runtime`` (the budget: the next call is made
     while the timed ones are short of it). ``call(k)`` makes call k
     (warm-ups counted) and returns its wall seconds; ``progress(done,
-    total)`` after each call, ``total`` the calls planned from the mean
-    timed call so far. Python's cyclic garbage collector stays out of the
-    timed calls, as ``timeit`` keeps it out: one collection before them,
-    the collector off during each (``_collector_off``; a generation-2
-    collection inside a call cost 80-120 ms on gg_zz). The timed calls'
-    seconds."""
+    total, eta_seconds, walls)`` after each call: ``total`` the calls
+    planned from the recent calls' cost (``recent_rate``), ``eta_seconds``
+    the time the planned calls left take at that cost (None before any is
+    back), ``walls`` the timed calls' seconds so far. Python's cyclic
+    garbage collector stays out of the timed calls, as ``timeit`` keeps it
+    out: one collection before them, the collector off during each
+    (``_collector_off``; a generation-2 collection inside a call cost
+    80-120 ms on gg_zz). The timed calls' seconds."""
 
     warmup = bench.warmup_runs
     minimum = max(bench.minimum_samples, 1)
     planned = warmup + minimum
+    warm: list[float] = []
     for k in range(warmup):
-        call(k)
+        warm.append(call(k))
         if progress is not None:
-            progress(k + 1, planned)
+            # The warm-up's cost stands for the timed calls' until one is
+            # back (an upper estimate: a first call is the slowest).
+            left = planned - (k + 1)
+            progress(k + 1, planned, left * warm[-1], ())
     walls: list[float] = []
     gc.collect()
     while len(walls) < minimum or sum(walls) < bench.target_runtime:
         with _collector_off():
             walls.append(call(warmup + len(walls)))
-        mean = sum(walls) / len(walls)
+        rate = recent_rate(walls) or walls[-1]
         remaining = max(bench.target_runtime - sum(walls), 0.0)
-        planned = warmup + max(minimum, len(walls) + math.ceil(remaining / mean))
+        planned = warmup + max(minimum, len(walls) + math.ceil(remaining / rate))
         if progress is not None:
-            progress(warmup + len(walls), planned)
+            progress(
+                warmup + len(walls),
+                planned,
+                (planned - warmup - len(walls)) * rate,
+                tuple(walls),
+            )
     return walls
+
+
+def _reference_calls(
+    budget: float,
+    warmup: bool,
+    size: int,
+    call: Callable[[int, bool], float],
+    progress: Callable[[int, int, float | None, Sequence[float]], None] | None,
+    prior: float | None,
+) -> list[float]:
+    """The reference pass's protocol (``_reference_timing``): one untimed
+    call of one point (``warmup``: the carrier's first call builds what it
+    builds lazily; after native's fix its size no longer matters), then
+    timed calls of one chunk, at least one, more while the next one (at
+    the recent calls' cost) fits the ``budget`` seconds. ``call(k, warm)``
+    makes call k (the warm-up first) and returns its wall seconds;
+    ``prior``: the expected seconds of one timed call before any is back
+    (from the binary64 cost and a prior multiplier); ``progress`` as in
+    ``_timed_calls``. The timed calls' seconds."""
+
+    def planned(walls: Sequence[float], estimate: float | None) -> int:
+        if estimate is None or estimate <= 0.0:
+            return max(len(walls), 1)
+        room = max(budget - sum(walls), 0.0)
+        return max(len(walls) + int(room // estimate), len(walls), 1)
+
+    done = 0
+    estimate = prior
+    total = int(warmup) + planned((), estimate)
+    if progress is not None:
+        progress(0, total, None if estimate is None else total * estimate, ())
+    if warmup:
+        first = call(0, True)
+        done = 1
+        if estimate is None:
+            # A one-point call's seconds per point, for a call of ``size``
+            # points: an upper estimate (a call's fixed cost counted per
+            # point).
+            estimate = first * size
+        total = 1 + planned((), estimate)
+        if progress is not None:
+            progress(1, total, (total - 1) * estimate, ())
+    walls: list[float] = []
+    gc.collect()
+    while not walls or (sum(walls) + (recent_rate(walls) or walls[-1]) <= budget):
+        with _collector_off():
+            walls.append(call(done + len(walls), False))
+        estimate = recent_rate(walls)
+        total = done + planned(walls, estimate)
+        if progress is not None:
+            progress(
+                done + len(walls),
+                total,
+                (total - done - len(walls)) * (estimate or 0.0),
+                tuple(walls),
+            )
+    return walls
+
+
+# The reference precision's cost relative to binary64 assumed before any
+# reference call is back (an ETA prior; measured: double-double x8-90,
+# arbitrary precision at 57 digits x350-1800 on gg_zz / gg_ggg).
+REFERENCE_PRIOR = {"double-double": 60.0, "arbitrary": 1000.0}
 
 
 def _reference_timing(
@@ -3147,58 +3268,90 @@ def _reference_timing(
     reduction: str | None,
     scales: Callable[[Momenta], Any],
     reference: Mapping[str, Any],
+    *,
+    binary64: float | None = None,
+    monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
 ) -> PrecisionTiming:
     """The reference carrier's time per point (``PrecisionTiming``): one
-    fully optimistic pass per point, the unchecked reduction of the profiled
-    backend alone (``reduction``, "auto" resolved to the runtime's
+    fully optimistic pass per point, the unchecked reduction of the
+    profiled backend alone (``reduction``, "auto" resolved to the runtime's
     effective backend so that no per-point fallback or guard runs), no
     stability checks, no rescue and no best-effort re-evaluation of a
-    refused point (``on_failure="return"``), with the binary64 timing's
-    protocol (``_timed_calls``: its minimum calls and time budget) after one
-    untimed call (none with ``warmup_runs`` 0: the process is warm and the
-    first call of a carrier builds what it builds lazily, its executor of
-    this lane count included; a second one changes nothing measurable, and
-    an extended-precision call is dear) on calls of one SIMD chunk of
-    points each, ``DEFAULT_LANES``
-    (binary64's chunk and the extended carriers' widest lane count: no
-    padded lane is timed in any carrier; at most ``batch_size``), call k on
-    the first points of the binary64 timing's batch k."""
+    refused point (``on_failure="return"``), with its own protocol
+    (``_reference_calls``): one untimed call of one point (none with
+    ``warmup_runs`` 0), then timed calls of one SIMD chunk each
+    (``reference["points"]``, default ``DEFAULT_LANES``: binary64's chunk and
+    the extended carriers' widest lane count, at most ``batch_size``), at
+    least one, more while the next fits ``reference["budget"]`` seconds
+    (default ``target_runtime``): its cost is bounded however expensive the
+    carrier. Call k takes the first points of the binary64 timing's batch
+    k. ``binary64``: the binary64 seconds per point (the ETA prior before a
+    reference call is back, with ``REFERENCE_PRIOR``); ``monitor("reference",
+    ...)`` after each call."""
 
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
 
-    size = max(min(bench.batch_size, DEFAULT_LANES), 1)
+    size = int(reference.get("points") or max(min(bench.batch_size, DEFAULT_LANES), 1))
+    budget = float(reference.get("budget") or bench.target_runtime)
     options: dict[str, Any] = {
         "poles": "none",
         "on_failure": "return",
         "reduction_unchecked": True,
-        **reference,
+        **{k: v for k, v in reference.items() if k not in ("points", "budget")},
     }
     backend = _single_backend(runtime, reference.get("reduction", reduction))
     if backend is not None:
         options["reduction"] = backend
     reasons: dict[str, int] = {}
-    protocol = replace(bench, warmup_runs=min(bench.warmup_runs, 1))
-    timed = protocol.warmup_runs
+    warm = bench.warmup_runs > 0
 
-    def call(k: int) -> float:
-        batch = batches(k, size)
+    def call(k: int, warmup: bool) -> float:
+        batch = batches(k, 1 if warmup else size)
         mu_r2 = scales(batch)
         begin = time.perf_counter()
         result = runtime.evaluate(batch, mu_r2=mu_r2, **options)
         wall = time.perf_counter() - begin
-        if k >= timed:
+        if not warmup:
             for valid, lane in zip(result.valid, result.diagnostics, strict=True):
                 if not valid:
                     reason = failure_reason(lane)
                     reasons[reason] = reasons.get(reason, 0) + 1
         return wall
 
-    walls = _timed_calls(protocol, call)
+    arithmetic = str(reference["arithmetic"])
+    prior = (
+        None
+        if binary64 is None
+        else binary64
+        * size
+        * REFERENCE_PRIOR.get(arithmetic, REFERENCE_PRIOR["arbitrary"])
+    )
+
+    def report(
+        done: int, total: int, eta: float | None, walls: Sequence[float]
+    ) -> None:
+        if monitor is not None:
+            monitor(
+                "reference",
+                {
+                    "done": done,
+                    "total": total,
+                    "eta_seconds": eta,
+                    "walls": list(walls),
+                    "points": size,
+                    "seconds_per_point": (
+                        statistics.median(walls) / size if walls else None
+                    ),
+                    "estimated": not walls,
+                },
+            )
+
+    walls = _reference_calls(budget, warm, size, call, report, prior)
     return PrecisionTiming(
-        str(reference["arithmetic"]),
+        arithmetic,
         size,
         len(walls),
-        protocol.warmup_runs,
+        int(warm),
         size * len(walls),
         statistics.median(walls) / size,
         min(walls) / size,
@@ -3258,7 +3411,7 @@ def _profile_virtual_calls(
     bench: BenchmarkConfig,
     options: Mapping[str, Any],
     scales: Callable[[Momenta], Any],
-    progress: Callable[[int, int], None] | None,
+    progress: Callable[[int, int, float | None, Sequence[float]], None] | None,
 ) -> VirtualProfileResult:
     """The binary64 warm-up and timed calls of ``profile_virtual``
     (``_timed_calls``)."""
