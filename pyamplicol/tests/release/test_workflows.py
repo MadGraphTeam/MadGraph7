@@ -337,6 +337,7 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     # checkout comparison wheel.
     assert "--skip-checkout-wheel" in macos_job
     assert workflow.count("--skip-checkout-wheel") == 1
+    assert "TMPDIR=%s\\n" in macos_job
     assert "macos-15\n" in workflow
     assert "macos-15-intel" in workflow
     assert "manylinux_2_28_x86_64" in workflow

@@ -103,6 +103,14 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+      - name: Keep build scratch out of macOS's daily temporary-file cleanup
+        # dirhelper deletes /var/folders/*/T files that look unused for three
+        # days, daily at 03:35 UTC: crate sources in a build's CARGO_HOME there.
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/tmp"
+          printf 'TMPDIR=%s\n' "$RUNNER_TEMP/tmp" >> "$GITHUB_ENV"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
@@ -177,6 +185,14 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+      - name: Keep build scratch out of macOS's daily temporary-file cleanup
+        # dirhelper deletes /var/folders/*/T files that look unused for three
+        # days, daily at 03:35 UTC: crate sources in a build's CARGO_HOME there.
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/tmp"
+          printf 'TMPDIR=%s\n' "$RUNNER_TEMP/tmp" >> "$GITHUB_ENV"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"

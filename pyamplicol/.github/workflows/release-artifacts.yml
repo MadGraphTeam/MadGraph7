@@ -124,6 +124,15 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ github.sha }}
+      - name: Keep build scratch out of macOS's daily temporary-file cleanup
+        # dirhelper deletes files under /var/folders/*/T that look unused for
+        # three days, daily at 03:35 (UTC on the runners); crate sources
+        # extracted with their old timestamps into a build's fresh CARGO_HOME
+        # there vanish mid-build ("failed to download aho-corasick").
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/tmp"
+          printf 'TMPDIR=%s\n' "$RUNNER_TEMP/tmp" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: pyamplicol-retained-sdist
