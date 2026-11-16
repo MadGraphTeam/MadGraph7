@@ -1208,11 +1208,14 @@ class _BackendRun:
             return None
         since = time.perf_counter() - self.last
         rate = self.state.get("rate")
-        if rate:
-            left_calls = max(int(self.state["total"] or 0) - int(self.state["done"]), 1)
-            call = float(rate)
-            return (left_calls - 1) * call + max(call - since, 0.1 * call)
-        return max(float(eta) - since, 0.0)
+        left_calls = max(int(self.state["total"] or 0) - int(self.state["done"]), 1)
+        # The running call's expected cost: the recent calls', else the
+        # phase's estimate shared by its calls; the calls after it, and at
+        # least a tenth of a call while it runs (never 0).
+        call = float(rate) if rate else float(eta) / left_calls
+        if call <= 0.0:
+            return max(float(eta) - since, 0.0)
+        return (left_calls - 1) * call + max(call - since, 0.1 * call)
 
     def event(self, kind: str, payload: Mapping[str, Any]) -> None:
         now = time.perf_counter()
@@ -1299,8 +1302,13 @@ class _BackendRun:
             )
             return
         what = "reference" if self.kind == "reference" else "binary64"
-        running = f"call {done + 1}" + (f"/{total}" if total else "")
-        expected = rate if rate else self.state.get("eta")
+        shown = None if total is None else max(int(total), int(done) + 1)
+        running = f"call {done + 1}" + (f"/{shown}" if shown else "")
+        # The running call's expected cost: the recent calls', else the
+        # phase's ETA shared by the calls left.
+        expected = rate
+        if not expected and self.state.get("eta") is not None:
+            expected = float(self.state["eta"]) / max(int(total or 0) - int(done), 1)
         step = f"{self.name} {what}: {running} running {_duration(since)}" + (
             f" of ~{_duration(float(expected))}" if expected else ""
         )
@@ -1443,13 +1451,14 @@ def _measure(
             done,
             len(backends),
             eta=None,
-            step=f"{name}: two binary64 calls of {len(points)} points",
+            step=f"{name}: one binary64 call of {len(points)} points",
         )
         walls = []
         try:
-            # Two calls, the faster counts: a first call carries the
-            # process's and the backend's one-off costs.
-            for _ in range(2):
+            # One call: its first-call costs make it an upper estimate (the
+            # timed loops measure as they go; a second call would double this
+            # phase on an expensive process).
+            for _ in range(1):
                 begin = time.perf_counter()
                 runtime.evaluate(
                     points,
@@ -2185,7 +2194,7 @@ def _stability(
     from pyamplicol.cli.flat_points import draw_flat_points
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import default_target
-    from pyamplicol.profile_plan import STABILITY_MINIMUM, admit_chunk
+    from pyamplicol.profile_plan import STABILITY_MINIMUM, affordable_chunk
 
     bench = config.benchmark
     evaluation = config.evaluation
@@ -2240,9 +2249,14 @@ def _stability(
         ]
         workers = max(1, min(workers, len(bounds) * len(backends) * len(precisions)))
     else:
-        # A deadline: chunks of one SIMD chunk while they fit it, the first
-        # holding at least the minimum.
-        lead = max(min(count, DEFAULT_LANES), STABILITY_MINIMUM)
+        # A deadline: chunks of one SIMD chunk while they fit it; the first
+        # holds the minimum, a whole chunk only when the plan affords several
+        # (its costs are priors until the first chunk is back).
+        lead = (
+            min(count, DEFAULT_LANES)
+            if count >= 4 * DEFAULT_LANES
+            else STABILITY_MINIMUM
+        )
         bounds = [(0, lead)]
     priors: dict[tuple[str, str], float] = {}
     for backend in backends:
@@ -2288,22 +2302,28 @@ def _stability(
         if pending:
             start, end = pending.pop(0)
         elif deadline is not None:
-            start, end = submitted[0], submitted[0] + DEFAULT_LANES
             per_point = sum(stream_rate((b, p)) for b in backends for p in precisions)
             queued = sum(
                 max(submitted[0] - tracker.done[(b, p)], 0) * stream_rate((b, p))
                 for b in backends
                 for p in precisions
             )
-            if not admit_chunk(
+            size = affordable_chunk(
                 now=time.perf_counter(),
                 deadline=deadline,
                 queued_seconds=queued,
-                chunk_seconds=(end - start) * per_point,
+                point_seconds=per_point,
                 workers=workers,
                 points=submitted[0],
-            ):
+                lanes=DEFAULT_LANES,
+                stream_seconds=max(
+                    (stream_rate((b, p)) for b in backends for p in precisions),
+                    default=0.0,
+                ),
+            )
+            if not size:
                 return None
+            start, end = submitted[0], submitted[0] + size
         else:
             return None
         batch, scales = draw(start, end - start)

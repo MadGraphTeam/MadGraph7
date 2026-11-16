@@ -176,16 +176,20 @@ def stability_work(costs: Sequence[Costs]) -> float:
     return sum(c.stability + (c.stability_reference or 0.0) for c in costs)
 
 
-def stability_wall(costs: Sequence[Costs], points: int, workers: int) -> float:
+def stability_wall(
+    costs: Sequence[Costs], points: int, workers: int, *, lanes: int = 16
+) -> float:
     """The wall seconds of ``points`` stability points on ``workers``
     workers: their work shared by the workers, no less than the dearest
-    single task of ``points`` points (the tasks of one backend and
-    precision of a chunk run on one worker)."""
+    single task (one chunk of up to ``lanes`` points of one backend and
+    precision runs on one worker)."""
 
     if not costs or points <= 0:
         return 0.0
     work = points * stability_work(costs)
-    single = max(points * max(c.stability, c.stability_reference or 0.0) for c in costs)
+    single = min(points, lanes) * max(
+        max(c.stability, c.stability_reference or 0.0) for c in costs
+    )
     return max(work / max(workers, 1), min(single, work))
 
 
@@ -358,6 +362,37 @@ def admit_chunk(
     return finish <= deadline + 0.5 * chunk_seconds / max(workers, 1)
 
 
+def affordable_chunk(
+    *,
+    now: float,
+    deadline: float,
+    queued_seconds: float,
+    point_seconds: float,
+    workers: int,
+    points: int,
+    lanes: int,
+    minimum: int = STABILITY_MINIMUM,
+    stream_seconds: float = 0.0,
+) -> int:
+    """The points of the stability run's next chunk under a deadline: the
+    minimum's remainder until it holds ``minimum`` points, then as many as
+    fit, at most one whole SIMD chunk of ``lanes``: their work shared by the
+    ``workers`` after the queued work (``point_seconds``: one point on every
+    backend and precision), and their dearest single task (``stream_seconds``
+    per point: one backend and precision, run by one worker) started when a
+    worker frees up, both ending by the deadline; 0 when none fits."""
+
+    if points < minimum:
+        return minimum - points
+    workers = max(workers, 1)
+    start = now + queued_seconds / workers
+    room = (deadline - now) * workers - queued_seconds
+    fits = lanes if point_seconds <= 0.0 else int(room // point_seconds)
+    if stream_seconds > 0.0:
+        fits = min(fits, int(max(deadline - start, 0.0) // stream_seconds))
+    return max(min(fits, lanes), 0)
+
+
 def duration_text(seconds: float) -> str:
     """A duration the way the plan line shows it: "45s", "3m10s", "1h05m"."""
 
@@ -380,6 +415,7 @@ __all__ = [
     "Plan",
     "RuntimeCounts",
     "admit_chunk",
+    "affordable_chunk",
     "plan",
     "runtime_counts",
     "stability_points",
