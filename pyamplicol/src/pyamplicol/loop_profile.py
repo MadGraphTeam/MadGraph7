@@ -604,7 +604,11 @@ def profile_loop(
     from pyamplicol.config.models import is_default
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import DEFAULTS
-    from pyamplicol.profile_plan import MEASURE_REPEAT_SECONDS, runtime_counts
+    from pyamplicol.profile_plan import (
+        MEASURE_REPEAT_SECONDS,
+        runtime_counts,
+        warmup_seconds,
+    )
     from pyamplicol.profile_plan import plan as plan_profile
 
     bench = config.benchmark
@@ -785,6 +789,25 @@ def profile_loop(
                 )
                 reference_budget = counts.reference_budget
             future.pop(f"runtime:{backend}", None)
+            # The planned seconds of this backend's phases after its
+            # start-up: the root ETA counts them until they run.
+            later: dict[str, float] = {}
+            if backend in costs:
+                cost = costs[backend]
+                call = backend_bench.batch_size * cost.binary64
+                warmups = int(backend_bench.warmup_runs)
+                later["binary64"] = (
+                    (warmup_seconds(call, cost.binary64) + (warmups - 1) * call)
+                    if warmups
+                    else 0.0
+                ) + max(
+                    float(backend_bench.target_runtime),
+                    max(int(backend_bench.minimum_samples), 1) * call,
+                )
+                if truth.present and cost.reference is not None:
+                    later["reference"] = cost.reference + max(
+                        reference_budget, cost.reference
+                    )
             run = _BackendRun(
                 monitor,
                 backend,
@@ -796,6 +819,7 @@ def profile_loop(
                     else None
                 ),
                 backend_bench.batch_size,
+                later,
             )
             current[0] = run
             reference = (
@@ -1240,6 +1264,7 @@ class _BackendRun:
         expected_start: float | None,
         expected_call: float | None = None,
         batch: int = 1,
+        later: Mapping[str, float] | None = None,
     ) -> None:
         from pyamplicol.loops.v2.reduction import NAMES
 
@@ -1248,6 +1273,9 @@ class _BackendRun:
         # point times the batch): the first call's expected cost and ETA
         # until one is back.
         self.expected_call = expected_call
+        # The planned seconds of the phases to come ("binary64",
+        # "reference"): part of ``remaining`` until each one starts.
+        self.later = dict(later or {})
         self.batch = max(int(batch), 1)
         self.name = NAMES.get(backend, backend)
         self.truth = truth
@@ -1276,9 +1304,23 @@ class _BackendRun:
         self.monitor.set_reading(self.name, _per_point_text(self.binary64), note)
 
     def remaining(self) -> float | None:
-        """The seconds the current phase has left (counted down since its
-        last event, never below a fraction of a call while it runs)."""
+        """The seconds this backend has left: the current phase's (counted
+        down since its last event, never below a fraction of a call while it
+        runs) and the planned ones of the phases still to come."""
 
+        order = ("start", "binary64", "between", "reference")
+        position = order.index(self.kind) if self.kind in order else len(order)
+        to_come = sum(
+            seconds
+            for kind, seconds in self.later.items()
+            if order.index(kind) > position
+        )
+        now = self._phase_remaining()
+        if now is None:
+            return to_come or None
+        return now + to_come
+
+    def _phase_remaining(self) -> float | None:
         eta = self.state.get("eta")
         if eta is None:
             return None
@@ -1366,7 +1408,7 @@ class _BackendRun:
         since = time.perf_counter() - self.last
         done, total = self.state["done"], self.state["total"]
         rate = self.state.get("rate")
-        eta = self.remaining()
+        eta = self._phase_remaining()
         if self.kind == "start":
             step = f"{self.name}: starting its process and loading the artifact"
             stalled = (

@@ -365,6 +365,36 @@ def test_the_profile_eta_on_synthetic_sequences(monkeypatch):
     # A call overrunning its expected second: never 0, a tenth of a call.
     clock[0] += 5.0
     assert run.remaining() == pytest.approx(1.0 + 0.1)
+    # The backend's planned later phases count until they start: in its
+    # start-up, its binary64 and reference phases; in binary64, the
+    # reference; then the phase alone. The phase line keeps its own.
+    planned = lp._BackendRun(
+        monitor,
+        "ninjars",
+        lp.GroundTruth("double-double"),
+        3.0,
+        12.0,
+        16,
+        {"binary64": 30.0, "reference": 70.0},
+    )
+    assert planned.remaining() == pytest.approx(3.0 + 30.0 + 70.0)
+    assert planned._phase_remaining() == pytest.approx(3.0)
+    planned.event(
+        "binary64", {"done": 0, "total": 2, "warmup": 1, "walls": [], "points": 16}
+    )
+    assert planned.remaining() == pytest.approx(2 * 12.0 + 70.0)
+    planned.event("binary64-result", {"profile": _Profile()})
+    planned.event(
+        "reference",
+        {"done": 0, "total": 2, "eta_seconds": 60.0, "walls": [], "points": 1},
+    )
+    assert planned.remaining() == pytest.approx(60.0)
+
+
+class _Profile:
+    seconds_per_point = 0.6
+    samples = 1
+    batch = 16
 
 
 class _Sink:
