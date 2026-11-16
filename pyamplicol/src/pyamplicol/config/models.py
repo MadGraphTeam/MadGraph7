@@ -1760,6 +1760,12 @@ class BenchmarkConfig:
     completion_time: float | None = field(
         default=None, metadata=_setting("duration", nullable=True)
     )
+    # Where the stability run writes every sample's record (one JSON file;
+    # ``--samples-output``); the profile's --json then names it instead of
+    # holding them. None: the records are in --json only.
+    samples_output: Path | None = field(
+        default=None, metadata=_setting("path", nullable=True)
+    )
 
     def __post_init__(self) -> None:
         for name in ("runtime", "stability", "checked"):

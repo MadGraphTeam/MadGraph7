@@ -43,6 +43,13 @@ DEFAULT_STABILITY_SECONDS_PER_CORE = 60.0
 # A budget counts as met within this factor (the acceptance of
 # --completion-time, and when the default budgets are said to be exceeded).
 BUDGET_TOLERANCE = 1.5
+# The serial seconds per record after the stability run: the statistics of
+# one point of one backend, its record (--json, --samples-output, the write
+# included) and one point's inputs (uux_ddx, 100 000 points on 2 backends:
+# 12 s after the run, 120 us per point).
+POST_SECONDS_PER_RECORD = 30e-6
+RECORD_SECONDS_PER_RECORD = 20e-6
+RECORD_SECONDS_PER_INPUT = 20e-6
 # The calls a stable median is planned on when the budget affords them.
 STABLE_CALLS = 5
 # The reference pass's share of a backend's runtime budget.
@@ -114,7 +121,7 @@ class Plan:
     rule: str
     runtime: Mapping[str, RuntimeCounts] = field(default_factory=dict)
     stability_points: int | None = None
-    stability_seconds: float = 0.0
+    stability_seconds: float = 0.0  # its wall, the tail after it included
     expected_seconds: float = 0.0
     budget_seconds: float | None = None
     feasible: bool = True
@@ -239,16 +246,22 @@ def stability_wall(
 
 
 def stability_points(
-    costs: Sequence[Costs], budget: float, workers: int, *, lanes: int
+    costs: Sequence[Costs],
+    budget: float,
+    workers: int,
+    *,
+    lanes: int,
+    tail: float = 0.0,
 ) -> int:
     """The stability points ``budget`` wall seconds afford on ``workers``
-    workers, whole chunks of ``lanes`` from one chunk on, at least
-    ``STABILITY_MINIMUM``."""
+    workers (each point also ``tail`` serial seconds after the run: its
+    statistics and records), whole chunks of ``lanes`` from one chunk on, at
+    least ``STABILITY_MINIMUM``."""
 
     work = stability_work(costs)
-    if work <= 0.0:
+    if work <= 0.0 and tail <= 0.0:
         return STABILITY_MINIMUM
-    points = int(budget * max(workers, 1) // work)
+    points = int(max(budget, 0.0) // (work / max(workers, 1) + tail))
     if points >= lanes:
         points -= points % lanes
     return max(points, STABILITY_MINIMUM)
@@ -267,6 +280,7 @@ def plan(
     stability_start: float = 0.0,
     runtime_counts_given: bool = False,
     stability_points_given: int | None = None,
+    tail_seconds_per_point: float = 0.0,
 ) -> Plan:
     """The counts of a profile (module docstring) from the backends'
     ``costs``: the phases asked for (``runtime``, ``stability``), the
@@ -275,7 +289,9 @@ def plan(
     command, of which ``elapsed`` are spent; ``stability_start``: the wall
     seconds of starting the stability workers (loading, warm-up);
     ``runtime_counts_given`` / ``stability_points_given``: the counts given
-    (honoured without ``completion``)."""
+    (honoured without ``completion``); ``tail_seconds_per_point``: the
+    serial seconds per stability point after the run (statistics, records),
+    part of the completion time."""
 
     backends = list(costs)
     values = [costs[name] for name in backends]
@@ -330,8 +346,14 @@ def plan(
         wall = 0.0
         if stability:
             budget = max(free - runtime_budget, 0.0)
-            points = stability_points(values, budget, workers, lanes=lanes)
-            wall = stability_start + stability_wall(values, points, workers)
+            points = stability_points(
+                values, budget, workers, lanes=lanes, tail=tail_seconds_per_point
+            )
+            wall = (
+                stability_start
+                + stability_wall(values, points, workers)
+                + points * tail_seconds_per_point
+            )
         return Plan(
             "completion time",
             counts,
@@ -435,6 +457,7 @@ def affordable_chunk(
     lanes: int,
     minimum: int = STABILITY_MINIMUM,
     stream_seconds: float = 0.0,
+    tail_seconds: float = 0.0,
 ) -> int:
     """The points of the stability run's next chunk under a deadline: the
     minimum's remainder until it holds ``minimum`` points, then as many as
@@ -443,14 +466,18 @@ def affordable_chunk(
     backend and precision), and their dearest single task (``stream_seconds``
     per point: one backend and precision, ``task_points`` of the chunk run
     by one worker) started when a worker frees up, both ending by the
-    deadline; 0 when none fits."""
+    deadline less the serial ``tail_seconds`` per point after the run (its
+    statistics and records, for the points so far and the chunk's); 0 when
+    none fits."""
 
     if points < minimum:
         return minimum - points
     workers = max(workers, 1)
+    deadline -= points * tail_seconds
     start = now + queued_seconds / workers
     room = (deadline - now) * workers - queued_seconds
-    fits = lanes if point_seconds <= 0.0 else int(room // point_seconds)
+    per_point = point_seconds + workers * tail_seconds
+    fits = lanes if per_point <= 0.0 else int(room // per_point)
     if stream_seconds > 0.0:
         window = max(deadline - start, 0.0)
         if task_points(stream_seconds, lanes) * stream_seconds > window:
@@ -475,6 +502,9 @@ __all__ = [
     "DEFAULT_RUNTIME_SECONDS",
     "DEFAULT_STABILITY_SECONDS_PER_CORE",
     "MEASURE_REPEAT_SECONDS",
+    "POST_SECONDS_PER_RECORD",
+    "RECORD_SECONDS_PER_INPUT",
+    "RECORD_SECONDS_PER_RECORD",
     "RUNTIME_MINIMUM_CALLS",
     "STABILITY_MINIMUM",
     "TASK_SECONDS",

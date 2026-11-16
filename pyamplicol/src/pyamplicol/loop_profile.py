@@ -67,6 +67,7 @@ from __future__ import annotations
 
 import contextlib
 import gc
+import json
 import math
 import os
 import re
@@ -364,9 +365,99 @@ class BackendStability:
     # rank the estimated digits (``true_digits`` empty), the truth-based
     # counts are 0 and not shown.
     estimate_only: bool = False
-    # Every sample's complete record (``_sample_records``; the JSON's
-    # per-sample dump, its keys documented there).
-    samples: tuple[Mapping[str, object], ...] = ()
+    # Every sample's complete record, columnar (``_sample_records``; the
+    # JSON's per-sample dump, its fields documented there), or where they
+    # were written (``--samples-output``); None: not asked for.
+    samples: Mapping[str, object] | None = None
+
+    def cli_json(self) -> dict[str, object]:
+        """The JSON form (``cli.main``): the fields, ``per_point`` columnar
+        (``PER_POINT_FIELDS``; one compact row per point)."""
+
+        from dataclasses import fields as dataclass_fields
+
+        from pyamplicol.reporting.raw_json import encode_rows
+
+        out: dict[str, object] = {
+            item.name: getattr(self, item.name) for item in dataclass_fields(self)
+        }
+        out["per_point"] = {
+            "fields": list(PER_POINT_FIELDS),
+            "rows": encode_rows(
+                (
+                    [
+                        point.index,
+                        point.status,
+                        _rounded(point.true_digits, 3),
+                        _rounded(point.estimated_digits, 3),
+                        point.reason,
+                        _rounded(point.uncertainty_digits, 3),
+                    ]
+                    for point in self.per_point
+                ),
+                len(self.per_point),
+            ),
+        }
+        return out
+
+
+# The columns of a backend's ``per_point`` table in --json.
+PER_POINT_FIELDS = (
+    "index",
+    "status",
+    "true_digits",
+    "estimated_digits",
+    "reason",
+    "uncertainty_digits",
+)
+# The columns of a backend's per-sample records (``_sample_records``).
+SAMPLE_FIELDS = (
+    "index",
+    "status",
+    "value",
+    "sectors",
+    "estimate_relative",
+    "estimate_finite_relative",
+    "estimate_digits",
+    "estimate_scale",
+    "estimate_checks",
+    "estimate_not_run",
+    "flagged",
+    "best_effort",
+    "uncertainty",
+    "reason",
+    "reference_value",
+    "reference_reason",
+    "true_relative_error",
+    "true_digits",
+    "binary64_task",
+    "reference_task",
+)
+# The columns of the points' inputs (``stability_setup.samples``).
+INPUT_FIELDS = ("index", "momenta", "mu_r2")
+
+
+def _rounded(value: float | None, decimals: int) -> float | str | None:
+    """A derived figure (digits) at ``decimals`` decimals; non-finite as
+    text."""
+
+    if value is None:
+        return None
+    if not math.isfinite(value):
+        return str(value)
+    return round(float(value), decimals)
+
+
+def _significant(value: float | None, digits: int = 4) -> float | str | None:
+    """A diagnostic figure (an estimated or true relative error, a scale) at
+    ``digits`` significant digits; non-finite as text."""
+
+    if value is None:
+        return None
+    value = float(value)
+    if not math.isfinite(value):
+        return str(value)
+    return float(f"{value:.{digits}g}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -481,10 +572,20 @@ class LoopProfileReport:
         """The line ``--json`` prints on stderr before a large dump (its
         per-sample records take seconds to write: never a silent tail)."""
 
-        samples = sum(len(row.samples) for row in self.stability or ())
-        if samples < 5000:
+        from pyamplicol.reporting.raw_json import RawJson
+
+        rows = [
+            row.samples.get("rows")
+            for row in self.stability or ()
+            if isinstance(row.samples, Mapping)
+        ]
+        size = sum(len(r.text) for r in rows if isinstance(r, RawJson))
+        if size < 20_000_000:
             return None
-        return f"Writing the JSON result ({samples} sample records)"
+        records = sum(r.rows for r in rows if isinstance(r, RawJson))
+        return (
+            f"Writing the JSON result ({records} sample records, {size / 1e6:.0f} MB)"
+        )
 
 
 def _backends(requested: object, contribution: str) -> tuple[str, ...]:
@@ -637,6 +738,9 @@ def profile_loop(
         DEFAULT_RUNTIME_SECONDS,
         DEFAULT_STABILITY_SECONDS_PER_CORE,
         MEASURE_REPEAT_SECONDS,
+        POST_SECONDS_PER_RECORD,
+        RECORD_SECONDS_PER_INPUT,
+        RECORD_SECONDS_PER_RECORD,
         runtime_counts,
         warmup_seconds,
     )
@@ -710,6 +814,16 @@ def profile_loop(
         monitor.close(False)
         raise
     batch_max = int(bench.batch_size)
+    given_points = stability_given if completion is None else None
+    # Every sample's record: for --json or --samples-output (else none: the
+    # tables do not need them). The serial seconds per stability point after
+    # the run (its statistics, its records): part of --completion-time.
+    records = config.output.format == "json" or bench.samples_output is not None
+    tail = len(backends) * POST_SECONDS_PER_RECORD + (
+        len(backends) * RECORD_SECONDS_PER_RECORD + RECORD_SECONDS_PER_INPUT
+        if records
+        else 0.0
+    )
     # A stability worker's start: the load and its warm-up (one point per
     # stream; none for a stream dearer than MEASURE_REPEAT_SECONDS).
     stability_start = (
@@ -733,7 +847,8 @@ def profile_loop(
         elapsed=monitor.elapsed(),
         stability_start=stability_start,
         runtime_counts_given=runtime_given and completion is None,
-        stability_points_given=stability_given if completion is None else None,
+        stability_points_given=given_points,
+        tail_seconds_per_point=tail if completion is not None else 0.0,
     )
     if not planned.feasible:
         # One number, the header's too: the whole command with the minimums.
@@ -956,6 +1071,7 @@ def profile_loop(
                 max(left - stability_start, 0.0),
                 workers,
                 lanes=DEFAULT_LANES,
+                tail=tail,
             )
         elif stability_given is None:
             deadline = (
@@ -972,11 +1088,23 @@ def profile_loop(
             load_options=options,
             progress=progress,
             monitor=monitor,
-            planned_points=stability_given if stability_given is not None else count,
-            deadline=None if stability_given is not None else deadline,
+            # A given count only without --completion-time (it overrules
+            # them: ``effective_benchmark``).
+            planned_points=count if given_points is None else given_points,
+            deadline=deadline if given_points is None else None,
             costs=costs,
             current=current,
+            records=records,
+            tail_seconds=tail if completion is not None else 0.0,
         )
+        if records and bench.samples_output is not None:
+            stability_rows, stability_setup = _write_samples(
+                Path(bench.samples_output),
+                stability_rows,
+                stability_setup,
+                monitor,
+                physics.process_id,
+            )
     causes: list[tuple[str, str, str, str]] = []
     totals: dict[tuple[str, ...], int] = {}
     for row in runtime_rows or ():
@@ -2215,6 +2343,8 @@ class _StabilityProgress:
         # is back (the measurement phase's), and the run's deadline.
         self.priors = dict(priors or {})
         self.deadline = deadline
+        # The serial seconds per point after the run (statistics, records).
+        self.tail = 0.0
         self.flagged = dict.fromkeys(backends, 0)
         self.task = "loop-stability"
         self.done = {(b, p): 0 for b in backends for p in self.precisions}
@@ -2277,9 +2407,13 @@ class _StabilityProgress:
         self.flagged[backend] = self.flagged.get(backend, 0) + count
 
     def remaining(self) -> float | None:
-        """The run's remaining seconds as the display shows them."""
+        """The run's remaining seconds as the display shows them, and the
+        serial tail after it (``tail``: seconds per point submitted)."""
 
-        return self.shown_eta()
+        eta = self.shown_eta()
+        if eta is None:
+            return None
+        return eta + self.tail * max(self.points, 0)
 
     def rate(self, key: tuple[str, str]) -> float | None:
         """The measured cost per point of a stream (None: nothing back)."""
@@ -2437,6 +2571,8 @@ def _stability(
     deadline: float | None = None,
     costs: Mapping[str, Any] | None = None,
     current: list[Any] | None = None,
+    records: bool = True,
+    tail_seconds: float = 0.0,
 ) -> tuple[tuple[BackendStability, ...], Mapping[str, object]]:
     """The stability statistics of every backend (module docstring) over
     flat points, evaluated on ``benchmark.n_core`` worker processes (capped
@@ -2451,7 +2587,10 @@ def _stability(
     binary64 only. Ctrl-C stops the run: the points evaluated so far
     (binary64 and reference both, or no binary64 value) make the
     statistics, ``setup["interrupted"]`` says so; a second Ctrl-C aborts.
-    ``current[0]`` holds the tracker while it runs (the profile's ETA)."""
+    ``current[0]`` holds the tracker while it runs (the profile's ETA).
+    ``records``: build every sample's record (``--json``, --samples-output;
+    else None); ``tail_seconds``: the serial seconds per point after the run
+    (statistics, records), left out of the deadline's time."""
 
     from pyamplicol.api.errors import ReductionUnavailable
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
@@ -2566,6 +2705,7 @@ def _stability(
         priors=priors,
         deadline=deadline,
     )
+    tracker.tail = tail_seconds
     if current is not None:
         current[0] = tracker
     b64: dict[str, dict[int, tuple[Any, ...]]] = {b: {} for b in backends}
@@ -2609,6 +2749,7 @@ def _stability(
                     (stream_rate((b, p)) for b in backends for p in precisions),
                     default=0.0,
                 ),
+                tail_seconds=tail_seconds,
             )
             if not size:
                 return None
@@ -2759,27 +2900,46 @@ def _stability(
         )
     )
     for position, backend in enumerate(backends):
+        name = NAMES.get(backend, backend)
+        size = len(evaluated.get(backend, ()))
+
+        def encoded(
+            done: int, name: str = name, size: int = size, position: int = position
+        ) -> None:
+            if collecting is not None:
+                collecting.update(
+                    position,
+                    len(backends),
+                    eta=None,
+                    step=f"{name}: records {done}/{size}",
+                    heartbeat=True,
+                )
+
         if collecting is not None:
             collecting.update(
                 position,
                 len(backends),
                 eta=None,
-                step=f"{NAMES.get(backend, backend)}: "
-                f"{len(evaluated.get(backend, ()))} points",
+                step=f"{name}: {size} points",
             )
         if backend in refused:
             rows.append(BackendStability(backend, refusal=refused[backend]))
             continue
         complete[backend] = len(evaluated[backend])
         indices = sorted(common if interrupted else evaluated[backend])
-        samples = _sample_records(
-            backend,
-            indices,
-            b64[backend],
-            dd[backend],
-            target,
-            tasks_of[backend],
-            truth,
+        samples = (
+            _sample_records(
+                backend,
+                indices,
+                b64[backend],
+                dd[backend],
+                target,
+                tasks_of[backend],
+                truth,
+                encoded,
+            )
+            if records
+            else None
         )
         if not truth.present:
             rows.append(
@@ -2818,6 +2978,8 @@ def _stability(
                 samples=samples,
             )
         )
+    from pyamplicol.reporting.raw_json import encode_rows
+
     sampled = sorted(set().union(*evaluated.values())) if evaluated else []
     if collecting is not None:
         collecting.end(f"{len(sampled)} points")
@@ -2877,21 +3039,82 @@ def _stability(
         "percentiles": [float(p) for p in PERCENTILES],
         "mu_r2": evaluation.mu_r2 or "s of the initial state",
         "deadline": deadline is not None,
-        # Every point's inputs: point i is drawn from seed + i (``generator``,
-        # ``sqrt_s``); its binary64 momenta (E, px, py, pz per leg, in the
-        # process's order) and mu_r2.
-        "samples": [
+        # Every point's inputs, columnar (``INPUT_FIELDS``): point i is
+        # drawn from seed + i (``generator``, ``sqrt_s``); its binary64
+        # momenta (E, px, py, pz per leg, in the process's order) and mu_r2.
+        "samples": (
             {
-                "index": index,
-                "seed": space.seed + index,
-                "momenta": [[float(x) for x in leg] for leg in inputs[index][0]],
-                "mu_r2": str(inputs[index][1]),
+                "fields": list(INPUT_FIELDS),
+                "rows": encode_rows(
+                    (
+                        [
+                            index,
+                            [[float(x) for x in leg] for leg in inputs[index][0]],
+                            float(inputs[index][1]),
+                        ]
+                        for index in sampled
+                        if index in inputs
+                    ),
+                    len(sampled),
+                ),
             }
-            for index in sampled
-            if index in inputs
-        ],
+            if records
+            else None
+        ),
     }
     return tuple(rows), setup
+
+
+def _write_samples(
+    path: Path,
+    rows: tuple[BackendStability, ...],
+    setup: Mapping[str, object],
+    monitor: _Monitor,
+    process: str,
+) -> tuple[tuple[BackendStability, ...], Mapping[str, object]]:
+    """``--samples-output``: every sample's record to ``path`` (one JSON
+    document: ``inputs`` as the setup's ``samples``, ``backends`` each
+    backend's as its ``samples``), as its own phase; the report then names
+    the file where the records were."""
+
+    from pyamplicol.reporting.raw_json import RawJson, splice
+
+    phase = monitor.phase("samples", f"Writing the per-sample records to {path}")
+    fragments: list[RawJson] = []
+
+    def held(value: object) -> object:
+        # The pre-encoded rows as placeholders (``raw_json.splice``).
+        from pyamplicol.reporting.raw_json import placeholder
+
+        if isinstance(value, RawJson):
+            fragments.append(value)
+            return placeholder(len(fragments) - 1)
+        if isinstance(value, Mapping):
+            return {str(key): held(entry) for key, entry in value.items()}
+        return value
+
+    document = {
+        "schema": "pyamplicol.profile-samples/1",
+        "process": process,
+        "seed": setup.get("seed"),
+        "sqrt_s": setup.get("sqrt_s"),
+        "inputs": held(setup.get("samples")),
+        "backends": {
+            row.backend: held(row.samples) for row in rows if row.samples is not None
+        },
+    }
+    text = splice(json.dumps(document, indent=1, allow_nan=False), fragments)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + "\n", encoding="utf-8")
+    points = int(cast(int, setup.get("measured_points") or 0))
+    phase.end(f"{points} points, {len(text) / 1e6:.1f} MB")
+    where = {"output": str(path), "points": points}
+    return (
+        tuple(
+            row if row.samples is None else replace(row, samples=where) for row in rows
+        ),
+        {**setup, "samples": where},
+    )
 
 
 def _run_pool(
@@ -3123,91 +3346,102 @@ def _sample_records(
     target: float,
     tasks: Mapping[tuple[str, int], tuple[float, int]],
     truth: GroundTruth,
-) -> tuple[dict[str, object], ...]:
-    """Every sample's complete record of one backend (the JSON dump of
-    ``--stability --json``; its point's inputs are in the setup's
-    ``samples``): ``index``; ``status`` (the binary64 call's: success,
-    best-effort, failed ...); ``value`` (the binary64 total finite part)
-    and ``sectors`` (each squared-order sector's); ``estimate`` (None:
-    none) with ``relative`` (the flag's metric), ``finite_relative`` (the
-    total's estimated relative error), ``digits``, ``scale``, ``checks``
-    (each check's own relative budget by name: rotation-1,
-    reduction-rescaled, ...) and ``not_run``; ``flagged`` (the default
-    checks flag it: estimate above the target, a best-effort value or none);
-    ``best_effort`` and its ``uncertainty`` (relative); ``reason`` (a
-    refusal or failure); ``reference`` (None without a ground truth: else
-    ``value``, the exact decimal text of its total finite part at its
-    precision, None when it failed, and ``reason``); ``true_relative_error``
-    and ``true_digits`` (None without a reference value or a binary64
-    value); ``binary64_task`` and ``reference_task`` (``seconds`` and
-    ``points`` of the task that evaluated the point: no per-sample timing
-    exists inside a batched call)."""
+    progress: Callable[[int], None] | None = None,
+) -> dict[str, object]:
+    """Every sample's complete record of one backend, columnar (the JSON
+    dump of ``--stability --json``; its point's inputs are in the setup's
+    ``samples``): ``fields`` (``SAMPLE_FIELDS``), ``tasks`` ([seconds,
+    points] of each task that evaluated points: no per-sample timing exists
+    inside a batched call) and ``rows``, one per point: ``index``;
+    ``status`` (the binary64 call's: success, best-effort, failed ...);
+    ``value`` (the binary64 total finite part) and ``sectors`` (each
+    squared-order sector's); the estimate (null: none): ``relative`` (the
+    flag's metric), ``finite_relative`` (the total's estimated relative
+    error), ``digits``, ``scale``, ``checks`` (each check's own relative
+    budget by name: rotation-1, reduction-rescaled, ...) and ``not_run``;
+    ``flagged`` (the default checks flag it: estimate above the target, a
+    best-effort value or none); ``best_effort`` and its ``uncertainty``
+    (relative); ``reason`` (a refusal or failure); the reference's ``value``
+    (the exact decimal text of its total finite part at its precision; null
+    when it failed or without a ground truth) and ``reason``;
+    ``true_relative_error`` and ``true_digits`` (null without both values);
+    ``binary64_task`` and ``reference_task`` (indices into ``tasks``).
+    Values, sectors and the reference are exact; the relative errors and
+    scales carry 4 significant digits, the digits 3 decimals.
+    ``progress(rows)`` as the rows are encoded."""
 
-    out = []
-    for index in indices:
-        record = b64.get(index)
-        if record is None:
-            continue
-        padded: tuple[Any, ...] = (*record, *(None,) * (7 - len(record)))
-        _, value, summary, reason, status, uncertainty, sectors = padded[:7]
-        total = None if value is None else float(_total_finite(value))
-        estimate = None
-        if summary is not None and total is not None:
-            finite = _estimated_relative(summary, total)
-            estimate = {
-                "relative": _finite_or_text(summary.relative),
-                "finite_relative": _finite_or_text(finite),
-                "digits": stable_digits(finite),
-                "scale": _finite_or_text(summary.scale),
-                "checks": {
-                    name: _finite_or_text(budget) for name, budget in summary.checks
-                },
-                "not_run": dict(summary.not_run),
-            }
-        served = status == "best-effort"
-        flagged = (
-            value is None
-            or served
-            or summary is None
-            or float(summary.relative) > target
-        )
-        entry: dict[str, object] = {
-            "index": index,
-            "status": status,
-            "value": _finite_or_text(total),
-            "sectors": None
-            if sectors is None
-            else [_finite_or_text(float(x)) for x in sectors],
-            "estimate": estimate,
-            "flagged": bool(flagged),
-            "best_effort": served,
-            "uncertainty": _finite_or_text(uncertainty),
-            "reason": reason,
-            "reference": None,
-            "true_relative_error": None,
-            "true_digits": None,
-            "binary64_task": _task_record(tasks.get(("binary64", index))),
-            "reference_task": _task_record(tasks.get(("reference", index))),
-        }
-        if truth.present:
-            ref = reference.get(index)
-            text = None if ref is None or len(ref) < 4 else ref[3]
-            entry["reference"] = {
-                "value": text,
-                "reason": None if ref is None else ref[2],
-            }
-            if ref is not None and ref[1] is not None and total is not None:
-                error = relative_error(total, _total_finite(ref[1]))
-                entry["true_relative_error"] = _finite_or_text(error)
-                entry["true_digits"] = stable_digits(error)
-        out.append(entry)
-    return tuple(out)
+    from pyamplicol.reporting.raw_json import encode_rows
 
+    task_ids: dict[tuple[float, int], int] = {}
 
-def _task_record(task: tuple[float, int] | None) -> dict[str, object] | None:
-    if task is None:
-        return None
-    return {"seconds": task[0], "points": task[1]}
+    def task(key: tuple[str, int]) -> int | None:
+        found = tasks.get(key)
+        if found is None:
+            return None
+        return task_ids.setdefault(found, len(task_ids))
+
+    def rows() -> Any:
+        for index in indices:
+            record = b64.get(index)
+            if record is None:
+                continue
+            padded: tuple[Any, ...] = (*record, *(None,) * (7 - len(record)))
+            _, value, summary, reason, status, uncertainty, sectors = padded[:7]
+            total = None if value is None else float(_total_finite(value))
+            estimate: list[object] = [None] * 6
+            if summary is not None and total is not None:
+                finite = _estimated_relative(summary, total)
+                estimate = [
+                    _significant(summary.relative),
+                    _significant(finite),
+                    _rounded(stable_digits(finite), 3),
+                    _significant(summary.scale),
+                    {name: _significant(budget) for name, budget in summary.checks},
+                    dict(summary.not_run),
+                ]
+            served = status == "best-effort"
+            flagged = (
+                value is None
+                or served
+                or summary is None
+                or float(summary.relative) > target
+            )
+            reference_value = reference_reason = error = digits = None
+            if truth.present:
+                ref = reference.get(index)
+                if ref is not None:
+                    reference_value = None if len(ref) < 4 else ref[3]
+                    reference_reason = ref[2]
+                    if ref[1] is not None and total is not None:
+                        exact = relative_error(total, _total_finite(ref[1]))
+                        error = _significant(exact)
+                        digits = _rounded(stable_digits(exact), 3)
+            yield [
+                index,
+                status,
+                _finite_or_text(total),
+                None
+                if sectors is None
+                else [_finite_or_text(float(x)) for x in sectors],
+                *estimate,
+                bool(flagged),
+                served,
+                _significant(uncertainty),
+                reason,
+                reference_value,
+                reference_reason,
+                error,
+                digits,
+                task(("binary64", index)),
+                task(("reference", index)),
+            ]
+
+    encoded = encode_rows(rows(), len(indices), progress)
+    return {
+        "fields": list(SAMPLE_FIELDS),
+        "tasks": [[round(seconds, 6), points] for seconds, points in task_ids],
+        "rows": encoded,
+    }
 
 
 def _backend_statistics(

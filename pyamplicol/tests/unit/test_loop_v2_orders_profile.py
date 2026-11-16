@@ -374,9 +374,10 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
             assert first["points"] + first["failed_reference"] == 3
             # Every flat point is recorded by index; binary64 failures rank
             # among the measured points at 0 digits.
-            assert [p["index"] for p in first["per_point"]] == [0, 1, 2]
+            per_point = _records(first["per_point"])
+            assert [p["index"] for p in per_point] == [0, 1, 2]
             assert first["failed_binary64"] == sum(
-                p["status"] == "binary64-failed" for p in first["per_point"]
+                p["status"] == "binary64-failed" for p in per_point
             )
             assert len(first["percentiles"]) == 4
             assert all(0.0 <= d <= 16.0 for d in first["true_digits"])
@@ -557,14 +558,22 @@ def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
             # Every sample's record (the per-sample dump) reproduces the
             # aggregate numbers; its task timings depend on the workers.
             target = report["stability_setup"]["target"]
-            samples = row["samples"]
+            table = row["samples"]
+            tasks = table["tasks"]
+            samples = _records(table)
             assert [s["index"] for s in samples] == list(range(7))
+            # Every point's binary64 and reference task (seconds, points).
+            assert all(
+                tasks[s["binary64_task"]][1] >= 1 and tasks[s["reference_task"]][1] >= 1
+                for s in samples
+            )
             measured = [
                 0.0 if s["value"] is None else s["true_digits"]
                 for s in samples
                 if s["value"] is None or s["true_digits"] is not None
             ]
-            assert sorted(measured) == sorted(row["true_digits"])
+            # The records' digits carry 3 decimals.
+            assert sorted(measured) == sorted(round(d, 3) for d in row["true_digits"])
             assert sum(s["flagged"] for s in samples) == row["flagged"]
             assert (
                 sum(
@@ -577,22 +586,17 @@ def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
                 == row["unflagged_inaccurate"]
             )
             for sample in samples:
-                assert sample["reference"]["value"] is not None
+                assert sample["reference_value"] is not None
                 # A double-double value is reproducible to its own rounding
                 # only (a worker's engine state depends on what it evaluated
                 # before: the last digits move at ~1e-28 relative).
-                sample["reference"]["value"] = (
-                    f"{float(sample['reference']['value']):.15e}"
-                )
-                error = sample.pop("true_relative_error")
-                sample["true_relative_error"] = (
-                    None if error is None else f"{float(error):.12e}"
-                )
+                sample["reference_value"] = f"{float(sample['reference_value']):.15e}"
                 assert any(
-                    name.startswith("rotation") for name in sample["estimate"]["checks"]
+                    name.startswith("rotation") for name in sample["estimate_checks"]
                 )
                 sample.pop("binary64_task")
                 sample.pop("reference_task")
+            row["samples"] = samples
             # Timings, with the point counts per precision (all of them).
             timing = row.pop("precision_timing")
             assert {k: v["points"] for k, v in timing.items()} == {
@@ -600,11 +604,17 @@ def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
                 "double-double": 7,
             }
     assert one["stability"] == three["stability"]
-    inputs = one["stability_setup"]["samples"]
+    inputs = _records(one["stability_setup"]["samples"])
     assert [s["index"] for s in inputs] == list(range(7))
     assert all(len(s["momenta"]) == 4 and len(s["momenta"][0]) == 4 for s in inputs)
     assert one["stability_setup"] == three["stability_setup"]
     assert one["failure_causes"] == three["failure_causes"]
+
+
+def _records(table):
+    """A columnar --json table ({"fields": ..., "rows": ...}) as records."""
+
+    return [dict(zip(table["fields"], row, strict=True)) for row in table["rows"]]
 
 
 def test_a_loop_induced_view_has_no_born(tmp_path):
@@ -682,10 +692,12 @@ def test_the_stability_run_without_a_ground_truth(uux_ddx):
     assert report["ground_truth"]["arithmetic"] == "none"
     for row in report["stability"]:
         assert row["estimate_only"] is True and row["true_digits"] == []
-        assert len(row["samples"]) == 6
-        for sample in row["samples"]:
-            assert sample["reference"] is None and sample["true_digits"] is None
-            assert sample["estimate"] is not None and sample["reference_task"] is None
+        samples = _records(row["samples"])
+        assert len(samples) == 6
+        for sample in samples:
+            assert sample["reference_value"] is None and sample["true_digits"] is None
+            assert sample["estimate_relative"] is not None
+            assert sample["reference_task"] is None
         assert set(row["precision_timing"]) == {"binary64"}
     text = io.StringIO()
     assert (
@@ -746,3 +758,46 @@ def test_the_completion_time_overrules_given_counts_end_to_end(uux_ddx):
     assert setup["points"] != 7 and setup["points"] >= 5
     assert all(row["profile"]["batch"] != 32 for row in report["runtime"])
     assert 6.0 <= report["seconds"] <= 18.0
+
+
+@pytest.mark.loop_physics
+def test_the_samples_output_holds_every_record(uux_ddx, tmp_path):
+    """--samples-output PATH: every sample's record in one columnar JSON
+    file (the inputs, per backend its rows); --json names the file instead
+    of holding them, and the human tables write it too."""
+
+    from pyamplicol.cli.main import run_cli
+
+    path = tmp_path / "records" / "samples.json"
+    common = [
+        "profile",
+        str(uux_ddx),
+        "--stability",
+        "--stability-points",
+        "6",
+        "--n_core",
+        "1",
+        "--progress",
+        "off",
+        "--samples-output",
+        str(path),
+    ]
+    stdout = io.StringIO()
+    assert run_cli([*common, "--json"], stdout=stdout, stderr=io.StringIO()) == 0
+    report = json.loads(stdout.getvalue())
+    where = {"output": str(path), "points": 6}
+    assert report["stability_setup"]["samples"] == where
+    assert all(row["samples"] == where for row in report["stability"])
+    records = json.loads(path.read_text())
+    assert records["schema"] == "pyamplicol.profile-samples/1"
+    assert len(_records(records["inputs"])) == 6
+    backends = {row["backend"] for row in report["stability"]}
+    assert set(records["backends"]) == backends
+    for table in records["backends"].values():
+        rows = _records(table)
+        assert [r["index"] for r in rows] == list(range(6))
+        assert all(r["reference_value"] is not None for r in rows)
+    path.unlink()
+    text = io.StringIO()
+    assert run_cli(common, stdout=text, stderr=io.StringIO()) == 0
+    assert "true digits" in text.getvalue() and path.is_file()

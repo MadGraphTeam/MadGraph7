@@ -886,7 +886,10 @@ def test_human_output_skips_the_json_conversion_and_large_dumps_say_so(
 
     main = importlib.import_module("pyamplicol.cli.main")
 
+    from pyamplicol.reporting.raw_json import encode_rows
+
     digits = (1.0, 3.0, 5.0, 9.0)
+    big = encode_rows(([index, "x" * 200] for index in range(120_000)), 120_000)
     row = BackendStability(
         "tirust",
         points=4,
@@ -894,7 +897,7 @@ def test_human_output_skips_the_json_conversion_and_large_dumps_say_so(
         estimated_digits=digits,
         percentiles=percentile_table(digits, digits),
         seconds=1.0,
-        samples=tuple({"index": index, "values": [1.0]} for index in range(6000)),
+        samples={"fields": ["index", "pad"], "tasks": [], "rows": big},
     )
     report = _report((row,))
     converted = main._json_value
@@ -908,6 +911,12 @@ def test_human_output_skips_the_json_conversion_and_large_dumps_say_so(
     monkeypatch.setattr(main, "_json_value", converted)
     machine = io.StringIO()
     main.write_result(report, format="json", stream=machine, color=False)
-    assert "Writing the JSON result (6000 sample records)" in capsys.readouterr().err
-    assert len(json.loads(machine.getvalue())["stability"][0]["samples"]) == 6000
-    assert _report((replace(row, samples=row.samples[:10]),)).json_notice() is None
+    assert "Writing the JSON result (120000 sample records, 25 MB)" in (
+        capsys.readouterr().err
+    )
+    # The pre-encoded rows are spliced in: one valid document.
+    rows = json.loads(machine.getvalue())["stability"][0]["samples"]["rows"]
+    assert len(rows) == 120_000 and rows[7] == [7, "x" * 200]
+    small = encode_rows([[0, "x"]], 1)
+    samples = {"fields": ["index", "pad"], "tasks": [], "rows": small}
+    assert _report((replace(row, samples=samples),)).json_notice() is None

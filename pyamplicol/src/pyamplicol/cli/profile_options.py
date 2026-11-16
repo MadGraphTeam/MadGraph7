@@ -88,6 +88,18 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--samples-output",
+        dest="benchmark.samples_output",
+        default=argparse.SUPPRESS,
+        metavar="PATH",
+        help=(
+            "loop artifacts: write every stability sample's record (inputs, "
+            "values, estimates, reference, true error, task timings; "
+            "columnar JSON) to PATH (benchmark.samples_output); --json then "
+            "names the file instead of holding the records"
+        ),
+    )
+    parser.add_argument(
         "--seed",
         dest="evaluation.phase_space.seed",
         type=int,
