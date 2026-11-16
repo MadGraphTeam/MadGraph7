@@ -683,13 +683,10 @@ class FKSProcess(object):
                     'Not valid start_proc in FKSProcess')
             self.born_amp['process'].set('legs_with_decays', MG.LegList())
 
-            # special treatment of photon is needed !
-            #MZ to be fixed
-            ###self.isr = set([leg.get(color) for leg in self.leglist if not leg.get('state')]) != set([zero])
-            ###self.fsr = set([leg.get(color) for leg in self.leglist if leg.get('state')]) != set([zero])
+            # Radiation flags are filled from the accepted FKS sectors after
+            # generating the real amplitudes, including splitting restrictions.
             self.isr = False
             self.fsr = False
-            #######
             self.nincoming = len([l for l in self.born_amp['process']['legs'] \
                                   if not l['state']])
                 
@@ -708,15 +705,20 @@ class FKSProcess(object):
 
 
     def generate_real_amplitudes(self, pdg_list, real_amp_list):
-        """generates the real amplitudes for all the real emission processes, using pdgs and real_amps
-        to avoid multiple generation of the same amplitude.
+        """Generate real amplitudes, reusing only identical ordered states and
+        amplitude restrictions (PDGs alone do not specify an amplitude).
         Amplitude without diagrams are discarded at this stage"""
 
         no_diags_amps = []
         for amp in self.real_amps:
+            identity = fks_common.external_process_identity(amp.process)
             try:
-                amp.amplitude = real_amp_list[pdg_list.index(amp.pdgs_pols)]
-            except ValueError:
+                index = next(index for index, pdgs in enumerate(pdg_list)
+                             if pdgs == amp.pdgs_pols and
+                             fks_common.external_process_identity(
+                                 real_amp_list[index]['process']) == identity)
+                amp.amplitude = real_amp_list[index]
+            except StopIteration:
                 amplitude = amp.generate_real_amplitude()
                 if amplitude['diagrams']:
                     pdg_list.append(amp.pdgs_pols)
@@ -730,17 +732,17 @@ class FKSProcess(object):
 
 
     def combine_real_amplitudes(self):
-        """combines real emission processes if the pdgs are the same, combining the lists 
-        of fks_infos"""
-        pdgs = []
+        """Combine FKS lists only for identical ordered external states."""
+        identities = []
         real_amps = []
         old_real_amps = copy.copy(self.real_amps)
         for amp in old_real_amps:
+            identity = fks_common.external_process_identity(amp.process)
             try:
-                real_amps[pdgs.index(amp.pdgs_pols)].fks_infos.extend(amp.fks_infos)
+                real_amps[identities.index(identity)].fks_infos.extend(amp.fks_infos)
             except ValueError:
                 real_amps.append(amp)
-                pdgs.append(amp.pdgs_pols)
+                identities.append(identity)
 
         self.real_amps = real_amps
 
@@ -905,6 +907,16 @@ class FKSProcess(object):
         if not self.ncores_for_proc_gen:
             self.generate_real_amplitudes(pdg_list, real_amp_list)
             self.link_born_reals()
+        self.update_radiation_flags()
+
+    def update_radiation_flags(self, real_amps=None):
+        """Record radiation represented by the retained real FKS sectors."""
+        if real_amps is None:
+            real_amps = self.real_amps
+        self.isr = any(info['j'] <= self.nincoming
+                       for real in real_amps for info in real.fks_infos)
+        self.fsr = any(info['j'] > self.nincoming
+                       for real in real_amps for info in real.fks_infos)
 
 
     def link_born_reals(self):
@@ -1026,7 +1038,7 @@ class FKSProcess(object):
             for n in range(m + 1, ninit):
                 real_m = self.real_amps[m]
                 real_n = self.real_amps[n]
-                if len(real_m.fks_infos) > 1 or len(real_m.fks_infos) > 1:
+                if len(real_m.fks_infos) > 1 or len(real_n.fks_infos) > 1:
                     raise fks_common.FKSProcessError(\
                     'find_reals_to_integrate should only be called before combining processes')
 
@@ -1036,17 +1048,36 @@ class FKSProcess(object):
                 j_n = real_n.fks_infos[0]['j']
                 ij_id_m = real_m.fks_infos[0]['ij_id']
                 ij_id_n = real_n.fks_infos[0]['ij_id']
+                # The reduced representatives and the exported MC orbits must
+                # use the same notion of identical external states. PDG-only
+                # reduction can otherwise discard a distinct tagged/helicity
+                # sector before the exporter ever sees it.
+                identity = fks_common.external_leg_identity
+                legs_m = [identity(leg) for leg in real_m.process['legs']]
+                legs_n = [identity(leg) for leg in real_n.process['legs']]
+                if (legs_m[:self.nincoming] != legs_n[:self.nincoming] or
+                    sorted(legs_m[self.nincoming:], key=repr) !=
+                    sorted(legs_n[self.nincoming:], key=repr)):
+                    continue
+                if (real_m.fks_infos[0]['splitting_type'] !=
+                    real_n.fks_infos[0]['splitting_type'] or
+                    real_m.fks_infos[0]['extra_cnt_index'] !=
+                    real_n.fks_infos[0]['extra_cnt_index']):
+                    continue
+                same_pair = (legs_m[i_m-1] == legs_n[i_n-1] and
+                             legs_m[j_m-1] == legs_n[j_n-1])
+                reversed_pair = (legs_m[i_m-1] == legs_n[j_n-1] and
+                                 legs_m[j_m-1] == legs_n[i_n-1])
+                # Unlike f/fbar, two distinct gluon states cannot be combined
+                # by reversing i,j: each ordered gg term has its own h(z).
+                if (real_m.get_leg_i()['id'] == real_m.get_leg_j()['id']
+                        and legs_m[i_m-1] != legs_m[j_m-1]):
+                    reversed_pair = False
                 if j_m > self.nincoming and j_n > self.nincoming:
                     # make sure i and j in the two real emissions have the same mother 
                     if (ij_id_m != ij_id_n):
                         continue
-                    if (real_m.get_leg_i()['id'] == real_n.get_leg_i()['id'] \
-                        and \
-                        real_m.get_leg_j()['id'] == real_n.get_leg_j()['id']) \
-                        or \
-                       (real_m.get_leg_i()['id'] == real_n.get_leg_j()['id'] \
-                        and \
-                        real_m.get_leg_j()['id'] == real_n.get_leg_i()['id']):
+                    if same_pair or reversed_pair:
                         if i_m > i_n:
                             if real_m.get_leg_i()['id'] == -real_m.get_leg_j()['id']:
                                 self.real_amps[m].is_to_integrate = False
@@ -1072,8 +1103,7 @@ class FKSProcess(object):
                                 self.real_amps[m].is_to_integrate = False
                          # self.real_amps[m].is_to_integrate = False
                 elif j_m <= self.nincoming and j_n == j_m:
-                    if real_m.get_leg_i()['id'] == real_n.get_leg_i()['id'] and \
-                       real_m.get_leg_j()['id'] == real_n.get_leg_j()['id']:
+                    if same_pair:
                         if i_m > i_n:
                             self.real_amps[n].is_to_integrate = False
                         else:

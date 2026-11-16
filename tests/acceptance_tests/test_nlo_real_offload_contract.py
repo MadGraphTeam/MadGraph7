@@ -432,12 +432,14 @@ class TestNLORealFortranOracle(unittest.TestCase):
             sorted(local_counts))
         objects = matrix_objects + [
             'real_me_chooser.o', 'splitorders_stuff.o', name + '.o']
+        objects += self._native_real_link_objects(output_path, subproc)
         misc.compile(objects, cwd=subproc)
 
         executable = pjoin(subproc, name)
         subprocess.check_call(
             ['gfortran', '-o', executable] + objects +
-            ['-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel'],
+            ['-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel']+
+            self._native_real_link_flags(output_path, subproc),
             cwd=subproc)
         output = subprocess.check_output(
             [executable], input=self._driver_input(case['points']),
@@ -445,6 +447,29 @@ class TestNLORealFortranOracle(unittest.TestCase):
         return self._parse_driver_output(
             output.decode(errors='replace'),
             len(case['split_order_names']))
+
+    def _native_real_link_objects(self, output_path, subproc):
+        """Link the actual native router/state into isolated real probes.
+
+        Function sections discard unused MC activation callbacks; these probes
+        exercise amplitudes and never initialize full matching/event tables.
+        """
+        if not os.path.isfile(pjoin(subproc, 'native_real_me_chooser.f')):
+            return []
+        misc.compile(['native_real_me_chooser.o', 'born_support.o', 'driver.o'], cwd=subproc)
+        subprocess.check_call([
+            'gfortran', '-O0', '-fPIC', '-ffunction-sections', '-fdata-sections',
+            '-ffree-line-length-none', '-I'+pjoin(output_path, 'lib'),
+            '-c', 'mc_native_context.f90', '-o', 'native_context_probe.o'], cwd=subproc)
+        subprocess.check_call(['make', 'timing.o'], cwd=pjoin(output_path, 'Source'))
+        return ['native_real_me_chooser.o', 'born_support.o',
+                'native_context_probe.o', 'driver.o', '../../Source/timing.o']
+
+    def _native_real_link_flags(self, output_path, subproc):
+        if not os.path.isfile(pjoin(subproc, 'native_real_me_chooser.f')):
+            return []
+        return ['-lmc_born_support', '-Wl,--gc-sections',
+                '-Wl,-rpath,'+pjoin(output_path, 'lib')]
 
     def _compile_routed_driver(self, output_path, case, vector=False,
                                backend='scalar'):
@@ -475,12 +500,14 @@ class TestNLORealFortranOracle(unittest.TestCase):
         objects = matrix_objects + [
             'real_me_chooser.o', 'splitorders_stuff.o', object_name,
             'nlo_real_offload.o']
+        objects += self._native_real_link_objects(output_path, subproc)
         misc.compile(objects + [backend_option], cwd=subproc)
         subprocess.check_call(
             ['gfortran', '-o', executable] + objects + [
                 '-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel',
                 '-L%s' % subproc, '-lnlo_real_bridge',
-                '-Wl,-rpath,$ORIGIN', '-lstdc++', '-ldl'],
+                '-Wl,-rpath,$ORIGIN', '-lstdc++', '-ldl']+
+                self._native_real_link_flags(output_path, subproc),
             cwd=subproc)
         return executable
 
@@ -846,12 +873,14 @@ class TestNLORealFortranOracle(unittest.TestCase):
             'real_me_chooser.o', 'splitorders_stuff.o',
             'check_real_batch.o', 'nlo_real_offload.o']
         misc.compile(objects[:-1], cwd=subproc)
+        objects += self._native_real_link_objects(output_path, subproc)
         executable = pjoin(subproc, 'check_real_batch')
         subprocess.check_call(
             ['gfortran', '-o', executable] + objects + [
                 '-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel',
                 '-L%s' % subproc, '-lnlo_real_bridge',
-                '-Wl,-rpath,$ORIGIN', '-lstdc++', '-ldl'], cwd=subproc)
+                '-Wl,-rpath,$ORIGIN', '-lstdc++', '-ldl']+
+                self._native_real_link_flags(output_path, subproc), cwd=subproc)
 
         points = {point['id']: point for point in case['points']}
         values = []

@@ -119,7 +119,8 @@ Integrand::Integrand(
     const std::optional<CustomFunction>& custom_bias,
     const std::optional<PdfGrid>& pdf_grid2,
     const std::optional<MappingChannelWeights>& mapping_chan_weights,
-    int mlm_history_qcd_power
+    int mlm_history_qcd_power,
+    const std::optional<EELuminosity>& lepton_luminosity
 ) :
     FunctionGenerator(
         "Integrand",
@@ -266,6 +267,7 @@ Integrand::Integrand(
     _pid_options(pid_options),
     _running_coupling(running_coupling),
     _energy_scale(energy_scale),
+    _lepton_luminosity(lepton_luminosity),
     _prop_chan_weights(prop_chan_weights),
     _mapping_chan_weights(mapping_chan_weights),
     _subchan_weights(subchan_weights),
@@ -597,9 +599,18 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
         ret.push_back("extra_weight_after_cuts", acc_float);
     }
     ret.push_back("ren_scale", acc_float);
-    if ((_pdfs.at(0) || _pdfs.at(1)) && _energy_scale) {
+    // a dressed-lepton run has no PartonDensity at all -- one luminosity
+    // replaces both PDFs -- but still returns pdf1/fact_scale1
+    if ((_pdfs.at(0) || _pdfs.at(1) || _lepton_luminosity) && _energy_scale) {
         auto flav_count = static_cast<int>(_pid_options.size());
-        if (has_multi_flavor) {
+        // pdf_prior is built from the per-flavour PartonDensity values, which
+        // a dressed-lepton run does not have: build_channel_part only sets it
+        // inside its own `_pdfs` test, and build_common_part likewise. Adding
+        // _lepton_luminosity here alone would promise an output that is never
+        // pushed. Whether such a run should get a flavour prior from the
+        // luminosity instead is a separate question; until it does, the three
+        // conditions have to say the same thing.
+        if (has_multi_flavor && (_pdfs.at(0) || _pdfs.at(1))) {
             ret.push_back("pdf_prior", acc_float_array(flav_count));
         }
         for (std::size_t i = 0; i < 2; ++i) {
@@ -771,6 +782,15 @@ NamedVector<Value> Integrand::build_channel_part(
     Value momenta = mapping_result["momenta"];
     Value x0 = mapping_result["x1"];
     Value x1 = mapping_result["x2"];
+    // A dressed-lepton mapping also hands back 1-x. It has to: it samples x
+    // close enough to 1 that recomputing 1-x from a double underflows to zero
+    // for about a quarter of the events, and the density's (1-x)^-kappa then
+    // has nothing to cancel the Jacobian's (1-x)^-p against.
+    Value omx0, omx1_val;
+    if (_lepton_luminosity) {
+        omx0 = mapping_result["omx1"];
+        omx1_val = mapping_result["omx2"];
+    }
 
     // Filter events that pass cuts
     Value weight_before_cuts = fb.product(weights_before_cuts);
@@ -783,6 +803,13 @@ NamedVector<Value> Integrand::build_channel_part(
     std::array<Value, 2> x_acc{
         {fb.batch_gather(indices_acc, x0), fb.batch_gather(indices_acc, x1)}
     };
+    std::array<Value, 2> omx_acc;
+    if (_lepton_luminosity) {
+        omx_acc = {
+            {fb.batch_gather(indices_acc, omx0),
+             fb.batch_gather(indices_acc, omx1_val)}
+        };
+    }
     for (auto& cond : flow_conditions) {
         cond = fb.batch_gather(indices_acc, cond);
     }
@@ -1019,6 +1046,27 @@ NamedVector<Value> Integrand::build_channel_part(
     out.push_back("ren_scale", scales.at(0));
     if (has_pdf_prior) {
         out.push_back("pdf_prior", pdf_prior);
+    }
+    if (_lepton_luminosity) {
+        // A dressed-lepton density does not factorize into two independent
+        // PDFs: the beams pair term by term, so one luminosity replaces both.
+        // diff_cross_section expects the LHAPDF x*f convention while these
+        // densities are plain f(x), hence the x1*x2; it goes in on beam 1 with
+        // nothing on beam 2, giving L * ME / (2 s_hat).
+        auto batch = fb.batch_size({x_acc.at(0)});
+        auto lum = _lepton_luminosity.value().build_function(
+            fb,
+            ValueVec{
+                x_acc.at(0), omx_acc.at(0),
+                x_acc.at(1), omx_acc.at(1),
+                scales.at(1),
+                // the component choice does not enter the luminosity; the
+                // beamstrahlung split picks it again when events are written
+                fb.full({0.5, batch})
+            }
+        );
+        pdf_results.at(0) =
+            fb.mul(lum.at(0), fb.mul(x_acc.at(0), x_acc.at(1)));
     }
     if (_diff_xs.at(0).has_pdf(0)) {
         out.push_back("pdf1", pdf_results.at(0));

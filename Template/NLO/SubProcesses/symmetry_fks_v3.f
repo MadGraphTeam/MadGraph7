@@ -1,8 +1,10 @@
       program symmetry
+      use fks_phase_space_data, only: p_born
 c*****************************************************************************
 c     Given identical particles, and the configurations. This program identifies
 c     identical configurations and specifies which ones can be skipped
 c*****************************************************************************
+      use fks_phase_space, only: generate_momenta
       use mint_module
       implicit none
 c
@@ -13,13 +15,12 @@ c
       include 'run.inc'
       include 'nFKSconfigs.inc'
       include 'born_conf.inc' ! needed for mapconfig
-      include 'orders.inc'
-      include 'born_nhel.inc'
       logical mtc,even
       integer i,j,k,nmatch,ibase,ntry,icb(nexternal-1),jc(nexternal)
      $     ,use_config(0:lmaxconfigs)
       double precision diff,rwgt,p(0:3,nexternal),wgt,x(99),p_born1(0:3
      $     ,nexternal-1),p_born_save(0:3,nexternal-1),saveamp(ngraphs)
+     $     ,p_lab(0:3,nexternal) ,p_cms(0:3,nexternal)
       double complex wgt1(2)
       integer fks_j_from_i(nexternal,0:nexternal)
      &     ,particle_type(nexternal),pdg_type(nexternal)
@@ -27,19 +28,11 @@ c
       integer         nndim
       common/tosigint/nndim
       Double Precision amp2(ngraphs), jamp2(0:ncolor)
-      complex*16 ans_cnt(2,nsplitorders)
-      DOUBLE PRECISION DUMMY_AMP_SPLIT(AMP_SPLIT_SIZE)
-      DOUBLE COMPLEX DUMMY_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
-      double complex ret_saveamp(ngraphs,max_bhel)
-C      common/to_amps/  amp2,          jamp2
-      double precision p_born(0:3,nexternal-1)
-      common /pborn/   p_born
+      common/to_amps/  amp2,          jamp2
       integer            i_fks,j_fks
       common/fks_indices/i_fks,j_fks
       integer              nFKSprocess
       common/c_nFKSprocess/nFKSprocess
-      logical                calculatedBorn
-      common/ccalculatedBorn/calculatedBorn
       integer          isum_hel
       logical                    multi_channel
       common/to_matrix/isum_hel, multi_channel
@@ -92,7 +85,7 @@ c other things-- in a wrong shower starting scale.
       multi_channel=.true.
       nbody=.true.
 c Pick a process that is BORN+1GLUON (where the gluon is i_fks).
-      do nFKSprocess=1,fks_configs
+      do nFKSprocess=1,fks_integrated
          call fks_inc_chooser()
          if (is_aorg(i_fks)) exit
       enddo
@@ -101,7 +94,7 @@ c (this might happen in case of initial state leptons with
 c include_lepton_initiated_processes=False) the Born and virtuals do not
 c need to be included, but we still need to set the symmetry
 c factors. Hence, simply use the first fks_configuration.
-      if (nFKSprocess.gt.fks_configs) nFKSprocess=1
+      if (nFKSprocess.gt.fks_integrated) nFKSprocess=1
       call leshouche_inc_chooser()
       call setrun                !Sets up run parameters
       if (real_channels_x0.gt.0d0.and.real_channels_x0.lt.1d0) then
@@ -138,7 +131,7 @@ c
       enddo
       new_point=.true.
       wgt=1d0
-      call generate_momenta(ndim,iconfig,wgt,x,p)
+      call generate_momenta(ndim,iconfig,wgt,x,p,p_lab,p_cms)
       call set_cms_stuff(-100)
       do while ((.not.passcuts(p,rwgt) .or. wgt.lt.0 .or. p(0,1).le.0d0
      $     .or. p_born(0,1).le.0d0) .and. ntry.lt.10000)
@@ -147,23 +140,18 @@ c
          enddo
          new_point=.true.
          wgt=1d0
-         call generate_momenta(ndim,iconfig,wgt,x,p)
+         call generate_momenta(ndim,iconfig,wgt,x,p,p_lab,p_cms)
          call set_cms_stuff(-100)
          ntry=ntry+1
       enddo
       write(*,*) 'ntry',ntry
       call set_alphaS(p)
-
-      amp2(:) = 0d0
-      jamp2(:) = 0d0
-
 c
 c     Get and save base amplitudes
 c
-      calculatedBorn=.false.
 c Call the Born twice to make sure that all common blocks are correctly filled.
-      call sborn_amp(p_born,amp2,jamp2,DUMMY_AMP_SPLIT,DUMMY_AMP_SPLIT_CNT,wgt1,ans_cnt,ret_saveamp)
-      call sborn_amp(p_born,amp2,jamp2,DUMMY_AMP_SPLIT,DUMMY_AMP_SPLIT_CNT,wgt1,ans_cnt,ret_saveamp)
+      call sborn_frame(p_born,wgt1)
+      call sborn_frame(p_born,wgt1)
       do j=1, mapconfig(0)
          saveamp(mapconfig(j)) = amp2(mapconfig(j))
       enddo
@@ -197,8 +185,7 @@ c nexternal is the number for the real configuration. Subtract 1 for the Born.
                   p_born(k,j)=p_born1(k,j)
                enddo
             enddo
-            calculatedBorn=.false.
-            call sborn_amp(p_born,amp2,jamp2,DUMMY_AMP_SPLIT,DUMMY_AMP_SPLIT_CNT,wgt1,ans_cnt,ret_saveamp)
+            call sborn_frame(p_born,wgt1)
 c        Look for matches
             do j=2,mapconfig(0)
                do k=1,j-1
@@ -348,7 +335,7 @@ c***************************************************************************
       
       j_fks_ini=.false.
       j_fks_fin=.false.
-      do i=1,fks_configs
+      do i=1,fks_integrated
          if (fks_j_d(i).le.nincoming) j_fks_ini=.true.
          if (fks_j_d(i).gt.nincoming) j_fks_fin=.true.
       enddo

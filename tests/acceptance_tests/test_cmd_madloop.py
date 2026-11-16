@@ -55,7 +55,6 @@ path = os.path
 class TestCmdLoop(unittest.TestCase):
     """this treats all the command not related to MG_ME"""
     logger_saved_info = {}
-    debugging = True
     def setUp(self):
         """ Initialize the test """
         self.interface = MGCmd.MasterCmd()
@@ -64,6 +63,10 @@ class TestCmdLoop(unittest.TestCase):
         # first the handlers and second the level.
         self.logger_saved_info = {}
 
+        # Only test_manager --debug keeps the output, in the shared
+        # <MG5DIR>/TEST_AMC; otherwise each test gets its own directory so
+        # that concurrent test runs in one checkout do not wipe each other.
+        self.debugging = getattr(unittest, "debug", False)
         if not self.debugging:
             self.tmpdir = tempfile.mkdtemp(prefix='amc')
         else:
@@ -73,7 +76,11 @@ class TestCmdLoop(unittest.TestCase):
             self.tmpdir = pjoin(MG5DIR, 'TEST_AMC')
             
         self.out_dir = pjoin(self.tmpdir,'MGProcess')
-    
+
+    def tearDown(self):
+        if not self.debugging:
+            shutil.rmtree(self.tmpdir, ignore_errors=True)
+
     def generate(self, process, model):
         """Create a process"""
         try:
@@ -1885,6 +1892,7 @@ class TestCmdMatchBox(IOTests.IOTestManager):
         cmd = """
         set apply_flavor_grouping False
         import model sm
+        set gauge unitary
         generate w+ w- > w+ w- @0
         output matchbox %(path)s/TEST --postpone_model
         generate u u~ > u u~ [virt=QCD] @1
@@ -1917,6 +1925,9 @@ class IOTestMadLoopOutputFromInterface(IOTests.IOTestManager):
         misc.deactivate_dependence('samurai', cmd = interface, log='stdout')        
         misc.deactivate_dependence('golem', cmd = interface, log='stdout')
         misc.activate_dependence('ninja', cmd = interface, log='stdout',MG5dir=MG5DIR)
+
+        # The reference includes COLLIER interfaces on every runner.
+        misc.activate_dependence('collier', cmd = interface, log='stdout',MG5dir=MG5DIR)
 
         run_cmd('generate g g > t t~ [virt=QCD]')
         interface.onecmd('output %s -f' % str(pjoin(self.IOpath,'ggttx_IOTest')))

@@ -184,10 +184,16 @@ def interference_helicities_summed(run_card):
 def lhe_helicities(meta, run_card):
     """The helicity table the LHE completer writes for a subprocess: its own,
     or 9 for every particle of an interference subprocess whose |M|^2 is the
-    helicity sum (interference_helicities_summed)."""
+    helicity sum (interference_helicities_summed), and for the massive
+    fermions whose two spin states are not helicity states (the
+    "unknown_helicity" legs: output --axial_gauge=True)."""
     helicities = meta["helicities"]
     if meta.get("interference") and interference_helicities_summed(run_card):
         return [[9] * len(row) for row in helicities]
+    unknown = set(meta.get("unknown_helicity", ()))
+    if unknown:
+        return [[9 if i in unknown else hel for i, hel in enumerate(row)]
+                for row in helicities]
     return helicities
 
 

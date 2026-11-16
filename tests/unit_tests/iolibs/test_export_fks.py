@@ -132,10 +132,11 @@ class TestBornDirCollision(unittest.TestCase):
 class TestGroupedFKSMetadata(unittest.TestCase):
     """Physical FKS classes exported through configuration-indexed tables."""
 
-    def test_openmp_amplitude_loop_is_explicitly_opt_in(self):
-        """The paper loop must be active in OpenMP builds but serial by
-        default, rather than hidden behind the invalid historical ``!omp``
-        comment sentinel.
+    def test_native_mc_keeps_ordered_point_dispatch_and_openmp_build_flags(self):
+        """Native MC folds share typed state; retain ordered full points.
+
+        Fortran amplitude helpers still support explicit OpenMP builds.
+        Porting native MC point state to lanes is a separate change.
         """
 
         template_root = os.path.join(
@@ -143,11 +144,10 @@ class TestGroupedFKSMetadata(unittest.TestCase):
         with open(os.path.join(
                 template_root, 'SubProcesses', 'driver_mintMC.f')) as stream:
             driver = stream.read().upper()
-        self.assertIn(
-            '!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(IVEC)', driver)
-        self.assertIn('!$OMP END PARALLEL DO', driver)
-        self.assertNotIn('!OMP PARALLEL DO', driver)
-        self.assertIn('WALL TIME IN VECTOR_AMPLITUDE', driver)
+        self.assertIn('CALL MINT(SIGINTF)', driver)
+        self.assertIn('CALL GEN(SIGINTF,', driver)
+        self.assertNotIn('CALL MINT_VEC(', driver)
+        self.assertNotIn('CALL GEN_VEC(', driver)
 
         with open(os.path.join(
                 template_root, 'Source', 'make_opts.inc')) as stream:
@@ -465,7 +465,7 @@ class TestGroupedFKSMetadata(unittest.TestCase):
             content = ''.join(
                 stream.read().upper().replace('$', '').split())
 
-        self.assertEqual(content.count('CALLSREAL_STORE('), 8)
+        self.assertEqual(content.count('CALLSREAL_STORE_BUFFERED('), 8)
         self.assertEqual(
             content.count('RET_AMP_SPLIT,REAL_AMP_SPLIT'), 8)
         for routine in (
@@ -474,7 +474,7 @@ class TestGroupedFKSMetadata(unittest.TestCase):
                 'COMPUTE_COLLINEAR_COUNTER_TERM',
                 'COMPUTE_REAL_EMISSION'):
             calls = re.findall(
-                r'CALL%s\(([^)]*)\)' % routine, content)
+                r'CALL%s_BUFFERED\(([^)]*)\)' % routine, content)
             self.assertEqual(len(calls), 2)
             self.assertTrue(all(
                 'RET_AMP_SPLIT' in call for call in calls))
@@ -971,10 +971,10 @@ class TestFKSOutput(unittest.TestCase):
             self.assertEqual(len(arguments.split(',')), 6, name)
 
     def test_add_wgt_calls_pass_all_arguments(self):
-        """Every call of add_wgt in the NLO templates passes its seven
-        arguments (type, orders, three log coefficients, Born and real
-        weights). A call left from the signature before split orders
-        passed a weight as the orders array and crashed when reached."""
+        """Native weights take five arguments; explicit buffers take seven.
+
+        Both APIs require an orders array, including artificial soft weights.
+        """
         import glob
         import re
 
@@ -994,23 +994,24 @@ class TestFKSOutput(unittest.TestCase):
 
         template = os.path.join(MGCmd.MG5DIR, 'Template', 'NLO',
                                 'SubProcesses')
-        arity = None
+        arities = {}
         calls = []
         for path in glob.glob(os.path.join(template, '*.f')):
             with open(path) as stream:
                 # join Fortran fixed-form continuation lines
                 source = re.sub(r'\n     [$&]', '', stream.read())
-            for match in re.finditer(r'subroutine\s+add_wgt\s*\(',
+            for match in re.finditer(r'subroutine\s+(add_wgt(?:_buffered)?)\s*\(',
                                      source, re.I):
-                arity = arguments(source, match.end() - 1)
-            for match in re.finditer(r'call\s+add_wgt\s*\(', source, re.I):
+                arities[match[1].lower()] = arguments(source, match.end() - 1)
+            for match in re.finditer(r'call\s+(add_wgt(?:_buffered)?)\s*\(', source, re.I):
                 calls.append((os.path.basename(path),
+                              match[1].lower(),
                               arguments(source, match.end() - 1),
                               source[match.start():match.start() + 60]))
-        self.assertEqual(arity, 7)
+        self.assertEqual(arities, {'add_wgt': 5, 'add_wgt_buffered': 7})
         self.assertTrue(calls)
-        for name, count, text in calls:
-            self.assertEqual(count, arity, '%s: %s' % (name, text))
+        for name, routine, count, text in calls:
+            self.assertEqual(count, arities[routine], '%s: %s' % (name, text))
 
     def test_bornsoftvirtual_recomputes_link_borns(self):
         """The integrated soft term of bornsoftvirtual evaluates the
@@ -1022,9 +1023,9 @@ class TestFKSOutput(unittest.TestCase):
         with the recomputation the integrand equals MG5's point by point."""
         import re
         with open(os.path.join(MGCmd.MG5DIR, 'Template', 'NLO',
-                               'SubProcesses', 'fks_singular.f')) as stream:
+                               'SubProcesses', 'fks_buffered.f')) as stream:
             source = stream.read()
-        start = source.index('      subroutine bornsoftvirtual(')
+        start = source.index('      subroutine bornsoftvirtual_buffered(')
         body = source[start:source.index('\n      end\n', start)]
         # the link loop: from the I(reg) comment to restoring nFKSprocess
         begin = body.index('I(reg) terms')

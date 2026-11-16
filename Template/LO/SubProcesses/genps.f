@@ -260,7 +260,7 @@ c-----
 c tjs 5/24/2010 for 2->1 process
 c-------
             shat_unit = get_shat_unit(stot)
-           call sample_get_x(sjac,x(ndim-1),ndim-1,mincfig,0d0,1d0)               
+           call sample_get_x(sjac,x(ndim-1),ndim-1,mincfig,0d0,1d0)
            xtau = x(ndim-1)
             if(nexternal .eq. 3) then
 c              GENCMS takes x(ndim-1) in units of shat_unit

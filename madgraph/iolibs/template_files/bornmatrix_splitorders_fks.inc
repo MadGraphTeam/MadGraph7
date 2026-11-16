@@ -1365,6 +1365,8 @@ C BEGIN CODE
 C ----------
       IF (FORCE_IJGLU_ZERO) BORN_CACHE_OK=.FALSE.
       jamp(:,:) = (0d0,0d0)
+! For a massive father (glu_ij=0), only one JAMPH row is filled.
+! Its unused spin interference must not retain another sector's values.
       jamph(:,:,:) = (0d0,0d0)
       borns(:,:) =0d0
       ans(:,:) = (0d0, 0d0)

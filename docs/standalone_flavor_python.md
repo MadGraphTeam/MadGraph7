@@ -70,8 +70,10 @@ unchanged. Calling the per-process `matrix2py` module directly, it is up to you
 to present a tabulated ordering. Going through the multi-process wrapper
 (`SubProcesses/all_matrix.f`, which is what MadSpin and reweighting use)
 nothing is needed: `FLAVOR_ORDER_REPAIR` finds a tabulated ordering and moves
-the momenta with it. The one case it leaves alone is `smatrixhel` asked for a
-single helicity row, since that row names the legs by position.
+the momenta with it. A `smatrixhel` call for a single helicity code is moved
+too: the code is re-keyed with the legs (`FLAVOR_ORDER_HEL`, read in the
+process's own helicity table, `py_<prefix>get_nhel_idx`), so every leg keeps
+the helicity the caller gave it, crossed subprocesses included.
 
 ---
 

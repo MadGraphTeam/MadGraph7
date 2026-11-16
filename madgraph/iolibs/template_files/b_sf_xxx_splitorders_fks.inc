@@ -21,7 +21,7 @@ implicit none
 C  
 C ARGUMENTS 
 C 
-      REAL*8 P(0:3,NEXTERNAL), ANS_SUMMED
+      REAL*8 P(0:3,NEXTERNAL-1), ANS_SUMMED
       double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
       double complex loc_saveamp(%(ngraphs)d,max_bhel)
 C
@@ -100,7 +100,7 @@ implicit none
 C  
 C ARGUMENTS 
 C 
-      REAL*8 P(0:3,NEXTERNAL), ANS_SUMMED
+      REAL*8 P(0:3,NEXTERNAL-1), ANS_SUMMED
       double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
       double complex loc_saveamp(%(ngraphs)d,max_bhel)
 C

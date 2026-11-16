@@ -1,4 +1,4 @@
-      SUBROUTINE SMATRIX_REAL(P, RET_AMP_SPLIT, WGT)
+      SUBROUTINE smatrix_real_local(P, RET_AMP_SPLIT, WGT)
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INCLUDE 'orders.inc'

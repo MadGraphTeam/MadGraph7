@@ -2,6 +2,7 @@
 
 #include "phasespace/base.hpp"
 #include "phasespace/batch_sampler.hpp"
+#include "phasespace/beamstrahlung.hpp"
 #include "phasespace/channel_weight_network.hpp"
 #include "phasespace/channel_weights.hpp"
 #include "phasespace/color_ordered_mapping.hpp"

@@ -237,6 +237,7 @@ add_library(
     src/phasespace/two_particle.cpp
     src/phasespace/three_particle.cpp
     src/phasespace/luminosity.cpp
+    src/phasespace/beamstrahlung.cpp
     src/phasespace/topology.cpp
     src/phasespace/t_propagator_mapping.cpp
     src/phasespace/color_ordered_mapping.cpp
@@ -398,6 +399,7 @@ if(COMPILE_CUDA)
         SHARED
         src/gpu/runtime.cu
         src/gpu/device.cu
+        src/gpu/gzip.cu
         src/gpu/kernel_definitions.cuh
         src/gpu/runtime.hpp
         src/gpu/tensor.cuh
@@ -413,6 +415,14 @@ if(COMPILE_CUDA)
     set_property(TARGET madspace_cuda PROPERTY CUDA_STANDARD 20)
     target_link_libraries(madspace_cuda PRIVATE madspace)
     target_link_libraries(madspace_cuda PRIVATE CUDA::cublas)
+    # Optional GPU gzip of the LHE output (src/gpu/gpucomp.cuh), nvCOMP 5 found via nvcomp_ROOT.
+    find_package(nvcomp 5 CONFIG QUIET)
+    if(nvcomp_FOUND)
+        message(STATUS "nvCOMP ${nvcomp_VERSION} found: GPU gzip of LHE output enabled")
+        target_compile_definitions(madspace_cuda PRIVATE MADSPACE_GPUCOMP)
+        target_link_libraries(madspace_cuda PRIVATE nvcomp::nvcomp)
+        set_property(TARGET madspace_cuda PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
+    endif()
     install(TARGETS madspace_cuda DESTINATION madspace/lib)
 endif()
 
@@ -422,6 +432,7 @@ if(COMPILE_HIP)
         SHARED
         src/gpu/runtime.hip
         src/gpu/device.hip
+        src/gpu/gzip.hip
         src/gpu/kernel_definitions.cuh
         src/gpu/runtime.hpp
         src/gpu/tensor.cuh
@@ -441,6 +452,8 @@ if(COMPILE_HIP)
     target_link_libraries(madspace_hip PRIVATE roc::rocblas)
     target_link_libraries(madspace_hip PRIVATE roc::rocthrust)
     target_link_libraries(madspace_hip PRIVATE hip::hipcub)
+    # No MADSPACE_GPUCOMP: hipCOMP only decompresses gzip, so LHE output is gzipped on
+    # the CPU. Once it compresses, map it in src/gpu/gpucomp.cuh and enable it like CUDA.
     install(TARGETS madspace_hip DESTINATION madspace/lib)
 endif()
 

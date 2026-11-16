@@ -1,5 +1,8 @@
       program probe
       use extra_weights
+      use fks_phase_space_data, only: pb=>p_born,pc=>p_born_coll,
+     $     ylab=>ybst_til_tolab,ycm=>ybst_til_tocm,
+     $     rootshat=>sqrtshat,shat
       implicit none
       include 'genps.inc'
       include 'nexternal.inc'
@@ -8,17 +11,14 @@
       include 'run.inc'
       include 'q_es.inc'
       include '../../Source/PDF/pdf.inc'
-      double precision pb(0:3,3),pc(0:3,3),p(0:3,4),savedp(0:3,4)
-      common/pborn/pb
-      common/pborn_coll/pc
-      double precision ylab,ycm,rootshat,shat,delta,iden
-      common/parton_cms_stuff/ylab,ycm,rootshat,shat
+      double precision p(0:3,4),savedp(0:3,4)
+      double precision delta,iden,iden_fks(1)
       common/cdelta_used/delta
-      common/c_iden_comp/iden
-      integer ifks,jfks,itype,jtype,mtype,extra,isborn,iscnt
+      common/c_iden_comp/iden,iden_fks
+      integer ifks,jfks,itype,jtype,mtype,extra,isborn,iscnt,jpdg
       common/fks_indices/ifks,jfks
       double precision chi,chj,chm
-      common/cparticle_types/itype,jtype,mtype,chi,chj,chm
+      common/cparticle_types/chi,chj,chm,itype,jtype,mtype,jpdg
       common/c_extra_cnt/extra,isborn,iscnt
       logical projected,split_type(2),calculated
       common/to_use_evpr/projected
@@ -132,7 +132,7 @@ c A quark mother has no spin-phase call; any unexpected such call stops.
          cc=(3d0,-1d0)
          ret=0d0
          coll=3d0
-         call sborncol_isr_store(p,xi,1d0,w,ret,ans,cnt,coll,ca,cc)
+         call sborncol_isr_store_buffered(p,xi,1d0,w,ret,ans,cnt,coll,ca,cc)
          if (.not.(w.gt.0d0).or.any(.not.(ret.gt.0d0))) stop 36
          if (ip.eq.0.and.ix.eq.1) then
             if (any(ans.ne.ca).or.any(cnt.ne.cc)) stop 37
@@ -159,7 +159,7 @@ c Prove the extra-counterterm branch really permits state mutation.
       implicit none
       double precision p(0:3,4),xi,out(14)
       double complex ans(2,2),cnt(2,2,2),ca(2,2),cc(2,2,2)
-      call sreal_deg(p,xi,1d0,out(1),out(2),out(3),out(5),out(7),
+      call sreal_deg_buffered(p,xi,1d0,out(1),out(2),out(3),out(5),out(7),
      $               out(9),out(11),out(13),ans,cnt,ca,cc)
       end
       double precision function dot(p,q)

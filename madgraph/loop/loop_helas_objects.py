@@ -596,6 +596,16 @@ class LoopHelasMatrixElement(helas_objects.HelasMatrixElement):
     It works as for the HelasMatrixElement except for the loop-related features
     which are defined here. """
 
+    def populate_flavor_validity(self, model=None):
+        """Resolve virtual flavours without applying tree-only trimming.
+
+        MadLoop owns separate Born, counterterm and nested loop numbering.
+        Keep zero-mask diagrams as the virtual writers already do, including
+        when physical FKS lookup happens before those writers are entered.
+        """
+        super(LoopHelasMatrixElement, self).populate_flavor_validity(model)
+        self._flavor_allow_trimming = False
+
     def default_setup(self):
         """Default values for all properties"""
         

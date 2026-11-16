@@ -20,6 +20,7 @@ input/default_run_card_nlo.dat
 input/default_run_card_mg7.toml
 input/default_switch.txt
 input/mg7_configuration.txt
+input/mg5_configuration.txt
 TEST_MW_*
 .vscode/
 HEPTools/*
@@ -81,6 +82,12 @@ tests/input_files/IOTestsComparison/**/*.BackUp
 
 # output of ./tests/test_manager.py
 UNITTEST_proc/
+
+# LHAPDF-format re-tabulations of the dressed-lepton densities, produced from
+# the shipped eepdf.f by vendor/eepdfgrid/gen_eepdf_lhagrid.py in under a
+# second. ~8 MB each, so generated on demand rather than committed.
+Template/Common/Source/PDF/lep_densities/*/*ll.dat
+Template/Common/Source/PDF/lep_densities/*/*ll.json
 
 # models/ only holds UFO models: downloaded ones are ignored, shipped ones kept
 models/*

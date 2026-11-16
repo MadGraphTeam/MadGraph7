@@ -2,14 +2,20 @@
 
 #include <array>
 #include <fstream>
+#include <future>
+#include <memory>
 #include <optional>
+#include <utility>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 
+#include "madspace/driver/gzip.hpp"
 #include "madspace/driver/random.hpp"
+#include "madspace/driver/tensor.hpp"
 #include "madspace/driver/thread_pool.hpp"
 #include "madspace/phasespace/topology.hpp"
 #include "madspace/util.hpp"
@@ -143,19 +149,21 @@ struct LHEEvent {
     int process_id;
     /// Event weight.
     double weight;
-    /// Event scale, in GeV.
+    /// Event scale (SCALUP), in GeV: the larger factorisation scale, as
+    /// madevent writes it.
     double scale;
     /// QED coupling at the event scale.
     double alpha_qed;
-    /// QCD coupling at the event scale.
+    /// QCD coupling at the renormalisation scale (@ref mu_r).
     double alpha_qcd;
     /// One entry per particle, incoming and outgoing.
     std::vector<LHEParticle> particles;
     /// Whether the MLM clustering scales of the outgoing particles are written
     /// (`pt_clust_<i>` attributes of `<scales>`).
     bool has_cluster_scales;
-    /// Renormalisation scale, written as the `mur` attribute of `<scales>`. The
-    /// event `scale` (SCALUP) is written separately.
+    /// Renormalisation scale, written as the `mur` attribute of `<scales>`.
+    /// It is not in SCALUP: the event `scale` is the larger factorisation
+    /// scale, as unwgt.f writes sqrt(max(q2fact)).
     double mu_r;
     /// Factorisation scales of the two beams (`muf1`, `muf2`; `muf` is their
     /// maximum).
@@ -170,10 +178,50 @@ struct LHEEvent {
     /// Optional `<mgrwt>` block; written only if `qcd_power` is nonnegative and
     /// both beams took part.
     std::optional<LOReweightInfo> lo_info;
+    /// Optional `<beamstrahlung>` block: the momentum fraction each beam kept
+    /// after beamstrahlung. A dressed-lepton density folds beamstrahlung into
+    /// the PDF, so the initial-state momenta carry the product
+    /// `x = x_BS * x_ISR` and a shower cannot separate the two on its own;
+    /// this is what lets it degrade the beams and evolve only `x_ISR`.
+    std::optional<std::pair<double, double>> beamstrahlung;
 
     /// Append this event's LHE text to `buffer`.
     void format_to(std::string& buffer) const;
 };
+
+/**
+ * Start the MLM shower from the hardest scale of the event rather than from the
+ * collider energy.
+ *
+ * The MLM clustering reports the light partons it assigned no clustering scale
+ * to (those of the core process) at the collider energy, and the outgoing
+ * particles that are not light partons (leptons, photons, heavy quarks) at the
+ * core-process scale, madevent's central factorisation scale. With
+ * Beams:setProductionScalesFromLHEF, which MLM merging turns on, Pythia8 starts
+ * each particle's final-state shower from its pt_clust and the initial-state
+ * shower from the largest of them. Here the outgoing particles that are not
+ * light partons (|pdg| <= `max_jet_flavor` or a gluon) get the hardest scale of
+ * the event: the largest of their own pt_clust (the core-process scale), SCALUP
+ * (mu_F) and the light partons' pt_clust below the collider energy. The
+ * core-process scale keeps the start at the hard process when mu_F is a soft
+ * clustering scale (clustering_mean without the pdf ladder). Only the shower
+ * start moves, not the matching. A light parton at the collider energy keeps
+ * it: that value is Pythia8's "do not match" flag.
+ */
+void apply_mlm_hardest_shower_scale(
+    LHEEvent& event, double collider_energy, int max_jet_flavor
+);
+
+/**
+ * Start the MLM shower of the outgoing particles that are not light partons
+ * (|pdg| <= `max_jet_flavor` or a gluon) from the collider energy, the
+ * behaviour of mlm_shower_start = "collider_energy": their pt_clust, which the
+ * MLM clustering sets to the core-process scale, is replaced by
+ * `collider_energy`.
+ */
+void apply_mlm_collider_shower_scale(
+    LHEEvent& event, double collider_energy, int max_jet_flavor
+);
 
 /**
  * Fills in the non-kinematic data of an @ref LHEEvent from sampled indices.
@@ -351,23 +399,49 @@ void from_json(const nlohmann::json& j, LHECompleter::PropagatorData& prop_data)
  * Streams events to an LHE file.
  *
  * Opens `file_name`, writes the `<init>` header built from `meta`, and lets
- * @ref write append one `<event>` block at a time; the destructor closes the
- * `</LesHouchesEvents>` tag.
+ * @ref write append one `<event>` block at a time; @ref close (or the
+ * destructor) closes the `</LesHouchesEvents>` tag. With a `gzip_device` the
+ * file is gzip-compressed on that device: the text is buffered and compressed
+ * in large batches, which a GPU compressor needs to be efficient. Each batch
+ * compresses in the background while the next one fills.
  */
 class LHEFileWriter {
 public:
-    /// Opens `file_name` and writes its `<init>` header from `meta`.
-    LHEFileWriter(const std::string& file_name, const LHEMeta& meta);
+    /// Opens `file_name` and writes its `<init>` header from `meta`. Throws if
+    /// `gzip_device` is given but has no gzip compressor.
+    LHEFileWriter(
+        const std::string& file_name,
+        const LHEMeta& meta,
+        DevicePtr gzip_device = nullptr,
+        int gzip_algorithm = default_gzip_algorithm
+    );
+    LHEFileWriter(const LHEFileWriter&) = delete;
+    LHEFileWriter& operator=(const LHEFileWriter&) = delete;
     /// Append `event` as one `<event>` block.
     void write(const LHEEvent& event);
     /// Append `str` to the file verbatim, unescaped.
     void write_string(const std::string& str);
-    /// Closes the file, appending the closing `</LesHouchesEvents>` tag.
+    /// Append the closing `</LesHouchesEvents>` tag, flush and close the file.
+    /// Throws if writing failed; later calls do nothing. A failed batch
+    /// compression closes the file at once, leaving it without the closing tag.
+    void close();
+    /// Calls @ref close and logs its error instead of throwing.
     ~LHEFileWriter();
 
 private:
+    static constexpr std::size_t compress_flush_bytes = 64ull << 20;
+
+    void emit(std::string_view text);
+    void start_compression();
+    void write_compressed();
+
     std::ofstream _file_stream;
-    std::string _buffer;
+    std::unique_ptr<GzipCompressor> _compressor;
+    std::string _pending;
+    std::string _in_flight;
+    std::string _compressed;
+    // Last member: its destructor waits for the batch that uses the others.
+    std::future<void> _compression;
 };
 
 } // namespace madspace

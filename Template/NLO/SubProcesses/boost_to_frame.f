@@ -77,6 +77,7 @@ c     input:  p_born_in(0:3,nexternal-1)  Born momenta of this configuration
 c             imother                     position of the mother in them
 c     output: azifact, boosted
 c**************************************************************************
+      use fks_phase_space_data, only: xij_kperp
       implicit none
       include 'nexternal.inc'
       double precision p_born_in(0:3,nexternal-1)
@@ -90,8 +91,6 @@ c**************************************************************************
       parameter (vtiny=1d-8)
       integer ids(nexternal-1)
       logical trivial
-      double precision xij_kperp(0:3)
-      common/cxij_kperp/xij_kperp
 
       call get_frame_mask_born(ids)
       call get_me_frame_boost(p_born_in, nexternal-1, ids, pboost,
@@ -200,6 +199,7 @@ c     the phase multiplies borntilde. azifact is <ij>/[ij] only in the
 c     generic branch; the collinear one pre-cancels the caller's mother
 c     factor instead, so do not assume it if you change the caller.
 c**************************************************************************
+      use fks_phase_space_data, only: xij_kperp
       implicit none
       include 'nexternal.inc'
       double precision p_born_in(0:3,nexternal-1)
@@ -209,8 +209,6 @@ c**************************************************************************
       double precision cphi_mother, sphi_mother
       double precision pm(0:3), kp(0:3), pib(0:3), pjb(0:3)
       integer ids(nexternal-1)
-      double precision xij_kperp(0:3)
-      common/cxij_kperp/xij_kperp
 
       call me_frame_apply(p_born_in(0,imother), pboost, pm)
       call get_frame_mask_born(ids)
@@ -416,8 +414,7 @@ C Each Born configuration builds its own frame; keep explicit lane/FKS indices.
       end
 
 
-      subroutine sborn_onehel_frame(p_in,hel1,chosen_hel,ans,
-     $     ret_saveamp)
+      subroutine sborn_onehel_frame(p_in, hel1, chosen_hel, ans)
 c**************************************************************************
 c     One-helicity Born in the frame selected by me_frame.
 c
@@ -429,18 +426,15 @@ c     sborn_frame. check_sudakov does exactly that mix.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
-      include 'genps.inc'
       double precision p_in(0:3,nexternal-1)
       integer hel1, chosen_hel
       double precision ans
-      include 'born_nhel.inc'
-      double complex ret_saveamp(ngraphs,max_bhel)
       double precision p_f(0:3,nexternal-1)
       integer ids(nexternal-1)
 
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
-      call sborn_onehel(p_f,hel1,chosen_hel,ans,ret_saveamp)
+      call sborn_onehel(p_f, hel1, chosen_hel, ans)
 
       return
       end
@@ -539,27 +533,15 @@ c     handed, or it silently returns amplitudes from the other frame.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
-      include 'genps.inc'
-      include 'orders.inc'
-      include 'born_nhel.inc'
       double precision p_in(0:3,nexternal-1)
       integer m, n
-      double precision wgt,ans_summed
-      double precision amp2(ngraphs),jamp2(0:ncolor)
-      double precision ret_amp_split(amp_split_size)
-      double precision amp_split_soft(amp_split_size)
-      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
-      double complex ans_cnt(2,nsplitorders)
-      double complex ret_saveamp(ngraphs,max_bhel)
+      double precision wgt
       double precision p_f(0:3,nexternal-1)
       integer ids(nexternal-1)
 
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
-      call sborn_amp(p_f,amp2,jamp2,ret_amp_split,
-     $     ret_amp_split_cnt,ans_summed,ans_cnt,ret_saveamp)
-      call sborn_sf(p_f,m,n,wgt,ans_cnt,ret_amp_split_cnt,
-     $     ret_saveamp,amp_split_soft)
+      call sborn_sf(p_f, m, n, wgt)
 
       return
       end
@@ -581,7 +563,7 @@ C The supplied amplitudes are already framed, including the checked Born cache.
       integer m,n,ids(nexternal-1)
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in,nexternal-1,ids,p_f)
-      call sborn_sf(p_f,m,n,wgt,ans_cnt,ret_amp_split_cnt,
+      call sborn_sf_amp(p_f,m,n,wgt,ans_cnt,ret_amp_split_cnt,
      $     ret_saveamp,amp_split_soft)
       end
 
@@ -686,7 +668,7 @@ c**************************************************************************
 
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in,nexternal-1,ids,p_f)
-      call sudakov_wrapper(p_f,ret_saveamp)
+      call sudakov_wrapper_amp(p_f,ret_saveamp)
 
       return
       end
@@ -1067,6 +1049,36 @@ c     p p > z{0} z{0} [real=QCD] with me_frame=[3]: the soft/collinear
 c     ratio is 1 to 1d-7 whenever the residual is exactly zero and
 c     2.2d-3 whenever it is 3d-14, with no intermediate values.
       call impose_frame_rest(ids, npart, p_out)
+
+      return
+      end
+
+
+      subroutine sborn_onehel_amp_frame(p_in,hel1,chosen_hel,ans,
+     $     ret_saveamp)
+c**************************************************************************
+c     One-helicity Born in the frame selected by me_frame.
+c
+c     Needed wherever a caller already goes through sborn_frame: SBORN
+c     caches its amplitudes against (E, p_z) and SBORN_ONEHEL shares that
+c     cache, so passing boosted momenta to one and unboosted to the other
+c     silently returns amplitudes from the wrong frame -- see the note on
+c     sborn_frame. check_sudakov does exactly that mix.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      include 'genps.inc'
+      double precision p_in(0:3,nexternal-1)
+      integer hel1, chosen_hel
+      double precision ans
+      include 'born_nhel.inc'
+      double complex ret_saveamp(ngraphs,max_bhel)
+      double precision p_f(0:3,nexternal-1)
+      integer ids(nexternal-1)
+
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
+      call sborn_onehel_amp(p_f,hel1,chosen_hel,ans,ret_saveamp)
 
       return
       end

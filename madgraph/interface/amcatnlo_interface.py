@@ -1160,6 +1160,9 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             # Save processes instances generated
             self.born_processes_for_olp = []
             self.born_processes = []
+            if hasattr(self._curr_exporter, 'prepare_born_support'):
+                self._curr_exporter.prepare_born_support(
+                    self._curr_matrix_elements.get('matrix_elements'))
             for ime, me in \
                 enumerate(self._curr_matrix_elements.get('matrix_elements')):
                 if not self.options['low_mem_multicore_nlo_generation']:
@@ -1312,10 +1315,15 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             else:
                 ME = run_interface.aMCatNLOCmd(me_dir=argss[0],options=self.options)
                 ME.pass_in_web_mode()
-            # transfer interactive configuration
-            config_line = [l for l in self.history if l.strip().startswith('set')
-                           and not extended_cmd.is_question_answer(l)]
-            for line in config_line:
+            # transfer interactive configuration.  Generation-time-only options
+            # (e.g. zerowidth_tchannel, whose T-channel-width treatment is baked
+            # into the matrix element at 'output' time) appear in the MG5 history
+            # but are NOT valid run-time 'set' options -- replaying them would
+            # raise in the run interface's check_set -- so set_lines_for_run
+            # leaves them out; a genuine run-time 'set zerowidth_tchannel' typed
+            # at the run prompt still goes straight to the run interface and
+            # correctly crashes.
+            for line in extended_cmd.set_lines_for_run(self.history):
                 ME.exec_cmd(line)
             stop = self.define_child_cmd_interface(ME)                
             return stop
@@ -1341,6 +1349,8 @@ _launch_usage = "launch [DIRPATH] [MODE] [options]\n" + \
                 "     in the run_card.dat\n"
 
 _launch_parser = misc.OptionParser(usage=_launch_usage)
+_launch_parser.add_option("--allow_qed_ps", default=False, action='store_true',
+                            help="Allow experimental NLO QED+PS matching by bypassing the launch restriction")
 _launch_parser.add_option("-f", "--force", default=False, action='store_true',
                                 help="Use the card present in the directory for the launch, without editing them")
 _launch_parser.add_option("-c", "--cluster", default=False, action='store_true',

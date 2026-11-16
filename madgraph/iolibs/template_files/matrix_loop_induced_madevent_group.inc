@@ -59,7 +59,7 @@ C
 C LOCAL VARIABLES 
 C  
         INTEGER NHEL(NEXTERNAL,NCOMB)
-		INTEGER I, II, J ,JJ
+		INTEGER I, II, J ,JJ, JB
         INTEGER ISHEL
         REAL*8 R,SUMHEL,TS(NCOMB), T
 		REAL*8 HWGT,XTOT
@@ -223,10 +223,13 @@ C Of course this option can also not be used for polarized beams.
 			DO JJ=1,nincoming
 c NB_SPIN_STATE_IN/2 avoids a double counting
 c of an explicit polarisation in the process
-               IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-                  T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0
-               ELSE IF(POL(JJ).NE.1d0)THEN
-                  T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
+c JB: the beam leg JJ comes from, the other one for a mirror process
+               JB = JJ
+               IF (IMIRROR.EQ.2) JB = 3-JJ
+               IF(POL(JB).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JB)))) THEN
+                  T=T*ABS(POL(JB))*NB_SPIN_STATE_IN(JJ)/2d0
+               ELSE IF(POL(JB).NE.1d0)THEN
+                  T=T*(2d0-ABS(POL(JB)))*NB_SPIN_STATE_IN(JJ)/2d0
                ENDIF
             ENDDO
 			IF (ISUM_HEL.NE.0.and.DS_get_dim_status('Helicity').eq.0.and.ALLOW_HELICITY_GRID_ENTRIES) then
@@ -285,10 +288,12 @@ C           The helicity configuration was chosen already by genps and put in a 
             ENDDO
 
 			DO JJ=1,nincoming
-              IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-                T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0
-              ELSE IF(POL(JJ).NE.1d0)THEN
-                T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
+              JB = JJ
+              IF (IMIRROR.EQ.2) JB = 3-JJ
+              IF(POL(JB).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JB)))) THEN
+                T=T*ABS(POL(JB))*NB_SPIN_STATE_IN(JJ)/2d0
+              ELSE IF(POL(JB).NE.1d0)THEN
+                T=T*(2d0-ABS(POL(JB)))*NB_SPIN_STATE_IN(JJ)/2d0
               ENDIF
             ENDDO
 

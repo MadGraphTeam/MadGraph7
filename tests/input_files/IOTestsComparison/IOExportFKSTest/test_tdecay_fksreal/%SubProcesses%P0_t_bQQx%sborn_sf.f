@@ -1,5 +1,26 @@
-      SUBROUTINE SBORN_SF(P_BORN,M,N,WGT,ANS_CNT,RET_AMP_SPLIT_CNT
-     $ ,LOC_SAVEAMP,AMP_SPLIT_SOFT)
+      subroutine sborn_sf(p,m,n,ans)
+      use mc_born_types
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      double precision p(0:3,nexternal-1),ans
+      type(BornRequest),save::request
+      type(BornResult),save::result
+      integer m,n
+      logical need_color_links,need_charge_links
+      common/c_need_links/need_color_links,need_charge_links
+      double precision amp_split_soft(amp_split_size)
+      common/to_amp_split_soft/amp_split_soft
+      request%colour=need_color_links
+      request%charge=need_charge_links
+      request%m=m
+      request%n=n
+      call mc_born_local(p,request,result)
+      ans=result%correlation
+      amp_split_soft=result%soft
+      amp_split_cnt=result%split_counterterms
+      end
+      SUBROUTINE sborn_sf_amp(P_BORN,M,N,WGT,ANS_CNT,RET_AMP_SPLIT_CNT  ,LOC_SAVEAMP,AMP_SPLIT_SOFT)
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INCLUDE 'coupl.inc'
@@ -8,9 +29,6 @@
       DOUBLE PRECISION P_BORN(0:3,NEXTERNAL-1), WGT
       INTEGER NSQAMPSO
       PARAMETER (NSQAMPSO = 1)
-
-C     return the color-linked borns if i_fks is a color octet, 
-C     the charge-linked if it is a color singlet
       DOUBLE COMPLEX WGT_BORN(2,0:NSQAMPSO)
       DOUBLE PRECISION WGT_COL
       DOUBLE PRECISION CHARGEPROD
@@ -29,68 +47,41 @@ C     the charge-linked if it is a color singlet
       DOUBLE PRECISION AMP_SPLIT_SOFT(AMP_SPLIT_SIZE)
       DOUBLE COMPLEX RET_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
       DOUBLE COMPLEX LOC_SAVEAMP(NGRAPHS,MAX_BHEL)
-
       CHARGEPROD = 0D0
-
       IF (NEED_COLOR_LINKS.AND.NEED_CHARGE_LINKS) THEN
-        WRITE(*,*) 'ERROR IN SBORN_SF, both color and charged links'
-     $   //' are needed'
+        WRITE(*,*) 'ERROR IN sborn_sf_amp, both color and charged links'    //' are needed'
         STOP
       ENDIF
-C     check if need color or charge links, and include the gs/w**2
-C      term here
       IF (NEED_COLOR_LINKS) THEN
-C       link partons 1 and 1 
         IF (M.EQ.1 .AND. N.EQ.1) THEN
           CALL SB_SF_001(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT,LOC_SAVEAMP)
-C         link partons 1 and 2 
         ELSEIF ((M.EQ.1 .AND. N.EQ.2).OR.(M.EQ.2 .AND. N.EQ.1)) THEN
           CALL SB_SF_002(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT,LOC_SAVEAMP)
-C         link partons 1 and 3 
         ELSEIF ((M.EQ.1 .AND. N.EQ.3).OR.(M.EQ.3 .AND. N.EQ.1)) THEN
           CALL SB_SF_003(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT,LOC_SAVEAMP)
-C         link partons 1 and 4 
         ELSEIF ((M.EQ.1 .AND. N.EQ.4).OR.(M.EQ.4 .AND. N.EQ.1)) THEN
           CALL SB_SF_004(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT,LOC_SAVEAMP)
-C         link partons 2 and 2 
         ELSEIF (M.EQ.2 .AND. N.EQ.2) THEN
           CALL SB_SF_005(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT,LOC_SAVEAMP)
-C         link partons 2 and 3 
         ELSEIF ((M.EQ.2 .AND. N.EQ.3).OR.(M.EQ.3 .AND. N.EQ.2)) THEN
           CALL SB_SF_006(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT,LOC_SAVEAMP)
-C         link partons 2 and 4 
         ELSEIF ((M.EQ.2 .AND. N.EQ.4).OR.(M.EQ.4 .AND. N.EQ.2)) THEN
           CALL SB_SF_007(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT,LOC_SAVEAMP)
-C         link partons 3 and 4 
         ELSEIF ((M.EQ.3 .AND. N.EQ.4).OR.(M.EQ.4 .AND. N.EQ.3)) THEN
           CALL SB_SF_008(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT,LOC_SAVEAMP)
         ENDIF
-
         WGT = WGT_COL * G**2
-C       update the amp_split_soft, which is summed in sbornsoft
-        AMP_SPLIT_SOFT(1:AMP_SPLIT_SIZE) =
-     $    DBLE(RET_AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1,QCD_POS)) * G**2
-
+        AMP_SPLIT_SOFT(1:AMP_SPLIT_SIZE) =     DBLE(RET_AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1,QCD_POS)) * G**2
       ELSE IF (NEED_CHARGE_LINKS) THEN
         CHARGEPROD = CHARGES_BORN(M) * CHARGES_BORN(N)
-        IF ((M.LE.NINCOMING.AND.N.GT.NINCOMING) .OR.
-     $    (N.LE.NINCOMING.AND.M.GT.NINCOMING)) CHARGEPROD = -
-     $    CHARGEPROD
-C       add a factor 1/2 for the self-eikonal soft link
+        IF ((M.LE.NINCOMING.AND.N.GT.NINCOMING) .OR.     (N.LE.NINCOMING.AND.M.GT.NINCOMING)) CHARGEPROD = -     CHARGEPROD
         IF (M.EQ.N) CHARGEPROD = CHARGEPROD / 2D0
         WGT = DBLE(ANS_CNT(1, QED_POS)) * CHARGEPROD * DBLE(GAL(1))**2
-C       update the amp_split_soft, which is summed in sbornsoft
-        AMP_SPLIT_SOFT(1:AMP_SPLIT_SIZE) =
-     $    DBLE(RET_AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1,QED_POS)) *
-     $    CHARGEPROD * DBLE(GAL(1))**2
+        AMP_SPLIT_SOFT(1:AMP_SPLIT_SIZE) =     DBLE(RET_AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1,QED_POS)) *     CHARGEPROD * DBLE(GAL(1))**2
       ENDIF
-
       RETURN
       END
-
-
-      SUBROUTINE SBORN_SF_STORE(P_BORN,M,N,WGT,ANS_CNT
-     $ ,RET_AMP_SPLIT_CNT,LOC_SAVEAMP,AMP_SPLIT_SOFT)
+      SUBROUTINE SBORN_SF_STORE(P_BORN,M,N,WGT,ANS_CNT  ,RET_AMP_SPLIT_CNT,LOC_SAVEAMP,AMP_SPLIT_SOFT)
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INCLUDE 'coupl.inc'
@@ -99,9 +90,6 @@ C       update the amp_split_soft, which is summed in sbornsoft
       DOUBLE PRECISION P_BORN(0:3,NEXTERNAL-1), WGT
       INTEGER NSQAMPSO
       PARAMETER (NSQAMPSO = 1)
-
-C     return the color-linked borns if i_fks is a color octet, 
-C     the charge-linked if it is a color singlet
       DOUBLE COMPLEX WGT_BORN(2,0:NSQAMPSO)
       DOUBLE PRECISION WGT_COL
       DOUBLE PRECISION CHARGEPROD
@@ -120,70 +108,37 @@ C     the charge-linked if it is a color singlet
       DOUBLE PRECISION AMP_SPLIT_SOFT(AMP_SPLIT_SIZE)
       DOUBLE COMPLEX RET_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
       DOUBLE COMPLEX LOC_SAVEAMP(NGRAPHS,MAX_BHEL)
-
       CHARGEPROD = 0D0
-
       IF (NEED_COLOR_LINKS.AND.NEED_CHARGE_LINKS) THEN
-        WRITE(*,*) 'ERROR IN SBORN_SF, both color and charged links'
-     $   //' are needed'
+        WRITE(*,*) 'ERROR IN sborn_sf_amp, both color and charged links'    //' are needed'
         STOP
       ENDIF
-C     check if need color or charge links, and include the gs/w**2
-C      term here
       IF (NEED_COLOR_LINKS) THEN
-C       link partons 1 and 1 
         IF (M.EQ.1 .AND. N.EQ.1) THEN
-          CALL SB_SF_NOCHECK_001(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT
-     $     ,LOC_SAVEAMP)
-C         link partons 1 and 2 
+          CALL SB_SF_NOCHECK_001(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT      ,LOC_SAVEAMP)
         ELSEIF ((M.EQ.1 .AND. N.EQ.2).OR.(M.EQ.2 .AND. N.EQ.1)) THEN
-          CALL SB_SF_NOCHECK_002(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT
-     $     ,LOC_SAVEAMP)
-C         link partons 1 and 3 
+          CALL SB_SF_NOCHECK_002(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT      ,LOC_SAVEAMP)
         ELSEIF ((M.EQ.1 .AND. N.EQ.3).OR.(M.EQ.3 .AND. N.EQ.1)) THEN
-          CALL SB_SF_NOCHECK_003(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT
-     $     ,LOC_SAVEAMP)
-C         link partons 1 and 4 
+          CALL SB_SF_NOCHECK_003(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT      ,LOC_SAVEAMP)
         ELSEIF ((M.EQ.1 .AND. N.EQ.4).OR.(M.EQ.4 .AND. N.EQ.1)) THEN
-          CALL SB_SF_NOCHECK_004(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT
-     $     ,LOC_SAVEAMP)
-C         link partons 2 and 2 
+          CALL SB_SF_NOCHECK_004(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT      ,LOC_SAVEAMP)
         ELSEIF (M.EQ.2 .AND. N.EQ.2) THEN
-          CALL SB_SF_NOCHECK_005(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT
-     $     ,LOC_SAVEAMP)
-C         link partons 2 and 3 
+          CALL SB_SF_NOCHECK_005(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT      ,LOC_SAVEAMP)
         ELSEIF ((M.EQ.2 .AND. N.EQ.3).OR.(M.EQ.3 .AND. N.EQ.2)) THEN
-          CALL SB_SF_NOCHECK_006(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT
-     $     ,LOC_SAVEAMP)
-C         link partons 2 and 4 
+          CALL SB_SF_NOCHECK_006(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT      ,LOC_SAVEAMP)
         ELSEIF ((M.EQ.2 .AND. N.EQ.4).OR.(M.EQ.4 .AND. N.EQ.2)) THEN
-          CALL SB_SF_NOCHECK_007(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT
-     $     ,LOC_SAVEAMP)
-C         link partons 3 and 4 
+          CALL SB_SF_NOCHECK_007(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT      ,LOC_SAVEAMP)
         ELSEIF ((M.EQ.3 .AND. N.EQ.4).OR.(M.EQ.4 .AND. N.EQ.3)) THEN
-          CALL SB_SF_NOCHECK_008(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT
-     $     ,LOC_SAVEAMP)
+          CALL SB_SF_NOCHECK_008(P_BORN,WGT_COL,RET_AMP_SPLIT_CNT      ,LOC_SAVEAMP)
         ENDIF
-
         WGT = WGT_COL * G**2
-C       update the amp_split_soft, which is summed in sbornsoft
-        AMP_SPLIT_SOFT(1:AMP_SPLIT_SIZE) =
-     $    DBLE(RET_AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1,QCD_POS)) * G**2
-
+        AMP_SPLIT_SOFT(1:AMP_SPLIT_SIZE) =     DBLE(RET_AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1,QCD_POS)) * G**2
       ELSE IF (NEED_CHARGE_LINKS) THEN
         CHARGEPROD = CHARGES_BORN(M) * CHARGES_BORN(N)
-        IF ((M.LE.NINCOMING.AND.N.GT.NINCOMING) .OR.
-     $    (N.LE.NINCOMING.AND.M.GT.NINCOMING)) CHARGEPROD = -
-     $    CHARGEPROD
-C       add a factor 1/2 for the self-eikonal soft link
+        IF ((M.LE.NINCOMING.AND.N.GT.NINCOMING) .OR.     (N.LE.NINCOMING.AND.M.GT.NINCOMING)) CHARGEPROD = -     CHARGEPROD
         IF (M.EQ.N) CHARGEPROD = CHARGEPROD / 2D0
         WGT = DBLE(ANS_CNT(1, QED_POS)) * CHARGEPROD * DBLE(GAL(1))**2
-C       update the amp_split_soft, which is summed in sbornsoft
-        AMP_SPLIT_SOFT(1:AMP_SPLIT_SIZE) =
-     $    DBLE(RET_AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1,QED_POS)) *
-     $    CHARGEPROD * DBLE(GAL(1))**2
+        AMP_SPLIT_SOFT(1:AMP_SPLIT_SIZE) =     DBLE(RET_AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1,QED_POS)) *     CHARGEPROD * DBLE(GAL(1))**2
       ENDIF
-
       RETURN
       END
-

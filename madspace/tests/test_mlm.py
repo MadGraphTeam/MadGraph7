@@ -199,18 +199,50 @@ def test_pdg_id_count_is_checked(process):
 def test_flavor_information_selects_which_legs_are_jets(process):
     """Only jets get a real clustering scale. Without pdg ids the clustering has
     to assume every leg is one; with them, the tops (legs 2 and 3 of these
-    processes) never are and always fall back to sqrt(s)."""
+    processes) never are: they get the core-process scale (see
+    test_particles_that_are_not_light_partons_carry_the_core_scale)."""
     _, diagrams, pdg_ids = process
     momenta = sample_momenta(diagrams)
     *_, out_no_pdg, _ = run(make_clustering(diagrams), momenta)
     *_, out_pdg, _ = run(make_clustering(diagrams, external_pdg_ids=pdg_ids), momenta)
-    # the tops are not jets, so with flavor information they never get one
-    assert np.all(out_pdg[:, 0] == CM_ENERGY)
-    assert np.all(out_pdg[:, 1] == CM_ENERGY)
+    # the tops are not jets, so with flavor information they never get a jet
+    # scale of their own: both carry the same core-process scale
+    np.testing.assert_array_equal(out_pdg[:, 0], out_pdg[:, 1])
     # ... whereas without it they do, at least sometimes
     assert np.any(out_no_pdg[:, :2] < CM_ENERGY)
     # the gluons are jets either way and usually pick up a real scale
     assert np.mean(out_pdg[:, 2:].min(axis=1) < CM_ENERGY) > 0.5
+
+
+def test_particles_that_are_not_light_partons_carry_the_core_scale(process):
+    """The tops get the core-process scale, madevent's central factorisation
+    scale: the mu_F of the pdf-ladder walk (the default), whatever the pdf
+    reweighting. Without it clustering_mean puts mu_F at the softest clustering
+    scale, and with SCALUP = mu_F the tops' shower would start there, below
+    the merging scale."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams, batch_size=500, seed=97)
+    _, fac1, fac2, out, _ = run(
+        make_clustering(diagrams, external_pdg_ids=pdg_ids), momenta
+    )
+    _, fac1_off, fac2_off, out_off, _ = run(
+        make_clustering(diagrams, external_pdg_ids=pdg_ids, pdf_reweighting=False),
+        momenta,
+    )
+    core = np.maximum(fac1, fac2)
+    inside = core < CM_ENERGY
+    assert inside.mean() > 0.5
+    np.testing.assert_array_equal(out[inside, 0], core[inside])
+    np.testing.assert_array_equal(out[inside, 1], core[inside])
+    np.testing.assert_array_equal(out[~inside, :2], CM_ENERGY)
+    # the same scale without the pdf reweighting ...
+    np.testing.assert_array_equal(out_off[:, :2], out[:, :2])
+    # ... where mu_F itself is the softest clustering scale, mostly lower
+    fac_off = np.maximum(fac1_off, fac2_off)
+    assert np.all(fac_off <= core * (1 + 1e-12))
+    assert np.mean(fac_off < 0.5 * core) > 0.5
+    # the gluons' scales do not move
+    np.testing.assert_array_equal(out_off[:, 2:], out[:, 2:])
 
 
 def test_unclustered_legs_fall_back_to_the_collider_energy(process):
@@ -2669,6 +2701,89 @@ def test_the_emission_scheme_still_books_the_radiating_quark():
 
 
 # --------------------------------------------------------------------------
+# a gluon radiated off an antitop
+# --------------------------------------------------------------------------
+
+W_TOP = 1.50833649
+# g g > t t~ g as launch.py hands it over: clean_pids strips the signs
+TTG_PDGS = [21, 21, 6, 6, 21]
+
+
+def ttg_t_channel_diagram():
+    """g g > t t~ g through a t-channel top, the gluon radiated off the
+    outgoing t~ (and, in the second permutation, off the t):
+
+      t~* > t~ g    (final state; the mother repeats the t~, a jet vertex)
+      g t > t*      (beam 0 line, the t-channel top)
+      t* t~* > g    (beam 1)
+
+    MG5 signs a propagator by the particle flowing into the legs it joins, so
+    the t~* is a -6, while the external legs reach the clustering unsigned."""
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [M_TOP, M_TOP, 0.0],
+            "propagators": [(M_TOP, W_TOP, -6), (M_TOP, 0.0, 6)],
+            "vertices": [["o1", "o2", "p0"], ["o0", "i0", "p1"], ["p0", "p1", "i1"]],
+            "permutations": [[0, 1, 2, 3, 4], [0, 1, 3, 2, 4]],
+        }
+    ]
+
+
+def ttg_t_channel_clustering(**kwargs):
+    diagrams = ttg_t_channel_diagram()
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [
+                        ms.Propagator(mass=m, width=w, pdg_id=i)
+                        for m, w, i in d["propagators"]
+                    ],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=TTG_PDGS,
+        scale_scheme=ms.MLMClustering.ScaleScheme.madevent,
+        clustering_measure=ms.MLMClustering.ClusteringMeasure.madevent,
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize(
+    "history", [HISTORY.all_diagrams, HISTORY.diagram, HISTORY.madevent]
+)
+def test_a_gluon_radiated_off_an_antitop_keeps_its_clustering_scale(history):
+    """madevent's isjetvx makes t~* > t~ g a jet vertex (the mother repeats a
+    daughter), so the gluon gets the scale of that vertex. Comparing the
+    signed -6 of the propagator with the unsigned 6 of the leg made it a
+    non-jet vertex instead: the gluon was written at sqrt(s), which the
+    shower's MLM matching reads as "never match, never veto", in every
+    history along these diagrams (7-10 % of the g g > t t~ + jets events
+    under clustering_history = madevent)."""
+    momenta = sample_momenta(ttg_t_channel_diagram(), batch_size=500)
+    clustering = ttg_t_channel_clustering(clustering_history=history)
+    if history == HISTORY.all_diagrams:
+        outputs = [run(clustering, momenta)]
+    else:
+        outputs = [along(clustering, momenta, diagram) for diagram in (0, 1)]
+    for out in outputs:
+        scales = out[3]
+        # the tops are never jets: they carry the core-process scale, both the
+        # same one, below sqrt(s)
+        np.testing.assert_array_equal(scales[:, 0], scales[:, 1])
+        assert np.all(scales[:, :2] < CM_ENERGY)
+        assert np.all(scales[:, 2] != CM_ENERGY)
+
+
+# --------------------------------------------------------------------------
 # clusterings that only exist for some flavours of a merged subprocess
 # --------------------------------------------------------------------------
 
@@ -2798,8 +2913,8 @@ def test_a_two_to_one_process_takes_its_scales_from_shat(scale_scheme, history):
     np.testing.assert_allclose(ren, shat_root, rtol=1e-12)
     np.testing.assert_allclose(fact1, shat_root, rtol=1e-12)
     np.testing.assert_allclose(fact2, shat_root, rtol=1e-12)
-    # the z is no jet: written at the collider energy, where no veto trips
-    assert np.all(outgoing == CM_ENERGY)
+    # the z is no jet: it carries the core-process scale, here sqrt(s-hat)
+    np.testing.assert_allclose(outgoing[:, 0], shat_root, rtol=1e-12)
     assert np.all(diagram == 0)
     # nothing was emitted, so nothing can fail the merging cut
     assert np.all(xqcut_weight == 1.0)

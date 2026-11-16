@@ -30,7 +30,7 @@ C
 C     LOCAL VARIABLES                                                 
 C         
 C     
-      INTEGER I, ICROSS,LP
+      INTEGER I, ICROSS
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
       INCLUDE 'fks_info.inc'
@@ -64,7 +64,6 @@ C
       DOUBLE PRECISION DUMMY_COMPONENTS(N_EE)
       DOUBLE PRECISION FKS_PDF1_COMPONENTS(N_EE)
       DOUBLE PRECISION FKS_PDF2_COMPONENTS(N_EE)
-      INTEGER I_EE
       INCLUDE '../../Source/PDF/pdf.inc'
 C     
 C     DATA                                                            

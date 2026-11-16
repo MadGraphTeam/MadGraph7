@@ -22,11 +22,13 @@ class TestRealChannelsWeights(unittest.TestCase):
         cls.path = pathlib.Path(cls.directory.name)
         includes = {
             'nexternal.inc': 'integer nexternal,nincoming\nparameter(nexternal=5,nincoming=2)',
-            'nFKSconfigs.inc': 'integer fks_configs\nparameter(fks_configs=5)',
+            # Five physical integration sectors plus one native evaluation alias.
+            'nFKSconfigs.inc': ('integer fks_configs,FKS_INTEGRATED\n'
+                                'parameter(fks_configs=6,FKS_INTEGRATED=5)'),
             'run.inc': 'double precision real_channels_x0\ncommon /c_real_channels_x0/ real_channels_x0',
             'coupl.inc': 'double precision g,testmass(5)\ncommon /test_coupl/ g,testmass',
             'pmass.inc': 'pmass=testmass',
-            'fks_info.inc': 'integer REAL_FLAVOR_INDEX_D(5)\nparameter(REAL_FLAVOR_INDEX_D=(/2,7,2,7,7/))',
+            'fks_info.inc': 'integer REAL_FLAVOR_INDEX_D(6)\nparameter(REAL_FLAVOR_INDEX_D=(/2,7,2,7,7,99/))',
             'orders.inc': '''integer nsplitorders,amp_split_size,qcd_pos
 parameter(nsplitorders=2,amp_split_size=2,qcd_pos=1)
 double precision amp_split(amp_split_size)
@@ -36,12 +38,12 @@ common /to_amp_split/ amp_split''',
             'real_channels.inc': '''integer n_real_channels
 parameter(n_real_channels=5)
 integer real_channel_me(5),real_channel_fks(5)
-integer real_channel_config(5),real_channel_diagram(5),real_sector_me(5)
+integer real_channel_config(5),real_channel_diagram(5),real_sector_me(6)
 data real_channel_me /1,2,1,1,1/
 data real_channel_fks /1,2,1,4,4/
 data real_channel_config /1,1,2,1,2/
 data real_channel_diagram /1,3,2,1,2/
-data real_sector_me /1,2,1,1,1/''',
+data real_sector_me /1,2,1,1,1,1/''',
             'real_matrix_weights.inc': '''double precision real_amp2(3)
 common /c_real_diagram_weights/ real_amp2
 logical get_real_diagram_weights
@@ -201,6 +203,20 @@ common /c_get_real_diagram_weights/ get_real_diagram_weights''',
 
 
 SUPPORT = r'''
+module fks_phase_space
+interface
+ subroutine generate_momenta_real_channels(ndim,config,fks,x,p,jac)
+ integer ndim,config,fks
+ double precision x(99),p(0:3,5),jac
+ end subroutine
+end interface
+end module
+module fks_phase_space_data
+double precision xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
+common /fksvariables/ xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt
+double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
+common /parton_cms_stuff/ ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
+end module
 module extra_weights
 integer, parameter :: cpower_pos=2
 integer :: QCD_power,orders_tag,amp_pos
@@ -365,7 +381,7 @@ integer orders(2)
 get_orders_tag=orders(1)+10*orders(2)
 end function
 
-subroutine add_wgt(kind,orders,w1,w2,w3,w4,raw_total)
+subroutine add_wgt_buffered(kind,orders,w1,w2,w3,w4,raw_total)
 use extra_weights
 use test_state
 integer kind,orders(2)

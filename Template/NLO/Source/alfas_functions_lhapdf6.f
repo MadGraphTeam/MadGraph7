@@ -81,8 +81,14 @@ c
       external alphasPDFm
       integer iset
 
+c timing statistics
+      include "timing_variables.inc"
+
+      if(timing_sampled)call timing_enter(timing_scales)
       call getnset(iset)
       ALPHAS=alphasPDFm(iset,Q)
+      if(timing_sampled)call timing_leave(timing_scales)
+      
 
       RETURN
       END

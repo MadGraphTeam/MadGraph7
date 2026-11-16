@@ -243,6 +243,8 @@ C FOR THE POINT WITH EXTERNAL LINES W(0:6,NEXTERNAL-1)
 C  
       USE ALOHA_OBJECT
       IMPLICIT NONE
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
 C  
 C CONSTANTS
 C  
@@ -290,8 +292,6 @@ C      common/to_amps/  amp2,       jamp2
       double precision hel_fac
       integer get_hel,skip
       common/cBorn_CNT%(proc_prefix)s/hel_fac,get_hel,skip
-      logical calculatedBorn
-      common/ccalculatedBorn_CNT%(proc_prefix)s/calculatedBorn
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
 
@@ -312,6 +312,7 @@ C ----------
 C don't cache for extra counterterms
       calculatedBorn=.false.
       FLAVOR(:) = 1
+C Extra counterterms always evaluate their own HELAS amplitudes.
       glu_ij = ij_values(nfksprocess)
       jamp(:,:) = (0d0,0d0)
       DO I = 1, NSQAMPSO
@@ -325,11 +326,7 @@ C don't cache for extra counterterms
       do ihel=-1,1,2
         if (ihel.eq.-1.or.nhel(glu_ij).ne.0) then
         if (nhel(glu_ij).ne.0) nhel(glu_ij) = ihel
-        if (.not. calculatedBorn) then
 %(helas_calls)s
-        elseif (calculatedBorn) then
-        write(*,*) 'ERROR: EXTRA CNT should be called with calculated_born=false'
-        endif
 %(jamp_lines)s
 	DO M = 1, NAMPSO
         CF_INDEX = 0

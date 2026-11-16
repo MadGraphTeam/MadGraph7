@@ -47,6 +47,66 @@ class FKSFlavorNotInTopology(FKSProcessError):
     mistaken for ordinary non-membership.
     """
     pass
+def external_leg_identity(leg):
+    """Identity for an allowed FKS relabelling, not an ME denominator.
+
+    In particular, tagged or differently polarised particles must not be
+    exchanged just because their PDGs agree. Ignore number and the i/j flag.
+    Statistical factors still come from the generated matrix elements.
+    """
+    return (leg['id'], leg['state'], MG.canonical_polarization(leg['polarization']),
+            dict.get(leg, 'is_tagged', False), leg['onshell'])
+
+
+def external_process_identity(process, particle_tags=None):
+    """Ordered real-state/cache identity, including amplitude restrictions.
+
+    HELAS can strip the FKSLeg tag; the exporter supplies its saved tag array.
+    Initial legs stay ordered. Resonance constraints must not be inferred from
+    a list of external PDGs.
+    """
+    def freeze(value):
+        if isinstance(value, dict):
+            return tuple((key, freeze(val)) for key, val in sorted(value.items()))
+        if isinstance(value, (list, tuple)):
+            return tuple(freeze(val) for val in value)
+        return value
+
+    legs = process.get_legs_with_decays()
+    if particle_tags is not None and len(particle_tags) != len(legs):
+        raise FKSProcessError('Inconsistent external particle tags')
+    states = []
+    for index, leg in enumerate(legs):
+        state = list(external_leg_identity(leg))
+        if particle_tags is not None:
+            state[3] = particle_tags[index]
+        states.append(tuple(state))
+    constraints = tuple(freeze(process[key]) for key in (
+        'id', 'orders', 'overall_orders', 'squared_orders', 'sqorders_types',
+        'constrained_orders', 'split_orders', 'required_s_channels',
+        'forbidden_onsh_s_channels', 'forbidden_s_channels',
+        'forbidden_particles', 'is_decay_chain'))
+    decays = tuple(external_process_identity(decay) for decay in process['decay_chains'])
+    return (constraints, decays), tuple(states)
+
+
+def physical_fks_processes(matrix_element, info, role='real'):
+    """Return the native PDF list for this physical FKS sector.
+
+    Physical-class exports select one flavour through NFKSPROCESS and expose
+    IPROC=1. Ungrouped exports retain their complete ordered process list.
+    Copying the representative preserves restrictions, tags and polarization.
+    """
+    if 'flavor_class' not in info:
+        return list(matrix_element['processes'])
+    process = copy.deepcopy(matrix_element['processes'][0])
+    pdgs = info['flavor_class'][role + '_pdgs']
+    legs = process.get_legs_with_decays()
+    if len(legs) != len(pdgs):
+        raise FKSProcessError('Physical FKS identity has an inconsistent leg count')
+    for leg, pdg in zip(legs, pdgs):
+        leg.set('id', pdg)
+    return [process]
 
 
 class FKSDiagramTag(diagram_generation.DiagramTag): #test written
@@ -742,6 +802,39 @@ def find_pert_particles_interactions(model, pert_order = 'QCD'): #test written
     return {'interactions': sorted(qcd_inter, key=misc.cmp_to_key(misc.dict_cmp)),
             'pert_particles': sorted(set(pert_parts)),
             'soft_particles': sorted(set(soft_parts))}    
+
+
+def born_color_insertion(col_basis, link, Nc=3):
+    """Contract a colour insertion directly between the Born basis vectors.
+
+    Keep the exact real and imaginary fractions, as in ColorMatrix. Dummy
+    indices of the conjugate must be renamed *after* inserting the link, which
+    introduces its own summed indices. No diagram amplitudes enter this matrix.
+    """
+    basis = sorted(col_basis)
+    matrix = {}
+    replacements = dict(link['replacements'])
+    for j, structure in enumerate(basis):
+        linked = color_algebra.ColorString()
+        linked.from_immutable(structure)
+        for tensor in linked:
+            for position, index in enumerate(tensor):
+                tensor[position] = replacements.get(index, index)
+        linked.product(link['string'].create_copy())
+        for i in range(j+1):
+            original = color_algebra.ColorString()
+            original.from_immutable(color_amp.ColorMatrix.fix_summed_indices(
+                linked.to_immutable(), basis[i]))
+            # Conjugate the Born vector, whose tensors are already reduced.
+            # Conjugating an unreduced f tensor would reverse its indices in
+            # ColorObject.complex_conjugate and introduce a spurious sign.
+            product = linked.create_copy()
+            product.product(original.complex_conjugate())
+            real, imaginary = color_algebra.ColorFactor([product]).full_simplify().set_Nc(Nc)
+            value = (real, -imaginary)
+            matrix[i, j] = value
+            matrix[j, i] = (value[0], -value[1])
+    return matrix
 
 
 def insert_color_links(col_basis, col_obj, links): #test written

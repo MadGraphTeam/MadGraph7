@@ -94,9 +94,9 @@ C      if true.
 C     Amplitude(s) for born diagram with ID 1
       IF ((ACTIVE_VIRTUAL_FLAVOR_INDEX.GE.1.AND.ACTIVE_VIRTUAL_FLAVOR_I
      $NDEX.LE.16.AND.BTEST(2050_8,ACTIVE_VIRTUAL_FLAVOR_INDEX-1)))
-     $  CALL MP_FFV2M_0(W(2),W(1),W(3),FLV_200,AMP(1))
+     $  CALL MP_FFV2M_0(W(2),W(1),W(3),FLV_70,AMP(1))
 C     Counter-term amplitude(s) for loop diagram number 2
-      CALL MP_FFV2M_0(W(2),W(1),W(3),FLV_209,AMPL(1,1))
+      CALL MP_FFV2M_0(W(2),W(1),W(3),FLV_79,AMPL(1,1))
 C     At this point, all CT amps needed for (QCD=2 QED=2), i.e. of
 C      split order ID=1, are computed.
       IF(FILTER_SO.AND.SQSO_TARGET.EQ.1) GOTO 2000

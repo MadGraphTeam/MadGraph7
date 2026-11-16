@@ -15,17 +15,20 @@ class TestNLOFOBornReuse(unittest.TestCase):
         if compiler is None:
             self.skipTest('gfortran is required for the degenerate-term probe')
         root = Path(MG5DIR)
-        source = (root/'Template/NLO/SubProcesses/fks_singular.f').read_text()
+        native = (root/'Template/NLO/SubProcesses/fks_singular.f').read_text()
+        buffered = (root/'Template/NLO/SubProcesses/fks_buffered.f').read_text()
         routines = []
-        for name in ['sreal_deg', 'AP_reduced', 'AP_reduced_prime',
-                     'xkplus', 'xkdelta', 'xklog', 'sborncol_isr_store',
+        for name in ['sreal_deg_buffered', 'AP_reduced', 'AP_reduced_prime',
+                     'xkplus', 'xkdelta', 'xklog', 'sborncol_isr_store_buffered',
                      'Qterms_reduced_spacelike']:
+            source = buffered if name.endswith('_buffered') else native
             start = source.index('      subroutine '+name+'(')
             routines.append(source[start:source.index('\n      end\n', start)+11])
         includes = {
             'genps.inc': '      integer ngraphs,ncolor\n      parameter(ngraphs=1,ncolor=1)\n',
             'nexternal.inc': '      integer nexternal,nincoming\n      parameter(nexternal=4,nincoming=2)\n',
             'born_nhel.inc': '      integer max_bhel\n      parameter(max_bhel=2)\n',
+            'nFKSconfigs.inc': '      integer fks_configs\n      parameter(fks_configs=1)\n',
             'coupl.inc': '      double precision g,nf\n      parameter(nf=5d0)\n      double complex gal(2)\n      common/probe_couplings/g,gal\n',
             'run.inc': '      double precision q2fact(2),xiAI(2),RAI(2)\n      common/probe_scales/q2fact,xiAI,RAI\n',
             'q_es.inc': '      double precision QES2\n      common/coupl_es/QES2\n',
@@ -42,6 +45,14 @@ class TestNLOFOBornReuse(unittest.TestCase):
       type ALOHA
          double complex W(20)
       end type
+      end module
+      module fks_phase_space_data
+      double precision p_born(0:3,3),p_born_coll(0:3,3)
+      double precision shat,sqrtshat,ybst_til_tocm,ybst_til_tolab
+      double precision p_i_fks_cnt(0:3,-2:2),p_i_fks_ev(0:3)
+      double precision xi_i_fks_ev,xij_kperp(0:3)
+      double complex xij_aor
+      double precision y_ij_fks_ev
       end module
 '''
         with tempfile.TemporaryDirectory(prefix='fo_degenerate_') as temp:
@@ -69,7 +80,7 @@ class TestNLOFOBornReuse(unittest.TestCase):
         if compiler is None:
             self.skipTest('gfortran is required for the Born lifecycle probe')
         source = (Path(MG5DIR)/'Template/NLO/SubProcesses/driver_mintFO.f').read_text()
-        sites = list(re.finditer(r'(?im)^ *call sreal_deg\(', source))
+        sites = list(re.finditer(r'(?im)^ *call sreal_deg_buffered\(', source))
         self.assertEqual(len(sites), 4)
         blocks = []
         for site in sites:
@@ -78,7 +89,7 @@ class TestNLOFOBornReuse(unittest.TestCase):
             start = source.rfind('calculatedBorn=.false.', 0, site.start())
             start = source.rfind('calculatedBorn=.false.', 0, start)
             start = source.rfind('\n', 0, start)+1
-            end = source.index('call sreal_store(', site.end())
+            end = source.index('call sreal_store_buffered(', site.end())
             end = source.index('\n', end)+1
             while source[end:end+6].strip() == '$':
                 end = source.index('\n', end)+1
@@ -160,7 +171,7 @@ class TestNLOFOBornReuse(unittest.TestCase):
       w=cache
       calculatedBorn=.true.
       end
-      subroutine sreal_deg(p,x,y,dx,dl,wx,wl,wm,wp,wpl,wd,b,c,bc,cc)
+      subroutine sreal_deg_buffered(p,x,y,dx,dl,wx,wl,wm,wp,wpl,wd,b,c,bc,cc)
       use probe_state
       implicit none
       double precision p(*),x,y,dx,dl,wx(*),wl(*),wm(*)
@@ -177,7 +188,7 @@ c A custom hook is allowed to change model and cache state.
          calculatedBorn=.false.
       endif
       end
-      subroutine sreal_store(p,x,y,w,r,real,born,b,c,h,coll,bc,cc,hc)
+      subroutine sreal_store_buffered(p,x,y,w,r,real,born,b,c,h,coll,bc,cc,hc)
       use probe_state
       implicit none
       double precision p(*),x,y,w,r(1),real(1),born(1),coll(1)
