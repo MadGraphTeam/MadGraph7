@@ -254,6 +254,7 @@ def test_linux_release_wheel_requests_manylinux_repair(
             "with_sdk": True,
             "retain_release_build_info": True,
             "distribution": False,
+            "allow_dirty": False,
         },
     }
 
@@ -292,6 +293,7 @@ def test_distribution_wheel_is_repaired_and_strongly_compressed(
         "with_sdk": True,
         "retain_release_build_info": True,
         "distribution": True,
+        "allow_dirty": False,
     }
     assert supplied["pyamplicol.distribution-wheel"] == "true"
 
@@ -380,7 +382,12 @@ def test_host_wheel_setting_rejects_invalid_values(value) -> None:
     ),
 )
 @pytest.mark.parametrize(
-    "setting", ("pyamplicol.host-wheel", "pyamplicol.distribution-wheel")
+    "setting",
+    (
+        "pyamplicol.host-wheel",
+        "pyamplicol.distribution-wheel",
+        "pyamplicol.allow-dirty",
+    ),
 )
 def test_wheel_frontend_hooks_do_not_forward_backend_wheel_settings(
     monkeypatch: pytest.MonkeyPatch, hook_name: str, setting: str
@@ -1232,6 +1239,135 @@ def test_release_build_info_rejects_an_expanded_archive_marker(
 
     with pytest.raises(RuntimeError, match="invalid build provenance"):
         backend._stage_release_build_info(overlay, "0.1.0")
+
+
+def _dirty_release_checkout(tmp_path: Path) -> Path:
+    checkout = _source_identity_checkout(tmp_path)
+    (checkout / "src/runtime.py").write_text("VALUE = 2\n", encoding="utf-8")
+    for index in range(12):
+        (checkout / f"notes-{index:02}.txt").write_text("draft\n", encoding="utf-8")
+    return checkout
+
+
+def test_dirty_release_checkout_gets_a_plain_actionable_message(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkout = _dirty_release_checkout(tmp_path)
+    monkeypatch.setattr(backend, "ROOT", checkout)
+
+    with pytest.raises(RuntimeError) as raised:
+        backend._stage_release_build_info(tmp_path / "overlay", "0.1.0")
+    message = str(raised.value)
+    assert message.startswith(
+        "publishable release artifacts require a clean Git source revision, but "
+        "the checkout has 1 uncommitted change and 12 untracked files:\n"
+    )
+    listed = message.split("\nEither:\n")[0].splitlines()[1:]
+    assert listed[0] == "     M src/runtime.py"
+    assert listed[1] == "    ?? notes-00.txt"
+    assert len(listed) == 11
+    assert listed[-1] == "    ... and 3 more (see `git status`)"
+    for remedy in (
+        "git stash --include-untracked",
+        "just dev-install --allow-dirty",
+        "--config-setting pyamplicol.allow-dirty=true",
+        "just dev-install --wheel-directory PATH",
+        "just dev-install --dependencies-only",
+    ):
+        assert remedy in message
+    assert not (tmp_path / "overlay").exists()
+
+
+def test_allow_dirty_wheel_is_never_marked_publishable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkout = _dirty_release_checkout(tmp_path)
+    monkeypatch.setattr(backend, "ROOT", checkout)
+    monkeypatch.setattr(
+        backend,
+        "_native_build_inputs_digest",
+        lambda _root, **kwargs: (
+            "e" * 64 if kwargs["normalize_release_cargo_lock"] else ""
+        ),
+    )
+
+    overlay = tmp_path / "overlay"
+    backend._stage_dirty_release_build_info(overlay, "0.1.0")
+    marker = overlay / "src/pyamplicol/_build_info.json"
+    build_info = json.loads(marker.read_text(encoding="utf-8"))
+    assert build_info == {
+        "schema_version": 1,
+        "publishable": False,
+        "dirty_source_checkout": True,
+        "native_build_inputs_sha256": "e" * 64,
+        "selftest_fixture_bootstrap": False,
+        "source_checkout": str(checkout.resolve()),
+        "version": "0.1.0",
+    }
+    assert "source_revision" not in build_info
+    assert set(build_info) != backend._RELEASE_BUILD_INFO_FIELDS
+
+    # A release rebuilt from an archive carrying this marker is refused.
+    monkeypatch.setattr(backend, "ROOT", tmp_path / "source-archive")
+    with pytest.raises(RuntimeError, match="invalid build provenance"):
+        backend._stage_release_build_info(overlay, "0.1.0")
+
+
+def test_allow_dirty_keeps_the_publishable_marker_of_a_clean_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkout = _source_identity_checkout(tmp_path)
+    monkeypatch.setattr(backend, "ROOT", checkout)
+
+    ordinary = tmp_path / "ordinary"
+    allowed = tmp_path / "allowed"
+    backend._stage_release_build_info(ordinary, "0.1.0")
+    backend._stage_dirty_release_build_info(allowed, "0.1.0")
+    relative = Path("src/pyamplicol/_build_info.json")
+    assert (allowed / relative).read_bytes() == (ordinary / relative).read_bytes()
+    assert json.loads((ordinary / relative).read_text(encoding="utf-8")) == {
+        "schema_version": 1,
+        "publishable": True,
+        "selftest_fixture_bootstrap": False,
+        "source_revision": _git(checkout, "rev-parse", "HEAD"),
+        "version": "0.1.0",
+    }
+
+
+def test_allow_dirty_wheel_setting_is_explicit_and_release_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
+    observed: dict[str, object] = {}
+
+    def delegated(operation, *args, **kwargs):
+        observed["args"] = args
+        observed["kwargs"] = kwargs
+        return "pyamplicol.whl"
+
+    monkeypatch.setattr(backend, "_from_overlay", delegated)
+    backend.build_wheel(
+        "dist",
+        {"pyamplicol.allow-dirty": "true", "pyamplicol.host-wheel": "true"},
+    )
+    assert observed["kwargs"]["allow_dirty"] is True
+    settings = observed["args"][1]
+    assert "pyamplicol.allow-dirty" not in (settings or {})
+
+    with pytest.raises(RuntimeError, match="are exclusive"):
+        backend.build_wheel(
+            "dist",
+            {
+                "pyamplicol.allow-dirty": "true",
+                "pyamplicol.distribution-wheel": "true",
+            },
+        )
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "candidate")
+    with pytest.raises(RuntimeError, match="applies to release-mode wheels"):
+        backend.build_wheel("dist", {"pyamplicol.allow-dirty": "true"})
 
 
 def test_selftest_staging_rejects_an_unavailable_target() -> None:

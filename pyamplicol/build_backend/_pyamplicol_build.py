@@ -37,6 +37,11 @@ from prepared_models import (
     stage_packaged_prepared_models,
 )
 from sdk import build_sdk
+from source_checkout import (
+    ALLOW_DIRTY_SETTING,
+    dirty_checkout_message,
+    dirty_checkout_reason,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 _CONTRIBUTOR_LOCK = Path("dependencies/contributor-lock.toml")
@@ -485,11 +490,28 @@ def _consume_distribution_wheel_setting(
     return _consume_boolean_setting(config_settings, "pyamplicol.distribution-wheel")
 
 
+def _consume_allow_dirty_setting(
+    config_settings: Mapping[str, Any] | None,
+) -> tuple[Mapping[str, Any] | None, bool]:
+    """Remove the backend-only opt-in for a wheel from a dirty checkout.
+
+    ``pyamplicol.allow-dirty=true`` (``just dev-install --allow-dirty``) lets a
+    release-mode wheel build from a checkout without a clean Git revision. Such
+    a wheel is marked non-publishable and records no source revision
+    (``_stage_dirty_release_build_info``); a clean checkout still produces the
+    ordinary publishable marker. Only ``build_wheel`` honours it: a source
+    distribution always requires a clean revision.
+    """
+
+    return _consume_boolean_setting(config_settings, ALLOW_DIRTY_SETTING)
+
+
 def _consume_wheel_settings(
     config_settings: Mapping[str, Any] | None,
 ) -> Mapping[str, Any] | None:
     config_settings, _ = _consume_host_wheel_setting(config_settings)
     config_settings, _ = _consume_distribution_wheel_setting(config_settings)
+    config_settings, _ = _consume_allow_dirty_setting(config_settings)
     return config_settings
 
 
@@ -1226,7 +1248,9 @@ def _stage_release_build_info(overlay: Path, version: str) -> None:
         revision = _clean_source_revision()
         if revision is None:
             raise RuntimeError(
-                "publishable release artifacts require a clean Git source revision"
+                dirty_checkout_message(
+                    dirty_checkout_reason(ROOT, environment=_clean_environment())
+                )
             )
         payload: dict[str, object] = {
             "schema_version": 1,
@@ -1259,6 +1283,53 @@ def _stage_release_build_info(overlay: Path, version: str) -> None:
         or re.fullmatch(r"[0-9a-f]{40}", payload["source_revision"]) is None
     ):
         raise RuntimeError("release source archive has invalid build provenance")
+
+
+def _stage_dirty_release_build_info(overlay: Path, version: str) -> None:
+    """Mark a release-version wheel from a dirty checkout as non-publishable.
+
+    Only the explicit ``pyamplicol.allow-dirty`` wheel setting reaches this. A
+    clean checkout keeps the ordinary publishable marker. Otherwise the marker
+    has no ``source_revision`` (generated artifacts then record none), keeps
+    the checkout for the runtime's stale-build check, and carries the native
+    identity the release path would compute. The release audits accept only the
+    exact publishable marker and therefore reject this one.
+    """
+
+    if not (ROOT / ".git").exists() or _clean_source_revision() is not None:
+        _stage_release_build_info(overlay, version)
+        return
+    reason = dirty_checkout_reason(ROOT, environment=_clean_environment())
+    print(
+        "warning: building a non-publishable development wheel because "
+        f"{ALLOW_DIRTY_SETTING}=true and "
+        + (reason[0] if reason else "the checkout has no clean Git revision"),
+        file=sys.stderr,
+        flush=True,
+    )
+    path = overlay / "src" / "pyamplicol" / "_build_info.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "publishable": False,
+                "dirty_source_checkout": True,
+                "native_build_inputs_sha256": _native_build_inputs_digest(
+                    ROOT,
+                    normalize_release_cargo_lock=True,
+                ),
+                "selftest_fixture_bootstrap": False,
+                "source_checkout": str(ROOT.resolve()),
+                "version": version,
+            },
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def _generated_report_status_only(status: bytes) -> bool:
@@ -1859,6 +1930,7 @@ def _from_overlay(
     retain_release_build_info: bool = False,
     release_prepared_model_bootstrap_context: str | None = None,
     distribution: bool = False,
+    allow_dirty: bool = False,
     **kwargs: Any,
 ) -> _Result:
     # A distribution wheel ships the SDK archive xz-compressed (``build_sdk``).
@@ -1890,10 +1962,16 @@ def _from_overlay(
             overlay_context = _overlay(mode)
         with overlay_context as (overlay, target_dir):
             if retain_release_build_info and mode == "release":
-                _stage_release_build_info(
-                    overlay,
-                    canonical_package_version(overlay),
-                )
+                if allow_dirty:
+                    _stage_dirty_release_build_info(
+                        overlay,
+                        canonical_package_version(overlay),
+                    )
+                else:
+                    _stage_release_build_info(
+                        overlay,
+                        canonical_package_version(overlay),
+                    )
             prepared_model_recovery = (
                 prepared_model_bootstrap or release_prepared_model_bootstrap
             )
@@ -1983,6 +2061,17 @@ def build_wheel(
     metadata_directory: str | None = None,
 ) -> str:
     config_settings, distribution = _consume_distribution_wheel_setting(config_settings)
+    config_settings, allow_dirty = _consume_allow_dirty_setting(config_settings)
+    if allow_dirty and distribution:
+        raise RuntimeError(
+            f"{ALLOW_DIRTY_SETTING} and pyamplicol.distribution-wheel are "
+            "exclusive: a distribution wheel needs a clean Git revision"
+        )
+    if allow_dirty and _build_mode() != "release":
+        raise RuntimeError(
+            f"{ALLOW_DIRTY_SETTING} applies to release-mode wheels; candidate "
+            "wheels already build from a dirty checkout"
+        )
     config_settings = _release_wheel_config_settings(
         config_settings, distribution=distribution
     )
@@ -1994,6 +2083,7 @@ def build_wheel(
         with_sdk=True,
         retain_release_build_info=True,
         distribution=distribution,
+        allow_dirty=allow_dirty,
     )
     return filename
 

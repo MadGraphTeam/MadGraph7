@@ -1384,3 +1384,83 @@ def test_candidate_dependency_projection_rewrites_only_the_isolated_manifest(
     projected = manifest.read_text(encoding="utf-8")
     assert 'symbolica = { version = "=2.2.0"' in projected
     assert 'symjit = { version = "=2.21.0"' in projected
+
+
+def test_dirty_release_checkout_stops_before_any_setup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    monkeypatch.delenv("PYAMPLICOL_BUILD_MODE", raising=False)
+    monkeypatch.setattr(
+        module,
+        "dirty_checkout_reason",
+        lambda _root: ("the checkout has 1 untracked file:\n    ?? notes.txt", True),
+    )
+    monkeypatch.setattr(module, "_lock", lambda: pytest.fail("setup started"))
+
+    with pytest.raises(module.SetupError) as raised:
+        module.main([])
+    message = str(raised.value)
+    assert "the checkout has 1 untracked file:\n    ?? notes.txt" in message
+    assert "just dev-install --allow-dirty" in message
+    assert "git stash --include-untracked" in message
+
+
+def test_allow_dirty_skips_the_early_check_and_reaches_the_backend(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    monkeypatch.delenv("PYAMPLICOL_BUILD_MODE", raising=False)
+    monkeypatch.setattr(
+        module, "dirty_checkout_reason", lambda _root: pytest.fail("checked")
+    )
+    build_project_wheel = module._build_project_wheel
+    builds: list[dict[str, object]] = []
+    monkeypatch.setattr(module, "_lock", lambda: {})
+    monkeypatch.setattr(module, "_developer_sources", lambda *_args, **_kwargs: ())
+    for name in (
+        "_require_tools",
+        "_ensure_just",
+        "_ensure_venv",
+        "_install_published_dependencies",
+        "_build_ratatui_wheel",
+        "_stage_project_runtime",
+    ):
+        monkeypatch.setattr(module, name, lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        module,
+        "_build_project_wheel",
+        lambda _runner, **kwargs: builds.append(kwargs),
+    )
+    assert module.main(["--allow-dirty"]) == 0
+    assert builds == [{"mode": "release", "allow_dirty": True}]
+
+    calls: list[list[str]] = []
+
+    class FakeRunner:
+        dry_run = True
+
+        def run(self, command, **_kwargs):
+            calls.append([str(item) for item in command])
+
+    monkeypatch.setattr(module, "VENV", tmp_path / ".venv")
+    build_project_wheel(FakeRunner(), mode="release", allow_dirty=True)
+    build = calls[0]
+    assert build[build.index("pyamplicol.allow-dirty=true") - 1] == "--config-setting"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        ["--allow-dirty", "--candidate"],
+        ["--allow-dirty", "--dependencies-only"],
+        ["--allow-dirty", "--wheel-directory", "wheels"],
+    ),
+)
+def test_allow_dirty_is_refused_where_it_changes_nothing(
+    arguments: list[str],
+) -> None:
+    module = _module()
+    with pytest.raises(SystemExit):
+        module.main(arguments)

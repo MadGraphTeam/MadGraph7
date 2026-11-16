@@ -781,6 +781,20 @@ def _is_source_checkout(package_root: Path, source_root: Path) -> bool:
     )
 
 
+def _non_publishable_release_marker(payload: Mapping[str, Any]) -> bool:
+    """Recognize the release-version wheels that are never publishable.
+
+    The release prepared-model bootstrap and a wheel built from a dirty checkout
+    with ``just dev-install --allow-dirty`` keep the release version and the
+    release native-input projection, but record no source revision.
+    """
+
+    return (
+        payload.get("release_prepared_model_bootstrap") is True
+        or payload.get("dirty_source_checkout") is True
+    )
+
+
 def _verify_source_runtime(
     payload: dict[str, Any],
     *,
@@ -811,7 +825,7 @@ def _verify_source_runtime(
             payload.get("publishable") is True
             or (
                 payload.get("publishable") is False
-                and payload.get("release_prepared_model_bootstrap") is True
+                and _non_publishable_release_marker(payload)
             )
         )
     )
@@ -879,13 +893,15 @@ def _verify_candidate_install(payload: dict[str, Any]) -> None:
     if (
         _native_build_inputs_digest(
             source_root,
-            normalize_release_cargo_lock=release_prepared_model_bootstrap,
+            normalize_release_cargo_lock=_non_publishable_release_marker(payload),
         )
         != native_digest
     ):
         install_kind = (
             "release prepared-model bootstrap"
             if release_prepared_model_bootstrap
+            else "dirty-checkout wheel"
+            if payload.get("dirty_source_checkout") is True
             else "candidate wheel"
         )
         raise RuntimeError(
