@@ -21,8 +21,6 @@
 
 using namespace madmatrix;
 
-thread_local const Parameters* Parameters::current = nullptr;
-
 void
 Parameters::setIndependentParameters( SLHAReader& slha )
 {

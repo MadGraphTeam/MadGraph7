@@ -62,11 +62,6 @@ namespace madmatrix
   {
   public:
 
-    // The model parameters of the process whose matrix element this thread evaluates (set by
-    // calculate_jamps): the HelAmps routines that read a model parameter (the custom propagators
-    // of a UFO model) take it from there. Each CPPProcess owns its own Parameters.
-    static thread_local const Parameters* current;
-
     // Define "zero"
     double zero, ZERO;
 

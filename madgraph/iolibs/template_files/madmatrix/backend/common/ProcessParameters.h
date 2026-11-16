@@ -44,9 +44,6 @@ namespace madmatrix
     // sigmaKin_getGoodHel along with the good helicities (hr_check_stale in
     // backend/{cpu,simd}/SigmaKin.cc), hence mutable.
     mutable bool hrStale = false;
-    // The model parameters these were taken from (host memory), for the HelAmps routines
-    // that read a model parameter on CPUs (see Parameters::current)
-    const Parameters* model = nullptr;
   };
 }
 

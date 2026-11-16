@@ -101,7 +101,6 @@ namespace madmatrix
     // previous setParameterByName() call may have left in the one of a previous initProc().
     m_ownedPars.reset( new Parameters() );
     m_pars = m_ownedPars.get();
-    m_params.model = m_pars;
     SLHAReader slha( param_card_name, m_verbose );
     m_pars->setIndependentParameters( slha );
     m_pars->setIndependentCouplings();

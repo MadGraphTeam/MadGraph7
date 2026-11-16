@@ -283,3 +283,27 @@ class TestPropagatorDenominators(unittest.TestCase):
             self.assertTrue(found, name)
             for tmp in found.groups():
                 self.assertIn('const fptype_denom_sv %s = ' % tmp, body, name)
+
+
+class TestCustomPropagatorParameters(unittest.TestCase):
+    """A custom propagator reads its extra model parameters as routine
+    arguments, so they are runtime parameters like masses and widths."""
+
+    def test_parameters_by_propagator(self):
+        from types import SimpleNamespace
+        from madmatrix.model_handling import custom_propagator_parameters
+        denominator = "(P('mu', id) * P('mu', id) - Mass(id) * Mass(id) + complex(0,1) * Mass(id) * Width(id))**2"
+        model = SimpleNamespace(
+            all_parameters=[SimpleNamespace(name=name) for name in ('MZ', 'WZ', 'dWZ', 'dWW', 'cHl3')],
+            all_propagators=[
+                SimpleNamespace(name='V1', numerator='- Metric(1, 2)', denominator=denominator),
+                SimpleNamespace(name='Z1', numerator='- Metric(1, 2) * complex(0,1) * Mass(id) * dWZ',
+                                denominator=denominator),
+                SimpleNamespace(name='X1', numerator='dWW * cHl3 * Identity(1, 2)', denominator=denominator)])
+        self.assertEqual(custom_propagator_parameters(model), {'Z1': ['dWZ'], 'X1': ['cHl3', 'dWW']})
+
+    def test_model_without_propagators(self):
+        from types import SimpleNamespace
+        from madmatrix.model_handling import custom_propagator_parameters
+        model = SimpleNamespace(all_parameters=[SimpleNamespace(name='MZ')])
+        self.assertEqual(custom_propagator_parameters(model), {})

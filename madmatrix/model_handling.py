@@ -52,6 +52,19 @@ def strip_banner(file_text, banner_mark):
 # Emit the MADARITH_DOUBLEEXPANSION (FPTYPE=e) code paths only when explicitly requested
 arith_doubleexpansion = os.environ.get('MADMATRIX_DOUBLEEXPANSION', '').lower() in ('1', 'true', 'yes', 'on')
 
+def custom_propagator_parameters(ufo_model):
+    """The model parameters each custom propagator of a UFO model reads, by
+    propagator name, in the order the HelAmps routine takes them as arguments
+    after its mass and width (the call writer passes them from cIPD)."""
+    parameter_names = {param.name for param in ufo_model.all_parameters}
+    result = {}
+    for propagator in getattr(ufo_model, 'all_propagators', []):
+        names = set(re.findall(r'[A-Za-z_]\w*', '%s %s' % (propagator.numerator, propagator.denominator)))
+        used = sorted(names & parameter_names)
+        if used:
+            result[propagator.name] = used
+    return result
+
 
 # AV - define a custom ALOHAWriter
 # (NB: enable this via MadMatrixUFOModelConverter.aloha_writer)
@@ -310,8 +323,8 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             if type == 'fct':
                 continue # OM an external function name (e.g. 'pow'): nothing to declare in C++
             if type == 'parameter':
-                out.write(self.get_model_parameter_txt(name)) # OM a model parameter used in the body (custom propagators)
-                continue
+                raise MadGraph5Error('Routine %s reads the model parameter %s, which is not among '
+                                     'its custom propagator arguments %s' % (self.name, name, self.model_parameter_args()))
             if type.startswith('list'):
                 type = type[5:]
                 if name.startswith('P'):
@@ -359,30 +372,42 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
     # so they have no addressable value a HelAmps routine could read.
     dependent_params = ()
 
+    # custom_propagator_parameters() of the model, filled by write_aloha_routines
+    propagator_params = {}
+
     # OM - the body of a routine may refer to a model parameter: this happens for
     # the custom propagators of a UFO model, whose numerator/denominator are
     # written in terms of model parameters (e.g. the width corrections dWT, dWZ,
-    # dWW and dWH of SMEFTsim). aloha_writers.ALOHAWriterForCPP reads them from
-    # the Parameters of the process being evaluated (Parameters::current, set by
-    # calculate_jamps); that is host-only code, so it is not available on GPUs.
-    def get_model_parameter_txt(self, name):
-        """Define a model parameter which the routine body uses"""
-        # ALOHA sees the UFO name ('dWT'), the generated Parameters class uses
-        # the prefixed one ('mdl_dWT'), exactly as in the fortran writer
-        mdlname = '%s%s' % (aloha.aloha_prefix, name)
-        if mdlname in self.dependent_params:
-            raise MadGraph5Error(
-                'The custom propagator used by routine %s needs the model parameter %s, '
-                'which depends on alphaS and is therefore recomputed event by event. '
-                'The C++/CUDA backend can only read alphaS-independent parameters inside '
-                'a HelAmps routine, so this process can only be generated with '
-                '"output madevent" or "output standalone_fortran".' % (self.name, mdlname))
-        return ('#ifndef MGONGPUCPP_GPUIMPL\n'
-                '    const auto %(var)s = Parameters::current->%(mdl)s;\n'
-                '#else\n'
-                '#error Model parameter %(mdl)s is used inside a HelAmps routine '
-                '(custom propagator) and is not available in device code\n'
-                '#endif\n') % { 'var': name, 'mdl': mdlname }
+    # dWW and dWH of SMEFTsim). The routine takes them as arguments after its mass
+    # and width, and the call writer passes them from cIPD, so they are read at
+    # runtime on every backend.
+    def model_parameter_args(self):
+        """The model parameters this routine takes as arguments (UFO names)"""
+        for tag in self.tag:
+            names = self.propagator_params.get(tag[1:]) if tag.startswith('P') else None
+            if names:
+                break
+        else:
+            return []
+        for name in names:
+            mdlname = '%s%s' % (aloha.aloha_prefix, name)
+            if mdlname in self.dependent_params:
+                raise MadGraph5Error(
+                    'The custom propagator used by routine %s needs the model parameter %s, '
+                    'which depends on alphaS and is therefore recomputed event by event. '
+                    'The C++/CUDA backend can only read alphaS-independent parameters inside '
+                    'a HelAmps routine, so this process can only be generated with '
+                    '"output madevent" or "output standalone_fortran".' % (self.name, mdlname))
+        return names
+
+    def define_argument_list(self, couplings=None):
+        call_arg = super().define_argument_list(couplings)
+        for name in self.model_parameter_args():
+            self.declaration.discard(('parameter', name))
+            self.declaration.add(('double', name))
+            call_arg.append(('double', name))
+        self.call_arg = call_arg
+        return call_arg
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting)
     # This affects 'V1[0] = ' in HelAmps_sm.cc
@@ -1866,6 +1891,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             aloha_model = create_aloha.AbstractALOHAModel.from_model(self.model, explicit_combine=False)
         else:
             aloha_model = create_aloha.AbstractALOHAModel.from_model(self.model, explicit_combine=True)
+        self.aloha_writer.propagator_params = custom_propagator_parameters(aloha_model.model)
         aloha_model.add_Lorentz_object(self.model.get('lorentz'))
         if self.wanted_lorentz:
             aloha_model.compute_subset(self.wanted_lorentz)
@@ -4209,6 +4235,18 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                                 wf.get('number_external')-1))
 
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (vectorize w_sv and amp_sv)
+    def helas_call_dict(self, wf):
+        """wf.get_helas_call_dict(), plus the model parameters of its custom propagator"""
+        call_dict = wf.get_helas_call_dict(index=0)
+        if isinstance(wf, helas_objects.HelasWavefunction):
+            if not hasattr(self, 'propagator_params'):
+                import aloha.create_aloha as create_aloha
+                self.propagator_params = custom_propagator_parameters(
+                    create_aloha.AbstractALOHAModel.from_model(self.get('model')).model)
+            names = self.propagator_params.get(str(wf.get('particle').get('propagator')), [])
+            call_dict['propa_pars'] = ''.join('m_pars->%s%s, ' % (aloha.aloha_prefix, name) for name in names)
+        return call_dict
+
     def generate_helas_call(self, argument):
         """Routine for automatic generation of C++ Helas calls
         according to just the spin structure of the interaction.
@@ -4306,6 +4344,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     # $-excluded propagator: the run card bw_cutoff, set at run
                     # time through umami_set_parameter (see SigmaKin.cc)
                     arg['mass'] += 'cBWCUTOFF, '
+                arg['mass'] += '%(propa_pars)s'
             else:
                 #arg['out'] = '&amp_sv[%(out)d]'
                 arg['out'] = '&amp_fp[%(out)d]'
@@ -4314,7 +4353,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             call = call % arg
             # Now we have a line correctly formatted
             call_function = lambda wf: self.format_coupling(
-                                         call % wf.get_helas_call_dict(index=0))
+                                         call % self.helas_call_dict(wf))
         # Add the constructed function to wavefunction or amplitude dictionary
         if isinstance(argument, helas_objects.HelasWavefunction):
             self.add_wavefunction(argument.get_call_key(), call_function)
