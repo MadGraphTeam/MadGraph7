@@ -3,7 +3,9 @@ the FKS integrand of madspace against those of MG5aMC at LO and NLO
 (test_data/fks_cross_section, from make_fks_cross_section_reference.py), per
 subprocess, within PULL combined errors. For e+ e- > j j at a fixed scale
 without cuts the NLO also has to be sigma_LO (1 + alpha_s / pi) on the same
-points.
+points. With --ewsudakov the Sudakov approximation of the EW corrections per
+sud_mod is that of the histograms of MG5aMC, whose NLO sums both modes with
+it (nlo_with_ew_sudakov of the driver).
 
 The driver runs on the aMC@NLO outputs of the references, as for
 test_fks_fortran_provider.py (MADSPACE_FKS_OUTPUTS), with the run card of
@@ -107,10 +109,40 @@ def test_against_mg5amc(path):
     data = reference(path)
     ours = fks_run(path).result()
     for order in ("lo", "nlo"):
+        # MadFKS sums the Sudakov approximation with the NLO
+        key = "nlo_with_ew_sudakov" if "ew_sudakov" in data[order] else order
         for subprocess, theirs in data[order]["subprocesses"].items():
-            value = ours["subprocesses"][subprocess][order]
+            value = ours["subprocesses"][subprocess][key]
             assert abs(pull(value, theirs)) < PULL, (subprocess, order, value, theirs)
-        assert abs(pull(ours[order], data[order])) < PULL, (order, ours, data[order])
+        assert abs(pull(ours[key], data[order])) < PULL, (order, ours, data[order])
+
+
+# the references with the Sudakov approximation of the EW corrections
+SUDAKOV = [path for path in DATA if "ew_sudakov" in reference(path)["nlo"]]
+
+
+@needs_outputs
+@pytest.mark.parametrize(
+    "path", SUDAKOV, ids=[os.path.basename(path)[:-5] for path in SUDAKOV]
+)
+def test_ew_sudakov_against_mg5amc(path):
+    """The Sudakov approximation of the EW corrections for sud_mod 0 and 1,
+    against the histograms of MG5aMC (ibody 10 and 11 of its analysis), and
+    the NLO without them is the sum of the channels."""
+    data = reference(path)
+    run = fks_run(path)
+    ours = run.result()
+    theirs = data["nlo"]["ew_sudakov"]
+    assert [e["sud_mod"] for e in ours["ew_sudakov"]] == [e["sud_mod"] for e in theirs]
+    for mine, other in zip(ours["ew_sudakov"], theirs):
+        assert mine["sigma"] < 0
+        assert abs(pull(mine, other)) < PULL, (mine, other)
+    total = ours["nlo"]["sigma"] + sum(e["sigma"] for e in ours["ew_sudakov"])
+    np.testing.assert_allclose(ours["nlo_with_ew_sudakov"]["sigma"], total, rtol=1e-12)
+    channels = run.channel_status()
+    np.testing.assert_allclose(
+        sum(c["mean"] for c in channels), ours["nlo"]["sigma"], rtol=1e-12
+    )
 
 
 # the references with the scale variations of reweight_scale

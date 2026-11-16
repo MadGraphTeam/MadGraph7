@@ -31,7 +31,13 @@ coupling g = 1 (see fks_provider.f):
   multiplies the contributions of tagged photons per power of e;
 - reference_scales: the reference scale of the user (user_dynamical_scale of
   dummy_fct.f, dynamical_scale_choice 0 or 10) at kinematics of the real
-  process, which madspace takes as an argument.
+  process, which madspace takes as an argument;
+- ew_sudakov: with --ewsudakov, the matrix elements of the Sudakov
+  approximation of the EW corrections per helicity combination of the Born,
+  those that sudakov_wrapper of ewsudakov_wrapper.f takes, as the inputs of
+  EWSudakov of madspace (fks_provider_ewsudakov.f, with the calls to the
+  amplitudes of the process that build writes from fks_configurations.json),
+  and for the tests the weights of compute_ewsudakov of fks_singular.f.
 
 From these it gives the blocks of madspace: the real per NLO order, the
 Born per Born order, the color-correlated Borns of all pairs of Born legs
@@ -80,10 +86,161 @@ SOURCES = {
     "fks_provider.f": os.path.join(TEMPLATES, "fks_provider.f"),
     "makefile_provider": os.path.join(TEMPLATES, "makefile_fks_provider"),
 }
+# the Sudakov approximation of the EW corrections, with and without
+# --ewsudakov
+EWSUDAKOV_SOURCES = {
+    True: os.path.join(TEMPLATES, "fks_provider_ewsudakov.f"),
+    False: os.path.join(TEMPLATES, "fks_provider_ewsudakov_dummy.f"),
+}
 
-QUIT, INFO, REAL, BORN, LINKS, VIRTUAL, CHANNELS, EXTRA, COUPLINGS, SCALE = range(10)
+(
+    QUIT,
+    INFO,
+    REAL,
+    BORN,
+    LINKS,
+    VIRTUAL,
+    CHANNELS,
+    EXTRA,
+    COUPLINGS,
+    SCALE,
+    EWSUDAKOV_INFO,
+    EWSUDAKOV,
+    EWSUDAKOV_WEIGHTS,
+) = range(13)
 INT = np.dtype(np.int32)
 FLOAT = np.dtype(np.float64)
+
+
+def ewsudakov_calls(info):
+    """fks_provider_ewsudakov_calls.f for the ewsudakov entry info of
+    fks_configurations.json (see get_ewsudakov_info of export_fks.py): the
+    calls to the base amplitudes (the Born per helicity, sborn_onehel, and
+    the Goldstone amplitudes ewsdk_gold_me_<k>), to their parameter
+    renormalisation and to the interferences ewsdk_me_<t>, by number, the
+    base amplitude of a helicity combination (the first Goldstone amplitude
+    whose replaced particles all have helicity 0, the Born where none has)
+    and of each interference, and comp_idfac of a base amplitude, as
+    sudakov_wrapper takes them. A comment alone without info."""
+    lines = [
+        "c The amplitudes of the Sudakov approximation of the EW corrections",
+        "c of the process for fks_provider_ewsudakov.f, which",
+        "c madgraph/mg7/nlo/provider.py writes from fks_configurations.json.",
+    ]
+    if info is None:
+        return "\n".join(lines) + "\n"
+    goldstone = info["goldstone"]
+    interference = info["interference"]
+
+    def continued(head, items, tail=""):
+        """head, the items and tail over continuation lines of fixed form."""
+        out, line = [], head
+        for item in [*items, tail]:
+            if len(line) + len(item) > 72:
+                out.append(line)
+                line = "     $     "
+            line += item
+        out.append(line)
+        return out
+
+    lines += [
+        "      subroutine provider_sdk_base_me(base,p,hels,ihel)",
+        "      implicit none",
+        "      include 'nexternal.inc'",
+        "      integer base,hels(nexternal-1),ihel",
+        "      double precision p(0:3,nexternal-1),ans",
+        "      if (base.eq.0) call sborn_onehel(p,hels,ihel,ans)",
+    ]
+    for k in range(1, len(goldstone) + 1):
+        lines.append(f"      if (base.eq.{k}) call ewsdk_gold_me_{k}(p,hels,ans)")
+    lines += [
+        "      end",
+        "",
+        "",
+        "      subroutine provider_sdk_par_ren(base,p,hels,ihel,invariants)",
+        "      implicit none",
+        "      include 'nexternal.inc'",
+        "      integer base,hels(nexternal-1),ihel",
+        "      double precision p(0:3,nexternal-1)",
+        "      double precision invariants(nexternal-1,nexternal-1)",
+        "      if (base.eq.0) call par_ren_sborn_onehel(p,hels,ihel,",
+        "     $     invariants)",
+    ]
+    for k in range(1, len(goldstone) + 1):
+        lines += [
+            f"      if (base.eq.{k}) call par_ren_ewsdk_gold_me_{k}(p,hels,",
+            "     $     ihel,invariants)",
+        ]
+    lines += [
+        "      end",
+        "",
+        "",
+        "      subroutine provider_sdk_interference(t,p,hels)",
+        "      implicit none",
+        "      include 'nexternal.inc'",
+        "      integer t,hels(nexternal-1)",
+        "      double precision p(0:3,nexternal-1)",
+        "      double complex ans",
+    ]
+    for t in range(1, len(interference) + 1):
+        lines.append(f"      if (t.eq.{t}) call ewsdk_me_{t}(p,hels,ans)")
+    lines += [
+        "      end",
+        "",
+        "",
+        "      integer function provider_sdk_interference_count()",
+        "      implicit none",
+        f"      provider_sdk_interference_count={len(interference)}",
+        "      end",
+        "",
+        "",
+        "      integer function provider_sdk_interference_base(t)",
+        "      implicit none",
+        "      integer t",
+        f"      integer bases({max(len(interference), 1)})",
+    ]
+    bases = [amp["base"] for amp in interference] or [0]
+    items = [f"{b}," for b in bases[:-1]] + [str(bases[-1])]
+    lines += continued("      data bases /", items, "/")
+    lines += [
+        "      provider_sdk_interference_base=bases(t)",
+        "      end",
+        "",
+        "",
+        "      integer function provider_sdk_base(hels)",
+        "      implicit none",
+        "      include 'nexternal.inc'",
+        "      integer hels(nexternal-1)",
+        "      provider_sdk_base=0",
+    ]
+    for k, amp in enumerate(goldstone, start=1):
+        items = [f".and.hels({leg}).eq.0" for leg in amp["legs"]]
+        tail = f") provider_sdk_base={k}"
+        lines += continued("      if (provider_sdk_base.eq.0", items, tail)
+    lines += [
+        "      end",
+        "",
+        "",
+        "      double precision function provider_sdk_idfac(base)",
+        "      implicit none",
+        "      integer base",
+        "      double precision compensate_identical_factor",
+        "      external compensate_identical_factor",
+        "      provider_sdk_idfac=1d0",
+        "      if (base.gt.0) provider_sdk_idfac=",
+        "     $     compensate_identical_factor(base)",
+        "      end",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def write_if_changed(path, text):
+    if os.path.isfile(path):
+        with open(path) as f:
+            if f.read() == text:
+                return
+    with open(path, "w") as f:
+        f.write(text)
 
 
 def build(directory, log=None):
@@ -91,15 +248,16 @@ def build(directory, log=None):
     libraries are built (as a fixed-order run leaves them), returns its
     path."""
     for name, path in SOURCES.items():
-        target = os.path.join(directory, name)
         with open(path) as f:
-            text = f.read()
-        if os.path.isfile(target):
-            with open(target) as f:
-                if f.read() == text:
-                    continue
-        with open(target, "w") as f:
-            f.write(text)
+            write_if_changed(os.path.join(directory, name), f.read())
+    with open(os.path.join(directory, "fks_configurations.json")) as f:
+        info = json.load(f).get("ewsudakov")
+    with open(EWSUDAKOV_SOURCES[info is not None]) as f:
+        write_if_changed(os.path.join(directory, "fks_provider_ewsudakov.f"), f.read())
+    write_if_changed(
+        os.path.join(directory, "fks_provider_ewsudakov_calls.f"),
+        ewsudakov_calls(info),
+    )
     with open(log or os.devnull, "a") as out:
         subprocess.run(
             ["make", "-f", "makefile_provider", "fks_provider"],
@@ -193,7 +351,8 @@ def azimuthal_phase(mother, k_perp):
 class FortranProvider:
     """The matrix-element blocks of one subprocess (a P* directory of an
     aMC@NLO output) from its Fortran, at g = 1. Use it as a context manager
-    or call close. statistics counts per block (real, born, links, virtual)
+    or call close. statistics counts per block (real, born, links, virtual,
+    ew_sudakov)
     the requests, the points, the evaluations (points times pairs for the
     links) and the seconds they took, the time of the pipes included, the
     Borns of the extra counterterms with those of the Born."""
@@ -224,7 +383,7 @@ class FortranProvider:
         self._receive = os.fdopen(child_out, "rb", buffering=0)
         self.statistics = {
             name: dict(requests=0, points=0, evaluations=0, seconds=0.0)
-            for name in ("real", "born", "links", "virtual")
+            for name in ("real", "born", "links", "virtual", "ew_sudakov")
         }
         self._info()
 
@@ -481,6 +640,102 @@ class FortranProvider:
         parts = ("finite", "single", "double", "accuracy")
         return {name: out[..., k] for k, name in enumerate(parts)}, codes
 
+    def ew_sudakov_info(self):
+        """With --ewsudakov, the Sudakov approximation of the EW corrections
+        of the Fortran: the numbers of helicity combinations of the Born and
+        of interferences, has_lo1 and has_lo2, the base amplitude of each
+        helicity combination and of each interference (0 for the Born, k for
+        the Goldstone amplitude k) and the parameters of the logarithms (mw,
+        mz, mh, mt, mb, gal, aewm1, ee, gf), None without."""
+        if not hasattr(self, "_ew_sudakov_info"):
+            self._request(EWSUDAKOV_INFO, 0, 0)
+            present, h, t, lo1, lo2 = (int(v) for v in self._read(INT, 5))
+            info = None
+            if present:
+                bases = self._read(INT, h + t)
+                values = self._read(FLOAT, 9)
+                names = ("mw", "mz", "mh", "mt", "mb", "gal", "aewm1", "ee", "gf")
+                info = dict(
+                    helicity_count=h,
+                    interference_count=t,
+                    has_lo1=bool(lo1),
+                    has_lo2=bool(lo2),
+                    bases=[int(b) for b in bases[:h]],
+                    interference_bases=[int(b) for b in bases[h:]],
+                    parameters=dict(zip(names, (float(v) for v in values))),
+                )
+            self._ew_sudakov_info = info
+        return self._ew_sudakov_info
+
+    def _ew_sudakov_momenta(self, momenta):
+        """Born kinematics (batch, n, 4) in their partonic center-of-mass
+        frame, where compute_ewsudakov takes p_born."""
+        momenta = self._momenta(momenta, self.particle_count - 1)
+        return np.ascontiguousarray(
+            boost_z(momenta, -partonic_rapidity(momenta, self.incoming))
+        )
+
+    def ew_sudakov(self, momenta, fks_index):
+        """The matrix elements of the Sudakov approximation that
+        sudakov_wrapper takes at Born kinematics (batch, n, 4) of the
+        configurations fks_index, per helicity combination of the Born and
+        with comp_idfac of the configuration, at g = 1: diagonal (batch, h),
+        the base amplitude at the LO1, lo2 (batch, h), at the LO2,
+        derivatives (batch, h, 6), its derivatives with respect to the
+        parameters of numder_*.f, and interference (batch, h, t), complex,
+        the interferences at the LO1, zero for those of another base
+        amplitude.
+
+        Raises:
+            ValueError: for an output without --ewsudakov.
+        """
+        info = self.ew_sudakov_info()
+        if info is None:
+            raise ValueError(f"{self.directory} has no --ewsudakov")
+        h, t = info["helicity_count"], info["interference_count"]
+        width = 8 * h + 2 * t * h
+        momenta = self._ew_sudakov_momenta(momenta)
+
+        def evaluate(points, c):
+            with self._timed("ew_sudakov", len(points)):
+                self._request(EWSUDAKOV, len(points), c + 1, momenta[points])
+                out = self._read(FLOAT, len(points) * width)
+            return out.reshape(-1, width)
+
+        out = self._by_configuration(fks_index, evaluate)
+        helicities = out[:, : 8 * h].reshape(-1, h, 8)
+        interference = out[:, 8 * h :].reshape(-1, h, t, 2)
+        return dict(
+            diagonal=helicities[..., 0],
+            lo2=helicities[..., 1],
+            derivatives=helicities[..., 2:],
+            interference=interference[..., 0] + 1j * interference[..., 1],
+        )
+
+    def ew_sudakov_weights(self, momenta, fks_index, ren_scale):
+        """The weights of compute_ewsudakov at Born kinematics (batch, n, 4)
+        of the configurations fks_index and the renormalization scale of the
+        LO2 part per point, without f_b / g^qcd_power, at g = 1: (batch, 2,
+        2), per sud_mod the weight at the NLO order of the LO1 (the LO1 at two
+        powers of QED more and the LO2 at two of QCD more) and the sum of
+        those of the other split-order positions.
+
+        Raises:
+            ValueError: for an output without --ewsudakov.
+        """
+        if self.ew_sudakov_info() is None:
+            raise ValueError(f"{self.directory} has no --ewsudakov")
+        momenta = self._ew_sudakov_momenta(momenta)
+        scale = np.ascontiguousarray(np.broadcast_to(ren_scale, len(momenta)), float)
+
+        def evaluate(points, c):
+            self._request(
+                EWSUDAKOV_WEIGHTS, len(points), c + 1, scale[points], momenta[points]
+            )
+            return self._read(FLOAT, len(points) * 4).reshape(-1, 4)
+
+        return self._by_configuration(fks_index, evaluate).reshape(-1, 2, 2)
+
     def channels(self):
         """The Born configurations of MadFKS (born_conf.inc), per
         configuration its Born diagram, its forest (per propagator, from -1,
@@ -715,6 +970,27 @@ class FortranProvider:
         renormalization scale."""
         values, _ = self.virtual(momenta, ren_scale)
         return values["finite"][:, [self.position(o) for o in self.orders["nlo"]]]
+
+
+def ew_sudakov_inputs(provider, sudakov, momenta, fks_index):
+    """The matrix-element inputs of the EWSudakov sudakov of madspace at
+    Born kinematics (batch, n, 4) of the configurations fks_index from the
+    provider, at g = 1: diagonal, lo2, derivatives and interference, the
+    interferences of its interference_terms() (one entry of zeros without
+    any)."""
+    blocks = provider.ew_sudakov(momenta, fks_index)
+    terms = list(sudakov.interference_terms())
+    interference = np.zeros((len(momenta), max(len(terms), 1), 2))
+    for k, (h, t) in enumerate(terms):
+        value = blocks["interference"][:, h, t]
+        interference[:, k, 0] = value.real
+        interference[:, k, 1] = value.imag
+    return dict(
+        diagonal=blocks["diagonal"],
+        lo2=blocks["lo2"],
+        derivatives=np.ascontiguousarray(blocks["derivatives"]),
+        interference=interference,
+    )
 
 
 def identical_factor(pdgs, incoming=2):

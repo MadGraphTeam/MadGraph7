@@ -454,9 +454,17 @@ private:
  * process at the event and the counter-events and of the Born for the n-body
  * part, at the factorization scales of its remnants and soft-virtual part.
  *
+ * With the Sudakov approximation of the EW corrections, the outputs of
+ * @ref EWSudakov per mode are n-body parts of their own, the corrections of
+ * compute_ewsudakov of fks_singular.f (types 20 and 21 of the weight lines),
+ * at the Born kinematics with the coupling, the luminosity and the factor of
+ * the Born and @f$g_s^p@f$ of the power of their order (the NLO order of
+ * the LO1 with two powers of QED more). They are not part of the cross
+ * section, which MadFKS sums with them.
+ *
  * `batch` is the leading batch dimension, `n` the number of particles of the
- * real processes, incoming included, `b` the number of Born orders and `o`
- * that of NLO orders.
+ * real processes, incoming included, `b` the number of Born orders, `o`
+ * that of NLO orders and `m` that of the modes of the Sudakov approximation.
  *
  * **Arguments**
  * - `momenta`, `soft_momenta`, `collinear_momenta`, `soft_collinear_momenta`
@@ -484,11 +492,14 @@ private:
  *   multichannel factor of include_multichannel_enhance.
  * - `configuration_weight` – `float`, shape `(batch,)` – the weight of the
  *   sampled FKS configuration, one over its probability.
+ * - `ew_sudakov` – `float`, shape `(batch, m)` – the outputs of
+ *   @ref EWSudakov at @f$g_s = 1@f$ (and @f$\alpha_s = 1 / (4 \pi)@f$ for
+ *   their LO2 part), only with modes of the Sudakov approximation.
  *
  * **Returns**
- * - `cross_section` – `float`, shape `(batch,)` – the sum of the others, the
- *   integrand in pb (a width in GeV for a decay, with the flux
- *   @f$1 / (2 M)@f$ of the decaying particle in place of
+ * - `cross_section` – `float`, shape `(batch,)` – the sum of the others but
+ *   `ew_sudakov_weights`, the integrand in pb (a width in GeV for a decay,
+ *   with the flux @f$1 / (2 M)@f$ of the decaying particle in place of
  *   @f$1 / (2 \hat s)@f$).
  * - `event_weight` – `float`, shape `(batch,)` – the real emission, at
  *   `momenta`.
@@ -498,6 +509,9 @@ private:
  *   `born_momenta`.
  * - `lo_weight` – `float`, shape `(batch,)` – the Born alone, part of
  *   nbody_weight.
+ * - `ew_sudakov_weights` – `float`, shape `(batch, m)` – the Sudakov
+ *   approximation of the EW corrections per mode, at `born_momenta`, only
+ *   with modes of it.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -509,16 +523,23 @@ private:
 class FKSWeights : public FunctionGenerator {
 public:
     /**
-     * @param configurations  The FKS configurations of the Born, for the
-     *                        number of particles.
-     * @param orders          The coupling orders of the Born and of the
-     *                        real emission, for the powers of @f$g_s@f$.
+     * @param configurations     The FKS configurations of the Born, for the
+     *                           number of particles.
+     * @param orders             The coupling orders of the Born and of the
+     *                           real emission, for the powers of
+     *                           @f$g_s@f$.
+     * @param ew_sudakov_modes   The number of modes of the Sudakov
+     *                           approximation of the EW corrections, zero
+     *                           for none.
+     * @param ew_sudakov_power   The power of @f$g_s@f$ of its order.
      * @throws std::invalid_argument for configurations that
-     *         check_fks_configurations rejects.
+     *         check_fks_configurations rejects, or a negative power.
      */
     FKSWeights(
         const std::vector<FKSConfiguration>& configurations,
-        const FKSCouplingOrders& orders
+        const FKSCouplingOrders& orders,
+        std::size_t ew_sudakov_modes = 0,
+        int ew_sudakov_power = 0
     );
     /// Number of particles of the real processes, incoming included.
     std::size_t particle_count() const { return _particle_count; }
@@ -528,6 +549,10 @@ public:
     std::size_t born_order_count() const { return _born_power.size(); }
     /// Number of NLO orders.
     std::size_t nlo_order_count() const { return _nlo_power.size(); }
+    /// Number of modes of the Sudakov approximation of the EW corrections.
+    std::size_t ew_sudakov_mode_count() const { return _ew_sudakov_modes; }
+    /// The power of @f$g_s@f$ of the order of the Sudakov approximation.
+    int ew_sudakov_power() const { return _ew_sudakov_power; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -537,6 +562,8 @@ private:
     std::size_t _particle_count;
     std::size_t _incoming;
     std::vector<me_int_t> _born_power, _nlo_power;
+    std::size_t _ew_sudakov_modes;
+    int _ew_sudakov_power;
 };
 
 /**

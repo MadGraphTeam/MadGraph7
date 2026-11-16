@@ -14,23 +14,34 @@ QCD and QED corrections at the orders of p p > a j of test_data/fks
 (pp_aj_mix_P0_gu_ua.json), against its blocks of pyAmpliCol and the
 counterterm parts of extra_cnt of MadFKS at its Borns.
 
+With --ewsudakov (epem_ttx_sdk of make_fks_cross_section_reference.py) the
+matrix elements of the Sudakov approximation of the EW corrections per
+helicity combination of the Born give with EWSudakov of madspace the weights
+of compute_ewsudakov of MadFKS at random Born points.
+
 The provider is compiled in the aMC@NLO outputs of the references, as a
 fixed-order run leaves them (make_fks_integrand_reference.py --keep DIR
 keeps them, one output per reference, DIR/epem_jj and so on, and
 make_fks_cross_section_reference.py --keep DIR those of g u > u a, gu_ua_mix,
-and of p p > w+, pp_wp). The tests run where MADSPACE_FKS_OUTPUTS names that
+of p p > w+, pp_wp, and of e+ e- > t t~ with --ewsudakov, epem_ttx_sdk). The
+tests run where MADSPACE_FKS_OUTPUTS names that
 directory, and a test is skipped where its output is not there.
 """
 
 import atexit
 import functools
+import json
 import math
 import os
 
 import numpy as np
 import pytest
 from fks_testing import born_inputs, evaluate, fks_output, reference
-from madgraph.mg7.nlo.fks import born_topology
+from madgraph.mg7.nlo.fks import (
+    born_topology,
+    ew_sudakov_corrections,
+    ew_sudakov_runtime,
+)
 from madgraph.mg7.nlo.provider import (
     FortranProvider,
     azimuthal_phase,
@@ -38,8 +49,10 @@ from madgraph.mg7.nlo.provider import (
     fks_blocks,
     momenta_at_rest,
 )
+from madspace_testing import default_context
 from test_fks_integrand import DATA, IDS, WEIGHTS, channels
 
+import madspace as ms
 from madspace.subtraction.fks import fks_cross_section, fks_splitting_kernels
 
 OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
@@ -444,3 +457,66 @@ def test_born_at_rest():
     born = p.born_orders_of(p.born(momenta, np.zeros(len(momenta), dtype=np.int32))[0])
     assert born[0, 0] > 0
     np.testing.assert_allclose(born, np.broadcast_to(born[:1], born.shape), rtol=1e-13)
+
+
+# the references of test_data/fks_cross_section of outputs with --ewsudakov
+EW_SUDAKOV_REFERENCES = ["epem_ttx_sdk"]
+EW_SUDAKOV_POINTS = 64
+
+
+@pytest.mark.parametrize("name", EW_SUDAKOV_REFERENCES)
+def test_ew_sudakov(name):
+    """With --ewsudakov, EWSudakov of madspace with the matrix elements of
+    the provider per helicity combination (ew_sudakov_corrections of
+    nlo.fks) gives the weights of compute_ewsudakov of MadFKS at Born points
+    of every subprocess and configuration, for sud_mod 0 and 1, which has no
+    weights at other orders. Its parameters are those of the param card."""
+    path = os.path.join(
+        os.path.dirname(__file__), "test_data", "fks_cross_section", f"{name}.json"
+    )
+    with open(path) as f:
+        data = json.load(f)
+    output = fks_output(data["output"])
+    energy = 2 * math.sqrt(
+        float(data["run_card"]["ebeam1"]) * float(data["run_card"]["ebeam2"])
+    )
+    rng = np.random.default_rng(4711)
+    for subprocess in sorted(os.listdir(os.path.join(output, "SubProcesses"))):
+        if not subprocess.startswith("P"):
+            continue
+        p = provider(data["output"], subprocess)
+        info = p.ew_sudakov_info()
+        assert info is not None
+        masses = data["param_card"]["mass"]
+        parameters = info["parameters"]
+        for key, pdg in (("mw", 24), ("mz", 23), ("mh", 25), ("mt", 6)):
+            assert parameters[key] == pytest.approx(float(masses[str(pdg)]), rel=1e-14)
+        runtime = ew_sudakov_runtime(p, default_context())
+        pdgs = p.fks_configurations["born_pdgs"]
+        born = ms.PhaseSpaceMapping(
+            [float(masses.get(str(abs(pdg)), 0.0)) for pdg in pdgs],
+            energy,
+            leptonic=True,
+        )
+        r = rng.random((EW_SUDAKOV_POINTS, born.random_dim()))
+        momenta = np.asarray(born.map_forward([r])[0], dtype=float)
+        index = rng.integers(p.configuration_count, size=EW_SUDAKOV_POINTS)
+        scale = rng.uniform(50.0, 500.0, EW_SUDAKOV_POINTS)
+        mask = np.ones(EW_SUDAKOV_POINTS, dtype=bool)
+        ours = ew_sudakov_corrections(p, runtime, momenta, index, scale, mask)
+        theirs = p.ew_sudakov_weights(momenta, index, scale)
+        assert (theirs[:, :, 0] != 0).all()
+        np.testing.assert_allclose(ours, theirs[:, :, 0], rtol=1e-12, atol=0)
+        np.testing.assert_array_equal(theirs[:, :, 1], 0.0)
+        masked = ew_sudakov_corrections(p, runtime, momenta, index, scale, ~mask)
+        np.testing.assert_array_equal(masked, 0.0)
+
+
+@pytest.mark.parametrize("path", DATA[:1], ids=IDS[:1])
+def test_no_ew_sudakov(path):
+    """Without --ewsudakov the provider has no Sudakov approximation."""
+    channel = reference(path)["channels"][0]
+    p = provider(name_of(path), channel["subprocess"])
+    assert p.ew_sudakov_info() is None
+    with pytest.raises(ValueError):
+        p.ew_sudakov(np.zeros((1, p.particle_count - 1, 4)), [0])

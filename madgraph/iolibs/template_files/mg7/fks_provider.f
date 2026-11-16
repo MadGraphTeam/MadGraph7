@@ -35,6 +35,17 @@ c - EXTRA: extra_cnt_frame at the Born of a configuration with an extra
 c   counterterm (born_cnt_<n>.f, the Born of the other mother of a quark
 c   pair), its counterterm parts amp_split_cnt(:,1:2,:), as sborncol_fsr
 c   and sborncol_isr of fks_singular.f take them.
+c - EWSUDAKOV_INFO: whether the output has the Sudakov approximation of
+c   the EW corrections (--ewsudakov), its sizes, the base amplitude of
+c   each helicity combination of the Born and of each interference, and
+c   its parameters (fks_provider_ewsudakov.f).
+c - EWSUDAKOV: the matrix elements of the Sudakov approximation per
+c   helicity combination at the Born of one configuration, those that
+c   sudakov_wrapper of ewsudakov_wrapper.f takes, for EWSudakov of
+c   madspace.
+c - EWSUDAKOV_WEIGHTS: the weights of compute_ewsudakov of fks_singular.f
+c   at the Born of one configuration and a renormalization scale per
+c   point, for the tests.
 c A request is three integers (command, number of points, argument)
 c then its data, an answer is a status (0 for success) then its data,
 c all in the native byte order. Command 0 stops the server, 1 gives
@@ -144,6 +155,12 @@ c the sizes and the orders of the split-order positions.
             call provider_couplings(header(2))
          case (9)
             call provider_scale(header(2))
+         case (10)
+            call provider_ewsudakov_info
+         case (11)
+            call provider_ewsudakov(header(2),header(3))
+         case (12)
+            call provider_ewsudakov_weights(header(2),header(3))
          case default
             call write_status(1)
          end select
@@ -354,6 +371,94 @@ c contributions with tagged photons for count powers of e.
       call write_ints(1,ntag)
       call write_reals(count+1,out)
       deallocate(powers,out)
+      end
+
+
+c Whether the output has the Sudakov approximation of the EW corrections:
+c five integers (one with it, the number of helicity combinations of the
+c Born and of interferences, has_lo1 and has_lo2), with it then the base
+c amplitude of each helicity combination and of each interference and
+c nine parameters.
+      subroutine provider_ewsudakov_info
+      use fks_provider_io
+      implicit none
+      integer(c_int32_t) sizes(5)
+      integer(c_int32_t), allocatable :: bases(:)
+      double precision parameters(9)
+      integer ncomb,nint
+      call provider_sdk_sizes(sizes)
+      call write_status(0)
+      call write_ints(5,sizes)
+      if (sizes(1).eq.0) return
+      ncomb=sizes(2)
+      nint=sizes(3)
+      allocate(bases(ncomb+nint))
+      call provider_sdk_info(ncomb,nint,bases(1),bases(ncomb+1),
+     $     parameters)
+      call write_ints(ncomb+nint,bases)
+      call write_reals(9,parameters)
+      deallocate(bases)
+      end
+
+
+c The matrix elements of the Sudakov approximation at count Born
+c kinematics of configuration nfks (in the partonic center-of-mass
+c frame), per point those of provider_sdk_evaluate, status 2 for an
+c output without it.
+      subroutine provider_ewsudakov(count,nfks)
+      use fks_provider_io
+      implicit none
+      include 'nexternal.inc'
+      integer count,nfks,k,width
+      integer(c_int32_t) sizes(5)
+      double precision, allocatable :: p(:,:,:),out(:,:)
+      call provider_sdk_sizes(sizes)
+      width=8*sizes(2)+2*sizes(3)*sizes(2)
+      allocate(p(0:3,nexternal-1,count),out(max(width,1),count))
+      call read_reals(4*(nexternal-1)*count,p)
+      if (sizes(1).eq.0) then
+         call write_status(2)
+         deallocate(p,out)
+         return
+      endif
+      call provider_configuration(nfks)
+      do k=1,count
+         call provider_sdk_evaluate(p(0,1,k),sizes(2),sizes(3),out(1,k))
+      enddo
+      call write_status(0)
+      call write_reals(width*count,out)
+      deallocate(p,out)
+      end
+
+
+c The weights of compute_ewsudakov at count Born kinematics of
+c configuration nfks (in the partonic center-of-mass frame) and a
+c renormalization scale per point, per point those of
+c provider_sdk_weights (per sud_mod the weight at the NLO order of the
+c LO1 and the sum of the others), status 2 for an output without it.
+      subroutine provider_ewsudakov_weights(count,nfks)
+      use fks_provider_io
+      implicit none
+      include 'nexternal.inc'
+      integer count,nfks,k
+      integer(c_int32_t) sizes(5)
+      double precision, allocatable :: p(:,:,:),scales(:),out(:,:)
+      allocate(p(0:3,nexternal-1,count),scales(count),out(4,count))
+      call read_reals(count,scales)
+      call read_reals(4*(nexternal-1)*count,p)
+      call provider_sdk_sizes(sizes)
+      if (sizes(1).eq.0) then
+         call write_status(2)
+         deallocate(p,scales,out)
+         return
+      endif
+      call provider_configuration(nfks)
+      do k=1,count
+         call provider_sdk_weights(p(0,1,k),scales(k),out(1,k))
+      enddo
+      call write_status(0)
+      call write_reals(4*count,out)
+      deallocate(p,scales,out)
       end
 
 

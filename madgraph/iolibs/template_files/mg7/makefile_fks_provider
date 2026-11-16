@@ -5,7 +5,8 @@
 #     make -f makefile_provider fks_provider
 include makefile
 
-PROVIDER = $(RUN) fks_provider.o BinothLHA.o write_event.o handling_lhe_events.o
+PROVIDER = $(RUN) fks_provider.o fks_provider_ewsudakov.o \
+	fks_provider_ewsudakov_calls.o BinothLHA.o write_event.o handling_lhe_events.o
 
 fks_provider.o: $(RUN) BinothLHA.o
 

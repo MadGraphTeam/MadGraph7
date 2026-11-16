@@ -62,6 +62,14 @@ pair. With tagged photons and QED corrections the blocks and the QED
 coupling take the factors of tagged_factors of the provider (the couplings
 of the tagged photons in alpha(0), the others in G_mu).
 
+With --ewsudakov the run gives the Sudakov approximation of the EW
+corrections too, for sud_mod 0 and 1 as compute_ewsudakov of fks_singular.f:
+EWSudakov of madspace with the matrix elements of the provider per helicity
+combination of the Born, an n-body part of its own at the order of the LO1
+with two powers of QED more (ew_sudakov of the result, per mode). The NLO
+cross section and the histograms leave them out, which the integrand of
+MadFKS sums with it (nlo_with_ew_sudakov of the result).
+
 The scale of the user (dynamical_scale_choice 0 or 10, user_dynamical_scale
 of dummy_fct.f) comes from the provider at the event and its counter-events.
 With reweight_scale the run gives the cross section at the factors of
@@ -82,7 +90,7 @@ import os
 
 import numpy as np
 
-from madgraph.mg7.nlo.provider import FortranProvider, fks_blocks
+from madgraph.mg7.nlo.provider import FortranProvider, ew_sudakov_inputs, fks_blocks
 from madgraph.mg7.nlo.core import (  # noqa: F401 (the names the tests import)
     LEPTON_POWER,
     NLORun,
@@ -199,6 +207,16 @@ class SubprocessIntegrand:
         hadrons = abs(self.beams[0]) == 1
         members = couplings.members if hadrons else []
         self.pdf_members = len(members)
+        # the Sudakov approximation of the EW corrections, with --ewsudakov,
+        # with tagged photons with the factor of the power of e of its order
+        self.ew_sudakov, self.ew_sudakov_modes = None, 0
+        if self.provider.ew_sudakov_info() is not None:
+            self.ew_sudakov = ew_sudakov_runtime(self.provider, context)
+            self.ew_sudakov_modes = self.ew_sudakov.function.mode_count()
+            self.ew_sudakov_factor = 1.0
+            if self.tagged is not None:
+                power = ew_sudakov_order(self.configurations)[self.provider.qed_pos]
+                _, _, (self.ew_sudakov_factor,) = self.provider.couplings([power])
         self.cross_section = Runtime(
             fks_cross_section(
                 born,
@@ -213,6 +231,7 @@ class SubprocessIntegrand:
                 lepton_luminosity=None if self.leptons is None else self.leptons.full,
                 scale_variations=self.scale_variations,
                 pdf_variations=members,
+                ew_sudakov_modes=self.ew_sudakov_modes,
                 resonance=self.resonance,
                 n_f=n_f,
             ),
@@ -378,6 +397,18 @@ class SubprocessIntegrand:
             configuration_weight=configuration_weight,
             alpha=np.full(count, alpha),
         )
+        if self.ew_sudakov is not None:
+            # at the Born of the points that take it, as compute_ewsudakov
+            # with the Born
+            nbody = born_mask & (out["born_weight"] != 0)
+            inputs["ew_sudakov"] = self.ew_sudakov_factor * ew_sudakov_corrections(
+                self.provider,
+                self.ew_sudakov,
+                out["born_momenta"],
+                fks_index,
+                ren_scale,
+                nbody,
+            )
         result = self.cross_section.by_name(inputs, fks_index=fks_index)
         inputs["virtual"] = approximation
         without = self.cross_section.by_name(inputs, fks_index=fks_index)
@@ -397,7 +428,70 @@ class SubprocessIntegrand:
                     result.get("pdf_variations", np.zeros((count, 0))),
                 ]
             ),
+            ew_sudakov=result.get("ew_sudakov_weights", np.zeros((count, 0))),
         )
+
+
+def ew_sudakov_order(configurations):
+    """The split orders of the Sudakov approximation of the EW corrections,
+    those of the LO1 with two powers of QED more (of the LO2 with two of QCD
+    more), from the ewsudakov entry of fks_configurations.json."""
+    info = configurations["ewsudakov"]
+    split_orders = configurations["orders"]["split_orders"]
+    if info.get("lo1") is not None:
+        order, raised = list(info["lo1"]), "QED"
+    else:
+        order, raised = list(info["lo2"]), "QCD"
+    order[split_orders.index(raised)] += 2
+    return order
+
+
+def ew_sudakov_runtime(provider, context):
+    """The EWSudakov of the Born of the subprocess of a provider with
+    --ewsudakov (sud_mod 0 and 1, as compute_ewsudakov), with the parameters
+    of its Fortran, as a Runtime."""
+    ms = madspace()
+    from madspace.subtraction.fks import ew_sudakov
+
+    info = provider.ew_sudakov_info()
+    p = info["parameters"]
+    scheme = provider.fks_configurations["ewsudakov"]["scheme"]
+    parameters = ms.EWSudakovParameters(
+        mw=p["mw"],
+        mz=p["mz"],
+        mh=p["mh"],
+        mt=p["mt"],
+        mb=p["mb"],
+        alpha=p["gal"] ** 2 / (4 * math.pi),
+        gf=p["gf"],
+        scheme=ms.EWSudakovScheme(scheme),
+    )
+    return Runtime(ew_sudakov(provider.fks_configurations, parameters), context)
+
+
+def ew_sudakov_corrections(provider, runtime, momenta, fks_index, ren_scale, mask):
+    """The outputs of the EWSudakov runtime (batch, modes) at the Born
+    kinematics momenta (batch, n, 4) of the configurations fks_index, with
+    the matrix elements of the provider at g = 1 and the LO2 part at
+    alpha_s = 1 / (4 pi) and the renormalization scale of the Born, zero
+    where mask is false."""
+    count = len(momenta)
+    out = np.zeros((count, runtime.function.mode_count()))
+    points = np.flatnonzero(mask)
+    if len(points) == 0:
+        return out
+    p = np.ascontiguousarray(momenta[points])
+    inputs = ew_sudakov_inputs(provider, runtime.function, p, fks_index[points])
+    out[points] = runtime(
+        p,
+        inputs["diagonal"],
+        inputs["lo2"],
+        inputs["derivatives"],
+        inputs["interference"],
+        np.full(len(points), 1 / (4 * math.pi)),
+        np.asarray(ren_scale)[points],
+    )["sudakov"]
+    return out
 
 
 class FKSRun(NLORun):
@@ -460,6 +554,11 @@ def main(argv=None):
         print(
             f"PDF variation ({band['name']}, {band['error_type']}): "
             f"+{band['up']:.1f}% -{band['down']:.1f}%"
+        )
+    for entry in result.get("ew_sudakov", []):
+        print(
+            f"EW Sudakov (sud_mod {entry['sud_mod']}): "
+            f"{entry['sigma']:.6e} +- {entry['error']:.2e} {unit}"
         )
     for name, entry in result["subprocesses"].items():
         nlo = entry["nlo"]

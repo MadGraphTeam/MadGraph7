@@ -19,6 +19,12 @@ madspace/tests/test_data/fks_cross_section/<name>.json:
     (scale_variations, mu_r, mu_f and sigma, from the total rate of the
     histograms of the run).
 
+    A process with --ewsudakov has at NLO also the Sudakov approximation of
+    the EW corrections (ew_sudakov, per sud_mod its sigma and error), from
+    the histograms of analysis_HwU_ewsudakov.f, which the run takes as its
+    FO analysis. Its NLO cross section is that of MadFKS, which sums them
+    with the NLO corrections.
+
 The outputs of BUILT have no cross section here. The script only compiles
 their executables with the cards of a fixed-order run at NLO, as the tests of
 the provider need them.
@@ -26,7 +32,11 @@ the provider need them.
 Run from anywhere with a gfortran in the PATH:
 
     python madspace/tests/fks_reference/make_fks_cross_section_reference.py
-        --keep DIR [--only NAME] [--accuracy ACC]
+        --keep DIR [--only NAME] [--accuracy ACC] [--models DIR]
+
+The processes with --ewsudakov need the model loop_qcd_qed_sm_Gmu_forSudakov
+of the UFO model database, which MadGraph downloads, or which --models takes
+from a directory.
 """
 
 import argparse
@@ -88,6 +98,8 @@ SETUPS = {
     "pp_epem_rw": ("pp_epem", dict(mfir.PROCESSES["pp_epem"][1], reweight_scale=True)),
     # a Born of one final-state particle, a W at rest in the partonic frame
     "pp_wp": ("pp_wp", {}),
+    # the Sudakov approximation of the EW corrections at a 3 TeV collider
+    "epem_ttx_sdk": ("epem_ttx_sdk", {}),
 }
 # outputs of the cross sections alone, without an integrand reference: name
 # -> (process, run_card values, model). p p > e+ e- j has a jet that radiates
@@ -128,7 +140,16 @@ OUTPUTS = {
     ),
     "aa_ttx": ("a a > t t~ [QCD]", dict(mfir.HADRONIC, lpp1=2, lpp2=2), None),
     "pp_wp": ("p p > w+ [QCD]", dict(mfir.HADRONIC), None),
+    # the forSudakov models of the model database of MadGraph
+    "epem_ttx_sdk": (
+        "e+ e- > t t~ [QCD] --ewsudakov",
+        dict(ebeam1=1500, ebeam2=1500),
+        "loop_qcd_qed_sm_Gmu_forSudakov",
+    ),
 }
+# the FO analysis of the outputs with --ewsudakov, for the totals of the
+# Sudakov approximation per sud_mod
+EWSUDAKOV_ANALYSIS = "analysis_HwU_ewsudakov"
 # the outputs in the complex-mass scheme: the EW corrections of a process
 # with an s-channel Z are gauge invariant only there, as MadGraph warns
 # (arXiv:1804.10017), and close to the Z the single poles of MadLoop and
@@ -154,6 +175,9 @@ ACCURACIES = {
     "pp_aa": 1e-3,
     "pp_epem_qed": 1e-3,
     "pp_aa_tagged": 1e-3,
+    # the Sudakov approximation on every point makes MadFKS slow, and it is
+    # -30% of the LO (sud_mod 0) at 3 TeV
+    "epem_ttx_sdk": 1e-3,
 }
 # the values of every run, the defaults of the run_card where a setup of
 # the same output changes them
@@ -210,6 +234,46 @@ def build(out, values, work, name):
     for directory in glob.glob(os.path.join(out, "SubProcesses", "P*")):
         if not os.path.isfile(os.path.join(directory, "madevent_mintFO")):
             raise RuntimeError(f"{script} built no madevent_mintFO in {directory}")
+
+
+def install_ewsudakov_analysis(out):
+    """analysis_HwU_ewsudakov.f in the FixedOrderAnalysis of the output out
+    and in its FO_analyse_card.dat, as the analysis of its runs."""
+    target = os.path.join(out, "FixedOrderAnalysis", f"{EWSUDAKOV_ANALYSIS}.f")
+    with open(os.path.join(HERE, f"{EWSUDAKOV_ANALYSIS}.f")) as f:
+        source = f.read()
+    with open(target, "w") as f:
+        f.write(source)
+    card = os.path.join(out, "Cards", "FO_analyse_card.dat")
+    with open(card) as f:
+        text = f.read()
+    text = re.sub(
+        r"^FO_ANALYSE *=.*$",
+        f"FO_ANALYSE = {EWSUDAKOV_ANALYSIS}.o",
+        text,
+        count=1,
+        flags=re.M,
+    )
+    with open(card, "w") as f:
+        f.write(text)
+
+
+def parse_histogram_total(path, title):
+    """The value and the error of the first bin of the histogram title of
+    the HwU histograms at path (of one bin of width one, its integral)."""
+    with open(path) as f:
+        lines = f.read().splitlines()
+    names = [n.strip() for n in lines[0].lstrip("#&").split("&")]
+    for k, line in enumerate(lines):
+        if line.startswith("<histogram>") and f'"{title}' in line:
+            values = [float(v) for v in lines[k + 1].split()]
+            return dict(
+                zip(
+                    ("sigma", "error"),
+                    (values[names.index("central value")], values[names.index("dy")]),
+                )
+            )
+    raise ValueError(f"no histogram {title} in {path}")
 
 
 def parse_summary(path):
@@ -281,7 +345,13 @@ def main():
     parser.add_argument(
         "--reuse", action="store_true", help="collect the runs already there"
     )
+    parser.add_argument("--models", help="directory with the models of the outputs")
     args = parser.parse_args()
+
+    def model_path(model):
+        if model and args.models and os.path.isdir(os.path.join(args.models, model)):
+            return os.path.join(args.models, model)
+        return model
 
     commit = mfir.mfr.commit(mfir.MG_ROOT)
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -292,7 +362,11 @@ def main():
         if name in BUILT:
             process, values, model = OUTPUTS[name]
             out = mfir.generate(
-                name, process, work, os.path.join(work, f"{name}_gen.log"), model
+                name,
+                process,
+                work,
+                os.path.join(work, f"{name}_gen.log"),
+                model_path(model),
             )
             mfir.sum_helicities(out)
             build(out, values, work, name)
@@ -305,10 +379,13 @@ def main():
             process,
             work,
             os.path.join(work, f"{output}_gen.log"),
-            model,
+            model_path(model),
             complex_mass=output in COMPLEX_MASS,
         )
         mfir.sum_helicities(out)
+        ewsudakov = "--ewsudakov" in process
+        if ewsudakov:
+            install_ewsudakov_analysis(out)
         accuracy = args.accuracy or ACCURACIES.get(name, ACCURACY)
         values = {**base, **values}
         results = {}
@@ -318,9 +395,17 @@ def main():
             if not (args.reuse and os.path.isfile(summary)):
                 summary = launch(out, values, order, accuracy, work, name)
             results[order.lower()] = parse_summary(summary)
+            histograms = os.path.join(os.path.dirname(summary), "MADatNLO.HwU")
             if order == "NLO" and values.get("reweight_scale"):
-                histograms = os.path.join(os.path.dirname(summary), "MADatNLO.HwU")
                 results["nlo"]["scale_variations"] = parse_scale_variations(histograms)
+            if order == "NLO" and ewsudakov:
+                results["nlo"]["ew_sudakov"] = [
+                    dict(
+                        parse_histogram_total(histograms, f"EW Sudakov sud_mod {mode}"),
+                        sud_mod=mode,
+                    )
+                    for mode in (0, 1)
+                ]
         run_card, param_card = mfir.read_cards(out)
         data = dict(
             process=process,

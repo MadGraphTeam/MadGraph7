@@ -754,7 +754,31 @@ def fks_soft_virtual(born, configurations, **parameters):
     )
 
 
-def fks_weights(born, configurations):
+def ew_sudakov_power(configurations):
+    """The power of g_s of the order of the Sudakov approximation of the EW
+    corrections, the NLO order of the LO1 with two powers of QED more (that of
+    the LO2 with two of QCD more), from the ewsudakov entry of
+    fks_configurations.json.
+
+    Raises:
+        ValueError: without the ewsudakov entry.
+    """
+    if "ewsudakov" not in configurations:
+        raise ValueError(
+            "fks_configurations.json has no ewsudakov entry, the process has no "
+            "--ewsudakov or comes from an older FKS exporter"
+        )
+    info = configurations["ewsudakov"]
+    split_orders = configurations.get("orders", {}).get("split_orders", ["QCD", "QED"])
+    if "QCD" not in split_orders:
+        return 0
+    qcd = split_orders.index("QCD")
+    if info.get("lo1") is not None:
+        return info["lo1"][qcd]
+    return info["lo2"][qcd] + 2
+
+
+def fks_weights(born, configurations, ew_sudakov_modes=0):
     """The FKSWeights of the FKS configurations of a Born, the weights of the
     FKS integrand from the outputs of FKSKinematics, fks_subtraction and
     fks_soft_virtual.
@@ -764,13 +788,21 @@ def fks_weights(born, configurations):
             momenta in the order of born_pdgs.
         configurations: the content of fks_configurations.json (see
             read_fks_configurations).
+        ew_sudakov_modes: the number of modes of the Sudakov approximation of
+            the EW corrections (those of ew_sudakov), whose outputs the
+            weights take as n-body parts of their own (ew_sudakov among the
+            arguments, ew_sudakov_weights among the outputs), zero for none.
 
     Raises:
-        ValueError: as fks_configurations.
+        ValueError: as fks_configurations, and with modes of the Sudakov
+            approximation as ew_sudakov_power.
     """
+    power = ew_sudakov_power(configurations) if ew_sudakov_modes else 0
     return FKSWeights(
         fks_configurations(born, configurations),
         fks_coupling_orders(configurations),
+        ew_sudakov_modes=ew_sudakov_modes,
+        ew_sudakov_power=power,
     )
 
 
@@ -1093,6 +1125,7 @@ def fks_cross_section(
     lepton_luminosity=None,
     scale_variations=(),
     pdf_variations=(),
+    ew_sudakov_modes=0,
     **parameters,
 ):
     """The FKSCrossSection of the FKS configurations of a Born, the FKS
@@ -1124,6 +1157,9 @@ def fks_cross_section(
             with each of which the integrand gives the cross section at the
             scales of the run too (pdf_variations among its outputs), one
             set for both beams.
+        ew_sudakov_modes: the number of modes of the Sudakov approximation of
+            the EW corrections, whose outputs of EWSudakov the integrand takes
+            (see fks_weights).
         parameters: those of fks_subtraction, of which xicut, delta_o and n_f
             also go to the n-body part.
 
@@ -1139,7 +1175,7 @@ def fks_cross_section(
     arguments = [
         fks_subtraction(born, configurations, **parameters),
         fks_soft_virtual(born, configurations, n_l=n_l, **shared),
-        fks_weights(born, configurations),
+        fks_weights(born, configurations, ew_sudakov_modes),
         None if cuts is None else fks_cuts(born, configurations, **cuts),
     ]
     nbody_cuts = None if cuts is None else fks_nbody_cuts(born, configurations, **cuts)

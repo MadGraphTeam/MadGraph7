@@ -585,7 +585,10 @@ qcd_powers(const FKSCouplingOrders& orders, const nested_vector2<int>& order_pow
 } // namespace
 
 FKSWeights::FKSWeights(
-    const std::vector<FKSConfiguration>& configurations, const FKSCouplingOrders& orders
+    const std::vector<FKSConfiguration>& configurations,
+    const FKSCouplingOrders& orders,
+    std::size_t ew_sudakov_modes,
+    int ew_sudakov_power
 ) :
     FunctionGenerator(
         "FKSWeights",
@@ -595,7 +598,7 @@ FKSWeights::FKSWeights(
             );
             auto b = static_cast<int>(orders.born_count());
             auto o = static_cast<int>(orders.nlo_count());
-            return NamedVector<Type>{
+            auto types = NamedVector<Type>{
                 {"momenta", batch_four_vec_array(n)},
                 {"weight", batch_float},
                 {"soft_momenta", batch_four_vec_array(n)},
@@ -624,21 +627,45 @@ FKSWeights::FKSWeights(
                 {"channel_weight", batch_float},
                 {"configuration_weight", batch_float},
             };
+            if (ew_sudakov_modes > 0) {
+                types.push_back(
+                    "ew_sudakov", batch_float_array(static_cast<int>(ew_sudakov_modes))
+                );
+            }
+            return types;
         }(),
-        NamedVector<Type>{
-            {"cross_section", batch_float},
-            {"event_weight", batch_float},
-            {"soft_weight", batch_float},
-            {"collinear_weight", batch_float},
-            {"soft_collinear_weight", batch_float},
-            {"nbody_weight", batch_float},
-            {"lo_weight", batch_float},
-        }
+        [&] {
+            auto types = NamedVector<Type>{
+                {"cross_section", batch_float},
+                {"event_weight", batch_float},
+                {"soft_weight", batch_float},
+                {"collinear_weight", batch_float},
+                {"soft_collinear_weight", batch_float},
+                {"nbody_weight", batch_float},
+                {"lo_weight", batch_float},
+            };
+            if (ew_sudakov_modes > 0) {
+                types.push_back(
+                    "ew_sudakov_weights",
+                    batch_float_array(static_cast<int>(ew_sudakov_modes))
+                );
+            }
+            return types;
+        }()
     ),
     _particle_count(check_fks_configurations(configurations, "FKSWeights")),
     _incoming(configurations.at(0).incoming),
     _born_power(qcd_powers(orders, orders.born)),
-    _nlo_power(qcd_powers(orders, orders.nlo)) {}
+    _nlo_power(qcd_powers(orders, orders.nlo)),
+    _ew_sudakov_modes(ew_sudakov_modes),
+    _ew_sudakov_power(ew_sudakov_power) {
+    if (ew_sudakov_power < 0) {
+        throw std::invalid_argument(
+            "FKSWeights: the power of g_s of the Sudakov approximation must not be "
+            "negative"
+        );
+    }
+}
 
 NamedVector<Value> FKSWeights::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
@@ -703,7 +730,7 @@ NamedVector<Value> FKSWeights::build_function_impl(
     Value nbody = fb.add(lo, nbody_nlo);
     Value total =
         fb.add(fb.add(fb.add(event, soft), fb.add(collinear, soft_collinear)), nbody);
-    return {
+    NamedVector<Value> result{
         {"cross_section", total},
         {"event_weight", event},
         {"soft_weight", soft},
@@ -712,6 +739,25 @@ NamedVector<Value> FKSWeights::build_function_impl(
         {"nbody_weight", nbody},
         {"lo_weight", lo},
     };
+    if (_ew_sudakov_modes > 0) {
+        // each mode an n-body part of its own, with the coupling, the
+        // luminosity and the factor of the Born
+        std::vector<me_int_t> power{static_cast<me_int_t>(_ew_sudakov_power)};
+        ValueVec modes;
+        for (Value mode : fb.unstack(args.at("ew_sudakov"))) {
+            modes.push_back(weight(
+                fb.stack({mode}),
+                "born_",
+                "born_weight",
+                "born",
+                "born_",
+                channel,
+                power
+            ));
+        }
+        result.push_back("ew_sudakov_weights", fb.stack(modes));
+    }
+    return result;
 }
 
 namespace {

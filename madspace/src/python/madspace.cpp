@@ -2689,9 +2689,15 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<FKSWeights, FunctionGenerator>(m, "FKSWeights", pydoc::doc("FKSWeights"))
         .def(
-            py::init<const std::vector<FKSConfiguration>&, const FKSCouplingOrders&>(),
+            py::init<
+                const std::vector<FKSConfiguration>&,
+                const FKSCouplingOrders&,
+                std::size_t,
+                int>(),
             py::arg("configurations"),
             py::arg("orders"),
+            py::arg("ew_sudakov_modes") = 0,
+            py::arg("ew_sudakov_power") = 0,
             pydoc::doc("FKSWeights::FKSWeights")
         )
         .def(
@@ -2709,6 +2715,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             "nlo_order_count",
             &FKSWeights::nlo_order_count,
             pydoc::doc("FKSWeights::nlo_order_count")
+        )
+        .def(
+            "ew_sudakov_mode_count",
+            &FKSWeights::ew_sudakov_mode_count,
+            pydoc::doc("FKSWeights::ew_sudakov_mode_count")
+        )
+        .def(
+            "ew_sudakov_power",
+            &FKSWeights::ew_sudakov_power,
+            pydoc::doc("FKSWeights::ew_sudakov_power")
         );
 
     py::classh<NLOCuts, FunctionGenerator>(m, "NLOCuts", pydoc::doc("NLOCuts"))

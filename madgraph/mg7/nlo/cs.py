@@ -88,9 +88,10 @@ of dummy_fct.f) comes from the provider, at the Born with a last particle
 without momentum, as at the soft counter-event of MadFKS.
 
 Not covered yet: a final-state gluon with a colored decaying particle, PDF
-schemes other than MSbar, densities of eMELA, photons of gamma-UPC and the
-scale and PDF variations of reweight_scale and reweight_PDF, which the run
-leaves out with a warning.
+schemes other than MSbar, densities of eMELA, photons of gamma-UPC, the
+scale and PDF variations of reweight_scale and reweight_PDF and the Sudakov
+approximation of the EW corrections of --ewsudakov, which the run leaves out
+with a warning.
 """
 
 import argparse
@@ -367,6 +368,11 @@ class CSBornIntegrand:
         self.context = context
         self.provider = FortranProvider(directory)
         self.configurations = self.provider.fks_configurations
+        if "ewsudakov" in self.configurations:
+            logger.warning(
+                "nlo.cs: no Sudakov approximation of the EW corrections yet, the "
+                "run leaves out those of --ewsudakov"
+            )
         self.incoming = self.configurations["nincoming"]
         self.born_pdgs = list(self.configurations["born_pdgs"])
         self.masses = [

@@ -871,6 +871,65 @@ def test_cross_section_with_extra_counterterms():
     assert np.isfinite(outputs["cross_section"]).all()
 
 
+def test_cross_section_ew_sudakov():
+    """With the Sudakov approximation of the EW corrections each mode of
+    EWSudakov is an n-body part of its own, at the order of the LO1 with two
+    powers of QED more (here e+ e- > t t~, g_s^0): its weight is that of the
+    Born with the correction in place of the Born, and the other outputs are
+    those without it."""
+    path = os.path.join(
+        os.path.dirname(__file__), "test_data", "fks", "epem_ttx_P0_epem_ttx.json"
+    )
+    data = reference(path)
+    born = reference_born_mapping(data)
+    configurations = dict(data["fks_configurations"])
+    orders = configurations["orders"]
+    lo1 = list(orders["born"][0])
+    configurations["ewsudakov"] = dict(lo1=lo1, lo2=None)
+    with_sudakov = fks_cross_section(born, configurations, ew_sudakov_modes=2)
+    without = fks_cross_section(born, configurations)
+    weights = fks_weights(born, configurations, ew_sudakov_modes=2)
+    power = lo1[orders["split_orders"].index("QCD")]
+    assert weights.ew_sudakov_mode_count() == 2
+    assert weights.ew_sudakov_power() == power
+    types = with_sudakov.arg_types()
+    assert list(types.keys())[-2:] == ["ew_sudakov", "fks_index"]
+    mapping = fks_configuration_mapping(born, configurations, 0.0)
+    kinematics = ms.FKSKinematics(mapping)
+    count = 64
+    rng = np.random.default_rng(4712)
+    r = rng.random((count, born.random_dim() + 3))
+    index = rng.integers(len(configurations["configurations"]), size=count)
+    names = list(mapping.counter_event_types().keys())
+    inputs = dict(zip(names, evaluate(kinematics, r, fks_index=index)))
+    values = {}
+    for name in types.keys():
+        if name == "fks_index":
+            continue
+        if name in inputs:
+            values[name] = inputs[name]
+        else:
+            values[name] = rng.random([count, *types[name].shape]) + 0.5
+    values["ew_sudakov"] -= 1.0
+
+    def run(function):
+        names = [n for n in function.arg_types().keys() if n != "fks_index"]
+        out = evaluate(function, *[values[n] for n in names], fks_index=index)
+        return dict(zip(function.return_types().keys(), out))
+
+    ours, theirs = run(with_sudakov), run(without)
+    assert set(ours) == set(theirs) | {"ew_sudakov_weights"}
+    for name, value in theirs.items():
+        np.testing.assert_array_equal(ours[name], value)
+    g = np.sqrt(4 * math.pi * values["born_alpha_s"])
+    factor = MADSPACE_CONV * values["born_luminosity"] * values["channel_weight"]
+    factor *= values["born_weight"] / (2 * s_hat(values["born_momenta"]))
+    expected = (factor * g**power)[:, None] * values["ew_sudakov"]
+    np.testing.assert_allclose(ours["ew_sudakov_weights"], expected, rtol=1e-9)
+    with pytest.raises(ValueError):
+        fks_weights(born, data["fks_configurations"], ew_sudakov_modes=2)
+
+
 def test_cross_section_nbody_cuts():
     """With cuts the n-body part of FKSCrossSection takes those at the soft
     counter-event of the n-body configuration of MadFKS (fks_nbody_cuts):

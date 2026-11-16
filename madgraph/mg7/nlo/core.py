@@ -21,7 +21,9 @@ channels of one subprocess (a P* directory of the output) and
   scale_variations, the pairs of factors of mu_R and mu_F of the run card
   (scale_variations of this module), and pdf_members, the number of
   members of the PDF set of reweight_PDF (0 without), the NLO weight at each
-  scale variation, then with each member (variations),
+  scale variation, then with each member (variations), and with
+  ew_sudakov_modes, the modes of the Sudakov approximation of the EW
+  corrections (0 without), its weight per mode (ew_sudakov),
 - histogram_runtime(histograms, jets) and histogram_sums(runtime, result,
   jacobian, choice), the weights of the histograms of a batch,
 - name, incoming, beams, energy, born_pdgs, matrix_element_calls() and
@@ -671,6 +673,7 @@ class Channel:
         # iteration
         size = 3 + len(getattr(self.integrand, "scale_variations", []))
         size += getattr(self.integrand, "pdf_members", 0)
+        size += getattr(self.integrand, "ew_sudakov_modes", 0)
         self.sums = np.zeros(size)
         self.covariance = np.zeros((size, size))
         self.histograms = None
@@ -707,7 +710,8 @@ class Channel:
             if not keep:
                 continue
             variations = result.get("variations", np.zeros((n, 0))) * jacobian[:, None]
-            values = np.vstack([nlo, lo, residual, variations.T])
+            sudakov = result.get("ew_sudakov", np.zeros((n, 0))) * jacobian[:, None]
+            values = np.vstack([nlo, lo, residual, variations.T, sudakov.T])
             count += n
             sums += values.sum(1)
             products += values @ values.T
@@ -735,7 +739,8 @@ class Channel:
 
     def result(self, k):
         """The estimate and its error of the k-th sum (NLO, LO, residual, then
-        the scale variations and the PDF members)."""
+        the scale variations, the PDF members and the modes of the Sudakov
+        approximation)."""
         if self.count == 0:
             return 0.0, 0.0
         coefficients = np.zeros(len(self.sums))
@@ -1190,6 +1195,33 @@ class NLORun:
             result["scale_variations"] = entries
             result["scale_uncertainty"] = dict(up=up, down=down)
         members = getattr(self.integrands[0], "pdf_members", 0)
+        modes = getattr(self.integrands[0], "ew_sudakov_modes", 0)
+        if modes:
+            # the Sudakov approximation of the EW corrections per mode (sud_mod
+            # 0 and 1 of compute_ewsudakov), and the NLO with all of them, as
+            # the integrand of MadFKS sums them, in total and per subprocess
+            first = 3 + len(variations) + members
+            with_modes = np.zeros(first + modes)
+            with_modes[0] = 1.0
+            with_modes[first:] = 1.0
+
+            def estimate(coefficients, subprocess=None):
+                sigma, error = self.combination(coefficients, subprocess)
+                return dict(sigma=sigma, error=error)
+
+            def per_mode(subprocess=None):
+                entries = []
+                for k in range(modes):
+                    coefficients = np.zeros(first + modes)
+                    coefficients[first + k] = 1.0
+                    entries.append(dict(estimate(coefficients, subprocess), sud_mod=k))
+                return entries
+
+            result["ew_sudakov"] = per_mode()
+            result["nlo_with_ew_sudakov"] = estimate(with_modes)
+            for name, entry in subprocesses.items():
+                entry["ew_sudakov"] = per_mode(name)
+                entry["nlo_with_ew_sudakov"] = estimate(with_modes, name)
         if members:
             # the cross section with each member and the uncertainty of LHAPDF
             # in percent of its central value, as MG5aMC prints it
