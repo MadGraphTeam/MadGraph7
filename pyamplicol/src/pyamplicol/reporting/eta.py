@@ -32,6 +32,10 @@ _RECENT_FRACTION = 0.3
 _RECENT_MINIMUM = 5
 # Measured items needed before the measured pace outweighs a prior.
 _PRIOR_WEIGHT = 2.0
+# An item in progress that has outlasted the other remaining items' time
+# this many times over makes that time meaningless as a lower bound: the
+# estimate turns into "overdue".
+_OUTLASTED = 4.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,9 +124,10 @@ def count_estimate(
     floor = (remaining - 1) * per_item
     if counted_down >= max(floor, 1.0):
         return Estimate(counted_down, estimated=estimated)
-    if floor >= 1.0:
+    if floor >= 1.0 and since < _OUTLASTED * floor:
         return Estimate(floor, estimated=estimated, at_least=True)
-    # The last item, past the time an item takes.
+    # The last item past the time an item takes, or an item that has
+    # outlasted what the other remaining items need several times over.
     return Estimate(None, estimated=estimated, overdue=max(since - per_item, 0.0))
 
 

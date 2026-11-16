@@ -77,10 +77,13 @@ def test_countdown_between_updates_and_floor() -> None:
     assert at_mark.seconds == pytest.approx(10.0)
     assert later.seconds == pytest.approx(8.5)
     # The item in progress takes long: the other four items still remain.
-    stuck = count_estimate(now=40.0, **kwargs)
+    stuck = count_estimate(now=20.0, **kwargs)
     assert stuck.seconds == pytest.approx(8.0)
     assert stuck.overdue == 0.0
     assert stuck.at_least and not later.at_least
+    # Outlasting that time four times over: overdue, not a stale bound.
+    outlasted = count_estimate(now=50.0, **kwargs)
+    assert outlasted.seconds is None and outlasted.overdue > 0.0
 
 
 def test_never_zero_while_work_remains() -> None:

@@ -691,13 +691,13 @@ class _LineProgressSink:
             estimated = bool(task.details.get("eta_estimated"))
             parts.append(f"ETA {_eta_text(max(counted, 0.0), estimated=estimated)}")
         elif estimate is not None:
-            bound = ">" if estimate.at_least else ""
-            parts.append(
-                f"ETA {bound}"
-                + _eta_text(estimate.seconds, estimated=estimate.estimated)
-                if estimate.seconds is not None
-                else f"overdue {_duration_text(estimate.overdue)}"
-            )
+            if estimate.seconds is None:
+                parts.append(f"overdue {_duration_text(estimate.overdue)}")
+            elif estimate.at_least:
+                parts.append(f"ETA >{_eta_text(estimate.seconds, estimated=False)}")
+            else:
+                text = _eta_text(estimate.seconds, estimated=estimate.estimated)
+                parts.append(f"ETA {text}")
         parts.append(
             f"elapsed {_duration_text(now - min(t.started_at for t in roots))}"
         )
@@ -1620,14 +1620,11 @@ def _estimate_fragments(estimate: Estimate | None) -> list[tuple[str, str | None
                 "YELLOW",
             )
         ]
-    bound = ">" if estimate.at_least else ""
+    if estimate.at_least:
+        # A lower bound: never a point estimate, no "~".
+        return [(f"  ETA >{_eta_text(estimate.seconds, estimated=False)}", None)]
     return [
-        (
-            "  ETA "
-            + bound
-            + _eta_text(estimate.seconds, estimated=estimate.estimated),
-            None,
-        )
+        ("  ETA " + _eta_text(estimate.seconds, estimated=estimate.estimated), None)
     ]
 
 
