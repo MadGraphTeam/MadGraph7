@@ -1351,14 +1351,17 @@ def _kept_line(task: _TaskState, *, color: bool) -> str:
             width=10_000,
             enabled=color,
         )
-    mark = "done" if task.success is not False else "failed"
+    if task.success is False:
+        # Where the run stopped; the error itself is reported once, below.
+        return _paint_fragments(
+            [(task.description, "CYAN"), (f"  failed after {cost}", "RED")],
+            width=10_000,
+            enabled=color,
+        )
     fragments = [
         (task.description, "CYAN"),
         (f"  {task.message}" if task.message else "", None),
-        (
-            f"  {mark} in {cost}",
-            "GREEN" if mark == "done" else "RED",
-        ),
+        (f"  done in {cost}", "GREEN"),
     ]
     return _paint_fragments(fragments, width=10_000, enabled=color)
 

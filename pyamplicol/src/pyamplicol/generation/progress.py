@@ -253,10 +253,14 @@ def release_task(token: object) -> None:
     _CURRENT.reset(token)  # type: ignore[arg-type]
 
 
-def _failure_message(exc: BaseException) -> str:
+def _failure_message(exc: BaseException) -> str | None:
+    """A failed phase's or step's end message: "interrupted" for Ctrl-C;
+    none for an error (the command reports the error once, its lines say
+    only where it stopped)."""
+
     if isinstance(exc, KeyboardInterrupt):
         return "interrupted"
-    return f"{type(exc).__name__}: {exc}"
+    return None
 
 
 def history_signature(kind: str, run_config: object | None) -> str | None:
