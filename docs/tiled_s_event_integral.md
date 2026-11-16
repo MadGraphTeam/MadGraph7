@@ -47,6 +47,14 @@ The maps are learned inside ordinary MINT0:
   to 8 to 16 tiles once enough probes support it.
 - Probes only train the maps: ordinary points alone adapt the grid and
   determine the integral and its error.
+- Each sector of an ordinary point is evaluated in its own ξ/y grid cells,
+  so in those two dimensions the point's ABS weight is split before it
+  enters the grid: the Born part goes to the sampled cells, each sector's
+  part (its H events and its share of the S event) to the cells where that
+  sector was evaluated. An S event `|B + Σ_s R_s|` is shared in proportion
+  to `|B|` and the `|R_s|`. Without the split the grid adapts to the sum at
+  the sampled cells, which matches none of the shifted sectors, and MINT1
+  and event generation need many more points.
 
 The final maps are frozen. MINT1 recomputes the normalisation and event
 generation uses the frozen maps; no extra matrix elements are evaluated
@@ -128,4 +136,6 @@ pure-Python reference (`tests/input_files/tiled_s_event_reference.py`, which
 certifies assignment optimality with dual potentials), a complete
 MINT0/MINT1/generation fixture with restarts and wrong-setting guards, the
 audited `sector_learning_online.bin` records, and the driver hooks that
-capture probe contributions. They need neither NumPy nor SciPy.
+capture probe contributions. `test_sector_learning_grid_split` checks how an
+ordinary point's ABS weight is split over the ξ/y grid cells. They need
+neither NumPy nor SciPy.

@@ -233,6 +233,16 @@ module mint_module
   double precision,allocatable,private :: sl_point_b(:,:),sl_point_r(:,:,:)
   double precision,allocatable,private :: sl_grid_snapshot(:,:,:)
   integer,private :: sl_grid_nint=0,sl_grid_ndim=0,sl_grid_nchans=0
+  ! Ordinary MINT0 points with learned maps: each outer sector is evaluated
+  ! in its own xi/y grid cells (sl_split_cell). The ABS weight of the point
+  ! is split into a Born part (sl_split_share0, sampled cells) and sector
+  ! parts (sl_split_share), each added to the grid where it was evaluated.
+  logical,private :: sl_split_point=.false.,sl_split_valid=.false.
+  integer,private :: sl_split_fallbacks=0
+  integer,allocatable,private :: sl_split_cell(:,:)
+  double precision,private :: sl_split_share0=0d0,sl_split_h0=0d0
+  double precision,allocatable,private :: sl_split_b(:),sl_split_r(:,:)
+  double precision,allocatable,private :: sl_split_h(:),sl_split_share(:)
 
   ! Map fitting: static quarter-Sobol slot gauge plus a three-start
   ! (current/identity/gauge-zero) phase and tile-assignment search.
@@ -290,6 +300,7 @@ module mint_module
   public :: born_spread_observe_sample,born_spread_get_factor
   public :: sector_learning_register_layout,sector_learning_begin_point,sector_learning_select_slot
   public :: sector_learning_mark_range,sector_learning_add_contribution,sector_learning_reject_point
+  public :: sector_learning_split_add,sector_learning_split_add_h,sector_learning_split_close
   public :: sector_learning_assignment,sector_learning_tile_displacement
   public :: sector_learning_online_fit
   public :: sector_learning_unified_gauge,sector_learning_unified_phase,sector_learning_unified_fit
@@ -512,8 +523,20 @@ contains
   end subroutine sl_ensure_owners
 
   subroutine sector_learning_begin_point()
+    ! Ordinary MINT0 points split their ABS weight over the grid (sl_split_*);
+    ! learning probes record their Born and sector parts (sl_point_*).
+    sl_split_point=sector_learning_active.and.imode.eq.0.and. &
+         .not.(sector_learning_collect.or.born_spread_calibrating)
+    sl_split_valid=.false.
+    if((sl_split_point.or.sector_learning_collect).and.allocated(sl_owners))sl_owners=0
+    if(sl_split_point)then
+       if(allocated(sl_split_b))sl_split_b=0d0
+       if(allocated(sl_split_r))sl_split_r=0d0
+       if(allocated(sl_split_h))sl_split_h=0d0
+       if(allocated(sl_split_cell))sl_split_cell=0
+       sl_split_h0=0d0
+    endif
     if(.not.sector_learning_collect)return
-    if(allocated(sl_owners))sl_owners=0
     if(allocated(sl_point_b))sl_point_b=0d0
     if(allocated(sl_point_r))sl_point_r=0d0
     sl_point_slot=0
@@ -522,12 +545,132 @@ contains
   end subroutine sector_learning_begin_point
 
   subroutine sector_learning_reject_point()
+    sl_split_valid=.false.
     if(sector_learning_collect)sl_point_rejected=.true.
   end subroutine sector_learning_reject_point
 
+  subroutine sl_split_ensure(nf)
+    ! Grow the split accumulators to nf flavours and the current slot's sectors.
+    integer,intent(in) :: nf
+    integer :: ns,old_f,old_s
+    integer,allocatable :: gc(:,:)
+    double precision,allocatable :: gb(:),gr(:,:),gh(:)
+    ns=size(sl_entries(sl_current)%ids)
+    old_f=0
+    old_s=0
+    if(allocated(sl_split_b))then
+       old_f=size(sl_split_b)
+       old_s=size(sl_split_h)
+    endif
+    if(allocated(sl_split_b).and.nf.le.old_f.and.ns.le.old_s)return
+    allocate(gb(max(nf,old_f)),gr(max(nf,old_f),max(ns,old_s)),gh(max(ns,old_s)),source=0d0)
+    allocate(gc(2,max(ns,old_s)),source=0)
+    if(allocated(sl_split_b))then
+       gb(1:old_f)=sl_split_b
+       gr(1:old_f,1:old_s)=sl_split_r
+       gh(1:old_s)=sl_split_h
+       gc(:,1:old_s)=sl_split_cell
+    endif
+    call move_alloc(gb,sl_split_b)
+    call move_alloc(gr,sl_split_r)
+    call move_alloc(gh,sl_split_h)
+    call move_alloc(gc,sl_split_cell)
+    if(allocated(sl_split_share))deallocate(sl_split_share)
+    allocate(sl_split_share(size(sl_split_h)),source=0d0)
+  end subroutine sl_split_ensure
+
+  integer function sl_split_index(owner)
+    integer,intent(in) :: owner
+    sl_split_index=findloc(sl_entries(sl_current)%ids,owner,dim=1)
+    if(sl_split_index.eq.0)error stop 'Unknown learned sector owner in the grid split'
+  end function sl_split_index
+
+  subroutine sector_learning_split_add(ict,canonical_flavour,value)
+    ! An S contribution as it is summed into the S event of its flavour.
+    integer,intent(in) :: ict,canonical_flavour
+    double precision,intent(in) :: value
+    integer :: owner
+    if(.not.sl_split_point)return
+    if(sl_current.eq.0.or.ict.lt.1.or.canonical_flavour.lt.1)error stop 'Invalid grid split contribution'
+    call sl_ensure_owners(ict)
+    call sl_split_ensure(canonical_flavour)
+    owner=sl_owners(ict)
+    if(owner.eq.0)then
+       sl_split_b(canonical_flavour)=sl_split_b(canonical_flavour)+value
+    else
+       sl_split_r(canonical_flavour,sl_split_index(owner))= &
+            sl_split_r(canonical_flavour,sl_split_index(owner))+value
+    endif
+  end subroutine sector_learning_split_add
+
+  subroutine sector_learning_split_add_h(ict,abs_value)
+    ! The ABS weight of an H event whose group starts at contribution ict.
+    integer,intent(in) :: ict
+    double precision,intent(in) :: abs_value
+    integer :: owner
+    if(.not.sl_split_point)return
+    if(sl_current.eq.0.or.ict.lt.1)error stop 'Invalid grid split H event'
+    call sl_ensure_owners(ict)
+    call sl_split_ensure(0)
+    owner=sl_owners(ict)
+    if(owner.eq.0)then
+       sl_split_h0=sl_split_h0+abs_value
+    else
+       sl_split_h(sl_split_index(owner))=sl_split_h(sl_split_index(owner))+abs_value
+    endif
+  end subroutine sector_learning_split_add_h
+
+  subroutine sector_learning_split_close(f1)
+    ! Split the ABS weight f1 of the point: each H event goes to its sector;
+    ! each S event |B+sum_s R_s| in proportion to |B| and the |R_s|.
+    double precision,intent(in) :: f1
+    integer :: j,ns
+    double precision :: d,s,total,scale
+    sl_split_valid=.false.
+    if(.not.sl_split_point.or.sl_current.eq.0)return
+    call sl_split_ensure(0)
+    ns=size(sl_entries(sl_current)%ids)
+    sl_split_share=0d0
+    sl_split_share0=sl_split_h0
+    sl_split_share(1:ns)=sl_split_h(1:ns)
+    scale=sl_split_h0+sum(sl_split_h(1:ns))
+    do j=1,size(sl_split_b)
+       d=abs(sl_split_b(j))+sum(abs(sl_split_r(j,1:ns)))
+       if(d.le.0d0)cycle
+       s=abs(sl_split_b(j)+sum(sl_split_r(j,1:ns)))
+       sl_split_share0=sl_split_share0+s*abs(sl_split_b(j))/d
+       sl_split_share(1:ns)=sl_split_share(1:ns)+s*abs(sl_split_r(j,1:ns))/d
+       scale=scale+d
+    enddo
+    total=sl_split_share0+sum(sl_split_share(1:ns))
+    if(f1.eq.0d0.and.total.eq.0d0)return
+    if(abs(total-f1).le.1d-10*scale.and.total.gt.0d0)then
+       sl_split_share0=sl_split_share0*f1/total
+       sl_split_share(1:ns)=sl_split_share(1:ns)*f1/total
+       sl_split_valid=.true.
+    else
+       sl_split_fallbacks=sl_split_fallbacks+1
+       if(sl_split_fallbacks.le.5.or.mod(sl_split_fallbacks,1000).eq.0) &
+            write(*,*)'Grid split differs from the ABS weight:',total,f1,sl_split_fallbacks
+    endif
+  end subroutine sector_learning_split_close
+
+  subroutine sl_split_accumulate(kdim)
+    ! Add the split ABS weight to the xi or y grid cells where each part was evaluated.
+    integer,intent(in) :: kdim
+    integer :: i,cell
+    xacc(icell(kdim),kdim,ichan)=xacc(icell(kdim),kdim,ichan)+sl_split_share0
+    do i=1,size(sl_entries(sl_current)%ids)
+       if(sl_split_share(i).eq.0d0)cycle
+       cell=sl_split_cell(kdim-ndim+3,i)
+       if(cell.lt.1)cell=icell(kdim)
+       xacc(cell,kdim,ichan)=xacc(cell,kdim,ichan)+sl_split_share(i)
+    enddo
+  end subroutine sl_split_accumulate
+
   subroutine sector_learning_mark_range(first,last,outer_sector_id)
     integer,intent(in) :: first,last,outer_sector_id
-    if(.not.sector_learning_collect)return
+    if(.not.(sector_learning_collect.or.sl_split_point))return
     if(first.lt.1.or.outer_sector_id.lt.1)error stop 'Invalid sector learning owner range'
     if(last.lt.first)return
     call sl_ensure_owners(last)
@@ -2825,7 +2968,11 @@ contains
     double precision :: virtual,born,ratio
 ! accumulate the function in xacc(icell(kdim),kdim) to adjust the grid later
     do kdim=1,ndim
-       xacc(icell(kdim),kdim,ichan) = xacc(icell(kdim),kdim,ichan) + f(1)
+       if(sl_split_valid.and.(kdim.eq.ndim-2.or.kdim.eq.ndim-1))then
+          call sl_split_accumulate(kdim)
+       else
+          xacc(icell(kdim),kdim,ichan) = xacc(icell(kdim),kdim,ichan) + f(1)
+       endif
     enddo
 ! Set the Born contribution (to compute the average_virtual) to zero if
 ! the virtual was not computed for this phase-space point. Compensate by
@@ -2998,20 +3145,28 @@ contains
     integer,intent(in) :: sector_id
     integer :: kdim,old_cell,new_cell
     double precision :: old_dx,new_dx,shift(2),u,fraction
+    integer :: index
     x_out=x_in
     weight_ratio=1d0
     ! The sector's gauge offset composed with its learned tile displacement.
     call sl_unified_add_phase(sector_id,shift,x_in)
+    index=0
+    if(sl_split_point)then
+       call sl_split_ensure(0)
+       index=sl_split_index(sector_id)
+    endif
     do kdim=ndim-2,ndim-1
+       call flat_grid_position(x_in(kdim),kdim,old_cell,old_dx,u)
+       if(index.gt.0)sl_split_cell(kdim-ndim+3,index)=old_cell
        ! Preserve a zero-shift sector exactly, including endpoints.
        if(shift(kdim-ndim+3).eq.0d0)cycle
-       call flat_grid_position(x_in(kdim),kdim,old_cell,old_dx,u)
        u=modulo(u+shift(kdim-ndim+3),1d0)
        new_cell=min(int(u*nint_used)+1,nint_used)
        fraction=u*nint_used-(new_cell-1)
        new_dx=xgrid(new_cell,kdim,ichan)-xgrid(new_cell-1,kdim,ichan)
        x_out(kdim)=xgrid(new_cell-1,kdim,ichan)+fraction*new_dx
        weight_ratio=weight_ratio*new_dx/old_dx
+       if(index.gt.0)sl_split_cell(kdim-ndim+3,index)=new_cell
     enddo
   end subroutine resample_sector_radiation
   

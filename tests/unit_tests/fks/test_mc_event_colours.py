@@ -52,7 +52,9 @@ class TestMCEventColours(unittest.TestCase):
                 'module mint_module\ninteger :: imode=0,born_spread_phase=0\n'
                 'integer :: ndim=1,ifold(1)=1\nlogical :: only_virt=.false.,sector_learning_collect=.false.\nend module\n'
                 'subroutine sector_learning_add_contribution(i,f,j,v)\ninteger i,f,j\ndouble precision v\n'
-                'error stop "no learning probes in the colour test"\nend subroutine\n')
+                'error stop "no learning probes in the colour test"\nend subroutine\n'
+                # Without learned maps the grid split ignores every contribution.
+                'subroutine sector_learning_split_add(i,j,v)\ninteger i,j\ndouble precision v\nend subroutine\n')
             routines = [('driver_mintMC.f', 'init_process_module_n1body_wrapper'),
                         ('driver_mintMC.f', 'init_process_module_n1body_flow'),
                         ('add_write_info.f', 'fill_icolor_H'),

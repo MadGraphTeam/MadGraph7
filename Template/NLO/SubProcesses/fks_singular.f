@@ -3540,6 +3540,8 @@ c virtual corrections. Exception: when computing only the virtual, do
 c include it here!
                      if (itype(i).eq.14 .and. imode.eq.1 .and. .not.
      $                    only_virt) exit
+                     call sector_learning_split_add(i,j,
+     $                    parton_iproc(jj,i))
                      unwgt(j,i_soft)=unwgt(j,i_soft)+parton_iproc(jj,i)
                      if (itype(i).eq.2) then
                         if (collect_born_spread) then
@@ -3781,11 +3783,14 @@ c on the imode we should or should not include the virtual corrections.
             sigint=sigint+wgts(1,i)
             max_weight=max(max_weight,abs(wgts(1,i)))
             if (group_size(i).eq.0) cycle
+            tmp_wgt=0d0
             do j=1,niproc(i)
                sigint_ABS=sigint_ABS+abs(unwgt(j,i))
                sigint1=sigint1+unwgt(j,i) ! for consistency check
                max_weight=max(max_weight,abs(unwgt(j,i)))
+               tmp_wgt=tmp_wgt+abs(unwgt(j,i))
             enddo
+            if (H_event(i)) call sector_learning_split_add_h(i,tmp_wgt)
          enddo
 ! Check before the consistency test: overflow is a rejected numerical
 ! point, not evidence of an inconsistent subtraction prescription.
@@ -3859,6 +3864,7 @@ c n1body_wgt is used for the importance sampling over FKS directories
 ! Reject before the Born-spreading observations as well as before MINT.
       if (.not.all(ieee_is_finite(f)).or.
      $    .not.ieee_is_finite(n1body_wgt)) goto 900
+      call sector_learning_split_close(f(1))
       if (born_spread_phase.eq.1.or.born_spread_phase.eq.2) then
          found_s_sample=.false.
          do i=1,icontr
