@@ -145,7 +145,9 @@ def runtime_counts(
         reference = max(REFERENCE_SHARE * budget, costs.reference)
     left = max(budget - reference - (costs.reference or 0.0), 0.0)
     per_chunk = lanes * costs.binary64
-    chunks = int(left // ((STABLE_CALLS + 1) * per_chunk)) if per_chunk > 0 else chunks_max
+    chunks = (
+        int(left // ((STABLE_CALLS + 1) * per_chunk)) if per_chunk > 0 else chunks_max
+    )
     chunks = min(max(chunks, 1), chunks_max)
     batch = chunks * lanes
     call = batch * costs.binary64
@@ -183,9 +185,7 @@ def stability_wall(costs: Sequence[Costs], points: int, workers: int) -> float:
     if not costs or points <= 0:
         return 0.0
     work = points * stability_work(costs)
-    single = max(
-        points * max(c.stability, c.stability_reference or 0.0) for c in costs
-    )
+    single = max(points * max(c.stability, c.stability_reference or 0.0) for c in costs)
     return max(work / max(workers, 1), min(single, work))
 
 
@@ -270,6 +270,9 @@ def plan(
                 + (0.0 if c.reference is None else (lanes + 1) * c.reference)
                 for c in values
             )
+            # The headline number first: a stable median (at least the
+            # default runtime budget) before the stability run, at most half.
+            stable = max(stable, DEFAULT_RUNTIME_SECONDS + sum(c.start for c in values))
             runtime_budget = free if not stability else min(stable, free / 2.0)
             runtime_budget = max(runtime_budget, minimum_runtime)
             counts = _split_runtime(costs, runtime_budget, lanes, batch_max)
@@ -361,7 +364,7 @@ def duration_text(seconds: float) -> str:
     seconds = max(seconds, 0.0)
     if seconds < 60.0:
         return f"{math.ceil(seconds)}s"
-    minutes, secs = divmod(int(round(seconds)), 60)
+    minutes, secs = divmod(round(seconds), 60)
     if minutes < 60:
         return f"{minutes}m{secs:02d}s"
     hours, minutes = divmod(minutes, 60)

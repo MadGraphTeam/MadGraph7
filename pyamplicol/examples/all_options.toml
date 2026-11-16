@@ -552,7 +552,7 @@ checked = false
 # reference pass, the stability points), never below one timed call per
 # backend and five stability points. Default null: the counts given, else
 # the time budgets (10 s for the runtime, one minute per stability worker).
-# completion_time = "10m"
+completion_time = "10m"
 
 [check]
 # check.points: Positive count of seeded phase-space points per process of

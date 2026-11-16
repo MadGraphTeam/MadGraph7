@@ -8,6 +8,7 @@ import math
 import os
 import re
 import shutil
+import statistics
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -854,6 +855,66 @@ def _detail_line(
     return _paint_fragments(fragments, width=width, enabled=color)
 
 
+class EtaEstimator:
+    """The ETA of a counted phase (the details ``eta_seconds`` and
+    ``eta_estimated`` of its updates): a prior (seconds per item, marked
+    estimated: "~") until an item is measured, then the median of the
+    recent items' rates (``window`` observations): one slow first item or
+    one outlier does not move it, a drift is followed within a few items.
+    It never reaches 0 while items remain (the display counts it down
+    between updates and shows "<1s" at the end).
+
+    >>> eta = EtaEstimator(prior=2.0)
+    >>> eta.observe(0, 10, now=0.0)["eta_seconds"]
+    20.0
+    """
+
+    def __init__(
+        self, *, prior: float | None = None, window: int = 5, floor: float = 0.5
+    ) -> None:
+        self._prior = prior
+        self._window = max(window, 1)
+        self._floor = floor
+        self._last: tuple[int, float] | None = None
+        self._rates: list[float] = []
+
+    def prior(self, seconds_per_item: float | None) -> None:
+        """Set (or replace) the prior cost of one item."""
+
+        self._prior = seconds_per_item
+
+    @property
+    def rate(self) -> float | None:
+        """The current estimate of one item's seconds (None: no prior and
+        nothing measured)."""
+
+        if self._rates:
+            return float(statistics.median(self._rates[-self._window :]))
+        return self._prior
+
+    def observe(
+        self, completed: int, total: int | None, now: float | None = None
+    ) -> dict[str, ProgressDetailValue]:
+        """The ETA details after ``completed`` of ``total`` items at ``now``
+        (``time.monotonic`` by default): the items done since the previous
+        observation give one rate sample."""
+
+        now = time.monotonic() if now is None else now
+        if self._last is not None and completed > self._last[0]:
+            done = completed - self._last[0]
+            self._rates.append(max(now - self._last[1], 0.0) / done)
+        if self._last is None or completed != self._last[0]:
+            self._last = (completed, now)
+        rate = self.rate
+        if total is None or rate is None:
+            return {"eta_seconds": None, "eta_estimated": not self._rates}
+        remaining = max(total - completed, 0)
+        eta = remaining * rate
+        if remaining:
+            eta = max(eta, self._floor)
+        return {"eta_seconds": float(eta), "eta_estimated": not self._rates}
+
+
 def _counted_up(task: _TaskState, key: str, now: float) -> float | None:
     """A task's ``key`` duration detail kept running since its last update."""
 
@@ -1069,6 +1130,13 @@ def _format_event(
                     max(eta, 0.0), estimated=bool(event.details.get("eta_estimated"))
                 )
             )
+        budget = _detail_float(event.details, "budget_seconds")
+        if budget is not None:
+            message = (message + "; " if message else "") + (
+                f"budget {_duration_text(max(budget, 0.0))} left"
+                if budget > 0.0
+                else "budget spent"
+            )
         stalled = _detail_float(event.details, "stalled_seconds")
         if stalled is not None:
             message = (message + "; " if message else "") + (
@@ -1076,6 +1144,9 @@ def _format_event(
             )
         suffix = f": {message}" if message else ""
         context = _log_detail_text(event.details)
+        if event.total is None and event.completed == 0:
+            # A task without counts (a whole command's ETA line).
+            return _terminal_paint(label, "CYAN", enabled=color) + suffix + context
         return (
             _terminal_paint(label, "CYAN", enabled=color)
             + " "
@@ -1241,6 +1312,7 @@ def progress_sink(
 
 __all__ = [
     "CallbackProgressSink",
+    "EtaEstimator",
     "LoggingProgressSink",
     "NullProgressSink",
     "ProgressEnd",
