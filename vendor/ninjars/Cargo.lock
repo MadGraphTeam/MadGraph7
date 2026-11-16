@@ -739,7 +739,7 @@ dependencies = [
 [[package]]
 name = "dot-parser"
 version = "0.5.1"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+source = "git+https://github.com/ValentinHirschi/gammaloop.git?rev=ea3faaae063b1400570c15cf7e055f48312e9329#ea3faaae063b1400570c15cf7e055f48312e9329"
 dependencies = [
  "either",
  "pest",
@@ -865,7 +865,7 @@ dependencies = [
 [[package]]
 name = "feynkit-kinematics"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+source = "git+https://github.com/ValentinHirschi/gammaloop.git?rev=ea3faaae063b1400570c15cf7e055f48312e9329#ea3faaae063b1400570c15cf7e055f48312e9329"
 dependencies = [
  "linnet",
  "numerica",
@@ -938,7 +938,7 @@ dependencies = [
 [[package]]
 name = "gammaloop-workspace-hack"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+source = "git+https://github.com/ValentinHirschi/gammaloop.git?rev=ea3faaae063b1400570c15cf7e055f48312e9329#ea3faaae063b1400570c15cf7e055f48312e9329"
 dependencies = [
  "ahash",
  "arrayvec",
@@ -1044,7 +1044,7 @@ dependencies = [
 [[package]]
 name = "graphica"
 version = "3.0.1"
-source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
+source = "git+https://github.com/symbolica-dev/symbolica.git?rev=d0424f9e414d3007889f8a98b404a1b1a91b37a7#d0424f9e414d3007889f8a98b404a1b1a91b37a7"
 dependencies = [
  "ahash",
  "dyn-clone",
@@ -1283,7 +1283,7 @@ dependencies = [
 [[package]]
 name = "linnet"
 version = "0.17.0"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+source = "git+https://github.com/ValentinHirschi/gammaloop.git?rev=ea3faaae063b1400570c15cf7e055f48312e9329#ea3faaae063b1400570c15cf7e055f48312e9329"
 dependencies = [
  "ahash",
  "bincode",
@@ -1430,7 +1430,7 @@ dependencies = [
 [[package]]
 name = "ninjars"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars?rev=cf28d8e0018e0555256d3fba51e457d4941dcb0e#cf28d8e0018e0555256d3fba51e457d4941dcb0e"
+source = "git+https://github.com/alphal00p/ninjars?rev=ac66cf6c551465f6c63490e112bb41596c2fd821#ac66cf6c551465f6c63490e112bb41596c2fd821"
 dependencies = [
  "feynkit-kinematics",
  "symbolica",
@@ -1440,7 +1440,7 @@ dependencies = [
 [[package]]
 name = "ninjars-positional"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars?rev=cf28d8e0018e0555256d3fba51e457d4941dcb0e#cf28d8e0018e0555256d3fba51e457d4941dcb0e"
+source = "git+https://github.com/alphal00p/ninjars?rev=ac66cf6c551465f6c63490e112bb41596c2fd821#ac66cf6c551465f6c63490e112bb41596c2fd821"
 dependencies = [
  "symbolica",
  "thiserror",
@@ -1449,7 +1449,7 @@ dependencies = [
 [[package]]
 name = "ninjars-symbolica"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars?rev=cf28d8e0018e0555256d3fba51e457d4941dcb0e#cf28d8e0018e0555256d3fba51e457d4941dcb0e"
+source = "git+https://github.com/alphal00p/ninjars?rev=ac66cf6c551465f6c63490e112bb41596c2fd821#ac66cf6c551465f6c63490e112bb41596c2fd821"
 dependencies = [
  "ninjars",
  "ninjars-positional",
@@ -1551,8 +1551,8 @@ dependencies = [
 
 [[package]]
 name = "numerica"
-version = "3.0.2"
-source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
+version = "3.1.0"
+source = "git+https://github.com/symbolica-dev/symbolica.git?rev=d0424f9e414d3007889f8a98b404a1b1a91b37a7#d0424f9e414d3007889f8a98b404a1b1a91b37a7"
 dependencies = [
  "ahash",
  "astro-float",
@@ -1591,7 +1591,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "oneloop"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bd703d09a78f7849a6b86a07096e6f222fc01193#bd703d09a78f7849a6b86a07096e6f222fc01193"
+source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=07fc754f656c4744c9464f7c0f47d00b708b37e6#07fc754f656c4744c9464f7c0f47d00b708b37e6"
 dependencies = [
  "bincode",
  "symbolica",
@@ -2241,7 +2241,7 @@ checksum = "02ef091d4e8b981dbaa4cc17789d00b53d5d2c001ae689f14e6093f30c529036"
 [[package]]
 name = "spenso"
 version = "0.6.0"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+source = "git+https://github.com/ValentinHirschi/gammaloop.git?rev=ea3faaae063b1400570c15cf7e055f48312e9329#ea3faaae063b1400570c15cf7e055f48312e9329"
 dependencies = [
  "ahash",
  "append-only-vec",
@@ -2284,7 +2284,7 @@ dependencies = [
 [[package]]
 name = "spenso-macros"
 version = "0.3.2"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+source = "git+https://github.com/ValentinHirschi/gammaloop.git?rev=ea3faaae063b1400570c15cf7e055f48312e9329#ea3faaae063b1400570c15cf7e055f48312e9329"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2319,7 +2319,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 [[package]]
 name = "symbolica"
 version = "3.0.2"
-source = "git+https://github.com/ValentinHirschi/symbolica.git?rev=dfe6bd97b974b1028dc63071ea165136cd2b0ef5#dfe6bd97b974b1028dc63071ea165136cd2b0ef5"
+source = "git+https://github.com/symbolica-dev/symbolica.git?rev=d0424f9e414d3007889f8a98b404a1b1a91b37a7#d0424f9e414d3007889f8a98b404a1b1a91b37a7"
 dependencies = [
  "ahash",
  "append-only-vec",
@@ -2364,7 +2364,7 @@ dependencies = [
 [[package]]
 name = "symbolica-utils"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+source = "git+https://github.com/ValentinHirschi/gammaloop.git?rev=ea3faaae063b1400570c15cf7e055f48312e9329#ea3faaae063b1400570c15cf7e055f48312e9329"
 dependencies = [
  "bincode",
  "bincode-trait-derive",
