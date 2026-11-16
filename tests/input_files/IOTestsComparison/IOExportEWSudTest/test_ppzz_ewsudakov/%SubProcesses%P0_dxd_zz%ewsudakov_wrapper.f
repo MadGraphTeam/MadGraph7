@@ -144,7 +144,12 @@ C     stuff for the MC over helicities
       IF (FIRSTTIME.OR..NOT.SUD_MC_HEL) THEN
         HEL_MIN = 1
         HEL_MAX = NCOMB
-        HEL(:)=0
+C       The list of good helicities is filled only at the first call
+C        (firsttime_hel):
+C       a full helicity sum after it (sud_mc_hel false, e.g. the DP
+C        features of the
+C       virt-trick surrogate) must keep it for the MC over helicities.
+        IF (FIRSTTIME) HEL(:)=0
         VOLH=1D0
         FIRSTTIME=.FALSE.
       ELSE
