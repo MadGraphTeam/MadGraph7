@@ -218,13 +218,16 @@ class ResourceUsageMonitor:
         *,
         root_pid: int | None = None,
         interval_seconds: float = 1.0,
-        snapshotter: ProcessSnapshot = process_snapshot,
+        snapshotter: ProcessSnapshot | None = None,
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("resource monitor interval must be positive")
         self._sampler = ProcessTreeSampler(root_pid or os.getpid())
         self._interval_seconds = float(interval_seconds)
-        self._snapshotter = snapshotter
+        # Default: the monitored tree only (a scan of every process costs
+        # ~0.1 ms per process, 0.6 s of Python per sample on a host running
+        # 7000 processes: a thread holding the GIL next to the work).
+        self._snapshotter = snapshotter or self._tree_snapshot
         self._usage = ResourceUsage()
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -234,6 +237,28 @@ class ResourceUsageMonitor:
     def usage(self) -> ResourceUsage:
         with self._lock:
             return self._usage
+
+    def _tree_snapshot(self) -> dict[int, ProcessInfo]:
+        """The root's process tree from the kernel's children lists (Linux),
+        with the processes of the last sample that were re-parented away
+        from it; every process otherwise (``process_snapshot``)."""
+
+        if platform.system() == "Linux":
+            try:
+                records = _linux_descendant_snapshot(self._sampler.root_pid)
+            except ResourceProbeError:
+                return process_snapshot()
+            page = os.sysconf("SC_PAGE_SIZE")
+            for pid in self._sampler.known_pids() - records.keys():
+                base = Path("/proc") / str(pid)
+                try:
+                    resident = int((base / "statm").read_text().split()[1]) * page
+                    ppid = _parse_proc_stat_ppid((base / "stat").read_text())
+                except (OSError, ValueError, IndexError):
+                    continue
+                records[pid] = ProcessInfo(pid, ppid, resident)
+            return records
+        return process_snapshot()
 
     def start(self) -> None:
         if self._thread is not None:
