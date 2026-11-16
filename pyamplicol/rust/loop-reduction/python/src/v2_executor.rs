@@ -796,12 +796,61 @@ struct V2Executor {
     /// (oracle and cost reference of selected master poles).
     engine: String,
     /// The reduction backends of the carrier, NinjaRS's then TIRust's, each
-    /// built on first use (`backend_of`).
-    backends: [Option<V2Backends>; 2],
+    /// built on first use (`backend_of`), shared with the executors derived
+    /// with the same carrier and engine ([`SharedBackends`]).
+    backends: SharedBackends,
     trees: Option<Trees>,
     /// Whether the plan is TIR-only (a family beyond NinjaRS's rank <= N + 2,
     /// m-lit lit-eft): NinjaRS then checks the dressed families per call.
     tir_only: bool,
+}
+
+/// The reduction backends of one carrier and binary64 engine, NinjaRS's
+/// then TIRust's, shared by the executors derived from each other with that
+/// carrier and engine (`V2Executor.derive`: one process's lane counts and
+/// thread bounds), so that each backend (NinjaRS's generic reductions, built
+/// per (propagators, rank) on first use, and TIRust's plans) is built once
+/// for all of them. A backend holds no lane count and every call sets its
+/// options (`backend_of`'s callers): a call takes the backends out for its
+/// duration ([`Self::take`]) and puts them back; a concurrent call of
+/// another of the executors finds the slot empty and builds its own, of
+/// which the first one put back is kept. The lock is held only to move them,
+/// never across a release of the GIL.
+#[derive(Clone, Default)]
+struct SharedBackends(Arc<Mutex<[Option<V2Backends>; 2]>>);
+
+impl SharedBackends {
+    fn take(&self) -> TakenBackends<'_> {
+        let slots = std::mem::take(
+            &mut *self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+        TakenBackends { from: self, slots }
+    }
+}
+
+/// The backends a call took ([`SharedBackends::take`]), put back on drop
+/// into the slots left empty.
+struct TakenBackends<'a> {
+    from: &'a SharedBackends,
+    slots: [Option<V2Backends>; 2],
+}
+
+impl Drop for TakenBackends<'_> {
+    fn drop(&mut self) {
+        let mut shared = self
+            .from
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for (slot, taken) in shared.iter_mut().zip(&mut self.slots) {
+            if slot.is_none() {
+                *slot = taken.take();
+            }
+        }
+    }
 }
 
 /// The `reduction` backend of a carrier, built on first use. A free
@@ -1505,7 +1554,7 @@ impl V2Executor {
             executor,
             carrier,
             engine: engine.to_owned(),
-            backends: [None, None],
+            backends: SharedBackends::default(),
             trees,
             tir_only,
         })
@@ -1571,6 +1620,13 @@ impl V2Executor {
             }),
             _ => None,
         };
+        // The same carrier and binary64 engine share the reduction backends
+        // (`SharedBackends`).
+        let backends = if same && engine == self.engine {
+            self.backends.clone()
+        } else {
+            SharedBackends::default()
+        };
         Ok(Self {
             executor: self
                 .executor
@@ -1578,7 +1634,7 @@ impl V2Executor {
                 .map_err(error)?,
             carrier,
             engine: engine.to_owned(),
-            backends: [None, None],
+            backends,
             trees,
             tir_only: self.tir_only,
         })
@@ -1650,6 +1706,7 @@ impl V2Executor {
                  masters_census and verified_last_resort are TIRust's settings",
             ));
         }
+        let mut taken = self.backends.take();
         #[cfg(feature = "tir")]
         if reduction == Reduction::TiRust
             && !matches!(self.carrier, Carriers::Exact | Carriers::Prime)
@@ -1671,7 +1728,7 @@ impl V2Executor {
                 )?
             };
             let bits = self.bits()?;
-            let slot = &mut self.backends[reduction as usize];
+            let slot = &mut taken.slots[reduction as usize];
             let current = match slot {
                 Some(V2Backends::TiRust(backend)) => Some(*backend.options()),
                 _ => None,
@@ -1712,7 +1769,7 @@ impl V2Executor {
             verified_last_resort,
         );
         let backend = backend_of(
-            &mut self.backends,
+            &mut taken.slots,
             self.carrier,
             &self.engine,
             reduction,
@@ -2139,8 +2196,9 @@ impl V2Executor {
             && (self.engine == "generic" || !matches!(carrier, Carriers::Double)))
         .then(pyamplicol::unlock)
         .flatten();
+        let mut taken = self.backends.take();
         let backend = backend_of(
-            &mut self.backends,
+            &mut taken.slots,
             carrier,
             &self.engine,
             reduction,

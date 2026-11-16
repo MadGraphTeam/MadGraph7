@@ -1434,6 +1434,30 @@ benchmark with a policy. Double-double and arbitrary-precision levels read the
 artifact's saved Symbolica state under the pyAmpliCol package key, as an
 explicit `arithmetic="double-double"` call does.
 
+## Garbage collector
+
+Every `Runtime` evaluation method (`evaluate`, `evaluate_with_prec`,
+`evaluate_resolved`, `evaluate_resolved_with_prec`, `evaluate_orders`,
+`evaluate_graded`, `evaluate_correlated`, `evaluate_correlated_graded`,
+`evaluate_correlated_many`) pauses Python's cyclic garbage collector while it
+runs and restores the collector's state when it returns (as `timeit` does;
+nested and concurrent calls restore it when the last one returns). A call
+allocates many short-lived containers and creates no reference cycles, so
+reference counting frees all of them when it returns; without the pause the
+collector's young-generation passes would promote them while the call runs, and
+every few calls a full pass would walk every tracked object of the process
+(CPython 3.11: 60-120 ms per pass, up to ~20 % of a repeated binary64 call).
+Values are unchanged. Cyclic garbage that your own code (or another thread)
+creates while calls run is collected after them, so it lives a little longer:
+peak memory can grow by a bounded amount if a driver creates much such garbage
+between calls. While calls of several threads overlap continuously, a returning
+call runs one young collection every second (every tenth one a full
+collection), so the collector is never held off indefinitely. The pause cannot
+tell a `gc.disable()` made by another thread while calls run from its own: the
+last call to return turns the collector back on; disable it from the same
+thread outside the calls, or set `PYAMPLICOL_GC_PAUSE=0` in the environment
+(read at each call) to leave the collector alone.
+
 ## Profile from Python
 
 ```python
@@ -1463,14 +1487,19 @@ The runnable reference is
 [`examples/python/benchmark.py`](https://github.com/MadGraphTeam/pyamplicol/blob/main/examples/python/benchmark.py).
 
 A one-loop artifact or runtime returns a `benchmarking.VirtualProfileResult`
-instead: the per-point time of `minimum_samples` calls of `batch_size`
-points each, a new batch every call (a path without `points`: the distinct flat
-points `benchmarking.profile_points` draws with `evaluation.phase_space`'s
-seed and energy; given `points` are taken in order, cycled when there are
-fewer than the calls need) (`seconds_per_point`, the median call; `low`,
-`high`) and `stages`, the time
+instead: the per-point time of at least `minimum_samples` calls of
+`batch_size` points each, more until they add up to `target_runtime`
+seconds, after `warmup_runs` untimed ones, a new batch every call (a path
+without `points`: the distinct flat points drawn with
+`evaluation.phase_space`'s seed and energy, point i from seed + i,
+`benchmarking.profile_points` gives the first ones; given `points` are taken
+in order, cycled when there are fewer than the calls need)
+(`seconds_per_point`, the median call; `low`, `high`) and `stages`, the time
 per point in each stage group (trees, dressing, scatter, reduction, rest)
-read from the native executor's stage report of the same calls, with the
+in the shares read from the native executor's stage report of the same
+calls (they add up to `seconds_per_point`), on the loaded runtime's own
+thread pools (`pyamplicol profile` times one core; `threads` says what the
+calls ran on), with the
 backend record (`reduction`) and the setting (`unchecked`). A `RunConfig`'s
 `evaluation.reduction`, `reduction_unchecked` and `mu_r2` select the backend,
 the unchecked timing mode and the scale when a path is loaded:

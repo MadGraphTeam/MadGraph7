@@ -1893,10 +1893,13 @@ A one-loop artifact is profiled on both reduction backends side by side
 (`[evaluation] reduction` selects one): per stage (trees, dressing, scatter,
 reduction, rest, from the native executor's stage report of the timed
 calls, each on a new batch of `batch_size` distinct flat points;
-`batch_size`, `warmup_runs` and `minimum_samples` apply) and/or as
-stable-digit statistics over flat points. `[evaluation] reduction_unchecked`
-and `mu_r2` select the unchecked timing mode and the scale (default: per
-point the squared invariant mass of its initial state). The loop settings of
+`batch_size`, `warmup_runs`, `minimum_samples` and `target_runtime` apply;
+timed on one core, one fully optimistic pass per point: the backend's
+unchecked reduction alone, no checks) and/or as stable-digit statistics over
+flat points. `[benchmark] checked = true` times the checked mode instead;
+`[evaluation] reduction_unchecked` also makes the stability run's binary64
+calls unchecked (not with `checked`), and `mu_r2` sets the scale (default:
+per point the squared invariant mass of its initial state). The loop settings of
 `[benchmark]`:
 
 ```toml
@@ -1904,7 +1907,9 @@ point the squared invariant mass of its initial state). The loop settings of
 runtime = false          # --runtime: time per point and stage
 stability = true         # --stability (neither set: the runtime only)
 stability_points = 1000  # --stability-points: flat (RAMBO on diet) points (default 1000)
-n_core = 10              # --n_core / --n-core: worker processes of --stability
+n_core = 10              # --n_core / --n-core: worker processes of --stability only
+ground_truth = "double-double"  # --ground-truth: dd, arb (57 digits) or arb:DIGITS
+checked = false          # --checked: time the checked mode, not the optimistic pass
 
 [evaluation.phase_space]
 seed = 1                 # --seed: point i from seed + i

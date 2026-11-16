@@ -2260,3 +2260,101 @@ fn ninjars_zero_thresholds_keep_the_served_lanes_and_refuse_only_residuals() {
     let (again, _) = reduce(&mut backend, &groups, Poles::All, None);
     assert_eq!(again, checked);
 }
+
+/// An arbitrary-precision rescaled check runs at the carrier's working
+/// precision, whatever precision a lane's value tracks (numerica's MPFR
+/// values track their significant bits: a value whose computation cancelled
+/// carries fewer; here an exact zero at 8 bits as the first lane's origin
+/// component and as lane 1's constant coefficient). TIRust's rescaled frame
+/// moves the origin, so each lane's numerator is re-expanded: its binomial
+/// weights and shift powers were built at the precision of the lane's
+/// constant coefficient, rounding every re-expanded coefficient to it
+/// (FINDING V1: 3e4 relative on g g > z z at 57 digits); the frame's factor
+/// and undo at the group's first shift's. Its deviation from the direct
+/// reduction is now at the working precision, as the reversed check's, and
+/// each lane's check is the one it gets alone (no dependence on its chunk).
+#[test]
+fn an_arbitrary_rescaled_check_is_at_the_working_precision() {
+    let _unlock = pyamplicol::unlock();
+    let mut rng = Lcg(23);
+    let points: Vec<_> = (0..3)
+        .map(|_| point(4, &[0., 0., 0., 0.], &mut rng))
+        .collect();
+    let bits = Float::decimal_digits_to_bits(57.).unwrap();
+    let mut groups = lifted(&[lanes(0, &points, 4, 4, 1, &mut rng)], bits);
+    let low = Float::with_val(8, 0);
+    groups[0].shifts[0] = Complex::new(low.clone(), low.clone());
+    let width = ncoeff(groups[0].rank);
+    groups[0].coefficients[width] = Complex::new(low.clone(), low);
+    let run = |groups: &[FamilyLanes<Float>], check: ReductionCheck| {
+        let mut backend = tir();
+        V2Backend::<Float>::begin(&mut backend);
+        let (direct, checked) =
+            V2Backend::<Float>::reduce(&mut backend, groups, Poles::All, Some(check)).unwrap();
+        (direct, checked.unwrap())
+    };
+    let deviation = |a: &[Complex<Float>], b: &[Complex<Float>]| -> f64 {
+        let size = |z: &Complex<Float>| z.re.to_f64().hypot(z.im.to_f64());
+        let scale = a.iter().map(size).fold(0., f64::max);
+        let worst = a
+            .iter()
+            .zip(b)
+            .map(|(x, y)| {
+                (x.re.clone() - &y.re)
+                    .to_f64()
+                    .hypot((x.im.clone() - &y.im).to_f64())
+            })
+            .fold(0., f64::max);
+        worst / scale
+    };
+    let (direct, rescaled) = run(&groups, ReductionCheck::RESCALED);
+    let (_, reversed) = run(&groups, ReductionCheck::REVERSED);
+    for lane in 0..points.len() {
+        let value = direct[0][lane].as_ref().unwrap();
+        let rescaled = deviation(value, rescaled[0][lane].as_ref().unwrap());
+        let reversed = deviation(value, reversed[0][lane].as_ref().unwrap());
+        assert!(
+            rescaled < 1e-45 && reversed < 1e-45,
+            "lane {lane}: rescaled {rescaled:e}, reversed {reversed:e}"
+        );
+    }
+    // Lane 1 alone (its own full-precision origin first): the same check.
+    let g = &groups[0];
+    let (n, width) = (g.propagators, ncoeff(g.rank));
+    let alone = FamilyLanes {
+        family: 0,
+        propagators: n,
+        rank: g.rank,
+        points: vec![0],
+        keys: g.keys[1..2].to_vec(),
+        shifts: g.shifts[4 * n..8 * n].to_vec(),
+        masses: g.masses[n..2 * n].to_vec(),
+        scales: g.scales[1..2].to_vec(),
+        s_matrix: g.s_matrix[n * n..2 * n * n].to_vec(),
+        coefficients: g.coefficients[width..2 * width].to_vec(),
+    };
+    let (_, single) = run(std::slice::from_ref(&alone), ReductionCheck::RESCALED);
+    assert_eq!(single[0][0], rescaled[0][1]);
+    // NinjaRS's generic engine at the same precision: the same frame map.
+    let mut ninja = V2Backends::NinjaRs(V2ReductionBackend {
+        reducer: V2Reducer::new("arbitrary", Some(57), "generic", true).unwrap(),
+        masters: PoleSelection::BOTH,
+    });
+    V2Backend::<Float>::begin(&mut ninja);
+    let (direct, checked) = V2Backend::<Float>::reduce(
+        &mut ninja,
+        &groups,
+        Poles::All,
+        Some(ReductionCheck::RESCALED),
+    )
+    .unwrap();
+    let checked = checked.unwrap();
+    for lane in 0..points.len() {
+        let value = direct[0][lane].as_ref().unwrap();
+        let rescaled = deviation(value, checked[0][lane].as_ref().unwrap());
+        assert!(
+            rescaled < 1e-45,
+            "NinjaRS lane {lane}: rescaled {rescaled:e}"
+        );
+    }
+}

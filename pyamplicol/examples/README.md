@@ -459,7 +459,7 @@ pyamplicol loop_gg_zgg_evaluate.toml        # coloured tables (--color never|alw
 pyamplicol loop_gg_zgg_profile.toml         # runtime of TIRust and NinjaRS side by side
 pyamplicol profile --card loop_gg_zgg_profile.toml --stability            # stable-digit statistics
 pyamplicol profile --card loop_gg_zgg_profile.toml --runtime --stability --stability-points 200 --loop-reduction tirust
-pyamplicol profile artifacts/loop_gg_zgg --momenta data/loop_gg_zgg_momenta.json --reduction-unchecked
+pyamplicol profile artifacts/loop_gg_zgg --momenta data/loop_gg_zgg_momenta.json --checked
 make -C native loop                         # the native client of the walkthrough
 python python/loop_walkthrough.py loop_gg_zgg_generate.toml --points 2 --regenerate \
   --native-client native/loop_client
@@ -473,7 +473,8 @@ rescue or the per-point fallback; red: failed, refused or above the target).
 The profile cards compare both reduction backends: `--runtime` (the default)
 times them in the default setup with the ratio between them, `--stability`
 measures over `[benchmark] stability_points` flat points the stable digits of
-pure binary64 against a double-double re-run, at the percentiles 1 per mil,
+pure binary64 against a re-run in the reference precision (`--ground-truth`,
+double-double by default), at the percentiles 1 per mil,
 1 %, 10 % and 50 % (a point a backend refuses in binary64 is measured with its
 best-effort value at its true digits; only a point with no binary64 value
 counts 0 digits), and

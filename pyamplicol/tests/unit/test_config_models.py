@@ -76,9 +76,10 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # process.squared_coupling_orders, loop.external_widths and the
     # evaluation.phase_space section (points, seed, sqrt_s); 150: ux-profile's
     # benchmark.runtime, stability and stability_points (`pyamplicol profile
-    # --runtime / --stability` of loop artifacts); MadGraph7 adds
-    # process.flavor_blind_strict and generation.pack_payloads.
-    assert len(FIELD_REGISTRY) == 153
+    # --runtime / --stability` of loop artifacts); 152: benchmark.ground_truth
+    # (`profile --ground-truth`); 153: benchmark.checked (`profile --checked`);
+    # MadGraph7 adds process.flavor_blind_strict and generation.pack_payloads.
+    assert len(FIELD_REGISTRY) == 155
     assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()
     assert FIELD_REGISTRY["loop.external_widths"].default == "model"
     assert FIELD_REGISTRY["evaluation.phase_space.points"].default == 2
@@ -86,6 +87,8 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["benchmark.stability"].default is False
     assert FIELD_REGISTRY["benchmark.stability_points"].default == 1000
     assert FIELD_REGISTRY["benchmark.n_core"].default == 10
+    assert FIELD_REGISTRY["benchmark.ground_truth"].default == "double-double"
+    assert FIELD_REGISTRY["benchmark.checked"].default is False
     # m-lit lit-examples: `pyamplicol check` (the check action's section).
     assert FIELD_REGISTRY["check.points"].default == 3
     assert FIELD_REGISTRY["check.seed"].nullable

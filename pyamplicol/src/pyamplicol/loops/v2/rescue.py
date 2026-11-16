@@ -31,14 +31,15 @@ the estimate against the pre-cancellation scale S of its floor,
 its E / S is the floor's FLOOR_UNITS x u (M-LIT LIT-STAB-N, ``tests/unit/
 test_loop_v2_induced_stability.py``).
 
-Escalated levels evaluate one point per call: every lane of a non-binary64
-carrier is a scalar loop that costs as much padded as filled, so a fixed
-lane count of one gives each escalated carrier one native executor, which
-compiles its generic-engine templates once (``plan_export.NativeExecutor.
-lanes_for`` would otherwise build one executor per power-of-two subset
-size). The per-scale partition and flavour members stay inside the level
-evaluator. The rescue is off unless a policy is passed (REQUIREMENTS_ADDENDUM
-C: never on for timing); it is offered by the Python native ``evaluate``
+Every level evaluates the points it receives in ONE call: the native
+executor fills its chunks (binary64 SIMD chunks of the narrowest width
+holding the rest, the scalar lanes of the extended carriers in filled
+chunks, ``rusticol-core loop_execution::v2::lane_chunks``), so no padded
+lane is evaluated and one executor serves each carrier. Every point's
+value is its own lane's: the same as in a call of its own. The
+per-scale partition and flavour members stay inside the level evaluator.
+The rescue is off unless a policy is passed (REQUIREMENTS_ADDENDUM C:
+never on for timing); it is offered by the Python native ``evaluate``
 only, in no SDK, the CLI or the configuration.
 """
 
@@ -172,7 +173,7 @@ def rescue(
         if k and not pending:
             break
         last = k == len(levels) - 1
-        batches = [pending] if k == 0 else [(index,) for index in pending]
+        batches = [pending]
         retry: list[int] = []
         for batch in batches:
             evaluation = evaluate(batch, level)

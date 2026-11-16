@@ -1666,7 +1666,6 @@ class V2VirtualRuntime:
         model_payload = _json_payload(manifest, "model/compiled-model.json")
         self._lock = RLock()
         self._native = native
-        self._model_payload = model_payload
         self._plan_sha256 = str(admission["plan_sha256"])
         self._scaleless_plan_sha256 = admission["scaleless_plan_sha256"]
         self._group_member = group_member
@@ -1682,6 +1681,9 @@ class V2VirtualRuntime:
             for record in compiled.ir.parameters
             if record.nature == "external"
         }
+        # The compiled model's payload is read here only: not kept (~60 k
+        # tracked objects that every full pass of the cyclic collector walks).
+        del compiled, model_payload
         if execution["point_inputs"] != LOOP_V2_NATIVE_POINT_INPUTS:
             # The native admission refuses every other declaration first.
             raise ArtifactError(
@@ -2659,8 +2661,12 @@ class V2VirtualRuntime:
 
         if not points:
             return [], {}
-        if len({Fraction(scale) for scale in scales}) > 1 and self._scale_partitioned(
-            poles
+        # (Equal texts are one scale: the exact values are compared only when
+        # the texts differ.)
+        if (
+            len(set(scales)) > 1
+            and len({Fraction(scale) for scale in scales}) > 1
+            and self._scale_partitioned(poles)
         ):
             return self._run_per_scale(
                 points, scales, parameters, setting, poles, checks
@@ -2781,6 +2787,16 @@ class V2VirtualRuntime:
         diagnostics: list[VirtualLaneDiagnostic] = []
         estimates: list[VirtualStabilityEstimate | None] = []
         parts: list[VirtualPoleParts | None] = []
+        # The canonical form of each order, once per call (every point has
+        # the same orders).
+        orders: dict[Any, Any] = {}
+
+        def canonical(order: Any) -> Any:
+            found = orders.get(order)
+            if found is None:
+                found = orders[order] = canonical_order(order)
+            return found
+
         for index, result in enumerate(results):
             if result is None:
                 reason = "; ".join(failures.get(index, ["failed"]))
@@ -2805,11 +2821,9 @@ class V2VirtualRuntime:
                     )
                 )
                 continue
-            born = {
-                canonical_order(order): value for order, value in result.born.items()
-            }
+            born = {canonical(order): value for order, value in result.born.items()}
             virtual = {
-                canonical_order(sector): laurent
+                canonical(sector): laurent
                 for sector, laurent in result.components["virtual"].items()
             }
             born_values.append(

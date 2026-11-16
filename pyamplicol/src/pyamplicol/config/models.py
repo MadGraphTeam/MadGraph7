@@ -446,6 +446,25 @@ def _optional_integer(value: int | None, name: str, *, minimum: int = 0) -> int 
     return _integer(value, name, minimum=minimum)
 
 
+def _ground_truth(value: object) -> str:
+    """``benchmark.ground_truth`` in its canonical spelling: "double-double"
+    (also "dd"), "arbitrary" (also "arb": the default digits, resolved by
+    ``loop_profile.ground_truth``) or "arbitrary:DIGITS" (also
+    "arb:DIGITS"), DIGITS a positive decimal digit count."""
+
+    text = value.strip().lower() if isinstance(value, str) else ""
+    head, colon, digits = text.partition(":")
+    head = {"dd": "double-double", "arb": "arbitrary"}.get(head, head)
+    if head in ("double-double", "arbitrary") and not colon:
+        return head
+    if head == "arbitrary" and digits.isdigit() and int(digits) >= 1:
+        return f"{head}:{int(digits)}"
+    raise ConfigurationError(
+        "benchmark.ground_truth must be double-double (dd), arbitrary (arb) or "
+        f"arbitrary:DIGITS (arb:DIGITS, positive decimal digits); got {value!r}"
+    )
+
+
 def _finite_float(
     value: float, name: str, *, minimum: float, exclusive: bool = False
 ) -> float:
@@ -1669,13 +1688,25 @@ class BenchmarkConfig:
     stability_points: int = field(default=1000, metadata=_setting("int"))
     # The worker processes of the stability run (``--n_core``): capped by
     # the usable cores; 1 runs it in-process. The result does not depend on
-    # it. The runtime timing stays in one process.
+    # it. The runtime timing always runs on one core (one process, every
+    # native pool at one thread).
     n_core: int = field(default=10, metadata=_setting("int"))
+    # The reference ("ground truth") of a loop profile (``--ground-truth``):
+    # "double-double" or "arbitrary[:DIGITS]" (decimal digits; without them
+    # the built-in rescue's arbitrary-precision level's), "dd" and "arb"
+    # accepted; read by both tables (``loop_profile.ground_truth``).
+    ground_truth: str = field(default="double-double", metadata=_setting("str"))
+    # The runtime timing of a loop profile in the checked mode (``--checked``):
+    # the backends' own acceptance checks, a refused point served best-effort
+    # and the default backend as "auto". False (the default): one fully
+    # optimistic pass per point, the backend's unchecked reduction alone.
+    checked: bool = field(default=False, metadata=_setting("bool"))
 
     def __post_init__(self) -> None:
-        for name in ("runtime", "stability"):
+        for name in ("runtime", "stability", "checked"):
             if type(getattr(self, name)) is not bool:
                 raise ConfigurationError(f"benchmark.{name} must be a boolean")
+        object.__setattr__(self, "ground_truth", _ground_truth(self.ground_truth))
         object.__setattr__(
             self,
             "stability_points",

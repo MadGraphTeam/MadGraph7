@@ -4783,7 +4783,7 @@ class _PointEvaluation:
             pole_origins=origins,
             loop_born=self.loop_born,
         )
-        self.absolute = self._lane_budget(
+        self._absolute_from(
             {lane: value.coefficients for lane, value in self.families.items()},
             [components[name] for name in LOCAL_COMPONENTS],
         )
@@ -4804,6 +4804,31 @@ class _PointEvaluation:
             self.retest_budget = self._lane_budget(self.family_deviations)
 
     # -- stability budgets (``stability``) -------------------------------------------
+
+    @property
+    def absolute(self) -> Any:
+        """The absolute budget per sector (``_lane_budget`` of the lanes and
+        the local components): the scale of the estimate's floor, formed on
+        first read (an evaluation without stability checks never reads it)."""
+
+        pending = self.__dict__.pop("_absolute_pending", None)
+        if pending is not None:
+            lanes, local, context = pending
+            # In the Decimal context of the assembly that set it.
+            with localcontext(context):
+                self.__dict__["_absolute"] = self._lane_budget(lanes, local)
+        return self.__dict__.get("_absolute")
+
+    @absolute.setter
+    def absolute(self, value: Any) -> None:
+        self.__dict__.pop("_absolute_pending", None)
+        self.__dict__["_absolute"] = value
+
+    def _absolute_from(self, lanes, local=()) -> None:
+        """Set ``absolute`` to the budget of ``lanes`` and ``local``, formed
+        when it is first read."""
+
+        self.__dict__["_absolute_pending"] = (lanes, local, getcontext().copy())
 
     def _lane_budget(self, lanes, local=()) -> dict[Orders, Budget]:
         """Per sector, sum_lanes |delta bare| <= 2 |delta Omega| / (16 pi^2
@@ -5284,12 +5309,15 @@ class _NativePoint(_PointEvaluation):
         self.poles = True
         self.split_lanes = None
         process = slice_.blocks.process
-        labels = sorted(leg.label for leg in process.legs)
-        initial = {leg.label for leg in process.legs if leg.is_initial}
-        self.incoming = [
-            [x if label in initial else -x for x in point[label - 1]]
-            for label in labels
-        ]
+        # The point as given: exact rationals or the public inputs' exact
+        # decimal texts (the executor parses either exactly); the
+        # all-incoming rationals (``incoming``) are formed on first use.
+        self._point = point
+        self._legs = (
+            sorted(leg.label for leg in process.legs),
+            frozenset(leg.label for leg in process.legs if leg.is_initial),
+        )
+        self._incoming: list[list[Fraction]] | None = None
         self.scale = scale
         self.parameters = parameters
         self.born: dict[Orders, Any] = {}
@@ -5309,6 +5337,40 @@ class _NativePoint(_PointEvaluation):
         # by the average (``dipoles.correlations``).
         self.catani = False
         self.correlations: dict | None = None
+
+    @property
+    def incoming(self) -> list[list[Fraction]]:
+        """All-incoming exact momenta (outgoing legs negated), leg order."""
+
+        if self._incoming is None:
+            labels, initial = self._legs
+            point = self._point
+            self._incoming = [
+                [
+                    _fraction(x) if label in initial else -_fraction(x)
+                    for x in point[label - 1]
+                ]
+                for label in labels
+            ]
+        return self._incoming
+
+    @incoming.setter
+    def incoming(self, value: list[list[Fraction]]) -> None:
+        self._incoming = value
+
+    def incoming_texts(self) -> list[str]:
+        """``incoming`` as the executor's exact texts, flattened: a
+        rational's ``n/d``, a decimal text as given (negated by its sign)."""
+
+        if self._incoming is not None:
+            return [_rational_text(x) for p in self._incoming for x in p]
+        labels, initial = self._legs
+        point = self._point
+        return [
+            _signed_text(x, label in initial)
+            for label in labels
+            for x in point[label - 1]
+        ]
 
     def counterterm_twin(self) -> None:
         # A native point has no Python twin: the executor forms its
@@ -5464,7 +5526,7 @@ class _NativePoint(_PointEvaluation):
             colour_contraction=self.colour_contraction,
             loop_born=self.loop_born,
         )
-        self.absolute = self._lane_budget(
+        self._absolute_from(
             {lane: value.coefficients for lane, value in self.families.items()}
         )
         self.retest_budget = None
@@ -6487,7 +6549,36 @@ def _fraction(value: Any) -> Fraction:
         return value
     if isinstance(value, int):
         return Fraction(value)
+    if type(value) is str and "/" not in value and "_" not in value:
+        # Decimal text (the public inputs' form): exactly the rational
+        # ``Fraction(text)`` parses, through Decimal's C parser at half the
+        # cost; anything Decimal does not take falls through to Fraction.
+        try:
+            return Fraction(Decimal(value))
+        except (ArithmeticError, ValueError):
+            pass
     return Fraction(str(value))
+
+
+def _rational_text(value: Fraction) -> str:
+    """An exact rational as ``n`` or ``n/d`` (``plan_export._fraction_text``)."""
+
+    if value.denominator == 1:
+        return str(value.numerator)
+    return f"{value.numerator}/{value.denominator}"
+
+
+def _signed_text(value: Any, keep: bool) -> str:
+    """A momentum component as an exact text, negated unless ``keep``: a
+    rational's ``n/d``; a text (exact decimal or ``n/d``) by its sign."""
+
+    if type(value) is not str:
+        exact = _fraction(value)
+        return _rational_text(exact if keep else -exact)
+    text = value.strip()
+    if keep:
+        return text
+    return text[1:] if text.startswith("-") else "-" + text.removeprefix("+")
 
 
 def _to_decimal(value: Fraction) -> Decimal:

@@ -260,16 +260,63 @@ class Rotation:
     def apply(
         self, point: Sequence[Sequence[Fraction]]
     ) -> tuple[tuple[Fraction, ...], ...]:
-        """Rotate the spatial parts of every momentum (E, px, py, pz)."""
+        """Rotate the spatial parts of every momentum (E, px, py, pz).
 
+        Exact: each rotated component is formed in integers over the
+        common denominator of the matrix and the momentum's components, then
+        reduced once (the same rational as the sum of the Fraction
+        products, at a fraction of the cost)."""
+
+        integers, denominator = _integer_matrix(self.matrix)
         out = []
         for momentum in point:
             energy, *space = (Fraction(x) for x in momentum)
-            rotated = [
-                sum(self.matrix[i][k] * space[k] for k in range(3)) for i in range(3)
-            ]
-            out.append((energy, *rotated))
+            common = math.lcm(*(x.denominator for x in space))
+            scaled = [x.numerator * (common // x.denominator) for x in space]
+            over = denominator * common
+            out.append(
+                (
+                    energy,
+                    *(
+                        Fraction(
+                            row[0] * scaled[0]
+                            + row[1] * scaled[1]
+                            + row[2] * scaled[2],
+                            over,
+                        )
+                        for row in integers
+                    ),
+                )
+            )
         return tuple(out)
+
+
+# Per rotation matrix (by identity, the matrix kept alive with its entry):
+# its integer form. Hashing the Fraction entries per call cost more than the
+# lookup saves.
+_INTEGER_MATRICES: dict[int, tuple[Any, tuple[tuple[tuple[int, ...], ...], int]]] = {}
+
+
+def _integer_matrix(
+    matrix: tuple[tuple[Fraction, ...], ...],
+) -> tuple[tuple[tuple[int, ...], ...], int]:
+    """A rational matrix as (integer matrix, common denominator)."""
+
+    found = _INTEGER_MATRICES.get(id(matrix))
+    if found is not None and found[0] is matrix:
+        return found[1]
+    denominator = math.lcm(*(x.denominator for row in matrix for x in row))
+    integers = (
+        tuple(
+            tuple(x.numerator * (denominator // x.denominator) for x in row)
+            for row in matrix
+        ),
+        denominator,
+    )
+    if len(_INTEGER_MATRICES) >= 256:
+        _INTEGER_MATRICES.clear()
+    _INTEGER_MATRICES[id(matrix)] = (matrix, integers)
+    return integers
 
 
 def default_rotation(index: int) -> Rotation:
@@ -806,22 +853,25 @@ def _native_induced_estimate(
     row_ids = {row: r for r, row in enumerate(rows)}
     orders: dict[Any, int] = {}
 
-    def key(item: Any) -> tuple[int, int]:
-        order, row = item
-        return orders.setdefault(order, len(orders)), row_ids[row]
-
+    # (Each (loop order, row) key: the order's first-seen index, the row's.)
     def cells(vectors: Mapping) -> list:
         return [
-            (key(item), [[(z.real, z.imag) for z in cell] for cell in vector])
-            for item, vector in vectors.items()
+            (
+                (orders.setdefault(order, len(orders)), row_ids[row]),
+                [[(z.real, z.imag) for z in cell] for cell in vector],
+            )
+            for (order, row), vector in vectors.items()
         ]
 
     def errors(vectors: Mapping | None) -> list | None:
         if vectors is None:
             return None
         return [
-            (key(item), [[float(x) for x in cell] for cell in vector])
-            for item, vector in vectors.items()
+            (
+                (orders.setdefault(order, len(orders)), row_ids[row]),
+                [[float(x) for x in cell] for cell in vector],
+            )
+            for (order, row), vector in vectors.items()
         ]
 
     def point(evaluation: Any) -> tuple:

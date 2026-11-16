@@ -54,7 +54,10 @@
 //! CPU reports ([`Simd::detect`]; never a build-host feature). The wider forms
 //! perform the same operations per lane in the same order (no fused
 //! multiply-add, no reassociation), so their values are bitwise the
-//! baseline's; only the speed depends on the CPU.
+//! baseline's; only the speed depends on the CPU. Double-double kernels run
+//! the baseline width compiled with FMA where the CPU has it ([`Simd::Fma`]:
+//! `DoubleFloat`'s own `mul_add` as the instruction instead of a call),
+//! bitwise the baseline's too.
 
 use super::poly::{MonomialProductTable, SegmentEntry, SegmentLayout};
 use ninjars::fast::tensor_layout::{monomials, ncoeff};
@@ -67,7 +70,8 @@ pub const fn lane_vector_len(lanes: usize) -> usize {
 
 /// The vector width the binary64 kernels run in (dressing, seed sums,
 /// interference z sums, root closures): binary64 lanes take the widest the
-/// running CPU reports, every other carrier the baseline.
+/// running CPU reports, every other carrier the baseline (double-double with
+/// the fused multiply-add instruction, [`Simd::Fma`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Simd {
     Baseline,
@@ -75,6 +79,15 @@ pub enum Simd {
     Avx2,
     #[cfg(target_arch = "x86_64")]
     Avx512,
+    /// Double-double (`DoubleFloat`) on a CPU with FMA: the baseline kernels
+    /// compiled with the `fma` feature. `DoubleFloat`'s two-product rounds
+    /// with `f64::mul_add`, which the baseline build compiles to a call of
+    /// the runtime-dispatched `fma` routine per product (about 40 % of the
+    /// double-double dressing, perf on g g > z z); with the feature it is
+    /// the instruction. Both round the exact `a * b + c` once and nothing
+    /// else is contracted, so the values are bitwise the baseline's.
+    #[cfg(target_arch = "x86_64")]
+    Fma,
 }
 
 /// Caps the kernels' vector width ([`Simd::detect`]) at `baseline` or
@@ -96,6 +109,16 @@ impl Simd {
                 Self::widest(cap.as_deref())
             });
         }
+        #[cfg(target_arch = "x86_64")]
+        if std::any::TypeId::of::<T>()
+            == std::any::TypeId::of::<symbolica::domains::float::DoubleFloat>()
+        {
+            static FMA: std::sync::OnceLock<Simd> = std::sync::OnceLock::new();
+            return *FMA.get_or_init(|| {
+                let cap = std::env::var(KERNEL_SIMD_ENV).ok();
+                Self::fused(cap.as_deref())
+            });
+        }
         Self::Baseline
     }
 
@@ -108,6 +131,19 @@ impl Simd {
         }
         if cap != Self::Baseline && std::arch::is_x86_feature_detected!("avx2") {
             return Self::Avx2;
+        }
+        Self::Baseline
+    }
+
+    /// Double-double's width: [`Simd::Fma`] when the CPU reports FMA and the
+    /// cap is not the baseline.
+    #[cfg(target_arch = "x86_64")]
+    fn fused(value: Option<&str>) -> Self {
+        if Self::cap(value) != Self::Baseline
+            && std::arch::is_x86_feature_detected!("avx2")
+            && std::arch::is_x86_feature_detected!("fma")
+        {
+            return Self::Fma;
         }
         Self::Baseline
     }
@@ -149,12 +185,18 @@ macro_rules! dispatched {
                 fn avx2<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
                     $body::<T $(, $c)?>($($arg),*)
                 }
+                #[allow(clippy::too_many_arguments)]
+                #[target_feature(enable = "avx2,fma")]
+                fn fma<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
+                    $body::<T $(, $c)?>($($arg),*)
+                }
                 use $crate::loop_v2::kernels::Simd;
                 match Simd::detect::<T>() {
                     // SAFETY: `Simd::detect` returns a width only when the
                     // running CPU reports its feature.
                     Simd::Avx512 => return unsafe { avx512::<T $(, $c)?>($($arg),*) },
                     Simd::Avx2 => return unsafe { avx2::<T $(, $c)?>($($arg),*) },
+                    Simd::Fma => return unsafe { fma::<T $(, $c)?>($($arg),*) },
                     Simd::Baseline => {}
                 }
             }
@@ -187,11 +229,18 @@ macro_rules! dispatched_avx2 {
                 fn avx2<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
                     $body::<T $(, $c)?>($($arg),*)
                 }
+                #[allow(clippy::too_many_arguments)]
+                #[target_feature(enable = "avx2,fma")]
+                fn fma<T: $bound $(, const $c: usize)?>($($arg: $ty),*) {
+                    $body::<T $(, $c)?>($($arg),*)
+                }
                 use $crate::loop_v2::kernels::Simd;
                 match Simd::detect::<T>() {
                     // SAFETY: `Simd::detect` returns AVX-512 or AVX2 only when
-                    // the running CPU reports AVX2 (AVX-512 implies it).
+                    // the running CPU reports AVX2 (AVX-512 implies it), and
+                    // FMA only when it reports FMA.
                     Simd::Avx512 | Simd::Avx2 => return unsafe { avx2::<T $(, $c)?>($($arg),*) },
+                    Simd::Fma => return unsafe { fma::<T $(, $c)?>($($arg),*) },
                     Simd::Baseline => {}
                 }
             }

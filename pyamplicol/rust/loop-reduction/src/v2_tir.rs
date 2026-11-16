@@ -1302,7 +1302,9 @@ impl TirReductionBackend {
             let g = &groups[row.group];
             let n = g.propagators;
             let lane = row.start;
-            let map = FrameMap::new(frame, n, g.shifts.first());
+            // The frame at the call's working precision (`prototype`), not a
+            // lane's: a rescaled frame's factor and undo (`FrameMap::new`).
+            let map = FrameMap::new(frame, n, prototype);
             shifts.clear();
             masses.clear();
             invariants.clear();
@@ -1723,9 +1725,8 @@ impl TirReductionBackend {
                 self.counters.shared += 1;
             }
             let first = &direct[r];
-            let frame_map = |frame: ReductionFrame| {
-                FrameMap::<T>::new(Some(frame), g.propagators, g.shifts.first())
-            };
+            let frame_map =
+                |frame: ReductionFrame| FrameMap::<T>::new(Some(frame), g.propagators, &prototype);
             let check_map = checked.as_ref().zip(check_frame).map(|(_, f)| frame_map(f));
             // A method-choice row's acceptance moments taken back to the
             // direct frame once per row (`FrameMap::moments`, the transpose

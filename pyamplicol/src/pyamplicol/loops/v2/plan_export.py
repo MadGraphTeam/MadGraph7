@@ -94,6 +94,21 @@ def _fraction_text(value: Any) -> str:
     return f"{value.numerator}/{value.denominator}"
 
 
+def _double_pairs(values: Iterable[Sequence[Any]]) -> list[complex]:
+    """A native lane's [re, im] pairs as binary64 complex numbers."""
+
+    return [complex(float(re), float(im)) for re, im in values]
+
+
+def _carrier_pairs(numbers: Any) -> Callable[[Iterable[Sequence[Any]]], list[Any]]:
+    """A native lane's [re, im] decimal texts in ``numbers``' carrier."""
+
+    def read(values: Iterable[Sequence[Any]]) -> list[Any]:
+        return [numbers.pair(Decimal(re), Decimal(im)) for re, im in values]
+
+    return read
+
+
 def _complex_text(value: Any) -> list[str]:
     value = rx.exact(value)
     return [_fraction_text(value.real), _fraction_text(value.imag)]
@@ -2300,16 +2315,19 @@ class NativeExecutor:
         return self._scaleless[0]
 
     def lanes_for(self, arithmetic: Arithmetic, points: int | None) -> int:
-        """Lanes per chunk: the configured count in binary64 (SIMD lanes);
-        in the other carriers, whose lanes are scalar loops that cost as much
-        padded as filled, the smallest supported count holding the batch."""
+        """Lanes per chunk: the configured count in every carrier and for
+        every batch size. The native executor runs a batch's last partial
+        chunk without paying for its padded lanes (binary64, whose SIMD chunk
+        costs about its instruction count, in one chunk of the narrowest
+        width holding it; the other carriers, whose lanes are scalar loops
+        that cost as much padded as filled, in filled chunks of the widths of
+        its binary digits: ``rusticol_core::loop_execution::v2::
+        lane_chunks``), so one executor per carrier serves every batch, and
+        its reduction backends (NinjaRS's generic-engine reductions, TIRust's
+        plans) are built once."""
 
-        if arithmetic == "double" or points is None:
-            return self.lanes
-        lanes = 1
-        while lanes < min(points, self.lanes):
-            lanes *= 2
-        return lanes
+        del arithmetic, points
+        return self.lanes
 
     # -- inputs ---------------------------------------------------------------
 
@@ -2323,9 +2341,10 @@ class NativeExecutor:
         precision = precision or Precision.double()
         wards = wards or [None] * len(points)
         evaluations = []
+        scope = _Numbers(precision)
         for point, scale, ward in zip(points, scales, wards, strict=True):
             exact_point = tuple(tuple(_fraction(x) for x in p) for p in point)
-            with _Numbers(precision).scope():
+            with scope.scope():
                 extra = {}
                 if ward is not None:
                     from .ward import loop_vector, ward_leg
@@ -2441,7 +2460,10 @@ class NativeExecutor:
 
         batch: dict[str, Any] = {
             "momenta": [
-                [_fraction_text(x) for p in e.incoming for x in p] for e in evaluations
+                e.incoming_texts()
+                if hasattr(e, "incoming_texts")
+                else [_fraction_text(x) for p in e.incoming for x in p]
+                for e in evaluations
             ],
             "scales": [_fraction_text(e.scale) for e in evaluations],
             "block_rows": [],
@@ -2699,12 +2721,28 @@ class NativeExecutor:
                 require_full_kernels(self.slice)
             else:
                 wards = None
+        # The exact points, once for the reference and every rotation (the
+        # reference alone reads its texts as given).
+        exact = (
+            [tuple(tuple(_fraction(x) for x in p) for p in point) for point in points]
+            if stability.rotations
+            else points
+        )
+        if self._merges_rotations(len(points), precision, stability, wards):
+            precision, evaluations, rotated, failures = self._merged_runs(
+                exact, scales, parameters, precision, poles, stability, schedule
+            )
+            if stability.cross_backend:
+                self._cross_runs(
+                    points, scales, parameters, precision, poles, schedule, wards
+                ).attach(evaluations)
+            return precision, evaluations, rotated, failures
         # A loop-induced estimate's floor is the term scale (``induced.
         # scale``), formed by the reference evaluation's executor call.
         self.term_scale = self.exported.amplitude is not None and stability.enabled
         try:
             precision, evaluations, failures = self._evaluated(
-                points,
+                exact,
                 scales,
                 parameters,
                 precision,
@@ -2718,10 +2756,7 @@ class NativeExecutor:
             self.term_scale = False
         rotated = []
         for k, rotation in enumerate(stability.rotations):
-            moved = [
-                rotation.apply(tuple(tuple(_fraction(x) for x in p) for p in point))
-                for point in points
-            ]
+            moved = [rotation.apply(point) for point in exact]
             turned = None
             if wards is not None:
                 from .ward import rotated_ward
@@ -2740,6 +2775,71 @@ class NativeExecutor:
             self._cross_runs(
                 points, scales, parameters, precision, poles, schedule, wards
             ).attach(evaluations)
+        return precision, evaluations, rotated, failures
+
+    def _merges_rotations(self, count, precision, stability, wards) -> bool:
+        """Whether ``_runs`` evaluates the rotated copies of its ``count``
+        points in the reference's native call (``_merged_runs``): with
+        rotation checks only and the same executor options for every copy
+        (no re-test frame, Ward vectors or Catani prediction, which only the
+        reference runs), in binary64, on a Born-interfered plan. The
+        executor fills its chunks (``lane_chunks``), so the merged call
+        evaluates no more lanes than separate calls and saves a call; a
+        loop-induced plan forms the term scale of every lane of a call (the
+        reference's estimate floor), which its copies would then pay: it
+        keeps separate calls, as an extended carrier does (a merged call
+        would save the call only). The values are those of separate calls:
+        every binary64 lane is its own point's."""
+
+        from .assemble import Precision
+
+        arithmetic, _digits = self._arithmetic(precision or Precision.double(), False)
+        return bool(
+            stability.rotations
+            and count
+            and arithmetic == "double"
+            and stability.frame is None
+            and wards is None
+            and not self.catani
+            and self.exported.amplitude is None
+        )
+
+    def _merged_runs(
+        self, exact, scales, parameters, precision, poles, stability, schedule
+    ):
+        """``_runs`` of exact points whose rotated copies run in the
+        reference's native call (``_merges_rotations``): the batch is the
+        points, then their copies rotation by rotation; the results, the
+        failures (a copy's named by its rotation, after the point's own)
+        and the evaluations are those of separate calls."""
+
+        from .stability import ROTATION
+
+        count = len(exact)
+        rotations = stability.rotations
+        batch = list(exact)
+        for rotation in rotations:
+            batch.extend(rotation.apply(point) for point in exact)
+        precision, runs, failed = self._evaluated(
+            batch,
+            list(scales) * (1 + len(rotations)),
+            parameters,
+            precision,
+            poles,
+            None,
+            schedule,
+        )
+        evaluations = runs[:count]
+        rotated = [
+            runs[count * (k + 1) : count * (k + 2)] for k in range(len(rotations))
+        ]
+        failures = {index: failed[index] for index in range(count) if index in failed}
+        for position in sorted(index for index in failed if index >= count):
+            k, index = divmod(position - count, count)
+            failures.setdefault(index, []).extend(
+                relabelled(f"{ROTATION.format(k)}: {reason}", reason)
+                for reason in failed[position]
+            )
         return precision, evaluations, rotated, failures
 
     def _cross_runs(
@@ -2863,6 +2963,9 @@ class NativeExecutor:
         from .assemble import _fraction, _NativePoint, _Numbers
 
         slice_ = self.slice
+        # One carrier helper for the batch (it holds the precision's
+        # constants only; nothing writes to it).
+        numbers = _Numbers(precision)
         out = []
         for point, scale in zip(points, scales, strict=True):
             scale = _fraction(scale)
@@ -2870,10 +2973,10 @@ class NativeExecutor:
             out.append(
                 _NativePoint(
                     slice_,
-                    tuple(tuple(_fraction(x) for x in p) for p in point),
+                    point,
                     scale,
                     values,
-                    _Numbers(precision),
+                    numbers,
                 )
             )
         return out
@@ -2928,10 +3031,11 @@ class NativeExecutor:
             if self.last_report["counts"].get(FFT_SEED_JOBS)
             else "direct"
         )
+        numbers = _Numbers(precision)
         for index, evaluation in enumerate(evaluations):
             if index in failed:
                 continue
-            with _Numbers(precision).scope():
+            with numbers.scope():
                 evaluation.colour_contraction = algorithm
                 evaluation._assemble()
         return precision, evaluations, failed
@@ -3031,6 +3135,7 @@ class NativeExecutor:
                 twin._inputs(evaluations, arithmetic), schedule="B", **options
             )
         failed: dict[int, list[str]] = {}
+        scope = _Numbers(precision)
         for index, (evaluation, lanes, checks, failures) in enumerate(
             zip(
                 evaluations,
@@ -3050,10 +3155,7 @@ class NativeExecutor:
                 continue
             numbers = evaluation.numbers
 
-            def carrier(values, numbers=numbers):
-                if numbers.double:
-                    return [complex(float(re), float(im)) for re, im in values]
-                return [numbers.pair(Decimal(re), Decimal(im)) for re, im in values]
+            carrier = _double_pairs if numbers.double else _carrier_pairs(numbers)
 
             def label(lane, exported=exported):
                 family, order, column = lane
@@ -3063,12 +3165,12 @@ class NativeExecutor:
                     exported.columns[column],
                 )
 
-            def read(runs, exported=exported):
+            def read(runs, exported=exported, carrier=carrier):
                 if runs is None:
                     return None
                 return {label(lane, exported): carrier(values) for lane, values in runs}
 
-            with _Numbers(precision).scope():
+            with scope.scope():
                 # Every lane (the companion's too) is read at the working
                 # digits: an extended carrier rounds its literals there.
                 scaleless = scaleless_check = None

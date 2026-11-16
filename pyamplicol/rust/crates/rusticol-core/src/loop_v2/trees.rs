@@ -4094,6 +4094,19 @@ fn kernel_lanes_avx2<T: Carrier, const L: usize>(
     kernel_lanes::<T, L>(kernel, constants, x, zero)
 }
 
+/// `kernel_lanes` compiled with FMA for double-double (`Simd::Fma`: its
+/// two-product's `mul_add` as the instruction, bitwise the baseline's).
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+fn kernel_lanes_fma<T: Carrier, const L: usize>(
+    kernel: &[super::plan::KernelTerm],
+    constants: &[Complex<T>],
+    x: &[T],
+    zero: &T,
+) -> ([T; L], [T; L]) {
+    kernel_lanes::<T, L>(kernel, constants, x, zero)
+}
+
 impl<T: Carrier> Closure<'_, T> {
     /// The closures of points `first .. first + points` in lanes of `L`
     /// points (the unused lanes of a last chunk repeat the run's last point
@@ -4188,6 +4201,10 @@ impl<T: Carrier> Closure<'_, T> {
                         #[cfg(target_arch = "x86_64")]
                         super::kernels::Simd::Avx2 => unsafe {
                             kernel_lanes_avx2::<T, L>(kernel, self.constants, x, zero)
+                        },
+                        #[cfg(target_arch = "x86_64")]
+                        super::kernels::Simd::Fma => unsafe {
+                            kernel_lanes_fma::<T, L>(kernel, self.constants, x, zero)
                         },
                         super::kernels::Simd::Baseline => {
                             kernel_lanes::<T, L>(kernel, self.constants, x, zero)

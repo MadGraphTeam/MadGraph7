@@ -86,10 +86,10 @@ def _peak_ram(report: Any) -> str:
         "matrix element on this backend: the peak resident set size of a "
         "process that loads the artifact and evaluates on this backend alone "
         "(each backend is profiled in its own such process), at the runtime "
-        "setup's points per call, over its binary64 warm-up and timed calls "
-        "(the double-double timing's own peak is in --json), on the "
-        "timing's native threads (the usable cores or RAYON_NUM_THREADS; a "
-        "worker evaluating on one thread can need somewhat more)"
+        "setup's points per call, over its binary64 warm-up and timed calls, "
+        "before the reference timing (whose own peak is in --json, "
+        "reference), on one core (every thread pool at one thread): the "
+        "memory of one Monte Carlo worker"
         + (f"; measured from {measured}" if measured else "")
         + "; '<= x': the platform only knows the process's lifetime peak x, "
         "which these calls did not raise; '-': not measurable here"
@@ -97,6 +97,9 @@ def _peak_ram(report: Any) -> str:
 
 
 def _profile(report: Any) -> list[Block]:
+    from .loop_profile import _truth
+
+    label, name, _ = _truth(report)
     blocks: list[Block] = [
         (
             "pyAmpliCol loop profile",
@@ -109,9 +112,24 @@ def _profile(report: Any) -> list[Block]:
                 (
                     "runtime setup",
                     "what the timed calls compute: binary64, finite part only, "
-                    "the backends' own acceptance checks; the distinct points "
-                    "per call (a new batch every call) and the number of "
-                    "timed calls",
+                    "one fully optimistic pass per point (the backend's "
+                    "unchecked reduction alone, no stability checks, no "
+                    "rescue, no best-effort re-evaluation; with --checked the "
+                    "backends' own acceptance checks, a refused point served "
+                    "best-effort, the default backend as auto); the "
+                    "distinct points per call (a new batch every call); the "
+                    "timed calls: at least --minimum-samples, more until they "
+                    "add up to --target-runtime seconds, after --warmup-runs "
+                    "untimed ones; on one core: each backend is timed in its "
+                    "own process whose thread pools all run one thread (what "
+                    "one Monte Carlo worker pays; --n_core is the stability "
+                    "run's worker count only)",
+                ),
+                (
+                    "ground truth",
+                    "the reference precision of both tables (--ground-truth): "
+                    "the stability run's true values and the reference time "
+                    "multipliers",
                 ),
                 ("backends", "the reduction backends compared. " + _DEFAULT_MARK),
             ],
@@ -125,13 +143,25 @@ def _profile(report: Any) -> list[Block]:
                     ("backend", "the reduction backend. " + _DEFAULT_MARK),
                     (
                         "time / point",
-                        "wall time per phase-space point, median call; "
-                        "'(dd xN)' with --arithmetic double-double: the same "
-                        "calls in double-double took N times as long (median "
-                        "call; their points and failures are in --json, "
-                        "double_double)",
+                        "the time per phase-space point on one core of the "
+                        "runtime setup's pass: the median timed call's wall "
+                        f"time over its points; '({label} xN)', muted: the "
+                        f"same optimistic pass in {name} (the ground truth) on "
+                        "the same backend and core - the unchecked reduction, "
+                        "no stability checks, no rescue, no best-effort "
+                        "re-evaluation - takes N times this time per point: N "
+                        "is its median call's time per point over this one, "
+                        "its calls of one SIMD chunk (16 points) each, on the "
+                        "first points of the binary64 calls' batches, after "
+                        "one untimed call, with the same minimum calls and "
+                        "time budget (its "
+                        "points, calls and failures are in --json, reference)",
                     ),
-                    ("min - max call", "the fastest and the slowest call, per point"),
+                    (
+                        "min - max call",
+                        "the fastest and the slowest timed call, per point, on "
+                        "one core",
+                    ),
                     (
                         "vs fastest",
                         "time relative to the fastest backend; 'all failed' when "
@@ -140,15 +170,17 @@ def _profile(report: Any) -> list[Block]:
                     ("peak RAM", _peak_ram(report)),
                     (
                         "best-effort",
-                        "shown when some points were refused by the backend's own "
-                        "checks and returned with their best available value "
-                        "(the default policy); those points are timed",
+                        "with --checked, shown when some points were refused by "
+                        "the backend's own checks and returned with their best "
+                        "available value; those points are timed, their "
+                        "unchecked re-evaluation and the checks of its "
+                        "uncertainty included",
                     ),
                     (
                         "lanes",
-                        "shown when points were served by more than one backend: "
-                        "the default backend hands a point it refuses to the "
-                        "other one",
+                        "with --checked, shown when points were served by more "
+                        "than one backend: the default backend (as auto) hands "
+                        "a point it refuses to the other one",
                     ),
                     ("failed", "shown when points got no value at all"),
                 ],
@@ -161,8 +193,17 @@ def _profile(report: Any) -> list[Block]:
                     ("dressing", "attaching the loop propagators and vertices"),
                     ("scatter", "collecting the loop numerators"),
                     ("reduction", "the tensor-integral reduction (the backend)"),
-                    ("rest", "everything else in the call"),
-                    ("share", "the stage's fraction of the call"),
+                    (
+                        "rest",
+                        "everything else in the call: its Python part and the "
+                        "native work outside the stages above",
+                    ),
+                    (
+                        "share",
+                        "the stage's fraction of the timed calls' total time, "
+                        "read from the native stage reports of the same calls; "
+                        "the stages add up to the time per point",
+                    ),
                     ("A / B", "the time ratio of the two backends per stage"),
                 ],
             ),
@@ -171,15 +212,15 @@ def _profile(report: Any) -> list[Block]:
         setup = report.stability_setup or {}
         blocks += [
             (
-                "Stable digits of binary64 vs double-double",
+                f"Stable digits of binary64 vs {name}",
                 [
                     (
                         None,
                         "Each flat (RAMBO on diet) phase-space point is evaluated in "
-                        "binary64 and again in double-double on the same backend. "
-                        "stable digits = -log10 of the relative difference between "
-                        "the binary64 and the double-double finite part, capped to "
-                        "binary64's 15.95 digits. " + _MADLOOP,
+                        f"binary64 and again in {name} (the ground truth) on the "
+                        "same backend. stable digits = -log10 of the relative "
+                        f"difference between the binary64 and the {name} finite "
+                        "part, capped to binary64's 15.95 digits. " + _MADLOOP,
                     ),
                     (
                         "percentile",
@@ -214,7 +255,7 @@ def _profile(report: Any) -> list[Block]:
                         f"A point is accurate when its true relative error is "
                         f"below the target {setup.get('target', '1e-05')}.",
                     ),
-                    ("measured", "points with a double-double reference"),
+                    ("measured", f"points with a {name} reference"),
                     (
                         "best-eff./none",
                         "points refused by the backend's checks and returned with "
@@ -225,12 +266,19 @@ def _profile(report: Any) -> list[Block]:
                     ("missed", "truly inaccurate points the checks did not flag"),
                     (
                         "time",
-                        "the wall time of the backend's binary64 calls (with "
-                        "their stability checks), summed over the workers; "
-                        "'(dd xN)': its double-double reference calls took N "
-                        "times as long in total, under the time when the table "
-                        "would pass the line width (the points and time per "
-                        "point of each precision are in --json, precision_timing)",
+                        "the wall time of the backend's binary64 calls with "
+                        "their stability checks (the default rotation test "
+                        "evaluates each point twice), summed over the workers "
+                        "(each on one core, one thread per pool), "
+                        "after each worker's untimed start-up (loading, first "
+                        f"calls); '({label} xN)': its {name} reference calls "
+                        "(one evaluation per point) took N times as long in "
+                        "total, so N is not the cost ratio of one evaluation "
+                        f"(the runtime table's '({label} xN)'); under the time "
+                        "when "
+                        "the table would pass the line width (the points and "
+                        "time per point of each precision are in --json, "
+                        "precision_timing)",
                     ),
                 ],
             ),
@@ -258,9 +306,9 @@ def _profile(report: Any) -> list[Block]:
                     "number of points, their share of the backend's points, the "
                     "backend, and the cause. 'best-effort': refused, returned "
                     "with the best available value; 'no value': no result; 'no "
-                    "reference': the double-double re-run failed; '... in "
-                    "double-double': the same in the runtime's double-double "
-                    "timing.",
+                    f"reference': the {name} re-run failed; '... in {name}': "
+                    "the same in the runtime's reference timing (counted over "
+                    "its points).",
                 ),
                 (None, _COLOURS),
             ],
