@@ -91,41 +91,43 @@ the training schedule.
 
 ## Measured effect
 
-These numbers come from the research implementation this branch was taken
-from. There, the per-sector radiation and fixed Sobol offsets were separate
-options, the samples used an experimental weighted correction for
-envelope violations, and the probes also fed an S-only proxy into the grid
-adaptation; none of these is part of this branch. Mean negative S events
-per 50,000 unshowered events, with credit .20, folding 111, no
-`mcatnlo_delta` and the same settings in all processes, against fixed Sobol
-sector offsets without learning:
+Five runs per process on `main` (2c7fcbd705) and on this branch (f37d302698)
+with `FKSSectorLearning` at the default budget of .20, seeds 271828, 314159,
+161803, 141421 and 173205. Each run generates 50,000 unshowered events at
+13 TeV with folding 111, `born_spreading = False`, no `mcatnlo_delta` and
+otherwise identical cards: NNPDF4.0 NLO (its nf=4 set for W+bb),
+`dynamical_scale_choice = 3`, ptj > 10 GeV for W+jet and single top, and
+mll > 30 GeV for Drell–Yan. Means over the five runs; ± is the standard
+error of the mean.
 
-| Process | Sector shifts (5 workflows) | Tiled maps, credit .20 (3 workflows) |
-|---|---:|---:|
-| Drell–Yan | 552 | 107 |
-| Top pair | 467 | 238 |
-| W+jet | 7,808 | 5,650 |
-| t-channel single top, 5FS | 1,853 | 880 |
-| W+bb, 4FS | 1,592 | 1,283 |
+| Process | Negative S events, main | Negative S events, learning | All negative events, main → learning | Events for equal precision | CPU for 50,000 events | CPU for equal precision |
+|---|---:|---:|---:|---:|---:|---:|
+| Drell–Yan | 2,162 ± 7 | 127 ± 9 | 3,620 → 1,719 | 0.84 | 1.12 | 0.94 |
+| Top pair | 1,894 ± 23 | 180 ± 31 | 10,617 → 9,640 | 0.88 | 1.04 | 0.91 |
+| W+jet | 9,340 ± 40 | 4,830 ± 69 | 13,282 → 9,876 | 0.60 | 0.90 | 0.54 |
+| t-channel single top, 5FS | 2,197 ± 24 | 796 ± 18 | 13,932 → 13,218 | 0.88 | 1.03 | 0.91 |
+| W+bb, 4FS | 2,727 ± 31 | 1,332 ± 17 | 7,946 → 6,858 | 0.88 | 1.69 | 1.49 |
 
-These are point estimates. A separate fresh W+bb comparison with five
-workflows per arm confirmed the reduction of the weighted negative S
-fraction, from 5.33% to 4.66%. A credit of .10 was also tested and not
-adopted: Drell–Yan worsened significantly and W+jet MINT0 CPU increased.
+The last three columns are ratios, learning over `main`. "Events for equal
+precision" is the ratio of (1 − 2f)², with f the fraction of negative events:
+the number of unweighted events needed for the same statistical precision,
+which is what counts when showering and detector simulation dominate the
+cost. CPU is the total of MINT0, MINT1 and event generation, with both arms
+running side by side on one machine; "CPU for equal precision" is the
+product of the two ratios. Cross sections agree within their errors. The
+fraction of negative H events is unchanged; there are slightly more H events
+because the absolute S integral is smaller.
 
-MINT0 CPU was about 1–1.7 times that of plain folding 111 at credit .20; the
-W+bb elapsed time reached 2.4 times. These measurements predate the change
-that lets probes skip H events and the exact virtual. That change leaves the
-probe records unchanged (bit-identical in a Drell–Yan MINT0 with a
-deterministic clock) and cut the CPU per probe there by about 30%, so about
-40% more probes fit in the same credit. The credit is a soft target on probe
-and fit CPU, not a bound on total MINT0 time. A lower negative fraction does
-not by itself establish a lower cost for a given precision; no universal
-precision-per-CPU gain has been shown. Showered samples were not studied.
+W+bb remains expensive: MINT1 needs 2.3 times as many points as on `main`
+and event generation 1.5 times as many points per event. The budget is a
+soft target on probe and fit CPU, not a bound on total run time. Showered
+samples were not studied.
 
-Part of the remaining negative S weight comes from the Born-based
-virtual-residual lane, which the radiation maps cannot move: about 48% in
-top pair and 58% in W+bb for the fitted grids of that study.
+In the research implementation this branch was taken from, a budget of .10
+was also tested and not adopted: Drell–Yan worsened significantly and W+jet
+MINT0 CPU increased. That study also found that part of the remaining
+negative S weight comes from the Born-based virtual-residual lane, which the
+radiation maps cannot move: about 48% in top pair and 58% in W+bb.
 
 ## Tests
 
