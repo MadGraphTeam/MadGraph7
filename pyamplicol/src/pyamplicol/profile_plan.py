@@ -57,6 +57,10 @@ TASK_SECONDS = 4.0
 # The binary64 warm-up is one point when a full call costs more than this
 # (its first-call costs are then negligible), else one full call.
 WARMUP_CALL_SECONDS = 2.0
+# The measurement repeats its one-point call when it took at most this: a
+# first call carries seconds of lazy set-up (2 s of NinjaRS's first 0.6 s
+# point on u u~ > z g g g g), negligible against a dearer point.
+MEASURE_REPEAT_SECONDS = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,8 +186,10 @@ def runtime_counts(
     batch = chunks * lanes
     call = batch * costs.binary64
     warm = warmup_seconds(call, costs.binary64)
-    timed = max(left - warm, RUNTIME_MINIMUM_CALLS * call)
-    expected = costs.start + warm + timed
+    # The timed calls' budget: what is left (none: the minimum calls only,
+    # however fast they turn out); the expected seconds at least the minimum.
+    timed = max(left - warm, 0.0)
+    expected = costs.start + warm + max(timed, RUNTIME_MINIMUM_CALLS * call)
     if costs.reference is not None:
         expected += costs.reference + reference
     return RuntimeCounts(batch, 1, RUNTIME_MINIMUM_CALLS, timed, reference, expected)
@@ -447,6 +453,7 @@ def duration_text(seconds: float) -> str:
 __all__ = [
     "DEFAULT_RUNTIME_SECONDS",
     "DEFAULT_STABILITY_SECONDS_PER_CORE",
+    "MEASURE_REPEAT_SECONDS",
     "RUNTIME_MINIMUM_CALLS",
     "STABILITY_MINIMUM",
     "TASK_SECONDS",

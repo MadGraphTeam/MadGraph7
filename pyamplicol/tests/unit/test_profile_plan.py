@@ -14,6 +14,7 @@ import pytest
 
 from pyamplicol.config import BenchmarkConfig
 from pyamplicol.profile_plan import (
+    MEASURE_REPEAT_SECONDS,
     STABILITY_MINIMUM,
     TASK_SECONDS,
     WARMUP_CALL_SECONDS,
@@ -114,8 +115,9 @@ class _World:
 def _simulate(
     world: _World, budget: float, workers: int, prior_error: float
 ) -> tuple[float, dict]:
-    """The whole profile under a fake clock: measurement (one point, then a
-    full chunk when that is cheap, in binary64 and the reference), each
+    """The whole profile under a fake clock: measurement (one point, again
+    when cheap, then a full chunk when that is cheap, in binary64 and the
+    reference), each
     backend's runtime (``_timed_calls`` with the adaptive warm-up and
     ``_reference_calls`` on the counts re-planned from what is left) and
     the stability run (the real admission gate; tasks of ``task_points``
@@ -137,6 +139,8 @@ def _simulate(
         cost = world.binary64 * scale[b]
         for per_point in (cost, cost * world.multiplier):
             clock[0] += per_point * world.slow
+            if per_point * world.slow <= MEASURE_REPEAT_SECONDS:
+                clock[0] += per_point
             if LANES * per_point <= WARMUP_CALL_SECONDS:
                 clock[0] += LANES * per_point
         measured[b] = _costs(cost * prior_error, world.multiplier, world.start)

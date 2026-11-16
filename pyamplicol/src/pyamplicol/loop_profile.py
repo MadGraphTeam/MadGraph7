@@ -1475,7 +1475,8 @@ def _measure(
     """The measurement phase of a time-budgeted profile, on this process's
     loaded runtime, per backend: the binary64 cost per point of an
     optimistic call and the reference's (none without a ground truth), each
-    from one point and, when a full SIMD chunk costs at most
+    from one point (twice when it costs at most ``MEASURE_REPEAT_SECONDS``:
+    a first call's lazy set-up) and, when a full SIMD chunk costs at most
     ``WARMUP_CALL_SECONDS`` at that price, from one call of a full chunk
     (first calls: upper estimates); the stability run's binary64 cost from
     the prior ``STABILITY_PRIOR``; a process's start-up from this process's
@@ -1487,7 +1488,12 @@ def _measure(
     from pyamplicol.cli.flat_points import draw_flat_points
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import NAMES
-    from pyamplicol.profile_plan import STABILITY_PRIOR, WARMUP_CALL_SECONDS, Costs
+    from pyamplicol.profile_plan import (
+        MEASURE_REPEAT_SECONDS,
+        STABILITY_PRIOR,
+        WARMUP_CALL_SECONDS,
+        Costs,
+    )
 
     space = config.evaluation.phase_space
     points = draw_flat_points(
@@ -1517,15 +1523,21 @@ def _measure(
             options["reduction_unchecked"] = True
         else:
             options.update(truth.options)
-        per_point = 0.0
-        for size in (1, len(points)):
+        def seconds(size: int) -> float:
             batch = points[:size]
             mu = scales[:size] if isinstance(scales, list) else scales
             begin = time.perf_counter()
             runtime.evaluate(batch, mu_r2=mu, **options)
-            per_point = (time.perf_counter() - begin) / size
-            if size == len(points) or per_point * len(points) > WARMUP_CALL_SECONDS:
-                break
+            return (time.perf_counter() - begin) / size
+
+        # One point; again when it was cheap (a first call carries seconds of
+        # lazy set-up, negligible against a dearer point); one full chunk
+        # when that costs at most WARMUP_CALL_SECONDS at the point's price.
+        per_point = seconds(1)
+        if per_point <= MEASURE_REPEAT_SECONDS:
+            per_point = seconds(1)
+        if per_point * len(points) <= WARMUP_CALL_SECONDS:
+            per_point = seconds(len(points))
         return per_point
 
     costs: dict[str, Any] = {}
