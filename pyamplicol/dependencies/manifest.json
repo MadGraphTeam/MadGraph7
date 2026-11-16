@@ -11,8 +11,8 @@
       ],
       "url": "https://github.com/symbolica-dev/symbolica.git",
       "branch": "community",
-      "revision": "0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7",
-      "note": "community 0e2ad04c = main c9406581 (state-omitting evaluator saves) + the author's community-only commits; carries the parts of the former PR symbolica-dev/symbolica#163 pyAmpliCol needs; moves to a crates.io release once one contains it"
+      "revision": "d0424f9e414d3007889f8a98b404a1b1a91b37a7",
+      "note": "community d0424f9e = main 238dc613 (since the 2026-11-16 rebase; includes c9406581's state-omitting evaluator saves) + the author's community-only commits; carries the parts of the former PR symbolica-dev/symbolica#163 pyAmpliCol needs; moves to a crates.io release once one contains it"
     },
     {
       "name": "ninjars",
@@ -23,8 +23,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "be6d3e042df7ff0d3fe18df929c184d31f5a92b3",
-      "note": "main be6d3e04 (symbolica-community merged; the MadLoop bridge interface re-pinned) = main b51b7465's crate sources (per-row evaluation without the fork-only batch evaluator, merge of no-batch-evaluator) with its pins moved to Symbolica community 0e2ad04c, the gammaloop fork ea3faaae and oneloopmaster 2e7afabb; no source change"
+      "revision": "ac66cf6c551465f6c63490e112bb41596c2fd821",
+      "note": "ac66cf6c (branch symbolica-community-2 = main be6d3e04 + the d0424f9e re-pin, MadLoop bridge interface included) = main b51b7465's crate sources (per-row evaluation without the fork-only batch evaluator, merge of no-batch-evaluator) with its pins moved to Symbolica community d0424f9e, the gammaloop fork ea3faaae and oneloopmaster 07fc754f; no source change"
     },
     {
       "name": "oneloopmaster",
@@ -33,8 +33,8 @@
       ],
       "url": "https://github.com/alphal00p/oneloopmaster.git",
       "ref": "main",
-      "revision": "2e7afabb5903814196d7ab39c695ed9cac777aa4",
-      "note": "main 2e7afabb (fast-forward to its symbolica-community branch) = 3b6f229f's sources (bd703d09 + the per-row dual grouping test) with its standalone [patch] on Symbolica community 0e2ad04c; features generated-evaluators + rust-codegen"
+      "revision": "07fc754f656c4744c9464f7c0f47d00b708b37e6",
+      "note": "07fc754f (branch symbolica-community-2 = main 2e7afabb + the d0424f9e re-pin) = 3b6f229f's sources (bd703d09 + the per-row dual grouping test) with its standalone [patch] on Symbolica community d0424f9e; features generated-evaluators + rust-codegen"
     },
     {
       "name": "tirust",
@@ -44,8 +44,8 @@
       ],
       "url": "https://github.com/huashengshao/TIRust.git",
       "ref": "main",
-      "revision": "a5d4afbf87a0afc155dc57d2ac633af77a932a16",
-      "note": "main a5d4afbf = PR #35 + branch symbolica-community (per-row evaluation instead of the batch evaluator in iregi-masters/iregi-rust/iregi-cli/iregi-python; Symbolica community 0e2ad04c, oneloopmaster 2e7afabb); behind the default cargo feature tir of the crates that link it; oneloop 2e7afabb and Symbolica 0e2ad04c as this workspace's (one source each); its own manifests' gammaloop crates are not in this graph; 0BSD (licenses/TIRust.txt)"
+      "revision": "2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1",
+      "note": "2b9ba961 (branch symbolica-community-2 = main a5d4afbf + the d0424f9e / oneloopmaster 07fc754f re-pin); a5d4afbf = PR #35 + branch symbolica-community (per-row evaluation instead of the batch evaluator in iregi-masters/iregi-rust/iregi-cli/iregi-python; Symbolica community d0424f9e, oneloopmaster 07fc754f); behind the default cargo feature tir of the crates that link it; oneloop 07fc754f and Symbolica d0424f9e as this workspace's (one source each); its own manifests' gammaloop crates are not in this graph; 0BSD (licenses/TIRust.txt)"
     },
     {
       "name": "feynkit",
@@ -66,7 +66,7 @@
       "role": "Python Symbolica (development Community build)",
       "url": "https://github.com/symbolica-dev/symbolica-community.git",
       "revision": "39b556c7d7dcc919f61d125f60ff83f8d49f7ac3",
-      "patch": "[patch.crates-io] symbolica/numerica/graphica -> symbolica-dev/symbolica 0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7; alphal00p/gammaloop feynkit crates (9102f885) -> a tree identical to ValentinHirschi/gammaloop 6ef9ab3a426844c89cd2c15962ce4a274bb2e43c (9102f885 + the Spenso conj change)",
+      "patch": "[patch.crates-io] symbolica/numerica/graphica -> symbolica-dev/symbolica d0424f9e414d3007889f8a98b404a1b1a91b37a7; alphal00p/gammaloop feynkit crates (9102f885) -> a tree identical to ValentinHirschi/gammaloop 6ef9ab3a426844c89cd2c15962ce4a274bb2e43c (9102f885 + the Spenso conj change)",
       "release_lock": "PyPI symbolica 3.0.3 (dependencies/release-lock.toml)"
     }
   ]

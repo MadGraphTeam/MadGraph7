@@ -482,7 +482,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -813,7 +813,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -928,7 +928,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1224,7 +1224,7 @@ dependencies = [
 [[package]]
 name = "graphica"
 version = "3.0.1"
-source = "git+https://github.com/symbolica-dev/symbolica.git?rev=0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7#0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7"
+source = "git+https://github.com/symbolica-dev/symbolica.git?rev=d0424f9e414d3007889f8a98b404a1b1a91b37a7#d0424f9e414d3007889f8a98b404a1b1a91b37a7"
 dependencies = [
  "ahash",
  "dyn-clone",
@@ -1369,7 +1369,7 @@ dependencies = [
 [[package]]
 name = "iregi-masters"
 version = "0.1.0"
-source = "git+https://github.com/huashengshao/TIRust.git?rev=a5d4afbf87a0afc155dc57d2ac633af77a932a16#a5d4afbf87a0afc155dc57d2ac633af77a932a16"
+source = "git+https://github.com/huashengshao/TIRust.git?rev=2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1#2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1"
 dependencies = [
  "oneloop",
  "symbolica",
@@ -1378,7 +1378,7 @@ dependencies = [
 [[package]]
 name = "iregi-rust"
 version = "0.1.0"
-source = "git+https://github.com/huashengshao/TIRust.git?rev=a5d4afbf87a0afc155dc57d2ac633af77a932a16#a5d4afbf87a0afc155dc57d2ac633af77a932a16"
+source = "git+https://github.com/huashengshao/TIRust.git?rev=2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1#2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1"
 dependencies = [
  "iregi-masters",
  "oneloop",
@@ -1675,7 +1675,7 @@ dependencies = [
 [[package]]
 name = "ninjars"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=be6d3e042df7ff0d3fe18df929c184d31f5a92b3#be6d3e042df7ff0d3fe18df929c184d31f5a92b3"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=ac66cf6c551465f6c63490e112bb41596c2fd821#ac66cf6c551465f6c63490e112bb41596c2fd821"
 dependencies = [
  "feynkit-kinematics",
  "symbolica",
@@ -1685,7 +1685,7 @@ dependencies = [
 [[package]]
 name = "ninjars-graph"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=be6d3e042df7ff0d3fe18df929c184d31f5a92b3#be6d3e042df7ff0d3fe18df929c184d31f5a92b3"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=ac66cf6c551465f6c63490e112bb41596c2fd821#ac66cf6c551465f6c63490e112bb41596c2fd821"
 dependencies = [
  "feynkit-amplitude",
  "feynkit-generator",
@@ -1704,7 +1704,7 @@ dependencies = [
 [[package]]
 name = "ninjars-positional"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=be6d3e042df7ff0d3fe18df929c184d31f5a92b3#be6d3e042df7ff0d3fe18df929c184d31f5a92b3"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=ac66cf6c551465f6c63490e112bb41596c2fd821#ac66cf6c551465f6c63490e112bb41596c2fd821"
 dependencies = [
  "symbolica",
  "thiserror",
@@ -1713,7 +1713,7 @@ dependencies = [
 [[package]]
 name = "ninjars-symbolica"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=be6d3e042df7ff0d3fe18df929c184d31f5a92b3#be6d3e042df7ff0d3fe18df929c184d31f5a92b3"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=ac66cf6c551465f6c63490e112bb41596c2fd821#ac66cf6c551465f6c63490e112bb41596c2fd821"
 dependencies = [
  "ninjars",
  "ninjars-positional",
@@ -1728,7 +1728,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1816,7 +1816,7 @@ dependencies = [
 [[package]]
 name = "numerica"
 version = "3.1.0"
-source = "git+https://github.com/symbolica-dev/symbolica.git?rev=0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7#0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7"
+source = "git+https://github.com/symbolica-dev/symbolica.git?rev=d0424f9e414d3007889f8a98b404a1b1a91b37a7#d0424f9e414d3007889f8a98b404a1b1a91b37a7"
 dependencies = [
  "ahash",
  "astro-float",
@@ -1880,7 +1880,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "oneloop"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=2e7afabb5903814196d7ab39c695ed9cac777aa4#2e7afabb5903814196d7ab39c695ed9cac777aa4"
+source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=07fc754f656c4744c9464f7c0f47d00b708b37e6#07fc754f656c4744c9464f7c0f47d00b708b37e6"
 dependencies = [
  "bincode",
  "symbolica",
@@ -2470,7 +2470,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2816,7 +2816,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 [[package]]
 name = "symbolica"
 version = "3.0.2"
-source = "git+https://github.com/symbolica-dev/symbolica.git?rev=0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7#0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7"
+source = "git+https://github.com/symbolica-dev/symbolica.git?rev=d0424f9e414d3007889f8a98b404a1b1a91b37a7#d0424f9e414d3007889f8a98b404a1b1a91b37a7"
 dependencies = [
  "ahash",
  "append-only-vec",
@@ -2973,7 +2973,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3391,7 +3391,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
