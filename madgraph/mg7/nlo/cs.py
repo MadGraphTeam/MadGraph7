@@ -30,7 +30,7 @@ PDFs and the quarks weighted by their charges. The virtual is the sum of the
 NLO orders, each with its powers of g_s.
 
 The real stream of a real process (a real matrix element of the cs block of
-madspace.subtraction.cs, with its flavor lines) is the real emission minus
+madspace.nlo.cs, with its flavor lines) is the real emission minus
 its dipoles (CSDipoles), with one channel per dipole and Born channel of its
 Born: the CSMapping of the dipole on the Born diagram of the channel. The
 weight of a channel is |c| of its dipole over the sum over the dipoles of
@@ -200,9 +200,9 @@ CA, CF, TR = 3.0, 4.0 / 3.0, 0.5
 
 def qed_kernel_factor(kernel, incoming, flavor):
     """The factor of the weights of CSDipoles for a QED splitting (kernel of
-    madspace.subtraction.cs) of an incoming or final emitter, with flavor the
+    madspace.nlo.cs) of an incoming or final emitter, with flavor the
     emitted fermion."""
-    from madspace.subtraction.cs import COLORS, charge
+    from madspace.nlo.cs import COLORS, charge
 
     colors = COLORS.get(abs(flavor), 1)
     q2 = charge(flavor) ** 2
@@ -546,7 +546,7 @@ class CSBornIntegrand:
         the quarks for a gluon, QED: the photon for a quark, the quarks times
         Q_q^2 for a photon), each times the density of the Born parton of the
         other beam (batch, 2, 2). Dressed leptons take 1 - x of omx."""
-        from madspace.subtraction.cs import charge
+        from madspace.nlo.cs import charge
 
         if self.beam_luminosity is not None:
             return self.beam_luminosity(self.flavors, x1, x2, omx, mu1, mu2), None
@@ -727,7 +727,7 @@ class CSBornIntegrand:
 
 class CSDipole:
     """One dipole of a real process (an entry of the cs block of
-    madspace.subtraction.cs) with the CSBornIntegrand of the subprocess of its
+    madspace.nlo.cs) with the CSBornIntegrand of the subprocess of its
     Born: the Born legs (from 0, in the order of the matrix element) of its
     emitter and its spectator and, for a gluon emitter (a photon in QED), the
     FKS configuration of the spin correlation, with swap the leg of the
@@ -739,7 +739,7 @@ class CSDipole:
     (orders), real_pdgs the flavors of its real process."""
 
     def __init__(self, entry, born, real_pdgs=None):
-        from madspace.subtraction.cs import charge
+        from madspace.nlo.cs import charge
 
         self.entry = entry
         self.born = born
@@ -1269,7 +1269,7 @@ class CSRun(NLORun):
             self.run_card.update(reweight_scale=False, reweight_pdf=False)
 
     def make_integrands(self, directories, n_f, n_l):
-        from madspace.subtraction.cs import read_cs_subtraction
+        from madspace.nlo.cs import read_cs_subtraction
 
         for directory in directories:
             born = CSBornIntegrand(

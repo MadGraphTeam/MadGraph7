@@ -11,7 +11,6 @@
 #include "phasespace/cuts.hpp"
 #include "phasespace/discrete_flow.hpp"
 #include "phasespace/discrete_sampler.hpp"
-#include "phasespace/ew_sudakov.hpp"
 #include "phasespace/flow.hpp"
 #include "phasespace/histograms.hpp"
 #include "phasespace/integrand.hpp"

@@ -53,7 +53,7 @@ from madspace_testing import default_context
 from test_fks_integrand import DATA, IDS, WEIGHTS, channels
 
 import madspace as ms
-from madspace.subtraction.fks import fks_cross_section, fks_splitting_kernels
+from madspace.nlo.fks import fks_cross_section, fks_splitting_kernels
 
 OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
 pytestmark = pytest.mark.skipif(

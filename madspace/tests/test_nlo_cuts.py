@@ -33,7 +33,7 @@ from test_fks_integrand import IDS as INTEGRAND_IDS
 from test_fks_integrand import channels
 
 import madspace as ms
-from madspace.subtraction.fks import (
+from madspace.nlo.fks import (
     fks_configuration_mapping,
     fks_cuts,
     fks_isolated_photons,

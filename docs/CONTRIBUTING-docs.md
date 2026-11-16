@@ -268,7 +268,7 @@ check, not a CI job (the wheel-test environment has no doxygen). The CI gate is
 
 ## Status
 
-**Every class under `phasespace/`, `subtraction/` and `nlo/` is documented** — all
+**Every class under `phasespace/` and `nlo/` is documented** — all
 `Mapping` and `FunctionGenerator` subclasses and the plain helper structs.
 
 **`compgraphs/` is documented** — the in-scope value types and the
@@ -276,7 +276,7 @@ check, not a CI job (the wheel-test environment has no doxygen). The CI gate is
 in `instruction_set.yaml` has `desc:` fields for itself and each input/output.
 
 `python docs/check_doc_convention.py` prints
-`check_doc_convention: all phasespace/, subtraction/, nlo/ and compgraphs/ classes pass`.
+`check_doc_convention: all phasespace/, nlo/ and compgraphs/ classes pass`.
 
 **Every Python-bound `driver/` class is documented** — every class and struct
 reachable from the Python module has a class comment and, following the

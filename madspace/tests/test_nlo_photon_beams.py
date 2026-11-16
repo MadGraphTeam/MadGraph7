@@ -23,7 +23,7 @@ from madgraph.mg7.nlo.grids import write_lhapdf_grid
 from madspace_testing import default_context
 
 import madspace as ms
-from madspace.subtraction.fks import fks_luminosities
+from madspace.nlo.fks import fks_luminosities
 
 
 def epa_proton(x, q2max, single=False):

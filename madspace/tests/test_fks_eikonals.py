@@ -16,7 +16,7 @@ from fks_testing import FKS_DATA, FKS_DATA_IDS, configuration, evaluate, referen
 from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
-from madspace.subtraction.fks import (
+from madspace.nlo.fks import (
     fks_configuration_mapping,
     fks_eikonals,
     real_masses,

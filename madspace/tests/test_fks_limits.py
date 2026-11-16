@@ -33,7 +33,7 @@ from fks_testing import (
 from fks_testing import reference_born_mapping as born_mapping
 
 import madspace as ms
-from madspace.subtraction.fks import (
+from madspace.nlo.fks import (
     fks_configurations,
     fks_limits,
     fks_splitting_kernels,

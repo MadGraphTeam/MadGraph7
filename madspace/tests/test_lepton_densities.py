@@ -25,7 +25,7 @@ from madgraph.mg7.nlo.core import LEPTON_POWER, DressedLeptons, check_run_card
 from madspace_testing import default_context
 
 import madspace as ms
-from madspace.subtraction.fks import fks_luminosities
+from madspace.nlo.fks import fks_luminosities
 
 TESTS = os.path.dirname(os.path.realpath(__file__))
 ROOT = os.path.dirname(os.path.dirname(TESTS))

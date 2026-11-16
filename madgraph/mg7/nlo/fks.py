@@ -128,7 +128,7 @@ class SubprocessIntegrand:
 
     def __init__(self, directory, run_card, param_card, couplings, context, n_f, n_l):
         ms = madspace()
-        from madspace.subtraction.fks import (
+        from madspace.nlo.fks import (
             fks_configuration_mapping,
             fks_cross_section,
             fks_cuts,
@@ -286,7 +286,7 @@ class SubprocessIntegrand:
     def histogram_runtime(self, histograms, jets):
         """The FKSObservableHistograms of the histograms with the jets of the
         run card."""
-        from madspace.subtraction.fks import fks_histograms
+        from madspace.nlo.fks import fks_histograms
 
         return Runtime(
             fks_histograms(self.born, self.configurations, histograms, **jets),
@@ -451,7 +451,7 @@ def ew_sudakov_runtime(provider, context):
     --ewsudakov (sud_mod 0 and 1, as compute_ewsudakov), with the parameters
     of its Fortran, as a Runtime."""
     ms = madspace()
-    from madspace.subtraction.fks import ew_sudakov
+    from madspace.nlo.fks import ew_sudakov
 
     info = provider.ew_sudakov_info()
     p = info["parameters"]

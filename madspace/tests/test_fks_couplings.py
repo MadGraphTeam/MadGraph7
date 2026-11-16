@@ -50,7 +50,7 @@ from test_fks_integrand import (
 
 import madspace as ms
 from madspace.nlo import nlo_scale
-from madspace.subtraction.fks import (
+from madspace.nlo.fks import (
     fks_born_flavor_indices,
     fks_cross_section,
     fks_luminosities,

@@ -28,7 +28,7 @@ from test_nlo_cuts import genkt_jets, jet_eta, random_kinematics
 
 import madspace as ms
 from madspace.nlo import histogram_jet_count, histogram_results
-from madspace.subtraction.fks import fks_configurations, fks_histograms
+from madspace.nlo.fks import fks_configurations, fks_histograms
 
 # the weight lines of sigint at each kinematics of FKSObservableHistograms
 KINEMATICS_TYPES = {

@@ -245,18 +245,18 @@ add_library(
     src/nlo/histograms.cpp
     src/nlo/jets.cpp
     src/nlo/scale.cpp
-    src/subtraction/common.cpp
-    src/subtraction/fks/configuration.cpp
-    src/subtraction/fks/limits.cpp
-    src/subtraction/fks/couplings.cpp
-    src/subtraction/fks/histograms.cpp
-    src/subtraction/fks/mapping.cpp
-    src/subtraction/fks/radiation.cpp
-    src/subtraction/fks/sector.cpp
-    src/subtraction/fks/subtraction.cpp
-    src/subtraction/cs/integrated.cpp
-    src/subtraction/cs/mapping.cpp
-    src/phasespace/ew_sudakov.cpp
+    src/nlo/common.cpp
+    src/nlo/fks_configuration.cpp
+    src/nlo/fks_limits.cpp
+    src/nlo/fks_luminosity.cpp
+    src/nlo/fks_histograms.cpp
+    src/nlo/fks_mapping.cpp
+    src/nlo/fks_radiation.cpp
+    src/nlo/fks_sector.cpp
+    src/nlo/fks_subtraction.cpp
+    src/nlo/cs_integrated.cpp
+    src/nlo/cs_mapping.cpp
+    src/nlo/ew_sudakov.cpp
     src/phasespace/phasespace.cpp
     src/phasespace/multichannel.cpp
     src/phasespace/madnis.cpp
@@ -323,19 +323,18 @@ add_library(
     include/madspace/nlo/histograms.hpp
     include/madspace/nlo/jets.hpp
     include/madspace/nlo/scale.hpp
-    include/madspace/subtraction.hpp
-    include/madspace/subtraction/common.hpp
-    include/madspace/subtraction/fks/configuration.hpp
-    include/madspace/subtraction/fks/couplings.hpp
-    include/madspace/subtraction/fks/histograms.hpp
-    include/madspace/subtraction/fks/limits.hpp
-    include/madspace/subtraction/fks/mapping.hpp
-    include/madspace/subtraction/fks/radiation.hpp
-    include/madspace/subtraction/fks/sector.hpp
-    include/madspace/subtraction/fks/subtraction.hpp
-    include/madspace/subtraction/cs/integrated.hpp
-    include/madspace/subtraction/cs/mapping.hpp
-    include/madspace/phasespace/ew_sudakov.hpp
+    include/madspace/nlo/common.hpp
+    include/madspace/nlo/fks_configuration.hpp
+    include/madspace/nlo/fks_luminosity.hpp
+    include/madspace/nlo/fks_histograms.hpp
+    include/madspace/nlo/fks_limits.hpp
+    include/madspace/nlo/fks_mapping.hpp
+    include/madspace/nlo/fks_radiation.hpp
+    include/madspace/nlo/fks_sector.hpp
+    include/madspace/nlo/fks_subtraction.hpp
+    include/madspace/nlo/cs_integrated.hpp
+    include/madspace/nlo/cs_mapping.hpp
+    include/madspace/nlo/ew_sudakov.hpp
     include/madspace/phasespace/phasespace.hpp
     include/madspace/phasespace/multichannel.hpp
     include/madspace/phasespace/madnis.hpp
@@ -423,12 +422,13 @@ set(
     src/kernels/nlo/cuts.hpp
     src/kernels/nlo/histograms.hpp
     src/kernels/nlo/scale.hpp
-    src/kernels/subtraction/common.hpp
-    src/kernels/subtraction/fks/couplings.hpp
-    src/kernels/subtraction/fks/radiation.hpp
-    src/kernels/subtraction/fks/subtraction.hpp
-    src/kernels/subtraction/cs/integrated.hpp
-    src/kernels/subtraction/cs/mapping.hpp
+    src/kernels/nlo/common.hpp
+    src/kernels/nlo/fks_luminosity.hpp
+    src/kernels/nlo/fks_radiation.hpp
+    src/kernels/nlo/fks_subtraction.hpp
+    src/kernels/nlo/cs_integrated.hpp
+    src/kernels/nlo/cs_mapping.hpp
+    src/kernels/nlo/ew_sudakov.hpp
 )
 
 

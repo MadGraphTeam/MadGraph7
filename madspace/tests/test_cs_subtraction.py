@@ -1,4 +1,4 @@
-"""madspace.subtraction.cs: the Catani-Seymour dipoles of real processes, from their
+"""madspace.nlo.cs: the Catani-Seymour dipoles of real processes, from their
 flavors, and the cs block of an aMC@NLO output.
 
 The dipoles of every real process of the provider outputs
@@ -13,7 +13,7 @@ import os
 import pytest
 from fks_testing import fks_output
 
-from madspace.subtraction.cs import (
+from madspace.nlo.cs import (
     born_order,
     charge,
     cs_dipoles,
