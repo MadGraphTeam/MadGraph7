@@ -7907,7 +7907,8 @@ class GridPackCmd(MadEventCmd):
         
         # with max_overweight_truncation set, the events heavier than the maximum
         # weight keep their weight, as in the non-gridpack combination
-        keep_ow = float(self.run_card.get('max_overweight_truncation', -1)) > 0
+        keep_ow = 'max_overweight_truncation' in self.run_card and \
+            float(self.run_card['max_overweight_truncation']) > 0
         partials = 0 # if too many file make some partial unweighting
         sum_xsec, sum_xerru, sum_axsec = 0,[],0
         partials_info = []
