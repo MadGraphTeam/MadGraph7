@@ -168,15 +168,17 @@ def _counts_cell(report: Any, color: bool) -> str | None:
                 else "stability points from "
                 f"{duration_text(DEFAULT_STABILITY_SECONDS_PER_CORE)} per worker"
             )
-        return "; ".join(parts) + took_text
-    if rule == "counts":
-        return f"as given{took_text}"
-    text = (
-        f"from the time budgets: {DEFAULT_RUNTIME_SECONDS:g} s for the runtime "
-        f"timing, {duration_text(DEFAULT_STABILITY_SECONDS_PER_CORE)} per "
-        f"stability worker{took_text}"
-    )
+        text = "; ".join(parts) + took_text
+    elif rule == "counts":
+        text = f"as given{took_text}"
+    else:
+        text = (
+            f"from the time budgets: {DEFAULT_RUNTIME_SECONDS:g} s for the runtime "
+            f"timing, {duration_text(DEFAULT_STABILITY_SECONDS_PER_CORE)} per "
+            f"stability worker{took_text}"
+        )
     if not plan.get("feasible", True):
+        # A budget in force the minimums exceed (``Plan.unmet``).
         text += palette.paint(
             "; cannot be met: the minimums take about "
             + duration_text(float(plan.get("minimum_seconds") or 0.0)),

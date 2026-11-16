@@ -126,6 +126,9 @@ class Plan:
     budget_seconds: float | None = None
     feasible: bool = True
     minimum_seconds: float = 0.0
+    # The phases whose budget in force their minimums exceed ("runtime",
+    # "stability"; ``feasible`` is False when there is one).
+    unmet: tuple[str, ...] = ()
 
     def record(self) -> dict[str, object]:
         """The JSON record of the plan."""
@@ -149,6 +152,7 @@ class Plan:
             "budget_seconds": self.budget_seconds,
             "feasible": self.feasible,
             "minimum_seconds": self.minimum_seconds,
+            "unmet": list(self.unmet),
         }
 
 
@@ -281,6 +285,7 @@ def plan(
     runtime_counts_given: bool = False,
     stability_points_given: int | None = None,
     tail_seconds_per_point: float = 0.0,
+    runtime_target: float = DEFAULT_RUNTIME_SECONDS,
 ) -> Plan:
     """The counts of a profile (module docstring) from the backends'
     ``costs``: the phases asked for (``runtime``, ``stability``), the
@@ -291,7 +296,8 @@ def plan(
     ``runtime_counts_given`` / ``stability_points_given``: the counts given
     (honoured without ``completion``); ``tail_seconds_per_point``: the
     serial seconds per stability point after the run (statistics, records),
-    part of the completion time."""
+    part of the completion time; ``runtime_target``: the runtime counts'
+    time budget per backend when they are given (``--target-runtime``)."""
 
     backends = list(costs)
     values = [costs[name] for name in backends]
@@ -389,14 +395,29 @@ def plan(
             )
         )
         wall = stability_start + stability_wall(values, points, workers)
-    # The default budgets cannot be met when the minimums alone (start-ups
-    # aside: outside the budgets by nature) exceed them by the tolerance.
-    feasible = rule != "time budgets" or (
-        minimum_runtime - sum(c.start for c in values) * runtime
-        <= BUDGET_TOLERANCE * DEFAULT_RUNTIME_SECONDS
-        and minimum_stability - stability_start * stability
-        <= BUDGET_TOLERANCE * DEFAULT_STABILITY_SECONDS_PER_CORE
-    )
+    # A budget in force (the default ones, or --target-runtime with the
+    # runtime counts given) cannot be met when its phase's minimums alone
+    # (start-ups aside: outside the budgets by nature) exceed it by the
+    # tolerance, whatever else was given. The stability points given set no
+    # budget.
+    unmet = []
+    if runtime:
+        budget = (
+            DEFAULT_RUNTIME_SECONDS
+            if not runtime_counts_given
+            else runtime_target * len(values)
+        )
+        if minimum_runtime - sum(c.start for c in values) > BUDGET_TOLERANCE * budget:
+            unmet.append("runtime")
+    if (
+        stability
+        and stability_points_given is None
+        and (
+            minimum_stability - stability_start
+            > BUDGET_TOLERANCE * DEFAULT_STABILITY_SECONDS_PER_CORE
+        )
+    ):
+        unmet.append("stability")
     return Plan(
         rule,
         counts,
@@ -404,8 +425,9 @@ def plan(
         wall,
         runtime_seconds + wall,
         None,
-        feasible,
+        not unmet,
         elapsed + minimum,
+        tuple(unmet),
     )
 
 

@@ -640,3 +640,32 @@ def test_effective_benchmark_resets_every_count_and_size():
     plain = replace(BenchmarkConfig(), **given)
     kept, named = effective_benchmark(plain)
     assert kept is plain and set(named) == flags
+
+
+def test_a_budget_in_force_is_checked_whatever_else_is_given():
+    """recheck2 N2: with a stability count given the runtime still runs on
+    its default 10 s budget; on the user's process its minimums take minutes,
+    so the plan names it unmet. A runtime count given makes --target-runtime
+    (per backend) the budget in force; stability points given set none."""
+
+    dear = {
+        "ninjars": Costs(0.67, 35.0, 2.5 * 0.67, 35.0, 13.0),
+        "tirust": Costs(3.0, 11.0, 7.5, 11.0, 13.0),
+    }
+    cheap = {name: _costs(2e-4) for name in ("ninjars", "tirust")}
+    common = dict(runtime=True, stability=True, workers=8, lanes=LANES, batch_max=128)
+    points = plan(dear, **common, stability_points_given=10)
+    assert points.rule == "counts" and points.unmet == ("runtime",)
+    assert not points.feasible and points.record()["unmet"] == ["runtime"]
+    target = plan(dear, **common, runtime_counts_given=True, runtime_target=2.0)
+    assert "runtime" in target.unmet
+    roomy = plan(
+        dear,
+        **common,
+        runtime_counts_given=True,
+        runtime_target=600.0,
+        stability_points_given=10,
+    )
+    assert roomy.feasible and roomy.unmet == ()
+    assert plan(cheap, **common, stability_points_given=10).feasible
+    assert plan(cheap, **common).feasible
