@@ -703,6 +703,19 @@ def profile_loop(
     future: dict[str, float] = {
         f"runtime:{b}": counts.expected for b, counts in planned.runtime.items()
     }
+    if want_runtime and not planned.runtime:
+        # The counts given: their cost at the measured rates (at least the
+        # warm-ups and the minimum calls, the budget, the reference's).
+        for b, c in costs.items():
+            calls = bench.warmup_runs + max(bench.minimum_samples, 1)
+            seconds = c.start + max(
+                calls * bench.batch_size * c.binary64,
+                bench.warmup_runs * bench.batch_size * c.binary64
+                + float(bench.target_runtime),
+            )
+            if c.reference is not None:
+                seconds += c.reference + max(float(bench.target_runtime), c.reference)
+            future[f"runtime:{b}"] = seconds
     if want_stability:
         future["stability"] = planned.stability_seconds
     current: list[Any] = [None]
