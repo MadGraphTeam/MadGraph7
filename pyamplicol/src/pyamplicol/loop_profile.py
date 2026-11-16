@@ -586,6 +586,35 @@ def _runtime_setup(
     return text
 
 
+# The count and size settings --completion-time overrules: (its option, the
+# benchmark field it sets on the command line and in a run card).
+_COUNT_OPTIONS = (
+    ("--target-runtime", "target_runtime"),
+    ("--minimum-samples", "minimum_samples"),
+    ("--batch-size", "batch_size"),
+    ("--warmup-runs", "warmup_runs"),
+    ("--stability-points", "stability_points"),
+)
+
+
+def effective_benchmark(bench: Any) -> tuple[Any, list[str]]:
+    """The benchmark settings a profile runs with, and the count and size
+    options given (``_COUNT_OPTIONS``, command line or run card): with
+    --completion-time every one of them back at its default (unmarked as
+    given; the plan sets them), else ``bench`` as given."""
+
+    from pyamplicol.config.models import BenchmarkConfig, is_default
+
+    given = [
+        flag for flag, name in _COUNT_OPTIONS if not is_default(getattr(bench, name))
+    ]
+    if bench.completion_time is None or not given:
+        return bench, given
+    defaults = BenchmarkConfig()
+    reset = {name: getattr(defaults, name) for _, name in _COUNT_OPTIONS}
+    return replace(bench, **reset), given
+
+
 def profile_loop(
     artifact: os.PathLike[str] | str,
     config: RunConfig,
@@ -605,16 +634,23 @@ def profile_loop(
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import DEFAULTS
     from pyamplicol.profile_plan import (
+        DEFAULT_RUNTIME_SECONDS,
+        DEFAULT_STABILITY_SECONDS_PER_CORE,
         MEASURE_REPEAT_SECONDS,
         runtime_counts,
         warmup_seconds,
     )
     from pyamplicol.profile_plan import plan as plan_profile
 
-    bench = config.benchmark
+    completion = config.benchmark.completion_time
+    # --completion-time overrules every count and size (command line and run
+    # card alike): the given ones are named once, then reset to their
+    # defaults, so that nothing downstream sees them.
+    bench, overruled = effective_benchmark(config.benchmark)
+    if bench is not config.benchmark:
+        config = replace(config, benchmark=bench)
     evaluation = config.evaluation
     path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
-    completion = bench.completion_time
     monitor = _Monitor(progress, f"Profile {path.name}", completion)
     options: dict[str, Any] = {}
     if evaluation.reduction_target is not None:
@@ -657,17 +693,6 @@ def profile_loop(
     stability_given = (
         None if is_default(bench.stability_points) else int(bench.stability_points)
     )
-    overruled = [
-        flag
-        for flag, name in (
-            ("--target-runtime", "target_runtime"),
-            ("--minimum-samples", "minimum_samples"),
-            ("--batch-size", "batch_size"),
-            ("--warmup-runs", "warmup_runs"),
-            ("--stability-points", "stability_points"),
-        )
-        if not is_default(getattr(bench, name))
-    ]
     if completion is not None and overruled:
         _notice(
             "--completion-time "
@@ -711,11 +736,33 @@ def profile_loop(
         stability_points_given=stability_given if completion is None else None,
     )
     if not planned.feasible:
+        # One number, the header's too: the whole command with the minimums.
+        asked = (
+            f"--completion-time {_duration(completion)}"
+            if completion is not None
+            else "the default time budgets ("
+            + ", ".join(
+                part
+                for part, wanted in (
+                    (
+                        f"{DEFAULT_RUNTIME_SECONDS:g} s for the runtime timing",
+                        want_runtime,
+                    ),
+                    (
+                        f"{_duration(DEFAULT_STABILITY_SECONDS_PER_CORE)} per "
+                        "stability worker",
+                        want_stability,
+                    ),
+                )
+                if wanted
+            )
+            + ")"
+        )
         _notice(
-            f"--completion-time {_duration(completion)} cannot be met: the "
-            "minimums (one timed call of one chunk per backend, five "
-            "stability points per backend) take about "
-            f"{_duration(monitor.elapsed() + planned.minimum_seconds)}; "
+            f"{asked} cannot be met on this process: the minimums (one timed "
+            "call of one chunk per backend and its reference point"
+            + (", five stability points per backend" if want_stability else "")
+            + f") take about {_duration(planned.minimum_seconds)} in all; "
             "running the minimums",
             warning=True,
         )
@@ -1128,9 +1175,13 @@ class _Monitor:
 
         self.sink = sink
         self.task = "loop-profile"
-        # The command's clock starts with its process (the interpreter and
-        # the imports count: the user waits for them too).
-        self.begin = time.perf_counter() - _process_age()
+        # The command's clock (``pyamplicol._clock``: the interpreter's start
+        # and the imports count, the user waits for them too; an in-process
+        # call from its entry), else this profile's start.
+        from pyamplicol._clock import command_start
+
+        started = command_start()
+        self.begin = time.perf_counter() if started is None else started
         self.budget = budget
         self._readings: dict[str, tuple[str | None, str | None]] = {}
         self.remaining: Any = None
@@ -1197,19 +1248,6 @@ class _Monitor:
                     elapsed_seconds=self.elapsed(),
                 )
             )
-
-
-def _process_age() -> float:
-    """The seconds since this process started (Linux ``/proc``; 0 where it
-    cannot be read)."""
-
-    try:
-        stat = Path("/proc/self/stat").read_text(encoding="utf-8")
-        uptime = float(Path("/proc/uptime").read_text(encoding="utf-8").split()[0])
-        start = int(stat[stat.rfind(")") + 1 :].split()[19])
-        return max(uptime - start / os.sysconf("SC_CLK_TCK"), 0.0)
-    except (OSError, ValueError, IndexError, AttributeError):
-        return 0.0
 
 
 def _per_point_text(seconds: float | None) -> str | None:

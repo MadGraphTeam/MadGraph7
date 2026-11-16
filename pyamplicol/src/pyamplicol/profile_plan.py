@@ -40,6 +40,9 @@ STABILITY_MINIMUM = 5
 # The default budgets when neither --completion-time nor counts are given.
 DEFAULT_RUNTIME_SECONDS = 10.0
 DEFAULT_STABILITY_SECONDS_PER_CORE = 60.0
+# A budget counts as met within this factor (the acceptance of
+# --completion-time, and when the default budgets are said to be exceeded).
+BUDGET_TOLERANCE = 1.5
 # The calls a stable median is planned on when the budget affords them.
 STABLE_CALLS = 5
 # The reference pass's share of a backend's runtime budget.
@@ -104,8 +107,9 @@ class Plan:
     run's ``stability_points`` (None: not asked for) and its expected wall
     seconds, the ``expected_seconds`` of everything planned, the requested
     ``budget_seconds`` (None without --completion-time), whether the budget
-    can be met (``feasible``) and what the minimums alone take
-    (``minimum_seconds``)."""
+    can be met (``feasible``: --completion-time, or the default budgets
+    within ``BUDGET_TOLERANCE``) and the whole command's seconds with the
+    minimums alone (``minimum_seconds``: the time spent so far included)."""
 
     rule: str
     runtime: Mapping[str, RuntimeCounts] = field(default_factory=dict)
@@ -303,7 +307,7 @@ def plan(
                 minimum,
                 completion,
                 False,
-                minimum,
+                elapsed + minimum,
             )
         free = left - (stability_start if stability else 0.0)
         runtime_budget = 0.0
@@ -336,7 +340,7 @@ def plan(
             runtime_budget + wall,
             completion,
             True,
-            minimum,
+            elapsed + minimum,
         )
     rule = (
         "counts"
@@ -363,7 +367,24 @@ def plan(
             )
         )
         wall = stability_start + stability_wall(values, points, workers)
-    return Plan(rule, counts, points, wall, runtime_seconds + wall, None, True, minimum)
+    # The default budgets cannot be met when the minimums alone (start-ups
+    # aside: outside the budgets by nature) exceed them by the tolerance.
+    feasible = rule != "time budgets" or (
+        minimum_runtime - sum(c.start for c in values) * runtime
+        <= BUDGET_TOLERANCE * DEFAULT_RUNTIME_SECONDS
+        and minimum_stability - stability_start * stability
+        <= BUDGET_TOLERANCE * DEFAULT_STABILITY_SECONDS_PER_CORE
+    )
+    return Plan(
+        rule,
+        counts,
+        points,
+        wall,
+        runtime_seconds + wall,
+        None,
+        feasible,
+        elapsed + minimum,
+    )
 
 
 def _split_runtime(

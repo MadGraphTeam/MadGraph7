@@ -208,6 +208,26 @@ def run_cli(
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
 ) -> int:
+    from pyamplicol import _clock
+
+    # The command's clock (``pyamplicol._clock``) for its time budgets.
+    _clock.begin_command()
+    try:
+        return _run_cli(
+            argv, services=services, stdin=stdin, stdout=stdout, stderr=stderr
+        )
+    finally:
+        _clock.end_command()
+
+
+def _run_cli(
+    argv: Sequence[str] | None,
+    *,
+    services: CliServices | None,
+    stdin: TextIO | None,
+    stdout: TextIO | None,
+    stderr: TextIO | None,
+) -> int:
     output_stream = sys.stdout if stdout is None else stdout
     diagnostic_stream = sys.stderr if stderr is None else stderr
     input_stream = sys.stdin if stdin is None else stdin
@@ -401,6 +421,12 @@ def run_cli(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from pyamplicol import _clock
+
+    if argv is None:
+        # The command line: its clock starts with the package's first
+        # import (the interpreter's start, portably).
+        _clock.mark_entry(_clock.IMPORTED)
     code = run_cli(argv)
     if argv is None:
         # The command line (not an in-process call): the result is written.

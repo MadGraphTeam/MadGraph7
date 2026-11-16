@@ -705,3 +705,44 @@ def test_the_stability_run_without_a_ground_truth(uux_ddx):
     assert "true digits" not in rendered.split("Field descriptions")[0]
     assert "'none (estimates only)': no reference pass" in " ".join(rendered.split())
     assert max(len(line) for line in rendered.splitlines()) <= 100
+
+
+@pytest.mark.loop_physics
+def test_the_completion_time_overrules_given_counts_end_to_end(uux_ddx):
+    """profile --completion-time with --stability-points and --batch-size
+    given (verifier D2): the stability run is planned from the time (a
+    deadline, its own point count) and the batch is not capped by the given
+    size; the overruled options are named."""
+
+    from pyamplicol.cli.main import run_cli
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    code = run_cli(
+        [
+            "profile",
+            str(uux_ddx),
+            "--runtime",
+            "--stability",
+            "--stability-points",
+            "7",
+            "--batch-size",
+            "32",
+            "--n_core",
+            "1",
+            "--completion-time",
+            "12s",
+            "--progress",
+            "off",
+            "--json",
+        ],
+        stdout=stdout,
+        stderr=stderr,
+    )
+    assert code == 0, stderr.getvalue()
+    report = json.loads(stdout.getvalue())
+    assert set(report["plan"]["overruled"]) == {"--stability-points", "--batch-size"}
+    setup = report["stability_setup"]
+    assert setup["deadline"] is not None
+    assert setup["points"] != 7 and setup["points"] >= 5
+    assert all(row["profile"]["batch"] != 32 for row in report["runtime"])
+    assert 6.0 <= report["seconds"] <= 18.0
