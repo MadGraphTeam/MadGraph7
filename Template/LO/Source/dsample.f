@@ -1776,8 +1776,8 @@ c     to which its events are normalised.
       common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
      &     last_xnorm, last_it
 c     last_on: this job adapts its grid from scratch (normal refine), or starts
-c     from a stored grid with max_overweight_truncation set (gridpack); other
-c     stored-grid jobs (MadSpin decays) keep the old stop rule
+c     from a stored grid (gridpack, second refine) with max_overweight_truncation
+c     set; the other stored-grid jobs keep the old stop rule
       logical last_stop, last_on
       integer last_min
       save last_on, last_min
@@ -1808,8 +1808,8 @@ c-----
       if (first_time) then
          first_time = .false.
          last_it = .false.
-         last_on = (use_cut .ne. 0 .and. use_cut .ne. -2) .or.
-     &        (use_cut .eq. 0 .and. max_overweight_truncation .gt. 0d0)
+         last_on = use_cut .ne. -2 .and. (use_cut .ne. 0 .or.
+     &        max_overweight_truncation .gt. 0d0)
          last_ufix = 0d0
          last_xnorm = 0d0
          last_lumi = 0d0
@@ -2420,8 +2420,9 @@ c     (no further grid update happens) until its number of unweighted events
 c     at this iteration's maximum weight reaches the request (plus three
 c     standard deviations, so that the job does not end short); its events
 c     are unweighted against that same maximum weight and kept whatever they
-c     contain. Jobs that start from a stored grid (last_on false: gridpack,
-c     MadSpin decays) keep the previous rule.
+c     contain. Jobs that start from a stored grid (gridpack, a second refine,
+c     MadSpin decays) keep the previous rule unless max_overweight_truncation
+c     is set (last_on).
 c     The request is counted with this iteration's own mean, the estimate the
 c     job reports and normalises the last iteration with: the (x/sigma)^2
 c     average tmeant is biased low with heavy-tailed weights. The decision is
