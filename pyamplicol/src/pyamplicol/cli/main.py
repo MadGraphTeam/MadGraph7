@@ -109,6 +109,21 @@ def _json_value(value: object) -> object:
     raise TypeError(f"cannot serialize CLI result of type {type(value).__name__}")
 
 
+def _terminal_columns(stream: TextIO) -> int | None:
+    """A terminal's width (tables are fitted within it); None for a file or
+    a pipe (tables keep their natural width)."""
+
+    import os
+
+    try:
+        if not stream.isatty():
+            return None
+        columns = os.get_terminal_size(stream.fileno()).columns
+    except (AttributeError, OSError, ValueError):
+        return None
+    return columns if columns >= 40 else None
+
+
 def write_result(
     value: object,
     *,
@@ -138,7 +153,10 @@ def write_result(
                 value.notice(), palette.RECOVERED, color=color, bold=True
             )
             value = value.result
-        rendered = render_summary(value, color=color)
+        from pyamplicol.reporting.summary import table_width
+
+        with table_width(_terminal_columns(stream)):
+            rendered = render_summary(value, color=color)
         if rendered is None:
             raise RuntimeError(
                 "human table rendering is unavailable; use --json for "

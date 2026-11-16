@@ -137,3 +137,19 @@ def test_combined_total() -> None:
     bound = combined(active, 30.0, later_known=False)
     assert bound.estimated
     assert combined(None, 0.0, later_known=True) is None
+
+
+def test_summary_tables_fit_the_terminal_width() -> None:
+    from pyamplicol.reporting.summary import _ANSI_STYLE, _FittedTables, table_width
+
+    import prettytable
+
+    fitted = _FittedTables(prettytable, 60)
+    table = fitted.PrettyTable(("field", "value"))
+    table.add_row(("output", "/a/very/long/path/" * 6))
+    table.add_row(("files", "\x1b[32m58 files; 32.56 MiB total; 1446 payloads\x1b[0m"))
+    text = table.get_string()
+    assert max(len(_ANSI_STYLE.sub("", line)) for line in text.splitlines()) <= 60
+    assert "| field  |" in text  # the narrow column is not wrapped
+    with table_width(None):
+        pass

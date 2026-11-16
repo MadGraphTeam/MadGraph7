@@ -7,7 +7,9 @@ import importlib
 import math
 import re
 import textwrap
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, fields, is_dataclass
 from decimal import Decimal
 from fractions import Fraction
@@ -3469,6 +3471,62 @@ def _mapping_summary(
     return "\n\n".join(sections)
 
 
+_TABLE_WIDTH: ContextVar[int | None] = ContextVar(
+    "pyamplicol_summary_table_width", default=None
+)
+
+
+@contextmanager
+def table_width(width: int | None) -> Iterator[None]:
+    """Fit the tables ``render_summary`` renders in this block within
+    ``width`` columns (a terminal's; None: their natural width)."""
+
+    token = _TABLE_WIDTH.set(width)
+    try:
+        yield
+    finally:
+        _TABLE_WIDTH.reset(token)
+
+
+class _FittedTables:
+    """The prettytable module with tables that fit within ``width``
+    columns: a table wider than that has its widest column narrowed (its
+    cells wrap) until it fits, never a column below ``_FIT_MINIMUM``."""
+
+    def __init__(self, module: Any, width: int) -> None:
+        self._module = module
+        base = module.PrettyTable
+        limit = width
+
+        class FittedTable(base):  # type: ignore[misc, valid-type]
+            def get_string(self, **kwargs: Any) -> str:
+                text = str(super().get_string(**kwargs))
+                for _ in range(16):
+                    widest = max(
+                        (len(_ANSI_STYLE.sub("", line)) for line in text.splitlines()),
+                        default=0,
+                    )
+                    widths = list(getattr(self, "_widths", ()) or ())
+                    names = list(getattr(self, "_field_names", ()) or ())
+                    if widest <= limit or not widths or len(widths) != len(names):
+                        break
+                    column = max(range(len(widths)), key=widths.__getitem__)
+                    narrower = max(widths[column] - (widest - limit), _FIT_MINIMUM)
+                    if narrower >= widths[column]:
+                        break
+                    self.max_width[names[column]] = narrower
+                    text = str(super().get_string(**kwargs))
+                return text
+
+        self.PrettyTable = FittedTable
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._module, name)
+
+
+_FIT_MINIMUM = 16
+
+
 def render_summary(value: object, *, color: bool = False) -> str | None:
     """Return colored human tables for every CLI result shape."""
 
@@ -3476,6 +3534,13 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
         prettytable: Any = importlib.import_module("prettytable")
     except ImportError:
         return None
+    width = _TABLE_WIDTH.get()
+    from pyamplicol.benchmarking import VirtualProfileResult as _Profiled
+    from pyamplicol.loop_profile import LoopProfileReport as _Profile
+
+    if width is not None and not isinstance(value, (_Profile, _Profiled)):
+        # The profile tables lay themselves out within their line width.
+        prettytable = _FittedTables(prettytable, width)
     from pyamplicol.api.results import (
         BenchmarkResult,
         GenerationResult,
