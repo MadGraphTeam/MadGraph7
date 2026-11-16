@@ -1269,7 +1269,7 @@ def _stage_dirty_release_build_info(overlay: Path, version: str) -> None:
     exact publishable marker and therefore reject this one.
     """
 
-    if not (ROOT / ".git").exists() or _clean_source_revision() is not None:
+    if not _in_git_checkout() or _clean_source_revision() is not None:
         _stage_release_build_info(overlay, version)
         return
     reason = dirty_checkout_reason(ROOT, environment=_clean_environment())
