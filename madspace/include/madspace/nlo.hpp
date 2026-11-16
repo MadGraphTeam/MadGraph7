@@ -10,6 +10,7 @@
 #include "nlo/ew_sudakov.hpp"
 #include "nlo/fks_configuration.hpp"
 #include "nlo/fks_histograms.hpp"
+#include "nlo/fks_integrand.hpp"
 #include "nlo/fks_limits.hpp"
 #include "nlo/fks_mapping.hpp"
 #include "nlo/fks_radiation.hpp"

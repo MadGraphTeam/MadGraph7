@@ -4462,6 +4462,63 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSCrossSection::born_luminosity")
         );
 
+    py::classh<FKSChannelIntegrand, FunctionGenerator>(
+        m, "FKSChannelIntegrand", pydoc::doc("FKSChannelIntegrand")
+    )
+        .def(
+            py::init<
+                const FKSKinematics&,
+                const FKSSplittingKernels&,
+                const NLOCuts&,
+                const NLOScale&,
+                const FKSCrossSection&,
+                const MatrixElement&,
+                const std::vector<MatrixElement>&,
+                const std::optional<MatrixElement>&,
+                const std::vector<me_int_t>&,
+                const std::vector<me_int_t>&,
+                const std::vector<int>&,
+                std::size_t,
+                double,
+                double,
+                const std::vector<double>&,
+                const std::vector<double>&,
+                double>(),
+            py::arg("kinematics"),
+            py::arg("kernels"),
+            py::arg("cuts"),
+            py::arg("born_scale"),
+            py::arg("cross_section"),
+            py::arg("born"),
+            py::arg("reals"),
+            py::arg("loop"),
+            py::arg("real_indices"),
+            py::arg("spin_legs"),
+            py::arg("color_representations"),
+            py::arg("channel"),
+            py::arg("g_ew"),
+            py::arg("alpha"),
+            py::arg("tagged_nlo") = std::vector<double>{},
+            py::arg("tagged_born") = std::vector<double>{},
+            py::arg("tagged_alpha") = 1.,
+            pydoc::doc("FKSChannelIntegrand::FKSChannelIntegrand")
+        )
+        .def(
+            "configuration_count",
+            &FKSChannelIntegrand::configuration_count,
+            pydoc::doc("FKSChannelIntegrand::configuration_count")
+        )
+        .def(
+            "born_order_count",
+            &FKSChannelIntegrand::born_order_count,
+            pydoc::doc("FKSChannelIntegrand::born_order_count")
+        )
+        .def(
+            "nlo_order_count",
+            &FKSChannelIntegrand::nlo_order_count,
+            pydoc::doc("FKSChannelIntegrand::nlo_order_count")
+        );
+
     py::classh<EnergyScale, FunctionGenerator> scale(
         m, "EnergyScale", pydoc::doc("EnergyScale")
     );

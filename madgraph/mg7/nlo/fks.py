@@ -305,6 +305,78 @@ class SubprocessIntegrand:
     def matrix_element_calls(self):
         return self.provider.statistics
 
+    def channel_integrand(self, channel, context):
+        """The C++ integrand of a channel (FKSChannelIntegrand of madspace)
+        with the matrix elements of the provider as UMAMI libraries in the
+        context (ProviderLibraries of nlo/libraries.py, added once), the same
+        integrand as evaluate at the same random numbers, configurations and
+        points with the virtual. The libraries evaluate at the e of the
+        model, so that the blocks are those of the provider."""
+        from madgraph.mg7.nlo.libraries import ProviderLibraries
+
+        ms = madspace()
+        element = ms.MatrixElement
+        if getattr(self, "_libraries", None) is None:
+            self._libraries = ProviderLibraries(self.provider, self.name)
+            self._apis = self._libraries.add_to(context)
+        apis = self._apis
+        born_outputs = [
+            element.squared_orders_out,
+            element.diagram_amp2_out,
+            element.spin_correlated_out,
+        ]
+        if self._libraries.has_color:
+            born_outputs.append(element.color_correlated_out)
+        born = element(
+            apis["born"],
+            [
+                element.momenta_in,
+                element.alpha_s_in,
+                element.g_ew_in,
+                element.spin_legs_in,
+                element.spin_vectors_in,
+            ],
+            born_outputs,
+        )
+        reals = [
+            element(
+                api,
+                [element.momenta_in, element.alpha_s_in, element.g_ew_in],
+                [element.squared_orders_out],
+            )
+            for api in apis["reals"]
+        ]
+        loop = element(
+            apis["loop"],
+            [
+                element.momenta_in,
+                element.alpha_s_in,
+                element.g_ew_in,
+                element.scale_in,
+            ],
+            [element.loop_out],
+        )
+        tagged = self.tagged or {}
+        return ms.FKSChannelIntegrand(
+            self.kinematics[channel].function,
+            self.kernels.function,
+            self.pass_cuts.function,
+            self.born_scale.function,
+            self.cross_section.function,
+            born,
+            reals,
+            loop,
+            self._libraries.real_indices(),
+            self._libraries.spin_legs(),
+            apis["born"].color_representations(),
+            channel,
+            self._libraries.e,
+            self.alpha,
+            tagged_nlo=[float(v) for v in tagged.get("nlo", [])],
+            tagged_born=[float(v) for v in tagged.get("born", [])],
+            tagged_alpha=float(tagged.get("alpha", 1.0)),
+        )
+
     def close(self):
         self.provider.close()
 

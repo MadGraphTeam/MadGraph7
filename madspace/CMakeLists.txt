@@ -269,6 +269,7 @@ add_library(
     src/nlo/fks_limits.cpp
     src/nlo/luminosity.cpp
     src/nlo/fks_histograms.cpp
+    src/nlo/fks_integrand.cpp
     src/nlo/fks_mapping.cpp
     src/nlo/fks_radiation.cpp
     src/nlo/fks_sector.cpp
