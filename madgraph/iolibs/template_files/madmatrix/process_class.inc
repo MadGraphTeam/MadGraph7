@@ -89,8 +89,7 @@
     bool m_debug;
 
     // Physics model parameters to be read from file (initProc function), owned by this process
-    std::unique_ptr<Parameters> m_ownedPars;
-    Parameters* m_pars;
+    std::unique_ptr<Parameters> m_pars;
     std::vector<fptype> m_masses; // external particle masses
     ProcessParameters m_params{}; // see parameters()
 

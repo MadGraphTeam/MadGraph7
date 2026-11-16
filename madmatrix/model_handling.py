@@ -1597,13 +1597,11 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         else:
             replace_dict['set_independent_parameters'] += '\n  // (none)'
         replace_dict['set_independent_couplings'] = self.write_set_parameters(self.coups_indep)
-        replace_dict['set_dependent_parameters'] = self.write_set_parameters(self.params_dep)
-        replace_dict['set_dependent_couplings'] = self.write_set_parameters(list(self.coups_dep.values()))
         # NB: unlike the plain (mg7_v5) backend, dependent (aS-dependent) parameters
         # and couplings are NOT persistent members of this Parameters class at all
         # (their declarations are commented out above): they are recomputed fresh
         # every event batch by computeDependentCouplings(), bypassing the Parameters
-        # singleton entirely. Only independent parameters/couplings (and never 'aS',
+        # class entirely. Only independent parameters/couplings (and never 'aS',
         # whose declaration is likewise commented out) can be registered here.
         # Two separate calls/maps, not one combined list into one map: model
         # parameters (mdl_*) always stay plain cxsmpl<double> (registered
@@ -1629,8 +1627,6 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                                line for line in self.write_print_parameters(self.params_indep).split('\n') ]
         replace_dict['print_independent_parameters'] = '\n'.join( print_params_indep )
         replace_dict['print_independent_couplings'] = self.write_print_parameters(self.coups_indep)
-        replace_dict['print_dependent_parameters'] = self.write_print_parameters(self.params_dep)
-        replace_dict['print_dependent_couplings'] = self.write_print_parameters(list(self.coups_dep.values()))
         if 'include_prefix' not in replace_dict:
             replace_dict['include_prefix'] = ''
         replace_dict['nicoup'] = len( self.coups_indep )
@@ -2031,7 +2027,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                            '      &Parameters::' + ',\n      &Parameters::'.join(coupling_indep) + '\n'
                                            '    };\n'
                                            '    cxtype tIPC[nIPC];\n'
-                                           '    gatherCxtype( m_pars, cIPC_members, tIPC );\n'
+                                           '    gatherCxtype( m_pars.get(), cIPC_members, tIPC );\n'
                                            '    setIndependentCouplings( tIPC );')
         else:
             replace_dict['cipcassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
@@ -2041,7 +2037,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                            '      &Parameters::' + ',\n      &Parameters::'.join(params) + '\n'
                                            '    };\n'
                                            '    fptype tIPD[nIPD];\n'
-                                           '    gatherFptype( m_pars, cIPD_members, tIPD );\n'
+                                           '    gatherFptype( m_pars.get(), cIPD_members, tIPD );\n'
                                            '    setIndependentParams( tIPD );')
         else:
             replace_dict['cipdassign'] = '//const fptype tIPD[0] = { ... }; // nIPD=0'
@@ -3128,7 +3124,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '      &Parameters::' + ',\n      &Parameters::'.join(masses) + '\n'
                 '    };\n'
                 '    fptype tMasses[npar];\n'
-                '    gatherFptype( m_pars, massMembers, tMasses );\n'
+                '    gatherFptype( m_pars.get(), massMembers, tMasses );\n'
                 '    m_masses.assign( tMasses, tMasses + npar );')
 
     # Companion to get_initProc_lines: the same external-mass list, but pushed into an

@@ -83,23 +83,11 @@ namespace madmatrix
     // Set couplings that are unchanged during the run
     void setIndependentCouplings();
 
-    // Set parameters that are changed event by event
-    //void setDependentParameters(); // now computed event-by-event (running alphas #373)
-
-    // Set couplings that are changed event by event
-    //void setDependentCouplings(); // now computed event-by-event (running alphas #373)
-
     // Print parameters that are unchanged during the run
     void printIndependentParameters();
 
     // Print couplings that are unchanged during the run
     void printIndependentCouplings();
-
-    // Print parameters that are changed event by event
-    //void printDependentParameters(); // now computed event-by-event (running alphas #373)
-
-    // Print couplings that are changed event by event
-    //void printDependentCouplings(); // now computed event-by-event (running alphas #373)
 
     // BSM parameters that do not depend on alphaS but are needed in the computation of alphaS-dependent couplings;
     static constexpr int nBsmIndepParam = %(nbsmip)i;

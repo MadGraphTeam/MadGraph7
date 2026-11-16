@@ -127,20 +127,6 @@ Parameters::resetParameterOverrides()
   m_param_overrides.clear();
 }
 
-/*
-void
-Parameters::setDependentParameters() // now computed event-by-event (running alphas #373)
-{
-  %(set_dependent_parameters)s
-}
-
-void
-Parameters::setDependentCouplings() // now computed event-by-event (running alphas #373)
-{
-  %(set_dependent_couplings)s
-}
-*/
-
 // Routines for printing out parameters
 void
 Parameters::printIndependentParameters()
@@ -156,19 +142,3 @@ Parameters::printIndependentCouplings()
   std::cout << "model couplings independent of event kinematics:" << std::endl;
   %(print_independent_couplings)s
 }
-
-/*
-void
-Parameters::printDependentParameters() // now computed event-by-event (running alphas #373)
-{
-  std::cout << "model parameters dependent on event kinematics:" << std::endl;
-  %(print_dependent_parameters)s
-}
-
-void
-Parameters::printDependentCouplings() // now computed event-by-event (running alphas #373)
-{
-  std::cout << "model couplings dependent on event kinematics:" << std::endl;
-  %(print_dependent_couplings)s
-}
-*/

@@ -30,7 +30,6 @@ namespace madmatrix
                           bool debug )
     : m_verbose( verbose )
     , m_debug( debug )
-    , m_pars( 0 )
     , m_masses()
   {
     // Enable SIGFPE traps for Floating Point Exceptions
@@ -99,19 +98,14 @@ namespace madmatrix
     // Instantiate the model class and set parameters that stay fixed during run. The model
     // parameters are this process' own: a fresh object, without the overrides that a
     // previous setParameterByName() call may have left in the one of a previous initProc().
-    m_ownedPars.reset( new Parameters() );
-    m_pars = m_ownedPars.get();
+    m_pars = std::make_unique<Parameters>();
     SLHAReader slha( param_card_name, m_verbose );
     m_pars->setIndependentParameters( slha );
     m_pars->setIndependentCouplings();
-    //m_pars->setDependentParameters(); // now computed event-by-event (running alphas #373)
-    //m_pars->setDependentCouplings(); // now computed event-by-event (running alphas #373)
     if( m_verbose )
     {
       m_pars->printIndependentParameters();
       m_pars->printIndependentCouplings();
-      //m_pars->printDependentParameters(); // now computed event-by-event (running alphas #373)
-      //m_pars->printDependentCouplings(); // now computed event-by-event (running alphas #373)
     }
     %(initProc_lines)s
     refreshIndependentParams();
