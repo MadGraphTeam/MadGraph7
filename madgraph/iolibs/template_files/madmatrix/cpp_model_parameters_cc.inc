@@ -146,7 +146,7 @@ void
 Parameters::printIndependentParameters()
 {
   std::cout << "model parameters independent of event kinematics:" << std::endl;
-  std::cout << "(Warning: aS in the runcard is ignored because event-by-event Gs are hardcoded or retrieved from Fortran)" << std::endl;
+  std::cout << "(Warning: aS here is unused, G is computed event by event from the input alpha_s)" << std::endl;
   %(print_independent_parameters)s
 }
 

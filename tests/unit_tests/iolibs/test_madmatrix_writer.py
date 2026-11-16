@@ -307,3 +307,23 @@ class TestCustomPropagatorParameters(unittest.TestCase):
         from madmatrix.model_handling import custom_propagator_parameters
         model = SimpleNamespace(all_parameters=[SimpleNamespace(name='MZ')])
         self.assertEqual(custom_propagator_parameters(model), {})
+
+
+class TestNoHardcodedParameters(unittest.TestCase):
+    """Model parameters are always read at runtime (#226): no template brings
+    back the hardcoded-parameter build or its device-side parameter pointer."""
+
+    def test_templates(self):
+        import os
+        from madgraph import MG5DIR
+        removed = ('MGONGPU_HARDCODE_PARAM', 'HRDCOD', 'Parameters::current', '%(hardcoded')
+        for root in ('madgraph/iolibs/template_files/madmatrix', 'aloha/template_files/madmatrix'):
+            for dirpath, _, filenames in os.walk(os.path.join(MG5DIR, root)):
+                for filename in filenames:
+                    path = os.path.join(dirpath, filename)
+                    with open(path, errors='replace') as template:
+                        text = template.read()
+                    for token in removed:
+                        if token == 'HRDCOD' and filename == 'madmatrix.mk':
+                            continue # Rejects HRDCOD=1 with an actionable error.
+                        self.assertNotIn(token, text, path)
