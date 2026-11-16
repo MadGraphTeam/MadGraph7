@@ -604,8 +604,8 @@ def profile_loop(
     from pyamplicol.config.models import is_default
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import DEFAULTS
+    from pyamplicol.profile_plan import MEASURE_REPEAT_SECONDS, runtime_counts
     from pyamplicol.profile_plan import plan as plan_profile
-    from pyamplicol.profile_plan import runtime_counts
 
     bench = config.benchmark
     evaluation = config.evaluation
@@ -681,10 +681,17 @@ def profile_loop(
         monitor.close(False)
         raise
     batch_max = int(bench.batch_size)
+    # A stability worker's start: the load and its warm-up (one point per
+    # stream; none for a stream dearer than MEASURE_REPEAT_SECONDS).
     stability_start = (
         load_seconds
         + 1.0
-        + sum(c.stability + (c.stability_reference or 0.0) for c in costs.values())
+        + sum(
+            seconds
+            for c in costs.values()
+            for seconds in (c.stability, c.stability_reference or 0.0)
+            if seconds <= MEASURE_REPEAT_SECONDS
+        )
     )
     planned = plan_profile(
         costs,
@@ -1900,12 +1907,14 @@ def _stability_worker(
     checks: Any,
     backends: Sequence[str] = (),
     truth: GroundTruth | None = None,
+    cold: Sequence[tuple[str, str]] = (),
 ) -> None:
     """Initialise a stability worker process: one thread per pool, Ctrl-C
     left to the parent (which collects what finished and stops the
     workers), the artifact loaded once with the reference precision
     ``truth`` (default double-double; "none": no reference), and warmed up
-    on ``backends`` with ``warm`` (a point and its scale, ``_warm_up``)."""
+    on ``backends`` with ``warm`` (a point and its scale, ``_warm_up``;
+    the ``cold`` streams not)."""
 
     import signal
 
@@ -1919,7 +1928,7 @@ def _stability_worker(
         checks=checks,
         truth=truth or GroundTruth("double-double"),
     )
-    _warm_up(backends)
+    _warm_up(backends, cold)
 
 
 def one_core() -> None:
@@ -1942,14 +1951,17 @@ def _precisions(truth: GroundTruth | None) -> tuple[str, ...]:
     return _PRECISIONS
 
 
-def _warm_up(backends: Sequence[str]) -> None:
+def _warm_up(backends: Sequence[str], cold: Sequence[tuple[str, str]] = ()) -> None:
     """Pay this process's first-call costs before any timed task, untimed:
     the stability task of one point on every backend and precision (the
     process's first evaluation, each backend's and carrier's first call and
     what it builds lazily; after native's fix one point per carrier builds
     the engine of every batch size), its result dropped. An evaluation does
     not depend on what ran before it (bit-identical values and estimates),
-    so the statistics are unchanged; only the timings lose that cost. A
+    so the statistics are unchanged; only the timings lose that cost. The
+    ``cold`` streams (backend, precision) are left out: a point dearer than
+    ``profile_plan.MEASURE_REPEAT_SECONDS`` makes its first-call cost
+    negligible, and its warm-up would cost a whole point per worker. A
     backend's error is left to its timed tasks, which report it."""
 
     warm = _WORKER.get("warm")
@@ -1958,6 +1970,8 @@ def _warm_up(backends: Sequence[str]) -> None:
     point, scale = warm
     for backend in backends:
         for precision in _precisions(_WORKER.get("truth")):
+            if (backend, precision) in cold:
+                continue
             with contextlib.suppress(Exception):
                 _stability_task(backend, precision, [0], [point], [scale])
     # The timed tasks start without the warm-up's garbage.
@@ -2385,6 +2399,7 @@ def _stability(
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import default_target
     from pyamplicol.profile_plan import (
+        MEASURE_REPEAT_SECONDS,
         STABILITY_MINIMUM,
         affordable_chunk,
         task_points,
@@ -2474,6 +2489,11 @@ def _stability(
             priors[(backend, "binary64")] = cost.stability
             if cost.stability_reference is not None:
                 priors[(backend, "reference")] = cost.stability_reference
+    # The streams whose point is dear enough that the workers skip their
+    # warm-up (``_warm_up``).
+    cold = tuple(
+        key for key, seconds in priors.items() if seconds > MEASURE_REPEAT_SECONDS
+    )
     tracker = _StabilityProgress(
         progress,
         backends,
@@ -2602,7 +2622,7 @@ def _stability(
         if workers == 1:
             _WORKER.update(runtime=runtime, warm=warm, checks=checks, truth=truth)
             try:
-                _warm_up(backends)
+                _warm_up(backends, cold)
                 while (tasks := next_tasks()) is not None:
                     for backend, precision, indices, batch, scales in tasks:
                         if backend in refused:
@@ -2629,6 +2649,7 @@ def _stability(
                     checks,
                     tuple(backends),
                     truth,
+                    cold,
                 ),
                 next_tasks,
                 harvest,
