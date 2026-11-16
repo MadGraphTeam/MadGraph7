@@ -41,7 +41,9 @@ MatrixElement::MatrixElement(
     bool sample_random_inputs,
     const std::vector<me_int_t>& me_frame,
     std::size_t incoming_count,
-    me_int_t channel
+    me_int_t channel,
+    std::size_t squared_order_count,
+    std::size_t color_pair_count
 ) :
     FunctionGenerator(
         "MatrixElement",
@@ -104,6 +106,15 @@ MatrixElement::MatrixElement(
                 case beam_index_in:
                     arg_types.push_back("beam_index", batch_int);
                     break;
+                case spin_legs_in:
+                    arg_types.push_back("spin_legs", batch_int_array(2));
+                    break;
+                case g_ew_in:
+                    arg_types.push_back("g_ew", batch_float);
+                    break;
+                case spin_vectors_in:
+                    arg_types.push_back("spin_vectors", batch_four_vec_array(2));
+                    break;
                 default:
                     throw std::invalid_argument("unknown input type");
                 }
@@ -155,6 +166,37 @@ MatrixElement::MatrixElement(
                 case matrix_element_ratio_out:
                     ret_types.push_back("matrix_element_ratio", batch_float);
                     break;
+                case squared_orders_out:
+                    ret_types.push_back(
+                        "squared_orders", batch_float_array(squared_order_count)
+                    );
+                    break;
+                case color_correlated_out:
+                    ret_types.push_back(
+                        "color_correlated",
+                        Type(
+                            DataType::dt_float64,
+                            batch_size,
+                            {static_cast<int>(squared_order_count),
+                             static_cast<int>(color_pair_count)}
+                        )
+                    );
+                    break;
+                case spin_correlated_out:
+                    ret_types.push_back(
+                        "spin_correlated", batch_float_array(squared_order_count)
+                    );
+                    break;
+                case loop_out:
+                    ret_types.push_back(
+                        "loop",
+                        Type(
+                            DataType::dt_float64,
+                            batch_size,
+                            {static_cast<int>(squared_order_count), 3}
+                        )
+                    );
+                    break;
                 default:
                     throw std::invalid_argument("unknown output type");
                 }
@@ -167,6 +209,8 @@ MatrixElement::MatrixElement(
     _outputs(outputs),
     _particle_count(particle_count),
     _diagram_count(diagram_count),
+    _squared_order_count(squared_order_count),
+    _color_pair_count(color_pair_count),
     _sample_random_inputs(sample_random_inputs),
     _channel(channel),
     _frame_mask(
@@ -207,6 +251,20 @@ MatrixElement::MatrixElement(
     auto has_output = [&](MatrixElementOutput output) {
         return std::find(outputs.begin(), outputs.end(), output) != outputs.end();
     };
+    if (squared_order_count == 0) {
+        throw std::invalid_argument("a matrix element has at least one squared order");
+    }
+    if (has_output(color_correlated_out) && color_pair_count == 0) {
+        throw std::invalid_argument(
+            "the colour-correlated output needs at least two coloured legs"
+        );
+    }
+    if (!_frame_mask.empty() &&
+        std::find(inputs.begin(), inputs.end(), spin_vectors_in) != inputs.end()) {
+        throw std::invalid_argument(
+            "spin vectors with me_frame would need the boost of the momenta"
+        );
+    }
     if (has_output(matrix_element_out) && has_output(matrix_element_ratio_out)) {
         throw std::invalid_argument(
             "a matrix element returns either matrix_element or matrix_element_ratio, "
@@ -284,6 +342,15 @@ NamedVector<Value> MatrixElement::build_function_impl(
         case beam_index_in:
             input_key = UMAMI_IN_BEAM_INDEX;
             break;
+        case spin_legs_in:
+            input_key = UMAMI_IN_SPIN_LEGS;
+            break;
+        case spin_vectors_in:
+            input_key = UMAMI_IN_SPIN_VECTORS;
+            break;
+        case g_ew_in:
+            input_key = UMAMI_IN_G_EW;
+            break;
         }
         matrix_args.push_back(static_cast<me_int_t>(input_key));
         if (_sample_random_inputs &&
@@ -355,9 +422,30 @@ NamedVector<Value> MatrixElement::build_function_impl(
         case matrix_element_ratio_out:
             output_key = UMAMI_OUT_MATRIX_ELEMENT_RATIO;
             break;
+        case squared_orders_out:
+            output_key = UMAMI_OUT_SQUARED_ORDERS;
+            size_arg = _squared_order_count;
+            break;
+        case color_correlated_out:
+            output_key = UMAMI_OUT_COLOR_CORRELATED;
+            size_arg = _squared_order_count;
+            break;
+        case spin_correlated_out:
+            output_key = UMAMI_OUT_SPIN_CORRELATED;
+            size_arg = _squared_order_count;
+            break;
+        case loop_out:
+            output_key = UMAMI_OUT_LOOP;
+            size_arg = _squared_order_count;
+            break;
         }
         matrix_args.push_back(static_cast<me_int_t>(output_key));
         matrix_args.push_back(size_arg);
+    }
+    // the number of colour pairs, after all other arguments
+    if (std::find(_outputs.begin(), _outputs.end(), color_correlated_out) !=
+        _outputs.end()) {
+        matrix_args.push_back(static_cast<me_int_t>(_color_pair_count));
     }
     return {return_types().keys(), fb.matrix_element(matrix_args)};
 }

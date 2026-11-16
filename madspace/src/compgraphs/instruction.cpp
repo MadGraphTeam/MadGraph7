@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <format>
+#include <optional>
 #include <ranges>
 #include <sstream>
 #include <tuple>
@@ -900,6 +901,20 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
     std::size_t input_count = int_literal_arg(args, 1);
     std::size_t output_count = int_literal_arg(args, 2);
     std::size_t expected_arg_count = 3 + 2 * input_count + 2 * output_count;
+    // the colour-correlated output takes the number of its colour pairs as one
+    // more argument, after all the others
+    std::optional<std::size_t> color_pairs_index;
+    if (arg_count >= expected_arg_count) {
+        for (std::size_t i = 0; i < output_count; ++i) {
+            std::size_t key_index = 3 + 2 * input_count + 2 * i;
+            if (int_literal_arg(args, key_index) == UMAMI_OUT_COLOR_CORRELATED) {
+                color_pairs_index = expected_arg_count;
+            }
+        }
+    }
+    if (color_pairs_index) {
+        ++expected_arg_count;
+    }
     if (arg_count != expected_arg_count) {
         throw std::invalid_argument(
             std::format(
@@ -938,6 +953,7 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
             }
             break;
         case UMAMI_IN_ALPHA_S:
+        case UMAMI_IN_G_EW:
         case UMAMI_IN_RANDOM_COLOR:
         case UMAMI_IN_RANDOM_HELICITY:
         case UMAMI_IN_RANDOM_DIAGRAM:
@@ -978,6 +994,26 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
                 );
             }
             break;
+        case UMAMI_IN_SPIN_LEGS:
+            if (input_type.dtype != DataType::dt_int32 ||
+                input_type.shape != std::vector<int>{2}) {
+                throw std::invalid_argument(
+                    std::format(
+                        "matrix_element, argument {}: expected two integers", i + 1
+                    )
+                );
+            }
+            break;
+        case UMAMI_IN_SPIN_VECTORS:
+            if (input_type.dtype != DataType::dt_float64 ||
+                input_type.shape != std::vector<int>{2, 4}) {
+                throw std::invalid_argument(
+                    std::format(
+                        "matrix_element, argument {}: expected two four-vectors", i + 1
+                    )
+                );
+            }
+            break;
         default:
             throw std::invalid_argument(
                 std::format(
@@ -1008,8 +1044,21 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
             shape = {};
             break;
         case UMAMI_OUT_DIAGRAM_AMP2:
+        case UMAMI_OUT_SQUARED_ORDERS:
+        case UMAMI_OUT_SPIN_CORRELATED:
             dtype = DataType::dt_float64;
             shape = {output_size};
+            break;
+        case UMAMI_OUT_COLOR_CORRELATED:
+            dtype = DataType::dt_float64;
+            shape = {
+                output_size,
+                static_cast<int>(int_literal_arg(args, *color_pairs_index, true))
+            };
+            break;
+        case UMAMI_OUT_LOOP:
+            dtype = DataType::dt_float64;
+            shape = {output_size, 3};
             break;
         case UMAMI_OUT_COLOR_INDEX:
         case UMAMI_OUT_HELICITY_INDEX:

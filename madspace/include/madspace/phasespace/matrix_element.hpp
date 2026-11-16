@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "madspace/driver/context.hpp"
 #include "madspace/phasespace/base.hpp"
 
@@ -24,6 +26,12 @@ namespace madspace {
  *   in MatrixElementInput.
  * - `random_color`, `random_helicity`, `random_diagram` – `float`, shape
  *   `(batch,)` (omitted when @p sample_random_inputs draws them internally).
+ * - `spin_legs` – `int`, shape `(batch, 2)` – the 0-based legs whose
+ *   polarization `spin_correlated` replaces, -1 for an unused slot.
+ * - `spin_vectors` – `float`, shape `(batch, 2, 4)` – the real vectors that
+ *   replace them, in the frame of the momenta.
+ * - `g_ew` – `float`, shape `(batch,)` – the electroweak coupling e of the
+ *   outputs per squared coupling order, 1 for them without powers of e.
  *
  * **Returns** (a subset, selected by @p outputs)
  * - `matrix_element` – `float`, shape `(batch,)` – the squared matrix element.
@@ -33,6 +41,16 @@ namespace madspace {
  *   the sampled color, helicity and diagram.
  * - the custom outputs `cut`, `ren_scale`, `fact_scale1`, `fact_scale2`, `pdf`,
  *   `bias`, `matrix_element_ratio` – `float`, shape `(batch,)`.
+ * - the NLO outputs per squared coupling order `o` (provisional UMAMI keys, see
+ *   umami.h): `squared_orders` – `float`, shape `(batch, o)` – the matrix
+ *   element per order; `color_correlated` – `float`, shape
+ *   `(batch, o, color_pair_count)` – the colour-correlated matrix element of
+ *   every pair i < j of the coloured legs, flattened as in umami.h, without
+ *   the diagonal; `spin_correlated` – `float`, shape
+ *   `(batch, o)` – the matrix element with the polarizations of `spin_legs`
+ *   replaced by `spin_vectors`; `loop` – `float`, shape `(batch, o, 3)` – the
+ *   finite part and the coefficients of 1/eps and 1/eps^2 of the one-loop
+ *   matrix element at the scale `scale`.
  *
  * **References**
  * - [1] S. Hageböck et al., "Data-parallel leading-order event generation in
@@ -58,7 +76,10 @@ public:
         momentum_fraction_in, ///< Momentum fraction of an incoming parton.
         scale_in,             ///< Energy scale, e.g. the factorization scale.
         pdg_id_in,            ///< PDG id of a single parton.
-        beam_index_in         ///< Index of the beam (0 or 1).
+        beam_index_in,        ///< Index of the beam (0 or 1).
+        spin_legs_in,         ///< Legs of the spin correlation (provisional).
+        spin_vectors_in,      ///< Vectors of the spin correlation (provisional).
+        g_ew_in               ///< Electroweak coupling (provisional).
     };
 
     /// A quantity the matrix element can be asked to produce.
@@ -76,7 +97,11 @@ public:
         bias_out,           ///< Custom event bias.
         /// Ratio of the matrix element to a reference matrix element, for a
         /// @ref WeightingStep.
-        matrix_element_ratio_out
+        matrix_element_ratio_out,
+        squared_orders_out,   ///< Matrix element per squared order (provisional).
+        color_correlated_out, ///< Colour-correlated matrix element (provisional).
+        spin_correlated_out,  ///< Spin-correlated matrix element (provisional).
+        loop_out              ///< One-loop matrix element (provisional).
     };
 
     /**
@@ -100,6 +125,14 @@ public:
      *                               avoid a Wigner rotation as in madevent.
      * @param channel                If non-negative, `channel_in` is passed this
      *                               fixed value instead of being an input.
+     * @param squared_order_count    Number of squared coupling orders of the
+     *                               NLO outputs.
+     * @param color_pair_count       Number of pairs i < j of the coloured legs,
+     *                               n_c (n_c - 1) / 2, the size of
+     *                               `color_correlated_out` per order.
+     * @throws std::invalid_argument for `spin_vectors_in` with @p me_frame, as
+     *         the vectors would need the boost of the momenta, and for
+     *         `color_correlated_out` without colour pairs.
      */
     MatrixElement(
         std::size_t matrix_element_index,
@@ -110,11 +143,15 @@ public:
         bool sample_random_inputs = false,
         const std::vector<me_int_t>& me_frame = {},
         std::size_t incoming_count = 2,
-        me_int_t channel = -1
+        me_int_t channel = -1,
+        std::size_t squared_order_count = 1,
+        std::size_t color_pair_count = 0
     );
     /**
-     * Take @p matrix_element_index, @p particle_count and @p diagram_count from
-     * an already-loaded matrix element.
+     * Take @p matrix_element_index, @p particle_count, @p diagram_count (only
+     * with `diagram_amp2_out`, one otherwise), @p squared_order_count and
+     * @p color_pair_count (only with `color_correlated_out`, from the colour
+     * representations of the legs) from an already-loaded matrix element.
      * @param matrix_element_api    The loaded matrix element.
      * @param inputs                Quantities to pass in.
      * @param outputs               Quantities to return.
@@ -137,11 +174,19 @@ public:
             matrix_element_api.particle_count(),
             inputs,
             outputs,
-            matrix_element_api.diagram_count(),
+            std::find(outputs.begin(), outputs.end(), diagram_amp2_out) !=
+                    outputs.end()
+                ? matrix_element_api.diagram_count()
+                : 1,
             sample_random_inputs,
             me_frame,
             incoming_count,
-            channel
+            channel,
+            matrix_element_api.squared_order_count(),
+            std::find(outputs.begin(), outputs.end(), color_correlated_out) !=
+                    outputs.end()
+                ? matrix_element_api.color_pair_count()
+                : 0
         ) {};
     /// Index of the matrix element in the plugin.
     std::size_t matrix_element_index() const { return _matrix_element_index; }
@@ -149,6 +194,10 @@ public:
     std::size_t diagram_count() const { return _diagram_count; }
     /// Number of external particles.
     std::size_t particle_count() const { return _particle_count; }
+    /// Number of squared coupling orders of the NLO outputs.
+    std::size_t squared_order_count() const { return _squared_order_count; }
+    /// Number of pairs of coloured legs of the colour-correlated output.
+    std::size_t color_pair_count() const { return _color_pair_count; }
     /// The configured input quantities.
     const std::vector<MatrixElementInput>& inputs() const { return _inputs; }
     /// The configured output quantities.
@@ -183,6 +232,8 @@ private:
     std::size_t _matrix_element_index;
     std::size_t _particle_count;
     std::size_t _diagram_count;
+    std::size_t _squared_order_count;
+    std::size_t _color_pair_count;
     std::vector<MatrixElementInput> _inputs;
     std::vector<MatrixElementOutput> _outputs;
     bool _sample_random_inputs;

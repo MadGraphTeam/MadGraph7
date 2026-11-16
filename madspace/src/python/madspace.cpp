@@ -408,6 +408,21 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("MatrixElementApi::diagram_count")
         )
         .def(
+            "squared_order_count",
+            &MatrixElementApi::squared_order_count,
+            pydoc::doc("MatrixElementApi::squared_order_count")
+        )
+        .def(
+            "color_representations",
+            &MatrixElementApi::color_representations,
+            pydoc::doc("MatrixElementApi::color_representations")
+        )
+        .def(
+            "color_pair_count",
+            &MatrixElementApi::color_pair_count,
+            pydoc::doc("MatrixElementApi::color_pair_count")
+        )
+        .def(
             "helicity_count",
             &MatrixElementApi::helicity_count,
             pydoc::doc("MatrixElementApi::helicity_count")
@@ -474,6 +489,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("parameter_defaults") =
                 std::vector<std::pair<std::string, double>>{},
             py::arg("parameters") = std::unordered_map<std::string, double>{},
+            py::arg("integer_meta") = std::unordered_map<int, int>{},
+            py::arg("integer_array_meta") = std::unordered_map<int, std::vector<int>>{},
             py::return_value_policy::reference_internal
         )
         .def(
@@ -592,11 +609,15 @@ PYBIND11_MODULE(_madspace_py, m) {
              {"scale", UMAMI_IN_SCALE},
              {"pdg_id", UMAMI_IN_PDG_ID},
              {"beam_index", UMAMI_IN_BEAM_INDEX},
+             {"spin_legs", UMAMI_IN_SPIN_LEGS},
+             {"spin_vectors", UMAMI_IN_SPIN_VECTORS},
+             {"g_ew", UMAMI_IN_G_EW},
          }) {
         umami_input_keys[name] = key;
     }
     for (auto [name, key] : std::initializer_list<std::pair<const char*, int>>{
              {"matrix_element", UMAMI_OUT_MATRIX_ELEMENT},
+             {"diagram_amp2", UMAMI_OUT_DIAGRAM_AMP2},
              {"color_index", UMAMI_OUT_COLOR_INDEX},
              {"helicity_index", UMAMI_OUT_HELICITY_INDEX},
              {"diagram_index", UMAMI_OUT_DIAGRAM_INDEX},
@@ -607,11 +628,25 @@ PYBIND11_MODULE(_madspace_py, m) {
              {"pdf", UMAMI_OUT_PDF},
              {"bias", UMAMI_OUT_BIAS},
              {"matrix_element_ratio", UMAMI_OUT_MATRIX_ELEMENT_RATIO},
+             {"squared_orders", UMAMI_OUT_SQUARED_ORDERS},
+             {"color_correlated", UMAMI_OUT_COLOR_CORRELATED},
+             {"spin_correlated", UMAMI_OUT_SPIN_CORRELATED},
+             {"loop", UMAMI_OUT_LOOP},
          }) {
         umami_output_keys[name] = key;
     }
     m.attr("_UMAMI_INPUT_KEYS") = umami_input_keys;
     m.attr("_UMAMI_OUTPUT_KEYS") = umami_output_keys;
+    py::dict umami_meta_keys;
+    for (auto [name, key] : std::initializer_list<std::pair<const char*, int>>{
+             {"particle_count", UMAMI_META_PARTICLE_COUNT},
+             {"diagram_count", UMAMI_META_DIAGRAM_COUNT},
+             {"squared_order_count", UMAMI_META_SQUARED_ORDER_COUNT},
+             {"color_representations", UMAMI_META_COLOR_REPRESENTATIONS},
+         }) {
+        umami_meta_keys[name] = key;
+    }
+    m.attr("_UMAMI_META_KEYS") = umami_meta_keys;
 
     py::classh<FunctionRuntime>(m, "FunctionRuntime", py::dynamic_attr())
         .def(py::init<Function>(), py::arg("function"))
@@ -3417,6 +3452,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"scale_in", MatrixElement::scale_in},
             {"pdg_id_in", MatrixElement::pdg_id_in},
             {"beam_index_in", MatrixElement::beam_index_in},
+            {"spin_legs_in", MatrixElement::spin_legs_in},
+            {"spin_vectors_in", MatrixElement::spin_vectors_in},
+            {"g_ew_in", MatrixElement::g_ew_in},
         }
     );
     add_enum<MatrixElement::MatrixElementOutput>(
@@ -3435,6 +3473,10 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"pdf_out", MatrixElement::pdf_out},
             {"bias_out", MatrixElement::bias_out},
             {"matrix_element_ratio_out", MatrixElement::matrix_element_ratio_out},
+            {"squared_orders_out", MatrixElement::squared_orders_out},
+            {"color_correlated_out", MatrixElement::color_correlated_out},
+            {"spin_correlated_out", MatrixElement::spin_correlated_out},
+            {"loop_out", MatrixElement::loop_out},
         }
     );
     matrix_element
@@ -3448,7 +3490,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 const std::vector<me_int_t>&,
                 std::size_t,
-                me_int_t>(),
+                me_int_t,
+                std::size_t,
+                std::size_t>(),
             py::arg("matrix_element_index"),
             py::arg("particle_count"),
             // C++ defaults are {momenta_in} / {matrix_element_out}; required in Python
@@ -3460,6 +3504,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("me_frame") = std::vector<me_int_t>{},
             py::arg("incoming_count") = 2,
             py::arg("channel") = -1,
+            py::arg("squared_order_count") = 1,
+            py::arg("color_pair_count") = 0,
             pydoc::doc("MatrixElement::MatrixElement")
         )
         .def(
@@ -3494,6 +3540,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             "particle_count",
             &MatrixElement::particle_count,
             pydoc::doc("MatrixElement::particle_count")
+        )
+        .def(
+            "squared_order_count",
+            &MatrixElement::squared_order_count,
+            pydoc::doc("MatrixElement::squared_order_count")
+        )
+        .def(
+            "color_pair_count",
+            &MatrixElement::color_pair_count,
+            pydoc::doc("MatrixElement::color_pair_count")
         )
         .def("inputs", &MatrixElement::inputs, pydoc::doc("MatrixElement::inputs"))
         .def("outputs", &MatrixElement::outputs, pydoc::doc("MatrixElement::outputs"))

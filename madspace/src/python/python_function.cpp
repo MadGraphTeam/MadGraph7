@@ -1,5 +1,6 @@
 #include "python_function.hpp"
 
+#include <algorithm>
 #include <array>
 #include <format>
 #include <stdexcept>
@@ -24,6 +25,8 @@ struct PythonFunctionState {
     std::array<bool, UMAMI_INPUT_KEY_COUNT> required_inputs{};
     std::array<bool, UMAMI_OUTPUT_KEY_COUNT> supported_outputs{};
     std::vector<std::pair<std::string, double>> parameter_defaults;
+    std::unordered_map<int, int> integer_meta;
+    std::unordered_map<int, std::vector<int>> integer_array_meta;
 
     ~PythonFunctionState() {
         if (Py_IsInitialized()) {
@@ -77,9 +80,32 @@ const MatrixElementApi& add_python_function(
     const std::string& framework,
     const std::string& name,
     const std::vector<std::pair<std::string, double>>& parameter_defaults,
-    const std::unordered_map<std::string, double>& parameters
+    const std::unordered_map<std::string, double>& parameters,
+    const std::unordered_map<int, int>& integer_meta,
+    const std::unordered_map<int, std::vector<int>>& integer_array_meta
 ) {
     auto state = std::make_shared<PythonFunctionState>();
+    for (auto [key, value] : integer_meta) {
+        if (key != UMAMI_META_PARTICLE_COUNT && key != UMAMI_META_DIAGRAM_COUNT &&
+            key != UMAMI_META_HELICITY_COUNT && key != UMAMI_META_COLOR_COUNT &&
+            key != UMAMI_META_SQUARED_ORDER_COUNT) {
+            throw std::invalid_argument("not an integer UMAMI metadata key");
+        }
+    }
+    state->integer_meta = integer_meta;
+    for (auto& [key, values] : integer_array_meta) {
+        if (key != UMAMI_META_COLOR_REPRESENTATIONS) {
+            throw std::invalid_argument("not an integer-array UMAMI metadata key");
+        }
+        auto particle_count = integer_meta.find(UMAMI_META_PARTICLE_COUNT);
+        if (particle_count == integer_meta.end() ||
+            static_cast<int>(values.size()) != particle_count->second) {
+            throw std::invalid_argument(
+                "an integer-array UMAMI metadata key needs one value per particle"
+            );
+        }
+    }
+    state->integer_array_meta = integer_array_meta;
     state->parameter_defaults = parameter_defaults;
     state->function = function;
     state->name = name;
@@ -130,6 +156,18 @@ const MatrixElementApi& add_python_function(
     functions.get_meta = [state](UmamiMetaKey meta_key, void* result) {
         if (meta_key == UMAMI_META_DEVICE) {
             *static_cast<UmamiDevice*>(result) = state->umami_device;
+            return UMAMI_SUCCESS;
+        }
+        auto found = state->integer_meta.find(static_cast<int>(meta_key));
+        if (found != state->integer_meta.end()) {
+            *static_cast<int*>(result) = found->second;
+            return UMAMI_SUCCESS;
+        }
+        auto array = state->integer_array_meta.find(static_cast<int>(meta_key));
+        if (array != state->integer_array_meta.end()) {
+            std::copy(
+                array->second.begin(), array->second.end(), static_cast<int*>(result)
+            );
             return UMAMI_SUCCESS;
         }
         return UMAMI_ERROR_UNSUPPORTED_META;

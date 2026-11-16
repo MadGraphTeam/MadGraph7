@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -90,6 +91,45 @@ public:
         int count;
         check_umami_status(_functions.get_meta(UMAMI_META_DIAGRAM_COUNT, &count));
         return count;
+    }
+    /// Number of squared coupling orders of the NLO outputs, one for a library
+    /// without them.
+    std::size_t squared_order_count() const {
+        int count;
+        auto status = _functions.get_meta(UMAMI_META_SQUARED_ORDER_COUNT, &count);
+        if (status == UMAMI_ERROR_UNSUPPORTED_META) {
+            return 1;
+        }
+        check_umami_status(status);
+        return count;
+    }
+    /// Colour representation of each external leg (1, 3, -3 or 8, all taken
+    /// as outgoing), empty for a library without them.
+    std::vector<int> color_representations() const {
+        std::vector<int> representations(particle_count());
+        auto status = _functions.get_meta(
+            UMAMI_META_COLOR_REPRESENTATIONS, representations.data()
+        );
+        if (status == UMAMI_ERROR_UNSUPPORTED_META) {
+            return {};
+        }
+        check_umami_status(status);
+        return representations;
+    }
+    /// Number of pairs i < j of the coloured legs, n_c (n_c - 1) / 2, the size
+    /// of the colour-correlated output per squared order.
+    std::size_t color_pair_count() const {
+        auto representations = color_representations();
+        if (representations.empty()) {
+            throw_error(
+                "the colour-correlated output needs the colour representations of "
+                "the legs (UMAMI_META_COLOR_REPRESENTATIONS)"
+            );
+        }
+        std::size_t colored = std::count_if(
+            representations.begin(), representations.end(), [](int r) { return r != 1; }
+        );
+        return colored * (colored - 1) / 2;
     }
     /// Number of helicity configurations.
     std::size_t helicity_count() const {

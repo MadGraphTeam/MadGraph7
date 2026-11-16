@@ -74,6 +74,15 @@ typedef enum {
     UMAMI_META_COLOR_COUNT,
     /** `double` array of length particle count: the external-leg masses (GeV) */
     UMAMI_META_MASSES,
+    /** `int` specifying the number of squared coupling orders of
+     * `UMAMI_OUT_SQUARED_ORDERS` and the other outputs per order (provisional,
+     * see the NLO keys below) */
+    UMAMI_META_SQUARED_ORDER_COUNT,
+    /** `int` array of length particle count: the colour representation of each
+     * external leg, 1, 3, -3 or 8, all legs taken as outgoing. The legs with a
+     * representation other than 1 are the coloured legs of
+     * `UMAMI_OUT_COLOR_CORRELATED` (provisional) */
+    UMAMI_META_COLOR_REPRESENTATIONS,
 } UmamiMetaKey;
 
 typedef enum {
@@ -111,10 +120,24 @@ typedef enum {
     UMAMI_IN_PDG_ID,
     /** index of the beam (0 or 1), type: `int`, shape: `()` */
     UMAMI_IN_BEAM_INDEX,
+    /* Provisional NLO keys, a draft under discussion and not yet part of a
+     * released version: names, shapes and values may change. */
+    /** 0-based legs whose polarization `UMAMI_OUT_SPIN_CORRELATED` replaces by the
+     * vectors of `UMAMI_IN_SPIN_VECTORS`, -1 for an unused slot, type: `int`,
+     * shape: `(2)` */
+    UMAMI_IN_SPIN_LEGS,
+    /** real vectors that replace the polarizations of the legs of
+     * `UMAMI_IN_SPIN_LEGS`, in the frame of the momenta, type: `double`, shape:
+     * `(2, 4)` */
+    UMAMI_IN_SPIN_VECTORS,
+    /** value for the electroweak coupling e, type: `double`, shape: `()`. The
+     * outputs per squared coupling order carry its power of e, so that 1 gives
+     * them without e. Without this input a library takes e of its parameters */
+    UMAMI_IN_G_EW,
 } UmamiInputKey;
 
 /** Number of values in `UmamiInputKey` */
-#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_BEAM_INDEX + 1)
+#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_G_EW + 1)
 
 typedef enum {
     /** value of the matrix element, type: `double`, shape: `()` */
@@ -147,10 +170,40 @@ typedef enum {
     /** ratio of the matrix element to a reference matrix element defined by the
      * caller, type: `double`, shape: `()` */
     UMAMI_OUT_MATRIX_ELEMENT_RATIO,
+    /* Provisional NLO keys, a draft under discussion and not yet part of a
+     * released version: names, shapes and values may change. The outputs per
+     * squared coupling order are summed over helicities and colours and
+     * averaged as `UMAMI_OUT_MATRIX_ELEMENT`, without factors of a subtraction
+     * scheme, at the couplings of `UMAMI_IN_ALPHA_S` and `UMAMI_IN_G_EW`. The
+     * dimensions after the batch are strided by the batch, the first one
+     * fastest. */
+    /** the matrix element per squared coupling order, whose sum is
+     * `UMAMI_OUT_MATRIX_ELEMENT`, type: `double`, shape: `(squared-order count)` */
+    UMAMI_OUT_SQUARED_ORDERS,
+    /** the colour-correlated matrix element <T_i . T_j> per squared coupling order
+     * and pair i < j of the coloured legs of `UMAMI_META_COLOR_REPRESENTATIONS`,
+     * all legs taken as outgoing, without g_s^2 and without a factor 1/2. The
+     * pairs are flattened as (1, 2), (1, 3), ..., (1, n_c), (2, 3), ..., so that
+     * the pair (a, b) of coloured legs counted from 0 sits at
+     * a (2 n_c - a - 1) / 2 + b - a - 1. The diagonal is C_i times the matrix
+     * element and not returned, type: `double`, shape: `(squared-order count,
+     * n_c (n_c - 1) / 2)` with n_c the number of coloured legs */
+    UMAMI_OUT_COLOR_CORRELATED,
+    /** the matrix element per squared coupling order with the polarization of each
+     * leg of `UMAMI_IN_SPIN_LEGS` replaced by its vector of
+     * `UMAMI_IN_SPIN_VECTORS`, summed over the other helicities, type: `double`,
+     * shape: `(squared-order count)` */
+    UMAMI_OUT_SPIN_CORRELATED,
+    /** the one-loop matrix element per squared coupling order, its finite part
+     * and the coefficients of 1/eps and 1/eps^2, not divided by the Born, in the
+     * convention of BinothLHA (CDR, normalization (4 pi)^eps / Gamma(1 - eps)) at
+     * the renormalization scale `UMAMI_IN_SCALE`, type: `double`, shape:
+     * `(squared-order count, 3)` */
+    UMAMI_OUT_LOOP,
 } UmamiOutputKey;
 
 /** Number of values in `UmamiOutputKey` */
-#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_MATRIX_ELEMENT_RATIO + 1)
+#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_LOOP + 1)
 
 /** Implementation-defined pointer to a matrix element instance */
 typedef void* UmamiHandle;

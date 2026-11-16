@@ -4,6 +4,7 @@ import types
 
 from ._madspace_py import (
     _UMAMI_INPUT_KEYS,
+    _UMAMI_META_KEYS,
     _UMAMI_OUTPUT_KEYS,
     Context,
     DataType,
@@ -27,19 +28,30 @@ _INPUT_SHAPES = {
     "scale": (DataType.float64, ()),
     "pdg_id": (DataType.int32, ()),
     "beam_index": (DataType.int32, ()),
+    "spin_legs": (DataType.int32, (2,)),
+    "spin_vectors": (DataType.float64, (2, 4)),
+    "g_ew": (DataType.float64, ()),
 }
-_OUTPUT_TYPES = {
-    "matrix_element": DataType.float64,
-    "color_index": DataType.int32,
-    "helicity_index": DataType.int32,
-    "diagram_index": DataType.int32,
-    "cut": DataType.float64,
-    "ren_scale": DataType.float64,
-    "fact_scale1": DataType.float64,
-    "fact_scale2": DataType.float64,
-    "pdf": DataType.float64,
-    "bias": DataType.float64,
-    "matrix_element_ratio": DataType.float64,
+# output name: (data type, shape after the batch dimension); "n" is the particle
+# count, "d" the diagram count, "o" the squared-order count and "p" the number of
+# pairs of coloured legs
+_OUTPUT_SHAPES = {
+    "matrix_element": (DataType.float64, ()),
+    "diagram_amp2": (DataType.float64, ("d",)),
+    "color_index": (DataType.int32, ()),
+    "helicity_index": (DataType.int32, ()),
+    "diagram_index": (DataType.int32, ()),
+    "cut": (DataType.float64, ()),
+    "ren_scale": (DataType.float64, ()),
+    "fact_scale1": (DataType.float64, ()),
+    "fact_scale2": (DataType.float64, ()),
+    "pdf": (DataType.float64, ()),
+    "bias": (DataType.float64, ()),
+    "matrix_element_ratio": (DataType.float64, ()),
+    "squared_orders": (DataType.float64, ("o",)),
+    "color_correlated": (DataType.float64, ("o", "p")),
+    "spin_correlated": (DataType.float64, ("o",)),
+    "loop": (DataType.float64, ("o", 3)),
 }
 
 
@@ -53,9 +65,15 @@ class PythonFunction:
     ``function`` is called once per batch, with one array per entry of ``inputs``,
     in that order. The arrays have the batch size as first dimension:
     ``momenta`` has shape ``(batch, n, 4)``, ``pdg_ids`` has shape ``(batch, n)``,
-    and all other inputs have shape ``(batch,)``. Floats are 64-bit, integers 32-bit.
-    The function returns one array of shape ``(batch,)`` per entry of ``outputs``, a
-    single array for one output and a tuple for several.
+    ``spin_legs`` ``(batch, 2)``, ``spin_vectors`` ``(batch, 2, 4)`` and all other
+    inputs have shape ``(batch,)``. Floats are 64-bit, integers 32-bit. The
+    function returns one array per entry of ``outputs``, a single array for one
+    output and a tuple for several, of shape ``(batch,)``, or for
+    ``diagram_amp2`` ``(batch, diagram_count)`` and for the provisional NLO outputs
+    ``squared_orders`` and ``spin_correlated`` ``(batch, o)``,
+    ``color_correlated`` ``(batch, o, p)`` and ``loop`` ``(batch, o, 3)``, with
+    ``o`` the ``squared_order_count`` and ``p`` the number of pairs i < j of the
+    coloured legs, flattened as in umami.h.
 
     The arrays are views of madspace's buffers on the device of the context, so they
     must not be kept after the call. numpy functions only run on the CPU, torch
@@ -66,9 +84,19 @@ class PythonFunction:
         inputs: Names of the UMAMI inputs passed to ``function``.
         outputs: Names of the UMAMI outputs ``function`` returns.
         framework: ``"numpy"`` or ``"torch"``.
-        particle_count: The particle count ``n`` for ``momenta`` and ``pdg_ids``, if
-            the caller does not pass the ``particle_count`` input.
+        particle_count: The particle count ``n`` for ``momenta`` and
+            ``pdg_ids``, if the caller does not pass the ``particle_count``
+            input. Reported as metadata, so that a ``MatrixElement`` can take
+            it from the ``MatrixElementApi``.
         name: Name used in error messages, by default the function's name.
+        diagram_count: The number of diagrams of ``diagram_amp2``, also reported
+            as metadata.
+        squared_order_count: The number of squared coupling orders of the NLO
+            outputs, also reported as metadata.
+        color_representations: The colour representation of each leg (1, 3,
+            -3 or 8, all taken as outgoing), whose legs other than 1 are the
+            coloured legs of ``color_correlated``. Needs ``particle_count`` and
+            is reported as metadata.
         parameters: Names and default values of parameters set through
             ``umami_set_parameter``, e.g. the ``parameters`` argument of
             ``Context.add_matrix_element``. With parameters, ``function`` gets a
@@ -84,6 +112,9 @@ class PythonFunction:
         particle_count=None,
         name=None,
         parameters=None,
+        diagram_count=None,
+        squared_order_count=None,
+        color_representations=None,
     ):
         if framework not in ("numpy", "torch"):
             raise ValueError(f"framework must be 'numpy' or 'torch', not {framework!r}")
@@ -93,10 +124,29 @@ class PythonFunction:
                     f"unknown input {key!r}, expected one of {', '.join(_INPUT_SHAPES)}"
                 )
         for key in outputs:
-            if key not in _OUTPUT_TYPES:
+            if key not in _OUTPUT_SHAPES:
                 raise ValueError(
-                    f"unknown output {key!r}, expected one of {', '.join(_OUTPUT_TYPES)}"
+                    f"unknown output {key!r}, expected one of {', '.join(_OUTPUT_SHAPES)}"
                 )
+        if color_representations is not None:
+            color_representations = [int(r) for r in color_representations]
+            if particle_count is None or len(color_representations) != particle_count:
+                raise ValueError(
+                    "color_representations needs particle_count and one value per "
+                    "particle"
+                )
+            colored = sum(r != 1 for r in color_representations)
+            color_pairs = colored * (colored - 1) // 2
+        else:
+            color_pairs = None
+        sizes = dict(d=diagram_count, o=squared_order_count, p=color_pairs)
+        names = dict(
+            d="diagram_count", o="squared_order_count", p="color_representations"
+        )
+        for key in outputs:
+            for size in _OUTPUT_SHAPES[key][1]:
+                if size in sizes and sizes[size] is None:
+                    raise ValueError(f"output {key!r} needs {names[size]}")
         if len(outputs) == 0:
             raise ValueError("at least one output is needed")
         self.function = function
@@ -104,6 +154,10 @@ class PythonFunction:
         self.outputs = list(outputs)
         self.framework = framework
         self.particle_count = particle_count
+        self.diagram_count = diagram_count
+        self.squared_order_count = squared_order_count
+        self.color_representations = color_representations
+        self.color_pair_count = color_pairs
         self.name = name or getattr(function, "__name__", "python_function")
         self.parameters = (
             None
@@ -114,6 +168,20 @@ class PythonFunction:
         self._output_keys = [_UMAMI_OUTPUT_KEYS[key] for key in self.outputs]
         self._needs_particle_count = any(
             "n" in _INPUT_SHAPES[key][1] for key in self.inputs
+        ) or any("n" in _OUTPUT_SHAPES[key][1] for key in self.outputs)
+        self._meta = {
+            _UMAMI_META_KEYS[key]: int(value)
+            for key, value in (
+                ("particle_count", particle_count),
+                ("diagram_count", diagram_count),
+                ("squared_order_count", squared_order_count),
+            )
+            if value is not None
+        }
+        self._array_meta = (
+            {}
+            if color_representations is None
+            else {_UMAMI_META_KEYS["color_representations"]: color_representations}
         )
         if self._needs_particle_count and particle_count is None:
             # read from the particle_count input, even if the function does not take it
@@ -140,6 +208,15 @@ class PythonFunction:
         size = ctypes.sizeof(ctype)
         buffer = (ctype * count).from_address(address + offset * size)
         return self._numpy.frombuffer(buffer, dtype=self._numpy.dtype(ctype))
+
+    def _output_shape(self, key, n):
+        sizes = dict(
+            n=n,
+            d=self.diagram_count,
+            o=self.squared_order_count,
+            p=self.color_pair_count,
+        )
+        return [sizes.get(size, size) for size in _OUTPUT_SHAPES[key][1]]
 
     def _stream(self, device, stream):
         if self.framework == "torch" and device[0] != "cpu" and stream is not None:
@@ -211,16 +288,26 @@ class PythonFunction:
                 address = outputs.get(_UMAMI_OUTPUT_KEYS[key])
                 if address is None:
                     continue
-                dtype = _OUTPUT_TYPES[key]
-                self._check(key, result, dtype, count, device)
+                dtype = _OUTPUT_SHAPES[key][0]
+                shape = self._output_shape(key, n)
+                self._check(key, result, dtype, [count] + shape, device)
+                # the batch dimension is contiguous, the others are strided by it,
+                # the first one fastest
                 if self.framework == "torch":
-                    self._view(address, dtype, [count], [1], offset, device).copy_(
-                        result
-                    )
+                    strides = [1] + [
+                        stride * _prod(shape[:i]) for i in range(len(shape))
+                    ]
+                    self._view(
+                        address, dtype, [count] + shape, strides, offset, device
+                    ).copy_(result)
                 else:
-                    self._numpy_output(address, dtype, count, offset)[:] = result
+                    columns = result.reshape(count, -1, order="F")
+                    for k in range(columns.shape[1]):
+                        self._numpy_output(address, dtype, count, offset + k * stride)[
+                            :
+                        ] = columns[:, k]
 
-    def _check(self, key, result, dtype, count, device):
+    def _check(self, key, result, dtype, shape, device):
         prefix = f"output {key!r} of {self.name}"
         if self.framework == "torch":
             torch = self._torch
@@ -245,9 +332,9 @@ class PythonFunction:
             )
         if result.dtype != expected:
             raise TypeError(f"{prefix} must have dtype {expected}, not {result.dtype}")
-        if tuple(result.shape) != (count,):
+        if tuple(result.shape) != tuple(shape):
             raise ValueError(
-                f"{prefix} must have shape ({count},), not {tuple(result.shape)}"
+                f"{prefix} must have shape {tuple(shape)}, not {tuple(result.shape)}"
             )
 
 
@@ -276,6 +363,8 @@ def _add_matrix_element(self, function, name=None, parameters=None):
         name or function.name,
         list((function.parameters or {}).items()),
         {str(key): float(value) for key, value in (parameters or {}).items()},
+        function._meta,
+        function._array_meta,
     )
 
 

@@ -26,7 +26,10 @@ madspace::Tensor tensor_view(
 );
 
 /// Add a UMAMI matrix element to `context` that calls `function._call` with
-/// the raw UMAMI buffers, see madspace.PythonFunction.
+/// the raw UMAMI buffers, see madspace.PythonFunction. `integer_meta` holds the
+/// values of the integer metadata keys it reports (particle, diagram and
+/// squared-order counts), `integer_array_meta` those of the integer arrays of
+/// one value per leg (the colour representations).
 const madspace::MatrixElementApi& add_python_function(
     madspace::Context& context,
     py::object function,
@@ -36,7 +39,9 @@ const madspace::MatrixElementApi& add_python_function(
     const std::string& framework,
     const std::string& name,
     const std::vector<std::pair<std::string, double>>& parameter_defaults = {},
-    const std::unordered_map<std::string, double>& parameters = {}
+    const std::unordered_map<std::string, double>& parameters = {},
+    const std::unordered_map<int, int>& integer_meta = {},
+    const std::unordered_map<int, std::vector<int>>& integer_array_meta = {}
 );
 
 } // namespace madspace_py
