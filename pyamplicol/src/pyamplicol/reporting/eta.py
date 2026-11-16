@@ -11,7 +11,8 @@ between updates:
   one finished (a slow first item, a warm-up, does not set the pace),
   averaged with the median over the most recent items (load drift, robust
   to one outlier), and
-  blended with the prior's per-item time while few items are measured;
+  blended with the prior's per-item time while few items are measured (a
+  prior more than 3 times off the measured pace is dropped: "~");
 * between updates the estimate counts down from the last mark; when the
   item in progress takes longer than an item usually does, the estimate
   holds at the time the other remaining items need (it never reaches 0
@@ -32,6 +33,9 @@ _RECENT_FRACTION = 0.3
 _RECENT_MINIMUM = 5
 # Measured items needed before the measured pace outweighs a prior.
 _PRIOR_WEIGHT = 2.0
+# A measured pace this many times faster or slower than the prior's drops
+# the prior (a history of another machine, a cold cache, a stale record).
+_PRIOR_DISAGREES = 3.0
 # An item in progress that has outlasted the other remaining items' time
 # this many times over makes that time meaningless as a lower bound: the
 # estimate turns into "overdue".
@@ -109,23 +113,33 @@ def count_estimate(
         if prior_seconds is None:
             return None
         left = prior_seconds - max(now - started_at, 0.0)
-        if left >= 1.0:
+        if left > 0.0:
             return Estimate(left, estimated=True)
         return Estimate(None, estimated=True, overdue=max(-left, 0.0))
     per_item = _seconds_per_item(marks, started_at)
     assert per_item is not None
     measured = min(completed, total)
-    if prior_seconds is not None and prior_seconds > 0.0:
-        weight = measured / (measured + _PRIOR_WEIGHT)
-        per_item = weight * per_item + (1.0 - weight) * prior_seconds / total
     estimated = measured < 2 and prior_seconds is None
+    if prior_seconds is not None and prior_seconds > 0.0:
+        prior_pace = prior_seconds / total
+        if per_item > 0.0 and not (
+            1.0 / _PRIOR_DISAGREES <= per_item / prior_pace <= _PRIOR_DISAGREES
+        ):
+            # The run disagrees with its prior by more than a factor of a
+            # few: the prior is dropped, the measured pace alone is kept.
+            estimated = True
+        else:
+            weight = measured / (measured + _PRIOR_WEIGHT)
+            per_item = weight * per_item + (1.0 - weight) * prior_pace
     since = max(now - marks[-1][0], 0.0)
     counted_down = remaining * per_item - since
     floor = (remaining - 1) * per_item
-    if counted_down >= max(floor, 1.0):
+    if counted_down > 0.0 and counted_down >= floor:
+        # (Under a second shows "<1s": never 0 while work remains.)
         return Estimate(counted_down, estimated=estimated)
-    if floor >= 1.0 and since < _OUTLASTED * floor:
-        return Estimate(floor, estimated=estimated, at_least=True)
+    if floor > 0.0 and since < _OUTLASTED * floor:
+        # A sub-second floor is no bound worth a ">".
+        return Estimate(floor, estimated=estimated, at_least=floor >= 1.0)
     # The last item past the time an item takes, or an item that has
     # outlasted what the other remaining items need several times over.
     return Estimate(None, estimated=estimated, overdue=max(since - per_item, 0.0))
@@ -142,7 +156,7 @@ def remaining_estimate(
     if prior_seconds is None:
         return None
     left = prior_seconds - max(now - started_at, 0.0)
-    if left >= 1.0:
+    if left > 0.0:
         return Estimate(left, estimated=True)
     return Estimate(None, estimated=True, overdue=max(-left, 0.0))
 
@@ -161,7 +175,7 @@ def combined(
     if active is None and later_seconds <= 0.0:
         return None
     seconds = later_seconds + (active.seconds or 0.0 if active is not None else 0.0)
-    if seconds < 1.0:
+    if seconds <= 0.0:
         return active
     return Estimate(
         seconds,

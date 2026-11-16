@@ -93,7 +93,8 @@ def test_never_zero_while_work_remains() -> None:
             total=10, completed=9, started_at=0.0, marks=marks, now=now
         )
         assert estimate is not None
-        assert estimate.seconds is None or estimate.seconds >= 1.0
+        # Some time left ("<1s" on the display), or overdue: never 0.
+        assert estimate.seconds is None or estimate.seconds > 0.0
     late = count_estimate(total=10, completed=9, started_at=0.0, marks=marks, now=30.0)
     assert late.seconds is None
     assert late.overdue == pytest.approx(10.0)

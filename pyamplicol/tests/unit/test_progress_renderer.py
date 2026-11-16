@@ -224,3 +224,68 @@ def test_log_renderer_writes_status_lines_while_the_gil_is_held(
     assert status, lines
     assert any("no progress for" in line for line in status)
     assert lines[-1].startswith("Generating processes done")
+
+
+_EXITING_PARENT = """
+import os, sys, time
+from pyamplicol.reporting.progress import ProgressStart, TtyProgressSink
+stream = os.fdopen(int(sys.argv[1]), "w", buffering=1, encoding="utf-8")
+# A large process exits slowly (its memory is torn down for ~0.1 s).
+ballast = bytearray(1024**3)
+ballast[::4096] = b"x" * len(ballast[::4096])
+sink = TtyProgressSink(stream, color=False)
+sink.emit(ProgressStart("root", "Generating processes", total=10))
+print("ready", flush=True)
+time.sleep(60)
+"""
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="PF_EXITING is Linux")
+@pytest.mark.parametrize("signal_name", ["SIGKILL", "SIGTERM"])
+def test_renderer_draws_nothing_once_its_parent_begins_to_exit(
+    terminal, signal_name
+) -> None:
+    """While a killed parent is still exiting (re-parenting and the pipe's
+    end come only after its memory is freed) the renderer no longer draws:
+    it reads the parent's exiting flag."""
+
+    import select
+    import signal
+    import subprocess
+    import threading
+
+    master, stream = terminal
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
+    env.pop("PYAMPLICOL_PROGRESS_RENDERER", None)
+    for run in range(3):
+        parent = subprocess.Popen(
+            [sys.executable, "-c", _EXITING_PARENT, str(stream.fileno())],
+            pass_fds=(stream.fileno(),),
+            stdout=subprocess.PIPE,
+            env=env,
+            text=True,
+        )
+        assert parent.stdout.readline().strip() == "ready"
+        chunks: list[tuple[float, bytes]] = []
+        stop = threading.Event()
+
+        def read(stop: threading.Event = stop, chunks: list = chunks) -> None:
+            while not stop.is_set():
+                ready, _, _ = select.select([master], [], [], 0.05)
+                if ready:
+                    try:
+                        chunks.append((time.monotonic(), os.read(master, 65536)))
+                    except OSError:
+                        return
+
+        reader = threading.Thread(target=read, daemon=True)
+        reader.start()
+        time.sleep(0.5 + 0.08 * run)
+        killed = time.monotonic()
+        parent.send_signal(getattr(signal, signal_name))
+        parent.wait(timeout=30)
+        time.sleep(1.0)
+        stop.set()
+        reader.join()
+        late = [data for when, data in chunks if when > killed + 0.002]
+        assert not any(b"\x1b[" in data for data in late), (run, late)

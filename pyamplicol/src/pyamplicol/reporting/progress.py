@@ -313,6 +313,17 @@ class TtyProgressSink:
                 return
             now = time.monotonic()
             if isinstance(event, ProgressStart):
+                if event.parent_task_id is None and not event.details.get(
+                    "placeholder"
+                ):
+                    # The command's own first task replaces the command's
+                    # placeholder ("pyamplicol generate ... starting").
+                    for task_id in [
+                        key
+                        for key, task in self._tasks.items()
+                        if task.details.get("placeholder")
+                    ]:
+                        del self._tasks[task_id]
                 existing = self._tasks.get(event.task_id)
                 if existing is not None and existing.finished_at is None:
                     # A task started twice: the later start wins (the
@@ -342,10 +353,14 @@ class TtyProgressSink:
                     # Keep custom sinks forgiving when a backend emits a late pulse.
                     return
                 if isinstance(event, ProgressUpdate):
+                    moved = event.completed != task.completed
                     task.record(event.completed, now)
                     task.completed = max(task.completed, event.completed)
                     task.total = event.total if event.total is not None else task.total
-                    task.message = event.message
+                    if event.message is not None or moved:
+                        # An update of details only (a rescaled prior)
+                        # keeps what the task said.
+                        task.message = event.message
                     task.details.update(event.details)
                     task.updated_at = now
                 else:
@@ -1435,6 +1450,26 @@ class _SidecarLineSink:
         self._fallback.emit(event)
 
 
+# The kernel's "exiting" flag of a task (PF_EXITING in /proc/<pid>/stat's
+# flags word): set the moment a process starts to exit (SIGKILL, SIGTERM,
+# exit()), before its memory is torn down (up to hundreds of milliseconds)
+# and before its pipes close or its children are re-parented.
+_PF_EXITING = 0x4
+
+
+def _exiting(pid: int) -> bool:
+    """Whether process ``pid`` has begun to exit (Linux; elsewhere: not
+    known, False)."""
+
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as handle:
+            text = handle.read()
+        fields = text[text.rfind(b")") + 2 :].split()
+        return bool(int(fields[6]) & _PF_EXITING) or fields[0] in (b"Z", b"X")
+    except (OSError, ValueError, IndexError):
+        return False
+
+
 def _renderer_main(argv: list[str]) -> None:
     """The renderer process (``_SidecarDashboard``): argv = parent pid,
     colour flag, stream encoding, acknowledgement fd, mode. Ctrl-C is the
@@ -1464,7 +1499,7 @@ def _renderer_main(argv: list[str]) -> None:
     )
 
     def alive() -> bool:
-        return os.getppid() == parent
+        return os.getppid() == parent and not _exiting(parent)
 
     if len(argv) > 4 and argv[4] == "log":
         _log_renderer(parent, color, stream, ack_fd, alive)
