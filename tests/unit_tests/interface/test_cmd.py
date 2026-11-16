@@ -24,6 +24,8 @@ import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.various.misc as misc
 import os
 import logging
+import io
+import contextlib
 
 import tests.parallel_tests.test_aloha as test_aloha
 
@@ -161,6 +163,24 @@ class TestValidCmd(unittest.TestCase):
         goal = [l.strip() for l in  goal.split('\n')]
         self.assertEqual(self.cmd.history, goal)
     
+    def test_save_and_load_processes_are_refused(self):
+        """`save processes` / `load processes` are gone: after an output the
+        amplitudes kept are the base amplitudes of its matrix elements, which
+        lost the diagrams its --mask trimmed, and a saved list could not be
+        output with the other --mask. `save model` / `load model` remain."""
+
+        master = cmd.MasterCmd()
+        master.no_notification()
+        target = pjoin(self.path, 'processes.pkl')
+        self.assertRaises(master.InvalidCmd, master.do_save,
+                          'processes %s' % target)
+        self.assertRaises(master.InvalidCmd, master.do_load,
+                          'processes %s' % target)
+        self.assertFalse(os.path.exists(target))
+        import madgraph.interface.madgraph_interface as mg_interface
+        self.assertNotIn('processes', mg_interface.MadGraphCmd._save_opts)
+        self.assertIn('model', mg_interface.MadGraphCmd._save_opts)
+
     def test_InvalidCmd(self):
         """test that the Invalid Command are dealt with correctly"""
         
@@ -531,6 +551,25 @@ class TestValidCmd(unittest.TestCase):
         self.assertEqual(len(proc), 4)
         
     @test_aloha.set_global()
+    def test_dollar_massless_is_refused(self):
+        """`$` removes the on-shell window |sqrt(s) - M| < BWCUTOFF * W: a
+        massless particle has none (in the complex-mass scheme its width
+        would be 0/0, and the diagram silently zero), so `$ a` is refused,
+        also inside a multiparticle; `$ z` and `$$ a` still go through."""
+
+        cmd = self.cmd
+        self.do('import model sm')
+        for line in ('generate e+ e- > mu+ mu- $ a',
+                     'generate e+ e- > mu+ mu- $ g',
+                     'generate e+ e- > mu+ mu- $ z a'):
+            with self.assertRaisesRegex(cmd.InvalidCmd, 'not supported for massless'):
+                cmd.do_generate(line.split(' ', 1)[1])
+        self.do('generate e+ e- > mu+ mu- $ z')
+        self.assertEqual(cmd._curr_amps[0].get('process').get('forbidden_onsh_s_channels'), [23])
+        self.do('generate e+ e- > mu+ mu- $$ a')
+        self.assertTrue(cmd._curr_amps)
+
+    @test_aloha.set_global()
     def test_generate_polarised(self):
         """check that simple syntax goes through and return expected process"""
            
@@ -653,6 +692,117 @@ class TestValidCmd(unittest.TestCase):
                 self.do('generate %s, w+ > ta+ vt' % proc.input_string())
                 self.assertTrue(cmd._curr_amps)
         finally:
+            cmd.exec_cmd('generate p p > t t~')
+
+    @test_aloha.set_global()
+    def test_polarised_propagator_gauges(self):
+        """A polarised propagator of a massive vector ('t > w+{0} b, w+ > ...')
+        is a piece of the propagator numerator. The unitary and axial gauges
+        take every brace (pieces of -g + qq/M^2; the axial gauge only changes
+        the propagator of the massless vectors). The FD gauge takes {0}, {T},
+        {+}, {-}, {A}, {S}, {0S} (pieces of its five-component numerator) and
+        refuses {G}, {H}, {Q}, {W}, which are pieces of the unitary numerator
+        only. The Feynman gauge refuses them all: the qq/M^2 part of the
+        propagator is carried by separate Goldstone diagrams there (the
+        output used to crash with 'particle with custom propagator can not
+        have polarization'). An external polarisation and a polarised fermion
+        propagator are fine in every gauge."""
+        cmd = self.cmd
+        self.do('import model sm')
+        fd_braces = ('0', 'T', '+', '-', 'A', 'S', '0S')
+        unitary_only = ('G', 'H', 'Q', 'W')
+        try:
+            # --- Feynman gauge: every brace refused --------------------
+            self.do('set gauge Feynman')
+            for brace in fd_braces + unitary_only:
+                proc = 'generate t > w+{%s} b, w+ > ta+ vt' % brace
+                try:
+                    self.do(proc)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('w+{%s}' % brace, str(error))
+                    self.assertIn('Feynman gauge', str(error))
+                    self.assertIn('Goldstone', str(error))
+                    self.assertIn('set gauge unitary', str(error))
+                else:
+                    self.fail('%s accepted in the Feynman gauge' % proc)
+            # the walk recurses into the decay chains
+            self.assertRaises(
+                madgraph.InvalidCmd, self.do,
+                'generate p p > t t~, (t > w+{0} b, w+ > ta+ vt)')
+
+            # --- FD gauge: the helicity pieces and the remainder -------
+            self.do('set gauge FD')
+            for brace in fd_braces:
+                self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                self.assertTrue(cmd._curr_amps)
+            for brace in unitary_only:
+                proc = 'generate t > w+{%s} b, w+ > ta+ vt' % brace
+                try:
+                    self.do(proc)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('w+{%s}' % brace, str(error))
+                    self.assertIn('FD gauge', str(error))
+                    self.assertIn('unitary-gauge numerator', str(error))
+                else:
+                    self.fail('%s accepted in the FD gauge' % proc)
+            self.assertRaises(
+                madgraph.InvalidCmd, self.do,
+                'generate p p > t t~, (t > w+{G} b, w+ > ta+ vt)')
+            # the FD remainder is not the unitary one: said when it is used
+            with self.assertLogs('cmdprint', level='WARNING') as log:
+                self.do('generate t > w+{A} b, w+ > ta+ vt')
+            self.assertTrue(any('remainder of the FD propagator' in line
+                                for line in log.output))
+            # a massless vector: only the transverse pieces (its FD
+            # longitudinal vector vanishes)
+            self.do('generate e+ e- > z a{T}, a > mu+ mu-')
+            self.assertTrue(cmd._curr_amps)
+            for brace in ('0', 'A', 'S', 'G'):
+                try:
+                    self.do('generate e+ e- > z a{%s}, a > mu+ mu-' % brace)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('a{%s}' % brace, str(error))
+                    self.assertIn('massless vector', str(error))
+                else:
+                    self.fail('a{%s} accepted in the FD gauge' % brace)
+
+            # --- external polarisations, fermion propagators -----------
+            for gauge in ('Feynman', 'FD'):
+                self.do('set gauge %s' % gauge)
+                self.do('generate t t~ > w+{0} w-')
+                self.assertTrue(cmd._curr_amps)
+                self.do('generate t t~ > w+{T} w-')
+                self.assertTrue(cmd._curr_amps)
+                self.do('generate e+ e- > t{+} t~, t > w+ b')
+                self.assertTrue(cmd._curr_amps)
+
+            # --- unitary and axial gauges: everything ------------------
+            for gauge in ('axial', 'unitary'):
+                self.do('set gauge %s' % gauge)
+                for brace in fd_braces + unitary_only:
+                    self.do('generate t > w+{%s} b, w+ > ta+ vt' % brace)
+                    self.assertTrue(cmd._curr_amps)
+            # a massless vector keeps the same -g propagator in the Feynman
+            # gauge: its transverse propagator stays allowed there
+            self.do('set gauge Feynman')
+            self.do('generate e+ e- > z a{T}, a > mu+ mu-')
+            self.assertTrue(cmd._curr_amps)
+
+            # --- complex-mass scheme: nowhere ---------------------------
+            self.do('set complex_mass_scheme True')
+            for gauge in ('unitary', 'FD'):
+                self.do('set gauge %s' % gauge)
+                try:
+                    self.do('generate t > w+{0} b, w+ > ta+ vt')
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('complex-mass scheme', str(error))
+                else:
+                    self.fail('accepted in the complex-mass scheme (%s)' % gauge)
+                self.do('generate t t~ > w+{0} w-')
+                self.assertTrue(cmd._curr_amps)
+        finally:
+            self.do('set complex_mass_scheme False')
+            self.do('set gauge unitary')
             cmd.exec_cmd('generate p p > t t~')
 
 
@@ -964,6 +1114,93 @@ class CheckDisplayWithoutProcessTest(unittest.TestCase):
         self.cmd.check_display(['processes'])   # must not raise
 
 
+class CrossingDisplayTest(unittest.TestCase):
+    """The crossed processes folded into a base (default --use_crossing) have no
+    amplitude of their own, yet are part of the generation: `display processes`
+    and the generation summary have to show them."""
+
+    def setUp(self):
+        import madgraph.interface.master_interface as cmd
+        self.cmd = cmd.MasterCmd()
+        self.cmd.do_import('model sm')
+
+    def _summary(self, line):
+        said = []
+        logger = logging.getLogger('cmdprint')
+        handler = logging.Handler()
+        handler.emit = lambda record: said.append(record.getMessage())
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers, logger.propagate = [handler], False
+        logger.setLevel(logging.INFO)
+        try:
+            self.cmd.exec_cmd(line, errorhandling=False, printcmd=False)
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+        return [text for text in said if text.startswith('Total:')]
+
+    def _display(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.cmd.do_display('processes')
+        return out.getvalue()
+
+    def test_crossings_are_listed_and_counted(self):
+        total = self._summary('generate p p > w+ j')
+        self.assertEqual(total, ['Total: 1 processes with 2 diagrams (and 2 crossed '
+                                 'processes evaluated through them, see '
+                                 '"display processes")'])
+        text = self._display()
+        self.assertIn('Crossed processes evaluated through g Q > w+ Q:', text)
+        # a crossing and its beam swap are one entry, as a mirror process is
+        self.assertEqual(text.count('    Process: '), 2, text)
+        self.assertIn('_quark _anti_quark > w+ g', text)
+        self.assertIn('g _anti_quark > w+ _anti_quark', text)
+
+    def test_decay_chain_production_crossings(self):
+        self._summary('generate p p > z j, z > e+ e-')
+        text = self._display()
+        self.assertIn('Crossed processes evaluated through g Q > z Q:', text)
+        self.assertEqual(text.count('    Process: '), 2, text)
+
+    def test_nothing_is_added_without_crossing(self):
+        # the 1 + 2 processes the folded generation reports, each its own
+        total = self._summary('generate p p > w+ j --use_crossing=False')
+        self.assertEqual(total, ['Total: 3 processes with 6 diagrams'])
+        self.assertNotIn('Crossed', self._display())
+
+    def test_offshell_legs_cross(self):
+        # an off-shell ('*') leg is evaluated at the invariant mass of its
+        # momentum by the crossed external call as well (that of the leg fed
+        # to its base slot): it folds as the on-shell process does
+        total = self._summary('generate p p > w+* j')
+        self.assertEqual(total, ['Total: 1 processes with 2 diagrams (and 2 crossed '
+                                 'processes evaluated through them, see '
+                                 '"display processes")'])
+        self.assertIn('_quark _anti_quark > w+* g', self._display())
+
+    def test_offshell_leg_pairs_with_an_offshell_leg(self):
+        import madgraph.core.base_objects as base_objects
+        import madgraph.core.diagram_generation as diagram_generation
+        model = self.cmd._curr_model
+
+        def legs(spec):
+            return base_objects.LegList([
+                base_objects.Leg({'id': pid, 'state': final, 'offshell': star})
+                for pid, final, star in spec])
+
+        pairing = diagram_generation.MultiProcess.crossing_flavor_pairing
+        # u u~ > t* t~ crossed into u~ u > t* t~: the starred tops pair up
+        base = legs([(2, False, False), (-2, False, False), (6, True, True),
+                     (-6, True, False)])
+        crossed = legs([(-2, False, False), (2, False, False), (6, True, True),
+                        (-6, True, False)])
+        self.assertIsNotNone(pairing(base, crossed, model))
+        # the star on the other top: no slot of the base evaluates it
+        crossed = legs([(-2, False, False), (2, False, False), (6, True, False),
+                        (-6, True, True)])
+        self.assertIsNone(pairing(base, crossed, model))
+
+
 class RequiredSChannelErrorTest(unittest.TestCase):
     """A bad required s-channel has to be reported for what it is.
 
@@ -1040,3 +1277,114 @@ class DisplayInertCouplingOrderTest(unittest.TestCase):
         self.assertNotIn('inert', text)
         self.assertIn('QCD : weight = 1\n', text)
         self.assertIn('QED : weight = 2\n', text)
+
+
+class NoCrossingAliasTest(unittest.TestCase):
+    """'--no_crossing' (the MG5 3.x flag, which main still completes) is a
+    deprecated alias of '--use_crossing=False'.
+
+    Once do_add stopped popping it, it reached check_add as part of the
+    process definition: 'generate e+ e- > mu+ mu- --no_crossing' died with
+    'No particle --no_crossing in model'.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = cmd.MasterCmd()
+        cls.cmd.do_import('model sm')
+
+    def test_it_is_popped_as_false(self):
+        args = ['p', '>', '--no_crossing']
+        with self.assertLogs('cmdprint', level='WARNING') as said:
+            self.assertIs(self.cmd.pop_use_crossing_flag(args), False)
+        self.assertEqual(args, ['p', '>'])
+        self.assertIn('--use_crossing=False', '\n'.join(said.output))
+
+    def test_a_generate_with_it_works(self):
+        with self.assertLogs('cmdprint', level='WARNING'):
+            self.cmd.exec_cmd('generate e+ e- > mu+ mu- --no_crossing')
+        self.assertEqual(len(self.cmd._curr_amps), 1)
+        self.assertFalse(self.cmd._use_crossing)
+
+
+class LaunchCopiesOnlyRunTimeSetsTest(unittest.TestCase):
+    """`launch -i` of an aMC@NLO or MadWeight output copies the MG5 `set`
+    history into the run interface it starts, and that run's check_set
+    rejects the generation-time zerowidth_tchannel.
+
+    MadGraphCmd.do_launch replayed every line with exec_cmd (which raises), so
+    `set zerowidth_tchannel False; generate p p > t t~ [QCD]; output X;
+    launch X -i` aborted there; only the aMC@NLO prompt's own launch skipped
+    it. The run interface is a stub around the real check_set, so no process
+    directory is needed.
+    """
+
+    history = ['import model sm',
+               'set zerowidth_tchannel False',
+               'set nb_core 4',
+               'generate p p > t t~ [QCD]',
+               'output PROC']
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = cmd.MasterCmd()
+
+    def replayed(self, launch, mode, module, name, path='PROC'):
+        """The lines `launch` (a do_launch) sends to the run interface it
+        builds, with the run interface classes module.name and
+        module.nameShell (MasterCmd is a CmdShell) stubbed."""
+
+        from unittest import mock
+        import madgraph.interface.common_run_interface as common_run
+
+        sent = []
+
+        class _Run(common_run.CheckValidForCmd):
+            InvalidCmd = madgraph.InvalidCmd
+            _set_options = []
+
+            def __init__(self, me_dir, options):
+                self.options = dict(options)
+
+            def help_set(self):
+                pass
+
+            def pass_in_web_mode(self):
+                pass
+
+            def exec_cmd(self, line):
+                self.check_set(line.split()[1:])
+                sent.append(line)
+
+        def check_launch(args, options):
+            args[:] = [p for p in [mode, path] if p]
+
+        master = self.cmd
+        with mock.patch.object(master, 'check_launch', check_launch), \
+             mock.patch.object(master, 'history', list(self.history)), \
+             mock.patch.object(master, 'define_child_cmd_interface',
+                               lambda child: 'stop'), \
+             mock.patch.object(module, name, _Run), \
+             mock.patch.object(module, name + 'Shell', _Run):
+            self.assertEqual(launch(master, '%s -i' % path), 'stop')
+        return sent
+
+    def test_from_mg5_for_amcatnlo(self):
+        import madgraph.interface.madgraph_interface as mg_interface
+        import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
+        sent = self.replayed(mg_interface.MadGraphCmd.do_launch, 'aMC@NLO',
+                             amcatnlo_run, 'aMCatNLOCmd')
+        self.assertEqual(sent, ['set nb_core 4'])
+
+    def test_from_the_amcatnlo_prompt(self):
+        import shutil
+        import madgraph.interface.amcatnlo_interface as amcatnlo_interface
+        import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
+        path = tempfile.mkdtemp(prefix='launch_replay')
+        try:
+            os.mkdir(pjoin(path, 'Events'))
+            sent = self.replayed(amcatnlo_interface.aMCatNLOInterface.do_launch,
+                                 None, amcatnlo_run, 'aMCatNLOCmd', path=path)
+        finally:
+            shutil.rmtree(path, ignore_errors=True)
+        self.assertEqual(sent, ['set nb_core 4'])

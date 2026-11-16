@@ -141,8 +141,9 @@ class AbstractRoutine(object):
 
         conjg = tuple(int(t[1:]) for t in self.tag if t.startswith('C'))
         # the model is part of the key: two models can define different
-        # structures under the same Lorentz name
-        key = (self.model, tuple(lor.name for lor in l_lorentz), conjg)
+        # structures under the same Lorentz name; so is the gauge
+        key = (self.model, tuple(lor.name for lor in l_lorentz), conjg,
+               aloha.unitary_gauge)
         if key in self.combined_builder:
             builder = self.combined_builder[key]
         else:
@@ -204,7 +205,7 @@ class AbstractRoutine(object):
             if len(lorentz.spins) != len(self.spins):
                 # not the same legs: nothing to assemble them into
                 return None
-            key = (self.model, name, conjg)
+            key = (self.model, name, conjg, aloha.unitary_gauge)
             if key in self.combined_builder:
                 builder = self.combined_builder[key]
             else:
@@ -466,6 +467,26 @@ in presence of majorana particle/flow violation"""
                         self.denominator = None
                 # 1D is a multiplication of standard propagator -> later
                 elif propa in [[],['1D']]:
+                    massless = False
+                    self.denominator = None
+                elif aloha.unitary_gauge == 3 and spin in [1, 3] and \
+                        any(p in aloha_writers.UNITARY_ONLY_PROPAGATORS for p in propa):
+                    # a piece of the unitary numerator: projecting it on the FD
+                    # gauge (the generic branch below) gives a wrong result
+                    raise ALOHAERROR('The polarised propagator %s is a piece of the '
+                                     'unitary-gauge numerator and has no FD-gauge '
+                                     'counterpart.' % ','.join(propa))
+                elif aloha.unitary_gauge == 3 and spin in [1, 3] and \
+                        aloha_writers.fd_polarized_propagator(propa) is not None:
+                    # FD gauge, polarised propagator of a massive vector (and
+                    # of its Goldstone boson, the fifth component of the same
+                    # line): the ordinary FD wavefunction is built here, and
+                    # the writer projects it on the requested piece instead of
+                    # applying the full FD projector
+                    # (aloha_writers.FD_POLARIZED_PROPAGATORS).
+                    if aloha.complex_mass:
+                        raise ALOHAERROR('Polarised propagators are not '
+                                 'supported in the complex-mass scheme.')
                     massless = False
                     self.denominator = None
                 else:

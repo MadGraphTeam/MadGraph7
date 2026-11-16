@@ -1,9 +1,21 @@
 #include "madspace/driver/tensor.hpp"
+#include "madspace/driver/logger.hpp"
 
 #include <algorithm>
 #include <variant>
 
 using namespace madspace;
+
+bool Device::supports_gzip() const {
+    try {
+        return gzip_compressor(default_gzip_algorithm) != nullptr;
+    } catch (const std::exception& e) {
+        Logger::warning(
+            std::format("GPU gzip unavailable, falling back to CPU gzip: {}", e.what())
+        );
+        return false;
+    }
+}
 
 Tensor Tensor::select(std::size_t axis, std::size_t index) const {
     check_impl();
