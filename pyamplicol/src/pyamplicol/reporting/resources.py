@@ -645,7 +645,13 @@ class process_tree_peak_memory:
     ``children`` lists of this process, else a /proc scan; macOS and the
     BSDs: ``ps``), and getrusage(RUSAGE_CHILDREN) gives the largest peak of
     a descendant that ended (Linux only: elsewhere the ``ps`` samples are
-    descendants too)."""
+    descendants too).
+
+    Only processes started inside the block count: the descendants alive
+    when it starts (a pool or helper of the caller, multiprocessing's
+    resource tracker) are left out of the samples with their own
+    descendants, and when one of them ends inside the block,
+    RUSAGE_CHILDREN (which cannot tell it from the block's) is not used."""
 
     def __init__(self, *, interval_seconds: float = 1.0) -> None:
         self.result: ProcessTreePeakMemory | None = None
@@ -655,6 +661,8 @@ class process_tree_peak_memory:
         self._children: tuple[int, float] | None = None
         self._monitors: tuple[int, float] = (0, 0.0)
         self._sampler = "none"
+        # The descendants alive at the start: not the block's.
+        self._existing: frozenset[int] | None = None
 
     def _snapshot(self) -> dict[int, ProcessInfo]:
         pid = os.getpid()
@@ -672,14 +680,36 @@ class process_tree_peak_memory:
         try:
             self._children = _children_usage()
             self._monitors = _monitor_ended()
+            self._existing = self._descendants()
             self._process = peak_memory().__enter__()
             self._monitor = ResourceUsageMonitor(
-                interval_seconds=self._interval, snapshotter=self._snapshot
+                interval_seconds=self._interval,
+                snapshotter=self._snapshot,
+                exclude=self._existing or frozenset(),
             )
             self._monitor.start()
         except Exception:  # the measurement never fails the block
             self._monitor = None
         return self
+
+    def _descendants(self) -> frozenset[int] | None:
+        """This process's descendants alive now; None when not readable."""
+
+        try:
+            records = self._snapshot()
+        except (OSError, ResourceProbeError, subprocess.SubprocessError, ValueError):
+            return None
+        children: dict[int, list[int]] = defaultdict(list)
+        for record in records.values():
+            children[record.ppid].append(record.pid)
+        found: set[int] = set()
+        pending = [os.getpid()]
+        while pending:
+            for child in children.get(pending.pop(), ()):
+                if child not in found:
+                    found.add(child)
+                    pending.append(child)
+        return frozenset(found)
 
     def __exit__(self, *exc: object) -> None:
         try:
@@ -700,6 +730,14 @@ class process_tree_peak_memory:
             process = self._process.result
         linux = platform.system() == "Linux" and self._sampler != "ps"
         before, after = self._children, _children_usage()
+        # A process alive at the start that ended inside the block was
+        # reaped into RUSAGE_CHILDREN like the block's own: not attributable.
+        alive = self._descendants() if self._existing else None
+        attributable = self._existing is not None and (
+            not self._existing or (alive is not None and self._existing <= alive)
+        )
+        if not attributable:
+            before = after = None
         # The display's processes reaped over the region are not the
         # region's: their CPU time is taken out, and a peak counts only above
         # theirs once one of them raised the descendants' largest peak.
@@ -740,7 +778,13 @@ class process_tree_peak_memory:
         else:
             sources.append(
                 f"descendants every {self._interval:g} s from {self._sampler}"
-                + (" and RUSAGE_CHILDREN" if linux else "")
+                + (
+                    " and RUSAGE_CHILDREN"
+                    if linux and attributable
+                    else " (RUSAGE_CHILDREN not attributable)"
+                    if linux
+                    else ""
+                )
             )
         if not children:
             peak = own
