@@ -114,22 +114,26 @@ c     shat, Q_ES and xicut_used; (alpha_s/2 pi) times
 c
 c       sum_K [E(K,P) K_mu/(P.K) - E_mu({1,2},{K,P})] VEC^mu(K)
 c       - [g_mu nu E(P,P)/P^2 + E_mu nu({2,2},{P,P})] TEN^{mu nu}
-c       + (1P1 only) 2/(3 P^2) sum_S' C_eff M(r_S')
 c       + 8/(m_Q m_Qbar) sum_S' c_S' M(r_S') log(Q_ES^2/mu_NRQCD^2)
 c
 c     with P the onium momentum, E the finite parts of the eikonal
 c     integrals (eikonal_Ireg, fks_onia_eikonal.f), VEC, TEN and
 c     M(r_S') = BAUX (2S+1)/(2J+1) from born_onia.f, and the LDME
 c     coefficients c_S' = 1/(2 N_c) ([18]), B_F ([88]), C_F ([81]) times
-c     (2J+1)/9 for 3P_J. The 1P1 term is the remnant of the self term of
-c     the P -> S soft current in the 't Hooft-Veltman scheme: the 1P1
-c     polarisation (3 states, as the LDME normalisation <O>/(N_C (2J+1)))
-c     is 4-dimensional and the soft gluon d-dimensional, so the self
-c     factor per state is (3 - <n_(3)^2>)/3 = (d-2)/(d-1) = 2/3 (1 - eps/3),
-c     the same as CDR with d - 1 states divided by d - 1: a scheme-
-c     independent MS-bar result, as for 3P_J (whose rank-2 tensor is the
-c     same HV projection). The paper's -(2 eps - 2) of sect. 4.3.4 sums
-c     over d - 1 states but divides by 3, which leaves 2/P^2 instead.
+c     (2J+1)/9 for 3P_J.
+c     There is no extra 1P1 term. The self term contracts the
+c     d-dimensional rank-2 eikonal integral (its angular average
+c     <n_i n_j> = delta_ij/(d-1)) with the 4-dimensional TEN: the
+c     't Hooft-Veltman computation, 3 states normalised as the LDME
+c     <O>/(N_C (2J+1)), d-dimensional soft gluon. Its self factor per
+c     state, (3 - <n_(3)^2>)/3 = (d-2)/(d-1), equals CDR's d - 1 states
+c     divided by d - 1, so this is the consistent MS-bar result for 1P1
+c     as for 3P_J. Check: the d-dimensional real of g g -> 1P1[1] + g
+c     (Larin's gamma5) integrated in d dimensions with the MS-bar NRQCD
+c     counterterm gives the delta(1-z) constant -5/6 of HELAC-Onia,
+c     which this reproduces. The paper's -(2 eps - 2) (sect. 4.3.4) sums
+c     over d - 1 states but divides by 2J + 1 = 3, a mixed scheme
+c     (constant -1/2); added on top of the tensor it double counts.
 c**************************************************************************
       use fks_phase_space_data, only: shat,p_born
       implicit none
@@ -192,7 +196,7 @@ c the self term
      &           *dble(ten(mu,nu))
          enddo
       enddo
-c the 1P1 remnant (see above) and the LDME counterterms
+c the LDME counterterms
       if (mu_nrqcd_ref_fixed.gt.0d0) then
          mun2=mu_nrqcd_ref_fixed**2
       else
@@ -200,7 +204,6 @@ c the 1P1 remnant (see above) and the LDME counterterms
       endif
       do a=1,naux
          mr=baux(a)*dble(2*spin+1)/dble(2*jtot+1)
-         if (spin.eq.0) contr=contr+2d0/(3d0*ktot2)*ceff(a)*mr
          if (label(a).eq.'18') then
             cldme=1d0/(2d0*nc)
          elseif (label(a).eq.'81') then
