@@ -7,6 +7,7 @@ import os
 import platform
 import subprocess
 import threading
+import time
 import weakref
 from collections import defaultdict
 from collections.abc import Callable
@@ -31,6 +32,10 @@ class ResourceUsage:
     peak_rss_bytes: int | None = None
     process_count: int | None = None
     peak_process_count: int | None = None
+    # The cores the process tree kept busy over the last sampling interval
+    # (its CPU seconds over the interval's wall seconds; None until two
+    # samples, or where the platform reports no CPU time).
+    busy_cores: float | None = None
 
 
 ProcessSnapshot = Callable[[], dict[int, ProcessInfo]]
@@ -170,6 +175,40 @@ class ProcessTreeSampler:
         self._known_pids = selected
         return sum(records[pid].rss_bytes for pid in selected), len(selected)
 
+    def known_pids(self) -> frozenset[int]:
+        """The processes of the tree at the last sample."""
+
+        return frozenset(self._known_pids)
+
+
+def _tree_cpu_seconds(pids: frozenset[int]) -> float | None:
+    """The CPU seconds (user + system, children waited for included) of
+    ``pids`` from ``/proc/<pid>/stat``; None where it does not exist. A
+    process that ended between samples drops out (its CPU then counts as
+    its parent's once waited for)."""
+
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return None
+    try:
+        ticks = os.sysconf("SC_CLK_TCK")
+    except (AttributeError, OSError, ValueError):
+        return None
+    total = 0
+    for pid in pids:
+        try:
+            text = (proc / str(pid) / "stat").read_text(
+                encoding="utf-8", errors="replace"
+            )
+        except OSError:
+            continue
+        fields = text[text.rfind(")") + 1 :].split()
+        try:
+            total += sum(int(fields[index]) for index in (11, 12, 13, 14))
+        except (IndexError, ValueError):
+            continue
+    return total / ticks
+
 
 class ResourceUsageMonitor:
     """Sample aggregate RSS in a daemon thread without affecting generation."""
@@ -222,6 +261,7 @@ class ResourceUsageMonitor:
             rss_bytes, process_count = self._sampler.sample(self._snapshotter())
         except (OSError, ResourceProbeError, subprocess.SubprocessError, ValueError):
             return
+        busy = self._busy_cores()
         with self._lock:
             peak = max(self._usage.peak_rss_bytes or 0, rss_bytes)
             self._usage = ResourceUsage(
@@ -231,7 +271,24 @@ class ResourceUsageMonitor:
                 peak_process_count=max(
                     self._usage.peak_process_count or 0, process_count
                 ),
+                busy_cores=busy,
             )
+
+    _cpu_mark: tuple[float, float] | None = None
+
+    def _busy_cores(self) -> float | None:
+        """The process tree's busy cores since the previous sample, from the
+        CPU seconds of its processes (Linux ``/proc/<pid>/stat``; None
+        elsewhere or before two samples)."""
+
+        seconds = _tree_cpu_seconds(self._sampler.known_pids())
+        if seconds is None:
+            return None
+        now = time.monotonic()
+        mark, self._cpu_mark = self._cpu_mark, (now, seconds)
+        if mark is None or now <= mark[0]:
+            return None
+        return max(seconds - mark[1], 0.0) / (now - mark[0])
 
 
 @dataclass(frozen=True, slots=True)

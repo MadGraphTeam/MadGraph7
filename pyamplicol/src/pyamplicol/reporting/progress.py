@@ -9,7 +9,7 @@ import os
 import re
 import shutil
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from threading import Event, RLock, Thread
 from types import MappingProxyType
@@ -216,6 +216,7 @@ class TtyProgressSink:
         dashboard: _Dashboard | None = None
         start_dashboard = False
         stop_dashboard = False
+        kept: str | None = None
         with self._lock:
             if not self._interactive:
                 if self._line_sink is None:
@@ -267,6 +268,8 @@ class TtyProgressSink:
                     task.updated_at = now
                     if event.elapsed_seconds is not None:
                         task.elapsed_seconds = event.elapsed_seconds
+                    if event.details.get("keep") and self._dashboard is not None:
+                        kept = _kept_line(task, color=self._color_enabled)
             dashboard = self._dashboard
             if (
                 isinstance(event, ProgressEnd)
@@ -279,6 +282,9 @@ class TtyProgressSink:
         # Rendering snapshots task state and therefore acquires ``self._lock``.
         # Keep it outside that lock so the heartbeat's render lock and event
         # delivery can never form a lock-order cycle.
+        if dashboard is not None and kept is not None:
+            # A finished phase's one line stays in the scroll-back.
+            dashboard.write_message(kept)
         if dashboard is not None:
             if stop_dashboard:
                 dashboard.close()
@@ -381,12 +387,21 @@ class _LineProgressSink:
     minimum_interval: float = 0.0
     _last: dict[str, float] = field(default_factory=dict)
 
+    # The cadence of a task's heartbeat updates (``details["heartbeat"]``:
+    # the same counts, its clocks moved on) in a line log: alive, not noisy.
+    heartbeat_interval: float = 10.0
+
     def emit(self, event: ProgressEvent) -> None:
-        if isinstance(event, ProgressUpdate) and self.minimum_interval > 0.0:
+        if isinstance(event, ProgressUpdate):
             now = time.monotonic()
             complete = event.total is not None and event.completed == event.total
             last = self._last.get(event.task_id, float("-inf"))
-            if not complete and now - last < self.minimum_interval:
+            interval = (
+                self.heartbeat_interval
+                if event.details.get("heartbeat")
+                else self.minimum_interval
+            )
+            if not complete and now - last < interval:
                 return
             self._last[event.task_id] = now
         if isinstance(event, ProgressStart):
@@ -511,6 +526,26 @@ class _Dashboard:
             self.render_now()
 
 
+def _kept_line(task: _TaskState, *, color: bool) -> str:
+    """The scroll-back line of a finished phase that asks for one
+    (``details["keep"]``): its description, its summary message and what
+    it cost, "failed" in red."""
+
+    elapsed = task.elapsed_seconds or max(
+        (task.finished_at or task.updated_at) - task.started_at, 0.0
+    )
+    mark = "done" if task.success is not False else "failed"
+    fragments = [
+        (task.description, "CYAN"),
+        (f"  {task.message}" if task.message else "", None),
+        (
+            f"  {mark} in {_duration_text(elapsed)}",
+            "GREEN" if mark == "done" else "RED",
+        ),
+    ]
+    return _paint_fragments(fragments, width=10_000, enabled=color)
+
+
 def _terminal_width(stream: TextIO) -> int:
     try:
         return max(1, os.get_terminal_size(stream.fileno()).columns)
@@ -593,10 +628,70 @@ def _overall_line(
     fragments = [
         (title, "CYAN"),
         (f"  elapsed {_duration_text(elapsed)}", None),
+        *_total_eta_fragments(root, now=now),
         (f"  RSS {rss}", "YELLOW" if usage.peak_rss_bytes is not None else None),
+        (
+            "" if usage.busy_cores is None else f"  cores {usage.busy_cores:.1f}",
+            None,
+        ),
         (f"  children {child_count}", None),
     ]
     return _paint_fragments(fragments, width=width, enabled=color)
+
+
+def _counted_down(task: _TaskState, key: str, now: float) -> float | None:
+    """A task's ``key`` duration detail counted down since its last update
+    (a value reported at an update keeps running between updates)."""
+
+    value = _detail_float(task.details, key)
+    if value is None:
+        return None
+    if task.finished_at is None:
+        value -= max(now - task.updated_at, 0.0)
+    return value
+
+
+def _eta_text(seconds: float, *, estimated: bool) -> str:
+    """An ETA for work that remains: never 0 ("<1s" at the end), "~" when
+    it is a prior rather than a measured rate."""
+
+    text = "<1s" if seconds < 1.0 else _duration_text(seconds)
+    return ("~" if estimated else "") + text
+
+
+def _total_eta_fragments(
+    task: _TaskState, *, now: float
+) -> list[tuple[str, str | None]]:
+    """The whole command's ETA and, when it has one, its budget's remainder
+    (a root task's ``eta_seconds``, ``eta_estimated``, ``budget_seconds``
+    details), in the warning colour when the ETA passes the budget."""
+
+    if task.finished_at is not None:
+        return []
+    eta = _counted_down(task, "eta_seconds", now)
+    budget = _counted_down(task, "budget_seconds", now)
+    fragments: list[tuple[str, str | None]] = []
+    if eta is not None:
+        over = budget is not None and eta > budget + max(0.25 * budget, 5.0)
+        fragments.append(
+            (
+                "  ETA "
+                + _eta_text(
+                    max(eta, 0.0), estimated=bool(task.details.get("eta_estimated"))
+                ),
+                "YELLOW" if over else "GREEN",
+            )
+        )
+    if budget is not None:
+        fragments.append(
+            (
+                f"  budget {_duration_text(max(budget, 0.0))} left"
+                if budget > 0.0
+                else "  budget spent",
+                None,
+            )
+        )
+    return fragments
 
 
 def _phase_line(
@@ -620,10 +715,14 @@ def _phase_line(
         filled = min(bar_width, max(0, round(fraction * bar_width)))
         bar = "[" + "#" * filled + "-" * (bar_width - filled) + "]"
         percent = f" {fraction:>5.1%}"
-        # A task that knows its costs reports its own estimate.
-        eta = _detail_float(phase.details, "eta_seconds")
-        if eta is None and completed > 0:
+        # A task that knows its costs reports its own estimate (counted down
+        # between its updates); a task reporting none (the key present) has
+        # none, never an extrapolation of its counts.
+        eta = _counted_down(phase, "eta_seconds", now)
+        if eta is None and completed > 0 and "eta_seconds" not in phase.details:
             eta = elapsed * (total - completed) / completed
+        if eta is not None and completed < total and phase.finished_at is None:
+            eta = max(eta, 0.0)
     else:
         bar = "[...]"
         percent = ""
@@ -634,7 +733,17 @@ def _phase_line(
         (f"  {count} ", None),
         (bar, "GREEN"),
         (percent, None),
-        (f"  ETA {_duration_text(eta)}" if eta is not None else "", None),
+        (
+            ""
+            if eta is None
+            else "  ETA "
+            + (
+                _eta_text(eta, estimated=bool(phase.details.get("eta_estimated")))
+                if completed < (total or 0) and phase.finished_at is None
+                else _duration_text(eta)
+            ),
+            None,
+        ),
         (f"  phase {_duration_text(elapsed)}", None),
         (active_text, None),
     ]
@@ -663,6 +772,7 @@ def _detail_line(
         else "MAGENTA"
     )
     fragments.append((str(step), step_color))
+    fragments += _reading_fragments(details.get("readings"))
     backend = details.get("backend")
     if backend:
         fragments.append((f"  {backend}", "MAGENTA"))
@@ -719,11 +829,18 @@ def _detail_line(
         sample = str(sample_index) + (f"/{sample_total}" if sample_total else "")
         fragments.append((f"  samples {sample}", None))
     waiting = details.get("waiting_seconds")
+    stalled = _counted_up(task, "stalled_seconds", now)
     if isinstance(waiting, (float, int)) and not isinstance(waiting, bool):
         fragments.append((f"  waiting {_duration_text(float(waiting))}", "YELLOW"))
-    elif task.finished_at is None and now - task.updated_at >= 5.0:
+    elif stalled is not None:
+        fragments.append((f"  no progress for {_duration_text(stalled)}", "YELLOW"))
+    elif (
+        task.finished_at is None
+        and "running_seconds" not in details
+        and now - task.updated_at >= 5.0
+    ):
         fragments.append(
-            (f"  active {_duration_text(now - task.updated_at)}", "YELLOW")
+            (f"  no update for {_duration_text(now - task.updated_at)}", "YELLOW")
         )
     native_current_rss = _detail_int(details, "native_current_rss_bytes")
     native_peak_rss = _detail_int(details, "native_peak_rss_bytes")
@@ -735,6 +852,67 @@ def _detail_line(
             )
         )
     return _paint_fragments(fragments, width=width, enabled=color)
+
+
+def _counted_up(task: _TaskState, key: str, now: float) -> float | None:
+    """A task's ``key`` duration detail kept running since its last update."""
+
+    value = _detail_float(task.details, key)
+    if value is None:
+        return None
+    if task.finished_at is None:
+        value += max(now - task.updated_at, 0.0)
+    return value
+
+
+# A reading of a ``readings`` detail: label, value and note fields, readings
+# separated by RECORD; an empty value shows "N/A" (muted), the note muted.
+READING_FIELD = "\x1f"
+READING_RECORD = "\x1e"
+
+
+def readings_detail(readings: Sequence[tuple[str, str | None, str | None]]) -> str:
+    """A ``readings`` detail from (label, value or None, note or None)
+    triples: the current best estimates a task shows on its detail line
+    (``_reading_fragments``), e.g. each backend's time per point."""
+
+    return READING_RECORD.join(
+        READING_FIELD.join((label, value or "", note or ""))
+        for label, value, note in readings
+    )
+
+
+def _readings(text: object) -> list[tuple[str, str, str]]:
+    if not isinstance(text, str) or not text:
+        return []
+    out = []
+    for record in text.split(READING_RECORD):
+        label, value, note = [*record.split(READING_FIELD), "", "", ""][:3]
+        out.append((label, value, note))
+    return out
+
+
+def _reading_fragments(text: object) -> list[tuple[str, str | None]]:
+    """The detail line's readings: "  TIRust 2.31 ms (dd x37)  NinjaRS N/A",
+    the label in the step's colour, a missing value "N/A" and the note
+    muted."""
+
+    fragments: list[tuple[str, str | None]] = []
+    for label, value, note in _readings(text):
+        fragments.append((f"  {label} ", "CYAN"))
+        fragments.append((value or "N/A", None if value else "LIGHTBLACK_EX"))
+        if note:
+            fragments.append((f" {note}", "LIGHTBLACK_EX"))
+    return fragments
+
+
+def _readings_plain(text: object) -> str:
+    """The readings in a log line: "TIRust 2.31 ms (dd x37), NinjaRS N/A"."""
+
+    return ", ".join(
+        f"{label} {value or 'N/A'}" + (f" {note}" if note else "")
+        for label, value, note in _readings(text)
+    )
 
 
 _CHUNK_DETAIL = re.compile(
@@ -879,10 +1057,22 @@ def _format_event(
             message = event.message
         if message is None and isinstance(event.details.get("step"), str):
             message = str(event.details["step"])
+        readings = _readings_plain(event.details.get("readings"))
+        if readings:
+            message = (message + "; " if message else "") + readings
         eta = _detail_float(event.details, "eta_seconds")
         if eta is not None:
+            message = (
+                (message + "; " if message else "")
+                + "ETA "
+                + _eta_text(
+                    max(eta, 0.0), estimated=bool(event.details.get("eta_estimated"))
+                )
+            )
+        stalled = _detail_float(event.details, "stalled_seconds")
+        if stalled is not None:
             message = (message + "; " if message else "") + (
-                f"ETA {_duration_text(eta)}"
+                f"no progress for {_duration_text(stalled)}"
             )
         suffix = f": {message}" if message else ""
         context = _log_detail_text(event.details)

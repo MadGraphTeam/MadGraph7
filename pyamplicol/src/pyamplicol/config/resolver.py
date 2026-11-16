@@ -293,6 +293,10 @@ def _coerce(
         if isinstance(value, bool) or not isinstance(value, int):
             raise ConfigurationError(f"{item.path} must be an integer")
         result = value
+    elif kind == "duration":
+        from .models import parse_duration
+
+        result = parse_duration(value)
     elif kind == "float":
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ConfigurationError(f"{item.path} must be a number")
