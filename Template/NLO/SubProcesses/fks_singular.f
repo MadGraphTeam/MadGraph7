@@ -4480,10 +4480,12 @@ c Born and multiplies with the AP splitting function or eikonal factors.
       logical softtest,colltest
       common/sctests/softtest,colltest
 
-      double precision zero,tiny
+      double precision zero,tiny,tiny_y
       parameter (zero=0d0)
       logical need_color_links, need_charge_links
       common /c_need_links/need_color_links, need_charge_links
+      logical fixed_order,nlo_ps
+      common /c_fnlo_nlops/fixed_order,nlo_ps
       
       double precision pmass(nexternal)
       include 'orders.inc'
@@ -4495,6 +4497,16 @@ c Born and multiplies with the AP splitting function or eikonal factors.
       else
          tiny=1d-6
       endif
+c Below tiny_y in 1-y the real is replaced by its collinear limit. At
+c fixed order an initial-state real leaves that limit on 1-y ~ z = 1-xi
+c (|t| ~ shat_born): for z < 1d-6 a fixed tiny_y = 1d-6 sets real minus
+c counterterm to zero where it is not (+0.2% on p p > eta_c at 13 TeV).
+c It scales with z as the sampled range does (isr_collinear_cutoff in
+c genps_fks_radiation.f: 1-y >= 1d-6 min(1, max(z, 2d-6))).
+      tiny_y=tiny
+      if (fixed_order.and..not.nlo_ps.and..not.(softtest.or.colltest)
+     &     .and.j_fks.le.nincoming)
+     &     tiny_y=tiny*min(1d0,max(1d0-xi_i_fks,2d-6))
 
       if(pp(0,1).le.0.d0)then
 c Unphysical kinematics: set matrix elements equal to zero
@@ -4515,7 +4527,7 @@ c entering this function
         stop
       endif
 
-      if (1d0-y_ij_fks.lt.tiny)then
+      if (1d0-y_ij_fks.lt.tiny_y)then
          if (pmass(j_fks).eq.zero.and.j_fks.le.nincoming)then
             call sborncol_isr(pp,xi_i_fks,y_ij_fks,wgt)
          elseif (pmass(j_fks).eq.zero.and.j_fks.ge.nincoming+1)then
