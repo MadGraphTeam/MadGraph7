@@ -118,18 +118,30 @@ def _profile(report: Any) -> list[Block]:
                     "backends' own acceptance checks, a refused point served "
                     "best-effort, the default backend as auto); the "
                     "distinct points per call (a new batch every call); the "
-                    "timed calls: at least --minimum-samples, more until they "
-                    "add up to --target-runtime seconds, after --warmup-runs "
-                    "untimed ones; on one core: each backend is timed in its "
+                    "timed calls (their count and size from the rule of the "
+                    "counts row), after the untimed warm-up; the reference "
+                    "points the multiplier comes from; on one core: each "
+                    "backend is timed in its "
                     "own process whose thread pools all run one thread (what "
                     "one Monte Carlo worker pays; --n_core is the stability "
                     "run's worker count only)",
                 ),
                 (
+                    "counts",
+                    "how the counts were set and what the whole profile took: "
+                    "from --completion-time (the plan aims at that wall time; "
+                    "the options it overrules; 'cannot be met' with what the "
+                    "minimums take when they alone exceed it), as given "
+                    "(counts on the command line or in the card), or from the "
+                    "default time budgets (10 s for the runtime timing, one "
+                    "minute per --n_core worker for the stability run)",
+                ),
+                (
                     "ground truth",
                     "the reference precision of both tables (--ground-truth): "
                     "the stability run's true values and the reference time "
-                    "multipliers",
+                    "multipliers; 'none (estimates only)': no reference pass, "
+                    "the stability tables show the estimates alone",
                 ),
                 ("backends", "the reduction backends compared. " + _DEFAULT_MARK),
             ],
@@ -151,10 +163,12 @@ def _profile(report: Any) -> list[Block]:
                         "no stability checks, no rescue, no best-effort "
                         "re-evaluation - takes N times this time per point: N "
                         "is its median call's time per point over this one, "
-                        "its calls of one SIMD chunk (16 points) each, on the "
-                        "first points of the binary64 calls' batches, after "
-                        "one untimed call, with the same minimum calls and "
-                        "time budget (its "
+                        "after one untimed point, its calls of one SIMD chunk "
+                        "(16 points; fewer when its budget affords fewer, at "
+                        "least one) on the first points of the binary64 "
+                        "calls' batches, at least one call, more while they "
+                        "fit its budget (a quarter of the backend's runtime "
+                        f"share); '({label} -)': no reference call ran (its "
                         "points, calls and failures are in --json, reference)",
                     ),
                     (
@@ -208,7 +222,59 @@ def _profile(report: Any) -> list[Block]:
                 ],
             ),
         ]
-    if report.stability is not None:
+    if report.stability is not None and any(
+        getattr(row, "estimate_only", False) for row in report.stability
+    ):
+        setup = report.stability_setup or {}
+        blocks += [
+            (
+                "Estimated digits of binary64 (no ground truth)",
+                [
+                    (
+                        None,
+                        "--ground-truth none: each flat point is evaluated in "
+                        "binary64 only, with the default rotation test; no "
+                        "reference, so no true digits. " + _MADLOOP,
+                    ),
+                    (
+                        "percentile",
+                        "the points sorted by their estimated digits from worst "
+                        "to best: the row 1 % is the point below which 1 % lie",
+                    ),
+                    ("backend", "the reduction backend. " + _DEFAULT_MARK),
+                    (
+                        "est. digits",
+                        "the estimated stable digits of the point at that "
+                        "percentile; '- (N >= n)' when n points are needed",
+                    ),
+                    ("class", "the number of points between this and the previous row"),
+                ],
+            ),
+            (
+                "Default checks, estimates only",
+                [
+                    ("evaluated", "the points evaluated in binary64"),
+                    (
+                        "best-eff./none",
+                        "points refused by the backend's checks and returned with "
+                        "their best available value / points without any value",
+                    ),
+                    (
+                        "flagged",
+                        "points the default checks call unstable (estimate above "
+                        f"the target {setup.get('target', '1e-05')}, a "
+                        "best-effort value, or none)",
+                    ),
+                    (
+                        "time",
+                        "the wall time of the backend's binary64 calls with their "
+                        "stability checks, summed over the workers (each on one "
+                        "core, one thread per pool)",
+                    ),
+                ],
+            ),
+        ]
+    elif report.stability is not None:
         setup = report.stability_setup or {}
         blocks += [
             (

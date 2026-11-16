@@ -792,8 +792,9 @@ took):
   time, within about a factor 1.5 either way. It overrules every count
   (`--target-runtime`, `--minimum-samples`, `--batch-size`,
   `--warmup-runs`, `--stability-points`; one notice line says which): a
-  short measurement first (one binary64 call of one SIMD chunk per backend,
-  its own phase), then the plan: the runtime timing first (a stable median,
+  short measurement first (its own phase: per backend the cost per point of
+  binary64 and of the reference, each from one point and, when a full SIMD
+  chunk costs at most 2 s at that price, from one chunk), then the plan: the runtime timing first (a stable median,
   at least the default 10 s when the time affords it, at most half of what
   is left when `--stability` is asked for too), the reference pass bounded
   within each backend's share, the stability run admitting chunks while
@@ -810,7 +811,11 @@ took):
 Loading, process start-up, warm-up calls and the reference pass's minimum
 are outside the default budgets by nature; they are visible phases with
 their own estimates. The reference pass is part of the budget of the phase
-it serves.
+it serves. On an expensive process the binary64 warm-up is one point (when
+a full call would cost more than 2 s; else one full call), and a stability
+task holds about 4 s of work: a point that costs more is a task of its own,
+so a few expensive points spread over the workers instead of running one
+after the other.
 
 **Monitoring.** On a terminal the profile shows three live lines: the whole
 command (elapsed, its ETA, `~` while it rests on a prior, the budget left
@@ -822,7 +827,9 @@ expected cost; "no progress for ..." in the warning colour once a call runs
 three times past it) with the current best estimates: per backend its
 binary64 time per point and the running reference multiplier (`N/A`, muted,
 until a timed call is back), or the stability run's points done and flagged
-counts. Every finished phase leaves one line with what it cost.
+counts. Every finished phase leaves one line with what it cost, the
+statistics and per-sample records of a large stability run included; a
+large `--json` dump says on stderr that it is being written.
 `--progress log` prints one line per event and a heartbeat at least every
 10 s; `--progress off` prints nothing.
 

@@ -652,3 +652,54 @@ def test_interrupted_stability_notice_names_the_common_points():
     assert " ".join(interrupted_line(setup, color=False).split()).endswith(
         "evaluated; the tables hold those points"
     )
+
+
+@pytest.mark.loop_physics
+def test_the_stability_run_without_a_ground_truth(uux_ddx):
+    """profile --stability --ground-truth none: no reference evaluation, the
+    estimate-only tables (the header says so, no true digits), every
+    sample's record with its estimate and no reference, the field
+    descriptions of those tables."""
+
+    from pyamplicol.cli.main import run_cli
+
+    common = [
+        "profile",
+        str(uux_ddx),
+        "--stability",
+        "--stability-points",
+        "6",
+        "--n_core",
+        "1",
+        "--ground-truth",
+        "none",
+        "--progress",
+        "off",
+    ]
+    stdout = io.StringIO()
+    assert run_cli([*common, "--json"], stdout=stdout, stderr=io.StringIO()) == 0
+    report = json.loads(stdout.getvalue())
+    assert report["ground_truth"]["arithmetic"] == "none"
+    for row in report["stability"]:
+        assert row["estimate_only"] is True and row["true_digits"] == []
+        assert len(row["samples"]) == 6
+        for sample in row["samples"]:
+            assert sample["reference"] is None and sample["true_digits"] is None
+            assert sample["estimate"] is not None and sample["reference_task"] is None
+        assert set(row["precision_timing"]) == {"binary64"}
+    text = io.StringIO()
+    assert (
+        run_cli(
+            [*common, "--fields-description-help", "--color", "never"],
+            stdout=text,
+            stderr=io.StringIO(),
+        )
+        == 0
+    )
+    rendered = text.getvalue()
+    assert "none (estimates only)" in rendered
+    assert "Estimated digits of binary64 (no ground truth)" in rendered
+    assert "Default checks, estimates only" in rendered
+    assert "true digits" not in rendered.split("Field descriptions")[0]
+    assert "'none (estimates only)': no reference pass" in " ".join(rendered.split())
+    assert max(len(line) for line in rendered.splitlines()) <= 100
