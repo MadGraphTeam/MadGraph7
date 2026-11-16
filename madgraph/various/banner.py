@@ -7965,46 +7965,52 @@ class RunCardMG7(RunCard):
         return float(ps['ktdurham']) > 0 or float(ps['ptlund']) > 0
 
     def check_mlm_max_jet_flavor(self, expected):
-        """With the MLM clustering (dynamical_scale_choice = "mlm") on hadronic
-        beams, max_jet_flavor has to be ``expected``, the flavour scheme of the
+        """With the MLM clustering (dynamical_scale_choice "mlm" or "ckkwl") or
+        a CKKW-L merging cut (ktdurham/ptlund, whose shower takes
+        Merging:nQuarksMerge from it) on hadronic beams, max_jet_flavor has to
+        be ``expected``, the flavour scheme of the
         model (proc_characteristics max_jet_flavor): the clustering decides
         from it which partons are jets, and the shower's jet matching
         (JetMatching:nQmatch) uses the same number. A massless b that is not a
         jet gets no clustering scale and is never matched, so the sample
         double counts; a massive b that is a jet is matched as if it were
-        massless. Any other scale choice uses max_jet_flavor for nothing but
-        the default jet list, so the user is free to set it.
+        massless. Without merging, max_jet_flavor sets nothing but the
+        default jet list, so the user is free to set it.
         ``expected`` 0 (unknown) checks nothing."""
         beam = self['beam']
         try:
             expected = int(expected)
         except (TypeError, ValueError):
             return
-        if not expected or beam['dynamical_scale_choice'] != 'mlm' \
-                or bool(beam['leptonic']):
+        choice = beam['dynamical_scale_choice']
+        merged = choice in ('mlm', 'ckkwl') or self.is_ckkwl_merged()
+        if not expected or not merged or bool(beam['leptonic']):
             return
         if int(beam['max_jet_flavor']) != expected:
+            what = 'ktdurham/ptlund' if choice not in ('mlm', 'ckkwl') \
+                else 'dynamical_scale_choice = "%s"' % choice
             raise InvalidRunCard(
-                "beam.max_jet_flavor = %s is not supported with "
-                "dynamical_scale_choice = \"mlm\": the MLM clustering and jet "
-                "matching need the flavour scheme of the model, "
+                "beam.max_jet_flavor = %s is not supported with %s: the "
+                "clustering and the merged shower need the flavour scheme of "
+                "the model, "
                 "max_jet_flavor = %s (the quarks up to %s are massless jets). "
-                "Set beam.max_jet_flavor = %s, or use another "
-                "dynamical_scale_choice." % (beam['max_jet_flavor'], expected,
-                                             expected, expected))
+                "Set beam.max_jet_flavor = %s." % (
+                    beam['max_jet_flavor'], what, expected, expected, expected))
 
-    def resolved_merging_pdgs(self):
+    def resolved_merging_pdgs(self, me_dir=None):
         """The pdg ids of the CKKW-L cut. "auto" is, as in madevent, every
         coloured particle of the model (proc_characteristics colored_pdgs of
-        the process directory of the card, or the working directory)."""
+        ``me_dir``, by default the process directory of the card; madevent's
+        default list for a card without one)."""
         pdgs = self['phasespace']['merging_pdgs']
         if pdgs != 'auto':
             return [int(pdg) for pdg in pdgs]
-        me_dir = os.path.dirname(os.path.dirname(self.path)) \
-            if getattr(self, 'path', None) else os.getcwd()
-        path = pjoin(me_dir, 'SubProcesses', 'proc_characteristics')
+        if me_dir is None and getattr(self, 'path', None):
+            me_dir = os.path.dirname(os.path.dirname(self.path))
+        path = pjoin(me_dir, 'SubProcesses', 'proc_characteristics') \
+            if me_dir is not None else None
         colored = None
-        if os.path.exists(path):
+        if path and os.path.exists(path):
             try:
                 colored = ProcCharacteristic(path)['colored_pdgs']
             except Exception as error:
@@ -8897,6 +8903,12 @@ class RunCardMG7(RunCard):
             raise InvalidRunCard(
                 "only one of ktdurham and ptlund can be set for CKKW-L merging")
         if not self.is_ckkwl_merged():
+            if self['beam']['dynamical_scale_choice'] == 'ckkwl' \
+                    and float(ps['xqcut']) > 0:
+                raise InvalidRunCard(
+                    "dynamical_scale_choice = \"ckkwl\" does not apply the MLM "
+                    "cut xqcut: set ktdurham or ptlund for CKKW-L merging, and "
+                    "xqcut = 0")
             return
         if self['beam']['dynamical_scale_choice'] == 'mlm':
             raise InvalidRunCard(
@@ -9518,6 +9530,7 @@ class RunCardMG7(RunCard):
         'bwcutoff': 'phasespace.bw_cutoff',
         'cut_decays': 'phasespace.cut_decays',
         'use_syst': 'systematics.enable',
+        # for "set ktdurham ..." (cli.py); from_LO sets both again explicitly
         'ktdurham': 'phasespace.ktdurham',
         'ptlund': 'phasespace.ptlund',
         'dparameter': 'phasespace.dparameter',

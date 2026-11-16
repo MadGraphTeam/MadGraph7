@@ -1614,32 +1614,33 @@ KERNELSPEC void kernel_mlm_clustering(
     if (history_mode == HISTORY_MADEVENT && start != 0) {
         // setclscales clusters over every graph first and keeps that history
         // unless its jet count differs from the channel's graph.
-        MlmLocalOutputs<T> diagram, every;
-        int diagram_jets = walk(diagram, start);
-        auto& kept = walk(every, 0) != diagram_jets ? diagram : every;
-        int n_part = momenta.size();
-        views.ren_scale = kept.ren_scale;
-        views.fact_scale1 = kept.fact_scale1;
-        views.fact_scale2 = kept.fact_scale2;
-        views.diagram_index = kept.diagram_index;
-        views.xqcut_weight = kept.xqcut_weight;
-        views.alphas_weight = kept.alphas_weight;
-        views.pdf_scale1 = kept.pdf_scale1;
-        views.pdf_scale2 = kept.pdf_scale2;
-        for (int i = 0; i < n_part - 2; ++i) {
-            views.outgoing_scales[i] = kept.outgoing_scales[i];
-        }
-        for (int i = 0; i < n_part - 3; ++i) {
-            views.alphas_scales[i] = kept.alphas_scales[i];
-        }
-        for (int i = 0; i < n_part - 1; ++i) {
-            views.pdf_rw_flavor[i] = kept.pdf_rw_flavor[i];
-            views.pdf_rw_x[i] = kept.pdf_rw_x[i];
-            views.pdf_rw_q_num[i] = kept.pdf_rw_q_num[i];
-            views.pdf_rw_q_den[i] = kept.pdf_rw_q_den[i];
-            views.pdf_rw_active[i] = kept.pdf_rw_active[i];
-            views.pdf_rw_beam[i] = kept.pdf_rw_beam[i];
-            views.pdf_rw_x_prev[i] = kept.pdf_rw_x_prev[i];
+        int diagram_jets = walk(views, start);
+        MlmLocalOutputs<T> every;
+        if (walk(every, 0) == diagram_jets) {
+            int n_part = momenta.size();
+            views.ren_scale = every.ren_scale;
+            views.fact_scale1 = every.fact_scale1;
+            views.fact_scale2 = every.fact_scale2;
+            views.diagram_index = every.diagram_index;
+            views.xqcut_weight = every.xqcut_weight;
+            views.alphas_weight = every.alphas_weight;
+            views.pdf_scale1 = every.pdf_scale1;
+            views.pdf_scale2 = every.pdf_scale2;
+            for (int i = 0; i < n_part - 2; ++i) {
+                views.outgoing_scales[i] = every.outgoing_scales[i];
+            }
+            for (int i = 0; i < n_part - 3; ++i) {
+                views.alphas_scales[i] = every.alphas_scales[i];
+            }
+            for (int i = 0; i < n_part - 1; ++i) {
+                views.pdf_rw_flavor[i] = every.pdf_rw_flavor[i];
+                views.pdf_rw_x[i] = every.pdf_rw_x[i];
+                views.pdf_rw_q_num[i] = every.pdf_rw_q_num[i];
+                views.pdf_rw_q_den[i] = every.pdf_rw_q_den[i];
+                views.pdf_rw_active[i] = every.pdf_rw_active[i];
+                views.pdf_rw_beam[i] = every.pdf_rw_beam[i];
+                views.pdf_rw_x_prev[i] = every.pdf_rw_x_prev[i];
+            }
         }
     } else {
         walk(views, start);

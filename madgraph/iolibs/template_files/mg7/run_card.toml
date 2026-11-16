@@ -161,7 +161,7 @@ auto_ptj_mjj = %(phasespace.auto_ptj_mjj)s
 ktdurham = %(phasespace.ktdurham)s # min Durham kt of the merging partons (pT to beam and pairwise kt)
 ptlund = %(phasespace.ptlund)s # min Pythia8 evolution pT of the merging partons
 dparameter = %(phasespace.dparameter)s # D in the hadronic kt measure min(pT)*dR/D (Merging:Dparameter)
-# pdg ids subject to the merging cut; "auto" = all coloured particles of the process
+# pdg ids subject to the merging cut; "auto" = all coloured particles of the model
 merging_pdgs = %(phasespace.merging_pdgs)s
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
 

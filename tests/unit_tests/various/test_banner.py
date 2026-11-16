@@ -2849,6 +2849,9 @@ class TestRunCardMG7(unittest.TestCase):
         rc = bannermod.RunCardMG7()
         rc.set('beam.dynamical_scale_choice', 'ckkwl')
         rc.check_validity()
+        # but not with an xqcut it would silently drop
+        rc.set('phasespace.xqcut', 30.0)
+        self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
 
     def test_from_LO_conversion_of_ckkwl_merging(self):
         """ickkw = 0 with ktdurham or ptlund is madevent's CKKW-L: the same cut,
@@ -2917,6 +2920,17 @@ class TestRunCardMG7(unittest.TestCase):
                              [1, 2, 3, 4, 5, 6, 21, 1000021])
             rc['phasespace']['merging_pdgs'] = [21, 1, 2]
             self.assertEqual(rc['pdgs_for_merging_cut'], [21, 1, 2])
+            # a card without a path: madevent's default, whatever the cwd
+            rc = bannermod.RunCardMG7()
+            cwd = os.getcwd()
+            os.chdir(me_dir)
+            try:
+                self.assertEqual(rc['pdgs_for_merging_cut'],
+                                 bannermod.DEFAULT_MERGING_PDGS)
+            finally:
+                os.chdir(cwd)
+            self.assertEqual(rc.resolved_merging_pdgs(me_dir),
+                             [1, 2, 3, 4, 5, 6, 21, 1000021])
         finally:
             shutil.rmtree(me_dir)
 
@@ -3534,6 +3548,19 @@ class TestRunCardMG7JetFlavours(unittest.TestCase):
         # an output older than the check, or a model with no flavour scheme
         self.mlm_card(5).check_mlm_max_jet_flavor(0)
         self.mlm_card(5).check_mlm_max_jet_flavor(None)
+
+    def test_ckkwl_wrong_max_jet_flavor_crashes(self):
+        # the "ckkwl" scale, or a merging cut with any scale choice
+        rc = bannermod.RunCardMG7()
+        rc['beam']['max_jet_flavor'] = 4
+        rc['beam']['dynamical_scale_choice'] = 'ckkwl'
+        self.assertRaises(bannermod.InvalidRunCard, rc.check_mlm_max_jet_flavor, 5)
+        rc['beam']['dynamical_scale_choice'] = 'transverse_mass'
+        rc['phasespace']['ktdurham'] = 30.0
+        with self.assertRaises(bannermod.InvalidRunCard) as error:
+            rc.check_mlm_max_jet_flavor(5)
+        self.assertIn('ktdurham/ptlund', str(error.exception))
+        rc.check_mlm_max_jet_flavor(4)
 
     def test_no_mlm_max_jet_flavor_is_free(self):
         rc = bannermod.RunCardMG7()

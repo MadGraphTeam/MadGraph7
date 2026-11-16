@@ -169,10 +169,6 @@ class TestModelCache(unittest.TestCase):
         self.assertEqual(len(self.compiled), 2)
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class TestMaxMatchedJets(unittest.TestCase):
     """The jets the shower of an MLM / CKKW-L sample matches, counted for the
     [amplicol] processes as madevent counts them."""
@@ -190,3 +186,7 @@ class TestMaxMatchedJets(unittest.TestCase):
         self.assertEqual(count('p p > j j j'), 3)
         self.assertEqual(count('p p > e+ ve j j'), 2)
         self.assertEqual(count('p p > j j', 'g g > g g g'), 3)
+
+
+if __name__ == '__main__':
+    unittest.main()

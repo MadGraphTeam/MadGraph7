@@ -410,8 +410,14 @@ class AmplicolSubprocess(MadgraphSubprocess):
         for all, which only holds when no flavour changes its splittings."""
         merging_cut = getattr(self.process, "merging_cut", None)
         if merging_cut is not None and merging_cut[0] == ms.MergingScale.Measure.pt_lund:
+            # the kernel reads the flavours of the incoming and merging legs only
             def splittings(pdgs):
-                return tuple(0 if abs(pdg) in (1, 2, 3) else abs(pdg) for pdg in pdgs)
+                keep = self.merging_leg_mask(pdgs)
+                return tuple(
+                    (0 if abs(pdg) in (1, 2, 3) else abs(pdg)) if i < 2 or keep[i]
+                    else None
+                    for i, pdg in enumerate(pdgs)
+                )
             if len({splittings(pdgs) for flavor in self.meta["flavors"]
                     for pdgs in flavor["options"]}) > 1:
                 raise RuntimeError(

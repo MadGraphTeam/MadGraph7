@@ -185,7 +185,8 @@ See :doc:`gridpacks` for details.
     :math:`\alpha_s` and PDF reweighting of MLM merging: MadEvent's default ``-1`` for a
     CKKW-L merged sample, where Pythia8 does that reweighting. An ``[amplicol]`` event is
     clustered along the planar diagrams of its leading-colour flow, which differ from the
-    diagrams a madmatrix event is clustered along.
+    diagrams a madmatrix event is clustered along. Under ``mlm`` and ``ckkwl`` the scales
+    are those of the clustering: the fixed scales and ``scale_factor`` are ignored.
 
 ``scale_factor`` (``1.0``)
     Factor applied to the dynamical scale. Fixed scales are not affected. With the default
@@ -368,8 +369,9 @@ VEGAS grids adapt the phase-space sampling during the survey.
     :math:`D` of the hadron-collider ``ktdurham`` measure, Pythia8's ``Merging:Dparameter``.
 
 ``merging_pdgs`` (``"auto"``)
-    PDG ids of the particles the ``ktdurham`` or ``ptlund`` cut applies to. ``auto`` takes
-    all colored particles of the process. As in MadEvent, decay-chain products are never
+    PDG ids of the particles the ``ktdurham`` or ``ptlund`` cut applies to. ``auto`` takes,
+    as in MadEvent, all colored particles of the model (including the top and any colored
+    BSM particles); only those in the final state matter. As in MadEvent, decay-chain products are never
     merging partons.
 
 [custom_functions]

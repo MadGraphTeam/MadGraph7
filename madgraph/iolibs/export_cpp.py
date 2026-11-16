@@ -3896,7 +3896,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
                     pc['max_n_matched_jets'], export_amplicol.max_matched_jets(
                         self.amplicol_defs, self.amplicol_model))
             except Exception as error:
-                logger.debug('could not count the [amplicol] matched jets: %s', error)
+                logger.warning('could not count the [amplicol] matched jets, so '
+                               'the merged shower may use a wrong nJetMax: %s', error)
         for me in me_list:
             if not me.get('processes'):
                 continue

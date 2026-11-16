@@ -2204,7 +2204,30 @@ class MG7CkkwlMergingCutTest(unittest.TestCase):
         subprocess = types.SimpleNamespace(
             meta=meta, unmerged_meta=None, process=process,
             flavor_pids=lambda: [meta['flavors'][0]['options'][0]])
+        subprocess.merging_leg_mask = types.MethodType(
+            self.launch.MadgraphSubprocess.merging_leg_mask, subprocess)
         return self.launch.MadgraphSubprocess.build_merging_cut(subprocess)
+
+    def build_amplicol(self, process, meta):
+        from madgraph.mg7.subprocess_amplicol import AmplicolSubprocess
+        subprocess = object.__new__(AmplicolSubprocess)
+        subprocess.meta, subprocess.unmerged_meta = meta, None
+        subprocess.process = process
+        return subprocess.build_merging_cut()
+
+    def test_amplicol_ptlund_ignores_non_merging_flavours(self):
+        """e and mu grouped as one [amplicol] flavour: the leptons are no
+        merging legs, so the ptlund cut does not depend on them"""
+        process = self.process(self.run_card(ptlund=20.0))
+        meta = self.meta([81, -81], [-82, 82, 81, -81],
+                         [[2, -2, -11, 11, 1, -1], [2, -2, -13, 13, 1, -1]])
+        cut = self.build_amplicol(process, meta)
+        self.assertEqual(cut.scale.merging_leg_indices(), [4, 5])
+        # a different merging-leg flavour changes the splittings
+        meta = self.meta([81, -81], [-82, 82, 81, -81],
+                         [[2, -2, -11, 11, 1, -1], [2, -2, -11, 11, 4, -4]])
+        with self.assertRaises(RuntimeError):
+            self.build_amplicol(process, meta)
 
     def test_no_merging_cut_without_ktdurham_or_ptlund(self):
         self.assertIsNone(self.process(self.run_card()).merging_cut)

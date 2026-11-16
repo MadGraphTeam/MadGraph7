@@ -33,7 +33,6 @@ from madgraph.mg7.bootstrap import MADTREX_INSTALL_DIR as _MADTREX_INSTALL_DIR
 from madgraph.mg7.bootstrap import MG_ROOT as _MG_ROOT
 from madgraph.iolibs.template_files.mg7.custom_function_loader import load_custom_function
 from madgraph.mg7.observables import CutItem, HistItem, build_observable, clean_pids, observable_pids
-from madgraph.mg7.model_widths import _proc_characteristic
 from madgraph.mg7.options import lhapdf_paths
 from madgraph.mg7.postprocess import _find_event_file
 from madgraph.mg7.model_widths import _proc_characteristic
@@ -987,14 +986,15 @@ class MadgraphProcess:
         # MadgraphSubprocess.init_madspace, from an MLMClustering instance.
         # "ckkwl" is the same clustering without the alpha_s and pdf ladders.
         self.ckkwl_scale = beam_args["dynamical_scale_choice"] == "ckkwl"
+        if not self.is_decay:
+            # the jets of the clustering and of a merging cut have to be the
+            # massless quarks of the model: no free max_jet_flavor when merging
+            self.run_card.check_mlm_max_jet_flavor(
+                _proc_characteristic().get("max_jet_flavor", 0))
         if beam_args["dynamical_scale_choice"] in ("mlm", "ckkwl"):
             self.mlm_clustering = True
             self.scale_kwargs = {}
             if not self.is_decay:
-                # the clustering's jets have to be the massless quarks of the
-                # model: no free choice of max_jet_flavor with MLM
-                self.run_card.check_mlm_max_jet_flavor(
-                    _proc_characteristic().get("max_jet_flavor", 0))
                 # where the shower of the particles that are not light partons
                 # starts: the hardest scale of the event (max of the
                 # core-process scale the clustering gives them, mu_F and the
@@ -1037,6 +1037,13 @@ class MadgraphProcess:
             if float(beam_args.get("scale_factor", 1.)) != 1.:
                 logger.warning(
                     "scale_factor ignored under dynamical_scale_choice = %s", choice)
+            # lepton beams have no factorisation scale, fixed by default
+            if beam_args["fixed_ren_scale"] or (
+                    beam_args["fixed_fact_scale"] and not self.leptonic):
+                logger.warning(
+                    "fixed_ren_scale/fixed_fact_scale ignored under "
+                    "dynamical_scale_choice = %s: the scales come from the "
+                    "clustering", choice)
         if self.is_decay:
             # One scale is available for a decay -- the decaying mass -- so use
             # it, fixed, whatever the card asks for. That includes "mlm": a

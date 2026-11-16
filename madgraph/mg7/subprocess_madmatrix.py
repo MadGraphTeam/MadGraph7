@@ -488,25 +488,17 @@ class MadgraphSubprocess:
         merging_cut = getattr(self.process, "merging_cut", None)
         if merging_cut is None or len(self.meta["incoming"]) != 2:
             return None
-        measure, value, merging_pdgs = merging_cut
-        n_in = len(self.meta["incoming"])
-        decay = decay_products(self.meta, self.unmerged_meta)
-
-        def leg_mask(pids):
-            return [
-                i >= n_in and i - n_in not in decay and abs(pid) in merging_pdgs
-                for i, pid in enumerate(pids)
-            ]
-
+        measure, value, _ = merging_cut
         pids = self.flavor_pids()[0]
-        mask = leg_mask(pids)
-        if any(leg_mask(option) != mask
+        mask = self.merging_leg_mask(pids)
+        if any(self.merging_leg_mask(option) != mask
                for option in _flavor_options(self.meta, self.unmerged_meta)):
             raise ValueError(
                 f"subprocess {self.meta['incoming']} > {self.meta['outgoing']} "
                 "groups flavours that merging_pdgs treats differently; regenerate "
                 "the process after 'set apply_flavor_grouping False'"
             )
+        # mg7 has no mixed lepton-hadron beams: both are protons or neither
         hadronic = not self.process.leptonic
         scale = ms.MergingScale(
             measure,
@@ -518,6 +510,17 @@ class MadgraphSubprocess:
             max_jet_flavor=int(self.process.run_card["beam"]["max_jet_flavor"]),
         )
         return ms.MergingCut(scale, value) if scale.active() else None
+
+    def merging_leg_mask(self, pids) -> list[bool]:
+        """The legs of ``pids`` the CKKW-L cut applies to: final-state merging
+        pdgs that are not decay-chain products, as in madevent."""
+        merging_pdgs = self.process.merging_cut[2]
+        n_in = len(self.meta["incoming"])
+        decay = decay_products(self.meta, self.unmerged_meta)
+        return [
+            i >= n_in and i - n_in not in decay and abs(pid) in merging_pdgs
+            for i, pid in enumerate(pids)
+        ]
 
     def flavor_pids(self) -> list[list[int]]:
         """PDG ids of the external particles for every flavor of the
