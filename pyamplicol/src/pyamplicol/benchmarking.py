@@ -3096,12 +3096,16 @@ def profile_virtual(
                     "eta_seconds": eta,
                     "walls": list(walls),
                     "points": size,
+                    "warmup": bench.warmup_runs,
                     "seconds_per_point": (
                         statistics.median(walls) / size if walls else None
                     ),
                 },
             )
 
+    # The binary64 phase starts before its first (warm-up) call: on an
+    # expensive process that call alone takes minutes.
+    report(0, bench.warmup_runs + max(bench.minimum_samples, 1), None, ())
     with peak_memory() as peak:
         profile = _profile_virtual_calls(
             runtime, batches, bench, options, scales, report
@@ -3202,19 +3206,21 @@ def _reference_calls(
     budget: float,
     warmup: bool,
     size: int,
-    call: Callable[[int, bool], float],
+    call: Callable[[int, int], float],
     progress: Callable[[int, int, float | None, Sequence[float]], None] | None,
     prior: float | None,
-) -> list[float]:
+) -> tuple[list[float], int]:
     """The reference pass's protocol (``_reference_timing``): one untimed
     call of one point (``warmup``: the carrier's first call builds what it
     builds lazily; after native's fix its size no longer matters), then
-    timed calls of one chunk, at least one, more while the next one (at
-    the recent calls' cost) fits the ``budget`` seconds. ``call(k, warm)``
-    makes call k (the warm-up first) and returns its wall seconds;
-    ``prior``: the expected seconds of one timed call before any is back
+    timed calls of one chunk, at least one, more while the next one (at the
+    recent calls' cost) fits the ``budget`` seconds. The chunk is ``size``
+    points (one SIMD chunk) unless the budget affords fewer at the cost the
+    warm-up measured: then as many as it affords, at least one. ``call(k,
+    points)`` makes call k (the warm-up first) and returns its wall seconds;
+    ``prior``: the expected seconds of one point before any call is back
     (from the binary64 cost and a prior multiplier); ``progress`` as in
-    ``_timed_calls``. The timed calls' seconds."""
+    ``_timed_calls``. The timed calls' seconds and their points."""
 
     def planned(walls: Sequence[float], estimate: float | None) -> int:
         if estimate is None or estimate <= 0.0:
@@ -3222,19 +3228,25 @@ def _reference_calls(
         room = max(budget - sum(walls), 0.0)
         return max(len(walls) + int(room // estimate), len(walls), 1)
 
+    def fitted(per_point: float | None) -> int:
+        if per_point is None or per_point <= 0.0:
+            return size
+        return max(1, min(size, int(budget // per_point)))
+
     done = 0
-    estimate = prior
+    per_point = prior
+    chunk = fitted(per_point)
+    estimate = None if per_point is None else per_point * chunk
     total = int(warmup) + planned((), estimate)
     if progress is not None:
         progress(0, total, None if estimate is None else total * estimate, ())
     if warmup:
-        first = call(0, True)
+        # A one-point call's seconds: an upper estimate of a point's (a
+        # call's fixed cost counted in full).
+        per_point = call(0, 1)
         done = 1
-        if estimate is None:
-            # A one-point call's seconds per point, for a call of ``size``
-            # points: an upper estimate (a call's fixed cost counted per
-            # point).
-            estimate = first * size
+        chunk = fitted(per_point)
+        estimate = per_point * chunk
         total = 1 + planned((), estimate)
         if progress is not None:
             progress(1, total, (total - 1) * estimate, ())
@@ -3242,7 +3254,7 @@ def _reference_calls(
     gc.collect()
     while not walls or (sum(walls) + (recent_rate(walls) or walls[-1]) <= budget):
         with _collector_off():
-            walls.append(call(done + len(walls), False))
+            walls.append(call(done + len(walls), chunk))
         estimate = recent_rate(walls)
         total = done + planned(walls, estimate)
         if progress is not None:
@@ -3252,7 +3264,7 @@ def _reference_calls(
                 (total - done - len(walls)) * (estimate or 0.0),
                 tuple(walls),
             )
-    return walls
+    return walls, chunk
 
 
 # The reference precision's cost relative to binary64 assumed before any
@@ -3297,7 +3309,11 @@ def _reference_timing(
         "poles": "none",
         "on_failure": "return",
         "reduction_unchecked": True,
-        **{k: v for k, v in reference.items() if k not in ("points", "budget")},
+        **{
+            k: v
+            for k, v in reference.items()
+            if k not in ("points", "budget", "seconds_per_point")
+        },
     }
     backend = _single_backend(runtime, reference.get("reduction", reduction))
     if backend is not None:
@@ -3305,8 +3321,13 @@ def _reference_timing(
     reasons: dict[str, int] = {}
     warm = bench.warmup_runs > 0
 
-    def call(k: int, warmup: bool) -> float:
-        batch = batches(k, 1 if warmup else size)
+    chunk = [size]
+
+    def call(k: int, points: int) -> float:
+        warmup = warm and k == 0
+        if not warmup:
+            chunk[0] = points
+        batch = batches(k, points)
         mu_r2 = scales(batch)
         begin = time.perf_counter()
         result = runtime.evaluate(batch, mu_r2=mu_r2, **options)
@@ -3319,12 +3340,14 @@ def _reference_timing(
         return wall
 
     arithmetic = str(reference["arithmetic"])
+    # The caller's measured cost per point (``seconds_per_point``), else the
+    # binary64 cost times the prior multiplier.
     prior = (
-        None
+        float(reference["seconds_per_point"])
+        if reference.get("seconds_per_point") is not None
+        else None
         if binary64 is None
-        else binary64
-        * size
-        * REFERENCE_PRIOR.get(arithmetic, REFERENCE_PRIOR["arbitrary"])
+        else binary64 * REFERENCE_PRIOR.get(arithmetic, REFERENCE_PRIOR["arbitrary"])
     )
 
     def report(
@@ -3338,15 +3361,15 @@ def _reference_timing(
                     "total": total,
                     "eta_seconds": eta,
                     "walls": list(walls),
-                    "points": size,
+                    "points": chunk[0],
                     "seconds_per_point": (
-                        statistics.median(walls) / size if walls else None
+                        statistics.median(walls) / chunk[0] if walls else None
                     ),
                     "estimated": not walls,
                 },
             )
 
-    walls = _reference_calls(budget, warm, size, call, report, prior)
+    walls, size = _reference_calls(budget, warm, size, call, report, prior)
     return PrecisionTiming(
         arithmetic,
         size,
@@ -3429,12 +3452,29 @@ def _profile_virtual_calls(
     warmup = bench.warmup_runs
     cpu_seconds = [0.0]
 
+    from pyamplicol.profile_plan import WARMUP_CALL_SECONDS
+
     def call(k: int) -> float:
         nonlocal failed, served
         batch = batches(k)
         mu_r2 = scales(batch)
         if k < warmup:
+            # One point first: when a full call would cost more than
+            # WARMUP_CALL_SECONDS its first-call costs are negligible and the
+            # point is the warm-up (its cost scaled to the batch stands for
+            # the full call's), else one full call.
             begin = time.perf_counter()
+            if k == 0 and len(batch) > 1:
+                one = batch[:1]
+                runtime.evaluate(
+                    one,
+                    mu_r2=mu_r2 if not isinstance(mu_r2, list) else mu_r2[:1],
+                    **options,
+                )
+                estimate = (time.perf_counter() - begin) * len(batch)
+                if estimate > WARMUP_CALL_SECONDS:
+                    return estimate
+                begin = time.perf_counter()
             runtime.evaluate(batch, mu_r2=mu_r2, **options)
             return time.perf_counter() - begin
         with collected_stage_seconds(runtime) as seconds:

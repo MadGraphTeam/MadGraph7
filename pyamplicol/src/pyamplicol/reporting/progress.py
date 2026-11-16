@@ -783,9 +783,7 @@ class _Dashboard:
 # holds the GIL (a Symbolica expression load of 25 s, for example) and the
 # terminal is restored even when the main process dies.
 _RENDERER_ENV = "PYAMPLICOL_PROGRESS_RENDERER"
-_TASK_FIELDS = tuple(
-    name for name in _TaskState.__dataclass_fields__  # type: ignore[attr-defined]
-)
+_TASK_FIELDS = tuple(name for name in _TaskState.__dataclass_fields__)
 _RENDERER_BOOTSTRAP = (
     "import sys, types\n"
     "for name, path in (('pyamplicol', sys.argv[1]), "
@@ -1067,7 +1065,12 @@ def _renderer_main(argv: list[str]) -> None:
     import sys
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    parent, color, encoding, ack_fd = int(argv[0]), argv[1] == "1", argv[2], int(argv[3])
+    parent, color, encoding, ack_fd = (
+        int(argv[0]),
+        argv[1] == "1",
+        argv[2],
+        int(argv[3]),
+    )
     stream = io.TextIOWrapper(
         io.FileIO(1, "w", closefd=False),
         encoding=encoding,
@@ -1376,7 +1379,7 @@ def _task_estimate(task: _TaskState, now: float) -> Estimate | None:
 
 
 def _estimate_fragments(estimate: Estimate | None) -> list[tuple[str, str | None]]:
-    """"ETA 1m20s", "ETA ~1m20s" (a prior), or "overdue 12s" in the warning
+    """ "ETA 1m20s", "ETA ~1m20s" (a prior), or "overdue 12s" in the warning
     colour once the expected end has passed with work left."""
 
     if estimate is None:
@@ -1389,7 +1392,9 @@ def _estimate_fragments(estimate: Estimate | None) -> list[tuple[str, str | None
                 "YELLOW",
             )
         ]
-    return [("  ETA " + _eta_text(estimate.seconds, estimated=estimate.estimated), None)]
+    return [
+        ("  ETA " + _eta_text(estimate.seconds, estimated=estimate.estimated), None)
+    ]
 
 
 def _phase_line(
@@ -1788,6 +1793,13 @@ def _format_event(
                     max(eta, 0.0), estimated=bool(event.details.get("eta_estimated"))
                 )
             )
+        budget = _detail_float(event.details, "budget_seconds")
+        if budget is not None:
+            message = (message + "; " if message else "") + (
+                f"budget {_duration_text(max(budget, 0.0))} left"
+                if budget > 0.0
+                else "budget spent"
+            )
         stalled = _detail_float(event.details, "stalled_seconds")
         if stalled is not None:
             message = (message + "; " if message else "") + (
@@ -1795,6 +1807,9 @@ def _format_event(
             )
         suffix = f": {message}" if message else ""
         context = _log_detail_text(event.details)
+        if event.total is None and event.completed == 0:
+            # A task without counts (a whole command's ETA line).
+            return _terminal_paint(label, "CYAN", enabled=color) + suffix + context
         return (
             _terminal_paint(label, "CYAN", enabled=color)
             + " "

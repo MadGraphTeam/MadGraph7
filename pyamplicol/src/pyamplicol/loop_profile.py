@@ -83,6 +83,9 @@ if TYPE_CHECKING:
     from pyamplicol.benchmarking import VirtualProfileResult
     from pyamplicol.config import RunConfig
 
+# The stability points of a run whose plan has none (never used: a plan
+# with the stability run asked for sets its points).
+STABILITY_FALLBACK = 5
 # The percentiles of the sorted true digits (worst first): 1 per mil, 1 %,
 # 10 % and 50 % (the median).
 PERCENTILES = (Fraction(1, 1000), Fraction(1, 100), Fraction(1, 10), Fraction(1, 2))
@@ -94,22 +97,33 @@ BINARY64_DIGITS = 53 * math.log10(2.0)
 class GroundTruth:
     """The reference precision of a profile (``benchmark.ground_truth``):
     ``arithmetic`` "double-double" or "arbitrary" at ``digits`` decimal
-    digits (None for double-double). ``label`` names it in the tables:
-    "dd" or "arb(<digits>)"."""
+    digits (None for double-double), or "none" (no reference: the
+    estimates only). ``label`` names it in the tables: "dd",
+    "arb(<digits>)" or "none"."""
 
     arithmetic: str
     digits: int | None = None
 
     @property
     def label(self) -> str:
+        if self.arithmetic == "none":
+            return "none"
         return "dd" if self.digits is None else f"arb({self.digits})"
 
     @property
     def name(self) -> str:
-        """The name of the precision in titles and prose: "double-double"
-        or "arb(<digits>)"."""
+        """The name of the precision in titles and prose: "double-double",
+        "arb(<digits>)" or "none"."""
 
+        if self.arithmetic == "none":
+            return "none"
         return "double-double" if self.digits is None else self.label
+
+    @property
+    def present(self) -> bool:
+        """Whether there is a reference (not ``--ground-truth none``)."""
+
+        return self.arithmetic != "none"
 
     @property
     def options(self) -> dict[str, Any]:
@@ -133,6 +147,8 @@ def _truth_prose(truth: GroundTruth) -> str:
     """The reference precision in words: "double-double" or "arbitrary-
     precision (D digits)"."""
 
+    if truth.arithmetic == "none":
+        return "no"
     if truth.digits is None:
         return truth.arithmetic
     return f"arbitrary-precision ({truth.digits} digits)"
@@ -149,7 +165,7 @@ def ground_truth(text: str) -> GroundTruth:
     from pyamplicol.loops.v2.stability import DEFAULT_RESCUE
 
     canonical = _ground_truth(text)
-    if canonical == "double-double":
+    if canonical in ("double-double", "none"):
         return GroundTruth(canonical)
     _, _, digits = canonical.partition(":")
     if digits:
@@ -344,6 +360,13 @@ class BackendStability:
     # (the wall time per point of its batches, the first-call cost of a
     # worker left out as the progress estimate does: ``_StabilityProgress``).
     precision_timing: Mapping[str, Mapping[str, float | int | None]] | None = None
+    # Estimates only (``--ground-truth none``): no truth; ``percentiles``
+    # rank the estimated digits (``true_digits`` empty), the truth-based
+    # counts are 0 and not shown.
+    estimate_only: bool = False
+    # Every sample's complete record (``_sample_records``; the JSON's
+    # per-sample dump, its keys documented there).
+    samples: tuple[Mapping[str, object], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -448,6 +471,20 @@ class LoopProfileReport:
     interrupted: bool = False
     # The reference precision of both tables (``GroundTruth.record``).
     ground_truth: Mapping[str, object] | None = None
+    # How the counts were set (``profile_plan.Plan.record``: the rule, the
+    # counts, the expected and the requested seconds) and the whole
+    # profile's wall seconds.
+    plan: Mapping[str, object] | None = None
+    seconds: float | None = None
+
+    def json_notice(self) -> str | None:
+        """The line ``--json`` prints on stderr before a large dump (its
+        per-sample records take seconds to write: never a silent tail)."""
+
+        samples = sum(len(row.samples) for row in self.stability or ())
+        if samples < 5000:
+            return None
+        return f"Writing the JSON result ({samples} sample records)"
 
 
 def _backends(requested: object, contribution: str) -> tuple[str, ...]:
@@ -493,13 +530,20 @@ def _served_points(profile: Any) -> int:
 
 
 def _runtime_setup(
-    checked: bool, bench: Any, seed: int | None, threads: Sequence[int] = ()
+    checked: bool,
+    seed: int | None,
+    threads: Sequence[int] = (),
+    rows: Sequence[Any] = (),
+    truth: GroundTruth | None = None,
 ) -> str:
     """The runtime setup line; ``checked``: the checked mode
     (``benchmark.checked``), else the optimistic pass; ``seed``: of the flat
     points (None: the caller's points); ``threads``: the native threads each
     backend's timed calls report (one: one core, ``one_core``; another count
-    is named)."""
+    is named); ``rows``: the backends' runtimes (their calls, points per
+    call, warm-ups and reference points)."""
+
+    from pyamplicol.loops.v2.reduction import NAMES
 
     reduction = (
         "checked reduction, refused points served best-effort"
@@ -515,12 +559,31 @@ def _runtime_setup(
         if not counts
         else f"{'/'.join(map(str, sorted(set(threads))))} native threads"
     )
-    return (
-        f"binary64, finite part, {reduction}, on {core}; {bench.batch_size} "
-        f"{points} per call, a new batch every call; median of the timed "
-        f"calls (at least {max(bench.minimum_samples, 1)} and "
-        f"{bench.target_runtime:g} s) after {bench.warmup_runs} warm-up"
+    profiled = [row for row in rows if getattr(row, "profile", None) is not None]
+    calls = ", ".join(
+        f"{NAMES.get(row.backend, row.backend)} {row.profile.samples} x "
+        f"{row.profile.batch}"
+        for row in profiled
     )
+    warmups = sorted({row.profile.warmup for row in profiled})
+    text = (
+        f"binary64, finite part, {reduction}, on {core}; {points}, a new batch "
+        f"every call; the median of each backend's timed calls"
+        + (f" ({calls} points)" if calls else "")
+        + (f" after {'/'.join(map(str, warmups))} warm-up" if warmups else "")
+    )
+    references = [
+        row.profile.reference.points
+        for row in profiled
+        if row.profile.reference is not None
+    ]
+    if truth is not None and truth.present and references:
+        text += (
+            f"; the {truth.label} multiplier from "
+            + " / ".join(map(str, references))
+            + " reference points"
+        )
+    return text
 
 
 def profile_loop(
@@ -538,11 +601,17 @@ def profile_loop(
 
     from pyamplicol.api import Runtime
     from pyamplicol.api.errors import ReductionUnavailable
+    from pyamplicol.config.models import is_default
+    from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import DEFAULTS
+    from pyamplicol.profile_plan import plan as plan_profile
+    from pyamplicol.profile_plan import runtime_counts
 
     bench = config.benchmark
     evaluation = config.evaluation
     path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
+    completion = bench.completion_time
+    monitor = _Monitor(progress, f"Profile {path.name}", completion)
     options: dict[str, Any] = {}
     if evaluation.reduction_target is not None:
         options["reduction_target"] = evaluation.reduction_target
@@ -551,12 +620,6 @@ def profile_loop(
     for name in ("kinematics_improvement", "kinematics_improvement_binary64"):
         if getattr(evaluation, name) is not None:
             options[name] = getattr(evaluation, name)
-    runtime = Runtime.load(path, process=evaluation.process, **options)
-    physics = runtime.physics
-    contribution = runtime.contribution_kind
-    backends = _backends(evaluation.reduction, contribution)
-    want_stability = bench.stability
-    want_runtime = bench.runtime or not want_stability
     truth = ground_truth(bench.ground_truth)
     checked = bench.checked
     if checked and evaluation.reduction_unchecked:
@@ -566,16 +629,123 @@ def profile_loop(
             "benchmark.checked (--checked) times the checked reduction: drop "
             "evaluation.reduction_unchecked (--reduction-unchecked)"
         )
+    loading = monitor.phase("load", "Loading the artifact", None, "steps")
+    loading.update(0, None, eta=None, step=f"loading {path.name}")
+    load_begin = time.perf_counter()
+    try:
+        runtime = Runtime.load(path, process=evaluation.process, **options)
+    except BaseException:
+        loading.end("failed", success=False)
+        monitor.close(False)
+        raise
+    load_seconds = time.perf_counter() - load_begin
+    loading.end(runtime.physics.process_id)
+    physics = runtime.physics
+    contribution = runtime.contribution_kind
+    backends = _backends(evaluation.reduction, contribution)
+    want_stability = bench.stability
+    want_runtime = bench.runtime or not want_stability
+    workers = max(1, min(bench.n_core, usable_cores()))
+    runtime_given = any(
+        not is_default(getattr(bench, name))
+        for name in ("target_runtime", "minimum_samples", "batch_size", "warmup_runs")
+    )
+    stability_given = (
+        None if is_default(bench.stability_points) else int(bench.stability_points)
+    )
+    overruled = [
+        flag
+        for flag, name in (
+            ("--target-runtime", "target_runtime"),
+            ("--minimum-samples", "minimum_samples"),
+            ("--batch-size", "batch_size"),
+            ("--warmup-runs", "warmup_runs"),
+            ("--stability-points", "stability_points"),
+        )
+        if not is_default(getattr(bench, name))
+    ]
+    if completion is not None and overruled:
+        _notice(
+            "--completion-time "
+            + _duration(completion)
+            + " overrules "
+            + ", ".join(overruled)
+            + " (the counts are chosen from the time)"
+        )
+    interrupted = False
+    try:
+        costs = _measure(
+            runtime, path, physics, config, backends, truth, monitor, load_seconds
+        )
+    except KeyboardInterrupt:
+        monitor.close(False)
+        raise
+    batch_max = int(bench.batch_size)
+    stability_start = (
+        load_seconds
+        + 1.0
+        + sum(c.stability + (c.stability_reference or 0.0) for c in costs.values())
+    )
+    planned = plan_profile(
+        costs,
+        runtime=want_runtime,
+        stability=want_stability,
+        workers=workers,
+        lanes=DEFAULT_LANES,
+        batch_max=batch_max,
+        completion=completion,
+        elapsed=monitor.elapsed(),
+        stability_start=stability_start,
+        runtime_counts_given=runtime_given and completion is None,
+        stability_points_given=stability_given if completion is None else None,
+    )
+    if not planned.feasible:
+        _notice(
+            f"--completion-time {_duration(completion)} cannot be met: the "
+            "minimums (one timed call of one chunk per backend, five "
+            "stability points per backend) take about "
+            f"{_duration(monitor.elapsed() + planned.minimum_seconds)}; "
+            "running the minimums",
+            warning=True,
+        )
+    # What is left of the plan after each phase (the whole command's ETA).
+    future: dict[str, float] = {
+        f"runtime:{b}": counts.expected for b, counts in planned.runtime.items()
+    }
+    if want_runtime and not planned.runtime:
+        # The counts given: their cost at the measured rates (at least the
+        # warm-ups and the minimum calls, the budget, the reference's).
+        for b, c in costs.items():
+            calls = bench.warmup_runs + max(bench.minimum_samples, 1)
+            seconds = c.start + max(
+                calls * bench.batch_size * c.binary64,
+                bench.warmup_runs * bench.batch_size * c.binary64
+                + float(bench.target_runtime),
+            )
+            if c.reference is not None:
+                seconds += c.reference + max(float(bench.target_runtime), c.reference)
+            future[f"runtime:{b}"] = seconds
+    if want_stability:
+        future["stability"] = planned.stability_seconds
+    current: list[Any] = [None]
+
+    def remaining() -> tuple[float, bool] | None:
+        now = current[0].remaining() if current[0] is not None else None
+        rest = sum(future.values())
+        if now is None and not rest:
+            return None
+        return (now or 0.0) + rest, True
+
+    monitor.remaining = remaining
 
     runtime_rows = None
-    interrupted = False
     if want_runtime:
         # The caller's points, cycled; else the worker draws distinct flat
         # points as its calls need them (the same per call on every backend).
         timed = list(points) if points else None
         rows = []
         default = DEFAULTS.get(contribution)
-        for backend in backends:
+        for position, backend in enumerate(backends):
             # The optimistic pass: the backend alone. The checked mode: the
             # default backend as "auto" (with its per-point fallback), unless
             # one backend was asked for.
@@ -584,31 +754,88 @@ def profile_loop(
                 if checked and evaluation.reduction is None and backend == default
                 else backend
             )
-            try:
-                profile = _timed(
-                    progress,
-                    backend,
-                    lambda report, request=request, backend=backend: _isolated_profile(
-                        path,
-                        evaluation.process,
-                        options,
-                        config,
-                        timed,
-                        request,
-                        report,
-                        reference={**truth.options, "reduction": backend},
+            backend_bench = bench
+            reference_budget = float(bench.target_runtime)
+            counts = planned.runtime.get(backend)
+            if completion is not None and backend in costs and planned.feasible:
+                # Re-planned from what is left: the backends to come share the
+                # runtime's part of it.
+                left = completion - monitor.elapsed() - future.get("stability", 0.0)
+                share = left / max(len(backends) - position, 1)
+                counts = runtime_counts(
+                    costs[backend],
+                    max(share - costs[backend].start, 0.0),
+                    lanes=DEFAULT_LANES,
+                    batch_max=batch_max,
+                )
+            if counts is not None:
+                backend_bench = replace(
+                    bench,
+                    batch_size=counts.batch,
+                    warmup_runs=counts.warmup,
+                    minimum_samples=counts.minimum,
+                    target_runtime=max(counts.budget, 1e-9),
+                )
+                reference_budget = counts.reference_budget
+            future.pop(f"runtime:{backend}", None)
+            run = _BackendRun(
+                monitor,
+                backend,
+                truth,
+                None if backend not in costs else costs[backend].start,
+                (
+                    costs[backend].binary64 * backend_bench.batch_size
+                    if backend in costs
+                    else None
+                ),
+                backend_bench.batch_size,
+            )
+            current[0] = run
+            reference = (
+                None
+                if truth.arithmetic == "none"
+                else {
+                    **truth.options,
+                    "reduction": backend,
+                    "budget": max(reference_budget, 1e-9),
+                    **(
+                        {"seconds_per_point": costs[backend].reference}
+                        if backend in costs and costs[backend].reference is not None
+                        else {}
                     ),
+                }
+            )
+            try:
+                result = _isolated_profile(
+                    path,
+                    evaluation.process,
+                    options,
+                    replace(config, benchmark=backend_bench),
+                    timed,
+                    request,
+                    run,
+                    reference=reference,
                 )
             except ReductionUnavailable as error:
+                run.abort()
                 rows.append(
                     BackendRuntime(backend, None, str(error), requested=request)
                 )
                 continue
-            except KeyboardInterrupt:
-                # The backends timed so far are reported.
+            except _Interrupted as stopped:
+                # Ctrl-C after its binary64 calls: what is complete is shown.
+                rows.append(BackendRuntime(backend, stopped.profile, requested=request))
                 interrupted = True
                 break
-            rows.append(BackendRuntime(backend, profile, requested=request))
+            except KeyboardInterrupt:
+                # The backends timed so far are reported.
+                run.abort()
+                interrupted = True
+                break
+            finally:
+                current[0] = None
+            run.finish(result)
+            rows.append(BackendRuntime(backend, result, requested=request))
         # A backend that failed every timed point is not compared (its time
         # is that of failing, not of serving the process).
         served = [
@@ -633,6 +860,31 @@ def profile_loop(
     stability_rows = None
     stability_setup = None
     if want_stability and not interrupted:
+        from pyamplicol.profile_plan import (
+            DEFAULT_STABILITY_SECONDS_PER_CORE,
+            stability_points,
+        )
+
+        future.pop("stability", None)
+        # The stability run's points and deadline: what is left of
+        # --completion-time, the points given, else a minute per worker.
+        deadline = None
+        count = planned.stability_points or STABILITY_FALLBACK
+        if completion is not None:
+            left = completion - monitor.elapsed()
+            deadline = time.perf_counter() + max(left, 0.0)
+            count = stability_points(
+                list(costs.values()),
+                max(left - stability_start, 0.0),
+                workers,
+                lanes=DEFAULT_LANES,
+            )
+        elif stability_given is None:
+            deadline = (
+                time.perf_counter()
+                + stability_start
+                + DEFAULT_STABILITY_SECONDS_PER_CORE
+            )
         stability_rows, stability_setup = _stability(
             runtime,
             path,
@@ -641,6 +893,11 @@ def profile_loop(
             backends,
             load_options=options,
             progress=progress,
+            monitor=monitor,
+            planned_points=stability_given if stability_given is not None else count,
+            deadline=None if stability_given is not None else deadline,
+            costs=costs,
+            current=current,
         )
     causes: list[tuple[str, str, str, str]] = []
     totals: dict[tuple[str, ...], int] = {}
@@ -681,6 +938,12 @@ def profile_loop(
                     "best-effort" if kind == "best-effort" else "failed",
                 )
                 causes.append((stability_row.backend, "stability", kind, text))
+    monitor.close(
+        not (
+            interrupted
+            or bool(stability_setup is not None and stability_setup.get("interrupted"))
+        )
+    )
     return LoopProfileReport(
         physics.process_id,
         physics.process,
@@ -689,13 +952,14 @@ def profile_loop(
         backends,
         _runtime_setup(
             checked,
-            bench,
             None if points else evaluation.phase_space.seed,
             [
                 row.profile.threads
                 for row in runtime_rows or ()
                 if row.profile is not None and row.profile.threads is not None
             ],
+            runtime_rows or (),
+            truth,
         )
         if want_runtime
         else None,
@@ -706,7 +970,651 @@ def profile_loop(
         interrupted
         or bool(stability_setup is not None and stability_setup.get("interrupted")),
         truth.record(),
+        {
+            **planned.record(),
+            "overruled": overruled if completion is not None else [],
+            "runtime_counts": {
+                row.backend: {
+                    "batch": row.profile.batch,
+                    "calls": row.profile.samples,
+                    "reference_points": (
+                        None
+                        if row.profile.reference is None
+                        else row.profile.reference.points
+                    ),
+                }
+                for row in runtime_rows or ()
+                if row.profile is not None
+            },
+        },
+        monitor.elapsed(),
     )
+
+
+class _Phase:
+    """One phase of the live display (``_Monitor.phase``): a child task of
+    the profile's root task with its counts, its ETA (counted down by the
+    display between updates) and, when it ends, one scroll-back line with
+    its summary."""
+
+    def __init__(
+        self,
+        monitor: _Monitor,
+        key: str,
+        description: str,
+        total: int | None,
+        unit: str,
+    ) -> None:
+        from pyamplicol.reporting.progress import ProgressStart
+
+        self.monitor = monitor
+        self.task = f"loop-profile-{key}"
+        self.begin = time.perf_counter()
+        self.done = 0
+        self.total = total
+        self.ended = False
+        if monitor.sink is not None:
+            monitor.sink.emit(
+                ProgressStart(
+                    self.task,
+                    description,
+                    total=total,
+                    parent_task_id=monitor.task,
+                    unit=unit,
+                    details={"eta_seconds": None, "readings": monitor.readings()},
+                )
+            )
+
+    def update(
+        self,
+        done: int,
+        total: int | None,
+        *,
+        eta: float | None,
+        step: str,
+        estimated: bool = False,
+        heartbeat: bool = False,
+        stalled: float | None = None,
+        running: float | None = None,
+    ) -> None:
+        from pyamplicol.reporting.progress import ProgressUpdate
+
+        self.done, self.total = done, total
+        if self.monitor.sink is None or self.ended:
+            return
+        total = None if total is None else max(total, done)
+        details: dict[str, Any] = {
+            "step": step,
+            "eta_seconds": None if eta is None else max(float(eta), 0.0),
+            "eta_estimated": estimated,
+            "readings": self.monitor.readings(),
+            "heartbeat": heartbeat,
+        }
+        if stalled is not None:
+            details["stalled_seconds"] = max(float(stalled), 0.0)
+        if running is not None:
+            details["running_seconds"] = max(float(running), 0.0)
+        self.monitor.sink.emit(ProgressUpdate(self.task, done, total, details=details))
+
+    def end(self, summary: str | None, *, success: bool = True) -> None:
+        from pyamplicol.reporting.progress import ProgressEnd
+
+        if self.ended:
+            return
+        self.ended = True
+        if self.monitor.sink is not None:
+            self.monitor.sink.emit(
+                ProgressEnd(
+                    self.task,
+                    success=success,
+                    message=summary,
+                    elapsed_seconds=time.perf_counter() - self.begin,
+                    details={"keep": True, "readings": self.monitor.readings()},
+                )
+            )
+
+
+def _exclude_resource_tracker() -> None:
+    """Leave multiprocessing's resource tracker (started with the first
+    spawned process) out of the display's process tree: "children N" counts
+    the profile's workers."""
+
+    try:
+        from multiprocessing import resource_tracker
+
+        from pyamplicol.reporting.resources import register_monitor_process
+
+        pid = getattr(
+            getattr(resource_tracker, "_resource_tracker", None), "_pid", None
+        )
+        if isinstance(pid, int) and pid > 0:
+            register_monitor_process(pid)
+    except Exception:  # the display only: never fails the profile
+        return
+
+
+class _Monitor:
+    """The live display of a loop profile (``--progress``): a root task with
+    the whole command's elapsed time, ETA and budget (``remaining``: a
+    callable of the seconds left, the plan's and the measured rates'
+    estimate), its phases as child tasks (``_Phase``), and the readings every
+    phase shows: per backend its current best estimate of the binary64 time
+    per point with the running reference multiplier, or the stability run's
+    points done and flagged (``set_reading``)."""
+
+    def __init__(self, sink: Any, title: str, budget: float | None) -> None:
+        from pyamplicol.reporting.progress import ProgressStart
+
+        self.sink = sink
+        self.task = "loop-profile"
+        # The command's clock starts with its process (the interpreter and
+        # the imports count: the user waits for them too).
+        self.begin = time.perf_counter() - _process_age()
+        self.budget = budget
+        self._readings: dict[str, tuple[str | None, str | None]] = {}
+        self.remaining: Any = None
+        self._count = 0
+        if sink is not None:
+            sink.emit(
+                ProgressStart(
+                    self.task,
+                    title,
+                    details={"budget_seconds": budget} if budget is not None else {},
+                )
+            )
+
+    def elapsed(self) -> float:
+        return time.perf_counter() - self.begin
+
+    def set_reading(
+        self, label: str, value: str | None, note: str | None = None
+    ) -> None:
+        self._readings[label] = (value, note)
+
+    def clear_readings(self) -> None:
+        self._readings.clear()
+
+    def readings(self) -> str:
+        from pyamplicol.reporting.progress import readings_detail
+
+        return readings_detail(
+            [(label, value, note) for label, (value, note) in self._readings.items()]
+        )
+
+    def phase(
+        self, key: str, description: str, total: int | None = None, unit: str = "calls"
+    ) -> _Phase:
+        self._count += 1
+        return _Phase(self, f"{self._count}-{key}", description, total, unit)
+
+    def tick(self) -> None:
+        """The root task's ETA and budget, from ``remaining``."""
+
+        from pyamplicol.reporting.progress import ProgressUpdate
+
+        if self.sink is None:
+            return
+        _exclude_resource_tracker()
+        details: dict[str, Any] = {"heartbeat": True}
+        remaining = self.remaining() if self.remaining is not None else None
+        if remaining is not None:
+            seconds, estimated = remaining
+            details["eta_seconds"] = max(float(seconds), 0.0)
+            details["eta_estimated"] = bool(estimated)
+        if self.budget is not None:
+            details["budget_seconds"] = self.budget - self.elapsed()
+        self.sink.emit(ProgressUpdate(self.task, 0, None, details=details))
+
+    def close(self, success: bool) -> None:
+        from pyamplicol.reporting.progress import ProgressEnd
+
+        if self.sink is not None:
+            self.sink.emit(
+                ProgressEnd(
+                    self.task,
+                    success=success,
+                    message=None if success else "interrupted",
+                    elapsed_seconds=self.elapsed(),
+                )
+            )
+
+
+def _process_age() -> float:
+    """The seconds since this process started (Linux ``/proc``; 0 where it
+    cannot be read)."""
+
+    try:
+        stat = Path("/proc/self/stat").read_text(encoding="utf-8")
+        uptime = float(Path("/proc/uptime").read_text(encoding="utf-8").split()[0])
+        start = int(stat[stat.rfind(")") + 1 :].split()[19])
+        return max(uptime - start / os.sysconf("SC_CLK_TCK"), 0.0)
+    except (OSError, ValueError, IndexError, AttributeError):
+        return 0.0
+
+
+def _per_point_text(seconds: float | None) -> str | None:
+    """A time per point for the readings ("2.31 ms"), None when unknown."""
+
+    if seconds is None or not seconds > 0.0:
+        return None
+    for unit, scale in (("s", 1.0), ("ms", 1e-3), ("us", 1e-6)):
+        if seconds >= scale:
+            return f"{seconds / scale:.3g} {unit}"
+    return f"{seconds / 1e-9:.3g} ns"
+
+
+def _multiplier_text(ratio: float) -> str:
+    return f"x{ratio:.1f}" if round(ratio, 1) < 10.0 else f"x{ratio:.0f}"
+
+
+class _BackendRun:
+    """One backend's runtime timing seen from this process: its worker's
+    events (``_runtime_worker``) turned into the live display's phases
+    (start-up, binary64 calls, reference calls), its readings, and, between
+    events, a heartbeat every second: the running call's time against its
+    expected cost, "no progress" once it runs far past it. It keeps the
+    binary64 result and the reference calls back so far, so that Ctrl-C
+    reports them."""
+
+    def __init__(
+        self,
+        monitor: _Monitor,
+        backend: str,
+        truth: GroundTruth,
+        expected_start: float | None,
+        expected_call: float | None = None,
+        batch: int = 1,
+    ) -> None:
+        from pyamplicol.loops.v2.reduction import NAMES
+
+        self.monitor = monitor
+        # The planned seconds of one binary64 call (the measured cost per
+        # point times the batch): the first call's expected cost and ETA
+        # until one is back.
+        self.expected_call = expected_call
+        self.batch = max(int(batch), 1)
+        self.name = NAMES.get(backend, backend)
+        self.truth = truth
+        self.profile: Any = None
+        self.reference_walls: list[float] = []
+        self.reference_points = 0
+        self.binary64: float | None = None
+        self.multiplier: float | None = None
+        self.expected_start = expected_start
+        self.kind = "start"
+        self.phase: _Phase | None = monitor.phase(
+            f"{backend}-start",
+            f"{self.name}: start-up (process, artifact)",
+            None,
+            "steps",
+        )
+        self.last = time.perf_counter()
+        self.state: dict[str, Any] = {"done": 0, "total": None, "eta": expected_start}
+        self.load_seconds: float | None = None
+        self.reading()
+
+    def reading(self) -> None:
+        note = None
+        if self.truth.arithmetic != "none" and self.multiplier is not None:
+            note = f"({self.truth.label} {_multiplier_text(self.multiplier)})"
+        self.monitor.set_reading(self.name, _per_point_text(self.binary64), note)
+
+    def remaining(self) -> float | None:
+        """The seconds the current phase has left (counted down since its
+        last event, never below a fraction of a call while it runs)."""
+
+        eta = self.state.get("eta")
+        if eta is None:
+            return None
+        since = time.perf_counter() - self.last
+        rate = self.state.get("rate")
+        left_calls = max(int(self.state["total"] or 0) - int(self.state["done"]), 1)
+        # The running call's expected cost: the recent calls', else the
+        # phase's estimate shared by its calls; the calls after it, and at
+        # least a tenth of a call while it runs (never 0).
+        call = float(rate) if rate else float(eta) / left_calls
+        if call <= 0.0:
+            return max(float(eta) - since, 0.0)
+        return (left_calls - 1) * call + max(call - since, 0.1 * call)
+
+    def event(self, kind: str, payload: Mapping[str, Any]) -> None:
+        now = time.perf_counter()
+        if kind == "loaded":
+            self.load_seconds = float(payload.get("seconds") or 0.0)
+            return
+        if kind in ("binary64", "reference") and kind != self.kind:
+            self._next(kind)
+        if kind == "binary64-result":
+            self.profile = payload["profile"]
+            self.binary64 = self.profile.seconds_per_point
+            self.reading()
+            if self.phase is not None:
+                self.phase.end(
+                    f"{_per_point_text(self.binary64)} per point, median of "
+                    f"{self.profile.samples} calls of {self.profile.batch} points"
+                )
+            self.kind = "between"
+            self.phase = None
+            return
+        if kind not in ("binary64", "reference"):
+            return
+        walls = payload.get("walls") or []
+        points = int(payload.get("points") or 1)
+        done, total = int(payload["done"]), payload.get("total")
+        rate = statistics.median(walls[-5:]) if walls else None
+        if kind == "binary64" and payload.get("seconds_per_point") is not None:
+            self.binary64 = float(payload["seconds_per_point"])
+        if kind == "reference":
+            self.reference_walls = list(walls)
+            self.reference_points = points
+            per = payload.get("seconds_per_point")
+            if per is not None and self.binary64:
+                self.multiplier = float(per) / self.binary64
+        self.reading()
+        eta = payload.get("eta_seconds")
+        if eta is None and kind == "binary64" and self.expected_call:
+            eta = max(int(total or 0) - done, 1) * self.expected_call
+        self.state = {
+            "done": done,
+            "total": total,
+            "eta": eta,
+            "rate": rate,
+            "warmup": int(payload.get("warmup") or 0) if kind == "binary64" else 0,
+        }
+        self.last = now
+        self._show(heartbeat=False)
+
+    def _next(self, kind: str) -> None:
+        if self.phase is not None:
+            summary = None
+            if self.kind == "start":
+                summary = (
+                    f"loaded in {_duration(self.load_seconds)}"
+                    if self.load_seconds is not None
+                    else None
+                )
+            self.phase.end(summary)
+        label = (
+            "binary64 calls"
+            if kind == "binary64"
+            else f"{self.truth.name} reference calls"
+        )
+        self.kind = kind
+        self.phase = self.monitor.phase(f"{self.name}-{kind}", f"{self.name}: {label}")
+        self.state = {"done": 0, "total": None, "eta": None, "rate": None}
+        self.last = time.perf_counter()
+
+    def _show(self, *, heartbeat: bool) -> None:
+        if self.phase is None:
+            return
+        since = time.perf_counter() - self.last
+        done, total = self.state["done"], self.state["total"]
+        rate = self.state.get("rate")
+        eta = self.remaining()
+        if self.kind == "start":
+            step = f"{self.name}: starting its process and loading the artifact"
+            stalled = (
+                since - 3.0 * self.expected_start
+                if self.expected_start and since > 3.0 * self.expected_start + 30.0
+                else None
+            )
+            self.phase.update(
+                0,
+                None,
+                eta=eta,
+                step=step,
+                estimated=True,
+                heartbeat=heartbeat,
+                stalled=stalled,
+                running=since,
+            )
+            return
+        what = "reference" if self.kind == "reference" else "binary64"
+        shown = None if total is None else max(int(total), int(done) + 1)
+        running = f"call {done + 1}" + (f"/{shown}" if shown else "")
+        # The running call's expected cost: the recent calls', else the
+        # phase's ETA shared by the calls left.
+        expected = rate
+        if not expected and self.state.get("eta") is not None:
+            expected = float(self.state["eta"]) / max(int(total or 0) - int(done), 1)
+        if int(done) < int(self.state.get("warmup") or 0):
+            # The untimed warm-up: one point when a full call is dear
+            # (``profile_plan.warmup_seconds``), else one full call.
+            from pyamplicol.profile_plan import warmup_seconds
+
+            running = "warm-up call"
+            if self.expected_call:
+                expected = warmup_seconds(
+                    self.expected_call, self.expected_call / self.batch
+                )
+        step = f"{self.name} {what}: {running} running {_duration(since)}" + (
+            f" of ~{_duration(float(expected))}" if expected else ""
+        )
+        stalled = None
+        if expected and since > 3.0 * float(expected) + 30.0:
+            stalled = since - float(expected)
+        self.phase.update(
+            int(done),
+            None if total is None else max(int(total), int(done) + 1),
+            eta=eta,
+            step=step,
+            estimated=rate is None,
+            heartbeat=heartbeat,
+            stalled=stalled,
+            running=since,
+        )
+
+    def tick(self) -> None:
+        self._show(heartbeat=True)
+
+    def finish(self, profile: Any) -> None:
+        if self.phase is not None:
+            summary = None
+            if self.kind == "reference" and profile.reference is not None:
+                ratio = profile.reference.seconds_per_point / max(
+                    profile.seconds_per_point, 1e-300
+                )
+                summary = (
+                    f"{self.truth.label} {_multiplier_text(ratio)} from "
+                    f"{profile.reference.points} points"
+                )
+            self.phase.end(summary)
+            self.phase = None
+
+    def partial(self) -> Any:
+        """The binary64 profile with the reference calls back so far (none:
+        a reference of no call, its multiplier shown muted), or None before
+        the binary64 result."""
+
+        from pyamplicol.benchmarking import PrecisionTiming
+
+        if self.profile is None:
+            return None
+        if self.truth.arithmetic == "none":
+            return self.profile
+        walls = self.reference_walls
+        size = max(self.reference_points, 1)
+        timing = PrecisionTiming(
+            self.truth.arithmetic,
+            size,
+            len(walls),
+            1,
+            size * len(walls),
+            statistics.median(walls) / size if walls else 0.0,
+            min(walls) / size if walls else 0.0,
+            max(walls) / size if walls else 0.0,
+            0,
+            digits=self.truth.digits,
+        )
+        return replace(self.profile, reference=timing)
+
+    def abort(self) -> None:
+        if self.phase is not None:
+            self.phase.end("interrupted", success=False)
+            self.phase = None
+
+
+def _duration(seconds: float | None) -> str:
+    from pyamplicol.profile_plan import duration_text
+
+    return "?" if seconds is None else duration_text(seconds)
+
+
+def _notice(text: str, *, warning: bool = False) -> None:
+    """One plain line for the user (the CLI's short notice; a warning in the
+    warning colour)."""
+
+    from pyamplicol.reporting.logging import get_logger, notice
+
+    logger = get_logger("profile")
+    if warning:
+        logger.warning(text)
+    else:
+        notice(logger, "profile", text)
+
+
+class _Interrupted(Exception):
+    """Ctrl-C during a backend's runtime timing after its binary64 calls:
+    ``profile`` holds them and the reference calls back so far."""
+
+    def __init__(self, profile: Any) -> None:
+        super().__init__("interrupted")
+        self.profile = profile
+
+
+def _measure(
+    runtime: Any,
+    path: Path,
+    physics: Any,
+    config: RunConfig,
+    backends: Sequence[str],
+    truth: GroundTruth,
+    monitor: _Monitor,
+    load_seconds: float,
+) -> dict[str, Any]:
+    """The measurement phase of a time-budgeted profile, on this process's
+    loaded runtime, per backend: the binary64 cost per point of an
+    optimistic call and the reference's (none without a ground truth), each
+    from one point (twice when it costs at most ``MEASURE_REPEAT_SECONDS``:
+    a first call's lazy set-up) and, when a full SIMD chunk costs at most
+    ``WARMUP_CALL_SECONDS`` at that price, from one call of a full chunk
+    (first calls: upper estimates); the stability run's binary64 cost from
+    the prior ``STABILITY_PRIOR``; a process's start-up from this process's
+    load. A backend that refuses the process is left out (its timing
+    reports the refusal)."""
+
+    from pyamplicol.api.errors import ReductionUnavailable
+    from pyamplicol.benchmarking import _initial_invariant
+    from pyamplicol.cli.flat_points import draw_flat_points
+    from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
+    from pyamplicol.loops.v2.reduction import NAMES
+    from pyamplicol.profile_plan import (
+        MEASURE_REPEAT_SECONDS,
+        STABILITY_PRIOR,
+        WARMUP_CALL_SECONDS,
+        Costs,
+    )
+
+    space = config.evaluation.phase_space
+    points = draw_flat_points(
+        path,
+        process=physics.process_id,
+        points=DEFAULT_LANES,
+        seed=space.seed,
+        sqrt_s=space.sqrt_s,
+    ).as_inputs(exact=False)
+    initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
+    scales = (
+        config.evaluation.mu_r2
+        if config.evaluation.mu_r2 is not None
+        else [_initial_invariant(point, initial) for point in points]
+    )
+    precisions = ["binary64"] + ([] if truth.arithmetic == "none" else ["reference"])
+    steps = len(backends) * len(precisions)
+    phase = monitor.phase("measure", "Measuring the cost per point", steps)
+
+    def cost(backend: str, precision: str) -> float:
+        options: dict[str, Any] = {
+            "poles": "none",
+            "on_failure": "return",
+            "reduction": backend,
+        }
+        if precision == "binary64":
+            options["reduction_unchecked"] = True
+        else:
+            options.update(truth.options)
+
+        def seconds(size: int) -> float:
+            batch = points[:size]
+            mu = scales[:size] if isinstance(scales, list) else scales
+            begin = time.perf_counter()
+            runtime.evaluate(batch, mu_r2=mu, **options)
+            return (time.perf_counter() - begin) / size
+
+        # One point; again when it was cheap (a first call carries seconds of
+        # lazy set-up, negligible against a dearer point); one full chunk
+        # when that costs at most WARMUP_CALL_SECONDS at the point's price.
+        per_point = seconds(1)
+        if per_point <= MEASURE_REPEAT_SECONDS:
+            per_point = seconds(1)
+        if per_point * len(points) <= WARMUP_CALL_SECONDS:
+            per_point = seconds(len(points))
+        return per_point
+
+    costs: dict[str, Any] = {}
+    done = 0
+    for backend in backends:
+        name = NAMES.get(backend, backend)
+        measured: dict[str, float] = {}
+        try:
+            for precision in precisions:
+                label = "binary64" if precision == "binary64" else truth.name
+                phase.update(
+                    done,
+                    steps,
+                    eta=None,
+                    step=f"{name}: {label} cost per point",
+                )
+                measured[precision] = cost(backend, precision)
+                done += 1
+                ratio = (
+                    measured["reference"] / measured["binary64"]
+                    if "reference" in measured
+                    else None
+                )
+                monitor.set_reading(
+                    name,
+                    _per_point_text(measured["binary64"]),
+                    None
+                    if ratio is None
+                    else f"({truth.label} {_multiplier_text(ratio)})",
+                )
+        except ReductionUnavailable:
+            done = (backends.index(backend) + 1) * len(precisions)
+            continue
+        binary64 = measured["binary64"]
+        reference = measured.get("reference")
+        costs[backend] = Costs(
+            binary64,
+            reference,
+            STABILITY_PRIOR * binary64,
+            reference,
+            load_seconds + 1.0,
+        )
+    phase.end(
+        ", ".join(
+            f"{NAMES.get(b, b)} {_per_point_text(c.binary64)}"
+            + (
+                ""
+                if c.reference is None
+                else f" ({truth.label} {_multiplier_text(c.reference / c.binary64)})"
+            )
+            for b, c in costs.items()
+        )
+        + " per point"
+    )
+    monitor.clear_readings()
+    return costs
 
 
 def _isolated_profile(
@@ -716,7 +1624,7 @@ def _isolated_profile(
     config: RunConfig,
     points: Sequence[Any] | None,
     request: str,
-    report: Any,
+    run: _BackendRun | None,
     *,
     reference: Mapping[str, Any] | None = None,
 ) -> VirtualProfileResult:
@@ -729,10 +1637,12 @@ def _isolated_profile(
     prepared state and the memory the allocator kept (or, reusing it, would
     hide its own). The worker times on one core: every thread pool at one
     thread (``one_core``). ``reference``: the reference timing's options
-    (``profile_virtual``), timed after the binary64 calls.
-    ``report(done, total)`` receives the worker's progress; the worker
-    ignores Ctrl-C (this process stops it and raises) and never outlives
-    the call."""
+    (``profile_virtual``), timed after the binary64 calls. ``run`` receives
+    the worker's events and, every second without one, a heartbeat; the
+    worker ignores Ctrl-C: this process stops it and raises ``_Interrupted``
+    with the binary64 result and the reference calls back so far (when the
+    binary64 calls are done), else KeyboardInterrupt. The worker never
+    outlives the call."""
 
     import multiprocessing
 
@@ -762,6 +1672,16 @@ def _isolated_profile(
     sender.close()
     try:
         while True:
+            if not receiver.poll(1.0):
+                if run is not None:
+                    run.tick()
+                    run.monitor.tick()
+                if not worker.is_alive() and not receiver.poll(0.1):
+                    raise EvaluationError(
+                        "the runtime profile's worker process ended without a "
+                        f"result (exit code {worker.exitcode})"
+                    )
+                continue
             try:
                 kind, *payload = receiver.recv()
             except EOFError:
@@ -770,13 +1690,21 @@ def _isolated_profile(
                     "the runtime profile's worker process ended without a result "
                     f"(exit code {worker.exitcode})"
                 ) from None
-            if kind == "progress":
-                if report is not None:
-                    report(*payload)
+            if kind == "monitor":
+                if run is not None:
+                    run.event(payload[0], payload[1])
+                    run.monitor.tick()
             elif kind == "result":
                 return cast("VirtualProfileResult", payload[0])
             else:
                 raise payload[0]
+    except KeyboardInterrupt:
+        partial = None if run is None else run.partial()
+        if run is not None:
+            run.abort()
+        if partial is not None:
+            raise _Interrupted(partial) from None
+        raise
     finally:
         receiver.close()
         if worker.is_alive():
@@ -804,7 +1732,8 @@ def _runtime_worker(
     one backend profiled (the optimistic pass, or with ``benchmark.checked``
     the checked call, a refused point served with its best-effort value and
     timed as such, m-lit ux-besteffort) and its reference timing; its
-    progress, then its result or error, sent back."""
+    events (``profile_virtual``'s monitor, and "loaded"), then its result or
+    error, sent back."""
 
     import signal
 
@@ -818,7 +1747,9 @@ def _runtime_worker(
         config = RunConfig(
             action=Action.BENCHMARK, evaluation=evaluation, benchmark=benchmark
         )
+        begin = time.perf_counter()
         runtime = Runtime.load(artifact, process=process, **options)
+        sender.send(("monitor", "loaded", {"seconds": time.perf_counter() - begin}))
         profile = profile_virtual(
             runtime,
             config,
@@ -828,9 +1759,9 @@ def _runtime_worker(
             # The checked mode: a refused point is served with its
             # best-effort value and timed as such (m-lit ux-besteffort).
             on_failure="best-effort" if benchmark.checked else "return",
-            progress=lambda done, total: sender.send(("progress", done, total)),
             reference=reference,
             optimistic=not benchmark.checked,
+            monitor=lambda kind, payload: sender.send(("monitor", kind, payload)),
         )
         sender.send(("result", profile))
     except Exception as error:
@@ -848,42 +1779,6 @@ def _runtime_worker(
         sender.close()
 
 
-def _timed(progress: Any, backend: str, call: Any) -> Any:
-    """``call(report)`` (a ``profile_virtual`` of ``backend``) with its warm-up
-    and timed calls reported to ``progress``."""
-
-    from pyamplicol.loops.v2.reduction import NAMES
-    from pyamplicol.reporting.progress import ProgressEnd, ProgressStart, ProgressUpdate
-
-    if progress is None:
-        return call(None)
-    name = NAMES.get(backend, backend)
-    task = f"loop-runtime-{backend}"
-    begin = time.perf_counter()
-    progress.emit(ProgressStart(task, f"Timing {name}", unit="calls"))
-
-    def report(done: int, total: int) -> None:
-        progress.emit(
-            ProgressUpdate(
-                task, done, total, details={"step": f"{name}: call {done}/{total}"}
-            )
-        )
-
-    success = False
-    try:
-        result = call(report)
-        success = True
-        return result
-    finally:
-        progress.emit(
-            ProgressEnd(
-                task,
-                success=success,
-                elapsed_seconds=time.perf_counter() - begin,
-            )
-        )
-
-
 # The stability point statuses of the failure distribution and their kinds.
 _CAUSE_KINDS = {
     "best-effort": "best-effort",
@@ -895,18 +1790,24 @@ _CAUSE_KINDS = {
 @dataclass(frozen=True, slots=True)
 class _EstimateSummary:
     """A binary64 call's stability estimate reduced to what the statistics
-    read (``_backend_statistics``): its ``relative`` estimate (the flag)
-    and, as ``finite``, the estimated relative error of the total's finite
-    part (``_estimated_relative``; ``absolute`` None so that it is read
-    back unchanged). Small and picklable: the worker processes return it."""
+    and the per-point record read (``_backend_statistics``): its
+    ``relative`` estimate (the flag), as ``finite`` the estimated relative
+    error of the total's finite part (``_estimated_relative``; ``absolute``
+    None so that it is read back unchanged), every check's own relative
+    budget (``checks``), the checks that did not run (``not_run``) and the
+    scale estimate (``scale``). Small and picklable: the worker processes
+    return it."""
 
     relative: float
     finite: float
     absolute: None = None
+    checks: tuple[tuple[str, float], ...] = ()
+    not_run: tuple[tuple[str, str], ...] = ()
+    scale: float | None = None
 
 
 # The state of a stability worker (``_stability_worker``): the runtime, the
-# flat points, their scales and the check set; set once per process.
+# check set, the reference and a point to warm up on; set once per process.
 _WORKER: dict[str, Any] = {}
 
 # The thread pools of a worker process, one thread each (``one_core``): a
@@ -926,8 +1827,7 @@ def _stability_worker(
     artifact: str,
     process: str | None,
     options: Mapping[str, Any],
-    points: Sequence[Any],
-    scales: Any,
+    warm: tuple[Any, Any] | None,
     checks: Any,
     backends: Sequence[str] = (),
     truth: GroundTruth | None = None,
@@ -935,8 +1835,8 @@ def _stability_worker(
     """Initialise a stability worker process: one thread per pool, Ctrl-C
     left to the parent (which collects what finished and stops the
     workers), the artifact loaded once with the reference precision
-    ``truth`` (default double-double), and warmed up on ``backends``
-    (``_warm_up``)."""
+    ``truth`` (default double-double; "none": no reference), and warmed up
+    on ``backends`` with ``warm`` (a point and its scale, ``_warm_up``)."""
 
     import signal
 
@@ -946,8 +1846,7 @@ def _stability_worker(
 
     _WORKER.update(
         runtime=Runtime.load(artifact, process=process, **options),
-        points=points,
-        scales=scales,
+        warm=warm,
         checks=checks,
         truth=truth or GroundTruth("double-double"),
     )
@@ -965,33 +1864,50 @@ def one_core() -> None:
         os.environ[name] = "1"
 
 
+def _precisions(truth: GroundTruth | None) -> tuple[str, ...]:
+    """The evaluations of a stability run: binary64, and the reference
+    unless ``--ground-truth none``."""
+
+    if truth is not None and not truth.present:
+        return ("binary64",)
+    return _PRECISIONS
+
+
 def _warm_up(backends: Sequence[str]) -> None:
     """Pay this process's first-call costs before any timed task, untimed:
-    the stability task of point 0 on every backend and precision (the
+    the stability task of one point on every backend and precision (the
     process's first evaluation, each backend's and carrier's first call and
-    what it builds lazily), its result dropped. An evaluation does not
-    depend on what ran before it (bit-identical values and estimates), so
-    the statistics are unchanged; only the timings lose that cost. A
+    what it builds lazily; after native's fix one point per carrier builds
+    the engine of every batch size), its result dropped. An evaluation does
+    not depend on what ran before it (bit-identical values and estimates),
+    so the statistics are unchanged; only the timings lose that cost. A
     backend's error is left to its timed tasks, which report it."""
 
-    if not _WORKER.get("points"):
+    warm = _WORKER.get("warm")
+    if not warm:
         return
+    point, scale = warm
     for backend in backends:
-        for precision in _PRECISIONS:
+        for precision in _precisions(_WORKER.get("truth")):
             with contextlib.suppress(Exception):
-                _stability_task(backend, precision, [0])
+                _stability_task(backend, precision, [0], [point], [scale])
     # The timed tasks start without the warm-up's garbage.
     gc.collect()
 
 
 def _stability_task(
-    backend: str, precision: str, indices: Sequence[int]
+    backend: str,
+    precision: str,
+    indices: Sequence[int],
+    batch: Sequence[Any],
+    scales: Sequence[Any] | Any,
 ) -> tuple[str, str, list[tuple[Any, ...]], float]:
-    """One batch of a stability run: the flat points ``indices`` on
-    ``backend`` in ``precision`` ("binary64": the checked call with its
-    stability estimate, a refused point served with its best-effort value;
-    "reference": the worker's ``GroundTruth``, accepted values only, the
-    exact sum of their sectors). Per point a small record, and the call's
+    """One batch of a stability run: the flat points ``indices`` (``batch``,
+    at their ``scales``: one per point, or one for all) on ``backend`` in
+    ``precision`` ("binary64": the checked call with its stability estimate,
+    a refused point served with its best-effort value; "reference": the
+    worker's ``GroundTruth``, accepted values only, the exact sum of their
+    sectors). Per point a record (``_stability_records``), and the call's
     seconds, Python's cyclic garbage collector off during it (as in the
     runtime's timed calls, ``benchmarking._collector_off``)."""
 
@@ -999,28 +1915,35 @@ def _stability_task(
 
     with _collector_off():
         begin = time.perf_counter()
-        records = _stability_records(backend, precision, indices)
+        records = _stability_records(backend, precision, indices, batch, scales)
         seconds = time.perf_counter() - begin
     return backend, precision, records, seconds
 
 
 def _stability_records(
-    backend: str, precision: str, indices: Sequence[int]
+    backend: str,
+    precision: str,
+    indices: Sequence[int],
+    batch: Sequence[Any],
+    scales: Sequence[Any] | Any,
 ) -> list[tuple[Any, ...]]:
-    """The per-point records of a stability task (``_stability_task``)."""
+    """The per-point records of a stability task (``_stability_task``):
+    binary64 (index, [[total]], estimate summary, reason, status,
+    best-effort uncertainty, the sectors' finite parts); reference (index,
+    [[exact total]], reason, its exact decimal text)."""
 
     state = _WORKER
-    batch = [state["points"][i] for i in indices]
-    scales = state["scales"]
-    mu = scales if not isinstance(scales, list) else [scales[i] for i in indices]
-    common = {"mu_r2": mu, "poles": "none", "reduction": backend}
+    common = {"mu_r2": scales, "poles": "none", "reduction": backend}
     if precision == "binary64":
         # A point the backend refuses keeps its best-effort value (the
         # default policy, m-lit ux-besteffort), measured as such.
         result = state["runtime"].evaluate(
-            batch, stability_checks=state["checks"], on_failure="best-effort", **common
+            list(batch),
+            stability_checks=state["checks"],
+            on_failure="best-effort",
+            **common,
         )
-        records = []
+        records: list[tuple[Any, ...]] = []
         for index, value, estimate, reason, status, uncertainty in zip(
             indices,
             result.values,
@@ -1037,6 +1960,9 @@ def _stability_records(
                 else _EstimateSummary(
                     float(estimate.relative),
                     _estimated_relative(estimate, float(total)),
+                    checks=tuple(estimate.checks),
+                    not_run=tuple(getattr(estimate, "not_run", ()) or ()),
+                    scale=None if estimate.scale is None else float(estimate.scale),
                 )
             )
             records.append(
@@ -1047,21 +1973,43 @@ def _stability_records(
                     reason,
                     status,
                     uncertainty,
+                    None if value is None else [float(sector[0]) for sector in value],
                 )
             )
     else:
         # The reference counts only accepted values, summed exactly.
         truth = state.get("truth") or GroundTruth("double-double")
         result = state["runtime"].evaluate(
-            batch, on_failure="return", **truth.options, **common
+            list(batch), on_failure="return", **truth.options, **common
         )
-        records = [
-            (index, None if value is None else [[_exact_total(value)]], reason)
-            for index, value, reason in zip(
-                indices, result.values, _reasons(result), strict=True
+        records = []
+        for index, value, reason in zip(
+            indices, result.values, _reasons(result), strict=True
+        ):
+            exact = None if value is None else _exact_total(value)
+            records.append(
+                (
+                    index,
+                    None if exact is None else [[exact]],
+                    reason,
+                    None if value is None else _exact_text(value),
+                )
             )
-        ]
     return records
+
+
+def _exact_text(row: Any) -> str:
+    """A reference value's total finite part as an exact decimal text: its
+    sectors (decimal at the reference's precision) summed without
+    rounding."""
+
+    from decimal import MAX_EMAX, MAX_PREC, MIN_EMIN, Context
+
+    exact = Context(prec=MAX_PREC, Emax=MAX_EMAX, Emin=MIN_EMIN)
+    total = Decimal(0)
+    for sector in row:
+        total = exact.add(total, Decimal(sector[0]))
+    return str(total)
 
 
 def usable_cores() -> int:
@@ -1104,16 +2052,29 @@ class _StabilityProgress:
         workers: int,
         first: int = 1,
         reference: str = "dd",
+        *,
+        monitor: _Monitor | None = None,
+        precisions: Sequence[str] = ("binary64", "reference"),
+        priors: Mapping[tuple[str, str], float] | None = None,
+        deadline: float | None = None,
     ) -> None:
         from pyamplicol.reporting.progress import ProgressStart
 
         self.sink = sink
+        self.monitor = monitor
         # The reference's label in the progress line (``GroundTruth.label``).
         self.reference = reference
         self.backends = tuple(backends)
         self.points = points
         self.workers = workers
-        self.done = {(b, p): 0 for b in backends for p in _PRECISIONS}
+        self.precisions = tuple(precisions)
+        # The expected cost per point of each stream before any of its tasks
+        # is back (the measurement phase's), and the run's deadline.
+        self.priors = dict(priors or {})
+        self.deadline = deadline
+        self.flagged = dict.fromkeys(backends, 0)
+        self.task = "loop-stability"
+        self.done = {(b, p): 0 for b in backends for p in self.precisions}
         self.seconds = {key: 0.0 for key in self.done}
         # Per backend and precision the points and seconds of its returned
         # tasks (a refused backend's points count as done, not timed).
@@ -1126,15 +2087,19 @@ class _StabilityProgress:
         self.first_return: tuple[float, float] | None = None
         # The displayed estimate and when it was shown (shown_eta).
         self._shown: tuple[float, float] | None = None
+        self.estimated = True
         if sink is not None:
             sink.emit(
                 ProgressStart(
-                    "loop-stability",
-                    f"Stability: {points} points, {len(backends)} backend(s), "
-                    f"{workers} core(s)",
+                    self.task,
+                    f"Stability: {len(backends)} backend(s) on {workers} core(s)",
                     total=points * len(self.done),
+                    parent_task_id=None if monitor is None else monitor.task,
                     unit="evaluations",
-                    details={"step": "loading and warming up the workers"},
+                    details={
+                        "step": "starting the workers (load, one warm-up point each)",
+                        "eta_seconds": None,
+                    },
                 )
             )
 
@@ -1153,9 +2118,25 @@ class _StabilityProgress:
     def drop(self, backend: str) -> None:
         """A refused backend: its evaluations count as done."""
 
-        for precision in _PRECISIONS:
+        for precision in self.precisions:
             self.done[(backend, precision)] = self.points
         self.emit()
+
+    def set_points(self, points: int) -> None:
+        """The run's planned points (the admission gate's, as it goes)."""
+
+        self.points = max(points, max(self.done.values(), default=0))
+
+    def flag(self, backend: str, count: int) -> None:
+        """``count`` more points of ``backend`` the default checks flag
+        (or served best-effort, or without a value)."""
+
+        self.flagged[backend] = self.flagged.get(backend, 0) + count
+
+    def remaining(self) -> float | None:
+        """The run's remaining seconds as the display shows them."""
+
+        return self.shown_eta()
 
     def rate(self, key: tuple[str, str]) -> float | None:
         """The measured cost per point of a stream (None: nothing back)."""
@@ -1164,9 +2145,24 @@ class _StabilityProgress:
         return seconds / points if points else None
 
     def eta(self) -> float | None:
+        raw = self._eta()
+        if self.deadline is None or raw is None:
+            return raw
+        # Chunks are admitted until the deadline: the run lasts about that
+        # long, and no less than what is queued.
+        return max(raw, self.deadline - time.perf_counter())
+
+    def _eta(self) -> float | None:
         known = {key: rate for key in self.done if (rate := self.rate(key)) is not None}
+        self.estimated = len(known) < len(self.done)
         if not known:
-            return None
+            if not self.priors:
+                return None
+            # Nothing back yet: the measured priors.
+            return sum(
+                (self.points - done) * self.priors.get(key, 0.0)
+                for key, done in self.done.items()
+            ) / max(self.workers, 1)
         fallback = statistics.mean(known.values())
         if len(known) < len(self.done) and self.first_return is not None:
             # A stream with nothing back costs at least the running time of
@@ -1177,7 +2173,9 @@ class _StabilityProgress:
             fallback = max(fallback, running / self.first)
         remaining = 0.0
         for key, done in self.done.items():
-            remaining += (self.points - done) * known.get(key, fallback)
+            remaining += (self.points - done) * known.get(
+                key, max(fallback, self.priors.get(key, 0.0))
+            )
         return remaining / max(self.workers, 1)
 
     #: The time constant (seconds) of the displayed estimate's smoothing: a
@@ -1210,7 +2208,7 @@ class _StabilityProgress:
         self._shown = (now, shown)
         return shown
 
-    def emit(self) -> None:
+    def emit(self, *, heartbeat: bool = False) -> None:
         from pyamplicol.reporting.progress import ProgressUpdate
 
         if self.sink is None:
@@ -1219,35 +2217,60 @@ class _StabilityProgress:
 
         parts = []
         for backend in self.backends:
+            name = NAMES.get(backend, backend)
             b64 = self.done[(backend, "binary64")]
-            reference = self.done[(backend, "reference")]
-            parts.append(
-                f"{NAMES.get(backend, backend)} b64 {b64}/{self.points} "
-                f"{self.reference} {reference}/{self.points}"
-            )
+            part = f"{name} b64 {b64}/{self.points}"
+            if "reference" in self.precisions:
+                reference = self.done[(backend, "reference")]
+                part += f" {self.reference} {reference}/{self.points}"
+            parts.append(part)
+            if self.monitor is not None:
+                self.monitor.set_reading(
+                    name,
+                    f"{b64}/{self.points}",
+                    f"{self.flagged.get(backend, 0)} flagged",
+                )
+        elapsed = time.perf_counter() - self.begin
+        done = sum(self.done.values())
+        rate = sum(self.done[(b, "binary64")] for b in self.backends) / max(
+            elapsed, 1e-9
+        )
         eta = self.shown_eta()
-        details: dict[str, Any] = {"step": " | ".join(parts)}
-        if eta is not None:
-            details["eta_seconds"] = round(eta, 1)
+        details: dict[str, Any] = {
+            "step": " | ".join(parts) + (f"  {rate:.3g} pt/s" if done else ""),
+            "eta_seconds": None if eta is None else round(max(eta, 0.0), 1),
+            "eta_estimated": self.estimated,
+            "heartbeat": heartbeat,
+        }
+        if self.monitor is not None:
+            details["readings"] = self.monitor.readings()
+        total = self.points * len(self.done)
         self.sink.emit(
             ProgressUpdate(
-                "loop-stability",
-                sum(self.done.values()),
-                self.points * len(self.done),
+                self.task,
+                min(done, total),
+                max(total, done),
                 details=details,
             )
         )
 
     def close(self, interrupted: bool) -> None:
+        from pyamplicol.loops.v2.reduction import NAMES
         from pyamplicol.reporting.progress import ProgressEnd
 
         if self.sink is not None:
+            points = min((self.done[(b, "binary64")] for b in self.backends), default=0)
+            summary = f"{points} points" + "".join(
+                f", {NAMES.get(b, b)} {self.flagged.get(b, 0)} flagged"
+                for b in self.backends
+            )
             self.sink.emit(
                 ProgressEnd(
-                    "loop-stability",
+                    self.task,
                     success=not interrupted,
-                    message="interrupted" if interrupted else None,
+                    message="interrupted" if interrupted else summary,
                     elapsed_seconds=time.perf_counter() - self.begin,
+                    details={"keep": True},
                 )
             )
 
@@ -1266,34 +2289,41 @@ def _stability(
     *,
     load_options: Mapping[str, Any] | None = None,
     progress: Any = None,
+    monitor: _Monitor | None = None,
+    planned_points: int | None = None,
+    deadline: float | None = None,
+    costs: Mapping[str, Any] | None = None,
+    current: list[Any] | None = None,
 ) -> tuple[tuple[BackendStability, ...], Mapping[str, object]]:
     """The stability statistics of every backend (module docstring) over
-    ``benchmark.stability_points`` flat points, evaluated on
-    ``benchmark.n_core`` worker processes (capped by the usable cores and
-    the tasks; 1: in this process, on ``runtime``). Point i is drawn from
-    seed + i and the statistics read the per-point records in point order,
-    so the result does not depend on the worker count. Ctrl-C stops the
-    run: the points evaluated so far (binary64 and reference both, or no
-    binary64 value) make the statistics, ``setup["interrupted"]`` says so;
-    a second Ctrl-C aborts."""
+    flat points, evaluated on ``benchmark.n_core`` worker processes (capped
+    by the usable cores; 1: in this process, on ``runtime``): the
+    ``planned_points`` (default ``benchmark.stability_points``) or, with a
+    ``deadline`` (``time.perf_counter`` seconds), chunks of one SIMD chunk
+    admitted while their work ends before it (``profile_plan.admit_chunk``,
+    never fewer than ``STABILITY_MINIMUM`` points), from the ``costs``
+    measured (the priors of the rates). Point i is drawn from seed + i and
+    the statistics read the per-point records in point order, so the result
+    does not depend on the worker count. ``--ground-truth none`` evaluates
+    binary64 only. Ctrl-C stops the run: the points evaluated so far
+    (binary64 and reference both, or no binary64 value) make the
+    statistics, ``setup["interrupted"]`` says so; a second Ctrl-C aborts.
+    ``current[0]`` holds the tracker while it runs (the profile's ETA)."""
 
     from pyamplicol.api.errors import ReductionUnavailable
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
     from pyamplicol.cli.flat_points import draw_flat_points
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import default_target
+    from pyamplicol.profile_plan import (
+        STABILITY_MINIMUM,
+        affordable_chunk,
+        task_points,
+    )
 
     bench = config.benchmark
     evaluation = config.evaluation
     space = evaluation.phase_space
-    flat = draw_flat_points(
-        artifact,
-        process=physics.process_id,
-        points=bench.stability_points,
-        seed=space.seed,
-        sqrt_s=space.sqrt_s,
-    )
-    points = flat.as_inputs(exact=False)
     configured = evaluation.stability_checks.to_checks()
     checks = configured if configured is not None else VirtualStabilityChecks(1)
     target = (
@@ -1301,34 +2331,166 @@ def _stability(
         if evaluation.reduction_target is not None
         else default_target()
     )
-    scales = evaluation.mu_r2 if evaluation.mu_r2 is not None else flat.mu_r2()
     truth = ground_truth(bench.ground_truth)
-    count = len(points)
+    precisions = _precisions(truth)
+    count = int(
+        planned_points if planned_points is not None else bench.stability_points
+    )
+    count = max(count, 1)
     workers = max(1, min(bench.n_core, usable_cores()))
-    chunk = _chunk_size(count, workers, bench.batch_size, DEFAULT_LANES)
-    # One SIMD chunk of points first on every backend and precision, started
-    # together (the time estimate, early), then tasks of ``chunk`` points:
-    # every task but the last in whole chunks of binary64 lanes.
-    lead = min(chunk, DEFAULT_LANES, count)
-    chunks = [list(range(lead))] if count else []
-    chunks += [
-        list(range(start, min(start + chunk, count)))
-        for start in range(lead, count, chunk)
-    ]
-    # Interleaved: every backend and precision is sampled from the start,
-    # so the time estimate covers the slowest early.
-    tasks = [
-        (backend, precision, indices)
-        for indices in chunks
-        for backend in backends
-        for precision in _PRECISIONS
-    ]
-    workers = max(1, min(workers, len(tasks)))
-    tracker = _StabilityProgress(progress, backends, count, workers, lead, truth.label)
+    # The flat points as the chunks need them (point i from seed + i), and
+    # every point's inputs (the per-point record).
+    inputs: dict[int, tuple[Any, Any]] = {}
+    sqrt_s: list[float] = []
+
+    def draw(start: int, size: int) -> tuple[list[Any], list[Any] | Any]:
+        flat = draw_flat_points(
+            artifact,
+            process=physics.process_id,
+            points=size,
+            seed=space.seed + start,
+            sqrt_s=space.sqrt_s,
+        )
+        if not sqrt_s:
+            sqrt_s.append(flat.sqrt_s)
+        batch = list(flat.as_inputs(exact=False))
+        scales = evaluation.mu_r2 if evaluation.mu_r2 is not None else flat.mu_r2()
+        for k, point in enumerate(batch):
+            inputs[start + k] = (
+                point,
+                scales if not isinstance(scales, list) else scales[k],
+            )
+        return batch, scales
+
+    if deadline is None:
+        chunk = _chunk_size(count, workers, bench.batch_size, DEFAULT_LANES)
+        # One SIMD chunk of points first on every backend and precision,
+        # started together (the time estimate, early), then tasks of
+        # ``chunk`` points: every task but the last in whole chunks of
+        # binary64 lanes.
+        lead = min(chunk, DEFAULT_LANES, count)
+        bounds = [(0, lead)] + [
+            (start, min(start + chunk, count)) for start in range(lead, count, chunk)
+        ]
+
+        def prior(backend: str, precision: str) -> float:
+            cost = (costs or {}).get(backend)
+            if cost is None:
+                return 0.0
+            if precision == "binary64":
+                return float(cost.stability)
+            return float(cost.stability_reference or 0.0)
+
+        planned_tasks = sum(
+            math.ceil((end - start) / task_points(prior(b, p), end - start))
+            for start, end in bounds
+            for b in backends
+            for p in precisions
+        )
+        workers = max(1, min(workers, planned_tasks))
+    else:
+        # A deadline: chunks of one SIMD chunk while they fit it; the first
+        # holds the minimum, a whole chunk only when the plan affords several
+        # (its costs are priors until the first chunk is back).
+        lead = (
+            min(count, DEFAULT_LANES)
+            if count >= 4 * DEFAULT_LANES
+            else STABILITY_MINIMUM
+        )
+        bounds = [(0, lead)]
+    priors: dict[tuple[str, str], float] = {}
+    for backend in backends:
+        cost = (costs or {}).get(backend)
+        if cost is not None:
+            priors[(backend, "binary64")] = cost.stability
+            if cost.stability_reference is not None:
+                priors[(backend, "reference")] = cost.stability_reference
+    tracker = _StabilityProgress(
+        progress,
+        backends,
+        count,
+        workers,
+        lead,
+        truth.label,
+        monitor=monitor,
+        precisions=precisions,
+        priors=priors,
+        deadline=deadline,
+    )
+    if current is not None:
+        current[0] = tracker
     b64: dict[str, dict[int, tuple[Any, ...]]] = {b: {} for b in backends}
     dd: dict[str, dict[int, tuple[Any, ...]]] = {b: {} for b in backends}
     seconds = dict.fromkeys(backends, 0.0)
+    # Per backend, the task (its seconds and points) of every point and
+    # precision (the per-sample record's timing).
+    tasks_of: dict[str, dict[tuple[str, int], tuple[float, int]]] = {
+        b: {} for b in backends
+    }
     refused: dict[str, str] = {}
+    submitted = [0]
+    pending = list(bounds)
+
+    def stream_rate(key: tuple[str, str]) -> float:
+        rate = tracker.rate(key)
+        return rate if rate is not None else priors.get(key, 0.0)
+
+    def next_tasks() -> list[tuple[Any, ...]] | None:
+        """The next chunk's tasks (every backend and precision), or None
+        when the planned points are submitted or the deadline is near."""
+
+        if pending:
+            start, end = pending.pop(0)
+        elif deadline is not None:
+            per_point = sum(stream_rate((b, p)) for b in backends for p in precisions)
+            queued = sum(
+                max(submitted[0] - tracker.done[(b, p)], 0) * stream_rate((b, p))
+                for b in backends
+                for p in precisions
+            )
+            size = affordable_chunk(
+                now=time.perf_counter(),
+                deadline=deadline,
+                queued_seconds=queued,
+                point_seconds=per_point,
+                workers=workers,
+                points=submitted[0],
+                lanes=DEFAULT_LANES,
+                stream_seconds=max(
+                    (stream_rate((b, p)) for b in backends for p in precisions),
+                    default=0.0,
+                ),
+            )
+            if not size:
+                return None
+            start, end = submitted[0], submitted[0] + size
+        else:
+            return None
+        batch, scales = draw(start, end - start)
+        submitted[0] = max(submitted[0], end)
+        tracker.set_points(max(submitted[0], count if deadline is None else 0))
+        indices = list(range(start, end))
+        tasks = []
+        for backend in backends:
+            if backend in refused:
+                continue
+            for precision in precisions:
+                # About TASK_SECONDS of work per task: an expensive point is
+                # a task of its own, spread over the workers.
+                size = task_points(stream_rate((backend, precision)), len(indices))
+                for at in range(0, len(indices), size):
+                    tasks.append(
+                        (
+                            backend,
+                            precision,
+                            indices[at : at + size],
+                            batch[at : at + size],
+                            scales[at : at + size]
+                            if isinstance(scales, list)
+                            else scales,
+                        )
+                    )
+        return tasks
 
     def harvest(backend: str, precision: str, records: Any, wall: float) -> None:
         if backend in refused:
@@ -1336,7 +2498,20 @@ def _stability(
         store = b64 if precision == "binary64" else dd
         for record in records:
             store[backend][record[0]] = record
+        for record in records:
+            tasks_of[backend][(precision, record[0])] = (wall, len(records))
         seconds[backend] += wall
+        if precision == "binary64":
+            tracker.flag(
+                backend,
+                sum(
+                    1
+                    for record in records
+                    if record[1] is None
+                    or record[4] == "best-effort"
+                    or (record[2] is not None and record[2].relative > target)
+                ),
+            )
         tracker.add(backend, precision, len(records), wall)
 
     def refuse(backend: str, error: Exception) -> None:
@@ -1344,27 +2519,34 @@ def _stability(
             refused[backend] = str(error)
             tracker.drop(backend)
 
+    def tick() -> None:
+        tracker.emit(heartbeat=True)
+        if monitor is not None:
+            monitor.tick()
+
     interrupted = False
     # Set by the pool at the first Ctrl-C: a second one aborts.
     first_interrupt: list[bool] = []
+    first_point = draw(0, 1)
+    warm = (first_point[0][0], inputs[0][1])
     try:
         if workers == 1:
-            _WORKER.update(
-                runtime=runtime,
-                points=points,
-                scales=scales,
-                checks=checks,
-                truth=truth,
-            )
+            _WORKER.update(runtime=runtime, warm=warm, checks=checks, truth=truth)
             try:
                 _warm_up(backends)
-                for backend, precision, indices in tasks:
-                    if backend in refused:
-                        continue
-                    try:
-                        harvest(*_stability_task(backend, precision, indices))
-                    except ReductionUnavailable as error:
-                        refuse(backend, error)
+                while (tasks := next_tasks()) is not None:
+                    for backend, precision, indices, batch, scales in tasks:
+                        if backend in refused:
+                            continue
+                        try:
+                            harvest(
+                                *_stability_task(
+                                    backend, precision, indices, batch, scales
+                                )
+                            )
+                        except ReductionUnavailable as error:
+                            refuse(backend, error)
+                        tick()
             finally:
                 _WORKER.clear()
         else:
@@ -1374,16 +2556,15 @@ def _stability(
                     str(artifact),
                     physics.process_id,
                     dict(load_options or {}),
-                    points,
-                    scales,
+                    warm,
                     checks,
                     tuple(backends),
                     truth,
                 ),
-                tasks,
+                next_tasks,
                 harvest,
                 refuse,
-                tracker.emit,
+                tick,
                 first_interrupt,
             )
     except KeyboardInterrupt:
@@ -1393,6 +2574,9 @@ def _stability(
             raise
     finally:
         tracker.close(interrupted)
+        if current is not None:
+            current[0] = None
+    count = submitted[0]
     rows = []
     complete: dict[str, int] = {}
     # The evaluated points of each backend: a binary64 record with its
@@ -1401,7 +2585,7 @@ def _stability(
         backend: {
             index
             for index, record in b64[backend].items()
-            if index in dd[backend] or record[1] is None
+            if not truth.present or index in dd[backend] or record[1] is None
         }
         for backend in backends
         if backend not in refused
@@ -1410,29 +2594,83 @@ def _stability(
     # are taken over the points every backend evaluated (a complete run
     # evaluates them all).
     common = set.intersection(*evaluated.values()) if evaluated else set()
-    for backend in backends:
+    # The statistics and the per-sample records take seconds on large runs
+    # (a few per 10^4 points): a phase of their own, never a silent tail.
+    from pyamplicol.loops.v2.reduction import NAMES
+
+    collecting = (
+        None
+        if monitor is None
+        else monitor.phase(
+            "statistics",
+            "Stability statistics and per-sample records",
+            len(backends),
+            unit="backends",
+        )
+    )
+    for position, backend in enumerate(backends):
+        if collecting is not None:
+            collecting.update(
+                position,
+                len(backends),
+                eta=None,
+                step=f"{NAMES.get(backend, backend)}: "
+                f"{len(evaluated.get(backend, ()))} points",
+            )
         if backend in refused:
             rows.append(BackendStability(backend, refusal=refused[backend]))
             continue
         complete[backend] = len(evaluated[backend])
         indices = sorted(common if interrupted else evaluated[backend])
+        samples = _sample_records(
+            backend,
+            indices,
+            b64[backend],
+            dd[backend],
+            target,
+            tasks_of[backend],
+            truth,
+        )
+        if not truth.present:
+            rows.append(
+                replace(
+                    _estimate_statistics(
+                        backend,
+                        [b64[backend][i][1] for i in indices],
+                        [b64[backend][i][2] for i in indices],
+                        target,
+                        seconds[backend],
+                        reasons=[b64[backend][i][3] for i in indices],
+                        statuses=[b64[backend][i][4] for i in indices],
+                        indices=indices,
+                    ),
+                    samples=samples,
+                )
+            )
+            continue
         rows.append(
-            _backend_statistics(
-                backend,
-                [b64[backend][i][1] for i in indices],
-                [b64[backend][i][2] for i in indices],
-                [dd[backend][i][1] if i in dd[backend] else None for i in indices],
-                target,
-                seconds[backend],
-                reasons=[b64[backend][i][3] for i in indices],
-                reference_reasons=[
-                    dd[backend][i][2] if i in dd[backend] else None for i in indices
-                ],
-                statuses=[b64[backend][i][4] for i in indices],
-                uncertainties=[b64[backend][i][5] for i in indices],
-                indices=indices,
+            replace(
+                _backend_statistics(
+                    backend,
+                    [b64[backend][i][1] for i in indices],
+                    [b64[backend][i][2] for i in indices],
+                    [dd[backend][i][1] if i in dd[backend] else None for i in indices],
+                    target,
+                    seconds[backend],
+                    reasons=[b64[backend][i][3] for i in indices],
+                    reference_reasons=[
+                        dd[backend][i][2] if i in dd[backend] else None for i in indices
+                    ],
+                    statuses=[b64[backend][i][4] for i in indices],
+                    uncertainties=[b64[backend][i][5] for i in indices],
+                    indices=indices,
+                ),
+                samples=samples,
             )
         )
+    sampled = sorted(set().union(*evaluated.values())) if evaluated else []
+    if collecting is not None:
+        collecting.end(f"{len(sampled)} points")
     rows = [
         row
         if row.refusal is not None
@@ -1449,7 +2687,7 @@ def _stability(
                         else {}
                     ),
                 }
-                for precision in _PRECISIONS
+                for precision in precisions
             },
         )
         for row in rows
@@ -1463,14 +2701,16 @@ def _stability(
         "evaluated_per_backend": complete,
         "interrupted": interrupted,
         "n_core": workers,
-        "seed": flat.seed,
-        "sqrt_s": flat.sqrt_s,
+        "seed": space.seed,
+        "sqrt_s": sqrt_s[0] if sqrt_s else space.sqrt_s,
         "generator": (
             "flat (RAMBO on diet), beams along +-z in the centre-of-mass frame"
         ),
         "measured": "finite part of the total (sum over the squared-order sectors)",
         "reference": (
             f"{_truth_prose(truth)} re-run of the same point on the same backend"
+            if truth.present
+            else "none (estimates only)"
         ),
         "ground_truth": truth.record(),
         "estimate": (
@@ -1486,6 +2726,20 @@ def _stability(
         "binary64_digits": BINARY64_DIGITS,
         "percentiles": [float(p) for p in PERCENTILES],
         "mu_r2": evaluation.mu_r2 or "s of the initial state",
+        "deadline": deadline is not None,
+        # Every point's inputs: point i is drawn from seed + i (``generator``,
+        # ``sqrt_s``); its binary64 momenta (E, px, py, pz per leg, in the
+        # process's order) and mu_r2.
+        "samples": [
+            {
+                "index": index,
+                "seed": space.seed + index,
+                "momenta": [[float(x) for x in leg] for leg in inputs[index][0]],
+                "mu_r2": str(inputs[index][1]),
+            }
+            for index in sampled
+            if index in inputs
+        ],
     }
     return tuple(rows), setup
 
@@ -1493,15 +2747,18 @@ def _stability(
 def _run_pool(
     workers: int,
     initargs: tuple[Any, ...],
-    tasks: Sequence[tuple[str, str, list[int]]],
+    tasks: Any,
     harvest: Any,
     refuse: Any,
     tick: Any = None,
     first_interrupt: list[bool] | None = None,
 ) -> bool:
-    """Run the stability ``tasks`` on ``workers`` spawned processes
+    """Run the stability tasks on ``workers`` spawned processes
     (``_stability_worker``), handing every finished task to ``harvest``;
-    True when Ctrl-C stopped the run. On Ctrl-C (or any error) nothing more
+    True when Ctrl-C stopped the run. ``tasks()`` gives the next chunk's
+    tasks (None: no more), pulled while fewer than twice ``workers`` tasks
+    are queued, so every worker stays busy and a deadline is checked chunk
+    by chunk; ``tick()`` about every second. On Ctrl-C (or any error) nothing more
     is submitted, the finished tasks are collected and every worker is
     stopped and joined: no process outlives the call. The first Ctrl-C is
     recorded in ``first_interrupt``; a second one, while the run winds
@@ -1521,16 +2778,30 @@ def _run_pool(
     )
     pending: dict[Any, tuple[str, str]] = {}
     interrupted = False
+    source = [tasks]
+    last_tick = time.perf_counter()
+
+    def refill() -> None:
+        while source and len(pending) < 2 * workers:
+            chunk = source[0]()
+            if chunk is None:
+                source.clear()
+                return
+            for backend, precision, indices, batch, scales in chunk:
+                future = executor.submit(
+                    _stability_task, backend, precision, indices, batch, scales
+                )
+                pending[future] = (backend, precision)
+
     try:
-        for backend, precision, indices in tasks:
-            future = executor.submit(_stability_task, backend, precision, indices)
-            pending[future] = (backend, precision)
+        refill()
         while pending:
             done, _ = futures.wait(
                 tuple(pending), timeout=0.5, return_when=futures.FIRST_COMPLETED
             )
-            if not done and tick is not None:
-                # The time estimate moves while nothing returns.
+            if tick is not None and time.perf_counter() - last_tick >= 1.0:
+                # The display moves while nothing returns.
+                last_tick = time.perf_counter()
                 tick()
             for future in done:
                 backend, _precision = pending.pop(future)
@@ -1538,6 +2809,7 @@ def _run_pool(
                     harvest(*future.result())
                 except ReductionUnavailable as error:
                     refuse(backend, error)
+            refill()
     except KeyboardInterrupt:
         interrupted = True
         if first_interrupt is not None:
@@ -1607,6 +2879,185 @@ def _reasons(result: Any) -> list[str | None]:
             else failure_reason(lane)
         )
     return out
+
+
+def _estimate_statistics(
+    backend: str,
+    plain: Sequence[Any],
+    estimates: Sequence[Any],
+    target: float,
+    seconds: float,
+    *,
+    reasons: Sequence[str | None],
+    statuses: Sequence[str],
+    indices: Sequence[int],
+) -> BackendStability:
+    """The statistics of a run without a reference (``--ground-truth
+    none``): the estimated digits of every point ranked at the percentiles
+    (a point without a binary64 value or estimate at 0 digits, the worst
+    end), the points the default checks flag (estimate above ``target``, a
+    best-effort value, or no value) and the best-effort points; nothing
+    truth-based."""
+
+    digits: list[float] = []
+    per_point: list[StabilityPoint] = []
+    flagged = failed = best_effort = 0
+    for index, value, estimate, reason, status in zip(
+        indices, plain, estimates, reasons, statuses, strict=True
+    ):
+        served = status == "best-effort"
+        if value is None or (estimate is None and not served):
+            failed += 1
+            flagged += 1
+            digits.append(0.0)
+            per_point.append(
+                StabilityPoint(
+                    index, "binary64-failed", None, None, reason or "no binary64 value"
+                )
+            )
+            continue
+        total = float(_total_finite(value))
+        estimated = (
+            0.0
+            if estimate is None
+            else stable_digits(_estimated_relative(estimate, total))
+        )
+        digits.append(estimated)
+        best_effort += served
+        flagged += served or (
+            estimate is not None and float(estimate.relative) > target
+        )
+        per_point.append(
+            StabilityPoint(
+                index,
+                "best-effort" if served else "measured",
+                None,
+                estimated,
+                reason if served else None,
+            )
+        )
+    return BackendStability(
+        backend,
+        None,
+        len(digits),
+        failed,
+        0,
+        (),
+        tuple(digits),
+        percentile_table(digits, [None] * len(digits)),
+        flagged,
+        0,
+        0,
+        0,
+        seconds,
+        tuple(per_point),
+        best_effort,
+        0,
+        estimate_only=True,
+    )
+
+
+def _finite_or_text(value: float | None) -> float | str | None:
+    """A float for the JSON: itself when finite, else "inf" / "nan"."""
+
+    if value is None or math.isfinite(value):
+        return value
+    return str(value)
+
+
+def _sample_records(
+    backend: str,
+    indices: Sequence[int],
+    b64: Mapping[int, tuple[Any, ...]],
+    reference: Mapping[int, tuple[Any, ...]],
+    target: float,
+    tasks: Mapping[tuple[str, int], tuple[float, int]],
+    truth: GroundTruth,
+) -> tuple[dict[str, object], ...]:
+    """Every sample's complete record of one backend (the JSON dump of
+    ``--stability --json``; its point's inputs are in the setup's
+    ``samples``): ``index``; ``status`` (the binary64 call's: success,
+    best-effort, failed ...); ``value`` (the binary64 total finite part)
+    and ``sectors`` (each squared-order sector's); ``estimate`` (None:
+    none) with ``relative`` (the flag's metric), ``finite_relative`` (the
+    total's estimated relative error), ``digits``, ``scale``, ``checks``
+    (each check's own relative budget by name: rotation-1,
+    reduction-rescaled, ...) and ``not_run``; ``flagged`` (the default
+    checks flag it: estimate above the target, a best-effort value or none);
+    ``best_effort`` and its ``uncertainty`` (relative); ``reason`` (a
+    refusal or failure); ``reference`` (None without a ground truth: else
+    ``value``, the exact decimal text of its total finite part at its
+    precision, None when it failed, and ``reason``); ``true_relative_error``
+    and ``true_digits`` (None without a reference value or a binary64
+    value); ``binary64_task`` and ``reference_task`` (``seconds`` and
+    ``points`` of the task that evaluated the point: no per-sample timing
+    exists inside a batched call)."""
+
+    out = []
+    for index in indices:
+        record = b64.get(index)
+        if record is None:
+            continue
+        padded: tuple[Any, ...] = (*record, *(None,) * (7 - len(record)))
+        _, value, summary, reason, status, uncertainty, sectors = padded[:7]
+        total = None if value is None else float(_total_finite(value))
+        estimate = None
+        if summary is not None and total is not None:
+            finite = _estimated_relative(summary, total)
+            estimate = {
+                "relative": _finite_or_text(summary.relative),
+                "finite_relative": _finite_or_text(finite),
+                "digits": stable_digits(finite),
+                "scale": _finite_or_text(summary.scale),
+                "checks": {
+                    name: _finite_or_text(budget) for name, budget in summary.checks
+                },
+                "not_run": dict(summary.not_run),
+            }
+        served = status == "best-effort"
+        flagged = (
+            value is None
+            or served
+            or summary is None
+            or float(summary.relative) > target
+        )
+        entry: dict[str, object] = {
+            "index": index,
+            "status": status,
+            "value": _finite_or_text(total),
+            "sectors": None
+            if sectors is None
+            else [_finite_or_text(float(x)) for x in sectors],
+            "estimate": estimate,
+            "flagged": bool(flagged),
+            "best_effort": served,
+            "uncertainty": _finite_or_text(uncertainty),
+            "reason": reason,
+            "reference": None,
+            "true_relative_error": None,
+            "true_digits": None,
+            "binary64_task": _task_record(tasks.get(("binary64", index))),
+            "reference_task": _task_record(tasks.get(("reference", index))),
+        }
+        if truth.present:
+            ref = reference.get(index)
+            text = None if ref is None or len(ref) < 4 else ref[3]
+            entry["reference"] = {
+                "value": text,
+                "reason": None if ref is None else ref[2],
+            }
+            if ref is not None and ref[1] is not None and total is not None:
+                error = relative_error(total, _total_finite(ref[1]))
+                entry["true_relative_error"] = _finite_or_text(error)
+                entry["true_digits"] = stable_digits(error)
+        out.append(entry)
+    return tuple(out)
+
+
+def _task_record(task: tuple[float, int] | None) -> dict[str, object] | None:
+    if task is None:
+        return None
+    return {"seconds": task[0], "points": task[1]}
 
 
 def _backend_statistics(

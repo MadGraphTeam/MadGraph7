@@ -40,7 +40,10 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=argparse.SUPPRESS,
         metavar="COUNT",
-        help="loop artifacts: number of flat points of --stability (default 1000)",
+        help=(
+            "loop artifacts: number of flat points of --stability (default: "
+            "what one minute per --n_core worker affords, at least 5)"
+        ),
     )
     parser.add_argument(
         "--n_core",
@@ -59,13 +62,29 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         "--ground-truth",
         dest="benchmark.ground_truth",
         default=argparse.SUPPRESS,
-        metavar="{double-double,arbitrary[:DIGITS]}",
+        metavar="{double-double,arbitrary[:DIGITS],none}",
         help=(
             "loop artifacts: the reference of both tables (benchmark."
             "ground_truth): the stability run's true values and the "
             "reference-precision time multipliers; double-double (dd, the "
-            "default) or arbitrary precision (arb) at DIGITS decimal digits "
-            "(default: the built-in rescue's, 57)"
+            "default), arbitrary precision (arb) at DIGITS decimal digits "
+            "(default: the built-in rescue's, 57), or none: no reference "
+            "pass, the stability run reports its estimates only"
+        ),
+    )
+    parser.add_argument(
+        "--completion-time",
+        dest="benchmark.completion_time",
+        default=argparse.SUPPRESS,
+        metavar="DURATION",
+        help=(
+            "loop artifacts: the wall time the whole profile aims at "
+            "(benchmark.completion_time; seconds, or 90s, 10m, 1h30m); it "
+            "overrules every count (--target-runtime, --minimum-samples, "
+            "--batch-size, --warmup-runs, --stability-points), never below "
+            "one timed call per backend and five stability points. Without "
+            "it: the counts given, else 10 s for the runtime timing and one "
+            "minute per --n_core worker for the stability run"
         ),
     )
     parser.add_argument(

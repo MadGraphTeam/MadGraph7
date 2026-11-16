@@ -781,6 +781,58 @@ external masses of the artifact's validation point; point i from seed + i;
 unless `--momenta` gives the timed points; the runtime and the stability
 points are drawn separately from the same seed.
 
+**Time budgets.** Three rules set the counts of a loop profile, in this order
+(the header's `counts` row names the one that applied and what the profile
+took):
+
+- `--completion-time DURATION` (`benchmark.completion_time`; seconds, or a
+  text such as `90s`, `10m`, `1h30m`): the whole command, as you wait for
+  it (interpreter start, load, measurement, every backend's runtime timing
+  and reference pass, the stability run on its workers), aims at that wall
+  time, within about a factor 1.5 either way. It overrules every count
+  (`--target-runtime`, `--minimum-samples`, `--batch-size`,
+  `--warmup-runs`, `--stability-points`; one notice line says which): a
+  short measurement first (its own phase: per backend the cost per point of
+  binary64 and of the reference, each from one point and, when a full SIMD
+  chunk costs at most 2 s at that price, from one chunk), then the plan: the runtime timing first (a stable median,
+  at least the default 10 s when the time affords it, at most half of what
+  is left when `--stability` is asked for too), the reference pass bounded
+  within each backend's share, the stability run admitting chunks while
+  they end by the deadline. Later phases are re-planned from what is left.
+  The minimums are never undercut: one timed call of one filled chunk per
+  backend for the runtime, five stability points per backend; when they
+  alone exceed the requested time a warning says so at the start, with the
+  time they take, and the minimums run.
+- the counts given on the command line or in a run card: honoured as given.
+- neither: the default budgets, 10 s for the runtime timing of all backends
+  and one minute of work per `--n_core` worker for the stability run (about
+  a minute of wall time whatever `--n_core`: more workers, more points).
+
+Loading, process start-up, warm-up calls and the reference pass's minimum
+are outside the default budgets by nature; they are visible phases with
+their own estimates. The reference pass is part of the budget of the phase
+it serves. On an expensive process the binary64 warm-up is one point (when
+a full call would cost more than 2 s; else one full call), and a stability
+task holds about 4 s of work: a point that costs more is a task of its own,
+so a few expensive points spread over the workers instead of running one
+after the other.
+
+**Monitoring.** On a terminal the profile shows three live lines: the whole
+command (elapsed, its ETA, `~` while it rests on a prior, the budget left
+with `--completion-time`, the process tree's resident memory and busy
+cores), the current phase (calls or points done of the planned ones, a bar,
+its ETA, counted down every second and never 0 while work remains) and
+what is running right now (the call and how long it has run against its
+expected cost; "no progress for ..." in the warning colour once a call runs
+three times past it) with the current best estimates: per backend its
+binary64 time per point and the running reference multiplier (`N/A`, muted,
+until a timed call is back), or the stability run's points done and flagged
+counts. Every finished phase leaves one line with what it cost, the
+statistics and per-sample records of a large stability run included; a
+large `--json` dump says on stderr that it is being written.
+`--progress log` prints one line per event and a heartbeat at least every
+10 s; `--progress off` prints nothing.
+
 **Runtime.** Every backend is timed **on one core**, the cost one Monte Carlo
 worker pays: in its own spawned process whose thread pools all run one
 thread (rayon's, used by every native pool, and any BLAS/OpenMP pool;
@@ -789,10 +841,12 @@ whose SIMD lanes are filled. Every time the runtime tables print is a time
 per phase-space point on that core: a call's wall time over its points
 (`cpu_per_wall` in `--json`, the process's CPU time over the timed calls'
 wall time, is at most about 1 and says how much of the core the host left
-it). `--warmup-runs` untimed calls (default 2) come first, then at least
-`--minimum-samples` timed calls (default 5), more until they add up to
-`--target-runtime` seconds (default 10), each of `--batch-size` points
-(default 128: eight whole 16-point binary64 SIMD chunks), every call on a
+it). With counts given, `--warmup-runs` untimed calls come first, then at
+least `--minimum-samples` timed calls, more until they add up to
+`--target-runtime` seconds, each of `--batch-size` points (up to 128: eight
+whole 16-point binary64 SIMD chunks); under a time budget, one untimed call,
+then the largest batch of whole chunks that affords a stable median within
+the backend's share, at least one timed call, every call on a
 new batch of distinct points: without `--momenta`, the flat points from the
 seed on (seed and energy as above; call k, warm-ups counted, takes the
 points from k x `--batch-size` on, so every call has the same points on
@@ -854,13 +908,19 @@ reference precision (`--ground-truth`, below; `dd` double-double by default,
 both on the same core. The optimistic pass is one evaluation per point and
 nothing else: the unchecked reduction of that backend alone (no `auto`
 per-point fallback or guard), no stability checks, no rescue, no best-effort
-re-evaluation. It runs after the binary64 calls in the same process, after
-one untimed call (none with `--warmup-runs 0`; the first call of a carrier
-builds what it builds lazily, a second one changes nothing measurable), with
-the same minimum calls and budget (at least `--minimum-samples` timed calls,
-more until `--target-runtime` seconds), in calls of one SIMD
-chunk (16 points: no padded lane in any carrier), call k on the first points
-of the binary64 timing's batch k; N is its median call's time per point over
+re-evaluation. It runs after the binary64 calls in the same process as its
+own phase: one untimed call of one point (none with `--warmup-runs 0`; the
+first call of a carrier builds what it builds lazily, its batch size no
+longer matters), then calls of one SIMD chunk (16 points: no padded lane in
+any carrier), at least one, more while the next fits its budget (a quarter
+of the backend's runtime share, `--target-runtime` with counts given); when
+the budget affords fewer than 16 points at the cost the untimed call
+measured, its calls take as many as it affords, at least one point, and the
+header says how many reference points the multiplier comes from. Its cost
+is therefore bounded however expensive the carrier (before: one untimed and
+at least `--minimum-samples` 16-point calls, ~25 minutes of silence on a
+7-point process). Call k takes the first points of the binary64 timing's
+batch k; N is its median call's time per point over
 the binary64 median call's: the same pass in both, so N compares like with
 like (with `--checked` the denominator is the checked time). In colour the
 time is bold (green for the fastest backend) and the whole parenthesis is
@@ -898,12 +958,20 @@ digits (57, `loops.v2.stability.DEFAULT_RESCUE`) or `arbitrary:DIGITS`
 tables' multipliers, and the labels follow it: the header's `ground truth`
 row, `(arb(57) x210)`, "Stable digits of binary64 vs arb(57)". The values
 judged are binary64's either way; a point whose reference fails is "no
-ref." as before. Arbitrary precision costs far more than double-double:
-`--minimum-samples` and `--target-runtime` bound its runtime timing as they
-bound the binary64 one.
+ref." as before. Arbitrary precision costs far more than double-double; its
+runtime timing is bounded as the double-double one is. `--ground-truth none`
+runs no reference at all: no reference pass (the runtime table shows the
+time alone), and the stability run evaluates binary64 with its checks only
+(much faster) and reports what the estimates say in an estimate-only form:
+the estimated digits at the percentiles and the default checks' flagged and
+best-effort counts with the binary64 time, without the truth-based columns;
+the header says `none (estimates only)` and the JSON's `ground_truth`
+`{"arithmetic": "none", "label": "none"}`.
 
 **Stability.** Over N flat points (`benchmark.stability_points` /
-`--stability-points`, default 1000, drawn with `evaluation.phase_space`'s
+`--stability-points`; by default as many as one minute per worker affords,
+at least five; with `--completion-time` what is left of it; drawn with
+`evaluation.phase_space`'s
 seed and energy), evaluated in parallel on `benchmark.n_core` / `--n_core`
 (also `--n-core`) worker processes (default 10, at most the usable cores; 1
 runs in-process; each worker loads the artifact once and runs one thread per
@@ -1008,7 +1076,36 @@ precision, `binary64` and the reference's arithmetic, `double-double` or
 `per_point` (every flat point's
 `index`, `status` measured / binary64-failed / reference-failed, digits and
 failure `reason`), the `percentiles` rows, the flag counts and the failures;
-`stability_setup`).
+`stability_setup`), the `plan` (its `rule`, the counts chosen per backend,
+`stability_points`, `expected_seconds`, `budget_seconds`, `feasible`,
+`minimum_seconds`, `overruled`, and the counts the runtime achieved) and the
+profile's wall `seconds`.
+
+**Every sample in `--json`.** With `--stability --json` the report carries
+everything the run collected, point by point, in one JSON document (about
+1 kB per point and backend: write it to a file with `--json > profile.json`).
+`stability_setup.samples` lists every point's inputs: `index`, `seed` (point
+i is drawn from seed + i by the flat generator at `sqrt_s`), `momenta` (the
+binary64 four-momenta E, px, py, pz of every leg in the process's order) and
+`mu_r2`. `stability[i].samples` lists, per backend, every point's record:
+`index`; `status` (of the binary64 call: success, best-effort, failed ...);
+`value` (the binary64 total finite part) and `sectors` (each squared-order
+sector's); `estimate` (null without one) with `relative` (the flag's
+metric), `finite_relative` (the total's estimated relative error),
+`digits`, `scale`, `checks` (each check that ran, by name, e.g.
+`rotation-1`, `reduction-rescaled`, with its own relative budget) and
+`not_run`; `flagged` (the default checks flag it: estimate above the target,
+a best-effort value, or none); `best_effort` and its `uncertainty`
+(relative); `reason` (a refusal or failure); `reference` (null with
+`--ground-truth none`: else its `value`, the exact decimal text of the
+reference's total finite part at its precision, null when it failed, and
+its `reason`); `true_relative_error` and `true_digits` (null without both
+values); `binary64_task` and `reference_task` (the `seconds` and `points` of
+the task that evaluated the point: inside a batched call there is no
+per-sample time). Non-finite numbers are the texts `"inf"` / `"nan"`. The
+aggregate tables are reproducible from these records (the percentiles of
+`true_digits`, the flagged and missed counts against `stability_setup.
+target`).
 
 Changed since 1.0.3: `pyamplicol profile --json` of a loop artifact is a
 `LoopProfileReport` (one entry per backend under `runtime`), also with
