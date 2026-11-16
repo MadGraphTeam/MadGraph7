@@ -7,6 +7,7 @@ import os
 import platform
 import subprocess
 import threading
+import weakref
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -29,6 +30,7 @@ class ResourceUsage:
     current_rss_bytes: int | None = None
     peak_rss_bytes: int | None = None
     process_count: int | None = None
+    peak_process_count: int | None = None
 
 
 ProcessSnapshot = Callable[[], dict[int, ProcessInfo]]
@@ -81,9 +83,7 @@ def _linux_proc_snapshot(proc_root: Path = Path("/proc")) -> dict[int, ProcessIn
             continue
         try:
             stat = (entry / "stat").read_text(encoding="utf-8", errors="replace")
-            status = (entry / "status").read_text(
-                encoding="utf-8", errors="replace"
-            )
+            status = (entry / "status").read_text(encoding="utf-8", errors="replace")
             pid = int(entry.name)
             records[pid] = ProcessInfo(
                 pid=pid,
@@ -228,6 +228,9 @@ class ResourceUsageMonitor:
                 current_rss_bytes=rss_bytes,
                 peak_rss_bytes=peak,
                 process_count=process_count,
+                peak_process_count=max(
+                    self._usage.peak_process_count or 0, process_count
+                ),
             )
 
 
@@ -305,6 +308,13 @@ def _lifetime_peak_bytes() -> tuple[int | None, str]:
     return _rusage_peak_bytes(), "ru_maxrss"
 
 
+# The peak_memory regions open now: a region opened inside another one does
+# not reset the high-water mark (that would lose the outer region's peak).
+# Weak references, so that a region left without __exit__ does not count.
+_ACTIVE_REGIONS: weakref.WeakSet[peak_memory] = weakref.WeakSet()
+_ACTIVE_REGIONS_LOCK = threading.Lock()
+
+
 class peak_memory:
     """Measure the peak resident set size of this process over a ``with``
     block (``PeakMemory`` in ``result`` once it exits).
@@ -317,7 +327,9 @@ class peak_memory:
     resident counters when memory is released, so a peak released before
     the end of the block can read short by up to the counters' batch on
     each CPU the process ran on; the resident size at the end is read
-    exactly (VmHWM is at least VmRSS in one read). Where the reset is
+    exactly (VmHWM is at least VmRSS in one read). A block opened inside
+    another open block does not reset the mark (that would lose the outer
+    block's peak) and is measured like a refused reset. Where the reset is
     refused (an old kernel, a restricted /proc), and elsewhere (getrusage's
     ru_maxrss, bytes on macOS, with ``ps`` for the start value), only the
     lifetime peak is known: it is the block's peak when the block raised
@@ -340,7 +352,10 @@ class peak_memory:
             self._start_method = "ps"
         self._region = False
         self._lifetime, _ = _lifetime_peak_bytes()
-        if _proc_status_kib("VmHWM") is not None:
+        with _ACTIVE_REGIONS_LOCK:
+            nested = len(_ACTIVE_REGIONS) > 0
+            _ACTIVE_REGIONS.add(self)
+        if not nested and _proc_status_kib("VmHWM") is not None:
             try:
                 _PROC_CLEAR_REFS.write_text("5")
                 self._region = True
@@ -354,6 +369,8 @@ class peak_memory:
         return self
 
     def __exit__(self, *exc: object) -> None:
+        with _ACTIVE_REGIONS_LOCK:
+            _ACTIVE_REGIONS.discard(self)
         peak, source = _lifetime_peak_bytes()
         if self._region:
             method = "VmHWM after clear_refs"
@@ -381,6 +398,226 @@ class peak_memory:
         )
 
 
+def _linux_descendant_snapshot(
+    root_pid: int, proc_root: Path = Path("/proc")
+) -> dict[int, ProcessInfo]:
+    """``root_pid`` and its live descendants, read from the ``children``
+    lists of each thread (/proc/<pid>/task/<tid>/children) and the resident
+    pages of /proc/<pid>/statm: cheaper than a scan of every process.
+    Raises ResourceProbeError when the kernel has no ``children`` lists."""
+
+    page = os.sysconf("SC_PAGE_SIZE")
+    records: dict[int, ProcessInfo] = {}
+    pending = [(root_pid, 0)]
+    while pending:
+        pid, ppid = pending.pop()
+        if pid in records:
+            continue
+        base = proc_root / str(pid)
+        try:
+            resident = int((base / "statm").read_text().split()[1]) * page
+            tasks = os.listdir(base / "task")
+        except (OSError, ValueError, IndexError) as exc:
+            if pid == root_pid:
+                raise ResourceProbeError(f"cannot read {base}: {exc}") from exc
+            continue  # a descendant that has just exited
+        records[pid] = ProcessInfo(pid, ppid, resident)
+        for task in tasks:
+            try:
+                text = (base / "task" / task / "children").read_text()
+            except FileNotFoundError as exc:
+                if pid == root_pid and task == str(root_pid):
+                    raise ResourceProbeError(
+                        "the kernel provides no /proc children lists"
+                    ) from exc
+                continue
+            except OSError:
+                continue
+            pending.extend((int(child), pid) for child in text.split())
+    return records
+
+
+def _children_usage() -> tuple[int, float] | None:
+    """getrusage(RUSAGE_CHILDREN): the largest peak resident set size of
+    the terminated, waited-for descendants in bytes, and their CPU seconds;
+    None without the resource module."""
+
+    try:
+        import resource
+    except ImportError:
+        return None
+    usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+    peak = int(usage.ru_maxrss)
+    return (
+        peak if platform.system() == "Darwin" else peak * 1024,
+        float(usage.ru_utime + usage.ru_stime),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessTreePeakMemory:
+    """The peak resident memory of this process and the processes it
+    started over a region (``process_tree_peak_memory``).
+
+    ``peak_rss_bytes`` is the value to report and ``bound`` what it is:
+    "exact" (no descendant process ran: the process's own peak, its threads
+    included), "upper bound" (no descendant ran, only the process lifetime's
+    peak is known), "lower bound" (descendants ran: the largest of the
+    process's peak, the summed resident size of the tree sampled every
+    ``interval`` and the largest descendant's own peak; descendants
+    running at the same time may have needed more), "approximate"
+    (descendants ran and only the lifetime peak of the process is known)
+    or "unknown" (nothing measurable; ``peak_rss_bytes`` None).
+    ``process`` is the process's own ``PeakMemory``; ``child_processes``
+    whether a descendant ran (None: not observable);
+    ``child_peak_rss_bytes`` the largest peak of a descendant that ended
+    in the region (getrusage RUSAGE_CHILDREN), when it raised that
+    lifetime maximum; ``sampled_peak_rss_bytes`` the largest sampled sum;
+    ``method`` the sources."""
+
+    peak_rss_bytes: int | None
+    bound: str
+    process: PeakMemory | None
+    child_processes: bool | None
+    child_peak_rss_bytes: int | None
+    sampled_peak_rss_bytes: int | None
+    method: str
+
+
+class process_tree_peak_memory:
+    """Measure the peak resident memory of this process and its descendant
+    processes over a ``with`` block (``ProcessTreePeakMemory`` in
+    ``result``); never raises.
+
+    The process itself: ``peak_memory`` (threads share its memory, so
+    thread pools, native ones included, are counted). Descendants
+    (compilers, worker processes): a daemon thread sums the resident sizes
+    of the process tree every ``interval_seconds`` (Linux: the /proc
+    ``children`` lists of this process, else a /proc scan; macOS and the
+    BSDs: ``ps``), and getrusage(RUSAGE_CHILDREN) gives the largest peak of
+    a descendant that ended (Linux only: elsewhere the ``ps`` samples are
+    descendants too)."""
+
+    def __init__(self, *, interval_seconds: float = 1.0) -> None:
+        self.result: ProcessTreePeakMemory | None = None
+        self._interval = float(interval_seconds)
+        self._process: peak_memory | None = None
+        self._monitor: ResourceUsageMonitor | None = None
+        self._children: tuple[int, float] | None = None
+        self._sampler = "none"
+
+    def _snapshot(self) -> dict[int, ProcessInfo]:
+        pid = os.getpid()
+        if platform.system() == "Linux":
+            try:
+                records = _linux_descendant_snapshot(pid)
+                self._sampler = "/proc children"
+                return records
+            except ResourceProbeError:
+                pass
+        self._sampler = "/proc scan" if platform.system() == "Linux" else "ps"
+        return process_snapshot()
+
+    def __enter__(self) -> process_tree_peak_memory:
+        try:
+            self._children = _children_usage()
+            self._process = peak_memory().__enter__()
+            self._monitor = ResourceUsageMonitor(
+                interval_seconds=self._interval, snapshotter=self._snapshot
+            )
+            self._monitor.start()
+        except Exception:  # the measurement never fails the block
+            self._monitor = None
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        try:
+            self.result = self._measure()
+        except Exception:
+            self.result = ProcessTreePeakMemory(
+                None, "unknown", None, None, None, None, "unavailable"
+            )
+
+    def _measure(self) -> ProcessTreePeakMemory:
+        usage = ResourceUsage()
+        if self._monitor is not None:
+            self._monitor.close()
+            usage = self._monitor.usage
+        process: PeakMemory | None = None
+        if self._process is not None:
+            self._process.__exit__(None, None, None)
+            process = self._process.result
+        linux = platform.system() == "Linux" and self._sampler != "ps"
+        before, after = self._children, _children_usage()
+        ended = (
+            linux
+            and before is not None
+            and after is not None
+            and (after[0] > before[0] or after[1] > before[1])
+        )
+        sampled = (usage.peak_process_count or 0) > 1
+        if usage.peak_process_count is None and not linux:
+            children: bool | None = None
+        else:
+            children = ended or sampled
+        child_peak = (
+            after[0]
+            if children
+            and before is not None
+            and after is not None
+            and after[0] > before[0]
+            and (linux or sampled)
+            else None
+        )
+        own = None if process is None else process.peak_rss_bytes
+        region = process is not None and process.scope == "profiled region"
+        sources = [] if process is None else [process.method]
+        if children is None:
+            sources.append("descendants not observable")
+        else:
+            sources.append(
+                f"descendants every {self._interval:g} s from {self._sampler}"
+                + (" and RUSAGE_CHILDREN" if linux else "")
+            )
+        if not children:
+            peak = own
+            bound = "exact" if region else "upper bound"
+        else:
+            values = [
+                value
+                for value in (own, usage.peak_rss_bytes, child_peak)
+                if value is not None
+            ]
+            peak = max(values) if values else None
+            bound = "lower bound" if region else "approximate"
+        return ProcessTreePeakMemory(
+            peak_rss_bytes=peak,
+            bound=bound if peak is not None else "unknown",
+            process=process,
+            child_processes=children,
+            child_peak_rss_bytes=child_peak,
+            sampled_peak_rss_bytes=usage.peak_rss_bytes,
+            method="; ".join(sources) if peak is not None else "unavailable",
+        )
+
+
+_BOUND_PREFIX = {
+    "exact": "",
+    "upper bound": "<= ",
+    "lower bound": ">= ",
+    "approximate": "~ ",
+}
+
+
+def bounded_memory_text(size: int | None, bound: str | None) -> str | None:
+    """A peak with its bound's prefix ("<= 2.21 GiB" for an upper bound,
+    ">= " a lower bound, "~ " an approximation); None without a size."""
+
+    if size is None:
+        return None
+    return _BOUND_PREFIX.get(str(bound), "~ ") + memory_text(size)
+
+
 def memory_text(size: float) -> str:
     """A memory size in bytes with three significant digits."""
 
@@ -404,12 +641,15 @@ def peak_memory_text(peak: PeakMemory | None) -> str | None:
 __all__ = [
     "PeakMemory",
     "ProcessInfo",
+    "ProcessTreePeakMemory",
     "ProcessTreeSampler",
     "ResourceProbeError",
     "ResourceUsage",
     "ResourceUsageMonitor",
+    "bounded_memory_text",
     "memory_text",
     "peak_memory",
     "peak_memory_text",
     "process_snapshot",
+    "process_tree_peak_memory",
 ]
