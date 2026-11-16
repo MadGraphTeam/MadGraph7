@@ -1052,6 +1052,31 @@ def verify_native_module(module: Any, *, expected_version: str | None = None) ->
         )
 
 
+_VERIFIED_SOURCE_RUNTIME: dict[tuple[object, ...], bool] = {}
+
+
+def _source_runtime_key(payload: Mapping[str, Any]) -> tuple[object, ...] | None:
+    """What a successful source-runtime verification depends on that can
+    change in a running process without a new build-info record: the
+    record itself, the source paths and each extension file's identity
+    (size, modification time, inode, of the file a link resolves to)."""
+
+    try:
+        extensions = tuple(
+            (str(path), stat.st_size, stat.st_mtime_ns, stat.st_ino)
+            for path in _native_extensions(_SOURCE_PACKAGE_ROOT)
+            for stat in (path.stat(),)
+        )
+    except OSError:
+        return None
+    return (
+        str(_SOURCE_BUILD_INFO_PATH),
+        str(_SOURCE_ROOT),
+        json.dumps(payload, sort_keys=True, default=str),
+        extensions,
+    )
+
+
 def package_version(default: str = "1.0.3") -> str:
     """Return the wheel/source-runtime version without importing heavy modules."""
 
@@ -1070,7 +1095,15 @@ def package_version(default: str = "1.0.3") -> str:
                 _SOURCE_BUILD_INFO_PATH,
                 "source runtime provenance",
             )
-            _verify_source_runtime(payload)
+            # Verified once per process for the same provenance and
+            # extension files: the full check hashes the extension and the
+            # native build inputs (0.2 s), and generation asks for the
+            # version once per exported evaluator.
+            key = _source_runtime_key(payload)
+            if key is None or _VERIFIED_SOURCE_RUNTIME.get(key) is not True:
+                _verify_source_runtime(payload)
+                if key is not None:
+                    _VERIFIED_SOURCE_RUNTIME[key] = True
             value = payload.get("version")
             if not isinstance(value, str) or not value:
                 raise RuntimeError(
