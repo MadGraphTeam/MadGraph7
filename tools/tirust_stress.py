@@ -12,9 +12,18 @@ fatal), relinks it, and runs it once:
   summarize                        reference values and TIRust classification
 
 Reference: forced-QP CutTools and Ninja (independent reductions) when they agree
-at the campaign tolerance. TIRust (alone or as first backend of the 9|6|7|1
-chain) may refuse a stress point, but an accepted value must agree with the
-reference: "wrong-accepted" is the only blocking outcome.
+at the campaign tolerance. Otherwise, at least two stability-checked values from
+independent reducers that agree; a single reducer is never its own reference
+("unverified"). Independently of any reference, the IR double pole of every
+value is checked: its ratio to the Born is kinematics independent, so it must
+equal the case's ratio at ordinary points (from the ordinary matrix, or the
+case's ordinary stress anchors).
+
+TIRust (alone or as first backend of the 9|6|7|1 chain) may refuse a stress
+point. Blocking outcomes are an accepted value that disagrees with the reference
+or has the wrong double pole ("WRONG"), and one whose error exceeds the lane's
+MLStabThres although its claimed accuracy does not ("INACCURATE": MadLoop's
+stability test was fooled).
 
 Outputs: <campaign report>/experiments/stress/<case>/<lane>-<mode>/result.json
          <campaign report>/experiments/stress/stress-summary.{json,md}
@@ -275,7 +284,19 @@ def compare(reference, candidate, tolerance):
     right = [{"point": r["point"], "order": r["order"], "coefficients": r["coefficients"]} for r in candidate]
     result = bench.compare_rows(left, right, tolerance)
     return {"passed": result["passed"], "maximum_relative_error": result["maximum_relative_error"],
-            "ordinary_target_passed": result["ordinary_target_passed"]}
+            "ordinary_target_passed": result["ordinary_target_passed"],
+            "madloop_error": madloop_error(reference, candidate)}
+
+
+def madloop_error(reference, candidate):
+    """The candidate's actual error in the measure of MadLoop's accuracy estimate (compute_accuracy):
+    per order, the summed deviations of finite part and poles over a third of their summed magnitude."""
+    worst = 0.0
+    for left, right in zip(reference, candidate):
+        deviation = sum(abs(a - b) for a, b in zip(left["coefficients"][1:], right["coefficients"][1:]))
+        scale = abs(sum(left["coefficients"][1:])) / 3.0
+        worst = max(worst, deviation / scale if scale else deviation)
+    return worst
 
 
 def summarize(campaign):
@@ -285,32 +306,24 @@ def summarize(campaign):
     tolerance = config["relative_tolerance"]
     base = bench.REPORT / "experiments/stress"
     summary = {"campaign": campaign, "tolerance": tolerance, "references": list(REFERENCES), "points": []}
-    blocking = 0
+    blocking = {"tirust": 0, "fallback": 0}
     for case_dir in sorted(p for p in base.iterdir() if p.is_dir()):
         results = {p.parent.name: json.loads(p.read_text()) for p in case_dir.glob("*/result.json")}
         if not results:
             continue
         points = next(iter(results.values()))["stress_points"]
+        ratios = case_pole_ratios(case_dir.name, results, points, tolerance)
         for point in points:
             index = point["index"]
-            entry = {"case": case_dir.name, **point, "lanes": {}}
+            entry = {"case": case_dir.name, **point, "lanes": {}, "double_pole_over_born": ratios}
             refs = [point_rows(results[r], index) for r in REFERENCES
                     if r in results and comparable(point_rows(results[r], index))]
-            reference = None
-            if len(refs) == len(REFERENCES):
-                agreement = compare(refs[0], refs[1], tolerance)
+            accepted = [(label, point_rows(results[label], index)) for label in ACCEPTED_REFERENCES
+                        if label in results and results[label]["status"] == "complete"
+                        and accepted_backend(point_rows(results[label], index), results[label]["chain"])]
+            reference, entry["reference"], agreement = select_reference(refs, accepted, ratios, tolerance)
+            if agreement is not None:
                 entry["reference_agreement"] = agreement
-                reference = refs[0] if agreement["passed"] else None
-            entry["reference"] = "QP CutTools = QP Ninja" if reference else "unavailable or disputed"
-            if reference is None:
-                accepted = [(label, point_rows(results[label], index)) for label in ACCEPTED_REFERENCES
-                            if label in results and results[label]["status"] == "complete"
-                            and accepted_backend(point_rows(results[label], index), results[label]["chain"])]
-                if accepted and all(compare(accepted[0][1], rows, tolerance)["passed"] for _, rows in accepted[1:]):
-                    reference = accepted[0][1]
-                    entry["reference"] = "checked: " + " = ".join(label.split("-")[1] for label, _ in accepted)
-                elif accepted:
-                    entry["reference"] = "checked results disagree"
             for label, result in sorted(results.items()):
                 rows = point_rows(result, index)
                 lane = {"status": result["status"], "codes": sorted({r["status"] for r in rows}),
@@ -318,39 +331,137 @@ def summarize(campaign):
                         "stopped": next((("hang" if stop.get("reason") == "timeout" else "STOP")
                                          for stop in result.get("stopped_points", []) if stop["point"] == index), None)}
                 if result["mode"] == "auto":
-                    accepted = accepted_backend(rows, result["chain"]) if result["status"] == "complete" else None
-                    lane["accepted"] = list(accepted) if accepted else None
+                    accepted_lane = accepted_backend(rows, result["chain"]) if result["status"] == "complete" else None
+                    lane["accepted"] = list(accepted_lane) if accepted_lane else None
                 else:
                     lane["accepted"] = ["unchecked-qp"] if comparable(rows) else None
                 if lane["accepted"] and reference is not None and comparable(rows):
                     lane["vs_reference"] = compare(reference, rows, tolerance)
+                if lane["accepted"]:
+                    poles = pole_check(rows, ratios, tolerance)
+                    if poles is not None:
+                        lane["pole_check"] = poles
+                if result["mode"] == "auto":
+                    threshold = (result.get("settings") or {}).get("mlstabthres")
+                    lane["mlstabthres"] = threshold
+                    lane["classification"] = classify(lane, result["chain"], reference, threshold)
+                    if 9 in result["chain"] and blocking_outcome(lane["classification"]):
+                        blocking["tirust" if lane["accepted"][0] == 9 else "fallback"] += 1
                 if 9 in result["chain"]:
                     route = result.get("routes", {}).get(str(index)) or result.get("routes", {}).get(index)
                     lane["route_delta"] = route["delta"] if route else None
-                    if result["mode"] == "auto":
-                        lane["classification"] = classify(lane, result["chain"], reference)
-                        blocking += lane["classification"].startswith("WRONG")
                 entry["lanes"][label] = lane
             summary["points"].append(entry)
-    summary["blocking_wrong_accepted"] = blocking
+    summary["blocking_wrong_accepted"] = blocking["tirust"] + blocking["fallback"]
+    summary["blocking_by_source"] = blocking
     (base / "stress-summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     (base / "stress-summary.md").write_text(markdown(summary))
     print(markdown(summary))
     return summary
 
 
-def classify(lane, chain, reference):
-    """TIRust may refuse; any accepted or chain-rescued value must match the reference."""
+def universal_ratios(rows, tolerance):
+    """Double pole / Born per order, if it is the same at every row (IR poles are kinematics independent)."""
+    values = {}
+    for row in rows:
+        born, double = row["coefficients"][0], row["coefficients"][3]
+        if born and double is not None:
+            values.setdefault(row["order"], []).append(double / born)
+    if not values:
+        return None  # no Born (loop-induced) or no rows
+    ratios = {}
+    for order, ratio in values.items():
+        median = sorted(ratio)[len(ratio) // 2]
+        if max(deviation(x, median) for x in ratio) > tolerance:
+            return None
+        ratios[order] = median
+    return ratios
+
+
+def deviation(value, reference):
+    return abs(value - reference) / abs(reference) if reference else abs(value)
+
+
+def case_pole_ratios(case_id, results, points, tolerance):
+    """The case's double-pole/Born ratios at ordinary points: ordinary-matrix baseline, else stress anchors."""
+    observation = bench.REPORT / "experiments/numerical" / f"ordinary-{case_id}" / "baseline-1/raw/observation.json"
+    if observation.is_file():
+        rows = json.loads(observation.read_text())["rows"]
+    else:
+        ordinary = {p["index"] for p in points if p.get("kind") == "ordinary"}
+        rows = [r for r in results.get(REFERENCES[0], {}).get("rows", []) if r["point"] in ordinary]
+    ratios = universal_ratios(rows, tolerance)
+    return {str(k): v for k, v in ratios.items()} if ratios else None
+
+
+def pole_check(rows, ratios, tolerance):
+    """Compare a value's double pole/Born with the case's ordinary-point ratio; None when not applicable."""
+    if not ratios or not comparable(rows):
+        return None
+    deviations = [deviation(r["coefficients"][3] / r["coefficients"][0], ratios[str(r["order"])])
+                  for r in rows if r["coefficients"][0] and str(r["order"]) in ratios]
+    if not deviations:
+        return None
+    return {"passed": max(deviations) <= tolerance, "maximum_relative_deviation": max(deviations)}
+
+
+def select_reference(qp_refs, accepted, ratios, tolerance):
+    """(reference rows or None, label, QP agreement or None).
+
+    qp_refs: comparable forced-QP rows of REFERENCES; accepted: [(lane label, rows)] of
+    stability-checked independent reducers. A reference must pass the double-pole check,
+    and the fallback needs two agreeing reducers: one reducer cannot verify itself.
+    """
+    agreement = None
+    sound = lambda rows: (pole_check(rows, ratios, tolerance) or {"passed": True})["passed"]
+    if len(qp_refs) == len(REFERENCES):
+        agreement = compare(qp_refs[0], qp_refs[1], tolerance)
+        if agreement["passed"]:
+            if sound(qp_refs[0]):
+                return qp_refs[0], "QP CutTools = QP Ninja", agreement
+            return None, "QP CutTools = QP Ninja, wrong double pole", agreement
+    backend = lambda label: label.split("-")[1]
+    wrong = [label for label, rows in accepted if not sound(rows)]
+    accepted = [(label, rows) for label, rows in accepted if sound(rows)]
+    suffix = f"; wrong double pole: {', '.join(backend(label) for label in wrong)}" if wrong else ""
+    if len(accepted) >= 2 and all(compare(accepted[0][1], rows, tolerance)["passed"] for _, rows in accepted[1:]):
+        return accepted[0][1], "checked: " + " = ".join(backend(label) for label, _ in accepted) + suffix, agreement
+    if len(accepted) == 1:
+        return None, f"unverified: {backend(accepted[0][0])}" + suffix, agreement
+    if accepted:
+        return None, "checked results disagree" + suffix, agreement
+    return None, "unavailable or disputed" + suffix, agreement
+
+
+def classify(lane, chain, reference, threshold=None):
+    """TIRust may refuse; any accepted or chain-rescued value must be right and as accurate as claimed.
+
+    WRONG: wrong double pole, or disagrees with the reference. INACCURATE: agrees within the
+    campaign tolerance, but its actual error (in MadLoop's accuracy measure) exceeds the lane's
+    MLStabThres (`threshold`) while its claimed accuracy does not, so MadLoop's stability test
+    accepted it on a false estimate.
+    """
     if lane["status"] != "complete":
         return "driver-" + lane["status"]
     if not lane["accepted"]:
         verb = "refused" if chain == [9] else "unrescued"
         return verb + (f" (process {lane['stopped']})" if lane.get("stopped") else "")
     backend = lane["accepted"][0]
-    label = "accepted" if backend == 9 else f"rescued-by-{backend}"
+    label = "accepted" if backend == 9 else f"rescued-by-{backend}" if 9 in chain else f"accepted-by-{backend}"
+    if lane.get("pole_check") and not lane["pole_check"]["passed"]:
+        return label + "-WRONG"
     if reference is None or "vs_reference" not in lane:
         return label + "-unreferenced"
-    return label + ("-agrees" if lane["vs_reference"]["passed"] else "-WRONG")
+    if not lane["vs_reference"]["passed"]:
+        return label + "-WRONG"
+    error, accuracy = lane["vs_reference"].get("madloop_error"), lane.get("accuracy")
+    if threshold and error is not None and error > threshold and accuracy is not None and 0 <= accuracy <= threshold:
+        return label + "-INACCURATE"
+    return label + "-agrees"
+
+
+def blocking_outcome(classification):
+    return classification.endswith(("-WRONG", "-INACCURATE"))
 
 
 def markdown(summary):
@@ -369,7 +480,29 @@ def markdown(summary):
                      f"{tirust.get('classification', 'pending')} {tirust.get('codes', '')} | "
                      f"{chain.get('classification', 'pending')} {chain.get('codes', '')} | {qp_text} |")
     lines.append("")
-    lines.append(f"Blocking wrong-accepted outcomes: {summary['blocking_wrong_accepted']}")
+    by_source = summary.get("blocking_by_source", {})
+    lines.append(f"Blocking wrong-accepted outcomes: {summary['blocking_wrong_accepted']}"
+                 + (f" (accepted from TIRust: {by_source.get('tirust', 0)}, from a fallback reducer of the chain: "
+                    f"{by_source.get('fallback', 0)})" if by_source else ""))
+    details = {"tirust": [], "other": []}
+    for entry in summary["points"]:
+        for label, lane in sorted(entry["lanes"].items()):
+            if not blocking_outcome(lane.get("classification", "")):
+                continue
+            text = f"- {entry['case']} {entry['id']}, {label} {lane['codes']}: {lane['classification']}"
+            if lane.get("pole_check") and not lane["pole_check"]["passed"]:
+                text += f"; double pole/Born off by {lane['pole_check']['maximum_relative_deviation']:.2e}"
+            if "vs_reference" in lane:
+                text += f"; {lane['vs_reference']['maximum_relative_error']:.2e} from the reference"
+                if lane["classification"].endswith("-INACCURATE"):
+                    text += (f", actual error {lane['vs_reference']['madloop_error']:.1e} in MadLoop's accuracy"
+                             f" measure, above MLStabThres {lane['mlstabthres']:.0e}")
+            if lane.get("accuracy") is not None:
+                text += f"; claimed accuracy {lane['accuracy']:.1e}"
+            details["tirust" if label.startswith(("candidate-9", "chain-9671")) else "other"].append(text)
+    for key, title in (("tirust", "Blocking outcomes"), ("other", "Wrong values accepted by reducers without TIRust")):
+        if details[key]:
+            lines += ["", f"{title}:", ""] + details[key]
     return "\n".join(lines) + "\n"
 
 

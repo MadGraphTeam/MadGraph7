@@ -19,8 +19,11 @@ If a later pin is registered, use the newest campaign listed in
   Every replay is bit-identical, and DD lanes agree with 256-bit evaluation.
 - **Provenance.** The [per-point provenance](../summaries/provenance-summary.md)
   classifies each point as binary64-only, DD, MPFR, genuine QP or failed.
-- **Stress.** See the [stress classification](../summaries/stress-summary.md):
-  no accepted TIRust value disagrees with a reference.
+- **Stress.** See the [stress classification](../summaries/stress-summary.md).
+  Corrected 2026-11-16: TIRust accepts one inaccurate value (CMS `forward-0.001`,
+  method-choice lanes), and the 9|6|7|1 chain returns a wrong CutTools value at
+  two `OSThres`-projected points. The TIRust fix needs a new pin; if it lands
+  before you time this campaign, time the new campaign instead.
 - **Shared-host profile.** Not rerun on this pin (the host was overloaded). The
   rehearsal's stock O3 `u u~ > z g g g` profile measured TIRust/NinjaRS 1.177.
 - **Helicity filters differ between the arms.** Since `madloop_ninjars`

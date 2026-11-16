@@ -134,9 +134,12 @@ def display(data):
         for e in data["stress"]["points"]:
             lanes = e["lanes"]
             tirust, chain, qp = lanes.get("candidate-9-auto", {}), lanes.get("chain-9671-auto", {}), lanes.get("candidate-9-qp", {})
-            reference = e["reference"]
-            if reference.startswith("checked: "):
-                reference = "checked " + " = ".join(names[x] for x in reference[len("checked: "):].split(" = "))
+            reference, _, wrong = e["reference"].partition("; wrong double pole: ")
+            for prefix in ("checked: ", "unverified: "):
+                if reference.startswith(prefix):
+                    reference = prefix[:-2] + " " + " = ".join(names[x] for x in reference[len(prefix):].split(" = "))
+            if wrong:
+                reference += "; wrong double pole: " + ", ".join(names[x] for x in wrong.split(", "))
             qp_text = ("agrees" if qp.get("vs_reference", {}).get("passed") else "differs" if "vs_reference" in qp else "–")
             codes = lambda lane: ",".join(map(str, lane.get("codes", []))) or "–"
             row = (tirust.get("classification", "pending"), codes(tirust),

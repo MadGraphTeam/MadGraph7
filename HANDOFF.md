@@ -1,14 +1,19 @@
 # TIRust–MadLoop handoff
 
 **Status: NOT COMPLETE.** Backend 9 is implemented and requalified on the shared
-host for the final pin, TIRust `main` `a5d4afb` (campaign `tirust-a5d4afbf-1`).
-One thing is still open: **precise local timing acceptance**, which is
-Hua-Sheng's local TODO.
+host for TIRust `main` `a5d4afb` (campaign `tirust-a5d4afbf-1`). Two things are
+open before PR #437 merges:
 
-Do not mark the integration goal complete, or take PR #437 out of draft, before
-it is done.
+- **A TIRust accuracy defect.** Method-choice lanes can be accepted with a false
+  accuracy claim (one stress point in this campaign). The TIRust session owns the
+  fix; it needs a new pin and a requalification.
+- **Precise local timing acceptance**, which is Hua-Sheng's local TODO.
 
-Updated 2026-11-15. The current results are in
+Hua-Sheng took PR #437 out of draft and requested ValentinHirschi's review on
+2026-11-16; the PR description lists both open items. Do not mark the
+integration goal complete before they are done.
+
+Updated 2026-11-16. The current results are in
 [`docs/benchmarkfolder/CURRENT_STATUS.md`](docs/benchmarkfolder/CURRENT_STATUS.md).
 
 ## Working agreement
@@ -85,11 +90,24 @@ fixes made since. Details and links are in `CURRENT_STATUS.md`.
 - **Caches:** cache-off and a 1 MiB budget reproduce every bit for all 1,100
   ordinary points. The cache diagnostic passes 61/61, including the QP
   check-pass cache.
-- **Stress (38 points):** no accepted TIRust value is wrong. TIRust accepts 28
-  and refuses 10.
-  - Seven refusals are at points where every reducer fails.
-  - Two small-Gram points are rescued by the 9|6|7|1 chain (CutTools QP).
-  - At CMS `forward-1e-08`, CutTools then hangs.
+- **Stress (38 points), corrected 2026-11-16:** TIRust accepts 28 and refuses
+  10. Four lane outcomes block:
+  - **TIRust, inaccurate:** at CMS `forward-0.001` TIRust returns 213 with a
+    claimed accuracy of 3.1e-15 but is 2.0e-6 from the QP reference (4.1e-6 in
+    MadLoop's measure, above `MLStabThres = 1e-6`), alone and as the chain's first
+    backend. Method-choice expansions stop near 1e-9 per tensor, cancellations
+    amplify that, and MadLoop's direction check cannot see it.
+  - **Chain, wrong fallback value:** at EW μ⁺μ⁻ and CMS `forward-1e-06` small
+    Gram, TIRust refuses correctly, and the chain returns CutTools QP (329) with
+    exactly half of the universal double pole. MadLoop's `OSThres` projection
+    zeroes a small invariant there, which changes the integral.
+  - Every other accepted TIRust value agrees with the reference. Seven refusals
+    are at points where every reducer fails. At CMS `forward-1e-08`, CutTools
+    hangs.
+  - The first summary missed these: its tool let CutTools serve as its own
+    reference and compared only at `3e-6`. `tools/tirust_stress.py` now needs two
+    independent reducers for a fallback reference, checks every value's IR
+    double pole and flags false accuracy claims above `MLStabThres`.
   - **CutTools STOP:** a CutTools fallback can `STOP` the process (QCD ZZgg
     soft-collinear point).
   - **512-bit QP retry confirmed:** the H H small-Gram point now matches the
@@ -114,13 +132,18 @@ fixes made since. Details and links are in `CURRENT_STATUS.md`.
 
 ## Remaining work
 
-1. **Hua-Sheng's local timing.** Follow
+1. **TIRust method-choice accuracy (blocking merge).** The TIRust session is to
+   fix it upstream (accept a method-choice lane in binary64 only when its
+   expansion converged to binary64 precision), after measuring the cost on
+   Zggg. Then follow item 4 for the new pin; if that comes before the local
+   timing, time the new campaign.
+2. **Hua-Sheng's local timing.** Follow
    [`LOCAL_TIMING_TODO.md`](docs/benchmarkfolder/campaigns/tirust-a5d4afbf-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
    Gate: the upper 95% paired candidate/baseline bound is ≤ 1.05 for every main
    process, plus existing-backend regressions.
-2. **Shared-host profile** (optional): rerun the stock O3 Zggg profile on this
+3. **Shared-host profile** (optional): rerun the stock O3 Zggg profile on this
    pin when the host is quiet.
-3. **A later pin**, if the upstream session proposes one:
+4. **A later pin**, if the upstream session proposes one:
    - follow [`tools/tirust_pin/README.md`](tools/tirust_pin/README.md): export
      the commit, hand-merge the poles-only patch if needed, then run
      `regen_poles_patch.sh` and `pinbump.py`; move `vendor/tirust/pole-kernels`
@@ -132,12 +155,14 @@ fixes made since. Details and links are in `CURRENT_STATUS.md`.
    - copy `report/current-source.typ` and `timing-handoff-1/` from
      `tirust-a5d4afbf-1`, render and publish the report, and update
      `CURRENT_STATUS.md`, this file and the PR #437 description.
-4. **Optional upstream improvements.**
-   - TIRust's handling of exactly singular Gram matrices from `OSThres`-zeroed
-     CMS invariants.
+5. **Outside TIRust.**
+   - MadLoop's `OSThres` projection should not zero physically nonzero
+     invariants. TIRust's refusal of such inputs is correct; CutTools returns a
+     wrong value there.
    - A CutTools STOP or hang is a MadLoop/CutTools limitation; it can abort a
      TIRust-first chain that falls back to CutTools.
-5. **Review.** Finish the review of PR #437 (stacked on NinjaRS PR #315).
+6. **Review.** PR #437 (stacked on NinjaRS PR #315) is in review with
+   ValentinHirschi.
 
 Earlier campaigns, the audit-style evidence capsules and the older report
 builders are preserved in git history and in the tag

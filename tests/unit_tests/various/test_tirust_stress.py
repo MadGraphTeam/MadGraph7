@@ -160,5 +160,74 @@ class TestStressClassification(unittest.TestCase):
         self.assertEqual(stress.accepted_backend([dict(row, status=328)], [9, 6, 7, 1]), (6, "QP"))  # Ninja QP alias
 
 
+def rows(born, finite, single, double, orders=1):
+    return [{"point": 1, "order": k, "finite": True, "coefficients": [born, finite, single, double]}
+            for k in range(orders)]
+
+
+class TestStressReferences(unittest.TestCase):
+    """Wrong values must not hide behind a self-referencing reducer or a loose tolerance."""
+    RATIOS = {"0": -0.25}
+
+    def test_double_pole_ratio_is_taken_only_when_universal(self):
+        ordinary = rows(2.0, 1.0, 0.1, -0.5, orders=2) + [dict(r, point=2, coefficients=[4.0, 3.0, 0.2, -1.0])
+                                                          for r in rows(0, 0, 0, 0, orders=2)]
+        self.assertEqual(stress.universal_ratios(ordinary, 3e-6), {0: -0.25, 1: -0.25})
+        ordinary[-1]["coefficients"][3] = -1.1
+        self.assertIsNone(stress.universal_ratios(ordinary, 3e-6))
+        self.assertIsNone(stress.universal_ratios(rows(0.0, 1.0, 0.0, 0.0), 3e-6))  # loop-induced: no Born
+
+    def test_wrong_double_pole_is_wrong_without_any_reference(self):
+        half = rows(2.0, 1.0, 0.1, -0.25)
+        check = stress.pole_check(half, self.RATIOS, 3e-6)
+        self.assertFalse(check["passed"])
+        self.assertAlmostEqual(check["maximum_relative_deviation"], 0.5)
+        self.assertTrue(stress.pole_check(rows(2.0, 1.0, 0.1, -0.5), self.RATIOS, 3e-6)["passed"])
+        self.assertIsNone(stress.pole_check(half, None, 3e-6))
+        lane = {"status": "complete", "accepted": [1, "QP"], "pole_check": check}
+        self.assertEqual(stress.classify(lane, [9, 6, 7, 1], None), "rescued-by-1-WRONG")
+        self.assertEqual(stress.classify(lane, [1], None), "accepted-by-1-WRONG")
+
+    def test_single_reducer_is_not_its_own_reference(self):
+        cuttools = rows(2.0, 1.0, 0.1, -0.5)
+        reference, label, _ = stress.select_reference([], [("candidate-1-auto", cuttools)], self.RATIOS, 3e-6)
+        self.assertIsNone(reference)
+        self.assertEqual(label, "unverified: 1")
+        reference, label, _ = stress.select_reference(
+            [], [("candidate-1-auto", cuttools), ("candidate-7-auto", rows(2.0, 1.0, 0.1, -0.5))], self.RATIOS, 3e-6)
+        self.assertIs(reference, cuttools)
+        self.assertEqual(label, "checked: 1 = 7")
+
+    def test_reference_with_wrong_double_pole_is_rejected(self):
+        half = rows(2.0, 1.0, 0.1, -0.25)
+        reference, label, agreement = stress.select_reference([half, half], [], self.RATIOS, 3e-6)
+        self.assertIsNone(reference)
+        self.assertTrue(agreement["passed"])
+        self.assertEqual(label, "QP CutTools = QP Ninja, wrong double pole")
+        reference, label, _ = stress.select_reference(
+            [], [("candidate-1-auto", half), ("candidate-7-auto", rows(2.0, 1.0, 0.1, -0.5))], self.RATIOS, 3e-6)
+        self.assertIsNone(reference)
+        self.assertEqual(label, "unverified: 7; wrong double pole: 1")
+
+    def test_false_accuracy_claim_above_the_stability_threshold_is_inaccurate(self):
+        reference = rows(2.0, 1.0, 0.1, -0.5)
+        off = rows(2.0, 1.0 + 2e-6, 0.1, -0.5)
+        comparison = stress.compare(reference, off, 3e-6)
+        self.assertTrue(comparison["passed"])  # within the campaign tolerance
+        self.assertAlmostEqual(comparison["madloop_error"], 3 * 2e-6 / 0.6)
+        lane = {"status": "complete", "accepted": [9, "DP"], "accuracy": 3e-15, "vs_reference": comparison}
+        self.assertEqual(stress.classify(lane, [9], reference, 1e-6), "accepted-INACCURATE")
+        self.assertEqual(stress.classify(dict(lane, accuracy=2e-6), [9], reference, 1e-6), "accepted-agrees")
+        self.assertEqual(stress.classify(lane, [9], reference, 1e-3), "accepted-agrees")
+        self.assertEqual(stress.classify(lane, [9], reference), "accepted-agrees")
+
+    def test_blocking_outcomes(self):
+        self.assertTrue(stress.blocking_outcome("accepted-WRONG"))
+        self.assertTrue(stress.blocking_outcome("rescued-by-1-WRONG"))
+        self.assertTrue(stress.blocking_outcome("accepted-INACCURATE"))
+        for label in ("accepted-agrees", "refused", "unrescued (process hang)", "accepted-unreferenced"):
+            self.assertFalse(stress.blocking_outcome(label))
+
+
 if __name__ == "__main__":
     unittest.main()

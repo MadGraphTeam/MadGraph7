@@ -3,7 +3,7 @@
 #let v = d.display
 #let rev = d.identity.exporter_revision.slice(0, 10)
 #let pin = d.identity.tirust_revision.slice(0, 8)
-#show: body => report-style(body, date: "2026-11-15", revision: rev + " · TIRust " + pin)
+#show: body => report-style(body, date: "2026-11-16", revision: rev + " · TIRust " + pin)
 #set heading(numbering: none)
 // These pages follow the 48 preceding report pages in the merged PDF.
 #let base-pages = 48
@@ -25,7 +25,8 @@ source includes the merged `madloop_ninjars` (return-code format 2: TIRust retur
 in double and 323 in quadruple precision) and the bridge's QP check-pass cache. They
 replace the rehearsal pages on `9a781998` and supersede the earlier pages only for this
 source and runtime (DSO #raw(d.identity.native_files.at("lib/libmadloop_tirust.so").slice(0, 12))).
-Shared-host results; precise paired timing acceptance remains Hua-Sheng's local TODO.]
+Shared-host results; precise paired timing acceptance remains Hua-Sheng's local TODO.
+The stress page was corrected on 2026-11-16: TIRust accepts one inaccurate value there.]
 
 The fresh `install tirust` build of this pin passes `smoke --require-poles`, the pinned
 upstream C-ABI fixtures (27 DP and 54 QP lanes) and links only `libgcc_s`, `libm`
@@ -85,18 +86,44 @@ by up to 6.5e-10 (rehearsal: 0); the candidate source now includes the merged
   ([Process], [point], [reference], [TIRust alone], [chain 9|6|7|1], [TIRust QP]),
   v.at("stress_rows", default: ()),
   [Threshold, soft/collinear, small-Gram and complex-mass points (`tools/tirust_stress.py`).
-   Reference: forced-QP CutTools and Ninja when they agree, otherwise stability-checked
-   values of independent reducers that agree. TIRust may refuse; only an accepted value
-   that disagrees would block (#v.at("stress_blocking", default: "–") such cases).
-   Refusals where every reducer fails are properties of the point. "Process STOP": CutTools
-   ends the program (CT692) on the ZZgg soft-collinear point; on the most forward CMS small-Gram point it never
-   returns. Any lane falling back to CutTools therefore aborts or hangs there; the driver
-   records the point and resumes with the next one. "TIRust QP" compares unchecked forced QP
-   (`CTModeRun=4`) with the reference. "differs" occurs only at the two exactly singular Gram
-   points, where TIRust refuses tensors and sets MadLoop's QP failure flag; automatic mode never
-   accepts such results. At the $t overline(t) gamma$ threshold the checked reducers disagree
-   (Ninja's single pole is 112× too large). TIRust's accepted QP value there agrees with NinjaRS QP
-   to 1.1e-9 and with CutTools QP to 3.7e-6.])
+   Reference: forced-QP CutTools and Ninja when they agree, otherwise at least two agreeing
+   stability-checked values of independent reducers; "unverified" marks a point with only one.
+   Every value must also have the case's IR double pole, whose ratio to the Born is kinematics
+   independent and fixed by the ordinary points. TIRust may refuse. Blocking outcomes are an
+   accepted value that is WRONG (disagrees with the reference at `3e-6`, or has the wrong double
+   pole) or INACCURATE (its actual error in MadLoop's accuracy measure exceeds
+   `MLStabThres = 1e-6` while its claimed accuracy does not): #v.at("stress_blocking", default: "–")
+   lane outcomes. "Process STOP": CutTools ends the program (CT692) on the ZZgg soft-collinear
+   point; on the most forward CMS small-Gram point it never returns. The driver records the
+   point and resumes with the next one. "TIRust QP" compares unchecked forced QP
+   (`CTModeRun=4`) with the reference. At the $t overline(t) gamma$ threshold the checked
+   reducers disagree (Ninja's single pole is 112× too large). TIRust's accepted QP value there
+   agrees with NinjaRS QP to 1.1e-9 and with CutTools QP to 3.7e-6.])
+
+#note(fill: warm)[#set par(justify: false)
+*Corrected 2026-11-16.* The first version of this page reported no blocking outcome. It
+compared values only at the `3e-6` campaign tolerance and let CutTools serve as its own
+reference.
+
+*TIRust, open before merge.* At the complex-mass forward point $theta = 10^(-3)$, TIRust
+returns 213 with a claimed accuracy of 3.1e-15, but it is 2.0e-6 from the QP reference
+(4.1e-6 in MadLoop's measure). CutTools DP (2.6e-8, claimed 9.5e-8) and COLLIER (6.9e-10)
+are accurate there. TIRust's method-choice expansions stop near 1e-9 per tensor, and
+cancellations amplify this. The error is the same in both loop directions, so MadLoop's
+direction check cannot see it. A forward-angle scan by the TIRust session at default
+settings, outside this campaign's points, finds up to 2.8e-5 at $theta = 5 dot 10^(-4)$;
+with method choice disabled the same points agree with QP within 1e-9. In the ordinary
+matrix every TIRust value is within 2.1e-7 of COLLIER or NinjaRS in MadLoop's measure,
+below `MLStabThres` at every point.
+
+*Outside TIRust.* At CMS $theta = 10^(-6)$ and the EW $mu^+ mu^-$ small-Gram point,
+MadLoop's `OSThres` projection sets a small invariant exactly to zero, which changes the
+integral. TIRust refuses (correctly). CutTools QP (329), in the baseline as well, returns
+exactly half of the universal double pole, and the 9|6|7|1 chain returns that value. With
+`OSThres = 1e-14`, TIRust and Ninja QP agree to 10 digits at $theta = 10^(-6)$. CutTools DP
+also accepts a finite part of $2.4 dot 10^18$ (true $4.0 dot 10^(-5)$) at the loop-induced
+$H H$ small-Gram point, and COLLIER, Ninja and NinjaRS accept a wrong single pole at the
+$t overline(t)$ threshold. TIRust is right at both points.]
 
 #pagebreak()
 == Stability (Appendix C of arXiv:1604.01363)
