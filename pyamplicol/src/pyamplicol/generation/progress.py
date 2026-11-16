@@ -238,6 +238,21 @@ def step(
         yield handle
 
 
+def adopt_task(task_id: str, sink: ProgressSink | None) -> object:
+    """Make the running progress task ``task_id`` (started by the caller on
+    ``sink``) the parent of the ``step``s run in this context, e.g. a check
+    test that regenerates a process; returns the token for ``release``."""
+
+    handle = None if sink is None else PhaseHandle(task_id, sink, None, path=task_id)
+    return _CURRENT.set(handle)
+
+
+def release_task(token: object) -> None:
+    """Undo ``adopt_task`` (its token)."""
+
+    _CURRENT.reset(token)  # type: ignore[arg-type]
+
+
 def _failure_message(exc: BaseException) -> str:
     if isinstance(exc, KeyboardInterrupt):
         return "interrupted"
@@ -549,7 +564,9 @@ __all__ = [
     "PhaseHandle",
     "PhaseTimes",
     "collect_phase_times",
+    "adopt_task",
     "history_signature",
+    "release_task",
     "record_phase",
     "step",
 ]

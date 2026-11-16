@@ -2278,6 +2278,7 @@ class _CheckProgress:
         self.current: tuple[str, float] | None = None
         self.count = 0
         self.interrupted = False
+        self._adopted: object | None = None
 
     def __enter__(self) -> _CheckProgress:
         import time
@@ -2320,6 +2321,13 @@ class _CheckProgress:
         task = f"check-test-{self.count}"
         self.current = (task, time.perf_counter())
         self.sink.emit(ProgressStart(task, text, parent_task_id="check"))
+        # The generation steps a test runs (a slice regenerated in memory)
+        # report under it.
+        from pyamplicol.generation.progress import adopt_task, release_task
+
+        if self._adopted is not None:
+            release_task(self._adopted)
+        self._adopted = adopt_task(task, self.sink)
 
     def _finish(self, success: bool) -> None:
         import time
@@ -2330,12 +2338,15 @@ class _CheckProgress:
             return
         task, begin = self.current
         self.current = None
+        elapsed = time.perf_counter() - begin
         self.sink.emit(
             ProgressEnd(
                 task,
                 success=success,
                 message=None if success else "interrupted",
-                elapsed_seconds=time.perf_counter() - begin,
+                elapsed_seconds=elapsed,
+                # A test of a second or more leaves its line (and cost).
+                details={"keep": elapsed >= 1.0},
             )
         )
 
@@ -2346,6 +2357,11 @@ class _CheckProgress:
 
         failed = kind is not None or self.interrupted
         self._finish(not failed)
+        if self._adopted is not None:
+            from pyamplicol.generation.progress import release_task
+
+            release_task(self._adopted)
+            self._adopted = None
         if self.sink is not None:
             self.sink.emit(
                 ProgressEnd(
