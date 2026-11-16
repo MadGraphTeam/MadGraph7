@@ -3501,6 +3501,7 @@ class _FittedTables:
         class FittedTable(base):  # type: ignore[misc, valid-type]
             def get_string(self, **kwargs: Any) -> str:
                 text = str(super().get_string(**kwargs))
+                floors: list[int] | None = None
                 for _ in range(16):
                     widest = max(
                         (len(_ANSI_STYLE.sub("", line)) for line in text.splitlines()),
@@ -3510,10 +3511,15 @@ class _FittedTables:
                     names = list(getattr(self, "_field_names", ()) or ())
                     if widest <= limit or not widths or len(widths) != len(names):
                         break
-                    column = max(range(len(widths)), key=widths.__getitem__)
-                    narrower = max(widths[column] - (widest - limit), _FIT_MINIMUM)
-                    if narrower >= widths[column]:
+                    if floors is None:
+                        floors = _column_floors(self, len(names))
+                    shrinkable = [
+                        index for index in range(len(widths)) if widths[index] > floors[index]
+                    ]
+                    if not shrinkable:
                         break
+                    column = max(shrinkable, key=widths.__getitem__)
+                    narrower = max(widths[column] - (widest - limit), floors[column])
                     self.max_width[names[column]] = narrower
                     text = str(super().get_string(**kwargs))
                 return text
@@ -3525,6 +3531,25 @@ class _FittedTables:
 
 
 _FIT_MINIMUM = 16
+
+
+def _column_floors(table: Any, columns: int) -> list[int]:
+    """The narrowest each column of a fitted table may be: its header and
+    its longest word (a number, a name, an order never breaks), a path
+    breaking at ``_FIT_MINIMUM`` at most. A table that cannot fit keeps its
+    natural width."""
+
+    floors = [0] * columns
+    rows = list(getattr(table, "_rows", ()) or ())
+    for row in rows:
+        for index, cell in enumerate(row[:columns]):
+            for word in _ANSI_STYLE.sub("", str(cell)).split():
+                size = min(len(word), _FIT_MINIMUM) if "/" in word else len(word)
+                floors[index] = max(floors[index], size)
+    for index, name in enumerate(list(getattr(table, "_field_names", ()))[:columns]):
+        # A header never wraps (prettytable keeps it on one line).
+        floors[index] = max(floors[index], len(str(name)), 4)
+    return floors
 
 
 def render_summary(value: object, *, color: bool = False) -> str | None:

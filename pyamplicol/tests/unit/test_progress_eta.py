@@ -179,3 +179,18 @@ def test_log_heartbeat_breaks_every_silence(monkeypatch) -> None:
     beats = [line for line in lines if line.startswith("A long step: ")]
     assert len(beats) >= 2 and all("elapsed" in line for line in beats)
     assert lines[-2] == "A long step done in 3s"
+
+
+def test_fitted_tables_never_break_numbers_or_headers() -> None:
+    import prettytable
+
+    from pyamplicol.reporting.summary import _FittedTables
+
+    fitted = _FittedTables(prettytable, 60)
+    table = fitted.PrettyTable(("point", "virtual squared order", "finite [0]"))
+    table.add_row(("0", "QCD^2, QED^4", "-0.00016690271388525922"))
+    table.add_row(("1", "QED^6", "-1.079349250527398e-05"))
+    text = table.get_string()
+    # It cannot fit in 60 columns without breaking a number: natural width.
+    assert "-0.00016690271388525922" in text
+    assert "virtual squared order" in text
