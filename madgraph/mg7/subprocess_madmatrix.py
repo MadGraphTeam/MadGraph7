@@ -583,7 +583,7 @@ class MadgraphSubprocess:
                     [topo], chan_permutations, active_flavors, n_in
                 )
                 mapping = ms.PhaseSpaceMapping(
-                    chan_topologies[0],
+                    topo,
                     self.process.e_cm,
                     t_channel_mode=t_channel_mode,
                     cuts=self.cuts,
