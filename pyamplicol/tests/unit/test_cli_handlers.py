@@ -346,6 +346,8 @@ def test_a_live_display_shows_the_command_before_its_first_phase(
     text = payload.decode(errors="replace")
     # Drawn at once, its clock running, before the generation's phases.
     assert text.index("pyamplicol generate") < text.index("Generating processes")
+    # N1: the placeholder gives way to the first phase and never comes back.
+    assert "starting" not in text[text.index("Generating processes") :]
     assert "pyamplicol generate  1s" in text or "elapsed 1s" in text
 
 

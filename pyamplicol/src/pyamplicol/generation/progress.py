@@ -259,12 +259,16 @@ class PhaseHandle:
                 ),
             )
         handle = PhaseHandle(task_id, self.sink, total, history=self.history, path=path)
+        if keep and self.history is not None:
+            self.history.opened(task_id, path, handle)
         token = _CURRENT.set(handle) if keep else None
         started = time.perf_counter()
         try:
             yield handle
         except BaseException as exc:
             elapsed = time.perf_counter() - started
+            if self.history is not None:
+                self.history.closed(task_id)
             failure = _failure_message(exc)
             if self.sink is not None:
                 _emit(
@@ -283,6 +287,7 @@ class PhaseHandle:
                 _CURRENT.reset(token)
         elapsed = time.perf_counter() - started
         if keep and self.history is not None:
+            self.history.closed(task_id)
             self.history.observe(path, elapsed)
         if total is not None and handle.completed < total:
             handle.update(total)
@@ -385,6 +390,13 @@ def _signature(kind: str, run_config: object) -> str:
     )
 
 
+# Phases and steps shorter than this say little about a run's pace (their
+# ratio is noise) and do not enter its factor; a change of the factor by
+# more than this ratio is pushed to the open tasks' priors.
+_RATIO_MINIMUM = 0.05
+_RATIO_PUSH = 1.15
+
+
 class GenerationHistory:
     """The phase and step times of the previous generation of the same
     request (same model, processes, colour, loop, evaluator and generation
@@ -401,6 +413,14 @@ class GenerationHistory:
         self.previous: dict[str, float] = {}
         self.order: list[str] = []
         self.current: dict[str, float] = {}
+        # This run against the history: the summed actual and prior seconds
+        # of the phases and steps finished so far (``factor``).
+        self._seen = [0.0, 0.0]
+        self._pushed = 1.0
+        # The open phases and steps that carry a prior (task id -> path,
+        # handle), whose priors follow the factor (``on_change``).
+        self._open: dict[str, tuple[str, PhaseHandle]] = {}
+        self.on_change: Callable[[], None] | None = None
         try:
             self._read(signature)
         except Exception:  # a history that cannot be read: no priors
@@ -431,9 +451,27 @@ class GenerationHistory:
             "\x1f".join(repr(part) for part in parts).encode()
         ).hexdigest()
 
-    def prior(self, path: str) -> float | None:
+    def _raw(self, path: str) -> float | None:
         value = self.previous.get(path)
         return value if isinstance(value, float) and math.isfinite(value) else None
+
+    def factor(self) -> float:
+        """How this run compares with the history: the actual over the
+        prior seconds of what it finished so far (1 before anything): the
+        history is a prior, the measured run corrects it at once (a history
+        100 times off is off by the run's own factor, not 100 times)."""
+
+        prior, actual = self._seen
+        if prior <= 0.0 or actual <= 0.0:
+            return 1.0
+        return actual / prior
+
+    def prior(self, path: str) -> float | None:
+        raw = self._raw(path)
+        if raw is None:
+            return None
+        scaled = raw * self.factor()
+        return scaled if math.isfinite(scaled) else None
 
     def later(self, started: set[str]) -> tuple[float, bool] | None:
         """The previous run's time of the phases not started yet (None
@@ -442,7 +480,7 @@ class GenerationHistory:
         if not self.order:
             return None
         try:
-            seconds = sum(
+            seconds = self.factor() * sum(
                 self.previous.get(name, 0.0)
                 for name in self.order
                 if name not in started
@@ -451,9 +489,26 @@ class GenerationHistory:
             return None
         return (seconds, True) if math.isfinite(seconds) else None
 
+    def opened(self, task_id: str, path: str, handle: PhaseHandle) -> None:
+        if self._raw(path) is not None:
+            self._open[task_id] = (path, handle)
+
+    def closed(self, task_id: str) -> None:
+        self._open.pop(task_id, None)
+
     def observe(self, path: str, seconds: float) -> None:
         with contextlib.suppress(Exception):
             self.current[path] = self.current.get(path, 0.0) + seconds
+            raw = self._raw(path)
+            if raw is None or raw <= 0.0 or seconds < _RATIO_MINIMUM:
+                return
+            self._seen[0] += raw
+            self._seen[1] += seconds
+            factor = self.factor()
+            if abs(math.log(factor / self._pushed)) > math.log(_RATIO_PUSH):
+                self._pushed = factor
+                if self.on_change is not None:
+                    self.on_change()
 
     def store(self, phases: list[str]) -> None:
         if self.signature is None:
@@ -527,6 +582,7 @@ class GenerationPhaseReporter:
         self._root_started_at = time.perf_counter()
         if self.sink is not None and signature is not None:
             self.history = GenerationHistory(signature)
+            self.history.on_change = self._refresh_priors
         root_details = dict(details)
         later = self.history.later(set()) if self.history else None
         if later is not None:
@@ -573,6 +629,40 @@ class GenerationPhaseReporter:
             )
         self._root_started_at = None
 
+    def _refresh_priors(self) -> None:
+        """The run's factor moved (``GenerationHistory.factor``): the open
+        phases and steps get their rescaled priors, the root the rescaled
+        time of the phases to come."""
+
+        history = self.history
+        if history is None or self.sink is None:
+            return
+        for task_id, (path, handle) in list(history._open.items()):
+            prior = history.prior(path)
+            if prior is None:
+                continue
+            _emit(
+                self.sink,
+                lambda task_id=task_id, handle=handle, prior=prior: ProgressUpdate(
+                    task_id,
+                    completed=handle.completed,
+                    total=handle.total,
+                    details={"prior_seconds": prior},
+                ),
+            )
+        later = history.later(set(self._phases))
+        if later is not None and self.root is not None:
+            root = self.root
+            _emit(
+                self.sink,
+                lambda: ProgressUpdate(
+                    root.task_id,
+                    completed=root.completed,
+                    total=root.total,
+                    details={"later_prior_seconds": later[0]},
+                ),
+            )
+
     @contextmanager
     def phase(
         self,
@@ -611,6 +701,8 @@ class GenerationPhaseReporter:
                 ),
             )
         handle = PhaseHandle(task_id, self.sink, total, history=history, path=name)
+        if history is not None:
+            history.opened(task_id, name, handle)
         token = _CURRENT.set(handle)
         times = _PHASE_TIMES.get()
         top = times is not None and times.depth == 0
@@ -622,6 +714,8 @@ class GenerationPhaseReporter:
         except BaseException as exc:
             elapsed = time.perf_counter() - started
             _CURRENT.reset(token)
+            if history is not None:
+                history.closed(task_id)
             self._close_phase(times, top, name, elapsed)
             self.timings[name] = elapsed
             failure = _failure_message(exc)
@@ -642,6 +736,7 @@ class GenerationPhaseReporter:
         self._close_phase(times, top, name, elapsed)
         self.timings[name] = elapsed
         if history is not None:
+            history.closed(task_id)
             history.observe(name, elapsed)
         if total is not None and handle.completed < total:
             handle.update(total)
