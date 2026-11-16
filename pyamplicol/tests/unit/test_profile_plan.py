@@ -174,10 +174,7 @@ def _simulate(
                 else counts.batch
             )
             wall = (
-                points
-                * cost
-                * world.factor(clock[0])
-                * (world.slow if k == 0 else 1.0)
+                points * cost * world.factor(clock[0]) * (world.slow if k == 0 else 1.0)
             )
             clock[0] += wall
             calls[0] += 1
