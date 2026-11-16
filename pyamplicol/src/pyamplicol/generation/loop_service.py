@@ -1643,7 +1643,9 @@ def _permutation_invariant(request, legs) -> bool:
 
 
 def _plural(count: int, noun: str) -> str:
-    return f"{count:,} {noun}" + ("" if count == 1 else "es" if noun.endswith("s") else "s")
+    return f"{count:,} {noun}" + (
+        "" if count == 1 else "es" if noun.endswith("s") else "s"
+    )
 
 
 def _size_text(path: Path) -> str:
@@ -1777,14 +1779,24 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         # exported again, folded.
                         with step("fold", "Folding the proportional chains"):
                             folding, process = _loop_induced_fold(
-                                backend, context, process, request, candidates, correlators
+                                backend,
+                                context,
+                                process,
+                                request,
+                                candidates,
+                                correlators,
                             )
                         # m-lit Q10 (LIT-R2): the exact helicity-zero filter of a
                         # loop-induced process (None for a virtual); rows it
                         # drops are exported again without their row.
                         with step("helicities", "Filtering the zero helicities"):
                             helicity, process = _loop_induced_filter(
-                                backend, context, process, request, candidates, correlators
+                                backend,
+                                context,
+                                process,
+                                request,
+                                candidates,
+                                correlators,
                             )
                         # m-lit Q12: the generation-time probes of a loop-induced
                         # process, run only with generation.loop_induced_probes

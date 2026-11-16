@@ -100,7 +100,9 @@ def test_prior_before_any_item_and_its_blend() -> None:
         total=4, completed=0, started_at=0.0, marks=[], now=10.0, prior_seconds=100.0
     )
     assert first.estimated and first.seconds == pytest.approx(90.0)
-    assert count_estimate(total=4, completed=0, started_at=0.0, marks=[], now=1.0) is None
+    assert (
+        count_estimate(total=4, completed=0, started_at=0.0, marks=[], now=1.0) is None
+    )
     # One measured item of 10 s against a prior of 25 s per item.
     blended = count_estimate(
         total=4,
@@ -140,9 +142,9 @@ def test_combined_total() -> None:
 
 
 def test_summary_tables_fit_the_terminal_width() -> None:
-    from pyamplicol.reporting.summary import _ANSI_STYLE, _FittedTables, table_width
-
     import prettytable
+
+    from pyamplicol.reporting.summary import _ANSI_STYLE, _FittedTables, table_width
 
     fitted = _FittedTables(prettytable, 60)
     table = fitted.PrettyTable(("field", "value"))

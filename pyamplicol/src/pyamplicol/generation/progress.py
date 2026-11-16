@@ -176,9 +176,7 @@ class PhaseHandle:
                     details=start_details,
                 )
             )
-        handle = PhaseHandle(
-            task_id, self.sink, total, history=self.history, path=path
-        )
+        handle = PhaseHandle(task_id, self.sink, total, history=self.history, path=path)
         token = _CURRENT.set(handle) if keep else None
         started = time.perf_counter()
         try:
@@ -234,7 +232,9 @@ def step(
     if parent is None or parent.sink is None:
         yield PhaseHandle(key, None, total)
         return
-    with parent.child(key, description, total=total, details=details, keep=True) as handle:
+    with parent.child(
+        key, description, total=total, details=details, keep=True
+    ) as handle:
         yield handle
 
 
@@ -335,7 +335,11 @@ class GenerationHistory:
         if not self.order:
             return None
         return (
-            sum(self.previous.get(name, 0.0) for name in self.order if name not in started),
+            sum(
+                self.previous.get(name, 0.0)
+                for name in self.order
+                if name not in started
+            ),
             True,
         )
 
@@ -563,10 +567,10 @@ __all__ = [
     "GenerationPhaseReporter",
     "PhaseHandle",
     "PhaseTimes",
-    "collect_phase_times",
     "adopt_task",
+    "collect_phase_times",
     "history_signature",
-    "release_task",
     "record_phase",
+    "release_task",
     "step",
 ]

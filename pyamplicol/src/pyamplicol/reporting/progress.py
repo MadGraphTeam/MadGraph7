@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import contextlib
 import importlib
 import io
 import logging
@@ -9,10 +10,10 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-import threading
 from threading import Event, RLock, Thread
 from types import MappingProxyType
 from typing import Any, Literal, Protocol, TextIO, TypeAlias, runtime_checkable
@@ -635,27 +636,32 @@ class _LineProgressSink:
             parts.append(f"{min(task.completed, task.total)}/{task.total}")
         quiet = now - max(t.updated_at for t in self._states.values())
         parts.append(
-            "running" if quiet < _QUIET_SECONDS else f"no progress for {_duration_text(quiet)}"
+            "running"
+            if quiet < _QUIET_SECONDS
+            else f"no progress for {_duration_text(quiet)}"
         )
-        estimate = (
-            None if "eta_seconds" in task.details else _task_estimate(task, now)
-        )
+        estimate = None if "eta_seconds" in task.details else _task_estimate(task, now)
         counted = _counted_down(task, "eta_seconds", now)
         if counted is not None:
-            parts.append(f"ETA {_eta_text(max(counted, 0.0), estimated=bool(task.details.get('eta_estimated')))}")
+            estimated = bool(task.details.get("eta_estimated"))
+            parts.append(f"ETA {_eta_text(max(counted, 0.0), estimated=estimated)}")
         elif estimate is not None:
             parts.append(
                 f"ETA {_eta_text(estimate.seconds, estimated=estimate.estimated)}"
                 if estimate.seconds is not None
                 else f"overdue {_duration_text(estimate.overdue)}"
             )
-        parts.append(f"elapsed {_duration_text(now - min(t.started_at for t in roots))}")
+        parts.append(
+            f"elapsed {_duration_text(now - min(t.started_at for t in roots))}"
+        )
         usage = self._monitor.usage if self._monitor is not None else None
         if usage is not None and usage.current_rss_bytes is not None:
             parts.append(f"RSS {_rss_text(usage)}")
         if usage is not None and usage.busy_cores is not None:
             parts.append(
-                "idle" if usage.busy_cores < _IDLE_CORES else f"cores {usage.busy_cores:.1f}"
+                "idle"
+                if usage.busy_cores < _IDLE_CORES
+                else f"cores {usage.busy_cores:.1f}"
             )
         return f"{task.description}: " + "; ".join(parts)
 
@@ -984,10 +990,8 @@ class _SidecarDashboard:
 
         import select
 
-        try:
+        with contextlib.suppress(OSError, ValueError):
             self._process.stdin.close()
-        except (OSError, ValueError):
-            pass
         try:
             ready, _, _ = select.select([self._ack_fd], [], [], 2.0)
             if ready:
@@ -995,10 +999,8 @@ class _SidecarDashboard:
         except (OSError, ValueError):
             pass
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(self._ack_fd)
-            except OSError:
-                pass
         self._reap(timeout=1.0)
 
     def _reap(self, *, timeout: float) -> None:
@@ -1040,10 +1042,8 @@ class _SidecarDashboard:
 
         if self._fallback is not None:
             return
-        try:
+        with contextlib.suppress(OSError):
             self._process.kill()
-        except OSError:
-            pass
         self._reap(timeout=1.0)
         self._fallback = _Dashboard(
             stream=self._stream,
@@ -1106,10 +1106,8 @@ def _renderer_main(argv: list[str]) -> None:
     finally:
         dashboard.close()
         stream.flush()
-        try:
+        with contextlib.suppress(OSError):
             os.write(ack_fd, b"x")
-        except OSError:
-            pass
 
 
 def _kept_line(task: _TaskState, *, color: bool) -> str:
@@ -1362,7 +1360,9 @@ def _task_estimate(task: _TaskState, now: float) -> Estimate | None:
     if task.unit == "phases":
         # Phases are not alike: their count says nothing of the time left
         # (a whole command's estimate comes from its phases' priors).
-        return remaining_estimate(prior_seconds=prior, started_at=task.started_at, now=now)
+        return remaining_estimate(
+            prior_seconds=prior, started_at=task.started_at, now=now
+        )
     if task.total is not None and task.total > 0:
         marks = [(float(t), int(c)) for t, c in task.marks]
         if not marks and task.completed > 0:

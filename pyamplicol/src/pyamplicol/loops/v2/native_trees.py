@@ -793,14 +793,14 @@ def export_trees(
     (``_counterterm_program``).
     """
 
-    from .assemble import LAURENT_POWERS, _BlockRows, _single
-    from .refusals import require_nc_exact
-
     # A5's tree part (``NATIVE_SECTIONS``): the trees' interaction program
     # from the slice's native blocks DAG, its steps a section, without the
     # Python ``TreeRows`` and its runtime schema (``_native_tree_program``);
     # the Python rows stay the oracle (and the path of a tree-engine DAG).
     from pyamplicol.generation.progress import step
+
+    from .assemble import LAURENT_POWERS, _BlockRows, _single
+    from .refusals import require_nc_exact
 
     with step("tree-program", "Lowering the tree program"):
         native_trees = _native_tree_program(slice_) if NATIVE_SECTIONS else None

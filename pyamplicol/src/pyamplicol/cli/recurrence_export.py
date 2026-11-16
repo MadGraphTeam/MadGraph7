@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from pyamplicol.api.errors import ArtifactError, ConfigurationError
 
 if TYPE_CHECKING:
-    from pyamplicol.reporting.progress import ProgressSink
     from pyamplicol.api.protocols import Momenta
+    from pyamplicol.reporting.progress import ProgressSink
 
 
 def provider_process_ids(artifact: Path) -> tuple[str, ...]:

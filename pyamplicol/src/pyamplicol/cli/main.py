@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import sys
@@ -378,9 +379,11 @@ def run_cli(
         whereabouts = progress_whereabouts(sink)
         close_progress_sink(sink)
         sink = None
-        message = "interrupted (Ctrl-C) " + (
-            f"{whereabouts}, " if whereabouts else ""
-        ) + "before a complete result was available"
+        message = (
+            "interrupted (Ctrl-C) "
+            + (f"{whereabouts}, " if whereabouts else "")
+            + "before a complete result was available"
+        )
         if config is not None and str(config.action) == "generate":
             # The writer stages the artifact privately and publishes it only
             # when complete (``artifacts.writer``).
@@ -425,10 +428,8 @@ def _exit_promptly(code: int) -> None:
             thread.join()
     atexit._run_exitfuncs()
     for stream in (sys.stdout, sys.stderr):
-        try:
+        with contextlib.suppress(OSError, ValueError):
             stream.flush()
-        except (OSError, ValueError):
-            pass
     os._exit(code)
 
 
@@ -448,10 +449,8 @@ def _exit_without_lingering_threads(code: int, *, grace: float = 2.0) -> None:
         if thread is not threading.main_thread()
     ):
         for stream in (sys.stdout, sys.stderr):
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 stream.flush()
-            except (OSError, ValueError):
-                pass
         os._exit(code)
 
 

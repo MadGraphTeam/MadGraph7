@@ -3514,7 +3514,9 @@ class _FittedTables:
                     if floors is None:
                         floors = _column_floors(self, len(names))
                     shrinkable = [
-                        index for index in range(len(widths)) if widths[index] > floors[index]
+                        index
+                        for index in range(len(widths))
+                        if widths[index] > floors[index]
                     ]
                     if not shrinkable:
                         break

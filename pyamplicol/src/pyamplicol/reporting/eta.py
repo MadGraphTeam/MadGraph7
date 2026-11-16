@@ -20,6 +20,7 @@ between updates:
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -64,7 +65,7 @@ def _seconds_per_item(marks: Sequence[Mark], started_at: float) -> float | None:
         overall = (last_time - started_at) / max(last_count, 1)
     steps = [
         (later[0] - earlier[0]) / (later[1] - earlier[1])
-        for earlier, later in zip(marks, marks[1:])
+        for earlier, later in itertools.pairwise(marks)
         if later[1] > earlier[1]
     ]
     size = max(_RECENT_MINIMUM, int(len(steps) * _RECENT_FRACTION))

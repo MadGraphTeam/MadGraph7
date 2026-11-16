@@ -766,7 +766,9 @@ def memory_text(size: float) -> str:
         if abs(size) >= scale:
             value = size / scale
             # 1000-1023 of a unit: four digits, not "1.01e+03".
-            return f"{value:.0f} {unit}" if abs(value) >= 999.5 else f"{value:.3g} {unit}"
+            return (
+                f"{value:.0f} {unit}" if abs(value) >= 999.5 else f"{value:.3g} {unit}"
+            )
     return f"{size:.0f} B" if abs(size) >= 999.5 else f"{size:.3g} B"
 
 
