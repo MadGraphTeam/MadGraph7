@@ -872,14 +872,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "sample",
             &BeamstrahlungSampler::sample,
-            py::arg("x1"),
-            py::arg("x2"),
-            py::arg("q2"),
-            py::arg("component"),
-            py::arg("u1"),
-            py::arg("u2"),
-            py::arg("u3"),
-            py::arg("u4"),
+            py::arg("x1"), py::arg("x2"), py::arg("q2"), py::arg("component"),
+            py::arg("u1"), py::arg("u2"), py::arg("u3"), py::arg("u4"),
             pydoc::doc("BeamstrahlungSampler::sample")
         );
 

@@ -2201,7 +2201,7 @@ class MadgraphProcess:
                 resonance_ids = {}
                 channel_resonances = [
                     [resonance_ids.setdefault(key, len(resonance_ids))
-                     for key in getattr(channel, "resonances", ())]
+                     for key in channel.resonances]
                     for channel in phasespace.channels
                 ]
             training_args.append(

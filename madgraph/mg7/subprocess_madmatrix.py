@@ -107,17 +107,19 @@ def topology_structure(
 
 
 def resonance_keys(
-    topo: ms.Topology,
+    topos: list[ms.Topology],
     permutations: list[list[int]],
     active_flavors: list[list[int]],
     n_in: int = 2,
 ) -> set:
-    """(flavor, |pdg|, outgoing legs) of every resonance of a channel, for each
-    of its permutations and the flavors active for it."""
+    """(flavor, |pdg|, outgoing legs) of every resonance of the given on-shell
+    configurations of a channel, for each of its permutations and the flavors
+    active for it."""
     keys = set()
-    for permutation, flavors in zip(permutations, active_flavors):
-        for pdg, legs in topology_structure(topo, permutation, n_in).resonances:
-            keys.update((flavor, pdg, legs) for flavor in flavors)
+    for topo in topos:
+        for permutation, flavors in zip(permutations, active_flavors):
+            for pdg, legs in topology_structure(topo, permutation, n_in).resonances:
+                keys.update((flavor, pdg, legs) for flavor in flavors)
     return keys
 
 
@@ -556,6 +558,8 @@ class MadgraphSubprocess:
         drop_threshold = self.process.run_card["phasespace"]["drop_qcd_s_channel"]
         if drop_threshold >= 0 and channel_count > drop_threshold:
             mcdata = self.drop_qcd_s_channels(mcdata)
+        mcdata = self.drop_empty_channels(mcdata)
+        # last: its merges only live in amp2_remaps (see keep_channel_groups)
         ew_threshold = self.process.run_card["phasespace"]["ew_channel_reduction"]
         channel_count = sum(len(topos) for topos in mcdata.topologies)
         if ew_threshold >= 0 and channel_count > ew_threshold and (
@@ -563,7 +567,6 @@ class MadgraphSubprocess:
             or not self.vegas_guaranteed()
         ):
             mcdata = self.reduce_ew_channels(mcdata)
-        mcdata = self.drop_empty_channels(mcdata)
 
         channels = []
         t_channel_mode = self.t_channel_mode(
@@ -575,10 +578,10 @@ class MadgraphSubprocess:
             mcdata.active_flavors
         )):
             topo_count = len(chan_topologies)
-            resonances = resonance_keys(
-                chan_topologies[0], chan_permutations, active_flavors, n_in
-            )
             for topo_index, (topo, indices) in enumerate(zip(chan_topologies, chan_indices)):
+                resonances = resonance_keys(
+                    [topo], chan_permutations, active_flavors, n_in
+                )
                 mapping = ms.PhaseSpaceMapping(
                     chan_topologies[0],
                     self.process.e_cm,
@@ -870,65 +873,71 @@ class MadgraphSubprocess:
         mode = self.process.run_card["phasespace"]["ew_channel_reduction_mode"]
         t_channel_only = mode == "t_channel"
         extra_s_channels = 1 if mode == "partial" else 0
-        groups = {}
+        # every on-shell configuration (subchannel) enters the key and the pairs
+        groups, counts = {}, {}
         for index, topos in enumerate(mcdata.topologies):
-            structure = topology_structure(topos[0], None, n_in)
-            key = structure.key if mode == "full" else structure.t_channel_key
-            groups.setdefault(key, []).append((index, structure.nonres_s_count))
-
-        def pairs_of(index):
-            return resonance_keys(
-                mcdata.topologies[index][0], mcdata.permutations[index],
-                mcdata.active_flavors[index], n_in
+            structures = [topology_structure(topo, None, n_in) for topo in topos]
+            key = tuple(
+                st.key if mode == "full" else st.t_channel_key for st in structures
             )
-
-        def flavors_of(index):
-            return {f for flavs in mcdata.active_flavors[index] for f in flavs}
+            groups.setdefault(key, []).append(index)
+            # equal within a group, the key fixes the non-resonant s-channels
+            counts[key] = min(st.nonres_s_count for st in structures)
+        pairs = [
+            resonance_keys(topos, perms, flavors, n_in)
+            for topos, perms, flavors in zip(
+                mcdata.topologies, mcdata.permutations, mcdata.active_flavors
+            )
+        ]
+        flavors = [
+            {f for flavs in chan_flavors for f in flavs}
+            for chan_flavors in mcdata.active_flavors
+        ]
 
         def representative(members):
             # most flavors, then the lightest t-channel (the most peaked mapping)
             return min(members, key=lambda index: (
-                -len(flavors_of(index)),
+                -len(flavors[index]),
                 sum(mcdata.topologies[index][0].t_propagator_masses),
                 index,
             ))
 
-        merged = []
-        for members in groups.values():
-            indices = [index for index, _ in members]
-            merged.append((
-                min(count for _, count in members),
+        merged = [
+            (
+                counts[key],
                 representative(indices),
                 indices,
-                set().union(*(pairs_of(i) for i in indices)),
-                set().union(*(flavors_of(i) for i in indices)),
-            ))
+                set().union(*(pairs[i] for i in indices)),
+                set().union(*(flavors[i] for i in indices)),
+            )
+            for key, indices in groups.items()
+        ]
         # t_channel mode: every group is kept, as if all had the fewest
         min_count = None if t_channel_only else min(entry[0] for entry in merged)
         covered_pairs, covered_flavors = set(), set()
-        kept, merge_into = [], {}
-        for count, rep, indices, pairs, flavors in sorted(
+        kept, merge_into = set(), {}
+        for count, rep, indices, group_pairs, group_flavors in sorted(
             merged, key=lambda entry: (entry[0], -len(entry[3]), -len(entry[4]), entry[1])
         ):
             if t_channel_only or count <= min_count + extra_s_channels \
-                    or not pairs <= covered_pairs \
-                    or not flavors <= covered_flavors:
-                kept.append(rep)
-                covered_pairs |= pairs
-                covered_flavors |= flavors
+                    or not group_pairs <= covered_pairs \
+                    or not group_flavors <= covered_flavors:
+                kept.add(rep)
+                covered_pairs |= group_pairs
+                covered_flavors |= group_flavors
                 merge_into.update({i: rep for i in indices if i != rep})
         # a representative need not map every pair or flavor of its group:
         # keep the members that would otherwise lose one
-        kept_pairs = set().union(*(pairs_of(i) for i in kept))
-        kept_flavors = set().union(*(flavors_of(i) for i in kept))
+        kept_pairs = set().union(*(pairs[i] for i in kept))
+        kept_flavors = set().union(*(flavors[i] for i in kept))
         for index in range(len(mcdata.topologies)):
             if index in kept:
                 continue
-            if not pairs_of(index) <= kept_pairs or not flavors_of(index) <= kept_flavors:
-                kept.append(index)
+            if not pairs[index] <= kept_pairs or not flavors[index] <= kept_flavors:
+                kept.add(index)
                 merge_into.pop(index, None)
-                kept_pairs |= pairs_of(index)
-                kept_flavors |= flavors_of(index)
+                kept_pairs |= pairs[index]
+                kept_flavors |= flavors[index]
         logger.info(
             "subprocess %d: electroweak channel reduction from %d to %d channels",
             self.subproc_id, len(mcdata.topologies), len(kept)
@@ -1006,7 +1015,8 @@ class MadgraphSubprocess:
         dropped channel are left unmapped, unless merge_into maps the dropped
         group to a kept one: then each of its diagrams adds to the channel
         weight of the kept group's diagram with the same permutation, provided
-        that one samples all of its flavors."""
+        that one samples all of its flavors. The merge is only recorded in
+        amp2_remaps, so a later call without merge_into undoes it."""
         if len(kept_groups) == len(mcdata.topologies):
             return mcdata
         merged_members = {}
