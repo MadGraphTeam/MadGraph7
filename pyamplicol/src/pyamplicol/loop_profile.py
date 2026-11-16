@@ -773,6 +773,30 @@ def profile_loop(
             "benchmark.checked (--checked) times the checked reduction: drop "
             "evaluation.reduction_unchecked (--reduction-unchecked)"
         )
+    # A previous profile of this artifact (``_ProfileHistory``): the whole
+    # command's estimate from the first second, then the measurement's
+    # priors; without one, a time budget stands for the estimate until the
+    # first measured call.
+    history = (
+        _ProfileHistory(path, evaluation.process, truth)
+        if progress is not None
+        else None
+    )
+    settings = "total:" + _settings_key(bench, config)
+    previous_total = None if history is None else history.seconds(settings)
+    provisional_end: list[float | None] = [None]
+    if previous_total is not None:
+        provisional_end[0] = monitor.begin + previous_total
+    elif completion is not None:
+        provisional_end[0] = monitor.begin + completion
+
+    def provisional_remaining() -> tuple[float, bool] | None:
+        end = provisional_end[0]
+        if end is None:
+            return None
+        return max(end - time.perf_counter(), 1.0), True
+
+    monitor.remaining = provisional_remaining
     loading = monitor.phase("load", "Loading the artifact", None, "steps")
     loading.update(0, None, eta=None, step=f"loading {path.name}")
     load_begin = time.perf_counter()
@@ -806,13 +830,6 @@ def profile_loop(
             + " (the counts are chosen from the time)"
         )
     interrupted = False
-    try:
-        costs = _measure(
-            runtime, path, physics, config, backends, truth, monitor, load_seconds
-        )
-    except KeyboardInterrupt:
-        monitor.close(False)
-        raise
     batch_max = int(bench.batch_size)
     given_points = stability_given if completion is None else None
     # Every sample's record: for --json or --samples-output (else none: the
@@ -824,32 +841,89 @@ def profile_loop(
         if records
         else 0.0
     )
-    # A stability worker's start: the load and its warm-up (one point per
-    # stream; none for a stream dearer than MEASURE_REPEAT_SECONDS).
-    stability_start = (
-        load_seconds
-        + 1.0
-        + sum(
-            seconds
-            for c in costs.values()
-            for seconds in (c.stability, c.stability_reference or 0.0)
-            if seconds <= MEASURE_REPEAT_SECONDS
+
+    def planning(costs_map: Mapping[str, Any], elapsed: float) -> tuple[Any, float]:
+        """The plan from ``costs_map`` with ``elapsed`` seconds spent, and a
+        stability worker's start: the load and its warm-up (one point per
+        stream; none for a stream dearer than MEASURE_REPEAT_SECONDS)."""
+
+        start = (
+            load_seconds
+            + 1.0
+            + sum(
+                seconds
+                for c in costs_map.values()
+                for seconds in (c.stability, c.stability_reference or 0.0)
+                if seconds <= MEASURE_REPEAT_SECONDS
+            )
         )
-    )
-    planned = plan_profile(
-        costs,
-        runtime=want_runtime,
-        stability=want_stability,
-        workers=workers,
-        lanes=DEFAULT_LANES,
-        batch_max=batch_max,
-        completion=completion,
-        elapsed=monitor.elapsed(),
-        stability_start=stability_start,
-        runtime_counts_given=runtime_given and completion is None,
-        stability_points_given=given_points,
-        tail_seconds_per_point=tail if completion is not None else 0.0,
-    )
+        return (
+            plan_profile(
+                costs_map,
+                runtime=want_runtime,
+                stability=want_stability,
+                workers=workers,
+                lanes=DEFAULT_LANES,
+                batch_max=batch_max,
+                completion=completion,
+                elapsed=elapsed,
+                stability_start=start,
+                runtime_counts_given=runtime_given and completion is None,
+                stability_points_given=given_points,
+                tail_seconds_per_point=tail if completion is not None else 0.0,
+            ),
+            start,
+        )
+
+    def future_of(planned: Any, costs_map: Mapping[str, Any]) -> dict[str, float]:
+        """What is left of ``planned`` after each phase (the whole command's
+        ETA)."""
+
+        future = {
+            f"runtime:{b}": counts.expected for b, counts in planned.runtime.items()
+        }
+        if want_runtime and not planned.runtime:
+            # The counts given: their cost at the measured rates (at least the
+            # warm-ups and the minimum calls, the budget, the reference's).
+            for b, c in costs_map.items():
+                calls = bench.warmup_runs + max(bench.minimum_samples, 1)
+                seconds = c.start + max(
+                    calls * bench.batch_size * c.binary64,
+                    bench.warmup_runs * bench.batch_size * c.binary64
+                    + float(bench.target_runtime),
+                )
+                if c.reference is not None:
+                    seconds += c.reference + max(
+                        float(bench.target_runtime), c.reference
+                    )
+                future[f"runtime:{b}"] = seconds
+        if want_stability:
+            future["stability"] = planned.stability_seconds
+        return future
+
+    def provisional(costs_map: dict[str, Any], left: float) -> None:
+        # The whole command from the costs known or expected so far.
+        planned_now, _ = planning(costs_map, monitor.elapsed() + left)
+        rest = sum(future_of(planned_now, costs_map).values())
+        provisional_end[0] = time.perf_counter() + left + rest
+
+    try:
+        costs = _measure(
+            runtime,
+            path,
+            physics,
+            config,
+            backends,
+            truth,
+            monitor,
+            load_seconds,
+            history=history,
+            provisional=provisional,
+        )
+    except KeyboardInterrupt:
+        monitor.close(False)
+        raise
+    planned, stability_start = planning(costs, monitor.elapsed())
     if not planned.feasible:
         # One number, the header's too: the whole command with the minimums.
         asked = (
@@ -881,25 +955,7 @@ def profile_loop(
             "running the minimums",
             warning=True,
         )
-    # What is left of the plan after each phase (the whole command's ETA).
-    future: dict[str, float] = {
-        f"runtime:{b}": counts.expected for b, counts in planned.runtime.items()
-    }
-    if want_runtime and not planned.runtime:
-        # The counts given: their cost at the measured rates (at least the
-        # warm-ups and the minimum calls, the budget, the reference's).
-        for b, c in costs.items():
-            calls = bench.warmup_runs + max(bench.minimum_samples, 1)
-            seconds = c.start + max(
-                calls * bench.batch_size * c.binary64,
-                bench.warmup_runs * bench.batch_size * c.binary64
-                + float(bench.target_runtime),
-            )
-            if c.reference is not None:
-                seconds += c.reference + max(float(bench.target_runtime), c.reference)
-            future[f"runtime:{b}"] = seconds
-    if want_stability:
-        future["stability"] = planned.stability_seconds
+    future = future_of(planned, costs)
     current: list[Any] = [None]
 
     def remaining() -> tuple[float, bool] | None:
@@ -1144,6 +1200,17 @@ def profile_loop(
                     "best-effort" if kind == "best-effort" else "failed",
                 )
                 causes.append((stability_row.backend, "stability", kind, text))
+    complete = not (
+        interrupted
+        or bool(stability_setup is not None and stability_setup.get("interrupted"))
+    )
+    if complete and history is not None:
+        # The next profile's priors and whole estimate.
+        history.store(
+            backends,
+            costs,
+            {"load": load_seconds, settings: monitor.elapsed()},
+        )
     monitor.close(
         not (
             interrupted
@@ -1695,6 +1762,9 @@ def _measure(
     truth: GroundTruth,
     monitor: _Monitor,
     load_seconds: float,
+    *,
+    history: _ProfileHistory | None = None,
+    provisional: Callable[[dict[str, Any], float], None] | None = None,
 ) -> dict[str, Any]:
     """The measurement phase of a time-budgeted profile, on this process's
     loaded runtime, per backend: the binary64 cost per point of an
@@ -1705,7 +1775,13 @@ def _measure(
     (first calls: upper estimates); the stability run's binary64 cost from
     the prior ``STABILITY_PRIOR``; a process's start-up from this process's
     load. A backend that refuses the process is left out (its timing
-    reports the refusal)."""
+    reports the refusal). Every call's expected cost (its ETA) and, after
+    every step, ``provisional(costs, seconds)`` (every backend's costs so
+    far, the steps left's expected seconds: the whole command's estimate
+    long before the phase ends) come from what is known: a previous profile
+    of the artifact (``history``), else the steps already measured (the
+    other backend's binary64 cost; the reference's from the backend's
+    multiplier prior, ``_MULTIPLIER_PRIOR``)."""
 
     from pyamplicol.api.errors import ReductionUnavailable
     from pyamplicol.benchmarking import REFERENCE_PRIOR, _initial_invariant
@@ -1737,7 +1813,7 @@ def _measure(
     steps = len(backends) * len(precisions)
     phase = monitor.phase("measure", "Measuring the cost per point", steps)
 
-    def cost(backend: str, precision: str) -> float:
+    def cost(backend: str, precision: str, after: float = 0.0) -> float:
         options: dict[str, Any] = {
             "poles": "none",
             "on_failure": "return",
@@ -1762,7 +1838,7 @@ def _measure(
                     steps,
                     eta=None
                     if expected is None
-                    else max(expected - since, 0.1 * expected),
+                    else max(expected - since, 0.1 * expected) + after,
                     step=f"{name}: {label} call of {size} point"
                     + ("s" if size > 1 else "")
                     + f" running {_duration(since)}"
@@ -1778,11 +1854,7 @@ def _measure(
         # One point; again when it was cheap (a first call carries seconds of
         # lazy set-up, negligible against a dearer point); one full chunk
         # when that costs at most WARMUP_CALL_SECONDS at the point's price.
-        prior = None
-        if precision != "binary64" and "binary64" in measured:
-            prior = measured["binary64"] * REFERENCE_PRIOR.get(
-                truth.arithmetic, REFERENCE_PRIOR["arbitrary"]
-            )
+        prior = prior_point(backend, precision)
         per_point = seconds(1, prior)
         if per_point <= MEASURE_REPEAT_SECONDS:
             per_point = seconds(1, per_point)
@@ -1790,9 +1862,77 @@ def _measure(
             per_point = seconds(len(points), per_point * len(points))
         return per_point
 
+    # Every step measured so far, by (backend, precision).
+    known: dict[tuple[str, str], float] = {}
+
+    def prior_point(backend: str, precision: str) -> float | None:
+        """The expected seconds per point of a step not measured yet."""
+
+        if (backend, precision) in known:
+            return known[(backend, precision)]
+        if history is not None:
+            remembered = history.cost(backend, precision)
+            if remembered is not None:
+                return remembered
+        if precision == "binary64":
+            # The other carrier's binary64 point: the same matrix element.
+            others = [v for (_, p), v in known.items() if p == "binary64"]
+            return others[0] if others else None
+        binary64 = prior_point(backend, "binary64")
+        if binary64 is None:
+            return None
+        factor = (
+            _MULTIPLIER_PRIOR.get(backend, REFERENCE_PRIOR["double-double"])
+            if truth.arithmetic == "double-double"
+            else REFERENCE_PRIOR.get(truth.arithmetic, REFERENCE_PRIOR["arbitrary"])
+        )
+        return binary64 * factor
+
+    def step_seconds(per_point: float | None) -> float:
+        """A step's expected seconds at ``per_point``: its one-point calls
+        and, when cheap, its full chunk (``cost``)."""
+
+        if per_point is None:
+            return 0.0
+        total = per_point * (2.0 if per_point <= MEASURE_REPEAT_SECONDS else 1.0)
+        if per_point * len(points) <= WARMUP_CALL_SECONDS:
+            total += per_point * len(points)
+        return total
+
+    def report(step: int) -> None:
+        """``provisional`` after ``step`` steps: the costs known or expected
+        of every backend, the steps left's seconds."""
+
+        if provisional is None:
+            return
+        expected: dict[str, Any] = {}
+        for backend in backends:
+            binary64 = prior_point(backend, "binary64")
+            if binary64 is None:
+                return
+            reference = (
+                prior_point(backend, "reference") if "reference" in precisions else None
+            )
+            expected[backend] = Costs(
+                binary64,
+                reference,
+                STABILITY_PRIOR * binary64,
+                reference,
+                load_seconds + 1.0,
+            )
+        left = sum(
+            step_seconds(prior_point(backend, precision))
+            for position, (backend, precision) in enumerate(
+                (b, p) for b in backends for p in precisions
+            )
+            if position >= step
+        )
+        provisional(expected, left)
+
     costs: dict[str, Any] = {}
     done = 0
     measured: dict[str, float] = {}
+    report(0)
     for backend in backends:
         name = NAMES.get(backend, backend)
         measured.clear()
@@ -1805,8 +1945,16 @@ def _measure(
                     eta=None,
                     step=f"{name}: {label} cost per point",
                 )
-                measured[precision] = cost(backend, precision)
+                # The steps after this one at their expected cost.
+                order = [(b, q) for b in backends for q in precisions]
+                after = sum(
+                    step_seconds(prior_point(b, q))
+                    for b, q in order[order.index((backend, precision)) + 1 :]
+                )
+                measured[precision] = cost(backend, precision, after)
+                known[(backend, precision)] = measured[precision]
                 done += 1
+                report(done)
                 ratio = (
                     measured["reference"] / measured["binary64"]
                     if "reference" in measured
@@ -1845,6 +1993,99 @@ def _measure(
     )
     monitor.clear_readings()
     return costs
+
+
+def _settings_key(bench: Any, config: RunConfig) -> str:
+    """The settings a whole profile's time depends on (the history's total
+    of the previous profile with the same ones)."""
+
+    import hashlib
+
+    parts = (
+        bench.completion_time,
+        bench.runtime,
+        bench.stability,
+        *(getattr(bench, name) for _, name in _COUNT_OPTIONS),
+        bench.n_core,
+        bench.ground_truth,
+        bench.checked,
+        config.output.format,
+        bench.samples_output is not None,
+        config.evaluation.reduction,
+    )
+    return hashlib.sha256(repr(parts).encode()).hexdigest()[:16]
+
+
+class _ProfileHistory:
+    """The costs and times of the previous profile of the same artifact
+    (its ``artifact.json``), process, reference precision and host, kept in
+    the pyAmpliCol cache with the generation history (``generation.progress.
+    GenerationHistory``: bounded, atomic, a corrupt file ignored): the
+    priors of the next profile's measurement and its whole estimate from the
+    first second. Written only when the profile shows progress, as
+    ``generate``'s."""
+
+    def __init__(self, artifact: Path, process: str | None, truth: GroundTruth):
+        import hashlib
+        import platform
+
+        from pyamplicol.generation.progress import GenerationHistory
+
+        try:
+            digest = hashlib.sha256(
+                (artifact / "artifact.json").read_bytes()
+            ).hexdigest()
+        except OSError:
+            digest = None
+        signature = (
+            None
+            if digest is None
+            else GenerationHistory.signature_of(
+                "profile",
+                digest,
+                process,
+                sorted(truth.record().items()),
+                platform.machine(),
+                os.cpu_count(),
+            )
+        )
+        self._store = GenerationHistory(signature)
+
+    @property
+    def backends(self) -> list[str]:
+        return list(self._store.order)
+
+    def cost(self, backend: str, precision: str) -> float | None:
+        """The previous profile's measured seconds per point."""
+
+        # Stored in microseconds (the store keeps milliseconds' precision).
+        value = self._store.prior(f"cost:{backend}:{precision}")
+        return value * 1e-6 if value is not None and value > 0.0 else None
+
+    def seconds(self, name: str) -> float | None:
+        return self._store.prior(name)
+
+    def store(
+        self,
+        backends: Sequence[str],
+        costs: Mapping[str, Any],
+        seconds: Mapping[str, float],
+    ) -> None:
+        for backend, cost in costs.items():
+            self._store.observe(f"cost:{backend}:binary64", 1e6 * float(cost.binary64))
+            if cost.reference is not None:
+                self._store.observe(
+                    f"cost:{backend}:reference", 1e6 * float(cost.reference)
+                )
+        for name, value in seconds.items():
+            self._store.observe(name, float(value))
+        self._store.store(list(backends))
+
+
+# The reference multiplier expected of each backend before it is measured
+# (double-double over binary64, per point: TIRust x4-x16, NinjaRS x25-x100
+# on the processes profiled so far).
+_MULTIPLIER_PRIOR = {"tirust": 10.0, "ninjars": 50.0}
 
 
 def _while_ticking(
