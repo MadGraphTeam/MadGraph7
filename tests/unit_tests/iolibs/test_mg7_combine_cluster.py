@@ -20,9 +20,11 @@ import tempfile
 import unittest
 from unittest import mock
 
-import numpy as np
-
-from madgraph.iolibs.template_files.mg7 import combine_cluster as combine
+try:
+    import numpy as np
+    from madgraph.iolibs.template_files.mg7 import combine_cluster as combine
+except ImportError:  # CI collects every test module, some runners lack numpy
+    np = None
 
 HEADER = """<LesHouchesEvents version="3.0">
 <header>
@@ -84,6 +86,7 @@ def write_job(path, seed, count, mean, error, fmt, mean_abs=None):
             f.write(header + "</LesHouchesEvents>\n")
 
 
+@unittest.skipIf(np is None, "numpy is not installed")
 class TestCombineCluster(unittest.TestCase):
 
     def setUp(self):
