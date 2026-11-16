@@ -2114,24 +2114,30 @@ def _parameter_program(
         Replacement(E(model_symbols.symbol(name).to_canonical_string()), symbol)
         for name, symbol in symbol_of.items()
     ]
+    from pyamplicol.generation.progress import step
+
     model = []
-    for record in records:
-        kind = record["kind"]
-        if kind == "external_parameter":
-            model.append(["input", index[str(record["name"])], False])
-        elif kind == "derived_parameter_component":
-            name = str(record["runtime_name"])
-            o = output(
-                ("model", name),
-                lambda name=name: E(trees._definitions[name]).replace_multiple(
-                    externals
-                ),
-            )
-            model.append(["output", o, record["complex_component"] == "imag"])
-        else:
-            raise NativeExportUnsupported(
-                "parameter-kind", f"a tree model parameter of kind {kind!r}"
-            )
+    with step(
+        "model", "Substituting the model parameters", total=len(records)
+    ) as substituting:
+        for done, record in enumerate(records, start=1):
+            kind = record["kind"]
+            if kind == "external_parameter":
+                model.append(["input", index[str(record["name"])], False])
+            elif kind == "derived_parameter_component":
+                name = str(record["runtime_name"])
+                o = output(
+                    ("model", name),
+                    lambda name=name: E(trees._definitions[name]).replace_multiple(
+                        externals
+                    ),
+                )
+                model.append(["output", o, record["complex_component"] == "imag"])
+            else:
+                raise NativeExportUnsupported(
+                    "parameter-kind", f"a tree model parameter of kind {kind!r}"
+                )
+            substituting.update(done)
     # The counterterm program's model parameters: the model's, plus the CT
     # multiplicities and slot switches of the request (integers fixed per
     # process; every slot on, finite-only evaluations skip the pole terms)
@@ -2143,7 +2149,8 @@ def _parameter_program(
     if counterterm_trees is not None:
         ct_rows = counterterm_trees.rows
         fixed = counterterm_trees.fixed
-        references = _CountertermReferences.of(slice_, index, symbol_of)
+        with step("references", "Lowering the counterterm coefficients"):
+            references = _CountertermReferences.of(slice_, index, symbol_of)
         ct_symbols = symbols.model(ct_rows.compiled.name)
         for record in ct_rows._records:
             if record["kind"] != "external_parameter":
@@ -2567,8 +2574,6 @@ def _parameter_program(
     # orders), so their canonical names and the saved state do not depend on
     # how the model was obtained. (The scalar predicates the program keeps
     # by name are aligned when created, ``scalar_frontend.scalar_predicates``.)
-    from pyamplicol.generation.progress import step
-
     with step("transfer", "Transferring the parameter expressions"):
         canonical, parameters, functions = _parameter_stage(
             SimpleNamespace(
