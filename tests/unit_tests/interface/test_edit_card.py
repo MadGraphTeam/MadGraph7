@@ -493,6 +493,49 @@ class TestEditCardCmd(unittest.TestCase):
         self.cmd.do_set('mt 180')
         self.assertEqual(param['mass'].get((6,)).value, 180)
 
+    def test_unused_onia_set_warns_in_scripted_runs(self):
+        """a launch script may set the LDME or mass of a bound state that the
+        process does not have: warn and go on, but stop on a wrong command"""
+        onia = ('Block ldme\n'
+                '       443  1.16   # LDME for Jpsi(1|3S11)\n'
+                'Block onium_mass\n'
+                '       443  3.1   # mass for Jpsi(1|3S11)\n')
+        for name in ('onia_card.dat', 'onia_card_default.dat'):
+            with open('/tmp/edit_card/Cards/%s' % name, 'w') as fsock:
+                fsock.write(onia)
+        fakemother = FakeInterface('/tmp/edit_card/')
+        fakemother.inputfile = iter([])
+        cmd = runcmd.AskforEditCard('', cards=['run_card.dat', 'param_card.dat',
+                                               'onia_card.dat'],
+                                    mode='auto', mother_interface=fakemother)
+        ldme = cmd.onia_card['ldme'].param_dict
+        for line in ('onia_card ldme 441 1.0', 'ldme 441 1.0',
+                     'onia_card onium_mass 441 2.98', 'onia_card ldme_decay 443 1.0',
+                     'ldme_decay 443 1.0', 'onia_card ldme 441 default'):
+            with self.assertLogs('madgraph.stdout', 'WARNING') as logs:
+                cmd.do_set(line)
+            self.assertIn('is ignored', logs.output[0])
+        self.assertEqual(sorted(ldme), [(443,)])
+        self.assertEqual(ldme[(443,)].value, 1.16)
+        # a wrong command is still an error
+        for line in ('onia_card ldm 443 1.0', 'onia_card ldme 443 abc',
+                     'onia_card ldme abc 1.0', 'onia_card ldme 1.0'):
+            self.assertRaises(madgraph.InvalidCmd, cmd.do_set, line)
+        # the settings of the bound states of the process are applied
+        cmd.do_set('onia_card ldme 443 1.2')
+        cmd.do_set('onium_mass 443 3.0969')
+        self.assertEqual(ldme[(443,)].value, 1.2)
+        self.assertEqual(cmd.onia_card['onium_mass'].param_dict[(443,)].value, 3.0969)
+        cmd.do_set('onia_card ldme 443 default')
+        self.assertEqual(ldme[(443,)].value, 1.16)
+        # a process without bound states
+        self.cmd.mother_interface.inputfile = iter([])
+        for line in ('onia_card ldme 443 1.0', 'ldme 443 1.0', 'onium_mass 443 3.1',
+                     'onia_card default'):
+            with self.assertLogs('madgraph.stdout', 'WARNING') as logs:
+                self.cmd.do_set(line)
+            self.assertIn('no bound state', logs.output[0])
+
     def test_set_with_energy_unit(self):
         """a value with an energy unit is converted to GeV for an energy (a
         mass, a width, an energy entry of the run_card) and refused for

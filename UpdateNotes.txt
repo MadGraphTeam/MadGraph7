@@ -101,6 +101,12 @@ ANNOUNCEMENT:
          onia by the Breit-Wigner truncation of their width (0.979 for BW_cut = 15), although an
          onium decays on its mass shell and no virtuality is drawn: the decayed cross section is
          now the production one times the branching ratio (test_madspin_onium_decay_2to2).
+       - A launch script that sets the onia_card entry of a bound state the process does
+         not have ("set onia_card ldme 441 1.0" without etac(1|1S01)), a block it does not
+         have (ldme_decay in a production run), or any onia_card entry in a process without
+         bound states now gets a warning, which lists the entries of the block, and carries
+         on; it stopped with "invalid set command" since invalid set commands are errors in
+         scripted runs. A wrong block name, PDG code or value is still an error.
        - Bug fix: the madevent output of a decaying bound state named its P directory
          after the constituents, so that the Fock states of a hadron ("generate Jpsi >
          mu+ mu-" decays six) all wrote to one directory, P1_ccx_ll, which kept the last
