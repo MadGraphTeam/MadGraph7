@@ -62,7 +62,10 @@ process artifact. `generate()` returns an immutable `GenerationResult` with the
 absolute output, stored process set, schema version, and file inventory, and
 `statistics`, a `GenerationStatistics` with the wall time of the call, its
 phases and the peak RAM of the generation (also stored in the artifact; see
-[the generate summary](command-line-interface.md#generate)).
+[the generate summary](command-line-interface.md#generate)). Called as a library, the
+measurement leaves the program's own peak-memory accounting untouched: the
+peak is the process's lifetime peak, exact when the generation raised it and
+else an upper bound.
 
 The packaged scalar HEFT model uses the same public selector:
 

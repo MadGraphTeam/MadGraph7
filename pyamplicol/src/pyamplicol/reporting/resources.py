@@ -454,6 +454,31 @@ def _lifetime_peak_bytes() -> tuple[int | None, str]:
     return _rusage_peak_bytes(), "ru_maxrss"
 
 
+# Whether pyAmpliCol owns this process (its command line, or a worker process
+# it spawned): only then may peak_memory reset the kernel's high-water mark,
+# which is process-wide (it lowers the process's VmHWM and ru_maxrss, and so
+# what a parent's wait4, `time -v` or the host program's own accounting
+# read). Called as a library, pyAmpliCol never changes it.
+_OWNS_PROCESS = False
+
+
+def own_process_accounting() -> None:
+    """Declare that pyAmpliCol owns this process (the command line, a
+    worker process it spawned): ``peak_memory`` may then reset the kernel's
+    high-water mark at the start of a region. Never call it from a program
+    that uses pyAmpliCol as a library: the reset lowers the program's own
+    peak RSS (VmHWM, ru_maxrss) for every later reader."""
+
+    global _OWNS_PROCESS
+    _OWNS_PROCESS = True
+
+
+def owns_process_accounting() -> bool:
+    """Whether ``own_process_accounting`` was declared in this process."""
+
+    return _OWNS_PROCESS
+
+
 # The peak_memory regions open now: a region opened inside another one does
 # not reset the high-water mark (that would lose the outer region's peak).
 # Weak references, so that a region left without __exit__ does not count.
@@ -469,9 +494,13 @@ class peak_memory:
     to the current resident set size at the start of the block by writing
     "5" to /proc/self/clear_refs (the peak resident set size only: page
     reference bits are untouched), so the peak is the block's, sampled by
-    no timer. The kernel records the mark from its per-CPU batched
-    resident counters when memory is released, so a peak released before
-    the end of the block can read short by up to the counters' batch on
+    no timer. The reset is process-wide, so it is done only where
+    pyAmpliCol owns the process (``own_process_accounting``: its command
+    line and its worker processes); called as a library, the block is
+    measured as with a refused reset and the caller's peak is untouched.
+    The kernel records the mark from its per-CPU batched resident counters
+    when memory is released, so a peak released before the end of the
+    block can read short by up to the counters' batch on
     each CPU the process ran on; the resident size at the end is read
     exactly (VmHWM is at least VmRSS in one read). A block opened inside
     another open block does not reset the mark (that would lose the outer
@@ -501,7 +530,7 @@ class peak_memory:
         with _ACTIVE_REGIONS_LOCK:
             nested = len(_ACTIVE_REGIONS) > 0
             _ACTIVE_REGIONS.add(self)
-        if not nested and _proc_status_kib("VmHWM") is not None:
+        if not nested and _OWNS_PROCESS and _proc_status_kib("VmHWM") is not None:
             try:
                 _PROC_CLEAR_REFS.write_text("5")
                 self._region = True
@@ -859,6 +888,8 @@ __all__ = [
     "ResourceUsageMonitor",
     "bounded_memory_text",
     "memory_text",
+    "own_process_accounting",
+    "owns_process_accounting",
     "peak_memory",
     "peak_memory_text",
     "process_snapshot",

@@ -38,6 +38,16 @@ _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 _LINUX = platform.system() == "Linux"
 
 
+@pytest.fixture
+def owned(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run as pyAmpliCol's own process (its command line, a worker), where
+    the peak is measured from the reset high-water mark."""
+
+    from pyamplicol.reporting import resources
+
+    monkeypatch.setattr(resources, "_OWNS_PROCESS", True)
+
+
 def _statistics(**fields: object) -> GenerationStatistics:
     values: dict[str, object] = {
         "wall_seconds": 34.2,
@@ -187,7 +197,7 @@ def test_started_processes_make_the_peak_a_lower_bound() -> None:
     assert "generation time" in described and "'>= x'" in described
 
 
-def test_the_phases_and_the_rest_add_up_to_the_wall_time() -> None:
+def test_the_phases_and_the_rest_add_up_to_the_wall_time(owned: None) -> None:
     with measure_generation() as measured:
         record_phase("setup", 0.0)
         reporter = GenerationPhaseReporter(None)
@@ -222,7 +232,7 @@ def test_the_phases_and_the_rest_add_up_to_the_wall_time() -> None:
 
 
 @pytest.mark.skipif(not _LINUX, reason="RUSAGE_CHILDREN is read on Linux only")
-def test_a_started_process_is_counted() -> None:
+def test_a_started_process_is_counted(owned: None) -> None:
     import resource
 
     from pyamplicol.reporting import resources
@@ -261,7 +271,9 @@ def test_a_started_process_is_counted() -> None:
 
 
 @pytest.mark.skipif(not _LINUX, reason="the processes are read from /proc")
-def test_processes_running_before_the_region_are_not_the_regions() -> None:
+def test_processes_running_before_the_region_are_not_the_regions(
+    owned: None,
+) -> None:
     """A process the caller started before (a pool, a helper, as the
     resource tracker a spawned pool of an earlier test leaves) is not one
     the generation started: neither while it runs nor when it ends inside
@@ -289,7 +301,7 @@ def test_processes_running_before_the_region_are_not_the_regions() -> None:
 
 
 @pytest.mark.skipif(not _LINUX, reason="the resettable mark is Linux's")
-def test_a_nested_region_keeps_the_outer_peak(monkeypatch) -> None:
+def test_a_nested_region_keeps_the_outer_peak(owned: None, monkeypatch) -> None:
     """Only the outermost region resets the kernel's high-water mark: an
     inner one reads it as it is (a reset would lose the outer region's
     peak). Checked on the reset itself: a peak read from memory released
@@ -319,6 +331,94 @@ def test_a_nested_region_keeps_the_outer_peak(monkeypatch) -> None:
     assert second.result is not None and second.result.method == "VmHWM"
     assert after.result is not None
     assert after.result.method == "VmHWM after clear_refs"
+
+
+def _callers_peak() -> tuple[int | None, int | None]:
+    from pyamplicol.reporting import resources
+
+    return resources._proc_status_kib("VmHWM"), resources._rusage_peak_bytes()
+
+
+@pytest.mark.skipif(not _LINUX, reason="the resettable mark is Linux's")
+def test_a_library_call_keeps_the_callers_peak(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A program that uses pyAmpliCol as a library keeps its own peak RSS
+    (VmHWM, ru_maxrss: what its parent's wait4 and `time -v` read): the
+    process-wide reset is only done where pyAmpliCol owns the process. The
+    generation's peak is then the lifetime peak: exact when the call raised
+    it, else an upper bound."""
+
+    import mmap
+
+    from pyamplicol.api import Generator
+    from pyamplicol.api import services as service_module
+    from pyamplicol.config import GenerationConfig
+    from pyamplicol.reporting import resources
+
+    monkeypatch.setattr(resources, "_OWNS_PROCESS", False, raising=False)
+    resets: list[str] = []
+
+    class ClearRefs:
+        def write_text(self, text: str) -> int:
+            resets.append(text)
+            return len(text)
+
+    # The caller's peak above its current size: touch a block and free it.
+    size = 256 * 1024**2
+    block = mmap.mmap(-1, size)
+    for offset in range(0, size, mmap.PAGESIZE):
+        block[offset] = 1
+    block.close()
+    before = _callers_peak()
+    output = tmp_path / "artifact"
+
+    class Backend:
+        def generate(self, processes, destination, *, model=None, mode="error"):
+            return GenerationResult(output=output, processes=processes, mode=mode)
+
+    monkeypatch.setattr(
+        service_module, "_generator_factory", lambda config, progress: Backend()
+    )
+    result = Generator(GenerationConfig()).generate("d d~ > z g", output)
+    with peak_memory() as region, resources.process_tree_peak_memory() as tree:
+        pass
+
+    after = _callers_peak()
+    assert before[0] is not None and before[1] is not None
+    assert after[0] is not None and after[1] is not None
+    assert after[0] >= before[0] and after[1] >= before[1]
+    monkeypatch.setattr(resources, "_PROC_CLEAR_REFS", ClearRefs())
+    with peak_memory():
+        pass
+    assert resets == []  # never written as a library
+    statistics = result.statistics
+    assert statistics is not None
+    assert statistics.peak_rss_bound in ("exact", "upper bound")
+    assert statistics.peak_rss_method.startswith("VmHWM;")
+    assert region.result is not None and region.result.method == "VmHWM"
+    assert tree.result is not None and tree.result.bound in ("exact", "upper bound")
+
+
+@pytest.mark.skipif(not _LINUX, reason="the resettable mark is Linux's")
+def test_the_command_line_owns_its_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``pyamplicol`` on the command line (``main()`` without arguments)
+    owns its process; an in-process call of the command (``main(argv)``)
+    does not."""
+
+    import importlib
+
+    from pyamplicol.reporting import resources
+
+    cli_main = importlib.import_module("pyamplicol.cli.main")
+
+    monkeypatch.setattr(resources, "_OWNS_PROCESS", False)
+    monkeypatch.setattr(cli_main, "run_cli", lambda argv: 3)
+    assert cli_main.main(["doctor"]) == 3
+    assert not resources.owns_process_accounting()
+    monkeypatch.setattr(cli_main, "_exit_promptly", lambda code: None)
+    assert cli_main.main() == 3
+    assert resources.owns_process_accounting()
 
 
 def test_the_inspect_descriptions_cover_the_artifact_table(tmp_path: Path) -> None:

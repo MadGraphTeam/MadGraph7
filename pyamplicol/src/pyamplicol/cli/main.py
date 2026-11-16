@@ -401,6 +401,12 @@ def run_cli(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    if argv is None:
+        # The command line owns this process: its peak-memory measurements
+        # may reset the kernel's high-water mark (never done as a library).
+        from pyamplicol.reporting.resources import own_process_accounting
+
+        own_process_accounting()
     code = run_cli(argv)
     if argv is None:
         # The command line (not an in-process call): the result is written.

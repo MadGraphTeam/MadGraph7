@@ -59,7 +59,10 @@ _PEAK_METHODS = {
         "the kernel's high-water mark VmHWM, reset when the calls start "
         "(/proc/self/clear_refs)"
     ),
-    "VmHWM": "the kernel's lifetime high-water mark VmHWM (its reset was refused)",
+    "VmHWM": (
+        "the kernel's lifetime high-water mark VmHWM (not reset: the reset was "
+        "refused, or pyAmpliCol ran as a library inside another program)"
+    ),
 }
 
 
@@ -594,8 +597,9 @@ def _statistics_method(statistics: Any) -> str:
             "starts (/proc/self/clear_refs)"
         ),
         "VmHWM": (
-            "the kernel's lifetime high-water mark VmHWM (not reset: the "
-            "reset was refused, or the generation ran inside another measured "
+            "the kernel's lifetime high-water mark VmHWM (not reset: "
+            "pyAmpliCol ran as a library inside another program, the reset "
+            "was refused, or the generation ran inside another measured "
             "region)"
         ),
     }.get(
