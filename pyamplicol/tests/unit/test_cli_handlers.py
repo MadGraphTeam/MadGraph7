@@ -9,6 +9,7 @@ import pty
 import sys
 import termios
 import threading
+import time
 import types
 from dataclasses import replace
 from pathlib import Path
@@ -317,6 +318,35 @@ def test_generate_tty_dashboard_preserves_status_lines_and_terminal_width(
         ),
         dashboard_text="Generating processes",
     )
+
+
+class _SlowStartServices(_TtyCliServices):
+    def generate(self, config: RunConfig, progress: ProgressSink) -> object:
+        # The command's own first phase comes late (model loading, imports).
+        time.sleep(1.2)
+        return super().generate(config, progress)
+
+
+def test_a_live_display_shows_the_command_before_its_first_phase(
+    tmp_path: Path,
+) -> None:
+    status, payload = _run_cli_in_pty(
+        (
+            "generate",
+            "d d~ > z g",
+            str(tmp_path / "artifact"),
+            "--progress",
+            "tty",
+            "--color",
+            "never",
+        ),
+        services=_SlowStartServices(),
+    )
+    assert status == 0
+    text = payload.decode(errors="replace")
+    # Drawn at once, its clock running, before the generation's phases.
+    assert text.index("pyamplicol generate") < text.index("Generating processes")
+    assert "pyamplicol generate  1s" in text or "elapsed 1s" in text
 
 
 def test_profile_tty_dashboard_closes_between_lifecycle_roots(

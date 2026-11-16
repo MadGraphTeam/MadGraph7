@@ -195,9 +195,12 @@ def write_result(
 
 
 def _color_enabled(mode: str, stream: TextIO) -> bool:
-    return mode == "always" or (
-        mode == "auto" and bool(getattr(stream, "isatty", lambda: False)())
-    )
+    """``--color``: "always", "never", or "auto": a capable terminal
+    (``TERM`` not "dumb") without ``NO_COLOR`` set."""
+
+    from pyamplicol.reporting.progress import color_wanted
+
+    return mode == "always" or (mode == "auto" and color_wanted(stream))
 
 
 def run_cli(
@@ -217,10 +220,11 @@ def run_cli(
     try:
         invocation = parse_cli(argv)
         if isinstance(invocation, RecurrenceExportInvocation):
-            # The live display on a terminal (the command has no --progress:
-            # a script's stderr stays quiet), never with a JSON result.
+            # Progress on a terminal only (the command has no --progress: a
+            # script's stderr stays quiet), the line display on a dumb one,
+            # never with a JSON result.
             sink = progress_sink(
-                "tty"
+                "auto"
                 if invocation.output_format != "json"
                 and bool(getattr(diagnostic_stream, "isatty", lambda: False)())
                 else "off",
@@ -320,6 +324,18 @@ def run_cli(
             color=progress_color,
         )
         logging_configured = True
+        if bool(getattr(sink, "live", False)):
+            # Something on the terminal at once, its clock running, before
+            # the command's own phases begin (model loading, imports).
+            from pyamplicol.reporting import ProgressStart
+
+            sink.emit(
+                ProgressStart(
+                    "pyamplicol-command",
+                    f"pyamplicol {config.action}",
+                    details={"step": "starting"},
+                )
+            )
         selected_services = (
             DefaultCliServices(resolution=resolution, card=invocation.card)
             if services is None
