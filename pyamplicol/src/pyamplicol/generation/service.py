@@ -3207,15 +3207,15 @@ def _numerical_current_warning_required(value: object) -> bool:
     return isinstance(warning, Mapping) and warning.get("required") is True
 
 
-def _shutdown_process_executor(executor: ThreadPoolExecutor) -> None:
+def _shutdown_process_executor(
+    executor: ThreadPoolExecutor, *, interrupted: bool = False
+) -> None:
     """Shut a process-phase pool down: wait for its running processes,
-    except on Ctrl-C (the interrupt is reported at once; a running process
-    cannot be stopped and is abandoned, the command line exits without
-    waiting for it, ``cli.main``)."""
+    except when Ctrl-C interrupted this call (``interrupted``, caught by the
+    caller: the interrupt is reported at once; the running processes are
+    stopped and abandoned, the command line exits without waiting for
+    them, ``cli.main``)."""
 
-    import sys
-
-    interrupted = isinstance(sys.exc_info()[1], KeyboardInterrupt)
     if interrupted:
         from .progress import cancel_generation, interrupt_threads
 
@@ -3611,6 +3611,7 @@ class GenerationBackend:
                     if worker_count > 1
                     else None
                 )
+                interrupted = False
                 try:
                     with reporter.phase(
                         "dag",
@@ -3750,9 +3751,14 @@ class GenerationBackend:
                                     evaluator.compiled.expanded.request.name
                                 ),
                             )
+                except KeyboardInterrupt:
+                    # This call was interrupted (not merely run inside an
+                    # ``except KeyboardInterrupt:`` block of its caller).
+                    interrupted = True
+                    raise
                 finally:
                     if executor is not None:
-                        _shutdown_process_executor(executor)
+                        _shutdown_process_executor(executor, interrupted=interrupted)
 
                 with reporter.phase(
                     "artifact-writing",
@@ -4342,6 +4348,7 @@ class GenerationBackend:
                 if worker_count > 1
                 else None
             )
+            interrupted = False
             try:
                 indexed = tuple(enumerate(expanded))
                 lowering_cache = RecurrenceScheduleLoweringCache[
@@ -4369,9 +4376,14 @@ class GenerationBackend:
                         phase_name="compact recurrence construction",
                         item_name=lambda item: item[1].request.name,
                     )
+            except KeyboardInterrupt:
+                # This call was interrupted (not merely run inside an
+                # ``except KeyboardInterrupt:`` block of its caller).
+                interrupted = True
+                raise
             finally:
                 if executor is not None:
-                    _shutdown_process_executor(executor)
+                    _shutdown_process_executor(executor, interrupted=interrupted)
 
             artifact_processes = tuple(item.artifact for item in generated)
             recurrence_warnings: list[tuple[str, str]] = []

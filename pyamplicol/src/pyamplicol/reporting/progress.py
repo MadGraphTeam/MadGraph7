@@ -26,6 +26,46 @@ ProgressDetailValue: TypeAlias = str | int | float | bool | None
 ProgressDetails: TypeAlias = Mapping[str, ProgressDetailValue]
 
 
+def terminal_capable(stream: TextIO) -> bool:
+    """Whether ``stream`` is a terminal that takes cursor movement: a tty
+    whose ``TERM`` is not "dumb" (a dumb or unknown-capability terminal
+    gets the line display)."""
+
+    try:
+        tty = bool(getattr(stream, "isatty", lambda: False)())
+    except (OSError, ValueError):
+        return False
+    return tty and os.environ.get("TERM", "") != "dumb"
+
+
+def color_wanted(stream: TextIO) -> bool:
+    """``--color auto``: colour on a capable terminal, unless ``NO_COLOR``
+    is set (to anything but the empty string, https://no-color.org)."""
+
+    return not os.environ.get("NO_COLOR") and terminal_capable(stream)
+
+
+# A display failure is reported once per process; the command goes on.
+_DISPLAY_WARNED = Event()
+
+
+def _display_failed(stream: TextIO | None, error: BaseException, fallback: str) -> None:
+    """Report a failure of the progress display (one line, once), which
+    continues as ``fallback`` ("plain progress lines", "no progress")."""
+
+    if _DISPLAY_WARNED.is_set():
+        return
+    _DISPLAY_WARNED.set()
+    text = (
+        f"warning: the progress display failed ({type(error).__name__}: {error}); "
+        f"continuing with {fallback}\n"
+    )
+    with contextlib.suppress(Exception):
+        target = stream if stream is not None else sys.stderr
+        target.write(text)
+        target.flush()
+
+
 def _terminal_paint(text: str, color_name: str, *, enabled: bool) -> str:
     if not enabled:
         return text
@@ -214,31 +254,70 @@ class TtyProgressSink:
     _lock: RLock = field(default_factory=RLock, init=False, repr=False)
     _output_lock: RLock = field(default_factory=RLock, init=False, repr=False)
     _message_stream: _TtyMessageStream = field(init=False, repr=False)
+    # 0: the live display; 1: plain lines after a display failure; 2: none
+    # after a failure of those too (the command never fails for its display).
+    _degraded: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._message_stream = _TtyMessageStream(self)
 
     def emit(self, event: ProgressEvent) -> None:
+        if self._degraded >= 2:
+            return
+        try:
+            broken = self._dashboard is not None and self._dashboard.broken
+            if broken is not None and broken is not False:
+                raise broken
+            self._emit(event)
+        except Exception as error:  # the display never fails the work
+            self._degrade(error, event)
+
+    def _degrade(self, error: BaseException, event: ProgressEvent | None) -> None:
+        """A failure of the display: the live display gives way to plain
+        lines, plain lines to none; one warning line."""
+
+        with self._lock:
+            dashboard, self._dashboard = self._dashboard, None
+            level = self._degraded
+            self._degraded = level + 1 if level < 2 else 2
+        if dashboard is not None:
+            with contextlib.suppress(Exception):
+                dashboard.close()
+        if level == 0:
+            _display_failed(self.stream, error, "plain progress lines")
+            if event is not None:
+                with contextlib.suppress(Exception):
+                    self._line().emit(event)
+        else:
+            _display_failed(self.stream, error, "no progress display")
+            self._degraded = 2
+
+    def _line(self) -> _LineProgressSink:
+        if self._line_sink is None:
+            self._line_sink = _LineProgressSink(
+                self.stream,
+                color=False,
+                minimum_interval=2.0,
+                heartbeat=True,
+            )
+        return self._line_sink
+
+    def _emit(self, event: ProgressEvent) -> None:
         dashboard: _Dashboard | _SidecarDashboard | None = None
         start_dashboard = False
         stop_dashboard = False
         kept: str | None = None
         with self._lock:
             if not self._interactive:
-                if self._line_sink is None:
-                    self._line_sink = _LineProgressSink(
-                        self.stream,
-                        color=False,
-                        minimum_interval=2.0,
-                        heartbeat=True,
-                    )
-                self._line_sink.emit(event)
+                self._line().emit(event)
                 return
             now = time.monotonic()
             if isinstance(event, ProgressStart):
                 existing = self._tasks.get(event.task_id)
                 if existing is not None and existing.finished_at is None:
-                    raise ValueError(f"progress task already started: {event.task_id}")
+                    # A task started twice: the later start wins (the
+                    # display does not police its callers).
+                    existing.finished_at = now
                 self._tasks[event.task_id] = _TaskState(
                     task_id=event.task_id,
                     description=event.description,
@@ -302,7 +381,7 @@ class TtyProgressSink:
             elif start_dashboard:
                 dashboard.start()
             else:
-                dashboard.render_now()
+                dashboard.render_now(force=isinstance(event, ProgressStart))
 
     def close(self) -> None:
         with self._lock:
@@ -310,9 +389,13 @@ class TtyProgressSink:
             self._dashboard = None
             line_sink = self._line_sink
         if dashboard is not None:
-            dashboard.close()
+            try:
+                dashboard.close()
+            except Exception as error:  # never fail the command
+                _display_failed(self.stream, error, "no progress display")
         if line_sink is not None:
-            line_sink.close()
+            with contextlib.suppress(Exception):
+                line_sink.close()
 
     @property
     def message_stream(self) -> TextIO:
@@ -324,10 +407,13 @@ class TtyProgressSink:
         with self._lock:
             dashboard = self._dashboard
         if dashboard is not None:
-            dashboard.write_message(text)
-        else:
-            with self._output_lock:
-                self.stream.write(text)
+            try:
+                dashboard.write_message(text)
+                return len(text)
+            except Exception as error:  # the message still goes out
+                self._degrade(error, None)
+        with self._output_lock:
+            self.stream.write(text)
         return len(text)
 
     def _flush_messages(self) -> None:
@@ -336,7 +422,7 @@ class TtyProgressSink:
 
     @property
     def _interactive(self) -> bool:
-        return bool(getattr(self.stream, "isatty", lambda: False)())
+        return self._degraded == 0 and terminal_capable(self.stream)
 
     @property
     def live(self) -> bool:
@@ -348,7 +434,7 @@ class TtyProgressSink:
     def _color_enabled(self) -> bool:
         if self.color is not None:
             return self.color
-        return bool(getattr(self.stream, "isatty", lambda: False)())
+        return color_wanted(self.stream)
 
     def _snapshot(self) -> tuple[_TaskState, ...]:
         with self._lock:
@@ -412,9 +498,16 @@ class _TaskState:
 
 
 # The longest silence of a line log while work runs, by the run's age: a
-# status line after 5 s in the first minute, then every 10 s, 20 s from
-# 5 minutes, 30 s from 20 minutes (``_LineProgressSink`` heartbeat).
-_LOG_CADENCE = ((60.0, 5.0), (300.0, 10.0), (1200.0, 20.0), (math.inf, 30.0))
+# status line after 2 s in the first 15 s (a start is never silent), 5 s in
+# the first minute, then every 10 s, 20 s from 5 minutes, 30 s from 20
+# minutes (``_LineProgressSink`` heartbeat).
+_LOG_CADENCE = (
+    (15.0, 2.0),
+    (60.0, 5.0),
+    (300.0, 10.0),
+    (1200.0, 20.0),
+    (math.inf, 30.0),
+)
 # A step's start line is written once it has run this long (a step that
 # ends sooner leaves no line, unless it fails).
 _LOG_START_DELAY = 1.0
@@ -485,10 +578,26 @@ class _LineProgressSink:
     # The process tree the status lines measure (a renderer process: its
     # parent, without itself).
     monitor_root: int | None = None
+    # Whether the stream is still this log's to write to (a renderer
+    # process: its parent is alive).
+    alive: Callable[[], bool] | None = None
+    # A failure of the log display switches it off (the command goes on).
+    _disabled: bool = False
 
     def emit(self, event: ProgressEvent) -> None:
-        with self._lock:
-            self._emit_locked(event)
+        if self._disabled:
+            return
+        try:
+            with self._lock:
+                self._emit_locked(event)
+        except Exception as error:  # the display never fails the work
+            self._disable(error)
+
+    def _disable(self, error: BaseException) -> None:
+        self._disabled = True
+        _display_failed(self.stream, error, "no progress display")
+        with contextlib.suppress(Exception):
+            self._stop_heartbeat()
 
     def _emit_locked(self, event: ProgressEvent) -> None:
         now = time.monotonic()
@@ -568,6 +677,9 @@ class _LineProgressSink:
             if event is None
             else "CYAN"
         )
+        if self.alive is not None and not self.alive():
+            self._disabled = True
+            return
         painted = _terminal_paint(rendered, color_name, enabled=self.color)
         self.stream.write(f"{painted}\n")
         self.stream.flush()
@@ -647,25 +759,35 @@ class _LineProgressSink:
 
     def _beat(self) -> None:
         while not self._stop.wait(0.5):
-            with self._lock:
-                now = time.monotonic()
-                for state in list(self._states.values()):
-                    if (
-                        state.finished_at is None
-                        and state.parent_task_id is not None
-                        and state.task_id not in self._announced
-                        and now - state.started_at >= _LOG_START_DELAY
-                    ):
-                        self._announce(state.task_id, now)
-                active = [t for t in self._states.values() if t.finished_at is None]
-                if not active:
-                    continue
-                roots = [t for t in active if t.parent_task_id is None] or active
-                age = now - min(t.started_at for t in roots)
-                cadence = next(limit for bound, limit in _LOG_CADENCE if age < bound)
-                if now - self._last_line < cadence:
-                    continue
-                self._write(self._status_line(active, now))
+            if self._disabled:
+                return
+            try:
+                self._beat_once()
+            except Exception as error:  # the log lines go on
+                self._disabled = True
+                _display_failed(self.stream, error, "no progress display")
+                return
+
+    def _beat_once(self) -> None:
+        with self._lock:
+            now = time.monotonic()
+            for state in list(self._states.values()):
+                if (
+                    state.finished_at is None
+                    and state.parent_task_id is not None
+                    and state.task_id not in self._announced
+                    and now - state.started_at >= _LOG_START_DELAY
+                ):
+                    self._announce(state.task_id, now)
+            active = [t for t in self._states.values() if t.finished_at is None]
+            if not active:
+                return
+            roots = [t for t in active if t.parent_task_id is None] or active
+            age = now - min(t.started_at for t in roots)
+            cadence = next(limit for bound, limit in _LOG_CADENCE if age < bound)
+            if now - self._last_line < cadence:
+                return
+            self._write(self._status_line(active, now))
 
     def _status_line(self, active: list[_TaskState], now: float) -> str:
         """The running task's status: the deepest running task (by start),
@@ -744,6 +866,7 @@ class _Dashboard:
         snapshot: Callable[[], tuple[_TaskState, ...]],
         render_lock: RLock,
         resource_monitor: ResourceUsageMonitor | None = None,
+        alive: Callable[[], bool] | None = None,
     ) -> None:
         self._stream = stream
         self._color = color
@@ -757,6 +880,12 @@ class _Dashboard:
         self._painted = False
         self._closed = False
         self._last_render = float("-inf")
+        # Whether the terminal is still the drawing process's to draw on (a
+        # renderer process: its parent is alive); once not, nothing more is
+        # written, not even a clear.
+        self._alive = alive or (lambda: True)
+        # The failure of a heartbeat redraw, for the sink to degrade on.
+        self.broken: BaseException | None = None
 
     def start(self) -> None:
         self._resource_monitor.start()
@@ -776,14 +905,28 @@ class _Dashboard:
         self._resource_monitor.close()
         with self._render_lock:
             self._closed = True
-            self._clear_locked()
+            if self._alive():
+                self._clear_locked()
             self._stream.flush()
 
-    def render_now(self) -> None:
+    def abandon(self) -> None:
+        """Stop drawing and leave the screen as it is (the terminal is no
+        longer this display's: nothing is erased)."""
+
+        self._stop.set()
+        with self._render_lock:
+            self._closed = True
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+            self._thread = None
+        self._resource_monitor.close()
+
+    def render_now(self, *, force: bool = False) -> None:
         # Event-driven redraws at most every 50 ms (a task reporting each of
-        # thousands of items); the heartbeat thread draws the rest.
+        # thousands of items); the heartbeat thread draws the rest. A task
+        # that starts is drawn at once (``force``), however short it is.
         now = time.monotonic()
-        if now - self._last_render < 0.05:
+        if not force and now - self._last_render < 0.05:
             return
         with self._render_lock:
             if not self._closed:
@@ -803,6 +946,9 @@ class _Dashboard:
     def _render_locked(self) -> None:
         # Keeping the final column empty avoids delayed-wrap terminals turning
         # one logical dashboard row into two physical rows.
+        if not self._alive():
+            self._closed = True
+            return
         self._last_render = time.monotonic()
         width = max(_terminal_width(self._stream) - 1, 1)
         lines = _dashboard_lines(
@@ -827,7 +973,11 @@ class _Dashboard:
 
     def _run(self) -> None:
         while not self._stop.wait(0.25):
-            self.render_now()
+            try:
+                self.render_now()
+            except Exception as error:  # reported to the sink
+                self.broken = error
+                return
 
 
 # The renderer process: the dashboard is drawn by a small child process fed
@@ -876,9 +1026,17 @@ class _RendererLink:
     process is reaped and its usage handed to the resource measurements,
     which leave it out."""
 
+    # Bytes the renderer may fall behind by before it counts as stuck (a
+    # stopped or hung renderer never blocks the work: the pipe is written
+    # without blocking).
+    _BACKLOG = 4 * 1024 * 1024
+
     def __init__(self, process: Any, ack_fd: int) -> None:
         self.process = process
         self.ack_fd = ack_fd
+        self._fd = process.stdin.fileno()
+        os.set_blocking(self._fd, False)
+        self._backlog = bytearray()
 
     @classmethod
     def spawn(
@@ -919,29 +1077,58 @@ class _RendererLink:
                 )
             finally:
                 os.close(ack_write)
-        except (AttributeError, OSError, ValueError, io.UnsupportedOperation):
+            from .resources import register_monitor_process
+
+            register_monitor_process(process.pid)
+            return cls(process, ack_read)
+        except Exception:  # no renderer: the in-process display
             return None
-        from .resources import register_monitor_process
 
-        register_monitor_process(process.pid)
-        return cls(process, ack_read)
+    def send(self, message: Mapping[str, object], *, droppable: bool = False) -> bool:
+        """Queue one JSON line and write what the pipe takes now; a
+        ``droppable`` message (a state superseded by the next) is skipped
+        while earlier ones wait. False: the renderer is gone or stuck."""
 
-    def send(self, message: Mapping[str, object]) -> bool:
         import json
 
+        if droppable and self._backlog:
+            return True
         try:
-            pipe = self.process.stdin
-            pipe.write((json.dumps(message, separators=(",", ":")) + "\n").encode())
-            pipe.flush()
-        except (OSError, ValueError, TypeError):
+            line = (json.dumps(message, separators=(",", ":")) + "\n").encode()
+        except (TypeError, ValueError):
             return False
+        self._backlog += line
+        return self._drain() and len(self._backlog) <= self._BACKLOG
+
+    def _drain(self) -> bool:
+        while self._backlog:
+            try:
+                written = os.write(self._fd, self._backlog)
+            except BlockingIOError:
+                return True
+            except OSError:
+                return False
+            del self._backlog[:written]
         return True
+
+    def _drain_within(self, seconds: float) -> None:
+        import select
+
+        deadline = time.monotonic() + seconds
+        while self._backlog and time.monotonic() < deadline:
+            try:
+                select.select([], [self._fd], [], max(deadline - time.monotonic(), 0))
+            except (OSError, ValueError):
+                return
+            if not self._drain():
+                return
 
     def finish(self) -> None:
         """Wait (bounded) for the renderer to write its last lines and exit."""
 
         import select
 
+        self._drain_within(2.0)
         with contextlib.suppress(OSError, ValueError):
             self.process.stdin.close()
         try:
@@ -1056,11 +1243,11 @@ class _SidecarDashboard:
         )
         self._thread.start()
 
-    def render_now(self) -> None:
+    def render_now(self, *, force: bool = False) -> None:
         if self._fallback is not None:
-            self._fallback.render_now()
+            self._fallback.render_now(force=force)
             return
-        if time.monotonic() - self._last_sent >= self._MIN_INTERVAL:
+        if force or time.monotonic() - self._last_sent >= self._MIN_INTERVAL:
             self._send_state()
         else:
             self._pending = True
@@ -1110,11 +1297,17 @@ class _SidecarDashboard:
                 return
             self._pending = False
             self._last_sent = time.monotonic()
-            self._send({"op": "state", "tasks": self._states()})
+            self._send({"op": "state", "tasks": self._states()}, droppable=True)
 
-    def _send(self, message: dict[str, object]) -> None:
-        if self._fallback is None and not self._link.send(message):
+    def _send(self, message: dict[str, object], *, droppable: bool = False) -> None:
+        if self._fallback is None and not self._link.send(message, droppable=droppable):
             self._take_over()
+
+    @property
+    def broken(self) -> BaseException | None:
+        """A failure of the in-process display this one fell back to."""
+
+        return None if self._fallback is None else self._fallback.broken
 
     def _take_over(self) -> None:
         """The renderer is gone: draw in this process from now on."""
@@ -1198,27 +1391,36 @@ class _SidecarLineSink:
         return cls(stream, color=color, minimum_interval=minimum_interval, _link=link)
 
     def emit(self, event: ProgressEvent) -> None:
-        with self._lock:
-            _track_event(self._states, event, time.monotonic())
-            if isinstance(event, ProgressEnd) and not any(
-                task.finished_at is None for task in self._states.values()
-            ):
-                self._states.clear()
-            if self._fallback is not None:
-                self._fallback.emit(event)
-                return
-            if self._link is None or not self._link.send(_event_record(event)):
-                self._take_over(event)
+        try:
+            with self._lock:
+                _track_event(self._states, event, time.monotonic())
+                if isinstance(event, ProgressEnd) and not any(
+                    task.finished_at is None for task in self._states.values()
+                ):
+                    self._states.clear()
+                if self._fallback is not None:
+                    self._fallback.emit(event)
+                    return
+                if self._link is None or not self._link.send(_event_record(event)):
+                    self._take_over(event)
+        except Exception as error:  # the display never fails the work
+            self._link = None
+            self._fallback = _LineProgressSink(self.stream, _disabled=True)
+            _display_failed(self.stream, error, "no progress display")
 
     def close(self) -> None:
         with self._lock:
             if self._fallback is not None:
-                self._fallback.close()
+                with contextlib.suppress(Exception):
+                    self._fallback.close()
                 return
             link, self._link = self._link, None
             if link is not None:
-                link.send({"op": "close"})
-                link.finish()
+                try:
+                    link.send({"op": "close"})
+                    link.finish()
+                except Exception as error:  # never fail the command
+                    _display_failed(self.stream, error, "no progress display")
 
     def _take_over(self, event: ProgressEvent) -> None:
         if self._link is not None:
@@ -1235,9 +1437,13 @@ class _SidecarLineSink:
 
 def _renderer_main(argv: list[str]) -> None:
     """The renderer process (``_SidecarDashboard``): argv = parent pid,
-    colour flag, stream encoding, acknowledgement fd. Ctrl-C is the
-    parent's to handle; end of input (the parent closed the pipe or died)
-    clears the dashboard."""
+    colour flag, stream encoding, acknowledgement fd, mode. Ctrl-C is the
+    parent's to handle. Only the parent's "close" (it waits for the
+    acknowledgement before writing again) clears the dashboard; once the
+    parent is gone (end of input without "close", or re-parented) the
+    terminal may be the shell's again: nothing more is written, not even a
+    clear, so the renderer only ever erases lines it drew while they were
+    the last lines of the terminal."""
 
     import json
     import signal
@@ -1256,8 +1462,12 @@ def _renderer_main(argv: list[str]) -> None:
         errors="replace",
         write_through=True,
     )
+
+    def alive() -> bool:
+        return os.getppid() == parent
+
     if len(argv) > 4 and argv[4] == "log":
-        _log_renderer(parent, color, stream, ack_fd)
+        _log_renderer(parent, color, stream, ack_fd, alive)
         return
     holder: list[tuple[_TaskState, ...]] = [()]
     dashboard = _Dashboard(
@@ -1268,33 +1478,50 @@ def _renderer_main(argv: list[str]) -> None:
         resource_monitor=ResourceUsageMonitor(
             root_pid=parent, interval_seconds=1.0, exclude=frozenset({os.getpid()})
         ),
+        alive=alive,
     )
     started = False
+    closed = False
     try:
         for line in sys.stdin.buffer:
             message = json.loads(line)
             op = message.get("op")
             if op == "state":
+                known = {task.task_id for task in holder[0]}
                 holder[0] = tuple(_TaskState(**task) for task in message["tasks"])
                 if not started:
                     dashboard.start()
                     started = True
                 else:
-                    dashboard.render_now()
+                    dashboard.render_now(
+                        force=any(task.task_id not in known for task in holder[0])
+                    )
             elif op == "msg":
                 dashboard.write_message(str(message["text"]))
             elif op == "close":
+                closed = True
                 break
     finally:
-        dashboard.close()
-        stream.flush()
+        if closed and alive():
+            dashboard.close()
+            with contextlib.suppress(Exception):
+                stream.flush()
+        else:
+            dashboard.abandon()
         with contextlib.suppress(OSError):
             os.write(ack_fd, b"x")
 
 
-def _log_renderer(parent: int, color: bool, stream: TextIO, ack_fd: int) -> None:
+def _log_renderer(
+    parent: int,
+    color: bool,
+    stream: TextIO,
+    ack_fd: int,
+    alive: Callable[[], bool],
+) -> None:
     """The renderer process in log mode: the events through a line sink
-    with its heartbeat, measuring the parent's process tree."""
+    with its heartbeat, measuring the parent's process tree; nothing is
+    written once the parent is gone."""
 
     import json
 
@@ -1304,6 +1531,7 @@ def _log_renderer(parent: int, color: bool, stream: TextIO, ack_fd: int) -> None
         minimum_interval=2.0,
         heartbeat=True,
         monitor_root=parent,
+        alive=alive,
     )
     try:
         for line in sys.stdin.buffer:
@@ -1313,7 +1541,8 @@ def _log_renderer(parent: int, color: bool, stream: TextIO, ack_fd: int) -> None
             sink.emit(_event_of(record))
     finally:
         sink.close()
-        stream.flush()
+        with contextlib.suppress(Exception):
+            stream.flush()
         with contextlib.suppress(OSError):
             os.write(ack_fd, b"x")
 
@@ -2261,7 +2490,8 @@ def progress_sink(
 
     selected = mode
     if selected == "auto":
-        selected = "tty" if bool(getattr(stream, "isatty", lambda: False)()) else "log"
+        # A dumb terminal (TERM=dumb) gets the line display, as a file does.
+        selected = "tty" if terminal_capable(stream) else "log"
     if selected == "off":
         return NullProgressSink()
     if selected == "log":
@@ -2294,6 +2524,8 @@ __all__ = [
     "StreamProgressSink",
     "TtyProgressSink",
     "close_progress_sink",
+    "color_wanted",
     "progress_sink",
     "progress_whereabouts",
+    "terminal_capable",
 ]

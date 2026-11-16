@@ -47,7 +47,9 @@ def _read_all(fd: int) -> str:
 
 
 @pytest.fixture
-def terminal():
+def terminal(monkeypatch):
+    # A capable terminal (TERM=dumb gets the line display).
+    monkeypatch.setenv("TERM", "xterm-256color")
     import fcntl
     import struct
     import termios
@@ -114,7 +116,7 @@ def test_renderer_clears_its_lines_and_exits_at_close(terminal, monkeypatch) -> 
     assert text.rindex("\x1b[J") < text.rindex("after")
 
 
-def test_renderer_cleans_up_when_the_main_process_goes_away(
+def test_renderer_writes_nothing_once_its_input_ends_without_close(
     terminal, monkeypatch
 ) -> None:
     master, stream = terminal
@@ -123,13 +125,68 @@ def test_renderer_cleans_up_when_the_main_process_goes_away(
     sink.emit(ProgressStart("root", "Generating processes", total=1))
     dashboard = sink._dashboard
     assert isinstance(dashboard, _SidecarDashboard)
-    time.sleep(0.5)
+    time.sleep(0.6)
+    _read_all(master)
     # A crashed main process: its end of the pipe closes without "close".
     dashboard._process.stdin.close()
     dashboard._process.wait(timeout=5)
-    text = _read_all(master)
-    assert text.rstrip().endswith("\x1b[J") or "\x1b[J" in text[-40:]
+    # The terminal may be the shell's again: no clear, no line.
+    assert _read_all(master) == ""
     dashboard._stop.set()
+
+
+_KILLED_PARENT = """
+import os, sys, time
+from pyamplicol.reporting.progress import ProgressStart, TtyProgressSink
+stream = os.fdopen(int(sys.argv[1]), "w", buffering=1, encoding="utf-8")
+sink = TtyProgressSink(stream, color=False)
+sink.emit(ProgressStart("root", "Generating processes", total=1))
+print(sink._dashboard._process.pid, flush=True)
+time.sleep(60)
+"""
+
+
+@pytest.mark.parametrize("signal_name", ["SIGKILL", "SIGTERM"])
+def test_renderer_leaves_the_terminal_alone_after_its_parent_is_killed(
+    terminal, signal_name
+) -> None:
+    """M1: after SIGTERM / SIGKILL of the main process the renderer neither
+    clears nor draws: the line the shell prints next survives."""
+
+    import signal
+    import subprocess
+
+    master, stream = terminal
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
+    env.pop("PYAMPLICOL_PROGRESS_RENDERER", None)
+    parent = subprocess.Popen(
+        [sys.executable, "-c", _KILLED_PARENT, str(stream.fileno())],
+        pass_fds=(stream.fileno(),),
+        stdout=subprocess.PIPE,
+        env=env,
+        text=True,
+    )
+    renderer = int(parent.stdout.readline())
+    time.sleep(1.0)
+    _read_all(master)
+    parent.send_signal(getattr(signal, signal_name))
+    parent.wait(timeout=10)
+    # What the shell prints after its child is gone.
+    stream.write("SHELL-PROMPT\n")
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            os.kill(renderer, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        os.kill(renderer, signal.SIGKILL)
+        pytest.fail("the renderer outlived its parent by 10 s")
+    after = _read_all(master)
+    assert "SHELL-PROMPT" in after
+    assert "\x1b[" not in after.split("SHELL-PROMPT", 1)[1]
+    assert "\x1b[J" not in after and "\x1b[3F" not in after
 
 
 def test_inline_renderer_on_request(terminal, monkeypatch) -> None:
