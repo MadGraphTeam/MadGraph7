@@ -1621,6 +1621,100 @@ def _generated_group_texts(
     return texts
 
 
+def _duration_text(seconds: float) -> str:
+    """A wall time: three significant digits below a minute ("34.2 s",
+    "512 ms"), else hours, minutes and seconds as the progress display
+    ("12m05s")."""
+
+    if seconds < 60.0:
+        from .loop_profile import _seconds_text
+
+        return _seconds_text(seconds)
+    from .progress import _duration_text as progress_duration
+
+    return progress_duration(seconds)
+
+
+def _generation_statistics_rows(
+    statistics: object,
+    *,
+    color: bool,
+    width: int,
+) -> tuple[tuple[str, str], tuple[str, str]]:
+    """The ``generation time`` and ``peak RAM`` rows of a generation's
+    statistics (``GenerationStatistics`` or its plain fields), for the
+    `generate` and `inspect` field/value tables.
+
+    The time: the wall time in bold, then, muted, each phase and the
+    unattributed rest, wrapped at ``width``. The peak RAM: the peak with its
+    bound's prefix (``resources.bounded_memory_text``) and, when the
+    generation started processes, muted, the generating process's own peak
+    and the largest one of a started process. A muted ``-`` when nothing
+    is recorded."""
+
+    from pyamplicol.api.results import GenerationStatistics
+
+    from . import palette
+    from .resources import bounded_memory_text, memory_text
+
+    stats: GenerationStatistics | None = None
+    if isinstance(statistics, GenerationStatistics):
+        stats = statistics
+    elif isinstance(statistics, Mapping):
+        try:
+            stats = GenerationStatistics(
+                **{str(key): value for key, value in statistics.items()}
+            )
+        except (TypeError, ValueError):
+            stats = None
+    missing = _paint("-", palette.MUTED, enabled=color)
+    if stats is None:
+        return (("generation time", missing), ("peak RAM", missing))
+
+    total = _duration_text(stats.wall_seconds)
+    parts = [f"{name} {_duration_text(seconds)}" for name, seconds in stats.phases]
+    if parts:
+        parts.append(f"unattributed {_duration_text(stats.unattributed_seconds)}")
+    if parts:
+        parts[0] = "(" + parts[0]
+        parts[-1] += ")"
+    # Whole "phase time" items per line, never a phase split from its time.
+    lines = [total]
+    for index, part in enumerate(parts):
+        item = part + ("," if index < len(parts) - 1 else "")
+        if len(lines[-1]) + 1 + len(item) <= width:
+            lines[-1] += " " + item
+        else:
+            lines.append(item)
+    head = lines[0][len(total) :]
+    time_text = "\n".join(
+        [
+            _paint(total, None, enabled=color, bold=True)
+            + _paint(head, palette.MUTED, enabled=color)
+        ]
+        + [_paint(line, palette.MUTED, enabled=color) for line in lines[1:]]
+    )
+
+    peak = bounded_memory_text(stats.peak_rss_bytes, stats.peak_rss_bound)
+    if peak is None:
+        peak_text = missing
+    else:
+        details = []
+        if stats.child_processes:
+            if stats.process_peak_rss_bytes is not None:
+                details.append(f"process {memory_text(stats.process_peak_rss_bytes)}")
+            if stats.child_peak_rss_bytes is not None:
+                details.append(
+                    f"largest started process {memory_text(stats.child_peak_rss_bytes)}"
+                )
+        peak_text = peak + (
+            " " + _paint(f"({', '.join(details)})", palette.MUTED, enabled=color)
+            if details
+            else ""
+        )
+    return (("generation time", time_text), ("peak RAM", peak_text))
+
+
 def _generation_summary(
     result: object,
     *,
@@ -1705,6 +1799,10 @@ def _generation_summary(
             table.add_row(
                 (_paint("process grouping", "CYAN", enabled=color), grouping_text)
             )
+    for field, text in _generation_statistics_rows(
+        result.statistics, color=color, width=_SUMMARY_VALUE_WIDTH
+    ):
+        table.add_row((_paint(field, "CYAN", enabled=color), text))
     group_texts = (
         {}
         if grouping is None or not grouping_text
@@ -2695,6 +2793,11 @@ def _artifact_inspection_summary(
                 _colored(text, key=key, enabled=color),
             )
         )
+        if key == "created":
+            for field, cell in _generation_statistics_rows(
+                plain.get("generation_statistics"), color=color, width=88
+            ):
+                summary.add_row((_paint(field, "CYAN", enabled=color), cell))
 
     process_table = prettytable.PrettyTable(
         (

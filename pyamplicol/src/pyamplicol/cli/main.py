@@ -30,7 +30,7 @@ from .utilities import UtilityInvocation, example_card, execute_utility
 
 
 def _json_value(value: object) -> object:
-    from pyamplicol.api.results import TreeOrderEvaluation
+    from pyamplicol.api.results import GenerationStatistics, TreeOrderEvaluation
     from pyamplicol.api.virtual_results import (
         ResolvedVirtualEvaluation,
         VirtualEvaluation,
@@ -64,6 +64,8 @@ def _json_value(value: object) -> object:
             "sum_orders": _json_value(value.sum_orders()),
             "sum_born_orders": _json_value(value.sum_born_orders()),
         }
+    if isinstance(value, GenerationStatistics):
+        return value.to_json()
     if is_dataclass(value) and not isinstance(value, type):
         result = {
             item.name: _json_value(getattr(value, item.name)) for item in fields(value)
