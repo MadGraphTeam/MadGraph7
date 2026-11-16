@@ -407,10 +407,10 @@ class TestFKSOutput(unittest.TestCase):
 
     def output_both_modes(self, commands, name='PROC', output_options=''):
         """Run the commands (the generation) and the output, with the
-        low_mem_multicore_nlo_generation mode and without it, at the same
-        time. Returns the two output directories, in this order (they have
-        the same name, in different directories: {dir} in the commands),
-        written with the output_options"""
+        low_mem_multicore_nlo_generation mode and then without it. Returns
+        the two output directories, in this order (they have the same name,
+        in different directories: {dir} in the commands), written with the
+        output_options"""
         import multiprocessing
         path = tempfile.mkdtemp('', 'TMPLowMemTest', None)
         self.addCleanup(shutil.rmtree, path, True)
@@ -425,22 +425,23 @@ class TestFKSOutput(unittest.TestCase):
                 run_cmd(command.replace('{dir}', os.path.join(path, mode)))
             run_cmd('output %s %s' % (os.path.join(path, mode, name), output_options))
 
-        processes = []
+        outputs = []
         for mode in ['low_mem', 'serial']:
             os.mkdir(os.path.join(path, mode))
             # each in a process of its own, forked from this one, so that both
             # start from the same state: a session keeps some traces of what it
             # did (e.g. the merged Lorentz structures of the model, whose names
-            # are numbered)
+            # are numbered). One after the other: the first output of a fresh
+            # installation also downloads the model and compiles CutTools and
+            # IREGI in it, which two outputs would do at the same time.
             process = multiprocessing.get_context('fork').Process(
                                                   target=output, args=(mode,))
             process.start()
-            processes.append((mode, process))
-        for mode, process in processes:
             process.join()
             self.assertEqual(process.exitcode, 0,
                              'the output failed in the %s mode' % mode)
-        return [os.path.join(path, mode, name) for mode, process in processes]
+            outputs.append(os.path.join(path, mode, name))
+        return outputs
 
     def assert_same_output(self, new, old):
         """The two output directories have the same directories, links and
