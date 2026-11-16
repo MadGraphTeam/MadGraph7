@@ -6164,10 +6164,6 @@ class GenerationBackend:
                         "step": "persisted helicity-selector plan ready",
                     },
                 )
-        phase.advance(
-            message=process_name,
-            details={"process": process_name, "step": "recurrence runtime ready"},
-        )
 
         process_binding_started = time.perf_counter()
         validation = self._generation_config.validation
@@ -6574,6 +6570,13 @@ class GenerationBackend:
             "recurrence generation profile for %s: %s",
             process_name,
             json.dumps(profile, allow_nan=False, sort_keys=True),
+        )
+        # The process counts as done once all its work is (binding and
+        # physics metadata included): the count never reaches the total
+        # while a process is still being finished.
+        phase.advance(
+            message=process_name,
+            details={"process": process_name, "step": "recurrence runtime ready"},
         )
         return _GeneratedRecurrenceProcess(
             expanded=expanded,
