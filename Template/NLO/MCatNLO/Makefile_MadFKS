@@ -57,8 +57,9 @@ PYFILES=$(PYUTI) $(OBJDIR)/$(PYTHIAVER) $(OBJDIR)/madfks_pydriver.o $(OBJDIR)/ma
         $(OBJDIR)/mcatnlo_str.o
 
 
-# The analyses use the modules of HwU.f: build it first (needed with make -j).
-ANALYSIS_OBJS=$(HWUTI) $(PYUTI)
+# The analyses and the madfks_*lhin interfaces use the modules of HwU.f
+# (HwU_wgts_info_len): build it first (needed with make -j).
+ANALYSIS_OBJS=$(HWUTI) $(PYUTI) $(OBJDIR)/madfks_hwlhin.o $(OBJDIR)/madfks_pylhin.o
 ifneq ($(filter %/HwU.o,$(ANALYSIS_OBJS)),)
 $(filter-out %/HwU.o,$(ANALYSIS_OBJS)): $(filter %/HwU.o,$(ANALYSIS_OBJS))
 endif
