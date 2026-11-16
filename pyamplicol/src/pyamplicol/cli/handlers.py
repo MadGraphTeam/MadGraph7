@@ -810,7 +810,11 @@ class DefaultCliServices:
 
     def model_compile(self, config: RunConfig, progress: ProgressSink) -> object:
         if config.generation.output is None:
-            raise ConfigurationError("model compile requires generation.output")
+            raise ConfigurationError(
+                "model compile requires generation.output: where to write the "
+                "compiled model (--set generation.output=PATH, or [generation] "
+                "output in the card)"
+            )
         requested_output = config.generation.output
         prepared_output = requested_output.name.lower().endswith(".pyamplicol-model")
         default_evaluator = EvaluatorConfig()
