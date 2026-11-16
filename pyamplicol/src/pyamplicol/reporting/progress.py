@@ -1565,9 +1565,14 @@ def _total_eta_fragments(
             )
         )
         if eta >= 60.0:
-            # When it should be done, on the wall clock.
-            done_at = time.strftime("%H:%M", time.localtime(time.time() + eta))
-            fragments.append((f" (done ~{done_at})", "LIGHTBLACK_EX"))
+            # When it should be done, on the wall clock (none past what the
+            # platform's clock can represent).
+            try:
+                done_at = time.strftime("%H:%M", time.localtime(time.time() + eta))
+            except (OverflowError, OSError, ValueError):
+                done_at = None
+            if done_at is not None:
+                fragments.append((f" (done ~{done_at})", "LIGHTBLACK_EX"))
     if budget is not None:
         fragments.append(
             (

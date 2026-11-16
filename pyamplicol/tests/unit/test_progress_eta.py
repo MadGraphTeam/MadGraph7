@@ -244,3 +244,24 @@ def test_a_phase_line_never_shows_eta_zero_while_work_remains() -> None:
     task.completed = 4
     done = _phase_line(task, now=61.0, active_children=0, width=200, color=False)
     assert "ETA" not in done and "overdue" not in done
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-5", "1e308"])
+def test_a_history_file_with_nonsense_seconds_gives_no_prior(tmp_path, value) -> None:
+    import json
+
+    from pyamplicol.generation.progress import GenerationHistory
+
+    phases = ["a", "b"]
+    steps = {name: "SECONDS" for name in phases}
+    record = {"s": {"phases": phases, "steps": steps}}
+    text = json.dumps(record).replace('"SECONDS"', value)
+    (tmp_path / "generation-history.json").write_text(text, encoding="utf-8")
+
+    history = GenerationHistory("s", root=tmp_path)
+
+    later = history.later(set())
+    assert later is None or (later[0] >= 0 and later[0] < float("inf"))
+    for name in phases:
+        prior = history.prior(name)
+        assert prior is None or 0 <= prior < float("inf")

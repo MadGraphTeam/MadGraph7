@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import time
 from collections.abc import Iterator, Mapping
@@ -362,10 +363,14 @@ class GenerationHistory:
             if isinstance(record, dict):
                 steps = record.get("steps")
                 if isinstance(steps, dict):
+                    # A hand-edited or foreign file: only finite, non-negative
+                    # seconds are priors (JSON admits NaN and Infinity).
                     self.previous = {
                         str(key): float(value)
                         for key, value in steps.items()
                         if isinstance(value, (int, float))
+                        and math.isfinite(value)
+                        and value >= 0
                     }
                 order = record.get("phases")
                 if isinstance(order, list):
@@ -386,14 +391,10 @@ class GenerationHistory:
 
         if not self.order:
             return None
-        return (
-            sum(
-                self.previous.get(name, 0.0)
-                for name in self.order
-                if name not in started
-            ),
-            True,
+        seconds = sum(
+            self.previous.get(name, 0.0) for name in self.order if name not in started
         )
+        return (seconds, True) if math.isfinite(seconds) else None
 
     def observe(self, path: str, seconds: float) -> None:
         self.current[path] = self.current.get(path, 0.0) + seconds
