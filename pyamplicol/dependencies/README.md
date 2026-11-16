@@ -2,8 +2,11 @@
 
 The `loop` development branch integrates Rust Symbolica 3.0.2, Numerica 3.1.0
 and Graphica 3.0.1 from symbolica-dev/symbolica's `community` branch at
-[`0e2ad04c`](https://github.com/symbolica-dev/symbolica/commit/0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7)
-(main `c9406581` plus the author's community-only commits). No fork is linked:
+[`d0424f9e`](https://github.com/symbolica-dev/symbolica/commit/d0424f9e414d3007889f8a98b404a1b1a91b37a7)
+(main `238dc613` plus the author's community-only commits; the branch was
+rebased on 2026-11-16 onto that main, which adds MathML/printer and polynomial
+arithmetic commits, among them the real-root interval refinement fix
+`80cf5f9a`, to the former pin `0e2ad04c`). No fork is linked:
 the author took the parts of our former upstream pull request
 [symbolica-dev/symbolica#163](https://github.com/symbolica-dev/symbolica/pull/163)
 that pyAmpliCol needs (`DualNumber` component views, complex-modulus Dual
@@ -22,12 +25,12 @@ moves to a crates.io release once one contains this revision. Numerica 3.1
 moved `conj` into its numeric trait, which GammaLoop's Spenso implements:
 FeynKit and Spenso come from the fork ValentinHirschi/gammaloop
 `pyamplicol-community` `ea3faaae` (alphal00p/gammaloop `d1904bf2` plus that
-one change), the revision NinjaRS pins. NinjaRS (main
-`be6d3e04`, the merge of its `symbolica-community` branch: main `b51b7465`'s
+one change), the revision NinjaRS pins. NinjaRS
+(`ac66cf6c`, branch `symbolica-community-2`: main `b51b7465`'s
 crate sources, the per-row evaluation without the
 batch evaluator, pinned on this Symbolica, the gammaloop fork and
-oneloopmaster `2e7afabb`) pins the same revision, as does oneloopmaster
-(main `2e7afabb`: `3b6f229f`'s sources) in its
+oneloopmaster `07fc754f`) pins the same revision, as does oneloopmaster
+(`07fc754f`, branch `symbolica-community-2`: `3b6f229f`'s sources) in its
 own standalone `[patch]`, which only applies when it is the root workspace.
 `cargo tree -i symbolica` lists one source, as do `numerica`, `graphica`,
 `oneloop` and `spenso`. SymJIT stays 2.28.3. These pins are recorded by Cargo.
@@ -37,8 +40,8 @@ publishable until this revision is in a Symbolica release.
 
 TIRust ([huashengshao/TIRust](https://github.com/huashengshao/TIRust), crates
 `iregi-rust` and `iregi-masters`, pinned to a commit of its main after its one
-history rewrite, currently main `a5d4afbf`: PR #35 and the move to Symbolica
-community `0e2ad04c` with per-row evaluation instead of the batch evaluator) is one more git source, linked by the cargo feature `tir`, a
+history rewrite, currently `2b9ba961` (branch `symbolica-community-2`: main
+`a5d4afbf`, PR #35 and the move to Symbolica community, re-pinned on `d0424f9e`) with per-row evaluation instead of the batch evaluator) is one more git source, linked by the cargo feature `tir`, a
 default feature of every crate that links it (`--no-default-features` builds
 without it). Its crates require `symbolica = "3.0"` and the oneloop revision
 and features pinned here, so the root `[patch]` and oneloop pin serve them
@@ -85,10 +88,10 @@ program's standard output (`pyamplicol self-test --json`).
 
 The development Python kernel is a release build of the Community recipe
 (symbolica-community `39b556c7`, the 3.0.3 recipe) with its `[patch]` moved to
-`0e2ad04c` and its gammaloop `feynkit` crates (`9102f885`) on the same Spenso
+`d0424f9e` and its gammaloop `feynkit` crates (`9102f885`) on the same Spenso
 `conj` change (tree-identical to ValentinHirschi/gammaloop `tirust-community`
-`6ef9ab3a`): `builds/community-release-python-0e2ad04c` (wheel
-`builds/community-release-wheels-0e2ad04c/`, sha256 `0754ed01…`; recipe in
+`6ef9ab3a`): `builds/community-release-python-d0424f9e` (wheel
+`builds/community-release-wheels-d0424f9e/`, sha256 `1de495a2…`; recipe in
 `BUILD-INFO.json`). Native and Python therefore share one Symbolica revision.
 
 pyAmpliCol defaults to published runtime dependencies and release-mode native
@@ -134,7 +137,7 @@ in both lanes; it is not a core runtime dependency.
 Release-equivalent builds use exact versions. `release-lock.toml` records Rust
 Symbolica 3.0.2 and SymJIT 2.28.3, and `Cargo.lock` records their resolution:
 SymJIT from the registry with its checksum; Symbolica, Numerica and Graphica
-from `0e2ad04c` (the `community` revision above) through the root `Cargo.toml`'s
+from `d0424f9e` (the `community` revision above) through the root `Cargo.toml`'s
 `[patch.crates-io]`, the source patch that still fails the published-crate gate
 (see above). The ordinary locked Cargo build is the dependency check; no
 release-only source projections are needed.
