@@ -141,3 +141,25 @@ def test_inline_renderer_on_request(terminal, monkeypatch) -> None:
     sink.emit(ProgressEnd("root"))
     sink.close()
     _read_all(master)
+
+
+def test_log_renderer_writes_status_lines_while_the_gil_is_held(
+    tmp_path, monkeypatch
+) -> None:
+    from pyamplicol.reporting import progress
+
+    monkeypatch.delenv("PYAMPLICOL_PROGRESS_RENDERER", raising=False)
+    path = tmp_path / "log.txt"
+    with open(path, "w", encoding="utf-8") as stream:
+        sink = progress.progress_sink("log", stream=stream)
+        assert isinstance(sink, progress._SidecarLineSink)
+        sink.emit(ProgressStart("root", "Generating processes", total=4))
+        sink.emit(ProgressUpdate("root", completed=1, total=4))
+        _hold_gil(7.0)
+        sink.emit(ProgressEnd("root"))
+        progress.close_progress_sink(sink)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    status = [line for line in lines if line.startswith("Generating processes: ")]
+    assert status, lines
+    assert any("no progress for" in line for line in status)
+    assert lines[-1].startswith("Generating processes done")

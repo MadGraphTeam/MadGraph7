@@ -42,12 +42,14 @@ class Estimate:
     expected end has passed and nothing else remains: see ``overdue``).
     ``estimated``: a prior rather than a measured pace ("~" on a display).
     ``overdue``: the seconds by which the expected end has passed (0 when
-    it has not).
+    it has not). ``at_least``: the item in progress takes longer than an
+    item does, ``seconds`` is what the other remaining items need (">").
     """
 
     seconds: float | None
     estimated: bool
     overdue: float = 0.0
+    at_least: bool = False
 
 
 def _seconds_per_item(marks: Sequence[Mark], started_at: float) -> float | None:
@@ -119,7 +121,7 @@ def count_estimate(
     if counted_down >= max(floor, 1.0):
         return Estimate(counted_down, estimated=estimated)
     if floor >= 1.0:
-        return Estimate(floor, estimated=estimated)
+        return Estimate(floor, estimated=estimated, at_least=True)
     # The last item, past the time an item takes.
     return Estimate(None, estimated=estimated, overdue=max(since - per_item, 0.0))
 

@@ -80,6 +80,7 @@ def test_countdown_between_updates_and_floor() -> None:
     stuck = count_estimate(now=40.0, **kwargs)
     assert stuck.seconds == pytest.approx(8.0)
     assert stuck.overdue == 0.0
+    assert stuck.at_least and not later.at_least
 
 
 def test_never_zero_while_work_remains() -> None:

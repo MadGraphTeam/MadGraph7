@@ -418,6 +418,40 @@ _LOG_CADENCE = ((60.0, 5.0), (300.0, 10.0), (1200.0, 20.0), (math.inf, 30.0))
 _LOG_START_DELAY = 1.0
 
 
+def _track_event(
+    states: dict[str, _TaskState], event: ProgressEvent, now: float
+) -> _TaskState | None:
+    """Keep a task's state from its events (a line sink's heartbeat and
+    an interruption's whereabouts)."""
+
+    if isinstance(event, ProgressStart):
+        states[event.task_id] = _TaskState(
+            task_id=event.task_id,
+            description=event.description,
+            total=event.total,
+            parent_task_id=event.parent_task_id,
+            unit=event.unit,
+            details=dict(event.details),
+            started_at=now,
+            updated_at=now,
+        )
+        return states[event.task_id]
+    state = states.get(event.task_id)
+    if state is None:
+        return None
+    if isinstance(event, ProgressUpdate):
+        state.record(event.completed, now)
+        state.completed = max(state.completed, event.completed)
+        state.total = event.total if event.total is not None else state.total
+        state.details.update(event.details)
+        state.updated_at = now
+    else:
+        state.success = event.success
+        state.finished_at = now
+        state.updated_at = now
+    return state
+
+
 @dataclass(slots=True)
 class _LineProgressSink:
     """One plain line per progress event (``--progress log`` and a
@@ -446,6 +480,9 @@ class _LineProgressSink:
     _thread: Thread | None = None
     _stop: Event = field(default_factory=Event)
     _monitor: ResourceUsageMonitor | None = None
+    # The process tree the status lines measure (a renderer process: its
+    # parent, without itself).
+    monitor_root: int | None = None
 
     def emit(self, event: ProgressEvent) -> None:
         with self._lock:
@@ -527,31 +564,9 @@ class _LineProgressSink:
     def _track(self, event: ProgressEvent, now: float) -> _TaskState | None:
         if not self.heartbeat:
             return None
+        state = _track_event(self._states, event, now)
         if isinstance(event, ProgressStart):
-            self._states[event.task_id] = _TaskState(
-                task_id=event.task_id,
-                description=event.description,
-                total=event.total,
-                parent_task_id=event.parent_task_id,
-                unit=event.unit,
-                details=dict(event.details),
-                started_at=now,
-                updated_at=now,
-            )
             self._start_heartbeat()
-            return self._states[event.task_id]
-        state = self._states.get(event.task_id)
-        if state is None:
-            return None
-        if isinstance(event, ProgressUpdate):
-            state.record(event.completed, now)
-            state.completed = max(state.completed, event.completed)
-            state.total = event.total if event.total is not None else state.total
-            state.details.update(event.details)
-            state.updated_at = now
-        else:
-            state.finished_at = now
-            state.updated_at = now
         return state
 
     def _announce(self, task_id: str, now: float) -> None:
@@ -579,7 +594,13 @@ class _LineProgressSink:
             return
         self._stop = Event()
         if self._monitor is None:
-            self._monitor = ResourceUsageMonitor(interval_seconds=1.0)
+            self._monitor = ResourceUsageMonitor(
+                root_pid=self.monitor_root,
+                interval_seconds=1.0,
+                exclude=frozenset({os.getpid()})
+                if self.monitor_root is not None
+                else frozenset(),
+            )
             self._monitor.start()
         self._thread = Thread(
             target=self._beat, name="pyamplicol-progress-log-heartbeat", daemon=True
@@ -646,8 +667,10 @@ class _LineProgressSink:
             estimated = bool(task.details.get("eta_estimated"))
             parts.append(f"ETA {_eta_text(max(counted, 0.0), estimated=estimated)}")
         elif estimate is not None:
+            bound = ">" if estimate.at_least else ""
             parts.append(
-                f"ETA {_eta_text(estimate.seconds, estimated=estimate.estimated)}"
+                f"ETA {bound}"
+                + _eta_text(estimate.seconds, estimated=estimate.estimated)
                 if estimate.seconds is not None
                 else f"overdue {_duration_text(estimate.overdue)}"
             )
@@ -823,6 +846,133 @@ def _new_dashboard(
     )
 
 
+class _RendererLink:
+    """The pipe to a renderer process (``_renderer_main``): JSON lines in;
+    at the end an acknowledgement once its output is written, then the
+    process is reaped and its usage handed to the resource measurements,
+    which leave it out."""
+
+    def __init__(self, process: Any, ack_fd: int) -> None:
+        self.process = process
+        self.ack_fd = ack_fd
+
+    @classmethod
+    def spawn(
+        cls, stream: TextIO, *, color: bool, mode: str, tty_only: bool
+    ) -> _RendererLink | None:
+        """A renderer writing to ``stream``'s file descriptor (a terminal
+        only with ``tty_only``), or None where none can start."""
+
+        import subprocess
+
+        try:
+            fd = stream.fileno()
+            if (tty_only and not os.isatty(fd)) or not sys.executable:
+                return None
+            os.fstat(fd)
+            here = os.path.dirname(os.path.abspath(__file__))
+            ack_read, ack_write = os.pipe()
+            try:
+                process = subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-I",
+                        "-c",
+                        _RENDERER_BOOTSTRAP,
+                        os.path.dirname(here),
+                        here,
+                        str(os.getpid()),
+                        "1" if color else "0",
+                        getattr(stream, "encoding", None) or "utf-8",
+                        str(ack_write),
+                        mode,
+                    ],
+                    stdin=subprocess.PIPE,
+                    stdout=fd,
+                    stderr=subprocess.DEVNULL,
+                    pass_fds=(ack_write,),
+                    close_fds=True,
+                )
+            finally:
+                os.close(ack_write)
+        except (AttributeError, OSError, ValueError, io.UnsupportedOperation):
+            return None
+        from .resources import register_monitor_process
+
+        register_monitor_process(process.pid)
+        return cls(process, ack_read)
+
+    def send(self, message: Mapping[str, object]) -> bool:
+        import json
+
+        try:
+            pipe = self.process.stdin
+            pipe.write((json.dumps(message, separators=(",", ":")) + "\n").encode())
+            pipe.flush()
+        except (OSError, ValueError, TypeError):
+            return False
+        return True
+
+    def finish(self) -> None:
+        """Wait (bounded) for the renderer to write its last lines and exit."""
+
+        import select
+
+        with contextlib.suppress(OSError, ValueError):
+            self.process.stdin.close()
+        try:
+            ready, _, _ = select.select([self.ack_fd], [], [], 2.0)
+            if ready:
+                os.read(self.ack_fd, 1)
+        except (OSError, ValueError):
+            pass
+        finally:
+            with contextlib.suppress(OSError):
+                os.close(self.ack_fd)
+        self.reap(timeout=1.0)
+
+    def abandon(self) -> None:
+        with contextlib.suppress(OSError):
+            self.process.kill()
+        self.reap(timeout=1.0)
+        with contextlib.suppress(OSError):
+            os.close(self.ack_fd)
+
+    def reap(self, *, timeout: float) -> None:
+        """Wait for the renderer (killed after ``timeout``) and report its
+        usage to the resource measurements."""
+
+        from .resources import monitor_process_ended
+
+        pid = self.process.pid
+        deadline = time.monotonic() + timeout
+        killed = False
+        while True:
+            try:
+                done, status, usage = os.wait4(pid, os.WNOHANG)
+            except ChildProcessError:
+                return
+            if done:
+                self.process.returncode = os.waitstatus_to_exitcode(status)
+                peak = int(usage.ru_maxrss)
+                monitor_process_ended(
+                    pid,
+                    peak if sys.platform == "darwin" else peak * 1024,
+                    usage.ru_utime + usage.ru_stime,
+                )
+                return
+            if time.monotonic() >= deadline and not killed:
+                try:
+                    self.process.kill()
+                except OSError:
+                    return
+                killed = True
+                deadline = time.monotonic() + timeout
+            elif time.monotonic() >= deadline:
+                return
+            time.sleep(0.01)
+
+
 class _SidecarDashboard:
     """The ``_Dashboard`` interface, drawn by a renderer process
     (``_renderer_main``) that owns the dashboard lines of the terminal:
@@ -839,15 +989,14 @@ class _SidecarDashboard:
         color: bool,
         snapshot: Callable[[], tuple[_TaskState, ...]],
         render_lock: RLock,
-        process: Any,
-        ack_fd: int,
+        link: _RendererLink,
     ) -> None:
         self._stream = stream
         self._color = color
         self._snapshot = snapshot
         self._render_lock = render_lock
-        self._process = process
-        self._ack_fd = ack_fd
+        self._link = link
+        self._process = link.process
         self._fallback: _Dashboard | None = None
         self._last_sent = float("-inf")
         self._pending = False
@@ -864,49 +1013,15 @@ class _SidecarDashboard:
         snapshot: Callable[[], tuple[_TaskState, ...]],
         render_lock: RLock,
     ) -> _SidecarDashboard | None:
-        import subprocess
-        import sys
-
-        try:
-            fd = stream.fileno()
-            if not os.isatty(fd) or not sys.executable:
-                return None
-            here = os.path.dirname(os.path.abspath(__file__))
-            ack_read, ack_write = os.pipe()
-            try:
-                process = subprocess.Popen(
-                    [
-                        sys.executable,
-                        "-I",
-                        "-c",
-                        _RENDERER_BOOTSTRAP,
-                        os.path.dirname(here),
-                        here,
-                        str(os.getpid()),
-                        "1" if color else "0",
-                        getattr(stream, "encoding", None) or "utf-8",
-                        str(ack_write),
-                    ],
-                    stdin=subprocess.PIPE,
-                    stdout=fd,
-                    stderr=subprocess.DEVNULL,
-                    pass_fds=(ack_write,),
-                    close_fds=True,
-                )
-            finally:
-                os.close(ack_write)
-        except (AttributeError, OSError, ValueError, io.UnsupportedOperation):
+        link = _RendererLink.spawn(stream, color=color, mode="dashboard", tty_only=True)
+        if link is None:
             return None
-        from .resources import register_monitor_process
-
-        register_monitor_process(process.pid)
         return cls(
             stream=stream,
             color=color,
             snapshot=snapshot,
             render_lock=render_lock,
-            process=process,
-            ack_fd=ack_read,
+            link=link,
         )
 
     # --- the _Dashboard interface -------------------------------------------
@@ -951,7 +1066,7 @@ class _SidecarDashboard:
             self._send({"op": "state", "tasks": self._states()})
             self._send({"op": "close"})
             self._closed = True
-            self._finish()
+            self._link.finish()
 
     # --- internals ------------------------------------------------------
     def _run(self) -> None:
@@ -974,77 +1089,15 @@ class _SidecarDashboard:
             self._send({"op": "state", "tasks": self._states()})
 
     def _send(self, message: dict[str, object]) -> None:
-        import json
-
-        if self._fallback is not None:
-            return
-        try:
-            pipe = self._process.stdin
-            pipe.write((json.dumps(message, separators=(",", ":")) + "\n").encode())
-            pipe.flush()
-        except (OSError, ValueError):
+        if self._fallback is None and not self._link.send(message):
             self._take_over()
-
-    def _finish(self) -> None:
-        """Wait (bounded) for the renderer to clear its lines and exit."""
-
-        import select
-
-        with contextlib.suppress(OSError, ValueError):
-            self._process.stdin.close()
-        try:
-            ready, _, _ = select.select([self._ack_fd], [], [], 2.0)
-            if ready:
-                os.read(self._ack_fd, 1)
-        except (OSError, ValueError):
-            pass
-        finally:
-            with contextlib.suppress(OSError):
-                os.close(self._ack_fd)
-        self._reap(timeout=1.0)
-
-    def _reap(self, *, timeout: float) -> None:
-        """Wait for the renderer (killed after ``timeout``) and report its
-        usage to the resource measurements, which leave it out."""
-
-        from .resources import monitor_process_ended
-
-        pid = self._process.pid
-        deadline = time.monotonic() + timeout
-        killed = False
-        while True:
-            try:
-                done, status, usage = os.wait4(pid, os.WNOHANG)
-            except ChildProcessError:
-                return
-            if done:
-                self._process.returncode = os.waitstatus_to_exitcode(status)
-                peak = int(usage.ru_maxrss)
-                monitor_process_ended(
-                    pid,
-                    peak if sys.platform == "darwin" else peak * 1024,
-                    usage.ru_utime + usage.ru_stime,
-                )
-                return
-            if time.monotonic() >= deadline and not killed:
-                try:
-                    self._process.kill()
-                except OSError:
-                    return
-                killed = True
-                deadline = time.monotonic() + timeout
-            elif time.monotonic() >= deadline:
-                return
-            time.sleep(0.01)
 
     def _take_over(self) -> None:
         """The renderer is gone: draw in this process from now on."""
 
         if self._fallback is not None:
             return
-        with contextlib.suppress(OSError):
-            self._process.kill()
-        self._reap(timeout=1.0)
+        self._link.abandon()
         self._fallback = _Dashboard(
             stream=self._stream,
             color=self._color,
@@ -1052,6 +1105,108 @@ class _SidecarDashboard:
             render_lock=self._render_lock,
         )
         self._fallback.start()
+
+
+def _event_record(event: ProgressEvent) -> dict[str, object]:
+    """A progress event as a renderer process's JSON input."""
+
+    if isinstance(event, ProgressStart):
+        return {
+            "op": "start",
+            "task_id": event.task_id,
+            "description": event.description,
+            "total": event.total,
+            "parent_task_id": event.parent_task_id,
+            "unit": event.unit,
+            "details": dict(event.details),
+        }
+    if isinstance(event, ProgressUpdate):
+        return {
+            "op": "update",
+            "task_id": event.task_id,
+            "completed": event.completed,
+            "total": event.total,
+            "message": event.message,
+            "details": dict(event.details),
+        }
+    return {
+        "op": "end",
+        "task_id": event.task_id,
+        "success": event.success,
+        "message": event.message,
+        "elapsed_seconds": event.elapsed_seconds,
+        "details": dict(event.details),
+    }
+
+
+def _event_of(record: Mapping[str, Any]) -> ProgressEvent:
+    fields = {key: value for key, value in record.items() if key != "op"}
+    if record["op"] == "start":
+        return ProgressStart(**fields)
+    if record["op"] == "update":
+        return ProgressUpdate(**fields)
+    return ProgressEnd(**fields)
+
+
+@dataclass(slots=True)
+class _SidecarLineSink:
+    """``--progress log`` written by a renderer process (``_renderer_main``
+    in log mode, a ``_LineProgressSink`` with its heartbeat), so the log
+    keeps its status lines while this process is inside native code that
+    holds the GIL. The task states are kept here too (an interruption's
+    whereabouts). Any failure falls back to an in-process line sink."""
+
+    stream: TextIO
+    color: bool = False
+    minimum_interval: float = 2.0
+    _link: _RendererLink | None = None
+    _fallback: _LineProgressSink | None = None
+    _states: dict[str, _TaskState] = field(default_factory=dict)
+    _lock: RLock = field(default_factory=RLock)
+
+    @classmethod
+    def spawn(
+        cls, stream: TextIO, *, color: bool, minimum_interval: float
+    ) -> _SidecarLineSink | None:
+        link = _RendererLink.spawn(stream, color=color, mode="log", tty_only=False)
+        if link is None:
+            return None
+        return cls(stream, color=color, minimum_interval=minimum_interval, _link=link)
+
+    def emit(self, event: ProgressEvent) -> None:
+        with self._lock:
+            _track_event(self._states, event, time.monotonic())
+            if isinstance(event, ProgressEnd) and not any(
+                task.finished_at is None for task in self._states.values()
+            ):
+                self._states.clear()
+            if self._fallback is not None:
+                self._fallback.emit(event)
+                return
+            if self._link is None or not self._link.send(_event_record(event)):
+                self._take_over(event)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._fallback is not None:
+                self._fallback.close()
+                return
+            link, self._link = self._link, None
+            if link is not None:
+                link.send({"op": "close"})
+                link.finish()
+
+    def _take_over(self, event: ProgressEvent) -> None:
+        if self._link is not None:
+            self._link.abandon()
+            self._link = None
+        self._fallback = _LineProgressSink(
+            self.stream,
+            color=self.color,
+            minimum_interval=self.minimum_interval,
+            heartbeat=True,
+        )
+        self._fallback.emit(event)
 
 
 def _renderer_main(argv: list[str]) -> None:
@@ -1077,6 +1232,9 @@ def _renderer_main(argv: list[str]) -> None:
         errors="replace",
         write_through=True,
     )
+    if len(argv) > 4 and argv[4] == "log":
+        _log_renderer(parent, color, stream, ack_fd)
+        return
     holder: list[tuple[_TaskState, ...]] = [()]
     dashboard = _Dashboard(
         stream=stream,
@@ -1105,6 +1263,32 @@ def _renderer_main(argv: list[str]) -> None:
                 break
     finally:
         dashboard.close()
+        stream.flush()
+        with contextlib.suppress(OSError):
+            os.write(ack_fd, b"x")
+
+
+def _log_renderer(parent: int, color: bool, stream: TextIO, ack_fd: int) -> None:
+    """The renderer process in log mode: the events through a line sink
+    with its heartbeat, measuring the parent's process tree."""
+
+    import json
+
+    sink = _LineProgressSink(
+        stream,
+        color=color,
+        minimum_interval=2.0,
+        heartbeat=True,
+        monitor_root=parent,
+    )
+    try:
+        for line in sys.stdin.buffer:
+            record = json.loads(line)
+            if record.get("op") == "close":
+                break
+            sink.emit(_event_of(record))
+    finally:
+        sink.close()
         stream.flush()
         with contextlib.suppress(OSError):
             os.write(ack_fd, b"x")
@@ -1392,8 +1576,14 @@ def _estimate_fragments(estimate: Estimate | None) -> list[tuple[str, str | None
                 "YELLOW",
             )
         ]
+    bound = ">" if estimate.at_least else ""
     return [
-        ("  ETA " + _eta_text(estimate.seconds, estimated=estimate.estimated), None)
+        (
+            "  ETA "
+            + bound
+            + _eta_text(estimate.seconds, estimated=estimate.estimated),
+            None,
+        )
     ]
 
 
@@ -1949,7 +2139,7 @@ def progress_whereabouts(sink: ProgressSink | None) -> str | None:
     states: dict[str, _TaskState] | None = None
     if isinstance(sink, TtyProgressSink):
         states = sink._tasks if sink._line_sink is None else sink._line_sink._states
-    elif isinstance(sink, _LineProgressSink):
+    elif isinstance(sink, (_LineProgressSink, _SidecarLineSink)):
         states = sink._states
     if not states:
         return None
@@ -2006,6 +2196,12 @@ def progress_sink(
         # Plain lines on the stream, never in the logger format (the CLI
         # shows no logger records at its default level).
         del logger
+        if os.environ.get(_RENDERER_ENV, "process") != "inline":
+            sidecar = _SidecarLineSink.spawn(
+                stream, color=bool(color), minimum_interval=2.0
+            )
+            if sidecar is not None:
+                return sidecar
         return _LineProgressSink(
             stream, color=bool(color), minimum_interval=2.0, heartbeat=True
         )
