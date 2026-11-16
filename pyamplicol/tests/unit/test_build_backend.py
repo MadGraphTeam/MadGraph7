@@ -1096,6 +1096,24 @@ def test_release_build_info_rejects_an_expanded_archive_marker(
         backend._stage_release_build_info(overlay, "0.1.0")
 
 
+def _source_identity_checkout(tmp_path: Path) -> Path:
+    # MadGraph7: upstream's fixture also copies the performance-report source
+    # classifier (tools/performance_report, not in MadGraph7); the dirty-checkout
+    # tests below only need a committed checkout.
+    repo = tmp_path / "source-identity-checkout"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "build@example.invalid")
+    _git(repo, "config", "user.name", "Build Test")
+    source = repo / "src/runtime.py"
+    source.parent.mkdir()
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    (repo / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "fixture")
+    return repo
+
+
 def _dirty_release_checkout(tmp_path: Path) -> Path:
     checkout = _source_identity_checkout(tmp_path)
     (checkout / "src/runtime.py").write_text("VALUE = 2\n", encoding="utf-8")
@@ -1168,6 +1186,42 @@ def test_allow_dirty_wheel_is_never_marked_publishable(
     monkeypatch.setattr(backend, "ROOT", tmp_path / "source-archive")
     with pytest.raises(RuntimeError, match="invalid build provenance"):
         backend._stage_release_build_info(overlay, "0.1.0")
+
+
+def test_allow_dirty_wheel_from_a_subdirectory_of_a_dirty_repository(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # MadGraph7 tracks pyAmpliCol as a subdirectory of its own repository.
+    repo = tmp_path / "madgraph7"
+    project = repo / "pyamplicol"
+    (project / "src").mkdir(parents=True)
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "build@example.invalid")
+    _git(repo, "config", "user.name", "Build Test")
+    (project / "src/runtime.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (project / "pyproject.toml").write_text(
+        "[project]\nname='test'\n", encoding="utf-8"
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "fixture")
+    (project / "src/runtime.py").write_text("VALUE = 2\n", encoding="utf-8")
+    monkeypatch.delenv("PYAMPLICOL_LOCAL_BUILD", raising=False)
+    monkeypatch.setattr(backend, "ROOT", project)
+    monkeypatch.setattr(
+        backend, "_native_build_inputs_digest", lambda _root, **_kwargs: "e" * 64
+    )
+
+    with pytest.raises(RuntimeError, match="require a clean Git source revision"):
+        backend._stage_release_build_info(tmp_path / "ordinary", "0.1.0")
+    overlay = tmp_path / "overlay"
+    backend._stage_dirty_release_build_info(overlay, "0.1.0")
+    build_info = json.loads(
+        (overlay / "src/pyamplicol/_build_info.json").read_text(encoding="utf-8")
+    )
+    assert build_info["publishable"] is False
+    assert build_info["dirty_source_checkout"] is True
+    assert "source_revision" not in build_info
 
 
 def test_allow_dirty_keeps_the_publishable_marker_of_a_clean_checkout(
