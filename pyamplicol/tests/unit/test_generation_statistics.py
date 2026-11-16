@@ -223,12 +223,17 @@ def test_the_phases_and_the_rest_add_up_to_the_wall_time() -> None:
 
 @pytest.mark.skipif(not _LINUX, reason="RUSAGE_CHILDREN is read on Linux only")
 def test_a_started_process_is_counted() -> None:
+    import resource
+
     from pyamplicol.reporting import resources
 
     # Above this process's own size: the kernel credits the started process
     # with the resident size of the image it is started from.
     current = resources._proc_status_kib("VmRSS") or 0
     size = current + 192 * 1024**2
+    # The largest peak of the processes earlier tests of this process
+    # started: RUSAGE_CHILDREN keeps it, a smaller one cannot raise it.
+    earlier = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss * 1024
     with measure_generation(interval_seconds=0.05) as measured:
         subprocess.run(
             [
@@ -243,8 +248,9 @@ def test_a_started_process_is_counted() -> None:
     assert statistics is not None
     assert statistics.child_processes is True
     assert statistics.peak_rss_bound == "lower bound"
-    if "not attributable" in statistics.peak_rss_method:
-        # a process of an earlier test ended inside the region
+    if "not attributable" in statistics.peak_rss_method or earlier >= size:
+        # a process of an earlier test ended inside the region, or a larger
+        # one ended before it
         return
     assert statistics.child_peak_rss_bytes is not None
     assert statistics.child_peak_rss_bytes >= size
