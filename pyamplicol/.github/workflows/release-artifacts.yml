@@ -140,10 +140,14 @@ jobs:
           "maturin==1.15.0"
           "twine>=6,<7"
       - name: Build and audit from retained sdist
+        # One wheel build, from the retained sdist (the wheel that ships). The
+        # comparison wheel from the checkout is built by the manylinux job
+        # only: two native builds exceed the 6 h job limit on macos-15-intel.
         run: >-
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python tools/release/build_release_artifacts.py
           --retained-sdist .artifacts/retained/pyamplicol-*.tar.gz
+          --skip-checkout-wheel
           --output-dir .artifacts/platform
       - name: Require C++17 and Fortran 2008 SDK toolchains
         shell: bash
@@ -174,6 +178,26 @@ jobs:
           --python "$(command -v python)"
           --wheel .artifacts/platform/pyamplicol-*.whl
           --no-build
+          --keep
+      - name: Report the double-double kernel width on this CPU
+        if: matrix.target == 'macos-x86_64'
+        shell: bash
+        # Simd::fused (rusticol-core loop_v2/kernels.rs) selects the FMA
+        # kernels when the CPU reports avx2 and fma and
+        # RUSTICOL_TEST_KERNEL_SIMD is unset; target_info() reads the same
+        # is_x86_feature_detected! flags.
+        run: |
+          set -euo pipefail
+          sysctl -n machdep.cpu.brand_string
+          venv=(PYPI_DEPLOYMENT_TEST/release-*/venv)
+          "${venv[0]}/bin/python" -I -c '
+          import os, pyamplicol._rusticol as native
+          info = native.target_info()
+          cap = os.environ.get("RUSTICOL_TEST_KERNEL_SIMD")
+          fma = {"avx2", "fma"} <= set(info.cpu_features) and cap != "baseline"
+          width = "FMA" if fma else "baseline"
+          print(f"double-double kernels on this CPU ({info.triple}): {width}")
+          '
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.14"

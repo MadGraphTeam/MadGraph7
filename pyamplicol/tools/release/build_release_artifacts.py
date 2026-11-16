@@ -72,12 +72,15 @@ def build_release_artifacts(
     allow_dirty_candidate: bool,
     sdist_only: bool,
     retained_sdist_path: Path | None,
+    skip_checkout_wheel: bool = False,
 ) -> list[Path]:
     python = python.resolve()
     if mode == "release" and allow_dirty_candidate:
         raise ReleaseError("--allow-dirty is available only for candidate builds")
     if sdist_only and retained_sdist_path is not None:
         raise ReleaseError("--sdist-only and --retained-sdist are mutually exclusive")
+    if skip_checkout_wheel and retained_sdist_path is None:
+        raise ReleaseError("--skip-checkout-wheel requires --retained-sdist")
     if mode == "candidate" and sdist_only:
         raise ReleaseError("candidate artifact production is wheel-only")
     if mode == "candidate" and retained_sdist_path is not None:
@@ -107,6 +110,23 @@ def build_release_artifacts(
             retained = output_directory / sdist.name
             shutil.copy2(sdist, retained)
             return [retained]
+
+        if skip_checkout_wheel and retained_sdist_path is not None:
+            # The shipped wheel is the one built from the retained sdist. The
+            # checkout wheel only fed the identity comparison, which the sdist
+            # wheel's own audit already pins (version, tags, target).
+            # build_wheel_from_sdist audits the sdist and the wheel it builds.
+            rebuilt_wheel = build_wheel_from_sdist(
+                retained_sdist_path.resolve(),
+                None,
+                rebuilt_directory,
+                mode="release",
+                python=python,
+            )
+            print(f"Audited {wheel_size_summary(rebuilt_wheel)}", flush=True)
+            copied_wheel = output_directory / rebuilt_wheel.name
+            shutil.copy2(rebuilt_wheel, copied_wheel)
+            return [copied_wheel]
 
         _build(
             python,
@@ -166,6 +186,14 @@ def _parser() -> argparse.ArgumentParser:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--sdist-only", action="store_true")
     group.add_argument("--retained-sdist", type=Path)
+    parser.add_argument(
+        "--skip-checkout-wheel",
+        action="store_true",
+        help=(
+            "with --retained-sdist: build only the wheel from the retained sdist "
+            "(no comparison wheel from the checkout)"
+        ),
+    )
     return parser
 
 
@@ -180,6 +208,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         allow_dirty_candidate=args.allow_dirty,
         sdist_only=args.sdist_only,
         retained_sdist_path=args.retained_sdist,
+        skip_checkout_wheel=args.skip_checkout_wheel,
     )
     heading = (
         "Retained NON-PUBLISHABLE candidate artifacts:"
