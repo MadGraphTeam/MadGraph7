@@ -114,8 +114,8 @@ def _plan(work: Path, row: str, output: Path):
 
 
 # Fields that differ between two cache-off generations: the manifest's
-# creation time and phase timings (and, defensively, an output path in the
-# configuration records).
+# creation time, phase timings and generation statistics (wall time, peak
+# memory), and, defensively, an output path in the configuration records.
 def _identity(artifact: Path) -> dict[str, str]:
     digests = {}
     for path in sorted(artifact.rglob("*")):
@@ -127,6 +127,7 @@ def _identity(artifact: Path) -> dict[str, str]:
             manifest = json.loads(data)
             manifest.pop("created_utc")
             manifest["extensions"]["generation"].pop("phase_timings_seconds")
+            manifest["extensions"]["generation"].pop("statistics", None)
             data = json.dumps(manifest, sort_keys=True).encode()
         elif name.startswith("config/"):
             data = data.replace(str(artifact).encode(), b"<output>")

@@ -6,6 +6,7 @@ from __future__ import annotations
 import time
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from threading import Lock
 
@@ -17,6 +18,46 @@ from pyamplicol.reporting import (
     ProgressUpdate,
 )
 from pyamplicol.reporting.progress import ProgressDetailValue
+
+
+@dataclass(slots=True)
+class PhaseTimes:
+    """The disjoint top-level phases of one generation call in order
+    (``collect_phase_times``): a phase that starts while another is open
+    (a nested generation) is part of the open one and not recorded."""
+
+    seconds: dict[str, float] = field(default_factory=dict)
+    depth: int = 0
+
+    def add(self, name: str, elapsed: float) -> None:
+        self.seconds[name] = self.seconds.get(name, 0.0) + elapsed
+
+
+_PHASE_TIMES: ContextVar[PhaseTimes | None] = ContextVar(
+    "pyamplicol_generation_phase_times", default=None
+)
+
+
+@contextmanager
+def collect_phase_times() -> Iterator[PhaseTimes]:
+    """Collect the phases that ``GenerationPhaseReporter`` times in this
+    context (the caller's thread) until the block ends."""
+
+    times = PhaseTimes()
+    token = _PHASE_TIMES.set(times)
+    try:
+        yield times
+    finally:
+        _PHASE_TIMES.reset(token)
+
+
+def record_phase(name: str, seconds: float) -> None:
+    """Record a step of a generation call timed outside any phase (the
+    call's set-up) as a phase of its own, when phases are collected."""
+
+    times = _PHASE_TIMES.get()
+    if times is not None and times.depth == 0:
+        times.add(name, seconds)
 
 
 @dataclass(slots=True)
@@ -205,11 +246,16 @@ class GenerationPhaseReporter:
                 )
             )
         handle = PhaseHandle(task_id, self.sink, total)
+        times = _PHASE_TIMES.get()
+        top = times is not None and times.depth == 0
+        if times is not None:
+            times.depth += 1
         started = time.perf_counter()
         try:
             yield handle
         except BaseException as exc:
             elapsed = time.perf_counter() - started
+            self._close_phase(times, top, name, elapsed)
             self.timings[name] = elapsed
             if self.sink is not None:
                 self.sink.emit(
@@ -222,6 +268,7 @@ class GenerationPhaseReporter:
                 )
             raise
         elapsed = time.perf_counter() - started
+        self._close_phase(times, top, name, elapsed)
         self.timings[name] = elapsed
         if total is not None and handle.completed < total:
             handle.update(total)
@@ -233,5 +280,28 @@ class GenerationPhaseReporter:
                 details={"step": description},
             )
 
+    @staticmethod
+    def _close_phase(
+        times: PhaseTimes | None, top: bool, name: str, elapsed: float
+    ) -> None:
+        if times is None:
+            return
+        times.depth -= 1
+        if top:
+            times.add(name, elapsed)
 
-__all__ = ["GenerationPhaseReporter", "PhaseHandle"]
+    def record(self, name: str, seconds: float) -> None:
+        """Record a step timed outside ``phase`` (between two phases) as a
+        phase of its own."""
+
+        self.timings[name] = seconds
+        record_phase(name, seconds)
+
+
+__all__ = [
+    "GenerationPhaseReporter",
+    "PhaseHandle",
+    "PhaseTimes",
+    "collect_phase_times",
+    "record_phase",
+]

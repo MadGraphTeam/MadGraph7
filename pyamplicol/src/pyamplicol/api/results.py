@@ -295,6 +295,109 @@ class GenerationPlan:
         object.__setattr__(self, "unsupported_features", unsupported_features)
 
 
+_PEAK_BOUNDS = ("exact", "upper bound", "lower bound", "approximate", "unknown")
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationStatistics:
+    """Wall time and peak memory of one generation: the ``Generator.generate``
+    call that last wrote the artifact (``pyamplicol generate`` once the card
+    is read), stored in ``artifact.json`` under
+    ``extensions.generation.statistics``.
+
+    ``wall_seconds``: the call's wall-clock time (monotonic clock), from its
+    start to the end of its last step (validation, process-group analysis).
+    ``phases``: the generation phases of the call in order, (name,
+    seconds) pairs (the phases of the progress display; disjoint), and
+    ``unattributed_seconds``
+    the rest of ``wall_seconds`` (set-up between phases, the call's own
+    checks), so that the phases and the rest add up to ``wall_seconds``.
+
+    ``peak_rss_bytes``: the peak resident memory of the generation, of the
+    generating process and every process it started (compilers, workers);
+    threads share the process's memory, so thread pools, native ones
+    included, are counted. ``peak_rss_bound`` says what it is ("exact",
+    "upper bound", "lower bound", "approximate" or "unknown":
+    ``reporting.resources.ProcessTreePeakMemory``), ``peak_rss_method`` how
+    it was measured. ``process_peak_rss_bytes`` is the generating process's
+    own peak, ``child_processes`` whether it started a process (None: not
+    observable), ``child_peak_rss_bytes`` the largest peak of one such
+    process when known."""
+
+    wall_seconds: float
+    phases: tuple[tuple[str, float], ...]
+    unattributed_seconds: float
+    peak_rss_bytes: int | None
+    peak_rss_bound: str
+    peak_rss_method: str
+    process_peak_rss_bytes: int | None = None
+    child_processes: bool | None = None
+    child_peak_rss_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.peak_rss_bound not in _PEAK_BOUNDS:
+            raise ValueError(f"invalid peak RAM bound {self.peak_rss_bound!r}")
+        object.__setattr__(
+            self,
+            "phases",
+            tuple((str(name), float(seconds)) for name, seconds in self.phases),
+        )
+
+    def to_json(self) -> dict[str, object]:
+        """The stored record (``extensions.generation.statistics``), also
+        the ``statistics`` of ``pyamplicol generate --json``."""
+
+        return {
+            "schema_version": 1,
+            "wall_seconds": self.wall_seconds,
+            "phases": [
+                {"phase": name, "seconds": seconds} for name, seconds in self.phases
+            ],
+            "unattributed_seconds": self.unattributed_seconds,
+            "peak_rss_bytes": self.peak_rss_bytes,
+            "peak_rss_bound": self.peak_rss_bound,
+            "peak_rss_method": self.peak_rss_method,
+            "process_peak_rss_bytes": self.process_peak_rss_bytes,
+            "child_processes": self.child_processes,
+            "child_peak_rss_bytes": self.child_peak_rss_bytes,
+        }
+
+    @classmethod
+    def from_json(cls, value: object) -> GenerationStatistics | None:
+        """The statistics of a stored record; None when there is none or it
+        is not one this version reads (an artifact written before they were
+        recorded, or a newer record schema)."""
+
+        if not isinstance(value, Mapping) or value.get("schema_version") != 1:
+            return None
+
+        def size(name: str) -> int | None:
+            item = value.get(name)
+            return (
+                item if isinstance(item, int) and not isinstance(item, bool) else None
+            )
+
+        try:
+            phases = value.get("phases")
+            child = value.get("child_processes")
+            return cls(
+                wall_seconds=float(value["wall_seconds"]),
+                phases=tuple(
+                    (str(item["phase"]), float(item["seconds"]))
+                    for item in (phases if isinstance(phases, list) else ())
+                ),
+                unattributed_seconds=float(value["unattributed_seconds"]),
+                peak_rss_bytes=size("peak_rss_bytes"),
+                peak_rss_bound=str(value.get("peak_rss_bound", "unknown")),
+                peak_rss_method=str(value.get("peak_rss_method", "")),
+                process_peak_rss_bytes=size("process_peak_rss_bytes"),
+                child_processes=child if isinstance(child, bool) else None,
+                child_peak_rss_bytes=size("child_peak_rss_bytes"),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+
+
 @dataclass(frozen=True, slots=True)
 class GenerationResult:
     """Location and process inventory of a successfully written artifact."""
@@ -307,6 +410,9 @@ class GenerationResult:
     # Known, benign dependency log events of the generation, returned
     # instead of printed (``ResultWarning``; m-lit ux-besteffort).
     warnings: tuple[Any, ...] = ()
+    # Wall time and peak memory of the generation (also stored in the
+    # artifact); None from a backend that does not measure them.
+    statistics: GenerationStatistics | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -1284,6 +1390,7 @@ __all__ = [
     "ExternalParticle",
     "GenerationPlan",
     "GenerationResult",
+    "GenerationStatistics",
     "HelicityConfiguration",
     "ModelParameter",
     "PhysicsReduction",
