@@ -90,8 +90,10 @@ def _enter(token: object) -> None:
 def _leave(token: object) -> int | None:
     """Unregister a call (nothing if ``_enter`` did not register it); the
     last one turns the collector back on if this module turned it off. The
-    collector is restored before the token is dropped, so an exception here
-    can leave the pause unused, never the collector off. Returns the
+    collector is restored before the token is dropped, so an exception after
+    the restore can leave the pause unused, never the collector off; one
+    delivered before it (a ``KeyboardInterrupt`` at the very end of a call,
+    as in any interrupted ``finally``) can leave it off. Returns the
     generation of a catch-up collection due (calls overlapping for
     ``CATCH_UP`` seconds), else None."""
 
