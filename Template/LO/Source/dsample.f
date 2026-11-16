@@ -1775,8 +1775,9 @@ c     to which its events are normalised.
       double precision last_uref, last_ufix, last_lumi, last_goal, last_xnorm
       common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
      &     last_xnorm, last_it
-c     last_on: this job adapts its grid from scratch (normal refine); jobs that
-c     start from a stored grid (gridpack, MadSpin decays) keep the old stop rule
+c     last_on: this job adapts its grid from scratch (normal refine), or starts
+c     from a stored grid with max_overweight_truncation set (gridpack); other
+c     stored-grid jobs (MadSpin decays) keep the old stop rule
       logical last_stop, last_on
       integer last_min
       save last_on, last_min
@@ -1807,7 +1808,8 @@ c-----
       if (first_time) then
          first_time = .false.
          last_it = .false.
-         last_on = use_cut .ne. 0 .and. use_cut .ne. -2
+         last_on = (use_cut .ne. 0 .and. use_cut .ne. -2) .or.
+     &        (use_cut .eq. 0 .and. max_overweight_truncation .gt. 0d0)
          last_ufix = 0d0
          last_xnorm = 0d0
          last_lumi = 0d0

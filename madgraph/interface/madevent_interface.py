@@ -7905,6 +7905,9 @@ class GridPackCmd(MadEventCmd):
         AllEvent = lhe_parser.MultiEventFile()
         AllEvent.banner = self.banner
         
+        # with max_overweight_truncation set, the events heavier than the maximum
+        # weight keep their weight, as in the non-gridpack combination
+        keep_ow = float(self.run_card.get('max_overweight_truncation', -1)) > 0
         partials = 0 # if too many file make some partial unweighting
         sum_xsec, sum_xerru, sum_axsec = 0,[],0
         partials_info = []
@@ -7935,7 +7938,8 @@ class GridPackCmd(MadEventCmd):
                         nb_event = min(abs(1.01*self.nb_event*sum_axsec/self.results.current.get('axsec')),self.run_card['nevents'], self.nb_event, self.gridpack_cross, sum_axsec)
                     AllEvent.unweight(pjoin(outdir, self.run_name, "partials%s.lhe.gz" % partials),
                           get_wgt, log_level=5,  trunc_error=1e-2, event_target=nb_event, 
-                          keep_overshoot=self.run_card['allow_overshoot_events'])
+                          keep_overshoot=self.run_card['allow_overshoot_events'],
+                          keep_overweight_weight=keep_ow)
                     AllEvent = lhe_parser.MultiEventFile()
                     AllEvent.banner = self.banner
                     partials_info.append((pjoin(outdir, self.run_name, "partials%s.lhe.gz" % partials),
@@ -7957,7 +7961,8 @@ class GridPackCmd(MadEventCmd):
                           get_wgt, trunc_error=1e-2, event_target=self.nb_event,
                           log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
                           proc_charac=self.proc_characteristic,
-                          keep_overshoot=self.run_card['allow_overshoot_events'])
+                          keep_overshoot=self.run_card['allow_overshoot_events'],
+                          keep_overweight_weight=keep_ow)
         
         
         if partials:
