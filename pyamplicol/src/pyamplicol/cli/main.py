@@ -14,6 +14,7 @@ from typing import TextIO, cast
 from pyamplicol.config import PyAmpliColError
 from pyamplicol.licensing import detect_symbolica_license
 from pyamplicol.reporting import (
+    ProgressSink,
     TtyProgressSink,
     close_progress_sink,
     configure_cli_logging,
@@ -214,6 +215,22 @@ def write_result(
     stream.flush()
 
 
+_COMMAND_TASK = "pyamplicol-command"
+
+
+def _close_display(sink: ProgressSink | None, *, success: bool) -> None:
+    """End the command's placeholder task (a no-op once replaced) and close
+    the display, on every way out of the command."""
+
+    if sink is None:
+        return
+    from pyamplicol.reporting import ProgressEnd
+
+    with contextlib.suppress(Exception):
+        sink.emit(ProgressEnd(_COMMAND_TASK, success=success))
+    close_progress_sink(sink)
+
+
 def _color_enabled(mode: str, stream: TextIO) -> bool:
     """``--color``: "always", "never", or "auto": a capable terminal
     (``TERM`` not "dumb") without ``NO_COLOR`` set."""
@@ -369,11 +386,13 @@ def _run_cli(
             # the command's own phases begin (model loading, imports).
             from pyamplicol.reporting import ProgressStart
 
+            # A placeholder: the command's first own task replaces it (the
+            # sink drops it), its end closes it otherwise.
             sink.emit(
                 ProgressStart(
-                    "pyamplicol-command",
+                    _COMMAND_TASK,
                     f"pyamplicol {config.action}",
-                    details={"step": "starting"},
+                    details={"step": "starting", "placeholder": True},
                 )
             )
         selected_services = (
@@ -403,7 +422,7 @@ def _run_cli(
             dry_run=invocation.dry_run,
             full_physics=invocation.full_physics,
         )
-        close_progress_sink(sink)
+        _close_display(sink, success=True)
         sink = None
         color = _color_enabled(config.output.color, output_stream)
         write_result(
@@ -421,7 +440,7 @@ def _run_cli(
         # applicable check passed (``CheckReport.exit_code``).
         return result.exit_code if isinstance(result, CheckReport) else 0
     except (PyAmpliColError, OSError, RuntimeError, TypeError, ValueError) as exc:
-        close_progress_sink(sink)
+        _close_display(sink, success=False)
         sink = None
         if logging_configured:
             get_logger("cli").error("%s", exc)
@@ -433,7 +452,7 @@ def _run_cli(
         from pyamplicol.reporting.progress import progress_whereabouts
 
         whereabouts = progress_whereabouts(sink)
-        close_progress_sink(sink)
+        _close_display(sink, success=False)
         sink = None
         message = (
             "interrupted (Ctrl-C) "
@@ -451,7 +470,7 @@ def _run_cli(
         diagnostic_stream.flush()
         return 130
     finally:
-        close_progress_sink(sink)
+        _close_display(sink, success=False)
         if logging_configured:
             reset_cli_logging()
 
