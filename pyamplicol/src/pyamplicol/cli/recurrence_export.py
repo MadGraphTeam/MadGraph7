@@ -11,12 +11,13 @@ from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pyamplicol.api.errors import ArtifactError, ConfigurationError
 
 if TYPE_CHECKING:
     from pyamplicol.api.protocols import Momenta
+    from pyamplicol.reporting.progress import ProgressSink
 
 
 def provider_process_ids(artifact: Path) -> tuple[str, ...]:
@@ -36,6 +37,10 @@ def provider_process_ids(artifact: Path) -> tuple[str, ...]:
         for member in groups.members():
             identifiers[member.process_id] = None
     return tuple(identifiers)
+
+
+def _plural(count: int, noun: str) -> str:
+    return f"{count:,} {noun}" + ("" if count == 1 else "s")
 
 
 def _check_destination(output: Path) -> None:
@@ -175,7 +180,26 @@ class RecurrenceExportInvocation:
     output_format: Literal["human", "json"] = "human"
     output_color: Literal["auto", "always", "never"] = "auto"
 
-    def run(self) -> object:
+    def run(self, progress: ProgressSink | None = None) -> object:
+        """Export; ``progress`` (stderr) shows each process's load and
+        native export and the file's serialization."""
+
+        from pyamplicol.generation.progress import (
+            GenerationHistory,
+            GenerationPhaseReporter,
+            step,
+        )
+
+        reporter = GenerationPhaseReporter(progress)
+        try:
+            result = self._run(reporter, GenerationHistory, step)
+        except BaseException as error:
+            reporter.finish_generation(success=False, message=str(error))
+            raise
+        reporter.finish_generation()
+        return result
+
+    def _run(self, reporter: Any, history: Any, step: Any) -> object:
         from pyamplicol.api import Runtime
 
         from .utilities import UtilityResult
@@ -210,16 +234,35 @@ class RecurrenceExportInvocation:
         resolved_parameters: dict[str, Mapping[str, object]] = {}
 
         requests = {process_id: self.color_flows for process_id in processes}
+        reporter.start_generation(
+            total=len(processes) + 1,
+            details={},
+            signature=history.signature_of(
+                "export-recurrence",
+                str(Path(self.artifact).resolve()),
+                tuple(processes),
+                self.color_flows,
+            ),
+            description="Exporting recurrence programs",
+        )
         # Export requested processes first, then any representatives omitted by
         # a member-only selection. Only requested processes receive samples.
         for requested in (True, False):
             for process_id, colours in requests.items():
-                runtime = Runtime.load(
-                    self.artifact,
-                    process=process_id,
-                    model_parameters=parameters,
-                )
-                export = runtime.export_recurrence(color_flows=colours)
+                with reporter.phase(
+                    f"process:{process_id}", f"Exporting {process_id}"
+                ) as phase:
+                    with step("load", "Loading the process"):
+                        runtime = Runtime.load(
+                            self.artifact,
+                            process=process_id,
+                            model_parameters=parameters,
+                        )
+                    with step("export", "Exporting its recurrence programs"):
+                        export = runtime.export_recurrence(color_flows=colours)
+                    phase.summary = _plural(
+                        len(cast(Sequence[object], export["programs"])), "program"
+                    )
                 if requested and references is not None:
                     from pyamplicol.api.recurrence_export import attach_reference_points
 
@@ -301,16 +344,19 @@ class RecurrenceExportInvocation:
             _member_reference(program) for program in programs.values()
         ]
         combined["kernels"] = list(kernels.values())
-        content = (
-            json.dumps(
-                combined,
-                indent=self.indent,
-                separators=(",", ":") if self.indent is None else None,
-                allow_nan=False,
-            )
-            + "\n"
-        )
-        _replace_output(self.output, content)
+        with reporter.phase("write", f"Writing {self.output}") as phase:
+            with step("serialize", "Serializing the JSON document"):
+                content = (
+                    json.dumps(
+                        combined,
+                        indent=self.indent,
+                        separators=(",", ":") if self.indent is None else None,
+                        allow_nan=False,
+                    )
+                    + "\n"
+                )
+            _replace_output(self.output, content)
+            phase.summary = f"{len(content) / 1024**2:,.1f} MiB"
         return UtilityResult("recurrence export", "complete", self.output)
 
 

@@ -7,7 +7,9 @@ import importlib
 import math
 import re
 import textwrap
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, fields, is_dataclass
 from decimal import Decimal
 from fractions import Fraction
@@ -1621,6 +1623,122 @@ def _generated_group_texts(
     return texts
 
 
+def _duration_text(seconds: float) -> str:
+    """A wall time: three significant digits below a minute ("34.2 s",
+    "512 ms"), else hours, minutes and seconds as the progress display
+    ("12m05s")."""
+
+    if seconds < 60.0:
+        from .loop_profile import _seconds_text
+
+        return _seconds_text(seconds)
+    from .progress import _duration_text as progress_duration
+
+    return progress_duration(seconds)
+
+
+def _statistics_width(fields: Sequence[str], values: Sequence[str]) -> int:
+    """The wrap width of the ``generation time`` cell of a field/value
+    table: the width its other values already take, at least what keeps
+    the table within the loop tables' line (``loop_profile._LINE_WIDTH``),
+    at most the value column's ``_SUMMARY_VALUE_WIDTH``."""
+
+    from .loop_profile import _LINE_WIDTH
+
+    frame = len("|  |  |")
+    field_width = max(len(field) for field in fields)
+    widest = max(
+        (
+            len(line)
+            for value in values
+            for line in _ANSI_STYLE.sub("", value).split("\n")
+        ),
+        default=0,
+    )
+    return min(_SUMMARY_VALUE_WIDTH, max(widest, _LINE_WIDTH - frame - field_width))
+
+
+def _generation_statistics_rows(
+    statistics: object,
+    *,
+    color: bool,
+    width: int,
+) -> tuple[tuple[str, str], tuple[str, str]]:
+    """The ``generation time`` and ``peak RAM`` rows of a generation's
+    statistics (``GenerationStatistics`` or its plain fields), for the
+    `generate` and `inspect` field/value tables.
+
+    The time: the wall time in bold, then, muted, each phase and the
+    unattributed rest, wrapped at ``width``. The peak RAM: the peak with its
+    bound's prefix (``resources.bounded_memory_text``) and, when the
+    generation started processes, muted, the generating process's own peak
+    when the peak is not it and the largest one of a started process when
+    known. A muted ``-`` when nothing is recorded."""
+
+    from pyamplicol.api.results import GenerationStatistics
+
+    from . import palette
+    from .resources import bounded_memory_text, memory_text
+
+    stats: GenerationStatistics | None = None
+    if isinstance(statistics, GenerationStatistics):
+        stats = statistics
+    elif isinstance(statistics, Mapping):
+        try:
+            stats = GenerationStatistics(
+                **{str(key): value for key, value in statistics.items()}
+            )
+        except (TypeError, ValueError):
+            stats = None
+    missing = _paint("-", palette.MUTED, enabled=color)
+    if stats is None:
+        return (("generation time", missing), ("peak RAM", missing))
+
+    total = _duration_text(stats.wall_seconds)
+    parts = [f"{name} {_duration_text(seconds)}" for name, seconds in stats.phases]
+    if parts:
+        parts.append(f"unattributed {_duration_text(stats.unattributed_seconds)}")
+    if parts:
+        parts[0] = "(" + parts[0]
+        parts[-1] += ")"
+    # Whole "phase time" items per line, never a phase split from its time.
+    lines = [total]
+    for index, part in enumerate(parts):
+        item = part + ("," if index < len(parts) - 1 else "")
+        if len(lines[-1]) + 1 + len(item) <= width:
+            lines[-1] += " " + item
+        else:
+            lines.append(item)
+    head = lines[0][len(total) :]
+    time_text = "\n".join(
+        [
+            _paint(total, None, enabled=color, bold=True)
+            + _paint(head, palette.MUTED, enabled=color)
+        ]
+        + [_paint(line, palette.MUTED, enabled=color) for line in lines[1:]]
+    )
+
+    peak = bounded_memory_text(stats.peak_rss_bytes, stats.peak_rss_bound)
+    if peak is None:
+        peak_text = missing
+    else:
+        details = []
+        if stats.child_processes:
+            own = stats.process_peak_rss_bytes
+            if own is not None and own != stats.peak_rss_bytes:
+                details.append(f"process {memory_text(own)}")
+            if stats.child_peak_rss_bytes is not None:
+                details.append(
+                    f"largest started process {memory_text(stats.child_peak_rss_bytes)}"
+                )
+        peak_text = peak + (
+            " " + _paint(f"({', '.join(details)})", palette.MUTED, enabled=color)
+            if details
+            else ""
+        )
+    return (("generation time", time_text), ("peak RAM", peak_text))
+
+
 def _generation_summary(
     result: object,
     *,
@@ -1705,6 +1823,14 @@ def _generation_summary(
             table.add_row(
                 (_paint("process grouping", "CYAN", enabled=color), grouping_text)
             )
+    width = _statistics_width(
+        [field for field, _ in rows] + ["generation time"],
+        [value for _, value in rows] + ([grouping_text] if grouping_text else []),
+    )
+    for field, text in _generation_statistics_rows(
+        result.statistics, color=color, width=width
+    ):
+        table.add_row((_paint(field, "CYAN", enabled=color), text))
     group_texts = (
         {}
         if grouping is None or not grouping_text
@@ -2695,6 +2821,15 @@ def _artifact_inspection_summary(
                 _colored(text, key=key, enabled=color),
             )
         )
+        if key == "created":
+            width = _statistics_width(
+                [field for field, _ in summary_rows],
+                [_value_text(value) for _, value in summary_rows],
+            )
+            for field, cell in _generation_statistics_rows(
+                plain.get("generation_statistics"), color=color, width=width
+            ):
+                summary.add_row((_paint(field, "CYAN", enabled=color), cell))
 
     process_table = prettytable.PrettyTable(
         (
@@ -3336,6 +3471,89 @@ def _mapping_summary(
     return "\n\n".join(sections)
 
 
+_TABLE_WIDTH: ContextVar[int | None] = ContextVar(
+    "pyamplicol_summary_table_width", default=None
+)
+
+
+@contextmanager
+def table_width(width: int | None) -> Iterator[None]:
+    """Fit the tables ``render_summary`` renders in this block within
+    ``width`` columns (a terminal's; None: their natural width)."""
+
+    token = _TABLE_WIDTH.set(width)
+    try:
+        yield
+    finally:
+        _TABLE_WIDTH.reset(token)
+
+
+class _FittedTables:
+    """The prettytable module with tables that fit within ``width``
+    columns: a table wider than that has its widest column narrowed (its
+    cells wrap) until it fits, never a column below ``_FIT_MINIMUM``."""
+
+    def __init__(self, module: Any, width: int) -> None:
+        self._module = module
+        base = module.PrettyTable
+        limit = width
+
+        class FittedTable(base):  # type: ignore[misc, valid-type]
+            def get_string(self, **kwargs: Any) -> str:
+                text = str(super().get_string(**kwargs))
+                floors: list[int] | None = None
+                for _ in range(16):
+                    widest = max(
+                        (len(_ANSI_STYLE.sub("", line)) for line in text.splitlines()),
+                        default=0,
+                    )
+                    widths = list(getattr(self, "_widths", ()) or ())
+                    names = list(getattr(self, "_field_names", ()) or ())
+                    if widest <= limit or not widths or len(widths) != len(names):
+                        break
+                    if floors is None:
+                        floors = _column_floors(self, len(names))
+                    shrinkable = [
+                        index
+                        for index in range(len(widths))
+                        if widths[index] > floors[index]
+                    ]
+                    if not shrinkable:
+                        break
+                    column = max(shrinkable, key=widths.__getitem__)
+                    narrower = max(widths[column] - (widest - limit), floors[column])
+                    self.max_width[names[column]] = narrower
+                    text = str(super().get_string(**kwargs))
+                return text
+
+        self.PrettyTable = FittedTable
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._module, name)
+
+
+_FIT_MINIMUM = 16
+
+
+def _column_floors(table: Any, columns: int) -> list[int]:
+    """The narrowest each column of a fitted table may be: its header and
+    its longest word (a number, a name, an order never breaks), a path
+    breaking at ``_FIT_MINIMUM`` at most. A table that cannot fit keeps its
+    natural width."""
+
+    floors = [0] * columns
+    rows = list(getattr(table, "_rows", ()) or ())
+    for row in rows:
+        for index, cell in enumerate(row[:columns]):
+            for word in _ANSI_STYLE.sub("", str(cell)).split():
+                size = min(len(word), _FIT_MINIMUM) if "/" in word else len(word)
+                floors[index] = max(floors[index], size)
+    for index, name in enumerate(list(getattr(table, "_field_names", ()))[:columns]):
+        # A header never wraps (prettytable keeps it on one line).
+        floors[index] = max(floors[index], len(str(name)), 4)
+    return floors
+
+
 def render_summary(value: object, *, color: bool = False) -> str | None:
     """Return colored human tables for every CLI result shape."""
 
@@ -3343,6 +3561,13 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
         prettytable: Any = importlib.import_module("prettytable")
     except ImportError:
         return None
+    width = _TABLE_WIDTH.get()
+    from pyamplicol.benchmarking import VirtualProfileResult as _Profiled
+    from pyamplicol.loop_profile import LoopProfileReport as _Profile
+
+    if width is not None and not isinstance(value, (_Profile, _Profiled)):
+        # The profile tables lay themselves out within their line width.
+        prettytable = _FittedTables(prettytable, width)
     from pyamplicol.api.results import (
         BenchmarkResult,
         GenerationResult,

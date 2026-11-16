@@ -9,7 +9,7 @@ import struct
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pyamplicol._internal.versions import (
     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
@@ -39,6 +39,9 @@ from .manifest import (
     load_manifest,
 )
 from .process_groups import initial_process_groups, read_process_groups
+
+if TYPE_CHECKING:
+    from pyamplicol.api.results import GenerationStatistics
 from .security import confined_path, normalize_relative_path
 
 _EAGER_RUNTIME_KIND = "pyamplicol-runtime-eager-execution"
@@ -337,6 +340,10 @@ class ArtifactInspection:
     evaluator_container_member_count: int | None = None
     evaluator_container_unpacked_size_bytes: int | None = None
     process_groups: ArtifactProcessGroupsInspection | None = None
+    # Wall time and peak memory of the generation that wrote the artifact
+    # (``extensions.generation.statistics``); None when not recorded (an
+    # artifact written before pyAmpliCol recorded them).
+    generation_statistics: GenerationStatistics | None = None
 
 
 def _conventions(value: object, context: str) -> tuple[tuple[str, str], ...]:
@@ -3459,6 +3466,12 @@ def _reject_retired_recurrence_metadata(artifact: str | Path) -> None:
         )
 
 
+def _generation_statistics(manifest: ArtifactManifest) -> GenerationStatistics | None:
+    from pyamplicol.generation.statistics import stored_generation_statistics
+
+    return stored_generation_statistics(manifest.extensions)
+
+
 def inspect_artifact(artifact: str | Path) -> ArtifactInspection:
     """Validate and summarize one generated artifact without loading evaluators."""
 
@@ -3564,6 +3577,7 @@ def inspect_artifact(artifact: str | Path) -> ArtifactInspection:
         evaluator_container_member_count=container_member_count,
         evaluator_container_unpacked_size_bytes=container_unpacked_size,
         process_groups=_process_groups_inspection(manifest),
+        generation_statistics=_generation_statistics(manifest),
     )
 
 

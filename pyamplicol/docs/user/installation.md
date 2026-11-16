@@ -382,15 +382,29 @@ Normal setup uses published PyPI dependencies. For dependency development,
 `--loader-wheel PATH` explicitly selects a local loader wheel; the installer
 does not search for one automatically.
 
-The native build can take several minutes. For a dirty development checkout, add
-`--wheel-directory PATH` to reuse an already-built compatible release wheel,
-or use `--dependencies-only` to install dependencies without building or
-staging pyAmpliCol, leaving the existing native runtime untouched.
+The native build can take several minutes. A release-mode build records the
+exact Git revision it was built from, so in a checkout with uncommitted or
+untracked files (or one nested inside another Git repository) `just dev-install`
+stops before building, lists the first offending paths and exits with an error.
+Commit or stash the changes (`git stash --include-untracked`), or choose one of:
+
+- `--allow-dirty` builds and stages the wheel from the checkout as it is. That
+  wheel is marked non-publishable (`"publishable": false`,
+  `"dirty_source_checkout": true` in its `_build_info.json`), records no source
+  revision, and is rejected by the release audits. On a clean checkout the flag
+  changes nothing. Without the installer, pass
+  `--config-setting pyamplicol.allow-dirty=true` to `python -m build --wheel`;
+  source distributions always need a clean revision.
+- `--wheel-directory PATH` reuses an already-built compatible release wheel.
+- `--dependencies-only` installs dependencies without building or staging
+  pyAmpliCol, leaving the existing native runtime untouched.
+
 `--no-build` skips both runtime dependency installation and the project
 build/staging; developer tools and explicitly requested optional references
 may still be set up. `just dev-test` includes a fresh release build and therefore
 also requires a clean checkpoint; dirty edits can use focused Python tests
-against the staged compatible native runtime.
+against the staged compatible native runtime (for example one staged with
+`just dev-install --allow-dirty`).
 
 On Nix or NixOS:
 

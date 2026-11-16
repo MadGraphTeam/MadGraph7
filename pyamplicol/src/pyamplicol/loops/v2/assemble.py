@@ -2406,10 +2406,13 @@ class LoopSlice:
             raise ValueError(f"unknown colour accuracy {request.accuracy!r}")
         if request.counterterms not in ("recursion", "sites"):
             raise ValueError(f"unknown counterterm form {request.counterterms!r}")
+        from pyamplicol.generation.progress import step
+
         request = resolve_request(compiled, request)
-        prepared, continuation, fixed, scale_parameter, alpha_s_parameter = (
-            prepare_request_model(compiled, request, memo=memo)
-        )
+        with step("request-model", "Preparing the request's loop model"):
+            prepared, continuation, fixed, scale_parameter, alpha_s_parameter = (
+                prepare_request_model(compiled, request, memo=memo)
+            )
         declaration = request.colour_declaration
         structure = prepared.structure
         data = json.loads(structure.native.to_json())
@@ -2598,7 +2601,8 @@ class LoopSlice:
                 families, loop_catalogue, colour, policy=_frame_policy(rows)
             )
 
-        colour, plan = schedules()
+        with step("schedules", "Building the loop schedules"):
+            colour, plan = schedules()
         program = None
         if request.counterterms == "recursion":
             # Production form of the counterterms (design §6.1): the tree
@@ -2610,26 +2614,27 @@ class LoopSlice:
             # (``_canonical_stage``), and the Python replay is an oracle.
             from .ct_closure import CountertermProgram
 
-            program = CountertermProgram.build(
-                compiled,
-                prepared,
-                request.process,
-                data,
-                selection,
-                blocks.born_orders,
-                veto=request.particle_veto,
-                allow_anomalous_veto=request.allow_anomalous_veto,
-                fixed_parameters=fixed,
-                declaration=declaration,
-                continuation=continuation,
-                # What determines ``prepared`` besides the arguments above.
-                scope=(
-                    tuple(sorted(request.born_orders.items())),
-                    tuple(sorted(request.loop_order_bounds.items())),
-                    request.compatibility,
-                ),
-                u1_grades=request.accuracy != "full",
-            )
+            with step("counterterms", "Building the counterterm closure"):
+                program = CountertermProgram.build(
+                    compiled,
+                    prepared,
+                    request.process,
+                    data,
+                    selection,
+                    blocks.born_orders,
+                    veto=request.particle_veto,
+                    allow_anomalous_veto=request.allow_anomalous_veto,
+                    fixed_parameters=fixed,
+                    declaration=declaration,
+                    continuation=continuation,
+                    # What determines ``prepared`` besides the arguments above.
+                    scope=(
+                        tuple(sorted(request.born_orders.items())),
+                        tuple(sorted(request.loop_order_bounds.items())),
+                        request.compatibility,
+                    ),
+                    u1_grades=request.accuracy != "full",
+                )
             # Its root terms close on its blocks with their N_c grades too.
             require_nc_exact(program.blocks.blocks, request.accuracy, request.process)
         sites = (
@@ -2733,11 +2738,12 @@ class LoopSlice:
             # loop order, checked below): the counterterm program's kernels
             # still need the correction's loop species.
             loop_species = _eligible_loop_species(loop_catalogue, selection, data)
-        catalogue = build_loop_kernel_catalogue(
-            compiled,
-            loop_species=loop_species,
-            counterterm_entries=list({id(e): e for e in entries}.values()),
-        )
+        with step("catalogue", "Building the loop kernel catalogue"):
+            catalogue = build_loop_kernel_catalogue(
+                compiled,
+                loop_species=loop_species,
+                counterterm_entries=list({id(e): e for e in entries}.values()),
+            )
         closure = SiteClosure(blocks, data, catalogue, conjugates)
         # Oracle sites: cells without a site kernel that cancel between the
         # rules closed on the same blocks (the Levi-Civita R2 of a Z with
@@ -2755,7 +2761,8 @@ class LoopSlice:
         if program is not None:
             # The program's root terms and the Born close the same vertices
             # on blocks of the same words: one colour cache serves both.
-            program.bind(ordinary, data, catalogue, colours=closure)
+            with step("bind", "Binding the counterterm program"):
+                program.bind(ordinary, data, catalogue, colours=closure)
         born_terms = _born_terms(blocks, table, closure, ordinary)
         if missing := set(blocks.born_orders) - set(born_terms):
             # The Born program has roots there, so their virtual sectors would
@@ -2778,9 +2785,10 @@ class LoopSlice:
                 born_terms, closure.legs, request.selection.flows
             )
         basis = _born_tensors(closure, born_terms)
-        seed_table, class_of = build_seed_table(
-            colour, readings, basis, compress=request.compress_colour
-        )
+        with step("seeds", "Building the colour seed table"):
+            seed_table, class_of = build_seed_table(
+                colour, readings, basis, compress=request.compress_colour
+            )
         born_orders = blocks.born_orders
         sectors: dict[Orders, set[tuple[Orders, Orders]]] = defaultdict(set)
         if request.contribution == "loop-induced":

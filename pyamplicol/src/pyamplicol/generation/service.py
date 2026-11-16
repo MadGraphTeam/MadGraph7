@@ -171,7 +171,7 @@ from .process_grouping import (
     particle_table,
     profile_mappings,
 )
-from .progress import GenerationPhaseReporter, PhaseHandle
+from .progress import GenerationPhaseReporter, PhaseHandle, history_signature
 from .recurrence_color import (
     RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
     encode_recurrence_color_contraction,
@@ -3209,6 +3209,26 @@ def _numerical_current_warning_required(value: object) -> bool:
     return isinstance(warning, Mapping) and warning.get("required") is True
 
 
+def _shutdown_process_executor(
+    executor: ThreadPoolExecutor, *, interrupted: bool = False
+) -> None:
+    """Shut a process-phase pool down: wait for its running processes,
+    except when Ctrl-C interrupted this call (``interrupted``, caught by the
+    caller: the interrupt is reported at once; the running processes are
+    stopped and abandoned, the command line exits without waiting for
+    them, ``cli.main``)."""
+
+    if interrupted:
+        from .progress import cancel_generation, interrupt_threads
+
+        # Its running processes stop: at their next progress report, and
+        # (pure-Python work that would starve the main thread's cleanup of
+        # the GIL) at their next bytecode.
+        cancel_generation()
+        interrupt_threads(tuple(getattr(executor, "_threads", ())))
+    executor.shutdown(wait=not interrupted, cancel_futures=True)
+
+
 def _map_process_phase(
     items: Sequence[_ProcessInput],
     operation: Callable[[_ProcessInput], _ProcessOutput],
@@ -3518,6 +3538,7 @@ class GenerationBackend:
                 "backend": backend.upper(),
                 "optimization": optimization.upper(),
             },
+            signature=history_signature("tree", run_config),
         )
         generation_started = time.perf_counter()
         try:
@@ -3547,6 +3568,9 @@ class GenerationBackend:
                 total=len(processes.requests),
             ) as phase:
                 expanded = self._expand_process_set(processes, resolved_model, phase)
+                phase.summary = f"{len(expanded):,} concrete " + (
+                    "process" if len(expanded) == 1 else "processes"
+                )
             self._apply_symbolica_resource_policy(
                 license_state,
                 process_count=len(expanded),
@@ -3589,6 +3613,7 @@ class GenerationBackend:
                     if worker_count > 1
                     else None
                 )
+                interrupted = False
                 try:
                     with reporter.phase(
                         "dag",
@@ -3728,9 +3753,14 @@ class GenerationBackend:
                                     evaluator.compiled.expanded.request.name
                                 ),
                             )
+                except KeyboardInterrupt:
+                    # This call was interrupted (not merely run inside an
+                    # ``except KeyboardInterrupt:`` block of its caller).
+                    interrupted = True
+                    raise
                 finally:
                     if executor is not None:
-                        executor.shutdown(wait=True, cancel_futures=True)
+                        _shutdown_process_executor(executor, interrupted=interrupted)
 
                 with reporter.phase(
                     "artifact-writing",
@@ -3864,8 +3894,8 @@ class GenerationBackend:
 
         inputs_started = time.perf_counter()
         model_inputs = self._recurrence_model_inputs(resolved_model)
-        reporter.timings["on-the-fly-model-input-preparation"] = (
-            time.perf_counter() - inputs_started
+        reporter.record(
+            "on-the-fly-model-input-preparation", time.perf_counter() - inputs_started
         )
         with TemporaryDirectory(prefix="pyamplicol-on-the-fly-generation-") as root:
             temporary_root = Path(root)
@@ -4303,8 +4333,9 @@ class GenerationBackend:
         expanded = self._drop_processes_without_amplitudes(expanded, generation_model)
         model_inputs_started = time.perf_counter()
         model_inputs = self._recurrence_model_inputs(resolved_model)
-        reporter.timings["recurrence-model-input-preparation"] = (
-            time.perf_counter() - model_inputs_started
+        reporter.record(
+            "recurrence-model-input-preparation",
+            time.perf_counter() - model_inputs_started,
         )
         with TemporaryDirectory(
             prefix="pyamplicol-recurrence-generation-"
@@ -4319,6 +4350,7 @@ class GenerationBackend:
                 if worker_count > 1
                 else None
             )
+            interrupted = False
             try:
                 indexed = tuple(enumerate(expanded))
                 lowering_cache = RecurrenceScheduleLoweringCache[
@@ -4346,9 +4378,14 @@ class GenerationBackend:
                         phase_name="compact recurrence construction",
                         item_name=lambda item: item[1].request.name,
                     )
+            except KeyboardInterrupt:
+                # This call was interrupted (not merely run inside an
+                # ``except KeyboardInterrupt:`` block of its caller).
+                interrupted = True
+                raise
             finally:
                 if executor is not None:
-                    executor.shutdown(wait=True, cancel_futures=True)
+                    _shutdown_process_executor(executor, interrupted=interrupted)
 
             artifact_processes = tuple(item.artifact for item in generated)
             recurrence_warnings: list[tuple[str, str]] = []
@@ -6150,10 +6187,6 @@ class GenerationBackend:
                         "step": "persisted helicity-selector plan ready",
                     },
                 )
-        phase.advance(
-            message=process_name,
-            details={"process": process_name, "step": "recurrence runtime ready"},
-        )
 
         process_binding_started = time.perf_counter()
         validation = self._generation_config.validation
@@ -6563,6 +6596,13 @@ class GenerationBackend:
             "recurrence generation profile for %s: %s",
             process_name,
             json.dumps(profile, allow_nan=False, sort_keys=True),
+        )
+        # The process counts as done once all its work is (binding and
+        # physics metadata included): the count never reaches the total
+        # while a process is still being finished.
+        phase.advance(
+            message=process_name,
+            details={"process": process_name, "step": "recurrence runtime ready"},
         )
         return _GeneratedRecurrenceProcess(
             expanded=expanded,

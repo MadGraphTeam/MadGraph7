@@ -24,7 +24,7 @@ review.
 - Correlation declarations: `CorrelatorConfig`, `ColorCorrelator`, `EmitGluon`,
   and `SplitGluon`.
 - Services: `Generator`, `Runtime`, and `BenchmarkRunner`.
-- Results: `GenerationPlan`, `GenerationResult`, `BenchmarkResult`,
+- Results: `GenerationPlan`, `GenerationResult`, `GenerationStatistics`, `BenchmarkResult`,
   `BenchmarkStatistics`, `BenchmarkComponentTiming`, `BenchmarkStageTiming`,
   `BenchmarkTimingBreakdown`, `BenchmarkProfileCounters`, `ProcessPhysics`, `ExternalParticle`,
   `HelicityConfiguration`, `ColorComponent`, `ColorFlow`,

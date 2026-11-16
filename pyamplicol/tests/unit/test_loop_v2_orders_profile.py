@@ -23,6 +23,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -325,15 +326,16 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
             profile["seconds_per_point"]
         )
         # One core: the timed process's pools run one thread each; the
-        # reference (double-double by default) is one unchecked pass of
-        # whole SIMD chunks on the same backend.
+        # reference (double-double by default) is one unchecked pass on the
+        # same backend, its chunk what its budget affords (here 1e-6 s: one
+        # point, one call).
         assert profile["threads"] == 1
         assert "on one core" in report["runtime_setup"]
         assert report["ground_truth"]["label"] == "dd"
         reference = profile["reference"]
         assert reference["arithmetic"] == "double-double"
-        assert reference["digits"] is None and reference["batch"] == 4
-        assert reference["samples"] == 2 and reference["warmup"] == 0
+        assert reference["digits"] is None and 1 <= reference["batch"] <= 4
+        assert reference["samples"] >= 1 and reference["warmup"] == 0
     # The checked mode and the unchecked reduction contradict each other.
     stderr = io.StringIO()
     code = run_cli(
@@ -373,9 +375,10 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
             assert first["points"] + first["failed_reference"] == 3
             # Every flat point is recorded by index; binary64 failures rank
             # among the measured points at 0 digits.
-            assert [p["index"] for p in first["per_point"]] == [0, 1, 2]
+            per_point = _records(first["per_point"])
+            assert [p["index"] for p in per_point] == [0, 1, 2]
             assert first["failed_binary64"] == sum(
-                p["status"] == "binary64-failed" for p in first["per_point"]
+                p["status"] == "binary64-failed" for p in per_point
             )
             assert len(first["percentiles"]) == 4
             assert all(0.0 <= d <= 16.0 for d in first["true_digits"])
@@ -397,7 +400,9 @@ def test_the_runtime_profile_times_distinct_points(uux_ddx, monkeypatch):
     batch of distinct flat points at the validation point's energy (no
     point repeated within or across calls), deterministic in the seed: the
     minimum calls when they reach the time budget, and further calls on the
-    following points of the same sequence until they reach it."""
+    following points of the same sequence until they reach it. The first
+    warm-up probes one point of its batch first (``WARMUP_CALL_SECONDS``: a
+    dear full call keeps that point as the warm-up)."""
 
     from pyamplicol.api import Runtime
     from pyamplicol.benchmarking import profile_points, profile_virtual
@@ -416,8 +421,9 @@ def test_the_runtime_profile_times_distinct_points(uux_ddx, monkeypatch):
     monkeypatch.setattr(Runtime, "evaluate", recorded)
     result = profile_virtual(uux_ddx, bench)
     assert result.batch == 4 and result.samples == 2 and result.warmup == 1
-    assert [len(batch) for batch in batches] == [4, 4, 4]
-    flat = [point for batch in batches for point in batch]
+    assert [len(batch) for batch in batches] == [1, 4, 4, 4]
+    assert batches[0] == batches[1][:1]
+    flat = [point for batch in batches[1:] for point in batch]
     assert len(set(flat)) == len(flat) == 12
     validation = _points(uux_ddx)[0]
     total = [sum(float(leg[i]) for leg in validation[:2]) for i in range(4)]
@@ -431,7 +437,7 @@ def test_the_runtime_profile_times_distinct_points(uux_ddx, monkeypatch):
     longer = replace(bench, target_runtime=10 * 4 * result.high)
     again = profile_virtual(uux_ddx, longer)
     assert again.samples > 2
-    more = [point for batch in batches for point in batch]
+    more = [point for batch in batches[1:] for point in batch]
     assert more[:12] == flat and len(set(more)) == len(more)
 
 
@@ -462,7 +468,9 @@ def test_the_runtime_profile_reports_peak_ram_and_the_reference(uux_ddx):
     Runtime.evaluate = recorded
     try:
         plain = profile_virtual(runtime, bench, points=points, reduction="tirust")
-        assert plain.reference is None and len(calls) == 4
+        # The one-point probe, two warm-ups and two timed calls.
+        assert plain.reference is None and len(calls) == 5
+        assert [c[0] for c in calls] == [1, 2, 2, 2, 2]
         assert plain.peak_memory is not None
         assert plain.peak_memory.peak_rss_bytes >= plain.peak_memory.start_rss_bytes
         calls.clear()
@@ -475,8 +483,11 @@ def test_the_runtime_profile_reports_peak_ram_and_the_reference(uux_ddx):
         )
     finally:
         Runtime.evaluate = evaluate
-    # Two binary64 warm-ups and two timed calls; one reference warm-up.
-    assert [c[1]["arithmetic"] for c in calls] == [None] * 4 + ["double-double"] * 3
+    # The probe, two binary64 warm-ups and two timed calls; one reference
+    # warm-up of one point, then one call of what the 1e-6 s budget affords
+    # (a point).
+    assert [c[1]["arithmetic"] for c in calls] == [None] * 5 + ["double-double"] * 2
+    assert [c[0] for c in calls[5:]] == [1, 1]
     assert all(
         c[1]
         == {
@@ -486,13 +497,13 @@ def test_the_runtime_profile_reports_peak_ram_and_the_reference(uux_ddx):
             "reduction": "tirust",
             "stability_checks": None,
         }
-        for c in calls[4:]
+        for c in calls[5:]
     )
     reference = both.reference
     assert reference is not None and reference.arithmetic == "double-double"
-    assert (reference.batch, reference.samples, reference.warmup) == (2, 2, 1)
+    assert (reference.batch, reference.samples, reference.warmup) == (1, 1, 1)
     assert both.warmup == 2
-    assert reference.points == 4 and reference.digits is None
+    assert reference.points == 1 and reference.digits is None
     assert reference.low <= reference.seconds_per_point <= reference.high
     assert reference.failed_points == 0 and reference.peak_memory is not None
     assert both.samples == plain.samples and both.batch == plain.batch
@@ -545,6 +556,48 @@ def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
         report["stability_setup"].pop("n_core")
         for row in report["stability"]:
             row.pop("seconds")
+            # Every sample's record (the per-sample dump) reproduces the
+            # aggregate numbers; its task timings depend on the workers.
+            target = report["stability_setup"]["target"]
+            table = row["samples"]
+            tasks = table["tasks"]
+            samples = _records(table)
+            assert [s["index"] for s in samples] == list(range(7))
+            # Every point's binary64 and reference task (seconds, points).
+            assert all(
+                tasks[s["binary64_task"]][1] >= 1 and tasks[s["reference_task"]][1] >= 1
+                for s in samples
+            )
+            measured = [
+                0.0 if s["value"] is None else s["true_digits"]
+                for s in samples
+                if s["value"] is None or s["true_digits"] is not None
+            ]
+            # The records' digits carry 3 decimals.
+            assert sorted(measured) == sorted(round(d, 3) for d in row["true_digits"])
+            assert sum(s["flagged"] for s in samples) == row["flagged"]
+            assert (
+                sum(
+                    1
+                    for s in samples
+                    if s["true_relative_error"] is not None
+                    and float(s["true_relative_error"]) > target
+                    and not s["flagged"]
+                )
+                == row["unflagged_inaccurate"]
+            )
+            for sample in samples:
+                assert sample["reference_value"] is not None
+                # A double-double value is reproducible to its own rounding
+                # only (a worker's engine state depends on what it evaluated
+                # before: the last digits move at ~1e-28 relative).
+                sample["reference_value"] = f"{float(sample['reference_value']):.15e}"
+                assert any(
+                    name.startswith("rotation") for name in sample["estimate_checks"]
+                )
+                sample.pop("binary64_task")
+                sample.pop("reference_task")
+            row["samples"] = samples
             # Timings, with the point counts per precision (all of them).
             timing = row.pop("precision_timing")
             assert {k: v["points"] for k, v in timing.items()} == {
@@ -552,8 +605,17 @@ def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
                 "double-double": 7,
             }
     assert one["stability"] == three["stability"]
+    inputs = _records(one["stability_setup"]["samples"])
+    assert [s["index"] for s in inputs] == list(range(7))
+    assert all(len(s["momenta"]) == 4 and len(s["momenta"][0]) == 4 for s in inputs)
     assert one["stability_setup"] == three["stability_setup"]
     assert one["failure_causes"] == three["failure_causes"]
+
+
+def _records(table):
+    """A columnar --json table ({"fields": ..., "rows": ...}) as records."""
+
+    return [dict(zip(table["fields"], row, strict=True)) for row in table["rows"]]
 
 
 def test_a_loop_induced_view_has_no_born(tmp_path):
@@ -601,3 +663,258 @@ def test_interrupted_stability_notice_names_the_common_points():
     assert " ".join(interrupted_line(setup, color=False).split()).endswith(
         "evaluated; the tables hold those points"
     )
+
+
+@pytest.mark.loop_physics
+def test_the_stability_run_without_a_ground_truth(uux_ddx):
+    """profile --stability --ground-truth none: no reference evaluation, the
+    estimate-only tables (the header says so, no true digits), every
+    sample's record with its estimate and no reference, the field
+    descriptions of those tables."""
+
+    from pyamplicol.cli.main import run_cli
+
+    common = [
+        "profile",
+        str(uux_ddx),
+        "--stability",
+        "--stability-points",
+        "6",
+        "--n_core",
+        "1",
+        "--ground-truth",
+        "none",
+        "--progress",
+        "off",
+    ]
+    stdout = io.StringIO()
+    assert run_cli([*common, "--json"], stdout=stdout, stderr=io.StringIO()) == 0
+    report = json.loads(stdout.getvalue())
+    assert report["ground_truth"]["arithmetic"] == "none"
+    for row in report["stability"]:
+        assert row["estimate_only"] is True and row["true_digits"] == []
+        samples = _records(row["samples"])
+        assert len(samples) == 6
+        for sample in samples:
+            assert sample["reference_value"] is None and sample["true_digits"] is None
+            assert sample["estimate_relative"] is not None
+            assert sample["reference_task"] is None
+        assert set(row["precision_timing"]) == {"binary64"}
+    text = io.StringIO()
+    assert (
+        run_cli(
+            [*common, "--fields-description-help", "--color", "never"],
+            stdout=text,
+            stderr=io.StringIO(),
+        )
+        == 0
+    )
+    rendered = text.getvalue()
+    assert "none (estimates only)" in rendered
+    # The counts row names what was given (only the stability points here).
+    assert "6 stability points as given" in rendered
+    assert "Estimated digits of binary64 (no ground truth)" in rendered
+    assert "Default checks, estimates only" in rendered
+    assert "true digits" not in rendered.split("Field descriptions")[0]
+    assert "'none (estimates only)': no reference pass" in " ".join(rendered.split())
+    assert max(len(line) for line in rendered.splitlines()) <= 100
+
+
+@pytest.mark.loop_physics
+def test_the_completion_time_overrules_given_counts_end_to_end(uux_ddx):
+    """profile --completion-time with --stability-points and --batch-size
+    given (verifier D2): the stability run is planned from the time (a
+    deadline, its own point count) and the batch is not capped by the given
+    size; the overruled options are named."""
+
+    from pyamplicol.cli.main import run_cli
+
+    stdout, stderr = io.StringIO(), io.StringIO()
+    code = run_cli(
+        [
+            "profile",
+            str(uux_ddx),
+            "--runtime",
+            "--stability",
+            "--stability-points",
+            "7",
+            "--batch-size",
+            "32",
+            "--n_core",
+            "1",
+            "--completion-time",
+            "12s",
+            "--progress",
+            "off",
+            "--json",
+        ],
+        stdout=stdout,
+        stderr=stderr,
+    )
+    assert code == 0, stderr.getvalue()
+    report = json.loads(stdout.getvalue())
+    assert set(report["plan"]["overruled"]) == {"--stability-points", "--batch-size"}
+    setup = report["stability_setup"]
+    assert setup["deadline"] is not None
+    assert setup["points"] != 7 and setup["points"] >= 5
+    assert all(row["profile"]["batch"] != 32 for row in report["runtime"])
+    assert 6.0 <= report["seconds"] <= 18.0
+
+
+@pytest.mark.loop_physics
+def test_the_samples_output_holds_every_record(uux_ddx, tmp_path):
+    """--samples-output PATH: every sample's record in one columnar JSON
+    file (the inputs, per backend its rows); --json names the file instead
+    of holding them, and the human tables write it too."""
+
+    from pyamplicol.cli.main import run_cli
+
+    path = tmp_path / "records" / "samples.json"
+    common = [
+        "profile",
+        str(uux_ddx),
+        "--stability",
+        "--stability-points",
+        "6",
+        "--n_core",
+        "1",
+        "--progress",
+        "off",
+        "--samples-output",
+        str(path),
+    ]
+    stdout = io.StringIO()
+    assert run_cli([*common, "--json"], stdout=stdout, stderr=io.StringIO()) == 0
+    report = json.loads(stdout.getvalue())
+    where = {"output": str(path), "points": 6}
+    assert report["stability_setup"]["samples"] == where
+    assert all(row["samples"] == where for row in report["stability"])
+    records = json.loads(path.read_text())
+    assert records["schema"] == "pyamplicol.profile-samples/1"
+    assert len(_records(records["inputs"])) == 6
+    backends = {row["backend"] for row in report["stability"]}
+    assert set(records["backends"]) == backends
+    for table in records["backends"].values():
+        rows = _records(table)
+        assert [r["index"] for r in rows] == list(range(6))
+        assert all(r["reference_value"] is not None for r in rows)
+    path.unlink()
+    text = io.StringIO()
+    assert run_cli(common, stdout=text, stderr=io.StringIO()) == 0
+    assert "true digits" in text.getvalue() and path.is_file()
+
+
+class _Events:
+    def __init__(self) -> None:
+        self.events: list = []
+
+    def emit(self, event) -> None:
+        self.events.append(event)
+
+
+@pytest.mark.loop_physics
+def test_a_second_profile_estimates_the_whole_run_from_its_start(
+    uux_ddx, tmp_path, monkeypatch
+):
+    """A profile remembers the artifact's costs and its total (the history
+    in the pyAmpliCol cache, written with progress only): the next profile
+    with the same settings has a whole-run ETA before the artifact is even
+    loaded, near the first one's time; costs as small as 0.1 ms survive."""
+
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import GroundTruth, _ProfileHistory, profile_loop
+    from pyamplicol.reporting.progress import ProgressStart, ProgressUpdate
+
+    monkeypatch.setenv("PYAMPLICOL_CACHE_DIR", str(tmp_path / "cache"))
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "target_runtime": 0.5, "n_core": 1},
+        }
+    ).effective
+
+    def first_root_eta(sink):
+        for event in sink.events:
+            if isinstance(event, ProgressStart) and event.task_id != "loop-profile":
+                return None  # a phase started before any estimate
+            if (
+                isinstance(event, ProgressUpdate)
+                and event.task_id == "loop-profile"
+                and event.details.get("eta_seconds") is not None
+            ):
+                return float(event.details["eta_seconds"])
+        return None
+
+    first, second = _Events(), _Events()
+    before = time.perf_counter()
+    profile_loop(uux_ddx, config, progress=first)
+    took = time.perf_counter() - before
+    assert first_root_eta(first) is None
+    remembered = _ProfileHistory(uux_ddx, None, GroundTruth("double-double"))
+    assert remembered.cost("tirust", "binary64") is not None
+    assert 0.0 < remembered.cost("tirust", "binary64") < 0.1
+    profile_loop(uux_ddx, config, progress=second)
+    estimate = first_root_eta(second)
+    assert estimate is not None and 0.3 * took <= estimate <= 3.0 * took
+    # Without progress (a library call): nothing is written.
+    monkeypatch.setenv("PYAMPLICOL_CACHE_DIR", str(tmp_path / "quiet"))
+    profile_loop(uux_ddx, config)
+    assert not (tmp_path / "quiet").exists()
+
+
+@pytest.mark.loop_physics
+def test_a_stale_history_only_seeds_the_estimate(uux_ddx, tmp_path, monkeypatch):
+    """recheck2 N3: a history 100x off seeds the measurement's priors until
+    this run's first measured step; from then on the costs expected of the
+    steps to come are rescaled by how far off it was (a 100x-stale history
+    showed ~3 h for a 5 min run)."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import GroundTruth, _measure, _Monitor
+    from pyamplicol.profile_plan import Costs
+
+    true = {("tirust", None): 0.004, ("tirust", "double-double"): 0.02}
+    true |= {("ninjars", None): 0.006, ("ninjars", "double-double"): 0.06}
+    runtime = Runtime.load(uux_ddx)
+
+    class Timed:
+        physics = runtime.physics
+
+        def evaluate(self, batch, **options):
+            key = (options["reduction"], options.get("arithmetic"))
+            time.sleep(true[key] * len(batch))
+
+    class Stale:
+        backends = ("tirust", "ninjars")
+
+        def cost(self, backend, precision):
+            arithmetic = None if precision == "binary64" else "double-double"
+            return 100.0 * true[(backend, arithmetic)]
+
+    config = resolve_config(
+        {"action": "benchmark", "evaluation": {"artifact": str(uux_ddx)}}
+    ).effective
+    seen: list = []
+    costs = _measure(
+        Timed(),
+        uux_ddx,
+        runtime.physics,
+        config,
+        ("tirust", "ninjars"),
+        GroundTruth("double-double"),
+        _Monitor(None, "x", None),
+        0.5,
+        history=Stale(),
+        provisional=lambda expected, left: seen.append((dict(expected), left)),
+    )
+    # Before any step: the history alone (100x). After the first: rescaled.
+    first, after = seen[0][0], seen[1][0]
+    assert first["ninjars"].reference == pytest.approx(6.0)
+    for name, cost in after.items():
+        assert isinstance(cost, Costs)
+        assert cost.binary64 <= 3 * true[(name, None)]
+        assert cost.reference <= 3 * true[(name, "double-double")]
+    assert seen[1][1] <= 3 * sum(16 * t for t in true.values()) + 1.0
+    assert costs["ninjars"].binary64 == pytest.approx(0.006, rel=0.5)

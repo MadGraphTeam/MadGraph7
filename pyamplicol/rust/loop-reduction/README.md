@@ -31,19 +31,19 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `be6d3e042df7ff0d3fe18df929c184d31f5a92b3` (main,
-  the merge of its `symbolica-community` branch: main `b51b7465`'s crate sources, i.e. per-row evaluation
+- NinjaRS `ac66cf6c551465f6c63490e112bb41596c2fd821` (branch
+  `symbolica-community-2`: main `b51b7465`'s crate sources, i.e. per-row evaluation
   without the batch evaluator on main `cf28d8e0` (its scoped Symbolica library
   licence, the box mu-expansion's conditioning bound, UV/IR pole selection
   through the master providers, the fast engine's UV residues
   `fast::tensor_uv`, threshold-free light-like spinors), pinned on the
   Symbolica, FeynKit and oneloopmaster revisions below).
-- Symbolica, Numerica and Graphica `0e2ad04c4f281e28bd29d5ad8b1bebf2764379b7`:
-  symbolica-dev/symbolica `community` (main `c9406581`, the author's
+- Symbolica, Numerica and Graphica `d0424f9e414d3007889f8a98b404a1b1a91b37a7`:
+  symbolica-dev/symbolica `community` (main `238dc613`, the author's
   state-omitting evaluator saves, plus his community-only commits; see
   `dependencies/README.md`).
-- TIRust `a5d4afbf87a0afc155dc57d2ac633af77a932a16` (its main: PR #35 and the
-  move to Symbolica community with per-row evaluation instead of the batch
+- TIRust `2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1` (branch `symbolica-community-2`: main
+  `a5d4afbf`, PR #35 and the move to Symbolica community, re-pinned; with per-row evaluation instead of the batch
   evaluator, on 49dc836e's direct-engine fix for plan variants at exactly
   degenerate kinematics and TIRust's scoped Symbolica library key), behind
   the cargo feature `tir` (below).
@@ -51,7 +51,7 @@ aligns Symbolica with the application's shared core and uses:
   `pyamplicol-community`: alphal00p/gammaloop `d1904bf2`, the owner's coherent
   dependency revision recorded by NinjaRS, plus Spenso's `conj` in Numerica
   3.1's numeric trait).
-- oneloopmaster `2e7afabb5903814196d7ab39c695ed9cac777aa4` (its main:
+- oneloopmaster `07fc754f656c4744c9464f7c0f47d00b708b37e6` (branch `symbolica-community-2`:
   `3b6f229f`'s sources, per-evaluator
   `PoleSelection`, TIRust's oneloop patches incl. #17/#18, the 0BSD relicence,
   #19's order-independent massless triangle (trif0) with a hand-written

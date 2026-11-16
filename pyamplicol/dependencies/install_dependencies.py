@@ -43,6 +43,11 @@ TRASH = ROOT / ".trash"
 sys.path.insert(0, str(ROOT / "build_backend"))
 from candidate_wheel import ENVIRONMENT, existing_community_wheel  # noqa: E402
 from python_lock import load_python_runtime_lock  # noqa: E402
+from source_checkout import (  # noqa: E402
+    ALLOW_DIRTY_SETTING,
+    dirty_checkout_message,
+    dirty_checkout_reason,
+)
 
 _WORKSPACE_CRATES = frozenset(
     {
@@ -1264,7 +1269,11 @@ def _install_project_wheel(runner: Runner, directory: Path) -> None:
 
 
 def _build_project_wheel(
-    runner: Runner, *, mode: str, symbolica_wheel: Path | None = None
+    runner: Runner,
+    *,
+    mode: str,
+    symbolica_wheel: Path | None = None,
+    allow_dirty: bool = False,
 ) -> None:
     python = _venv_python()
     environment = _venv_environment()
@@ -1293,6 +1302,11 @@ def _build_project_wheel(
             *(
                 ["--config-setting", "pyamplicol.host-wheel=true"]
                 if sys.platform == "linux"
+                else []
+            ),
+            *(
+                ["--config-setting", f"{ALLOW_DIRTY_SETTING}=true"]
+                if allow_dirty
                 else []
             ),
         ],
@@ -1421,8 +1435,25 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="install and stage one existing pyamplicol wheel instead of rebuilding it",
     )
+    parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help=(
+            "build the release-mode wheel from a checkout with uncommitted or "
+            "untracked files; the wheel is marked non-publishable and records "
+            "no source revision"
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser
+
+
+def _require_clean_release_checkout() -> None:
+    """Refuse a dirty checkout before the long build, as the backend would."""
+
+    reason = dirty_checkout_reason(ROOT)
+    if reason is not None:
+        raise SetupError(dirty_checkout_message(reason))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1435,6 +1466,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if mode not in {"candidate", "release"}:
         parser.error("PYAMPLICOL_BUILD_MODE must be 'candidate' or 'release'")
+    builds_project = not (
+        args.no_build or args.dependencies_only or args.wheel_directory is not None
+    )
+    if args.allow_dirty and mode != "release":
+        parser.error(
+            "--allow-dirty applies to the release-mode build; candidate builds "
+            "already accept a dirty checkout"
+        )
+    if args.allow_dirty and not builds_project:
+        parser.error("--allow-dirty applies only when the installer builds pyamplicol")
+    if (
+        mode == "release"
+        and builds_project
+        and not args.allow_dirty
+        and not args.dry_run
+    ):
+        _require_clean_release_checkout()
     if args.symbolica_wheel is not None:
         if mode != "candidate":
             parser.error("--symbolica-wheel requires --candidate")
@@ -1496,7 +1544,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             directory = args.wheel_directory
             if directory is None:
                 directory = ARTIFACTS if mode == "candidate" else RELEASE_ARTIFACTS
-                _build_project_wheel(runner, mode=mode)
+                _build_project_wheel(runner, mode=mode, allow_dirty=args.allow_dirty)
             else:
                 directory = directory.expanduser().resolve()
                 _install_project_wheel(runner, directory)

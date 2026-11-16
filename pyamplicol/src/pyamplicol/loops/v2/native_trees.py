@@ -793,14 +793,17 @@ def export_trees(
     (``_counterterm_program``).
     """
 
-    from .assemble import LAURENT_POWERS, _BlockRows, _single
-    from .refusals import require_nc_exact
-
     # A5's tree part (``NATIVE_SECTIONS``): the trees' interaction program
     # from the slice's native blocks DAG, its steps a section, without the
     # Python ``TreeRows`` and its runtime schema (``_native_tree_program``);
     # the Python rows stay the oracle (and the path of a tree-engine DAG).
-    native_trees = _native_tree_program(slice_) if NATIVE_SECTIONS else None
+    from pyamplicol.generation.progress import step
+
+    from .assemble import LAURENT_POWERS, _BlockRows, _single
+    from .refusals import require_nc_exact
+
+    with step("tree-program", "Lowering the tree program"):
+        native_trees = _native_tree_program(slice_) if NATIVE_SECTIONS else None
     tree_steps = None
     if native_trees is None:
         trees = slice_.tree_rows
@@ -1155,23 +1158,26 @@ def export_trees(
     # section (no Python record list kept, no JSON), pruned natively.
     ct_terms = _native().TreeTermBuilder() if NATIVE_SECTIONS else None
     if with_counterterms:
-        counterterms = _counterterm_program(
-            slice_, closure_term, whole_term, components, born_orders, ct_terms
-        )
+        with step("counterterms", "Exporting the counterterm program"):
+            counterterms = _counterterm_program(
+                slice_, closure_term, whole_term, components, born_orders, ct_terms
+            )
         if not counterterms.record["ket"] and not counterterms.record["entries"]:
             # No counterterm term and no field insertion reaches the request
             # (an exact colour zero's program): nothing to evaluate.
             counterterms = ct = None
     masses = _external_masses(slice_)
-    parameters, parameter_evaluator, parameter_outputs = _parameter_program(
-        slice_,
-        exporter,
-        trees,
-        tuple(couplings),
-        masses,
-        () if counterterms is None else counterterms.couplings,
-        ct,
-    )
+    with step("parameters", "Building the model-parameter program") as building:
+        parameters, parameter_evaluator, parameter_outputs = _parameter_program(
+            slice_,
+            exporter,
+            trees,
+            tuple(couplings),
+            masses,
+            () if counterterms is None else counterterms.couplings,
+            ct,
+        )
+        building.summary = f"{len(parameter_outputs):,} outputs"
     program = {
         "schema": TREE_SCHEMA,
         "legs": len(labels),
@@ -1248,7 +1254,7 @@ def export_trees(
         tuple(components),
         parameter_evaluator,
         () if counterterms is None else counterterms.outputs,
-        _plane_applications(
+        _stepped_plane_applications(
             (*kernels, parameter_evaluator),
             _PlaneOutputs(
                 program,
@@ -1261,6 +1267,15 @@ def export_trees(
         tuple(sections.items()),
         ket_vectors=() if counterterms is None else counterterms.vectors,
     )
+
+
+def _stepped_plane_applications(*arguments: Any) -> Any:
+    """``_plane_applications`` as a progress step."""
+
+    from pyamplicol.generation.progress import step
+
+    with step("planes", "Exporting the plane applications"):
+        return _plane_applications(*arguments)
 
 
 def _native_tree_program(slice_: Any) -> tuple[Any, dict[str, Any], tuple[bytes, ...], bytes] | None:
@@ -2099,24 +2114,30 @@ def _parameter_program(
         Replacement(E(model_symbols.symbol(name).to_canonical_string()), symbol)
         for name, symbol in symbol_of.items()
     ]
+    from pyamplicol.generation.progress import step
+
     model = []
-    for record in records:
-        kind = record["kind"]
-        if kind == "external_parameter":
-            model.append(["input", index[str(record["name"])], False])
-        elif kind == "derived_parameter_component":
-            name = str(record["runtime_name"])
-            o = output(
-                ("model", name),
-                lambda name=name: E(trees._definitions[name]).replace_multiple(
-                    externals
-                ),
-            )
-            model.append(["output", o, record["complex_component"] == "imag"])
-        else:
-            raise NativeExportUnsupported(
-                "parameter-kind", f"a tree model parameter of kind {kind!r}"
-            )
+    with step(
+        "model", "Substituting the model parameters", total=len(records)
+    ) as substituting:
+        for done, record in enumerate(records, start=1):
+            kind = record["kind"]
+            if kind == "external_parameter":
+                model.append(["input", index[str(record["name"])], False])
+            elif kind == "derived_parameter_component":
+                name = str(record["runtime_name"])
+                o = output(
+                    ("model", name),
+                    lambda name=name: E(trees._definitions[name]).replace_multiple(
+                        externals
+                    ),
+                )
+                model.append(["output", o, record["complex_component"] == "imag"])
+            else:
+                raise NativeExportUnsupported(
+                    "parameter-kind", f"a tree model parameter of kind {kind!r}"
+                )
+            substituting.update(done)
     # The counterterm program's model parameters: the model's, plus the CT
     # multiplicities and slot switches of the request (integers fixed per
     # process; every slot on, finite-only evaluations skip the pole terms)
@@ -2128,7 +2149,8 @@ def _parameter_program(
     if counterterm_trees is not None:
         ct_rows = counterterm_trees.rows
         fixed = counterterm_trees.fixed
-        references = _CountertermReferences.of(slice_, index, symbol_of)
+        with step("references", "Lowering the counterterm coefficients"):
+            references = _CountertermReferences.of(slice_, index, symbol_of)
         ct_symbols = symbols.model(ct_rows.compiled.name)
         for record in ct_rows._records:
             if record["kind"] != "external_parameter":
@@ -2552,28 +2574,34 @@ def _parameter_program(
     # orders), so their canonical names and the saved state do not depend on
     # how the model was obtained. (The scalar predicates the program keeps
     # by name are aligned when created, ``scalar_frontend.scalar_predicates``.)
-    canonical, parameters, functions = _parameter_stage(
-        SimpleNamespace(
-            output_expressions=outputs,
-            parameter_symbols=inputs,
-            symbolica_functions=[
-                (head, tuple(arguments), body)
-                for head, (arguments, body) in sorted(
-                    helpers.items(), key=lambda item: item[0].to_canonical_string()
-                )
-            ],
+    with step("transfer", "Transferring the parameter expressions"):
+        canonical, parameters, functions = _parameter_stage(
+            SimpleNamespace(
+                output_expressions=outputs,
+                parameter_symbols=inputs,
+                symbolica_functions=[
+                    (head, tuple(arguments), body)
+                    for head, (arguments, body) in sorted(
+                        helpers.items(), key=lambda item: item[0].to_canonical_string()
+                    )
+                ],
+            )
         )
-    )
     # Helper calls stay calls, as in the scalar library's own evaluator.
-    evaluator = Expression.evaluator_multiple(
-        canonical,
-        parameters,
-        functions=[
-            FunctionDefinition(head, list(arguments), body, inlining="never")
-            for head, arguments, body in functions
-        ],
-        jit_compile=False,
-    )
+    with step(
+        "evaluator",
+        "Building the parameter evaluator (Symbolica)",
+        details={"output_count": len(canonical)},
+    ):
+        evaluator = Expression.evaluator_multiple(
+            canonical,
+            parameters,
+            functions=[
+                FunctionDefinition(head, list(arguments), body, inlining="never")
+                for head, arguments, body in functions
+            ],
+            jit_compile=False,
+        )
     scale = index.get(slice_.scale_parameter)
     record = {
         "names": names,

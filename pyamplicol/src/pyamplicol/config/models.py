@@ -446,22 +446,77 @@ def _optional_integer(value: int | None, name: str, *, minimum: int = 0) -> int 
     return _integer(value, name, minimum=minimum)
 
 
+class DefaultInt(int):
+    """A count left at its default (the field's value when neither the
+    command line nor a run card gives it): it behaves as the int, and
+    ``is_default`` tells a loop profile to choose the count from its time
+    budget instead (``loop_profile``)."""
+
+    __slots__ = ()
+
+
+class DefaultFloat(float):
+    """A duration left at its default (``DefaultInt``)."""
+
+    __slots__ = ()
+
+
+def is_default(value: object) -> bool:
+    """Whether a ``BenchmarkConfig`` count or duration was left at its
+    default rather than given."""
+
+    return isinstance(value, (DefaultInt, DefaultFloat))
+
+
+_DURATION = re.compile(
+    r"(?:(\d+(?:\.\d*)?)h)?(?:(\d+(?:\.\d*)?)m)?(?:(\d+(?:\.\d*)?)s?)?"
+)
+
+
+def parse_duration(value: object) -> float:
+    """A duration in seconds from a number of seconds or a text "90",
+    "90s", "10m", "1h30m", "2.5m" (hours, minutes and seconds, each
+    optional, in that order); positive and finite."""
+
+    if isinstance(value, bool):
+        raise ConfigurationError("a duration must be seconds or a text such as 10m")
+    if isinstance(value, (int, float)):
+        seconds = float(value)
+    else:
+        text = str(value).strip().lower().replace(" ", "")
+        found = _DURATION.fullmatch(text) if text else None
+        if found is None or not any(found.groups()):
+            raise ConfigurationError(
+                f"benchmark.completion_time: {value!r} is not a duration (seconds, "
+                "or a text such as 90s, 10m, 1h30m)"
+            )
+        hours, minutes, secs = (float(part) if part else 0.0 for part in found.groups())
+        seconds = 3600.0 * hours + 60.0 * minutes + secs
+    if not math.isfinite(seconds) or seconds <= 0.0:
+        raise ConfigurationError(
+            "benchmark.completion_time must be a positive duration"
+        )
+    return seconds
+
+
 def _ground_truth(value: object) -> str:
     """``benchmark.ground_truth`` in its canonical spelling: "double-double"
     (also "dd"), "arbitrary" (also "arb": the default digits, resolved by
-    ``loop_profile.ground_truth``) or "arbitrary:DIGITS" (also
-    "arb:DIGITS"), DIGITS a positive decimal digit count."""
+    ``loop_profile.ground_truth``), "arbitrary:DIGITS" (also "arb:DIGITS"),
+    DIGITS a positive decimal digit count, or "none" (no reference: the
+    estimates only)."""
 
     text = value.strip().lower() if isinstance(value, str) else ""
     head, colon, digits = text.partition(":")
     head = {"dd": "double-double", "arb": "arbitrary"}.get(head, head)
-    if head in ("double-double", "arbitrary") and not colon:
+    if head in ("double-double", "arbitrary", "none") and not colon:
         return head
     if head == "arbitrary" and digits.isdigit() and int(digits) >= 1:
         return f"{head}:{int(digits)}"
     raise ConfigurationError(
-        "benchmark.ground_truth must be double-double (dd), arbitrary (arb) or "
-        f"arbitrary:DIGITS (arb:DIGITS, positive decimal digits); got {value!r}"
+        "benchmark.ground_truth must be double-double (dd), arbitrary (arb), "
+        "arbitrary:DIGITS (arb:DIGITS, positive decimal digits) or none; got "
+        f"{value!r}"
     )
 
 
@@ -1672,11 +1727,15 @@ class EvaluationConfig:
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkConfig:
-    target_runtime: float = field(default=10.0, metadata=_setting("float"))
-    batch_size: int = field(default=128, metadata=_setting("int"))
+    # The counts a loop profile may choose from its time budget when they
+    # are left at their defaults (``DefaultInt``, ``is_default``).
+    target_runtime: float = field(
+        default=DefaultFloat(10.0), metadata=_setting("float")
+    )
+    batch_size: int = field(default=DefaultInt(128), metadata=_setting("int"))
     precision: int = field(default=16, metadata=_setting("int"))
-    warmup_runs: int = field(default=2, metadata=_setting("int"))
-    minimum_samples: int = field(default=5, metadata=_setting("int"))
+    warmup_runs: int = field(default=DefaultInt(2), metadata=_setting("int"))
+    minimum_samples: int = field(default=DefaultInt(5), metadata=_setting("int"))
     helicity_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     color_flow_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     # Loop artifacts (``pyamplicol profile --runtime / --stability``): what
@@ -1685,7 +1744,7 @@ class BenchmarkConfig:
     # ``evaluation.phase_space`` sets: its seed and energy).
     runtime: bool = field(default=False, metadata=_setting("bool"))
     stability: bool = field(default=False, metadata=_setting("bool"))
-    stability_points: int = field(default=1000, metadata=_setting("int"))
+    stability_points: int = field(default=DefaultInt(1000), metadata=_setting("int"))
     # The worker processes of the stability run (``--n_core``): capped by
     # the usable cores; 1 runs it in-process. The result does not depend on
     # it. The runtime timing always runs on one core (one process, every
@@ -1701,12 +1760,28 @@ class BenchmarkConfig:
     # and the default backend as "auto". False (the default): one fully
     # optimistic pass per point, the backend's unchecked reduction alone.
     checked: bool = field(default=False, metadata=_setting("bool"))
+    # The wall time the whole loop profile aims at (``--completion-time``;
+    # seconds, or a text such as "10m"); it overrules every count. None:
+    # the counts given, else the default budgets (``loop_profile``).
+    completion_time: float | None = field(
+        default=None, metadata=_setting("duration", nullable=True)
+    )
+    # Where the stability run writes every sample's record (one JSON file;
+    # ``--samples-output``); the profile's --json then names it instead of
+    # holding them. None: the records are in --json only.
+    samples_output: Path | None = field(
+        default=None, metadata=_setting("path", nullable=True)
+    )
 
     def __post_init__(self) -> None:
         for name in ("runtime", "stability", "checked"):
             if type(getattr(self, name)) is not bool:
                 raise ConfigurationError(f"benchmark.{name} must be a boolean")
         object.__setattr__(self, "ground_truth", _ground_truth(self.ground_truth))
+        if self.completion_time is not None:
+            object.__setattr__(
+                self, "completion_time", parse_duration(self.completion_time)
+            )
         object.__setattr__(
             self,
             "stability_points",
@@ -1716,11 +1791,13 @@ class BenchmarkConfig:
         object.__setattr__(
             self,
             "target_runtime",
-            _finite_float(
-                self.target_runtime,
-                "benchmark.target_runtime",
-                minimum=0.0,
-                exclusive=True,
+            (DefaultFloat if is_default(self.target_runtime) else float)(
+                _finite_float(
+                    self.target_runtime,
+                    "benchmark.target_runtime",
+                    minimum=0.0,
+                    exclusive=True,
+                )
             ),
         )
         object.__setattr__(

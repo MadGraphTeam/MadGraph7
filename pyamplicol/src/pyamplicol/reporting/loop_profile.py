@@ -94,6 +94,8 @@ def _truth(report: Any) -> tuple[str, str, str]:
 
     record = getattr(report, "ground_truth", None) or {}
     digits = record.get("digits")
+    if record.get("arithmetic") == "none":
+        return "none", "none", "none"
     if digits is None:
         return "dd", "double-double", "double-double"
     label = str(record.get("label") or f"arb({digits})")
@@ -107,10 +109,83 @@ def _truth_cell(report: Any) -> str | None:
     record = getattr(report, "ground_truth", None)
     if not record:
         return None
+    if record.get("arithmetic") == "none":
+        return "none (estimates only)"
     digits = record.get("digits")
     if digits is None:
         return "double-double (dd)"
     return f"arbitrary precision, {digits} digits ({_truth(report)[0]})"
+
+
+def _counts_cell(report: Any, color: bool) -> str | None:
+    """The header's ``counts`` value: which rule set the counts (``Plan.
+    rule``: --completion-time, the counts given, the time budgets), what it
+    expected and what the profile took; a requested completion time that
+    cannot be met in the warning colour, with the minimums' estimate."""
+
+    from pyamplicol.profile_plan import (
+        DEFAULT_RUNTIME_SECONDS,
+        DEFAULT_STABILITY_SECONDS_PER_CORE,
+        duration_text,
+    )
+
+    plan = getattr(report, "plan", None)
+    if not plan:
+        return None
+    took = getattr(report, "seconds", None)
+    took_text = "" if took is None else f", took {duration_text(float(took))}"
+    rule = plan.get("rule")
+    if rule == "completion time":
+        budget = duration_text(float(plan.get("budget_seconds") or 0.0))
+        text = f"from --completion-time {budget}{took_text}"
+        overruled = plan.get("overruled") or []
+        if overruled:
+            text += f" (overrules {', '.join(map(str, overruled))})"
+        if not plan.get("feasible", True):
+            text += palette.paint(
+                "; cannot be met: the minimums take about "
+                + duration_text(float(plan.get("minimum_seconds") or 0.0)),
+                palette.RECOVERED,
+                color=color,
+            )
+        return text
+    given = plan.get("given") or {}
+    if rule == "counts" and not all(
+        given.get(part, True) for part in ("runtime", "stability")
+    ):
+        # Some counts given, the rest from their budget.
+        parts = []
+        if plan.get("runtime") or plan.get("runtime_counts"):
+            parts.append(
+                "runtime as given"
+                if given.get("runtime")
+                else f"runtime from its {DEFAULT_RUNTIME_SECONDS:g} s budget"
+            )
+        if plan.get("stability_points") is not None:
+            parts.append(
+                f"{plan['stability_points']} stability points as given"
+                if given.get("stability")
+                else "stability points from "
+                f"{duration_text(DEFAULT_STABILITY_SECONDS_PER_CORE)} per worker"
+            )
+        text = "; ".join(parts) + took_text
+    elif rule == "counts":
+        text = f"as given{took_text}"
+    else:
+        text = (
+            f"from the time budgets: {DEFAULT_RUNTIME_SECONDS:g} s for the runtime "
+            f"timing, {duration_text(DEFAULT_STABILITY_SECONDS_PER_CORE)} per "
+            f"stability worker{took_text}"
+        )
+    if not plan.get("feasible", True):
+        # A budget in force the minimums exceed (``Plan.unmet``).
+        text += palette.paint(
+            "; cannot be met: the minimums take about "
+            + duration_text(float(plan.get("minimum_seconds") or 0.0)),
+            palette.RECOVERED,
+            color=color,
+        )
+    return text
 
 
 def _header(report: Any, prettytable: Any, color: bool) -> str:
@@ -121,6 +196,8 @@ def _header(report: Any, prettytable: Any, color: bool) -> str:
     )
     truth = _truth_cell(report)
     reference = (("ground truth", truth),) if truth is not None else ()
+    counts_text = _counts_cell(report, color)
+    counts = (("counts", counts_text),) if counts_text is not None else ()
     table = palette.table(
         prettytable, ("field", "value"), "pyAmpliCol loop profile", color=color
     )
@@ -133,6 +210,7 @@ def _header(report: Any, prettytable: Any, color: bool) -> str:
             ),
             ("contribution", report.contribution),
             *setup,
+            *counts,
             *reference,
             (
                 "backends",
@@ -251,7 +329,12 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                 )
         reference = getattr(profile, "reference", None)
         time_parts: tuple[str, ...] = (time_cell,)
-        if (
+        if reference is not None and reference.samples == 0:
+            # Ctrl-C before a reference call was back: no multiplier.
+            time_parts += (
+                palette.paint(f"({_truth(report)[0]} -)", palette.MUTED, color=color),
+            )
+        elif (
             reference is not None
             and profile.seconds_per_point > 0.0
             and reference.points > reference.failed_points
@@ -394,6 +477,20 @@ def _visible(text: str) -> int:
     return max((len(line) for line in _ANSI.sub("", text).splitlines()), default=0)
 
 
+def _wrap_painted(text: str, width: int) -> str:
+    """``text`` (one colour run around it, or none) wrapped at its spaces
+    within ``width`` columns, each line painted as the whole was."""
+
+    import textwrap
+
+    found = re.fullmatch(r"((?:\x1b\[[0-9;]*m)*)(.*?)((?:\x1b\[[0-9;]*m)*)", text, re.S)
+    if found is None:
+        return text
+    head, body, tail = found.groups()
+    lines = textwrap.wrap(body, max(width, 1), break_on_hyphens=False) or [body]
+    return "\n".join(head + line + tail for line in lines)
+
+
 def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
     """``table`` with ``rows`` (its cells, and whether a divider follows the
     row) within the line width (``_width``): every cell's parts on one line;
@@ -429,6 +526,7 @@ def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
     def render(texts: list[tuple[list[str], bool]], limits: dict[str, int]) -> str:
         table.clear_rows()
         raw = dict.fromkeys(names, 1)
+        body = []
         for cells, divider in texts:
             narrowed = []
             for name, text in zip(names, cells, strict=True):
@@ -445,8 +543,25 @@ def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
                         )
                         for line in _ANSI.sub("", text).splitlines()
                     )
-                raw[name] = max([raw[name], *map(len, text.splitlines())])
+                raw[name] = max(raw[name], _visible(text))
                 narrowed.append(text)
+            body.append((narrowed, divider))
+        # A header wider than its column goes on several lines (at its
+        # spaces, painted as it is): the headers are then the first row,
+        # a rule under them (a table header holds one line).
+        widths = {name: max(limits[name], raw[name]) for name in names}
+        table.header = all(_visible(name) <= widths[name] for name in names)
+        if not table.header:
+            shown = [
+                _wrap_painted(name, widths[name])
+                if _visible(name) > widths[name]
+                else name
+                for name in names
+            ]
+            for label, name in zip(shown, names, strict=True):
+                raw[name] = max(raw[name], _visible(label))
+            body.insert(0, (shown, True))
+        for narrowed, divider in body:
             table.add_row(narrowed, divider=divider)
         table.max_width = raw
         return str(table.get_string())
@@ -493,11 +608,11 @@ def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
     if _visible(text) <= width:
         return text
     limits = natural(texts)
-    # A column's floor: its header and its longest word.
+    # A column's floor: the longest word of its header and of its cells.
     floor.update(
         {
             name: max(
-                [_visible(name)]
+                [len(word) for word in _ANSI.sub("", name).split()]
                 + [
                     len(word)
                     for cells, _ in texts
@@ -510,12 +625,21 @@ def _fit(table: Any, rows: Sequence[tuple[Sequence[Cell], bool]]) -> str:
     text = render(texts, limits)
     while _visible(text) > width:
         roomy = [name for name in names if limits[name] > floor[name]]
+        if not roomy and width < _LINE_WIDTH:
+            # A terminal narrower than the report's width: words and numbers
+            # stay whole (the terminal wraps the rest).
+            break
         if not roomy:
             # Every column at its floor: break the words of a column wider
             # than its header (a header is never narrowed), down to the
-            # narrowest.
+            # narrowest: the report's own width holds in every case.
             roomy = [
-                name for name in names if limits[name] > max(_visible(name), _NARROWEST)
+                name
+                for name in names
+                if limits[name]
+                > max(
+                    [_NARROWEST] + [len(word) for word in _ANSI.sub("", name).split()]
+                )
             ]
             if not roomy:
                 break
@@ -614,7 +738,126 @@ def interrupted_line(setup: Any, color: bool) -> str | None:
     )
 
 
+def _estimate_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
+    """The stability tables of a run without a reference (``--ground-truth
+    none``): the estimated digits at the percentiles (no truth to compare
+    them with) and the default checks' counts and the binary64 time."""
+
+    setup = report.stability_setup
+    target = float(setup["target"])
+    target_digits = -math.log10(target)
+    rows = report.stability
+    served = [row for row in rows if row.refusal is None and row.points]
+    points = (
+        f"{setup.get('measured_points', 0)} of {setup['points']}"
+        if setup.get("interrupted")
+        else str(setup["points"])
+    )
+    table = palette.table(
+        prettytable,
+        ("percentile", "backend", "est. digits", "class"),
+        f"Estimated digits of binary64 (no ground truth), {points} flat points "
+        f"(sqrt(s) = {setup['sqrt_s']:g}, seed {setup['seed']})",
+        color=color,
+    )
+    count = len(served[0].percentiles) if served else 0
+    percentile_rows: list[tuple[Sequence[Cell], bool]] = []
+    for index in range(count):
+        for position, row in enumerate(served):
+            item = row.percentiles[index]
+            digits = (
+                _number(item.digits, color, _digits_colour(item.digits, target_digits))
+                if item.digits is not None
+                else palette.paint(
+                    f"- (N >= {item.needed_points})", palette.MUTED, color=color
+                )
+            )
+            percentile_rows.append(
+                (
+                    (
+                        _LABELS.get(item.percentile, f"{100 * item.percentile:g} %")
+                        if position == 0
+                        else "",
+                        _backend_label(row.backend, report.default_backend, color),
+                        digits,
+                        str(item.count),
+                    ),
+                    position == len(served) - 1 and index < count - 1,
+                )
+            )
+    blocks = [_fit(table, percentile_rows)]
+    verdicts = palette.table(
+        prettytable,
+        ("backend", "evaluated", "best-eff./none", "flagged", "time"),
+        f"Default checks, estimates only (target {target:g} = "
+        f"{target_digits:.2f} digits)",
+        color=color,
+    )
+    entries: list[tuple[Sequence[Cell], bool]] = []
+    refusals = []
+    for row in rows:
+        label = _backend_label(row.backend, report.default_backend, color)
+        if row.refusal is not None:
+            entries.append(
+                (
+                    (
+                        label,
+                        palette.paint("refused", palette.BAD, color=color, bold=True),
+                        "",
+                        "",
+                        "",
+                    ),
+                    False,
+                )
+            )
+            refusals.append(f"{label} refused: {row.refusal}")
+            continue
+        entries.append(
+            (
+                (
+                    label,
+                    str(row.points),
+                    palette.paint(
+                        str(row.best_effort),
+                        palette.GOOD if row.best_effort == 0 else palette.RECOVERED,
+                        color=color,
+                    )
+                    + " / "
+                    + palette.paint(
+                        str(row.failed_binary64),
+                        palette.GOOD if row.failed_binary64 == 0 else palette.BAD,
+                        color=color,
+                        bold=row.failed_binary64 > 0,
+                    ),
+                    _percent_parts(row.flagged, row.points),
+                    _stability_time(row, report, color),
+                ),
+                False,
+            )
+        )
+    blocks.append(_fit(verdicts, entries))
+    causes = failure_lines(report.failure_causes, "stability", color)
+    if causes is not None or refusals:
+        blocks.append(
+            "\n".join(
+                ([causes] if causes is not None else [])
+                + (
+                    [palette.paint("---", palette.MUTED, color=color)]
+                    if causes is None
+                    else []
+                )
+                + refusals
+            )
+        )
+    notice = interrupted_line(setup, color)
+    if notice is not None:
+        blocks.append(notice)
+    return blocks
+
+
 def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
+    if any(getattr(row, "estimate_only", False) for row in report.stability or ()):
+        return _estimate_tables(report, prettytable, color)
     setup = report.stability_setup
     target = float(setup["target"])
     target_digits = -math.log10(target)

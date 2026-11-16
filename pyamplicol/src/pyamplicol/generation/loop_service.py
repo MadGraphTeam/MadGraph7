@@ -15,7 +15,7 @@ import logging
 import os
 import time
 from collections.abc import Iterable, Mapping, Sequence
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
@@ -1642,6 +1642,23 @@ def _permutation_invariant(request, legs) -> bool:
     )
 
 
+def _plural(count: int, noun: str) -> str:
+    return f"{count:,} {noun}" + (
+        "" if count == 1 else "es" if noun.endswith("s") else "s"
+    )
+
+
+def _size_text(path: Path) -> str:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return ""
+    for unit, scale in (("GiB", 1024**3), ("MiB", 1024**2), ("KiB", 1024)):
+        if size >= scale:
+            return f"{size / scale:.1f} {unit}"
+    return f"{size} B"
+
+
 def _generate_v2(backend, processes, output, *, model, mode, correlators):
     """Generate every process through v2 and publish plan v4 atomically.
 
@@ -1677,9 +1694,13 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     )
 
     _raise_blocked(backend, processes)
+    from .progress import history_signature, step
+
     reporter = GenerationPhaseReporter(backend._progress)
     reporter.start_generation(
-        total=3, details={"execution_mode": "loop_recurrence", "engine": "v2"}
+        total=3,
+        details={"execution_mode": "loop_recurrence", "engine": "v2"},
+        signature=history_signature("loop", backend._run_config),
     )
     started = time.perf_counter()
     grouping = backend._run_config.process.flavor_blind
@@ -1688,7 +1709,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
     try:
         with reporter.phase(
             "loop-model",
-            "Preparing source loop model and processes",
+            "Preparing the loop model and the requests",
             total=len(processes.requests),
         ) as phase:
             context = _prepare(
@@ -1703,10 +1724,12 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
             # (``blocks.born_dag_scope``; compiled once per process, R3).
             stack.enter_context(born_dag_scope())
             # Only the scope keeps the Born DAGs (each slice releases its own).
-            context, requests, _released, skipped = _born_members(
-                backend, context, memo
-            )
+            with step("requests", "Resolving the Born and loop requests"):
+                context, requests, _released, skipped = _born_members(
+                    backend, context, memo
+                )
             del _released
+            phase.summary = _plural(len(context.expanded), "process")
         native = load_loop_native()
         compiled = context.resolved.compiled
         validation = backend._generation_config.validation
@@ -1714,7 +1737,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
             artifacts, generated, members = [], {}, {}
             with reporter.phase(
                 "loop-compile",
-                "Generating v2 loop families and plan v4",
+                "Generating the loop processes",
                 total=len(context.expanded),
             ) as phase:
                 for index, entry in enumerate(context.expanded):
@@ -1729,161 +1752,192 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         members.setdefault(found[0], []).append((index, found[1]))
                         phase.update(index + 1, message=f"{name} (flavour member)")
                         continue
-                    process = generate_process(
-                        compiled, request, native, correlators, memo=memo
-                    )
-                    # The validation points of a loop-induced process (None
-                    # for a virtual), for its filter and its probes.
-                    candidates = _loop_induced_candidates(
-                        context, entry, process, validation, index
-                    )
-                    # M-LIT lit-fold (USER ~22:39, F1): the fold of a
-                    # loop-induced process's certified proportional chains
-                    # (None for a virtual or with generation.
-                    # loop_induced_folding off); a folded process is
-                    # exported again, folded.
-                    folding, process = _loop_induced_fold(
-                        backend, context, process, request, candidates, correlators
-                    )
-                    # m-lit Q10 (LIT-R2): the exact helicity-zero filter of a
-                    # loop-induced process (None for a virtual); rows it
-                    # drops are exported again without their row.
-                    helicity, process = _loop_induced_filter(
-                        backend, context, process, request, candidates, correlators
-                    )
-                    # m-lit Q12: the generation-time probes of a loop-induced
-                    # process, run only with generation.loop_induced_probes
-                    # (its record; None for a virtual).
-                    probes = _loop_induced_probes(
-                        backend, context, process, native, candidates, memo
-                    )
-                    generated[name] = process
-                    path = Path(temporary) / f"{name}.pacbin"
-                    write_plan(
-                        process.plan,
-                        path,
-                        native=process.native,
-                        scaleless=process.scaleless_plan,
-                    )
-                    legs = process.state_legs()
-                    # WP3.2 EWI-7: the conventions of an electroweak virtual
-                    # (None otherwise).
-                    conventions = process.conventions()
-                    artifacts.append(
-                        LoopV2ProcessArtifact(
-                            process_id=name,
-                            expression=entry.request.expression,
-                            external_pdgs=tuple(int(leg["pdg"]) for leg in legs),
-                            loop_runtime_path=path,
-                            metadata=LoopV2ExecutionMetadata(
-                                scheme=context.declaration.scheme,
-                                born_orders=process.born_orders(),
-                                sectors=process.sectors(),
-                                families=len(process.exported.families),
-                                buckets=tuple(map(tuple, process.buckets())),
-                                color_accuracy=request.accuracy,
-                                color_degrees=process.colour_degrees(),
-                                color_contraction=request.colour_contraction,
-                                color_correlations=process.color_correlations(),
-                                spin_correlations=process.spin_correlations(),
-                                # Loop-induced: kind, interference, poles
-                                # (m-lit LIT-AMP; absent for a virtual).
-                                **process.contribution(),
-                                # A TIR-only process's one backend (m-lit
-                                # lit-eft; None otherwise, not recorded).
-                                reductions=process.reductions(),
-                            ),
-                            validation_point=build_process_validation_point(
-                                entry.process_ir,
-                                context.resolved.model,
-                                process_id=name,
-                                seed=validation.seed + index,
-                            ),
-                            generation_filters={
-                                "loop_engine": "v2",
-                                "loop_coupling_orders": context.corrections,
-                                "born_orders": dict(request.born_orders),
-                                "loop_orders": _loop_orders_record(request),
-                                "particle_veto": list(
-                                    backend._run_config.generation.particle_veto
-                                ),
-                                # [U2]: the override of an anomalous veto and
-                                # the CT rules it lowered (rule -> cells),
-                                # recorded when set.
-                                **(
-                                    {
-                                        "allow_anomalous_veto": True,
-                                        "counterterms_anomalous_veto": (
-                                            process.anomalous_veto_counterterms()
-                                        ),
-                                    }
-                                    if request.allow_anomalous_veto
-                                    else {}
-                                ),
-                                # REQUIREMENTS_ADDENDUM J: rule -> reason.
-                                "counterterms_inert": process.inert_counterterms(),
-                                **(
-                                    {"loop_induced_probes": probes}
-                                    if probes is not None
-                                    else {}
-                                ),
-                                **(
-                                    {"loop_induced_helicity_filter": helicity}
-                                    if helicity is not None
-                                    else {}
-                                ),
-                                **(
-                                    {"loop_induced_fold": folding}
-                                    if folding is not None
-                                    else {}
-                                ),
-                                # The request's gauge (WP3.2 EWI-4b), recorded
-                                # off the default unitary gauge only.
-                                **(
-                                    {"gauge": gauge}
-                                    if (gauge := process.slice.compiled.ir.gauge)
-                                    != "unitary"
-                                    else {}
-                                ),
-                                # WP3.2 EWI-7: the conventions of an
-                                # electroweak virtual (absent otherwise).
-                                **(
-                                    {"conventions": conventions}
-                                    if conventions is not None
-                                    else {}
-                                ),
-                                # RUST-MIGRATION rule 2: stage -> listed feature
-                                # (absent when every stage was native).
-                                **(
-                                    {"native_fallbacks": fallbacks}
-                                    if (fallbacks := process.native_fallbacks())
-                                    else {}
-                                ),
-                                # G2-M3: masses whose binary64 lanes take the
-                                # exact engine (absent when none is that light).
-                                **(
-                                    {"binary64_exact_engine": light}
-                                    if (light := process.binary64_exact_engine())
-                                    else {}
-                                ),
-                                "model_declaration": context.declaration.to_dict(),
-                                **(
-                                    {"correlators": correlators.to_json_dict()}
-                                    if correlators is not None
-                                    else {}
-                                ),
-                            },
-                            color_accuracy=request.accuracy,
-                            aliases=entry.aliases,
-                            request=dict(process.request),
-                            plan_sha256=process.plan_sha256,
-                            scaleless_plan_sha256=process.scaleless_plan_sha256,
-                            state_legs=tuple(legs),
-                            helicities=tuple(map(tuple, process.helicities())),
-                            point_inputs=process.point_inputs,
+                    # One step per process when there are several (its
+                    # steps under it), the phase's own steps otherwise.
+                    with (
+                        phase.child(
+                            f"process-{index}",
+                            name,
+                            keep=True,
+                            details={"process": name},
                         )
-                    )
+                        if len(context.expanded) > 1
+                        else nullcontext(PhaseHandle(name, None, None))
+                    ) as process_handle:
+                        process = generate_process(
+                            compiled, request, native, correlators, memo=memo
+                        )
+                        # The validation points of a loop-induced process (None
+                        # for a virtual), for its filter and its probes.
+                        candidates = _loop_induced_candidates(
+                            context, entry, process, validation, index
+                        )
+                        # M-LIT lit-fold (USER ~22:39, F1): the fold of a
+                        # loop-induced process's certified proportional chains
+                        # (None for a virtual or with generation.
+                        # loop_induced_folding off); a folded process is
+                        # exported again, folded.
+                        with step("fold", "Folding the proportional chains"):
+                            folding, process = _loop_induced_fold(
+                                backend,
+                                context,
+                                process,
+                                request,
+                                candidates,
+                                correlators,
+                            )
+                        # m-lit Q10 (LIT-R2): the exact helicity-zero filter of a
+                        # loop-induced process (None for a virtual); rows it
+                        # drops are exported again without their row.
+                        with step("helicities", "Filtering the zero helicities"):
+                            helicity, process = _loop_induced_filter(
+                                backend,
+                                context,
+                                process,
+                                request,
+                                candidates,
+                                correlators,
+                            )
+                        # m-lit Q12: the generation-time probes of a loop-induced
+                        # process, run only with generation.loop_induced_probes
+                        # (its record; None for a virtual).
+                        with step("probes", "Running the generation probes"):
+                            probes = _loop_induced_probes(
+                                backend, context, process, native, candidates, memo
+                            )
+                        generated[name] = process
+                        path = Path(temporary) / f"{name}.pacbin"
+                        with step("write", "Writing the loop plan") as writing:
+                            write_plan(
+                                process.plan,
+                                path,
+                                native=process.native,
+                                scaleless=process.scaleless_plan,
+                            )
+                            writing.summary = _size_text(path)
+                        legs = process.state_legs()
+                        # WP3.2 EWI-7: the conventions of an electroweak virtual
+                        # (None otherwise).
+                        conventions = process.conventions()
+                        artifacts.append(
+                            LoopV2ProcessArtifact(
+                                process_id=name,
+                                expression=entry.request.expression,
+                                external_pdgs=tuple(int(leg["pdg"]) for leg in legs),
+                                loop_runtime_path=path,
+                                metadata=LoopV2ExecutionMetadata(
+                                    scheme=context.declaration.scheme,
+                                    born_orders=process.born_orders(),
+                                    sectors=process.sectors(),
+                                    families=len(process.exported.families),
+                                    buckets=tuple(map(tuple, process.buckets())),
+                                    color_accuracy=request.accuracy,
+                                    color_degrees=process.colour_degrees(),
+                                    color_contraction=request.colour_contraction,
+                                    color_correlations=process.color_correlations(),
+                                    spin_correlations=process.spin_correlations(),
+                                    # Loop-induced: kind, interference, poles
+                                    # (m-lit LIT-AMP; absent for a virtual).
+                                    **process.contribution(),
+                                    # A TIR-only process's one backend (m-lit
+                                    # lit-eft; None otherwise, not recorded).
+                                    reductions=process.reductions(),
+                                ),
+                                validation_point=build_process_validation_point(
+                                    entry.process_ir,
+                                    context.resolved.model,
+                                    process_id=name,
+                                    seed=validation.seed + index,
+                                ),
+                                generation_filters={
+                                    "loop_engine": "v2",
+                                    "loop_coupling_orders": context.corrections,
+                                    "born_orders": dict(request.born_orders),
+                                    "loop_orders": _loop_orders_record(request),
+                                    "particle_veto": list(
+                                        backend._run_config.generation.particle_veto
+                                    ),
+                                    # [U2]: the override of an anomalous veto and
+                                    # the CT rules it lowered (rule -> cells),
+                                    # recorded when set.
+                                    **(
+                                        {
+                                            "allow_anomalous_veto": True,
+                                            "counterterms_anomalous_veto": (
+                                                process.anomalous_veto_counterterms()
+                                            ),
+                                        }
+                                        if request.allow_anomalous_veto
+                                        else {}
+                                    ),
+                                    # REQUIREMENTS_ADDENDUM J: rule -> reason.
+                                    "counterterms_inert": process.inert_counterterms(),
+                                    **(
+                                        {"loop_induced_probes": probes}
+                                        if probes is not None
+                                        else {}
+                                    ),
+                                    **(
+                                        {"loop_induced_helicity_filter": helicity}
+                                        if helicity is not None
+                                        else {}
+                                    ),
+                                    **(
+                                        {"loop_induced_fold": folding}
+                                        if folding is not None
+                                        else {}
+                                    ),
+                                    # The request's gauge (WP3.2 EWI-4b), recorded
+                                    # off the default unitary gauge only.
+                                    **(
+                                        {"gauge": gauge}
+                                        if (gauge := process.slice.compiled.ir.gauge)
+                                        != "unitary"
+                                        else {}
+                                    ),
+                                    # WP3.2 EWI-7: the conventions of an
+                                    # electroweak virtual (absent otherwise).
+                                    **(
+                                        {"conventions": conventions}
+                                        if conventions is not None
+                                        else {}
+                                    ),
+                                    # RUST-MIGRATION rule 2: stage -> listed feature
+                                    # (absent when every stage was native).
+                                    **(
+                                        {"native_fallbacks": fallbacks}
+                                        if (fallbacks := process.native_fallbacks())
+                                        else {}
+                                    ),
+                                    # G2-M3: masses whose binary64 lanes take the
+                                    # exact engine (absent when none is that light).
+                                    **(
+                                        {"binary64_exact_engine": light}
+                                        if (light := process.binary64_exact_engine())
+                                        else {}
+                                    ),
+                                    "model_declaration": context.declaration.to_dict(),
+                                    **(
+                                        {"correlators": correlators.to_json_dict()}
+                                        if correlators is not None
+                                        else {}
+                                    ),
+                                },
+                                color_accuracy=request.accuracy,
+                                aliases=entry.aliases,
+                                request=dict(process.request),
+                                plan_sha256=process.plan_sha256,
+                                scaleless_plan_sha256=process.scaleless_plan_sha256,
+                                state_legs=tuple(legs),
+                                helicities=tuple(map(tuple, process.helicities())),
+                                point_inputs=process.point_inputs,
+                            )
+                        )
+                        process_handle.summary = (
+                            f"{len(process.exported.families):,} families"
+                        )
                     phase.update(index + 1, message=name)
+                phase.summary = _plural(len(artifacts), "process") + " generated"
             # The preparation memo and store state (log only: the artifact
             # is the same whatever the cache state): one sentence and the
             # full statistics at DEBUG.

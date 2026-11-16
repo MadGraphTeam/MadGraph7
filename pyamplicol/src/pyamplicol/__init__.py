@@ -13,7 +13,10 @@ from contextlib import suppress as _suppress
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-from . import _native_loader
+from . import (
+    _clock,  # noqa: F401  (first: the command's clock)
+    _native_loader,
+)
 
 # First: pyamplicol._rusticol is loaded only after the running glibc is checked
 # against the library's ELF version requirements (NativePlatformError).
@@ -88,6 +91,7 @@ if TYPE_CHECKING:
         GenerationError,
         GenerationPlan,
         GenerationResult,
+        GenerationStatistics,
         Generator,
         HelicityConfiguration,
         ModelCompilationIssue,
@@ -191,6 +195,7 @@ __all__ = [
     "GenerationError",
     "GenerationPlan",
     "GenerationResult",
+    "GenerationStatistics",
     "Generator",
     "GradedCorrelatedEvaluation",
     "HelicityConfiguration",
@@ -282,6 +287,7 @@ _RESULT_EXPORTS = (
     "ExternalParticle",
     "GenerationPlan",
     "GenerationResult",
+    "GenerationStatistics",
     "HelicityConfiguration",
     "ModelParameter",
     "PhysicsReduction",

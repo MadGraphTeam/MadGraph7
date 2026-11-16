@@ -75,10 +75,13 @@ PYTHON=.venv/bin/python just dev-test
 
 The `just dev-install` native build can take several minutes. Use
 `--wheel-directory PATH` to avoid rebuilding an existing compatible wheel.
-For a dirty development checkout, use `--wheel-directory PATH` to reuse an
-already-built compatible release wheel, or `--dependencies-only` to install
-dependencies without building or staging the project; the latter leaves the
-existing native runtime untouched. An optional `--loader-wheel PATH` explicitly
+A checkout with uncommitted or untracked files stops before the build with a
+list of the offending paths: commit or stash them, or use `--allow-dirty` to
+build a wheel marked non-publishable (no source revision; the release audits
+reject it), `--wheel-directory PATH` to reuse an already-built compatible
+release wheel, or `--dependencies-only` to install dependencies without
+building or staging the project; the latter leaves the existing native runtime
+untouched. An optional `--loader-wheel PATH` explicitly
 selects a local wheel for dependency development; normal setup uses PyPI.
 Editable installs are not used. `just dev-test` also includes a fresh release
 build and requires a clean checkpoint; dirty edits can use focused tests against

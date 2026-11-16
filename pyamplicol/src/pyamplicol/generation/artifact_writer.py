@@ -5403,6 +5403,9 @@ def _extensions(
     result = {} if existing is None else _plain_mapping(existing.extensions)
     previous = result.get("generation")
     generation = dict(previous) if isinstance(previous, Mapping) else {}
+    # The statistics of the call that wrote ``existing``: this call records
+    # its own once it has finished (``generation.statistics``).
+    generation.pop("statistics", None)
     concrete = generation.get("concrete_processes")
     process_records = list(concrete) if isinstance(concrete, list) else []
     for process in processes:

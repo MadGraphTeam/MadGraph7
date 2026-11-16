@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import os
+import time
 import weakref
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import Decimal
@@ -406,13 +407,25 @@ class Generator:
         from dataclasses import replace
 
         from pyamplicol._internal.symbolica_log import capture
+        from pyamplicol.generation.statistics import (
+            measure_generation,
+            record_generation_statistics,
+        )
 
-        with capture("generate") as captured:
+        with capture("generate") as captured, measure_generation() as measured:
             result = self._generate(
                 processes, output, model=model, mode=mode, correlators=correlators
             )
-        found = captured.warnings()
-        return replace(result, warnings=result.warnings + found) if found else result
+        statistics = measured.statistics
+        if statistics is not None:
+            # The wall time and peak memory of the whole call, in the
+            # artifact's generation metadata (``artifact_id`` unchanged).
+            record_generation_statistics(result.output, statistics)
+        return replace(
+            result,
+            warnings=result.warnings + captured.warnings(),
+            statistics=statistics,
+        )
 
     def _generate(
         self,
@@ -425,6 +438,9 @@ class Generator:
     ) -> GenerationResult:
         if mode not in ("error", "append", "replace"):
             raise ValueError("generation mode must be 'error', 'append', or 'replace'")
+        from pyamplicol.generation.progress import record_phase
+
+        started = time.perf_counter()
         processes = self._translate(processes)
         process_set = _process_set(processes)
         destination = Path(os.fspath(output)).expanduser().resolve(strict=False)
@@ -448,6 +464,7 @@ class Generator:
                 and run.process.loop_coupling_orders is not None
             ):
                 operation = self._implementation().generate
+                record_phase("setup", time.perf_counter() - started)
                 if not _accepts_keyword_arguments(operation, "correlators"):
                     raise GenerationError(
                         "generator backend does not support virtual "
@@ -467,6 +484,7 @@ class Generator:
                 return result
             from pyamplicol.generation.correlated import generate_correlated
 
+            record_phase("setup", time.perf_counter() - started)
             return generate_correlated(
                 process_set,
                 destination,
@@ -476,9 +494,11 @@ class Generator:
                 progress=self._progress,
                 declarations=correlators,
             )
-        result = self._implementation().generate(
-            process_set, destination, model=model, mode=mode
-        )
+        backend = self._implementation()
+        # Reading the request and building the backend (its first use
+        # imports the generation engine).
+        record_phase("setup", time.perf_counter() - started)
+        result = backend.generate(process_set, destination, model=model, mode=mode)
         if not isinstance(result, GenerationResult):
             raise GenerationError(
                 "generator backend returned an invalid GenerationResult"
@@ -2258,6 +2278,7 @@ class _CheckProgress:
         self.current: tuple[str, float] | None = None
         self.count = 0
         self.interrupted = False
+        self._adopted: object | None = None
 
     def __enter__(self) -> _CheckProgress:
         import time
@@ -2300,6 +2321,13 @@ class _CheckProgress:
         task = f"check-test-{self.count}"
         self.current = (task, time.perf_counter())
         self.sink.emit(ProgressStart(task, text, parent_task_id="check"))
+        # The generation steps a test runs (a slice regenerated in memory)
+        # report under it.
+        from pyamplicol.generation.progress import adopt_task, release_task
+
+        if self._adopted is not None:
+            release_task(self._adopted)
+        self._adopted = adopt_task(task, self.sink)
 
     def _finish(self, success: bool) -> None:
         import time
@@ -2310,12 +2338,15 @@ class _CheckProgress:
             return
         task, begin = self.current
         self.current = None
+        elapsed = time.perf_counter() - begin
         self.sink.emit(
             ProgressEnd(
                 task,
                 success=success,
                 message=None if success else "interrupted",
-                elapsed_seconds=time.perf_counter() - begin,
+                elapsed_seconds=elapsed,
+                # A test of a second or more leaves its line (and cost).
+                details={"keep": elapsed >= 1.0},
             )
         )
 
@@ -2326,6 +2357,11 @@ class _CheckProgress:
 
         failed = kind is not None or self.interrupted
         self._finish(not failed)
+        if self._adopted is not None:
+            from pyamplicol.generation.progress import release_task
+
+            release_task(self._adopted)
+            self._adopted = None
         if self.sink is not None:
             self.sink.emit(
                 ProgressEnd(

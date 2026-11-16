@@ -1096,6 +1096,8 @@ def generate_process(
     ``preparation_cache.PreparationMemo``) shares the model preparation.
     """
 
+    from pyamplicol.generation.progress import step
+
     from .assemble import LoopSlice, resolve_request
     from .observables import ObservableSlice
 
@@ -1111,39 +1113,40 @@ def generate_process(
     declared = _declared(correlators)
     from .native_trees import NativeExportUnsupported
 
-    try:
-        # A listed feature the native point inputs do not cover is refused as
-        # soon as the generation knows it (``native_inputs``), before the
-        # trees are built.
-        if declared and request.contribution == "loop-induced":
-            # Loop-induced observables are quadratic forms on the amplitude
-            # vector (m-lit LIT-OBS, ``induced_observables``): the slice is
-            # the inclusive one, its declared histories' matrices are stored
-            # with its amplitude basis.
-            from .induced_observables import declare
+    with step("slice", "Assembling loop families, skeletons and counterterms"):
+        try:
+            # A listed feature the native point inputs do not cover is refused as
+            # soon as the generation knows it (``native_inputs``), before the
+            # trees are built.
+            if declared and request.contribution == "loop-induced":
+                # Loop-induced observables are quadratic forms on the amplitude
+                # vector (m-lit LIT-OBS, ``induced_observables``): the slice is
+                # the inclusive one, its declared histories' matrices are stored
+                # with its amplitude basis.
+                from .induced_observables import declare
 
-            slice_ = LoopSlice.generate(
-                compiled, request, native, native_inputs=True, memo=memo
-            )
-            declare(slice_, compiled, request, correlators)
-            observables = ObservableSlice.of(slice_)
-        elif declared:
-            observables = ObservableSlice.generate(
-                compiled,
-                request,
-                native,
-                correlators=correlators,
-                native_inputs=True,
-                memo=memo,
-            )
-        else:
-            observables = ObservableSlice.of(
-                LoopSlice.generate(
+                slice_ = LoopSlice.generate(
                     compiled, request, native, native_inputs=True, memo=memo
                 )
-            )
-    except NativeExportUnsupported as error:
-        raise _not_storable(request, "native point inputs", error) from error
+                declare(slice_, compiled, request, correlators)
+                observables = ObservableSlice.of(slice_)
+            elif declared:
+                observables = ObservableSlice.generate(
+                    compiled,
+                    request,
+                    native,
+                    correlators=correlators,
+                    native_inputs=True,
+                    memo=memo,
+                )
+            else:
+                observables = ObservableSlice.of(
+                    LoopSlice.generate(
+                        compiled, request, native, native_inputs=True, memo=memo
+                    )
+                )
+        except NativeExportUnsupported as error:
+            raise _not_storable(request, "native point inputs", error) from error
     return export_process(observables, request, declared)
 
 
@@ -1177,6 +1180,7 @@ def export_process(observables: Any, request: Any, declared: bool) -> GeneratedP
     (``LoopSlice.zero_rows``, ``helicity_filter``)."""
 
     from pyamplicol.correlators import CorrelatorConfig
+    from pyamplicol.generation.progress import step
 
     from .native_trees import NativeExportUnsupported
     from .plan_export import export_plan
@@ -1216,16 +1220,18 @@ def export_process(observables: Any, request: Any, declared: bool) -> GeneratedP
         # With declared observables every counterterm ket component stays in
         # the tree program (``native_observables``: a colour history can read
         # a component the inclusive metric does not).
-        exported = export_plan(
-            observables.slice,
-            forward=False,
-            trees=True,
-            born_squared=True,
-            keep_kets=declared,
-            column_sets=None
-            if induced
-            else {kind: plan.seed_columns for kind, plan in plans.items()},
-        )
+        with step("plan", "Exporting the loop plan") as exporting:
+            exported = export_plan(
+                observables.slice,
+                forward=False,
+                trees=True,
+                born_squared=True,
+                keep_kets=declared,
+                column_sets=None
+                if induced
+                else {kind: plan.seed_columns for kind, plan in plans.items()},
+            )
+            exporting.summary = f"{len(exported.families):,} families"
     except NativeExportUnsupported as error:
         raise _not_storable(request, "native point inputs", error) from error
     # The stored plan (``ExportedPlan.stored()``: the binary plan member).
@@ -1246,26 +1252,28 @@ def export_process(observables: Any, request: Any, declared: bool) -> GeneratedP
                 if twin is not None and twin.slice is companion:
                     twins[kind] = twin.seed_columns
         try:
-            scaleless = export_plan(
-                companion,
-                forward=False,
-                trees=exported.trees is not None,
-                born_squared=False,
-                counterterms=False,
-                column_sets=twins or None,
-            )
+            with step("scaleless", "Exporting the scaleless companion plan"):
+                scaleless = export_plan(
+                    companion,
+                    forward=False,
+                    trees=exported.trees is not None,
+                    born_squared=False,
+                    counterterms=False,
+                    column_sets=twins or None,
+                )
         except NativeExportUnsupported as error:
             raise _not_storable(request, "companion point inputs", error) from error
     scaleless_plan = None if scaleless is None else scaleless.stored()
     if exported.trees is not None:
         from .native_process import NativeProcess
 
-        native = NativeProcess.export(
-            observables.slice,
-            exported,
-            stored_plan,
-            None if scaleless is None else (scaleless, cast(Any, scaleless_plan)),
-        )
+        with step("native", "Lowering the native process"):
+            native = NativeProcess.export(
+                observables.slice,
+                exported,
+                stored_plan,
+                None if scaleless is None else (scaleless, cast(Any, scaleless_plan)),
+            )
         # A column set the native trees cannot form (no native counterterm
         # components) is refused like the point inputs: a correlated or
         # resolved call of a stored process never regenerates.
@@ -1275,9 +1283,10 @@ def export_process(observables: Any, request: Any, declared: bool) -> GeneratedP
 
         if not induced:
             try:
-                stored_columns = StoredObservables.export(
-                    observables, exported, native, plans, scaleless
-                )
+                with step("observables", "Exporting the observable columns"):
+                    stored_columns = StoredObservables.export(
+                        observables, exported, native, plans, scaleless
+                    )
             except NativeExportUnsupported as error:
                 raise _not_storable(request, "observable columns", error) from error
             native = replace(native, observables=stored_columns)
