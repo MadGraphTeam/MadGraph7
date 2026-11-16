@@ -941,13 +941,18 @@ table. Digits are coloured red below the
 target's digits (5 for 1e-5), yellow in the lower half of the margin between
 the target's digits and binary64's 15.95 (a display convention) and green
 above. The footnotes under the tables state these definitions; every table
-fits a 100-column terminal and the footnotes wrap to the terminal width.
+fits a 100-column terminal (a cell's annotation, such as "(+4 no ref.)" or
+the multiplier, goes under its value when one line would not fit) and the
+footnotes wrap to the terminal width.
 
 Colours follow `--color auto|always|never`; `--json` carries every number
 uncoloured (`loop_profile.LoopProfileReport`: `runtime` per backend with its
 `benchmarking.VirtualProfileResult` profile (`seconds_per_point`, `low`,
-`high`, `stages`, `reduction`, `unchecked`, `batch`, `samples`,
-`failed_points`, `failure_reasons`, `peak_memory` with `peak_rss_bytes`,
+`high`, `stages`, `reduction`, `unchecked` (whether the timed calls reduced
+unchecked: true for the optimistic pass, false with `--checked`, whose
+best-effort points do not change it), `batch`, `samples`, `failed_points`,
+`failure_reasons`, `best_effort_points` (with `--checked`; 0 in the
+optimistic pass), `peak_memory` with `peak_rss_bytes`,
 `start_rss_bytes`, `increase_rss_bytes`, `scope` and `method`, `threads`
 (the native threads of the timed calls: 1), `cpu_per_wall`, and
 `reference`: its `arithmetic`, `digits`, `seconds_per_point`, `low`, `high`,

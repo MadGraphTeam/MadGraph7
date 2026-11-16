@@ -590,11 +590,14 @@ def test_interrupted_stability_notice_names_the_common_points():
         "measured_points": 68,
         "evaluated_per_backend": {"ninjars": 68, "tir": 107},
     }
-    line = interrupted_line(setup, color=False)
+    notice = interrupted_line(setup, color=False)
+    # Wrapped to the line width.
+    assert max(len(part) for part in notice.splitlines()) <= 100
+    line = " ".join(notice.split())
     assert line.startswith("interrupted: 68 of 1000 requested points evaluated")
     assert "by every backend (" in line and "107" in line
     assert line.endswith("the tables compare those points")
     setup["evaluated_per_backend"] = {"ninjars": 68, "tir": 68}
-    assert interrupted_line(setup, color=False).endswith(
+    assert " ".join(interrupted_line(setup, color=False).split()).endswith(
         "evaluated; the tables hold those points"
     )
