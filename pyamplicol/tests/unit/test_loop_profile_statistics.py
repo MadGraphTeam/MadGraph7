@@ -911,9 +911,11 @@ def test_human_output_skips_the_json_conversion_and_large_dumps_say_so(
     monkeypatch.setattr(main, "_json_value", converted)
     machine = io.StringIO()
     main.write_result(report, format="json", stream=machine, color=False)
-    assert "Writing the JSON result (120000 sample records, 25 MB)" in (
-        capsys.readouterr().err
-    )
+    err = capsys.readouterr().err
+    assert "Writing the JSON result (120000 sample records, about 25 MB)" in err
+    # Then the size written (recheck2: "78 MB" was announced for 144 MB).
+    written = len(machine.getvalue()) / 1e6
+    assert f"Wrote the JSON result ({written:.0f} MB)" in err
     # The pre-encoded rows are spliced in: one valid document.
     rows = json.loads(machine.getvalue())["stability"][0]["samples"]["rows"]
     assert len(rows) == 120_000 and rows[7] == [7, "x" * 200]

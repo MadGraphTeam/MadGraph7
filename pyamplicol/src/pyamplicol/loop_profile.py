@@ -570,22 +570,43 @@ class LoopProfileReport:
 
     def json_notice(self) -> str | None:
         """The line ``--json`` prints on stderr before a large dump (its
-        per-sample records take seconds to write: never a silent tail)."""
+        per-sample records take seconds to write: never a silent tail), with
+        its size estimated from the rows already encoded (the samples' and
+        the inputs'), the per-point tables and digit lists at their row size
+        (``json_size``); ``cli.main`` states the size written after it."""
+
+        size, records = self.json_size()
+        if size < 20_000_000:
+            return None
+        return (
+            f"Writing the JSON result ({records} sample records, about "
+            f"{size / 1e6:.0f} MB)"
+        )
+
+    def json_size(self) -> tuple[int, int]:
+        """The estimated bytes of the --json document's per-sample parts and
+        the number of sample records."""
 
         from pyamplicol.reporting.raw_json import RawJson
 
-        rows = [
-            row.samples.get("rows")
-            for row in self.stability or ()
-            if isinstance(row.samples, Mapping)
-        ]
-        size = sum(len(r.text) for r in rows if isinstance(r, RawJson))
-        if size < 20_000_000:
+        def encoded(table: object) -> RawJson | None:
+            if isinstance(table, Mapping):
+                rows = table.get("rows")
+                if isinstance(rows, RawJson):
+                    return rows
             return None
-        records = sum(r.rows for r in rows if isinstance(r, RawJson))
-        return (
-            f"Writing the JSON result ({records} sample records, {size / 1e6:.0f} MB)"
-        )
+
+        tables = [encoded(row.samples) for row in self.stability or ()]
+        setup = self.stability_setup or {}
+        inputs = encoded(setup.get("samples"))
+        size = sum(len(t.text) for t in tables if t is not None)
+        size += 0 if inputs is None else len(inputs.text)
+        for row in self.stability or ():
+            # One per-point row (~45 B) and two digit numbers (~20 B each).
+            size += 45 * len(row.per_point)
+            size += 20 * (len(row.true_digits) + len(row.estimated_digits))
+        records = sum(t.rows for t in tables if t is not None)
+        return size, records
 
 
 def _backends(requested: object, contribution: str) -> tuple[str, ...]:
