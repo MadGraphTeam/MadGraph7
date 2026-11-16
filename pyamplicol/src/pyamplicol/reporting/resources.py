@@ -472,7 +472,10 @@ class ProcessTreePeakMemory:
     whether a descendant ran (None: not observable);
     ``child_peak_rss_bytes`` the largest peak of a descendant that ended
     in the region (getrusage RUSAGE_CHILDREN), when it raised that
-    lifetime maximum; ``sampled_peak_rss_bytes`` the largest sampled sum;
+    lifetime maximum and exceeds the process's own peak (the kernel credits
+    a started process with the resident size of the image it is forked or
+    vforked from, so a smaller value says nothing about the descendant);
+    ``sampled_peak_rss_bytes`` the largest sampled sum;
     ``method`` the sources."""
 
     peak_rss_bytes: int | None
@@ -560,16 +563,21 @@ class process_tree_peak_memory:
             children: bool | None = None
         else:
             children = ended or sampled
+        own = None if process is None else process.peak_rss_bytes
+        # The kernel credits a started process with the resident size of
+        # the process that starts it (the image it is forked or vforked
+        # from), so only a peak above this process's own is the started
+        # process's.
         child_peak = (
             after[0]
             if children
             and before is not None
             and after is not None
             and after[0] > before[0]
+            and (own is None or after[0] > own)
             and (linux or sampled)
             else None
         )
-        own = None if process is None else process.peak_rss_bytes
         region = process is not None and process.scope == "profiled region"
         sources = [] if process is None else [process.method]
         if children is None:

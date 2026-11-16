@@ -574,8 +574,11 @@ def _generation_statistics(statistics: Any) -> list[tuple[str | None, str]]:
             + "; '<= x': only the process's lifetime peak x is known, which "
             "the generation did not raise; '>= x': the generation started "
             "processes, so the peak of all of them together is at least x "
-            "(in brackets the generating process's own peak and the largest "
-            "one of a started process); '-': not recorded",
+            "(in brackets the generating process's own peak when the peak is "
+            "not it and, when above it, the largest one of a started process: "
+            "the system credits a started process with the memory of the "
+            "process that starts it); "
+            "'-': not recorded",
         ),
     ]
 

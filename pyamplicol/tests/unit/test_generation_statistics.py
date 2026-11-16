@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -162,16 +163,26 @@ def test_started_processes_make_the_peak_a_lower_bound() -> None:
         processes=ProcessSet((ProcessRequest.parse("d d~ > z"),)),
         mode="error",
         statistics=_statistics(
+            peak_rss_bytes=1536 * 1024**2,
             peak_rss_bound="lower bound",
             child_processes=True,
-            child_peak_rss_bytes=300 * 1024**2,
+            child_peak_rss_bytes=1536 * 1024**2,
         ),
     )
     rendered = render_summary(result, color=False)
     assert rendered is not None
     assert _row(rendered, "peak RAM") == [
-        ">= 1.2 GiB (process 1.2 GiB, largest started process 300 MiB)"
+        ">= 1.5 GiB (process 1.2 GiB, largest started process 1.5 GiB)"
     ]
+    own = render_summary(
+        replace(
+            result,
+            statistics=_statistics(peak_rss_bound="lower bound", child_processes=True),
+        ),
+        color=False,
+    )
+    assert own is not None
+    assert _row(own, "peak RAM") == [">= 1.2 GiB"]
     described = field_descriptions(result)
     assert "generation time" in described and "'>= x'" in described
 
@@ -212,7 +223,12 @@ def test_the_phases_and_the_rest_add_up_to_the_wall_time() -> None:
 
 @pytest.mark.skipif(not _LINUX, reason="RUSAGE_CHILDREN is read on Linux only")
 def test_a_started_process_is_counted() -> None:
-    size = 160 * 1024**2
+    from pyamplicol.reporting import resources
+
+    # Above this process's own size: the kernel credits the started process
+    # with the resident size of the image it is started from.
+    current = resources._proc_status_kib("VmRSS") or 0
+    size = current + 192 * 1024**2
     with measure_generation(interval_seconds=0.05) as measured:
         subprocess.run(
             [
@@ -229,6 +245,8 @@ def test_a_started_process_is_counted() -> None:
     assert statistics.peak_rss_bound == "lower bound"
     assert statistics.child_peak_rss_bytes is not None
     assert statistics.child_peak_rss_bytes >= size
+    assert statistics.process_peak_rss_bytes is not None
+    assert statistics.child_peak_rss_bytes > statistics.process_peak_rss_bytes
     assert statistics.peak_rss_bytes is not None
     assert statistics.peak_rss_bytes >= statistics.child_peak_rss_bytes
 

@@ -322,7 +322,9 @@ class GenerationStatistics:
     it was measured. ``process_peak_rss_bytes`` is the generating process's
     own peak, ``child_processes`` whether it started a process (None: not
     observable), ``child_peak_rss_bytes`` the largest peak of one such
-    process when known."""
+    process when it is known and above the generating process's own (the
+    kernel credits a started process with the resident size of the process
+    that starts it)."""
 
     wall_seconds: float
     phases: tuple[tuple[str, float], ...]

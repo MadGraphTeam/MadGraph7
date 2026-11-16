@@ -224,7 +224,9 @@ that sums the resident sizes of the process tree every second (Linux: the
 `/proc` children lists; macOS: `ps`) and, on Linux, by the largest peak of an
 ended one (`getrusage` `RUSAGE_CHILDREN`); with started processes the peak is
 shown `>= x` (processes running together may have needed more), followed by
-the generating process's own peak and the largest one of a started process. The
+the generating process's own peak when the peak is not it and, when above it,
+the largest one of a started process (the kernel credits a started process with the resident size
+of the process that starts it, so a smaller one says nothing). The
 default `jit` backend and the one-loop engine start no process, so their peak
 is exact on Linux. `--fields-description-help` describes each row, and
 `--json` carries the same values under `statistics`: `wall_seconds`, `phases`

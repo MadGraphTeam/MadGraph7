@@ -1670,8 +1670,8 @@ def _generation_statistics_rows(
     unattributed rest, wrapped at ``width``. The peak RAM: the peak with its
     bound's prefix (``resources.bounded_memory_text``) and, when the
     generation started processes, muted, the generating process's own peak
-    and the largest one of a started process. A muted ``-`` when nothing
-    is recorded."""
+    when the peak is not it and the largest one of a started process when
+    known. A muted ``-`` when nothing is recorded."""
 
     from pyamplicol.api.results import GenerationStatistics
 
@@ -1722,8 +1722,9 @@ def _generation_statistics_rows(
     else:
         details = []
         if stats.child_processes:
-            if stats.process_peak_rss_bytes is not None:
-                details.append(f"process {memory_text(stats.process_peak_rss_bytes)}")
+            own = stats.process_peak_rss_bytes
+            if own is not None and own != stats.peak_rss_bytes:
+                details.append(f"process {memory_text(own)}")
             if stats.child_peak_rss_bytes is not None:
                 details.append(
                     f"largest started process {memory_text(stats.child_peak_rss_bytes)}"
