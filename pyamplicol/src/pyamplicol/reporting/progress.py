@@ -8,6 +8,7 @@ import math
 import os
 import re
 import shutil
+import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -488,6 +489,7 @@ class _Dashboard:
         self._render_lock = render_lock
         self._painted = False
         self._closed = False
+        self._last_render = float("-inf")
 
     def start(self) -> None:
         self._resource_monitor.start()
@@ -511,6 +513,11 @@ class _Dashboard:
             self._stream.flush()
 
     def render_now(self) -> None:
+        # Event-driven redraws at most every 50 ms (a task reporting each of
+        # thousands of items); the heartbeat thread draws the rest.
+        now = time.monotonic()
+        if now - self._last_render < 0.05:
+            return
         with self._render_lock:
             if not self._closed:
                 self._render_locked()
@@ -529,6 +536,7 @@ class _Dashboard:
     def _render_locked(self) -> None:
         # Keeping the final column empty avoids delayed-wrap terminals turning
         # one logical dashboard row into two physical rows.
+        self._last_render = time.monotonic()
         width = max(_terminal_width(self._stream) - 1, 1)
         lines = _dashboard_lines(
             self._snapshot(),
@@ -671,6 +679,9 @@ class _SidecarDashboard:
                 os.close(ack_write)
         except (AttributeError, OSError, ValueError, io.UnsupportedOperation):
             return None
+        from .resources import register_monitor_process
+
+        register_monitor_process(process.pid)
         return cls(
             stream=stream,
             color=color,
@@ -776,10 +787,41 @@ class _SidecarDashboard:
                 os.close(self._ack_fd)
             except OSError:
                 pass
-        try:
-            self._process.wait(timeout=1.0)
-        except Exception:  # noqa: BLE001 - never fail the caller's close
-            self._process.kill()
+        self._reap(timeout=1.0)
+
+    def _reap(self, *, timeout: float) -> None:
+        """Wait for the renderer (killed after ``timeout``) and report its
+        usage to the resource measurements, which leave it out."""
+
+        from .resources import monitor_process_ended
+
+        pid = self._process.pid
+        deadline = time.monotonic() + timeout
+        killed = False
+        while True:
+            try:
+                done, status, usage = os.wait4(pid, os.WNOHANG)
+            except ChildProcessError:
+                return
+            if done:
+                self._process.returncode = os.waitstatus_to_exitcode(status)
+                peak = int(usage.ru_maxrss)
+                monitor_process_ended(
+                    pid,
+                    peak if sys.platform == "darwin" else peak * 1024,
+                    usage.ru_utime + usage.ru_stime,
+                )
+                return
+            if time.monotonic() >= deadline and not killed:
+                try:
+                    self._process.kill()
+                except OSError:
+                    return
+                killed = True
+                deadline = time.monotonic() + timeout
+            elif time.monotonic() >= deadline:
+                return
+            time.sleep(0.01)
 
     def _take_over(self) -> None:
         """The renderer is gone: draw in this process from now on."""
@@ -790,6 +832,7 @@ class _SidecarDashboard:
             self._process.kill()
         except OSError:
             pass
+        self._reap(timeout=1.0)
         self._fallback = _Dashboard(
             stream=self._stream,
             color=self._color,
@@ -861,11 +904,12 @@ def _kept_line(task: _TaskState, *, color: bool) -> str:
         (task.finished_at or task.updated_at) - task.started_at, 0.0
     )
     mark = "done" if task.success is not False else "failed"
+    cost = f"{elapsed:.1f}s" if elapsed < 10.0 else _duration_text(elapsed)
     fragments = [
         (task.description, "CYAN"),
         (f"  {task.message}" if task.message else "", None),
         (
-            f"  {mark} in {_duration_text(elapsed)}",
+            f"  {mark} in {cost}",
             "GREEN" if mark == "done" else "RED",
         ),
     ]
@@ -909,6 +953,7 @@ def _dashboard_lines(
     else:
         detail = max(tasks, key=lambda task: task.updated_at)
     root = _with_total_estimate(root, phase, now)
+    phase = _breadcrumb(phase, active)
     last_event = max(task.updated_at for task in tasks)
     return (
         _overall_line(root, now=now, usage=usage, width=width, color=color),
@@ -930,6 +975,28 @@ def _dashboard_lines(
             last_event=last_event,
         ),
     )
+
+
+def _breadcrumb(phase: _TaskState, active: tuple[_TaskState, ...]) -> _TaskState:
+    """The phase line's task: a phase of one item (or uncounted) that runs
+    steps shows its deepest counted running step (or its deepest step),
+    named "phase > step": its count, bar and ETA are the step's."""
+
+    if phase.total is not None and phase.total > 1:
+        return phase
+    chain = [phase]
+    while True:
+        children = [task for task in active if task.parent_task_id == chain[-1].task_id]
+        if not children:
+            break
+        chain.append(max(children, key=lambda task: task.started_at))
+    if len(chain) == 1:
+        return phase
+    counted = [task for task in chain[1:] if task.total is not None and task.total > 1]
+    shown = counted[-1] if counted else chain[-1]
+    crumb = shown.copy()
+    crumb.description = f"{phase.description} > {shown.description}"
+    return crumb
 
 
 def _with_total_estimate(root: _TaskState, phase: _TaskState, now: float) -> _TaskState:
@@ -1114,7 +1181,12 @@ def _phase_line(
     )
     total = phase.total
     completed = min(phase.completed, total) if total is not None else phase.completed
-    count = str(completed) if total is None else f"{completed}/{total}"
+    # An uncounted task that never counted shows no count (its clock moves).
+    count = (
+        ("" if completed == 0 else str(completed))
+        if total is None
+        else f"{completed}/{total}"
+    )
     if total and total > 0:
         fraction = completed / total
         bar_width = 20 if width >= 110 else 10
@@ -1129,7 +1201,7 @@ def _phase_line(
         if eta is not None and completed < total and phase.finished_at is None:
             eta = max(eta, 0.0)
     else:
-        bar = "[...]"
+        bar = "" if not count else "[...]"
         percent = ""
         eta = None
     estimate = (
@@ -1140,7 +1212,7 @@ def _phase_line(
     active_text = f"  active {active_children}" if active_children else ""
     fragments = [
         (phase.description, "CYAN"),
-        (f"  {count} ", None),
+        (f"  {count} " if count else "", None),
         (bar, "GREEN"),
         (percent, None),
         (

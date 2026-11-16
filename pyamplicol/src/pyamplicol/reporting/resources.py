@@ -147,6 +147,41 @@ def process_snapshot(system: str | None = None) -> dict[int, ProcessInfo]:
     raise ResourceProbeError(f"unsupported host for RSS monitoring: {host!r}")
 
 
+# The progress display's own processes (the dashboard's renderer): left out
+# of every process-tree sample, and the resource usage of those reaped, which
+# ``process_tree_peak_memory`` takes out of getrusage(RUSAGE_CHILDREN): the
+# display does not make a generation one that "started processes".
+_MONITOR_LOCK = threading.Lock()
+_MONITOR_PIDS: set[int] = set()
+_MONITOR_ENDED = [0, 0.0]  # largest peak (bytes), CPU seconds
+
+
+def register_monitor_process(pid: int) -> None:
+    """Leave the display process ``pid`` out of the resource measurements."""
+
+    with _MONITOR_LOCK:
+        _MONITOR_PIDS.add(pid)
+
+
+def monitor_process_ended(pid: int, peak_rss_bytes: int, cpu_seconds: float) -> None:
+    """The display process ``pid`` was reaped with this usage (wait4)."""
+
+    with _MONITOR_LOCK:
+        _MONITOR_PIDS.discard(pid)
+        _MONITOR_ENDED[0] = max(int(_MONITOR_ENDED[0]), int(peak_rss_bytes))
+        _MONITOR_ENDED[1] = float(_MONITOR_ENDED[1]) + float(cpu_seconds)
+
+
+def _monitor_pids() -> frozenset[int]:
+    with _MONITOR_LOCK:
+        return frozenset(_MONITOR_PIDS)
+
+
+def _monitor_ended() -> tuple[int, float]:
+    with _MONITOR_LOCK:
+        return int(_MONITOR_ENDED[0]), float(_MONITOR_ENDED[1])
+
+
 class ProcessTreeSampler:
     """Sample one root and its descendants, retaining live re-parented children."""
 
@@ -164,14 +199,17 @@ class ProcessTreeSampler:
         for record in records.values():
             children[record.ppid].append(record.pid)
 
-        selected = {pid for pid in self._known_pids if pid in records}
+        excluded = self.exclude | _monitor_pids()
+        selected = {
+            pid for pid in self._known_pids if pid in records and pid not in excluded
+        }
         if self.root_pid in records:
             selected.add(self.root_pid)
         pending = list(selected)
         while pending:
             parent = pending.pop()
             for child in children.get(parent, ()):
-                if child not in selected and child not in self.exclude:
+                if child not in selected and child not in excluded:
                     selected.add(child)
                     pending.append(child)
 
@@ -593,6 +631,7 @@ class process_tree_peak_memory:
         self._process: peak_memory | None = None
         self._monitor: ResourceUsageMonitor | None = None
         self._children: tuple[int, float] | None = None
+        self._monitors: tuple[int, float] = (0, 0.0)
         self._sampler = "none"
 
     def _snapshot(self) -> dict[int, ProcessInfo]:
@@ -610,6 +649,7 @@ class process_tree_peak_memory:
     def __enter__(self) -> process_tree_peak_memory:
         try:
             self._children = _children_usage()
+            self._monitors = _monitor_ended()
             self._process = peak_memory().__enter__()
             self._monitor = ResourceUsageMonitor(
                 interval_seconds=self._interval, snapshotter=self._snapshot
@@ -638,11 +678,18 @@ class process_tree_peak_memory:
             process = self._process.result
         linux = platform.system() == "Linux" and self._sampler != "ps"
         before, after = self._children, _children_usage()
+        # The display's processes reaped over the region are not the
+        # region's: their CPU time is taken out, and a peak counts only above
+        # theirs once one of them raised the descendants' largest peak.
+        monitors = _monitor_ended()
+        monitor_cpu = monitors[1] - self._monitors[1]
+        if before is not None and monitors[0] > self._monitors[0]:
+            before = (max(before[0], monitors[0]), before[1])
         ended = (
             linux
             and before is not None
             and after is not None
-            and (after[0] > before[0] or after[1] > before[1])
+            and (after[0] > before[0] or after[1] - monitor_cpu > before[1] + 0.005)
         )
         sampled = (usage.peak_process_count or 0) > 1
         if usage.peak_process_count is None and not linux:
@@ -717,8 +764,10 @@ def memory_text(size: float) -> str:
 
     for unit, scale in (("GiB", 1024.0**3), ("MiB", 1024.0**2), ("KiB", 1024.0)):
         if abs(size) >= scale:
-            return f"{size / scale:.3g} {unit}"
-    return f"{size:.3g} B"
+            value = size / scale
+            # 1000-1023 of a unit: four digits, not "1.01e+03".
+            return f"{value:.0f} {unit}" if abs(value) >= 999.5 else f"{value:.3g} {unit}"
+    return f"{size:.0f} B" if abs(size) >= 999.5 else f"{size:.3g} B"
 
 
 def peak_memory_text(peak: PeakMemory | None) -> str | None:
