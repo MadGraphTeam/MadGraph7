@@ -72,7 +72,7 @@ import os
 import re
 import statistics
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from fractions import Fraction
@@ -1513,7 +1513,7 @@ def _measure(
     reports the refusal)."""
 
     from pyamplicol.api.errors import ReductionUnavailable
-    from pyamplicol.benchmarking import _initial_invariant
+    from pyamplicol.benchmarking import REFERENCE_PRIOR, _initial_invariant
     from pyamplicol.cli.flat_points import draw_flat_points
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.loops.v2.reduction import NAMES
@@ -1553,28 +1553,54 @@ def _measure(
         else:
             options.update(truth.options)
 
-        def seconds(size: int) -> float:
+        label = "binary64" if precision == "binary64" else truth.name
+        name = NAMES.get(backend, backend)
+
+        def seconds(size: int, expected: float | None) -> float:
             batch = points[:size]
             mu = scales[:size] if isinstance(scales, list) else scales
             begin = time.perf_counter()
-            runtime.evaluate(batch, mu_r2=mu, **options)
+            _while_ticking(
+                lambda: runtime.evaluate(batch, mu_r2=mu, **options),
+                lambda since: phase.update(
+                    done,
+                    steps,
+                    eta=None
+                    if expected is None
+                    else max(expected - since, 0.1 * expected),
+                    step=f"{name}: {label} call of {size} point"
+                    + ("s" if size > 1 else "")
+                    + f" running {_duration(since)}"
+                    + ("" if expected is None else f" of ~{_duration(expected)}"),
+                    estimated=True,
+                    heartbeat=True,
+                    running=since,
+                ),
+                monitor.tick,
+            )
             return (time.perf_counter() - begin) / size
 
         # One point; again when it was cheap (a first call carries seconds of
         # lazy set-up, negligible against a dearer point); one full chunk
         # when that costs at most WARMUP_CALL_SECONDS at the point's price.
-        per_point = seconds(1)
+        prior = None
+        if precision != "binary64" and "binary64" in measured:
+            prior = measured["binary64"] * REFERENCE_PRIOR.get(
+                truth.arithmetic, REFERENCE_PRIOR["arbitrary"]
+            )
+        per_point = seconds(1, prior)
         if per_point <= MEASURE_REPEAT_SECONDS:
-            per_point = seconds(1)
+            per_point = seconds(1, per_point)
         if per_point * len(points) <= WARMUP_CALL_SECONDS:
-            per_point = seconds(len(points))
+            per_point = seconds(len(points), per_point * len(points))
         return per_point
 
     costs: dict[str, Any] = {}
     done = 0
+    measured: dict[str, float] = {}
     for backend in backends:
         name = NAMES.get(backend, backend)
-        measured: dict[str, float] = {}
+        measured.clear()
         try:
             for precision in precisions:
                 label = "binary64" if precision == "binary64" else truth.name
@@ -1624,6 +1650,40 @@ def _measure(
     )
     monitor.clear_readings()
     return costs
+
+
+def _while_ticking(
+    call: Callable[[], Any],
+    show: Callable[[float], None],
+    tick: Callable[[], None],
+) -> Any:
+    """``call()`` in a thread (the evaluation releases the GIL), and every
+    second meanwhile ``show(seconds running)`` and ``tick()``: a long
+    in-process call is never a silent phase. Its result, or its exception."""
+
+    import threading
+
+    outcome: list[Any] = []
+
+    def run() -> None:
+        try:
+            outcome.append((True, call()))
+        except BaseException as error:  # handed to the caller
+            outcome.append((False, error))
+
+    begin = time.perf_counter()
+    worker = threading.Thread(target=run, name="profile-measure", daemon=True)
+    worker.start()
+    while True:
+        worker.join(1.0)
+        if not worker.is_alive():
+            break
+        show(time.perf_counter() - begin)
+        tick()
+    ok, value = outcome[0]
+    if not ok:
+        raise value
+    return value
 
 
 def _isolated_profile(
