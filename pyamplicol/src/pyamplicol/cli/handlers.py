@@ -315,6 +315,7 @@ def _load_process_output(
         ProgressEnd(
             task_id,
             elapsed_seconds=time.perf_counter() - started,
+            details={"keep": True},
         )
     )
     return result

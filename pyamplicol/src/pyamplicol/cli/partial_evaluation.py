@@ -287,10 +287,25 @@ def evaluate_in_chunks(
         success = True
         return concatenate(parts, offsets)
     finally:
+        elapsed = time.perf_counter() - started
         progress.emit(
             ProgressEnd(
                 task,
                 success=success,
-                elapsed_seconds=time.perf_counter() - started,
+                message=_per_point_text(elapsed, done) if success else None,
+                elapsed_seconds=elapsed,
+                details={"keep": True},
             )
         )
+
+
+def _per_point_text(seconds: float, points: int) -> str | None:
+    """The scroll-back line's "1.23 s per point" (None without points)."""
+
+    if points <= 0:
+        return None
+    each = seconds / points
+    for scale, unit in ((1.0, "s"), (1e-3, "ms"), (1e-6, "us")):
+        if each >= scale or unit == "us":
+            return f"{each / scale:.3g} {unit} per point"
+    return None
