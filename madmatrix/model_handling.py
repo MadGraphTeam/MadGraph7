@@ -1416,10 +1416,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # Independent, SLHA-card-level parameters (self.params_ext_names) get
         # an inline check for a runtime override (e.g. set by name via the
         # UMAMI set_parameter interface) ahead of their normal SLHA-driven
-        # assignment; every other parameter/coupling is unaffected. NB: this
-        # must NOT be folded into super_write_set_parameters_donotfixMajorana,
-        # since write_hardcoded_parameters() calls that method directly and
-        # requires each parameter's expr to remain a single plain assignment.
+        # assignment; every other parameter/coupling is unaffected.
         res_strings = []
         for param in params:
             # 'aS' is excluded here even though it is SLHA-card-level: its
@@ -1460,78 +1457,29 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         ###misc.sprint( "'"+res+"'" )
         return res
 
-    # AV - new method (merging write_parameters and write_set_parameters)
-    def write_hardcoded_parameters(self, params):
-        majorana_widths = []
-        for particle in self.model.get('particles'):
-            if particle.is_fermion() and particle.get('self_antipart') and \
-                   particle.get('width').lower() != 'zero':
-                majorana_widths.append( particle.get('width') )
-        ###misc.sprint(params) # for debugging
-        pardef = super().write_parameters(params)
-        parset = self.super_write_set_parameters_donotfixMajorana(params)
-        ###print( '"' + pardef + '"' )
-        ###print( '"' + parset + '"' )
-        if ( pardef == '' ):
-            assert parset == '', "pardef is empty but parset is not: '%s'"%parset # AV sanity check (both are empty)
-            res = '// (none)\n'
-            return res
-	#=== Replace patterns in pardef (left of the assignment '=')
-        pardef = pardef.replace('std::complex<','cxsmpl<') # custom simplex complex class (with constexpr arithmetics)
-	#=== Replace patterns in parset (right of the assignment '=')
-        parset = parset.replace('std::complex<','cxsmpl<') # custom simplex complex class (with constexpr arithmetics)
-        parset = parset.replace('sqrt(','constexpr_sqrt(') # constexpr sqrt (based on iterative Newton-Raphson approximation)
-        parset = parset.replace('pow(','constexpr_pow(') # constexpr pow
-        parset = parset.replace('atan(','constexpr_atan(') # constexpr atan for BSM #627
-        parset = parset.replace('sin(','constexpr_sin(') # constexpr sin for BSM #627
-        parset = parset.replace('cos(','constexpr_cos(') # constexpr cos for BSM #627
-        parset = parset.replace('tan(','constexpr_tan(').replace('aconstexpr_tan(','atan(') # constexpr tan for BSM #627
-        parset = parset.replace('(','( ')
-        parset = parset.replace(')',' )')
-        parset = parset.replace('+',' + ')
-        parset = parset.replace('-',' - ')
-        parset = parset.replace('e + ','e+') # fix exponents
-        parset = parset.replace('e - ','e-') # fix exponents
-        parset = parset.replace('=  + ','= +') # fix leading + in assignmments
-        parset = parset.replace('=  - ','= -') # fix leading - in assignmments
-        parset = parset.replace('*',' * ')
-        parset = parset.replace('/',' / ')
-        parset = parset.replace(',',', ')
-	#=== Compute pardef_lines from pardef (left of the assignment '=')
-        pardef_lines = {}
-        for line in pardef.split('\n'):
-            ###print(line) # for debugging
-            type, pars = line.rstrip(';').split(' ') # strip trailing ';'
-            for par in pars.split(','):
-                ###print(len(pardef_lines), par) # for debugging
-                if par in majorana_widths:
-                    pardef_lines[par] = ( 'constexpr ' + type + ' ' + par + "_abs" )
-                else:
-                    pardef_lines[par] = ( 'constexpr ' + type + ' ' + par )
-        ###misc.sprint( 'pardef_lines size =', len(pardef_lines), ', keys size =', len(pardef_lines.keys()) )
-        ###print( pardef_lines ) # for debugging
-        ###for line in pardef_lines: misc.sprint(line) # for debugging
-	#=== Compute parset_lines from parset (right of the assignment '=')
-        parset_pars = []
-        parset_lines = {}
-        skipnextline = False
-        for iline, line in enumerate(parset.split('\n')):
-            ###print(iline, line) # for debugging
-            if line.startswith('indices'):
-                ###print('WARNING! Skip line with leading "indices" :', line)
-                continue # skip line with leading "indices", before slha.get_block_entry (#622)
-            par, parval = line.split(' = ')
-            ###misc.sprint(len(parset_pars), len(parset_lines), par, parval) # for debugging
-            if parval.startswith('slha.get_block_entry'): parval = parval.split(',')[2].lstrip(' ').rstrip(');') + ';'
-            parset_pars.append( par )
-            parset_lines[par] = parval # includes a trailing ';'
-        ###misc.sprint( 'parset_pars size =', len(parset_pars) )
-        ###misc.sprint( 'parset_lines size =', len(parset_lines), ', keys size =', len(parset_lines.keys()) )
-        ###print( parset_lines ) # for debugging
-        ###for line in parset_lines: misc.sprint(line) # for debugging
-	#=== Assemble pardef_lines and parset_lines into a single string res and then replace patterns in res
-        assert len(pardef_lines) == len(parset_lines), 'len(pardef_lines) != len(parset_lines)' # AV sanity check (same number of parameters)
-        res = '    '.join( pardef_lines[par] + ' = ' + parset_lines[par] + '\n' for par in parset_pars ) # no leading '    ' on first row
+    def write_dependent_assignments(self, params):
+        """'name = expr;' per aS-dependent parameter or coupling, as written in
+        computeDependentCouplings_fromG (the caller prepends the declaration)."""
+        res = '\n'.join(param.expr for param in params)
+        res = res.replace('ABS(','std::abs(') # for SMEFT #614 and #616
+        res = res.replace('std::complex<','cxsmpl<') # custom simplex complex class (with constexpr arithmetics)
+        res = res.replace('sqrt(','constexpr_sqrt(') # constexpr sqrt (based on iterative Newton-Raphson approximation)
+        res = res.replace('pow(','constexpr_pow(') # constexpr pow
+        res = res.replace('atan(','constexpr_atan(') # constexpr atan for BSM #627
+        res = res.replace('sin(','constexpr_sin(') # constexpr sin for BSM #627
+        res = res.replace('cos(','constexpr_cos(') # constexpr cos for BSM #627
+        res = res.replace('tan(','constexpr_tan(').replace('aconstexpr_tan(','atan(') # constexpr tan for BSM #627
+        res = res.replace('(','( ')
+        res = res.replace(')',' )')
+        res = res.replace('+',' + ')
+        res = res.replace('-',' - ')
+        res = res.replace('e + ','e+') # fix exponents
+        res = res.replace('e - ','e-') # fix exponents
+        res = res.replace('=  + ','= +') # fix leading + in assignmments
+        res = res.replace('=  - ','= -') # fix leading - in assignmments
+        res = res.replace('*',' * ')
+        res = res.replace('/',' / ')
+        res = res.replace(',',', ')
         res = res.replace(' ;',';')
         res = res.replace('= - ','= -') # post-fix for susy
         res = res.replace('(  - ','( -') # post-fix for susy
@@ -1539,20 +1487,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         res = res.replace('Re+0','Re + 0') # better post-fix for smeft #633
         res = res.replace('He-2','He - 2') # better post-fix for smeft #633
         res = res.replace(',  - ',', -') # post-fix for smeft
-        ###print(res); assert(False)
-        ###misc.sprint( "'"+res+"'" )
-        return res
-
-    # AV - replace export_cpp.UFOModelConverterCPP method (split writing of parameters and fixes for Majorana particles #622)
-    def super_write_set_parameters_donotfixMajorana(self, params):
-        """Write out the lines of independent parameters"""
-        res_strings = []
-        # For each parameter, write "name = expr;"
-        for param in params:
-            res_strings.append( "%s" % param.expr )
-        res = "\n".join(res_strings)
-        res = res.replace('ABS(','std::abs(') # for SMEFT #614 and #616
-        return res
+        return res.split('\n') if res else []
 
     # AV - replace export_cpp.UFOModelConverterCPP method (eventually split writing of parameters and fixes for Majorana particles #622)
     def super_write_set_parameters_onlyfixMajorana(self):
@@ -1567,7 +1502,6 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         if len( res_strings ) != 0 : res_strings = [ "  // Fixes for Majorana particles" ] + res_strings
         return '\n' + '\n'.join(res_strings) if res_strings else ''
 
-    # AV - replace export_cpp.UFOModelConverterCPP method (add hardcoded parameters and couplings)
     def used_dependent_parameters(self):
         """The names of the aS-dependent parameters the dependent couplings of
         the process need, directly or through one another.
@@ -1699,8 +1633,6 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         replace_dict['print_dependent_couplings'] = self.write_print_parameters(list(self.coups_dep.values()))
         if 'include_prefix' not in replace_dict:
             replace_dict['include_prefix'] = ''
-        assert super().write_parameters([]) == '', 'super().write_parameters([]) is not empty' # AV sanity check (#622)
-        assert self.super_write_set_parameters_donotfixMajorana([]) == '', 'super_write_set_parameters_donotfixMajorana([]) is not empty' # AV sanity check (#622)
         replace_dict['nicoup'] = len( self.coups_indep )
         if len( self.coups_indep ) > 0 :
             iicoup = [ '    //constexpr size_t ixcoup_%s = %d + Parameters_dependentCouplings::ndcoup; // out of ndcoup+nicoup' % (par.name, id) for (id, par) in enumerate(self.coups_indep) ]
@@ -1726,12 +1658,13 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                 if foundG and pdep.name not in params_dep_used:
                     # not needed by any dependent coupling of the process
                     continue
-                line = '    ' + self.write_hardcoded_parameters([pdep]).rstrip('\n')
-                ###misc.sprint(line)
+                if pdep.type != 'real':
+                    raise MadGraph5Error('aS-dependent parameter %s is %s, computeDependentCouplings_fromG only computes real ones' % (pdep.name, pdep.type))
+                line = self.write_dependent_assignments([pdep])[0]
                 if not foundG:
                     # Comment out the default UFO assignment of mdl_sqrt__aS (from aS) and of G (from mdl_sqrt__aS), but keep them for reference
                     # (WARNING! This Python CODEGEN code essentially assumes that this refers precisely and only to mdl_sqrt__aS and G)
-                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', '//const fptype_sv') )
+                    dcoupsetdpar.append( '        //const fptype_sv ' + line )
                 ###elif pdep.name == 'mdl_G__exp__2' : # added for UFO mg5amcnlo#89 (complex in susy, should be double as in heft/smeft), now fixed
                 ###    # Hardcode a custom assignment (valid for both SUSY and SMEFT) instead of replacing double or complex by fptype in 'line'
                 ###    dcoupsetdpar.append('        const fptype_sv ' + pdep.name + ' = G * G;' )
@@ -1748,13 +1681,13 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                         if ' ' + gpar + ' ' in line and not gpar in gparamcoded:
                             gparamcoded.add(gpar)
                             dcoupsetdpar.append('        const fptype_sv ' + gpar + ' = ' + gparameters[gpar] + ';' )
-                    dcoupsetdpar.append( '    ' + line.replace('constexpr double', 'const fptype_sv') )
+                    dcoupsetdpar.append( '        const fptype_sv ' + line )
                 if pdep.name == 'G':
                     foundG = True
                     dcoupsetdpar.append('        // *** NB Compute all dependent parameters, including aS, in terms of G rather than in terms of aS ***')
             replace_dict['dcoupsetdpar'] = '\n'.join( dcoupsetdpar )
-            dcoupsetdcoup = [ '    ' + line.replace('constexpr cxsmpl<double> ','out.').replace('mdl_complexi', 'cI') for line in self.write_hardcoded_parameters(list(self.coups_dep.values())).split('\n') if line != '' ]
-            replace_dict['dcoupsetdcoup'] = '    ' + '\n'.join( dcoupsetdcoup )
+            dcoupassign = [ line.replace('mdl_complexi', 'cI') for line in self.write_dependent_assignments(list(self.coups_dep.values())) ]
+            replace_dict['dcoupsetdcoup'] = '\n'.join( '        out.' + line for line in dcoupassign )
             dcoupaccessbuffer = [ '    fptype* %ss = C_ACCESS::idcoupAccessBuffer( couplings, idcoup_%s );'%( name, name ) for name in self.coups_dep ]
             replace_dict['dcoupaccessbuffer'] = '\n'.join( dcoupaccessbuffer ) + '\n'
             dcoupkernelaccess = [ '    cxtype_sv_ref %ss_sv = C_ACCESS::kernelAccess( %ss );'%( name, name ) for name in self.coups_dep ]
@@ -1765,9 +1698,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             dcoupoutfptypev2 = [ '      fptype_v %sr_v;\n      fptype_v %si_v;'%(name,name) for name in self.coups_dep ]
             replace_dict['dcoupoutfptypev2'] = ( '\n' if len(self.coups_dep) > 0 else '' ) + '\n'.join( dcoupoutfptypev2 )
             replace_dict['dcoupsetdpar2'] = replace_dict['dcoupsetdpar'].replace('fptype_sv','fptype')
-            dcoupsetdcoup2 = [ '    ' + line.replace('constexpr cxsmpl<double> ','const cxtype ').replace('mdl_complexi', 'cI') for line in self.write_hardcoded_parameters(list(self.coups_dep.values())).split('\n') if line != '' ]
+            dcoupsetdcoup2 = [ '        const cxtype ' + line for line in dcoupassign ]
             dcoupsetdcoup2 += [ '        %sr_v[i] = cxreal( %s );\n        %si_v[i] = cximag( %s );'%(name,name,name,name) for name in self.coups_dep ]
-            replace_dict['dcoupsetdcoup2'] = '  ' + '\n'.join( dcoupsetdcoup2 )
+            replace_dict['dcoupsetdcoup2'] = '\n'.join( dcoupsetdcoup2 )
             dcoupoutdcoup2 = [ '      out.%s = cxtype_v( %sr_v, %si_v );'%(name,name,name) for name in self.coups_dep ]
             replace_dict['dcoupoutdcoup2'] = '\n' + '\n'.join( dcoupoutdcoup2 )
             for par in bsmparam_indep_complex_used:
@@ -1784,7 +1717,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             # Special handling in EFT for fptype=float using SIMD
             replace_dict['dcoupoutfptypev2'] = ''
             replace_dict['dcoupsetdpar2'] = '        // (none)'
-            replace_dict['dcoupsetdcoup2'] = '      // (none)'
+            replace_dict['dcoupsetdcoup2'] = '        // (none)'
             replace_dict['dcoupoutdcoup2'] = ''
         # Special handling in EFT for fptype=float using SIMD
         nbsmparam_indep_all_used = len( bsmparam_indep_real_used ) + 2 * len( bsmparam_indep_complex_used )

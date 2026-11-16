@@ -223,7 +223,7 @@ namespace madmatrix
         // Model parameters dependent on aS
 %(dcoupsetdpar2)s
         // Model couplings dependent on aS
-  %(dcoupsetdcoup2)s
+%(dcoupsetdcoup2)s
       }%(dcoupoutdcoup2)s
 #endif
       return out;
