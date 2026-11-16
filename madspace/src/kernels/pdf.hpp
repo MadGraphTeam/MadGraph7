@@ -221,6 +221,16 @@ KERNELSPEC void kernel_interpolate_alpha_s(
     auto logq2 = log(q * q);
     FVal<T> logq2_low, logq2_high;
     std::size_t q2_index = binary_search<T>(logq2, grid_logq2, logq2_low, logq2_high);
+    // below the grid in a branch, so that the points within it take no
+    // exponential (q that is not positive or not a number falls below the grid)
+    if (q2_index == 0) {
+        FVal<T> below = grid_coeffs.get(0, 0) *
+            exp(grid_coeffs.get(1, 0) * (logq2 - FVal<T>(grid_logq2[1])));
+        // (zero for q that is not positive, as in the padding of a batch, where
+        // the power diverges)
+        alpha_s = where(FVal<T>(q) > 0., below, FVal<T>(0.));
+        return;
+    }
 
     auto t_logq2 = (logq2 - logq2_low) / (logq2_high - logq2_low);
     auto t_logq2_2 = t_logq2 * t_logq2;
@@ -236,11 +246,7 @@ KERNELSPEC void kernel_interpolate_alpha_s(
     for (std::size_t j = 0; j < 4; ++j) {
         result = result + values[j] * grid_coeffs.get(j, q2_index);
     }
-    FVal<T> below = grid_coeffs.get(0, 0) *
-        exp(grid_coeffs.get(1, 0) * (logq2 - FVal<T>(grid_logq2[1])));
-    // (zero for q that is not positive, as in the padding of a batch, where the
-    // power diverges)
-    alpha_s = where(q2_index == 0, where(FVal<T>(q) > 0., below, FVal<T>(0.)), result);
+    alpha_s = result;
 }
 
 } // namespace kernels
