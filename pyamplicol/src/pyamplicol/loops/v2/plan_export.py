@@ -1681,19 +1681,27 @@ def export_plan(
         dressed=dressed,
         dressing=dressing,
     )
+    from pyamplicol.generation.progress import step
+
     families, keys, family_orders = [], [], []
-    for key, schedule in slice_.plan.schedules.items():
-        if dressing is not None and dressing.tries(key) == []:
-            # Every chain of the family folded away (an exact zero).
-            continue
-        keys.append(key)
-        record = exporter.family(key, schedule)
-        family_orders.append(record["orders"])
-        if streamed is None:
-            families.append(record)
-        else:
-            streamed.push(record)
-        del record
+    schedules = slice_.plan.schedules
+    with step(
+        "families", "Exporting the loop families", total=len(schedules)
+    ) as exporting:
+        for done, (key, schedule) in enumerate(schedules.items(), start=1):
+            if dressing is not None and dressing.tries(key) == []:
+                # Every chain of the family folded away (an exact zero).
+                exporting.update(done)
+                continue
+            keys.append(key)
+            record = exporter.family(key, schedule)
+            family_orders.append(record["orders"])
+            if streamed is None:
+                families.append(record)
+            else:
+                streamed.push(record)
+            del record
+            exporting.update(done)
     orders = tuple(exporter.orders)
     accumulator_of = [
         {orders[o]: k for k, o in enumerate(record_orders)}
@@ -1736,22 +1744,24 @@ def export_plan(
         fourier = None
     else:
         columns = tuple(sector_columns(slice_) if columns is None else columns)
-        seed_classes, seeds, column_weights = exporter.seed_records(columns)
-        fourier = fourier_record(slice_, exporter, columns)
+        with step("seeds", "Forming the seed records"):
+            seed_classes, seeds, column_weights = exporter.seed_records(columns)
+            fourier = fourier_record(slice_, exporter, columns)
     native_trees = None
     if trees:
         from .native_trees import export_trees
 
-        native_trees = export_trees(
-            slice_,
-            exporter,
-            rows,
-            born_squared=born_squared and amplitude is None,
-            with_counterterms=counterterms,
-            # A loop-induced point reads its counterterm kets themselves
-            # (no Born interference keeps them).
-            keep_kets=keep_kets or amplitude is not None,
-        )
+        with step("trees", "Exporting the tree programs"):
+            native_trees = export_trees(
+                slice_,
+                exporter,
+                rows,
+                born_squared=born_squared and amplitude is None,
+                with_counterterms=counterterms,
+                # A loop-induced point reads its counterterm kets themselves
+                # (no Born interference keeps them).
+                keep_kets=keep_kets or amplitude is not None,
+            )
     legs = len(slice_.blocks.process.legs)
     row_index = {row: i for i, row in enumerate(rows)}
     program = {
