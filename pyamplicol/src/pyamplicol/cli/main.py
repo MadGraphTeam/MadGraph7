@@ -29,6 +29,10 @@ from .parser import parse_cli
 from .recurrence_export import RecurrenceExportInvocation
 from .utilities import UtilityInvocation, example_card, execute_utility
 
+# The pre-encoded fragments of the document being converted (``RawJson``:
+# placeholders until ``write_result`` splices them in).
+_FRAGMENTS: list[object] = []
+
 
 def _json_value(value: object) -> object:
     # The leaves first: a loop profile's per-sample records are millions of
@@ -49,9 +53,17 @@ def _json_value(value: object) -> object:
         VirtualEvaluation,
         VirtualOrderEvaluation,
     )
+    from pyamplicol.reporting.raw_json import RawJson, placeholder
 
     from .partial_evaluation import PartialEvaluation
 
+    if isinstance(value, RawJson):
+        _FRAGMENTS.append(value)
+        return placeholder(len(_FRAGMENTS) - 1)
+    cli_json = getattr(value, "cli_json", None)
+    if callable(cli_json) and is_dataclass(value):
+        # A result with its own (compact) JSON form.
+        return _json_value(cli_json())
     if isinstance(value, PartialEvaluation):
         # An interrupted evaluate: the points done, plus how many of the
         # requested points they are (data, as the stability run's setup).
@@ -153,10 +165,18 @@ def write_result(
         if line:
             sys.stderr.write(f"{line}\n")
             sys.stderr.flush()
-        plain = _json_value(value)
+        from pyamplicol.reporting.raw_json import RawJson, splice
+
+        _FRAGMENTS.clear()
+        try:
+            plain = _json_value(value)
+            text = json.dumps(plain, indent=2, sort_keys=True, allow_nan=False)
+            fragments = [f for f in _FRAGMENTS if isinstance(f, RawJson)]
+        finally:
+            _FRAGMENTS.clear()
         # One write: ``json.dump`` streams thousands of small chunks, slow on
-        # a profile's per-sample records (tens of MB).
-        stream.write(json.dumps(plain, indent=2, sort_keys=True, allow_nan=False))
+        # a profile's per-sample records; their rows are pre-encoded.
+        stream.write(splice(text, fragments))
         stream.write("\n")
         from .partial_evaluation import PartialEvaluation
 
@@ -210,6 +230,26 @@ def run_cli(
     stdin: TextIO | None = None,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
+) -> int:
+    from pyamplicol import _clock
+
+    # The command's clock (``pyamplicol._clock``) for its time budgets.
+    _clock.begin_command()
+    try:
+        return _run_cli(
+            argv, services=services, stdin=stdin, stdout=stdout, stderr=stderr
+        )
+    finally:
+        _clock.end_command()
+
+
+def _run_cli(
+    argv: Sequence[str] | None,
+    *,
+    services: CliServices | None,
+    stdin: TextIO | None,
+    stdout: TextIO | None,
+    stderr: TextIO | None,
 ) -> int:
     output_stream = sys.stdout if stdout is None else stdout
     diagnostic_stream = sys.stderr if stderr is None else stderr
@@ -417,12 +457,17 @@ def run_cli(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from pyamplicol import _clock
+
     if argv is None:
         # The command line owns this process: its peak-memory measurements
         # may reset the kernel's high-water mark (never done as a library).
         from pyamplicol.reporting.resources import own_process_accounting
 
         own_process_accounting()
+        # The command line: its clock starts with the package's first
+        # import (the interpreter's start, portably).
+        _clock.mark_entry(_clock.IMPORTED)
     code = run_cli(argv)
     if argv is None:
         # The command line (not an in-process call): the result is written.

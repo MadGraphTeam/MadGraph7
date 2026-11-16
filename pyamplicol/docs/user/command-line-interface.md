@@ -793,25 +793,31 @@ took):
 - `--completion-time DURATION` (`benchmark.completion_time`; seconds, or a
   text such as `90s`, `10m`, `1h30m`): the whole command, as you wait for
   it (interpreter start, load, measurement, every backend's runtime timing
-  and reference pass, the stability run on its workers), aims at that wall
-  time, within about a factor 1.5 either way. It overrules every count
-  (`--target-runtime`, `--minimum-samples`, `--batch-size`,
-  `--warmup-runs`, `--stability-points`; one notice line says which): a
-  short measurement first (its own phase: per backend the cost per point of
-  binary64 and of the reference, each from one point and, when a full SIMD
-  chunk costs at most 2 s at that price, from one chunk), then the plan: the runtime timing first (a stable median,
+  and reference pass, the stability run on its workers, the statistics and
+  the per-sample records of `--json` or `--samples-output`: their time is
+  part of the plan), aims at that wall time, within about a factor 1.5
+  either way. It overrules every count and size, on the command line and in
+  a run card alike (`--target-runtime`, `--minimum-samples`, `--batch-size`,
+  `--warmup-runs`, `--stability-points`; one notice line says which; the
+  plan sets them all): a short measurement first (its own phase: per
+  backend the cost per point of binary64 and of the reference, each from
+  one point and, when a full SIMD chunk costs at most 2 s at that price,
+  from one chunk), then the plan: the runtime timing first (a stable median,
   at least the default 10 s when the time affords it, at most half of what
   is left when `--stability` is asked for too), the reference pass bounded
   within each backend's share, the stability run admitting chunks while
   they end by the deadline. Later phases are re-planned from what is left.
   The minimums are never undercut: one timed call of one filled chunk per
   backend for the runtime, five stability points per backend; when they
-  alone exceed the requested time a warning says so at the start, with the
-  time they take, and the minimums run.
+  alone exceed the requested time a warning says so as soon as the
+  measurement is back, with the time the whole command then takes (the
+  header's `counts` row states the same number), and the minimums run.
 - the counts given on the command line or in a run card: honoured as given.
 - neither: the default budgets, 10 s for the runtime timing of all backends
   and one minute of work per `--n_core` worker for the stability run (about
-  a minute of wall time whatever `--n_core`: more workers, more points).
+  a minute of wall time whatever `--n_core`: more workers, more points). On
+  an expensive process whose minimums exceed them by more than a factor 1.5
+  the same warning says so, with the time the minimums take.
 
 Loading, process start-up, warm-up calls and the reference pass's minimum
 are outside the default budgets by nature; they are visible phases with
@@ -834,7 +840,17 @@ binary64 time per point and the running reference multiplier (`N/A`, muted,
 until a timed call is back), or the stability run's points done and flagged
 counts. Every finished phase leaves one line with what it cost, the
 statistics and per-sample records of a large stability run included; a
-large `--json` dump says on stderr that it is being written.
+large `--json` dump says on stderr that it is being written. The whole
+command's ETA is there from the first second: a profile remembers the
+artifact's measured costs and its total for the same settings (in the
+pyAmpliCol cache, beside the generation history; written only when progress
+is shown), and the next one starts from them; without a previous profile
+the `--completion-time` budget stands until the first measured call, then a
+provisional plan from the costs known so far (the other backend's binary64
+cost, the reference from a per-backend multiplier prior) until the
+measurement is over. The tables fit the terminal when it is narrower than
+100 columns (headers wrap at their spaces, numbers never break; `--json`
+and `--progress log` are unaffected).
 `--progress log` prints one line per event and a heartbeat at least every
 10 s; `--progress off` prints nothing.
 
@@ -1087,30 +1103,46 @@ failure `reason`), the `percentiles` rows, the flag counts and the failures;
 profile's wall `seconds`.
 
 **Every sample in `--json`.** With `--stability --json` the report carries
-everything the run collected, point by point, in one JSON document (about
-1 kB per point and backend: write it to a file with `--json > profile.json`).
-`stability_setup.samples` lists every point's inputs: `index`, `seed` (point
-i is drawn from seed + i by the flat generator at `sqrt_s`), `momenta` (the
-binary64 four-momenta E, px, py, pz of every leg in the process's order) and
-`mu_r2`. `stability[i].samples` lists, per backend, every point's record:
-`index`; `status` (of the binary64 call: success, best-effort, failed ...);
-`value` (the binary64 total finite part) and `sectors` (each squared-order
-sector's); `estimate` (null without one) with `relative` (the flag's
-metric), `finite_relative` (the total's estimated relative error),
-`digits`, `scale`, `checks` (each check that ran, by name, e.g.
-`rotation-1`, `reduction-rescaled`, with its own relative budget) and
-`not_run`; `flagged` (the default checks flag it: estimate above the target,
-a best-effort value, or none); `best_effort` and its `uncertainty`
-(relative); `reason` (a refusal or failure); `reference` (null with
-`--ground-truth none`: else its `value`, the exact decimal text of the
-reference's total finite part at its precision, null when it failed, and
-its `reason`); `true_relative_error` and `true_digits` (null without both
-values); `binary64_task` and `reference_task` (the `seconds` and `points` of
-the task that evaluated the point: inside a batched call there is no
-per-sample time). Non-finite numbers are the texts `"inf"` / `"nan"`. The
-aggregate tables are reproducible from these records (the percentiles of
-`true_digits`, the flagged and missed counts against `stability_setup.
-target`).
+everything the run collected, point by point, as compact columnar tables
+(about 0.9 kB per point with two backends: 87 MB for 100 000 points; write it
+to a file with `--json > profile.json`). Each table is `{"fields": [...],
+"rows": [[...], ...]}`, one row per point (in Python:
+`[dict(zip(t["fields"], row)) for row in t["rows"]]`, or
+`pandas.DataFrame(t["rows"], columns=t["fields"])`).
+`stability_setup.samples` holds every point's inputs: `index` (point i is
+drawn from `stability_setup.seed` + i by the flat generator at `sqrt_s`),
+`momenta` (the binary64 four-momenta E, px, py, pz of every leg in the
+process's order) and `mu_r2`. `stability[i].samples` holds, per backend,
+every point's record: `index`; `status` (of the binary64 call: success,
+best-effort, failed ...); `value` (the binary64 total finite part) and
+`sectors` (each squared-order sector's); the estimate (null without one):
+`estimate_relative` (the flag's metric), `estimate_finite_relative` (the
+total's estimated relative error), `estimate_digits`, `estimate_scale`,
+`estimate_checks` (each check that ran, by name, e.g. `rotation-1`,
+`reduction-rescaled`, with its own relative budget) and `estimate_not_run`;
+`flagged` (the default checks flag it: estimate above the target, a
+best-effort value, or none); `best_effort` and its `uncertainty` (relative);
+`reason` (a refusal or failure); `reference_value` (the exact decimal text
+of the reference's total finite part at its precision; null when it failed
+or with `--ground-truth none`) and `reference_reason`; `true_relative_error`
+and `true_digits` (null without both values); `binary64_task` and
+`reference_task`, indices into the table's `tasks` list of `[seconds,
+points]` of the task that evaluated the point (inside a batched call there
+is no per-sample time). Values, sectors, momenta and the reference are
+exact; the relative errors and scales carry 4 significant digits, the
+digits 3 decimals, the task seconds microseconds. Non-finite numbers are the
+texts `"inf"` / `"nan"`. `per_point` (the statuses the tables use) is a
+table of the same form. The aggregate tables are reproducible from these
+records (the percentiles of `true_digits`, the flagged and missed counts
+against `stability_setup.target`).
+
+`--samples-output PATH` (`benchmark.samples_output`) writes the same records
+to their own file instead, as its own phase: one JSON document with
+`schema` `"pyamplicol.profile-samples/1"`, `process`, `seed`, `sqrt_s`,
+`inputs` (the setup's table) and `backends` (each backend's table). The
+report's `samples` then name it (`{"output": PATH, "points": N}`); this also
+works with the human tables. Without `--json` or `--samples-output` no
+per-sample record is built.
 
 Changed since 1.0.3: `pyamplicol profile --json` of a loop artifact is a
 `LoopProfileReport` (one entry per backend under `runtime`), also with

@@ -113,7 +113,11 @@ class _World:
 
 
 def _simulate(
-    world: _World, budget: float, workers: int, prior_error: float
+    world: _World,
+    budget: float,
+    workers: int,
+    prior_error: float,
+    given: dict | None = None,
 ) -> tuple[float, dict]:
     """The whole profile under a fake clock: measurement (one point, again
     when cheap, then a full chunk when that is cheap, in binary64 and the
@@ -122,12 +126,30 @@ def _simulate(
     ``_reference_calls`` on the counts re-planned from what is left) and
     the stability run (the real admission gate; tasks of ``task_points``
     per backend and precision, ``workers`` workers taking them in order),
-    the plan from measured costs that are off by ``prior_error``. The
-    achieved seconds and the counts."""
+    the plan from measured costs that are off by ``prior_error``; ``given``:
+    the count and size settings the user gave with the completion time,
+    through ``loop_profile.effective_benchmark`` and used as the profile
+    uses them (a count that survived would be honoured, breaking the
+    budget). The achieved seconds and the counts."""
 
     from dataclasses import replace
 
     from pyamplicol.benchmarking import _reference_calls, _timed_calls
+    from pyamplicol.config.models import is_default
+    from pyamplicol.loop_profile import effective_benchmark
+
+    user = replace(BenchmarkConfig(), **(given or {}), completion_time=budget)
+    bench_used, _ = effective_benchmark(user)
+    batch_max = int(bench_used.batch_size)
+    runtime_given = any(
+        not is_default(getattr(bench_used, name))
+        for name in ("target_runtime", "minimum_samples", "batch_size", "warmup_runs")
+    )
+    stability_given = (
+        None
+        if is_default(bench_used.stability_points)
+        else int(bench_used.stability_points)
+    )
 
     clock = [0.0]
     backends = ("tirust", "ninjars")
@@ -150,7 +172,7 @@ def _simulate(
         stability=True,
         workers=workers,
         lanes=LANES,
-        batch_max=128,
+        batch_max=batch_max,
         completion=budget,
         elapsed=clock[0],
         stability_start=world.start,
@@ -162,7 +184,10 @@ def _simulate(
         share = left / (len(backends) - position)
         counts = (
             runtime_counts(
-                measured[b], max(share - world.start, 0.0), lanes=LANES, batch_max=128
+                measured[b],
+                max(share - world.start, 0.0),
+                lanes=LANES,
+                batch_max=batch_max,
             )
             if planned.feasible
             else planned.runtime[b]
@@ -184,12 +209,16 @@ def _simulate(
             calls[0] += 1
             return wall
 
-        bench = replace(
-            BenchmarkConfig(),
-            batch_size=counts.batch,
-            warmup_runs=counts.warmup,
-            minimum_samples=counts.minimum,
-            target_runtime=max(counts.budget, 1e-9),
+        bench = (
+            bench_used
+            if runtime_given
+            else replace(
+                bench_used,
+                batch_size=counts.batch,
+                warmup_runs=counts.warmup,
+                minimum_samples=counts.minimum,
+                target_runtime=max(counts.budget, 1e-9),
+            )
         )
         walls = _timed_calls(bench, call)
         reference = cost * world.multiplier
@@ -210,8 +239,9 @@ def _simulate(
         )
         counts_out["runtime"][b] = (len(walls), counts.batch, len(refs))
         assert len(walls) >= 1 and len(refs) >= 1
-    # The stability run: chunks admitted by the gate, run by the workers.
-    deadline = budget
+    # The stability run: chunks admitted by the gate, run by the workers (a
+    # count that survived: that many points, no deadline).
+    deadline = math.inf if stability_given is not None else budget
     planned_points = stability_points(
         list(measured.values()),
         max(budget - clock[0] - world.start, 0.0),
@@ -234,7 +264,9 @@ def _simulate(
         if points:
             # As the tracker: the measured cost of the chunks back so far.
             estimate = sum(rates[b] * world.factor(now) for b in backends)
-        if points == 0:
+        if stability_given is not None:
+            size = min(LANES, stability_given - points)
+        elif points == 0:
             # As the run: the minimum first unless the plan affords several
             # chunks.
             size = min(planned_points, LANES) if planned_points >= 4 * LANES else 5
@@ -345,7 +377,7 @@ def test_the_profile_eta_on_synthetic_sequences(monkeypatch):
     assert recent_rate([1.0, 1.0, 3.0, 3.0, 3.0]) == 3.0
     clock = [0.0]
     monkeypatch.setattr(lp.time, "perf_counter", lambda: clock[0])
-    monkeypatch.setattr(lp, "_process_age", lambda: 0.0)
+    monkeypatch.setattr("pyamplicol._clock.command_start", lambda: None)
     monitor = lp._Monitor(None, "x", None)
     run = lp._BackendRun(monitor, "tirust", lp.GroundTruth("double-double"), 2.0)
     run.event(
@@ -418,7 +450,7 @@ def test_a_slow_reference_pass_reports_progress(monkeypatch):
 
     clock = [1000.0]
     monkeypatch.setattr(lp.time, "perf_counter", lambda: clock[0])
-    monkeypatch.setattr(lp, "_process_age", lambda: 0.0)
+    monkeypatch.setattr("pyamplicol._clock.command_start", lambda: None)
     sink = _Sink()
     monitor = lp._Monitor(sink, "Profile x", None)
     run = lp._BackendRun(monitor, "ninjars", lp.GroundTruth("double-double"), 3.0)
@@ -530,3 +562,81 @@ def test_the_users_process_fits_ten_minutes():
     assert 150.0 <= planned.minimum_seconds <= 400.0, planned.minimum_seconds
     assert planned.stability_points is not None
     assert planned.stability_points >= STABILITY_MINIMUM
+
+
+# Counts and sizes given with --completion-time: small and large, every one
+# of them (they are overruled: the time is still honoured).
+_GIVEN = [
+    {
+        "stability_points": 10,
+        "batch_size": 16,
+        "minimum_samples": 1,
+        "target_runtime": 0.1,
+        "warmup_runs": 0,
+    },
+    {
+        "stability_points": 200_000,
+        "batch_size": 4096,
+        "minimum_samples": 50,
+        "target_runtime": 900.0,
+        "warmup_runs": 5,
+    },
+    {"stability_points": 10},
+    {"batch_size": 32},
+]
+
+
+@pytest.mark.parametrize("given", _GIVEN)
+@pytest.mark.parametrize(
+    "world",
+    [
+        _World(2e-4, 15.0, 1.5),
+        _World(3e-2, 40.0, 3.0, drift=1.8, drift_at=60.0),
+        _World(1.0, 20.0, 13.0, slow=1.2),
+    ],
+)
+@pytest.mark.parametrize("workers", [1, 8])
+def test_the_completion_time_overrules_the_counts_given(world, given, workers):
+    """--completion-time with conflicting counts and sizes (the verifier's
+    D2: --stability-points 10 with 20 s ran 7.8 s): the counts are those of
+    the time, the completion time honoured as without them."""
+
+    for budget in (120.0, 600.0):
+        total, counts = _simulate(world, budget, workers, 1.0, given)
+        alone, _ = _simulate(world, budget, workers, 1.0)
+        minimum_plan = plan(
+            {
+                b: _costs(world.binary64 * s, world.multiplier, world.start)
+                for b, s in (("tirust", 1.0), ("ninjars", 3.0))
+            },
+            runtime=True,
+            stability=True,
+            workers=workers,
+            lanes=LANES,
+            batch_max=128,
+            completion=budget,
+        )
+        assert total == pytest.approx(alone), (given, budget)
+        if minimum_plan.feasible and minimum_plan.minimum_seconds < 0.5 * budget:
+            assert TOLERANCE[0] <= total / budget <= TOLERANCE[1], (given, counts)
+        assert all(batch <= 128 for _, batch, _ in counts["runtime"].values())
+
+
+def test_effective_benchmark_resets_every_count_and_size():
+    """Every count and size option (command line or card: the same fields)
+    is named and reset under --completion-time, honoured without it."""
+
+    from dataclasses import replace
+
+    from pyamplicol.config.models import is_default
+    from pyamplicol.loop_profile import _COUNT_OPTIONS, effective_benchmark
+
+    given = _GIVEN[0]
+    flags = {flag for flag, _ in _COUNT_OPTIONS}
+    timed = replace(BenchmarkConfig(), **given, completion_time=20.0)
+    used, overruled = effective_benchmark(timed)
+    assert set(overruled) == flags and used.completion_time == 20.0
+    assert all(is_default(getattr(used, name)) for _, name in _COUNT_OPTIONS)
+    plain = replace(BenchmarkConfig(), **given)
+    kept, named = effective_benchmark(plain)
+    assert kept is plain and set(named) == flags

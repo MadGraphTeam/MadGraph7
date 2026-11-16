@@ -553,6 +553,12 @@ checked = false
 # backend and five stability points. Default null: the counts given, else
 # the time budgets (10 s for the runtime, one minute per stability worker).
 completion_time = "10m"
+# benchmark.samples_output: Loop artifacts: the file the stability run writes
+# every sample's record to (`--samples-output`; one columnar JSON document:
+# the points' inputs, per backend each point's values, estimates, reference,
+# true error and task timings); the profile's --json then names it. Default
+# null: the records are in --json only.
+samples_output = "profile-samples.json"
 
 [check]
 # check.points: Positive count of seeded phase-space points per process of
