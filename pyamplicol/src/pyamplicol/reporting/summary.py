@@ -1635,6 +1635,27 @@ def _duration_text(seconds: float) -> str:
     return progress_duration(seconds)
 
 
+def _statistics_width(fields: Sequence[str], values: Sequence[str]) -> int:
+    """The wrap width of the ``generation time`` cell of a field/value
+    table: the width its other values already take, at least what keeps
+    the table within the loop tables' line (``loop_profile._LINE_WIDTH``),
+    at most the value column's ``_SUMMARY_VALUE_WIDTH``."""
+
+    from .loop_profile import _LINE_WIDTH
+
+    frame = len("|  |  |")
+    field_width = max(len(field) for field in fields)
+    widest = max(
+        (
+            len(line)
+            for value in values
+            for line in _ANSI_STYLE.sub("", value).split("\n")
+        ),
+        default=0,
+    )
+    return min(_SUMMARY_VALUE_WIDTH, max(widest, _LINE_WIDTH - frame - field_width))
+
+
 def _generation_statistics_rows(
     statistics: object,
     *,
@@ -1799,8 +1820,12 @@ def _generation_summary(
             table.add_row(
                 (_paint("process grouping", "CYAN", enabled=color), grouping_text)
             )
+    width = _statistics_width(
+        [field for field, _ in rows] + ["generation time"],
+        [value for _, value in rows] + ([grouping_text] if grouping_text else []),
+    )
     for field, text in _generation_statistics_rows(
-        result.statistics, color=color, width=_SUMMARY_VALUE_WIDTH
+        result.statistics, color=color, width=width
     ):
         table.add_row((_paint(field, "CYAN", enabled=color), text))
     group_texts = (
@@ -2794,8 +2819,12 @@ def _artifact_inspection_summary(
             )
         )
         if key == "created":
+            width = _statistics_width(
+                [field for field, _ in summary_rows],
+                [_value_text(value) for _, value in summary_rows],
+            )
             for field, cell in _generation_statistics_rows(
-                plain.get("generation_statistics"), color=color, width=88
+                plain.get("generation_statistics"), color=color, width=width
             ):
                 summary.add_row((_paint(field, "CYAN", enabled=color), cell))
 
