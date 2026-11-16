@@ -278,7 +278,9 @@ class TtyProgressSink:
                     if event.elapsed_seconds is not None:
                         task.elapsed_seconds = event.elapsed_seconds
                     if event.details.get("keep") and self._dashboard is not None:
-                        kept = _kept_line(task, color=self._color_enabled)
+                        kept = _INDENT * _depth(self._tasks, task) + _kept_line(
+                            task, color=self._color_enabled
+                        )
             dashboard = self._dashboard
             if (
                 isinstance(event, ProgressEnd)
@@ -490,7 +492,21 @@ class _LineProgressSink:
 
     def _emit_locked(self, event: ProgressEvent) -> None:
         now = time.monotonic()
+        before = self._states.get(event.task_id)
+        unchanged = (
+            isinstance(event, ProgressUpdate)
+            and before is not None
+            and event.completed <= before.completed
+            and event.message is None
+            and not any(
+                key in event.details
+                for key in ("readings", "progress_kind", "step", "heartbeat")
+            )
+        )
         state = self._track(event, now)
+        if unchanged:
+            # Details only (a root's priors): nothing a reader would see move.
+            return
         if isinstance(event, ProgressUpdate):
             complete = event.total is not None and event.completed == event.total
             last = self._last.get(event.task_id, float("-inf"))
@@ -533,9 +549,16 @@ class _LineProgressSink:
                 self._forget(event.task_id)
                 return
         description = self.descriptions.get(event.task_id)
-        self._write(_format_event(event, description=description), event)
+        self._write(
+            self._indent(event.task_id) + _format_event(event, description=description),
+            event,
+        )
         if isinstance(event, ProgressEnd):
             self._forget(event.task_id)
+
+    def _indent(self, task_id: str) -> str:
+        state = self._states.get(task_id)
+        return "" if state is None else _INDENT * _depth(self._states, state)
 
     def _write(self, rendered: str, event: ProgressEvent | None = None) -> None:
         color_name = (
@@ -578,7 +601,8 @@ class _LineProgressSink:
             self._announce(parent, now)
         self._announced.add(task_id)
         self._write(
-            _format_event(
+            self._indent(task_id)
+            + _format_event(
                 ProgressStart(
                     task_id,
                     state.description,
@@ -686,7 +710,7 @@ class _LineProgressSink:
                 if usage.busy_cores < _IDLE_CORES
                 else f"cores {usage.busy_cores:.1f}"
             )
-        return f"{task.description}: " + "; ".join(parts)
+        return self._indent(task.task_id) + f"{task.description}: " + "; ".join(parts)
 
 
 class _TtyMessageStream(io.TextIOBase, TextIO):
@@ -1292,6 +1316,23 @@ def _log_renderer(parent: int, color: bool, stream: TextIO, ack_fd: int) -> None
         stream.flush()
         with contextlib.suppress(OSError):
             os.write(ack_fd, b"x")
+
+
+# A step's lines are indented by its depth below its phase (a phase's own
+# lines are not): the scroll-back reads as an outline.
+_INDENT = "  "
+
+
+def _depth(states: Mapping[str, _TaskState], task: _TaskState) -> int:
+    """How many tasks above ``task`` are below its root (a phase: 0)."""
+
+    depth = -1
+    parent = task.parent_task_id
+    while parent is not None and depth < 32:
+        depth += 1
+        state = states.get(parent)
+        parent = None if state is None else state.parent_task_id
+    return max(depth, 0)
 
 
 def _kept_line(task: _TaskState, *, color: bool) -> str:
