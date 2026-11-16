@@ -32,6 +32,7 @@ import madgraph
 
 logger = logging.getLogger('test_cmd')
 
+import tests
 import tests.unit_tests.iolibs.test_file_writers as test_file_writers
 
 import madgraph.interface.master_interface as MGCmd
@@ -78,30 +79,31 @@ def _mg7_datadir_or_skip(test):
     """Return a usable LHAPDF data dir for mg7 runs, or skipTest (on *test*) if
     the mg7 runtime stack (madspace + LHAPDF + the run_card.toml default PDF) is
     not available."""
-    import glob
-    try:
-        import madspace
-        has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-    except ImportError:
-        has_mg7 = False
-    datadir = os.environ.get('LHAPDF_DATA_PATH')
+    madspace = tests.import_madspace()
+    if not hasattr(madspace, 'ChannelEventGenerator'):
+        test.skipTest('mg7 runtime stack (madspace) unavailable')
+    datadir = tests.lhapdf_data_path('NNPDF40_lo_as_01180')
     if not datadir:
-        mg = MGCmd.MasterCmd()
-        lhapdf = mg.options['lhapdf']
-        if not lhapdf:
-            lhapdf = 'lhapdf-config'
-        try:
-            datadir = subprocess.check_output(
-            [lhapdf, '--datadir']).decode().strip()
-        except Exception:
-            datadir = None 
-        
-    misc.sprint(datadir)
-    if not has_mg7 or not datadir or not os.path.isdir(datadir):
-        test.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-    if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
-        test.skipTest('NNPDF40_lo_as_01180 PDF set not available')
+        test.skipTest('NNPDF40_lo_as_01180 LHAPDF data not found (set the '
+                      'lhapdf option or $LHAPDF_DATA_PATH)')
     return datadir
+
+
+def _set_toml_key(text, section, key, value):
+    """`text` (a run_card.toml) with `key` of the table `[section]` set to
+    `value`, whatever it was; the same key of any other table (the `enable`
+    of [vegas] next to the one of [systematics]) is left alone. A regex
+    spanning from the section header to the next `key = ...` would not stop
+    at the end of the table."""
+    lines, current = text.split('\n'), None
+    for i, line in enumerate(lines):
+        header = re.match(r'^\s*\[+\s*([^\]]+?)\s*\]+\s*(#.*)?$', line)
+        if header:
+            current = header.group(1)
+        elif current == section and \
+                re.match(r'^\s*%s\s*=' % re.escape(key), line):
+            lines[i] = '%s = %s' % (key, value)
+    return '\n'.join(lines)
 
 
 def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
@@ -138,7 +140,7 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     # defaults to true and is the one that actually costs the time here. The
     # cross-section these callers read does not depend on either.
     t = re.sub(r'^systematics = true$', 'systematics = false', t, flags=re.M)
-    t = re.sub(r'(?ms)^(\[systematics\].*?^enable = )true$', r'\1false', t)
+    t = _set_toml_key(t, 'systematics', 'enable', 'false')
     open(toml, 'w').write(t)
     env = dict(os.environ)
     env['LHAPDF_DATA_PATH'] = datadir
@@ -891,23 +893,7 @@ class TestMECmdShell(unittest.TestCase):
         import glob, json
         # The mg7 cross-section run needs the madspace runtime and a resolvable
         # LHAPDF data path; skip cleanly where that stack is unavailable.
-        try:
-            import madspace
-            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-        except ImportError:
-            has_mg7 = False
-        datadir = os.environ.get('LHAPDF_DATA_PATH')
-        if not datadir:
-            try:
-                datadir = subprocess.check_output(
-                    ['lhapdf-config', '--datadir']).decode().strip()
-            except Exception:
-                datadir = None
-        if not has_mg7 or not datadir or not os.path.isdir(datadir):
-            self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-        # the mg7 run_card.toml default PDF must be present in the data dir
-        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
-            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
+        datadir = _mg7_datadir_or_skip(self)
 
         def run_mg7(group):
             run_dir = pjoin(self.path, 'MG7_%s' % ('grp' if group else 'ungrp'))
@@ -1234,24 +1220,16 @@ class TestMECmdShell(unittest.TestCase):
         if a color flow doesn't close. Exercises the real C++ code directly
         against every (channel, diagram, active color) in subprocesses.json."""
         import json
-        # Prefer the locally-built module (madspace/install) over whatever
-        # madspace happens to be on the system path, since this test exercises
-        # local C++ source changes (diagram_propagator_pdgs).
-        local_install = pjoin(MG5DIR, 'madspace', 'install')
-        if os.path.isdir(local_install):
-            if local_install not in sys.path:
-                sys.path.insert(0, local_install)
-            for mod_name in [m for m in sys.modules if m.startswith('madspace')]:
-                mod_file = getattr(sys.modules[mod_name], '__file__', '') or ''
-                if not mod_file.startswith(local_install):
-                    del sys.modules[mod_name]
-        try:
-            import madspace as ms
-            has_mg7 = hasattr(ms.SubprocArgs(), 'diagram_propagator_pdgs')
-        except ImportError:
-            has_mg7 = False
-        if not has_mg7:
+        # This exercises local C++ source changes (diagram_propagator_pdgs),
+        # so it needs the locally-built module (madspace/install). It cannot
+        # be swapped in once another madspace is loaded: the second
+        # extension fails to load and breaks madspace for every later test.
+        ms = tests.import_madspace()
+        if ms is None:
             self.skipTest('mg7 runtime stack (madspace) unavailable')
+        if not hasattr(ms.SubprocArgs(), 'diagram_propagator_pdgs'):
+            self.skipTest('madspace loaded from %s lacks '
+                          'diagram_propagator_pdgs' % ms.__file__)
 
         mg = MGCmd.MasterCmd()
         mg.no_notification()
@@ -1603,22 +1581,7 @@ class TestMECmdShell(unittest.TestCase):
         Self-skips where the mg7 runtime stack is unavailable.
         """
         import glob, json
-        try:
-            import madspace
-            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-        except ImportError:
-            has_mg7 = False
-        datadir = os.environ.get('LHAPDF_DATA_PATH')
-        if not datadir:
-            try:
-                datadir = subprocess.check_output(
-                    ['lhapdf-config', '--datadir']).decode().strip()
-            except Exception:
-                datadir = None
-        if not has_mg7 or not datadir or not os.path.isdir(datadir):
-            self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
-            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
+        datadir = _mg7_datadir_or_skip(self)
 
         run_dir = pjoin(self.path, 'MG7_uq')
         if os.path.isdir(run_dir):
@@ -1674,12 +1637,7 @@ class TestMECmdShell(unittest.TestCase):
         events.
         """
         import glob, re as _re
-        try:
-            import madspace
-            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-        except ImportError:
-            has_mg7 = False
-        if not has_mg7:
+        if not hasattr(tests.import_madspace(), 'ChannelEventGenerator'):
             self.skipTest('mg7 runtime stack (madspace) unavailable')
         # e+ e- > mu+ mu- is leptonic, so no parton density is ever evaluated
         # and the [systematics] PDF variations are empty -- but alpha_s comes
@@ -3086,10 +3044,76 @@ C
         self.assertTrue(misc.equal(target, val1, 4*err1),
             'MadSpin-decayed cross-section %s +- %s far from reference %s'
             % (val1, err1, target))
-             
-        
-        
-        
+
+    def test_complex_mass_scheme_mg7_compile(self):
+        """`output mg7` of a complex-mass-scheme process compiles.
+
+        Under the complex-mass scheme Parameters.cc takes the sqrt of complex
+        parameters (CMASS_mdl_MT = sqrt(MT^2 - i*MT*WT), mdl_cw = sqrt(1 -
+        mdl_sw2), ...), which did not compile for want of a sqrt(cxsmpl). That
+        broke MadSpin's mg7 decay generator in test_complex_mass_scheme, but
+        only where madspace is built -- elsewhere MadSpin falls back to
+        madevent -- so this checks the compile directly, without madspace.
+        """
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('set complex_mass_scheme', precmd=True)
+        mg_cmd.exec_cmd('generate t > w+ b', precmd=True)
+        mg_cmd.exec_cmd('output mg7 %s' % self.run_dir, precmd=True)
+
+        sub_root = pjoin(self.run_dir, 'SubProcesses')
+        proc_dirs = sorted(d for d in os.listdir(sub_root)
+                           if d.startswith('P') and
+                           os.path.isdir(pjoin(sub_root, d)))
+        self.assertTrue(proc_dirs, 'no subprocess generated for t > w+ b')
+        with open(pjoin(self.run_dir, 'src', 'Parameters.cc')) as fsock:
+            self.assertIn('CMASS_mdl_MT = sqrt(', fsock.read())
+        for d in proc_dirs:
+            proc = subprocess.run(['make', 'bldnone'], cwd=pjoin(sub_root, d),
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(proc.returncode, 0,
+                             'CMS mg7 subprocess %s did not compile:\n%s'
+                             % (d, proc.stdout[-3000:]))
+
+    def test_complex_mass_scheme_qcd_mg7_compile(self):
+        """`output mg7` of a complex-mass-scheme QCD process compiles.
+
+        Under the complex-mass scheme the alphaS-dependent parameters are
+        complex (mdl_sqrt__aS = sqrt(aS), G, mdl_G__exp__2), and they were
+        left as constexpr cxsmpl lines reading the undeclared aS inside
+        computeDependentCouplings_fromG; the HelAmps propagator denominators
+        also cast the complex mass to a real. g g > t t~ g has both: the
+        four-gluon coupling GC_12 (from mdl_G__exp__2) and top propagators.
+        """
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('set complex_mass_scheme', precmd=True)
+        mg_cmd.exec_cmd('generate g g > t t~ g', precmd=True)
+        mg_cmd.exec_cmd('output mg7 %s' % self.run_dir, precmd=True)
+
+        with open(pjoin(self.run_dir, 'src', 'Parameters.h')) as fsock:
+            text = fsock.read()
+        self.assertIn('const cxtype_sv mdl_G__exp__2 =', text)
+        # no live (uncommented) constexpr assignment from aS is left
+        self.assertFalse(re.search(r'^\s*constexpr cxsmpl<double> '
+                                   r'(G|mdl_sqrt__aS|mdl_G__exp__2) =',
+                                   text, re.M))
+        sub_root = pjoin(self.run_dir, 'SubProcesses')
+        proc_dirs = sorted(d for d in os.listdir(sub_root)
+                           if d.startswith('P') and
+                           os.path.isdir(pjoin(sub_root, d)))
+        self.assertTrue(proc_dirs, 'no subprocess generated for g g > t t~ g')
+        for d in proc_dirs:
+            proc = subprocess.run(['make', 'bldnone'], cwd=pjoin(sub_root, d),
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(proc.returncode, 0,
+                             'CMS mg7 subprocess %s did not compile:\n%s'
+                             % (d, proc.stdout[-3000:]))
+
     def test_width_scan(self):
         """check that the width settings works on a scan based.
            and check that MW is updated."""
@@ -3876,8 +3900,10 @@ class TestMEfromfile(unittest.TestCase):
         # alpha_s^2 (-22% at the ~20 GeV dynamical scale).
         # Spread over 6 runs: 2.0872e+08-2.0901e+08, mean 2.089e+08.
         # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 1.820e+08
+        # The tolerance is well above that spread but below the 11% the good-
+        # helicity scan once lost by dropping the b-mass-suppressed rows.
         target = 2.089e+08
-        self.assertLess(abs(cross - target) / target, 0.10,
+        self.assertLess(abs(cross - target) / target, 0.03,
             'mg7 HEFT cross-section %s far from physical reference %s'
             % (cross, target))
 
