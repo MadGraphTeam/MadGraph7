@@ -21,10 +21,6 @@
 
 using namespace madmatrix;
 
-#ifndef MGONGPU_HARDCODE_PARAM
-
-thread_local const Parameters* Parameters::current = nullptr;
-
 void
 Parameters::setIndependentParameters( SLHAReader& slha )
 {
@@ -131,28 +127,12 @@ Parameters::resetParameterOverrides()
   m_param_overrides.clear();
 }
 
-/*
-void
-Parameters::setDependentParameters() // now computed event-by-event (running alphas #373)
-{
-  %(set_dependent_parameters)s
-}
-
-void
-Parameters::setDependentCouplings() // now computed event-by-event (running alphas #373)
-{
-  %(set_dependent_couplings)s
-}
-*/
-
-#endif
-
 // Routines for printing out parameters
 void
 Parameters::printIndependentParameters()
 {
   std::cout << "model parameters independent of event kinematics:" << std::endl;
-  std::cout << "(Warning: aS in the runcard is ignored because event-by-event Gs are hardcoded or retrieved from Fortran)" << std::endl;
+  std::cout << "(Warning: aS here is unused, G is computed event by event from the input alpha_s)" << std::endl;
   %(print_independent_parameters)s
 }
 
@@ -162,19 +142,3 @@ Parameters::printIndependentCouplings()
   std::cout << "model couplings independent of event kinematics:" << std::endl;
   %(print_independent_couplings)s
 }
-
-/*
-void
-Parameters::printDependentParameters() // now computed event-by-event (running alphas #373)
-{
-  std::cout << "model parameters dependent on event kinematics:" << std::endl;
-  %(print_dependent_parameters)s
-}
-
-void
-Parameters::printDependentCouplings() // now computed event-by-event (running alphas #373)
-{
-  std::cout << "model couplings dependent on event kinematics:" << std::endl;
-  %(print_dependent_couplings)s
-}
-*/

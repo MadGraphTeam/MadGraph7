@@ -60,7 +60,12 @@ struct PdfGrid {
  *
  * Interpolates a @ref PdfGrid at the sampled @f$(x, q)@f$, returning
  * @f$x f(x, q)@f$ for the requested flavours; the numerical output agrees with
- * LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). With a @ref CustomPdf,
+ * LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). Outside of the grid the
+ * densities continue as with the continuation extrapolator of LHAPDF, its
+ * default: linearly in log x below the first x knot and in log q^2 above the
+ * last q knot, and below the first q knot with the anomalous dimension at that
+ * knot, going over into x f vanishing like q^2. Above the last x knot, where
+ * LHAPDF stops with an error, they are zero. With a @ref CustomPdf,
  * the user-supplied library is called for each requested flavour instead.
  *
  * `batch` is the leading batch dimension.
@@ -293,7 +298,10 @@ struct AlphaSGrid {
     AlphaSGrid(const std::string& file);
     /// Number of scale knots, counting the knots shared by two regions once.
     std::size_t q_count() const;
-    /// Fill @p tensor with the interpolation coefficients.
+    /// Fill @p tensor with the interpolation coefficients, and the padding
+    /// segments with the extrapolation: below the grid @f$\alpha_s@f$ at the
+    /// first knot and the logarithmic gradient to the next knot of another q,
+    /// above it the last value at both ends.
     void initialize_coefficients(Tensor tensor) const;
     /// Fill @p tensor with the `log(q^2)` knots.
     void initialize_logq2(Tensor tensor) const;
@@ -309,7 +317,9 @@ struct AlphaSGrid {
  * Strong-coupling interpolation as a compute-graph function.
  *
  * Interpolates an @ref AlphaSGrid to return @f$\alpha_s(q)@f$ at the sampled
- * scale (Sec. 3.2.3 of [1]).
+ * scale (Sec. 3.2.3 of [1]). Outside of the grid it continues as the
+ * interpolated @f$\alpha_s@f$ of LHAPDF: below the first knot with the
+ * logarithmic gradient to the next knot, above the last knot with the last value.
  *
  * `batch` is the leading batch dimension.
  *
