@@ -18,7 +18,9 @@ pole-evaluation patches to isolated copies, and tests the installed Fortran
 interface before publishing it. The supported build environment is GNU
 Fortran on Linux with binary128 support, Rust/Cargo 1.96 or later, C/C++
 compilers, GNU make, patch, and the GMP/MPFR build dependencies. The pinned
-Nix development environment supplies these tools.
+Nix development environment supplies these tools. macOS builds the same bridge
+as a ``.dylib``; that build is not yet qualified. The installer checks the
+platform, GNU Fortran and the Rust version before it builds anything.
 
 For the supplied local checkouts, launch MadGraph from its repository root
 and use::

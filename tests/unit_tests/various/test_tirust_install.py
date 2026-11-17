@@ -14,12 +14,19 @@ from madgraph import MadGraph5Error
 from madgraph.interface.madgraph_interface import MadGraphCmd
 from madgraph.various import banner, rust_dependency_notices, tirust_install
 
+# setUp replaces the check for the publication tests; keep the real one.
+REAL_CHECK_TOOLCHAIN = tirust_install.check_toolchain
+
 
 class TestTIRustInstaller(unittest.TestCase):
     def setUp(self):
         notice_patch = mock.patch.object(rust_dependency_notices, 'package', side_effect=self.fake_notices)
         notice_patch.start()
         self.addCleanup(notice_patch.stop)
+        # The real platform and toolchain checks are tested separately.
+        toolchain_patch = mock.patch.object(tirust_install, 'check_toolchain')
+        self.toolchain = toolchain_patch.start()
+        self.addCleanup(toolchain_patch.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -79,7 +86,7 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=aaaaaaaaaaaaaaa
             lib = Path(next(x[7:] for x in command if x.startswith('PREFIX='))) / 'lib'
             lib.mkdir(parents=True)
             (lib / 'libtirust.a').write_bytes(b'!<arch>\nfixture archive')
-            (lib / 'libmadloop_tirust.so').write_bytes(b'fixture isolated runtime')
+            (lib / tirust_install.SHARED_LIBRARY).write_bytes(b'fixture isolated runtime')
             (lib / 'mtirust.mod').write_text('fixture module')
             (lib / 'tirust-native-libs.txt').write_text('-lmadloop_tirust\n')
             (lib / 'tirust-link-before.txt').write_text('-lgcc_s\n')
@@ -95,13 +102,13 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=aaaaaaaaaaaaaaa
             config = tirust_install.read_config(lib)
             self.assertTrue(tirust_install.is_available(lib))
             self.assertTrue(tirust_install.supports_quad_precision(lib))
-            self.assertIn('libmadloop_tirust.so', tirust_install.export_files(lib))
+            self.assertIn(tirust_install.SHARED_LIBRARY, tirust_install.export_files(lib))
             self.assertIn('libtirust.a', tirust_install.export_files(lib))
             self.assertIn('tirust-config.json', tirust_install.export_files(lib))
             self.assertIn('tirust-NOTICES.txt', tirust_install.export_files(lib))
             self.assertEqual(config['native_libs'], ['-lmadloop_tirust'])
             self.assertEqual(config['local_sources']['tirust']['patch_sha256'], hashlib.sha256(b'fixture patch\n').hexdigest())
-            self.assertTrue((self.prefix / 'lib/libmadloop_tirust.so').is_symlink())
+            self.assertTrue((self.prefix / 'lib' / tirust_install.SHARED_LIBRARY).is_symlink())
             smoke = next(c.args[0] for c in run.call_args_list if c.args[0][0] == 'gfortran')
             self.assertTrue(any(arg.startswith('-Wl,-rpath,') for arg in smoke))
             self.assertIn('-lmadloop_tirust', smoke)
@@ -173,7 +180,7 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=aaaaaaaaaaaaaaa
         aliases = self.snapshot(self.prefix / 'lib')
         original = os.replace
         def fail(source, target):
-            if Path(target) == self.prefix / 'lib/libmadloop_tirust.so' and Path(source).parent.name == 'links':
+            if Path(target) == self.prefix / 'lib' / tirust_install.SHARED_LIBRARY and Path(source).parent.name == 'links':
                 raise OSError('shared alias publication failed')
             original(source, target)
         with mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
@@ -188,7 +195,7 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=aaaaaaaaaaaaaaa
         with mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
                 mock.patch.object(tirust_install, '_run', side_effect=self.fake_run):
             lib = self.install()
-        (lib / 'libmadloop_tirust.so').unlink()
+        (lib / tirust_install.SHARED_LIBRARY).unlink()
         self.assertFalse(tirust_install.is_available(lib))
         with self.assertRaisesRegex(MadGraph5Error, 'Incomplete'):
             self.install()
@@ -229,7 +236,7 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=aaaaaaaaaaaaaaa
         with mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
                 mock.patch.object(tirust_install, '_run', side_effect=self.fake_run):
             lib = self.install()
-        (lib / 'libmadloop_tirust.so').write_bytes(b'another nonempty shared runtime')
+        (lib / tirust_install.SHARED_LIBRARY).write_bytes(b'another nonempty shared runtime')
         self.assertFalse(tirust_install.is_available(lib))
         self.assertFalse(tirust_install.supports_quad_precision(lib))
 
@@ -279,6 +286,62 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=aaaaaaaaaaaaaaa
                                 ['-lgcc_s\n-lunexpected'],
                                 ['-lgcc_s\r-lunexpected'])]
         self.assert_incompatible_metadata_rejected(cases)
+
+    def test_toolchain_is_checked_before_anything_is_built(self):
+        self.toolchain.side_effect = MadGraph5Error('TIRust requires Rust >= 1.96')
+        with mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
+                mock.patch.object(tirust_install, '_run', side_effect=self.fake_run) as run:
+            with self.assertRaisesRegex(MadGraph5Error, 'Rust >= 1.96'):
+                self.install()
+        run.assert_not_called()
+        self.assertFalse(self.prefix.exists())
+        self.assertEqual(self.toolchain.call_args.args, (self.root / 'vendor/tirust', 'gfortran'))
+
+    def test_platform_compiler_and_rust_version_checks(self):
+        (self.bridge / 'Cargo.toml').write_text('[package]\nname="bridge"\nrust-version = "1.96"\n')
+        check = REAL_CHECK_TOOLCHAIN
+        def outputs(gfortran, cargo):
+            return lambda command, cwd: cargo if command[0] == 'cargo' else gfortran
+        good = ('GNU Fortran (GCC) 15.2.0', 'cargo 1.97.1 (abc 2026-08-01)')
+        for system, versions, message in (
+                ('Windows', good, 'Linux and macOS, not on Windows'),
+                ('Linux', ('Apple clang version 17', good[1]), 'requires GNU Fortran'),
+                ('Darwin', (good[0], 'cargo 1.81.0 (2dbb1af80 2024-08-20)'), r'Rust >= 1\.96.*1\.81'),
+                ('Linux', (good[0], ''), r'Rust >= 1\.96')):
+            with self.subTest(system=system, versions=versions), \
+                    mock.patch.object(tirust_install, '_first_output_line', side_effect=outputs(*versions)):
+                with self.assertRaisesRegex(MadGraph5Error, message):
+                    check(self.bridge, 'gfortran', system=system)
+        for system in ('Linux', 'Darwin'):
+            with mock.patch.object(tirust_install, '_first_output_line', side_effect=outputs(*good)):
+                check(self.bridge, 'gfortran', system=system)
+
+    def test_runtime_search_flags_per_platform(self):
+        self.assertEqual(tirust_install.runtime_search_flags('/opt/t/lib', False, 'Darwin'),
+                         ['-Wl,-rpath,/opt/t/lib'])
+        self.assertEqual(tirust_install.runtime_search_flags('/opt/t/lib', True, 'Linux'),
+                         ["-Wl,-rpath,'$$ORIGIN:$$ORIGIN/../lib:$$ORIGIN/../../lib:$$ORIGIN/../../../lib'"])
+        self.assertEqual(tirust_install.runtime_search_flags('/opt/t/lib', True, 'Darwin'),
+                         ['-Wl,-rpath,@loader_path -Wl,-rpath,@loader_path/../lib '
+                          '-Wl,-rpath,@loader_path/../../lib -Wl,-rpath,@loader_path/../../../lib'])
+
+    def test_only_macos_installations_may_omit_the_runtime_library(self):
+        with mock.patch.object(tirust_install.shutil, 'which', return_value='/bin/tool'), \
+                mock.patch.object(tirust_install, '_run', side_effect=self.fake_run):
+            lib = self.install()
+        config = tirust_install.read_config(lib)
+        self.assertEqual(config['compiler_runtime'], tirust_install.LINUX_RUNTIME
+                         if tirust_install.platform.system() != 'Darwin' else tirust_install.DARWIN_RUNTIME)
+        for runtime, accepted in ((tirust_install.DARWIN_RUNTIME, True),
+                                  (tirust_install.LINUX_RUNTIME, False)):
+            with self.subTest(runtime=runtime):
+                (lib / tirust_install.CONFIG_NAME).write_text(json.dumps(
+                    dict(config, link_before=[], compiler_runtime=runtime)))
+                if accepted:
+                    self.assertEqual(tirust_install.read_config(lib)['link_before'], [])
+                else:
+                    with self.assertRaisesRegex(MadGraph5Error, 'compiler-runtime link metadata'):
+                        tirust_install.read_config(lib)
 
     def test_incompatible_shared_runtime_metadata_is_unavailable(self):
         self.assert_incompatible_metadata_rejected([

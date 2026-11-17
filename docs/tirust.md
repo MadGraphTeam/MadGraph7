@@ -17,8 +17,10 @@ output standalone tirust_z
 ```
 
 The qualified development environment uses GNU Fortran 15.2 on Linux and Rust
-1.97.1. The installer requires Cargo/Rust, GNU make, Git, patch and a Fortran
-compiler supporting `REAL(16)`. It fetches pinned dependencies, stages its own
+1.97.1. macOS builds the same bridge as `libmadloop_tirust.dylib`; that build
+is not yet qualified. The installer requires Cargo/Rust 1.96 or later, GNU
+make, Git, patch and GNU Fortran supporting `REAL(16)`, and checks the
+platform, compiler and Rust version before it builds anything. It fetches pinned dependencies, stages its own
 source copies, builds the Fortran module and shared Rust library, and runs DP,
 QP and pole-only smoke tests before publishing the installation and saving its
 configuration. A failed build or configuration update preserves the previous

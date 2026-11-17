@@ -11,6 +11,8 @@ import json
 import logging
 import os
 from pathlib import Path
+import platform
+import re
 import shlex
 import shutil
 import subprocess
@@ -23,7 +25,13 @@ CONFIG_NAME = 'tirust-config.json'
 ABI_VERSION = 1
 UPSTREAM_URL = "https://github.com/huashengshao/TIRust"
 UPSTREAM_REVISION = "2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1"
-RUNTIME_ARTIFACTS = ("libmadloop_tirust.so",)
+# Linux is qualified; macOS builds the same bridge as a Mach-O dylib.
+SUPPORTED_SYSTEMS = ('Linux', 'Darwin')
+SHARED_LIBRARY = ('libmadloop_tirust.dylib' if platform.system() == 'Darwin'
+                  else 'libmadloop_tirust.so')
+RUNTIME_ARTIFACTS = (SHARED_LIBRARY,)
+LINUX_RUNTIME = 'gnu-linux-shared-rust'
+DARWIN_RUNTIME = 'gnu-darwin-shared-rust'
 QUALIFIED_ARTIFACTS = ('libtirust.a', 'mtirust.mod') + RUNTIME_ARTIFACTS
 
 
@@ -65,7 +73,9 @@ def read_config(libdir):
     before = config.get('link_before')
     if (type(config.get('link_order_version')) is not int or
             config.get('link_order_version') != 1 or
-            not isinstance(before, list) or not before or
+            not isinstance(before, list) or
+            # Only macOS's two-level namespace needs no runtime library first.
+            (not before and config.get('compiler_runtime') != DARWIN_RUNTIME) or
             any(not isinstance(flag, str) or '\n' in flag or '\r' in flag
                 for flag in before)):
         raise MadGraph5Error("Missing or invalid TIRust compiler-runtime link metadata "
@@ -122,6 +132,55 @@ def export_files(libdir):
     artifacts.extend(rust_dependency_notices.export_files(
         libdir, 'tirust', expected=config.get('dependency_notices')))
     return artifacts
+
+
+def runtime_search_flags(libdir, relocatable, system=None):
+    """Linker flags that let MadLoop executables find the shared bridge.
+
+    A relocatable (internal) export copies the library into the process
+    directory, so executables search relative to their own location.
+    """
+    if not relocatable:
+        return ['-Wl,-rpath,%s' % libdir]
+    if (system or platform.system()) == 'Darwin':
+        return [' '.join('-Wl,-rpath,@loader_path' + suffix
+                         for suffix in ('', '/../lib', '/../../lib', '/../../../lib'))]
+    return ["-Wl,-rpath,'$$ORIGIN:$$ORIGIN/../lib:$$ORIGIN/../../lib:$$ORIGIN/../../../lib'"]
+
+
+def _first_output_line(command, cwd):
+    try:
+        result = subprocess.run(command, cwd=str(cwd), stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, universal_newlines=True,
+                                timeout=60, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    return result.stdout.strip().splitlines()[0] if result.stdout.strip() else ''
+
+
+def _required_rust_version(bridge):
+    match = re.search(r'^rust-version\s*=\s*"(\d+)\.(\d+)',
+                      (Path(bridge) / 'Cargo.toml').read_text(), re.MULTILINE)
+    return (int(match.group(1)), int(match.group(2))) if match else None
+
+
+def check_toolchain(bridge, compiler, system=None):
+    """Refuse unsupported platforms and toolchains before anything is built."""
+    system = system or platform.system()
+    if system not in SUPPORTED_SYSTEMS:
+        raise MadGraph5Error("TIRust builds on Linux and macOS, not on %s." % system)
+    version = _first_output_line([compiler, '--version'], bridge)
+    if 'GNU Fortran' not in version:
+        raise MadGraph5Error("TIRust requires GNU Fortran (gfortran); '%s --version' "
+                             "reports %r." % (compiler, version))
+    required = _required_rust_version(bridge)
+    if required:
+        cargo = _first_output_line(['cargo', '--version'], bridge)
+        match = re.match(r'cargo (\d+)\.(\d+)', cargo)
+        if not match or (int(match.group(1)), int(match.group(2))) < required:
+            raise MadGraph5Error("TIRust requires Rust >= %d.%d; 'cargo --version' reports "
+                                 "%r. Update it, for example with 'rustup update'."
+                                 % (required + (cargo,)))
 
 
 def pre_link_flags(libdir):
@@ -432,8 +491,9 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None,
     for program in ('cargo', 'make', 'git', 'patch', compiler):
         if not shutil.which(program):
             raise MadGraph5Error("Installing TIRust requires %s on PATH. "
-                "Install Rust >= 1.96 and a Fortran compiler with REAL(16) support."
+                "Install Rust >= 1.96 and GNU Fortran with REAL(16) support."
                 % program)
+    check_toolchain(Path(mg_root) / 'vendor' / 'tirust', compiler)
 
     prefix.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix='.tirust-build-', dir=str(prefix)))
@@ -500,7 +560,8 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None,
               'native_libs': native_libs, 'local_sources': provenance,
               'fortran_compiler': compiler, 'link_before': link_before,
               'link_order_version': 1,
-              'compiler_runtime': 'gnu-linux-shared-rust',
+              'compiler_runtime': (DARWIN_RUNTIME if platform.system() == 'Darwin'
+                                   else LINUX_RUNTIME),
               'build_provenance': _dependency_provenance(bridge),
               'runtime_artifacts': list(RUNTIME_ARTIFACTS),
               'finite_terms': True, 'poles_only': True,

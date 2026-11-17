@@ -5562,10 +5562,10 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                     if tir == 'tirust':
                         from madgraph.various import tirust_install
                         link_tir_libs.extend(tirust_install.native_link_flags(libpath))
-                        if copied_ninjars:
-                            link_tir_libs.append("-Wl,-rpath,'$$ORIGIN:$$ORIGIN/../lib:$$ORIGIN/../../lib:$$ORIGIN/../../../lib'")
-                        else:
-                            link_tir_libs.append('-Wl,-rpath,%s' % libpath)
+                        # Executables live in SubProcesses or its process directories;
+                        # shared process libraries live in lib.
+                        link_tir_libs.extend(tirust_install.runtime_search_flags(
+                            libpath, copied_ninjars))
                     # For Ninja, we must also link against OneLoop.
                     if tir in ['ninja']:
                         if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 

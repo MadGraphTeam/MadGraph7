@@ -2,8 +2,12 @@
 
 `install tirust` builds this package in an isolated installation directory and
 applies the checked patch series to its own copy of TIRust. Reference checkouts
-are never edited. The supported build target is GNU Fortran on Linux, with Rust
-1.97.1 and the exact Git dependencies in `Cargo.toml`/`Cargo.lock`.
+are never edited. The qualified build target is GNU Fortran on Linux, with Rust
+1.97.1 and the exact Git dependencies in `Cargo.toml`/`Cargo.lock`. On macOS
+the Makefile builds the same bridge as a Mach-O `libmadloop_tirust.dylib` with
+the install name `@rpath/libmadloop_tirust.dylib`, using Apple's linker; that
+build is not yet qualified. Below, `libmadloop_tirust.so` stands for the
+platform's shared library.
 
 The Fortran module `mtirust` owns the MadLoop-facing interface. Its small
 `libtirust.a` contains only Fortran code; the Rust implementation is isolated in
