@@ -1,0 +1,25 @@
+--- a/src/SimpleSpaceShower.cc
++++ b/src/SimpleSpaceShower.cc
+@@ -2333,9 +2333,19 @@
+           m2Sister) / meMax;
+       if (dopTdamp && iSysNow == 0 && MEtype == 0 && nRad == 0)
+         wt *= pT2damp / (pT2 + pT2damp);
+-      if (!isfinite(wt) || wt > 1. + 1e-10)
+-        throw std::runtime_error("SimpleSpaceShower gamma -> q qbar: "
+-          "PDF veto envelope exceeded; increase SpaceShower:gammaToQuarkHeadroom");
++//      if (!isfinite(wt) || wt > 1. + 1e-10)
++//        throw std::runtime_error("SimpleSpaceShower gamma -> q qbar: "
++//          "PDF veto envelope exceeded; increase SpaceShower:gammaToQuarkHeadroom");
++//      wt = min(1., max(0., wt));
++      if (!isfinite(wt)) continue;
++      if (wt > 1. + 1e-10) {
++        loggerPtr->WARNING_MSG("gamma -> q qbar: weight above unity (clipped)");
++        cout << " [A2QQ overweight] id=" << idDaughter
++             << " xD=" << xDaughter << " xM=" << xMother
++             << " pT2=" << pT2 << " z=" << z
++             << " fq=" << daughter << " fgam=" << photon
++             << " ratioMax=" << ratioMax << " wt=" << wt << endl;
++      }
+       wt = min(1., max(0., wt));
+       // Use the existing delayed veto and enhancement weight bookkeeping.
+       bool delayed = canEnhanceET;

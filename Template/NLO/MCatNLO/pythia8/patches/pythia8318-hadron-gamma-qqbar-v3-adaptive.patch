@@ -1,0 +1,140 @@
+--- a/src/SimpleSpaceShower.cc
++++ b/src/SimpleSpaceShower.cc
+@@ -2302,57 +2302,91 @@
+     if (ratioMax <= 0.) { pT2top = pT2low; continue; }
+     double massMax = 1. + 0.5 * m2Heavy / pT2low;
+     double alphaMax = alphaEM.alphaEM(renormMultFac * pT2top);
+-    double rate = alphaMax / (2. * M_PI) * 3. * charge2
+-      * (zMax - zMin) * ratioMax * massMax * meMax * enhance * overFac;
+-    if (rate <= 0.) return;
+-    double pT2 = pT2top;
+ 
+-    while (true) {
+-      pT2 *= pow(rndmPtr->flat(), 1. / rate);
+-      if (pT2 <= pT2low) break;
+-      double z = zMin + (zMax - zMin) * rndmPtr->flat();
+-      double xMother = (xDaughter + xResc) / z - xResc;
+-      if (xMother >= xMaxAbs) continue;
+-      double Q2 = pT2 / (1. - z);
+-      double pT2corr = Q2 - z * (m2Dip + Q2) * (Q2 + m2Sister) / m2Dip;
+-      if (pT2corr < TINYPT2) continue;
+-      double scale2 = useFixedFacScale ? fixedFacScale2
+-        : factorMultFac * pT2;
+-      xfModPrepData xfData = beam.xfModPrep(iSysNow, scale2);
+-      double daughter = beam.xfISR(iSysNow, idDaughter, xDaughter,
+-        scale2, xfData);
+-      if (daughter <= TINYPDF) continue;
+-      double photon = max(0., beam.xfISR(iSysNow, 22, xMother, scale2, xfData));
+-      // xf ratios already contain the 1/z Jacobian: no further 1/z here.
+-      double kernel = pow2(z) + pow2(1. - z)
+-        + 2. * z * (1. - z) * m2Heavy / pT2;
+-      double wt = kernel / massMax * photon / (daughter * ratioMax)
+-        * alphaEM.alphaEM(renormMultFac * pT2) / alphaMax / overFac;
+-      if (doMEcorrections)
+-        wt *= calcMEcorr(MEtype, 22, idDaughter, m2Dip, z, Q2,
+-          m2Sister) / meMax;
+-      if (dopTdamp && iSysNow == 0 && MEtype == 0 && nRad == 0)
+-        wt *= pT2damp / (pT2 + pT2damp);
+-      if (!isfinite(wt) || wt > 1. + 1e-10)
+-        throw std::runtime_error("SimpleSpaceShower gamma -> q qbar: "
+-          "PDF veto envelope exceeded; increase SpaceShower:gammaToQuarkHeadroom");
+-      wt = min(1., max(0., wt));
+-      // Use the existing delayed veto and enhancement weight bookkeeping.
+-      bool delayed = canEnhanceET;
+-      if (!delayed && wt < rndmPtr->flat()) continue;
+-      if (wt <= 0.) continue;
+-      dipEndNow->pAccept = delayed ? wt : 1.;
+-      splittingNameNow = "isr:A2QQ";
+-      if (canEnhanceET) storeEnhanceFactor(pT2, "isr:A2QQ", enhance);
+-      dipEndNow->store(idDaughter, 22, -idDaughter, x1Now, x2Now, m2Dip,
+-        pT2, z, xMother, Q2, mSister, m2Sister, pT2corr, 0, m2ColPair,
+-        mColPartner);
+-      return;
++    // Adaptive envelope: if an overweight is found, discard the trials of
++    // this scale interval, enlarge the envelope and restart from pT2top.
++    // Rejected trials leave no imprint in the veto algorithm, so this is
++    // exact as long as the enlarged envelope bounds the true weight.
++    const int MAXRESTARTA2QQ = 10;
++    double ratioNow = ratioMax;
++    int nRestart = 0;
++    bool restart = true;
++    while (restart) {
++      restart = false;
++      double rate = alphaMax / (2. * M_PI) * 3. * charge2
++        * (zMax - zMin) * ratioNow * massMax * meMax * enhance * overFac;
++      if (rate <= 0.) return;
++      double pT2 = pT2top;
++
++      while (true) {
++        pT2 *= pow(rndmPtr->flat(), 1. / rate);
++        if (pT2 <= pT2low) break;
++        double z = zMin + (zMax - zMin) * rndmPtr->flat();
++        double xMother = (xDaughter + xResc) / z - xResc;
++        if (xMother >= xMaxAbs) continue;
++        double Q2 = pT2 / (1. - z);
++        double pT2corr = Q2 - z * (m2Dip + Q2) * (Q2 + m2Sister) / m2Dip;
++        if (pT2corr < TINYPT2) continue;
++        double scale2 = useFixedFacScale ? fixedFacScale2
++          : factorMultFac * pT2;
++        xfModPrepData xfData = beam.xfModPrep(iSysNow, scale2);
++        double daughter = beam.xfISR(iSysNow, idDaughter, xDaughter,
++          scale2, xfData);
++        if (daughter <= TINYPDF) continue;
++        double photon = max(0., beam.xfISR(iSysNow, 22, xMother, scale2,
++          xfData));
++        // xf ratios already contain the 1/z Jacobian: no further 1/z here.
++        double kernel = pow2(z) + pow2(1. - z)
++          + 2. * z * (1. - z) * m2Heavy / pT2;
++        double wt = kernel / massMax * photon / (daughter * ratioNow)
++          * alphaEM.alphaEM(renormMultFac * pT2) / alphaMax / overFac;
++        if (doMEcorrections)
++          wt *= calcMEcorr(MEtype, 22, idDaughter, m2Dip, z, Q2,
++            m2Sister) / meMax;
++        if (dopTdamp && iSysNow == 0 && MEtype == 0 && nRad == 0)
++          wt *= pT2damp / (pT2 + pT2damp);
++        if (!isfinite(wt)) continue;
++        if (wt > 1. + 1e-10) {
++          bool doRestart = (nRestart < MAXRESTARTA2QQ);
++          std::ios_base::fmtflags oldFlags = cout.flags();
++          std::streamsize oldPrec = cout.precision();
++          cout << scientific << setprecision(4)
++               << (doRestart ? " [A2QQ restart] " : " [A2QQ clipped] ")
++               << "id=" << idDaughter << " xD=" << xDaughter
++               << " xM=" << xMother << " pT2=" << pT2 << " z=" << z
++               << " fq=" << daughter << " fgam=" << photon
++               << " ratio=" << ratioNow << " wt=" << wt
++               << " nRestart=" << nRestart << endl;
++          cout.flags(oldFlags);
++          cout.precision(oldPrec);
++          if (doRestart) {
++            loggerPtr->WARNING_MSG(
++              "gamma -> q qbar: envelope enlarged and interval restarted");
++            ratioNow *= 2. * wt;
++            ++nRestart;
++            restart = true;
++            break;
++          }
++          loggerPtr->WARNING_MSG(
++            "gamma -> q qbar: weight above unity after max restarts (clipped)");
++        }
++        wt = min(1., max(0., wt));
++        // Use the existing delayed veto and enhancement weight bookkeeping.
++        bool delayed = canEnhanceET;
++        if (!delayed && wt < rndmPtr->flat()) continue;
++        if (wt <= 0.) continue;
++        dipEndNow->pAccept = delayed ? wt : 1.;
++        splittingNameNow = "isr:A2QQ";
++        if (canEnhanceET) storeEnhanceFactor(pT2, "isr:A2QQ", enhance);
++        dipEndNow->store(idDaughter, 22, -idDaughter, x1Now, x2Now, m2Dip,
++          pT2, z, xMother, Q2, mSister, m2Sister, pT2corr, 0, m2ColPair,
++          mColPartner);
++        return;
++      }
+     }
+     pT2top = pT2low;
+   }
+ }
+-
+ //--------------------------------------------------------------------------
+ 
+ void SimpleSpaceShower::pT2nextWeak( double pT2begDip, double pT2endDip) {
