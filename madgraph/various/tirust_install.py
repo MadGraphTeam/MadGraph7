@@ -145,7 +145,10 @@ def runtime_search_flags(libdir, relocatable, system=None):
     if (system or platform.system()) == 'Darwin':
         return [' '.join('-Wl,-rpath,@loader_path' + suffix
                          for suffix in ('', '/../lib', '/../../lib', '/../../../lib'))]
-    return ["-Wl,-rpath,'$$ORIGIN:$$ORIGIN/../lib:$$ORIGIN/../../lib:$$ORIGIN/../../../lib'"]
+    # Escaped rather than quoted, so that the makefile value also survives
+    # inside the double-quoted LDFLAGS that f2py receives.
+    return ['-Wl,-rpath,' + ':'.join('\\$$ORIGIN' + suffix
+                                     for suffix in ('', '/../lib', '/../../lib', '/../../../lib'))]
 
 
 def _first_output_line(command, cwd):

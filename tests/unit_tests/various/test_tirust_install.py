@@ -320,7 +320,7 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=aaaaaaaaaaaaaaa
         self.assertEqual(tirust_install.runtime_search_flags('/opt/t/lib', False, 'Darwin'),
                          ['-Wl,-rpath,/opt/t/lib'])
         self.assertEqual(tirust_install.runtime_search_flags('/opt/t/lib', True, 'Linux'),
-                         ["-Wl,-rpath,'$$ORIGIN:$$ORIGIN/../lib:$$ORIGIN/../../lib:$$ORIGIN/../../../lib'"])
+                         ['-Wl,-rpath,\\$$ORIGIN:\\$$ORIGIN/../lib:\\$$ORIGIN/../../lib:\\$$ORIGIN/../../../lib'])
         self.assertEqual(tirust_install.runtime_search_flags('/opt/t/lib', True, 'Darwin'),
                          ['-Wl,-rpath,@loader_path -Wl,-rpath,@loader_path/../lib '
                           '-Wl,-rpath,@loader_path/../../lib -Wl,-rpath,@loader_path/../../../lib'])

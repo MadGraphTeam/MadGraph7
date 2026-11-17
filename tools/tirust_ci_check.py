@@ -2,14 +2,20 @@
 """End-to-end TIRust check for CI on Linux and macOS.
 
   tools/tirust_ci_check.py --work DIR (--prefix DIR | --tirust LIBDIR) [--jobs N]
+                           [--dependencies external|internal]
 
 1. With --prefix, runs ``install tirust --prefix=DIR`` through MadGraph. The
    installer builds the bridge and runs its DP, QP and poles-only smoke test.
 2. Exports ``u u~ > z [virt=QCD]`` as standalone output against that
-   installation, builds the check driver, and runs it with MLReductionLib=9
+   installation (``internal`` copies the libraries into the output, which then
+   finds them through relative run paths), builds the check driver, and runs it with MLReductionLib=9
    (TIRust) and then 1 (CutTools).
 3. Requires MadLoop return code 213 from TIRust, and agreement of the Born,
    finite part and both poles with CutTools within 1e-9 relative.
+4. Checks, with ``make -n matrix2py.so``, that f2py receives no linker
+   options on its command line (it rejects them) and gets TIRust's run path
+   through LDFLAGS. A full f2py build is not run: with the meson backend
+   (Python >= 3.12) it currently fails for every loop output on ``-lstdc++``.
 
 The script never saves MadGraph options; it passes them with --no_save.
 """
@@ -72,6 +78,7 @@ def main() -> int:
     source.add_argument("--prefix", type=Path, help="install TIRust into this prefix first")
     source.add_argument("--tirust", type=Path, help="use this installed TIRust lib directory")
     parser.add_argument("--jobs", type=int, default=2)
+    parser.add_argument("--dependencies", choices=("external", "internal"), default="external")
     args = parser.parse_args()
     work = args.work.resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -91,6 +98,7 @@ def main() -> int:
     # 'set ninja None' skips the first-loop-output question about installing
     # other reducers, which a fresh checkout would otherwise ask.
     madgraph([f"set tirust {libdir} --no_save", "set ninja None --no_save",
+              f"set output_dependencies {args.dependencies} --no_save",
               "import model loop_sm", f"generate {PROCESS}",
               f"output standalone {export} -f"], work / "output.log")
     process = export / "SubProcesses/P0_uux_z"
@@ -116,10 +124,22 @@ def main() -> int:
         print(f"{key:12s} relative difference {error:.2e}")
         if error > TOLERANCE:
             failures.append(f"{key}: TIRust {tirust!r}, CutTools {reference!r}")
+    recipe = subprocess.run(make[:1] + ["-n", "-W", "f2py_wrapper.f", "matrix2py.so"] + make[2:],
+                            cwd=process, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            universal_newlines=True).stdout
+    f2py = next((line for line in recipe.splitlines() if "-m matrix2py" in line), "")
+    command = f2py.split("f2py", 1)[-1].split()
+    print("matrix2py recipe:", f2py[:200] + ("..." if len(f2py) > 200 else ""))
+    if not f2py:
+        failures.append("make -n matrix2py.so printed no f2py command")
+    elif any(token.startswith("-Wl") for token in command):
+        failures.append("f2py receives linker options on its command line")
+    elif not re.search(r"LDFLAGS=\S*.*-Wl,-rpath,", f2py.split("f2py", 1)[0]):
+        failures.append("TIRust's run path does not reach f2py through LDFLAGS")
     if failures:
         print("FAILED:\n  " + "\n  ".join(failures))
         return 1
-    print("TIRust agrees with CutTools.")
+    print("TIRust agrees with CutTools, and the matrix2py recipe is valid for f2py.")
     return 0
 
 

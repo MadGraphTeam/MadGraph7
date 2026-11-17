@@ -198,13 +198,18 @@ shared: liball$(ROOTNAME)_$(MENUM)me.$(dylibext)
 
 
 
+# f2py takes only libraries and library paths on its command line: linker
+# options in the loop libraries (TIRust's run path) go through LDFLAGS.
+F2PY_LOOP_LIBS = $(filter-out -Wl%,$(LINK_LOOP_LIBS))
+F2PY_LOOP_LDFLAGS = $(if $(filter -Wl%,$(LINK_LOOP_LIBS)),LDFLAGS="$$LDFLAGS $(filter -Wl%,$(LINK_LOOP_LIBS))")
+
 matrix$(MENUM)py.so: ../$(OLP)_static f2py_wrapper.f 
 	touch __init__.py
-	$(F2PY) $(MADLOOP_LIB) -m matrix$(MENUM)py -c f2py_wrapper.f --f77exec=$(FC)   -L../../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS) $(STDLIB)
+	$(F2PY_LOOP_LDFLAGS) $(F2PY) $(MADLOOP_LIB) -m matrix$(MENUM)py -c f2py_wrapper.f --f77exec=$(FC)   -L../../lib/ -ldhelas -lmodel $(F2PY_LOOP_LIBS) $(STDLIB)
 
 allmatrix$(MENUM)py.so: $(OLP)_static all_matrix.f $(LIBS) $(WRAPPER)
 	touch __init__.py
-	$(F2PY) $(MADLOOP_LIB)  -m allmatrix$(MENUM)py -c all_matrix.f $(wildcard $(LOOP_PREFIX)*/f2py_wrapper.f) --f77exec=$(FC)   -L../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS) $(STDLIB) 
+	$(F2PY_LOOP_LDFLAGS) $(F2PY) $(MADLOOP_LIB)  -m allmatrix$(MENUM)py -c all_matrix.f $(wildcard $(LOOP_PREFIX)*/f2py_wrapper.f) --f77exec=$(FC)   -L../lib/ -ldhelas -lmodel $(F2PY_LOOP_LIBS) $(STDLIB) 
 
 
 all_matrix$(MENUM)py.so:  liball$(ROOTNAME)_$(MENUM)me.$(dylibext) f2py_wrapper.f makefile
