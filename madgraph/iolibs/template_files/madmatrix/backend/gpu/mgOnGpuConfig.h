@@ -335,8 +335,8 @@ ispoweroftwo( int n )
 #endif
 #endif
 
-// hipcc from ROCm 6.0 is LLVM 17, same floor as the clang startup check.
-#if defined __HIPCC__ && __clang_major__ < 17
+// ROCm 6.0 hipcc is LLVM 17, same floor as the clang startup check. HIP_VERSION_MAJOR from hip_runtime.h.
+#if defined __HIPCC__ && defined HIP_VERSION_MAJOR && HIP_VERSION_MAJOR < 6
 #error Unsupported HIP version: please use ROCm >= 6.0
 #endif
 
