@@ -556,13 +556,13 @@ jobs:
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_decay_mssm
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pP -t0 -l INFO test_decay_mssm
 
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -pP -t0 -l INFO test_decay_mssm
 
   test_decay_comparator_nmssm1:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
