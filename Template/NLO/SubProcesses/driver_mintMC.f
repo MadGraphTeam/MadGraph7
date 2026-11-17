@@ -2207,18 +2207,25 @@ c     if there are no soft singularities at all, just do something trivial
 
       subroutine special_check_SoftSing(isoft)
       use weight_lines
+      use extra_weights, only: QCD_power,orders_tag,amp_pos,wgtcpower,
+     $     cpower_pos
       implicit none
       include 'nexternal.inc'
       include 'fks_info.inc'
-      integer i_soft,isoft,i
+      include 'orders.inc'
+      integer i_soft,isoft,i,i_S
+      integer orders(nsplitorders)
+      integer get_orders_tag
       logical found_S
       i_soft=0
+      i_S=0
       found_S=.false.
       do i=1,icontr
          if (H_event(i)) then
             cycle
          else
             found_S=.true.
+            if (i_S.eq.0) i_S=i
          endif
          if (abs(pdg_type_d(nFKS(i),fks_i_d(nFKS(i)))).eq.21) then
             i_soft=i
@@ -2226,9 +2233,17 @@ c     if there are no soft singularities at all, just do something trivial
          endif
       enddo
       if (found_S .and. i_soft.eq.0) then
-         ! add an artificial contribution
+c Add an artificial, negligible Born contribution in a sector with a soft
+c singularity. It takes the coupling orders of an existing S contribution,
+c which passed the coupling-order selection of add_wgt.
          call update_fks_dir(isoft)
-         call add_wgt(2,1d-199,0d0,0d0)
+         call amp_split_pos_to_orders(amppos(i_S),orders)
+         QCD_power=orders(qcd_pos)
+         wgtcpower=0d0
+         if (cpower_pos.gt.0) wgtcpower=dble(orders(max(1,cpower_pos)))
+         orders_tag=get_orders_tag(orders)
+         amp_pos=amppos(i_S)
+         call add_wgt(2,orders,1d-199,0d0,0d0)
       endif
       return
       end
