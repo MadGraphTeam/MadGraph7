@@ -14,7 +14,10 @@ fatal), relinks it, and runs it once:
 Reference: forced-QP CutTools and Ninja (independent reductions) when they agree
 at the campaign tolerance. Otherwise, at least two stability-checked values from
 independent reducers that agree; a single reducer is never its own reference
-("unverified"). Independently of any reference, the IR double pole of every
+("unverified"). Without a reference, an accepted value is still WRONG when it lies
+far outside the spread of all independent values (forced QP of 1, 6 and 8 and the
+checked values of 1, 6, 7 and 8; see consensus_check). Independently of any
+reference, the IR double pole of every
 value is checked: its ratio to the Born is kinematics independent, so it must
 equal the case's ratio at ordinary points (from the ordinary matrix, or the
 case's ordinary stress anchors).
@@ -56,6 +59,8 @@ EXTRA_CASES = {"cms_ew_n2_epem_mupmum": {"id": "cms_ew_n2_epem_mupmum", "model":
                                          "process": "e+ e- > mu+ mu- [virt=QED]", "nfinal": 2,
                                          "role": "complex-mass-stress", "complex_mass_scheme": True}}
 REFERENCES = ("candidate-1-qp", "candidate-6-qp")
+# Without a reference, an accepted value must still lie within the spread of these and of ACCEPTED_REFERENCES.
+INDEPENDENT_QP = ("candidate-1-qp", "candidate-6-qp", "candidate-8-qp")
 # Weaker fallback: stability-checked values accepted by independent (non-TIRust) reducers.
 ACCEPTED_REFERENCES = ("candidate-1-auto", "candidate-6-auto", "candidate-7-auto", "candidate-8-auto")
 
@@ -324,6 +329,7 @@ def summarize(campaign):
             reference, entry["reference"], agreement = select_reference(refs, accepted, ratios, tolerance)
             if agreement is not None:
                 entry["reference_agreement"] = agreement
+            independents = independent_results(results, index, ratios, tolerance) if reference is None else []
             for label, result in sorted(results.items()):
                 rows = point_rows(result, index)
                 lane = {"status": result["status"], "codes": sorted({r["status"] for r in rows}),
@@ -337,6 +343,11 @@ def summarize(campaign):
                     lane["accepted"] = ["unchecked-qp"] if comparable(rows) else None
                 if lane["accepted"] and reference is not None and comparable(rows):
                     lane["vs_reference"] = compare(reference, rows, tolerance)
+                elif lane["accepted"] and result["mode"] == "auto" and comparable(rows):
+                    consensus = consensus_check(rows, independents, lane["accepted"][0],
+                                                (result.get("settings") or {}).get("mlstabthres"), tolerance)
+                    if consensus is not None:
+                        lane["vs_independent"] = consensus
                 if lane["accepted"]:
                     poles = pole_check(rows, ratios, tolerance)
                     if poles is not None:
@@ -433,10 +444,54 @@ def select_reference(qp_refs, accepted, ratios, tolerance):
     return None, "unavailable or disputed" + suffix, agreement
 
 
+def lane_backend(label):
+    """The single backend of a lane label ("candidate-8-qp" -> 8), None for the chain."""
+    parts = label.split("-")
+    return int(parts[1]) if len(parts) > 2 and parts[1] in ("1", "6", "7", "8", "9") else None
+
+
+def independent_results(results, index, ratios, tolerance):
+    """[(backend, rows)] of comparable non-TIRust values at a point: forced QP of 1, 6 and 8, and the
+    stability-checked values of ACCEPTED_REFERENCES. Values with a wrong double pole are left out."""
+    found = []
+    for label in INDEPENDENT_QP + ACCEPTED_REFERENCES:
+        result = results.get(label)
+        if not result or result["status"] != "complete":
+            continue
+        rows = point_rows(result, index)
+        if not comparable(rows):
+            continue
+        if result["mode"] == "auto" and not accepted_backend(rows, result["chain"]):
+            continue
+        if not (pole_check(rows, ratios, tolerance) or {"passed": True})["passed"]:
+            continue
+        found.append((lane_backend(label), rows))
+    return found
+
+
+def consensus_check(rows, independents, own_backend, threshold, tolerance):
+    """Without a reference: is the value far outside the spread of the independent results?
+
+    Uses the independent values of other reducers only (a reducer cannot vouch for itself).
+    The value is outside when even the nearest of them is more than max(MLStabThres or the
+    tolerance, 10 x their largest pairwise difference) away, in MadLoop's accuracy measure.
+    None if fewer than two such values exist.
+    """
+    others = [r for backend, r in independents if backend != own_backend]
+    if len(others) < 2:
+        return None
+    spread = max(madloop_error(a, b) for i, a in enumerate(others) for b in others[i + 1:])
+    distance = min(madloop_error(r, rows) for r in others)
+    bound = max(threshold or tolerance, 10.0 * spread)
+    return {"count": len(others), "spread": spread, "minimum_madloop_error": distance, "bound": bound,
+            "outside": distance > bound}
+
+
 def classify(lane, chain, reference, threshold=None):
     """TIRust may refuse; any accepted or chain-rescued value must be right and as accurate as claimed.
 
-    WRONG: wrong double pole, or disagrees with the reference. INACCURATE: agrees within the
+    WRONG: wrong double pole, disagrees with the reference, or (without a reference) lies far
+    outside the spread of every independent reducer's value. INACCURATE: agrees within the
     campaign tolerance, but its actual error (in MadLoop's accuracy measure) exceeds the lane's
     MLStabThres (`threshold`) while its claimed accuracy does not, so MadLoop's stability test
     accepted it on a false estimate.
@@ -451,6 +506,8 @@ def classify(lane, chain, reference, threshold=None):
     if lane.get("pole_check") and not lane["pole_check"]["passed"]:
         return label + "-WRONG"
     if reference is None or "vs_reference" not in lane:
+        if (lane.get("vs_independent") or {}).get("outside"):
+            return label + "-WRONG"
         return label + "-unreferenced"
     if not lane["vs_reference"]["passed"]:
         return label + "-WRONG"
@@ -497,6 +554,11 @@ def markdown(summary):
                 if lane["classification"].endswith("-INACCURATE"):
                     text += (f", actual error {lane['vs_reference']['madloop_error']:.1e} in MadLoop's accuracy"
                              f" measure, above MLStabThres {lane['mlstabthres']:.0e}")
+            elif (lane.get("vs_independent") or {}).get("outside"):
+                consensus = lane["vs_independent"]
+                text += (f"; {consensus['minimum_madloop_error']:.1e} from the nearest of {consensus['count']}"
+                         f" independent values in MadLoop's accuracy measure (their largest difference"
+                         f" {consensus['spread']:.1e})")
             if lane.get("accuracy") is not None:
                 text += f"; claimed accuracy {lane['accuracy']:.1e}"
             details["tirust" if label.startswith(("candidate-9", "chain-9671")) else "other"].append(text)

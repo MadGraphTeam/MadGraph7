@@ -1,0 +1,5 @@
+# Raw lane evidence (full residual lists, worker logs, protocol copies, traces)
+# stays on the producing host; it is reproducible with the commands in README.md.
+# Compact summaries are committed under summaries/.
+experiments/
+report/benchmark-preview.pdf

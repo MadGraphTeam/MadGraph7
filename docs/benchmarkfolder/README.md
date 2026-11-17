@@ -10,7 +10,8 @@ campaign, its results and the open acceptance items. The user guide is
 | Path | Content |
 |---|---|
 | [`benchmark.pdf`](benchmark.pdf) | Report: 48 preserved pages plus the current-source pages |
-| [`campaigns/tirust-a5d4afbf-1/`](campaigns/tirust-a5d4afbf-1/) | Current campaign, final pin (TIRust `main` `a5d4afb`). Registration (manifest, frozen inputs, points), [`summaries/`](campaigns/tirust-a5d4afbf-1/summaries/), [`stability/`](campaigns/tirust-a5d4afbf-1/stability/), report sources and the [local timing TODO](campaigns/tirust-a5d4afbf-1/timing-handoff-1/LOCAL_TIMING_TODO.md) |
+| [`campaigns/tirust-2b9ba961-1/`](campaigns/tirust-2b9ba961-1/) | Current campaign: TIRust `main` `2b9ba961` with the bridge's method choice off. Registration (manifest, frozen inputs, points), [`summaries/`](campaigns/tirust-2b9ba961-1/summaries/), [`stability/`](campaigns/tirust-2b9ba961-1/stability/), report sources and the [local timing TODO](campaigns/tirust-2b9ba961-1/timing-handoff-1/LOCAL_TIMING_TODO.md) |
+| [`campaigns/tirust-a5d4afbf-1/`](campaigns/tirust-a5d4afbf-1/) | Previous campaign: TIRust `main` `a5d4afb`, method choice on (its stress page shows the method-choice defect) |
 | [`campaigns/tirust-9a781998-1/`](campaigns/tirust-9a781998-1/) | Rehearsal on the unmerged PR #35 head; also the g g → g g g g and g g → z z z z checks, the QP 512-bit retry rerun and the recovered optimization logs |
 | [`campaigns/entry-latch-cache-guard-1/`](campaigns/entry-latch-cache-guard-1/) | Measured predecessor; its physical cards and frozen inputs are inherited |
 | `campaigns/{invariant-symmetry-1,split-dp-terminal-1}/`, `runs/qcd_n1_uux_z/tirust-first-attempt-3/` | Only the ancestor manifests, summary snapshots and retained failure that campaign verification checks |
@@ -32,7 +33,7 @@ Run from the MadGraph root with `source tools/tirust_env.sh` (outside
 ```bash
 REASON='…' tools/tirust_requalify.sh tirust-<pin8>-1     # install … stability, provenance, summaries
 python3 -B tools/tirust_current_report.py render --campaign tirust-<pin8>-1 [--publish]
-python3 -B tools/tirust_current_report.py verify --campaign tirust-a5d4afbf-1
+python3 -B tools/tirust_current_report.py verify --campaign tirust-2b9ba961-1
 ```
 
 The individual tools (`tools/tirust_benchmark*.py`, `tools/tirust_capture/`,

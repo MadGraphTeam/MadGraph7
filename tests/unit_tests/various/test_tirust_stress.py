@@ -221,6 +221,22 @@ class TestStressReferences(unittest.TestCase):
         self.assertEqual(stress.classify(lane, [9], reference, 1e-3), "accepted-agrees")
         self.assertEqual(stress.classify(lane, [9], reference), "accepted-agrees")
 
+    def test_value_far_outside_every_independent_value_is_wrong_without_a_reference(self):
+        qp, near = rows(2.0, 600.0, 0.1, -0.5), rows(2.0, 600.006, 0.1, -0.5)  # independent values, 3e-5 apart
+        independents = [(1, qp), (8, near)]
+        off = rows(2.0, 594.0, 0.1, -0.5)  # 1% off, as a value from inaccurate double-precision inputs
+        check = stress.consensus_check(off, independents, 9, 1e-6, 3e-6)
+        self.assertTrue(check["outside"])
+        self.assertAlmostEqual(check["spread"], 0.006 / (599.6 / 3))
+        lane = {"status": "complete", "accepted": [9, "DP"], "vs_independent": check}
+        self.assertEqual(stress.classify(lane, [9], None, 1e-6), "accepted-WRONG")
+        inside = stress.consensus_check(rows(2.0, 600.003, 0.1, -0.5), independents, 9, 1e-6, 3e-6)
+        self.assertFalse(inside["outside"])
+        self.assertEqual(stress.classify(dict(lane, vs_independent=inside), [9], None, 1e-6), "accepted-unreferenced")
+        self.assertIsNone(stress.consensus_check(off, independents, 8, 1e-6, 3e-6))  # cannot vouch for itself
+        self.assertEqual([stress.lane_backend(x) for x in ("candidate-8-qp", "baseline-1-auto", "chain-9671-auto")],
+                         [8, 1, None])
+
     def test_blocking_outcomes(self):
         self.assertTrue(stress.blocking_outcome("accepted-WRONG"))
         self.assertTrue(stress.blocking_outcome("rescued-by-1-WRONG"))
