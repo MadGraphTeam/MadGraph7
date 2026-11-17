@@ -74,7 +74,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # (n-1)! trace structures, so the trace basis is built alongside and the
     # trace jamps are rebuilt from the DDM ones through the Kleiss-Kuijf
     # relations (see set_color_flow_lines_cpp in model_handling.py).
-    support_ddm_color_basis = True
+    ddm_color_basis = 'auto'
     ddm_needs_flow_basis = True
 
     # Below are the class variable that are defined in export_cpp.ProcessExporterGPU

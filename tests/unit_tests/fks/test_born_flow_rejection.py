@@ -75,6 +75,24 @@ class TestBornFlowRejection(unittest.TestCase):
     def test_learned_sector_radiation_jacobian_and_selected_event_replay(self):
         self.check_mode('sector')
 
+    def test_folding_rejects_radiation_dependent_born_coordinates(self):
+        result = subprocess.run([str(self.executable), 'no_projection'],
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Folding requires event projection', result.stdout)
+
+    def test_explicit_sum_requires_event_projection_without_folding(self):
+        result = subprocess.run([str(self.executable), 'no_proj_exp'],
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('FKSExplicitSum requires event projection', result.stdout)
+
+    def test_unfolded_nbody_runs_do_not_require_event_projection(self):
+        # Born-only and virtual-only runs never sum real-emission sectors.
+        for mode in ('no_proj_born', 'no_proj_virt'):
+            with self.subTest(mode=mode):
+                self.check_mode(mode)
+
     def test_calibration_uses_s_weights_and_restores_production(self):
         self.check_mode('calibration')
 
@@ -109,9 +127,13 @@ class TestBornFlowRejection(unittest.TestCase):
         self.check_mode('legacy')
 
     def test_massive_reference_without_soft_endpoint_keeps_shared_flow(self):
-        for mode in ('massive', 'massive_middle', 'massive_uncut'):
+        for mode in ('massive', 'massive_middle', 'massive_uncut', 'massive_sampled'):
             with self.subTest(mode=mode):
                 self.check_mode(mode)
+
+    def test_unfolded_massive_reference_without_soft_endpoint_has_no_born_flow(self):
+        # Without folds or an explicit FKS sum no S event shares this Born.
+        self.check_mode('massive_unfolded')
 
     def test_nonfinite_weights_discard_all_folds_and_recover(self):
         for mode in ('weight_nan', 'weight_inf', 'weight_neginf', 'weight_scaled',

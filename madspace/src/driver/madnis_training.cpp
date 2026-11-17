@@ -19,7 +19,8 @@ MadnisTraining::MadnisTraining(
     const std::vector<std::shared_ptr<Integrand>>& integrands,
     const std::optional<ChannelWeightNetwork>& cwnet,
     std::optional<std::uint64_t> seed,
-    std::size_t channel_index_offset
+    std::size_t channel_index_offset,
+    const nested_vector2<std::size_t>& channel_resonances
 ) :
     _generator_context(generator_context),
     _optimizer_context(optimizer_context),
@@ -57,6 +58,20 @@ MadnisTraining::MadnisTraining(
                 _active_flavors_count.resize(flav_index + 1);
             }
             ++_active_flavors_count.at(flav_index);
+        }
+        if (channel_resonances.size() > 0) {
+            if (channel_resonances.size() != integrands.size()) {
+                throw std::invalid_argument(
+                    "channel_resonances needs one entry per integrand"
+                );
+            }
+            channel.resonances = channel_resonances.at(index);
+            for (std::size_t res_index : channel.resonances) {
+                if (_active_resonances_count.size() <= res_index) {
+                    _active_resonances_count.resize(res_index + 1);
+                }
+                ++_active_resonances_count.at(res_index);
+            }
         }
         ++index;
     }
@@ -911,15 +926,31 @@ void MadnisTraining::drop_channels(std::size_t batch) {
                     active_flavors.begin(),
                     active_flavors.end(),
                     [&](std::size_t flav_index) {
-                        return _active_flavors_count.at(flav_index) == 0;
+                        // the count includes this channel
+                        return _active_flavors_count.at(flav_index) <= 1;
                     }
                 )) {
                 // a flavor of this channel has no other channel to fall back to
                 continue;
             }
-            for (std::size_t flav_index : active_flavors) {
+        }
+        // a resonance of this channel has no other channel to map it
+        if (std::any_of(
+                channel.resonances.begin(),
+                channel.resonances.end(),
+                [&](std::size_t res_index) {
+                    return _active_resonances_count.at(res_index) <= 1;
+                }
+            )) {
+            continue;
+        }
+        if (_active_flavors_count.size() > 0) {
+            for (std::size_t flav_index : channel.integrand->active_flavors()) {
                 --_active_flavors_count.at(flav_index);
             }
+        }
+        for (std::size_t res_index : channel.resonances) {
+            --_active_resonances_count.at(res_index);
         }
 
         for (me_int_t index : channel.integrand->channel_indices()) {
@@ -1009,7 +1040,8 @@ void MultiMadnisTraining::train() {
             args.integrands,
             args.cwnet,
             _seed,
-            channel_index_offset
+            channel_index_offset,
+            args.channel_resonances
         );
         for (std::size_t batch_index = 0; batch_index < subproc.config().batches;
              ++batch_index) {

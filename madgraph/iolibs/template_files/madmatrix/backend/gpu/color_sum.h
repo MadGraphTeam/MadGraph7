@@ -52,9 +52,10 @@ namespace madmatrix
     {
       // the number of jamps: ncolor per amplitude split order (njampso == ncolor
       // without split orders); the real and the imaginary planes are that long
-      const int ncolor = ProcessData::njampso;
-      const int nevt = gridDim.x * blockDim.x;
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
+      // size_t avoids int overflow in the index products below
+      const size_t ncolor = ProcessData::njampso;
+      const size_t nevt = gridDim.x * blockDim.x;
+      const size_t ievt = blockDim.x * blockIdx.x + threadIdx.x;
       // (ONE HELICITY) Original "old" striding for CUDA kernels: ncolor separate 2*nevt matrices for each color (ievt last)
       //return cxtype_ref( buffer[icol * 2 * nevt + ievt], buffer[icol * 2 * nevt + nevt + ievt] ); // "old"
       // (ONE HELICITY) New "new1" striding for cuBLAS: two separate ncolor*nevt matrices for each of real and imag (ievt last)
@@ -69,9 +70,10 @@ namespace madmatrix
     {
       // the number of jamps: ncolor per amplitude split order (njampso == ncolor
       // without split orders); the real and the imaginary planes are that long
-      const int ncolor = ProcessData::njampso;
-      const int nevt = gridDim.x * blockDim.x;
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
+      // size_t avoids int overflow in the index products below
+      const size_t ncolor = ProcessData::njampso;
+      const size_t nevt = gridDim.x * blockDim.x;
+      const size_t ievt = blockDim.x * blockIdx.x + threadIdx.x;
       // (ONE HELICITY) Original "old" striding for CUDA kernels: ncolor separate 2*nevt matrices for each color (ievt last)
       //return cxtype_ref( buffer[icol * 2 * nevt + ievt], buffer[icol * 2 * nevt + nevt + ievt] ); // "old"
       // (ONE HELICITY) New "new1" striding for cuBLAS: two separate ncolor*nevt matrices for each of real and imag (ievt last)

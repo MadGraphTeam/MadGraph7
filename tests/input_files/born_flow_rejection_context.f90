@@ -7,7 +7,8 @@ module flow_fixture
   integer :: sector_draws=0
   double precision :: last_prefactor_weight=1d0
   logical :: real_point_active=.false.,born_cuts=.true.
-  logical :: outer_no_endpoint=.false.
+  logical :: outer_no_endpoint=.false.,real_no_endpoint=.false.
+  logical :: no_event_projection=.false.
   logical :: fail_kinematics=.false.
   integer :: fail_weight_fold=0,fail_weight_stage=0
   double precision :: bad_weight=0d0
@@ -33,7 +34,7 @@ end module
 
 module fks_phase_space
   use fks_phase_space_data
-  use flow_fixture, only: outer_no_endpoint
+  use flow_fixture, only: outer_no_endpoint,real_no_endpoint,no_event_projection
   implicit none
   type fks_born_point
     logical :: valid=.false.,event_projection=.true.
@@ -52,6 +53,7 @@ contains
     integer :: i_fks,j_fks
     common/fks_indices/i_fks,j_fks
     point=fks_phase_space_point()
+    point%born%event_projection=.not.no_event_projection
     p_born=1d0
     p1_cnt=1d0
     p1_cnt(:,i_fks,0)=0d0
@@ -66,8 +68,11 @@ contains
     integer :: i_fks,j_fks
     common/fks_indices/i_fks,j_fks
     point=fks_phase_space_point()
+    point%born%event_projection=.not.no_event_projection
     p1_cnt(:,:,0)=1d0
     p1_cnt(:,i_fks,0)=0d0
+    ! The reference sector itself, at the same radiation coordinates.
+    if(real_no_endpoint)p1_cnt(0,1,0)=-99d0
     if(present(cached_born))cached_born=point%born
   end subroutine
 end module

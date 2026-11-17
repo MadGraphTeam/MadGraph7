@@ -6549,9 +6549,8 @@ c
 
 
       subroutine reset_folded_virtual
-c The driver starts a fresh complete folded point before any radiation
-c trial. A skipped first soft endpoint must not expose the prior point's
-c cached virtual to a later supported fold.
+c A complete folded point owns its virtual cache, including when its
+c first radiation trial has no soft endpoint and skips bornsoftvirtual.
       implicit none
       logical virtual_fold_ready
       common /c_folded_virtual/ virtual_fold_ready
@@ -6635,9 +6634,6 @@ c For tests of virtuals
 c timing statistics
       include "timing_variables.inc"
 
-c For the MINT folding
-      integer fold,ifold_counter
-      common /cfl/fold,ifold_counter
       logical virtual_fold_ready,first_virtual_evaluation
       common /c_folded_virtual/ virtual_fold_ready
       double precision virt_wgt_save
@@ -6701,8 +6697,6 @@ c Surrogate/Born ratios fixed for all folds of this point.
 c The first radiation trial need not have a soft endpoint. Initialize
 c the virtual on the first fold that actually reaches this routine,
 c after the driver has reset the complete point, not by its fold index.
-c Fixed-order callers retain their ordinary fold-zero initialization.
-      if (fold.eq.0) call reset_folded_virtual
       first_virtual_evaluation=.not.virtual_fold_ready
       
       if (firsttime) then

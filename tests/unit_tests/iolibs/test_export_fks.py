@@ -327,6 +327,7 @@ class IOExportFKSTest(IOTests.IOTestManager):
             opt = dict(interface.options)
             opt['ninja'] = None
             opt['collier'] = None
+            opt['ninjars'] = None
             with misc.TMP_variable(interface, 'options', opt):
                 interface.exec_cmd(cmd, errorhandling=False, printcmd=False, 
                                precmd=True, postcmd=True)

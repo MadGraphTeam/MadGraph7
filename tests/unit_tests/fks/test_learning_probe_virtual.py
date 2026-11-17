@@ -1,4 +1,4 @@
-"""A virtual cache belongs to one complete point, including skipped folds."""
+"""Learning probes skip the exact virtual; test_folding_virtual checks the folded cache."""
 
 from pathlib import Path
 import shutil
@@ -142,72 +142,3 @@ call expect(195d0,5d0,1,1)
 write(*,*) 'PASS probe skips the virtual'
 end program
 ''', 'PASS probe skips the virtual')
-
-    def test_delayed_endpoint_resets_previous_virtual_and_draws_once(self):
-        program = '''program check
-use point_fixture
-implicit none
-! Establish a nonzero cached result from a previous Born point.
-call new_point(2d0,7d0)
-fold=0
-call evaluate_fold
-call expect(5d0,2d0,1,1)
-fold=1
-call evaluate_fold
-call expect(5d0,2d0,1,1)
-! The new point's first radiation fold had no endpoint and never called
-! bornsoftvirtual. Its first supported endpoint reaches this block with
-! fold=1, exactly as for the massive shifted-fold production-map fixture.
-call new_point(3d0,13d0)
-fold=1
-call evaluate_fold
-call expect(10d0,3d0,2,2)
-call evaluate_fold
-call expect(10d0,3d0,2,2)
-if(abs(virtual_over_born-13d0/3d0)>1d-12)error stop 'delayed Born ratio not initialized'
-! A point where the stochastic virtual is skipped must also reset the
-! cache, rather than reuse the preceding point's nonzero residual.
-virtual_fraction=0.1d0
-call new_point(4d0,100d0)
-fold=1
-call evaluate_fold
-call expect(0d0,4d0,2,3)
-call evaluate_fold
-call expect(0d0,4d0,2,3)
-! Calibration records no residual, and must consume no virtual draw.
-born_spread_phase=1
-point_evaluation%integration=.false.
-point_evaluation%born_spread_samples=.true.
-call new_point(5d0,200d0)
-call evaluate_fold
-call expect(0d0,5d0,2,3)
-! A later supported fold must initialize the fit's Born and fraction.
-born_spread_phase=0
-point_evaluation%integration=.true.
-point_evaluation%born_spread_samples=.false.
-VirtTrickSurrogate=1
-virtual_fraction=0.5d0
-call new_point(6d0,19d0)
-call evaluate_fold
-call expect(26d0,6d0,3,4)
-if(.not.vs_vcomp.or.vs_born.ne.6d0.or.vs_fvirt.ne.0.5d0.or.vs_virt.ne.19d0) &
-  error stop 'surrogate state not initialized on delayed endpoint'
-call evaluate_fold
-call expect(26d0,6d0,3,4)
-! Fixed-order callers do not use the MC driver's reset hook. Fold zero
-! must still initialize their distinct single-point evaluations.
-VirtTrickSurrogate=0
-virtual_fraction=1d0
-fold=0
-born_wgt=2d0
-amp_split_born_for_virt=2d0
-exact_virtual=29d0
-call evaluate_fold
-call expect(27d0,2d0,4,5)
-exact_virtual=31d0
-call evaluate_fold
-call expect(29d0,2d0,5,6)
-write(*,*) 'PASS folded virtual cache'
-end program
-'''
-        self.run_program(program, 'PASS folded virtual cache')
