@@ -196,13 +196,41 @@ shared: liball$(ROOTNAME)_$(MENUM)me.$(dylibext)
 
 
 
-matrix$(MENUM)py.so: ../$(OLP)_static f2py_wrapper.f 
-	touch __init__.py
-	$(F2PY) $(MADLOOP_LIB) -m matrix$(MENUM)py -c f2py_wrapper.f --f77exec=$(FC)   -L../../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS) $(STDLIB)
+# f2py's meson backend (numpy >= 1.26, and the only one on Python >= 3.12):
+# - names a meson variable after each -l library, which stdc++ and c++ are not
+#   valid names for. The C++ runtime therefore goes through LDFLAGS. The
+#   distutils backend puts LDFLAGS before the objects, where a linker running
+#   with --as-needed (Ubuntu's default) drops it although a static C++ reducer
+#   (Ninja) needs it: on Linux --no-as-needed keeps it.
+# - links .a files given as sources before its objects, where they resolve
+#   nothing: MadLoop is linked with -lMadLoop instead.
+# - compiles copies of the sources in a temporary directory, where their
+#   INCLUDE files are found only through -I, and where sources with the same
+#   file name overwrite each other. allmatrix therefore compiles all_matrix.f
+#   and the P*/f2py_wrapper.f in place, and builds the module from their
+#   signatures and objects (by absolute path: meson looks for relative ones in
+#   its build directory).
+# - takes the Fortran compiler from FC and ignores --f77exec.
+# libMadLoop.a leaves out cite(), which madevent takes from libgeneric: the
+# modules link mg5_citation.o, like the check executable.
+ifeq ($(UNAME), Darwin)
+  F2PY_STDLIB = $(STDLIB)
+else
+  F2PY_STDLIB = -Wl,--no-as-needed $(STDLIB)
+endif
+F2PY_LOOP_LDFLAGS = FC="$(FC)" LDFLAGS="$$LDFLAGS $(F2PY_STDLIB)"
+F2PY_CITATION = $(patsubst %.f,%.o,$(wildcard mg5_citation.f))
 
-allmatrix$(MENUM)py.so: $(OLP)_static all_matrix.f $(LIBS) $(WRAPPER)
+matrix$(MENUM)py.so: ../$(OLP)_static f2py_wrapper.f $(F2PY_CITATION)
 	touch __init__.py
-	$(F2PY) $(MADLOOP_LIB)  -m allmatrix$(MENUM)py -c all_matrix.f $(wildcard $(LOOP_PREFIX)*/f2py_wrapper.f) --f77exec=$(FC)   -L../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS) $(STDLIB) 
+	$(F2PY_LOOP_LDFLAGS) $(F2PY) -m matrix$(MENUM)py -c f2py_wrapper.f $(F2PY_CITATION) --f77exec=$(FC) -I$(HERE) $(LINK_MADLOOP_LIB) -L../../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS)
+
+ALLMATRIX_WRAPPERS = $(wildcard $(LOOP_PREFIX)*/f2py_wrapper.f)
+
+allmatrix$(MENUM)py.so: $(OLP)_static all_matrix.o $(ALLMATRIX_WRAPPERS:.f=.o) $(LIBS) $(F2PY_CITATION)
+	touch __init__.py
+	$(F2PY) -m allmatrix$(MENUM)py -h allmatrix$(MENUM)py.pyf --overwrite-signature all_matrix.f $(ALLMATRIX_WRAPPERS)
+	$(F2PY_LOOP_LDFLAGS) $(F2PY) -c allmatrix$(MENUM)py.pyf $(addprefix $(HERE),all_matrix.o $(ALLMATRIX_WRAPPERS:.f=.o) $(F2PY_CITATION)) --f77exec=$(FC) $(LINK_MADLOOP_LIB) -L../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS)
 
 
 all_matrix$(MENUM)py.so:  liball$(ROOTNAME)_$(MENUM)me.$(dylibext) f2py_wrapper.f makefile
