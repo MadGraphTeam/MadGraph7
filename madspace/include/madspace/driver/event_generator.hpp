@@ -105,8 +105,8 @@ public:
         const GeneratorConfig& config = default_config,
         const std::vector<WeightingGroup>& groups = {}
     );
-    EventGenerator(EventGenerator&&) = default;
-    EventGenerator& operator=(EventGenerator&&) = default;
+    EventGenerator(EventGenerator&&) = delete;
+    EventGenerator& operator=(EventGenerator&&) = delete;
     EventGenerator(const EventGenerator&) = delete;
     EventGenerator& operator=(const EventGenerator&) = delete;
     /// Run the survey/optimization phase of every channel. @p survey_pass

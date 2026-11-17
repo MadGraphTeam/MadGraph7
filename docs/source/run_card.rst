@@ -330,6 +330,30 @@ VEGAS grids adapt the phase-space sampling during the survey.
     are dropped. ``-1`` keeps all channels. This helps with processes that have too many
     channels.
 
+``ew_channel_reduction`` (``20``)
+    If a subprocess still has more channels than this, channels that differ only in the
+    bosons of some of their off-shell propagators are merged into one, which takes over
+    their channel weights, and redundant ones are dropped (see
+    ``ew_channel_reduction_mode``). Channels that map a flavor or a (flavor, resonance) pair
+    no kept channel does are always kept. ``-1`` keeps all channels. This is the
+    counterpart of ``drop_qcd_s_channel`` for processes with many electroweak diagrams.
+
+``ew_channel_reduction_mode`` (``"partial"``)
+    How far ``ew_channel_reduction`` goes:
+
+    - ``"t_channel"``: merge channels that differ only in the bosons of their t-channel
+      propagators (a photon, Z or W); every s-channel structure keeps its channel.
+    - ``"partial"``: merge as ``"t_channel"``, and keep only the channels with at most one
+      non-resonant s-channel propagator more than the fewest.
+    - ``"full"``: also merge channels that differ in their off-shell s-channel bosons, and
+      keep only the channels with the fewest non-resonant s-channel propagators. This
+      gives the fewest channels, but trains to lower unweighting efficiencies.
+
+``channel_reduction_with_vegas`` (``false``)
+    ``ew_channel_reduction`` is meant for MadNIS, which trains poorly with many channels.
+    By default it is skipped when the run is certain to use VEGAS: ``madnis.enable =
+    false``, or ``"auto"`` for a 2 -> 2 process. ``true`` applies it then as well.
+
 ``invariant_power`` (``0.7``)
     Exponent :math:`p` of the :math:`1/s^p` sampling of time-like invariants.
 
@@ -666,6 +690,12 @@ Channel dropping
 ``channel_dropping_threshold`` (``0.01``), ``channel_dropping_interval`` (``100``)
     Every ``channel_dropping_interval`` batches, channels that contribute less than the
     threshold fraction of the integral are dropped.
+
+``resonance_guard`` (``true``)
+    The channel dropping never drops the last channel that maps a resonance (a propagator
+    that can go on shell, with its decay products) for a flavor. The last channel of a
+    flavor is kept in any case. Without the guard, a resonance with a small share of the cross section, such as
+    H -> W W* in a VBS process, can lose its only channel and end up undersampled.
 
 Networks
 ^^^^^^^^

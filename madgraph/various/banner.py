@@ -6669,6 +6669,11 @@ class RunCardNLO(RunCard):
         for ifold in self['folding']:
             if ifold not in [1,2,4,8]: 
                 raise InvalidRunCard("The three 'folding' parameters should be equal to 1, 2, 4, or 8.")
+        if max(self['folding']) > 1 and any(
+                abs(lpp) in (3, 4) for lpp in (self['lpp1'], self['lpp2'])):
+            raise InvalidRunCard("Folding requires event projection, which is not "
+                                 "always available for dressed-lepton beams "
+                                 "(lpp=+/-3 or +/-4). Set folding to [1, 1, 1].")
     # Check MC@NLO-Delta
         if self['mcatnlo_delta'] and not self['parton_shower'].lower() == 'pythia8':
             raise InvalidRunCard("MC@NLO-DELTA only possible with matching to Pythia8")
@@ -7675,6 +7680,13 @@ class RunCardMG7(RunCard):
             comment="in both mode, channels making up this fraction of the cross section are replaced by a flat channel")
         self.add_toml_param('phasespace', 'drop_qcd_s_channel', 20,
             comment="channel count above which channels without a QCD s-channel resonance are dropped; -1 keeps all")
+        self.add_toml_param('phasespace', 'ew_channel_reduction', 20,
+            comment="channel count above which channels differing only in their off-shell electroweak bosons are merged and redundant ones dropped; -1 keeps all")
+        self.add_toml_param('phasespace', 'ew_channel_reduction_mode', "partial",
+            allowed=['full', 'partial', 't_channel'],
+            comment="full: merge off-shell boson variants and drop redundant s-channel structures; partial: merge t-channel variants, keep one more non-resonant s-channel; t_channel: only merge t-channel variants")
+        self.add_toml_param('phasespace', 'channel_reduction_with_vegas', False,
+            comment="also apply ew_channel_reduction when the run is certain to use VEGAS (madnis.enable false, or auto for 2 -> 2)")
         self.add_toml_param('phasespace', 'invariant_power', 0.7,
             comment="exponent of the 1/s^p sampling of propagator invariants")
         self.add_toml_param('phasespace', 'bw_cutoff', 15,
@@ -7811,6 +7823,8 @@ class RunCardMG7(RunCard):
             comment="channels below this fraction of the integral are dropped")
         self.add_toml_param('madnis', 'channel_dropping_interval', 100,
             comment="batches between two channel dropping checks")
+        self.add_toml_param('madnis', 'resonance_guard', True,
+            comment="never drop the last channel mapping a resonance of a flavor")
         self.add_toml_param('madnis', 'drop_zero_integrands', True,
             comment="ignore points with zero integrand in the training")
         self.add_toml_param('madnis', 'fixed_cwnet_fraction', 0.33, auto=True,
@@ -9852,17 +9866,45 @@ class MadLoopParam(ConfigFile):
     """
     
     _ID_reduction_tool_map = {1:'CutTools',
-                             2:'PJFry++',
+                             2:'PJFry++ (retired)',
                              3:'IREGI',
                              4:'Golem95',
                              5:'Samurai',
                              6:'Ninja',
-                             7:'COLLIER'}
+                             7:'COLLIER',
+                             8:'NinjaRS'}
+
+    @staticmethod
+    def _reject_retired_reduction(value):
+        """PJFry's retired backend ID must never silently select NinjaRS."""
+        if isinstance(value, (list, tuple)):
+            for backend in value:
+                MadLoopParam._reject_retired_reduction(backend)
+            return
+        retired = isinstance(value, numbers.Number) and value == 2
+        if isinstance(value, str):
+            # Check the same representation ConfigFile assigns: quoted values
+            # and an optional leading '=' are supported by the card editor.
+            value = ConfigFile.format_variable(value, str, name='MLReductionLib')
+            retired = any(re.fullmatch(r'\+?0*2', token.strip())
+                          for token in value.split('|'))
+        if retired:
+            raise MadGraph5Error(
+                "PJFry++ (MLReductionLib=2) has been retired. "
+                "Select NinjaRS with MLReductionLib=8 or Ninja with "
+                "MLReductionLib=6; reduction backend ID 2 is not an alias for 8.")
+
+    def __setitem__(self, name, value, change_userdefine=False, raiseerror=False):
+        if name.strip().lower() == 'mlreductionlib':
+            self._reject_retired_reduction(value)
+        return super(MadLoopParam, self).__setitem__(
+            name, value, change_userdefine=change_userdefine, raiseerror=raiseerror)
     
     def default_setup(self):
         """initialize the directory to the default value"""
         
         self.add_param("MLReductionLib", "6|7|1")
+        self.add_param("LoopPoleMode", -1, allowed=[-1, 0, 1, 2, 3])
         self.add_param("IREGIMODE", 2)
         self.add_param("IREGIRECY", True)
         self.add_param("CTModeRun", -1)
@@ -9884,6 +9926,7 @@ class MadLoopParam(ConfigFile):
         self.add_param("LoopInitStartOver", False)
         self.add_param("HelInitStartOver", False)
         self.add_param("UseQPIntegrandForNinja", True)        
+        self.add_param("UseQPIntegrandForNinjaRS", True)
         self.add_param("UseQPIntegrandForCutTools", True)
         self.add_param("COLLIERMode", 1)
         self.add_param("COLLIERComputeUVpoles", True)
@@ -9917,7 +9960,10 @@ class MadLoopParam(ConfigFile):
         
     
     def write(self, outputpath, template=None,commentdefault=False):
-        
+        # dict.update/copy can bypass __setitem__; validate again before any
+        # output is written, so programmatic card construction cannot emit 2.
+        self._reject_retired_reduction(self['MLReductionLib'])
+
         if not template:
             if not MADEVENT:
                 template = pjoin(MG5DIR, 'Template', 'loop_material', 'StandAlone', 
