@@ -949,10 +949,10 @@ namespace madmatrix
     // color, as on cpu/simd
     const bool validFlavor = valid_flavor_id( iflavorVec[ievt] );
     // SCALAR channelId for the current event (CUDA)
-    unsigned int channelId = gpu_channelId( allChannelIds );
+    unsigned int channelId = allChannelIds ? allChannelIds[ievt] : 0;
 
     // Event-by-event random choice of channel
-    if( allrnddiagram != nullptr )
+    if( allrnddiagram != nullptr && channelId == 0 )
     {
       const fptype_amp* numerators = allNumerators + static_cast<size_t>( ievt ) * ndiagrams;
       fptype numerator_sum = 0., normalization = 0.;
@@ -975,8 +975,8 @@ namespace madmatrix
           break;
         }
       }
-      allDiagramIdsOut[ievt] = channelId;
     }
+    if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelId;
 
     if( channelId != 0 ) // no event-by-event choice of color if channelId == 0 (fix FPE #783)
     {

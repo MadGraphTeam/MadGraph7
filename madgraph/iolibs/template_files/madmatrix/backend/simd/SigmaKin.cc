@@ -1994,13 +1994,14 @@ namespace madmatrix
 #else
       const int vecsize = neppV;
 #endif
-      unsigned int channelIdVec[vecsize];
+      unsigned int channelIdVec[vecsize] = {};
       if( allChannelIds != nullptr )
       {
         for( int ieppV = 0; ieppV < vecsize; ++ieppV )
         {
           const int ievt = ievt00 + ieppV;
           channelIdVec[ieppV] = allChannelIds[ievt];
+          if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelIdVec[ieppV];
         }
       }
 
@@ -2010,6 +2011,8 @@ namespace madmatrix
         for( int ieppV = 0; ieppV < vecsize; ++ieppV )
         {
           const int ievt = ievt00 + ieppV;
+          // A diagram supplied by MLM takes precedence over a new random draw.
+          if( channelIdVec[ieppV] != 0 ) continue;
           fptype numerator_sum = 0., normalization = 0.;
           for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
           {
@@ -2032,7 +2035,7 @@ namespace madmatrix
               break;
             }
           }
-          allDiagramIdsOut[ievt] = channelIdVec[ieppV];
+          if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelIdVec[ieppV];
         }
       }
 
