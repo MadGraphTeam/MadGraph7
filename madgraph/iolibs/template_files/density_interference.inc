@@ -2,13 +2,14 @@ C Exact spectator sum of the linear interference, retaining all colours.
 C The physical Born is kept. Longitudinal corrections are mapped from the
 C Goldstone amplitudes with HELAS equivalence phases. The second output is
 C a spectator-resolved Goldstone-normalised projection for comparison.
+C Only the first nvar variants are evaluated; the others stay zero.
 
-      subroutine sdk_density_interference(p,nres,pos,dims,born,
+      subroutine sdk_density_interference(p,nres,pos,dims,nvar,born,
      $     correction,relative,zero_gold,status)
       implicit none
       include 'nexternal.inc'
       %(constants)s
-      integer nres,pos(10),dims(10),zero_gold,status
+      integer nres,pos(10),dims(10),nvar,zero_gold,status
       double precision p(0:3,nexternal-1)
       double complex born(36,36),correction(36,36,5)
       double complex relative(36,36,5)
@@ -40,13 +41,10 @@ C a spectator-resolved Goldstone-normalised projection for comparison.
       correction=(0d0,0d0)
       relative=(0d0,0d0)
       zero_gold=0
-C The underlying Sudakov charge/reshuffling functions do not implement
-C massive vector beams. Do not return their undefined numerical results.
-      status=4
-      if (.not.%(supported_initial)s) return
-C Distinct resonance positions with two or three spin states each, and
-C at most 36 resonance spin states in total.
+C One to five variants, distinct resonance positions with two or three
+C spin states each, and at most 36 resonance spin states in total.
       status=1
+      if (nvar.lt.1.or.nvar.gt.5) return
       if (nres.lt.1.or.nres.gt.10) return
       d=1
       do r=1,nres
@@ -62,7 +60,7 @@ C at most 36 resonance spin states in total.
       saved_rij=rij_ge_mw
       iflist=(/%(iflist)s/)
 C Each variant builds its invariants with its own floor.
-      do iv=1,5
+      do iv=1,nvar
         call sdk_density_variant(iv)
         call sdk_get_invariants(p,iflist,invariants(1,1,iv))
         call sdk_density_parcoeff(invariants(1,1,iv),parcoeff(1,iv))
@@ -137,7 +135,7 @@ C nonzero only for the sources of this base.
      $                                    deriv(1,1,ip,h))
             enddo
           enddo
-          do iv=1,5
+          do iv=1,nvar
             call sdk_density_variant(iv)
             call sdk_density_coeff(ib,hels(1,h),invariants(1,1,iv),
      $                             coeff)
@@ -160,7 +158,7 @@ C nonzero only for the sources of this base.
             if (norm(h).gt.0d0) delta(h,iv)=term/norm(h)
           enddo
         enddo
-        do iv=1,5
+        do iv=1,nvar
           do h=1,d
             do hp=1,d
               correction(h,hp,iv)=correction(h,hp,iv)+

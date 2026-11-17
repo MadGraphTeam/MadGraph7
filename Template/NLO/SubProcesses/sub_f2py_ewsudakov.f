@@ -1,16 +1,17 @@
-      subroutine density_interference_py(p,gstr,nres,pos,dims,born,
-     $     correction,relative,zero_gold,status)
-C     Version 2 density interface: full complex matrices, with no
+      subroutine density_interference_py(p,gstr,nres,pos,dims,nvar,
+     $     born,correction,relative,zero_gold,status)
+C     Version 3 density interface: full complex matrices, with no
 C     spectator or colour projection in correction. Variant order agrees
-C     with ewsudakov_py results(2:6). relative is a comparison prescription.
+C     with ewsudakov_py results(2:6); only the first nvar are evaluated.
+C     relative is a comparison prescription.
       implicit none
       include 'nexternal.inc'
       include 'coupl.inc'
       double precision p(0:3,nexternal-1),gstr
-      integer nres,pos(10),dims(10),zero_gold,status
+      integer nres,pos(10),dims(10),nvar,zero_gold,status
       double complex born(36,36),correction(36,36,5)
       double complex relative(36,36,5)
-CF2PY intent(in) :: p,gstr,nres,pos,dims
+CF2PY intent(in) :: p,gstr,nres,pos,dims,nvar
 CF2PY intent(out) :: born,correction,relative,zero_gold,status
       integer nfksprocess,deb_settozero
       common/c_nfksprocess/nfksprocess
@@ -25,8 +26,8 @@ CF2PY intent(out) :: born,correction,relative,zero_gold,status
       deb_settozero=0
       g=gstr
       call update_as_param()
-      call sdk_density_interference(p,nres,pos,dims,born,correction,
-     $                              relative,zero_gold,status)
+      call sdk_density_interference(p,nres,pos,dims,nvar,born,
+     $                              correction,relative,zero_gold,status)
       end
 
       subroutine ewsudakov_py(p_born_in, gstr_in, results) 

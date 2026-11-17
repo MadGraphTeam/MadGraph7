@@ -27,7 +27,7 @@ def density_result(dimension, central, var, qed, nres=2, relative=None):
             array[:, :, variant] = np.eye(dimension) * change
         return array
     correction = corrections((central, var, qed))
-    return {'version': 2, 'density_born': np.eye(dimension),
+    return {'version': fx.DENSITY_KERNEL_VERSION, 'density_born': np.eye(dimension),
             'density_correction': correction,
             'density_relative': correction if relative is None else corrections(relative),
             'zero_gold': 0, 'total_dim': dimension, 'nres': nres}

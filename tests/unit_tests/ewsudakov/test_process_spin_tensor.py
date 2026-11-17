@@ -90,6 +90,18 @@ class TestOpenTensorPersistence(unittest.TestCase):
             np.testing.assert_array_equal(restored[name], tensor[name])
         self.assertEqual(restored['leg_indices'], tensor['leg_indices'])
 
+    def test_relative_array_is_optional(self):
+        unused, unused2, tensor = example()
+        del tensor['relative']
+        stream = io.BytesIO()
+        pst.save_process_tensor(stream, tensor)
+        stream.seek(0)
+        restored = pst.load_process_tensor(stream)
+        self.assertNotIn('relative', restored)
+        np.testing.assert_array_equal(restored['correction'], tensor['correction'])
+        self.assertEqual(set(pst.contract_process_tensor(restored)),
+                         {'density_born', 'density_correction'})
+
     def test_lhe_roundtrip_retains_all_xi_and_replaces_repeated_xi(self):
         unused, unused2, tensor = example()
         event = ww_event([])
@@ -132,6 +144,8 @@ class TestOpenTensorDispatcher(unittest.TestCase):
         self.assertEqual(tensor['helicities'][4], [-1, -1, 0, -1])
         np.testing.assert_array_equal(self.kernel.call_args.args[3][:4], [1, 2, 3, 4])
         np.testing.assert_array_equal(self.kernel.call_args.args[4][:4], [2, 2, 3, 3])
+        # The tensor keeps all five variants.
+        self.assertEqual(self.kernel.call_args.args[5], 5)
         self.assertEqual(result['total_dim'], 9)
         self.assertEqual(result['nres'], 2)
         for key, expected in pst.contract_process_tensor(tensor).items():
@@ -160,7 +174,36 @@ class TestOpenTensorEventPath(DensityEventFixture, unittest.TestCase):
         self.assertTrue(self.module.density_sudakov.call_args.kwargs['keep_initial'])
         records = pst.read_event_process_tensors(lhe_parser.Event(str(self.event)))
         np.testing.assert_array_equal(records[0]['born'], tensor['born'])
+        # The amplitude prescription does not store the Goldstone-relative comparison.
+        self.assertNotIn('relative', records[0])
         self.assertIn('process_tensor="initial_spin_v1"', self.driver._sudakov_weight_header())
+
+    def test_goldstone_relative_tensor_keeps_its_relative_array(self):
+        unused, unused2, tensor = example()
+        self.result['process_tensor'] = tensor
+        self.driver.sudakov_density_prescription = 'goldstone_relative'
+        self.driver.sudakov_density_keep_initial = True
+        self.module.PROCESS_TENSOR_VERSION = 1
+        self.driver._compute_density_ewsudakov_reweight(self.event, self.module)
+        record = pst.read_event_process_tensors(self.event)[0]
+        self.assertEqual(record['prescription'], 'goldstone_relative')
+        np.testing.assert_array_equal(record['relative'], tensor['relative'])
+
+    def test_unused_relative_overflow_does_not_stop_the_tensor(self):
+        unused, unused2, tensor = example()
+        tensor['relative'] = np.full_like(tensor['relative'], np.inf)
+        self.result['process_tensor'] = tensor
+        self.driver.sudakov_density_keep_initial = True
+        self.module.PROCESS_TENSOR_VERSION = 1
+        self.driver._compute_density_ewsudakov_reweight(self.event, self.module)
+        self.assertEqual(pst.read_event_process_tensors(self.event)[0]['status'], 'available')
+
+    def test_recomputed_weights_drop_tensors_of_an_earlier_run(self):
+        unused, unused2, tensor = example()
+        pst.set_event_process_tensor(self.event, tensor, 0, 1.5)
+        self.driver._current_xi_idx = 0
+        self.driver._compute_density_ewsudakov_reweight(self.event, self.module)
+        self.assertEqual(pst.read_event_process_tensors(self.event), [])
 
     def test_old_dispatcher_rejected_if_tensor_requested(self):
         self.driver.sudakov_density_keep_initial = True
@@ -214,6 +257,15 @@ class TestOpenTensorEventPath(DensityEventFixture, unittest.TestCase):
         self.driver.banner = SimpleNamespace(get=lambda *args: 0)
         with self.assertRaisesRegex(NotImplementedError, 'ickkw=3'):
             self.driver._prepare_sudakov_weight_ids()
+
+    def test_lhe_option_rejects_per_weight_event_files(self):
+        self.driver.sudakov_density_keep_initial = True
+        self.driver.banner = SimpleNamespace(get=lambda *args: 3)
+        for output_type in ('2.0', 'unweight'):
+            self.driver.output_type = output_type
+            with self.subTest(output_type=output_type), \
+                    self.assertRaisesRegex(NotImplementedError, 'default reweighting output'):
+                self.driver._prepare_sudakov_weight_ids()
 
 
 if __name__ == '__main__':

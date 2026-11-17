@@ -9,6 +9,7 @@ from unittest import mock
 from xml.etree import ElementTree as ET
 
 from madgraph.interface.reweight_interface import ReweightInterface
+from madgraph.iolibs import save_load_object
 from madgraph.various import banner, fxfx_ewsudakov as fx, lhe_parser
 from madgraph.models import check_param_card
 from tests.unit_tests.ewsudakov.test_fxfx_decay_transport import ww_event
@@ -147,6 +148,33 @@ class TestSudakovWeightIds(unittest.TestCase):
         waiter.load_from_pickle()
         waiter._prepare_sudakov_weight_ids()
         self.assertEqual(waiter._sudakov_weight_map, creator._sudakov_weight_map)
+
+    def test_density_version_gates_only_density_caches(self):
+        for mode, rejected in ((0, False), (3, True)):
+            with self.subTest(ickkw=mode):
+                creator = self.driver([self.event({'1001': 2.})], mode=mode)
+                creator.save_to_pickle()
+                path = str(self.root / 'rw_me' / 'rwgt.pkl')
+                cache = save_load_object.load_from_file(path)
+                # A cache written by an earlier density interface.
+                cache['sudakov_density_version'] = fx.DENSITY_KERNEL_VERSION - 1
+                save_load_object.save_to_file(path, cache)
+                loader = self.driver([self.event({'1001': 2.})], mode=mode)
+                if rejected:
+                    with self.assertRaisesRegex(ReweightInterface.InvalidCmd, 'Regenerate rw_me'):
+                        loader.load_from_pickle()
+                else:
+                    loader.load_from_pickle()
+
+    def test_density_metadata_only_for_density_runs(self):
+        for mode, kernel in ((0, None), (3, str(fx.DENSITY_KERNEL_VERSION))):
+            with self.subTest(ickkw=mode):
+                driver = self.driver([self.event({'1001': 2.})], mode=mode)
+                tree = ET.fromstring('<initrwgt>' + driver._sudakov_weight_header() + '</initrwgt>')
+                group = tree.find("weightgroup[@name='ew_sudakov']")
+                self.assertEqual(group.get('density_kernel'), kernel)
+                self.assertEqual(group.get('density_prescription'),
+                                 'amplitude' if kernel else None)
 
     def test_source_scan_keeps_input_position(self):
         driver = self.driver([self.event({'1001': 1.}), self.event({'1101': 2.})], mode=0)

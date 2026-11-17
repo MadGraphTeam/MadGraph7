@@ -4,6 +4,7 @@ The combined matrix index is a + incoming_dim*h. These unnormalised tensors
 describe scattering; their incoming labels are not extra final-state spins.
 Only the incoming spin average is removed. Native colour averages, final-state
 symmetry divisors and sums over other spectator spins remain in the arrays.
+The Goldstone-relative comparison array 'relative' is optional.
 """
 
 import base64
@@ -19,7 +20,13 @@ except ImportError:  # only the tensor functions need numpy
 
 
 _ARRAYS = ('born', 'correction', 'relative')
+_OPTIONAL = ('relative',)
 _RECORD = re.compile(r'<sudakov_process_tensor\b[^>]*>.*?</sudakov_process_tensor>', re.S)
+
+
+def _arrays(tensor):
+    """Names of the arrays the tensor holds."""
+    return [name for name in _ARRAYS if name not in _OPTIONAL or name in tensor]
 
 
 def _validate(tensor):
@@ -29,7 +36,7 @@ def _validate(tensor):
     if ni < 1 or no < 1:
         raise ValueError('Invalid process tensor dimensions')
     dimension = ni * no
-    for name in _ARRAYS:
+    for name in _arrays(tensor):
         array = np.asarray(tensor[name])
         shape = (dimension, dimension) + (() if name == 'born' else (5,))
         if array.shape != shape or not np.isfinite(array).all():
@@ -44,6 +51,7 @@ def contract_process_tensor(tensor, incoming_density=None):
     of rho_in. Its default is the unpolarised I/n. An explicitly prepared
     input must be Hermitian, positive semidefinite, and have unit trace.
     The returned EW expansion is not projected onto positive matrices.
+    density_relative is returned only for a tensor with a relative array.
     """
     ni, no = _validate(tensor)
     rho = np.eye(ni, dtype=complex) / ni if incoming_density is None else np.asarray(incoming_density, complex)
@@ -53,7 +61,7 @@ def contract_process_tensor(tensor, incoming_density=None):
             np.linalg.eigvalsh(rho).min() < -1e-12):
         raise ValueError('Incoming spin density must be Hermitian, positive and unit trace')
     result = {}
-    for name in _ARRAYS:
+    for name in _arrays(tensor):
         array = np.asarray(tensor[name])
         blocks = array.reshape((no, ni, no, ni) + array.shape[2:])
         result['density_' + name] = np.einsum('iajb...,ab->ij...', blocks, rho)
@@ -65,14 +73,15 @@ def save_process_tensor(destination, tensor):
     _validate(tensor)
     metadata = {key: value for key, value in tensor.items() if key not in _ARRAYS}
     np.savez_compressed(destination, metadata_json=json.dumps(metadata, sort_keys=True),
-                        **{name: np.asarray(tensor[name]) for name in _ARRAYS})
+                        **{name: np.asarray(tensor[name]) for name in _arrays(tensor)})
 
 
 def load_process_tensor(source):
     """Read a path or binary stream saved by save_process_tensor."""
     with np.load(source, allow_pickle=False) as data:
         tensor = json.loads(str(data['metadata_json']))
-        tensor.update((name, np.array(data[name], copy=True)) for name in _ARRAYS)
+        tensor.update((name, np.array(data[name], copy=True))
+                      for name in _ARRAYS if name in data.files)
     _validate(tensor)
     return tensor
 

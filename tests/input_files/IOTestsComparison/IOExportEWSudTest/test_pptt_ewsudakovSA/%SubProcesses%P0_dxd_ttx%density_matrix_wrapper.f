@@ -6,15 +6,16 @@ C     Goldstone amplitudes with HELAS equivalence phases. The second
 C      output is
 C     a spectator-resolved Goldstone-normalised projection for
 C      comparison.
+C     Only the first nvar variants are evaluated; the others stay zero.
 
-      SUBROUTINE SDK_DENSITY_INTERFERENCE(P,NRES,POS,DIMS,BORN,
+      SUBROUTINE SDK_DENSITY_INTERFERENCE(P,NRES,POS,DIMS,NVAR,BORN,
      $     correction,relative,zero_gold,status)
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER NC,NO,NS,NB
       PARAMETER (NC=2,NO=1,NS=3,NB=1)
 
-      INTEGER NRES,POS(10),DIMS(10),ZERO_GOLD,STATUS
+      INTEGER NRES,POS(10),DIMS(10),NVAR,ZERO_GOLD,STATUS
       DOUBLE PRECISION P(0:3,NEXTERNAL-1)
       DOUBLE COMPLEX BORN(36,36),CORRECTION(36,36,5)
       DOUBLE COMPLEX RELATIVE(36,36,5)
@@ -62,16 +63,11 @@ C      comparison.
       CORRECTION=(0D0,0D0)
       RELATIVE=(0D0,0D0)
       ZERO_GOLD=0
-C     The underlying Sudakov charge/reshuffling functions do not
-C      implement
-C     massive vector beams. Do not return their undefined numerical
-C      results.
-      STATUS=4
-      IF (.NOT..TRUE.) RETURN
-C     Distinct resonance positions with two or three spin states each,
-C      and
-C     at most 36 resonance spin states in total.
+C     One to five variants, distinct resonance positions with two or
+C      three
+C     spin states each, and at most 36 resonance spin states in total.
       STATUS=1
+      IF (NVAR.LT.1.OR.NVAR.GT.5) RETURN
       IF (NRES.LT.1.OR.NRES.GT.10) RETURN
       D=1
       DO R=1,NRES
@@ -87,7 +83,7 @@ C     at most 36 resonance spin states in total.
       SAVED_RIJ=RIJ_GE_MW
       IFLIST=(/-1,-1,1,1/)
 C     Each variant builds its invariants with its own floor.
-      DO IV=1,5
+      DO IV=1,NVAR
         CALL SDK_DENSITY_VARIANT(IV)
         CALL SDK_GET_INVARIANTS(P,IFLIST,INVARIANTS(1,1,IV))
         CALL SDK_DENSITY_PARCOEFF(INVARIANTS(1,1,IV),PARCOEFF(1,IV))
@@ -165,7 +161,7 @@ C         nonzero only for the sources of this base.
      $                                    deriv(1,1,ip,h))
             ENDDO
           ENDDO
-          DO IV=1,5
+          DO IV=1,NVAR
             CALL SDK_DENSITY_VARIANT(IV)
             CALL SDK_DENSITY_COEFF(IB,HELS(1,H),INVARIANTS(1,1,IV),
      $                             coeff)
@@ -188,7 +184,7 @@ C         nonzero only for the sources of this base.
             IF (NORM(H).GT.0D0) DELTA(H,IV)=TERM/NORM(H)
           ENDDO
         ENDDO
-        DO IV=1,5
+        DO IV=1,NVAR
           DO H=1,D
             DO HP=1,D
               CORRECTION(H,HP,IV)=CORRECTION(H,HP,IV)+

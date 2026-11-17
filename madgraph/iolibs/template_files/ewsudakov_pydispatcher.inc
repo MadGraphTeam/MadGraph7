@@ -70,7 +70,7 @@ def ewsudakov(pdgs, p, g):
 # f2py shape of res_indices/res_dims and must match it
 MAX_DIM = 36
 MAX_RES = 10
-DENSITY_VERSION = 2
+DENSITY_VERSION = 3
 PROCESS_TENSOR_VERSION = 1
 # Beams with two helicity states, as open incoming spins require
 TWO_SPIN_BEAMS = frozenset([1, 2, 3, 4, 5, 6, 11, 13, 15, 21, 22])
@@ -78,7 +78,8 @@ TWO_SPIN_BEAMS = frozenset([1, 2, 3, 4, 5, 6, 11, 13, 15, 21, 22])
 HELICITIES = {2: (-1, 1), 3: (-1, 0, 1)}
 
 
-def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False):
+def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False,
+                    nvariants=5):
     """
     Compute density matrix EW Sudakov for spin-correlated reweighting.
 
@@ -89,12 +90,16 @@ def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False):
         res_indices: list of resonance leg indices (1-based)
         res_dims: list of spin dimensions (2 for fermion, 3 for vector)
         keep_initial: also retain both incoming spin indices in process_tensor
+        nvariants: evaluate the first nvariants of the five variants (QED,
+          weak, s/r off, s/r and floor off, floor off); the process tensor
+          of keep_initial always holds all five
 
     Returns:
         dict with:
           - density_born: physical Born matrix, full complex array
-          - density_correction: full linear interference, shape (D,D,5)
-          - density_relative: Goldstone-normalised comparison, shape (D,D,5)
+          - density_correction: full linear interference, shape (D,D,V)
+            with V=nvariants
+          - density_relative: Goldstone-normalised comparison, shape (D,D,V)
           - zero_gold: number of nonzero physical Born states with zero
             Goldstone norm (relative prescription undefined there)
           - total_dim, nres: dimensions
@@ -105,6 +110,8 @@ def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False):
         raise KeyError(f"No EW Sudakov module for PDGs: {pdgs}. "
                       f"Available: {list(pdg2ewsud_dict.keys())}")
 
+    if not 1 <= nvariants <= 5:
+        raise ValueError('Invalid number of density variants')
     nres = len(res_indices)
     if nres != len(res_dims) or not 1 <= nres <= MAX_RES:
         raise ValueError('Invalid density resonance arrays')
@@ -129,18 +136,15 @@ def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False):
     if kernel is None:
         raise NotImplementedError('Regenerate rw_me: this compiled Sudakov '
                                   'library has no full density interface')
-    density_born, correction, relative, zero_gold, status = (
-        kernel(
-            p_transp, g, nres, res_idx_arr, res_dim_arr
-        )
-    )
-    if status == 4:
-        raise NotImplementedError('The Sudakov kernel does not support massive vector beams')
+    density_born, correction, relative, zero_gold, status = kernel(
+        p_transp, g, nres, res_idx_arr, res_dim_arr, nvariants)
     if status:
         raise RuntimeError(f'Full density kernel failed with status {status}')
     density_born = density_born[:total_dim, :total_dim]
-    correction = correction[:total_dim, :total_dim, :]
-    relative = relative[:total_dim, :total_dim, :]
+    correction = correction[:total_dim, :total_dim, :nvariants]
+    relative = relative[:total_dim, :total_dim, :nvariants]
+    # relative is checked by its users: a tiny Goldstone norm can overflow
+    # it while the physical matrices stay finite.
     if not np.isfinite(density_born).all() or not np.isfinite(correction).all():
         raise FloatingPointError('Non-finite full density interference')
 

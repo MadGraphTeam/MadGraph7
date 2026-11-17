@@ -58,29 +58,34 @@ kernel's threshold prescription.
 
 The full Born and correction use the same NLO model, parameters, momenta and
 coupling-order selection, with the NLO convention of zero external widths.
-Dedicated standalone production and decay outputs read the event banner's
-parameter card. A comparison with a standalone production amplitude must also
-match its width convention: a finite W width affects the complex off-diagonal
-entries of photon-induced WW.
+The production matrices come from this kernel; only the decay matrices use a
+dedicated standalone output, which reads the event banner's parameter card.
+A comparison with a standalone production amplitude must also match its
+width convention: a finite W width affects the complex off-diagonal entries
+of photon-induced WW.
 
-The generated dispatcher declares `DENSITY_VERSION=2` and returns
+The generated dispatcher declares `DENSITY_VERSION=3` and returns
 `density_born`, `density_correction`, `density_relative`, and `zero_gold`. The
 latter two fields are for the comparison prescription. Matrices are in Fortran
 helicity order (first resonance fastest); the event path permutes both matrix
-axes to its decay-density ordering. Cached `rw_me` libraries or results
-without version 2 are rejected and must be regenerated.
+axes to its decay-density ordering. Cached `rw_me` libraries of FxFx
+(`ickkw=3`) runs, or results, without version 3 are rejected and must be
+regenerated.
 
-All five native variants are evaluated: QED, weak, s/r off, both s/r and
-invariant floor off, and invariant floor off. Each variant builds its own
-invariants with its own floor setting, as the scalar kernel does. All three
-FxFx output variants (central, s/r off, QED) use the full spin contraction.
-The LHE weight group records `density_kernel="2"` and the selected
+The five native variants are, in order: QED, weak, s/r off, both s/r and
+invariant floor off, and invariant floor off. `density_sudakov(...,
+nvariants=n)` evaluates the first `n` of them (all five by default). Each
+variant builds its own invariants with its own floor setting, as the scalar
+kernel does. The three FxFx output variants (QED, central, s/r off) are the
+first three, and all use the full spin contraction. The LHE weight group of
+an `ickkw=3` run records `density_kernel="3"` and the selected
 `density_prescription`.
 
 The retained size limit is 36 resonance spin states and 10 resonance legs.
 Unsupported large spaces and unavailable decay matrices use the scalar
-fallback and its accounting. Massive W/Z beams are explicitly unsupported
-by the underlying Sudakov charge and reshuffling implementation.
+fallback and its accounting. The Sudakov charge and reshuffling
+implementation assumes massless beams: generating the EW Sudakov output for
+massive W/Z beams stops with an error, so neither kernel runs on them.
 
 ## Scope and validation
 
@@ -95,11 +100,13 @@ launch
 ```
 
 This retains a process tensor in each event for every evaluated xi value.
-For `q q~ -> W+ W-`, it is **36 by 36**: a 9-by-9 array of 4-by-4 incoming
-spin blocks, including entries with different incoming helicities. It stores
-the physical Born tensor, all five linear Sudakov correction tensors, and the
-Goldstone-relative comparison tensors. It does not store a squared-loop term
-or normalise these arrays to unit trace.
+It requires the default reweighting output, with all weights in one event
+file. For `q q~ -> W+ W-`, it is **36 by 36**: a 9-by-9 array of 4-by-4
+incoming spin blocks, including entries with different incoming helicities.
+It stores the physical Born tensor and all five linear Sudakov correction
+tensors; with the `goldstone_relative` prescription, it also stores the
+Goldstone-relative tensors (`relative`) behind its weights. It does not store
+a squared-loop term or normalise these arrays to unit trace.
 
 The combined index is `i = a + 4*h`, with zero-based indices. Incoming leg 1
 varies fastest, then incoming leg 2, then the supplied resonance legs (also
@@ -144,7 +151,9 @@ lossless compressed NPZ data encoded as base64. Each record includes its xi,
 normalisation, index order, momenta, coupling, prescription and variant order.
 No pickle is required. A record marked `not_evaluated` identifies the
 scalar or unit-weight path; it is not a zero tensor. Only events whose weights
-use the density contraction carry an `available` tensor. Saved tensors are the
+use the density contraction carry an `available` tensor. Records already in
+an input event are removed when its Sudakov weights are recomputed, with or
+without this option. Saved tensors are the
 amplitude calculation before the runaway-weight protection. Reading
 and writing the LHE event preserves the extension. Storage is opt-in because
 each tensor contains substantially more data than the reduced matrix.
@@ -154,7 +163,7 @@ photons or gluons, with **at most 36 combined spin states** and ten retained
 legs including the two incoming ones. WW saturates that state capacity.
 An unsupported space or an export failure raises an error rather than silently
 dropping the requested indices. The Python dispatcher must declare
-`PROCESS_TENSOR_VERSION=1`; any version-2 kernel supports the open positions.
+`PROCESS_TENSOR_VERSION=1`; any version-3 kernel supports the open positions.
 Different partonic channels and helicity conventions must be kept identified
 when combining stored tensors.
 
@@ -179,7 +188,7 @@ Unit tests in `tests/unit_tests/ewsudakov/test_full_density.py` check the
 Python contraction with constructed amplitudes (coherent amplitude closure,
 spectator incoherence, orthogonal colour contributions, zero Born entries,
 scale invariance), and, with a mocked kernel, the dispatcher, the variant and
-prescription selection and the rejection of version-1 interfaces. The FKS
+prescription selection and the rejection of older interfaces. The FKS
 export fixtures compare the generated kernel source for ZZ and top pairs. The
 kernel's numerical results were validated outside these tests, against
 independent colour/helicity contractions using five-point amplitude

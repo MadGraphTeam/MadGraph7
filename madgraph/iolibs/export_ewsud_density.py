@@ -19,6 +19,19 @@ def _complex(real, imag=0):
     return '(%s,%s)' % (_real(real), _real(imag))
 
 
+def colour_matrix(cache, basis1, basis2):
+    """ColorMatrix of two colour bases, computed once per pair in cache.
+
+    The scalar Sudakov writer and the density kernel share one cache per
+    process, so the colour algebra of each base/source pair is done once. The
+    cache keeps the bases alive, so their ids cannot be reused while it lives.
+    """
+    key = (id(basis1), id(basis2))
+    if key not in cache:
+        cache[key] = (basis1, basis2, color_amp.ColorMatrix(basis1, basis2))
+    return cache[key][2]
+
+
 def sudakov_term_expressions(auxiliary, helicities):
     """(accumulator, Fortran expression) of each non-diagonal Sudakov term.
 
@@ -47,8 +60,9 @@ def sudakov_term_expressions(auxiliary, helicities):
 
 
 class DensityExporter:
-    def __init__(self, exporter, matrix_element, fortran_model):
+    def __init__(self, exporter, matrix_element, fortran_model, color_matrices=None):
         self.exporter = exporter
+        self.color_matrices = {} if color_matrices is None else color_matrices
         self.fks = matrix_element
         self.model = fortran_model
         self.born = matrix_element.born_me
@@ -85,9 +99,6 @@ class DensityExporter:
         legs = self.born['processes'][0]['legs']
         gmu = 'Gmu' in self.exporter.model.get('name')
         replace = dict(constants=self.constants,
-                       supported_initial=('.false.' if any(
-                           not l['state'] and abs(l['id']) in (23, 24)
-                           for l in legs) else '.true.'),
                        ncomb=self.born.get_helicity_combinations(),
                        helicity_lines=self.exporter.get_helicity_lines(self.born),
                        den_factor_lines='\n'.join(
@@ -164,10 +175,18 @@ class DensityExporter:
         return '\n'.join(lines + ['endif'])
 
     def metric_data(self):
+        """Colour metrics of the pairs sdk_density_inter is called with.
+
+        The Born contracts with every source, and a Goldstone base with its
+        own sources; the metrics of other pairs are never read.
+        """
         lines = []
         for b, base in enumerate(self.bases, 1):
             for s, source in enumerate(self.mes, 1):
-                matrix = color_amp.ColorMatrix(base['color_basis'], source['color_basis'])
+                if b != 1 and self.source_base[s - 1] != b:
+                    continue
+                matrix = colour_matrix(self.color_matrices, base['color_basis'],
+                                       source['color_basis'])
                 values = matrix.col_matrix_fixed_Nc
                 if not matrix:
                     values = {(0, 0): (1, 0)}

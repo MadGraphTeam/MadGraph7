@@ -30,7 +30,6 @@ import platform
 
 import madgraph
 import madgraph.core.color_algebra as color
-import madgraph.core.color_amp as color_amp
 import madgraph.core.helas_objects as helas_objects
 import madgraph.core.base_objects as base_objects
 import madgraph.fks.fks_helas_objects as fks_helas_objects
@@ -48,7 +47,7 @@ import madgraph.iolibs.template_files as template_files
 import madgraph.iolibs.ufo_expression_parsers as parsers
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.born_support as born_support
-from madgraph.iolibs.export_ewsud_density import (
+from madgraph.iolibs.export_ewsud_density import (colour_matrix,
     DensityExporter, sudakov_term_expressions)
 import madgraph.loop.loop_exporters as loop_exporters
 import madgraph.various.q_polynomial as q_polynomial
@@ -2520,7 +2519,9 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             self.write_numder_me(writers.FortranWriter(filename),
                              None, fortran_model)
 
-        # Then, the interferences with the goldstones or with the born amplitudes
+        # Then, the interferences with the goldstones or with the born amplitudes.
+        # Their colour matrices are reused by the density kernel below.
+        color_matrices = {}
         for j, sud_me in enumerate([me for me in matrix_element.sudakov_matrix_elements if me['type'] != 'goldstone']):
             filename = "ewsudakov_me_%d.f" % (j + 1)
             if sud_me['base_amp']:
@@ -2530,7 +2531,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             else:
                 base_me = matrix_element.born_me
             self.write_sudakov_me(writers.FortranWriter(filename),
-                         base_me, sud_me, j, fortran_model)
+                         base_me, sud_me, j, fortran_model, color_matrices)
 
         # finally, the wrapper for all matrix elements needed
         # for the Sudakov approximation
@@ -2538,11 +2539,12 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         self.write_sudakov_wrapper(writers.FortranWriter(filename),
                                    matrix_element,has_lo,fortran_model)
 
-        # per-helicity Sudakov wrapper for the spin-correlated reweighting
+        # full spin-interference kernel for the spin-correlated reweighting
         if matrix_element.ewsudakov:
             filename = "density_matrix_wrapper.f"
             self.write_density_matrix_wrapper(writers.FortranWriter(filename),
-                                              matrix_element, fortran_model)
+                                              matrix_element, fortran_model,
+                                              color_matrices)
 
 
 
@@ -3526,14 +3528,17 @@ Parameters              %(params)s\n\
     #===============================================================================
     # write_density_matrix_wrapper
     #===============================================================================
-    def write_density_matrix_wrapper(self, writer, matrix_element, fortran_model):
+    def write_density_matrix_wrapper(self, writer, matrix_element, fortran_model,
+                                     color_matrices=None):
         """Write density_matrix_wrapper.f for the spin-correlated EW Sudakov.
 
         It holds the kernel of export_ewsud_density: the complex Born and
         linear Sudakov interference matrices of the resonance helicities,
-        summed over spectator helicities and colours.
+        summed over spectator helicities and colours. color_matrices holds
+        the colour matrices already computed for the Sudakov interferences.
         """
-        DensityExporter(self, matrix_element, fortran_model).write(writer)
+        DensityExporter(self, matrix_element, fortran_model,
+                        color_matrices).write(writer)
 
 
     #===============================================================================
@@ -3758,9 +3763,11 @@ Parameters              %(params)s\n\
     #===============================================================================
     # write_sudakov_me
     #===============================================================================
-    def write_sudakov_me(self, writer, base_me, sudakov, ime, fortran_model):
+    def write_sudakov_me(self, writer, base_me, sudakov, ime, fortran_model,
+                         color_matrices=None):
         """Create the sudakov_me_*.f file for the sudakov approximation of EW
-        corrections
+        corrections. color_matrices caches the colour matrices of the
+        base/Sudakov pairs for the density kernel.
         """
 
         sudakov_me = sudakov['matrix_element']
@@ -3823,7 +3830,9 @@ Parameters              %(params)s\n\
         replace_dict['ncolor2'] = ncolor2
 
         # compute the color matrix between basis of the Born and of the Sudakov
-        color_matrix= color_amp.ColorMatrix(matrix_element.get('color_basis'), sudakov_me.get('color_basis'))
+        color_matrix = colour_matrix({} if color_matrices is None else color_matrices,
+                                     matrix_element.get('color_basis'),
+                                     sudakov_me.get('color_basis'))
     
         # Extract color data lines
         color_data_lines = self.get_color_data_lines_from_color_matrix(color_matrix)
@@ -5836,6 +5845,13 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
                                     me_ntot, path=os.getcwd(),OLP='MadLoop'):
         """Generate the Pxxxxx_i directories for a subprocess in MadFKS,
         only generating the relevant files for the EW Sudakov"""
+        # The Sudakov charges and momentum reshuffling assume massless beams;
+        # neither the scalar nor the density kernel may run on W/Z beams.
+        for process in matrix_element.born_me['processes']:
+            if any(not leg['state'] and abs(leg['id']) in (23, 24)
+                   for leg in process['legs']):
+                raise MadGraph5Error('EW Sudakov corrections do not support massive '
+                                     'vector beams: %s' % process.base_string())
         proc = matrix_element.born_me['processes'][0]
 
         if not self.model:
