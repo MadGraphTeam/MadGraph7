@@ -931,7 +931,8 @@
 <dl class="cpp enumerator">
 <dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey22UMAMI_IN_DIAGRAM_INDEXE">
 <span id="_CPPv3N13UmamiInputKey22UMAMI_IN_DIAGRAM_INDEXE"></span><span id="_CPPv2N13UmamiInputKey22UMAMI_IN_DIAGRAM_INDEXE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483a3c87d32e55f4aa2538b0ea85fb3f81b1"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_DIAGRAM_INDEX</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey22UMAMI_IN_DIAGRAM_INDEXE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>externally selected diagram index, type: <code class="docutils literal notranslate"><span class="pre">unsigned</span> <span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+<dd><p>externally selected zero-based diagram index, type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code>. </p>
+<p>Used for diagram output and color selection without changing the matrix element. Nonnegative indices must identify a diagram with a color configuration. A value of -1 requests diagram sampling; otherwise this input takes precedence over UMAMI_IN_RANDOM_DIAGRAM. </p>
 </dd></dl>
 
 <dl class="cpp enumerator">

@@ -746,7 +746,7 @@
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace10AlphaSGrid23initialize_coefficientsE6Tensor">
 <span id="_CPPv3NK8madspace10AlphaSGrid23initialize_coefficientsE6Tensor"></span><span id="_CPPv2NK8madspace10AlphaSGrid23initialize_coefficientsE6Tensor"></span><span id="madspace::AlphaSGrid::initialize_coefficients__TensorC"></span><span class="target" id="structmadspace_1_1AlphaSGrid_1a8bfc3d3e580724211e6ba6fa1424d5b4"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">initialize_coefficients</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="Tensor.html#_CPPv4N8madspace6TensorE" title="madspace::Tensor"><span class="n"><span class="pre">Tensor</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">tensor</span></span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace10AlphaSGrid23initialize_coefficientsE6Tensor" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Fill <code class="docutils literal notranslate"><span class="pre">tensor</span></code> with the interpolation coefficients. </p>
+<dd><p>Fill <code class="docutils literal notranslate"><span class="pre">tensor</span></code> with the interpolation coefficients, and the padding segments with the extrapolation: below the grid <span class="math notranslate nohighlight">\(\alpha_s\)</span> at the first knot and the logarithmic gradient to the next knot of another q, above it the last value at both ends. </p>
 </dd></dl>
 
 <dl class="cpp function">

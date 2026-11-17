@@ -175,7 +175,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
       </label>
     </div>
@@ -712,7 +712,7 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
           </label>
         </div>
@@ -734,6 +734,76 @@ run <code class="docutils literal notranslate"><span class="pre">install</span> 
 <p>The <code class="docutils literal notranslate"><span class="pre">pyamplicol</span></code> package, used by the <code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> matrix-element backend, is
 installed in the same way with <code class="docutils literal notranslate"><span class="pre">install</span> <span class="pre">pyamplicol</span></code>; see the
 <a class="reference internal" href="pyamplicol/user/installation.html"><span class="doc">pyAmpliCol installation instructions</span></a>.</p>
+<section id="ninjars-for-madloop">
+<h2>NinjaRS for MadLoop<a class="headerlink" href="#ninjars-for-madloop" title="Link to this heading">¶</a></h2>
+<p>The optional NinjaRS reduction backend uses oneloopmaster for scalar integrals.
+From the MadGraph7 prompt, run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">install</span> <span class="n">ninjars</span>
+</pre></div>
+</div>
+<p>The installer builds the pinned sources in <code class="docutils literal notranslate"><span class="pre">vendor/ninjars/Cargo.lock</span></code>, tests
+the installed Fortran interface in double and quadruple precision, and saves the
+<code class="docutils literal notranslate"><span class="pre">ninjars</span></code> library path. It requires Rust/Cargo 1.96 or later, GNU make, C/C++
+compilers, GNU Fortran on Linux, and the GMP/MPFR numerical build dependencies.
+The Fortran compiler must support <code class="docutils literal notranslate"><span class="pre">REAL(16)</span></code>. The repository’s pinned Nix
+development shell provides these tools.</p>
+<p>Select NinjaRS in the generated <code class="docutils literal notranslate"><span class="pre">Cards/MadLoopParams.dat</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1">#MLReductionLib</span>
+<span class="mi">8</span>
+</pre></div>
+</div>
+<p>The existing default reduction order is retained. A chain such as <code class="docutils literal notranslate"><span class="pre">8|6|1</span></code>
+also permits Ninja and CutTools fallback. <code class="docutils literal notranslate"><span class="pre">UseQPIntegrandForNinjaRS</span></code> controls
+whether the NinjaRS high-precision rescue receives a numerator recomputed in
+quadruple precision. The CLI checks accept <code class="docutils literal notranslate"><span class="pre">--reduction=8</span></code>.</p>
+<p>High-precision rescue and separated-pole evaluation use Symbolica through
+NinjaRS’s scoped library license, including the oneloopmaster calls made within
+those operations. While that key is valid, concurrent MadGraph processes do
+not need a personal Symbolica key for these NinjaRS operations. The library
+does not change <code class="docutils literal notranslate"><span class="pre">SYMBOLICA_LICENSE</span></code> or authorize unrelated Symbolica work in
+the calling application. If the library key expires or is revoked, Symbolica’s
+usual personal-license or restricted-mode rules apply; an upstream license
+failure can terminate a process before MadLoop can try another backend.</p>
+<p>For local development, supply source checkouts explicitly:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">install</span> <span class="n">ninjars</span> <span class="o">--</span><span class="n">source</span><span class="o">=/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">ninjars</span> <span class="o">--</span><span class="n">oneloop</span><span class="o">-</span><span class="n">source</span><span class="o">=/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">oneloopmaster</span> <span class="o">--</span><span class="n">jobs</span><span class="o">=</span><span class="mi">4</span> <span class="o">--</span><span class="n">force</span>
+</pre></div>
+</div>
+<p>These sources are copied into an isolated build directory; the original
+checkouts are left untouched. <code class="docutils literal notranslate"><span class="pre">--force</span></code> replaces an existing installation
+only after the new one passes both precision checks. The default destination is
+<code class="docutils literal notranslate"><span class="pre">HEPTools/ninjars</span></code>; <code class="docutils literal notranslate"><span class="pre">--prefix</span></code> or <code class="docutils literal notranslate"><span class="pre">heptools_install_dir</span></code> selects another
+HEPTools prefix. Build failures retain their log in the reported staging
+directory. A successful installation retains its build log and exact Cargo
+manifest and lockfile. Cargo target and intermediate build caches are kept
+under the installation prefix; explicit <code class="docutils literal notranslate"><span class="pre">CARGO_TARGET_DIR</span></code> and
+<code class="docutils literal notranslate"><span class="pre">CARGO_BUILD_BUILD_DIR</span></code> settings are respected.
+The installation includes <code class="docutils literal notranslate"><span class="pre">include/mninjars.f90</span></code> and <code class="docutils literal notranslate"><span class="pre">include/ninjars.h</span></code>
+alongside the compiled Fortran module in <code class="docutils literal notranslate"><span class="pre">lib</span></code>.</p>
+<p>Both standalone Fortran and <a class="reference external" href="mailto:aMC&#37;&#52;&#48;NLO">aMC<span>&#64;</span>NLO</a> exports support NinjaRS. With
+<code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">output_dependencies</span> <span class="pre">internal</span></code>, the exporter copies its archive, Fortran
+module, available interface sources and link metadata into the output directory.
+The generated makefiles still require the target platform’s native
+compiler/runtime libraries.</p>
+<p>The linker must resolve GNU Fortran’s arithmetic helpers before loading the
+Rust static archive. Otherwise Rust’s compiler builtins can replace the
+<code class="docutils literal notranslate"><span class="pre">REAL(16)</span></code> helpers and change directed IEEE rounding. Generated standalone
+and <a class="reference external" href="mailto:aMC&#37;&#52;&#48;NLO">aMC<span>&#64;</span>NLO</a> makefiles enforce this ordering using <code class="docutils literal notranslate"><span class="pre">ninjars-config.json</span></code>.
+The installer also checks directed quadruple-precision rounding. An older
+installation without this link-order metadata must be rebuilt with
+<code class="docutils literal notranslate"><span class="pre">install</span> <span class="pre">ninjars</span> <span class="pre">--force</span></code>, followed by regeneration or relinking of its
+generated processes.</p>
+<p>For a manual Fortran link, use both installed flag files in this order:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>gfortran caller.f90 -I&quot;$PREFIX/lib&quot; \
+  $(cat &quot;$PREFIX/lib/ninjars-link-before.txt&quot;) \
+  &quot;$PREFIX/lib/libninjars.a&quot; \
+  $(cat &quot;$PREFIX/lib/ninjars-native-libs.txt&quot;) -o caller
+</pre></div>
+</div>
+<p>Here <code class="docutils literal notranslate"><span class="pre">PREFIX</span></code> is the NinjaRS installation directory, usually
+<code class="docutils literal notranslate"><span class="pre">HEPTools/ninjars</span></code>. The current validated compiler-runtime policy is
+GNU Fortran on Linux and places <code class="docutils literal notranslate"><span class="pre">-lgcc_s</span></code> before the archive. Additional
+platforms require validation of their compiler-runtime resolution.</p>
+</section>
 </section>
 
         </article>
@@ -779,8 +849,27 @@ installed in the same way with <code class="docutils literal notranslate"><span 
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Installation</a><ul>
+<li><a class="reference internal" href="#ninjars-for-madloop">NinjaRS for MadLoop</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>
