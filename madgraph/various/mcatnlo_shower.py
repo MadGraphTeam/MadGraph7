@@ -390,9 +390,13 @@ def contract_from_generation(me_dir, run_card, proc_characteristics,
     first events of the produced (unshowered) event files."""
     if fks_params is None:
         fks_params = pjoin(me_dir, 'Cards', 'FKS_params.dat')
+    # (a ProcCharacteristic's get takes no default)
     splittings = []
     if proc_characteristics and 'splitting_types' in proc_characteristics:
         splittings = proc_characteristics['splitting_types']
+    max_n_matched_jets = -1
+    if proc_characteristics and 'max_n_matched_jets' in proc_characteristics:
+        max_n_matched_jets = proc_characteristics['max_n_matched_jets']
     qed = 'QED' in splittings
     scan = scan_events(list(event_files))
     decays = set(scan.coloured_decays)
@@ -421,8 +425,7 @@ def contract_from_generation(me_dir, run_card, proc_characteristics,
         mcatnlo_delta=bool(value('mcatnlo_delta', False)),
         ickkw=ickkw,
         ptj=value('ptj', 0.),
-        max_n_matched_jets=(proc_characteristics or {}).get(
-            'max_n_matched_jets', -1),
+        max_n_matched_jets=max_n_matched_jets,
         shower_scale_factor=value('shower_scale_factor', 1.),
         lpp1=value('lpp1', 1),
         lpp2=value('lpp2', 1),

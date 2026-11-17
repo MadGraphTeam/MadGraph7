@@ -163,20 +163,28 @@ class TestMatchingContract(unittest.TestCase):
         run_card = {'parton_shower': 'pythia8', 'mcatnlo_delta': False,
                     'ickkw': 3, 'ptj': 20., 'shower_scale_factor': 1.,
                     'lpp1': 1, 'lpp2': 1}
-        contract = mcatnlo_shower.contract_from_generation(
-            self.root, run_card, {'splitting_types': ['QCD', 'QED'],
-                                  'max_n_matched_jets': 2},
-            [self.write('events.lhe', events)])
-        self.assertEqual(contract['parton_shower'], 'PYTHIA8')
-        self.assertTrue(contract['qed_matching'])
-        self.assertAlmostEqual(contract['pythia8_mmaxgamma'], 2.5)
-        # Forced on for FxFx with Pythia8, as in the Fortran code.
-        self.assertTrue(contract['fxfx_pythia8_finite_terms'])
-        # With QED matching, Z > e+ e- is an NLO-corrected decay.
-        self.assertEqual(contract['nlo_resonance_decays'], [23])
-        self.assertEqual(contract['born_coloured_partons'], 0)
-        self.assertTrue(contract['fks_params_md5'])
-        self.assertEqual(contract['max_n_matched_jets'], 2)
+        event_file = self.write('events.lhe', events)
+        # The run interface passes the ProcCharacteristic of the output,
+        # whose get takes no default.
+        output_characteristics = banner_mod.ProcCharacteristic()
+        output_characteristics['splitting_types'] = ['QCD', 'QED']
+        output_characteristics['max_n_matched_jets'] = 2
+        for characteristics in ({'splitting_types': ['QCD', 'QED'],
+                                 'max_n_matched_jets': 2},
+                                output_characteristics):
+            with self.subTest(characteristics=type(characteristics).__name__):
+                contract = mcatnlo_shower.contract_from_generation(
+                    self.root, run_card, characteristics, [event_file])
+                self.assertEqual(contract['parton_shower'], 'PYTHIA8')
+                self.assertTrue(contract['qed_matching'])
+                self.assertAlmostEqual(contract['pythia8_mmaxgamma'], 2.5)
+                # Forced on for FxFx with Pythia8, as in the Fortran code.
+                self.assertTrue(contract['fxfx_pythia8_finite_terms'])
+                # With QED matching, Z > e+ e- is an NLO-corrected decay.
+                self.assertEqual(contract['nlo_resonance_decays'], [23])
+                self.assertEqual(contract['born_coloured_partons'], 0)
+                self.assertTrue(contract['fks_params_md5'])
+                self.assertEqual(contract['max_n_matched_jets'], 2)
 
 
 class FakePythia8(object):
