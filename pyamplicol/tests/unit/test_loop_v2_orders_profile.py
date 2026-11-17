@@ -723,12 +723,26 @@ def test_the_stability_run_without_a_ground_truth(uux_ddx):
 @pytest.mark.loop_physics
 def test_the_completion_time_overrules_given_counts_end_to_end(uux_ddx):
     """profile --completion-time with --stability-points and --batch-size
-    given (verifier D2): the stability run is planned from the time (a
-    deadline, its own point count) and the batch is not capped by the given
-    size; the overruled options are named."""
+    given (verifier D2): the counts are planned from the time, the given
+    ones named as overruled. The stability run has a deadline and its own
+    point count; the timed batches are the plan's whole SIMD chunks (up to
+    the default size), never the given 24, which a run with the counts
+    given times as is (no planned batch can be 24, on any machine; that the
+    given size does not cap the plan either is
+    test_profile_plan.test_effective_benchmark_resets_every_count_and_size).
+    The run takes about the time asked: within half of it to three times it
+    (or the minimums when they do not fit), loose enough for a slow or busy
+    runner, tight enough for a run on the default budgets instead (a
+    minute of stability alone) or one that misses the time tenfold."""
 
     from pyamplicol.cli.main import run_cli
+    from pyamplicol.config.models import BenchmarkConfig
+    from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
+    from pyamplicol.profile_plan import STABILITY_MINIMUM
 
+    completion = 12.0
+    given_batch = 24
+    assert given_batch % DEFAULT_LANES != 0
     stdout, stderr = io.StringIO(), io.StringIO()
     code = run_cli(
         [
@@ -739,11 +753,11 @@ def test_the_completion_time_overrules_given_counts_end_to_end(uux_ddx):
             "--stability-points",
             "7",
             "--batch-size",
-            "32",
+            str(given_batch),
             "--n_core",
             "1",
             "--completion-time",
-            "12s",
+            f"{completion:g}s",
             "--progress",
             "off",
             "--json",
@@ -753,12 +767,22 @@ def test_the_completion_time_overrules_given_counts_end_to_end(uux_ddx):
     )
     assert code == 0, stderr.getvalue()
     report = json.loads(stdout.getvalue())
-    assert set(report["plan"]["overruled"]) == {"--stability-points", "--batch-size"}
+    plan = report["plan"]
+    assert set(plan["overruled"]) == {"--stability-points", "--batch-size"}
+    assert plan["rule"] == "completion time"
+    assert plan["given"] == {"runtime": False, "stability": False}
     setup = report["stability_setup"]
     assert setup["deadline"] is not None
-    assert setup["points"] != 7 and setup["points"] >= 5
-    assert all(row["profile"]["batch"] != 32 for row in report["runtime"])
-    assert 6.0 <= report["seconds"] <= 18.0
+    assert setup["points"] >= STABILITY_MINIMUM
+    largest = int(BenchmarkConfig().batch_size)
+    for row in report["runtime"]:
+        batch = row["profile"]["batch"]
+        assert batch % DEFAULT_LANES == 0 and DEFAULT_LANES <= batch <= largest, row
+    asked = max(completion, plan["minimum_seconds"])
+    assert 0.5 * completion <= report["seconds"] <= 3.0 * asked, (
+        report["seconds"],
+        plan,
+    )
 
 
 @pytest.mark.loop_physics
