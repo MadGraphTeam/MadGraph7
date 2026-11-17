@@ -33,6 +33,8 @@ import fractions
 if madgraph.ordering:
     set = misc.OrderedSet    
     
+logger = logging.getLogger('madgraph.fks_common')
+
 class FKSProcessError(Exception):
     """Exception for MadFKS"""
     pass
@@ -256,7 +258,7 @@ def link_rb_configs(born_amp, real_amp, i, j, ij):
 
     # and compare them
     if len(born_tags) != len(real_tags):
-        print('\n'.join([str(r) for r in real_tags]) + '\n')
+        logger.debug('\n'.join([str(r) for r in real_tags]))
         raise FKSProcessError('Cannot map born/real configurations between \
                 %s and %s (i,j=%d,%d): not same number of configurations: %d %d' % \
                 (born_amp.get('process').nice_string().replace('Process:',''), 
@@ -274,8 +276,8 @@ def link_rb_configs(born_amp, real_amp, i, j, ij):
             real_tags.remove(btag)
             good_diags.pop(ir)
         except ValueError:
-            print(real_tags, i, j, ij)
-            print('\n'.join( d['diagram'].nice_string() for d in good_diags))
+            logger.debug('%s %d %d %d\n%s' % (real_tags, i, j, ij,
+                '\n'.join(d['diagram'].nice_string() for d in good_diags)))
             raise FKSProcessError('Linking %s to %s: could not link born diagram %s' % \
                  (born_amp.get('process').nice_string().replace('Process:',''), 
                   real_amp.get('process').nice_string().replace('Process:',''),

@@ -2227,7 +2227,10 @@ c     if there are no soft singularities at all, just do something trivial
             found_S=.true.
             if (i_S.eq.0) i_S=i
          endif
-         if (abs(pdg_type_d(nFKS(i),fks_i_d(nFKS(i)))).eq.21) then
+c Soft singularity: i_fks is a gluon or a photon (same test as in
+c sum_identical_contributions, which needs such an S contribution).
+         if (abs(pdg_type_d(nFKS(i),fks_i_d(nFKS(i)))).eq.21
+     &     .or.abs(pdg_type_d(nFKS(i),fks_i_d(nFKS(i)))).eq.22) then
             i_soft=i
             exit
          endif

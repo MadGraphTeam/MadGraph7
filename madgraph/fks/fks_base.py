@@ -923,20 +923,30 @@ class FKSProcess(object):
         """create the rb_links in the real matrix element to find 
         which configuration in the real correspond to which in the born
         """
-
-        # check that all splitting types are of ['QCD'] type, otherwise return
-        for real in self.real_amps:
-            for info in real.fks_infos:
-                if info['splitting_type'] != ['QCD']:
-                    logger.info('link_born_real: skipping because not all splittings are QCD')
-                    return
-
-
-        for real in self.real_amps:
-            for info in real.fks_infos:
-                info['rb_links'] = fks_common.link_rb_configs(\
-                        self.born_amp, real.amplitude,
-                        info['i'], info['j'], info['ij'])
+        # Done for all splitting types: event generation with QED corrections
+        # needs these links too (real_from_born_configs.inc). With the mixed
+        # coupling expansion, a born configuration may however be absent from
+        # a non-QCD real emission (e.g. the photon and Z s-channels of
+        # u u~ > t t~ QCD^2<=4 QED^2<=2 from u u~ > t t~ a at the same
+        # orders). Such a process is left without links, as was done before
+        # for all processes with non-QCD splittings, and gets a dummy
+        # real_from_born_configs.inc.
+        links = []
+        try:
+            for real in self.real_amps:
+                for info in real.fks_infos:
+                    links.append((info, fks_common.link_rb_configs(\
+                            self.born_amp, real.amplitude,
+                            info['i'], info['j'], info['ij'])))
+        except fks_common.FKSProcessError as error:
+            if all(info['splitting_type'] == ['QCD'] for real in
+                   self.real_amps for info in real.fks_infos):
+                raise
+            logger.info('link_born_reals: skipping, %s' %
+                        ' '.join(str(error).split()))
+            return
+        for info, rb_links in links:
+            info['rb_links'] = rb_links
 
 
 

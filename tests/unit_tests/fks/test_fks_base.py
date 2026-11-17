@@ -742,48 +742,69 @@ class TestFKSProcess(unittest.TestCase):
                 [22,-2,2,-2,-2],
                 [22,2,2,2,-2],
                 [22,21,2,-2,22]]
+        # the born/real links are also there for QED splittings (the two born
+        # configurations: the photon attached to the u or to the u~)
         target_fks_infos = [ \
                 # real config 1: d~ g > u u~ d~
                 [{'i':5, 'j':1, 'ij':1, 'ij_id':22, 'need_color_links':False,
                  'need_charge_links':False, 'underlying_born':[[22,21,2,-2]],
-                 'splitting_type':['QED'], 'extra_cnt_index': -1}],
+                 'splitting_type':['QED'], 'extra_cnt_index': -1,
+                 'rb_links':[{'born_conf': 0, 'real_conf': 7},
+                             {'born_conf': 1, 'real_conf': 5}]}],
                 # real config 2: d g > u u~ d
                 [{'i':5, 'j':1, 'ij':1, 'ij_id':22, 'need_color_links':False,
                  'need_charge_links':False, 'underlying_born':[[22,21,2,-2]],
-                 'splitting_type':['QED'], 'extra_cnt_index': -1}],
+                 'splitting_type':['QED'], 'extra_cnt_index': -1,
+                 'rb_links':[{'born_conf': 0, 'real_conf': 7},
+                             {'born_conf': 1, 'real_conf': 5}]}],
                 # real config 3: u~ g > u u~ u~
                 [{'i':5, 'j':1, 'ij':1, 'ij_id':22, 'need_color_links':False,
                  'need_charge_links':False, 'underlying_born':[[22,21,2,-2]],
-                 'splitting_type':['QED'], 'extra_cnt_index': -1}],
+                 'splitting_type':['QED'], 'extra_cnt_index': -1,
+                 'rb_links':[{'born_conf': 0, 'real_conf': 10},
+                             {'born_conf': 1, 'real_conf': 8}]}],
                 # real config 4: u g > u u u~
                 [{'i':4, 'j':1, 'ij':1, 'ij_id':22, 'need_color_links':False,
                  'need_charge_links':False, 'underlying_born':[[22,21,2,-2]],
-                 'splitting_type':['QED'], 'extra_cnt_index': -1}],
+                 'splitting_type':['QED'], 'extra_cnt_index': -1,
+                 'rb_links':[{'born_conf': 0, 'real_conf': 10},
+                             {'born_conf': 1, 'real_conf': 8}]}],
                 # real config 5: a d~ > u u~ d~
                 [{'i':5, 'j':2, 'ij':2, 'ij_id':21, 'need_color_links':False,
                  'need_charge_links':False, 'underlying_born':[[22,21,2,-2]],
-                 'splitting_type':['QCD'], 'extra_cnt_index': -1}],
+                 'splitting_type':['QCD'], 'extra_cnt_index': -1,
+                 'rb_links':[{'born_conf': 0, 'real_conf': 6},
+                             {'born_conf': 1, 'real_conf': 9}]}],
                 # real config 6: a d > u u~ d
                 [{'i':4, 'j':2, 'ij':2, 'ij_id':21, 'need_color_links':False,
                  'need_charge_links':False, 'underlying_born':[[22,21,2,-2]],
-                 'splitting_type':['QCD'], 'extra_cnt_index': -1}],
+                 'splitting_type':['QCD'], 'extra_cnt_index': -1,
+                 'rb_links':[{'born_conf': 0, 'real_conf': 5},
+                             {'born_conf': 1, 'real_conf': 14}]}],
                 # real config 7: a u~ > u u~ u~
                 [{'i':5, 'j':2, 'ij':2, 'ij_id':21, 'need_color_links':False,
                  'need_charge_links':False, 'underlying_born':[[22,21,2,-2]],
-                 'splitting_type':['QCD'], 'extra_cnt_index': -1}],
+                 'splitting_type':['QCD'], 'extra_cnt_index': -1,
+                 'rb_links':[{'born_conf': 0, 'real_conf': 10},
+                             {'born_conf': 1, 'real_conf': 13}]}],
                 # real config 8: a u > u u~ u
                 [{'i':4, 'j':2, 'ij':2, 'ij_id':21, 'need_color_links':False,
                  'need_charge_links':False, 'underlying_born':[[22,21,2,-2]],
-                 'splitting_type':['QCD'], 'extra_cnt_index': -1}],
+                 'splitting_type':['QCD'], 'extra_cnt_index': -1,
+                 'rb_links':[{'born_conf': 0, 'real_conf': 7},
+                             {'born_conf': 1, 'real_conf': 22}]}],
                 # real config 9: a g > u u~ a
                 [{'i':5, 'j':3, 'ij':3, 'ij_id':2, 'need_color_links':False,
                  'need_charge_links':True, 'underlying_born':[[22,21,2,-2]],
-                 'splitting_type':['QED'], 'extra_cnt_index': -1},
+                 'splitting_type':['QED'], 'extra_cnt_index': -1,
+                 'rb_links':[{'born_conf': 0, 'real_conf': 5},
+                             {'born_conf': 1, 'real_conf': 3}]},
                  {'i':5, 'j':4, 'ij':4, 'ij_id':-2, 'need_color_links':False,
                  'need_charge_links':True, 'underlying_born':[[22,21,2,-2]],
-                 'splitting_type':['QED'], 'extra_cnt_index': -1}],
+                 'splitting_type':['QED'], 'extra_cnt_index': -1,
+                 'rb_links':[{'born_conf': 0, 'real_conf': 1},
+                             {'born_conf': 1, 'real_conf': 4}]}],
                     ]
-#        misc.sprint('fix rb_links')
 
         myfks.generate_reals([],[])
         self.assertEqual(len(myfks.real_amps),9)

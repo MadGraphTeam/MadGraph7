@@ -653,11 +653,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               nconfigs,max_leg_number,nfksconfs,
                               fortran_model)
         
-        # For processes with only QCD splittings, write
-        # the file with the mapping of born vs real diagrams
-        # Otherwise, write a dummy file
+        # the file with the mapping of born vs real diagrams (needed for
+        # event generation, also with QED splittings). Write a dummy file if
+        # the born and real configurations could not be linked (see
+        # FKSProcess.link_born_reals)
         filename = 'real_from_born_configs.inc'
-        if self.proc_characteristic['splitting_types'] == ['QCD']:
+        if all('rb_links' in conf['fks_info'] for conf in
+               matrix_element.get_fks_info_list()):
             self.write_real_from_born_configs(
                               writers.FortranWriter(filename), 
                               matrix_element,
