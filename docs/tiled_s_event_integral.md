@@ -97,7 +97,7 @@ budget admits.
 
 ## Measured effect
 
-Five runs per process on `main` (2c7fcbd705) and on this branch (f37d302698)
+Five runs per process on `main` (2c7fcbd705) and on this branch (46f27f9310)
 with `FKSSectorLearning` at the default budget of .20, seeds 271828, 314159,
 161803, 141421 and 173205. Each run generates 50,000 unshowered events at
 13 TeV with folding 111, `born_spreading = False`, no `mcatnlo_delta` and
@@ -108,11 +108,11 @@ error of the mean.
 
 | Process | Negative S events, main | Negative S events, learning | All negative events, main → learning | Events for equal precision | CPU for 50,000 events | CPU for equal precision |
 |---|---:|---:|---:|---:|---:|---:|
-| Drell–Yan | 2,162 ± 7 | 127 ± 9 | 3,620 → 1,719 | 0.84 | 1.12 | 0.94 |
-| Top pair | 1,894 ± 23 | 180 ± 31 | 10,617 → 9,640 | 0.88 | 1.04 | 0.91 |
-| W+jet | 9,340 ± 40 | 4,830 ± 69 | 13,282 → 9,876 | 0.60 | 0.90 | 0.54 |
-| t-channel single top, 5FS | 2,197 ± 24 | 796 ± 18 | 13,932 → 13,218 | 0.88 | 1.03 | 0.91 |
-| W+bb, 4FS | 2,727 ± 31 | 1,332 ± 17 | 7,946 → 6,858 | 0.88 | 1.69 | 1.49 |
+| Drell–Yan | 2,162 ± 7 | 141 ± 6 | 3,620 → 1,712 | 0.84 | 1.10 | 0.93 |
+| Top pair | 1,894 ± 23 | 164 ± 22 | 10,617 → 9,580 | 0.87 | 1.05 | 0.92 |
+| W+jet | 9,340 ± 40 | 4,808 ± 40 | 13,282 → 9,794 | 0.59 | 0.92 | 0.54 |
+| t-channel single top, 5FS | 2,197 ± 24 | 782 ± 31 | 13,932 → 13,236 | 0.89 | 1.18 | 1.04 |
+| W+bb, 4FS | 2,727 ± 31 | 1,349 ± 27 | 7,946 → 6,848 | 0.88 | 1.72 | 1.52 |
 
 The last three columns are ratios, learning over `main`. "Events for equal
 precision" is the ratio of (1 − 2f)², with f the fraction of negative events:
@@ -122,10 +122,12 @@ cost. CPU is the total of MINT0, MINT1 and event generation, with both arms
 running side by side on one machine; "CPU for equal precision" is the
 product of the two ratios. Cross sections agree within their errors. The
 fraction of negative H events is unchanged; there are slightly more H events
-because the absolute S integral is smaller.
+because the absolute S integral is smaller. Runs are fixed by their seeds:
+rerunning the Drell–Yan job with seed 271828 reproduces its events exactly.
 
-W+bb remains expensive: MINT1 needs 2.3 times as many points as on `main`
-and event generation 1.5 times as many points per event. The budget fixes
+W+bb remains expensive: MINT1 needs 2.2 times as many points as on `main`
+and event generation 1.5 times as many points per event; single top needs
+1.2 times as many in both. The budget fixes
 the number of probes, not the total run time. Showered
 samples were not studied.
 
