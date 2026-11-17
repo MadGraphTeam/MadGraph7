@@ -901,27 +901,36 @@ def _pid_exists(pid: int) -> bool:
 
 @pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
 def test_low_limit_terminates_child_process_tree(tmp_path: Path) -> None:
+    """A grandchild over the limit: the watchdog signals the whole tree, the
+    grandchild's SIGTERM handler runs (its marker) and the tree is gone."""
+
     marker = tmp_path / "child-terminated"
     pid_path = tmp_path / "child.pid"
     child = tmp_path / "child.py"
+    # The SIGTERM can arrive at any bytecode of the child, an import or a
+    # codec lookup included (a handler that opened its marker with
+    # Path.write_text inside the import of encodings.ascii truncated it and
+    # then failed the lookup: an empty marker). So the handler makes system
+    # calls only, on a descriptor opened before the payload; the child
+    # writes its own pid before it, when nothing can signal it yet.
     child.write_text(
         """
 import os
-import re
 import signal
 import sys
 import time
-from pathlib import Path
 
-marker = Path(sys.argv[1])
+marker = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+pid = os.open(sys.argv[2], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+os.write(pid, str(os.getpid()).encode("ascii"))
+os.close(pid)
 
 def terminate(_signum, _frame):
-    marker.write_text("terminated", encoding="ascii")
-    raise SystemExit(0)
+    os.write(marker, b"terminated")
+    os._exit(0)
 
 signal.signal(signal.SIGTERM, terminate)
 payload = bytearray(96 * 1024 * 1024)
-marker.with_suffix(".ready").write_text(str(len(payload)), encoding="ascii")
 time.sleep(30)
 """.lstrip(),
         encoding="utf-8",
@@ -932,10 +941,8 @@ time.sleep(30)
 import subprocess
 import sys
 import time
-from pathlib import Path
 
-child = subprocess.Popen([sys.executable, sys.argv[1], sys.argv[2]])
-Path(sys.argv[3]).write_text(str(child.pid), encoding="ascii")
+subprocess.Popen([sys.executable, *sys.argv[1:]])
 time.sleep(30)
 """.lstrip(),
         encoding="utf-8",
@@ -950,8 +957,8 @@ time.sleep(30)
             "--poll-interval",
             "0.02",
             # Generous: the watchdog returns as soon as the tree is gone, and a
-            # loaded runner may not schedule the child's SIGTERM handler within
-            # one second (SIGKILL would then cut its marker write short).
+            # loaded runner may not schedule the child's SIGTERM handler
+            # before a short grace's SIGKILL.
             "--terminate-grace",
             "10",
             "--",
@@ -964,20 +971,22 @@ time.sleep(30)
         check=False,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=60,
     )
 
-    assert completed.returncode == watchdog.MEMORY_LIMIT_EXIT_CODE
+    assert completed.returncode == watchdog.MEMORY_LIMIT_EXIT_CODE, completed.stderr
     assert "memory limit exceeded" in completed.stderr
     assert f"reason={watchdog.RSS_LIMIT_REASON}" in completed.stderr or (
         f"reason={watchdog.DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON}" in completed.stderr
     )
-    assert marker.read_text(encoding="ascii") == "terminated"
+    # The watchdog waited for the tree (its zombies included); its last
+    # member's reaping by init may still lag on a loaded host.
     child_pid = int(pid_path.read_text(encoding="ascii"))
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + 30
     while _pid_exists(child_pid) and time.monotonic() < deadline:
         time.sleep(0.02)
     assert not _pid_exists(child_pid)
+    assert marker.read_text(encoding="ascii") == "terminated"
 
 
 def test_ci_helper_is_sdist_only_for_packaged_profiling_runtime() -> None:
