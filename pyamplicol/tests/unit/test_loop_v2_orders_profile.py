@@ -723,12 +723,26 @@ def test_the_stability_run_without_a_ground_truth(uux_ddx):
 @pytest.mark.loop_physics
 def test_the_completion_time_overrules_given_counts_end_to_end(uux_ddx):
     """profile --completion-time with --stability-points and --batch-size
-    given (verifier D2): the stability run is planned from the time (a
-    deadline, its own point count) and the batch is not capped by the given
-    size; the overruled options are named."""
+    given (verifier D2): the counts are planned from the time, the given
+    ones named as overruled. The stability run has a deadline and its own
+    point count; the timed batches are the plan's whole SIMD chunks (up to
+    the default size), never the given 24, which a run with the counts
+    given times as is (no planned batch can be 24, on any machine; that the
+    given size does not cap the plan either is
+    test_profile_plan.test_effective_benchmark_resets_every_count_and_size).
+    The run takes about the time asked: within half of it to three times it
+    (or the minimums when they do not fit), loose enough for a slow or busy
+    runner, tight enough for a run on the default budgets instead (a
+    minute of stability alone) or one that misses the time tenfold."""
 
     from pyamplicol.cli.main import run_cli
+    from pyamplicol.config.models import BenchmarkConfig
+    from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
+    from pyamplicol.profile_plan import STABILITY_MINIMUM
 
+    completion = 12.0
+    given_batch = 24
+    assert given_batch % DEFAULT_LANES != 0
     stdout, stderr = io.StringIO(), io.StringIO()
     code = run_cli(
         [
@@ -739,11 +753,11 @@ def test_the_completion_time_overrules_given_counts_end_to_end(uux_ddx):
             "--stability-points",
             "7",
             "--batch-size",
-            "32",
+            str(given_batch),
             "--n_core",
             "1",
             "--completion-time",
-            "12s",
+            f"{completion:g}s",
             "--progress",
             "off",
             "--json",
@@ -753,12 +767,22 @@ def test_the_completion_time_overrules_given_counts_end_to_end(uux_ddx):
     )
     assert code == 0, stderr.getvalue()
     report = json.loads(stdout.getvalue())
-    assert set(report["plan"]["overruled"]) == {"--stability-points", "--batch-size"}
+    plan = report["plan"]
+    assert set(plan["overruled"]) == {"--stability-points", "--batch-size"}
+    assert plan["rule"] == "completion time"
+    assert plan["given"] == {"runtime": False, "stability": False}
     setup = report["stability_setup"]
     assert setup["deadline"] is not None
-    assert setup["points"] != 7 and setup["points"] >= 5
-    assert all(row["profile"]["batch"] != 32 for row in report["runtime"])
-    assert 6.0 <= report["seconds"] <= 18.0
+    assert setup["points"] >= STABILITY_MINIMUM
+    largest = int(BenchmarkConfig().batch_size)
+    for row in report["runtime"]:
+        batch = row["profile"]["batch"]
+        assert batch % DEFAULT_LANES == 0 and DEFAULT_LANES <= batch <= largest, row
+    asked = max(completion, plan["minimum_seconds"])
+    assert 0.5 * completion <= report["seconds"] <= 3.0 * asked, (
+        report["seconds"],
+        plan,
+    )
 
 
 @pytest.mark.loop_physics
@@ -918,3 +942,142 @@ def test_a_stale_history_only_seeds_the_estimate(uux_ddx, tmp_path, monkeypatch)
         assert cost.reference <= 3 * true[(name, "double-double")]
     assert seen[1][1] <= 3 * sum(16 * t for t in true.values()) + 1.0
     assert costs["ninjars"].binary64 == pytest.approx(0.006, rel=0.5)
+
+
+def _normalised(text: str) -> str:
+    """A rendered profile without what timing changes (numbers, units,
+    bars, padding)."""
+
+    import re
+
+    text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+    text = re.sub(r"[0-9]+(\.[0-9]+)?(e[-+][0-9]+)?", "N", text)
+    text = re.sub(r"\b(s|ms|us|KiB|MiB|GiB)\b", "U", text)
+    text = re.sub(r"#+", "B", text)
+    text = re.sub(r"-+", "-", text)
+    return re.sub(r" +", " ", text)
+
+
+@pytest.mark.loop_physics
+def test_the_runtime_threads_are_in_force(uux_ddx, monkeypatch):
+    """--runtime-threads N: the timed calls report N threads (and the
+    header says so), a one-thread timing of the same calls gives the gain;
+    N is capped by the usable cores with a plain line; the values do not
+    depend on the threads."""
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.cli.main import run_cli
+
+    monkeypatch.setattr(lp, "usable_cores", lambda: 2)
+    stdout, stderr = io.StringIO(), io.StringIO()
+    args = [
+        "profile",
+        str(uux_ddx),
+        "--runtime",
+        "--target-runtime",
+        "0.4",
+        "--runtime-threads",
+        "64",
+        "--progress",
+        "log",
+    ]
+    assert run_cli([*args, "--json"], stdout=stdout, stderr=stderr) == 0
+    assert "--runtime-threads 64 reduced to 2, the usable cores" in stderr.getvalue()
+    report = json.loads(stdout.getvalue())
+    assert "on 2 threads;" in report["runtime_setup"]
+    for row in report["runtime"]:
+        profile = row["profile"]
+        assert profile["threads"] == 2
+        assert profile["one_thread_seconds_per_point"] > 0.0
+        assert profile["one_thread_calls"] >= 1
+
+
+@pytest.mark.loop_physics
+def test_values_do_not_depend_on_the_threads(uux_ddx):
+    """A runtime loaded with its pools at 4 threads evaluates bit-identically
+    to one at one thread (binary64 and double-double, both backends)."""
+
+    import os
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import _initial_invariant
+    from pyamplicol.loop_profile import _WORKER_THREADS, pin_threads
+
+    points = _points(uux_ddx) * 8
+    scales = [_initial_invariant(point, 2) for point in points]
+    saved = {name: os.environ.get(name) for name in _WORKER_THREADS}
+    results = {}
+    try:
+        for threads in (1, 4):
+            pin_threads(threads)
+            runtime = Runtime.load(uux_ddx)
+            results[threads] = [
+                repr(
+                    runtime.evaluate(
+                        points,
+                        mu_r2=scales,
+                        reduction=backend,
+                        poles="none",
+                        **precision,
+                    ).values
+                )
+                for backend in ("tirust", "ninjars")
+                for precision in ({}, {"arithmetic": "double-double"})
+            ]
+            del runtime
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+    assert results[1] == results[4]
+
+
+@pytest.mark.loop_physics
+def test_one_runtime_thread_is_the_default(uux_ddx):
+    """--runtime-threads 1 prints what the default prints (the tables, the
+    field descriptions, the JSON's fields), timings aside."""
+
+    from pyamplicol.cli.main import run_cli
+
+    def keys(value, path=""):
+        if isinstance(value, dict):
+            found = set()
+            for key, entry in value.items():
+                found |= {f"{path}/{key}"} | keys(entry, f"{path}/{key}")
+            return found
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            return keys(value[0], f"{path}[]")
+        return set()
+
+    outputs = {}
+    for extra in ((), ("--runtime-threads", "1")):
+        args = [
+            "profile",
+            str(uux_ddx),
+            "--runtime",
+            "--target-runtime",
+            "0.3",
+            "--progress",
+            "off",
+            *extra,
+        ]
+        text, machine = io.StringIO(), io.StringIO()
+        assert (
+            run_cli(
+                [*args, "--fields-description-help", "--color", "never"],
+                stdout=text,
+                stderr=io.StringIO(),
+            )
+            == 0
+        )
+        assert run_cli([*args, "--json"], stdout=machine, stderr=io.StringIO()) == 0
+        outputs[extra] = (text.getvalue(), json.loads(machine.getvalue()))
+    (default_text, default_json), (one_text, one_json) = outputs.values()
+    assert _normalised(default_text) == _normalised(one_text)
+    assert "on one core;" in default_json["runtime_setup"]
+    assert "vs 1 thread" not in default_text
+    assert keys(default_json) == keys(one_json)
+    assert all(row["profile"]["threads"] == 1 for row in one_json["runtime"])
+    assert "one_thread_seconds_per_point" not in json.dumps(one_json)

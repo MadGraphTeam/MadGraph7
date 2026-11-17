@@ -565,6 +565,13 @@ completion_time = "10m"
 # true error and task timings); the profile's --json then names it. Default
 # null: the records are in --json only.
 samples_output = "profile-samples.json"
+# benchmark.runtime_threads: Loop artifacts: the native threads of each
+# runtime timing call (`--runtime-threads`): the calls stay one at a time,
+# N threads work inside each (the time per point is then N threads' wall
+# time, not one core's; a short one-thread timing gives the gain). At most
+# the usable cores. The stability workers stay at one thread each. Default
+# 1: one core, the cost one Monte Carlo worker pays.
+runtime_threads = 1
 
 [check]
 # check.points: Positive count of seeded phase-space points per process of

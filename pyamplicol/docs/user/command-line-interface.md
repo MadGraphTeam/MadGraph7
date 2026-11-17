@@ -906,6 +906,25 @@ Python's part of the call and the native work outside the named stages).
 `--mu-r2` sets the scale (default: per point the squared invariant mass of
 its initial state).
 
+**More threads per call.** `--runtime-threads N` (`benchmark.runtime_threads`,
+default 1) times each backend's calls with N native threads working inside
+each call: its process's thread pools at N threads (the binary64 calls and
+the reference pass), the calls still one at a time, never several batches in
+parallel; N is at most the usable cores (a plain line says so when it is
+reduced). The time per point is then the wall time of a call with N threads
+working over its points: **it is not the cost of one core**, and a Monte
+Carlo run that gives each worker one core should use the default. The header
+says `on N threads`; next to each time a muted `(xS vs 1 thread)` gives the
+gain, from a short one-thread timing of the same calls after them in the
+same process (the runtime reloaded at one thread; a quarter of the binary64
+budget, at least one call; `one_thread_seconds_per_point` in `--json`).
+`peak RAM` is the N-thread process's, measured before that timing, and
+`cpu_per_wall` approaches N. The stability run is not affected: its
+`--n_core` workers run one thread each; with `--stability` the option only
+changes the runtime timing. The cost measurement and the plan of the time
+budgets stay at one thread (the stability workers' cost; the N-thread calls
+then fill their budgets with as many calls as they afford).
+
 `peak RAM` is the memory to expect for each Monte Carlo worker evaluating
 the matrix element on that backend: every backend is profiled in its own
 spawned process that loads the artifact and runs that backend's warm-up and
@@ -1083,7 +1102,10 @@ best-effort points do not change it), `batch`, `samples`, `failed_points`,
 `failure_reasons`, `best_effort_points` (with `--checked`; 0 in the
 optimistic pass), `peak_memory` with `peak_rss_bytes`,
 `start_rss_bytes`, `increase_rss_bytes`, `scope` and `method`, `threads`
-(the native threads of the timed calls: 1), `cpu_per_wall`, and
+(the native threads of the timed calls: 1, N with `--runtime-threads N`),
+`cpu_per_wall` (about 1 on one core, approaching N on N threads), with
+`--runtime-threads N > 1` `one_thread_seconds_per_point` and
+`one_thread_calls` (the one-thread timing of the same calls), and
 `reference`: its `arithmetic`, `digits`, `seconds_per_point`, `low`, `high`,
 `batch`, `points`, `samples`, `warmup`, `failed_points` and
 `peak_memory`), `ratio`, `requested` and `refusal`; `ground_truth`

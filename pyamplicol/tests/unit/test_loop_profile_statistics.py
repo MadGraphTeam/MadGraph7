@@ -1032,3 +1032,101 @@ def test_a_narrow_terminal_never_breaks_words(monkeypatch):
     text = rendering._fit(table, rows)
     assert "dressing" in text and "reduction" in text and "735 us" in text
     assert max(len(line) for line in text.splitlines()) > 30
+
+
+def test_runtime_threads_say_so_and_show_the_gain():
+    """profile --runtime-threads N: the header says "on N threads" (one
+    core otherwise), the time cell a muted "(xS vs 1 thread)" from the
+    one-thread timing, the field descriptions what the N-thread time is; a
+    one-thread report reads as before (no gain, no thread wording)."""
+
+    import io
+
+    from pyamplicol.benchmarking import VirtualProfileResult
+    from pyamplicol.cli.main import write_result
+    from pyamplicol.loop_profile import _runtime_setup
+
+    def profile(seconds, threads=1, single=None):
+        return VirtualProfileResult(
+            "gg_zgg",
+            "g g > z g g",
+            "loop-induced",
+            16,
+            5,
+            1,
+            seconds,
+            seconds,
+            seconds,
+            {"trees": seconds / 2, "reduction": seconds / 2},
+            {},
+            True,
+            0,
+            threads=threads,
+            one_thread_seconds_per_point=single,
+            one_thread_calls=0 if single is None else 1,
+        )
+
+    rows = (
+        BackendRuntime("tirust", profile(1e-3, 8, 2.5e-3), ratio=1.0),
+        BackendRuntime("ninjars", profile(3e-3, 8, 4.2e-3), ratio=3.0),
+    )
+    setup = _runtime_setup(False, 1, (8, 8), rows)
+    assert "on 8 threads;" in setup and "one core" not in setup
+    assert "on one core;" in _runtime_setup(False, 1, (1, 1), rows)
+    assert "on one core;" in _runtime_setup(False, 1, (), rows)
+    report = replace(_report(None, rows), runtime_setup=setup)
+    out = io.StringIO()
+    write_result(report, format="human", stream=out, fields_help=True)
+    text = out.getvalue()
+    assert "(x2.5 vs 1 thread)" in text and "(x1.4 vs 1 thread)" in text
+    flat = " ".join(text.split())
+    assert "with --runtime-threads 8: on 8 threads" in flat
+    assert "a Monte Carlo run giving each worker one core should use the default" in (
+        flat
+    )
+    assert max(len(line) for line in text.splitlines()) <= 100
+    plain = (BackendRuntime("tirust", profile(1e-3), ratio=1.0),)
+    out = io.StringIO()
+    write_result(_report(None, plain), format="human", stream=out, fields_help=True)
+    assert "vs 1 thread" not in out.getvalue()
+    assert "--runtime-threads" not in out.getvalue()
+    # JSON: the one-thread fields only when they ran.
+    machine = io.StringIO()
+    write_result(_report(None, plain), format="json", stream=machine)
+    assert "one_thread" not in machine.getvalue()
+    machine = io.StringIO()
+    write_result(report, format="json", stream=machine)
+    first = json.loads(machine.getvalue())["runtime"][0]["profile"]
+    assert first["threads"] == 8 and first["one_thread_seconds_per_point"] == 2.5e-3
+
+
+def test_runtime_threads_setting_and_pools():
+    """benchmark.runtime_threads: a positive count (1 default; 0, negative
+    and booleans refused); ``pin_threads`` sizes every pool of the process;
+    the option on the command line."""
+
+    import os
+
+    from pyamplicol.cli.parser import parse_cli
+    from pyamplicol.config import BenchmarkConfig
+    from pyamplicol.config.errors import ConfigurationError
+    from pyamplicol.loop_profile import _WORKER_THREADS, pin_threads
+
+    assert BenchmarkConfig().runtime_threads == 1
+    assert BenchmarkConfig(runtime_threads=8).runtime_threads == 8
+    for bad in (0, -2, True, 2.5):
+        with pytest.raises(ConfigurationError):
+            BenchmarkConfig(runtime_threads=bad)
+    saved = {name: os.environ.get(name) for name in _WORKER_THREADS}
+    try:
+        pin_threads(6)
+        assert all(os.environ[name] == "6" for name in _WORKER_THREADS)
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+    invocation = parse_cli(["profile", "art", "--runtime", "--runtime-threads", "4"])
+    overrides = repr(invocation)
+    assert "runtime_threads" in overrides and "4" in overrides
