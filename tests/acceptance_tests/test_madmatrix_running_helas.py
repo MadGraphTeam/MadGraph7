@@ -46,7 +46,7 @@ class TestMadMatrixRunningHelas(unittest.TestCase):
                     reference[alphas] = self.matrix_element(self.run_command(['./check', '125'], fdir))
                 backend = os.environ.get('MG7_TEST_GPU_BACKEND', 'simd_128')
                 for configuration in (['BACKEND=scalar', 'FPTYPE=d'],
-                                      ['BACKEND=' + backend, 'FPTYPE=v', 'HRDCOD=0']):
+                                      ['BACKEND=' + backend, 'FPTYPE=v']):
                     self.errors = []
                     self.run_command(['make', 'cleanall'], cdir)
                     self.run_command(['make', '-j2'] + configuration, cdir)
@@ -92,21 +92,19 @@ class TestMadMatrixRunningHelas(unittest.TestCase):
             baseline = None
             # f exercises the scalar loop used to compute SIMD float couplings;
             # v exercises distinct vertex and parameter/denominator precision.
-            configurations = [('scalar', 'd', 0), ('simd_128', 'd', 0),
-                              ('simd_128', 'f', 0), ('simd_128', 'v', 0),
-                              ('simd_128', 'f', 1), ('simd_128', 'v', 1)]
+            configurations = [('scalar', 'd'), ('simd_128', 'd'),
+                              ('simd_128', 'f'), ('simd_128', 'v')]
             gpu_backend = os.environ.get('MG7_TEST_GPU_BACKEND')
             if gpu_backend:
                 self.assertIn(gpu_backend, ('cuda', 'hip'))
                 # GPU CI needs its scalar reference, while SIMD variants are
                 # already covered by CPU CI.
-                configurations = [('scalar', 'd', 0), (gpu_backend, 'd', 0),
-                                  (gpu_backend, 'v', 1)]
-            for backend, precision, hardcoded in configurations:
+                configurations = [('scalar', 'd'), (gpu_backend, 'd'),
+                                  (gpu_backend, 'v')]
+            for backend, precision in configurations:
                 self.errors = []
                 self.run_command(['make', 'cleanall'], cdir)
-                self.run_command(['make', '-j2', 'BACKEND=' + backend, 'FPTYPE=' + precision,
-                                  'HRDCOD=' + str(hardcoded)], cdir)
+                self.run_command(['make', '-j2', 'BACKEND=' + backend, 'FPTYPE=' + precision], cdir)
                 tolerance = 2e-5 if precision == 'f' else (3e-6 if precision == 'v' else 1e-6)
                 for alpha, expected in reference.items():
                     self.set_alphas(cpp, alpha)
@@ -141,8 +139,8 @@ class TestMadMatrixRunningHelas(unittest.TestCase):
                     self.assertEqual(len(values), len(baseline))
                     for actual, expected in zip(values, baseline):
                         self.assert_close(actual, expected, tolerance)
-                print('Validated %s/%s HRDCOD=%d: max relative error %.3g' %
-                      (backend, precision, hardcoded, max(self.errors)), flush=True)
+                print('Validated %s/%s: max relative error %.3g' %
+                      (backend, precision, max(self.errors)), flush=True)
 
     def test_madmatrix_running_helas_pole_precision(self):
         """A squared narrow Higgs pole retains the double momentum subtraction."""
@@ -169,7 +167,7 @@ class TestMadMatrixRunningHelas(unittest.TestCase):
                          for energy in energies]
             backend = os.environ.get('MG7_TEST_GPU_BACKEND', 'simd_128')
             for configuration in (['BACKEND=scalar', 'FPTYPE=d'],
-                                  ['BACKEND=' + backend, 'FPTYPE=v', 'HRDCOD=1']):
+                                  ['BACKEND=' + backend, 'FPTYPE=v']):
                 self.errors = []
                 self.run_command(['make', 'cleanall'], cdir)
                 self.run_command(['make', '-j2'] + configuration, cdir)
