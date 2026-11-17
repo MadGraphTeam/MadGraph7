@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import errno
 import hashlib
@@ -8,6 +9,7 @@ import io
 import json
 import os
 import re
+import signal
 import struct
 import subprocess
 import sys
@@ -912,7 +914,12 @@ def test_low_limit_terminates_child_process_tree(tmp_path: Path) -> None:
     # Path.write_text inside the import of encodings.ascii truncated it and
     # then failed the lookup: an empty marker). So the handler makes system
     # calls only, on a descriptor opened before the payload; the child
-    # writes its own pid before it, when nothing can signal it yet.
+    # writes its own pid before it, when nothing can signal it yet. No fixed
+    # sleep stands for "until killed" (a starved core took over 30 s to get
+    # there): the child lasts the run's timeout, the parent waits on it.
+    # Meanwhile the child writes a byte of every page of its payload: an idle
+    # payload of zeros went to (z)swap under host memory pressure, below the
+    # RSS limit, and the watchdog never fired.
     child.write_text(
         """
 import os
@@ -931,7 +938,12 @@ def terminate(_signum, _frame):
 
 signal.signal(signal.SIGTERM, terminate)
 payload = bytearray(96 * 1024 * 1024)
-time.sleep(30)
+page = os.sysconf("SC_PAGE_SIZE")
+ones = b"\x01" * len(range(0, len(payload), page))
+end = time.monotonic() + float(sys.argv[3])
+while time.monotonic() < end:
+    payload[::page] = ones
+    time.sleep(0.01)
 """.lstrip(),
         encoding="utf-8",
     )
@@ -940,39 +952,47 @@ time.sleep(30)
         """
 import subprocess
 import sys
-import time
 
-subprocess.Popen([sys.executable, *sys.argv[1:]])
-time.sleep(30)
+subprocess.Popen([sys.executable, *sys.argv[1:]]).wait()
 """.lstrip(),
         encoding="utf-8",
     )
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(WATCHDOG),
-            "--limit-mib",
-            "64",
-            "--poll-interval",
-            "0.02",
-            # Generous: the watchdog returns as soon as the tree is gone, and a
-            # loaded runner may not schedule the child's SIGTERM handler
-            # before a short grace's SIGKILL.
-            "--terminate-grace",
-            "10",
-            "--",
-            sys.executable,
-            str(parent),
-            str(child),
-            str(marker),
-            str(pid_path),
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    # Only a failure waits this long: the watchdog returns as soon as the
+    # tree is gone.
+    timeout = 600.0
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(WATCHDOG),
+                "--limit-mib",
+                "64",
+                "--poll-interval",
+                "0.02",
+                # Generous: a loaded runner may not schedule the child's
+                # SIGTERM handler before a short grace's SIGKILL.
+                "--terminate-grace",
+                "10",
+                "--",
+                sys.executable,
+                str(parent),
+                str(child),
+                str(marker),
+                str(pid_path),
+                str(timeout),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    finally:
+        # A failed run leaves no sleeping tree behind (the parent's group).
+        if pid_path.exists():
+            orphan = int(pid_path.read_text(encoding="ascii"))
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(os.getpgid(orphan), signal.SIGKILL)
 
     assert completed.returncode == watchdog.MEMORY_LIMIT_EXIT_CODE, completed.stderr
     assert "memory limit exceeded" in completed.stderr
