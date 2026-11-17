@@ -202,6 +202,15 @@ contains
     integer i,j,ii,i_fks,j_fks
     double precision ref_scale,scalemin,scalemax
     logical :: connected(next_n1,next_n1)
+    ! The phase-space map can reject the real-emission event while keeping
+    ! the Born and the counterevents (p(0,1)=-99: e.g. an empty xi range for
+    ! initial-state radiation off a Born far below the cuts). There is then
+    ! no H event, and no MC counterterm (see compute_MC_subt_term), so no
+    ! H-event shower scale; the PYTHIA8 QED dipoles cannot be built either.
+    if (p(0,1).le.0d0) then
+       shower_scale_n1body=-1d0
+       return
+    endif
     call refresh_qed_dipoles(p,.false.)
     connected=valid_dipole_n1
     if (qed_matching) connected=qed_dipole_n1

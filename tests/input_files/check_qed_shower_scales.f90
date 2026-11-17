@@ -56,6 +56,16 @@ program check_qed_shower_scales
   call require(all(.not.valid_dipole_n1),'QED leaves event colour dipoles unchanged')
   call require(emsca_S_hard(1,1).eq.saved_hard,'H evaluation preserves saved S scale')
 
+  ! The phase-space map can reject the real-emission event and keep the
+  ! counterevents (p(0,1)=-99 and a zero photon). There is no H event then:
+  ! no H scales, and no PYTHIA8 QED dipoles built from these momenta.
+  realp(:,1:4)=born(:,1:4)
+  realp(:,5)=0d0
+  realp(0,1)=-99d0
+  call compute_shower_scale_n1body(realp,5,1,0d0)
+  call require(all(shower_scale_n1body.lt.0d0),'no H scales without real kinematics')
+  realp(:,1:2)=born(:,1:2)
+
   ! Both QED daughters use mu+ as recoiler. The fermion invariant is
   ! smaller and must not be skipped after finding the photon connection.
   realp(:,3)=[32d0,-23d0,sqrt(495d0),0d0]
