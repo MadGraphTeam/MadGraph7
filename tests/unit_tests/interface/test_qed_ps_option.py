@@ -143,6 +143,36 @@ class TestQEDPSOption(unittest.TestCase):
                 with self.assertRaises(ConfigurationReached):
                     command.do_launch(mode + ' -f')
 
+    def test_matching_refused_without_born_real_links(self):
+        """NLO+PS stops, also with --allow_qed_ps, for an output whose born and
+        real configurations could not be linked. Fixed order and LO+PS (no H
+        events) do not need these links."""
+        self.mother.proc_characteristics['unlinked_born_real_dirs'] = ['P0_uux_ttx']
+        command = self.command()
+        for mode in ('aMC@NLO', 'noshower'):
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(command.InvalidCmd, 'P0_uux_ttx'):
+                    command.ask_run_configuration(
+                        mode, {'force': True, 'allow_qed_ps': True})
+        for mode in ('LO', 'NLO', 'aMC@LO', 'noshowerLO'):
+            with self.subTest(mode=mode):
+                with self.assertRaises(ConfigurationReached):
+                    command.ask_run_configuration(
+                        mode, {'force': True, 'allow_qed_ps': True})
+
+        # NLO+PS chosen in the run selector rather than on the command line
+        def select(question, default, choices, **kwargs):
+            selector = kwargs['ask_class'](
+                question, mother_interface=self.mother,
+                allow_qed_ps=kwargs['allow_qed_ps'])
+            for line in kwargs['first_cmd']:
+                selector.onecmd(line)
+            return selector.answer, selector
+
+        command.ask = select
+        with self.assertRaisesRegex(command.InvalidCmd, 'P0_uux_ttx'):
+            command.do_launch('--allow_qed_ps -f')
+
     def test_outer_launcher_forwards_override_to_generated_process(self):
         options, _ = amcatnlo_interface._launch_parser.parse_args(
             ['aMC@NLO', '--allow_qed_ps', '--name=override_test', '-f'])

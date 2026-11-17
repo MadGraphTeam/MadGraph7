@@ -494,6 +494,57 @@ class TestFKSOutput(unittest.TestCase):
 
 
  #   @test_manager.bypass_for_py3
+    def test_unlinked_born_real_dirs(self):
+        """the born configurations of u u~ > t t~ [real=QCD QED] (gluon, photon
+        and Z s-channels) cannot be linked to those of the u u~ > t t~ a real
+        at the same orders (gluon s-channel only): the directory gets a dummy
+        real_from_born_configs.inc and is recorded in proc_characteristics, so
+        that NLO+PS is refused, in the new and in the old generation mode
+        """
+        import madgraph.various.banner as banner_mod
+        import madgraph.interface.amcatnlo_run_interface as run_interface
+        path = tempfile.mkdtemp('', 'TMPUnlinkedTest', None)
+        self.addCleanup(shutil.rmtree, path, True)
+
+        def run_cmd(cmd):
+            interface.exec_cmd(cmd, errorhandling=False, printcmd=False,
+                               precmd=True, postcmd=True)
+
+        interface = MGCmd.MasterCmd()
+        for low_mem in (True, False):
+            out = os.path.join(path, 'ttx-low_mem-%s' % low_mem)
+            run_cmd('set low_mem_multicore_nlo_generation %s' % low_mem)
+            run_cmd('generate u u~ > t t~ [real=QCD QED]')
+            run_cmd('output %s' % out)
+            charac = banner_mod.ProcCharacteristic(
+                os.path.join(out, 'SubProcesses', 'proc_characteristics'))
+            self.assertEqual(charac['unlinked_born_real_dirs'], ['P0_uux_ttx'])
+            mapping = open(os.path.join(out, 'SubProcesses', 'P0_uux_ttx',
+                                        'real_from_born_configs.inc')).read()
+            self.assertNotIn('DATA', mapping.upper())
+            # as read by the run interface when launching
+            command = object.__new__(run_interface.aMCatNLOCmd)
+            command.stop_for_runweb = True
+            command.get_characteristics(
+                os.path.join(out, 'SubProcesses', 'proc_characteristics'))
+            for mode in ('aMC@NLO', 'noshower'):
+                with self.assertRaisesRegex(command.InvalidCmd, 'P0_uux_ttx'):
+                    command.check_born_real_links(mode)
+            for mode in ('NLO', 'LO', 'aMC@LO', 'noshowerLO'):
+                command.check_born_real_links(mode)
+
+        # with only QED splittings the configurations can be linked
+        out = os.path.join(path, 'ee')
+        run_cmd('generate u u~ > e+ e- [real=QED]')
+        run_cmd('output %s' % out)
+        charac = banner_mod.ProcCharacteristic(
+            os.path.join(out, 'SubProcesses', 'proc_characteristics'))
+        self.assertEqual(charac['unlinked_born_real_dirs'], [])
+        pdirs = glob.glob(os.path.join(out, 'SubProcesses', 'P0_*'))
+        self.assertEqual(len(pdirs), 1)
+        mapping = open(os.path.join(pdirs[0], 'real_from_born_configs.inc')).read()
+        self.assertIn('DATA', mapping.upper())
+
     def test_z_nlo_gen_qed(self):
         """check that the new (memory and cpu efficient) and old generation
         mode at NLO give the same results for p p > e+ e- [QED], in particular

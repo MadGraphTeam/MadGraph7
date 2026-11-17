@@ -6224,6 +6224,24 @@ RESTART = %(mint_mode)s
 
     action_switcher = AskRunNLO
     ############################################################################
+    def check_born_real_links(self, mode):
+        """NLO+PS needs, for each FKS configuration, the real-emission
+        configuration corresponding to each born one (real_from_born_configs.inc,
+        e.g. for the intermediate resonances written in the H events). Stop if
+        they could not be determined at output (see FKSProcess.link_born_reals)."""
+        # (ConfigFile.get takes no default)
+        unlinked = []
+        if 'unlinked_born_real_dirs' in self.proc_characteristics:
+            unlinked = self.proc_characteristics['unlinked_born_real_dirs']
+        if mode in ['aMC@NLO', 'noshower'] and unlinked:
+            raise self.InvalidCmd(
+                'NLO+PS is not possible for this output: the born and '
+                'real-emission configurations of %s could not be linked at output '
+                '(a born configuration has no counterpart in a real emission at '
+                'the same coupling orders). Run at fixed order instead.'
+                % ', '.join(unlinked))
+
+    ############################################################################
     def ask_run_configuration(self, mode, options, switch={}):
         """Ask the question when launching generate_events/multi_run"""
         
@@ -6243,7 +6261,9 @@ RESTART = %(mint_mode)s
                 ['aMC@NLO', 'aMC@LO', 'noshower', 'noshowerLO', 'onlyshower']):
             raise self.InvalidCmd('NLO QED+PS matching is disabled. Use '
                                   '--allow_qed_ps to enable experimental runs.')
-        
+        # an explicit NLO+PS mode: stop before asking anything
+        self.check_born_real_links(mode)
+
         passing_cmd = []
         for key,value in switch.keys():
             passing_cmd.append('%s=%s' % (key,value))
@@ -6286,6 +6306,8 @@ RESTART = %(mint_mode)s
                 else:
                     mode =  'noshower'  
         logger.info('will run in mode: %s' % mode)                
+        # NLO+PS chosen in the run selector
+        self.check_born_real_links(mode)
 
         if mode == 'noshower':
             if switch['shower'] == 'OFF':

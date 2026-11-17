@@ -669,6 +669,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               writers.FortranWriter(filename), 
                               matrix_element,
                               fortran_model)
+            # NLO+PS is refused for this output (see check_born_real_links
+            # in the run interface)
+            self.proc_characteristic['unlinked_born_real_dirs'] = \
+                self.proc_characteristic['unlinked_born_real_dirs'] + [borndir]
 
         filename = 'frame_info.inc'
         self.write_frame_info_file(writers.FortranWriter(filename),

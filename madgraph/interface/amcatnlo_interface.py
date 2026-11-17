@@ -91,6 +91,8 @@ def generate_directories_fks_async(i):
     ninitial = curr_exporter.proc_characteristic['ninitial']
     max_n_matched_jets = curr_exporter.proc_characteristic['max_n_matched_jets']
     splitting_types = curr_exporter.proc_characteristic['splitting_types']
+    unlinked_born_real_dirs = \
+            curr_exporter.proc_characteristic['unlinked_born_real_dirs']
     #processes = me.born_matrix_element.get('processes')
     processes = me.born_me.get('processes')
     
@@ -98,7 +100,8 @@ def generate_directories_fks_async(i):
     max_loop_vertex_rank = -99
     if me.virt_matrix_element:
         max_loop_vertex_rank = me.virt_matrix_element.get_max_loop_vertex_rank()  
-    return [calls, curr_exporter.fksdirs, max_loop_vertex_rank, ninitial, nexternal, None,max_n_matched_jets, splitting_types, splitorders]
+    return [calls, curr_exporter.fksdirs, max_loop_vertex_rank, ninitial, nexternal, None,max_n_matched_jets, splitting_types, splitorders,
+            unlinked_born_real_dirs]
 
 class CheckFKS(mg_interface.CheckValidForCmd):
 
@@ -1167,8 +1170,10 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                 
                 # transform proc_charac['splitting_types'] into a set
                 splitting_types = set(proc_charac['splitting_types'])
+                unlinked_born_real_dirs = set(proc_charac['unlinked_born_real_dirs'])
                 for diroutput in diroutputmap:
                     splitting_types = splitting_types.union(set(diroutput[7]))
+                    unlinked_born_real_dirs.update(diroutput[9])
                     calls = calls + diroutput[0]
                     splitorders += [so for so in diroutput[8] if so not in splitorders]
                     self._fks_directories.extend(diroutput[1])
@@ -1176,6 +1181,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
                 # transform proc_charac['splitting_types'] back to a list
                 proc_charac['splitting_types'] = list(splitting_types)
+                proc_charac['unlinked_born_real_dirs'] = sorted(unlinked_born_real_dirs)
 
             else:
                 max_loop_vertex_ranks = [me.get_max_loop_vertex_rank() for \

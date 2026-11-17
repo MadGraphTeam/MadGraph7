@@ -2084,6 +2084,10 @@ class ProcCharacteristic(ConfigFile):
         self.add_param('pdg_initial1', [0])
         self.add_param('pdg_initial2', [0])
         self.add_param('splitting_types',[], typelist=str)
+        # NLO: the P directories whose born and real-emission configurations
+        # could not be linked (see FKSProcess.link_born_reals), so that their
+        # real_from_born_configs.inc is a dummy: no NLO+PS for such an output
+        self.add_param('unlinked_born_real_dirs', [], typelist=str)
         self.add_param('perturbation_order', [], typelist=str)        
         self.add_param('limitations', [], typelist=str)        
         self.add_param('ew_sudakov', False)
