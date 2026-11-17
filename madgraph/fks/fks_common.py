@@ -98,6 +98,9 @@ def low_mem_map(function, args, ncores):
                                                         signal.SIG_IGN)
                 try:
                     process.start()
+                except BaseException:
+                    receiver.close()
+                    raise
                 finally:
                     signal.signal(signal.SIGINT, original_sigint_handler)
                     # (the process has its own copy)

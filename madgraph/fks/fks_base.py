@@ -1018,13 +1018,17 @@ class FKSProcess(object):
                     info['rb_links'] = fks_common.link_rb_configs(\
                             self.born_amp, real.amplitude,
                             info['i'], info['j'], info['ij'])
-                except fks_common.FKSProcessError as error:
+                except Exception as error:
                     if qcd_only:
                         raise
-                    # (an output with QED splittings does not need them, but
-                    # with --allow_qed_ps)
-                    logger.warning('%s: the H events of this FKS configuration ' % error + \
-                                   'cannot have their intermediate resonances.')
+                    # (any error: an output with QED splittings does not need
+                    # them, but with --allow_qed_ps)
+                    logger.warning(('No born/real configuration links for the FKS ' + \
+                        'configuration i, j = %d, %d of %s (%s: %s): its H events ' + \
+                        'cannot have their intermediate resonances.') % \
+                        (info['i'], info['j'],
+                         real.process.nice_string(print_weighted=False).replace('Process: ', ''),
+                         type(error).__name__, error))
                     info['rb_links'] = None
 
 

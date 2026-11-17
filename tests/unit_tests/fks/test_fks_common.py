@@ -3953,3 +3953,21 @@ class TestLowMemMap(unittest.TestCase):
                                side_effect=OSError(11, 'Resource temporarily unavailable')):
             self.assertRaises(OSError, fks_common.low_mem_map, abs, [1], 1)
         self.assertIs(signal.getsignal(signal.SIGINT), handler)
+
+    def test_failed_fork_closes_the_pipe(self):
+        """both ends of the pipe of a process which could not be forked are
+        closed"""
+        import multiprocessing.context
+        from unittest import mock
+        pipes = []
+        pipe = multiprocessing.context.BaseContext.Pipe
+        def recorded_pipe(context, *args, **opts):
+            pipes.append(pipe(context, *args, **opts))
+            return pipes[-1]
+        with mock.patch.object(multiprocessing.context.BaseContext, 'Pipe',
+                               recorded_pipe), \
+             mock.patch.object(multiprocessing.context.ForkProcess, 'start',
+                               side_effect=OSError(11, 'Resource temporarily unavailable')):
+            self.assertRaises(OSError, fks_common.low_mem_map, abs, [1, 2], 2)
+        self.assertEqual(len(pipes), 1)
+        self.assertTrue(all(end.closed for end in pipes[0]))

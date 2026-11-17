@@ -615,6 +615,29 @@ class TestFKSProcess(unittest.TestCase):
         self.assertEqual(len(set(links[((5, -5) + ttx, 22, 3)])), 1)
 
 
+    def test_link_born_reals_error(self):
+        """an error of link_rb_configs, whatever it is, for a born with a QED
+        splitting: no links for its FKS configuration, with a warning (an
+        output which does not need them, i.e. but with --allow_qed_ps, is not
+        refused); for a born with only QCD splittings, the error"""
+        from unittest import mock
+        import madgraph.interface.master_interface as MGCmd
+        def fail(*args):
+            raise IndexError('list index out of range')
+        interface = MGCmd.MasterCmd()
+        def run(line):
+            interface.exec_cmd(line, errorhandling=False, printcmd=False,
+                               precmd=True, postcmd=True)
+        run('import model loop_qcd_qed_sm')
+        with mock.patch.object(fks_common, 'link_rb_configs', fail):
+            run('generate u u~ > e+ e- [real=QED]')
+            infos = [info for born in interface._fks_multi_proc['born_processes']
+                     for real in born.real_amps for info in real.fks_infos]
+            self.assertTrue(infos)
+            self.assertEqual(set(info['rb_links'] for info in infos), set([None]))
+            self.assertRaises(IndexError, run, 'generate u u~ > e+ e- [real=QCD]')
+
+
     def test_FKSMultiProcess_loop_filter(self):
         """each born keeps the loop_filter of its process definition (for its
         virtual, which the low_mem_multicore_nlo_generation mode generates

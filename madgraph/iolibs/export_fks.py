@@ -550,7 +550,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
                                     me_ntot, path=os.getcwd(),OLP='MadLoop'):
         """Generate the Pxxxxx_i directories for a subprocess in MadFKS,
-        including the necessary matrix.f and various helper files"""
+        including the necessary matrix.f and various helper files.
+        The caller lists the directories in subproc.mg and makes the info page
+        with write_born_dirs, once all of them are written (possibly in
+        parallel, in the low_mem_multicore_nlo_generation mode)"""
         proc = matrix_element.born_me['processes'][0]
 
         if not self.model:
@@ -5921,7 +5924,8 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
                                     me_ntot, path=os.getcwd(),OLP='MadLoop'):
         """Generate the Pxxxxx_i directories for a subprocess in MadFKS,
-        only generating the relevant files for the EW Sudakov"""
+        only generating the relevant files for the EW Sudakov (the caller
+        then calls write_born_dirs, as for ProcessExporterFortranFKS)"""
         proc = matrix_element.born_me['processes'][0]
 
         if not self.model:
