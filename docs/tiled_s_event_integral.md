@@ -1,12 +1,8 @@
 # Tiled S-event integral (`FKSSectorLearning`)
 
 An opt-in MC@NLO sampler that reduces negative S-event weights at folding
-`(1,1,1)`. It is off by default. With `FKSSectorLearning=.false.` the
-sampling is unchanged; the one change that reaches such runs is that the
-virtual is initialised on the first fold of a point that reaches it, not at
-fold 0. That differs only at folding > 1 when the first fold has no soft
-endpoint (a massive emitter), where the previous point's virtual was
-reused.
+`(1,1,1)`. It is off by default, and with `FKSSectorLearning=.false.` runs
+are identical to `main`.
 
 ## What it does
 
