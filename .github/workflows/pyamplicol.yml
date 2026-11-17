@@ -614,6 +614,13 @@ jobs:
       RUSTUP_TOOLCHAIN: "1.99.1"
     steps:
       - uses: actions/checkout@v5
+      - name: Keep build scratch out of macOS's daily temporary-file cleanup
+        # dirhelper deletes /var/folders/*/T files that look unused for three
+        # days, daily at 03:35 UTC: crate sources in a build's CARGO_HOME there.
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/tmp"
+          printf 'TMPDIR=%s\n' "$RUNNER_TEMP/tmp" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v5
         with:
           name: pyamplicol-retained-sdist
@@ -630,6 +637,7 @@ jobs:
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python tools/release/build_release_artifacts.py
           --retained-sdist .artifacts/retained/pyamplicol-*.tar.gz
+          --skip-checkout-wheel
           --output-dir .artifacts/platform
       - name: Require C++17 and Fortran 2008 SDK toolchains
         shell: bash
