@@ -23,8 +23,8 @@ from madgraph.various.q_polynomial import FortranPolynomialRoutines
 
 
 ROOT = Path(__file__).resolve().parents[3]
-FIXTURES = ROOT / 'docs/benchmarkfolder/experiments/dp-terminal'
-COMPACT_FIXTURE = ROOT / 'docs/benchmarkfolder/experiments/dp-higher-rank/kernels/public.f'
+FIXTURES = ROOT / 'tests/input_files/dp_terminal'
+COMPACT_FIXTURE = FIXTURES / 'higher-rank-public.f'
 COMPACT_SHA256 = '836116f037c543ca6acc5a40ff178459723f4a7fb5234cf4ee1ae6f0c17bacb2'
 FROZEN_HASHES = {
     'oracle.f90': '9a0e0d96e493c69f51018cb1b24d3eedf8095e41c5be0f669dee1b930ec3a73e',

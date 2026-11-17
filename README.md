@@ -41,7 +41,7 @@ run `install madspace` from the MadGraph7 prompt.
 MadLoop also provides the optional TIRust reduction backend through
 `install tirust` and `MLReductionLib=9`. See the
 [installation and parameter guide](docs/tirust.md) and the
-[numerical and performance report](docs/benchmarkfolder/benchmark.pdf).
+[numerical and performance report](docs/tirust-benchmarks.md).
 
 The `pyamplicol` package, the matrix-element generator of the `[amplicol]` backend, is
 installed in the same way with `install pyamplicol`. It lives in `pyamplicol/` and keeps

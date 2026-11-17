@@ -14,6 +14,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
+# Frozen copy of the campaign protocol helper (split-dp-terminal-1).
+CLEANUP_FIXTURE = ROOT / 'tests/input_files/tirust_benchmark/process_cleanup.py'
 sys.path.insert(0, str(ROOT / 'tools'))
 import tirust_benchmark as bench
 import tirust_benchmark_provisional as provisional
@@ -24,7 +26,7 @@ class ProvisionalTests(unittest.TestCase):
         temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup)
         base=Path(temporary.name); report=base/'report';work=base/'work';report.mkdir();work.mkdir()
         protocols=report/'protocol-sources';protocols.mkdir()
-        shutil.copy2(ROOT/'docs/benchmarkfolder/campaigns/split-dp-terminal-1/numerical-qualification-2/process_cleanup.py',protocols/'process_cleanup.py')
+        shutil.copy2(CLEANUP_FIXTURE,protocols/'process_cleanup.py')
         row={'id':'01-fake','case':'fake','cap_seconds':3.2 if mode=='spawn-timeout' else 1.2}
         spec={'schedule':[row],'comparison_cleanup':{'cooperative_seconds':.05,'terminate_seconds':.05,'kill_seconds':.2}}
         prep={'clones':{'fake':{'baseline':{},'candidate':{}}}}
@@ -112,7 +114,7 @@ class ProvisionalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base=Path(tmp); report=base/'report'; work=base/'work';report.mkdir();work.mkdir()
             protocols=report/'protocol-sources';protocols.mkdir()
-            shutil.copy2(ROOT/'docs/benchmarkfolder/campaigns/split-dp-terminal-1/numerical-qualification-2/process_cleanup.py',
+            shutil.copy2(CLEANUP_FIXTURE,
                          protocols/'process_cleanup.py')
             row={'id':'01-fake','case':'fake','cap_seconds':1.2}
             spec={'schedule':[row], 'comparison_cleanup':{'cooperative_seconds':.1,'terminate_seconds':.1,'kill_seconds':.1}}
@@ -145,7 +147,7 @@ class ProvisionalTests(unittest.TestCase):
     def test_global_budget_retains_unattempted_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
             report=Path(tmp)/'report';report.mkdir();protocols=report/'protocol-sources';protocols.mkdir()
-            shutil.copy2(ROOT/'docs/benchmarkfolder/campaigns/split-dp-terminal-1/numerical-qualification-2/process_cleanup.py',protocols/'process_cleanup.py')
+            shutil.copy2(CLEANUP_FIXTURE,protocols/'process_cleanup.py')
             spec={'schedule':[{'id':'a'},{'id':'b'}]}
             with patch.object(provisional,'locations',return_value=(report,Path(tmp)/'work')), \
                  patch.object(provisional,'verify_prepared',return_value=(spec,{})), \
@@ -186,7 +188,7 @@ class ProvisionalTests(unittest.TestCase):
     def test_summary_publication_after_alarm_is_explicitly_administrative(self):
         with tempfile.TemporaryDirectory() as tmp:
             report=Path(tmp);protocols=report/'protocol-sources';protocols.mkdir()
-            shutil.copy2(ROOT/'docs/benchmarkfolder/campaigns/split-dp-terminal-1/numerical-qualification-2/process_cleanup.py',protocols/'process_cleanup.py')
+            shutil.copy2(CLEANUP_FIXTURE,protocols/'process_cleanup.py')
             write=provisional.exclusive; stalled=[False]
             def publish(path,value):
                 if Path(path).name=='summary.json' and not stalled[0]:

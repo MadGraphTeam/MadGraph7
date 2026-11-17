@@ -240,22 +240,6 @@ class TestCohortEvidence(unittest.TestCase):
                 cohort.read_calls(path, 9, [1], 1)
             self.assertEqual(cohort.read_calls(path, 9, [1], 1, flags_required=False)[0]["category"], "dp")
 
-    def test_fixed_qp_reported_failure_is_independent_of_return_code(self):
-        filename = ROOT / "docs/benchmarkfolder/experiments/qcd-n3-adjudication/fpe-completeness/run.py"
-        spec = importlib.util.spec_from_file_location("qcd3_fpe_test", filename)
-        helper = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(helper)
-        with tempfile.TemporaryDirectory() as temp:
-            path = Path(temp) / "flags.dat"
-            path.write_text("0 0 1 109 0 0\n1 1 1 120 0 0\n2 1 1 120 0 1\n")
-            result = helper.summarize_flags(path, 1)
-            self.assertFalse(result["all_observed_flags_false"])
-            self.assertFalse(result["final_qp_flags_false"])
-            self.assertEqual(result["flagged_calls"], [[2, 1, 1, 120, 0, 1]])
-            path.write_text("0 0 1 109 0 0\n1 1 1 120 0 0\n")
-            with self.assertRaisesRegex(ValueError, "Incomplete/reordered fixed-QP"):
-                helper.summarize_flags(path, 1)
-
 
 STUB = '''
 subroutine SETPARA(card)

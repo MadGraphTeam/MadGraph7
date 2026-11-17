@@ -13,12 +13,15 @@
 #   CPU0         first CPU for pinned workers (default 200); JOBS (default 4)
 #   REASON       registration reason (required for 'register')
 #
-# Run from the MadGraph root. Uses tools/tirust_env.sh (gfortran 15.2, Rust 1.97.1, Python 3.13)
+# Run from the MadGraph root, with the benchmark workspace restored (docs/tirust-benchmarks.md).
+# Uses tools/tirust_env.sh (gfortran 15.2, Rust 1.97.1, Python 3.13)
 # outside `nix develop`, and FFLAGS='-w -fPIC -O3' for every export.
 set -u
 CAMPAIGN=${1:?campaign ID}; shift
 PHASES=${*:-install register build numerical dd-gate stress stability provenance summaries}
 ROOT=$(cd "$(dirname "$0")/.." && pwd -P); cd "$ROOT"
+[ -e docs/benchmarkfolder/SHA256SUMS ] || {
+  echo "Restore the benchmark workspace first: python3 -B tools/tirust_benchmark_bundle.py restore" >&2; exit 1; }
 source tools/tirust_env.sh >/dev/null
 export FFLAGS='-w -fPIC -O3'
 PREDECESSOR=${PREDECESSOR:-entry-latch-cache-guard-1}

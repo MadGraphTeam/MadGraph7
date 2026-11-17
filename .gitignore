@@ -1,6 +1,9 @@
 *~
 .ninjars-build/
 .tirust-build/
+# Local TIRust benchmark workspace, restored from the release bundle
+# (docs/tirust-benchmarks.md).
+/docs/benchmarkfolder/
 vendor/tirust/target/
 vendor/tirust/*.so
 vendor/tirust/smoke

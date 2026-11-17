@@ -16,8 +16,7 @@ from madgraph import MG5DIR
 
 ROOT = Path(MG5DIR)
 LIVE = ROOT / "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc"
-FIXTURE = ROOT / ("docs/benchmarkfolder/experiments/reduction-latch-lifecycle/"
-                  "source-proposal1/stub_check.py")
+FIXTURE = ROOT / "tests/input_files/tirust_reduction_latch/stub_check.py"
 FIXTURE_SHA256 = "c973c9b316d9bfd28cdaa5c405f8a68a7970bcc09bbbc891bdbc21047859a9e5"
 
 

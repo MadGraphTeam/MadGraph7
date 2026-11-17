@@ -150,10 +150,11 @@ classified by `tools/tirust_provenance.py`, and timed per-call cohorts by
 `tools/tirust_benchmark_cohorts.py --backend 9`. MadLoop clears both caches at
 every phase-space point, so a point's route deltas are complete.
 
-Use the [current local validation checklist](benchmarkfolder/LOCAL_FINAL_VALIDATION_TODO.md)
-for paired warmed measurements with natural stability/rescue behavior and the
-precise per-process acceptance gates. The [benchmark report](benchmarkfolder/benchmark.pdf)
-keeps those measurements separate from stock profile timings.
+The local validation checklist (`LOCAL_FINAL_VALIDATION_TODO.md` in the
+[benchmark workspace](tirust-benchmarks.md)) gives paired warmed measurements
+with natural stability/rescue behavior and the precise per-process acceptance
+gates. The [benchmark report](tirust-benchmarks.md) keeps those measurements
+separate from stock profile timings.
 
 ## Partial pole diagnostics
 
@@ -162,7 +163,8 @@ retaining UV single, IR single and IR double poles, including scaleless
 residues. Supported requests have one through six propagators, ranks zero
 through six and no dotted propagators. Unsupported requests fail explicitly.
 
-Use the [standalone pole diagnostic](benchmarkfolder/POLES.md) with
+Use the standalone pole diagnostic (`POLES.md` in the
+[benchmark workspace](tirust-benchmarks.md)) with
 `TIRustComputeFinite=.FALSE.`, backend 9 and at least one pole selected. It
 marks the finite coefficient as unevaluated (`NaN`). Ordinary amplitude and
 Monte Carlo entrypoints reject partial requests; their outputs require a
@@ -171,17 +173,20 @@ for every topology.
 
 ## Qualification and reproduction
 
-The [benchmark guide](benchmarkfolder/README.md) provides the pinned models,
-saved points, build commands and acceptance protocol. The [report](benchmarkfolder/benchmark.pdf)
-distinguishes completed numerical checks, failed or unqualified stress cases,
-and pending runtime measurements. [`CURRENT_STATUS.md`](benchmarkfolder/CURRENT_STATUS.md)
-names the current campaign; its `summaries/` hold the 66-lane matrix,
-double-double gate, per-point provenance, stress and stability results.
-Precise runtime acceptance is performed locally (see the campaign's
+The benchmark workspace is distributed as a release bundle; see
+[`tirust-benchmarks.md`](tirust-benchmarks.md) for the download, its checksum
+and `tools/tirust_benchmark_bundle.py restore`. Its `README.md` provides the
+pinned models, saved points, build commands and acceptance protocol. The
+report distinguishes completed numerical checks, failed or unqualified stress
+cases, and pending runtime measurements. `CURRENT_STATUS.md` names the current
+campaign; the campaign's `summaries/` hold the 66-lane matrix, double-double
+gate, per-point provenance, stress and stability results. Precise runtime
+acceptance is performed locally (see the campaign's
 `timing-handoff-1/LOCAL_TIMING_TODO.md`).
 
 A new TIRust pin is requalified with one driver,
-`tools/tirust_requalify.sh <campaign>`. It runs these phases in order:
+`tools/tirust_requalify.sh <campaign>`, in a checkout with the workspace
+restored. It runs these phases in order:
 - installation;
 - campaign registration;
 - exports;

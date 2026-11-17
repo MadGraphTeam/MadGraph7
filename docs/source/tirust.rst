@@ -128,8 +128,9 @@ separate from recomputing a QP numerator, which also requires the effective
 counters; its timed internal routes remain unknown. Bridge counters also do
 not cover coefficients reused by Fortran caches.
 
-``docs/benchmarkfolder/LOCAL_FINAL_VALIDATION_TODO.md`` gives the exact current
-paired full-amplitude acceptance workflow with natural stability/rescue.
+``LOCAL_FINAL_VALIDATION_TODO.md`` in the benchmark workspace (see
+``docs/tirust-benchmarks.md``) gives the exact current paired full-amplitude
+acceptance workflow with natural stability/rescue.
 Its measurements and initialization remain separate from stock profiling.
 
 Poles-only diagnostics
@@ -169,6 +170,8 @@ Its dependency pins intentionally remain separate from the existing NinjaRS
 installation. Upstream dependency licensing requirements still apply.
 
 The process matrix, raw evidence, Typst source, and report reproduction
-instructions are in ``docs/benchmarkfolder``. The prior NinjaRS study remains
-in ``doc/benchmarkfolder``. A benchmark report marked incomplete is not a
-completed numerical or performance qualification.
+instructions are distributed as a release bundle, described in
+``docs/tirust-benchmarks.md``; ``tools/tirust_benchmark_bundle.py restore``
+places them in the ignored workspace ``docs/benchmarkfolder``. The prior
+NinjaRS study is described in ``doc/ninjars-benchmarks.md``. A benchmark report
+marked incomplete is not a completed numerical or performance qualification.

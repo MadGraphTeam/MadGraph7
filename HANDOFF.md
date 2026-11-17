@@ -7,23 +7,30 @@ host for TIRust `main` `2b9ba961`, with the bridge's method choice off (campaign
 - **A TIRust accuracy defect.** At the EW t t̄ γ threshold stress point, TIRust
   accepts a double-precision value that is 1.1% off. Its tiers evaluate binary64
   inputs that fix the point only to about 1%, and MadLoop's stability test cannot see
-  this. The fix belongs to the bridge (TIRust session), then a requalification.
+  this. The TIRust session's bridge fix (handover 0005, reviewed, not applied)
+  shifts the invariants of MadLoop's DP check pass by 1–2 ulps. Hua-Sheng chose to
+  apply it with the next TIRust pin (huashengshao/TIRust#43), then requalify once.
   Turning the method choice off fixed the previous defect (CMS `forward-0.001`) and
   exposed this one.
 - **Precise local timing acceptance**, which is Hua-Sheng's local TODO.
 
 Hua-Sheng took PR #437 out of draft and requested ValentinHirschi's review on
-2026-11-16; the PR description lists both open items. Do not mark the
+2026-11-16; the PR description lists both open items. Olivier Mattelaer and Theo
+Heimel were added as reviewers on 2026-11-17. NinjaRS PR #315 merged into `main`
+on 2026-11-16, so #437 now targets `main`. Do not mark the
 integration goal complete before they are done.
 
-Updated 2026-11-17. The current results are in
-[`docs/benchmarkfolder/CURRENT_STATUS.md`](docs/benchmarkfolder/CURRENT_STATUS.md).
+Updated 2026-11-17. The benchmark workspace `docs/benchmarkfolder` (report,
+campaigns, `CURRENT_STATUS.md`) is no longer in the branch. It is a release
+bundle, restored with `python3 -B tools/tirust_benchmark_bundle.py restore`; see
+[`docs/tirust-benchmarks.md`](docs/tirust-benchmarks.md). Paths below under
+`docs/benchmarkfolder/` refer to the restored workspace.
 
 ## Working agreement
 
 - **Repository.** Work in `/shared/external/madloop_tirust/madgraph7_madloop_tirust`
   on branch `madloop_tirust` (remote `MadGraphTeam/MadGraph7`), with local
-  identity `huashengshao <erdissshaw@gmail.com>`.
+  identity `huashengshao`.
 - **Pushing.** Push with
   `git -c credential.helper= -c credential.helper='!gh auth git-credential' push origin madloop_tirust`.
   There are no stored HTTPS credentials; `gh` is logged in.
@@ -33,8 +40,10 @@ Updated 2026-11-17. The current results are in
   - The "Speed up TIRust in MadLoop and its initialization" session owns TIRust
     upstream (PR #35 and later) and decides which revision to pin. It sends
     MadGraph changes as patches.
-- **Evidence is lean.** Commit compact summaries plus exact commands. Raw lane
-  data stays in the ignored `.tirust-build/` and `.benchmark-work/`.
+- **Evidence stays out of the branch.** Campaigns are written into the ignored
+  workspace `docs/benchmarkfolder` and published as a new release bundle
+  version. Raw lane data stays in the ignored `.tirust-build/` and
+  `.benchmark-work/`.
 - **Toolchain.** Source `tools/tirust_env.sh` **outside** `nix develop` (gfortran
   15.2, Rust 1.97.1, Python 3.13). The flake currently resolves newer tools.
   Set `FFLAGS='-w -fPIC -O3'`.
@@ -127,25 +136,28 @@ Details and links are in `CURRENT_STATUS.md`. The previous campaign
   This matters for the local paired timing (see its handoff).
 - **Provisional profile:** not rerun on the final pins; the rehearsal measured
   TIRust/NinjaRS 1.177 on stock O3 Zggg.
-- **Report:** `docs/benchmarkfolder/benchmark.pdf` appends 6 current-source
+- **Report:** the workspace's `benchmark.pdf` appends 6 current-source
   pages to the preserved 48 pages. Build it with
   `python3 -B tools/tirust_current_report.py render --campaign tirust-2b9ba961-1 --publish`
   and verify it with `… verify`.
 - **Rehearsal:** `tirust-9a781998-1` keeps the g g → g g g g and g g → z z z z
   checks, the QP 512-bit retry rerun and the
-  [recovered optimization logs](docs/benchmarkfolder/campaigns/tirust-9a781998-1/recovered-optimization-evidence.md).
+  recovered optimization logs
+  (`campaigns/tirust-9a781998-1/recovered-optimization-evidence.md` in the workspace).
 
 ## Remaining work
 
 1. **Tiers on inaccurate binary64 inputs (blocking merge).** The TIRust session
    has the reproducer: the t t̄ γ threshold point, boosted and rotated copies, and
    bridge traces with exact DP and QP inputs. They are in the ignored
-   `.tirust-build/ttxa-threshold-2b9ba961/`. The session proposes a bridge fix and
-   its cost on the ordinary matrix; Hua-Sheng approves it. Apply it as a patch,
-   then follow item 4 from "install". If that comes before the local timing, time
-   the new campaign.
+   `.tirust-build/ttxa-threshold-2b9ba961/`. The session's fix is
+   `.tirust-build/handover-0005/` (sha256 `baae34f6…`): it changes no value at 646
+   ordinary points and costs nothing. Hua-Sheng chose to apply it together with
+   the next TIRust pin, huashengshao/TIRust#43, once that merges into TIRust
+   `main`; then follow item 4 from "install" and time the new campaign.
 2. **Hua-Sheng's local timing.** Follow
-   [`LOCAL_TIMING_TODO.md`](docs/benchmarkfolder/campaigns/tirust-2b9ba961-1/timing-handoff-1/LOCAL_TIMING_TODO.md).
+   `campaigns/tirust-2b9ba961-1/timing-handoff-1/LOCAL_TIMING_TODO.md` in the
+   workspace, carried over to the combined campaign.
    Gate: the upper 95% paired candidate/baseline bound is ≤ 1.05 for every main
    process, plus existing-backend regressions.
 3. **Shared-host profile** (optional): rerun the stock O3 Zggg profile on the
@@ -161,16 +173,23 @@ Details and links are in `CURRENT_STATUS.md`. The previous campaign
      the shared host);
    - copy `report/current-source.typ` and `timing-handoff-1/` from
      `tirust-2b9ba961-1`, render and publish the report, and update
-     `CURRENT_STATUS.md`, this file and the PR #437 description.
+     `CURRENT_STATUS.md`, this file and the PR #437 description;
+   - publish the workspace as a new bundle version and repin
+     `tools/tirust_benchmark_bundle.json` and `docs/tirust-benchmarks.md`
+     (v1 was built from git revision `5298fd3066`; building from the workspace
+     still needs a `build` mode in `tools/tirust_benchmark_bundle.py`).
 5. **Outside TIRust.**
    - MadLoop's `OSThres` projection should not zero physically nonzero
      invariants. TIRust's refusal of such inputs is correct; CutTools returns a
      wrong value there.
    - A CutTools STOP or hang is a MadLoop/CutTools limitation; it can abort a
      TIRust-first chain that falls back to CutTools.
-6. **Review.** PR #437 (stacked on NinjaRS PR #315) is in review with
-   ValentinHirschi.
+6. **Review.** PR #437 targets `main` and is in review with Valentin Hirschi,
+   Olivier Mattelaer and Theo Heimel. Olivier removed the campaigns from the
+   branch (`27d068d990`); the rest of the benchmark folder moved to the release
+   bundle, as the NinjaRS PR did.
 
 Earlier campaigns, the audit-style evidence capsules and the older report
-builders are preserved in git history and in the tag
-`madloop_tirust-evidence-2026-11-13`.
+builders are preserved in git history and in the tags
+`madloop_tirust-evidence-2026-11-13` and `madloop_tirust-evidence-2026-11-17`
+(the full workspace at `5298fd3066`).

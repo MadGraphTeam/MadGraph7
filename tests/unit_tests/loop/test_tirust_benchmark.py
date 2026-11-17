@@ -25,7 +25,7 @@ class TestTIRustBenchmark(unittest.TestCase):
         self.temporary.cleanup()
 
     def config(self):
-        return json.loads((ROOT / "docs/benchmarkfolder/cases.json").read_text())
+        return json.loads((ROOT / "tests/input_files/tirust_benchmark/cases.json").read_text())
 
     def test_matrix_covers_requested_multiplicities(self):
         config = self.config()
