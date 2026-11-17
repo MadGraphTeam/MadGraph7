@@ -35,7 +35,7 @@ builds coexist::
     (single-precision amplitudes with double-precision momenta and denominators),
     ``e`` (double-word expansion). Compare them with ``check precision``.
 
-The flags are ``-O3 -std=c++17 -ffast-math`` (``OPTFLAGS`` for the optimisation
+The flags are ``-O3 -std=c++20 -ffast-math`` (``OPTFLAGS`` for the optimisation
 level); the compiler is ``CXX`` (``c++`` by default).
 
 Helicity recycling

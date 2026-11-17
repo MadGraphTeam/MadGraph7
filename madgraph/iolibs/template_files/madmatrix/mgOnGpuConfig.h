@@ -320,6 +320,11 @@ ispoweroftwo( int n )
 #endif
 #endif
 
+// hipcc from ROCm 6.0 is LLVM 17, same floor as the clang startup check.
+#if defined __HIPCC__ && __clang_major__ < 17
+#error Unsupported HIP version: please use ROCm >= 6.0
+#endif
+
 // Compiler version support (#96): require clang >= 11
 #if defined __clang__
 #if( __clang_major__ < 11 )
