@@ -202,9 +202,17 @@ class VirtualExporter(object):
     exporter = 'v4'
     # language of the output 'v4' for Fortran output
     #                        'cpp' for C++ output
-    support_ddm_color_basis = False
-    # True for the output formats which can use the (n-2)! Del Duca-Dixon-
-    # Maltoni basis for the color sum of multi-gluon processes.
+    ddm_color_basis = 'never'
+    # Whether the format can use the (n-2)! Del Duca-Dixon-Maltoni basis for
+    # the color sum of multi-gluon processes (MadGraphCmd.set_color_basis_mode):
+    #  'auto'       yes: with 'set color_basis auto' (the default) and 'ddm'
+    #  'on_request' only after an explicit 'set color_basis ddm'
+    #  'never'      no: the trace basis is kept even after 'ddm'. The default,
+    #               so that a format has to declare that it handles the DDM
+    #               basis: one which reads a color flow from each element of
+    #               its color basis (color_flow_decomposition rather than
+    #               get_flow_basis()) or passes its color strings on (Matchbox)
+    #               would fail or be wrong with it.
     ddm_needs_flow_basis = False
     # True when the format also needs a color flow per event: the trace basis
     # is then built next to the DDM one, and the trace JAMPs are obtained from
@@ -7406,7 +7414,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     # standalone only squares the amplitude, so it can use the DDM basis. It
     # still carries the Kleiss-Kuijf reconstruction of the trace JAMPs, because
     # this is the mode used to time the matrix element and madevent pays it.
-    support_ddm_color_basis = True
+    ddm_color_basis = 'auto'
     ddm_needs_flow_basis = True
     # When True, emit per-call IAND(WF_FLAVOR_MASK/AMP_FLAVOR_MASK,
     # CURRENT_FLAV_BIT) guards in MATRIX so that wavefunctions and amplitudes
@@ -10393,8 +10401,9 @@ class ProcessExporterFortranMatchBox(ProcessExporterFortranSA):
            
 
     matrix_template = "matrix_standalone_matchbox.inc"
-    # matchbox needs the color flow information
-    support_ddm_color_basis = False
+    # matchbox needs the color flow information, and only reads trace-basis
+    # color strings (get_color_string_lines)
+    ddm_color_basis = 'never'
     
 
     # Inherits from the standalone exporter but writes its own template, which
@@ -11425,7 +11434,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     # The color sum runs on the DDM basis for a fully adjoint process; the color
     # flow written into the events still needs the trace one, rebuilt from the
     # DDM JAMPs through the Kleiss-Kuijf relations.
-    support_ddm_color_basis = True
+    ddm_color_basis = 'auto'
     ddm_needs_flow_basis = True
     # AMP is indexed by helicity once the matrix element is rewritten for
     # helicity recycling, so the definitions cannot sit at the end of it
@@ -14694,7 +14703,7 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
 
 
     # the color sum uses the DDM basis, the color flows the trace one
-    support_ddm_color_basis = True
+    ddm_color_basis = 'auto'
     ddm_needs_flow_basis = True
 
     matrix_file = "matrix_madevent_group_v4.inc"
