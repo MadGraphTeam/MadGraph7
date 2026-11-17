@@ -1,6 +1,5 @@
 """Full linear spin interference, including spectator and colour correlations."""
 
-from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -10,11 +9,11 @@ try:
 except ImportError:
     np = None
 
-from madgraph import MG5DIR
 from madgraph.interface.reweight_interface import ReweightInterface
 from madgraph.various import fxfx_ewsudakov as fx
-from tests.unit_tests.ewsudakov.test_sudakov_factor_limits import FactorDriver
+from tests.unit_tests.ewsudakov.test_sudakov_factor_limits import FactorDriver, density_result
 from tests.unit_tests.ewsudakov.test_fxfx_decay_transport import ww_event
+from tests.unit_tests.ewsudakov.test_upstream_compatibility import exec_dispatcher
 
 
 @unittest.skipIf(np is None, "NumPy is required for full density checks")
@@ -73,14 +72,7 @@ class TestFullInterference(unittest.TestCase):
 @unittest.skipIf(np is None, "NumPy is required for the generated Sudakov dispatcher")
 class TestFullDispatcher(unittest.TestCase):
     def setUp(self):
-        path = Path(MG5DIR)/'madgraph/iolibs/template_files/ewsudakov_pydispatcher.inc'
-        text = path.read_text()
-        # Both export styles: MG5 interpolates all %, MG7 only named fields.
-        for name in ('pdir_list', 'pdg2sud', 'pdgsorted'):
-            text = text.replace('%%(%s)s' % name, '')
-        text = text.replace('%%', '%')
-        self.ns = {'__file__': '/tmp/process/bin/internal/ewsud_pydispatcher.py'}
-        exec(compile(text, str(path), 'exec'), self.ns)
+        self.ns = exec_dispatcher(self, '/tmp/process/bin/internal/ewsud_pydispatcher.py')
         self.key = ((2,-2), (23,21,21))
         self.kernel = mock.Mock(return_value=(np.eye(36,dtype=complex),
             np.zeros((36,36,5),complex),np.zeros((36,36,5),complex),0,0))
@@ -120,8 +112,11 @@ class TestFullDispatcher(unittest.TestCase):
             self.ns['density_sudakov'](self.key,self.p,1.,[3],[3])
 
 
-@unittest.skipIf(np is None, "NumPy is required for density prescription checks")
-class TestDensityPrescriptions(unittest.TestCase):
+class DensityEventFixture:
+    """Clustered WW event, driver and mocked kernel of the density event path.
+
+    Not a TestCase, so that test classes can share it without inheriting tests.
+    """
     def setUp(self):
         self.driver=FactorDriver()
         self.event=ww_event([])
@@ -130,16 +125,16 @@ class TestDensityPrescriptions(unittest.TestCase):
         self.event.reweight_data={'1001':2.}
         self.event.reweight_order=['1001']
         _,tag=self.driver._cluster_fxfx_event(self.event,record_tag=True)
-        self.result=dict(version=2,total_dim=9,nres=2,zero_gold=0,
-                         density_born=np.eye(9),
-                         density_correction=np.repeat((.2*np.eye(9))[:,:,None],5,axis=2),
-                         density_relative=np.repeat((.1*np.eye(9))[:,:,None],5,axis=2))
+        self.result=density_result(9,.2,.2,.2,relative=(.1,.1,.1))
         self.module=SimpleNamespace(original_pdg_list_dict={tag:tag},
                                     density_sudakov=mock.Mock(return_value=self.result),
                                     ewsudakov=mock.Mock())
         self.driver._get_decay_density_matrix=mock.Mock(return_value=
             fx.DensityMatrix.from_full_matrix(np.eye(9),[24,-24]))
 
+
+@unittest.skipIf(np is None, "NumPy is required for density prescription checks")
+class TestDensityPrescriptions(DensityEventFixture, unittest.TestCase):
     def test_explicit_comparison_selects_its_own_matrix_and_metadata(self):
         for prescription,factor in [('amplitude',1.2),('goldstone_relative',1.1)]:
             self.driver.sudakov_density_prescription=prescription

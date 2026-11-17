@@ -5,6 +5,7 @@ This module provides the interface between Python reweighting code and the
 Fortran EW Sudakov routines. PDG mappings are filled in at generation time.
 """
 import importlib
+import itertools
 import os
 import sys
 import numpy as np
@@ -65,12 +66,16 @@ def ewsudakov(pdgs, p, g):
     return res
 
 
-# Caps of density_sudakov_py (sub_f2py_ewsudakov.f); MAX_RES is the f2py
-# shape of res_indices/res_dims and must match it
+# Caps of density_interference_py (sub_f2py_ewsudakov.f); MAX_RES is the
+# f2py shape of res_indices/res_dims and must match it
 MAX_DIM = 36
 MAX_RES = 10
 DENSITY_VERSION = 2
 PROCESS_TENSOR_VERSION = 1
+# Beams with two helicity states, as open incoming spins require
+TWO_SPIN_BEAMS = frozenset([1, 2, 3, 4, 5, 6, 11, 13, 15, 21, 22])
+# HELAS helicity labels of a two- and a three-state particle
+HELICITIES = {2: (-1, 1), 3: (-1, 0, 1)}
 
 
 def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False):
@@ -162,21 +167,18 @@ def density_process_tensor(pdgs, p, g, res_indices, res_dims):
     particles. All five linear EW variants are retained without normalisation.
     """
     initial = tuple(pdgs[0])
-    two_spin_pdgs = {1, 2, 3, 4, 5, 6, 11, 13, 15, 21, 22}
-    if len(initial) != 2 or any(abs(pid) not in two_spin_pdgs for pid in initial):
+    if len(initial) != 2 or any(abs(pid) not in TWO_SPIN_BEAMS for pid in initial):
         raise NotImplementedError('Open initial spins require two quark, charged '
                                   'lepton, photon or gluon beams')
-    if (len(res_indices) != len(res_dims) or not res_indices or
-            any(i <= 2 for i in res_indices)):
+    if not res_indices or any(i <= 2 for i in res_indices):
         raise ValueError('Open-tensor resonance positions must be outgoing legs')
     dimension = int(np.prod(res_dims))
-    if 4 * dimension > MAX_DIM or len(res_indices) + 2 > MAX_RES:
+    if 4 * dimension > MAX_DIM:
         raise NotImplementedError('Open initial/outgoing spin space exceeds '
                                   'compiled capacity (36 combined states)')
-    raw = density_sudakov(pdgs, p, g, [1, 2] + list(res_indices),
-                         [2, 2] + list(res_dims))
     legs = [1, 2] + list(res_indices)
     dims = [2, 2] + list(res_dims)
+    raw = density_sudakov(pdgs, p, g, legs, dims)
     # The kernel divides by the usual initial spin/colour multiplicities.
     # Remove the spin divisor only; contract with rho_in=I_4/4 to recover B.
     tensor = {
@@ -189,9 +191,8 @@ def density_process_tensor(pdgs, p, g, res_indices, res_dims):
         'leg_indices': legs,
         'spin_dims': dims,
         'index_order': 'first listed leg fastest; i=a+incoming_dim*h',
-        'helicities': [[(-1, 1)[(i // int(np.prod(dims[:j]))) % d]
-                        if d == 2 else (i // int(np.prod(dims[:j]))) % d - 1
-                        for j, d in enumerate(dims)] for i in range(4 * dimension)],
+        'helicities': [list(h[::-1]) for h in itertools.product(
+            *(HELICITIES[d] for d in reversed(dims)))],
         'normalisation': 'incoming spin unaveraged; native colour and symmetry divisors retained',
         'variants': ['qed', 'weak', 'sr_off', 'sr_and_floor_off', 'floor_off'],
         'pdg_key': [list(part) for part in pdgs],
@@ -204,9 +205,10 @@ def density_process_tensor(pdgs, p, g, res_indices, res_dims):
     result = dict(version=DENSITY_VERSION, total_dim=dimension,
                   nres=len(res_indices), zero_gold=raw['zero_gold'],
                   process_tensor=tensor)
-    for name, field in [('born', 'density_born'), ('correction', 'density_correction'),
-                        ('relative', 'density_relative')]:
-        array = tensor[name]
-        blocks = array.reshape((dimension, 4, dimension, 4) + array.shape[2:])
-        result[field] = np.trace(blocks, axis1=1, axis2=3) / 4.0
+    # The incoming spin average of the open kernel result (rho_in=I_4/4).
+    for field in ('density_born', 'density_correction', 'density_relative'):
+        array = raw[field]
+        result[field] = np.trace(
+            array.reshape((dimension, 4, dimension, 4) + array.shape[2:]),
+            axis1=1, axis2=3)
     return result

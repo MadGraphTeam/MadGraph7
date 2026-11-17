@@ -14,16 +14,22 @@ from madgraph.various import fxfx_ewsudakov as fx
 from tests.unit_tests.ewsudakov.test_fxfx_decay_transport import make_event, ww_event
 
 
-def density_result(dimension, central, var, qed, nres=2):
+def density_result(dimension, central, var, qed, nres=2, relative=None):
     """Full-interference kernel result with a unit Born and diagonal corrections.
 
     With a unit decay matrix the contraction gives 1 + correction per variant.
+    relative=(central, var, qed) gives the goldstone_relative corrections their
+    own values; by default they equal the amplitude ones.
     """
-    corrections = np.zeros((dimension, dimension, 5), complex)
-    for variant, change in ((1, central), (2, var), (0, qed)):
-        corrections[:, :, variant] = np.eye(dimension) * change
+    def corrections(changes):
+        array = np.zeros((dimension, dimension, 5), complex)
+        for variant, change in zip((1, 2, 0), changes):
+            array[:, :, variant] = np.eye(dimension) * change
+        return array
+    correction = corrections((central, var, qed))
     return {'version': 2, 'density_born': np.eye(dimension),
-            'density_correction': corrections, 'density_relative': corrections,
+            'density_correction': correction,
+            'density_relative': correction if relative is None else corrections(relative),
             'zero_gold': 0, 'total_dim': dimension, 'nres': nres}
 
 

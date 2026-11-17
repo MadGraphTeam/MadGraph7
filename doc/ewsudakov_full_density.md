@@ -80,9 +80,7 @@ The LHE weight group records `density_kernel="2"` and the selected
 The retained size limit is 36 resonance spin states and 10 resonance legs.
 Unsupported large spaces and unavailable decay matrices use the scalar
 fallback and its accounting. Massive W/Z beams are explicitly unsupported
-by the underlying Sudakov charge and reshuffling implementation. The generated
-Fortran also contains a per-helicity ratio interface, which the event path
-does not call.
+by the underlying Sudakov charge and reshuffling implementation.
 
 ## Scope and validation
 

@@ -16,7 +16,8 @@ C a spectator-resolved Goldstone-normalised projection for comparison.
       parameter (NCOMB=%(ncomb)d)
       integer nhel(nexternal-1,NCOMB),i
       %(helicity_lines)s
-      integer ispec,h,hp,r,k,d,iv,s,ip,ib,base(36)
+      integer ispec,h,hp,r,k,d,iv,s,ip,ib,base(36),source_base(NS)
+      data source_base /%(source_bases)s/
       integer hels(nexternal-1,36),iflist(nexternal-1)
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
@@ -25,9 +26,10 @@ C a spectator-resolved Goldstone-normalised projection for comparison.
       double complex amps(NC,NO,NS,36),deriv(NC,NO,6,36)
       double complex coeff(NS),parcoeff(6,5),phase(36)
       double complex delta(36,5),mixed(36,36,5),brow(36,36)
+      double complex xs(36,NS),ys(NS),xd(36,6),yd(6)
       double complex sdk_density_inter,term
       external sdk_density_inter
-      logical ok,selected
+      logical ok
       integer sud_mod,saved_mod
       common/to_sud_mod/sud_mod
       logical s_to_rij,rij_ge_mw,saved_stor,saved_rij
@@ -38,36 +40,23 @@ C a spectator-resolved Goldstone-normalised projection for comparison.
       correction=(0d0,0d0)
       relative=(0d0,0d0)
       zero_gold=0
-      status=0
 C The underlying Sudakov charge/reshuffling functions do not implement
 C massive vector beams. Do not return their undefined numerical results.
-      if (.not.%(supported_initial)s) then
-        status=4
-        return
-      endif
+      status=4
+      if (.not.%(supported_initial)s) return
+C Distinct resonance positions with two or three spin states each, and
+C at most 36 resonance spin states in total.
+      status=1
+      if (nres.lt.1.or.nres.gt.10) return
       d=1
-      if (nres.lt.1.or.nres.gt.10) then
-        status=1
-        return
-      endif
       do r=1,nres
-        if (dims(r).lt.2.or.dims(r).gt.3.or.pos(r).lt.1.or.
-     $      pos(r).gt.nexternal-1) then
-          status=1
-          return
-        endif
-        do k=1,r-1
-          if (pos(k).eq.pos(r)) then
-            status=1
-            return
-          endif
-        enddo
-        if (d.gt.36/dims(r)) then
-          status=1
-          return
-        endif
+        if (dims(r).lt.2.or.dims(r).gt.3) return
+        if (pos(r).lt.1.or.pos(r).gt.nexternal-1) return
+        if (any(pos(1:r-1).eq.pos(r))) return
+        if (d.gt.36/dims(r)) return
         d=d*dims(r)
       enddo
+      status=0
       saved_mod=sud_mod
       saved_stor=s_to_rij
       saved_rij=rij_ge_mw
@@ -81,16 +70,9 @@ C Each variant builds its invariants with its own floor.
 
 C One representative of each spectator tuple. No good-helicity filtering:
 C a zero Born component can have a nonzero mixed-helicity interference.
+C Every amplitude read below is evaluated first for this tuple.
       do ispec=1,NCOMB
-        selected=.true.
-        do r=1,nres
-          if (nhel(pos(r),ispec).ne.-1) selected=.false.
-        enddo
-        if (.not.selected) cycle
-        amps=(0d0,0d0)
-        deriv=(0d0,0d0)
-        mixed=(0d0,0d0)
-        delta=(0d0,0d0)
+        if (any(nhel(pos(1:nres),ispec).ne.-1)) cycle
         do h=1,d
           hels(:,h)=nhel(:,ispec)
           k=h-1
@@ -104,29 +86,19 @@ C a zero Born component can have a nonzero mixed-helicity interference.
             endif
           enddo
           call sdk_density_base(hels(1,h),base(h),phase(h))
-          call sdk_density_eval(1,p,hels(1,h),amps(1,1,1,h),ok)
-          if (.not.ok) then
-            status=2
-            goto 900
-          endif
+          call sdk_density_eval(1,p,hels(1,h),amps(1,1,1,h))
           ib=base(h)
           if (ib.eq.0) cycle
           do s=2,NS
-            call sdk_density_needed(ib,s,selected)
-            if (.not.selected) cycle
-            call sdk_density_eval(s,p,hels(1,h),amps(1,1,s,h),ok)
-            if (.not.ok) then
-              status=2
-              goto 900
-            endif
+            if (source_base(s).eq.ib)
+     $        call sdk_density_eval(s,p,hels(1,h),amps(1,1,s,h))
           enddo
-          call sdk_density_derivatives(ib,p,hels(1,h),
-     $         deriv(1,1,1,h),ok)
-          if (.not.ok) then
-            status=3
-            goto 900
-          endif
         enddo
+        call sdk_density_derivatives(p,d,base,hels,deriv,ok)
+        if (.not.ok) then
+          status=3
+          goto 900
+        endif
         do h=1,d
           do hp=1,d
             brow(h,hp)=sdk_density_inter(1,1,amps(1,1,1,hp),
@@ -142,35 +114,53 @@ C a zero Born component can have a nonzero mixed-helicity interference.
           if (norm(h).le.0d0.and.dble(brow(h,h)).gt.0d0)
      $        zero_gold=zero_gold+1
         enddo
-        do iv=1,5
-          call sdk_density_variant(iv)
-          do h=1,d
-            ib=base(h)
-            if (ib.eq.0) cycle
+        mixed(1:d,1:d,:)=(0d0,0d0)
+        delta(1:d,:)=(0d0,0d0)
+        do h=1,d
+          ib=base(h)
+          if (ib.eq.0) cycle
+C The colour contractions do not depend on the variant. coeff(s) can be
+C nonzero only for the sources of this base.
+          do s=1,NS
+            if (source_base(s).ne.ib) cycle
+            ys(s)=sdk_density_inter(ib,s,amps(1,1,ib,h),amps(1,1,s,h))
+            do hp=1,d
+              xs(hp,s)=sdk_density_inter(1,s,amps(1,1,1,hp),
+     $                                   amps(1,1,s,h))
+            enddo
+          enddo
+          do ip=1,6
+            yd(ip)=sdk_density_inter(ib,ib,amps(1,1,ib,h),
+     $                               deriv(1,1,ip,h))
+            do hp=1,d
+              xd(hp,ip)=sdk_density_inter(1,ib,amps(1,1,1,hp),
+     $                                    deriv(1,1,ip,h))
+            enddo
+          enddo
+          do iv=1,5
+            call sdk_density_variant(iv)
             call sdk_density_coeff(ib,hels(1,h),invariants(1,1,iv),
      $                             coeff)
             term=(0d0,0d0)
             do s=1,NS
               if (coeff(s).eq.(0d0,0d0)) cycle
-              term=term+coeff(s)*sdk_density_inter(ib,s,
-     $                    amps(1,1,ib,h),amps(1,1,s,h))
+              term=term+coeff(s)*ys(s)
               do hp=1,d
                 mixed(h,hp,iv)=mixed(h,hp,iv)+phase(h)*coeff(s)*
-     $              sdk_density_inter(1,s,amps(1,1,1,hp),
-     $                                    amps(1,1,s,h))
+     $            xs(hp,s)
               enddo
             enddo
             do ip=1,6
-              term=term+parcoeff(ip,iv)*sdk_density_inter(ib,ib,
-     $                        amps(1,1,ib,h),deriv(1,1,ip,h))
+              term=term+parcoeff(ip,iv)*yd(ip)
               do hp=1,d
                 mixed(h,hp,iv)=mixed(h,hp,iv)+phase(h)*
-     $             parcoeff(ip,iv)*sdk_density_inter(1,ib,
-     $                          amps(1,1,1,hp),deriv(1,1,ip,h))
+     $            parcoeff(ip,iv)*xd(hp,ip)
               enddo
             enddo
             if (norm(h).gt.0d0) delta(h,iv)=term/norm(h)
           enddo
+        enddo
+        do iv=1,5
           do h=1,d
             do hp=1,d
               correction(h,hp,iv)=correction(h,hp,iv)+
@@ -182,9 +172,11 @@ C a zero Born component can have a nonzero mixed-helicity interference.
         enddo
         born(1:d,1:d)=born(1:d,1:d)+brow(1:d,1:d)
       enddo
-      born=born/dble(iden_values(nfksprocess))
-      correction=correction/dble(iden_values(nfksprocess))
-      relative=relative/dble(iden_values(nfksprocess))
+      born(1:d,1:d)=born(1:d,1:d)/dble(iden_values(nfksprocess))
+      correction(1:d,1:d,:)=correction(1:d,1:d,:)/
+     $  dble(iden_values(nfksprocess))
+      relative(1:d,1:d,:)=relative(1:d,1:d,:)/
+     $  dble(iden_values(nfksprocess))
  900  continue
       sud_mod=saved_mod
       s_to_rij=saved_stor
@@ -214,25 +206,13 @@ C s/r off and invariant floor off, invariant floor off.
       %(base_selection)s
       end
 
-      subroutine sdk_density_needed(ibase,isource,needed)
-      implicit none
-      %(constants)s
-      integer ibase,isource,source_base(NS)
-      logical needed
-      data source_base /%(source_bases)s/
-      needed=source_base(isource).eq.ibase
-      end
-
-      subroutine sdk_density_eval(isource,p,hels,jamp,ok)
+      subroutine sdk_density_eval(isource,p,hels,jamp)
       implicit none
       include 'nexternal.inc'
       %(constants)s
       integer isource,hels(nexternal-1)
       double precision p(0:3,nexternal-1)
       double complex jamp(NC,NO)
-      logical ok
-      jamp=(0d0,0d0)
-      ok=.false.
       %(source_selection)s
       end
 
@@ -278,63 +258,58 @@ C s/r off and invariant floor off, invariant floor off.
       enddo
       end
 
-      subroutine sdk_density_derivatives(ibase,p,hels,deriv,ok)
+      subroutine sdk_density_derivatives(p,d,base,hels,deriv,ok)
+C Central differences of the base amplitudes in the six input parameters.
+C Each shift updates the couplings once for all resonance helicities.
       implicit none
       include 'nexternal.inc'
       include 'coupl.inc'
       include '../../Source/MODEL/input.inc'
       %(constants)s
-      integer ibase,hels(nexternal-1),ip
-      double precision p(0:3,nexternal-1),value,step,original
-      double complex deriv(NC,NO,6),up(NC,NO),dn(NC,NO)
-      logical ok,okup,okdn
-      deriv=(0d0,0d0)
-      ok=.false.
-      if (mdl_mt.ne.mdl_ymt.or.mdl_ntadpole.ne.1d0) return
+      integer d,base(36),hels(nexternal-1,36),ip,h
+      double precision p(0:3,nexternal-1),original(6),step(6)
+      double complex deriv(NC,NO,6,36),up(NC,NO,36),dn(NC,NO)
+      logical ok
+      original=(/%(first_parameter)s,mdl_mz,mdl_mw,mdl_mt,mdl_mh,
+     $           mdl_ntadpole/)
+      step=abs(original)*1d-5
+      ok=mdl_mt.eq.mdl_ymt.and.mdl_ntadpole.eq.1d0.and.
+     $   all(step.ne.0d0)
+      if (.not.ok) return
       do ip=1,6
-        call sdk_density_parameter(ip,value,.false.)
-        original=value
-        step=abs(value)*1d-5
-        if (step.eq.0d0) return
-        value=value+step
-        call sdk_density_parameter(ip,value,.true.)
+        call sdk_density_set_parameter(ip,original(ip)+step(ip))
         call coup()
-        call sdk_density_eval(ibase,p,hels,up,okup)
-        value=original-step
-        call sdk_density_parameter(ip,value,.true.)
+        do h=1,d
+          if (base(h).ne.0)
+     $      call sdk_density_eval(base(h),p,hels(1,h),up(1,1,h))
+        enddo
+        call sdk_density_set_parameter(ip,original(ip)-step(ip))
         call coup()
-        call sdk_density_eval(ibase,p,hels,dn,okdn)
-        value=original
-        call sdk_density_parameter(ip,value,.true.)
-        call coup()
-        if (.not.okup.or..not.okdn) return
-        deriv(:,:,ip)=(up-dn)/(2d0*step)
+        do h=1,d
+          if (base(h).eq.0) cycle
+          call sdk_density_eval(base(h),p,hels(1,h),dn)
+          deriv(:,:,ip,h)=(up(:,:,h)-dn)/(2d0*step(ip))
+        enddo
+        call sdk_density_set_parameter(ip,original(ip))
       enddo
-      ok=.true.
+      call coup()
       end
 
-      subroutine sdk_density_parameter(ip,value,write_value)
+      subroutine sdk_density_set_parameter(ip,value)
       implicit none
       include 'coupl.inc'
       include '../../Source/MODEL/input.inc'
       integer ip
-      double precision value,params(6)
-      logical write_value
-      if (write_value) then
-        if (ip.eq.1) %(first_parameter)s=value
-        if (ip.eq.2) mdl_mz=value
-        if (ip.eq.3) mdl_mw=value
-        if (ip.eq.4) then
-          mdl_mt=value
-          mdl_ymt=value
-        endif
-        if (ip.eq.5) mdl_mh=value
-        if (ip.eq.6) mdl_ntadpole=value
-      else
-        params=(/%(first_parameter)s,mdl_mz,mdl_mw,mdl_mt,mdl_mh,
-     $            mdl_ntadpole/)
-        value=params(ip)
+      double precision value
+      if (ip.eq.1) %(first_parameter)s=value
+      if (ip.eq.2) mdl_mz=value
+      if (ip.eq.3) mdl_mw=value
+      if (ip.eq.4) then
+        mdl_mt=value
+        mdl_ymt=value
       endif
+      if (ip.eq.5) mdl_mh=value
+      if (ip.eq.6) mdl_ntadpole=value
       end
 
       subroutine sdk_density_parcoeff(invariants,coeff)
@@ -369,14 +344,4 @@ C and undo that division for derivatives of the complex amplitude.
       der=saved
       der2=saved2
       ans=savedans
-      end
-
-      subroutine sdk_density_dimensions(ncolor,norder,nsource,nbase)
-      implicit none
-      %(constants)s
-      integer ncolor,norder,nsource,nbase
-      ncolor=NC
-      norder=NO
-      nsource=NS
-      nbase=NB
       end

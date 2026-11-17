@@ -10,7 +10,7 @@ import base64
 import io
 import json
 import re
-import textwrap
+from xml.etree import ElementTree
 
 try:
     import numpy as np
@@ -101,7 +101,8 @@ def set_event_process_tensor(event, tensor, xi_index, xi, **context):
         tensor = dict(tensor, xi_index=xi_index, xi=float(xi), **context)
         stream = io.BytesIO()
         save_process_tensor(stream, tensor)
-        payload = '\n'.join(textwrap.wrap(base64.b64encode(stream.getvalue()).decode('ascii'), 120))
+        encoded = base64.b64encode(stream.getvalue()).decode('ascii')
+        payload = '\n'.join(encoded[i:i + 120] for i in range(0, len(encoded), 120))
         attrs = 'status="available" encoding="base64-npz"'
     event.tag = tag.rstrip() + ('\n<sudakov_process_tensor version="1" xi_index="%d" '
                                'xi="%s" %s>\n%s\n</sudakov_process_tensor>\n' %
@@ -110,7 +111,6 @@ def set_event_process_tensor(event, tensor, xi_index, xi, **context):
 
 def read_event_process_tensors(event):
     """Return records in xi order; unavailable records contain status metadata."""
-    from xml.etree import ElementTree
     text = event.tag if hasattr(event, 'tag') else str(event)
     records = []
     for match in _RECORD.finditer(text):

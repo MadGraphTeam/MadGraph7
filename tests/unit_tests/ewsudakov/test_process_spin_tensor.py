@@ -1,7 +1,6 @@
 """Open input-spin coherences, their physical contraction, and persisted events."""
 
 import io
-from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -11,12 +10,12 @@ try:
 except ImportError:
     np = None
 
-from madgraph import MG5DIR
 from madgraph.interface.reweight_interface import ReweightInterface
 from madgraph.various import lhe_parser
 from madgraph.various import process_spin_tensor as pst
-from tests.unit_tests.ewsudakov.test_full_density import TestDensityPrescriptions
+from tests.unit_tests.ewsudakov.test_full_density import DensityEventFixture
 from tests.unit_tests.ewsudakov.test_fxfx_decay_transport import ww_event
+from tests.unit_tests.ewsudakov.test_upstream_compatibility import exec_dispatcher
 
 
 def example():
@@ -113,12 +112,7 @@ class TestOpenTensorPersistence(unittest.TestCase):
 @unittest.skipIf(np is None, "NumPy is required for the generated Sudakov dispatcher")
 class TestOpenTensorDispatcher(unittest.TestCase):
     def setUp(self):
-        template = Path(MG5DIR, 'madgraph/iolibs/template_files/ewsudakov_pydispatcher.inc').read_text()
-        for field in ('pdir_list', 'pdg2sud', 'pdgsorted'):
-            template = template.replace('%%(%s)s' % field, '')
-        template = template.replace('%%', '%')
-        self.ns = {'__file__': '/tmp/tensor/bin/internal/ewsud_pydispatcher.py'}
-        exec(compile(template, '<dispatcher>', 'exec'), self.ns)
+        self.ns = exec_dispatcher(self, '/tmp/tensor/bin/internal/ewsud_pydispatcher.py')
         self.amplitude, unused, self.tensor = example()
         self.kernel = mock.Mock(return_value=(self.tensor['born']/4,
             self.tensor['correction']/4, self.tensor['relative']/4, 0, 0))
@@ -154,7 +148,7 @@ class TestOpenTensorDispatcher(unittest.TestCase):
 
 
 @unittest.skipIf(np is None, "NumPy is required for process tensor checks")
-class TestOpenTensorEventPath(TestDensityPrescriptions):
+class TestOpenTensorEventPath(DensityEventFixture, unittest.TestCase):
     def test_option_retains_tensor_with_same_weights(self):
         previous = self.driver._compute_density_ewsudakov_reweight(self.event, self.module)
         unused, unused2, tensor = example()

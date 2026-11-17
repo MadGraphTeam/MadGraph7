@@ -66,18 +66,29 @@ class DensityLibraryError(RuntimeError):
     """A density library required for spin-correlated reweighting is unavailable."""
 
 
-class DecayDensityUnavailable(ValueError):
-    """No decay density matrix for an event; its weights use the scalar factors."""
+# Errors that stop the density reweighting instead of using scalar factors.
+_FATAL_DENSITY_ERRORS = (NotImplementedError, DensityLibraryError)
 
 # Event counter set by reweight_interface.py during the event loop (1-based).
 CURRENT_EVENT_ID = 0
 
 _DIM_OVERFLOW_WARNED = False
 
-# Fixed dimensions in the generated density dispatcher/Fortran wrapper.
+# Fixed dimensions of the generated density kernel and dispatcher.
 MAX_DENSITY_DIM = 36
 MAX_DENSITY_RESONANCES = 10
-MAX_DENSITY_ALLOW_HEL = 300
+
+# Interface version of the density kernel (rwgt.pkl and LHE weight group).
+DENSITY_KERNEL_VERSION = 2
+
+# Columns, in the kernel's variant order (QED, weak, s/r off, s/r and floor
+# off, floor off; ewsudakov_py results(2:6)), of the FxFx factors central,
+# s_to_rij_off and sherpa_qed.
+FXFX_VARIANT_COLUMNS = (1, 2, 0)
+
+# Linear correction used by each sudakov_density_prescription.
+DENSITY_PRESCRIPTIONS = {"amplitude": "density_correction",
+                         "goldstone_relative": "density_relative"}
 
 
 def validate_sudakov_xi(values):
@@ -103,12 +114,15 @@ def limit_sudakov_factors(factors, accounting_key=None):
 
 
 def density_dimensions_supported(total_dim, nres):
-    """Return whether a density call fits every fixed generated buffer."""
-    return (
-        total_dim <= MAX_DENSITY_DIM
-        and nres <= MAX_DENSITY_RESONANCES
-        and total_dim * nres <= MAX_DENSITY_ALLOW_HEL
-    )
+    """Return whether a density call fits the generated kernel's arrays."""
+    return total_dim <= MAX_DENSITY_DIM and nres <= MAX_DENSITY_RESONANCES
+
+
+def scalar_sudakov_factors(res):
+    """FxFx factors (central, s_to_rij_off, sherpa_qed) from ewsudakov results."""
+    if abs(res[0]) > 1e-30:
+        return [1.0 + res[column + 1] / res[0] for column in FXFX_VARIANT_COLUMNS]
+    return [1.0] * len(FXFX_VARIANT_COLUMNS)
 
 # =============================================================================
 # FKS-mapping accounting and fallback policy
@@ -1297,7 +1311,7 @@ def _total_dimension(dims: List[int]) -> int:
 def _fortran_to_python_hel_permutation(res_dims):
     """Build permutation to reorder Fortran delta indices to Python B indices.
 
-    The Fortran density_matrix_wrapper enumerates helicity combinations using
+    The Fortran density kernel enumerates helicity combinations using
     little-endian mixed-radix (first resonance varies fastest) with ascending
     helicity values (0->-1, 1->+1 for fermions; 0->-1, 1->0, 2->+1 for vectors).
 
@@ -1862,7 +1876,7 @@ def compute_density_weight(
 
 
 def compute_density_interference_weight(B, C, correction):
-    """Contract B + delta B, with delta B already summed over spectators.
+    """Contract B + delta B with C, delta B already summed over spectators.
 
     No amplitude ratio is taken here. This retains contributions from Born
     zeros and colour components orthogonal to the Born of the same helicity.
@@ -1872,15 +1886,10 @@ def compute_density_interference_weight(B, C, correction):
         raise ValueError('Density interference has the wrong shape')
     if not np.isfinite(correction).all():
         raise FloatingPointError('Non-finite density interference')
-    if C is None:
-        denominator = B.trace()
-        change = np.trace(correction).real
-    else:
-        denominator = B.contract(C)
-        change = np.sum(correction * C.matrix).real
+    denominator = B.contract(C)
     if denominator == 0:
         return 1.0
-    result = 1.0 + change / denominator
+    result = 1.0 + np.sum(correction * C.matrix).real / denominator
     if not np.isfinite(result):
         raise FloatingPointError('Non-finite density weight')
     return float(result)
@@ -3076,6 +3085,9 @@ class FxFxEWSudakovMixin:
     # FxFx applies the invariant cut before evaluating these three variants.
     SUDAKOV_VARIANT_NAMES = ("central", "s_to_rij_off", "sherpa_qed")
     SUDAKOV_LO_VARIANT_NAMES = SUDAKOV_VARIANT_NAMES + ("both_off", "rij_ge_mw_off")
+    # Defaults of the reweight-card options of the density path.
+    sudakov_density_prescription = "amplitude"
+    sudakov_density_keep_initial = False
 
     def _collect_sudakov_weight_sources(self):
         """Collect full source IDs from the input header and event stream."""
@@ -3140,8 +3152,7 @@ class FxFxEWSudakovMixin:
             self._sudakov_ickkw = int(self.banner.get('run_card', 'ickkw'))
         except Exception:
             self._sudakov_ickkw = 0
-        if (getattr(self, "sudakov_density_keep_initial", False) and
-                self._sudakov_ickkw != 3):
+        if self.sudakov_density_keep_initial and self._sudakov_ickkw != 3:
             raise NotImplementedError("Initial-spin tensor output in LHE requires ickkw=3")
         xis = [getattr(self, 'mW2_cluster_scale', 1.5)]
         names = self.SUDAKOV_LO_VARIANT_NAMES
@@ -3161,12 +3172,12 @@ class FxFxEWSudakovMixin:
             for source in sorted(missing):
                 header += '<weight id=%s>Source weight %s</weight>\n' % (quoteattr(source), escape(source))
             header += '</weightgroup>\n'
-        prescription = getattr(self, "sudakov_density_prescription", "amplitude")
-        tensor_attr = (' process_tensor="initial_spin_v1"' if
-                       getattr(self, "sudakov_density_keep_initial", False) else '')
+        tensor_attr = (' process_tensor="initial_spin_v1"'
+                       if self.sudakov_density_keep_initial else '')
         header += ('\n<weightgroup name="ew_sudakov" weight_name_strategy="includeIdInWeightName" '
-                   'density_kernel="2" density_prescription=%s%s>\n' %
-                   (quoteattr(prescription), tensor_attr))
+                   'density_kernel="%d" density_prescription=%s%s>\n' %
+                   (DENSITY_KERNEL_VERSION, quoteattr(self.sudakov_density_prescription),
+                    tensor_attr))
         for output_id, (source, k, xi, variant) in self._sudakov_weight_metadata.items():
             header += ('<weight id=%s source_id=%s xi_index="%d" xi="%s" variant=%s>'
                        'source=%s xi=%s variant=%s</weight>\n' %
@@ -3236,16 +3247,8 @@ class FxFxEWSudakovMixin:
         # res[0] = Born, res[1] = sherpa_qed (sud_mod=0), res[2] = central,
         # res[3] = s_to_rij_off; res[4] (both_off) and res[5] (rij_ge_mw_off)
         # equal res[3] and res[2] after the small-invariant cut.
-        if abs(res[0]) > 1e-30:
-            sudrats = [
-                1.0 + res[2] / res[0],   # central
-                1.0 + res[3] / res[0],   # s_to_rij_off
-                1.0 + res[1] / res[0],   # sherpa_qed
-            ]
-        else:
-            sudrats = [1.0] * 3
-
-        sudrats = limit_sudakov_factors(sudrats, "events_runaway_damped_scalar")
+        sudrats = limit_sudakov_factors(scalar_sudakov_factors(res),
+                                        "events_runaway_damped_scalar")
 
         return self._build_sudakov_rwgt_dict(event, sudrats)
 
@@ -3259,13 +3262,13 @@ class FxFxEWSudakovMixin:
         decayed resonance, or whose density evaluation fails, use the scalar
         FxFx path. Returns the rwgt dict of _build_sudakov_rwgt_dict.
         """
-        keep_initial = getattr(self, "sudakov_density_keep_initial", False)
-        tensor_xi_index = getattr(self, "_current_xi_idx", 0)
-        tensor_xi = getattr(self, "mW2_cluster_scale", 1.5)
+        keep_initial = self.sudakov_density_keep_initial
+        xi_index = getattr(self, "_current_xi_idx", 0)
+        xi = getattr(self, "mW2_cluster_scale", 1.5)
         if keep_initial:
-            if tensor_xi_index == 0:
+            if xi_index == 0:
                 clear_event_process_tensors(event)
-            set_event_process_tensor(event, None, tensor_xi_index, tensor_xi)
+            set_event_process_tensor(event, None, xi_index, xi)
         self._init_pole_masses_from_banner()
 
         density_logger = getattr(self, "_density_logger", None)
@@ -3344,13 +3347,12 @@ class FxFxEWSudakovMixin:
             if not _DIM_OVERFLOW_WARNED:
                 reweight_logger.warning(
                     "Resonance-helicity space too large for the density kernel "
-                    "(total_dim=%d, nres=%d; caps %d/%d/%d): falling back "
+                    "(total_dim=%d, nres=%d; caps %d/%d): falling back "
                     "to the scalar Sudakov path.",
                     total_dim,
                     len(resonances),
                     MAX_DENSITY_DIM,
                     MAX_DENSITY_RESONANCES,
-                    MAX_DENSITY_ALLOW_HEL,
                 )
                 _DIM_OVERFLOW_WARNED = True
             return self._compute_ewsudakov_fxfx_reweight(event, sud_mod)
@@ -3397,131 +3399,109 @@ class FxFxEWSudakovMixin:
                 "The Sudakov dispatcher has no density_sudakov kernel for the decayed "
                 "process %s. Regenerate and compile the Sudakov libraries." % (prep["sorted_tag"],))
 
-        weight_var = None
-        scalar_result = None
+        # Factors (central, s_to_rij_off, sherpa_qed) of the full spin
+        # contraction; None selects the scalar factors.
+        factors = None
         stage = "kernel"
         try:
-            use_density_path = False
+            # 1-based resonance positions in the canonical MG5 order
+            # (prep["perm"] maps the final state of clustered_event).
+            res_indices_fortran = []
+            offset = len(prep["sorted_tag"][0])
+            perm = prep["perm"]
+            for idx, pdg in resonances:
+                if idx < offset:
+                    fortran_idx = idx + 1
+                else:
+                    final_idx = idx - offset
+                    canonical_final_idx = perm[final_idx]
+                    canonical_idx = canonical_final_idx + offset
+                    fortran_idx = canonical_idx + 1
+                res_indices_fortran.append(fortran_idx)
 
-            if hasattr(sud_mod, "density_sudakov") and resonances:
-                try:
-                    # 1-based resonance positions in the canonical MG5 order
-                    # (prep["perm"] maps the final state of clustered_event).
-                    res_indices_fortran = []
-                    offset = len(prep["sorted_tag"][0])
-                    perm = prep["perm"]
-                    for idx, pdg in resonances:
-                        if idx < offset:
-                            fortran_idx = idx + 1
-                        else:
-                            final_idx = idx - offset
-                            canonical_final_idx = perm[final_idx]
-                            canonical_idx = canonical_final_idx + offset
-                            fortran_idx = canonical_idx + 1
-                        res_indices_fortran.append(fortran_idx)
+            density_options = {}
+            if keep_initial:
+                if getattr(sud_mod, "PROCESS_TENSOR_VERSION", None) != 1:
+                    raise NotImplementedError(
+                        "Regenerate the Sudakov Python dispatcher to keep initial spins")
+                density_options["keep_initial"] = True
+            density_result = sud_mod.density_sudakov(
+                prep["sorted_tag"],
+                prep["p_in"],
+                prep["gstr"],
+                res_indices_fortran,
+                res_dims,
+                **density_options,
+            )
 
-                    density_options = {}
-                    if keep_initial:
-                        if getattr(sud_mod, "PROCESS_TENSOR_VERSION", None) != 1:
-                            raise NotImplementedError(
-                                "Regenerate the Sudakov Python dispatcher to keep initial spins")
-                        density_options["keep_initial"] = True
-                    density_result = sud_mod.density_sudakov(
-                        prep["sorted_tag"],
-                        prep["p_in"],
-                        prep["gstr"],
-                        res_indices_fortran,
-                        res_dims,
-                        **density_options,
-                    )
+            if density_result.get("version") != DENSITY_KERNEL_VERSION:
+                raise NotImplementedError(
+                    "Regenerate rw_me: full density interference is required")
+            tensor = density_result.get("process_tensor")
+            if keep_initial and tensor is None:
+                raise NotImplementedError("Requested initial-spin tensor is missing")
+            total_dim = density_result["total_dim"]
+            stage = "production"
+            perm = _fortran_to_python_hel_permutation(res_dims)
+            b_matrix = np.asarray(density_result["density_born"])
+            B = DensityMatrix.from_full_matrix(b_matrix[np.ix_(perm, perm)], res_pdgs)
+            prescription = self.sudakov_density_prescription
+            if prescription == "goldstone_relative" and density_result["zero_gold"]:
+                raise NotImplementedError(
+                    "Goldstone-relative prescription is undefined at a zero "
+                    "Goldstone Born; use sudakov_density_prescription amplitude")
+            corrections = np.asarray(density_result[DENSITY_PRESCRIPTIONS[prescription]])
+            corrections = corrections[np.ix_(perm, perm, range(5))]
 
-                    if density_result.get("version") != 2:
-                        raise NotImplementedError(
-                            "Regenerate rw_me: full density interference is required")
-                    tensor = density_result.get("process_tensor")
-                    if keep_initial and tensor is None:
-                        raise NotImplementedError("Requested initial-spin tensor is missing")
-                    total_dim = density_result["total_dim"]
-                    stage = "production"
-                    perm = _fortran_to_python_hel_permutation(res_dims)
-                    b_matrix = np.asarray(density_result["density_born"])
-                    B = DensityMatrix.from_full_matrix(
-                        b_matrix[np.ix_(perm, perm)], res_pdgs)
-                    prescription = getattr(self, "sudakov_density_prescription", "amplitude")
-                    if prescription == "goldstone_relative":
-                        if density_result["zero_gold"]:
-                            raise NotImplementedError(
-                                "Goldstone-relative prescription is undefined at a zero "
-                                "Goldstone Born; use sudakov_density_prescription amplitude")
-                        corrections = density_result["density_relative"]
-                    elif prescription == "amplitude":
-                        corrections = density_result["density_correction"]
-                    else:
-                        raise ValueError("Unknown Sudakov density prescription: " + prescription)
-                    corrections = np.asarray(corrections)[np.ix_(perm, perm, range(5))]
+            stage = "decay"
+            C = self._get_decay_density_matrix(
+                event, clustered_event, resonances,
+                frame_transform=prep.get("frame_transform"))
+            if C is None:
+                # Scalar factors, and no tensor even when one is requested.
+                _report_density_fallback(stage, ValueError(
+                    "Decay density matrix is unavailable for %s" % (res_pdgs,)), xi)
+            else:
+                stage = "contraction"
+                # All emitted variants use the same full spin contraction.
+                factors = [compute_density_interference_weight(B, C, corrections[:, :, column])
+                           for column in FXFX_VARIANT_COLUMNS]
+                # Only a tensor behind the written weights is marked available.
+                if keep_initial:
+                    set_event_process_tensor(
+                        event, tensor, xi_index, xi,
+                        resonance_pdgs=list(res_pdgs),
+                        prescription=prescription)
+        except _FATAL_DENSITY_ERRORS:
+            raise
+        except Exception as error:
+            # With a requested tensor, the only scalar fallback is an event
+            # without a decay density matrix (above); other failures are fatal.
+            if keep_initial:
+                raise
+            _report_density_fallback(stage, error, xi)
 
-                    stage = "decay"
-                    C = self._get_decay_density_matrix(
-                        event, clustered_event, resonances,
-                        frame_transform=prep.get("frame_transform"))
-                    if C is not None:
-                        stage = "contraction"
-                        # All emitted variants use the same full spin contraction.
-                        weight = compute_density_interference_weight(B, C, corrections[:, :, 1])
-                        weight_var = compute_density_interference_weight(B, C, corrections[:, :, 2])
-                        weight_sherpa_qed = compute_density_interference_weight(B, C, corrections[:, :, 0])
-                        use_density_path = True
-                        # Only a tensor behind the written weights is marked available.
-                        if keep_initial:
-                            set_event_process_tensor(
-                                event, tensor, tensor_xi_index, tensor_xi,
-                                resonance_pdgs=list(res_pdgs),
-                                prescription=prescription)
-                    else:
-                        raise DecayDensityUnavailable(
-                            "Decay density matrix is unavailable for %s" % (res_pdgs,))
-
-                except (NotImplementedError, DensityLibraryError):
-                    raise
-                except Exception as e:
-                    # A requested tensor allows only the scalar path that carries
-                    # no tensor: an event without a decay density matrix.
-                    if keep_initial and not isinstance(e, DecayDensityUnavailable):
-                        raise
-                    _report_density_fallback(stage, e, getattr(self, "mW2_cluster_scale", 1.5))
-                    use_density_path = False
-
-            # Scalar path if the density evaluation is unavailable or failed.
+        use_density_path = factors is not None
+        try:
             if not use_density_path:
-                scalar_result = sud_mod.ewsudakov(prep["sorted_tag"], prep["p_in"], prep["gstr"])
-                born, sud_weak = scalar_result[0], scalar_result[2]
-                weight = 1.0 + sud_weak / born if abs(born) > 1e-30 else 1.0
-                # s_to_rij_off variant res[3], as in the scalar FxFx path.
-                weight_var = (1.0 + scalar_result[3] / born) if abs(born) > 1e-30 else 1.0
-
+                factors = scalar_sudakov_factors(
+                    sud_mod.ewsudakov(prep["sorted_tag"], prep["p_in"], prep["gstr"]))
             density_logger.log_event(
                 mode="density" if use_density_path else "scalar",
                 resonances=resonances,
                 dimension=total_dim,
-                weight=weight,
+                weight=factors[0],
             )
-
-        except (NotImplementedError, DensityLibraryError):
+        except _FATAL_DENSITY_ERRORS:
             raise
         except Exception as error:
             if keep_initial:
                 raise
-            _report_density_fallback("evaluation", error, getattr(self, "mW2_cluster_scale", 1.5))
+            _report_density_fallback("evaluation", error, xi)
             return self._compute_ewsudakov_fxfx_reweight(event, sud_mod)
 
-        if not use_density_path:
-            weight_sherpa_qed = (1.0 + scalar_result[1] / scalar_result[0]
-                                 if abs(scalar_result[0]) > 1e-30 else 1.0)
-        weight, weight_var, weight_sherpa_qed = limit_sudakov_factors(
-            [weight, weight_var if weight_var is not None else 1.0, weight_sherpa_qed],
-            "events_runaway_damped_density")
-
-        return self._build_sudakov_rwgt_dict(event, [weight, weight_var, weight_sherpa_qed])
+        return self._build_sudakov_rwgt_dict(
+            event, limit_sudakov_factors(factors, "events_runaway_damped_density"))
 
     # -------------------------------------------------------------------------
     # Decay density matrices

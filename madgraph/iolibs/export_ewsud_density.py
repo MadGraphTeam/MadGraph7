@@ -19,13 +19,38 @@ def _complex(real, imag=0):
     return '(%s,%s)' % (_real(real), _real(imag))
 
 
+def sudakov_term_expressions(auxiliary, helicities):
+    """(accumulator, Fortran expression) of each non-diagonal Sudakov term.
+
+    auxiliary is a non-Goldstone entry of sudakov_matrix_elements and
+    helicities the Fortran helicity array. The scalar Sudakov wrapper and the
+    density kernel both take their calls from here.
+    """
+    legs = [l['number'] for l in auxiliary['legs']]
+    old, new = auxiliary['pdgs']
+    arguments = 'pdglist,%s,iflist,invariants' % helicities
+    kind = auxiliary['type']
+    if kind == 'cew':
+        changed = '%d,%d,%d' % (legs[0], old[0], new[0])
+        return [('LSC', 'get_lsc_nondiag(%s,%s)' % (arguments, changed)),
+                ('XXC', 'get_xxc_nondiag(%s,%s)' % (arguments, changed))]
+    if kind == 'iz1':
+        return [('SSC', 'get_ssc_n_nondiag_1(%s,%d,%d,%d)' % (
+            arguments, legs[0], old[0], new[0]))]
+    if kind == 'iz2':
+        return [('SSC', 'get_ssc_n_nondiag_2(%s,%d,%d,%d,%d,%d,%d)' % (
+            arguments, legs[0], old[0], new[0], legs[1], old[1], new[1]))]
+    if kind == 'ipm2':
+        return [('SSC', 'get_ssc_c(%d,%d,pdglist,%d,%d,%s,iflist,invariants)' % (
+            legs[0], legs[1], new[0], new[1], helicities))]
+    raise MadGraph5Error('Unknown Sudakov term %s' % kind)
+
+
 class DensityExporter:
-    def __init__(self, exporter, matrix_element, fortran_model,
-                 aloha_objects=False):
+    def __init__(self, exporter, matrix_element, fortran_model):
         self.exporter = exporter
         self.fks = matrix_element
         self.model = fortran_model
-        self.aloha_objects = aloha_objects
         self.born = matrix_element.born_me
         self.gold = [m for m in matrix_element.sudakov_matrix_elements
                      if m['type'] == 'goldstone']
@@ -35,6 +60,9 @@ class DensityExporter:
         self.mes = self.bases + [m['matrix_element'] for m in self.other]
         self.nb = len(self.bases)
         self.ns = len(self.mes)
+        # 1-based base amplitude of every source; each base is its own source.
+        self.source_base = list(range(1, self.nb + 1)) + [
+            self.base_index(m) for m in self.other]
         self.nc = max(max(1, len(m['color_basis'])) for m in self.mes)
         self.split_orders = self.born['processes'][0]['split_orders']
         self.orders = []
@@ -54,31 +82,27 @@ class DensityExporter:
                             'density_interference.inc')
         with open(path) as stream:
             template = stream.read()
+        legs = self.born['processes'][0]['legs']
+        gmu = 'Gmu' in self.exporter.model.get('name')
         replace = dict(constants=self.constants,
                        supported_initial=('.false.' if any(
                            not l['state'] and abs(l['id']) in (23, 24)
-                           for l in self.born['processes'][0]['legs']) else '.true.'),
+                           for l in legs) else '.true.'),
                        ncomb=self.born.get_helicity_combinations(),
                        helicity_lines=self.exporter.get_helicity_lines(self.born),
                        den_factor_lines='\n'.join(
                            self.exporter.get_den_factor_lines(self.fks)),
-                       iflist=','.join('1' if l['state'] else '-1'
-                                      for l in self.born['processes'][0]['legs']),
+                       iflist=','.join('1' if l['state'] else '-1' for l in legs),
                        base_selection=self.base_selection(),
                        source_selection=self.source_selection(),
-                       source_bases=','.join(str(i) for i in
-                           list(range(1, self.nb + 1)) + [
-                               self.base_index(m) for m in self.other]),
+                       source_bases=','.join(str(b) for b in self.source_base),
                        coefficient_calls=self.coefficient_calls(),
                        metric_data=self.metric_data(),
                        order_mask=','.join(
                            '1' if tuple(a + b for a, b in zip(x, y)) == self.target
                            else '0' for y in self.orders for x in self.orders),
-                       first_parameter=('MDL_GF' if 'Gmu' in
-                                        self.exporter.model.get('name') else 'AEWM1'),
-                       par_ren=('GET_PAR_REN_GMU' if 'Gmu' in
-                                self.exporter.model.get('name') else
-                                'GET_PAR_REN_ALPHAMZ'))
+                       first_parameter='MDL_GF' if gmu else 'AEWM1',
+                       par_ren='GET_PAR_REN_GMU' if gmu else 'GET_PAR_REN_ALPHAMZ')
         writer.writelines(template % replace)
         for i, me in enumerate(self.mes, 1):
             writer.writelines(self.raw_amplitude(i, me))
@@ -119,7 +143,7 @@ class DensityExporter:
         for i in range(1, self.ns + 1):
             lines += [('if' if i == 1 else 'else if') +
                       ' (isource.eq.%d) then' % i,
-                      'call sdk_density_raw_%d(p,hels,jamp,ok)' % i]
+                      'call sdk_density_raw_%d(p,hels,jamp)' % i]
         return '\n'.join(lines + ['endif'])
 
     def coefficient_calls(self):
@@ -132,27 +156,11 @@ class DensityExporter:
                       'coeff(%d)=get_lsc_diag(pdglist,hels,iflist,invariants)' % b,
                       'coeff(%d)=coeff(%d)+get_ssc_n_diag(pdglist,hels,iflist,invariants)' % (b, b),
                       'coeff(%d)=coeff(%d)+get_xxc_diag(pdglist,hels,iflist,invariants)' % (b, b)]
-            for i, aux in enumerate(self.other, self.nb + 1):
-                # base_amp indexes the original Sudakov list, with 0 for Born.
-                original_base = self.born if not aux['base_amp'] else (
-                    self.fks.sudakov_matrix_elements[aux['base_amp'] - 1]['matrix_element'])
-                if original_base is not me:
-                    continue
-                nums = [l['number'] for l in aux['legs']]
-                old, new = aux['pdgs']
-                if aux['type'] == 'cew':
-                    args = '%d,%d,%d' % (nums[0], old[0], new[0])
-                    expression = ('get_lsc_nondiag(pdglist,hels,iflist,invariants,%s)'
-                                  '+get_xxc_nondiag(pdglist,hels,iflist,invariants,%s)' % (args, args))
-                elif aux['type'] == 'iz1':
-                    expression = 'get_ssc_n_nondiag_1(pdglist,hels,iflist,invariants,%d,%d,%d)' % (nums[0], old[0], new[0])
-                elif aux['type'] == 'iz2':
-                    expression = 'get_ssc_n_nondiag_2(pdglist,hels,iflist,invariants,%d,%d,%d,%d,%d,%d)' % (nums[0], old[0], new[0], nums[1], old[1], new[1])
-                elif aux['type'] == 'ipm2':
-                    expression = 'get_ssc_c(%d,%d,pdglist,%d,%d,hels,iflist,invariants)' % (nums[0], nums[1], new[0], new[1])
-                else:
-                    raise MadGraph5Error('Unknown density Sudakov term %s' % aux['type'])
-                lines.append('coeff(%d)=%s' % (i, expression))
+            lines += ['coeff(%d)=%s' % (i, '+'.join(
+                          expression for unused, expression in
+                          sudakov_term_expressions(aux, 'hels')))
+                      for i, aux in enumerate(self.other, self.nb + 1)
+                      if self.source_base[i - 1] == b]
         return '\n'.join(lines + ['endif'])
 
     def metric_data(self):
@@ -176,27 +184,24 @@ class DensityExporter:
         amp_orders = me.get_split_orders_mapping()[1]
         jamp, ntemp = self.exporter.get_JAMP_lines_split_order(
             me, amp_orders, split_order_names=self.split_orders)
-        lines = ['subroutine sdk_density_raw_%d(pin,nhel,result,ok)' % index]
-        if self.aloha_objects:
-            lines.append('use aloha_object')
-        lines += ['implicit none', "include 'nexternal.inc'",
-                  "include 'coupl.inc'", self.constants,
-                  'double precision pin(0:3,nexternal-1),p(0:3,nexternal-1)',
-                  'double precision presh(0:3,nexternal-1)',
-                  'integer nhel(nexternal-1),ic(nexternal-1)',
-                  'data ic /%d*1/' % (len(me['processes'][0]['legs'])),
-                  'integer flavor(nexternal-1)',
-                  'data flavor /%d*1/' % (len(me['processes'][0]['legs'])),
-                  'double precision zero', 'parameter (zero=0d0)',
-                  'double complex imag1', 'parameter (imag1=(0d0,1d0))',
-                  'double complex result(NC,NO)',
-                  'double complex amp(%d),jamp(%d,%d),tmp_jamp(%d)' % (
-                      me.get_number_of_amplitudes(), max(1, len(me['color_basis'])),
-                      len(amp_orders), ntemp),
-                  ('type(aloha) w(%d)' % me.get_number_of_wavefunctions()
-                   if self.aloha_objects else 'double complex w(20,%d)' %
-                   me.get_number_of_wavefunctions()),
-                  'logical ok', 'result=(0d0,0d0)', 'ok=.true.', 'p=pin']
+        nlegs = len(me['processes'][0]['legs'])
+        ncolor = max(1, len(me['color_basis']))
+        lines = ['subroutine sdk_density_raw_%d(pin,nhel,result)' % index,
+                 'use aloha_object', 'implicit none', "include 'nexternal.inc'",
+                 "include 'coupl.inc'", self.constants,
+                 'double precision pin(0:3,nexternal-1),p(0:3,nexternal-1)',
+                 'double precision presh(0:3,nexternal-1)',
+                 'integer nhel(nexternal-1),ic(nexternal-1)',
+                 'data ic /%d*1/' % nlegs,
+                 'integer flavor(nexternal-1)',
+                 'data flavor /%d*1/' % nlegs,
+                 'double precision zero', 'parameter (zero=0d0)',
+                 'double complex imag1', 'parameter (imag1=(0d0,1d0))',
+                 'double complex result(NC,NO)',
+                 'double complex amp(%d),jamp(%d,%d),tmp_jamp(%d)' % (
+                     me.get_number_of_amplitudes(), ncolor, len(amp_orders), ntemp),
+                 'type(aloha) w(%d)' % me.get_number_of_wavefunctions(),
+                 'logical ok', 'result=(0d0,0d0)', 'p=pin']
         if index > self.nb:
             aux = self.other[index - self.nb - 1]
             legs = [l['number'] for l in aux['legs']]
@@ -208,11 +213,10 @@ class DensityExporter:
                       # Match the scalar Sudakov prescription: an auxiliary
                       # process below its reshuffling threshold contributes
                       # zero, while the physical Born remains available.
-                      'if (.not.ok) then', 'ok=.true.', 'return', 'endif',
+                      'if (.not.ok) return',
                       'p=presh']
         lines += calls + jamp
         for local, (order, unused) in enumerate(amp_orders, 1):
-            global_order = self.orders.index(order) + 1
             lines.append('result(1:%d,%d)=jamp(:,%d)' %
-                         (max(1, len(me['color_basis'])), global_order, local))
+                         (ncolor, self.orders.index(order) + 1, local))
         return '\n'.join(lines + ['end', ''])

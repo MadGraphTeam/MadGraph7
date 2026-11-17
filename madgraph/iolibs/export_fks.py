@@ -48,6 +48,8 @@ import madgraph.iolibs.template_files as template_files
 import madgraph.iolibs.ufo_expression_parsers as parsers
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.born_support as born_support
+from madgraph.iolibs.export_ewsud_density import (
+    DensityExporter, sudakov_term_expressions)
 import madgraph.loop.loop_exporters as loop_exporters
 import madgraph.various.q_polynomial as q_polynomial
 import madgraph.various.banner as banner_mod
@@ -3387,10 +3389,6 @@ Parameters              %(params)s\n\
         # classify the different kind of matrix-elements
         goldstone_mes = [sud for sud in sudakov_list if sud['type'] == 'goldstone']
         non_goldstone_mes = [sud for sud in sudakov_list if sud['type'] != 'goldstone']
-        non_goldstone_mes_lsc = [sud for sud in non_goldstone_mes if sud['type'] == 'cew'] 
-        non_goldstone_mes_ssc_n1 = [sud for sud in non_goldstone_mes if sud['type'] == 'iz1'] 
-        non_goldstone_mes_ssc_n2 = [sud for sud in non_goldstone_mes if sud['type'] == 'iz2'] 
-        non_goldstone_mes_ssc_c = [sud for sud in non_goldstone_mes if sud['type'] == 'ipm2'] 
 
         replace_dict = {}
 
@@ -3477,51 +3475,23 @@ Parameters              %(params)s\n\
             if not has_lo[1]: 
                 continue
 
-            mes_same_charge_lsc = [me for me in non_goldstone_mes_lsc if me['base_amp'] == i+1]
-            if mes_same_charge_lsc:
-                calls_to_me += "C LSC and C non diag\n"
-            for mesc in mes_same_charge_lsc:
-                idx = non_goldstone_mes.index(mesc)
-                calls_to_me += "call EWSDK_ME_%d(p,nhel(1,ihel),ans_summed)\n" % (idx + 1)
-                calls_to_me += "pdglist_oth = (/%s/)\n" % ','.join([str(leg['id']) for leg in mesc['matrix_element']['processes'][0]['legs']])
-                calls_to_me += "AMP_SPLIT_EWSUD_LSC(:) = AMP_SPLIT_EWSUD_LSC(:)+AMP_SPLIT_EWSUD(:)*get_lsc_nondiag(pdglist,nhel(1,ihel),iflist,invariants,%d,%d,%d)*comp_idfac\n" % \
-                                        (mesc['legs'][0]['number'],mesc['pdgs'][0][0], mesc['pdgs'][1][0]) # old and new pdg of the leg that changes
-                calls_to_me += "AMP_SPLIT_EWSUD_XXC(:) = AMP_SPLIT_EWSUD_XXC(:)+AMP_SPLIT_EWSUD(:)*get_xxc_nondiag(pdglist,nhel(1,ihel),iflist,invariants,%d,%d,%d)*comp_idfac\n" % \
-                                        (mesc['legs'][0]['number'],mesc['pdgs'][0][0], mesc['pdgs'][1][0]) # old and new pdg of the leg that changes
-
-            # now the calls to the SSC non-diagonal, with one particle different wrt base amp
-            mes_same_charge_ssc1 = [me for me in non_goldstone_mes_ssc_n1 if me['base_amp'] == i+1]
-            if mes_same_charge_ssc1:
-                calls_to_me += "C SSC non diag #1\n"
-            for mesc in mes_same_charge_ssc1:
-                idx = non_goldstone_mes.index(mesc)
-                calls_to_me += "call EWSDK_ME_%d(p,nhel(1,ihel),ans_summed)\n" % (idx + 1)
-                calls_to_me += "pdglist_oth = (/%s/)\n" % ','.join([str(leg['id']) for leg in mesc['matrix_element']['processes'][0]['legs']])
-                calls_to_me += "AMP_SPLIT_EWSUD_SSC(:) = AMP_SPLIT_EWSUD_SSC(:)+AMP_SPLIT_EWSUD(:)*get_ssc_n_nondiag_1(pdglist,nhel(1,ihel),iflist,invariants,%d,%d,%d)*comp_idfac\n" % \
-                                        (mesc['legs'][0]['number'],mesc['pdgs'][0][0], mesc['pdgs'][1][0]) # number, old and new pdg of the leg that changes
-
-            # now the calls to the SSC non-diagonal, with two particles different wrt base amp
-            mes_same_charge_ssc2 = [me for me in non_goldstone_mes_ssc_n2 if me['base_amp'] == i+1]
-            if mes_same_charge_ssc2:
-                calls_to_me += "C SSC non diag #2\n"
-            for mesc in mes_same_charge_ssc2:
-                idx = non_goldstone_mes.index(mesc)
-                calls_to_me += "call EWSDK_ME_%d(p,nhel(1,ihel),ans_summed)\n" % (idx + 1)
-                calls_to_me += "pdglist_oth = (/%s/)\n" % ','.join([str(leg['id']) for leg in mesc['matrix_element']['processes'][0]['legs']])
-                calls_to_me += "AMP_SPLIT_EWSUD_SSC(:) = AMP_SPLIT_EWSUD_SSC(:)+AMP_SPLIT_EWSUD(:)*get_ssc_n_nondiag_2(pdglist,nhel(1,ihel),iflist,invariants,%d,%d,%d,%d,%d,%d)*comp_idfac\n" % \
-                                        (mesc['legs'][0]['number'],mesc['pdgs'][0][0], mesc['pdgs'][1][0], \
-                                         mesc['legs'][1]['number'],mesc['pdgs'][0][1], mesc['pdgs'][1][1]) # number, old and new pdg of the legs that change
-
-            # SSC calls, charged
-            mes_ssc_charged = [me for me in non_goldstone_mes_ssc_c if me['base_amp'] == i+1]
-            if mes_ssc_charged:
-                calls_to_me += "C the SSC terms (charged)\n"
-            for messc in mes_ssc_charged:
-                idx = non_goldstone_mes.index(messc)
-                calls_to_me += "call EWSDK_ME_%d(p,nhel(1,ihel),ans_summed)\n" % (idx + 1)
-                calls_to_me += "pdglist_oth = (/%s/)\n" % ','.join([str(leg['id']) for leg in messc['matrix_element']['processes'][0]['legs']])
-                calls_to_me += "AMP_SPLIT_EWSUD_SSC(:) = AMP_SPLIT_EWSUD_SSC(:)+AMP_SPLIT_EWSUD(:)*get_ssc_c(%d,%d,pdglist,%d,%d,nhel(1,ihel),iflist,invariants)*comp_idfac\n" % \
-                                (messc['legs'][0]['number'], messc['legs'][1]['number'], messc['pdgs'][1][0], messc['pdgs'][1][1])
+            # the non-diagonal LSC/C (cew) and SSC (iz1, iz2, ipm2) terms of
+            # the auxiliary amplitudes built on this base amplitude
+            for kind, comment in (('cew', 'LSC and C non diag'),
+                                  ('iz1', 'SSC non diag #1'),
+                                  ('iz2', 'SSC non diag #2'),
+                                  ('ipm2', 'the SSC terms (charged)')):
+                mes_kind = [me for me in non_goldstone_mes
+                            if me['type'] == kind and me['base_amp'] == i+1]
+                if mes_kind:
+                    calls_to_me += "C %s\n" % comment
+                for mesc in mes_kind:
+                    idx = non_goldstone_mes.index(mesc)
+                    calls_to_me += "call EWSDK_ME_%d(p,nhel(1,ihel),ans_summed)\n" % (idx + 1)
+                    calls_to_me += "pdglist_oth = (/%s/)\n" % ','.join([str(leg['id']) for leg in mesc['matrix_element']['processes'][0]['legs']])
+                    for term, expression in sudakov_term_expressions(mesc, 'nhel(1,ihel)'):
+                        calls_to_me += "AMP_SPLIT_EWSUD_%s(:) = AMP_SPLIT_EWSUD_%s(:)+AMP_SPLIT_EWSUD(:)*%s*comp_idfac\n" % \
+                                       (term, term, expression)
 
         if goldstone_mes:
             calls_to_me += "endif\n"
@@ -3559,27 +3529,11 @@ Parameters              %(params)s\n\
     def write_density_matrix_wrapper(self, writer, matrix_element, fortran_model):
         """Write density_matrix_wrapper.f for the spin-correlated EW Sudakov.
 
-        For each resonance-helicity combination h the wrapper returns the
-        Born-weighted Sudakov correction (density_delta) and the Born summed over
-        spectator helicities (born_diag); Python takes their ratio as delta_h.
-        The density matrix B[h,h'] is built in Python (DensityHelper, from
-        GET_DENSITY of the rw_me_density_prod modules).
+        It holds the kernel of export_ewsud_density: the complex Born and
+        linear Sudakov interference matrices of the resonance helicities,
+        summed over spectator helicities and colours.
         """
-        # No substitution variables, but the template is still %-formatted:
-        # a literal '%' in it must be written '%%'.
-        replace_dict = {}
-
-        file = open(os.path.join(_file_path,
-                          'iolibs/template_files/density_matrix_wrapper.inc')).read()
-        file = file % replace_dict
-
-        writer.writelines(file)
-
-        from madgraph.iolibs.export_ewsud_density import DensityExporter
-        DensityExporter(self, matrix_element, fortran_model,
-                        aloha_objects=True).write(writer)
-
-        return
+        DensityExporter(self, matrix_element, fortran_model).write(writer)
 
 
     #===============================================================================
