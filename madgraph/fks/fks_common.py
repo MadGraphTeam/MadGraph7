@@ -379,7 +379,8 @@ def link_rb_configs(born_amp, real_amp, i, j, ij):
     
     # The orders of the real amplitude can exclude this diagram, in an
     # output with mixed QCD and QED orders: e.g. for the photon emission of
-    # u u~ > t t~ [QCD QED], the real diagrams of the borns with an s-channel
+    # u u~ > t t~ [QCD QED] (born QCD^2=4 QED^2=0, so that the amplitudes go
+    # up to QCD^2=6 QED^2=2), the real diagrams of the borns with an s-channel
     # photon or Z (QED^2=4 in the interference with the gluon one) are beyond
     # QED^2=2, those with a gluon emission are not. Such a born configuration
     # gets the first real configuration of its topology (the same propagators
