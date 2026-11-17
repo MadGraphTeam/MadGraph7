@@ -179,7 +179,10 @@ class TimingMetadataTests(unittest.TestCase):
                    and n.name == 'do_check')
         parse = next(n for n in run.body if isinstance(n, ast.While)
                      and ast.unparse(n.test) == "args[i].startswith('--')")
-        scope = {'os': os}
+        # Run the extracted code in the real module globals, so that every name
+        # the interface code uses (process_checks, ...) resolves as it does live.
+        import madgraph.interface.madgraph_interface as interface
+        scope = dict(vars(interface))
         exec(compile(ast.Module(body=[check], type_ignores=[]), str(source), 'exec'), scope)
         owner = SimpleNamespace(_curr_model=True, _model_v4_path=None,
             _check_opts=['timing', 'profile', 'stability'], InvalidCmd=ValueError,
@@ -190,13 +193,15 @@ class TimingMetadataTests(unittest.TestCase):
                 if value is not None:
                     args.append('--timing_provenance='+value)
                 scope['check_check'](owner, args)
-                values = dict(args=args, i=-1, options={}, MLoptions={}, CMS_options={}, self=owner, os=os)
+                values = dict(vars(interface), args=args, i=-1, options={}, MLoptions={},
+                              CMS_options={}, self=owner)
                 exec(compile(ast.Module(body=[parse], type_ignores=[]), str(source), 'exec'), values)
                 self.assertIs(values['options']['timing_provenance'], expected)
             for invalid in ('yes', 'True=garbage', 'False=garbage'):
                 args = [mode, 'u', 'u~', '>', 'z', '[virt=QCD]', '--timing_provenance='+invalid]
                 scope['check_check'](owner, args)
-                values = dict(args=args, i=-1, options={}, MLoptions={}, CMS_options={}, self=owner, os=os)
+                values = dict(vars(interface), args=args, i=-1, options={}, MLoptions={},
+                              CMS_options={}, self=owner)
                 with self.assertRaisesRegex(ValueError, 'must be True or False'):
                     exec(compile(ast.Module(body=[parse], type_ignores=[]), str(source), 'exec'), values)
         with self.assertRaisesRegex(ValueError, 'unknown option --timing_provenance'):
