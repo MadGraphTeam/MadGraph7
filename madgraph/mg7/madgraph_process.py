@@ -2195,6 +2195,15 @@ class MadgraphProcess:
             phasespace = subproc.build_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
             trained_phasespaces.append(phasespace)
+            # the channel dropping keeps the last channel of every resonance
+            channel_resonances = []
+            if madnis_args["resonance_guard"]:
+                resonance_ids = {}
+                channel_resonances = [
+                    [resonance_ids.setdefault(key, len(resonance_ids))
+                     for key in channel.resonances]
+                    for channel in phasespace.channels
+                ]
             training_args.append(
                 ms.TrainingArgs(
                     config=config,
@@ -2204,6 +2213,7 @@ class MadgraphProcess:
                         drop_cuts_and_rescale=madnis_args["drop_zero_integrands"]
                     ),
                     cwnet=phasespace.cwnet,
+                    channel_resonances=channel_resonances,
                 )
             )
 

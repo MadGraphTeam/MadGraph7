@@ -33,6 +33,59 @@ else:
     import madgraph.various.misc as misc
     from madgraph import MadGraph5Error
 
+# Version 1 is retained for unmarked historical files. Format 2 retires
+# PJFry and gives NinjaRS one units digit; precision uses dedicated counters.
+MADLOOP_LEGACY_UNIT_BACKENDS = (
+    ('unidentified', 'Not identified (CTModeRun != -1)'),
+    ('CutTools_DP', 'CutTools (double precision)'),
+    ('PJFry', 'PJFry++'),
+    ('IREGI', 'IREGI'),
+    ('Golem', 'Golem95'),
+    ('Samurai', 'Samurai'),
+    ('Ninja', 'Ninja (double precision)'),
+    ('COLLIER', 'COLLIER'),
+    ('Ninja_QP', 'Ninja (quadruple precision)'),
+    ('CutTools_QP', 'CutTools (quadruple precision)'),
+)
+MADLOOP_RETURN_CODE_VERSION = 2
+MADLOOP_UNIT_BACKENDS = tuple(
+    ('NinjaRS', 'NinjaRS') if unit == 2 else backend
+    for unit, backend in enumerate(MADLOOP_LEGACY_UNIT_BACKENDS))
+MADLOOP_BACKEND_LABELS = dict(MADLOOP_LEGACY_UNIT_BACKENDS + MADLOOP_UNIT_BACKENDS + (
+    ('NinjaRS_DP', 'NinjaRS (double precision)'),
+    ('NinjaRS_QP', 'NinjaRS (quadruple precision)'),
+))
+
+
+def decode_madloop_backend_usage(unit_counts, ninjars_dp=0, ninjars_qp=0,
+                                 format_version=1):
+    """Decode one versioned histogram without modifying the input.
+
+    Unmarked files use version 1, including the historical NinjaRS aliases.
+    Version 2 assigns unit 2 exclusively to NinjaRS. Its DP/QP counters split
+    this bucket directly; there is no subtraction from another backend.
+    Decode each source before aggregating statistics from different versions.
+    """
+    if format_version not in (1, MADLOOP_RETURN_CODE_VERSION):
+        raise MadGraph5Error('Unsupported MadLoop return-code format %s.' %
+                             format_version)
+    usage = {backend: unit_counts[unit]
+             for unit, (backend, _) in enumerate(MADLOOP_LEGACY_UNIT_BACKENDS)}
+    if format_version == 1:
+        # These aliases belong only to previously serialized files.
+        usage['Ninja_QP'] -= ninjars_dp
+        usage['PJFry'] -= ninjars_qp
+    else:
+        if (ninjars_dp < 0 or ninjars_qp < 0 or
+                ninjars_dp + ninjars_qp != unit_counts[2]):
+            raise MadGraph5Error('Inconsistent NinjaRS precision counters in '
+                                 'MadLoop return-code format 2.')
+        usage['PJFry'] = 0
+    usage['NinjaRS_DP'] = ninjars_dp
+    usage['NinjaRS_QP'] = ninjars_qp
+    return usage
+
+
 class RunStatistics(dict):
     """ A class to store statistics about a MadEvent run. """
     
@@ -57,6 +110,8 @@ class RunStatistics(dict):
           'Samurai_usage'      : 0,
           'Ninja_usage'        : 0,
           'Ninja_QP_usage'     : 0,
+          'NinjaRS_DP_usage'   : 0,
+          'NinjaRS_QP_usage'   : 0,
           'COLLIER_usage'      : 0,
           'max_precision'      : 1.0e99,
           'min_precision'      : 0.0,
@@ -114,21 +169,24 @@ class RunStatistics(dict):
         
         u_return_code = xml_node.getElementsByTagName('u_return_code')
         u_codes = [int(_) for _ in getData(u_return_code[0]).split(',')]
-        self['CutTools_DP_usage'] = u_codes[1]
-        self['PJFry_usage']       = u_codes[2]
-        self['IREGI_usage']       = u_codes[3]
-        self['Golem_usage']       = u_codes[4]
-        self['Samurai_usage']     = u_codes[5]
-        self['Ninja_usage']       = u_codes[6]
-        self['COLLIER_usage']     = u_codes[7]        
-        self['Ninja_QP_usage']    = u_codes[8]
-        self['CutTools_QP_usage'] = u_codes[9]
+        ninjars_usage = {}
+        for precision in ('DP', 'QP'):
+            nodes = xml_node.getElementsByTagName(
+                'ninjars_%s_usage' % precision.lower())
+            ninjars_usage[precision] = int(getData(nodes[0])) if nodes else 0
+        versions = xml_node.getElementsByTagName('return_code_version')
+        version = int(getData(versions[0])) if versions else 1
+        self.update((backend + '_usage', count) for backend, count in
+                    decode_madloop_backend_usage(
+                        u_codes, ninjars_usage['DP'], ninjars_usage['QP'],
+                        version).items()
+                    if backend != 'unidentified')
         t_return_code = xml_node.getElementsByTagName('t_return_code')
         t_codes = [int(_) for _ in getData(t_return_code[0]).split(',')]
         self['DP_usage']          = t_codes[1]
         self['QP_usage']          = t_codes[2]
         self['DP_init_usage']     = t_codes[3]
-        self['DP_init_usage']     = t_codes[4]
+        self['QP_init_usage']     = t_codes[4]
         h_return_code = xml_node.getElementsByTagName('h_return_code')
         h_codes = [int(_) for _ in getData(h_return_code[0]).split(',')]
         self['unknown_stability']  = h_codes[1]
@@ -181,7 +239,9 @@ class RunStatistics(dict):
           ('Samurai',float(self['Samurai_usage'])/self['n_madloop_calls']),
           ('COLLIER',float(self['COLLIER_usage'])/self['n_madloop_calls']),          
           ('Ninja_DP',float(self['Ninja_usage'])/self['n_madloop_calls']),
-          ('Ninja_QP',float(self['Ninja_QP_usage'])/self['n_madloop_calls'])]
+          ('Ninja_QP',float(self['Ninja_QP_usage'])/self['n_madloop_calls']),
+          ('NinjaRS_DP',float(self['NinjaRS_DP_usage'])/self['n_madloop_calls']),
+          ('NinjaRS_QP',float(self['NinjaRS_QP_usage'])/self['n_madloop_calls'])]
 
         tools_used = [(_[0],'%.3g'%(100.0*_[1])) for _ in tools_used if _[1] > 0.0 ]
 
