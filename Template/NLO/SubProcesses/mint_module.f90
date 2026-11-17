@@ -439,9 +439,7 @@ contains
 
   subroutine sl_epoch_replay_begin_iteration()
     type(epoch_replay_bank_entry),allocatable :: current(:)
-    double precision :: started,finished
     integer :: i,n,nf,nt
-    call cpu_time(started)
     call sl_unified_ensure()
     n=0
     if(allocated(sl_entries))n=size(sl_entries)
@@ -455,14 +453,12 @@ contains
     enddo
     ! This also replaces positive history by empty after an empty epoch.
     call move_alloc(current,epoch_replay_previous)
-    call cpu_time(finished)
-    online_fit_cpu=online_fit_cpu+finished-started
-    online_extra_cpu=online_extra_cpu+finished-started
     ! Open the new epoch: snapshot the grid, reset the probe banks.
     if(online_epoch.eq.0)then
        online_budget=FKSSectorLearningBudget
        write(*,*)'ONLINE MINT0: mixed-map ABS summaries are TRAINING heuristics; MINT1 recomputes final normalization.'
-       write(*,*)'ONLINE policy: (4,4,1) probes; CPU fraction:',online_budget,' stride16 warmup64.'
+       write(*,*)'ONLINE policy: (4,4,1) probes; budget:',online_budget,' probe cost:',sl_probe_cost, &
+            ' ordinary points; stride16 warmup64.'
        if(sector_learning_archive)open(newunit=online_unit,file='sector_learning_online.bin', &
             access='stream',form='unformatted',status='replace')
     endif
@@ -502,9 +498,8 @@ contains
   subroutine sl_epoch_replay_fit_epoch()
     integer :: i,nf,nt,ns,gx,gy,k
     integer,allocatable :: a(:,:),bmap(:,:)
-    double precision :: started,finished,before,aa,bb,dummy
+    double precision :: before,aa,bb,dummy
     double precision,allocatable :: fit_b(:,:,:),fit_r(:,:,:,:)
-    call cpu_time(started)
     call sl_unified_ensure()
     if(sector_learning_archive)then
        if(any(xgrid(0:online_nint_before,1:ndim,1:nchans).ne.online_grid_before)) &
@@ -568,19 +563,14 @@ contains
        online_slots(i)%loss_after=aa;sl_entries(i)%permutations=a
        deallocate(a,bmap,fit_b,fit_r)
     enddo
-    call cpu_time(finished)
-    online_fit_cpu=online_fit_cpu+finished-started;online_extra_cpu=online_extra_cpu+finished-started
   end subroutine sl_epoch_replay_fit_epoch
 
   subroutine sl_epoch_replay_write_epoch()
     integer :: i,nf,ns,nt,nlegs
-    double precision :: started,finished
-    call cpu_time(started)
     if(.not.allocated(sl_entries))return
     if(.not.sector_learning_archive)goto 10
     write(online_unit)73110620,sl_format_version,sl_method_id,online_epoch,online_nint_before,nint_used, &
          ndim,nchans,size(sl_entries),online_ordinary_calls,online_probes,online_record_rejections
-    write(online_unit)online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
     write(online_unit)online_grid_before,xgrid(0:nint_used,1:ndim,1:nchans)
     write(online_unit)online_base_acc,online_total_acc,online_ordinary_acc
     write(online_unit)online_base_hits,online_total_hits,online_ordinary_hits
@@ -598,13 +588,9 @@ contains
        if(nt.gt.0)write(online_unit)sl_entries(i)%b(1:nf,:,1:nt),sl_entries(i)%r(1:nf,:,:,1:nt)
     enddo
     flush(online_unit)
-    call cpu_time(finished)
-    online_write_cpu=online_write_cpu+finished-started;online_extra_cpu=online_extra_cpu+finished-started
 10  continue
     write(*,*)'ONLINE epoch:',online_epoch,' ordinary/probes/rejects:',online_ordinary_calls, &
          online_probes,online_record_rejections
-    write(*,*)'ONLINE CPU ordinary/probe/fit/archive:',online_ordinary_cpu,online_probe_cpu, &
-         online_fit_cpu,online_write_cpu
   end subroutine sl_epoch_replay_write_epoch
 
   subroutine sl_epoch_replay_finish()
@@ -630,7 +616,7 @@ contains
     character(len=8192) :: line
     character(len=64) :: marker,tag
     integer :: ios,version,mode,count_entries,i,s,slot,ns,nlegs,nf,gx,gy,total,read_slot,read_index,node,c,d,n
-    integer :: warm,stride
+    integer :: warm,stride,cost
     double precision :: budget
     integer :: gauge,gauge_version,phase_passes,tile_passes,selection_version,expected_gauge
     integer,allocatable :: expected_q(:,:)
@@ -663,13 +649,12 @@ contains
     if(gauge_version.ne.1.or.phase_passes.ne.3.or.tile_passes.ne.3.or.selection_version.ne.1) &
          error stop 'Unknown unified map convention'
     read(unit,'(a)',iostat=ios)line
-    if(ios.ne.0)error stop 'Missing SCL10 CPU'
-    call sl_epoch_replay_validate_line(line,'C',7)
-    read(line,*,iostat=ios)marker,tag,budget,online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
-    if(ios.ne.0.or. &
-         .not.all(ieee_is_finite([budget,online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu])).or. &
-         min(online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu).lt.0d0) &
-         error stop 'Malformed SCL10 CPU'
+    if(ios.ne.0)error stop 'Missing SCL10 budget'
+    call sl_epoch_replay_validate_line(line,'B',4)
+    read(line,*,iostat=ios)marker,tag,budget,cost
+    if(ios.ne.0.or..not.ieee_is_finite(budget).or..not.(budget.gt.0d0.and.budget.le.1d0).or. &
+         cost.ne.sl_probe_cost) &
+         error stop 'Malformed SCL10 budget'
     ! The budget only steered the MINT0 probes; keep the training value.
     online_budget=budget
     if(allocated(sl_entries))deallocate(sl_entries)
@@ -756,8 +741,6 @@ contains
     ! Called once an ordinary MINT0 point is accumulated.
     integer :: d
     online_ordinary_calls=online_ordinary_calls+1
-    ! The clock is read per block of 16 calls, where a probe may follow.
-    if(mod(online_ordinary_calls,16).eq.0)call sl_online_ordinary_clock()
     if(.not.sector_learning_archive)return
     ! The same per-cell split as the grid (add_point_to_grids).
     call add_abs_weight(online_ordinary_acc)
@@ -765,14 +748,6 @@ contains
        online_ordinary_hits(icell(d),d,ichan)=online_ordinary_hits(icell(d),d,ichan)+1
     enddo
   end subroutine sl_online_observe_ordinary
-
-  subroutine sl_online_ordinary_clock()
-    ! Charge the time since the last mark to ordinary MINT0 points.
-    double precision :: now
-    call cpu_time(now)
-    online_ordinary_cpu=online_ordinary_cpu+now-online_clock
-    online_clock=now
-  end subroutine sl_online_ordinary_clock
 
   subroutine save_point_state(state)
     type(mint_point_state),intent(out) :: state
@@ -827,18 +802,18 @@ contains
     double precision,external :: fun
     type(mint_point_state) :: saved
     integer :: folds(ndimmax)
-    double precision :: x(ndimmax),vol,started,finished
+    double precision :: x(ndimmax),vol
     if(online_ordinary_calls.lt.64.or.mod(online_ordinary_calls,16).ne.0)return
-    if(online_extra_cpu.ge.online_budget*online_ordinary_cpu)return
+    ! Admission counts points only, so the probes, maps, grids and events
+    ! are fixed by the seed: a probe costs sl_probe_cost ordinary points.
+    if(sl_probe_cost*online_probes.ge.online_budget*online_ordinary_calls)return
     if(mod(nint_used,4).ne.0.or.mod(nint_used_virt,4).ne.0)return
-    ! sl_online_observe_ordinary marked the clock just before this call.
-    started=online_clock
     ! The probe leaves the per-point state as the last ordinary point set it.
     call save_point_state(saved)
     ifold=1; ifold(ndim-2:ndim)=[4,4,1]; even_rn=.false.
     point_evaluation=learning_probe_evaluation; new_point=.true.
     ! Probes draw from their own stream: the ordinary points' random numbers
-    ! do not depend on how many probes the CPU budget admits.
+    ! do not depend on how many probes the budget admits.
     call swap_probe_random_numbers()
     call get_random_x(x,vol,folds)
     call compute_integrand(fun,x,vol)
@@ -850,10 +825,6 @@ contains
        call sl_append_orbit()
     endif
     call restore_point_state(saved)
-    call cpu_time(finished)
-    online_probe_cpu=online_probe_cpu+finished-started
-    online_extra_cpu=online_extra_cpu+finished-started
-    online_clock=finished
   end subroutine sl_unified_maybe_probe
 
   subroutine sl_verify_grid()
@@ -889,8 +860,6 @@ contains
        call start_iteration
        if(sl_train)call sl_epoch_replay_begin_iteration()
 2      kpoint_iter=kpoint_iter+1
-       ! The probe budget counts only the ordinary points of this loop.
-       if(sl_train)call cpu_time(online_clock)
        do kpoint=1,ncalls
           new_point=.true.
           call get_random_x(x,vol,kfold)
@@ -901,7 +870,6 @@ contains
              call sl_unified_maybe_probe(fun)
           endif
        enddo
-       if(sl_train)call sl_online_ordinary_clock()
        call get_amount_of_points(enough_points)
        if (.not.enough_points) goto 2
        ! Only a grid reset installs the unit channel markers for this scan.

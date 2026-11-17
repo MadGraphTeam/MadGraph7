@@ -27,7 +27,7 @@ integer,allocatable :: rng_a(:),rng_b(:)
 double precision,volatile :: delay_sink=0d0
 double precision :: old_grid(0:32,4),old_map(4,2),old_ratio(2)
 integer :: slot_seen(2)=0,ordinary_slot_saved=0
-logical :: zero_integrand=.false.
+logical :: zero_integrand=.false.,slow_integrand=.false.
 double precision,allocatable :: probe_vtot(:,:),probe_etot(:,:)
 logical :: have_probe_snapshot=.false.
 end module
@@ -36,7 +36,7 @@ program exercise_online
 use mint_module
 use online_fixture
 implicit none
-integer :: nseed,i,j
+integer :: nseed,i,j,expected
 double precision :: replay_x(ndimmax),replay_a(ndimmax),replay_b(ndimmax),replay_ratio_a,replay_ratio_b
 integer,allocatable :: seed(:)
 character(32) :: action
@@ -67,7 +67,7 @@ if(index(trim(action),'card_').eq.1)then
  if(trim(action).eq.'card_switch'.and..not.FKSSectorLearning)stop 231
  if(trim(action).eq.'card_value'.and.FKSSectorLearningBudget.ne..95d0)stop 230
  if(trim(action).eq.'card_high_off'.and.(FKSSectorLearning.or.FKSSectorLearningBudget.ne.20d0))stop 232
- print *,'PASS native CPU budget card',trim(action)
+ print *,'PASS native budget card',trim(action)
  stop 0
 endif
 FKSSectorLearningBudget=.35d0
@@ -85,6 +85,7 @@ call random_seed(put=seed)
 allocate(probe_vtot(nintegrals,0:maxchannels),probe_etot(nintegrals,0:maxchannels))
 call register_fixture_layouts
 zero_integrand=index(trim(action),'zero').eq.1
+slow_integrand=trim(action).eq.'slow_train'
 if(trim(action).eq.'quiet_train')then
  ! Production MINT0: no audit archive, but the same frozen table.
  sector_learning_archive=.false.
@@ -96,7 +97,7 @@ if(trim(action).eq.'quiet_train')then
  print *,'PASS production MINT0 without audit archive'
  stop 0
 endif
-if(trim(action).eq.'train'.or.trim(action).eq.'zero_train')then
+if(trim(action).eq.'train'.or.trim(action).eq.'zero_train'.or.trim(action).eq.'slow_train')then
  imode=0;ncalls0=4096;itmax=4;accuracy=0d0
  ! Automatic point counts (ncalls0<=0, as in MC@NLO runs) detect a zero integral.
  if(zero_integrand)ncalls0=-1
@@ -116,13 +117,18 @@ if(trim(action).eq.'train'.or.trim(action).eq.'zero_train')then
  if(abs(ans(2,0)).gt.2d0)stop 208
  if(plot_points.ne.ordinary_nodes)stop 209
  if(sum(online_ordinary_hits(:,1,:)).ne.ordinary_epoch(last_iteration))stop 210
- if(online_extra_cpu.lt.online_probe_cpu+online_fit_cpu.or.online_ordinary_cpu.le.0d0)stop 212
+ ! Count-based admission: a probe at every 16th point from the 64th while
+ ! sl_probe_cost*probes stays below budget*points.
+ expected=0
+ do j=64,online_ordinary_calls,16
+  if(sl_probe_cost*expected.lt.online_budget*j)expected=expected+1
+ enddo
+ if(online_probes.ne.expected)stop 212
  if(any(online_total_hits.ne.online_base_hits+online_ordinary_hits))stop 213
  inquire(file='sector_learning_online.bin',exist=exists)
  if(.not.exists)stop 215
  call write_grids_to_file
  print *,'CHECK',ordinary_nodes,probe_nodes,online_probes,grid_changes,map_changes
- print *,'CHECKCPU',online_ordinary_cpu,online_extra_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
  print *,'PASS native mint iteration/integral isolation'
 else
  imode=1;ncalls0=64;itmax=1;accuracy=0d0;nint_used=0
@@ -241,10 +247,12 @@ elseif(collect)then
  endif
  fold_count=fold_count+1;probe_nodes=probe_nodes+1;probe_epoch(nit)=probe_epoch(nit)+1
 endif
-! A real callback CPU cost makes the sparse probe token policy observable.
-do j=1,20000
- delay_sink=delay_sink+sin(dble(j)+x(1))
-enddo
+! slow_train: a much slower integrand must not change any probe or map.
+if(slow_integrand)then
+ do j=1,20000
+  delay_sink=delay_sink+sin(dble(j)+x(1))
+ enddo
+endif
 total=.1d0*vol
 if(.not.(collect.or.zero_integrand))call sector_learning_split_add(0,1,total)
 if(collect)then
@@ -356,6 +364,15 @@ class TestEpochReplayIteration(unittest.TestCase):
                 (target/'output.log').write_text(output)
                 (target/'independent_audit.json').write_text(json.dumps(audit,indent=2)+'\n')
 
+    def test_training_does_not_depend_on_cpu_time(self):
+        # Probes are admitted by counting points: a much slower integrand
+        # gives the same probes, maps, grids, table and archive.
+        with tempfile.TemporaryDirectory() as fast,tempfile.TemporaryDirectory() as slow:
+            self.run_case('train',Path(fast))
+            self.run_case('slow_train',Path(slow))
+            for name in ('mint_grids','sector_learning_online.bin'):
+                self.assertEqual((Path(fast)/name).read_bytes(),(Path(slow)/name).read_bytes(),name)
+
     def test_fresh_process_restart_and_wrong_method_guards(self):
         with tempfile.TemporaryDirectory() as temporary:
             work=Path(temporary);self.run_case('train',work)
@@ -372,7 +389,7 @@ class TestEpochReplayIteration(unittest.TestCase):
             # and the table keeps the training value.
             self.run_case('wrongbudget',work)
             budget=next(line.split()[2] for line in (work/'mint_grids').read_text().splitlines()
-                        if line.split()[:2]==['SCL10','C'])
+                        if line.split()[:2]==['SCL10','B'])
             self.assertEqual(float(budget),.35)
             (work/'mint_grids').write_bytes(training_grid)
             damaged=''.join(line for line in (work/'mint_grids').read_text().splitlines(True)
@@ -429,7 +446,7 @@ class TestEpochReplayIteration(unittest.TestCase):
             for addition in ('SCL7 C .65 0 0 0 0\n','SCL10 P 3 1 '+' '.join(map(str,range(1,17)))+'\n'):
                 (work/'mint_grids').write_text(original+addition)
                 self.run_case('restart',work,'Trailing unified learning metadata')
-            for tag in ['H','C','L','R','P','G']:
+            for tag in ['H','B','L','R','P','G']:
                 for mutation in ['long_tag','extra_column','long_marker']:
                     with self.subTest(tag=tag,mutation=mutation):
                         lines=original.splitlines()

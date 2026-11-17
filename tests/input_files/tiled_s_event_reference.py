@@ -20,7 +20,8 @@ import math
 import struct
 
 MAGIC = 73110620
-VERSION = 12  # layout of the archive and the SCL10 table
+VERSION = 13  # layout of the archive and the SCL10 table
+PROBE_COST = 11  # a probe counts as this many ordinary MINT0 points
 COEFFICIENT = .5
 GEOMETRIES = ((2, 2, 1), (4, 2, 1), (2, 4, 1), (4, 4, 1))
 SHAPES = ((1, 1), (2, 2), (4, 2), (2, 4), (4, 4))
@@ -677,9 +678,6 @@ def read_archive(path):
                 not 1 <= row['nchans'] <= 10000 or not 1 <= row['nentries'] <= 10000 or
                 min(row[k] for k in counters) < 0 or row['rejections'] > row['probes']):
             raise ValueError('Unsupported epoch header/counts')
-        row['cpu'] = reader.doubles(4)
-        if not _finite(row['cpu']) or min(row['cpu']) < 0.:
-            raise ValueError('Invalid cumulative CPU counters')
         d, c, n = row['ndim'], row['nchans'], row['npre']
         row['grid_before'] = Array3((n + 1, d, c), reader.doubles((n + 1) * d * c))
         row['grid_after'] = Array3((row['npost'] + 1, d, c), reader.doubles((row['npost'] + 1) * d * c))
@@ -762,12 +760,12 @@ def read_table(path):
         raise ValueError('Unsupported SCL10 header/counts')
     if tuple(result[k] for k in ('gauge_version', 'phase_passes', 'tile_passes', 'selection_version')) != (1, 3, 3, 1):
         raise ValueError('Wrong gauge/solver/selection versions')
-    if len(lines) < 2 or lines[1][:2] != ['SCL10', 'C'] or len(lines[1]) != 7:
-        raise ValueError('Missing/malformed SCL10 CPU row')
-    cpu = [float(x) for x in lines[1][2:]]
-    if not _finite(cpu) or not 0. < cpu[0] <= 1. or min(cpu) < 0.:
-        raise ValueError('Invalid SCL10 CPU budget/counters')
-    result['budget'], result['cpu'] = cpu[0], cpu[1:]
+    if len(lines) < 2 or lines[1][:2] != ['SCL10', 'B'] or len(lines[1]) != 4:
+        raise ValueError('Missing/malformed SCL10 budget row')
+    budget = float(lines[1][2])
+    if not _finite([budget]) or not 0. < budget <= 1. or lines[1][3] != str(PROBE_COST):
+        raise ValueError('Invalid SCL10 budget/probe cost')
+    result['budget'] = budget
     entries, grids, current = {}, {}, None
     for row in lines[2:]:
         if row[:2] == ['SCL10', 'L']:
@@ -991,6 +989,17 @@ def _audit_fit(e, epoch):
                 alternative=strip(other) if other else None)
 
 
+def admitted_probes(ordinary, budget):
+    """Probes the count rule admits by the time `ordinary` ordinary MINT0
+    points have run: at every 16th point from the 64th, while
+    PROBE_COST * probes < budget * points. No CPU time enters."""
+    probes = 0
+    for points in range(64, ordinary + 1, 16):
+        if PROBE_COST * probes < budget * points:
+            probes += 1
+    return probes
+
+
 def audit_archive(path, table_path, *, expected_budget=None):
     """Replay every epoch of sector_learning_online.bin against mint_grids."""
     archive, table = read_archive(path), read_table(table_path)
@@ -1004,11 +1013,11 @@ def audit_archive(path, table_path, *, expected_budget=None):
         if previous is not None:
             if record['grid_before'].data != previous['grid_after'].data:
                 raise ValueError('Grid changed outside an iteration boundary')
-            if any(a < b for a, b in zip(record['cpu'], previous['cpu'])):
-                raise ValueError('Cumulative CPU counters decreased')
         delta = {key: record[key] - totals[key] for key in totals}
         if min(delta.values()) < 0:
             raise ValueError('Cumulative point counters decreased')
+        if record['probes'] != admitted_probes(record['ordinary'], table['budget']):
+            raise ValueError('Probe count differs from the count-based admission')
         if sum(e['nt'] for e in record['entries']) != delta['probes'] - delta['rejections']:
             raise ValueError('Orbit coverage differs from probe/rejection counts')
         acc, hits = record['acc'], record['hits']
@@ -1061,9 +1070,6 @@ def audit_archive(path, table_path, *, expected_budget=None):
             raise ValueError('Final SCL10 counters differ from native epochs')
     if table['grid'].data != final['grid_after'].data or set(table['entries']) != set(slots):
         raise ValueError('Final grid/layout differs')
-    _close(table['cpu'][:3], final['cpu'][:3], 'Final CPU counters differ')
-    if table['cpu'][3] < final['cpu'][3]:
-        raise ValueError('Final archive CPU counter decreased')
     for slot, e in slots.items():
         saved = table['entries'][slot]
         if saved['alias_gauge'] != e['alias_gauge'] or saved['q'] != e['q']:
@@ -1075,8 +1081,6 @@ def audit_archive(path, table_path, *, expected_budget=None):
             if metadata != dict(id=e['ids'][i], provider=e['providers'][i], group=e['groups'][i],
                                 pdgs=e['pdgs'][i], q=e['q'][i]):
                 raise ValueError('Final static metadata differs')
-    ratio = sum(table['cpu'][1:]) / table['cpu'][0] if table['cpu'][0] > 0 else None
     return dict(passed=True, native_version=VERSION, mode=archive['mode'], replay_coefficient=COEFFICIENT,
                 archive_sha256=archive['sha256'], mint_grids_sha256=table['sha256'], epoch_count=len(reports),
-                epochs=reports, counters=totals, cpu_cumulative=table['cpu'],
-                extra_over_ordinary_integrand_cpu=ratio, budget_target=table['budget'])
+                epochs=reports, counters=totals, budget=table['budget'], probe_cost=PROBE_COST)

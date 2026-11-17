@@ -14,7 +14,11 @@ module sector_learning
   ! Fixed method tag stored in the native10 archive and the SCL10 table.
   integer,parameter :: sl_method_id=29
   ! Layout version of that archive and table; an older table needs a new MINT0.
-  integer,parameter :: sl_format_version=12
+  integer,parameter :: sl_format_version=13
+  ! Probes are admitted by counting points, never by CPU time, so a run is
+  ! fixed by its seed. A probe counts as sl_probe_cost ordinary MINT0 points
+  ! (measured: 9.6 to 11.9).
+  integer,parameter :: sl_probe_cost=11
   type :: sector_learning_entry
      integer :: slot=0,ntrain=0,nflavours=0
      integer,allocatable :: ids(:),providers(:),pdgs(:,:),groups(:)
@@ -81,8 +85,6 @@ module sector_learning
   type(online_slot_entry),allocatable :: online_slots(:)
   integer :: online_ordinary_calls=0,online_probes=0
   integer :: online_epoch=0,online_nint_before=0,online_unit=0,online_record_rejections=0
-  double precision :: online_ordinary_cpu=0d0,online_probe_cpu=0d0,online_fit_cpu=0d0
-  double precision :: online_write_cpu=0d0,online_extra_cpu=0d0,online_clock=0d0
   double precision :: online_budget=.20d0
   double precision,allocatable :: online_grid_before(:,:,:),online_base_acc(:,:,:)
   double precision,allocatable :: online_ordinary_acc(:,:,:),online_total_acc(:,:,:)
@@ -832,7 +834,7 @@ contains
     write(unit,'(a,*(1x,i0))')'SCL10 H',sl_format_version,sl_method_id,size(sl_entries),sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
          online_epoch,online_ordinary_calls,online_probes,online_record_rejections, &
          64,16,1,3,3,1
-    write(unit,'(a,*(1x,es24.16))')'SCL10 C',online_budget,online_ordinary_cpu,online_probe_cpu,online_fit_cpu,online_write_cpu
+    write(unit,'(a,1x,es24.16,1x,i0)')'SCL10 B',online_budget,sl_probe_cost
     do i=1,size(sl_entries)
        write(unit,'(a,*(1x,i0))')'SCL10 L',sl_entries(i)%slot,size(sl_entries(i)%ids),size(sl_entries(i)%pdgs,2), &
             sl_entries(i)%nflavours,online_slots(i)%gx,online_slots(i)%gy,online_slots(i)%total_samples,unified_slots(i)%gauge

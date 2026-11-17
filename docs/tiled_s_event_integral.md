@@ -24,12 +24,11 @@ one S event change.
 The maps are learned inside ordinary MINT0:
 
 - At regular points (after 64 ordinary calls, every 16th), a probe evaluates
-  one Born point at all 16 nodes of a (4,4,1) stencil. Probes are admitted
-  while their CPU, plus fitting and archiving, stays below
-  `FKSSectorLearningBudget` times the CPU of the ordinary MINT0 points:
-  their sampling, integrand and grid accumulation, timed per block of 16
-  points. The work between passes and iterations (point-count checks,
-  channel scans, combining results) is not counted. A probe
+  one Born point at all 16 nodes of a (4,4,1) stencil. Admission counts
+  points, not CPU time: a probe counts as 11 ordinary MINT0 points (its
+  measured CPU is 9.6 to 11.9 ordinary points), and one is admitted while
+  11 × probes stays below `FKSSectorLearningBudget` × ordinary points, so
+  one probe per 55 ordinary points at the default budget. A probe
   stores the routed S contributions before the absolute value, split into
   the Born part `B` and per-sector parts `R`, per canonical flavour. The
   separately generated virtual-residual lane (type 14) is excluded, so
@@ -90,11 +89,11 @@ version. With `sector_learning_archive` set in `mint_module` (the tests
 do this), MINT0 also writes `sector_learning_online.bin`, a binary
 per-iteration record of the probes, fits and grid accumulators for auditing;
 production runs neither write nor read it, and do not keep its grid
-accounting. Probes draw from their own random-number stream, seeded from the run's,
-so the ordinary points' random numbers do not depend on how many probes
-run. Probe admission depends on measured CPU time, however, so the number
-of probes, and with it the fitted maps, the grids and the events, differ
-between runs with the same seed.
+accounting. No CPU time enters the learning: a run is fixed by its seed, and
+runs with the same seed give identical grids, `SCL10` tables and events.
+Probes draw from their own random-number stream, seeded from the run's, so
+the ordinary points' random numbers do not depend on how many probes the
+budget admits.
 
 ## Measured effect
 
@@ -126,8 +125,8 @@ fraction of negative H events is unchanged; there are slightly more H events
 because the absolute S integral is smaller.
 
 W+bb remains expensive: MINT1 needs 2.3 times as many points as on `main`
-and event generation 1.5 times as many points per event. The budget is a
-soft target on probe and fit CPU, not a bound on total run time. Showered
+and event generation 1.5 times as many points per event. The budget fixes
+the number of probes, not the total run time. Showered
 samples were not studied.
 
 In the research implementation this branch was taken from, a budget of .10
@@ -156,7 +155,8 @@ replay bank construction, the fitting routines against an independent
 pure-Python reference (`tests/input_files/tiled_s_event_reference.py`, which
 certifies assignment optimality with dual potentials), a complete
 MINT0/MINT1/generation fixture with restarts and wrong-setting guards, the
-audited `sector_learning_online.bin` records, and the driver hooks that
-capture probe contributions. `test_sector_learning_grid_split` checks how an
+audited `sector_learning_online.bin` records (including the count-based
+probe admission), that a much slower integrand trains to byte-identical
+files, and the driver hooks that capture probe contributions. `test_sector_learning_grid_split` checks how an
 ordinary point's ABS weight is split over the ξ/y grid cells. They need
 neither NumPy nor SciPy.
