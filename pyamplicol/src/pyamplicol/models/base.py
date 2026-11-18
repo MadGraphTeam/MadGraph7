@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from collections import Counter
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -967,6 +968,28 @@ class Model:
             return None
         name = provider(int(particle_id))
         return None if name is None else str(name)
+
+    def external_state_normalization(
+        self,
+        initial_pdgs: Sequence[int],
+        final_pdgs: Sequence[int],
+    ) -> tuple[int, int]:
+        """``(average_factor, identical_factor)`` of a process's external states.
+
+        The average counts each initial state's source spin states and colour
+        dimension; the identical factor is ``prod(n!)`` over final PDGs.
+        """
+
+        average_factor = 1
+        for pdg in initial_pdgs:
+            average_factor *= len(self.source_spin_states(int(pdg))) * max(
+                1, abs(self.color_rep(int(pdg)))
+            )
+        identical_factor = math.prod(
+            math.factorial(count)
+            for count in Counter(int(pdg) for pdg in final_pdgs).values()
+        )
+        return average_factor, identical_factor
 
     def runtime_normalization_payload(
         self, request: RuntimeNormalizationRequest

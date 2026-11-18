@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
-import math
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -40,12 +38,8 @@ class ExternalModelKernelMixin:
     ) -> dict[str, object]:
         initial_pdgs = tuple(int(pdg) for pdg in request.process.initial_pdgs)
         final_pdgs = tuple(int(pdg) for pdg in request.process.final_pdgs)
-        average_factor = 1
-        for pdg in initial_pdgs:
-            average_factor *= len(self.source_spin_states(pdg))
-            average_factor *= max(1, abs(self.color_rep(pdg)))
-        identical_factor = math.prod(
-            math.factorial(count) for count in Counter(final_pdgs).values()
+        average_factor, identical_factor = self.external_state_normalization(  # type: ignore[attr-defined]
+            initial_pdgs, final_pdgs
         )
         color_factor = self._external_color_normalization_factor(
             (*initial_pdgs, *final_pdgs)

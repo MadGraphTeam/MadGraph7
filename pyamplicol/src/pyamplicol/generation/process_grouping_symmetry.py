@@ -32,7 +32,7 @@ from __future__ import annotations
 import functools
 import re
 from collections import Counter
-from collections.abc import Hashable, Iterable, Mapping, Sequence
+from collections.abc import Collection, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from ..models.base import Model
@@ -214,6 +214,63 @@ class VertexSymmetryTable:
             source: target for source, target in partial.items() if source != target
         }
 
+    def _permutation_reason(
+        self,
+        permutation: Mapping[int, int],
+        allowed: _AllowedVertices,
+        table: ParticleTable,
+    ) -> str | None:
+        for particles, signatures in allowed.by_particles.items():
+            image = tuple(permutation.get(pdg, pdg) for pdg in particles)
+            if image != particles and allowed.by_particles.get(image) != signatures:
+                moved = ", ".join(
+                    f"{_name(table, source)}->{_name(table, target)}"
+                    for source, target in sorted(permutation.items())
+                    if source > 0 or table[source].type.self_conjugate
+                )
+                return (
+                    f"relabelling {moved} changes the allowed vertex "
+                    f"{_vertex_text(table, particles)}"
+                )
+        return None
+
+    def _conjugation_reason(
+        self,
+        allowed: _AllowedVertices,
+        flavours: Iterable[int],
+        table: ParticleTable,
+    ) -> str | None:
+        if allowed.chiral:
+            # Prefer an example that involves the flavours of the process.
+            present = set(flavours)
+            chiral = next(
+                (
+                    particles
+                    for particles in allowed.chiral
+                    if present & {abs(pdg) for pdg in particles}
+                ),
+                allowed.chiral[0],
+            )
+            return (
+                "charge conjugation is broken by the chiral allowed vertex "
+                f"{_vertex_text(table, chiral)}"
+            )
+        missing = next(
+            (
+                particles
+                for particles in allowed.multisets
+                if tuple(sorted(self._antiparticle(pdg) for pdg in particles))
+                not in allowed.multisets
+            ),
+            None,
+        )
+        if missing is not None:
+            return (
+                "charge conjugation has no allowed image of the vertex "
+                f"{_vertex_text(table, missing)}"
+            )
+        return None
+
     def relation_warning(
         self,
         member: GroupingProcess,
@@ -226,72 +283,93 @@ class VertexSymmetryTable:
         """Why ``mapping`` may not be a symmetry, or ``None``."""
 
         allowed = self.allowed(limits)
-
-        def name(pdg: int) -> str:
-            particle = table.get(pdg)
-            return particle.name if particle is not None else str(pdg)
-
-        def vertex_text(particles: Sequence[int]) -> str:
-            return "[" + " ".join(name(pdg) for pdg in particles) + "]"
-
         relation = (
             f"{member.expression!r} assumed equal to {representative.expression!r}"
         )
-        reasons = []
         permutation = self.relabelling(member, representative, mapping, table)
-        for particles, signatures in allowed.by_particles.items():
-            image = tuple(permutation.get(pdg, pdg) for pdg in particles)
-            if image != particles and allowed.by_particles.get(image) != signatures:
-                moved = ", ".join(
-                    f"{name(source)}->{name(target)}"
-                    for source, target in sorted(permutation.items())
-                    if source > 0 or table[source].type.self_conjugate
-                )
-                reasons.append(
-                    f"relabelling {moved} changes the allowed vertex "
-                    f"{vertex_text(particles)}"
-                )
-                break
+        reasons = [self._permutation_reason(permutation, allowed, table)]
         if mapping.conjugated:
-            if allowed.chiral:
-                # Prefer an example that involves the flavours of the process.
-                flavours = {abs(pdg) for pdg in representative.pdgs}
-                chiral = next(
-                    (
-                        particles
-                        for particles in allowed.chiral
-                        if flavours & {abs(pdg) for pdg in particles}
-                    ),
-                    allowed.chiral[0],
+            reasons.append(
+                self._conjugation_reason(
+                    allowed, {abs(pdg) for pdg in representative.pdgs}, table
                 )
-                reasons.append(
-                    "charge conjugation is broken by the chiral allowed vertex "
-                    f"{vertex_text(chiral)}"
+            )
+        return _warning(relation, reasons, limits)
+
+    def flavour_union_warning(
+        self,
+        template: GroupingProcess,
+        flavours: Collection[int],
+        table: ParticleTable,
+        *,
+        limits: Mapping[str, int],
+        conjugated: bool = False,
+    ) -> str | None:
+        """Why merging ``flavours`` into one may change some pairing pattern of
+        ``template``, or ``None``.
+
+        Every allowed vertex must hold each union flavour an even number of
+        times (vertex PDG signs follow model conventions), and exchanging
+        any union flavour with the smallest one must map the allowed vertices
+        onto themselves; ``conjugated`` also requires charge conjugation.
+        """
+
+        allowed = self.allowed(limits)
+        lowest = min(flavours)
+        reasons: list[str | None] = []
+        changing = next(
+            (
+                particles
+                for particles in allowed.by_particles
+                if any(
+                    sum(abs(pdg) == flavour for pdg in particles) % 2
+                    for flavour in flavours
                 )
-            else:
-                missing = next(
-                    (
-                        particles
-                        for particles in allowed.multisets
-                        if tuple(sorted(self._antiparticle(pdg) for pdg in particles))
-                        not in allowed.multisets
-                    ),
-                    None,
-                )
-                if missing is not None:
-                    reasons.append(
-                        "charge conjugation has no allowed image of the vertex "
-                        f"{vertex_text(missing)}"
-                    )
-        if not reasons:
-            return None
-        limit_text = ", ".join(
-            f"{key}<={value}" for key, value in sorted(limits.items())
+            ),
+            None,
         )
-        return (
-            f"{relation}, but {' and '.join(reasons)} "
-            f"(coupling orders: {limit_text or 'unrestricted'})"
-        )
+        if changing is not None:
+            reasons.append(
+                "the allowed vertex "
+                f"{_vertex_text(table, changing)} changes a union quark flavour"
+            )
+        for flavour in sorted(set(flavours) - {lowest}):
+            exchange = {flavour: lowest, lowest: flavour}
+            exchange[self._antiparticle(flavour)] = self._antiparticle(lowest)
+            exchange[self._antiparticle(lowest)] = self._antiparticle(flavour)
+            reason = self._permutation_reason(exchange, allowed, table)
+            if reason is not None:
+                reasons.append(reason)
+                break
+        if conjugated:
+            reasons.append(self._conjugation_reason(allowed, flavours, table))
+        names = " ".join(_name(table, flavour) for flavour in sorted(flavours))
+        relation = f"flavour union {template.expression!r} of {names}"
+        return _warning(relation, reasons, limits)
+
+
+def _name(table: ParticleTable, pdg: int) -> str:
+    particle = table.get(pdg)
+    return particle.name if particle is not None else str(pdg)
+
+
+def _vertex_text(table: ParticleTable, particles: Sequence[int]) -> str:
+    return "[" + " ".join(_name(table, pdg) for pdg in particles) + "]"
+
+
+def _warning(
+    relation: str,
+    reasons: Sequence[str | None],
+    limits: Mapping[str, int],
+) -> str | None:
+    found = [reason for reason in reasons if reason is not None]
+    if not found:
+        return None
+    limit_text = ", ".join(f"{key}<={value}" for key, value in sorted(limits.items()))
+    return (
+        f"{relation}, but {' and '.join(found)} "
+        f"(coupling orders: {limit_text or 'unrestricted'})"
+    )
 
 
 __all__ = ["SymmetryVertex", "VertexSymmetryTable"]

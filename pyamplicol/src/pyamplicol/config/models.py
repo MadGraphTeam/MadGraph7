@@ -648,6 +648,7 @@ class ProcessConfig:
     )
     flavor_blind: bool = field(default=False, metadata=_setting("bool"))
     flavor_blind_strict: bool = field(default=False, metadata=_setting("bool"))
+    flavor_unions: bool = field(default=False, metadata=_setting("bool"))
     consider_charge_conjugation: bool = field(default=True, metadata=_setting("bool"))
     only_unit_multiplier: bool = field(default=False, metadata=_setting("bool"))
     analyze_process_groups: ProcessGroupAnalysis = field(
@@ -765,11 +766,16 @@ class ProcessConfig:
         for name in (
             "flavor_blind",
             "flavor_blind_strict",
+            "flavor_unions",
             "consider_charge_conjugation",
             "only_unit_multiplier",
         ):
             if not isinstance(getattr(self, name), bool):
                 raise ConfigurationError(f"process.{name} must be a boolean")
+        if self.flavor_unions and not self.flavor_blind_strict:
+            raise ConfigurationError(
+                "process.flavor_unions requires process.flavor_blind_strict"
+            )
         object.__setattr__(
             self,
             "analyze_process_groups",
@@ -2313,6 +2319,14 @@ class RunConfig:
             )
         if self.color.nc_graded:
             self._validate_nc_expansion(virtual=virtual)
+        if self.process.flavor_unions and (
+            self.color.accuracy is not ColorAccuracy.LC
+            or self.resolved_execution_mode is not EvaluatorExecutionMode.RECURRENCE
+        ):
+            raise ConfigurationError(
+                "process.flavor_unions requires color.accuracy='lc' and "
+                "evaluator.execution_mode='recurrence'"
+            )
         if (
             self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
             and self.resolved_execution_mode

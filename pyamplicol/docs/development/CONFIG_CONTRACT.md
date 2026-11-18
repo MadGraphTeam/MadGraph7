@@ -42,6 +42,8 @@ overrides in order, then recorded license/resource clamping.
 - `selected_source_helicities: table[int, int] = {}`
 - `flavor_blind: bool = false`
 - `flavor_blind_strict: bool = false`
+- `flavor_unions: bool = false` (requires `flavor_blind_strict`, LC colour and
+  the recurrence execution mode; in development)
 - `consider_charge_conjugation: bool = true`
 - `only_unit_multiplier: bool = false`
 - `analyze_process_groups: none | numerical = none`
