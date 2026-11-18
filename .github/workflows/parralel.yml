@@ -200,13 +200,12 @@ jobs:
 
   test_short_ppgogo_amcatnlo_nlo:
     # The type of runner that the job will run on
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
@@ -217,10 +216,6 @@ jobs:
             cd $GITHUB_WORKSPACE
             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
             ./tests/test_manager.py  test_short_amcatnlo_int_nlo -pP -t0 -l INFO
-
-      # Leave /tmp empty for the next job on this self-hosted machine.
-      - if: always()
-        uses: ./.github/actions/clean_tmp
 
   parallel_bundle_3:
     # former jobs, run one after the other: test_short_softcol_nlo
