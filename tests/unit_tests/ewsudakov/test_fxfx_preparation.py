@@ -54,7 +54,7 @@ class TestFxFxPreparation(unittest.TestCase):
             return limits.np.array([1., correction, correction * 3., correction * 2.,
                                     correction * 2., correction * 3.])
 
-        def density(tag, p, coupling, indices, dims, nvariants=5):
+        def density(tag, p, coupling, indices, dims, **options):
             return limits.density_result(math.prod(dims), len(p) * .02, len(p) * .01,
                                          len(p) * .005, len(dims))
 
@@ -123,7 +123,7 @@ class TestFxFxPreparation(unittest.TestCase):
         self.assertEqual([len(call.args[1]) for call in module.density_sudakov.call_args_list], [5, 4, 4])
         # The FxFx weights need only the leading three kernel variants.
         self.assertEqual([call.kwargs for call in module.density_sudakov.call_args_list],
-                         [{'nvariants': 3}] * len(self.xis))
+                         [{'nvariants': 3, 'goldstone_relative': False}] * len(self.xis))
         self.assertEqual(len(driver.fxfx_clustered_final_states), 2)
 
     def test_no_fxfx_history_keeps_each_xi_copy_independent(self):

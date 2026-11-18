@@ -149,18 +149,31 @@ class TestFxFxCatalogue(unittest.TestCase):
                 self.assertFalse(self.driver._fxfx_cluster_catalog_ready)
                 self.assertFalse(self.driver.lhe_input.closed)
 
+    @staticmethod
+    def library(processes, version=fx.DENSITY_KERNEL_VERSION):
+        return SimpleNamespace(original_pdg_list_dict=processes, DENSITY_VERSION=version)
+
     def test_compiled_library_requires_complete_coverage(self):
         self.driver.fxfx_catalogue_source = str(self.full)
         self.driver._ensure_fxfx_cluster_catalogue()
-        module = SimpleNamespace(original_pdg_list_dict={((2, -2), (-24, 24)): None})
+        module = self.library({((2, -2), (-24, 24)): None})
         with self.assertRaisesRegex(fx.MissingSudakovProcessError, 'complete event input'):
             self.driver._validate_fxfx_sudakov_catalogue(module)
         module.original_pdg_list_dict = dict.fromkeys(self.driver.fxfx_clustered_final_states)
         self.driver._validate_fxfx_sudakov_catalogue(module)
 
+    def test_stale_library_is_rejected_before_any_event(self):
+        # An older dispatcher would reject the event path's keywords with a
+        # TypeError, which the per-event fallback would hide.
+        processes = dict.fromkeys(self.driver.fxfx_clustered_final_states)
+        for stale in (SimpleNamespace(original_pdg_list_dict=processes),
+                      self.library(processes, fx.DENSITY_KERNEL_VERSION - 1)):
+            with self.assertRaisesRegex(fx.DensityLibraryError, 'Regenerate rw_me'):
+                self.driver._validate_fxfx_sudakov_catalogue(stale)
+
     def test_single_particle_passthrough_requires_no_library_entry(self):
         self.driver.fxfx_clustered_final_states = {((2, -2), (23,))}
-        self.driver._validate_fxfx_sudakov_catalogue(SimpleNamespace(original_pdg_list_dict={}))
+        self.driver._validate_fxfx_sudakov_catalogue(self.library({}))
 
     def test_both_drivers_report_missing_process(self):
         module = SimpleNamespace(original_pdg_list_dict={})
@@ -228,7 +241,7 @@ class TestFxFxCatalogue(unittest.TestCase):
         self.assertIsNone(workers[1].fxfx_catalogue_source)
         self.assertEqual(len(workers[0].fxfx_clustered_final_states), 4)
         self.assertEqual(len(workers[1].fxfx_clustered_final_states), 2)
-        library = SimpleNamespace(original_pdg_list_dict=dict.fromkeys(workers[0].fxfx_clustered_final_states))
+        library = self.library(dict.fromkeys(workers[0].fxfx_clustered_final_states))
         workers[1]._validate_fxfx_sudakov_catalogue(library)
 
 

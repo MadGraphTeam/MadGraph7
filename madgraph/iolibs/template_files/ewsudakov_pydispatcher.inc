@@ -70,8 +70,10 @@ def ewsudakov(pdgs, p, g):
 # f2py shape of res_indices/res_dims and must match it
 MAX_DIM = 36
 MAX_RES = 10
-DENSITY_VERSION = 3
+DENSITY_VERSION = 4
 PROCESS_TENSOR_VERSION = 1
+# Kernel variant order, as ewsudakov_py results(2:6)
+VARIANTS = ('qed', 'weak', 'sr_off', 'sr_and_floor_off', 'floor_off')
 # Beams with two helicity states, as open incoming spins require
 TWO_SPIN_BEAMS = frozenset([1, 2, 3, 4, 5, 6, 11, 13, 15, 21, 22])
 # HELAS helicity labels of a two- and a three-state particle
@@ -79,7 +81,7 @@ HELICITIES = {2: (-1, 1), 3: (-1, 0, 1)}
 
 
 def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False,
-                    nvariants=5):
+                    nvariants=5, goldstone_relative=True):
     """
     Compute density matrix EW Sudakov for spin-correlated reweighting.
 
@@ -90,9 +92,9 @@ def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False,
         res_indices: list of resonance leg indices (1-based)
         res_dims: list of spin dimensions (2 for fermion, 3 for vector)
         keep_initial: also retain both incoming spin indices in process_tensor
-        nvariants: evaluate the first nvariants of the five variants (QED,
-          weak, s/r off, s/r and floor off, floor off); the process tensor
-          of keep_initial always holds all five
+        nvariants: evaluate the first nvariants of the five VARIANTS
+        goldstone_relative: also evaluate the Goldstone-relative comparison
+          (density_relative, zero_gold); otherwise they are None and 0
 
     Returns:
         dict with:
@@ -100,12 +102,14 @@ def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False,
           - density_correction: full linear interference, shape (D,D,V)
             with V=nvariants
           - density_relative: Goldstone-normalised comparison, shape (D,D,V)
+            (None without goldstone_relative)
           - zero_gold: number of nonzero physical Born states with zero
             Goldstone norm (relative prescription undefined there)
           - total_dim, nres: dimensions
     """
     if keep_initial:
-        return density_process_tensor(pdgs, p, g, res_indices, res_dims)
+        return density_process_tensor(pdgs, p, g, res_indices, res_dims,
+                                      nvariants, goldstone_relative)
     if pdgs not in pdg2ewsud_dict:
         raise KeyError(f"No EW Sudakov module for PDGs: {pdgs}. "
                       f"Available: {list(pdg2ewsud_dict.keys())}")
@@ -137,12 +141,19 @@ def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False,
         raise NotImplementedError('Regenerate rw_me: this compiled Sudakov '
                                   'library has no full density interface')
     density_born, correction, relative, zero_gold, status = kernel(
-        p_transp, g, nres, res_idx_arr, res_dim_arr, nvariants)
+        p_transp, g, nres, res_idx_arr, res_dim_arr, nvariants,
+        int(bool(goldstone_relative)))
+    if status == 3:
+        raise NotImplementedError('The Sudakov kernels need YMT = MT and '
+                                  'ntadpole = 1 in the param card')
+    if status == 4:
+        raise NotImplementedError('The density kernel cannot retain a polarised leg')
     if status:
         raise RuntimeError(f'Full density kernel failed with status {status}')
     density_born = density_born[:total_dim, :total_dim]
     correction = correction[:total_dim, :total_dim, :nvariants]
-    relative = relative[:total_dim, :total_dim, :nvariants]
+    relative = (relative[:total_dim, :total_dim, :nvariants]
+                if goldstone_relative else None)
     # relative is checked by its users: a tiny Goldstone norm can overflow
     # it while the physical matrices stay finite.
     if not np.isfinite(density_born).all() or not np.isfinite(correction).all():
@@ -159,7 +170,8 @@ def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False,
     }
 
 
-def density_process_tensor(pdgs, p, g, res_indices, res_dims):
+def density_process_tensor(pdgs, p, g, res_indices, res_dims, nvariants=5,
+                           goldstone_relative=True):
     """Retain incoming coherences as well as the reduced outgoing state.
 
     The combined index is i = a + 4*h: incoming leg 1 varies fastest,
@@ -168,7 +180,9 @@ def density_process_tensor(pdgs, p, g, res_indices, res_dims):
     every outgoing-helicity pair. Incoming colour averages and identical
     final-particle factors are retained; the incoming spin average is undone.
     This is a scattering tensor, not a joint state of incoming and outgoing
-    particles. All five linear EW variants are retained without normalisation.
+    particles. The first nvariants linear EW variants are retained without
+    normalisation, and the Goldstone-relative 'relative' with
+    goldstone_relative.
     """
     initial = tuple(pdgs[0])
     if len(initial) != 2 or any(abs(pid) not in TWO_SPIN_BEAMS for pid in initial):
@@ -182,14 +196,14 @@ def density_process_tensor(pdgs, p, g, res_indices, res_dims):
                                   'compiled capacity (36 combined states)')
     legs = [1, 2] + list(res_indices)
     dims = [2, 2] + list(res_dims)
-    raw = density_sudakov(pdgs, p, g, legs, dims)
+    raw = density_sudakov(pdgs, p, g, legs, dims, nvariants=nvariants,
+                          goldstone_relative=goldstone_relative)
     # The kernel divides by the usual initial spin/colour multiplicities.
     # Remove the spin divisor only; contract with rho_in=I_4/4 to recover B.
     tensor = {
         'version': PROCESS_TENSOR_VERSION,
         'born': 4.0 * raw['density_born'],
         'correction': 4.0 * raw['density_correction'],
-        'relative': 4.0 * raw['density_relative'],
         'incoming_dim': 4,
         'outgoing_dim': dimension,
         'leg_indices': legs,
@@ -198,7 +212,7 @@ def density_process_tensor(pdgs, p, g, res_indices, res_dims):
         'helicities': [list(h[::-1]) for h in itertools.product(
             *(HELICITIES[d] for d in reversed(dims)))],
         'normalisation': 'incoming spin unaveraged; native colour and symmetry divisors retained',
-        'variants': ['qed', 'weak', 'sr_off', 'sr_and_floor_off', 'floor_off'],
+        'variants': list(VARIANTS[:nvariants]),
         'pdg_key': [list(part) for part in pdgs],
         'pdgs': [list(part) for part in original_pdg_list_dict.get(pdgs, pdgs)],
         'momenta': np.asarray(p, dtype=float).tolist(),
@@ -206,12 +220,16 @@ def density_process_tensor(pdgs, p, g, res_indices, res_dims):
         'zero_gold': raw['zero_gold'],
         'basis': 'native HELAS helicities at the stored momenta',
     }
+    if goldstone_relative:
+        tensor['relative'] = 4.0 * raw['density_relative']
     result = dict(version=DENSITY_VERSION, total_dim=dimension,
                   nres=len(res_indices), zero_gold=raw['zero_gold'],
-                  process_tensor=tensor)
+                  process_tensor=tensor, density_relative=None)
     # The incoming spin average of the open kernel result (rho_in=I_4/4).
     for field in ('density_born', 'density_correction', 'density_relative'):
         array = raw[field]
+        if array is None:
+            continue
         result[field] = np.trace(
             array.reshape((dimension, 4, dimension, 4) + array.shape[2:]),
             axis1=1, axis2=3)

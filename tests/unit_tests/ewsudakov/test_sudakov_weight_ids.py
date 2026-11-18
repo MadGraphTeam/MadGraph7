@@ -9,7 +9,6 @@ from unittest import mock
 from xml.etree import ElementTree as ET
 
 from madgraph.interface.reweight_interface import ReweightInterface
-from madgraph.iolibs import save_load_object
 from madgraph.various import banner, fxfx_ewsudakov as fx, lhe_parser
 from madgraph.models import check_param_card
 from tests.unit_tests.ewsudakov.test_fxfx_decay_transport import ww_event
@@ -149,22 +148,19 @@ class TestSudakovWeightIds(unittest.TestCase):
         waiter._prepare_sudakov_weight_ids()
         self.assertEqual(waiter._sudakov_weight_map, creator._sudakov_weight_map)
 
-    def test_density_version_gates_only_density_caches(self):
-        for mode, rejected in ((0, False), (3, True)):
-            with self.subTest(ickkw=mode):
-                creator = self.driver([self.event({'1001': 2.})], mode=mode)
-                creator.save_to_pickle()
-                path = str(self.root / 'rw_me' / 'rwgt.pkl')
-                cache = save_load_object.load_from_file(path)
-                # A cache written by an earlier density interface.
-                cache['sudakov_density_version'] = fx.DENSITY_KERNEL_VERSION - 1
-                save_load_object.save_to_file(path, cache)
-                loader = self.driver([self.event({'1001': 2.})], mode=mode)
-                if rejected:
-                    with self.assertRaisesRegex(ReweightInterface.InvalidCmd, 'Regenerate rw_me'):
-                        loader.load_from_pickle()
-                else:
-                    loader.load_from_pickle()
+    def test_param_card_must_suit_the_sudakov_kernels(self):
+        # Both kernels stop the Fortran process otherwise, at the first event.
+        driver = self.driver([self.event({'1001': 2.})])
+        good = 'BLOCK MASS\n 6 173.0\nBLOCK YUKAWA\n 6 173.0\nBLOCK TADPOLE\n 1 1.0\n'
+        driver.banner['slha'] = good
+        driver.check_sudakov_param_card()
+        for card in (good.replace('YUKAWA\n 6 173.0', 'YUKAWA\n 6 172.5'),
+                     good.replace(' 1 1.0\n', ' 1 1.0001\n')):
+            with self.subTest(card=card):
+                driver.banner['slha'] = card
+                with self.assertRaisesRegex(ReweightInterface.InvalidCmd,
+                                            'YMT = MT and ntadpole = 1'):
+                    driver.check_sudakov_param_card()
 
     def test_density_metadata_only_for_density_runs(self):
         for mode, kernel in ((0, None), (3, str(fx.DENSITY_KERNEL_VERSION))):

@@ -54,6 +54,14 @@ decayed ZZ event stops a run with that prescription. An auxiliary shifted
 process that fails momentum reshuffling contributes zero, matching the scalar
 kernel's threshold prescription.
 
+The scalar kernel treats such a state differently: it takes the first
+Goldstone amplitude whose legs are all longitudinal, or else the Born with
+its Born-based operators. Events that use the scalar path (no decayed
+resonance, no decay matrix, too large a helicity space, or a kernel error)
+keep that treatment, so one FxFx sample can mix both for longitudinal states
+without an exact Goldstone tree. In `u u~ > Z Z` at 2.5 TeV this is 0.17% of
+the correction.
+
 ## Parameters and generated libraries
 
 The full Born and correction use the same NLO model, parameters, momenta and
@@ -64,28 +72,32 @@ A comparison with a standalone production amplitude must also match its
 width convention: a finite W width affects the complex off-diagonal entries
 of photon-induced WW.
 
-The generated dispatcher declares `DENSITY_VERSION=3` and returns
-`density_born`, `density_correction`, `density_relative`, and `zero_gold`. The
-latter two fields are for the comparison prescription. Matrices are in Fortran
-helicity order (first resonance fastest); the event path permutes both matrix
-axes to its decay-density ordering. Cached `rw_me` libraries of FxFx
-(`ickkw=3`) runs, or results, without version 3 are rejected and must be
-regenerated.
+The kernel is written only into the reweighting library (`output
+ewsudakovsa`), whose generated dispatcher declares `DENSITY_VERSION=4` and
+returns `density_born`, `density_correction`, `density_relative`, and
+`zero_gold`. The latter two fields are for the comparison prescription; with
+`goldstone_relative=False` they are not evaluated (`None` and 0). Matrices are
+in Fortran helicity order (first resonance fastest); the event path permutes
+both matrix axes to its decay-density ordering. An FxFx (`ickkw=3`) run
+rejects a library, or a result, without version 4: regenerate `rw_me`.
 
 The five native variants are, in order: QED, weak, s/r off, both s/r and
 invariant floor off, and invariant floor off. `density_sudakov(...,
 nvariants=n)` evaluates the first `n` of them (all five by default). Each
 variant builds its own invariants with its own floor setting, as the scalar
 kernel does. The three FxFx output variants (QED, central, s/r off) are the
-first three, and all use the full spin contraction. The LHE weight group of
-an `ickkw=3` run records `density_kernel="3"` and the selected
-`density_prescription`.
+first three, and all use the full spin contraction; the event path evaluates
+only these. The LHE weight group of an `ickkw=3` run records
+`density_kernel="4"` and the selected `density_prescription`.
 
 The retained size limit is 36 resonance spin states and 10 resonance legs.
 Unsupported large spaces and unavailable decay matrices use the scalar
-fallback and its accounting. The Sudakov charge and reshuffling
-implementation assumes massless beams: generating the EW Sudakov output for
-massive W/Z beams stops with an error, so neither kernel runs on them.
+fallback and its accounting. A polarised leg cannot be retained: its helicity
+table is restricted, and the kernel refuses it. The Sudakov charge and
+reshuffling implementation assumes massless beams: generating any EW Sudakov
+output for a massive beam (W, Z, top) stops with an error, so neither kernel
+runs on them. Both kernels also need `YMT = MT` and `ntadpole = 1` in the
+param card; EW Sudakov reweighting checks this before it starts.
 
 ## Scope and validation
 
@@ -103,10 +115,13 @@ This retains a process tensor in each event for every evaluated xi value.
 It requires the default reweighting output, with all weights in one event
 file. For `q q~ -> W+ W-`, it is **36 by 36**: a 9-by-9 array of 4-by-4
 incoming spin blocks, including entries with different incoming helicities.
-It stores the physical Born tensor and all five linear Sudakov correction
-tensors; with the `goldstone_relative` prescription, it also stores the
-Goldstone-relative tensors (`relative`) behind its weights. It does not store
-a squared-loop term or normalise these arrays to unit trace.
+It stores the physical Born tensor and the linear Sudakov correction tensors
+of the QED, weak and s/r-off variants; with the `goldstone_relative`
+prescription, it also stores the Goldstone-relative tensors (`relative`)
+behind its weights. Every event that reaches the kernel passed the
+small-invariant cut, which makes the invariant floor inert, so the record's
+`variant_aliases` maps the floor-off variants to the s/r-off and weak tensors.
+It does not store a squared-loop term or normalise these arrays to unit trace.
 
 The combined index is `i = a + 4*h`, with zero-based indices. Incoming leg 1
 varies fastest, then incoming leg 2, then the supplied resonance legs (also
@@ -147,8 +162,10 @@ records = read_event_process_tensors(event)
 ```
 
 LHE records use a separate `<sudakov_process_tensor>` extension containing
-lossless compressed NPZ data encoded as base64. Each record includes its xi,
-normalisation, index order, momenta, coupling, prescription and variant order.
+compressed NPZ data encoded as base64. The arrays are Hermitian in their two
+matrix indices, and only their upper triangles are stored, which is lossless
+up to rounding. Each record includes its xi, normalisation, index order,
+momenta, coupling, prescription and variant order.
 No pickle is required. A record marked `not_evaluated` identifies the
 scalar or unit-weight path; it is not a zero tensor. Only events whose weights
 use the density contraction carry an `available` tensor. Records already in
@@ -163,7 +180,7 @@ photons or gluons, with **at most 36 combined spin states** and ten retained
 legs including the two incoming ones. WW saturates that state capacity.
 An unsupported space or an export failure raises an error rather than silently
 dropping the requested indices. The Python dispatcher must declare
-`PROCESS_TENSOR_VERSION=1`; any version-3 kernel supports the open positions.
+`PROCESS_TENSOR_VERSION=1`; any version-4 kernel supports the open positions.
 Different partonic channels and helicity conventions must be kept identified
 when combining stored tensors.
 

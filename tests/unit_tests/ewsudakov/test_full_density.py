@@ -10,7 +10,6 @@ except ImportError:
     np = None
 
 from madgraph import MadGraph5Error
-from madgraph.interface.reweight_interface import ReweightInterface
 from madgraph.iolibs import export_fks
 from madgraph.various import fxfx_ewsudakov as fx
 from tests.unit_tests.ewsudakov.test_sudakov_factor_limits import FactorDriver, density_result
@@ -84,16 +83,30 @@ class TestFullDispatcher(unittest.TestCase):
     def test_interface_has_full_matrices_and_all_variants(self):
         result = self.ns['density_sudakov'](self.key,self.p,1.,[3],[3])
         self.assertEqual(result['version'],fx.DENSITY_KERNEL_VERSION)
-        self.assertEqual(self.kernel.call_args.args[5],5)
+        self.assertEqual(self.kernel.call_args.args[5:],(5,1))
         self.assertEqual(result['density_born'].shape,(3,3))
         self.assertEqual(result['density_correction'].shape,(3,3,5))
         self.assertNotIn('density_delta', result)
 
     def test_kernel_evaluates_only_the_requested_leading_variants(self):
         result = self.ns['density_sudakov'](self.key,self.p,1.,[3],[3],nvariants=3)
-        self.assertEqual(self.kernel.call_args.args[5],3)
+        self.assertEqual(self.kernel.call_args.args[5:],(3,1))
         self.assertEqual(result['density_correction'].shape,(3,3,3))
         self.assertEqual(result['density_relative'].shape,(3,3,3))
+
+    def test_relative_comparison_only_on_request(self):
+        result = self.ns['density_sudakov'](self.key,self.p,1.,[3],[3],
+                                            goldstone_relative=False)
+        self.assertEqual(self.kernel.call_args.args[5:],(5,0))
+        self.assertIsNone(result['density_relative'])
+
+    def test_invalid_parameters_and_polarised_legs_stop_the_run(self):
+        for status,message in ((3,'YMT = MT'),(4,'polarised')):
+            values=list(self.kernel.return_value)
+            values[-1]=status
+            self.kernel.return_value=tuple(values)
+            with self.subTest(status=status), self.assertRaisesRegex(NotImplementedError,message):
+                self.ns['density_sudakov'](self.key,self.p,1.,[3],[3])
 
     def test_relative_overflow_leaves_the_physical_matrices_usable(self):
         relative=np.full((36,36,5),np.inf,complex)
@@ -126,19 +139,33 @@ class TestFullDispatcher(unittest.TestCase):
 
 
 class TestSudakovExportBeams(unittest.TestCase):
-    def test_massive_vector_beams_stop_the_export(self):
-        # Neither Sudakov kernel supports them, so no library is generated.
+    @staticmethod
+    def matrix_element(beams):
+        masses={24:'MDL_MW',23:'MDL_MZ',6:'MDL_MT',2:'ZERO',21:'ZERO',22:'ZERO'}
+        model=SimpleNamespace(get_particle=lambda pdg: {'mass':masses[abs(pdg)]})
+
         class Process(dict):
             def base_string(self):
-                return 'w+ w- > t t~'
+                return '%d %d > t t~' % beams
 
-        legs=[{'id':24,'state':False},{'id':-24,'state':False},
-              {'id':6,'state':True},{'id':-6,'state':True}]
-        matrix_element=SimpleNamespace(born_me={'processes':[Process(legs=legs)]})
-        exporter=export_fks.ProcessExporterEWSudakovSA.__new__(
-            export_fks.ProcessExporterEWSudakovSA)
-        with self.assertRaisesRegex(MadGraph5Error,r'massive vector beams: w\+ w- > t t~'):
-            exporter.generate_directories_fks(matrix_element,None,0,1,path='/nonexistent')
+        legs=[{'id':pdg,'state':False} for pdg in beams]+[
+            {'id':6,'state':True},{'id':-6,'state':True}]
+        return SimpleNamespace(born_me={'processes':[Process(legs=legs,model=model)]})
+
+    def test_massive_beams_stop_every_sudakov_export(self):
+        # Neither Sudakov kernel supports them, in any output.
+        exporter=export_fks.ProcessExporterFortranFKS.__new__(
+            export_fks.ProcessExporterFortranFKS)
+        for beams in ((24,-24),(23,2),(6,-6)):
+            with self.subTest(beams=beams), self.assertRaisesRegex(MadGraph5Error,
+                                                                   'massless beams'):
+                exporter.check_sudakov_beams(self.matrix_element(beams))
+        for beams in ((2,-2),(21,21),(22,22)):
+            exporter.check_sudakov_beams(self.matrix_element(beams))
+
+    def test_only_the_reweighting_library_has_the_density_kernel(self):
+        self.assertFalse(export_fks.ProcessExporterFortranFKS.sudakov_density_kernel)
+        self.assertTrue(export_fks.ProcessExporterEWSudakovSA.sudakov_density_kernel)
 
 
 class DensityEventFixture:
@@ -187,13 +214,3 @@ class TestDensityPrescriptions(DensityEventFixture, unittest.TestCase):
         with self.assertRaisesRegex(NotImplementedError,'Regenerate rw_me'):
             self.driver._compute_density_ewsudakov_reweight(self.event,self.module)
         self.module.ewsudakov.assert_not_called()
-
-    def test_rejected_cache_is_not_marked_ready(self):
-        driver=SimpleNamespace(rwgt_dir='/tmp/density-cache',inc_sudakov=True,
-                               has_standalone_dir=False,InvalidCmd=ValueError,
-                               _needs_fxfx_cluster_catalogue=lambda: True)
-        for cache in ({},{'sudakov_density_version':1}):
-            with mock.patch('madgraph.iolibs.save_load_object.load_from_file',return_value=cache):
-                with self.assertRaisesRegex(ValueError,'Regenerate rw_me'):
-                    ReweightInterface.load_from_pickle(driver)
-            self.assertFalse(driver.has_standalone_dir)

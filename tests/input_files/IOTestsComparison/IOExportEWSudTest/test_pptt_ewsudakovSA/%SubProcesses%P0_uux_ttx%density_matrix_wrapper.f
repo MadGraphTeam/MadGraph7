@@ -2,20 +2,24 @@ C     Exact spectator sum of the linear interference, retaining all
 C      colours.
 C     The physical Born is kept. Longitudinal corrections are mapped
 C      from the
-C     Goldstone amplitudes with HELAS equivalence phases. The second
-C      output is
-C     a spectator-resolved Goldstone-normalised projection for
-C      comparison.
-C     Only the first nvar variants are evaluated; the others stay zero.
+C     Goldstone amplitudes with HELAS equivalence phases. With lrel=1
+C      the
+C     second output is a spectator-resolved Goldstone-normalised
+C      projection
+C     for comparison, and zero_gold counts the states where it is
+C      undefined;
+C     with lrel=0 both stay zero. Only the first nvar variants are
+C      evaluated;
+C     the others stay zero.
 
-      SUBROUTINE SDK_DENSITY_INTERFERENCE(P,NRES,POS,DIMS,NVAR,BORN,
-     $     correction,relative,zero_gold,status)
+      SUBROUTINE SDK_DENSITY_INTERFERENCE(P,NRES,POS,DIMS,NVAR,LREL,
+     $     born,correction,relative,zero_gold,status)
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER NC,NO,NS,NB
       PARAMETER (NC=2,NO=1,NS=3,NB=1)
 
-      INTEGER NRES,POS(10),DIMS(10),NVAR,ZERO_GOLD,STATUS
+      INTEGER NRES,POS(10),DIMS(10),NVAR,LREL,ZERO_GOLD,STATUS
       DOUBLE PRECISION P(0:3,NEXTERNAL-1)
       DOUBLE COMPLEX BORN(36,36),CORRECTION(36,36,5)
       DOUBLE COMPLEX RELATIVE(36,36,5)
@@ -40,6 +44,8 @@ C     Only the first nvar variants are evaluated; the others stay zero.
       DATA (NHEL(I,  16),I=1,4) /-1, 1, 1,-1/
       INTEGER ISPEC,H,HP,R,K,D,IV,S,IP,IB,BASE(36),SOURCE_BASE(NS)
       DATA SOURCE_BASE /1,1,1/
+      LOGICAL POLARISED(NEXTERNAL-1)
+      DATA POLARISED /.FALSE.,.FALSE.,.FALSE.,.FALSE./
       INTEGER HELS(NEXTERNAL-1,36),IFLIST(NEXTERNAL-1)
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
@@ -47,12 +53,13 @@ C     Only the first nvar variants are evaluated; the others stay zero.
       DATA IDEN_VALUES / 36 /
       DOUBLE PRECISION INVARIANTS(NEXTERNAL-1,NEXTERNAL-1,5),NORM(36)
       DOUBLE COMPLEX AMPS(NC,NO,NS,36),DERIV(NC,NO,6,36)
+      DOUBLE COMPLEX UB(NC,NO,NS,36)
       DOUBLE COMPLEX COEFF(NS),PARCOEFF(6,5),PHASE(36)
       DOUBLE COMPLEX DELTA(36,5),MIXED(36,36,5),BROW(36,36)
       DOUBLE COMPLEX XS(36,NS),YS(NS),XD(36,6),YD(6)
-      DOUBLE COMPLEX SDK_DENSITY_INTER,TERM
-      EXTERNAL SDK_DENSITY_INTER
-      LOGICAL OK
+      DOUBLE COMPLEX SDK_DENSITY_INTER,SDK_DENSITY_DOT,TERM
+      EXTERNAL SDK_DENSITY_INTER,SDK_DENSITY_DOT
+      LOGICAL DEP(6,NB),USED(NS),OK
       INTEGER SUD_MOD,SAVED_MOD
       COMMON/TO_SUD_MOD/SUD_MOD
       LOGICAL S_TO_RIJ,RIJ_GE_MW,SAVED_STOR,SAVED_RIJ
@@ -68,6 +75,7 @@ C      three
 C     spin states each, and at most 36 resonance spin states in total.
       STATUS=1
       IF (NVAR.LT.1.OR.NVAR.GT.5) RETURN
+      IF (LREL.LT.0.OR.LREL.GT.1) RETURN
       IF (NRES.LT.1.OR.NRES.GT.10) RETURN
       D=1
       DO R=1,NRES
@@ -77,6 +85,10 @@ C     spin states each, and at most 36 resonance spin states in total.
         IF (D.GT.36/DIMS(R)) RETURN
         D=D*DIMS(R)
       ENDDO
+C     The helicity table restricts a polarised leg, so it cannot be
+C      retained.
+      STATUS=4
+      IF (ANY(POLARISED(POS(1:NRES)))) RETURN
       STATUS=0
       SAVED_MOD=SUD_MOD
       SAVED_STOR=S_TO_RIJ
@@ -88,6 +100,12 @@ C     Each variant builds its invariants with its own floor.
         CALL SDK_GET_INVARIANTS(P,IFLIST,INVARIANTS(1,1,IV))
         CALL SDK_DENSITY_PARCOEFF(INVARIANTS(1,1,IV),PARCOEFF(1,IV))
       ENDDO
+C     The input parameters that each base amplitude depends on.
+      CALL SDK_DENSITY_DEPENDENCE(DEP,OK)
+      IF (.NOT.OK) THEN
+        STATUS=3
+        GOTO 900
+      ENDIF
 
 C     One representative of each spectator tuple. No good-helicity
 C      filtering:
@@ -110,23 +128,35 @@ C     Every amplitude read below is evaluated first for this tuple.
           ENDDO
           CALL SDK_DENSITY_BASE(HELS(1,H),BASE(H),PHASE(H))
           CALL SDK_DENSITY_EVAL(1,P,HELS(1,H),AMPS(1,1,1,H))
+        ENDDO
+C       Every term has a Born amplitude of this tuple on its
+C        conjugated side.
+        IF (ALL(AMPS(:,:,1,1:D).EQ.(0D0,0D0))) CYCLE
+        USED=.FALSE.
+        USED(1)=.TRUE.
+        DO H=1,D
           IB=BASE(H)
           IF (IB.EQ.0) CYCLE
           DO S=2,NS
-            IF (SOURCE_BASE(S).EQ.IB)
-     $        call sdk_density_eval(s,p,hels(1,h),amps(1,1,s,h))
+            IF (SOURCE_BASE(S).NE.IB) CYCLE
+            USED(S)=.TRUE.
+            CALL SDK_DENSITY_EVAL(S,P,HELS(1,H),AMPS(1,1,S,H))
           ENDDO
         ENDDO
-        CALL SDK_DENSITY_DERIVATIVES(P,D,BASE,HELS,DERIV,OK)
-        IF (.NOT.OK) THEN
-          STATUS=3
-          GOTO 900
-        ENDIF
+        CALL SDK_DENSITY_DERIVATIVES(P,D,BASE,HELS,DEP,DERIV)
+C       The conjugated Born side of the colour contractions, once per
+C        tuple.
+        DO HP=1,D
+          DO S=1,NS
+            IF (USED(S))
+     $        call sdk_density_left(1,s,amps(1,1,1,hp),ub(1,1,s,hp))
+          ENDDO
+        ENDDO
         DO H=1,D
           DO HP=1,D
-            BROW(H,HP)=SDK_DENSITY_INTER(1,1,AMPS(1,1,1,HP),
-     $                                  amps(1,1,1,h))
+            BROW(H,HP)=SDK_DENSITY_DOT(UB(1,1,1,HP),AMPS(1,1,1,H))
           ENDDO
+          IF (LREL.EQ.0) CYCLE
           IB=BASE(H)
           IF (IB.EQ.0) THEN
             NORM(H)=0D0
@@ -144,21 +174,23 @@ C     Every amplitude read below is evaluated first for this tuple.
           IF (IB.EQ.0) CYCLE
 C         The colour contractions do not depend on the variant.
 C          coeff(s) can be
-C         nonzero only for the sources of this base.
+C         nonzero only for the sources of this base, a derivative only
+C          for the
+C         parameters the base depends on.
           DO S=1,NS
             IF (SOURCE_BASE(S).NE.IB) CYCLE
-            YS(S)=SDK_DENSITY_INTER(IB,S,AMPS(1,1,IB,H),AMPS(1,1,S,H))
+            IF (LREL.EQ.1) YS(S)=SDK_DENSITY_INTER(IB,S,AMPS(1,1,IB,H),
+     $                                             amps(1,1,s,h))
             DO HP=1,D
-              XS(HP,S)=SDK_DENSITY_INTER(1,S,AMPS(1,1,1,HP),
-     $                                   amps(1,1,s,h))
+              XS(HP,S)=SDK_DENSITY_DOT(UB(1,1,S,HP),AMPS(1,1,S,H))
             ENDDO
           ENDDO
           DO IP=1,6
-            YD(IP)=SDK_DENSITY_INTER(IB,IB,AMPS(1,1,IB,H),
-     $                               deriv(1,1,ip,h))
+            IF (.NOT.DEP(IP,IB)) CYCLE
+            IF (LREL.EQ.1) YD(IP)=SDK_DENSITY_INTER(IB,IB,
+     $                               amps(1,1,ib,h),deriv(1,1,ip,h))
             DO HP=1,D
-              XD(HP,IP)=SDK_DENSITY_INTER(1,IB,AMPS(1,1,1,HP),
-     $                                    deriv(1,1,ip,h))
+              XD(HP,IP)=SDK_DENSITY_DOT(UB(1,1,IB,HP),DERIV(1,1,IP,H))
             ENDDO
           ENDDO
           DO IV=1,NVAR
@@ -168,20 +200,23 @@ C         nonzero only for the sources of this base.
             TERM=(0D0,0D0)
             DO S=1,NS
               IF (COEFF(S).EQ.(0D0,0D0)) CYCLE
-              TERM=TERM+COEFF(S)*YS(S)
+              IF (LREL.EQ.1) TERM=TERM+COEFF(S)*YS(S)
               DO HP=1,D
                 MIXED(H,HP,IV)=MIXED(H,HP,IV)+PHASE(H)*COEFF(S)*
      $            xs(hp,s)
               ENDDO
             ENDDO
             DO IP=1,6
-              TERM=TERM+PARCOEFF(IP,IV)*YD(IP)
+              IF (.NOT.DEP(IP,IB)) CYCLE
+              IF (LREL.EQ.1) TERM=TERM+PARCOEFF(IP,IV)*YD(IP)
               DO HP=1,D
                 MIXED(H,HP,IV)=MIXED(H,HP,IV)+PHASE(H)*
      $            parcoeff(ip,iv)*xd(hp,ip)
               ENDDO
             ENDDO
-            IF (NORM(H).GT.0D0) DELTA(H,IV)=TERM/NORM(H)
+            IF (LREL.EQ.1) THEN
+              IF (NORM(H).GT.0D0) DELTA(H,IV)=TERM/NORM(H)
+            ENDIF
           ENDDO
         ENDDO
         DO IV=1,NVAR
@@ -189,11 +224,19 @@ C         nonzero only for the sources of this base.
             DO HP=1,D
               CORRECTION(H,HP,IV)=CORRECTION(H,HP,IV)+
      $             mixed(h,hp,iv)+dconjg(mixed(hp,h,iv))
-              RELATIVE(H,HP,IV)=RELATIVE(H,HP,IV)+BROW(H,HP)*
-     $             (delta(h,iv)+dconjg(delta(hp,iv)))
             ENDDO
           ENDDO
         ENDDO
+        IF (LREL.EQ.1) THEN
+          DO IV=1,NVAR
+            DO H=1,D
+              DO HP=1,D
+                RELATIVE(H,HP,IV)=RELATIVE(H,HP,IV)+BROW(H,HP)*
+     $               (delta(h,iv)+dconjg(delta(hp,iv)))
+              ENDDO
+            ENDDO
+          ENDDO
+        ENDIF
         BORN(1:D,1:D)=BORN(1:D,1:D)+BROW(1:D,1:D)
       ENDDO
       BORN(1:D,1:D)=BORN(1:D,1:D)/DBLE(IDEN_VALUES(NFKSPROCESS))
@@ -280,14 +323,15 @@ C     s/r off and invariant floor off, invariant floor off.
       ENDIF
       END
 
-      DOUBLE COMPLEX FUNCTION SDK_DENSITY_INTER(IBASE,ISOURCE,A,B)
+      SUBROUTINE SDK_DENSITY_LEFT(IBASE,ISOURCE,A,U)
+C     u(j,n)=sum_i conj(metric(i,j)*a(i,n)), the conjugated side of the
+C     colour contraction of base ibase with source isource.
       IMPLICIT NONE
       INTEGER NC,NO,NS,NB
       PARAMETER (NC=2,NO=1,NS=3,NB=1)
 
-      INTEGER IBASE,ISOURCE,I,J,M,N,MASK(NO,NO)
-      DOUBLE COMPLEX A(NC,NO),B(NC,NO),METRIC(NC,NC,NS,NB)
-      DATA MASK /1/
+      INTEGER IBASE,ISOURCE,I,J,N
+      DOUBLE COMPLEX A(NC,NO),U(NC,NO),METRIC(NC,NC,NS,NB)
       DATA (METRIC(I,1,1,1),I=1,NC)/(9.00000000000000000D+00
      $ ,0.00000000000000000D+00),(3.00000000000000000D+00
      $ ,0.00000000000000000D+00)/
@@ -306,25 +350,113 @@ C     s/r off and invariant floor off, invariant floor off.
       DATA (METRIC(I,2,3,1),I=1,NC)/(3.00000000000000000D+00
      $ ,0.00000000000000000D+00),(9.00000000000000000D+00
      $ ,0.00000000000000000D+00)/
-      SDK_DENSITY_INTER=(0D0,0D0)
-      DO M=1,NO
-        DO N=1,NO
-          IF (MASK(M,N).EQ.0) CYCLE
-          DO I=1,NC
-            DO J=1,NC
-              SDK_DENSITY_INTER=SDK_DENSITY_INTER+
-     $         dconjg(metric(i,j,isource,ibase)*a(i,n))*b(j,m)
-            ENDDO
+      DO N=1,NO
+        DO J=1,NC
+          U(J,N)=DCONJG(METRIC(1,J,ISOURCE,IBASE)*A(1,N))
+          DO I=2,NC
+            U(J,N)=U(J,N)+DCONJG(METRIC(I,J,ISOURCE,IBASE)*A(I,N))
           ENDDO
         ENDDO
       ENDDO
       END
 
-      SUBROUTINE SDK_DENSITY_DERIVATIVES(P,D,BASE,HELS,DERIV,OK)
-C     Central differences of the base amplitudes in the six input
-C      parameters.
-C     Each shift updates the couplings once for all resonance
-C      helicities.
+      DOUBLE COMPLEX FUNCTION SDK_DENSITY_DOT(U,B)
+C     Contraction of a conjugated side u of sdk_density_left with b,
+C      over
+C     the coupling-order pairs of the target order.
+      IMPLICIT NONE
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      INTEGER J,M,N,MASK(NO,NO)
+      DOUBLE COMPLEX U(NC,NO),B(NC,NO)
+      DATA MASK /1/
+      SDK_DENSITY_DOT=(0D0,0D0)
+      DO M=1,NO
+        DO N=1,NO
+          IF (MASK(M,N).EQ.0) CYCLE
+          DO J=1,NC
+            SDK_DENSITY_DOT=SDK_DENSITY_DOT+U(J,N)*B(J,M)
+          ENDDO
+        ENDDO
+      ENDDO
+      END
+
+      DOUBLE COMPLEX FUNCTION SDK_DENSITY_INTER(IBASE,ISOURCE,A,B)
+      IMPLICIT NONE
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      INTEGER IBASE,ISOURCE
+      DOUBLE COMPLEX A(NC,NO),B(NC,NO),U(NC,NO)
+      DOUBLE COMPLEX SDK_DENSITY_DOT
+      EXTERNAL SDK_DENSITY_DOT
+      CALL SDK_DENSITY_LEFT(IBASE,ISOURCE,A,U)
+      SDK_DENSITY_INTER=SDK_DENSITY_DOT(U,B)
+      END
+
+      SUBROUTINE SDK_DENSITY_DEPENDENCE(DEP,OK)
+C     dep(ip,b): the amplitudes of base b depend on input parameter
+C      ip. A
+C     shift that leaves its couplings, masses and widths bitwise
+C      unchanged
+C     leaves its amplitudes unchanged, so that derivative is exactly
+C      zero.
+      IMPLICIT NONE
+      INCLUDE 'coupl.inc'
+      INCLUDE '../../Source/MODEL/input.inc'
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      INTEGER NV
+      PARAMETER (NV=2)
+      LOGICAL DEP(6,NB),OK
+      INTEGER IP,B,K
+      DOUBLE PRECISION ORIGINAL(6),STEP(6)
+      DOUBLE COMPLEX CENTRAL(NV,NB),SHIFTED(NV)
+      ORIGINAL=(/MDL_GF,MDL_MZ,MDL_MW,MDL_MT,MDL_MH,
+     $           mdl_ntadpole/)
+      STEP=ABS(ORIGINAL)*1D-5
+      OK=MDL_MT.EQ.MDL_YMT.AND.MDL_NTADPOLE.EQ.1D0.AND.
+     $   all(step.ne.0d0)
+      IF (.NOT.OK) RETURN
+      DO B=1,NB
+        CALL SDK_DENSITY_INPUTS(B,CENTRAL(1,B))
+      ENDDO
+      DEP=.FALSE.
+      DO IP=1,6
+        DO K=-1,1,2
+          CALL SDK_DENSITY_SET_PARAMETER(IP,ORIGINAL(IP)+K*STEP(IP))
+          CALL COUP()
+          DO B=1,NB
+            CALL SDK_DENSITY_INPUTS(B,SHIFTED)
+            IF (ANY(SHIFTED.NE.CENTRAL(:,B))) DEP(IP,B)=.TRUE.
+          ENDDO
+        ENDDO
+        CALL SDK_DENSITY_SET_PARAMETER(IP,ORIGINAL(IP))
+      ENDDO
+      CALL COUP()
+      END
+
+      SUBROUTINE SDK_DENSITY_INPUTS(IBASE,VALUES)
+C     The couplings, masses and widths that the amplitudes of base
+C      ibase use.
+      IMPLICIT NONE
+      INCLUDE 'coupl.inc'
+      INTEGER IBASE
+      DOUBLE COMPLEX VALUES(2)
+      VALUES=(0D0,0D0)
+      IF (IBASE.EQ.1) THEN
+        VALUES(1)=MDL_MT
+        VALUES(2)=GC_11
+      ENDIF
+      END
+
+      SUBROUTINE SDK_DENSITY_DERIVATIVES(P,D,BASE,HELS,DEP,DERIV)
+C     Central differences of the base amplitudes in the input
+C      parameters
+C     they depend on. Each shift updates the couplings once for all
+C     resonance helicities.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INCLUDE 'coupl.inc'
@@ -335,24 +467,28 @@ C      helicities.
       INTEGER D,BASE(36),HELS(NEXTERNAL-1,36),IP,H
       DOUBLE PRECISION P(0:3,NEXTERNAL-1),ORIGINAL(6),STEP(6)
       DOUBLE COMPLEX DERIV(NC,NO,6,36),UP(NC,NO,36),DN(NC,NO)
-      LOGICAL OK
+      LOGICAL DEP(6,NB),NEED
       ORIGINAL=(/MDL_GF,MDL_MZ,MDL_MW,MDL_MT,MDL_MH,
      $           mdl_ntadpole/)
       STEP=ABS(ORIGINAL)*1D-5
-      OK=MDL_MT.EQ.MDL_YMT.AND.MDL_NTADPOLE.EQ.1D0.AND.
-     $   all(step.ne.0d0)
-      IF (.NOT.OK) RETURN
       DO IP=1,6
+        NEED=.FALSE.
+        DO H=1,D
+          IF (BASE(H).NE.0) NEED=NEED.OR.DEP(IP,BASE(H))
+        ENDDO
+        IF (.NOT.NEED) CYCLE
         CALL SDK_DENSITY_SET_PARAMETER(IP,ORIGINAL(IP)+STEP(IP))
         CALL COUP()
         DO H=1,D
-          IF (BASE(H).NE.0)
+          IF (BASE(H).EQ.0) CYCLE
+          IF (DEP(IP,BASE(H)))
      $      call sdk_density_eval(base(h),p,hels(1,h),up(1,1,h))
         ENDDO
         CALL SDK_DENSITY_SET_PARAMETER(IP,ORIGINAL(IP)-STEP(IP))
         CALL COUP()
         DO H=1,D
           IF (BASE(H).EQ.0) CYCLE
+          IF (.NOT.DEP(IP,BASE(H))) CYCLE
           CALL SDK_DENSITY_EVAL(BASE(H),P,HELS(1,H),DN)
           DERIV(:,:,IP,H)=(UP(:,:,H)-DN)/(2D0*STEP(IP))
         ENDDO
@@ -437,6 +573,7 @@ C     and undo that division for derivatives of the complex amplitude.
       TYPE(ALOHA) W(5)
       LOGICAL OK
       RESULT=(0D0,0D0)
+      JAMP=(0D0,0D0)
       P=PIN
       CALL IXXXXX(P(0,1),ZERO,NHEL(1),+1, FLAVOR(1),W(1))
       CALL OXXXXX(P(0,2),ZERO,NHEL(2),-1, FLAVOR(2),W(2))
@@ -474,6 +611,7 @@ C     JAMPs contributing to orders QCD=2 QED=0
       TYPE(ALOHA) W(5)
       LOGICAL OK
       RESULT=(0D0,0D0)
+      JAMP=(0D0,0D0)
       P=PIN
       CALL RESHUFFLE_MOMENTA(P,PRESH,(/1,2/),(/2,-2/),(/1,-1/),OK)
       IF (.NOT.OK) RETURN
@@ -514,6 +652,7 @@ C     JAMPs contributing to orders QCD=2 QED=0
       TYPE(ALOHA) W(5)
       LOGICAL OK
       RESULT=(0D0,0D0)
+      JAMP=(0D0,0D0)
       P=PIN
       CALL RESHUFFLE_MOMENTA(P,PRESH,(/3,4/),(/6,-6/),(/5,-5/),OK)
       IF (.NOT.OK) RETURN

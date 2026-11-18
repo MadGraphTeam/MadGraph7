@@ -78,8 +78,9 @@ _DIM_OVERFLOW_WARNED = False
 MAX_DENSITY_DIM = 36
 MAX_DENSITY_RESONANCES = 10
 
-# Interface version of the density kernel (rwgt.pkl and LHE weight group).
-DENSITY_KERNEL_VERSION = 3
+# Interface version of the density kernel: the generated dispatcher's
+# DENSITY_VERSION, its results, and the LHE weight group.
+DENSITY_KERNEL_VERSION = 4
 
 # Columns, in the kernel's variant order (QED, weak, s/r off, s/r and floor
 # off, floor off; ewsudakov_py results(2:6)), of the FxFx factors central,
@@ -87,6 +88,9 @@ DENSITY_KERNEL_VERSION = 3
 # FXFX_DENSITY_VARIANTS variants for them.
 FXFX_VARIANT_COLUMNS = (1, 2, 0)
 FXFX_DENSITY_VARIANTS = max(FXFX_VARIANT_COLUMNS) + 1
+# Every event reaching the kernel passed the small-invariant cut, which
+# makes the invariant floor inert: the floor-off variants equal these.
+FXFX_VARIANT_ALIASES = {"sr_and_floor_off": "sr_off", "floor_off": "weak"}
 
 # Linear correction used by each sudakov_density_prescription.
 DENSITY_PRESCRIPTIONS = {"amplitude": "density_correction",
@@ -2789,9 +2793,16 @@ class FxFxEWSudakovMixin:
                     len(self.fxfx_clustered_final_states), len(self.fxfx_clustered_decay_processes))
 
     def _validate_fxfx_sudakov_catalogue(self, sud_mod):
-        """Require compiled coverage for each clustered multi-particle process."""
+        """Require the density interface and compiled coverage for each
+        clustered multi-particle process."""
         if not self._needs_fxfx_cluster_catalogue():
             return
+        # The dispatcher is generated with the library, so it carries the
+        # version of the compiled density interface.
+        if getattr(sud_mod, "DENSITY_VERSION", None) != DENSITY_KERNEL_VERSION:
+            raise DensityLibraryError(
+                "Regenerate rw_me: the Sudakov library is not density interface "
+                "version %d" % DENSITY_KERNEL_VERSION)
         missing = [tag for tag in sorted(self.fxfx_clustered_final_states)
                    if len(tag[1]) > 1 and tag not in sud_mod.original_pdg_list_dict]
         if missing:
@@ -3197,16 +3208,29 @@ class FxFxEWSudakovMixin:
         colours, then contracted with the decay matrix C.
         w = 1 + <delta B, C> / <B, C>. Events without a
         decayed resonance, or whose density evaluation fails, use the scalar
-        FxFx path. Returns the rwgt dict of _build_sudakov_rwgt_dict.
+        FxFx path. Returns the rwgt dict of _build_sudakov_rwgt_dict. With
+        sudakov_density_keep_initial, each xi records the process tensor
+        behind its weights, or that there is none.
         """
-        keep_initial = self.sudakov_density_keep_initial
         xi_index = getattr(self, "_current_xi_idx", 0)
-        xi = getattr(self, "mW2_cluster_scale", 1.5)
         if xi_index == 0:
             # Tensors of an earlier scan or run do not describe these weights.
             clear_event_process_tensors(event)
-        if keep_initial:
-            set_event_process_tensor(event, None, xi_index, xi)
+        self._density_tensor_record = None
+        try:
+            return self._density_ewsudakov_weights(event, sud_mod)
+        finally:
+            if self.sudakov_density_keep_initial:
+                tensor, context = self._density_tensor_record or (None, {})
+                set_event_process_tensor(event, tensor, xi_index,
+                                         getattr(self, "mW2_cluster_scale", 1.5),
+                                         **context)
+
+    def _density_ewsudakov_weights(self, event, sud_mod):
+        """Weights of _compute_density_ewsudakov_reweight. A process tensor
+        behind them is left in self._density_tensor_record."""
+        keep_initial = self.sudakov_density_keep_initial
+        xi = getattr(self, "mW2_cluster_scale", 1.5)
         self._init_pole_masses_from_banner()
 
         density_logger = getattr(self, "_density_logger", None)
@@ -3357,13 +3381,15 @@ class FxFxEWSudakovMixin:
                     fortran_idx = canonical_idx + 1
                 res_indices_fortran.append(fortran_idx)
 
-            density_options = {"nvariants": FXFX_DENSITY_VARIANTS}
+            # The kernel evaluates only what the weights, or the tensor, use.
+            prescription = self.sudakov_density_prescription
+            density_options = {"nvariants": FXFX_DENSITY_VARIANTS,
+                               "goldstone_relative": prescription == "goldstone_relative"}
             if keep_initial:
                 if getattr(sud_mod, "PROCESS_TENSOR_VERSION", None) != 1:
                     raise NotImplementedError(
                         "Regenerate the Sudakov Python dispatcher to keep initial spins")
-                # The process tensor holds all five variants.
-                density_options = {"keep_initial": True}
+                density_options["keep_initial"] = True
             density_result = sud_mod.density_sudakov(
                 prep["sorted_tag"],
                 prep["p_in"],
@@ -3384,7 +3410,6 @@ class FxFxEWSudakovMixin:
             perm = _fortran_to_python_hel_permutation(res_dims)
             b_matrix = np.asarray(density_result["density_born"])
             B = DensityMatrix.from_full_matrix(b_matrix[np.ix_(perm, perm)], res_pdgs)
-            prescription = self.sudakov_density_prescription
             if prescription == "goldstone_relative" and density_result["zero_gold"]:
                 raise NotImplementedError(
                     "Goldstone-relative prescription is undefined at a zero "
@@ -3407,14 +3432,9 @@ class FxFxEWSudakovMixin:
                            for column in FXFX_VARIANT_COLUMNS]
                 # Only a tensor behind the written weights is marked available.
                 if keep_initial:
-                    if prescription == "amplitude":
-                        # The Goldstone-relative comparison is not stored.
-                        tensor = {key: value for key, value in tensor.items()
-                                  if key != "relative"}
-                    set_event_process_tensor(
-                        event, tensor, xi_index, xi,
-                        resonance_pdgs=list(res_pdgs),
-                        prescription=prescription)
+                    self._density_tensor_record = (
+                        dict(tensor, variant_aliases=dict(FXFX_VARIANT_ALIASES)),
+                        dict(resonance_pdgs=list(res_pdgs), prescription=prescription))
         except _FATAL_DENSITY_ERRORS:
             raise
         except Exception as error:

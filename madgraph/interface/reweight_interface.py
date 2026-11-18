@@ -575,6 +575,8 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
                                       ' or '.join(fxfx_ewsudakov.DENSITY_PRESCRIPTIONS))
             self.sudakov_density_prescription = args[1]
         elif args[0] == 'sudakov_density_keep_initial':
+            if len(args) != 2:
+                raise self.InvalidCmd('sudakov_density_keep_initial must be True or False')
             self.sudakov_density_keep_initial = banner.ConfigFile.format_variable(
                 args[1], bool, args[0])
         elif args[0] == 'sudakov_xi':
@@ -648,6 +650,7 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         self._ensure_fxfx_cluster_catalogue()
         if self.inc_sudakov:
             self._collect_sudakov_weight_sources()
+            self.check_sudakov_param_card()
 
         if not self.has_standalone_dir:
             out = self.setup_f2py_interface()
@@ -942,6 +945,26 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
                 self.save_to_pickle()  
 
 
+
+    def check_sudakov_param_card(self):
+        """Stop before compiling if the event card breaks the Sudakov kernels.
+
+        Their parameter renormalisation needs YMT = MT and ntadpole = 1, and
+        otherwise stops the Fortran process at the first event. A card without
+        these parameters is left to the model.
+        """
+        if not isinstance(self.banner, dict) or 'slha' not in self.banner:
+            return
+        try:
+            card = check_param_card.ParamCard(self.banner['slha'].splitlines())
+            mt, ymt = card['mass'].get(6).value, card['yukawa'].get(6).value
+            ntadpole = card['tadpole'].get(1).value
+        except KeyError:
+            return
+        if mt != ymt or ntadpole != 1:
+            raise self.InvalidCmd('EW Sudakov reweighting needs YMT = MT and ntadpole = 1 '
+                                  'in the param card (MT=%s, YMT=%s, ntadpole=%s)'
+                                  % (mt, ymt, ntadpole))
 
     @staticmethod
     def write_card_atomically(path, text):
@@ -3961,7 +3984,6 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         to_save['nb_library'] = self.nb_library
         if self.inc_sudakov:
             to_save['sudakov_source_ids'] = self._sudakov_source_ids
-            to_save['sudakov_density_version'] = fxfx_ewsudakov.DENSITY_KERNEL_VERSION
         # the jobs that load this pickle (--multicore=wait, a reused rwgt_dir)
         # have no model, and get_beampol needs the spin of the incoming
         # particles, flavour-merged ones included
@@ -3982,11 +4004,6 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         
         obj = save_load_object.load_from_file( pjoin(self.rwgt_dir, 'rw_me', 'rwgt.pkl'))
         
-        # Only the FxFx (ickkw=3) events use the density interface.
-        if (self._needs_fxfx_cluster_catalogue() and obj.get('sudakov_density_version') !=
-                fxfx_ewsudakov.DENSITY_KERNEL_VERSION):
-            raise self.InvalidCmd('Regenerate rw_me: cached library is not density interface '
-                                  'version %d' % fxfx_ewsudakov.DENSITY_KERNEL_VERSION)
         self.has_standalone_dir = True
         if self.inc_sudakov and self.multicore == 'wait':
             sources = set(obj['sudakov_source_ids'])

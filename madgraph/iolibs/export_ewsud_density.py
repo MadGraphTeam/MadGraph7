@@ -6,9 +6,13 @@ amplitude, helicity averaging, or inversion of a colour metric is required.
 """
 
 import os
+import re
 
 from madgraph import MadGraph5Error
 from madgraph.core import color_amp
+
+# Couplings, masses and widths in HELAS calls, e.g. GC_11 and MDL_MW.
+_AMPLITUDE_INPUT = re.compile(r'\b(GC_\w+|MDL_\w+)\b', re.I)
 
 
 def _real(value):
@@ -30,6 +34,16 @@ def colour_matrix(cache, basis1, basis2):
     if key not in cache:
         cache[key] = (basis1, basis2, color_amp.ColorMatrix(basis1, basis2))
     return cache[key][2]
+
+
+def amplitude_inputs(calls):
+    """Couplings, masses and widths that HELAS calls use, in first-use order."""
+    names = []
+    for call in calls:
+        for name in _AMPLITUDE_INPUT.findall(call):
+            if name.upper() not in names:
+                names.append(name.upper())
+    return names
 
 
 def sudakov_term_expressions(auxiliary, helicities):
@@ -98,8 +112,14 @@ class DensityExporter:
             template = stream.read()
         legs = self.born['processes'][0]['legs']
         gmu = 'Gmu' in self.exporter.model.get('name')
+        calls = [self.model.get_matrix_element_calls(me) for me in self.mes]
+        inputs = [amplitude_inputs(me_calls) for me_calls in calls[:self.nb]]
         replace = dict(constants=self.constants,
                        ncomb=self.born.get_helicity_combinations(),
+                       polarised=','.join('.true.' if l.get('polarization')
+                                          else '.false.' for l in legs),
+                       ninputs=max([1] + [len(names) for names in inputs]),
+                       base_inputs=self.base_inputs(inputs),
                        helicity_lines=self.exporter.get_helicity_lines(self.born),
                        den_factor_lines='\n'.join(
                            self.exporter.get_den_factor_lines(self.fks)),
@@ -115,8 +135,8 @@ class DensityExporter:
                        first_parameter='MDL_GF' if gmu else 'AEWM1',
                        par_ren='GET_PAR_REN_GMU' if gmu else 'GET_PAR_REN_ALPHAMZ')
         writer.writelines(template % replace)
-        for i, me in enumerate(self.mes, 1):
-            writer.writelines(self.raw_amplitude(i, me))
+        for i, (me, me_calls) in enumerate(zip(self.mes, calls), 1):
+            writer.writelines(self.raw_amplitude(i, me, me_calls))
 
     def base_index(self, auxiliary):
         if not auxiliary['base_amp']:
@@ -125,10 +145,14 @@ class DensityExporter:
         return next(i for i, me in enumerate(self.bases, 1) if me is base)
 
     def base_selection(self):
-        """Select precisely the set of longitudinal legs, as the scalar kernel.
+        """Select the base amplitude of each helicity state.
 
-        A missing Goldstone tree amplitude is a zero amplitude, not permission
-        to use the transverse operator on a longitudinal state.
+        A state with longitudinal vectors uses the Goldstone amplitude with
+        exactly those legs replaced. A missing Goldstone tree amplitude is a
+        zero amplitude (ibase=0), not permission to use the transverse
+        operator on a longitudinal state. The scalar wrapper differs here: it
+        takes the first Goldstone amplitude whose legs are all longitudinal,
+        or else the Born with its Born-based operators.
         """
         lines = ['ibase=1', 'phase=(1d0,0d0)']
         legs = self.born['processes'][0]['legs']
@@ -155,6 +179,14 @@ class DensityExporter:
             lines += [('if' if i == 1 else 'else if') +
                       ' (isource.eq.%d) then' % i,
                       'call sdk_density_raw_%d(p,hels,jamp)' % i]
+        return '\n'.join(lines + ['endif'])
+
+    def base_inputs(self, inputs):
+        """Copy the couplings, masses and widths of each base into values."""
+        lines = []
+        for b, names in enumerate(inputs, 1):
+            lines.append(('if' if b == 1 else 'else if') + ' (ibase.eq.%d) then' % b)
+            lines += ['values(%d)=%s' % (k, name) for k, name in enumerate(names, 1)]
         return '\n'.join(lines + ['endif'])
 
     def coefficient_calls(self):
@@ -197,9 +229,8 @@ class DensityExporter:
                                  (j + 1, s, b, ','.join(row)))
         return '\n'.join(lines)
 
-    def raw_amplitude(self, index, me):
+    def raw_amplitude(self, index, me, calls):
         """Raw colour amplitudes, without spin/colour/symmetry divisors."""
-        calls = self.model.get_matrix_element_calls(me)
         amp_orders = me.get_split_orders_mapping()[1]
         jamp, ntemp = self.exporter.get_JAMP_lines_split_order(
             me, amp_orders, split_order_names=self.split_orders)
@@ -220,7 +251,8 @@ class DensityExporter:
                  'double complex amp(%d),jamp(%d,%d),tmp_jamp(%d)' % (
                      me.get_number_of_amplitudes(), ncolor, len(amp_orders), ntemp),
                  'type(aloha) w(%d)' % me.get_number_of_wavefunctions(),
-                 'logical ok', 'result=(0d0,0d0)', 'p=pin']
+                 # JAMP lines skip colour flows without amplitudes at an order.
+                 'logical ok', 'result=(0d0,0d0)', 'jamp=(0d0,0d0)', 'p=pin']
         if index > self.nb:
             aux = self.other[index - self.nb - 1]
             legs = [l['number'] for l in aux['legs']]

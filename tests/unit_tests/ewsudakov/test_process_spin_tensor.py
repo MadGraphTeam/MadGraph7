@@ -11,6 +11,7 @@ except ImportError:
     np = None
 
 from madgraph.interface.reweight_interface import ReweightInterface
+from madgraph.various import fxfx_ewsudakov as fx
 from madgraph.various import lhe_parser
 from madgraph.various import process_spin_tensor as pst
 from tests.unit_tests.ewsudakov.test_full_density import DensityEventFixture
@@ -31,6 +32,25 @@ def example():
                   born=np.outer(vector, vector.conj()), correction=correction,
                   relative=2*correction, leg_indices=[1, 2, 3, 4], spin_dims=[2, 2, 3, 3])
     return amplitude, delta, tensor
+
+
+def fxfx_tensor(relative=False):
+    """The tensor the dispatcher returns for the FxFx event path: the three
+    leading variants, and the relative arrays only if requested."""
+    unused, unused2, tensor = example()
+    tensor = dict(tensor, correction=tensor['correction'][:, :, :3],
+                  relative=tensor['relative'][:, :, :3],
+                  variants=['qed', 'weak', 'sr_off'])
+    if not relative:
+        del tensor['relative']
+    return tensor
+
+
+def assert_hermitian_copy(restored, original):
+    """Stored upper triangles are exact; the rest is their conjugate."""
+    upper = np.triu_indices(original.shape[0])
+    np.testing.assert_array_equal(restored[upper], original[upper])
+    np.testing.assert_allclose(restored, original, rtol=0, atol=1e-14 * abs(original).max())
 
 
 @unittest.skipIf(np is None, "NumPy is required for process tensor checks")
@@ -87,8 +107,28 @@ class TestOpenTensorPersistence(unittest.TestCase):
         stream.seek(0)
         restored = pst.load_process_tensor(stream)
         for name in ('born', 'correction', 'relative'):
-            np.testing.assert_array_equal(restored[name], tensor[name])
+            assert_hermitian_copy(restored[name], tensor[name])
         self.assertEqual(restored['leg_indices'], tensor['leg_indices'])
+        self.assertNotIn('packing', restored)
+
+    def test_records_keep_only_the_upper_triangles(self):
+        unused, unused2, tensor = example()
+        stream = io.BytesIO()
+        pst.save_process_tensor(stream, tensor)
+        stream.seek(0)
+        with np.load(stream) as data:
+            self.assertEqual(data['born'].shape, (36 * 37 // 2,))
+            self.assertEqual(data['correction'].shape, (36 * 37 // 2, 5))
+
+    def test_tensor_with_three_variants(self):
+        tensor = fxfx_tensor(relative=True)
+        stream = io.BytesIO()
+        pst.save_process_tensor(stream, tensor)
+        stream.seek(0)
+        restored = pst.load_process_tensor(stream)
+        self.assertEqual(restored['variants'], ['qed', 'weak', 'sr_off'])
+        self.assertEqual(pst.contract_process_tensor(restored)['density_correction'].shape,
+                         (9, 9, 3))
 
     def test_relative_array_is_optional(self):
         unused, unused2, tensor = example()
@@ -116,7 +156,7 @@ class TestOpenTensorPersistence(unittest.TestCase):
         self.assertEqual(records[0]['status'], 'available')
         self.assertEqual(records[1]['status'], 'not_evaluated')
         self.assertEqual(records[0]['prescription'], 'amplitude')
-        np.testing.assert_array_equal(records[0]['correction'], tensor['correction'])
+        assert_hermitian_copy(records[0]['correction'], tensor['correction'])
         pst.set_event_process_tensor(event, None, 0, 1.)
         self.assertEqual(pst.read_event_process_tensors(event)[0]['status'], 'not_evaluated')
 
@@ -144,12 +184,23 @@ class TestOpenTensorDispatcher(unittest.TestCase):
         self.assertEqual(tensor['helicities'][4], [-1, -1, 0, -1])
         np.testing.assert_array_equal(self.kernel.call_args.args[3][:4], [1, 2, 3, 4])
         np.testing.assert_array_equal(self.kernel.call_args.args[4][:4], [2, 2, 3, 3])
-        # The tensor keeps all five variants.
-        self.assertEqual(self.kernel.call_args.args[5], 5)
+        # By default the tensor keeps all five variants and the comparison.
+        self.assertEqual(self.kernel.call_args.args[5:], (5, 1))
         self.assertEqual(result['total_dim'], 9)
         self.assertEqual(result['nres'], 2)
         for key, expected in pst.contract_process_tensor(tensor).items():
             np.testing.assert_allclose(result[key], expected)
+
+    def test_tensor_holds_the_requested_variants_and_arrays(self):
+        result = self.ns['density_sudakov'](self.key, self.p, 1., [3, 4], [3, 3],
+                                            keep_initial=True, nvariants=3,
+                                            goldstone_relative=False)
+        tensor = result['process_tensor']
+        self.assertEqual(self.kernel.call_args.args[5:], (3, 0))
+        self.assertEqual(tensor['variants'], ['qed', 'weak', 'sr_off'])
+        self.assertNotIn('relative', tensor)
+        self.assertIsNone(result['density_relative'])
+        self.assertEqual(tensor['correction'].shape, (36, 36, 3))
 
     def test_unsupported_open_spaces_do_not_fall_back(self):
         for key, pos, dims, error in [(((12, -12), (-24, 24)), [3, 4], [3, 3], NotImplementedError),
@@ -165,38 +216,49 @@ class TestOpenTensorDispatcher(unittest.TestCase):
 class TestOpenTensorEventPath(DensityEventFixture, unittest.TestCase):
     def test_option_retains_tensor_with_same_weights(self):
         previous = self.driver._compute_density_ewsudakov_reweight(self.event, self.module)
-        unused, unused2, tensor = example()
+        tensor = fxfx_tensor()
         self.result['process_tensor'] = tensor
         self.driver.sudakov_density_keep_initial = True
         self.module.PROCESS_TENSOR_VERSION = 1
         result = self.driver._compute_density_ewsudakov_reweight(self.event, self.module)
         self.assertEqual(previous, result)
-        self.assertTrue(self.module.density_sudakov.call_args.kwargs['keep_initial'])
+        # The amplitude prescription needs neither the floor-off variants nor
+        # the Goldstone-relative comparison.
+        self.assertEqual(self.module.density_sudakov.call_args.kwargs,
+                         {'keep_initial': True, 'nvariants': 3, 'goldstone_relative': False})
         records = pst.read_event_process_tensors(lhe_parser.Event(str(self.event)))
-        np.testing.assert_array_equal(records[0]['born'], tensor['born'])
-        # The amplitude prescription does not store the Goldstone-relative comparison.
+        assert_hermitian_copy(records[0]['born'], tensor['born'])
         self.assertNotIn('relative', records[0])
+        self.assertEqual(records[0]['variant_aliases'], fx.FXFX_VARIANT_ALIASES)
         self.assertIn('process_tensor="initial_spin_v1"', self.driver._sudakov_weight_header())
 
     def test_goldstone_relative_tensor_keeps_its_relative_array(self):
-        unused, unused2, tensor = example()
+        tensor = fxfx_tensor(relative=True)
         self.result['process_tensor'] = tensor
         self.driver.sudakov_density_prescription = 'goldstone_relative'
         self.driver.sudakov_density_keep_initial = True
         self.module.PROCESS_TENSOR_VERSION = 1
         self.driver._compute_density_ewsudakov_reweight(self.event, self.module)
+        self.assertTrue(self.module.density_sudakov.call_args.kwargs['goldstone_relative'])
         record = pst.read_event_process_tensors(self.event)[0]
         self.assertEqual(record['prescription'], 'goldstone_relative')
-        np.testing.assert_array_equal(record['relative'], tensor['relative'])
+        assert_hermitian_copy(record['relative'], tensor['relative'])
 
-    def test_unused_relative_overflow_does_not_stop_the_tensor(self):
-        unused, unused2, tensor = example()
-        tensor['relative'] = np.full_like(tensor['relative'], np.inf)
-        self.result['process_tensor'] = tensor
+    def test_each_xi_writes_its_record_once(self):
+        self.result['process_tensor'] = fxfx_tensor()
         self.driver.sudakov_density_keep_initial = True
         self.module.PROCESS_TENSOR_VERSION = 1
-        self.driver._compute_density_ewsudakov_reweight(self.event, self.module)
-        self.assertEqual(pst.read_event_process_tensors(self.event)[0]['status'], 'available')
+        xis = [1.5, 3.]
+        self.driver._configure_sudakov_weight_ids(self.event.parse_reweight(), xis)
+        with mock.patch.object(fx, 'set_event_process_tensor',
+                               wraps=pst.set_event_process_tensor) as write:
+            for k, xi in enumerate(xis):
+                self.driver._current_xi_idx = k
+                self.driver.mW2_cluster_scale = xi
+                self.driver._compute_density_ewsudakov_reweight(self.event, self.module)
+        self.assertEqual([call.args[2] for call in write.call_args_list], [0, 1])
+        self.assertEqual([r['status'] for r in pst.read_event_process_tensors(self.event)],
+                         ['available', 'available'])
 
     def test_recomputed_weights_drop_tensors_of_an_earlier_run(self):
         unused, unused2, tensor = example()
@@ -212,7 +274,7 @@ class TestOpenTensorEventPath(DensityEventFixture, unittest.TestCase):
         self.module.ewsudakov.assert_not_called()
 
     def test_new_scan_removes_tensors_from_previous_xi_scan(self):
-        unused, unused2, tensor = example()
+        tensor = fxfx_tensor()
         pst.set_event_process_tensor(self.event, tensor, 2, 2.)
         self.result['process_tensor'] = tensor
         self.driver.sudakov_density_keep_initial = True
@@ -222,8 +284,7 @@ class TestOpenTensorEventPath(DensityEventFixture, unittest.TestCase):
         self.assertEqual([r['xi_index'] for r in pst.read_event_process_tensors(self.event)], [0])
 
     def test_scalar_weight_without_decay_matrix_keeps_no_tensor(self):
-        unused, unused2, tensor = example()
-        self.result['process_tensor'] = tensor
+        self.result['process_tensor'] = fxfx_tensor()
         self.driver.sudakov_density_keep_initial = True
         self.module.PROCESS_TENSOR_VERSION = 1
         self.module.ewsudakov.return_value = [2., -.2, -.4, -.3, -.5, -.6]
@@ -251,6 +312,8 @@ class TestOpenTensorEventPath(DensityEventFixture, unittest.TestCase):
         for text, value in [('True', True), ('False', False)]:
             ReweightInterface.do_change(interface, 'sudakov_density_keep_initial ' + text)
             self.assertEqual(interface.sudakov_density_keep_initial, value)
+        with self.assertRaisesRegex(ValueError, 'True or False'):
+            ReweightInterface.do_change(interface, 'sudakov_density_keep_initial')
 
     def test_lhe_option_rejects_modes_without_tensor_export(self):
         self.driver.sudakov_density_keep_initial = True

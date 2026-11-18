@@ -105,6 +105,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     # fks_common.born_basis_link_matrices). False restores the former layout:
     # one b_sf_NNN.f per link, each with its own colour basis.
     born_color_links_in_born = True
+    # density_matrix_wrapper.f, the EW Sudakov spin-interference kernel, is
+    # written only for the reweighting library (ProcessExporterEWSudakovSA).
+    sudakov_density_kernel = False
 
 #===============================================================================
 # copy the Template in a new directory.
@@ -2492,6 +2495,8 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
     def generate_ewsudakov_fks_files(self, matrix_element, fortran_model):
         """Write context-local EW files, also for a reused Born provider."""
+        if matrix_element.ewsudakov:
+            self.check_sudakov_beams(matrix_element)
         # finally the matrix elements needed for the sudakov approximation
         # of ew corrections. 
         # First, the squared amplitudes involving the goldstones
@@ -2539,8 +2544,9 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         self.write_sudakov_wrapper(writers.FortranWriter(filename),
                                    matrix_element,has_lo,fortran_model)
 
-        # full spin-interference kernel for the spin-correlated reweighting
-        if matrix_element.ewsudakov:
+        # full spin-interference kernel for the spin-correlated reweighting,
+        # which only the reweighting library links
+        if matrix_element.ewsudakov and self.sudakov_density_kernel:
             filename = "density_matrix_wrapper.f"
             self.write_density_matrix_wrapper(writers.FortranWriter(filename),
                                               matrix_element, fortran_model,
@@ -3524,6 +3530,21 @@ Parameters              %(params)s\n\
 
         return
 
+
+    def check_sudakov_beams(self, matrix_element):
+        """Stop the export of EW Sudakov corrections for a massive beam.
+
+        The Sudakov charges and the initial-state momentum reshuffling assume
+        massless incoming particles, so neither the scalar nor the density
+        kernel may run with a W, Z, top or other massive beam.
+        """
+        for process in matrix_element.born_me['processes']:
+            model = process['model']
+            for leg in process['legs']:
+                if (not leg['state'] and
+                        model.get_particle(leg['id'])['mass'].lower() != 'zero'):
+                    raise MadGraph5Error('EW Sudakov corrections require massless '
+                                         'beams: %s' % process.base_string())
 
     #===============================================================================
     # write_density_matrix_wrapper
@@ -5788,6 +5809,8 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
     """exports the EW sudakov matrix element in a standalone format
     """
     dirstopdg = []
+    # The reweighting library links the spin-interference kernel.
+    sudakov_density_kernel = True
 
     def prepare_born_support(self, matrix_elements):
         """Keep Born evaluators in each standalone Sudakov library.
@@ -5845,13 +5868,6 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
                                     me_ntot, path=os.getcwd(),OLP='MadLoop'):
         """Generate the Pxxxxx_i directories for a subprocess in MadFKS,
         only generating the relevant files for the EW Sudakov"""
-        # The Sudakov charges and momentum reshuffling assume massless beams;
-        # neither the scalar nor the density kernel may run on W/Z beams.
-        for process in matrix_element.born_me['processes']:
-            if any(not leg['state'] and abs(leg['id']) in (23, 24)
-                   for leg in process['legs']):
-                raise MadGraph5Error('EW Sudakov corrections do not support massive '
-                                     'vector beams: %s' % process.base_string())
         proc = matrix_element.born_me['processes'][0]
 
         if not self.model:

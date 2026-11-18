@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from madgraph import MG5DIR
-from madgraph.various import fxfx_ewsudakov, misc
+from madgraph.various import misc
 from madgraph.interface import common_run_interface
 from madgraph.iolibs.export_fks import ProcessExporterFortranFKS
 
@@ -296,7 +296,6 @@ class TestReweightSetupPlugin(unittest.TestCase):
             'rwgt_name': 'cached_name', 'allow_missing_finalstate': False,
             'identical_particle_in_prod_and_decay': 'average', 'nb_library': 1,
             'sudakov_source_ids': {'1001'},
-            'sudakov_density_version': fxfx_ewsudakov.DENSITY_KERNEL_VERSION,
         })
 
     def test_explicit_name_survives_cached_setup_and_worker_setup(self):
