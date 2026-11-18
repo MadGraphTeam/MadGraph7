@@ -162,6 +162,8 @@ def switch_catalogue(
     # per (runtime, assignment): its process id and its value class (equal
     # patterns, signs and factor give equal values, so they share evaluations)
     member_ids: dict[tuple[int, int], tuple[str, tuple]] = {}
+    # per template runtime: its pattern table (endpoint pairs per pattern) and lookup
+    pattern_tables: dict[int, tuple[list[list[tuple[int, int]]], dict[tuple, int]]] = {}
     if groups is None:
         members = [
             (index, list(process["pdgs"]), list(range(len(process["pdgs"]))), False,
@@ -175,6 +177,13 @@ def switch_catalogue(
             if rep is None:
                 continue
             union = any("flavour_union_patterns" in m for m in group["members"])
+            pairs = group.get("flavour_union_pattern_pairs")
+            if union and pairs:
+                table = [[(int(f), int(a)) for f, a in pattern] for pattern in pairs]
+                pattern_tables[rep] = (
+                    table,
+                    {tuple(sorted(pattern)): p for p, pattern in enumerate(table)},
+                )
             assignment = 0
             for member in group["members"]:
                 if union and member["process_id"] != template:
@@ -296,10 +305,22 @@ def switch_catalogue(
                     "weight": weight,
                     "target": target,
                 })
-    # one native call per (runtime, legs): the assignments of a template share it
+    # One native call per (runtime, legs): the assignments of a template share it.
+    # With a pattern table, one per (template, leg types): an evaluation at legs l
+    # is its assignment relabelled by pi[r] = c^-1[l[r]] at the call's legs c.
     calls: dict[tuple, dict[str, Any]] = {}
+    entry_of: dict[tuple, int] = {}
     for index, (rep, assignment, legs, _) in enumerate(described):
-        key = (rep, legs) if assignment >= 0 else (rep, legs, index)
+        table = pattern_tables.get(rep) if assignment >= 0 else None
+        if assignment < 0:
+            key: tuple = (rep, legs, index)
+        elif table is None:
+            key = (rep, legs)
+        else:
+            types = [0] * len(legs)
+            for r, slot in enumerate(legs):
+                types[slot] = processes[rep]["pdgs"][r]
+            key = (rep, tuple(types))
         call = calls.setdefault(
             key,
             {
@@ -307,11 +328,44 @@ def switch_catalogue(
                 "legs": list(legs),
                 "evaluations": [],
                 "assignments": [] if assignment >= 0 else None,
+                "permutations": [] if table is not None else None,
+                "entries": [],
             },
         )
         call["evaluations"].append(index)
-        if assignment >= 0:
+        if assignment < 0:
+            call["entries"].append(0)
+            continue
+        if table is None:
+            call["entries"].append(len(call["assignments"]))
             call["assignments"].append(assignment)
+            continue
+        inverse = {slot: r for r, slot in enumerate(call["legs"])}
+        permutation = tuple(inverse[slot] for slot in legs)
+        patterns, signs, numerator, denominator = member_ids[(rep, assignment)][1]
+        if patterns == ("template",):
+            derived: tuple = patterns
+        else:
+            pairs, lookup = table
+            moved = [
+                tuple(sorted((permutation[f], permutation[a]) for f, a in pairs[p]))
+                for p in patterns
+            ]
+            derived = tuple(sorted(
+                (lookup[key], sign) for key, sign in zip(moved, signs, strict=True)
+            ))
+        entry = entry_of.setdefault(
+            (key, derived, numerator, denominator), len(call["assignments"])
+        )
+        if entry == len(call["assignments"]):
+            call["assignments"].append(assignment)
+            call["permutations"].append(list(permutation))
+        call["entries"].append(entry)
+    for call in calls.values():
+        # identity relabellings need no runtime call
+        permutations = call["permutations"]
+        if permutations is not None and all(p == sorted(p) for p in permutations):
+            call["permutations"] = None
     return {
         "evaluations": [
             {
@@ -359,19 +413,31 @@ def _switch_tables(
         {"process": e["process"], "evaluations": [i], "assignments": None}
         for i, e in enumerate(catalogue["evaluations"])
     ]
+    rows = []
     for i, call in enumerate(calls):
         lines.append(_int_array(f"reweight_switch_c{i}", "size_t", call["evaluations"]))
-        if call["assignments"] is not None:
-            lines.append(
-                _int_array(f"reweight_switch_a{i}", "uint32_t", call["assignments"])
+        assignments = call["assignments"]
+        if assignments is None:
+            rows.append(
+                f"    {{{len(call['evaluations'])}, reweight_switch_c{i}, NULL, 1, "
+                "NULL, NULL},"
             )
+            continue
+        lines.append(_int_array(f"reweight_switch_a{i}", "uint32_t", assignments))
+        entries = call.get("entries") or list(range(len(call["evaluations"])))
+        lines.append(_int_array(f"reweight_switch_n{i}", "size_t", entries))
+        permutations = call.get("permutations")
+        if permutations is not None:
+            flat = [slot for permutation in permutations for slot in permutation]
+            lines.append(_int_array(f"reweight_switch_p{i}", "size_t", flat))
+        rows.append(
+            f"    {{{len(call['evaluations'])}, reweight_switch_c{i}, "
+            f"reweight_switch_a{i}, {len(assignments)}, "
+            + (f"reweight_switch_p{i}" if permutations is not None else "NULL")
+            + f", reweight_switch_n{i}}},"
+        )
     lines.append("static const ReweightSwitchCall reweight_switch_calls[] = {")
-    lines.extend(
-        f"    {{{len(call['evaluations'])}, reweight_switch_c{i}, "
-        + (f"reweight_switch_a{i}" if call["assignments"] is not None else "NULL")
-        + "},"
-        for i, call in enumerate(calls)
-    )
+    lines.extend(rows)
     lines.extend(_pad_empty(calls))
     lines.append("};")
     lines.append("static const ReweightSwitchOrdering reweight_switch_orderings[] = {")

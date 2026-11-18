@@ -44,12 +44,18 @@ typedef struct {
 } ReweightSwitchEvaluation;
 
 /* Evaluations sharing one native call: one evaluation, or flavour-union
- * assignments of one runtime at the same legs. */
+ * assignments of one runtime at the legs of its first evaluation. */
 typedef struct {
     size_t evaluation_count;
     const size_t *evaluations;
-    /* their assignment ids, NULL for a plain evaluation */
+    /* the requested assignment ids, NULL for a plain evaluation */
     const uint32_t *assignments;
+    size_t entry_count;
+    /* NULL, or per request the template slot relabelling of its assignment
+     * (particle_count values each, rusticol_runtime_relabel_assignment) */
+    const size_t *entry_permutations;
+    /* request of each evaluation, NULL for a plain evaluation */
+    const size_t *evaluation_entries;
 } ReweightSwitchCall;
 
 typedef struct {

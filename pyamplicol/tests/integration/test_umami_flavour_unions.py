@@ -604,3 +604,55 @@ def test_switch_shares_cover_every_flavour_once(built):
     assert {k for k in union if k[1]} == {k for k in flavour if k[1]}
     assert sum(len(v) for v in union.values()) == sum(len(v) for v in flavour.values())
     assert len(catalogues["union"]["calls"]) < len(catalogues["flavour"]["calls"])
+
+
+def test_relabelled_switch_calls_equal_their_evaluations(built):
+    """With the union's pattern table, the switch evaluates every template leg
+    type once: an evaluation at legs l is its assignment relabelled by
+    pi[r] = c^-1[l[r]] at the call's legs c. Each must equal the assignment at
+    its own legs (the phase-5 call), with the same orderings."""
+
+    from pyamplicol.artifacts.umami_reweight import switch_catalogue
+
+    ((data, _),) = built["umami"]["union"]
+    artifact = built["artifacts"]["union"]
+    groups = json.loads((artifact / "process-groups.json").read_text())
+    assert any("flavour_union_pattern_pairs" in group for group in groups["groups"])
+    plain = json.loads(json.dumps(groups))
+    for group in plain["groups"]:
+        group.pop("flavour_union_pattern_pairs", None)
+    relabelled = switch_catalogue(data, groups, SWITCH_LINES)
+    unrelabelled = switch_catalogue(data, plain, SWITCH_LINES)
+    assert relabelled["evaluations"] == unrelabelled["evaluations"]
+    assert relabelled["orderings"] == unrelabelled["orderings"]
+    assert relabelled["targets"] == unrelabelled["targets"]
+    assert len(relabelled["calls"]) < len(unrelabelled["calls"])
+    assert any(call.get("permutations") for call in relabelled["calls"])
+    runtimes = {}
+    points = _points(2)
+    for call in relabelled["calls"]:
+        if call["assignments"] is None:
+            continue
+        process = data["runtime_processes"][call["process"]]
+        runtime = runtimes.setdefault(
+            call["process"], Runtime.load(artifact, process=process["id"])
+        )
+        permutations = call["permutations"] or [None] * len(call["assignments"])
+        ids = [
+            assignment if permutation is None
+            else runtime.relabel_assignment(assignment, permutation)
+            for assignment, permutation in zip(
+                call["assignments"], permutations, strict=True
+            )
+        ]
+        gathered = [tuple(p[slot] for slot in call["legs"]) for p in points]
+        values = runtime.evaluate_assignments(gathered, [ids] * len(points))
+        for evaluation, entry in zip(call["evaluations"], call["entries"], strict=True):
+            own = relabelled["evaluations"][evaluation]
+            at_legs = [tuple(p[slot] for slot in own["legs"]) for p in points]
+            expected = runtime.evaluate_assignments(
+                at_legs, [[own["assignment"]]] * len(points)
+            )
+            assert [row[entry] for row in values] == pytest.approx(
+                [row[0] for row in expected], rel=1e-12
+            )

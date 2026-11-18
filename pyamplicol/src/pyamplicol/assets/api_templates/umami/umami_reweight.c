@@ -73,6 +73,8 @@ typedef struct {
     size_t *offsets, *call_offsets, call_offsets_capacity;
     uint32_t *assignments, *call_ids;
     size_t call_ids_capacity;
+    /* per switch call with relabelled requests: their runtime assignment ids */
+    uint32_t **relabelled;
     double *call_values;
     size_t call_values_capacity;
     int *slot_helicities;
@@ -193,6 +195,21 @@ static UmamiStatus ensure_loaded(Instance *instance, int side, size_t index) {
                 "match the reference artifact\n", reweight_provider.id);
         return UMAMI_ERROR;
     }
+    ReweightSwitch const *sw = side == 0 ? reweight_provider.flavor_switch : NULL;
+    for (size_t g = 0; sw != NULL && g < sw->call_count; ++g) {
+        ReweightSwitchCall const *call = &sw->calls[g];
+        if (call->entry_permutations == NULL ||
+            sw->evaluations[call->evaluations[0]].process != index) continue;
+        size_t n = reweight_provider.particle_count;
+        free(instance->relabelled[g]);
+        instance->relabelled[g] = malloc(call->entry_count * sizeof(uint32_t));
+        status = instance->relabelled[g] == NULL ? UMAMI_ERROR : UMAMI_SUCCESS;
+        for (size_t e = 0; status == UMAMI_SUCCESS && e < call->entry_count; ++e)
+            status = native_error(rusticol_runtime_relabel_assignment(
+                runtime, call->assignments[e], &call->entry_permutations[e * n], n,
+                &instance->relabelled[g][e]));
+        if (status != UMAMI_SUCCESS) { (void)rusticol_runtime_free(runtime); return status; }
+    }
     for (size_t i = 0; i < instance->override_count; ++i) {
         Override const *override = &instance->overrides[i];
         double re = 0.0, im = 0.0;
@@ -306,7 +323,10 @@ UmamiStatus umami_initialize(UmamiHandle *handle, char const *param_card_path) {
     instance->offsets = calloc(chunk + 1, sizeof(size_t));
     instance->assignments = calloc(chunk, sizeof(uint32_t));
     instance->slot_helicities = calloc(reweight_provider.particle_count + 1, sizeof(int));
-    if (instance->offsets == NULL || instance->assignments == NULL ||
+    size_t switch_calls = reweight_provider.flavor_switch == NULL
+        ? 0 : reweight_provider.flavor_switch->call_count;
+    instance->relabelled = calloc(switch_calls + 1, sizeof(uint32_t *));
+    if (instance->relabelled == NULL || instance->offsets == NULL || instance->assignments == NULL ||
         instance->slot_helicities == NULL || instance->reference == NULL || instance->target == NULL ||
         instance->reference_tables == NULL || instance->target_tables == NULL ||
         instance->base == NULL || reweight_provider.reference_process_count == 0 ||
@@ -486,8 +506,10 @@ static UmamiStatus switch_totals(Instance *instance, size_t count, size_t stride
             if (status != UMAMI_SUCCESS) return status;
             continue;
         }
-        /* every assignment of the call at every event, in one native call */
-        size_t width = call->evaluation_count;
+        /* every request of the call at every event, in one native call */
+        size_t width = call->entry_count;
+        uint32_t const *requested =
+            call->entry_permutations == NULL ? call->assignments : instance->relabelled[g];
         if (width > SIZE_MAX / count / sizeof(double) ||
             !reserve_indices(&instance->call_offsets, &instance->call_offsets_capacity,
                              count + 1) ||
@@ -501,16 +523,16 @@ static UmamiStatus switch_totals(Instance *instance, size_t count, size_t stride
         }
         for (size_t i = 0; i <= count; ++i) instance->call_offsets[i] = i * width;
         for (size_t i = 0; i < count; ++i)
-            memcpy(&instance->call_ids[i * width], call->assignments, width * sizeof(uint32_t));
+            memcpy(&instance->call_ids[i * width], requested, width * sizeof(uint32_t));
         status = native_error(rusticol_runtime_evaluate_assignments_f64(
             runtime, instance->batch, 4 * n * count, count, instance->call_offsets, count + 1,
             instance->call_ids, count * width, NULL, 0, NULL, 0, 0, instance->call_values,
             count * width));
         if (status != UMAMI_SUCCESS) return status;
-        for (size_t j = 0; j < width; ++j)
+        for (size_t j = 0; j < call->evaluation_count; ++j)
             for (size_t i = 0; i < count; ++i)
                 instance->values[call->evaluations[j] * count + i] =
-                    instance->call_values[i * width + j];
+                    instance->call_values[i * width + call->evaluation_entries[j]];
     }
     return UMAMI_SUCCESS;
 }
@@ -1016,6 +1038,10 @@ UmamiStatus umami_free(UmamiHandle handle) {
     free(instance->helicities); free(instance->offsets); free(instance->assignments);
     free(instance->call_offsets); free(instance->call_ids); free(instance->call_values);
     free(instance->slot_helicities);
+    if (instance->relabelled != NULL && reweight_provider.flavor_switch != NULL)
+        for (size_t g = 0; g < reweight_provider.flavor_switch->call_count; ++g)
+            free(instance->relabelled[g]);
+    free(instance->relabelled);
     free(instance->switched); free(instance->switch_sorted); free(instance->switch_starts);
     free(instance->overrides); free(instance->base);
     free(instance->reference); free(instance->target); free(instance);
