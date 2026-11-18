@@ -38,12 +38,17 @@ class TestClusterOptions(unittest.TestCase):
             os.makedirs(os.path.join(me_dir, 'Cards'))
             with open(os.path.join(me_dir, 'Cards', 'me5_configuration.txt'), 'w') as f:
                 f.write('cluster_type = slurm\ncluster_queue = gpu # the queue\n'
-                        'cluster_walltime = None\n')
+                        'cluster_walltime = None\ncluster_local_path = /cvmfs/mg\n'
+                        'enforce_shared_disk = True\n')
             options = launch.load_mg5_options(me_dir, with_cluster=True)
             plain = launch.load_mg5_options(me_dir)
         self.assertEqual(options['cluster_type'], 'slurm')
         self.assertEqual(options['cluster_queue'], 'gpu')
         # a value of None leaves the default
         self.assertNotIn('cluster_walltime', options)
+        # the batch system classes get the whole configuration, as from madevent
+        self.assertEqual(options['cluster_local_path'], '/cvmfs/mg')
+        self.assertIs(options['enforce_shared_disk'], True)
+        self.assertNotIn('enforce_shared_disk', plain)
         # the madevent interface applies every option it is given
         self.assertFalse([key for key in plain if key.startswith('cluster')])

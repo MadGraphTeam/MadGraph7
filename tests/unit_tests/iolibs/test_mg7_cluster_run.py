@@ -15,9 +15,11 @@ system is used. Running it is covered by the acceptance test."""
 from __future__ import absolute_import
 import json
 import os
+import sys
 import tempfile
 import types
 import unittest
+from unittest import mock
 
 from madgraph.mg7 import bootstrap as mg7_bootstrap
 from madgraph.various.banner import RunCardMG7
@@ -107,6 +109,48 @@ class TestMakeCluster(unittest.TestCase):
         cluster, _ = cluster_run.make_cluster(
             card(cluster__type='local_parallel'), {}, '', '', '')
         self.assertEqual(cluster.nb_core, os.cpu_count())
+
+    def test_the_whole_configuration_is_passed(self):
+        options = {'cluster_type': 'condor', 'cluster_queue': 'short',
+                   'cluster_local_path': '/cvmfs/madgraph', 'enforce_shared_disk': True}
+        cluster, _ = cluster_run.make_cluster(card(), options, 'long', '', '')
+        self.assertEqual(cluster.options['cluster_local_path'], '/cvmfs/madgraph')
+        self.assertTrue(cluster.options['enforce_shared_disk'])
+        self.assertEqual(cluster.cluster_queue, 'long')
+
+    def test_unknown_batch_system(self):
+        with mock.patch.object(cluster_run, 'plugin_path', return_value=[]):
+            with self.assertRaisesRegex(cluster_run.ClusterRunError,
+                                        "'nothing'.*new_cluster"):
+                cluster_run.make_cluster(card(cluster__type='nothing'), {}, '', '', '')
+
+    def test_plugin_batch_system(self):
+        """A batch system added by a plugin of a MG5aMC_PLUGIN directory on the
+        PYTHONPATH, as for madevent; the run card takes its name."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        plugin = os.path.join(tmp.name, 'MG5aMC_PLUGIN', 'site_batch')
+        os.makedirs(plugin)
+        open(os.path.join(tmp.name, 'MG5aMC_PLUGIN', '__init__.py'), 'w').close()
+        with open(os.path.join(plugin, '__init__.py'), 'w') as f:
+            f.write('from madgraph.various import cluster\n'
+                    'class SiteCluster(cluster.Cluster):\n'
+                    '    name = "site"\n'
+                    'new_cluster = {"site": SiteCluster}\n'
+                    'minimal_mg5amcnlo_version = (3, 0, 0)\n'
+                    'maximal_mg5amcnlo_version = (1000, 0, 0)\n')
+        sys.path.insert(0, tmp.name)
+        self.addCleanup(sys.path.remove, tmp.name)
+        for name in ('MG5aMC_PLUGIN', 'MG5aMC_PLUGIN.site_batch'):
+            self.addCleanup(sys.modules.pop, name, None)
+        with mock.patch.dict(os.environ, {'PYTHONPATH': tmp.name}):
+            cluster, name = cluster_run.make_cluster(
+                card(cluster__type='site'), {'cluster_local_path': '/cvmfs'},
+                'gpu', '', '')
+        self.assertEqual(name, 'site')
+        self.assertEqual(type(cluster).__name__, 'SiteCluster')
+        self.assertEqual(cluster.cluster_queue, 'gpu')
+        self.assertEqual(cluster.options['cluster_local_path'], '/cvmfs')
 
 
 @unittest.skipIf(cluster_run is None, 'madspace not available')

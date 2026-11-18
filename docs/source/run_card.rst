@@ -162,8 +162,9 @@ from the site default in ``input/default_run_card_mg7.toml``, where their defaul
 
 ``type`` (``"auto"``)
     The batch system: ``condor``, ``pbs``, ``sge``, ``lsf``, ``ge``, ``slurm``,
-    ``htcaas``, ``htcaas2``, or ``local_parallel`` to run the jobs on this machine. ``auto``
-    takes ``cluster_type`` of the MadGraph configuration.
+    ``htcaas``, ``htcaas2``, the batch system of a plugin (``new_cluster``), or
+    ``local_parallel`` to run the jobs on this machine. ``auto`` takes ``cluster_type`` of
+    the MadGraph configuration.
 
 ``parallel_jobs`` (``-1``)
     Jobs running at once with ``local_parallel``. ``-1`` uses every core. The threads of

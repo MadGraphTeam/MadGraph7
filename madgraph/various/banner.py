@@ -7197,10 +7197,6 @@ class RunCardMG7(RunCard):
     LO = True
     filename = 'run_card'
 
-    # batch systems of madgraph.various.cluster, plus this machine
-    cluster_types = ['auto', 'local_parallel', 'condor', 'pbs', 'sge', 'lsf', 'ge',
-                     'slurm', 'htcaas', 'htcaas2']
-
     # dynamic (free-form) sections, stored as nested dicts rather than as
     # fixed typed parameters
     dynamic_section_names = ('multiparticles', 'cuts', 'histograms',
@@ -7445,10 +7441,12 @@ class RunCardMG7(RunCard):
             allowed=['full', 'gridpack_only'],
             comment="full: run both passes and combine the events; gridpack_only: "
                     "only train, the merged gridpack is the result")
+        # not checked here: a plugin can add a batch system (new_cluster),
+        # which cluster_run.cluster_class finds when the run starts
         self.add_toml_param('cluster', 'type', "auto",
-            allowed=self.cluster_types,
             comment="batch system; auto takes cluster_type of the MadGraph configuration, "
-                    "local_parallel runs the jobs on this machine")
+                    "local_parallel runs the jobs on this machine, or the name of a "
+                    "plugin's batch system")
         self.add_toml_param('cluster', 'parallel_jobs', -1,
             comment="jobs run at once with type local_parallel; -1 uses every core")
         self.add_toml_param('cluster', 'train_queue', "",

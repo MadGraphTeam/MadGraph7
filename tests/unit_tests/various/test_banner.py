@@ -2241,6 +2241,9 @@ class TestRunCardMG7(unittest.TestCase):
         card = bannermod.RunCardMG7()
         card.set("cluster.enable", True)
         card.check_validity()
+        # the batch system of a plugin, only known when the run starts
+        card.set("cluster.type", "site_batch")
+        self.assertEqual(card["cluster.type"], "site_batch")
         for key, value in (("cluster.events_per_job", 0),
                            ("cluster.subprocesses_per_job", 0),
                            ("phasespace.subprocess_selection", [1])):

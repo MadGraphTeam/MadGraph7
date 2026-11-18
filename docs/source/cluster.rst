@@ -91,10 +91,12 @@ generate enough events to estimate them.
 Batch systems
 -------------
 
-``type`` is any of the batch systems of the MadGraph5_aMC@NLO cluster mode, or
-``local_parallel``. ``type = "auto"`` takes the ``cluster_type`` of the MadGraph
-configuration, which also provides the queue, if that is not set in the card, as well as
-the retry settings.
+``type`` is any of the batch systems of the MadGraph5_aMC@NLO cluster mode, one that a
+plugin adds with ``new_cluster`` (from ``PLUGIN`` or a ``MG5aMC_PLUGIN`` directory on the
+``PYTHONPATH``, as for madevent), or ``local_parallel``. ``type = "auto"`` takes the
+``cluster_type`` of the MadGraph configuration, which also provides the queue, if that is
+not set in the card. The class submitting the jobs is given the whole MadGraph
+configuration, as in a madevent run, with the settings of the card on top.
 
 ``local_parallel`` runs the same jobs as processes on the machine you launch from, at
 most ``parallel_jobs`` at once, instead of submitting them. It is not the same as an

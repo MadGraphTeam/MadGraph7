@@ -67,7 +67,7 @@ enable = %(cluster.enable)s
 # options: full (both passes, events combined), gridpack_only (the merged gridpack is the result)
 mode = %(cluster.mode)s
 # options: auto (cluster_type of the MadGraph configuration), local_parallel (this machine),
-# condor, pbs, sge, lsf, ge, slurm, htcaas, htcaas2
+# condor, pbs, sge, lsf, ge, slurm, htcaas, htcaas2, or the batch system of a plugin (new_cluster)
 type = %(cluster.type)s
 parallel_jobs = %(cluster.parallel_jobs)s # jobs at once with type local_parallel; -1 uses every core
 # training pass, set up in [cluster_train]; an empty queue takes the configured one

@@ -33,6 +33,7 @@ from madgraph.mg7 import launch
 from madgraph.various.banner import RunCardMG7
 from madgraph.iolibs.template_files.mg7 import merge_gridpacks
 from madgraph.various import cluster as cluster_module
+from madgraph.various import misc
 
 logger = logging.getLogger("madgraph7")
 
@@ -83,9 +84,39 @@ def read_json(path: str):
         return json.load(f)
 
 
+def plugin_path() -> list:
+    """The plugin directories, as the MadGraph interface finds them: PLUGIN of
+    this installation and the first MG5aMC_PLUGIN of the PYTHONPATH."""
+    import madgraph
+    mg5dir = os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__)))
+    paths = [os.path.join(mg5dir, "PLUGIN")]
+    for candidate in os.environ.get("PYTHONPATH", "").split(":"):
+        if candidate and os.path.isdir(os.path.join(candidate, "MG5aMC_PLUGIN")):
+            paths.append(os.path.join(candidate, "MG5aMC_PLUGIN"))
+            break
+    return [path for path in paths if os.path.isdir(path)]
+
+
+def cluster_class(cluster_type: str):
+    """The class submitting the jobs to the batch system ``cluster_type``: one
+    of madgraph.various.cluster, or one a plugin adds with new_cluster."""
+    if cluster_type in cluster_module.from_name:
+        return cluster_module.from_name[cluster_type]
+    found = misc.from_plugin_import(
+        plugin_path(), "new_cluster", cluster_type,
+        info="cluster handling will be done with PLUGIN: %(plug)s")
+    if not found:
+        raise ClusterRunError(
+            f"unknown batch system {cluster_type!r}: neither local_parallel, one of "
+            f"{', '.join(sorted(cluster_module.from_name))}, nor the new_cluster "
+            "of a plugin")
+    return found
+
+
 def make_cluster(card, options: dict, queue: str, walltime: str, extra_args: str):
     """The cluster object of one pass: [cluster] settings, where empty those of
-    the MadGraph configuration (``options``, see launch.load_mg5_options)."""
+    the MadGraph configuration (``options``, see launch.load_mg5_options),
+    which the class gets in full, as from madevent."""
     section = card["cluster"]
     cluster_type = section["type"]
     if cluster_type == "auto":
@@ -99,13 +130,13 @@ def make_cluster(card, options: dict, queue: str, walltime: str, extra_args: str
         if parallel_jobs is None or parallel_jobs < 1:
             parallel_jobs = os.cpu_count() or 1
         return cluster_module.MultiCore(nb_core=parallel_jobs), cluster_type
-    if cluster_type not in cluster_module.from_name:
-        raise ClusterRunError(f"unknown batch system {cluster_type!r}")
+    cls = cluster_class(cluster_type)
 
     def pick(value, key):
         return value if value else options.get(key)
 
-    config = {
+    config = dict(options)
+    config.update({
         "cluster_type": cluster_type,
         "cluster_queue": pick(queue, "cluster_queue"),
         "cluster_walltime": pick(walltime, "cluster_walltime"),
@@ -115,8 +146,8 @@ def make_cluster(card, options: dict, queue: str, walltime: str, extra_args: str
         "cluster_status_update": tuple(section["status_update"]),
         "cluster_temp_path": pick(section["temp_path"], "cluster_temp_path"),
         "cluster_requirement": options.get("cluster_requirement"),
-    }
-    return cluster_module.from_name[cluster_type](**config), cluster_type
+    })
+    return cls(**config), cluster_type
 
 
 class ClusterRun:
