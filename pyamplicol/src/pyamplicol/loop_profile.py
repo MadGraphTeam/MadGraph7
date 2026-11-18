@@ -1099,6 +1099,13 @@ def profile_loop(
                 f"{_duration(monitor.elapsed() + sum(future.values()))} in all "
                 "(estimated)"
             )
+    if want_runtime and not (want_stability and workers == 1):
+        # Nothing evaluates in this process any more (the runtime timings and
+        # the stability workers load their own): its runtime is released and
+        # the allocator's free memory given back while they run (8 gluons:
+        # 23-38 GiB beside each worker's own).
+        runtime = None
+        _release_memory()
     current: list[Any] = [None]
 
     def remaining() -> tuple[float, bool] | None:
@@ -1671,6 +1678,20 @@ class _Monitor:
                     elapsed_seconds=self.elapsed(),
                 )
             )
+
+
+def _release_memory() -> None:
+    """A full collection, then the C allocator's free memory returned to
+    the system (glibc ``malloc_trim``; nothing where it is absent): freed
+    native memory otherwise stays in this process's resident set."""
+
+    gc.collect()
+    with contextlib.suppress(Exception):
+        import ctypes
+
+        trim = getattr(ctypes.CDLL(None), "malloc_trim", None)
+        if trim is not None:
+            trim(0)
 
 
 def _per_point_text(seconds: float | None) -> str | None:
