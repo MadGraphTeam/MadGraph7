@@ -91,6 +91,55 @@ class TestBenchmarkBundle(unittest.TestCase):
                 bundle.restore(self.base, path, bundle.file_sha256(path))
             self.assertFalse((self.base.parent / "escape.txt").exists())
 
+    def restored_campaign(self):
+        """Restore a revision bundle in place, then run a "campaign" on top of it."""
+        path, digest = self.build()
+        bundle.restore(self.source, path, digest)
+        workspace = self.source / bundle.WORKSPACE
+        (workspace / "README.md").write_text("benchmark, updated\n")
+        (workspace / "campaigns/c-2/raw").mkdir(parents=True)
+        (workspace / "campaigns/c-2/summary.json").write_text('{"passed": false}\n')
+        (workspace / "campaigns/c-2/raw/log.txt").write_text("log\n")
+        (workspace / "campaigns/stray.txt").write_text("not listed, not added\n")
+        return workspace
+
+    def test_workspace_build_takes_the_base_and_additions_only(self):
+        self.restored_campaign()
+        path, digest = bundle.build_workspace(self.source, ["campaigns/c-2"], self.base / "w1", "v2.tar.xz")
+        self.assertEqual(bundle.build_workspace(self.source, ["campaigns/c-2"], self.base / "w2",
+                                                "v2.tar.xz")[1], digest)
+        prefix = bundle.WORKSPACE + "/"
+        with tarfile.open(path) as archive:
+            names = set(archive.getnames())
+            provenance = json.load(archive.extractfile(prefix + bundle.PROVENANCE))
+            self.assertEqual(archive.extractfile(prefix + "README.md").read(), b"benchmark, updated\n")
+        self.assertIn(prefix + "tests/test_relocated.py", names)
+        self.assertIn(prefix + "campaigns/c-2/raw/log.txt", names)
+        self.assertNotIn(prefix + "campaigns/stray.txt", names)
+        self.assertEqual(provenance["source"], "workspace")
+        self.assertEqual(provenance["base_bundle"], "b.tar.xz")
+        self.assertEqual(list(provenance["changed_files"]), [prefix + "README.md"])
+        self.assertEqual(sorted(provenance["added_files"]),
+                         [prefix + "campaigns/c-2/raw/log.txt", prefix + "campaigns/c-2/summary.json"])
+        target = self.base / "fresh"
+        target.mkdir()
+        bundle.restore(target, path, digest)
+        self.assertEqual(bundle.verify(target), 7)
+
+    def test_workspace_build_refuses_missing_base_files_links_and_outside_paths(self):
+        workspace = self.restored_campaign()
+        with self.assertRaisesRegex(ValueError, "not a path"):
+            bundle.build_workspace(self.source, ["../../other.txt"], self.base / "w")
+        with self.assertRaisesRegex(ValueError, "at least one"):
+            bundle.build_workspace(self.source, [], self.base / "w")
+        (workspace / "campaigns/c-2/link").symlink_to(self.source / "other.txt")
+        with self.assertRaisesRegex(ValueError, "not a regular file"):
+            bundle.build_workspace(self.source, ["campaigns/c-2"], self.base / "w")
+        (workspace / "campaigns/c-2/link").unlink()
+        (workspace / "run.sh").unlink()
+        with self.assertRaisesRegex(ValueError, "missing"):
+            bundle.build_workspace(self.source, ["campaigns/c-2"], self.base / "w")
+
 
 if __name__ == "__main__":
     unittest.main()

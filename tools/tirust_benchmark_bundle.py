@@ -11,6 +11,12 @@ requalification, the local timing or a report build.
            Archive docs/benchmarkfolder at REV byte for byte, overlay the files
            of --include (which must not replace archived files), write
            RELEASE-PROVENANCE.json and SHA256SUMS, and a deterministic .tar.xz.
+  build    --workspace --add PATH [--add PATH ...] --output DIR [--name NAME]
+           Archive a restored workspace after a new campaign: every file of the
+           restored bundle (listed in its SHA256SUMS) as it is now, plus the
+           files under each --add path (relative to docs/benchmarkfolder).
+           Nothing else on disk is included. RELEASE-PROVENANCE.json names the
+           base bundle and lists the changed and added files.
   restore  [--archive PATH] [--sha256 HEX] [--force]
            Check the archive against the SHA256 pinned in
            tirust_benchmark_bundle.json, then extract it into the checkout.
@@ -124,6 +130,75 @@ def build(root: Path, revision: str, output: Path, include: Path | None = None,
         "builder_sha256": file_sha256(Path(__file__)),
         "note": "Archived files are byte-identical to the source revision.",
     }
+    return write_bundle(files, provenance, output, name, mtime)
+
+
+def regular_file(root: Path, path: Path) -> tuple[bytes, int]:
+    """Read a workspace file, refusing links and anything outside the root."""
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"{path}: not a regular file")
+    if not path.resolve().is_relative_to(root.resolve()):
+        raise ValueError(f"{path}: outside {root}")
+    return path.read_bytes(), 0o755 if os.access(path, os.X_OK) else 0o644
+
+
+def build_workspace(root: Path, additions: list[str], output: Path,
+                    name: str | None = None) -> tuple[Path, str]:
+    """Bundle the restored workspace's files as they are now, plus additions."""
+    base = root / WORKSPACE
+    try:
+        previous = json.loads((base / PROVENANCE).read_text())
+        listed = dict(line.split("  ", 1)[::-1]
+                      for line in (base / SUMS).read_text().splitlines())
+    except (OSError, ValueError) as error:
+        raise ValueError(f"{WORKSPACE} is not a restored bundle: {error}")
+    files, changed, added = {}, {}, {}
+    for relative, digest in sorted(listed.items()):
+        if relative in (PROVENANCE, SUMS):
+            continue
+        target = f"{WORKSPACE}/{relative}"
+        member_path(target)
+        if not (base / relative).exists():
+            raise ValueError(f"{target}: listed in {SUMS} but missing")
+        files[target] = regular_file(base, base / relative)
+        if sha256(files[target][0]) != digest:
+            changed[target] = sha256(files[target][0])
+    if not additions:
+        raise ValueError("--workspace needs at least one --add path")
+    for addition in additions:
+        start = base / addition
+        if not start.resolve().is_relative_to(base.resolve()) or not start.exists():
+            raise ValueError(f"{addition}: not a path in {WORKSPACE}")
+        paths = [start] if start.is_file() else sorted(
+            p for p in start.rglob("*") if p.is_file() or p.is_symlink())
+        for path in paths:
+            target = f"{WORKSPACE}/{path.relative_to(base).as_posix()}"
+            member_path(target)
+            if target in files or target in (f"{WORKSPACE}/{PROVENANCE}", f"{WORKSPACE}/{SUMS}"):
+                continue
+            files[target] = regular_file(base, path)
+            added[target] = sha256(files[target][0])
+    head = git(root, "rev-parse", "--verify", "HEAD^{commit}")
+    mtime = int(git(root, "show", "-s", "--format=%ct", head))
+    name = name or f"madloop-tirust-benchmark-{head[:10]}.tar.xz"
+    provenance = {
+        "bundle": name,
+        "source": "workspace",
+        "source_tree": WORKSPACE,
+        "madgraph_revision": head,
+        "base_bundle": previous.get("bundle"),
+        "base_files": len(files) - len(added),
+        "changed_files": changed,
+        "added_files": added,
+        "builder_sha256": file_sha256(Path(__file__)),
+        "note": ("Every file of the base bundle as it was in the workspace, plus the files "
+                 "under the added paths; no other workspace file is included."),
+    }
+    return write_bundle(files, provenance, output, name, mtime)
+
+
+def write_bundle(files: dict, provenance: dict, output: Path, name: str,
+                 mtime: int) -> tuple[Path, str]:
     files[f"{WORKSPACE}/{PROVENANCE}"] = (
         (json.dumps(provenance, indent=2, sort_keys=True) + "\n").encode(), 0o644)
     prefix = len(WORKSPACE) + 1
@@ -215,9 +290,12 @@ def main(argv=None) -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     built = commands.add_parser("build")
-    built.add_argument("--revision", required=True)
+    source = built.add_mutually_exclusive_group(required=True)
+    source.add_argument("--revision")
+    source.add_argument("--workspace", action="store_true")
     built.add_argument("--output", type=Path, required=True)
-    built.add_argument("--include", type=Path)
+    built.add_argument("--include", type=Path, help="with --revision")
+    built.add_argument("--add", action="append", default=[], help="with --workspace")
     built.add_argument("--name")
     restored = commands.add_parser("restore")
     restored.add_argument("--archive", type=Path)
@@ -227,7 +305,14 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "build":
-            path, digest = build(ROOT, args.revision, args.output, args.include, args.name)
+            if args.workspace:
+                if args.include:
+                    parser.error("--include goes with --revision; use --add with --workspace")
+                path, digest = build_workspace(ROOT, args.add, args.output, args.name)
+            else:
+                if args.add:
+                    parser.error("--add goes with --workspace")
+                path, digest = build(ROOT, args.revision, args.output, args.include, args.name)
             print(f"{digest}  {path}")
         elif args.command == "restore":
             pin = pinned_release()
