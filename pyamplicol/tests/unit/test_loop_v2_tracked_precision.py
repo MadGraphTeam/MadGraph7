@@ -152,3 +152,77 @@ def test_the_reference_path_fails_the_point_typed():
     with pytest.raises(ArithmeticError, match="NinjaRS tracked precision: "):
         require_tracked_precision(reducer, ["ruined"])
     assert seen == [["regular"], ["ruined"]]
+
+
+@pytest.mark.loop_physics
+def test_the_reference_path_applies_the_test_to_every_point(
+    loop_sm_compiled_model, loop_native, monkeypatch
+):
+    """The Python reference path (``LoopSlice.evaluate``) hands every
+    arbitrary-precision point's direct batches to its reducer's
+    ``tracked_refusal``: on ``u u~ > u u~`` at 60 digits the real reducer
+    states NinjaRS's rule and accepts the point; a reducer refusing it makes
+    the point fail with the refusal (``ArithmeticError``)."""
+
+    import json
+    from pathlib import Path
+
+    from pyamplicol.loops.v2.assemble import (
+        LoopSlice,
+        Precision,
+        SliceRequest,
+        _PointEvaluation,
+    )
+    from pyamplicol.models.loading import load_compiled_model
+
+    data = json.loads(
+        (
+            Path(__file__).resolve().parents[1] / "fixtures/loop/legacy/uux_uux.json"
+        ).read_text(),
+        parse_float=str,
+    )
+    point, scale = data["points"][0], "1000000"
+    request = SliceRequest(
+        "u u~ > u u~",
+        {"QCD": 2, "QED": 0},
+        {"QCD": 4, "QED": 0},
+        fixed_parameters={"MB": "0"},
+    )
+    slice_ = LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model), request, loop_native
+    )
+    parameters = {"aS": "0.118", "MT": "173"}
+    precision = Precision.arbitrary(60)
+    original = _PointEvaluation.reducer
+    seen = []
+
+    class Recording:
+        """The real reducer, recording (or refusing) each point's test."""
+
+        def __init__(self, reducer, refusal):
+            self.reducer, self.refusal = reducer, refusal
+
+        def __getattr__(self, name):
+            return getattr(self.reducer, name)
+
+        def tracked_refusal(self, direct):
+            seen.append((self.reducer.tracked_precision, len(direct)))
+            found = self.reducer.tracked_refusal(direct)
+            return found if self.refusal is None else self.refusal
+
+    def evaluate(refusal):
+        monkeypatch.setattr(
+            _PointEvaluation,
+            "reducer",
+            lambda self: Recording(original(self), refusal),
+        )
+        return slice_.evaluate(point, scale, parameters=parameters, precision=precision)
+
+    evaluate(None)
+    # One test per reduction of the point, on the real reducer's rule (the
+    # reference path reduces at the requested 60 digits: 200 bits, 53
+    # required) over its lanes.
+    assert seen and all(rule == (200, 53) and lanes > 0 for rule, lanes in seen), seen
+    reason = REASON + "1.0 tracked bits (...), 53 required at 200 working bits"
+    with pytest.raises(ArithmeticError, match="NinjaRS tracked precision: "):
+        evaluate(reason)
