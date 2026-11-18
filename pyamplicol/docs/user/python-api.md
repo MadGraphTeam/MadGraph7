@@ -769,7 +769,9 @@ lanes still refused have no value at all: NinjaRS's conditioning screen, a
 Euclidean-plane cut, a non-finite result): only its reduction is redone in a
 higher carrier, double-double first, then arbitrary precision (500 digits), on the same backend, its rescue reductions always
 checked (a refusal there moves the lane to the next carrier, so no value a
-higher-precision engine rejects is served). Its coefficients are the binary64 ones,
+higher-precision engine rejects is served; TIRust's rescue engines run its
+method choice in these carriers too, so a row its gates refuse is not sent
+straight to the dear 500-digit step). Its coefficients are the binary64 ones,
 lifted exactly (the numerators are not recomputed); its kinematic inputs are
 rebuilt in the higher carrier from the point's improved kinematics (exact
 momentum conservation and on-shell external legs in that carrier, as
