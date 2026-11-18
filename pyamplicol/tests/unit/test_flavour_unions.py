@@ -330,6 +330,10 @@ def test_three_line_member_patterns(
     assert members["d u~ > d d d~ u~"].factor == 2
     assert members["u u~ > u u u~ u~"].patterns == tuple(range(6))
     assert members["u u~ > u u u~ u~"].factor == 1
+    # The pattern table: endpoint pairs (fundamental, antifundamental) per rule.
+    assert union.pattern_pairs[0] == ((1, 0), (2, 4), (3, 5))
+    assert union.pattern_pairs[4] == ((1, 5), (2, 0), (3, 4))
+    assert len(union.pattern_pairs) == union.pattern_count
 
 
 def test_member_slots_follow_the_template_orientation(
@@ -477,10 +481,22 @@ def test_union_members_round_trip_through_process_groups(
     assert len(group) == len(union.members)  # the template replaces its member
 
     group_map = ProcessGroupMap()
-    group_map.add_group(group)
+    group_map.add_group(group, union.pattern_pairs)
     restored = ProcessGroupMap.from_json(group_map.to_json())
     assert list(restored.members()) == group
+    assert restored.groups[union.template.process_id].pattern_pairs == (
+        union.pattern_pairs
+    )
     validate_process_groups(restored, [union.template.process_id])
+    # A group without a table keeps its exact record.
+    plain_map = ProcessGroupMap()
+    plain_map.add_group(group)
+    assert "flavour_union_pattern_pairs" not in plain_map.to_json()
+    for bad in (((),), (((0, 0),),), (((0, 99),),)):
+        broken = ProcessGroupMap()
+        broken.add_group(group, bad)
+        with pytest.raises(ArtifactError, match="pattern pairs"):
+            validate_process_groups(broken, [union.template.process_id])
 
     member = group[1]
     record = member.as_dict()

@@ -666,6 +666,20 @@ class GroupMember:
         )
 
 
+def _pattern_pairs(value: object) -> PatternPairs | None:
+    if value is None:
+        return None
+    try:
+        return tuple(
+            tuple((int(f), int(a)) for f, a in pattern)  # type: ignore[union-attr]
+            for pattern in value  # type: ignore[union-attr]
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "flavour-union pattern pairs must be [[f, a], ...] lists"
+        ) from exc
+
+
 def _optional_int_tuple(value: object) -> tuple[int, ...] | None:
     if value is None:
         return None
@@ -676,11 +690,19 @@ def _optional_int_tuple(value: object) -> tuple[int, ...] | None:
     return tuple(value)
 
 
+PatternPairs = tuple[tuple[tuple[int, int], ...], ...]
+"""Per pairing pattern of a union template, its (fundamental, antifundamental) slots."""
+
+
 @dataclass(slots=True)
 class ProcessGroup:
-    """A representative and every member, the representative first."""
+    """A representative and every member, the representative first.
+
+    A flavour-union template carries its pattern table ``pattern_pairs``.
+    """
 
     members: list[GroupMember]
+    pattern_pairs: PatternPairs | None = None
 
     @property
     def representative(self) -> GroupMember:
@@ -688,13 +710,18 @@ class ProcessGroup:
 
     def as_dict(self) -> dict[str, object]:
         representative = self.representative
-        return {
+        record: dict[str, object] = {
             "representative": {
                 "process_id": representative.process_id,
                 "process": representative.expression,
             },
             "members": [member.as_dict() for member in self.members],
         }
+        if self.pattern_pairs is not None:
+            record["flavour_union_pattern_pairs"] = [
+                [list(pair) for pair in pattern] for pattern in self.pattern_pairs
+            ]
+        return record
 
 
 @dataclass(slots=True)
@@ -711,7 +738,11 @@ class ProcessGroupMap:
             result.add_group([GroupMember.identity(process)])
         return result
 
-    def add_group(self, members: Sequence[GroupMember]) -> None:
+    def add_group(
+        self,
+        members: Sequence[GroupMember],
+        pattern_pairs: PatternPairs | None = None,
+    ) -> None:
         representative = members[0]
         if not representative.generated:
             raise ValueError(
@@ -722,7 +753,9 @@ class ProcessGroupMap:
                 raise ValueError(
                     f"process {member.process_id!r} already belongs to a group"
                 )
-        self.groups[representative.process_id] = ProcessGroup(list(members))
+        self.groups[representative.process_id] = ProcessGroup(
+            list(members), pattern_pairs
+        )
 
     def group_of(self, process_id: str) -> ProcessGroup | None:
         for group in self.groups.values():
@@ -788,7 +821,9 @@ class ProcessGroupMap:
         result = cls(analyses=[dict(entry) for entry in document.get("analyses", [])])  # type: ignore[attr-defined]
         for group in document.get("groups", []):  # type: ignore[attr-defined]
             members = [GroupMember.from_dict(member) for member in group["members"]]
-            result.add_group(members)
+            result.add_group(
+                members, _pattern_pairs(group.get("flavour_union_pattern_pairs"))
+            )
         return result
 
     @classmethod
@@ -880,6 +915,8 @@ class FlavourUnion:
     template: GroupingProcess
     members: tuple[GroupMember, ...]
     pattern_count: int
+    # Endpoint pairs of each pattern (pairing rule) in template slot order.
+    pattern_pairs: PatternPairs = ()
 
     def group(self) -> list[GroupMember]:
         """The template as generated representative, then the routed members."""
@@ -1047,7 +1084,10 @@ def _flavour_union(
         )
     if class_count(member.process for member in members) < 2:
         return None
-    return FlavourUnion(template, tuple(members), len(rules))
+    pattern_pairs = tuple(
+        tuple((int(f), int(a)) for f, a in rule.endpoint_pairings) for rule in rules
+    )
+    return FlavourUnion(template, tuple(members), len(rules), pattern_pairs)
 
 
 def _single_union_flavour(process: GroupingProcess, table: ParticleTable) -> bool:
@@ -1142,6 +1182,7 @@ __all__ = [
     "LegMapping",
     "ParticleTable",
     "ParticleType",
+    "PatternPairs",
     "ProcessGroup",
     "ProcessGroupMap",
     "candidate_mappings",

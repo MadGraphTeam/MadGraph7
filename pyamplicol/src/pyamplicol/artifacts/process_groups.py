@@ -24,6 +24,7 @@ from pyamplicol.generation.process_grouping import (
     GroupingBasis,
     GroupingProcess,
     GroupMember,
+    PatternPairs,
     ProcessGroupMap,
 )
 
@@ -57,11 +58,13 @@ def grouping_process(
 def initial_process_groups(
     processes: Iterable[tuple[str, str, Sequence[int]]],
     members: Mapping[str, Sequence[GroupMember]] | None = None,
+    pattern_pairs: Mapping[str, PatternPairs] | None = None,
 ) -> ProcessGroupMap:
     """Group each generated ``(id, expression, pdgs)`` with its known members.
 
     ``members`` holds, per representative ID, the relations recorded before
     generation (flavour-blind members); every other process maps to itself.
+    ``pattern_pairs`` holds the pattern tables of flavour-union templates.
     """
 
     result = ProcessGroupMap()
@@ -69,7 +72,10 @@ def initial_process_groups(
         representative = GroupMember.identity(
             grouping_process(process_id, expression, external_pdgs)
         )
-        result.add_group([representative, *(members or {}).get(process_id, ())])
+        result.add_group(
+            [representative, *(members or {}).get(process_id, ())],
+            (pattern_pairs or {}).get(process_id),
+        )
     return result
 
 
@@ -121,6 +127,24 @@ def validate_process_groups(
             )
     for group in group_map.groups.values():
         representative = group.representative
+        if group.pattern_pairs is not None and not (
+            group.pattern_pairs
+            and any(member.patterns is not None for member in group.members)
+            and all(
+                pattern
+                and len({slot for pair in pattern for slot in pair}) == 2 * len(pattern)
+                and all(
+                    0 <= slot < len(representative.pdgs)
+                    for pair in pattern
+                    for slot in pair
+                )
+                for pattern in group.pattern_pairs
+            )
+        ):
+            raise ArtifactError(
+                f"process group {representative.process_id!r} has invalid "
+                "flavour-union pattern pairs"
+            )
         if representative.patterns is not None:
             raise ArtifactError(
                 f"process-group representative {representative.process_id!r} "

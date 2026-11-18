@@ -168,6 +168,7 @@ from .process_grouping import (
     GroupingProcess,
     GroupMember,
     LegMapping,
+    PatternPairs,
     flavor_blind_classes,
     flavor_blind_mapping,
     flavour_unions,
@@ -2695,6 +2696,8 @@ class _ExpandedProcess:
     group_members: tuple[GroupMember, ...] = ()
     # Pattern-resolved flavour-union template: members select pairing patterns.
     flavour_union_template: bool = False
+    # Its pattern table (endpoint pairs per pattern), stored in process-groups.json.
+    flavour_union_pattern_pairs: PatternPairs | None = None
 
 
 class _NoModelSupportedAmplitudes(GenerationError):
@@ -3334,6 +3337,7 @@ def _initial_process_groups(
 ) -> ProcessGroupMap:
     """Each written process with the members recorded at expansion."""
 
+    expanded = tuple(expanded)
     members = {entry.request.name: entry.group_members for entry in expanded}
     return initial_process_groups(
         (
@@ -3341,6 +3345,11 @@ def _initial_process_groups(
             for process in artifact_processes
         ),
         members,
+        pattern_pairs={
+            entry.request.name: entry.flavour_union_pattern_pairs
+            for entry in expanded
+            if entry.flavour_union_pattern_pairs is not None
+        },
     )
 
 
@@ -9225,6 +9234,7 @@ def _apply_flavour_unions(
                 base,
                 group_members=tuple(union.group()[1:]),
                 flavour_union_template=True,
+                flavour_union_pattern_pairs=union.pattern_pairs,
             )
         )
     if accepted:

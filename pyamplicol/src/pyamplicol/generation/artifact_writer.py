@@ -1419,7 +1419,8 @@ def _write_process_groups(
                     member
                     for member in group.members
                     if member.generated or group_map.group_of(member.process_id) is None
-                ]
+                ],
+                group.pattern_pairs,
             )
         group_map.analyses.extend(process_groups.analyses)
     grouped = {member.process_id for member in group_map.members()}
@@ -1433,7 +1434,7 @@ def _write_process_groups(
         if str(record["id"]) not in grouped
     )
     for group in ungrouped.groups.values():
-        group_map.add_group(group.members)
+        group_map.add_group(group.members, group.pattern_pairs)
     validate_process_groups(group_map, record_ids)
     builder.add_bytes(
         PROCESS_GROUPS_PATH,
