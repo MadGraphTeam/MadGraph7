@@ -2125,20 +2125,83 @@ class TestRunCardMG7(unittest.TestCase):
     def test_cluster_section(self):
         import io
         import tomllib
-        card = bannermod.RunCardMG7()
-        output = io.StringIO()
-        card.write(output)
-        data = tomllib.loads(output.getvalue())
+        from unittest import mock
+        # without cluster settings of the site
+        with mock.patch.object(bannermod.RunCardMG7, 'default_run_card', None):
+            card = bannermod.RunCardMG7()
+
+        def written():
+            output = io.StringIO()
+            card.write(output)
+            return output.getvalue()
+
+        # off by default, and then left out of the card but for a hint
+        text = written()
+        data = tomllib.loads(text)
+        for section in ('cluster', 'cluster_train', 'cluster_deploy'):
+            self.assertNotIn(section, data)
+        self.assertIn('set cluster.enable true', text)
+        self.assertIn('beam', data)
+        # enabled, only the main options are written out
+        card.set('cluster.enable', True)
+        text = written()
+        data = tomllib.loads(text)
         section = data['cluster']
-        # off by default, and only the main options are written out
-        self.assertFalse(section['enable'])
+        self.assertTrue(section['enable'])
         self.assertEqual(section['mode'], 'full')
         self.assertNotIn('nb_retry', section)
         self.assertEqual(data['cluster_train'], {})
+        self.assertNotIn('set cluster.enable true', text)
+        # disabled again, a setting that differs from its default keeps them
+        card.set('cluster.enable', False)
+        card.set('cluster.train_queue', 'gpu')
+        self.assertEqual(tomllib.loads(written())['cluster']['train_queue'], 'gpu')
         # the gridpack card of a gridpack run knows nothing of the cluster
         output = io.StringIO()
         card.write_gridpack_card(output)
         self.assertNotIn('cluster', tomllib.loads(output.getvalue()))
+
+    def test_cluster_site_defaults(self):
+        """The cluster sections take their defaults from the site default
+        card, which alone does not put them into the card."""
+        import io
+        import tempfile
+        import tomllib
+        from unittest import mock
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        site = os.path.join(tmp.name, 'default_run_card_mg7.toml')
+        with open(site, 'w') as fsock:
+            fsock.write('[generation]\nevents = 5000\n[cluster]\ntype = "slurm"\n'
+                        'train_queue = "gpu"\n[cluster_train]\nrun.device = ["cuda"]\n')
+
+        def written(card):
+            output = io.StringIO()
+            card.write(output)
+            return tomllib.loads(output.getvalue())
+
+        with mock.patch.object(bannermod.RunCardMG7, 'default_run_card', site):
+            card = bannermod.RunCardMG7()
+            self.assertEqual(card['cluster.type'], 'slurm')
+            # other sections are left to create_default_for_process
+            self.assertNotEqual(card['generation.events'], 5000)
+            self.assertNotIn('cluster', written(card))
+            # a card without the sections gets the site values when enabled
+            path = os.path.join(tmp.name, 'run_card.toml')
+            card.write(path)
+            card = bannermod.RunCardMG7(path)
+            card.set('cluster.enable', True)
+            data = written(card)
+            self.assertEqual(data['cluster']['type'], 'slurm')
+            self.assertEqual(data['cluster']['train_queue'], 'gpu')
+            self.assertEqual(data['cluster_train'], {'run': {'device': ['cuda']}})
+            # a value of its own keeps the sections, the card's values win
+            card.set('cluster.enable', False)
+            card.set('cluster.train_queue', 'short')
+            card.write(path)
+            card = bannermod.RunCardMG7(path)
+            self.assertEqual(card['cluster.train_queue'], 'short')
+            self.assertEqual(written(card)['cluster']['type'], 'slurm')
 
     def test_cluster_pass_overrides(self):
         import io

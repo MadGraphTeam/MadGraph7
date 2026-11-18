@@ -7208,6 +7208,9 @@ class RunCardMG7(RunCard):
     # the [cluster_<pass>] sections of the run card: run card settings of the
     # jobs of one pass of the cluster mode, which override the main ones
     cluster_passes = ('train', 'deploy')
+    # written in place of the cluster sections while they are left out of the card
+    CLUSTER_SECTIONS_HINT = ('# run on a batch system: "set cluster.enable true" '
+                             'adds the [cluster] settings\n')
 
     # energy units, expressed in GeV (the unit everything is stored in); the
     # typed parameters carrying an energy dimension are declared energy=True
@@ -7954,6 +7957,37 @@ class RunCardMG7(RunCard):
         self.dynamic_sections['histograms'] = collections.OrderedDict()
         for name in self.cluster_passes:
             self.dynamic_sections['cluster_%s' % name] = collections.OrderedDict()
+        self.apply_site_cluster_defaults()
+
+    @property
+    def cluster_section_names(self):
+        return ['cluster'] + ['cluster_%s' % name for name in self.cluster_passes]
+
+    def apply_site_cluster_defaults(self):
+        """Take the defaults of the cluster sections from the site default
+        card (input/default_run_card_mg7.toml), since the cluster setup is
+        site-specific. A card without these sections gets them at every load,
+        so that they hold when the cluster mode is enabled later."""
+        self.site_cluster_passes = {
+            name: collections.OrderedDict() for name in self.cluster_passes}
+        if not self.default_run_card or not os.path.exists(self.default_run_card):
+            return
+        import tomllib
+        try:
+            with open(self.default_run_card, 'rb') as fsock:
+                data = tomllib.load(fsock)
+            self.read_data({section: content for section, content in data.items()
+                            if section.lower() in self.cluster_section_names})
+        except Exception as error:
+            logger.warning("cluster settings of %s ignored: %s",
+                           self.default_run_card, error)
+            return
+        for key in self.toml_sections['cluster']:
+            internal = 'cluster.%s' % key
+            self.toml_defaults[internal] = copy.deepcopy(self[internal])
+        for name in self.cluster_passes:
+            self.site_cluster_passes[name] = copy.deepcopy(
+                self.dynamic_sections['cluster_%s' % name])
 
     # ------------------------------------------------------------------
     # access: nested section views
@@ -9151,6 +9185,10 @@ class RunCardMG7(RunCard):
             text = text.replace('$%s' % section,
                                 self.format_dynamic_section(section))
 
+        if not self.show_cluster_sections():
+            text = self.remove_sections(
+                text, self.cluster_section_names, self.CLUSTER_SECTIONS_HINT)
+
         text = text.replace('$custom_function_parameters\n',
                             self.format_custom_parameters() + '\n'
                             if self.custom_function_parameters else '')
@@ -9167,6 +9205,32 @@ class RunCardMG7(RunCard):
                 fsock.write(text)
         else:
             output_file.write(text)
+
+    def show_cluster_sections(self):
+        """Whether the card shows the cluster sections: with the cluster mode
+        enabled, or once one of their settings differs from the site default
+        (see apply_site_cluster_defaults()), so that a rewrite keeps it."""
+        if self['cluster.enable']:
+            return True
+        if any(self.dynamic_sections['cluster_%s' % name] != self.site_cluster_passes[name]
+               for name in self.cluster_passes):
+            return True
+        return any(self['cluster.%s' % key] != self.toml_defaults.get('cluster.%s' % key)
+                   for key in self.toml_sections['cluster'])
+
+    @staticmethod
+    def remove_sections(text, sections, hint=''):
+        """Remove the ``sections`` of a rendered card, each up to the next table
+        header, and put ``hint`` in place of the first one."""
+        for i, section in enumerate(sections):
+            header = re.search(r'^\[%s\][ \t]*\n' % re.escape(section), text, re.M)
+            if not header:
+                continue
+            following = re.search(r'^\[', text[header.end():], re.M)
+            end = header.end() + following.start() if following else len(text)
+            text = text[:header.start()] + (hint + '\n' if i == 0 and hint else '') \
+                + text[end:]
+        return text
 
     def add_hidden_parameters(self, text, in_template):
         """Add to the rendered card the hidden parameters (those with no line

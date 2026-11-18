@@ -149,7 +149,9 @@ See :doc:`gridpacks` for details.
 ---------
 
 Cluster mode trains the subprocesses and generates the events in parallel batch jobs.
-It is off by default. See :doc:`cluster` for how it works.
+It is off by default, and then this section, ``[cluster_train]`` and ``[cluster_deploy]``
+are left out of the card until ``set cluster.enable true`` (or one of their settings differs
+from the site default in ``input/default_run_card_mg7.toml``, where their defaults come from). See :doc:`cluster` for how it works.
 
 ``enable`` (``false``)
     Run on a batch system. Independent of the ``run_mode`` of the MadGraph configuration.
