@@ -2340,6 +2340,31 @@ class NativeExecutor:
             self._scaleless.append(built)
         return self._scaleless[0]
 
+    def prepare(
+        self,
+        precision: Any,
+        reduction: str,
+        *,
+        unchecked: bool = False,
+        scaleless: bool = False,
+    ) -> None:
+        """Build what this executor's first call in ``precision``'s carrier
+        with ``reduction`` ("ninjars" or "tirust") would build lazily, without
+        evaluating a point (``V2Executor.warm``): its native executor of the
+        carrier, the carrier's tree runtime, the backend and, through one
+        synthetic lane per (propagators, rank) class of the plan, what the
+        backend's first reductions build, in the ``unchecked`` mode; with
+        ``scaleless`` also the certified-scaleless companion's (which the "uv"
+        and "ir" pole selections run). Kept for the executor's lifetime; later
+        values are unchanged."""
+
+        arithmetic, digits = self._arithmetic(precision, False)
+        executors = [self]
+        if scaleless and self.scaleless is not None:
+            executors.append(self.scaleless)
+        for executor in executors:
+            executor.native(arithmetic, digits).warm(reduction, unchecked=unchecked)
+
     def lanes_for(self, arithmetic: Arithmetic, points: int | None) -> int:
         """Lanes per chunk: the configured count in every carrier and for
         every batch size. The native executor runs a batch's last partial

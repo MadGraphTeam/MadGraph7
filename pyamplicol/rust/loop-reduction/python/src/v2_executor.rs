@@ -274,6 +274,36 @@ struct Bounds {
     fill_points: Option<usize>,
 }
 
+/// Build the carrier's tree runtime of `trees` now unless it is built
+/// (`V2Executor.warm`; what [`Trees::bind`] builds on first use).
+fn warm_trees<T: Exchanged + Real + TreeCarrier + Send + Sync>(
+    py: Python<'_>,
+    executor: &Executor,
+    trees: &Trees,
+    zero: &T,
+) -> PyResult<()>
+where
+    Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+    TreeRuntime<T>: Send,
+{
+    let mut guard = trees
+        .runtime
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !guard
+        .as_ref()
+        .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>())
+    {
+        // On the executor's pool, as an evaluation builds it.
+        let program = &trees.program;
+        let built = py
+            .detach(|| executor.install(|| program.runtime(zero)))
+            .map_err(error)?;
+        *guard = Some(Box::new(built));
+    }
+    Ok(())
+}
+
 impl Trees {
     /// The batch's bound parameters (`TreeProgram::bind`) and the carrier's
     /// tree runtime, built on first use.
@@ -1789,6 +1819,96 @@ impl V2Executor {
         )?;
         backend.set_unchecked(unchecked);
         Ok(backend.plans())
+    }
+
+    /// Build now what this executor's first evaluation in its carrier would
+    /// build lazily, without evaluating a point of the process (the warm
+    /// entry: `plan_export.NativeExecutor.prepare`): the carrier's tree
+    /// runtime (its kernels' evaluators, or their plane applications in
+    /// binary64), the families' walk data (and dependent columns), the
+    /// `reduction` backend as an evaluation builds it
+    /// (TIRust: its plans at the default target, unless
+    /// `prepare_reduction` set another) and, through one synthetic lane per
+    /// (propagators, rank) class of the plan that the backend admits, what
+    /// its first reductions build (NinjaRS: each class's engine, whose
+    /// generic engine builds its cut expansions on its first evaluation in
+    /// double-double and arbitrary precision; TIRust: its workspaces), in
+    /// the `unchecked` mode (None: off; `evaluate` sets the mode per call)
+    /// with every master pole kept, as `evaluate` reduces by default
+    /// (`runtime::warm_backend`). What it builds is shared with the
+    /// executors derived with the same carrier and engine
+    /// (`SharedBackends`, the tree runtime) and kept for their lifetime.
+    /// The values of every later evaluation are unchanged.
+    #[pyo3(signature = (reduction="ninjars", *, unchecked=None))]
+    fn warm(&mut self, py: Python<'_>, reduction: &str, unchecked: Option<bool>) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
+        let reduction = Reduction::parse(reduction).map_err(error)?;
+        if matches!(self.carrier, Carriers::Exact | Carriers::Prime) {
+            return Err(error("the exact carrier dresses numerators only"));
+        }
+        let unchecked =
+            unchecked.unwrap_or(rusticol_loop_reduction::reduction_policy::DEFAULT_UNCHECKED);
+        let bits = self.bits()?;
+        if let Some(trees) = &self.trees {
+            match self.carrier {
+                Carriers::Double => warm_trees(py, &self.executor, trees, &0.0)?,
+                Carriers::DoubleDouble => {
+                    warm_trees(py, &self.executor, trees, &DoubleFloat::from(0.0))?
+                }
+                Carriers::Arbitrary(_) => {
+                    warm_trees(py, &self.executor, trees, &Float::with_val(bits, 0))?
+                }
+                Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
+            }
+        }
+        // The families' walk data and (dressed rows) dependent columns, which
+        // the first walk and reduction of each family derive (carrier-free:
+        // shared by every executor of the plan).
+        {
+            let executor = &self.executor;
+            let plan = executor.plan();
+            py.detach(|| {
+                executor.install(|| {
+                    for family in &plan.families {
+                        family.walk.get_or_init(|| plan.walk_of(family));
+                        if plan.dressed {
+                            family.dependents.get_or_init(|| plan.dependents_of(family));
+                        }
+                    }
+                })
+            });
+        }
+        let classes: Vec<(usize, usize)> = runtime::plan_histogram(self.executor.plan())
+            .into_iter()
+            .filter(|&(n, rank)| runtime::rank_refusal(reduction, n, rank).is_none())
+            .collect();
+        let mut taken = self.backends.take();
+        let backend = backend_of(
+            &mut taken.slots,
+            self.carrier,
+            &self.engine,
+            reduction,
+            self.executor.plan(),
+        )?;
+        backend
+            .set_masters(v2::master_selection("both")?)
+            .map_err(error)?;
+        backend.set_unchecked(unchecked);
+        let carrier = self.carrier;
+        let executor = &self.executor;
+        py.detach(|| {
+            executor.install(|| match carrier {
+                Carriers::Double => runtime::warm_backend(backend, &classes, &0.0),
+                Carriers::DoubleDouble => {
+                    runtime::warm_backend(backend, &classes, &DoubleFloat::from(0.0))
+                }
+                Carriers::Arbitrary(_) => {
+                    runtime::warm_backend(backend, &classes, &Float::with_val(bits, 0))
+                }
+                Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
+            })
+        })
+        .map_err(error)
     }
 
     /// Whether the executor has a tree program (native inputs).

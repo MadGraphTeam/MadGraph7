@@ -493,3 +493,215 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
         Ok((read(output.direct)?, output.check.map(read).transpose()?))
     }
 }
+
+/// Build now what a backend's first reductions of the (propagators, rank)
+/// classes `classes` (the plan's declared ones) would build lazily, in the
+/// carrier of `zero`, without reducing a point of the process (the warm
+/// entry, `V2Executor.warm`): NinjaRS's engine of each class (binary64: its
+/// fast amplitude and tensor numerator; the extended carriers: its generic
+/// engine, whose cut expansions are built by the first evaluation), TIRust's
+/// plans and workspaces. NinjaRS buckets a lane by its true rank (the
+/// highest monomial degree with a nonzero coefficient, `true_rank`), which a
+/// numerator's structural zeros put below its family's declared rank: its
+/// engines are built for every rank up to the declared one. One synthetic
+/// lane per class (a fixed generic massive
+/// configuration with exact rational inputs cast to the carrier, unit-size
+/// coefficients) runs through the backend's own `reduce` in its current
+/// mode, and its outcome is dropped; the master cache and the counters it
+/// filled are reset after (`begin`, `take_statistics`, `take_lane_measures`),
+/// so the next call reports and caches only its own lanes. A later
+/// reduction's values do not depend on it: every lane's outcome is a
+/// function of its own inputs (the engines' caches are keyed by them).
+pub fn warm<T>(backend: &mut V2Backends, classes: &[(usize, usize)], zero: &T) -> RusticolResult<()>
+where
+    T: TypedBatch + rusticol_core::loop_v2::dress::Carrier,
+    V2Backends: V2Backend<T>,
+{
+    let classes: std::collections::BTreeSet<(usize, usize)> = match backend {
+        V2Backends::NinjaRs(_) => classes
+            .iter()
+            .flat_map(|&(n, rank)| (0..=rank).map(move |r| (n, r)))
+            .collect(),
+        #[cfg(feature = "tir")]
+        V2Backends::TiRust(_) => classes.iter().copied().collect(),
+    };
+    let groups = classes
+        .iter()
+        .map(|&(n, rank)| synthetic_lane(n, rank, zero, 0))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    V2Backend::<T>::begin(backend);
+    // One class per call: a class the backend refuses (its typed refusal)
+    // is the caller's error, as in an evaluation.
+    for group in &groups {
+        V2Backend::<T>::reduce(backend, std::slice::from_ref(group), Poles::All, None)?;
+    }
+    V2Backend::<T>::begin(backend);
+    let _ = V2Backend::<T>::take_statistics(backend);
+    let _ = V2Backend::<T>::take_lane_measures(backend);
+    Ok(())
+}
+
+/// One synthetic reduction lane of `n` propagators and rank `rank` in the
+/// carrier of `zero` ([`warm`]): shifts `q_0 = 0` and `q_k` in general
+/// position (`variant` moves them), distinct positive squared masses, the
+/// invariants `(q_i - q_j)^2`, unit scale and `O(1)` coefficients, every
+/// value an exact rational cast to the carrier (at its precision).
+fn synthetic_lane<T>(
+    n: usize,
+    rank: usize,
+    zero: &T,
+    variant: i64,
+) -> RusticolResult<FamilyLanes<T>>
+where
+    T: TypedBatch + rusticol_core::loop_v2::dress::Carrier,
+{
+    use ninjars::fast::tensor_layout::ncoeff;
+    use rusticol_core::loop_execution::v2::LaneKey;
+    use rusticol_core::loop_v2::dress::{cast, parse_rational};
+    use symbolica::domains::rational::Rational;
+
+    let exact = |numerator: i64, denominator: i64| -> RusticolResult<T> {
+        Ok(cast(
+            zero,
+            &parse_rational(&format!("{numerator}/{denominator}"))?,
+        ))
+    };
+    let complex = |re: T| Complex::new(re, zero.clone());
+    let shift = |k: usize, mu: usize| -> (i64, i64) {
+        if k == 0 {
+            return (0, 1);
+        }
+        let k = k as i64 + variant;
+        match mu {
+            0 => (3 * k * k + 5 * k + 2, 7),
+            1 => (2 * k + 1, 3 + k),
+            2 => (5 - 3 * k, 11),
+            _ => (k * k - 4, 13 + 2 * k),
+        }
+    };
+    let mut shifts = Vec::with_capacity(4 * n);
+    for k in 0..n {
+        for mu in 0..4 {
+            let (a, b) = shift(k, mu);
+            shifts.push(complex(exact(a, b)?));
+        }
+    }
+    let mut s_matrix = Vec::with_capacity(n * n);
+    for i in 0..n {
+        for j in 0..n {
+            // (q_i - q_j)^2 exactly: a rational of the shifts.
+            let mut square = Rational::from(0);
+            for mu in 0..4 {
+                let (a, b) = shift(i, mu);
+                let (c, d) = shift(j, mu);
+                let difference = parse_rational(&format!("{}/{}", a * d - c * b, b * d))?;
+                let term = difference.clone() * &difference;
+                square += &if mu == 0 {
+                    term
+                } else {
+                    Rational::from(0) - term
+                };
+            }
+            s_matrix.push(complex(cast(zero, &square)));
+        }
+    }
+    let masses = (0..n)
+        .map(|k| Ok(complex(exact(17 + 6 * (k as i64 + variant), 13)?)))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let coefficients = (0..ncoeff(rank))
+        .map(|c| {
+            let c = c as i64 + variant;
+            Ok(complex(exact(1 + c % 5, 2 + c % 3)?))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    Ok(FamilyLanes {
+        family: 0,
+        propagators: n,
+        rank,
+        points: vec![0],
+        keys: vec![LaneKey {
+            family: 0,
+            order: 0,
+            column: 0,
+        }],
+        shifts,
+        masses,
+        scales: vec![complex(exact(1, 1)?)],
+        s_matrix,
+        coefficients,
+    })
+}
+
+#[cfg(test)]
+mod warm_tests {
+    use super::*;
+    use symbolica::domains::float::DoubleFloat;
+
+    fn ninjars(arithmetic: &str, engine: &str) -> V2Backends {
+        V2Backends::NinjaRs(V2ReductionBackend {
+            reducer: V2Reducer::new(arithmetic, None, engine, true).expect("reducer"),
+            masters: PoleSelection::BOTH,
+        })
+    }
+
+    /// The outcomes of `lanes` reduced by `backend`, as text (exact: the
+    /// carriers' `Debug` forms).
+    fn reduced<T>(backend: &mut V2Backends, lanes: &[FamilyLanes<T>]) -> String
+    where
+        T: TypedBatch + rusticol_core::loop_v2::dress::Carrier,
+        V2Backends: V2Backend<T>,
+    {
+        V2Backend::<T>::begin(backend);
+        let out = V2Backend::<T>::reduce(backend, lanes, Poles::All, None).expect("reduce");
+        format!("{:?}", out.0)
+    }
+
+    fn check<T>(make: impl Fn() -> V2Backends, zero: &T, classes: &[(usize, usize)], lower: bool)
+    where
+        T: TypedBatch + rusticol_core::loop_v2::dress::Carrier,
+        V2Backends: V2Backend<T>,
+    {
+        // Other configurations than the warm lanes', declared and lower ranks.
+        let lanes: Vec<FamilyLanes<T>> = classes
+            .iter()
+            .flat_map(|&(n, rank)| {
+                let below = (lower && rank > 0).then(|| (n, rank - 1));
+                std::iter::once((n, rank)).chain(below)
+            })
+            .map(|(n, rank)| synthetic_lane(n, rank, zero, 3).expect("lane"))
+            .collect();
+        let cold = reduced(&mut make(), &lanes);
+        let mut warmed = make();
+        warm(&mut warmed, classes, zero).expect("warm");
+        assert_eq!(reduced(&mut warmed, &lanes), cold);
+        assert!(cold.contains("Ok("), "the test lanes reduce: {cold}");
+    }
+
+    #[test]
+    fn a_warmed_backend_reduces_bit_identically() {
+        let _unlock = pyamplicol::unlock();
+        let classes = [(2, 2), (3, 3), (4, 4)];
+        // NinjaRS buckets a lane by its true rank: lanes below the
+        // declared ranks too.
+        check(|| ninjars("double", "fast"), &0.0, &classes, true);
+        check(
+            || ninjars("double-double", "generic"),
+            &DoubleFloat::from(0.0),
+            &classes,
+            true,
+        );
+        #[cfg(feature = "tir")]
+        {
+            let histogram: std::collections::BTreeSet<_> = classes.into_iter().collect();
+            let tir = || {
+                V2Backends::tirust(
+                    histogram.clone(),
+                    53,
+                    crate::reduction_policy::DEFAULT_TARGET,
+                )
+                .expect("tirust")
+            };
+            check(tir, &0.0, &classes, false);
+        }
+    }
+}

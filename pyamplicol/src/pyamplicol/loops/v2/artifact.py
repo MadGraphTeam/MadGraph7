@@ -3125,6 +3125,52 @@ class V2VirtualRuntime:
             if self._observables is not None:
                 self._observables.set_model_parameters(parameters)
 
+    def prepare(
+        self,
+        *,
+        arithmetic: str | None = None,
+        precision: int | None = None,
+        reduction: str = "auto",
+        unchecked: bool = False,
+        poles: str | bool = "all",
+    ) -> None:
+        """Build what the first evaluation in a carrier (``arithmetic`` and
+        ``precision`` as for ``evaluate``) with ``reduction`` builds lazily,
+        without evaluating a point (the warm entry, ``V2Executor.warm``): the
+        carrier's native executor and tree runtime, the reduction backend and
+        what its first reductions build (NinjaRS's engine per (propagators,
+        rank) class, every rank up to the declared one since it buckets lanes
+        by their true rank, its generic engine's cut expansions in
+        double-double and arbitrary precision; TIRust's plans and
+        workspaces), in the
+        ``unchecked`` mode of the calls to come (the binary64 engine keeps one
+        per mode). ``reduction`` "ninjars" or "tirust", or "auto": every
+        backend the process admits (an "auto" call may run either). ``poles``
+        "uv" or "ir" also prepares the certified-scaleless companion those
+        selections run. A later call's first evaluation then costs as the
+        ones after it; values are unchanged. ``clear`` drops what it built."""
+
+        from .reduction import BACKENDS
+
+        _carrier, setting = self._carrier(arithmetic, precision)
+        if reduction == "auto":
+            backends = sorted(BACKENDS if self._admitted is None else self._admitted)
+        elif reduction in BACKENDS:
+            backends = [reduction]
+        else:
+            raise ValueError(
+                f"reduction must be 'auto' or one of {sorted(BACKENDS)}; "
+                f"got {reduction!r}"
+            )
+        with self._lock:
+            for backend in backends:
+                self._executor.prepare(
+                    setting,
+                    backend,
+                    unchecked=bool(unchecked),
+                    scaleless=poles in ("uv", "ir"),
+                )
+
     def clear(self) -> None:
         """Drop the native executors (and their master caches)."""
         with self._lock:
