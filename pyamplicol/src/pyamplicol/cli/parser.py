@@ -336,6 +336,17 @@ def _add_process_grouping_options(
                 "symmetries of the allowed model vertices and generate the others"
             ),
         )
+        parser.add_argument(
+            "--flavor-unions",
+            dest="process.flavor_unions",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help=(
+                "with --flavor-blind-strict, join flavour classes that differ "
+                "only in massless quark flavours into flavour unions (in "
+                "development)"
+            ),
+        )
     parser.add_argument(
         "--consider-charge-conjugation",
         dest="process.consider_charge_conjugation",
