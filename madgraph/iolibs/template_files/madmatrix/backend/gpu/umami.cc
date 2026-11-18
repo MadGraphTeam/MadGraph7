@@ -176,9 +176,9 @@ namespace
     if( amp2_out )
     {
       double denominator = denominators[i_event];
-      for( std::size_t i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
+      for( int i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
       {
-        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_event * ProcessData::ndiagrams + i_diag], denominator );
+        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[numeratorsIndex( i_event, i_diag )], denominator );
       }
     }
     if( diagram_out ) diagram_out[i_event + offset] = diagram_index[i_event] - 1;
@@ -775,7 +775,7 @@ extern "C"
         {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor_flow * sizeof( fptype_amp )},
         // The numerators are accumulated in place over all helicities via atomicAdd (no helicity dimension),
         // and the denominators are derived from them, so neither buffer carries the ncomb factor anymore.
-        {reinterpret_cast<void**>(&numerators), rounded_count * ProcessData::ndiagrams * sizeof( fptype_amp )},
+        {reinterpret_cast<void**>(&numerators), numeratorsBufferSize( rounded_count ) * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&denominators), rounded_count * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
