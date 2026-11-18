@@ -591,6 +591,58 @@ c     Check for common graphs
       end
 
 
+      subroutine relabel_jet_legs(flavor)
+c**************************************************************************
+c     Label the jet quark legs of the graphs found by cluster (igraphs)
+c     with the coupling class of this event.
+c     Map the quark legs (and merged 81 legs) to the representative of the
+c     coupling class of this event: FLAVOR(i) is the position of that
+c     representative in the merged quark group, which is its pdg since the
+c     quarks are always merged in pdg order (1,2,...). It is NOT the flavour
+c     of the event (s s~ > z gives 1, c c~ > z gives 2): the flavour
+c     combination (IPSEL) is only drawn after the scales are set, and rewgt
+c     sets the external identities to it after clustering.
+c     Only the jet quark legs are mapped, identified by their (fixed) pdg in
+c     the first flavour row: FLAVOR is 1 on a leg that is not merged, so a
+c     top (or a b with maxjetflavor=4) would otherwise be clustered as a d
+c     quark. The current label cannot be used for that test, since a merged
+c     leg keeps the class of the previous event (up to 6 for a massless
+c     top merged in 81). A merged leg is a jet in every row or in none
+c     (rewgt stops otherwise when ickkw>0).
+c     Only the graphs in igraphs are relabelled: the external-leg labels
+c     are read for igraphs(1) only (setclscales, rewgt), and nothing in
+c     cluster reads them. Relabelling every graph at every call cost more
+c     than the clustering itself for subprocesses with many graphs.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      include 'maxamps.inc'
+      include 'cluster.inc'
+      include 'cuts.inc'
+      integer flavor(nexternal)
+      integer i, k, igraph, tmppdg
+      integer idup(nexternal,maxproc,maxsproc)
+      integer mothup(2,nexternal)
+      integer icolup(2,nexternal,maxflow,maxsproc)
+      include 'leshouche.inc'
+      integer imirror, iproc
+      common/to_mirror/imirror, iproc
+
+      do i=1,nexternal
+         tmppdg=abs(idup(i,1,iproc))
+         if(flavor(i).ge.1.and.flavor(i).le.6.and.
+     $        tmppdg.ge.1.and.tmppdg.le.maxjetflavor)then
+            do k=1,igraphs(0)
+               igraph=igraphs(k)
+               if(ipdgcl(ishft(1,i-1),igraph,iproc).ne.0)
+     $              ipdgcl(ishft(1,i-1),igraph,iproc)=
+     $              sign(flavor(i),idup(i,1,iproc))
+            enddo
+         endif
+      enddo
+      end
+
+
       logical function cluster(p, flavor, ivec)
 c**************************************************************************
 c     input:
@@ -663,31 +715,6 @@ c     initialize index map
       enddo
       mt2last=0
       minpt2ij=1.0d37
-c     Map the quark legs (and merged 81 legs) to the representative of the
-c     coupling class of this event: FLAVOR(i) is the position of that
-c     representative in the merged quark group, which is its pdg since the
-c     quarks are always merged in pdg order (1,2,...). It is NOT the flavour
-c     of the event (s s~ > z gives 1, c c~ > z gives 2): the flavour
-c     combination (IPSEL) is only drawn after the scales are set, and rewgt
-c     sets the external identities to it after clustering.
-c     Only the jet quark legs are mapped, identified by their (fixed) pdg in
-c     the first flavour row: FLAVOR is 1 on a leg that is not merged, so a
-c     top (or a b with maxjetflavor=4) would otherwise be clustered as a d
-c     quark. The current label cannot be used for that test, since a merged
-c     leg keeps the class of the previous event (up to 6 for a massless
-c     top merged in 81). A merged leg is a jet in every row or in none
-c     (rewgt stops otherwise when ickkw>0).
-      do i=1,nexternal
-         tmppdg=abs(idup(i,1,iproc))
-         if(flavor(i).ge.1.and.flavor(i).le.6.and.
-     $        tmppdg.ge.1.and.tmppdg.le.maxjetflavor)then
-            do igraph=1,n_max_cg
-               if(ipdgcl(ishft(1,i-1),igraph,iproc).ne.0)
-     $              ipdgcl(ishft(1,i-1),igraph,iproc)=
-     $              sign(flavor(i),idup(i,1,iproc))
-            enddo
-         endif
-      enddo
 
       do i=1,nexternal
 c     initialize momenta
@@ -777,6 +804,7 @@ c        Set info for LH clustering output
          icluster(3,n,ivec)=2
          igraphs(0)=1
          igraphs(1)=this_config
+         call relabel_jet_legs(flavor)
          cluster=.true.
          clustered=.true.
          return
@@ -944,6 +972,7 @@ c              pt2ijcl(n+1)=pt2ijcl(n)
 c            endif
 c           Pick out the found graphs
 c            print *,'Clustering succeeded, found graph ',igscl(1)
+            call relabel_jet_legs(flavor)
             cluster=.true.
             clustered=.true.
             return
