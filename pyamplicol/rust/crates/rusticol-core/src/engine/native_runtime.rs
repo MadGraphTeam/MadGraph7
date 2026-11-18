@@ -1709,6 +1709,10 @@ impl NativeRuntime {
         let process = selection.public_expression.clone();
         let process_key = selection.requested_id.clone();
         let representative_process_id = selection.process.id.clone();
+        let flavour_union_patterns = selection
+            .process_group
+            .as_ref()
+            .and_then(|group| group.flavour_union_patterns.clone());
         let public_remap = selection.remaps_public_process();
         let nonidentity_permutation = selection
             .external_permutation
@@ -1831,6 +1835,19 @@ impl NativeRuntime {
             selector_simd_lane_width,
             correlated: None,
         };
+        if let Some(union) = flavour_union_patterns {
+            match &mut loaded.execution_lane {
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::Recurrence(runtime) => {
+                    runtime.select_flavour_union_patterns(&union.patterns, &union.signs)?;
+                }
+                _ => {
+                    return Err(RusticolError::compatibility(
+                        "flavour-union members require a recurrence-lane template",
+                    ));
+                }
+            }
+        }
         if let Some(path) = model_parameters_path {
             loaded.set_model_parameters_json(path)?;
         }
@@ -1966,6 +1983,15 @@ impl NativeRuntime {
                     .copied()
                     .enumerate()
                     .all(|(index, public_index)| index == public_index);
+            if selection
+                .process_group
+                .as_ref()
+                .is_some_and(|group| group.flavour_union_patterns.is_some())
+            {
+                return Err(RusticolError::compatibility(
+                    "flavour-union members require a recurrence-lane template",
+                ));
+            }
             let loaded = super::on_the_fly_load::load_on_the_fly_native_runtime(
                 &artifact,
                 &evaluator_root,
@@ -2251,6 +2277,15 @@ impl NativeRuntime {
     /// derived-parameter refresh logic. They are intentionally exposed only as
     /// an internal bridge; f64 evaluation continues to execute entirely in the
     /// Python-independent core.
+    /// Whether execution sums pairing-rule amplitudes of a flavour-union template.
+    pub fn flavour_union_pattern_resolved(&self) -> bool {
+        match &self.execution_lane {
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => runtime.is_pattern_resolved(),
+            _ => false,
+        }
+    }
+
     pub fn exact_runtime_state_json(&self) -> Result<String, RusticolError> {
         serde_json::to_string(&serde_json::json!({
             "model_parameter_values": self.runtime.model_parameter_values_f64,
@@ -2264,6 +2299,7 @@ impl NativeRuntime {
                 .map(|group| group.representative_process_key.as_str()),
             "process_group_factor": self.process_group_factor(),
             "charge_conjugated": self.charge_conjugated(),
+            "flavour_union_pattern_resolved": self.flavour_union_pattern_resolved(),
         }))
         .map_err(|error| {
             RusticolError::serialization(format!(

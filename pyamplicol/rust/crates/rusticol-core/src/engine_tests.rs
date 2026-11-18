@@ -1086,6 +1086,7 @@ fn conjugated_member_selection(physics: &ProcessPhysicsV1) -> crate::ArtifactSel
         factor_denominator: 2,
         conjugated: true,
         external_particles: ["s~", "s", "a", "z", "g"].map(str::to_string).to_vec(),
+        flavour_union_patterns: None,
     });
     selection
 }

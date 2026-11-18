@@ -12,9 +12,9 @@ use crate::recurrence::direct_backend::{
     DirectExecutionCounters, DirectExecutionRoleTimings, DirectExecutorCatalog,
 };
 use crate::recurrence::direct_runtime::{
-    DirectAmplitudeOrderSplit, DirectRecurrenceExecutionRuntime, DirectRecurrenceTileOutput,
-    DirectReplaySelectorPlan, DirectRuntimeActivityCounters, DirectRuntimePhaseTimings,
-    DirectUnionHelicitySelectorPlan,
+    DirectAmplitudeOrderSplit, DirectRecurrenceAmplitudeView, DirectRecurrenceExecutionRuntime,
+    DirectRecurrenceTileOutput, DirectReplaySelectorPlan, DirectRuntimeActivityCounters,
+    DirectRuntimePhaseTimings, DirectUnionHelicitySelectorPlan,
 };
 use crate::recurrence::on_the_fly::{
     PersistedHelicityAmplitudeTileV1, PersistedHelicityFamilyCacheCensusV1,
@@ -64,6 +64,139 @@ pub(super) struct RecurrenceNativeRuntime {
     helicity_selector_companion: Option<RecurrencePersistedHelicitySelectorRuntime>,
     order_catalog: AmplitudeOrderCatalog,
     order_state: Option<RecurrenceOrderState>,
+    pattern_selection: Option<PatternSelection>,
+}
+
+/// Signed pattern subset of a pattern-resolved (flavour-union) template.
+///
+/// Amplitudes of one sector and helicity are summed over the selected
+/// patterns before squaring; the template alone selects every pattern with +1.
+pub(super) struct PatternSelection {
+    destination_patterns: Box<[u32]>,
+    signs: Box<[f64]>,
+    combined_re: Vec<f64>,
+    combined_im: Vec<f64>,
+}
+
+impl PatternSelection {
+    fn for_plan(plan: &DirectRecurrencePlan) -> Option<Self> {
+        let patterns = plan.destination_patterns();
+        patterns.is_pattern_resolved().then(|| Self {
+            destination_patterns: patterns.destination_patterns.clone().into_boxed_slice(),
+            signs: vec![1.0; patterns.pattern_count as usize].into_boxed_slice(),
+            combined_re: Vec::new(),
+            combined_im: Vec::new(),
+        })
+    }
+
+    fn select(&mut self, patterns: &[u32], signs: &[i32]) -> RusticolResult<()> {
+        if patterns.is_empty() || patterns.len() != signs.len() {
+            return Err(RusticolError::artifact(
+                "flavour-union member requires one sign per selected pattern",
+            ));
+        }
+        let mut selected = vec![0.0; self.signs.len()];
+        for (pattern, sign) in patterns.iter().zip(signs) {
+            let slot = selected.get_mut(*pattern as usize).ok_or_else(|| {
+                RusticolError::artifact(format!(
+                    "flavour-union member pattern {pattern} is outside the template catalog"
+                ))
+            })?;
+            if *slot != 0.0 || !matches!(sign, -1 | 1) {
+                return Err(RusticolError::artifact(
+                    "flavour-union member patterns must be distinct with signs +1 or -1",
+                ));
+            }
+            *slot = f64::from(*sign);
+        }
+        self.signs = selected.into_boxed_slice();
+        Ok(())
+    }
+
+    /// Visit each (sector, helicity) group once with the signed pattern sum.
+    fn visit<'a>(
+        &mut self,
+        amplitudes: impl Iterator<Item = RusticolResult<DirectRecurrenceAmplitudeView<'a>>>,
+        point_count: usize,
+        mut visit: impl FnMut(
+            &DirectAmplitudeDestinationDescriptor,
+            &[f64],
+            &[f64],
+        ) -> RusticolResult<()>,
+    ) -> RusticolResult<()> {
+        self.combined_re.resize(point_count, 0.0);
+        self.combined_im.resize(point_count, 0.0);
+        let (re, im) = (
+            &mut self.combined_re[..point_count],
+            &mut self.combined_im[..point_count],
+        );
+        let mut group = None::<&DirectAmplitudeDestinationDescriptor>;
+        let mut active = false;
+        for amplitude in amplitudes {
+            let amplitude = amplitude?;
+            let destination = amplitude.destination;
+            if group.is_some_and(|first| {
+                (first.target_sector_id, first.target_helicity_id_or_sentinel)
+                    != (
+                        destination.target_sector_id,
+                        destination.target_helicity_id_or_sentinel,
+                    )
+            }) {
+                if active {
+                    visit(group.expect("active group"), re, im)?;
+                }
+                active = false;
+                group = None;
+            }
+            group.get_or_insert(destination);
+            let pattern = self
+                .destination_patterns
+                .get(destination.id as usize)
+                .ok_or_else(|| RusticolError::integrity("destination has no pattern"))?;
+            let sign = self.signs[*pattern as usize];
+            if sign == 0.0 {
+                continue;
+            }
+            let (real, imaginary) = (
+                &amplitude.real[..point_count],
+                &amplitude.imaginary[..point_count],
+            );
+            if active {
+                for point in 0..point_count {
+                    re[point] = sign.mul_add(real[point], re[point]);
+                    im[point] = sign.mul_add(imaginary[point], im[point]);
+                }
+            } else {
+                for point in 0..point_count {
+                    re[point] = sign * real[point];
+                    im[point] = sign * imaginary[point];
+                }
+                active = true;
+            }
+        }
+        if active {
+            visit(group.expect("active group"), re, im)?;
+        }
+        Ok(())
+    }
+}
+
+/// Visit LC amplitudes per destination, or per pattern-combined group.
+#[inline(always)]
+fn visit_lc_amplitudes<'a>(
+    patterns: Option<&mut PatternSelection>,
+    amplitudes: impl Iterator<Item = RusticolResult<DirectRecurrenceAmplitudeView<'a>>>,
+    point_count: usize,
+    mut visit: impl FnMut(&DirectAmplitudeDestinationDescriptor, &[f64], &[f64]) -> RusticolResult<()>,
+) -> RusticolResult<()> {
+    if let Some(patterns) = patterns {
+        return patterns.visit(amplitudes, point_count, visit);
+    }
+    for amplitude in amplitudes {
+        let amplitude = amplitude?;
+        visit(amplitude.destination, amplitude.real, amplitude.imaginary)?;
+    }
+    Ok(())
 }
 
 pub(super) struct RecurrencePersistedHelicitySelectorRuntime {
@@ -712,6 +845,7 @@ impl RecurrenceNativeRuntime {
         }
         let backend_name = backend_owner.summary().backend.clone();
         let strategy = plan.strategy();
+        let pattern_selection = PatternSelection::for_plan(&plan);
         let order_catalog = AmplitudeOrderCatalog::from_plan(plan.amplitude_orders())?;
         let has_color_contraction = color_contraction.is_some();
         if public_flow_ids.is_empty() && strategy != RecurrenceStrategy::ContractedColorUnion {
@@ -921,7 +1055,28 @@ impl RecurrenceNativeRuntime {
             helicity_selector_companion,
             order_catalog,
             order_state: None,
+            pattern_selection,
         })
+    }
+
+    pub(super) const fn is_pattern_resolved(&self) -> bool {
+        self.pattern_selection.is_some()
+    }
+
+    /// Restrict a pattern-resolved template to one flavour-union member.
+    pub(super) fn select_flavour_union_patterns(
+        &mut self,
+        patterns: &[u32],
+        signs: &[i32],
+    ) -> RusticolResult<()> {
+        self.pattern_selection
+            .as_mut()
+            .ok_or_else(|| {
+                RusticolError::artifact(
+                    "flavour-union member patterns require a pattern-resolved recurrence template",
+                )
+            })?
+            .select(patterns, signs)
     }
 
     pub(super) fn amplitude_order_catalog(&self) -> &AmplitudeOrderCatalog {
@@ -1651,6 +1806,11 @@ impl RecurrenceNativeRuntime {
         if !reduction.color_is_computed(color_index) {
             return Ok(());
         }
+        if partials.is_some() && self.pattern_selection.is_some() {
+            return Err(RusticolError::compatibility(
+                "coupling-order partials are unavailable for pattern-resolved recurrence templates",
+            ));
+        }
         let color_weight = reduction.color(color_index).coefficient();
         let selected_replay =
             self.selected_replay_color_plan(reduction, selected_helicities, color_index)?;
@@ -1693,33 +1853,39 @@ impl RecurrenceNativeRuntime {
                 weights.clear();
             }
 
-            for amplitude in direct_output.selected_amplitudes() {
-                let amplitude = amplitude?;
-                let helicity_index = replay_destination_physics_helicity(
-                    replay_selector.helicity_map(),
-                    direct_helicity_to_physics,
-                    amplitude.destination.target_helicity_id_or_sentinel,
-                )?;
-                let helicity = reduction.helicity(helicity_index);
-                if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0 {
-                    continue;
-                }
-                let helicity_weight =
-                    reduction.helicity_orbit_weight(selected_helicities, helicity_index);
-                if helicity_weight == 0.0 {
-                    continue;
-                }
-                let weight = helicity_weight * color_weight * normalization_factor;
-                accumulate_lc_diagonal_amplitude(
-                    point_count,
-                    weight,
-                    |point| (amplitude.real[point], amplitude.imaginary[point]),
-                    |point, value| output[tile_start + point] += value,
-                );
-                if let Some(weights) = order_weights.as_deref_mut() {
-                    weights.push((amplitude.destination.id, weight));
-                }
-            }
+            visit_lc_amplitudes(
+                self.pattern_selection.as_mut(),
+                direct_output.selected_amplitudes(),
+                point_count,
+                |destination, real, imaginary| {
+                    let helicity_index = replay_destination_physics_helicity(
+                        replay_selector.helicity_map(),
+                        direct_helicity_to_physics,
+                        destination.target_helicity_id_or_sentinel,
+                    )?;
+                    let helicity = reduction.helicity(helicity_index);
+                    if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
+                    {
+                        return Ok(());
+                    }
+                    let helicity_weight =
+                        reduction.helicity_orbit_weight(selected_helicities, helicity_index);
+                    if helicity_weight == 0.0 {
+                        return Ok(());
+                    }
+                    let weight = helicity_weight * color_weight * normalization_factor;
+                    accumulate_lc_diagonal_amplitude(
+                        point_count,
+                        weight,
+                        |point| (real[point], imaginary[point]),
+                        |point, value| output[tile_start + point] += value,
+                    );
+                    if let Some(weights) = order_weights.as_deref_mut() {
+                        weights.push((destination.id, weight));
+                    }
+                    Ok(())
+                },
+            )?;
             if let Some(partials) = partials.as_deref_mut() {
                 let squared_count = self.order_catalog.squared_orders().len();
                 accumulate_lc_order_partials(
@@ -1978,31 +2144,38 @@ impl RecurrenceNativeRuntime {
                     )?;
 
                 let reduction_started = Instant::now();
-                for amplitude in output.selected_amplitudes() {
-                    let amplitude = amplitude?;
-                    let helicity_index = replay_destination_physics_helicity(
-                        replay_selector.helicity_map(),
-                        direct_helicity_to_physics,
-                        amplitude.destination.target_helicity_id_or_sentinel,
-                    )?;
-                    let helicity = reduction_view.helicity(helicity_index);
-                    if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
-                    {
-                        continue;
-                    }
-                    let helicity_weight =
-                        reduction_view.helicity_orbit_weight(selected_helicities, helicity_index);
-                    if helicity_weight == 0.0 {
-                        continue;
-                    }
-                    let weight = helicity_weight * color_weight * common.normalization_factor;
-                    accumulate_lc_diagonal_amplitude(
-                        point_count,
-                        weight,
-                        |point| (amplitude.real[point], amplitude.imaginary[point]),
-                        |point, value| values[tile_start + point] += value,
-                    );
-                }
+                visit_lc_amplitudes(
+                    self.pattern_selection.as_mut(),
+                    output.selected_amplitudes(),
+                    point_count,
+                    |destination, real, imaginary| {
+                        let helicity_index = replay_destination_physics_helicity(
+                            replay_selector.helicity_map(),
+                            direct_helicity_to_physics,
+                            destination.target_helicity_id_or_sentinel,
+                        )?;
+                        let helicity = reduction_view.helicity(helicity_index);
+                        if !helicity.computed
+                            || helicity.structural_zero
+                            || helicity.coefficient == 0.0
+                        {
+                            return Ok(());
+                        }
+                        let helicity_weight = reduction_view
+                            .helicity_orbit_weight(selected_helicities, helicity_index);
+                        if helicity_weight == 0.0 {
+                            return Ok(());
+                        }
+                        let weight = helicity_weight * color_weight * common.normalization_factor;
+                        accumulate_lc_diagonal_amplitude(
+                            point_count,
+                            weight,
+                            |point| (real[point], imaginary[point]),
+                            |point, value| values[tile_start + point] += value,
+                        );
+                        Ok(())
+                    },
+                )?;
                 reduction += reduction_started.elapsed();
                 tile_start = tile_stop;
             }
@@ -2126,38 +2299,52 @@ impl RecurrenceNativeRuntime {
                     )?;
 
                 let reduction_started = Instant::now();
-                for amplitude in output.selected_amplitudes() {
-                    let amplitude = amplitude?;
-                    let helicity_index = replay_destination_physics_helicity(
-                        replay_selector.helicity_map(),
-                        direct_helicity_to_physics,
-                        amplitude.destination.target_helicity_id_or_sentinel,
-                    )?;
-                    let helicity = reduction_view.helicity(helicity_index);
-                    if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
-                    {
-                        continue;
-                    }
-                    for physical_helicity in reduction_view.helicity_orbit_members(helicity_index) {
-                        let Some(helicity_position) = helicity_position[*physical_helicity] else {
-                            continue;
-                        };
-                        let weight = reduction_view.helicity(*physical_helicity).coefficient
-                            * color_weight
-                            * common.normalization_factor;
-                        accumulate_lc_diagonal_amplitude(
-                            point_count,
-                            weight,
-                            |point| (amplitude.real[point], amplitude.imaginary[point]),
-                            |point, value| {
-                                let target = output_layout
-                                    .index(tile_start + point, helicity_position, color_position)
-                                    .expect("validated resolved LC coordinate");
-                                values[target] += value;
-                            },
-                        );
-                    }
-                }
+                visit_lc_amplitudes(
+                    self.pattern_selection.as_mut(),
+                    output.selected_amplitudes(),
+                    point_count,
+                    |destination, real, imaginary| {
+                        let helicity_index = replay_destination_physics_helicity(
+                            replay_selector.helicity_map(),
+                            direct_helicity_to_physics,
+                            destination.target_helicity_id_or_sentinel,
+                        )?;
+                        let helicity = reduction_view.helicity(helicity_index);
+                        if !helicity.computed
+                            || helicity.structural_zero
+                            || helicity.coefficient == 0.0
+                        {
+                            return Ok(());
+                        }
+                        for physical_helicity in
+                            reduction_view.helicity_orbit_members(helicity_index)
+                        {
+                            let Some(helicity_position) = helicity_position[*physical_helicity]
+                            else {
+                                continue;
+                            };
+                            let weight = reduction_view.helicity(*physical_helicity).coefficient
+                                * color_weight
+                                * common.normalization_factor;
+                            accumulate_lc_diagonal_amplitude(
+                                point_count,
+                                weight,
+                                |point| (real[point], imaginary[point]),
+                                |point, value| {
+                                    let target = output_layout
+                                        .index(
+                                            tile_start + point,
+                                            helicity_position,
+                                            color_position,
+                                        )
+                                        .expect("validated resolved LC coordinate");
+                                    values[target] += value;
+                                },
+                            );
+                        }
+                        Ok(())
+                    },
+                )?;
                 reduction += reduction_started.elapsed();
                 tile_start = tile_stop;
             }
@@ -4721,6 +4908,68 @@ fn replay_mapped_direct_physics_helicity(
 #[cfg(test)]
 mod replay_destination_helicity_tests {
     use super::*;
+
+    #[test]
+    fn pattern_selection_sums_selected_patterns_per_sector_helicity_before_squaring() {
+        let destinations = [(0, 0), (0, 0), (0, 1), (1, 1)]
+            .into_iter()
+            .enumerate()
+            .map(
+                |(id, (sector, helicity))| DirectAmplitudeDestinationDescriptor {
+                    closure_row_start: 0,
+                    id: id as u32,
+                    target_sector_id: sector,
+                    target_helicity_id_or_sentinel: helicity,
+                    closure_row_count: 1,
+                    selector_domain_id: 0,
+                },
+            )
+            .collect::<Vec<_>>();
+        let real = [[1.0, 2.0], [10.0, 20.0], [3.0, 4.0], [5.0, 6.0]];
+        let imaginary = [[0.5, 0.0], [0.0, 1.0], [0.0, 0.0], [1.0, 1.0]];
+        let amplitudes = || {
+            destinations.iter().map(|destination| {
+                Ok(DirectRecurrenceAmplitudeView {
+                    destination,
+                    real: &real[destination.id as usize],
+                    imaginary: &imaginary[destination.id as usize],
+                })
+            })
+        };
+        let mut selection = PatternSelection {
+            destination_patterns: vec![0, 1, 1, 0].into_boxed_slice(),
+            signs: vec![1.0, 1.0].into_boxed_slice(),
+            combined_re: Vec::new(),
+            combined_im: Vec::new(),
+        };
+        let mut visited = Vec::new();
+        let mut collect =
+            |destination: &DirectAmplitudeDestinationDescriptor, re: &[f64], im: &[f64]| {
+                visited.push((destination.id, re.to_vec(), im.to_vec()));
+                Ok(())
+            };
+        selection.visit(amplitudes(), 2, &mut collect).unwrap();
+        assert_eq!(
+            visited,
+            [
+                (0, vec![11.0, 22.0], vec![0.5, 1.0]),
+                (2, vec![3.0, 4.0], vec![0.0, 0.0]),
+                (3, vec![5.0, 6.0], vec![1.0, 1.0]),
+            ]
+        );
+        visited.clear();
+        selection.select(&[1], &[-1]).unwrap();
+        selection.visit(amplitudes(), 2, &mut collect).unwrap();
+        assert_eq!(
+            visited,
+            [
+                (0, vec![-10.0, -20.0], vec![-0.0, -1.0]),
+                (2, vec![-3.0, -4.0], vec![-0.0, -0.0]),
+            ]
+        );
+        assert!(selection.select(&[2], &[1]).is_err());
+        assert!(selection.select(&[0, 0], &[1, 1]).is_err());
+    }
 
     fn auxiliary_physical_destinations(count: u32) -> Vec<DirectAmplitudeDestinationDescriptor> {
         (0..count)

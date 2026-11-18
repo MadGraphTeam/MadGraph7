@@ -305,6 +305,15 @@ pub struct ProcessGroupRelation {
     pub conjugated: bool,
     /// Member particle names in the public external order.
     pub external_particles: Vec<String>,
+    /// Flavour-union member: template pairing rules summed with these signs before squaring.
+    pub flavour_union_patterns: Option<FlavourUnionPatterns>,
+}
+
+/// Selected pairing rules of a pattern-resolved template and their signs.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FlavourUnionPatterns {
+    pub patterns: Vec<u32>,
+    pub signs: Vec<i32>,
 }
 
 impl ProcessGroupRelation {
@@ -2486,6 +2495,10 @@ struct ProcessGroupMemberRecord {
     permutation: Vec<usize>,
     conjugated: bool,
     generated: bool,
+    #[serde(default)]
+    flavour_union_patterns: Option<Vec<u32>>,
+    #[serde(default)]
+    flavour_union_pattern_signs: Option<Vec<i32>>,
 }
 
 #[derive(Deserialize)]
@@ -2514,6 +2527,7 @@ struct ProcessGroupMember {
     factor_numerator: u64,
     factor_denominator: u64,
     conjugated: bool,
+    flavour_union_patterns: Option<FlavourUnionPatterns>,
 }
 
 impl ProcessGroups {
@@ -2580,6 +2594,26 @@ impl ProcessGroups {
                         "process-group member {id:?} is listed more than once"
                     )));
                 }
+                let flavour_union_patterns = match (
+                    member.flavour_union_patterns,
+                    member.flavour_union_pattern_signs,
+                ) {
+                    (None, None) => None,
+                    (Some(patterns), Some(signs))
+                        if !member.generated
+                            && !patterns.is_empty()
+                            && patterns.len() == signs.len()
+                            && signs.iter().all(|sign| matches!(sign, -1 | 1))
+                            && patterns.iter().collect::<BTreeSet<_>>().len() == patterns.len() =>
+                    {
+                        Some(FlavourUnionPatterns { patterns, signs })
+                    }
+                    _ => {
+                        return Err(RusticolError::artifact(format!(
+                            "process-group member {id:?} has invalid flavour-union patterns"
+                        )));
+                    }
+                };
                 if member.generated {
                     if !manifest.processes.iter().any(|process| process.id == id) {
                         return Err(RusticolError::artifact(format!(
@@ -2645,6 +2679,7 @@ impl ProcessGroups {
                     factor_numerator,
                     factor_denominator,
                     conjugated: member.conjugated,
+                    flavour_union_patterns,
                 });
             }
         }
@@ -2753,6 +2788,7 @@ impl ProcessGroupMember {
                 factor_denominator: self.factor_denominator,
                 conjugated: self.conjugated,
                 external_particles: particles,
+                flavour_union_patterns: self.flavour_union_patterns.clone(),
             }),
         })
     }

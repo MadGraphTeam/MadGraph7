@@ -859,7 +859,8 @@ struct NativeDirectLoweringResult {
     direct_executor_count: u32,
     prepared_kernel_count: usize,
     resolved_helicities: Vec<Vec<i32>>,
-    amplitude_destinations: Vec<(u32, Option<u32>)>,
+    /// (sector, helicity, pattern); the pattern exists only for flavour-union templates.
+    amplitude_destinations: Vec<(u32, Option<u32>, Option<u32>)>,
     closure_target_domain_certificate: Option<NativeClosureTargetDomainCertificate>,
     selector_work: Vec<(DirectSelectorWorkSummary, u64)>,
     relation_discovery: Option<RecurrenceRelationDiscoveryReport>,
@@ -2157,6 +2158,7 @@ fn lower_recurrence_direct(
     let direct_lowering_seconds = direct_lowering_started.elapsed().as_secs_f64();
 
     let resolved_helicities = resolved_helicities_from_direct_plan(&plan)?;
+    let destination_patterns = &plan.destination_patterns().destination_patterns;
     let amplitude_destinations = plan
         .amplitude_destinations()
         .iter()
@@ -2165,6 +2167,7 @@ fn lower_recurrence_direct(
                 destination.target_sector_id,
                 (destination.target_helicity_id_or_sentinel != DIRECT_NONE_U32)
                     .then_some(destination.target_helicity_id_or_sentinel),
+                destination_patterns.get(destination.id as usize).copied(),
             )
         })
         .collect();
@@ -3699,7 +3702,14 @@ fn direct_lowering_mapping(
 
     result.set_item("inspection_summary", inspection)?;
     result.set_item("resolved_helicities", native.resolved_helicities)?;
-    result.set_item("amplitude_destinations", native.amplitude_destinations)?;
+    let destinations = PyList::empty(py);
+    for (sector, helicity, pattern) in native.amplitude_destinations {
+        match pattern {
+            None => destinations.append((sector, helicity))?,
+            Some(pattern) => destinations.append((sector, helicity, pattern))?,
+        }
+    }
+    result.set_item("amplitude_destinations", destinations)?;
     if let Some(certificate) = native.closure_target_domain_certificate.as_ref() {
         let metadata = PyDict::new(py);
         metadata.set_item("proof_kind", CLOSURE_TARGET_DOMAIN_PROOF_KIND)?;

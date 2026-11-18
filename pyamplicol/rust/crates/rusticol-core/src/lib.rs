@@ -49,8 +49,9 @@ pub mod source_bindings;
 pub mod source_scalar;
 
 pub use artifact::{
-    ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, Payload, PayloadRole,
-    ProcessAlias, ProcessGroupRelation, Target, VerifiedArtifact, runtime_target_info,
+    ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, FlavourUnionPatterns,
+    Payload, PayloadRole, ProcessAlias, ProcessGroupRelation, Target, VerifiedArtifact,
+    runtime_target_info,
 };
 pub use eager_lowering_v3::*;
 pub use eager_plan_v3_pacbin::*;
