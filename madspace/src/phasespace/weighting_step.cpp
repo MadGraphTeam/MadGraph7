@@ -315,6 +315,7 @@ NamedVector<Value> WeightingStepFunction::build_function_impl(
                  std::pair{1, MatrixElement::helicity_index_out}
              }) {
             Value value = me_outputs.at(output_position(matrix_element, output));
+            // the switching matrix element returns -1 for unswitched events
             outputs.at(i + 1) = fb.batch_scatter(
                 switched, indices.at(i), fb.batch_gather(switched, value)
             );
@@ -329,7 +330,7 @@ NamedVector<Value> WeightingStepFunction::build_function_impl(
                 fb.batch_gather(switched, indices.at(2))
             );
             outputs.at(3) = fb.batch_scatter(
-                switched, indices.at(2), fb.gather_int(position, flat_map)
+                switched, outputs.at(3), fb.gather_int(position, flat_map)
             );
         }
     }

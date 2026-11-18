@@ -483,9 +483,11 @@ class AmplicolLeadingColourFlavoursTest(unittest.TestCase):
             self.assertEqual(
                 [f['options'] for f in self.module.event_flavors(meta, process)[5:]],
                 [[t] for t in targets])
+            # without a full-colour pass every flavour is sampled at leading colour
             process.run_card['amplicol']['color_accuracy'] = 'lc'
-            with self.assertRaisesRegex(RuntimeError, 'color_accuracy'):
-                self.module.flavor_switch(meta, process)
+            self.assertIsNone(self.module.flavor_switch(meta, process))
+            self.assertEqual(self.module.lc_flavor_mode(process.run_card), 'all')
+            self.assertEqual(self.module.event_flavors(meta, process), flavors)
 
     def test_switched_events_keep_the_channel_of_their_diagram(self):
         meta = {'switch_resonance_pdgs': [[[24], [24]], [[-24], [0]]]}

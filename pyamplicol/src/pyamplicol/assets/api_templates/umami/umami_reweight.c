@@ -374,9 +374,23 @@ static UmamiStatus helicity_table(RusticolRuntimeHandle *runtime, RuntimeTables 
     for (size_t h = 0; h < tables->helicity_count; ++h) {
         status = native_error(rusticol_runtime_helicity_vector(
             runtime, h, (int32_t *)&tables->helicities[h * n], n, &required));
-        if (status != UMAMI_SUCCESS) return status;
+        if (status != UMAMI_SUCCESS) {
+            /* helicities != NULL marks the tables complete */
+            free(tables->helicities);
+            tables->helicities = NULL;
+            return status;
+        }
     }
     return UMAMI_SUCCESS;
+}
+
+/* Drops partly built reference tables, so that the next call rebuilds them. */
+static UmamiStatus reset_reference_tables(RuntimeTables *tables, UmamiStatus status) {
+    free(tables->flow_slots);
+    tables->flow_slots = NULL;
+    free(tables->helicities);
+    tables->helicities = NULL;
+    return status;
 }
 
 /* The tables of a reference process, with its runtime loaded. */
@@ -393,6 +407,7 @@ static UmamiStatus reference_tables(Instance *instance, size_t index, RuntimeTab
     status = native_error(rusticol_runtime_resolved_shape(
         runtime, NULL, 0, NULL, 0, &helicities, &colors));
     if (status != UMAMI_SUCCESS) return status;
+    free(tables->flow_slots);
     tables->flow_slots = malloc((tables->color_count + 1) * sizeof(int));
     if (tables->flow_slots == NULL) return UMAMI_ERROR;
     ReweightSwitchFlows const *flows = &reweight_provider.flavor_switch->flows[index];
@@ -401,16 +416,16 @@ static UmamiStatus reference_tables(Instance *instance, size_t index, RuntimeTab
         size_t required = 0;
         status = native_error(
             rusticol_runtime_color_id(runtime, c, name, sizeof(name), &required));
-        if (status != UMAMI_SUCCESS) return status;
+        if (status != UMAMI_SUCCESS) return reset_reference_tables(tables, status);
         tables->flow_slots[c] = -1;
         for (size_t f = 0; f < flows->flow_count; ++f)
             if (strcmp(flows->flow_ids[f], name) == 0) tables->flow_slots[c] = (int)f;
     }
     status = helicity_table(runtime, tables);
-    if (status != UMAMI_SUCCESS) return status;
+    if (status != UMAMI_SUCCESS) return reset_reference_tables(tables, status);
     if (helicities != tables->helicity_count || colors != tables->color_count) {
         fprintf(stderr, "umami: unexpected resolved shape of a reference process\n");
-        return UMAMI_ERROR;
+        return reset_reference_tables(tables, UMAMI_ERROR);
     }
     return UMAMI_SUCCESS;
 }
@@ -714,8 +729,10 @@ UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride
                 if (sw->orderings[o].target < 0) generated += share;
                 else dropped += share;
             }
-            if (!(generated > 0.0) || !isfinite(dropped)) return UMAMI_ERROR;
-            enhancement = 1.0 + dropped / generated;
+            if (!isfinite(generated) || !isfinite(dropped)) return UMAMI_ERROR;
+            /* no leading colour of its own (zero weight): nothing to switch from */
+            if (generated > 0.0) enhancement = 1.0 + dropped / generated;
+            else dropped = 0.0;
             double u = ((double const *)in[UMAMI_IN_RANDOM_FLAVOR])[event] * enhancement;
             if (u >= 1.0 && dropped > 0.0) {
                 double threshold = (u - 1.0) * generated;

@@ -38,7 +38,8 @@ from madgraph.mg7.options import lhapdf_paths
 from madgraph.mg7.postprocess import _find_event_file
 from madgraph.mg7.model_widths import _proc_characteristic
 from madgraph.mg7.subprocess_amplicol import (
-    AmplicolSubprocess, amplicol_subproc_args, event_flavors, is_amplicol, quark_lines)
+    AmplicolSubprocess, amplicol_subproc_args, event_flavors, is_amplicol, lc_flavor_mode,
+    quark_lines)
 from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
 
 # From this many subprocess directories to compile, the standard headers are
@@ -487,7 +488,8 @@ class MadgraphProcess:
         """Remove the [amplicol] subprocesses whose flavours all have more than
         two quark lines under lc_flavors = two_lines(_resample): they are
         neglected, or reached by the flavour switch of the other subprocesses."""
-        if self.run_card["amplicol"]["lc_flavors"] == "all":
+        mode = lc_flavor_mode(self.run_card)
+        if mode == "all":
             return
         kept = [
             meta for meta in self.subprocess_data
@@ -498,7 +500,7 @@ class MadgraphProcess:
             logger.info(
                 "lc_flavors = %s: %d [amplicol] subprocesses without a flavour of "
                 "at most two quark lines are skipped",
-                self.run_card["amplicol"]["lc_flavors"],
+                mode,
                 len(self.subprocess_data) - len(kept),
             )
         self.subprocess_data = kept

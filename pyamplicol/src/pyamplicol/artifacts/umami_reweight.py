@@ -192,8 +192,10 @@ def switch_catalogue(
         row_fixed.setdefault(tuple(sorted(fixed.values())), fixed)
     if len({tuple(fixed) for fixed in row_fixed.values()}) > 1:
         raise ValueError("the flavour switch needs the non-partons in fixed slots")
+    fixed_slots = next(iter(row_fixed.values()))
     parton_slots = [
-        slot for slot in range(incoming, len(reference["pdg_ids"][0])) if slot not in fixed
+        slot for slot in range(incoming, len(reference["pdg_ids"][0]))
+        if slot not in fixed_slots
     ]
     n_partons = math.factorial(len(parton_slots))
     for rep, pdgs, permutation, conjugated, factor in members:

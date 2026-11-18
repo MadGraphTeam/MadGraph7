@@ -222,6 +222,20 @@ def with_prior_factors(meta: dict, partner_share: bool) -> dict:
     ]}
 
 
+def lc_flavor_mode(run_card) -> str:
+    """lc_flavors, two_lines_resample read as all without a full-colour pass
+    to switch flavours in."""
+    amplicol = run_card["amplicol"]
+    mode = amplicol["lc_flavors"]
+    if mode == "two_lines_resample" and amplicol.get("color_accuracy") == "lc":
+        if not getattr(lc_flavor_mode, "warned", False):
+            lc_flavor_mode.warned = True
+            logger.warning("color_accuracy = lc: lc_flavors = two_lines_resample has no "
+                           "full-colour pass to switch flavours in, using lc_flavors = all")
+        return "all"
+    return mode
+
+
 def lc_flavors(meta: dict, mode: str) -> dict:
     """The flavours of the leading-colour pass: all of them, or only those with
     at most two quark lines (two_lines, the others neglected, and
@@ -244,8 +258,7 @@ def _load_switch(path: str) -> dict:
 def flavor_switch(meta: dict, process: MadgraphProcess) -> dict | None:
     """The flavour switch of an [amplicol] subprocess under two_lines_resample
     (its targets, colour flows), None if it switches to no flavour."""
-    amplicol = process.run_card["amplicol"]
-    if not is_amplicol(meta) or amplicol["lc_flavors"] != "two_lines_resample":
+    if not is_amplicol(meta) or lc_flavor_mode(process.run_card) != "two_lines_resample":
         return None
     dropped = any(quark_lines(f["options"][0]) > 2 for f in meta["flavors"])
     if "flavor_switch" not in meta:
@@ -261,12 +274,6 @@ def flavor_switch(meta: dict, process: MadgraphProcess) -> dict | None:
         raise RuntimeError("the flavour switch of the output does not start at 3 lines")
     if not switch["targets"]:
         return None
-    if amplicol["color_accuracy"] == "lc":
-        raise RuntimeError(
-            "lc_flavors = two_lines_resample corrects the flavours with three or more "
-            "quark lines in the full-colour pass: set color_accuracy, or use "
-            "lc_flavors = two_lines or all"
-        )
     return switch
 
 
@@ -275,7 +282,7 @@ def event_flavors(meta: dict, process: MadgraphProcess) -> list[dict]:
     those of the leading-colour pass, then the targets of the flavour switch."""
     if not is_amplicol(meta):
         return meta["flavors"]
-    flavors = lc_flavors(meta, process.run_card["amplicol"]["lc_flavors"])["flavors"]
+    flavors = lc_flavors(meta, lc_flavor_mode(process.run_card))["flavors"]
     switch = flavor_switch(meta, process)
     if switch is None:
         return flavors
@@ -331,7 +338,7 @@ def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArg
     phase-space channels, with the resonances they map out."""
     meta = active_resonances(meta, process.get_mass, process.get_width)
     switch = flavor_switch(meta, process)
-    meta = lc_flavors(meta, process.run_card["amplicol"]["lc_flavors"])
+    meta = lc_flavors(meta, lc_flavor_mode(process.run_card))
     diagrams, _ = lhe_diagrams(meta)
     color_flows = meta["color_flows"]
     colors = sorted({flavor["color_index"] for flavor in meta["flavors"]})
@@ -448,12 +455,12 @@ class AmplicolSubprocess(MadgraphSubprocess):
         self.switch = flavor_switch(meta, process)
         super().__init__(process, meta, subproc_id, unmerged_meta)
         self.meta = active_resonances(self.meta, process.get_mass, process.get_width)
-        if unmerged_meta is not None and process.run_card["amplicol"]["lc_flavors"] != "all":
+        if unmerged_meta is not None and lc_flavor_mode(process.run_card) != "all":
             raise RuntimeError("lc_flavors needs unmerged [amplicol] subprocesses")
         self.meta = with_prior_factors(
             self.meta, process.run_card["amplicol"]["prior_partner_share"]
         )
-        self.meta = lc_flavors(self.meta, process.run_card["amplicol"]["lc_flavors"])
+        self.meta = lc_flavors(self.meta, lc_flavor_mode(process.run_card))
         if self.switch is not None and getattr(process, "custom_functions", None):
             raise RuntimeError(
                 "lc_flavors = two_lines_resample changes the flavour of events after "
