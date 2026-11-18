@@ -20,6 +20,8 @@ from pyamplicol.profile_plan import (
     WARMUP_CALL_SECONDS,
     Costs,
     affordable_chunk,
+    measurement_affects_counts,
+    minimum_counts,
     plan,
     reference_affects_counts,
     runtime_counts,
@@ -109,6 +111,54 @@ def test_a_reference_cost_that_cannot_change_the_counts_is_not_needed():
         counts.budget,
         counts.expected,
     )
+
+
+def test_a_start_up_beyond_the_share_leaves_the_minimum_counts():
+    """``measurement_affects_counts``: when a backend's start-up takes its
+    share of the default budget, the counts are the minimum whatever the
+    costs (no measurement needed), and ``minimum_counts`` gives exactly
+    them, its priors setting the expected seconds only."""
+
+    from pyamplicol.profile_plan import DEFAULT_RUNTIME_SECONDS
+
+    for backends in (1, 2):
+        share = DEFAULT_RUNTIME_SECONDS / backends
+        assert measurement_affects_counts(share - 0.5, backends=backends)
+        assert not measurement_affects_counts(share, backends=backends)
+        start = share + 1.0
+        for binary64, multiplier in itertools.product(
+            (1e-6, 1e-3, 0.5, 200.0), (None, 2.0, 60.0)
+        ):
+            counts = plan(
+                {name: _costs(binary64, multiplier, start) for name in "ab"[:backends]},
+                runtime=True,
+                stability=False,
+                workers=1,
+                lanes=LANES,
+                batch_max=128,
+            ).runtime["a"]
+            minimum = minimum_counts(
+                start, lanes=LANES, reference=multiplier is not None
+            )
+            assert (
+                (counts.batch, counts.warmup, counts.minimum, counts.budget)
+                == (
+                    minimum.batch,
+                    minimum.warmup,
+                    minimum.minimum,
+                    minimum.budget,
+                )
+                == (LANES, 1, 1, 0.0)
+            )
+            assert minimum.reference_budget == 0.0 and minimum.expected == start
+            with_priors = minimum_counts(
+                start,
+                lanes=LANES,
+                reference=multiplier is not None,
+                costs=_costs(binary64, multiplier, start),
+            )
+            assert with_priors.batch == LANES and with_priors.budget == 0.0
+            assert with_priors.expected == pytest.approx(counts.expected)
 
 
 def test_stability_points_are_chunks_and_at_least_the_minimum():

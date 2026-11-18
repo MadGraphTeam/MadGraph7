@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 # The user's minimums: one timed call (one filled SIMD chunk) per backend
 # for the runtime, five points per backend for the stability run.
@@ -217,6 +217,37 @@ def runtime_counts(
     if costs.reference is not None:
         expected += costs.reference + max(reference, costs.reference)
     return RuntimeCounts(batch, 1, RUNTIME_MINIMUM_CALLS, timed, reference, expected)
+
+
+def measurement_affects_counts(start: float, *, backends: int) -> bool:
+    """Whether any measured cost can change the runtime counts under the
+    default budget (``DEFAULT_RUNTIME_SECONDS`` shared by ``backends``,
+    each backend's ``start`` excluded, ``_split_runtime``): False when the
+    start-up alone takes a backend's share, so that every backend gets the
+    minimum counts (``minimum_counts``) whatever its costs. Then the
+    measurement need not run: each runtime timing's warm-ups measure its
+    costs."""
+
+    return DEFAULT_RUNTIME_SECONDS / max(backends, 1) - start > 0.0
+
+
+def minimum_counts(
+    start: float, *, lanes: int, reference: bool, costs: Costs | None = None
+) -> RuntimeCounts:
+    """The runtime counts of a backend without a budget: one chunk of
+    ``lanes``, one warm-up, ``RUNTIME_MINIMUM_CALLS`` timed calls, and with
+    a ``reference`` one reference point after its warm-up (no budget);
+    ``costs`` (priors) only set the expected seconds (without them: the
+    ``start`` only)."""
+
+    prior = costs or Costs(0.0, 0.0 if reference else None, 0.0, None, start)
+    prior = replace(
+        prior,
+        start=start,
+        reference=(prior.reference or 0.0) if reference else None,
+        reference_estimated=True,
+    )
+    return runtime_counts(prior, 0.0, lanes=lanes, batch_max=lanes)
 
 
 def reference_affects_counts(
@@ -563,6 +594,8 @@ __all__ = [
     "RuntimeCounts",
     "admit_chunk",
     "affordable_chunk",
+    "measurement_affects_counts",
+    "minimum_counts",
     "plan",
     "reference_affects_counts",
     "runtime_counts",

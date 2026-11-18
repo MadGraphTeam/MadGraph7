@@ -766,6 +766,10 @@ def profile_loop(
         RECORD_SECONDS_PER_INPUT,
         RECORD_SECONDS_PER_RECORD,
         STABILITY_PRIOR,
+        Costs,
+        Plan,
+        measurement_affects_counts,
+        minimum_counts,
         reference_affects_counts,
         runtime_counts,
         warmup_seconds,
@@ -949,38 +953,84 @@ def profile_loop(
         rest = sum(future_of(planned_now, costs_map).values())
         provisional_end[0] = time.perf_counter() + left + rest
 
+    # Under the default budget a start-up that takes a backend's share
+    # leaves every backend the minimum counts whatever it costs: nothing is
+    # measured here (no evaluation in this process); each runtime timing's
+    # warm-ups measure its costs, the stability run's priors after it.
+    blind = (
+        want_runtime
+        and completion is None
+        and not runtime_given
+        and not measurement_affects_counts(load_seconds + 1.0, backends=len(backends))
+    )
     try:
-        costs = _measure(
-            runtime,
-            path,
-            physics,
-            config,
-            backends,
-            truth,
-            monitor,
-            load_seconds,
-            history=history,
-            provisional=provisional,
-            # Under the default budget a reference cost that cannot change
-            # the runtime counts is not timed here: each backend's runtime
-            # timing measures it with its own reference warm-up.
-            reference_needed=(
-                (
-                    lambda binary64, count: reference_affects_counts(
-                        binary64,
-                        load_seconds + 1.0,
-                        backends=count,
-                        lanes=DEFAULT_LANES,
+        costs = (
+            {}
+            if blind
+            else _measure(
+                runtime,
+                path,
+                physics,
+                config,
+                backends,
+                truth,
+                monitor,
+                load_seconds,
+                history=history,
+                provisional=provisional,
+                # Under the default budget a reference cost that cannot change
+                # the runtime counts is not timed here: each backend's runtime
+                # timing measures it with its own reference warm-up.
+                reference_needed=(
+                    (
+                        lambda binary64, count: reference_affects_counts(
+                            binary64,
+                            load_seconds + 1.0,
+                            backends=count,
+                            lanes=DEFAULT_LANES,
+                        )
                     )
-                )
-                if want_runtime and completion is None and not runtime_given
-                else None
-            ),
+                    if want_runtime and completion is None and not runtime_given
+                    else None
+                ),
+            )
         )
     except KeyboardInterrupt:
         monitor.close(False)
         raise
-    planned, stability_start = planning(costs, monitor.elapsed())
+    measured_at = monitor.elapsed()
+    priors: dict[str, Any] = {}
+    if blind:
+        # The minimum counts; a previous profile's costs only for the ETA.
+        priors = {
+            backend: Costs(
+                binary64,
+                history.cost(backend, "reference") if truth.present else None,
+                0.0,
+                None,
+                load_seconds + 1.0,
+            )
+            for backend in backends
+            if history is not None
+            and (binary64 := history.cost(backend, "binary64")) is not None
+        }
+        planned = Plan(
+            "time budgets",
+            {
+                backend: minimum_counts(
+                    load_seconds + 1.0,
+                    lanes=DEFAULT_LANES,
+                    reference=truth.present,
+                    costs=priors.get(backend),
+                )
+                for backend in backends
+            },
+            feasible=False,
+            unmet=("runtime",),
+        )
+        stability_start = load_seconds + 1.0
+    else:
+        planned, stability_start = planning(costs, measured_at)
     if not planned.feasible:
         # One number, the header's too: the whole command with the minimums.
         if completion is not None:
@@ -1006,19 +1056,30 @@ def profile_loop(
                 + ")"
             )
         unmet_stability = completion is not None or "stability" in planned.unmet
+        minimums = "one timed call of one chunk per backend and its reference point" + (
+            ", five stability points per backend"
+            if want_stability and unmet_stability
+            else ""
+        )
         _notice(
-            f"{asked} cannot be met on this process: the minimums (one timed "
-            "call of one chunk per backend and its reference point"
+            f"{asked} cannot be met on this process: "
             + (
-                ", five stability points per backend"
-                if want_stability and unmet_stability
-                else ""
-            )
-            + f") take about {_duration(planned.minimum_seconds)} in all; "
-            "running the minimums",
+                f"loading the artifact takes {_duration(load_seconds)} per "
+                f"process, more than a backend's share; running the minimums "
+                f"({minimums}), their costs measured as they run"
+                if blind
+                else f"the minimums ({minimums}) take about "
+                f"{_duration(planned.minimum_seconds)} in all; running the "
+                "minimums"
+            ),
             warning=True,
         )
     future = future_of(planned, costs)
+    if blind:
+        # A backend without a previous profile's costs has no estimate yet.
+        for backend in backends:
+            if backend not in priors:
+                future.pop(f"runtime:{backend}", None)
     if completion is None and (runtime_given or given_points is not None):
         # The counts given make the run as long as they are: said once, as
         # information (the user's own choice), when that is long.
@@ -1236,7 +1297,34 @@ def profile_loop(
                 ),
                 reference_estimated=False,
             )
-        if timed_references and want_stability:
+        if blind:
+            # The costs the runtime timing measured (one optimistic pass per
+            # point in binary64 and in the reference): the stability run's
+            # priors and the plan's record, as if measured first.
+            for row in rows:
+                profile = row.profile
+                if profile is None or not _served_points(profile):
+                    continue
+                reference = (
+                    None
+                    if profile.reference is None
+                    else profile.reference.seconds_per_point
+                )
+                costs[row.backend] = Costs(
+                    profile.seconds_per_point,
+                    reference,
+                    STABILITY_PRIOR * profile.seconds_per_point,
+                    None
+                    if reference is None
+                    else (
+                        reference
+                        if _reference_checks(truth) is None
+                        else STABILITY_PRIOR * reference
+                    ),
+                    load_seconds + 1.0,
+                )
+            planned, stability_start = planning(costs, measured_at)
+        elif timed_references and want_stability:
             replanned, stability_start = planning(costs, monitor.elapsed())
             planned = replace(
                 planned,
@@ -1346,7 +1434,9 @@ def profile_loop(
         # The next profile's priors and whole estimate.
         history.store(
             backends,
-            costs,
+            # The measurement's costs (a blind run measured none: its
+            # runtime timing's are warm, not the measurement's first calls).
+            {} if blind else costs,
             {"load": load_seconds, settings: monitor.elapsed()},
         )
     monitor.close(
