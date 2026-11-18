@@ -2817,6 +2817,9 @@ class VirtualProfileResult:
     # about 1 on one core (below 1 when the host took the core from it),
     # approaching N on N native threads.
     cpu_per_wall: float | None = None
+    # The seconds of the binary64 warm entry when it replaced the untimed
+    # warm-up point (``_prepared``; None: none ran).
+    prepared_seconds: float | None = None
     # With N > 1 native threads (``profile --runtime-threads``): the time per
     # point of the same calls' points on one thread (a short timing of its
     # own, ``one_thread_profile``) and its timed calls; None: not measured.
@@ -2831,6 +2834,9 @@ class VirtualProfileResult:
         if self.one_thread_seconds_per_point is None:
             out.pop("one_thread_seconds_per_point")
             out.pop("one_thread_calls")
+        if self.prepared_seconds is None:
+            # No warm entry ran: the document as before it existed.
+            out.pop("prepared_seconds")
         return out
 
 
@@ -3004,6 +3010,7 @@ def profile_virtual(
     artifact: os.PathLike[str] | str | None = None,
     optimistic: bool = False,
     monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
+    point_seconds: float | None = None,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
     (``VirtualProfileResult``) on ``points`` (default: the distinct flat
@@ -3126,10 +3133,21 @@ def profile_virtual(
     # expensive process that call alone takes minutes.
     report(0, bench.warmup_runs + max(bench.minimum_samples, 1), None, ())
     with peak_memory() as peak:
+        # The optimistic pass's warm entry instead of its untimed warm-up
+        # point where a point is dear (``_prepared``; ``point_seconds``: a
+        # binary64 point's measured or remembered cost), inside the peak's
+        # region as the warm-up call would be.
+        prepared = (
+            _prepared(runtime, point_seconds, options, options.get("reduction"))
+            if optimistic and bench.warmup_runs > 0
+            else None
+        )
+        if prepared is not None:
+            bench = replace(bench, warmup_runs=bench.warmup_runs - 1)
         profile = _profile_virtual_calls(
             runtime, batches, bench, options, scales, report
         )
-    profile = replace(profile, peak_memory=peak.result)
+    profile = replace(profile, peak_memory=peak.result, prepared_seconds=prepared)
     if monitor is not None:
         monitor("binary64-result", {"profile": profile})
     timing = None

@@ -691,12 +691,19 @@ def _runtime_setup(
         f"{row.profile.batch}"
         for row in profiled
     )
-    warmups = sorted({row.profile.warmup for row in profiled})
+    warmups = sorted(
+        {
+            f"{row.profile.warmup} warm-up"
+            if getattr(row.profile, "prepared_seconds", None) is None
+            else "a warm entry"
+            for row in profiled
+        }
+    )
     text = (
         f"binary64, finite part, {reduction}, on {core}; {points}, a new batch "
         f"every call; the median of each backend's timed calls"
         + (f" ({calls} points)" if calls else "")
-        + (f" after {'/'.join(map(str, warmups))} warm-up" if warmups else "")
+        + (f" after {' / '.join(warmups)}" if warmups else "")
     )
     references = [
         row.profile.reference.points
@@ -1259,6 +1266,16 @@ def profile_loop(
                     run,
                     reference=reference,
                     one_thread=one_thread,
+                    # A binary64 point's cost (the measurement's, else a
+                    # previous profile's): whether the warm entry replaces
+                    # the untimed point (``benchmarking._prepared``).
+                    point_seconds=(
+                        costs[backend].binary64
+                        if backend in costs
+                        else priors[backend].binary64
+                        if backend in priors
+                        else None
+                    ),
                 )
             except ReductionUnavailable as error:
                 run.abort()
@@ -2504,6 +2521,7 @@ def _isolated_profile(
     *,
     reference: Mapping[str, Any] | None = None,
     one_thread: float | None = None,
+    point_seconds: float | None = None,
 ) -> VirtualProfileResult:
     """``benchmarking.profile_virtual`` of one backend (``request``) on
     ``points`` (None: the artifact's distinct flat points) in a fresh
@@ -2542,6 +2560,7 @@ def _isolated_profile(
             request,
             None if reference is None else dict(reference),
             one_thread,
+            point_seconds,
         ),
         name="pyamplicol-loop-runtime-profile",
         daemon=True,
@@ -2604,6 +2623,7 @@ def _runtime_worker(
     request: str,
     reference: Mapping[str, Any] | None = None,
     one_thread: float | None = None,
+    point_seconds: float | None = None,
 ) -> None:
     """The worker process of ``_isolated_profile``: Ctrl-C left to the
     parent, every thread pool at ``benchmark.runtime_threads`` threads
@@ -2651,6 +2671,7 @@ def _runtime_worker(
             reference=reference,
             optimistic=not benchmark.checked,
             monitor=lambda kind, payload: sender.send(("monitor", kind, payload)),
+            point_seconds=point_seconds,
         )
         if threads > 1 and one_thread is not None:
             # The gain: the same calls on one thread, after the N-thread

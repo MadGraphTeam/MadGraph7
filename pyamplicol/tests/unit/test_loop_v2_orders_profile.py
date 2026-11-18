@@ -1468,3 +1468,53 @@ def test_a_refusing_backend_takes_no_share_of_the_budget(uux_ddx, monkeypatch):
     assert tirust is not None
     assert (tirust.batch, tirust.samples) != (16, 1)
     assert report.plan["runtime"]["tirust"]["budget_seconds"] > 0.0
+
+
+@pytest.mark.parametrize("point_seconds", [None, 1e-3, 1e3])
+def test_the_warm_entry_replaces_a_dear_binary64_warm_up(uux_ddx, point_seconds):
+    """With a warm entry on the runtime's backend (``prepare``, loadfast) and
+    a dear binary64 point (above ``MEASURE_REPEAT_SECONDS``) the optimistic
+    timing warms through it, in its backend and unchecked mode, instead of
+    the untimed warm-up point: no warm-up call, the timed calls unchanged;
+    an unknown or cheap point keeps the warm-up point (inert without the
+    entry, as on this base)."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import profile_virtual
+    from pyamplicol.config import BenchmarkConfig
+
+    runtime = Runtime.load(uux_ddx)
+    prepared: list = []
+    runtime._backend.prepare = lambda **kwargs: prepared.append(kwargs)
+    calls: list = []
+    evaluate = Runtime.evaluate
+
+    def recorded(self, batch, *args, **kwargs):
+        calls.append(len(batch))
+        return evaluate(self, batch, *args, **kwargs)
+
+    bench = BenchmarkConfig(
+        batch_size=4, warmup_runs=1, minimum_samples=1, target_runtime=1e-6
+    )
+    Runtime.evaluate = recorded
+    try:
+        result = profile_virtual(
+            runtime,
+            bench,
+            points=_points(uux_ddx) * 8,
+            reduction="tirust",
+            optimistic=True,
+            point_seconds=point_seconds,
+        )
+    finally:
+        Runtime.evaluate = evaluate
+    if point_seconds == 1e3:
+        assert prepared == [{"reduction": "tirust", "unchecked": True}]
+        assert result.warmup == 0 and result.prepared_seconds is not None
+        assert calls == [4]
+        assert "prepared_seconds" in result.cli_json()
+    else:
+        assert prepared == [] and result.prepared_seconds is None
+        assert result.warmup == 1 and calls == [1, 4, 4]
+        assert "prepared_seconds" not in result.cli_json()
+    assert result.samples == 1 and result.batch == 4
