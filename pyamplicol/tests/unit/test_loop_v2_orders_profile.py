@@ -686,7 +686,14 @@ def test_disagreeing_references_are_rerun_checked_on_the_worker_pool(
     from pyamplicol import loop_profile
     from pyamplicol.cli.main import run_cli
 
-    monkeypatch.setattr(loop_profile, "_references_agree", lambda a, b: False)
+    def plain_disagree(a, b, tolerance=loop_profile._AGREEMENT):
+        # The cross-check's agreement off; the checked references' own
+        # comparison (to binary64's unit roundoff) as it is.
+        return tolerance is not loop_profile._AGREEMENT and abs(a - b) <= (
+            tolerance * max(abs(a), abs(b))
+        )
+
+    monkeypatch.setattr(loop_profile, "_references_agree", plain_disagree)
     found = {}
     for cores in ("1", "3"):
         stdout = io.StringIO()
@@ -724,6 +731,51 @@ def test_disagreeing_references_are_rerun_checked_on_the_worker_pool(
     assert found["1"] == found["3"]
     assert {c for rows in found["1"].values() for _, c, _ in rows} == {"checks"}
     assert all(len(rows) == 5 for rows in found["1"].values())
+
+
+def _profile_json(artifact, *extra):
+    from pyamplicol.cli.main import run_cli
+
+    stdout = io.StringIO()
+    code = run_cli(
+        [
+            "profile",
+            str(artifact),
+            "--stability",
+            "--progress",
+            "off",
+            "--json",
+            *extra,
+        ],
+        stdout=stdout,
+        stderr=io.StringIO(),
+    )
+    assert code == 0
+    return json.loads(stdout.getvalue())
+
+
+@pytest.mark.loop_fast
+def test_checked_references_that_contradict_each_other_are_no_reference(
+    uux_ddx, monkeypatch
+):
+    """Two checked re-runs that both pass their checks but still differ by
+    more than binary64's unit roundoff contradict their estimates: neither
+    is kept, the point has no reference, its reason says so."""
+
+    from pyamplicol import loop_profile
+
+    monkeypatch.setattr(loop_profile, "_references_agree", lambda a, b, t=None: False)
+    report = _profile_json(
+        uux_ddx, "--stability-points", "4", "--ground-truth", "arb:30", "--n_core", "1"
+    )
+    for row in report["stability"]:
+        assert row["failed_reference"] == 4
+        for sample in _records(row["samples"]):
+            assert sample["reference_value"] is None
+            assert sample["reference_certified"] is None
+            assert sample["reference_reason"].startswith(
+                "failed: stability checks: the backends' checked references differ by"
+            )
 
 
 def _records(table):

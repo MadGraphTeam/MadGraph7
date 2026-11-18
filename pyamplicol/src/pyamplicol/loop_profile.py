@@ -2519,15 +2519,13 @@ def _stability_worker(
     backends: Sequence[str] = (),
     truth: GroundTruth | None = None,
     cold: Sequence[tuple[str, str]] = (),
-    target: float | None = None,
 ) -> None:
     """Initialise a stability worker process: one thread per pool, Ctrl-C
     left to the parent (which collects what finished and stops the
     workers), the artifact loaded once with the reference precision
-    ``truth`` (default double-double; "none": no reference) and the run's
-    ``target`` accuracy (the reference's checks; None: the default), and
-    warmed up on ``backends`` with ``warm`` (a point and its scale,
-    ``_warm_up``; the ``cold`` streams not)."""
+    ``truth`` (default double-double; "none": no reference), and warmed up
+    on ``backends`` with ``warm`` (a point and its scale, ``_warm_up``; the
+    ``cold`` streams not)."""
 
     import signal
 
@@ -2540,7 +2538,6 @@ def _stability_worker(
         warm=warm,
         checks=checks,
         truth=truth or GroundTruth("double-double"),
-        target=target,
     )
     _warm_up(backends, cold)
 
@@ -2636,8 +2633,9 @@ def _stability_records(
     best-effort uncertainty, the sectors' finite parts); reference (index,
     [[exact total]], reason, its exact decimal text): one plain evaluation,
     or (``_REFERENCE_CHECKED``) the reference with its checks
-    (``_reference_checks``), a point whose estimate exceeds the worker's
-    target then without a reference value, its reason saying so."""
+    (``_reference_checks``), a point whose estimate exceeds binary64's unit
+    roundoff (``_UNIT_ROUNDOFF``) then without a reference value, its reason
+    saying so."""
 
     state = _WORKER
     common = {"mu_r2": scales, "poles": "none", "reduction": backend}
@@ -2696,11 +2694,6 @@ def _stability_records(
             **truth.options,
             **common,
         )
-        target = state.get("target")
-        if target is None:
-            from pyamplicol.loops.v2.reduction import default_target
-
-            target = default_target()
         records = []
         for index, value, reason, estimate in zip(
             indices,
@@ -2712,14 +2705,16 @@ def _stability_records(
             if (
                 value is not None
                 and estimate is not None
-                and float(estimate.relative) > target
+                and float(estimate.relative) > _UNIT_ROUNDOFF
             ):
-                # A success its checks do not trust is no reference: it
-                # takes the path of a failed reference point.
+                # A success its checks do not trust to resolve binary64's
+                # digits is no reference: it takes the path of a failed
+                # reference point.
                 value = None
                 reason = (
                     f"failed: stability checks: estimate "
-                    f"{float(estimate.relative):.1e} above the target {target:g}"
+                    f"{float(estimate.relative):.1e} above binary64's unit "
+                    f"roundoff {float(_UNIT_ROUNDOFF):.1e}"
                 )
             exact = None if value is None else _exact_total(value)
             records.append(
@@ -2737,23 +2732,30 @@ def _stability_records(
 # the re-run of a reference the backends' cross-check did not certify, or
 # the reference itself when only one backend is profiled.
 _REFERENCE_CHECKED = "reference-checked"
+# A reference exists to resolve the stable digits of a binary64 value, down to
+# their cap ``BINARY64_DIGITS``: an error of binary64's unit roundoff u = 2^-53.
+# A checked reference is kept only when its estimate is at most u (above it,
+# it cannot tell a binary64 value right to its last digit from one a few
+# units off), and two checked references that both pass but differ by more
+# than u contradict their estimates: neither is kept.
+_UNIT_ROUNDOFF = Fraction(1, 2**53)
 # The agreement tolerance of the backends' cross-check (``_references_agree``):
-# binary64's unit roundoff squared, 2^-106. A reference resolves the stable
-# digits of a binary64 value down to the cap ``BINARY64_DIGITS``, an error of
-# the unit roundoff u; to leave that error's own measure exact to binary64's
-# resolution the reference must be right to u * u, the accuracy of the
+# u squared, 2^-106. To leave the measure of an error of u exact to binary64's
+# own resolution the reference must be right to u * u, the accuracy of the
 # double-double ground truth (the default).
-_AGREEMENT = Fraction(1, 2**106)
+_AGREEMENT = _UNIT_ROUNDOFF**2
 
 
-def _references_agree(first: Fraction, second: Fraction) -> bool:
+def _references_agree(
+    first: Fraction, second: Fraction, tolerance: Fraction = _AGREEMENT
+) -> bool:
     """Whether two backends' reference totals agree: their difference at
-    most ``_AGREEMENT`` times the larger modulus (two exact zeros agree; a
-    zero and a nonzero do not, nor do two values at rounding level of an
-    integrated zero unless they agree to that tolerance, so such a point
-    takes the checked re-run)."""
+    most ``tolerance`` (default ``_AGREEMENT``) times the larger modulus (two
+    exact zeros agree; a zero and a nonzero do not, nor do two values at
+    rounding level of an integrated zero unless they agree to that
+    tolerance, so such a point takes the checked re-run)."""
 
-    return abs(first - second) <= _AGREEMENT * max(abs(first), abs(second))
+    return abs(first - second) <= tolerance * max(abs(first), abs(second))
 
 
 def _reference_checks(truth: GroundTruth) -> Any:
@@ -2763,8 +2765,8 @@ def _reference_checks(truth: GroundTruth) -> Any:
     value with status success (NinjaRS at near-degenerate boxes): such a
     reference is cross-checked between the backends, and one the
     cross-check does not certify is evaluated again with these checks,
-    dropped when its estimate exceeds the target; None for double-double
-    (one plain evaluation, no cross-check)."""
+    dropped when its estimate exceeds binary64's unit roundoff; None for
+    double-double (one plain evaluation, no cross-check)."""
 
     if truth.arithmetic != "arbitrary":
         return None
@@ -3273,12 +3275,17 @@ def _stability(
     # (``_references_agree``): the plain references wait in ``plain`` until
     # every live backend's is back; one that agrees with another backend's
     # is certified ("agreement"), the others are queued for their checked
-    # re-run (``checking``), which certifies ("checks") or drops them. With
-    # one live backend the reference runs checked at once. Only certified
-    # references enter ``dd`` (an interrupted run leaves the others out).
+    # re-run (``checking``); once every re-run of the point is back
+    # (``rerun``, ``rechecked``) each certifies ("checks") or drops its
+    # reference, and two that pass but differ by more than binary64's unit
+    # roundoff drop both (``settle``). With one live backend the reference
+    # runs checked at once. Only certified references enter ``dd`` (an
+    # interrupted run leaves the others out).
     cross = _reference_checks(truth) is not None
     plain: dict[str, dict[int, tuple[Any, ...]]] = {b: {} for b in backends}
     checking: list[tuple[str, int]] = []
+    rerun: dict[int, set[str]] = {}
+    rechecked: dict[int, dict[str, tuple[Any, ...]]] = {}
     # Per backend the reference tasks (plain or checked) submitted and not
     # harvested: a point may still need its checked re-run.
     flight = dict.fromkeys(backends, 0)
@@ -3307,7 +3314,47 @@ def _stability(
                 dd[backend][index] = (*record, "agreement")
             else:
                 checking.append((backend, index))
+                rerun.setdefault(index, set()).add(backend)
                 tracker.queue_checked(backend, 1)
+
+    def settle(index: int) -> None:
+        """Certify or drop point ``index``'s re-run references once every
+        live backend's re-run of it is back: each by its own checks, and
+        none when two that pass differ by more than binary64's unit
+        roundoff (their estimates are contradicted)."""
+
+        alive = [b for b in sorted(rerun.get(index, ())) if b not in refused]
+        found = rechecked.get(index, {})
+        if any(b not in found for b in alive):
+            return
+        rerun.pop(index, None)
+        rechecked.pop(index, None)
+        values = [found[b][1][0][0] for b in alive if found[b][1] is not None]
+        spread = max(
+            (
+                abs(a - b) / max(abs(a), abs(b))
+                for k, a in enumerate(values)
+                for b in values[k + 1 :]
+                if not _references_agree(a, b, _UNIT_ROUNDOFF)
+            ),
+            default=None,
+        )
+        for backend in alive:
+            record = found[backend]
+            if record[1] is None:
+                dd[backend][index] = (*record, None)
+            elif spread is not None:
+                dd[backend][index] = (
+                    index,
+                    None,
+                    "failed: stability checks: the backends' checked references "
+                    f"differ by {float(spread):.1e}, above binary64's unit "
+                    f"roundoff {float(_UNIT_ROUNDOFF):.1e}",
+                    None,
+                    None,
+                )
+            else:
+                dd[backend][index] = (*record, "checks")
 
     def stream_rate(key: tuple[str, str]) -> float:
         rate = tracker.rate(key)
@@ -3443,10 +3490,9 @@ def _stability(
             # The checked re-run of references the cross-check did not
             # certify: its time is the reference stream's, its points are not.
             for record in records:
-                dd[backend][record[0]] = (
-                    *record,
-                    None if record[1] is None else "checks",
-                )
+                rechecked.setdefault(record[0], {})[backend] = record
+            for record in records:
+                settle(record[0])
             seconds[backend] += wall
             tracker.add_checked(backend, len(records), wall)
             return
@@ -3490,9 +3536,12 @@ def _stability(
         if backend not in refused:
             refused[backend] = str(error)
             tracker.drop(backend)
-            # The points waiting for its reference: decided without it.
+            # The points waiting for its reference or its re-run: decided
+            # without it.
             for index in sorted(set().union(*(plain[b] for b in live()))):
                 decide(index)
+            for index in sorted(rerun):
+                settle(index)
 
     def tick() -> None:
         tracker.emit(heartbeat=True)
@@ -3506,9 +3555,7 @@ def _stability(
     warm = (first_point[0][0], inputs[0][1])
     try:
         if workers == 1:
-            _WORKER.update(
-                runtime=runtime, warm=warm, checks=checks, truth=truth, target=target
-            )
+            _WORKER.update(runtime=runtime, warm=warm, checks=checks, truth=truth)
             try:
                 _warm_up(backends, cold)
                 while (tasks := next_tasks()) is not None:
@@ -3538,7 +3585,6 @@ def _stability(
                     tuple(backends),
                     truth,
                     cold,
-                    target,
                 ),
                 next_tasks,
                 harvest,
