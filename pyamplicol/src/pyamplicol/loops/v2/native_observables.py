@@ -2188,7 +2188,7 @@ class StoredColumns:
 
         from .assemble import _fraction, _NativePoint, _Numbers
         from .native_trees import batch_parameters
-        from .plan_export import NativeExecutor, _fraction_text
+        from .plan_export import NativeExecutor, _fraction_text, rescue_options
         from .poles import has_poles, pole_mode, reducer_poles, splits
         from .reduction import executor_options, prepare
 
@@ -2228,6 +2228,7 @@ class StoredColumns:
             "rescale": retest == "rescaled",
             # The call's reduction backend (``reduction.running``).
             **executor_options(),
+            **rescue_options(view),
         }
         native = self._executor(arithmetic, digits, len(evaluations), False)
         prepare(native)

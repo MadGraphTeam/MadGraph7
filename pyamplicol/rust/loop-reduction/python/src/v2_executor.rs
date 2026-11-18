@@ -2078,7 +2078,11 @@ impl V2Executor {
     /// `unchecked` is the call's unchecked setting (m-lit lit-unchecked,
     /// default off): the backend reduces without its own acceptance and
     /// refusal checks (`V2Backends::set_unchecked`), fixed for the call.
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars", unchecked=false))]
+    /// `initial_states` (the process's initial states, first in leg order)
+    /// lets the lane rescue rebuild a refused lane's kinematic inputs from
+    /// the point improved in the rescue carrier (`RescueInputs::Improved`);
+    /// without it they are the given point's exact inputs.
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars", unchecked=false, initial_states=None))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -2107,6 +2111,7 @@ impl V2Executor {
         term_scale: bool,
         reduction: &str,
         unchecked: bool,
+        initial_states: Option<usize>,
     ) -> PyResult<Evaluation> {
         let _unlock = pyamplicol::unlock();
         let reduction = Reduction::parse(reduction).map_err(error)?;
@@ -2138,21 +2143,12 @@ impl V2Executor {
             term_scale,
             ..V2Options::default()
         };
-        // DEV (lanerescue experiment, removed before merge): the lane
-        // rescue's input variant.
-        if let Ok(text) = std::env::var("PYAMPLICOL_DEV_LANE_RESCUE") {
-            use rusticol_core::loop_execution::v2::RescueInputs;
-            options.rescue = match text.as_str() {
-                "off" => RescueInputs::Off,
-                "lifted" => RescueInputs::Lifted,
-                "exact" => RescueInputs::Exact,
-                other => match other.strip_prefix("improved:") {
-                    Some(n) => RescueInputs::Improved {
-                        n_initial: n.parse().map_err(error)?,
-                    },
-                    None => return Err(error("PYAMPLICOL_DEV_LANE_RESCUE")),
-                },
-            };
+        // The lane rescue's inputs (`V2Options::rescue`): the point improved
+        // in the rescue carrier, its `initial_states` initial states first;
+        // its exact inputs without them.
+        if let Some(n_initial) = initial_states {
+            options.rescue =
+                rusticol_core::loop_execution::v2::RescueInputs::Improved { n_initial };
         }
         if let Some(chunk) = chunk_families {
             options.chunk_families = chunk;

@@ -1324,6 +1324,7 @@ impl V2Runtime {
             contraction: contraction(&self.artifact.metadata.color_contraction),
             check: monitoring.check,
             term_scale: monitoring.term_scale,
+            rescue: self.rescue_inputs(),
             ..V2Options::default()
         };
         // A row mask's liveness (the Python binding's `evaluate(rows=...)`:

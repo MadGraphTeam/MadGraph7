@@ -2036,6 +2036,21 @@ def point_measures(
     return tuple(found)
 
 
+def rescue_options(slice_: Any) -> dict[str, int]:
+    """The native ``evaluate`` option of the lane rescue: the process's
+    initial states (first in leg order, ``kinematics.initial_count``), so
+    that a refused lane's kinematic inputs are rebuilt from the point
+    improved in the rescue carrier; empty when the legs do not say (the
+    lane rescue then takes the point's exact inputs)."""
+
+    from pyamplicol.kinematics import initial_count
+
+    try:
+        return {"initial_states": initial_count(slice_.blocks.process.legs)}
+    except (AttributeError, ValueError):
+        return {}
+
+
 def point_rescued(
     output: Mapping[str, Any], extra: Mapping[str, Any] | None, index: int
 ) -> tuple[tuple[str, int], ...]:
@@ -3136,6 +3151,7 @@ class NativeExecutor:
         # for NinjaRS, the executor's default), its TIRust plans built before
         # the first point (``reduction.prepare``).
         options.update(executor_options())
+        options.update(rescue_options(self.slice))
         prepare(native)
         catani = self.inputs == "native" and any(
             getattr(evaluation, "catani", False) for evaluation in evaluations

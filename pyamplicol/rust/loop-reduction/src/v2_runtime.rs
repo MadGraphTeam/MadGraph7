@@ -112,7 +112,8 @@ use rusticol_core::loop_artifact::{
     read_loop_v2_native_inputs, read_loop_v2_observables,
 };
 use rusticol_core::loop_execution::v2::{
-    Contraction, LaneKey, LaneMeasure, MeasureKind, PointResult, Poles, V2Executor, V2Options,
+    Contraction, LaneKey, LaneMeasure, MeasureKind, PointResult, Poles, RescueInputs, V2Executor,
+    V2Options,
 };
 use rusticol_core::loop_v2::dress::{V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{LiveRows, LoopProgramV4};
@@ -1890,6 +1891,27 @@ impl V2Runtime {
         Ok((points, records))
     }
 
+    /// The lane rescue's kinematic inputs (`V2Options::rescue`): the point
+    /// improved in the rescue carrier, the initial states first in label
+    /// order as the kinematics improvement takes them; the exact inputs when
+    /// the legs do not put them first.
+    pub(crate) fn rescue_inputs(&self) -> RescueInputs {
+        let initial = self
+            .record
+            .legs
+            .iter()
+            .take_while(|&&(_, initial, _)| initial)
+            .count();
+        let ordered = !self.record.legs[initial..]
+            .iter()
+            .any(|&(_, initial, _)| initial);
+        if ordered && initial > 0 && initial < self.record.legs.len() {
+            RescueInputs::Improved { n_initial: initial }
+        } else {
+            RescueInputs::Exact
+        }
+    }
+
     /// All-incoming momenta: final legs negated.
     pub(crate) fn incoming(&self, momenta: &[Vec<Rational>]) -> Vec<Vec<Rational>> {
         momenta
@@ -2061,6 +2083,7 @@ impl V2Runtime {
             poles: mode.lanes(),
             contraction: contraction(&self.artifact.metadata.color_contraction),
             check,
+            rescue: self.rescue_inputs(),
             ..V2Options::default()
         };
         self.backend(precision)?;

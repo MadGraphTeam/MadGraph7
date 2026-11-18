@@ -196,14 +196,17 @@ pub mod v2 {
 
     /// How a rescued lane's kinematic inputs (shifts, squared masses, scale,
     /// invariant matrix) are formed for its carrier ([`V2Options::rescue`]).
+    /// Never the evaluation carrier's own inputs lifted: their rounding
+    /// leaves the shifts and the invariants inconsistent at its unit
+    /// roundoff, which the reduction of a nearly singular lane amplifies
+    /// (lanerescue LOG, measured on NinjaRS).
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub enum RescueInputs {
         /// No lane rescue.
         Off,
-        /// The evaluation carrier's own inputs of the lane lifted exactly.
+        /// The exact inputs of the given point, cast to the carrier (a
+        /// caller that cannot say which legs are initial states).
         #[default]
-        Lifted,
-        /// The exact inputs of the given point, cast to the carrier.
         Exact,
         /// The given point improved in the carrier (exact conservation and
         /// external shells, `kinematics_improvement::improve_exact`, MadLoop's
@@ -1505,10 +1508,7 @@ pub mod v2 {
                         refused(&direct[index]),
                         check.as_ref().and_then(|c| refused(&c[index])),
                     );
-                    // DEV (lanerescue measurement, removed before merge):
-                    // every lane through the rescue.
-                    let every = std::env::var_os("PYAMPLICOL_DEV_LANE_RESCUE_ALL").is_some();
-                    if self.rescuing && (every || held.0.is_some() || held.1.is_some()) {
+                    if self.rescuing && (held.0.is_some() || held.1.is_some()) {
                         sink.pending.push(Pending {
                             point,
                             key,
@@ -2311,7 +2311,6 @@ pub mod v2 {
                 groups.push(exact_lanes(
                     plan,
                     batch,
-                    zero,
                     options.rescue,
                     carrier,
                     family,
@@ -2371,7 +2370,6 @@ pub mod v2 {
     fn exact_lanes<'p, T: Carrier + 'p>(
         plan: &LoopProgramV4,
         batch: &V2Batch<T>,
-        zero: &T,
         inputs: RescueInputs,
         carrier: RescueCarrier,
         family: usize,
@@ -2385,13 +2383,6 @@ pub mod v2 {
             exact_value(value).ok_or_else(|| {
                 RusticolError::evaluation("the lane rescue lifts a non-finite value")
             })
-        };
-        // A kinematic input as `inputs` forms it.
-        let form = |value: Rational| -> RusticolResult<Rational> {
-            match inputs {
-                RescueInputs::Lifted => lift(&cast(zero, &value)),
-                _ => Ok(value),
-            }
         };
         let mut out = ExactLanes {
             family,
@@ -2419,7 +2410,7 @@ pub mod v2 {
             out.keys.push(lane.key);
             for shift in shifts {
                 for component in shift {
-                    out.shifts.push(form(component)?);
+                    out.shifts.push(component);
                 }
             }
             for &(_, mass) in &plan_family.sequence {
@@ -2428,13 +2419,10 @@ pub mod v2 {
                     .get(mass)
                     .cloned()
                     .unwrap_or_else(|| Rational::from(0));
-                out.masses
-                    .push([form(batch.masses[mass].clone())?, form(im)?]);
+                out.masses.push([batch.masses[mass].clone(), im]);
             }
-            out.scales.push(form(batch.scales[point].clone())?);
-            for square in squares {
-                out.s_matrix.push(form(square)?);
-            }
+            out.scales.push(batch.scales[point].clone());
+            out.s_matrix.extend(squares);
             for c in &lane.coefficients {
                 out.coefficients.push([lift(&c.re)?, lift(&c.im)?]);
             }
@@ -2788,7 +2776,7 @@ pub mod v2 {
                 refuse_dd: true,
                 ..Rescuing::default()
             };
-            let (results, report) = run(&mut backend, RescueInputs::Lifted);
+            let (results, report) = run(&mut backend, RescueInputs::Exact);
             // Point 0 is held, not compacted out of the second bucket chunk.
             assert_eq!(backend.calls, [vec![0, 1], vec![0, 1]]);
             // One call per carrier, both families' lanes in it.
@@ -2825,7 +2813,7 @@ pub mod v2 {
                 refuse_all: true,
                 ..Rescuing::default()
             };
-            let (results, report) = run(&mut backend, RescueInputs::Exact);
+            let (results, report) = run(&mut backend, RescueInputs::Improved { n_initial: 1 });
             assert_eq!(results[0].failures.len(), 2);
             assert!(results[0].failures[0].ends_with(
                 ": Unstable (lane rescue: double-double: double-double refused; \
