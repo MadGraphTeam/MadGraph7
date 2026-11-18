@@ -842,6 +842,58 @@ def test_public_generation_publishes_plan_v4(full_colour):
 
 
 @pytest.mark.loop_physics
+def test_the_admitted_program_is_shared_and_the_warm_entry_changes_no_value(
+    quark_controls, loop_native
+):
+    """``Runtime.load`` hands the program its admission loaded to the
+    executors (``V2AdmittedPlan``: no second load of the plan member, refused
+    for other kernel forms), and the warm entry (``V2VirtualRuntime.prepare``,
+    ``V2Executor.warm``) builds a carrier's lazy state without changing any
+    value: every carrier and backend, bit-identical to a runtime that did not
+    prepare."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.cli.flat_points import draw_flat_points
+
+    flat = draw_flat_points(
+        quark_controls, process="uudd", points=2, seed=3, sqrt_s=None
+    )
+    points, scales = flat.as_inputs(exact=False), flat.mu_r2()
+    backends = [
+        name
+        for name in ("ninjars", "tirust")
+        if name in json.loads(loop_native.reduction_backends())
+    ]
+    carriers = ({}, {"arithmetic": "double-double"}, {"precision": 20})
+
+    def values(prepare: bool) -> list[str]:
+        runtime = Runtime.load(quark_controls, process="uudd")
+        backend = runtime._backend
+        program = backend._executor._program
+        assert program is not None and program.families > 0
+        if prepare:
+            for carrier in carriers:
+                backend.prepare(reduction="auto", **carrier)
+        out = []
+        for reduction in backends:
+            for carrier in carriers:
+                result = runtime.evaluate(
+                    points, mu_r2=scales, reduction=reduction, **carrier
+                )
+                out.append(repr((result.values, result.born_values)))
+        return out
+
+    assert values(True) == values(False)
+    _described, admitted, _companion = loop_native.admit_v2_artifact_program(
+        str(quark_controls), "uudd"
+    )
+    with pytest.raises(ValueError, match="admitted plan"):
+        loop_native.V2Executor(admitted, forms="fused")
+    with pytest.raises(ValueError, match="reduction must be"):
+        Runtime.load(quark_controls, process="uudd")._backend.prepare(reduction="x")
+
+
+@pytest.mark.loop_physics
 def test_public_particle_veto_equals_njet_five_flavours(
     loop_sm_compiled_model, loop_native, tmp_path
 ):
