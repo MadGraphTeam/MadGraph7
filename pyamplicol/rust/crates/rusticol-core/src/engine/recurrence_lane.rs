@@ -59,7 +59,7 @@ pub(super) struct RecurrenceNativeRuntime {
     symmetric_group_color_workspace: Option<RuntimeSymmetricGroupColorWorkspace>,
     replay_color_index_scratch: Vec<usize>,
     selected_replay_cache:
-        BTreeMap<BTreeSet<String>, BTreeMap<usize, Arc<DirectReplaySelectorPlan>>>,
+        BTreeMap<ReplayRestriction, BTreeMap<usize, Arc<DirectReplaySelectorPlan>>>,
     selected_replay_programs: BTreeMap<(u32, Vec<u32>), Arc<DirectReplaySelectorPlan>>,
     helicity_selector_companion: Option<RecurrencePersistedHelicitySelectorRuntime>,
     order_catalog: AmplitudeOrderCatalog,
@@ -118,67 +118,99 @@ impl PatternSelection {
         &mut self,
         amplitudes: impl Iterator<Item = RusticolResult<DirectRecurrenceAmplitudeView<'a>>>,
         point_count: usize,
-        mut visit: impl FnMut(
-            &DirectAmplitudeDestinationDescriptor,
-            &[f64],
-            &[f64],
-        ) -> RusticolResult<()>,
+        visit: impl FnMut(&DirectAmplitudeDestinationDescriptor, &[f64], &[f64]) -> RusticolResult<()>,
     ) -> RusticolResult<()> {
-        self.combined_re.resize(point_count, 0.0);
-        self.combined_im.resize(point_count, 0.0);
-        let (re, im) = (
-            &mut self.combined_re[..point_count],
-            &mut self.combined_im[..point_count],
-        );
-        let mut group = None::<&DirectAmplitudeDestinationDescriptor>;
-        let mut active = false;
-        for amplitude in amplitudes {
-            let amplitude = amplitude?;
-            let destination = amplitude.destination;
-            if group.is_some_and(|first| {
-                (first.target_sector_id, first.target_helicity_id_or_sentinel)
-                    != (
-                        destination.target_sector_id,
-                        destination.target_helicity_id_or_sentinel,
-                    )
-            }) {
-                if active {
-                    visit(group.expect("active group"), re, im)?;
-                }
-                active = false;
-                group = None;
-            }
-            group.get_or_insert(destination);
-            let pattern = self
-                .destination_patterns
-                .get(destination.id as usize)
-                .ok_or_else(|| RusticolError::integrity("destination has no pattern"))?;
-            let sign = self.signs[*pattern as usize];
-            if sign == 0.0 {
-                continue;
-            }
-            let (real, imaginary) = (
-                &amplitude.real[..point_count],
-                &amplitude.imaginary[..point_count],
-            );
-            if active {
-                for point in 0..point_count {
-                    re[point] = sign.mul_add(real[point], re[point]);
-                    im[point] = sign.mul_add(imaginary[point], im[point]);
-                }
-            } else {
-                for point in 0..point_count {
-                    re[point] = sign * real[point];
-                    im[point] = sign * imaginary[point];
-                }
-                active = true;
-            }
-        }
-        if active {
-            visit(group.expect("active group"), re, im)?;
-        }
-        Ok(())
+        visit_pattern_groups(
+            &self.destination_patterns,
+            &self.signs,
+            &mut self.combined_re,
+            &mut self.combined_im,
+            amplitudes,
+            point_count,
+            visit,
+        )
     }
+
+    /// Patterns with a nonzero sign as a bit mask; `None` beyond 64 patterns
+    /// (then the full program runs).
+    fn mask(&self) -> Option<u64> {
+        signs_mask(&self.signs)
+    }
+
+    pub(super) fn pattern_count(&self) -> usize {
+        self.signs.len()
+    }
+}
+
+/// Restricted replay program key: a pattern mask and a helicity subset.
+type ReplayRestriction = (Option<u64>, Option<BTreeSet<String>>);
+
+/// Bound on cached restricted replay programs (per pattern mask and helicity subset).
+const SELECTED_REPLAY_CACHE_LIMIT: usize = 64;
+
+/// Sum the selected patterns of each consecutive (sector, helicity) group.
+fn visit_pattern_groups<'a>(
+    destination_patterns: &[u32],
+    signs: &[f64],
+    combined_re: &mut Vec<f64>,
+    combined_im: &mut Vec<f64>,
+    amplitudes: impl Iterator<Item = RusticolResult<DirectRecurrenceAmplitudeView<'a>>>,
+    point_count: usize,
+    mut visit: impl FnMut(&DirectAmplitudeDestinationDescriptor, &[f64], &[f64]) -> RusticolResult<()>,
+) -> RusticolResult<()> {
+    combined_re.resize(point_count, 0.0);
+    combined_im.resize(point_count, 0.0);
+    let (re, im) = (
+        &mut combined_re[..point_count],
+        &mut combined_im[..point_count],
+    );
+    let mut group = None::<&DirectAmplitudeDestinationDescriptor>;
+    let mut active = false;
+    for amplitude in amplitudes {
+        let amplitude = amplitude?;
+        let destination = amplitude.destination;
+        if group.is_some_and(|first| {
+            (first.target_sector_id, first.target_helicity_id_or_sentinel)
+                != (
+                    destination.target_sector_id,
+                    destination.target_helicity_id_or_sentinel,
+                )
+        }) {
+            if active {
+                visit(group.expect("active group"), re, im)?;
+            }
+            active = false;
+            group = None;
+        }
+        group.get_or_insert(destination);
+        let pattern = destination_patterns
+            .get(destination.id as usize)
+            .ok_or_else(|| RusticolError::integrity("destination has no pattern"))?;
+        let sign = signs.get(*pattern as usize).copied().unwrap_or(0.0);
+        if sign == 0.0 {
+            continue;
+        }
+        let (real, imaginary) = (
+            &amplitude.real[..point_count],
+            &amplitude.imaginary[..point_count],
+        );
+        if active {
+            for point in 0..point_count {
+                re[point] = sign.mul_add(real[point], re[point]);
+                im[point] = sign.mul_add(imaginary[point], im[point]);
+            }
+        } else {
+            for point in 0..point_count {
+                re[point] = sign * real[point];
+                im[point] = sign * imaginary[point];
+            }
+            active = true;
+        }
+    }
+    if active {
+        visit(group.expect("active group"), re, im)?;
+    }
+    Ok(())
 }
 
 /// Visit LC amplitudes per destination, or per pattern-combined group.
@@ -1063,6 +1095,206 @@ impl RecurrenceNativeRuntime {
         self.pattern_selection.is_some()
     }
 
+    /// Cached restricted replay restrictions (bounded by `SELECTED_REPLAY_CACHE_LIMIT`).
+    pub(super) fn selected_replay_cache_len(&self) -> usize {
+        self.selected_replay_cache.len()
+    }
+
+    pub(super) fn pattern_count(&self) -> Option<usize> {
+        self.pattern_selection
+            .as_ref()
+            .map(PatternSelection::pattern_count)
+    }
+
+    /// Evaluate signed pattern selections of a pattern-resolved template on
+    /// one batch. `pattern_mask` restricts the program (it must cover every
+    /// selection); each selection accumulates exactly as a loaded member does:
+    /// totals per point, or resolved values `[point][helicity][flow]` over the
+    /// complete physical axes.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn run_pattern_assignments_into(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+        pattern_mask: Option<u64>,
+        signs: &[&[f64]],
+        resolved: bool,
+        outputs: &mut [&mut [f64]],
+    ) -> RusticolResult<()> {
+        if self.pattern_selection.is_none() {
+            return Err(RusticolError::compatibility(
+                "pattern assignments require a pattern-resolved template",
+            ));
+        }
+        if signs.len() != outputs.len() {
+            return Err(RusticolError::internal(
+                "pattern assignments need one output per selection",
+            ));
+        }
+        if batch.external_count() != self.external_source_count {
+            return Err(RusticolError::invalid_argument(
+                "recurrence input has the wrong external momentum count",
+            ));
+        }
+        let physics = common.physics.clone().ok_or_else(|| {
+            RusticolError::artifact("recurrence execution requires physics metadata")
+        })?;
+        self.validate_global_selectors(&physics, selected_helicities, selected_colors)?;
+        let reduction = physics.lc_selector_reduction_view();
+        let helicity_count = reduction.helicities.len();
+        let color_count = reduction.color_components.len();
+        let block = if resolved {
+            helicity_count * color_count
+        } else {
+            1
+        };
+        for output in outputs.iter_mut() {
+            if output.len() != batch.point_count() * block {
+                return Err(RusticolError::internal(
+                    "pattern assignment output has the wrong length",
+                ));
+            }
+            output.fill(0.0);
+        }
+        if selected_helicities.is_some_and(BTreeSet::is_empty) {
+            return Ok(());
+        }
+        self.prepare_parameters(common)?;
+        let normalization_factor = common.normalization_factor;
+        let mut color_indices = Vec::new();
+        if let Some(selected) = selected_colors {
+            reduction.retain_selected_color_indices(selected, &mut color_indices)?;
+        } else {
+            color_indices.extend(0..color_count);
+        }
+        for color_index in color_indices {
+            if !reduction.color_is_computed(color_index) {
+                continue;
+            }
+            let color_weight = reduction.color(color_index).coefficient();
+            let selected_replay = self.selected_replay_color_plan(
+                reduction,
+                selected_helicities,
+                pattern_mask,
+                color_index,
+            )?;
+            let mut tile_start = 0usize;
+            while tile_start < batch.point_count() {
+                let tile_stop =
+                    (tile_start + self.effective_point_tile_size()).min(batch.point_count());
+                let point_count =
+                    self.flatten_external_tile_view::<true>(batch.subview(tile_start, tile_stop)?)?;
+                let input_len = self.external_tile_input_len(point_count)?;
+                let RecurrenceNativeSelectors::TopologyReplay {
+                    replay_selectors,
+                    direct_helicity_to_physics,
+                } = &self.selectors
+                else {
+                    return Err(RusticolError::internal(
+                        "pattern assignments require topology replay",
+                    ));
+                };
+                let replay_selector = replay_selectors.get(color_index).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "recurrence replay selector is outside the public color axis",
+                    )
+                })?;
+                let replay_selector = selected_replay.as_deref().unwrap_or(replay_selector);
+                // Same executor flavour as the member path: unprofiled totals,
+                // profiled resolved values.
+                let direct_output = if resolved {
+                    self.scheduler
+                        .execute_replay_tile_from_external_planes::<true>(
+                            replay_selector,
+                            direct_point_count(point_count)?,
+                            &self.external_momenta[..input_len],
+                        )?
+                } else {
+                    self.scheduler
+                        .execute_replay_tile_from_external_planes::<false>(
+                            replay_selector,
+                            direct_point_count(point_count)?,
+                            &self.external_momenta[..input_len],
+                        )?
+                };
+                let PatternSelection {
+                    destination_patterns,
+                    combined_re,
+                    combined_im,
+                    ..
+                } = self
+                    .pattern_selection
+                    .as_mut()
+                    .expect("pattern selection checked above");
+                for (output, signs) in outputs.iter_mut().zip(signs) {
+                    visit_pattern_groups(
+                        destination_patterns,
+                        signs,
+                        combined_re,
+                        combined_im,
+                        direct_output.selected_amplitudes(),
+                        point_count,
+                        |destination, real, imaginary| {
+                            let helicity_index = replay_destination_physics_helicity(
+                                replay_selector.helicity_map(),
+                                direct_helicity_to_physics,
+                                destination.target_helicity_id_or_sentinel,
+                            )?;
+                            let helicity = reduction.helicity(helicity_index);
+                            if !helicity.computed
+                                || helicity.structural_zero
+                                || helicity.coefficient == 0.0
+                            {
+                                return Ok(());
+                            }
+                            if resolved {
+                                for physical in reduction.helicity_orbit_members(helicity_index) {
+                                    if !reduction
+                                        .helicity_is_selected(selected_helicities, *physical)
+                                    {
+                                        continue;
+                                    }
+                                    let weight = reduction.helicity(*physical).coefficient
+                                        * color_weight
+                                        * normalization_factor;
+                                    accumulate_lc_diagonal_amplitude(
+                                        point_count,
+                                        weight,
+                                        |point| (real[point], imaginary[point]),
+                                        |point, value| {
+                                            output[((tile_start + point) * helicity_count
+                                                + physical)
+                                                * color_count
+                                                + color_index] += value;
+                                        },
+                                    );
+                                }
+                            } else {
+                                let helicity_weight = reduction
+                                    .helicity_orbit_weight(selected_helicities, helicity_index);
+                                if helicity_weight == 0.0 {
+                                    return Ok(());
+                                }
+                                let weight = helicity_weight * color_weight * normalization_factor;
+                                accumulate_lc_diagonal_amplitude(
+                                    point_count,
+                                    weight,
+                                    |point| (real[point], imaginary[point]),
+                                    |point, value| output[tile_start + point] += value,
+                                );
+                            }
+                            Ok(())
+                        },
+                    )?;
+                }
+                tile_start = tile_stop;
+            }
+        }
+        Ok(())
+    }
+
     /// Restrict a pattern-resolved template to one flavour-union member.
     pub(super) fn select_flavour_union_patterns(
         &mut self,
@@ -1729,22 +1961,30 @@ impl RecurrenceNativeRuntime {
         &mut self,
         reduction: LcSelectorReductionView<'_>,
         selected_helicities: Option<&BTreeSet<String>>,
+        pattern_mask: Option<u64>,
         color_index: usize,
     ) -> RusticolResult<Option<Arc<DirectReplaySelectorPlan>>> {
-        let Some(selected_helicities) = selected_helicities else {
-            return Ok(None);
-        };
-        if selected_helicities.len() == reduction.helicity_index_by_id.len() {
-            // Selector IDs were validated at the public boundary. Spelling
-            // out the complete axis is the same work as omitting it.
+        // Selector IDs were validated at the public boundary. Spelling out the
+        // complete axis is the same work as omitting it.
+        let selected_helicities = selected_helicities
+            .filter(|selected| selected.len() != reduction.helicity_index_by_id.len());
+        if selected_helicities.is_none() && pattern_mask.is_none() {
             return Ok(None);
         }
+        let restriction = (pattern_mask, selected_helicities.cloned());
         if let Some(plan) = self
             .selected_replay_cache
-            .get(selected_helicities)
+            .get(&restriction)
             .and_then(|plans| plans.get(&color_index))
         {
             return Ok(Some(Arc::clone(plan)));
+        }
+        if self.selected_replay_cache.len() >= SELECTED_REPLAY_CACHE_LIMIT
+            && !self.selected_replay_cache.contains_key(&restriction)
+        {
+            // Bounded: restart rather than retain every requested restriction.
+            self.selected_replay_cache.clear();
+            self.selected_replay_programs.clear();
         }
         let RecurrenceNativeSelectors::TopologyReplay {
             replay_selectors,
@@ -1758,7 +1998,7 @@ impl RecurrenceNativeRuntime {
         let selector = replay_selectors.get(color_index).ok_or_else(|| {
             RusticolError::integrity("recurrence replay selector is outside the public color axis")
         })?;
-        let destinations = selected_replay_destination_ids(
+        let mut destinations = selected_replay_destination_ids(
             self.scheduler.plan().amplitude_destinations(),
             selector.representative_flow_id(),
             selector.helicity_map(),
@@ -1766,6 +2006,20 @@ impl RecurrenceNativeRuntime {
             reduction,
             selected_helicities,
         )?;
+        if let Some(mask) = pattern_mask {
+            let patterns = &self
+                .pattern_selection
+                .as_ref()
+                .ok_or_else(|| {
+                    RusticolError::internal("pattern-restricted replay requires a template")
+                })?
+                .destination_patterns;
+            destinations.retain(|id| {
+                patterns
+                    .get(*id as usize)
+                    .is_some_and(|pattern| *pattern < 64 && mask & (1 << pattern) != 0)
+            });
+        }
         let program_key = (selector.representative_flow_id(), destinations);
         // Different public flows and physical aliases can select the same
         // representative currents. Share their dependency program instead
@@ -1785,7 +2039,7 @@ impl RecurrenceNativeRuntime {
             selected
         };
         self.selected_replay_cache
-            .entry(selected_helicities.clone())
+            .entry(restriction)
             .or_default()
             .insert(color_index, Arc::clone(&selected));
         Ok(Some(selected))
@@ -1812,8 +2066,14 @@ impl RecurrenceNativeRuntime {
             ));
         }
         let color_weight = reduction.color(color_index).coefficient();
-        let selected_replay =
-            self.selected_replay_color_plan(reduction, selected_helicities, color_index)?;
+        let selected_replay = self.selected_replay_color_plan(
+            reduction,
+            selected_helicities,
+            self.pattern_selection
+                .as_ref()
+                .and_then(PatternSelection::mask),
+            color_index,
+        )?;
 
         let mut tile_start = 0usize;
         while tile_start < batch.point_count() {
@@ -2098,8 +2358,14 @@ impl RecurrenceNativeRuntime {
                 continue;
             }
             let color_weight = reduction_view.color(color_index).coefficient();
-            let selected_replay =
-                self.selected_replay_color_plan(reduction_view, selected_helicities, color_index)?;
+            let selected_replay = self.selected_replay_color_plan(
+                reduction_view,
+                selected_helicities,
+                self.pattern_selection
+                    .as_ref()
+                    .and_then(PatternSelection::mask),
+                color_index,
+            )?;
             let mut tile_start = 0usize;
             while tile_start < batch.len() {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
@@ -2253,8 +2519,14 @@ impl RecurrenceNativeRuntime {
                 continue;
             }
             let color_weight = reduction_view.color(color_index).coefficient();
-            let selected_replay =
-                self.selected_replay_color_plan(reduction_view, selected_helicities, color_index)?;
+            let selected_replay = self.selected_replay_color_plan(
+                reduction_view,
+                selected_helicities,
+                self.pattern_selection
+                    .as_ref()
+                    .and_then(PatternSelection::mask),
+                color_index,
+            )?;
             let mut tile_start = 0usize;
             while tile_start < batch.len() {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
@@ -4840,7 +5112,7 @@ fn selected_replay_destination_ids(
     replay_helicity_map: &[u32],
     direct_helicity_to_physics: &[usize],
     reduction: LcSelectorReductionView<'_>,
-    selected_helicities: &BTreeSet<String>,
+    selected_helicities: Option<&BTreeSet<String>>,
 ) -> RusticolResult<Vec<u32>> {
     let mut selected = Vec::new();
     for destination in destinations {
@@ -4856,7 +5128,7 @@ fn selected_replay_destination_ids(
         if helicity.computed
             && !helicity.structural_zero
             && helicity.coefficient != 0.0
-            && reduction.helicity_orbit_weight(Some(selected_helicities), physics_helicity) != 0.0
+            && reduction.helicity_orbit_weight(selected_helicities, physics_helicity) != 0.0
         {
             selected.push(destination.id);
         }
@@ -4942,7 +5214,7 @@ mod replay_destination_helicity_tests {
             combined_re: Vec::new(),
             combined_im: Vec::new(),
         };
-        let mut run = |selection: &mut PatternSelection| {
+        let run = |selection: &mut PatternSelection| {
             let mut visited = Vec::new();
             selection
                 .visit(amplitudes(), 2, |destination, re, im| {
@@ -5298,7 +5570,7 @@ mod replay_destination_helicity_tests {
                 &[1, 0, 2, 3],
                 &[0, 2, 3, 4],
                 reduction,
-                &ids.iter().map(|id| (*id).to_string()).collect(),
+                Some(&ids.iter().map(|id| (*id).to_string()).collect()),
             )
             .unwrap()
         };

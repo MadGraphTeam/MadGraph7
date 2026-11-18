@@ -309,6 +309,21 @@ pub struct ProcessGroupRelation {
     pub flavour_union_patterns: Option<FlavourUnionPatterns>,
 }
 
+/// One routed flavour-union member of a template, in process-groups.json order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FlavourUnionMemberRecord {
+    pub process_id: String,
+    pub expression: String,
+    /// PDGs in the member's own leg order.
+    pub pdgs: Vec<i32>,
+    /// Template slot to member leg.
+    pub permutation: Vec<usize>,
+    pub factor_numerator: u64,
+    pub factor_denominator: u64,
+    pub conjugated: bool,
+    pub patterns: FlavourUnionPatterns,
+}
+
 /// Selected pairing rules of a pattern-resolved template and their signs.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FlavourUnionPatterns {
@@ -1119,6 +1134,17 @@ impl VerifiedArtifact {
             )));
         }
         ProcessGroups::from_json(&bytes, &self.manifest).map(Some)
+    }
+
+    /// Flavour-union members routed through the stored process `template_id`.
+    pub fn flavour_union_members(
+        &self,
+        template_id: &str,
+    ) -> RusticolResult<Vec<FlavourUnionMemberRecord>> {
+        Ok(self
+            .process_groups()?
+            .map(|groups| groups.flavour_union_members(template_id))
+            .unwrap_or_default())
     }
 
     pub fn payload(&self, path: &str) -> RusticolResult<&Payload> {
@@ -2684,6 +2710,25 @@ impl ProcessGroups {
             }
         }
         Ok(Self { members })
+    }
+
+    fn flavour_union_members(&self, template_id: &str) -> Vec<FlavourUnionMemberRecord> {
+        self.members
+            .iter()
+            .filter(|member| member.representative_id == template_id)
+            .filter_map(|member| {
+                Some(FlavourUnionMemberRecord {
+                    process_id: member.id.clone(),
+                    expression: member.expression.clone(),
+                    pdgs: member.pdgs.clone(),
+                    permutation: member.permutation.clone(),
+                    factor_numerator: member.factor_numerator,
+                    factor_denominator: member.factor_denominator,
+                    conjugated: member.conjugated,
+                    patterns: member.flavour_union_patterns.clone()?,
+                })
+            })
+            .collect()
     }
 
     /// Match a member by stable ID, exact expression, or side permutation of

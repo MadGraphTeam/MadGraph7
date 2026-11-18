@@ -49,9 +49,9 @@ pub mod source_bindings;
 pub mod source_scalar;
 
 pub use artifact::{
-    ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, FlavourUnionPatterns,
-    Payload, PayloadRole, ProcessAlias, ProcessGroupRelation, Target, VerifiedArtifact,
-    runtime_target_info,
+    ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, FlavourUnionMemberRecord,
+    FlavourUnionPatterns, Payload, PayloadRole, ProcessAlias, ProcessGroupRelation, Target,
+    VerifiedArtifact, runtime_target_info,
 };
 pub use eager_lowering_v3::*;
 pub use eager_plan_v3_pacbin::*;
@@ -74,9 +74,10 @@ pub use eager_tables::{
 #[cfg(feature = "f64-symjit")]
 pub use engine::eager_direct_descriptor_for_source_application_bytes;
 pub use engine::{
-    AmplitudeOrderCatalog, NativeColorComponent, NativeCorrelatedEvaluation,
-    NativeCorrelatedRequest, NativeDecimalCorrelatedEvaluation, NativeDecimalCorrelatedRequest,
-    NativeDecimalEvaluation, NativeDecimalGradedEvaluation, NativeDecimalResolvedEvaluation,
+    AmplitudeOrderCatalog, AssignmentOutputMode, FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY,
+    NativeColorComponent, NativeCorrelatedEvaluation, NativeCorrelatedRequest,
+    NativeDecimalCorrelatedEvaluation, NativeDecimalCorrelatedRequest, NativeDecimalEvaluation,
+    NativeDecimalGradedEvaluation, NativeDecimalResolvedEvaluation,
     NativeDecimalSpinCorrelationVectors, NativeEagerExactAttachment, NativeEagerExactClosure,
     NativeEagerExactCoupling, NativeEagerExactFinalization, NativeEagerExactInvocation,
     NativeEagerExactSections, NativeEagerExactStage, NativeExternalParticle,
@@ -84,8 +85,8 @@ pub use engine::{
     NativeModelParameter, NativeNcExpansion, NativeProfiledEvaluation, NativeRationalFactor,
     NativeRecurrenceExactExecutor, NativeRecurrenceExactFactor, NativeRecurrenceExactSections,
     NativeRecurrenceSelectorPlan, NativeResolvedEvaluation, NativeRuntime, NativeRuntimeMetadata,
-    NativeRuntimeProfile, NativeSpinCorrelationVectors, RuntimeCapability, SquaredAmplitudeOrder,
-    preflight_prepared_kernel_pack, supported_runtime_capabilities,
+    NativeRuntimeProfile, NativeSpinCorrelationVectors, NativeUnionAssignment, RuntimeCapability,
+    SquaredAmplitudeOrder, preflight_prepared_kernel_pack, supported_runtime_capabilities,
 };
 #[cfg(feature = "on-the-fly-test-support")]
 pub use engine::{

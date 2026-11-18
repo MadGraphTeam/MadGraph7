@@ -1898,6 +1898,63 @@ class Runtime:
         return permutation
 
     @property
+    def flavour_union_assignments(self) -> tuple[Mapping[str, object], ...]:
+        """Flavour assignments of a pattern-resolved union template.
+
+        Assignment 0 is the template (all pairing patterns); the others are its
+        union members with ``process_id``, ``pdgs`` (own leg order),
+        ``permutation`` (template slot -> member leg), ``factor``,
+        ``conjugated``, ``patterns`` and ``pattern_signs``. Empty for other
+        processes.
+        """
+
+        value = getattr(self._backend, "flavour_union_assignments", ())
+        return tuple(value)
+
+    def evaluate_assignments(
+        self,
+        momenta: Momenta,
+        assignments: Sequence[Sequence[int]],
+        *,
+        helicity_by_point: Sequence[str | HelicityConfiguration] | None = None,
+        color_flow_by_point: Sequence[str | ColorFlow] | None = None,
+        output: Literal["total", "helicity", "helicity-flow"] = "total",
+    ) -> tuple[tuple[object, ...], ...]:
+        """Evaluate flavour assignments of a union template on each point.
+
+        ``momenta`` are in the TEMPLATE's leg order; ``assignments[p]`` lists
+        the assignment ids (see :attr:`flavour_union_assignments`) wanted at
+        point ``p``. Returns per point one entry per requested id: a total,
+        per-helicity values, or ``[helicity][color flow]`` values. A single
+        requested member equals loading that member (bitwise); several share
+        one template evaluation per point.
+        """
+
+        evaluate = getattr(self._backend, "evaluate_assignments", None)
+        if not callable(evaluate):
+            raise CompatibilityError(
+                "this runtime does not support flavour-union assignments"
+            )
+        return cast(
+            tuple[tuple[object, ...], ...],
+            evaluate(
+                momenta,
+                assignments,
+                helicity_by_point=_point_selector_ids(
+                    helicity_by_point,
+                    expected_type=HelicityConfiguration,
+                    name="helicity_by_point",
+                ),
+                color_flow_by_point=_point_selector_ids(
+                    color_flow_by_point,
+                    expected_type=ColorFlow,
+                    name="color_flow_by_point",
+                ),
+                output=output,
+            ),
+        )
+
+    @property
     def process_group_factor(self) -> Fraction:
         """Exact factor relating the selected process to its representative.
 

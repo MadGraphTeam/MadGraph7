@@ -1525,6 +1525,235 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_selected_f64(
     })
 }
 
+/// Evaluates flavour assignments of a pattern-resolved flavour-union template.
+///
+/// `momenta` are point-major in the template's slot order. Point `p` requests the
+/// assignment ids `assignment_ids[request_offsets[p]..request_offsets[p + 1]]` (at least one;
+/// duplicates repeat a row). `mode` 0 writes one total per requested row, 1 one value per
+/// physical helicity, 2 helicity-major values per (helicity, color flow). Per-point selectors
+/// follow [`rusticol_runtime_evaluate_selected_f64`]. A single-assignment request equals
+/// loading that member bitwise. Requires the `rusticol.flavour-union-assignments.v1`
+/// runtime capability.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and exclusively accessible during the call. Non-null
+/// arrays must reference their stated counts of readable values and `output` must reference
+/// `output_capacity` writable `f64` values that do not overlap the inputs.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_evaluate_assignments_f64(
+    handle: *mut RusticolRuntimeHandle,
+    momenta: *const c_double,
+    momentum_count: size_t,
+    point_count: size_t,
+    request_offsets: *const size_t,
+    request_offset_count: size_t,
+    assignment_ids: *const u32,
+    assignment_id_count: size_t,
+    helicity_by_point: *const u32,
+    helicity_by_point_count: size_t,
+    color_flow_by_point: *const u32,
+    color_flow_by_point_count: size_t,
+    mode: c_int,
+    output: *mut c_double,
+    output_capacity: size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate all pointers and arrays.
+        let handle = unsafe { required_handle_mut(handle) }?;
+        if point_count == 0 {
+            return Err(invalid("point_count must be positive"));
+        }
+        let momenta = unsafe { read_f64_slice(momenta, momentum_count, "momenta") }?;
+        if request_offsets.is_null() || request_offset_count != point_count + 1 {
+            return Err(invalid(
+                "request_offsets must hold point_count + 1 readable values",
+            ));
+        }
+        // SAFETY: Checked non-null with the stated count.
+        let offsets = unsafe { slice::from_raw_parts(request_offsets, request_offset_count) };
+        if assignment_ids.is_null() || assignment_id_count == 0 {
+            return Err(invalid("assignment_ids must not be empty"));
+        }
+        // SAFETY: Checked non-null with the stated count.
+        let ids = unsafe { slice::from_raw_parts(assignment_ids, assignment_id_count) };
+        let helicity_by_point = unsafe {
+            read_optional_u32_slice(
+                helicity_by_point,
+                helicity_by_point_count,
+                point_count,
+                "helicity_by_point",
+            )
+        }?;
+        let color_flow_by_point = unsafe {
+            read_optional_u32_slice(
+                color_flow_by_point,
+                color_flow_by_point_count,
+                point_count,
+                "color_flow_by_point",
+            )
+        }?;
+        let mode = match mode {
+            0 => rusticol_core::AssignmentOutputMode::Total,
+            1 => rusticol_core::AssignmentOutputMode::PerHelicity,
+            2 => rusticol_core::AssignmentOutputMode::PerHelicityFlow,
+            other => return Err(invalid(format!("unknown assignment output mode {other}"))),
+        };
+        let physics = handle.runtime.process_physics()?;
+        let width = match mode {
+            rusticol_core::AssignmentOutputMode::Total => 1,
+            rusticol_core::AssignmentOutputMode::PerHelicity => physics.helicities.len(),
+            rusticol_core::AssignmentOutputMode::PerHelicityFlow => {
+                physics.helicities.len() * physics.color_components.len()
+            }
+        };
+        let required = width
+            .checked_mul(ids.len())
+            .ok_or_else(|| invalid("assignment output size overflows"))?;
+        validate_f64_output(output, output_capacity, required, "assignment output")?;
+        // SAFETY: Non-null with at least `required` writable values.
+        let output = unsafe { slice::from_raw_parts_mut(output, required) };
+        let momenta = handle.improved(momenta, point_count)?;
+        handle
+            .runtime
+            .evaluate_assignments_f64_into(
+                &momenta,
+                point_count,
+                offsets,
+                ids,
+                helicity_by_point,
+                color_flow_by_point,
+                mode,
+                output,
+            )
+            .map_err(AbiError::from)
+    })
+}
+
+/// Writes the number of flavour assignments of a pattern-resolved template (the template
+/// itself is assignment 0), or 0 for other processes.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live. `count` must be writable for one `size_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_assignment_count(
+    handle: *const RusticolRuntimeHandle,
+    count: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let value = handle
+            .runtime
+            .flavour_union_assignments()
+            .map_or(0, <[_]>::len);
+        unsafe { write_size(value, count, "assignment count") }
+    })
+}
+
+fn union_assignment(
+    handle: &RusticolRuntimeHandle,
+    index: size_t,
+) -> AbiResult<&rusticol_core::NativeUnionAssignment> {
+    handle
+        .runtime
+        .flavour_union_assignments()
+        .and_then(|assignments| assignments.get(index))
+        .ok_or_else(|| invalid(format!("flavour-union assignment {index} is out of range")))
+}
+
+/// Copies the process id of one flavour assignment.
+///
+/// # Safety
+///
+/// As [`rusticol_runtime_helicity_id`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_assignment_process_id(
+    handle: *const RusticolRuntimeHandle,
+    index: size_t,
+    buffer: *mut c_char,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let id = union_assignment(handle, index)?.process_id.clone();
+        unsafe { write_string(&id, buffer, capacity, required) }
+    })
+}
+
+/// Copies the PDGs of one flavour assignment in its own leg order.
+///
+/// # Safety
+///
+/// As [`rusticol_runtime_helicity_vector`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_assignment_pdgs(
+    handle: *const RusticolRuntimeHandle,
+    index: size_t,
+    output: *mut i32,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let pdgs = &union_assignment(handle, index)?.pdgs;
+        unsafe { write_size(pdgs.len(), required, "assignment PDG count")? };
+        if output.is_null() {
+            return if capacity == 0 {
+                Ok(())
+            } else {
+                Err(invalid("assignment PDG output is null"))
+            };
+        }
+        if capacity < pdgs.len() {
+            return Err(buffer_too_small("assignment PDG capacity is too small"));
+        }
+        // SAFETY: Capacity was checked.
+        unsafe { ptr::copy_nonoverlapping(pdgs.as_ptr(), output, pdgs.len()) };
+        Ok(())
+    })
+}
+
+/// Copies the template-slot to assignment-leg permutation of one flavour assignment.
+///
+/// # Safety
+///
+/// As [`rusticol_runtime_external_permutation`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_assignment_permutation(
+    handle: *const RusticolRuntimeHandle,
+    index: size_t,
+    output: *mut size_t,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let permutation = &union_assignment(handle, index)?.permutation;
+        unsafe { write_size(permutation.len(), required, "assignment permutation length")? };
+        if output.is_null() {
+            return if capacity == 0 {
+                Ok(())
+            } else {
+                Err(invalid("assignment permutation output is null"))
+            };
+        }
+        if capacity < permutation.len() {
+            return Err(buffer_too_small(
+                "assignment permutation capacity is too small",
+            ));
+        }
+        // SAFETY: Capacity was checked and usize matches C size_t.
+        unsafe { ptr::copy_nonoverlapping(permutation.as_ptr(), output, permutation.len()) };
+        Ok(())
+    })
+}
+
 /// Evaluates resolved f64 matrix elements for a batch of momentum points.
 ///
 /// # Safety

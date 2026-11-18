@@ -803,6 +803,69 @@ impl Runtime {
         Ok(result)
     }
 
+    /// Cached restricted replay programs (test hook).
+    fn _restricted_program_cache_len(&self) -> usize {
+        self.runtime.restricted_program_cache_len()
+    }
+
+    /// Flavour-union assignments of a pattern-resolved template as JSON.
+    fn flavour_union_assignments_json(&self) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
+        self.runtime
+            .flavour_union_assignments_json()
+            .map_err(python_error)
+    }
+
+    /// Flat values of `evaluate_assignments_f64_into` (momenta in template slot order).
+    #[pyo3(signature=(momenta, request_offsets, assignment_ids, *, helicity_by_point=None, color_flow_by_point=None, mode="total"))]
+    #[allow(clippy::too_many_arguments)]
+    fn evaluate_assignments(
+        &mut self,
+        py: Python<'_>,
+        momenta: &Bound<'_, PyAny>,
+        request_offsets: Vec<usize>,
+        assignment_ids: Vec<u32>,
+        helicity_by_point: Option<Vec<u32>>,
+        color_flow_by_point: Option<Vec<u32>>,
+        mode: &str,
+    ) -> PyResult<Py<PyAny>> {
+        let _unlock = pyamplicol::unlock();
+        let mode = match mode {
+            "total" => rusticol_core::AssignmentOutputMode::Total,
+            "helicity" => rusticol_core::AssignmentOutputMode::PerHelicity,
+            "helicity-flow" => rusticol_core::AssignmentOutputMode::PerHelicityFlow,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown assignment output mode {other:?}; use total, helicity or helicity-flow"
+                )));
+            }
+        };
+        let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let point_count = momenta.point_count();
+        let physics = self.runtime.process_physics().map_err(python_error)?;
+        let width = match mode {
+            rusticol_core::AssignmentOutputMode::Total => 1,
+            rusticol_core::AssignmentOutputMode::PerHelicity => physics.helicities.len(),
+            rusticol_core::AssignmentOutputMode::PerHelicityFlow => {
+                physics.helicities.len() * physics.color_components.len()
+            }
+        };
+        let mut values = vec![0.0; assignment_ids.len() * width];
+        self.runtime
+            .evaluate_assignments_f64_into(
+                momenta.as_slice(),
+                point_count,
+                &request_offsets,
+                &assignment_ids,
+                helicity_by_point.as_deref(),
+                color_flow_by_point.as_deref(),
+                mode,
+                &mut values,
+            )
+            .map_err(python_error)?;
+        Ok(PyList::new(py, values)?.into_any().unbind())
+    }
+
     /// Amplitude and squared coupling-order axes as compact JSON.
     fn _amplitude_orders_json(&self) -> PyResult<String> {
         let _unlock = pyamplicol::unlock();

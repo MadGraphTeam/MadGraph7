@@ -193,6 +193,10 @@ pub const ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY: &str = "rusticol.on-the-fly.lc
 pub const SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY: &str =
     "rusticol.color-contraction.symmetric-group-fft.v1";
 pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
+/// Runtime feature (not an artifact requirement): multi-assignment evaluation
+/// of flavour-union templates.
+pub const FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY: &str =
+    "rusticol.flavour-union-assignments.v1";
 pub const COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY: &str = "compiled-plane-arena-v1";
 pub const COMPILED_PLANE_DIRECT_APPLICATION_ABI: &str = "pyamplicol-compiled-plane-kernel-v2";
 pub const COMPILED_PLANE_SOURCE_APPLICATION_ABI: &str = "pyamplicol-symjit-plane-application-v2";
@@ -345,6 +349,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         EAGER_RUNTIME_LAYOUT_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
@@ -404,6 +410,7 @@ fn runtime_capability_is_supported(capability: &str) -> bool {
         | COMPILED_RUNTIME_SELECTORS_CAPABILITY
         | EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
         | EAGER_RUNTIME_LAYOUT_CAPABILITY
+        | FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY
         | RECURRENCE_RUNTIME_CAPABILITY
         | RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY
         | RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY
@@ -3481,6 +3488,10 @@ pub struct NativeRuntimeMetadata {
     /// Whether the selected process is the charge conjugate of its
     /// representative; public LC color-flow words are then reversed.
     pub charge_conjugated: bool,
+    /// The selection is a flavour-union member: no factor relates it to its template.
+    pub flavour_union_member: bool,
+    /// Assignments of a pattern-resolved template (`evaluate_assignments`), else 0.
+    pub flavour_union_assignment_count: usize,
     pub color_accuracy: String,
     pub external_pdg_order: Vec<i32>,
     pub external_count: usize,
@@ -4568,6 +4579,99 @@ pub struct NativeRuntime {
     selector_simd_lane_width: usize,
     // Cold, opt-in metadata and vector defaults; ordinary evaluation never reads it.
     correlated: Option<correlated::CorrelatedRuntime>,
+    // Assignments of a pattern-resolved template: the template, then its members.
+    flavour_union_assignments: Option<Box<[NativeUnionAssignment]>>,
+}
+
+/// One flavour assignment of a pattern-resolved template (`evaluate_assignments`).
+#[derive(Clone, Debug, Serialize)]
+pub struct NativeUnionAssignment {
+    pub process_id: String,
+    pub expression: String,
+    /// PDGs in the assignment's own leg order.
+    pub pdgs: Vec<i32>,
+    /// Template slot to assignment leg.
+    pub permutation: Vec<usize>,
+    pub factor: NativeRationalFactor,
+    pub conjugated: bool,
+    pub patterns: Vec<u32>,
+    pub pattern_signs: Vec<i32>,
+    #[serde(skip)]
+    signs: Box<[f64]>,
+    #[serde(skip)]
+    mask: Option<u64>,
+}
+
+/// Bit mask of the patterns with a nonzero sign; `None` (complete program)
+/// only beyond 64 patterns. Even all patterns use a restricted program, so a
+/// point's value never depends on the batch (no singleton/fanout paths).
+pub(crate) fn signs_mask(signs: &[f64]) -> Option<u64> {
+    if signs.len() > 64 {
+        return None;
+    }
+    Some(
+        signs
+            .iter()
+            .enumerate()
+            .filter(|(_, sign)| **sign != 0.0)
+            .fold(0, |mask, (pattern, _)| mask | (1 << pattern)),
+    )
+}
+
+impl NativeUnionAssignment {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        process_id: String,
+        expression: String,
+        pdgs: Vec<i32>,
+        permutation: Vec<usize>,
+        factor: NativeRationalFactor,
+        conjugated: bool,
+        pattern_signs: Vec<i32>,
+        patterns: Vec<u32>,
+        pattern_count: usize,
+    ) -> RusticolResult<Self> {
+        let mut signs = vec![0.0; pattern_count];
+        if patterns.is_empty() || patterns.len() != pattern_signs.len() {
+            return Err(RusticolError::artifact(format!(
+                "flavour-union assignment {process_id:?} needs one sign per pattern"
+            )));
+        }
+        for (pattern, sign) in patterns.iter().zip(&pattern_signs) {
+            let slot = signs.get_mut(*pattern as usize).ok_or_else(|| {
+                RusticolError::artifact(format!(
+                    "flavour-union assignment {process_id:?} pattern {pattern} is outside the template catalog"
+                ))
+            })?;
+            if *slot != 0.0 || !matches!(sign, -1 | 1) {
+                return Err(RusticolError::artifact(format!(
+                    "flavour-union assignment {process_id:?} repeats a pattern or has a sign other than +1/-1"
+                )));
+            }
+            *slot = f64::from(*sign);
+        }
+        let mask = signs_mask(&signs);
+        Ok(Self {
+            process_id,
+            expression,
+            pdgs,
+            permutation,
+            factor,
+            conjugated,
+            patterns,
+            pattern_signs,
+            signs: signs.into_boxed_slice(),
+            mask,
+        })
+    }
+}
+
+/// Output axes of `evaluate_assignments`: one row per (point, requested assignment).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AssignmentOutputMode {
+    Total,
+    PerHelicity,
+    PerHelicityFlow,
 }
 
 enum NativeExecutionLane {

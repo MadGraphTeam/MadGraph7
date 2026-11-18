@@ -397,6 +397,68 @@ int rusticol_runtime_evaluate_selected_f64(
     size_t output_capacity
 );
 
+/*
+ * Flavour-union templates (runtime capability
+ * "rusticol.flavour-union-assignments.v1"). A pattern-resolved template, or any
+ * of its members, exposes assignment 0 = the template and then its union
+ * members. Momenta are point-major in the TEMPLATE slot order. Point p requests
+ * assignment_ids[request_offsets[p] .. request_offsets[p + 1]] (at least one;
+ * duplicates repeat a row); request_offsets has point_count + 1 entries from 0
+ * to assignment_id_count. mode 0 writes one total per requested row, mode 1
+ * one value per physical helicity, mode 2 [helicity][color flow] per row.
+ * Per-point selectors follow rusticol_runtime_evaluate_selected_f64. A
+ * single-assignment request equals loading that member bitwise.
+ */
+int rusticol_runtime_evaluate_assignments_f64(
+    RusticolRuntimeHandle *handle,
+    const double *momenta,
+    size_t momentum_count,
+    size_t point_count,
+    const size_t *request_offsets,
+    size_t request_offset_count,
+    const uint32_t *assignment_ids,
+    size_t assignment_id_count,
+    const uint32_t *helicity_by_point,
+    size_t helicity_by_point_count,
+    const uint32_t *color_flow_by_point,
+    size_t color_flow_by_point_count,
+    int mode,
+    double *output,
+    size_t output_capacity
+);
+
+/* Number of flavour assignments (0 for processes that are not templates). */
+int rusticol_runtime_assignment_count(
+    const RusticolRuntimeHandle *handle,
+    size_t *count
+);
+
+int rusticol_runtime_assignment_process_id(
+    const RusticolRuntimeHandle *handle,
+    size_t index,
+    char *buffer,
+    size_t capacity,
+    size_t *required
+);
+
+/* PDGs in the assignment's own leg order. */
+int rusticol_runtime_assignment_pdgs(
+    const RusticolRuntimeHandle *handle,
+    size_t index,
+    int32_t *output,
+    size_t capacity,
+    size_t *required
+);
+
+/* Template slot -> assignment leg. */
+int rusticol_runtime_assignment_permutation(
+    const RusticolRuntimeHandle *handle,
+    size_t index,
+    size_t *output,
+    size_t capacity,
+    size_t *required
+);
+
 /* Resolved output uses [point][helicity][color]. */
 int rusticol_runtime_evaluate_resolved_f64(
     RusticolRuntimeHandle *handle,
