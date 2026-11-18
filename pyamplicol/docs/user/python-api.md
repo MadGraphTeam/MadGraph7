@@ -487,9 +487,18 @@ flagged (`best-effort` under the default `on_failure`, as before not met);
 a stack with 100- and 150-digit levels serves them right (at 150 and 100
 digits). The test rests on numerica's tracked precision, an estimate
 rather than a bound: it overstates the accuracy of a ruined value (the two
-points report 10 to 12 kept bits where none are right), and a point whose
-lanes all vanish identically, or a loss that the tracking does not see,
-passes or fails without regard to the value.
+points still claim some kept bits, far below `r`, where none are right), and
+it does not see a loss that happens outside the tracked arithmetic.
+An amplitude that integrates to zero at every point (a Landau-Yang zero such
+as loop-induced g g > z, every family vanishing by itself) has only lanes of
+rounding noise, so on NinjaRS in arbitrary precision the test fails it
+(measured on g g > z at 40 and 57 digits); the value it
+would have served is that noise. The default loop-induced route (TIRust)
+does not take the test, and the opt-in `"scale"` metric of the rescue stack
+accepts such a zero at its binary64 level; under the default `"relative"`
+metric the point is kept at the last level with the target not met, as
+before, now as `best-effort` when that level is NinjaRS in arbitrary
+precision.
 
 **Inexact inputs near forward.** Near forward, backward or threshold
 kinematics NinjaRS amplifies a point's on-shell and momentum-conservation
