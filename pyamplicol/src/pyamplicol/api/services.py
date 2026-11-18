@@ -699,6 +699,27 @@ class Runtime:
             )
         return cast(Literal["tree", "virtual", "loop-induced"], kind)
 
+    def _call_precision(self, precision: int | None, arithmetic: str | None) -> int:
+        """The decimal digits of one call: ``precision`` when given (never
+        overridden), else the runtime's default; on a virtual runtime an
+        explicit ``arithmetic="arbitrary"`` without digits that the load did
+        not set (its load-time arithmetic is not arbitrary precision) takes
+        the default arbitrary-precision digits (500, ``loops.v2.reduction.
+        default_arbitrary_digits``, USER 2026-11-18), as ``Runtime.load(...,
+        arithmetic="arbitrary")`` does. A tree runtime keeps its default."""
+
+        if precision is not None:
+            return _validate_precision(precision)
+        if (
+            self._virtual
+            and arithmetic == "arbitrary"
+            and getattr(self._backend, "default_arithmetic", None) != "arbitrary"
+        ):
+            from pyamplicol.loops.v2.reduction import default_arbitrary_digits
+
+            return default_arbitrary_digits()
+        return _validate_precision(getattr(self._backend, "default_precision", 16))
+
     @property
     def _virtual(self) -> bool:
         """Virtual result semantics (a Born-interfered virtual or a
@@ -908,11 +929,7 @@ class Runtime:
             raise ValueError(
                 "color_flows and color_flow_by_point are mutually exclusive"
             )
-        precision = _validate_precision(
-            getattr(self._backend, "default_precision", 16)
-            if precision is None
-            else precision
-        )
+        precision = self._call_precision(precision, arithmetic)
         contribution = self.contribution_kind
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
@@ -1229,11 +1246,7 @@ class Runtime:
         helicity's value); other runtimes refuse it.
         """
 
-        precision = _validate_precision(
-            getattr(self._backend, "default_precision", 16)
-            if precision is None
-            else precision
-        )
+        precision = self._call_precision(precision, arithmetic)
         contribution = self.contribution_kind
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
@@ -1386,11 +1399,7 @@ class Runtime:
             raise CompatibilityError(
                 "runtime backend does not support squared coupling-order partials"
             )
-        precision = _validate_precision(
-            getattr(self._backend, "default_precision", 16)
-            if precision is None
-            else precision
-        )
+        precision = self._call_precision(precision, None)
         result = operation(
             momenta,
             helicities=_selector_ids(
@@ -1650,11 +1659,7 @@ class Runtime:
                 helicities=_selector_ids(
                     helicities, expected_type=HelicityConfiguration, name="helicity"
                 ),
-                precision=_validate_precision(
-                    getattr(self._backend, "default_precision", 16)
-                    if precision is None
-                    else precision
-                ),
+                precision=self._call_precision(precision, arithmetic),
                 **options,
             )
             if not isinstance(value, VirtualEvaluation) or not value.correlated:
@@ -1800,11 +1805,7 @@ class Runtime:
                 helicities=_selector_ids(
                     helicities, expected_type=HelicityConfiguration, name="helicity"
                 ),
-                precision=_validate_precision(
-                    getattr(self._backend, "default_precision", 16)
-                    if precision is None
-                    else precision
-                ),
+                precision=self._call_precision(precision, arithmetic),
                 **options,
             )
             if (

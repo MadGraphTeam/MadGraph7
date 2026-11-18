@@ -576,10 +576,14 @@ pyamplicol evaluate artifacts/virtual --process gg --momenta points.json \
 ```
 
 `--arithmetic` accepts `double`, `double-double` (DoubleFloat) or `arbitrary`.
-For arbitrary precision, add `--precision 70`, for example. These choices apply
-before model parameters are bound. Without an explicit arithmetic choice, the
-existing precision convention applies: 16 digits selects double; other requested
-precisions select arbitrary precision. DoubleFloat is always selected explicitly.
+`--arithmetic arbitrary` without `--precision` runs at the default
+arbitrary-precision digits (500, the native policy's
+`DEFAULT_ARBITRARY_DIGITS`); `--precision 70`, for example, sets the digits, and
+a number given is never overridden. These choices apply before model parameters
+are bound. Without an explicit arithmetic choice, the existing precision
+convention applies: 16 digits (the default when unset) selects double; other
+requested precisions select arbitrary precision. DoubleFloat is always selected
+explicitly.
 
 `--loop-reduction {auto,ninjars,tirust}` selects the reduction backend for the
 evaluation, overriding the artifact's default (`generate --loop-reduction`

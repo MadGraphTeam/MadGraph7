@@ -323,7 +323,8 @@ def test_policies_are_validated():
     with pytest.raises(TypeError):
         VirtualRescuePolicy(VirtualRescueLevel("double"))
     for kwargs in (
-        {"arithmetic": "arbitrary"},
+        # (Arbitrary precision without digits takes the default, below.)
+        {"arithmetic": "arbitrary", "precision": 0},
         {"arithmetic": "double", "precision": 20},
         {"arithmetic": "quad"},
         {"arithmetic": "double", "target": 0},
@@ -658,3 +659,49 @@ def test_escalated_subsets_run_together_on_one_double_double_executor(artifact):
     assert [key for key in native if key[0] == "double-double"] == [
         ("double-double", None, DEFAULT_LANES)
     ]
+
+
+@pytest.mark.loop_fast
+def test_arbitrary_precision_without_digits_takes_the_default_digits():
+    """USER 2026-11-18 ("500 digits"): an arbitrary-precision carrier named
+    without digits takes the default arbitrary-precision digits (the native
+    policy's one definition); a number given is kept."""
+
+    from pyamplicol.api.virtual_results import VirtualArithmeticSpec
+    from pyamplicol.config import EvaluationConfig
+
+    default = default_arbitrary_digits()
+    assert default == 500
+    assert VirtualArithmeticSpec("arbitrary").precision == default
+    assert VirtualArithmeticSpec("arbitrary", 40).precision == 40
+    assert VirtualArithmeticSpec("double").precision is None
+    level = VirtualRescueLevel("arbitrary")
+    assert level.precision == default and level.precision_bits == 1661
+    assert VirtualRescueLevel("arbitrary", 80).precision == 80
+    # The configuration leaves it unset (the carrier's default).
+    assert EvaluationConfig().precision is None
+    assert EvaluationConfig(precision=70).precision == 70
+
+
+@pytest.mark.loop_physics
+def test_an_arbitrary_call_without_digits_runs_at_the_default_digits(artifact):
+    """``evaluate(..., arithmetic="arbitrary")`` and ``Runtime.load(...,
+    arithmetic="arbitrary")`` without digits run at the default
+    arbitrary-precision digits (500: 1661 bits); given digits are kept; an
+    unset precision without arithmetic stays binary64."""
+
+    points, scales = _points("gg_gg", 1)
+    runtime = _load(artifact, "gg")
+    bits = {
+        "default": runtime.evaluate(points, mu_r2=scales, arithmetic="arbitrary"),
+        "given": runtime.evaluate(
+            points, mu_r2=scales, arithmetic="arbitrary", precision=40
+        ),
+        "plain": runtime.evaluate(points, mu_r2=scales),
+    }
+    found = {name: r.diagnostics[0].precision_bits for name, r in bits.items()}
+    assert found == {"default": 1661, "given": 133, "plain": 53}, found
+    loaded = _load(artifact, "gg", arithmetic="arbitrary")
+    assert loaded.evaluate(points, mu_r2=scales).diagnostics[0].precision_bits == 1661
+    given = _load(artifact, "gg", arithmetic="arbitrary", precision=40)
+    assert given.evaluate(points, mu_r2=scales).diagnostics[0].precision_bits == 133

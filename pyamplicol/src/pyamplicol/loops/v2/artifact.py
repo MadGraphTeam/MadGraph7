@@ -1648,6 +1648,12 @@ class V2VirtualRuntime:
             stability, arithmetic=arithmetic, precision=precision
         )
         self._default_r2 = v2_r2_strategy(r2_strategy)
+        if precision is None and _arithmetic(arithmetic) == "arbitrary":
+            # Arbitrary precision without digits: the default arbitrary-
+            # precision digits (500, USER 2026-11-18); binary64's 16 else.
+            from .reduction import default_arbitrary_digits
+
+            precision = default_arbitrary_digits()
         self.default_precision = 16 if precision is None else _digits(precision)
         self.default_arithmetic = _arithmetic(arithmetic) or (
             "double" if self.default_precision == 16 else "arbitrary"

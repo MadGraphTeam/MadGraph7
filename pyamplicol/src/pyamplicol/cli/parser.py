@@ -801,6 +801,12 @@ def _add_evaluation_options(
         dest="evaluation.precision",
         type=int,
         default=argparse.SUPPRESS,
+        metavar="DIGITS",
+        help=(
+            "decimal digits (default: the carrier's, 16 for binary64; with "
+            "--arithmetic arbitrary on a virtual artifact the default "
+            "arbitrary-precision digits, 500)"
+        ),
     )
     parser.add_argument(
         "--arithmetic",

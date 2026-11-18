@@ -111,7 +111,9 @@ class VirtualFailureDiagnostic:
 
 @dataclass(frozen=True, slots=True)
 class VirtualArithmeticSpec:
-    """Explicit carrier; decimal precision applies only to arbitrary arithmetic."""
+    """Explicit carrier; decimal precision applies only to arbitrary arithmetic,
+    None there taking the default arbitrary-precision digits (500,
+    ``loops.v2.reduction.default_arbitrary_digits``)."""
 
     arithmetic: Literal["double", "double-double", "arbitrary"]
     precision: int | None = None
@@ -120,6 +122,8 @@ class VirtualArithmeticSpec:
         if self.arithmetic not in {"double", "double-double", "arbitrary"}:
             raise ValueError("unknown virtual arithmetic")
         if self.arithmetic == "arbitrary":
+            if self.precision is None:
+                object.__setattr__(self, "precision", _default_digits())
             if type(self.precision) is not int or self.precision <= 0:
                 raise ValueError(
                     "arbitrary arithmetic requires positive decimal precision"
@@ -570,6 +574,16 @@ def _carrier_bits(arithmetic: str, precision: int | None) -> int:
     return math.ceil(cast(int, precision) * math.log2(10))
 
 
+def _default_digits() -> int:
+    """The default arbitrary-precision digits (the native policy's one
+    definition, ``loops.v2.reduction.default_arbitrary_digits``; read when a
+    record is built, not at import)."""
+
+    from pyamplicol.loops.v2.reduction import default_arbitrary_digits
+
+    return default_arbitrary_digits()
+
+
 def _default_target() -> float:
     """A level's default target: the call's default target accuracy (m-lit F3
     (a), the native policy's one definition, ``loops.v2.reduction.
@@ -638,7 +652,9 @@ class VirtualRescueLevel:
     reduction: Literal["auto", "ninjars", "tirust"] = "auto"
 
     def __post_init__(self) -> None:
-        VirtualArithmeticSpec(self.arithmetic, self.precision)
+        spec = VirtualArithmeticSpec(self.arithmetic, self.precision)
+        # Arbitrary precision without digits: the default (500).
+        object.__setattr__(self, "precision", spec.precision)
         # The one validator of every reduction request (lit-api).
         object.__setattr__(self, "reduction", reduction_request(self.reduction))
         if self.reduction_check not in REDUCTION_CHECKS:

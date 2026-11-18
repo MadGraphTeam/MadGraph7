@@ -1204,6 +1204,15 @@ f64 = runtime.evaluate(points, precision=16)
 high_precision = runtime.evaluate(points, precision=80)
 ```
 
+On a virtual runtime `precision` unset is the carrier's default: binary64's 16
+digits, or with `arithmetic="arbitrary"` (at the call, or at
+`Runtime.load(..., arithmetic="arbitrary")`) the default arbitrary-precision
+digits, 500 (`loops.v2.reduction.default_arbitrary_digits()`, the native
+policy's `DEFAULT_ARBITRARY_DIGITS`); `VirtualArithmeticSpec("arbitrary")` and
+`VirtualRescueLevel("arbitrary")` take it too. A number given is never
+overridden; tree runtimes keep their own default (correlated calls: arbitrary
+arithmetic at 16 digits).
+
 For ordinary `evaluate` and `evaluate_resolved`, precision 16 uses the native
 Rusticol runtime without Symbolica computations. Package startup imports
 Symbolica to attempt registration of the pyAmpliCol library key; synchronous

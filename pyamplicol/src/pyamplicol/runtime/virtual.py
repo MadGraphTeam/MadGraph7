@@ -613,6 +613,12 @@ class V2ObservablesRuntime:
                 _parameters(model_parameters) or {}
             ).items()
         }
+        if precision is None and arithmetic == "arbitrary":
+            # Arbitrary precision without digits: the default arbitrary-
+            # precision digits (500, USER 2026-11-18); binary64's 16 else.
+            from pyamplicol.loops.v2.reduction import default_arbitrary_digits
+
+            precision = default_arbitrary_digits()
         self.default_arithmetic = arithmetic or (
             "double" if precision in (None, 16) else "arbitrary"
         )
