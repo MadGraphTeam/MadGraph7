@@ -896,6 +896,7 @@ pub unsafe extern "C" fn rusticol_runtime_external_permutation(
 /// Writes the exact factor and charge conjugation relating the selected process to the
 /// representative that evaluates it: `ME = numerator / denominator * ME_representative`.
 /// Selections other than non-generated process-group members report `1/1` and `0`.
+/// Flavour-union members fail: they sum template patterns before squaring.
 ///
 /// # Safety
 ///
@@ -912,6 +913,12 @@ pub unsafe extern "C" fn rusticol_runtime_process_group_relation(
         let handle = unsafe { required_handle(handle) }?;
         if numerator.is_null() || denominator.is_null() {
             return Err(invalid("process-group factor output is null"));
+        }
+        if handle.runtime.flavour_union_member() {
+            return Err(RusticolError::compatibility(
+                "flavour-union members have no matrix-element relation to their template",
+            )
+            .into());
         }
         let factor = handle.runtime.process_group_factor();
         // SAFETY: The caller supplies writable storage for one u64 each.

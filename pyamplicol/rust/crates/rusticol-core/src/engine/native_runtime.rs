@@ -2277,6 +2277,12 @@ impl NativeRuntime {
     /// derived-parameter refresh logic. They are intentionally exposed only as
     /// an internal bridge; f64 evaluation continues to execute entirely in the
     /// Python-independent core.
+    /// Whether the selection is a flavour-union member: no factor relates it to
+    /// its template's matrix element.
+    pub fn flavour_union_member(&self) -> bool {
+        self.process_group.is_some() && self.flavour_union_pattern_resolved()
+    }
+
     /// Whether execution sums pairing-rule amplitudes of a flavour-union template.
     pub fn flavour_union_pattern_resolved(&self) -> bool {
         match &self.execution_lane {

@@ -179,6 +179,12 @@ impl NativeRuntime {
                 "recurrence export requires an LC recurrence artifact",
             ));
         }
+        // The export squares each destination; templates must sum patterns first.
+        if self.flavour_union_pattern_resolved() {
+            return Err(RusticolError::compatibility(
+                "recurrence export is unavailable for pattern-resolved flavour-union templates",
+            ));
+        }
         let context = self.recurrence_export_context()?;
         let physics = self.physics_v1.get()?.clone();
         if physics.color_accuracy.as_str() != "lc" {
