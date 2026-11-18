@@ -2582,7 +2582,8 @@ This will take effect only in a NEW terminal
                                           'loop_color_flows',\
                                           'include_lepton_initiated_processes',\
                                           'low_mem_multicore_nlo_generation',\
-                                          'merge_same_topologies']:
+                                          'merge_same_topologies',\
+                                          'amplicol_flavor_unions']:
             args.append('True')
 
         if len(args) > 2 and '=' == args[1]:
@@ -4246,7 +4247,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'nlo_mixed_expansion',
                     'color_basis',
                     'merge_same_topologies',
-                    'merge_quartic_vertices'
+                    'merge_quartic_vertices',
+                    'amplicol_flavor_unions'
                     ]
     _valid_color_basis = ['auto', 'trace', 'ddm']
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only',
@@ -4336,7 +4338,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'apply_flavor_grouping': True,
                           'color_basis': 'auto',
                           'merge_same_topologies': True,
-                          'merge_quartic_vertices': False
+                          'merge_quartic_vertices': False,
+                          'amplicol_flavor_unions': False
                         }
 
     options_madevent = {'automatic_html_opening':True,
@@ -13793,6 +13796,16 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         Default: True
         """
         self.options['merge_same_topologies'] = banner_module.ConfigFile.format_variable(args[0], bool, 'merge_same_topologies')
+
+    def set2_amplicol_flavor_unions(self, args, log=True):
+        """Set whether the leading-colour [amplicol] artifacts evaluate the flavours
+        of a quark-flavour union through one template (pyamplicol
+        process.flavor_unions, experimental). Default: False
+        """
+        args = ['amplicol_flavor_unions'] + args
+        self.check_set(args)
+        self.options['amplicol_flavor_unions'] = banner_module.ConfigFile.format_variable(
+            args[1], bool, 'amplicol_flavor_unions')
 
 
 

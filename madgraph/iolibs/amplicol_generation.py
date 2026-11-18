@@ -48,17 +48,22 @@ def model_source(pyamplicol, model):
     return pyamplicol.ModelSource.from_path(model['cache'])
 
 
-def generate_artifact(pyamplicol, artifact, accuracy, process, model):
+def generate_artifact(pyamplicol, artifact, accuracy, process, model,
+                      flavor_unions=False):
     from pyamplicol.config import resolve_config
     # workers and cores are left to pyamplicol, which clamps them without a license
+    options = {'multiparticles': process['multiparticles'],
+               'flavor_blind_strict': True,
+               'coupling_order_policy': 'explicit',
+               'max_coupling_orders': process['orders']}
+    if flavor_unions:
+        # one pattern-resolved template per quark-flavour union (leading colour)
+        options['flavor_unions'] = True
     config = resolve_config({
         'schema_version': 1,
         'action': 'generate',
         'color': {'accuracy': accuracy},
-        'process': {'multiparticles': process['multiparticles'],
-                    'flavor_blind_strict': True,
-                    'coupling_order_policy': 'explicit',
-                    'max_coupling_orders': process['orders']},
+        'process': options,
         # pack_payloads: one payloads.pacbin instead of files per process
         # no numerical check of the generated artifact: its cost grows with the
         # number of colour orderings (hours for p p > 7j)
@@ -90,7 +95,8 @@ def generate(job):
         path = process['path']
         for accuracy in ('lc', 'full'):
             generate_artifact(pyamplicol, os.path.join(path, accuracy), accuracy,
-                              process, model)
+                              process, model,
+                              flavor_unions=accuracy == 'lc' and job.get('flavor_unions', False))
         # the flavour switch of lc_flavors = two_lines_resample
         providers.append(umami_reweight.write_reweight_provider(
             os.path.join(path, 'lc'), os.path.join(path, 'full'),
