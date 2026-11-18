@@ -68,6 +68,14 @@ typedef struct {
     size_t *events, *positions;
     ReweightFlavour const **entries;
     uint32_t *helicities;
+    /* Flavour-union requests: per chunk one assignment per point, and those of the
+     * switch calls; helicity values in event slots. */
+    size_t *offsets, *call_offsets, call_offsets_capacity;
+    uint32_t *assignments, *call_ids;
+    size_t call_ids_capacity;
+    double *call_values;
+    size_t call_values_capacity;
+    int *slot_helicities;
 } Instance;
 
 static bool const supported_inputs[UMAMI_INPUT_KEY_COUNT] = {
@@ -140,6 +148,31 @@ static UmamiStatus load(char const *base, char const *relative, char const *iden
     return UMAMI_SUCCESS;
 }
 
+/* Whether the flavour-union assignments a reference process is used with are those
+ * of its runtime. */
+static bool assignments_compatible(RusticolRuntimeHandle *runtime, size_t process) {
+    char name[1024];
+    size_t required = 0;
+    for (size_t c = 0; c < reweight_provider.channel_count; ++c)
+        for (size_t f = 0; f < reweight_provider.channels[c].flavour_count; ++f) {
+            ReweightFlavour const *entry = &reweight_provider.channels[c].flavours[f];
+            if (entry->reference_process != process || entry->reference_assignment < 0)
+                continue;
+            if (rusticol_runtime_assignment_process_id(runtime, (size_t)entry->reference_assignment,
+                    name, sizeof(name), &required) != RUSTICOL_STATUS_OK ||
+                strcmp(name, entry->assignment_key) != 0) return false;
+        }
+    ReweightSwitch const *sw = reweight_provider.flavor_switch;
+    for (size_t e = 0; sw != NULL && e < sw->evaluation_count; ++e) {
+        ReweightSwitchEvaluation const *evaluation = &sw->evaluations[e];
+        if (evaluation->process != process || evaluation->assignment < 0) continue;
+        if (rusticol_runtime_assignment_process_id(runtime, (size_t)evaluation->assignment,
+                name, sizeof(name), &required) != RUSTICOL_STATUS_OK ||
+            strcmp(name, evaluation->assignment_key) != 0) return false;
+    }
+    return true;
+}
+
 /* Loads a reference (side 0) or target process on first use, with the parameters set. */
 static UmamiStatus ensure_loaded(Instance *instance, int side, size_t index) {
     RusticolRuntimeHandle **slot =
@@ -154,6 +187,12 @@ static UmamiStatus ensure_loaded(Instance *instance, int side, size_t index) {
                reweight_provider.target_artifact_id,
                &reweight_provider.target_processes[index], &runtime);
     if (status != UMAMI_SUCCESS) return status;
+    if (side == 0 && !assignments_compatible(runtime, index)) {
+        (void)rusticol_runtime_free(runtime);
+        fprintf(stderr, "umami: flavour-union assignments of reweight provider %s do not "
+                "match the reference artifact\n", reweight_provider.id);
+        return UMAMI_ERROR;
+    }
     for (size_t i = 0; i < instance->override_count; ++i) {
         Override const *override = &instance->overrides[i];
         double re = 0.0, im = 0.0;
@@ -264,7 +303,11 @@ UmamiStatus umami_initialize(UmamiHandle *handle, char const *param_card_path) {
     instance->positions = calloc(chunk, sizeof(size_t));
     instance->entries = calloc(chunk, sizeof(*instance->entries));
     instance->helicities = calloc(chunk, sizeof(uint32_t));
-    if (instance->reference == NULL || instance->target == NULL ||
+    instance->offsets = calloc(chunk + 1, sizeof(size_t));
+    instance->assignments = calloc(chunk, sizeof(uint32_t));
+    instance->slot_helicities = calloc(reweight_provider.particle_count + 1, sizeof(int));
+    if (instance->offsets == NULL || instance->assignments == NULL ||
+        instance->slot_helicities == NULL || instance->reference == NULL || instance->target == NULL ||
         instance->reference_tables == NULL || instance->target_tables == NULL ||
         instance->base == NULL || reweight_provider.reference_process_count == 0 ||
         reweight_provider.target_process_count == 0 || instance->starts == NULL ||
@@ -425,8 +468,9 @@ static UmamiStatus switch_totals(Instance *instance, size_t count, size_t stride
     if (!reserve(&instance->values, &instance->values_capacity, sw->evaluation_count * count) ||
         !reserve(&instance->batch, &instance->batch_capacity, 4 * n * count))
         return UMAMI_ERROR;
-    for (size_t e = 0; e < sw->evaluation_count; ++e) {
-        ReweightSwitchEvaluation const *evaluation = &sw->evaluations[e];
+    for (size_t g = 0; g < sw->call_count; ++g) {
+        ReweightSwitchCall const *call = &sw->calls[g];
+        ReweightSwitchEvaluation const *evaluation = &sw->evaluations[call->evaluations[0]];
         UmamiStatus status = ensure_loaded(instance, 0, evaluation->process);
         if (status != UMAMI_SUCCESS) return status;
         for (size_t i = 0; i < count; ++i)
@@ -434,10 +478,39 @@ static UmamiStatus switch_totals(Instance *instance, size_t count, size_t stride
                 for (size_t k = 0; k < 4; ++k)
                     instance->batch[4 * (n * i + j) + k] =
                         momenta[offset + i + stride * (n * k + evaluation->legs[j])];
-        status = native_error(rusticol_runtime_evaluate_selected_f64(
-            instance->reference[evaluation->process], instance->batch, 4 * n * count, count,
-            NULL, 0, NULL, 0, NULL, 0, NULL, 0, &instance->values[e * count], count));
+        RusticolRuntimeHandle *runtime = instance->reference[evaluation->process];
+        if (call->assignments == NULL) {
+            status = native_error(rusticol_runtime_evaluate_selected_f64(
+                runtime, instance->batch, 4 * n * count, count, NULL, 0, NULL, 0, NULL, 0,
+                NULL, 0, &instance->values[call->evaluations[0] * count], count));
+            if (status != UMAMI_SUCCESS) return status;
+            continue;
+        }
+        /* every assignment of the call at every event, in one native call */
+        size_t width = call->evaluation_count;
+        if (width > SIZE_MAX / count / sizeof(double) ||
+            !reserve_indices(&instance->call_offsets, &instance->call_offsets_capacity,
+                             count + 1) ||
+            !reserve(&instance->call_values, &instance->call_values_capacity, count * width))
+            return UMAMI_ERROR;
+        if (count * width > instance->call_ids_capacity) {
+            uint32_t *grown = realloc(instance->call_ids, count * width * sizeof(uint32_t));
+            if (grown == NULL) return UMAMI_ERROR;
+            instance->call_ids = grown;
+            instance->call_ids_capacity = count * width;
+        }
+        for (size_t i = 0; i <= count; ++i) instance->call_offsets[i] = i * width;
+        for (size_t i = 0; i < count; ++i)
+            memcpy(&instance->call_ids[i * width], call->assignments, width * sizeof(uint32_t));
+        status = native_error(rusticol_runtime_evaluate_assignments_f64(
+            runtime, instance->batch, 4 * n * count, count, instance->call_offsets, count + 1,
+            instance->call_ids, count * width, NULL, 0, NULL, 0, 0, instance->call_values,
+            count * width));
         if (status != UMAMI_SUCCESS) return status;
+        for (size_t j = 0; j < width; ++j)
+            for (size_t i = 0; i < count; ++i)
+                instance->values[call->evaluations[j] * count + i] =
+                    instance->call_values[i * width + j];
     }
     return UMAMI_SUCCESS;
 }
@@ -475,14 +548,16 @@ static bool sort_switched(Instance *instance, size_t switched, int key_kind) {
     return true;
 }
 
-/* The momenta of the points sorted[0..count) in the legs of their evaluations. */
+/* The momenta of the points sorted[0..count) in the legs of their evaluations, or of
+ * their targets. */
 static void gather_switched(Instance *instance, double const *momenta, size_t stride,
-                            size_t const *sorted, size_t count) {
+                            size_t const *sorted, size_t count, bool target_legs) {
     ReweightSwitch const *sw = reweight_provider.flavor_switch;
     size_t n = reweight_provider.particle_count;
     for (size_t i = 0; i < count; ++i) {
         SwitchedEvent const *s = &instance->switched[sorted[i]];
-        size_t const *legs = sw->evaluations[sw->targets[s->target].evaluation].legs;
+        ReweightSwitchTarget const *target = &sw->targets[s->target];
+        size_t const *legs = target_legs ? target->legs : sw->evaluations[target->evaluation].legs;
         for (size_t j = 0; j < n; ++j)
             for (size_t k = 0; k < 4; ++k)
                 instance->batch[4 * (n * i + j) + k] =
@@ -527,8 +602,14 @@ static UmamiStatus draw_switched(Instance *instance, SwitchedEvent *s, RuntimeTa
             equal = sw->helicities[e * n + evaluation->legs[j]] == vector[j];
         if (equal) exported = (int)e;
     }
-    for (size_t f = 0; fc_helicity < 0 && f < fc->helicity_count; ++f)
-        if (memcmp(&fc->helicities[f * n], vector, n * sizeof(int)) == 0) fc_helicity = (int)f;
+    /* the target helicity of the same event-slot values, in the target's legs */
+    for (size_t j = 0; j < n; ++j) instance->slot_helicities[evaluation->legs[j]] = vector[j];
+    for (size_t f = 0; fc_helicity < 0 && f < fc->helicity_count; ++f) {
+        bool equal = true;
+        for (size_t j = 0; equal && j < n; ++j)
+            equal = fc->helicities[f * n + j] == instance->slot_helicities[target->legs[j]];
+        if (equal) fc_helicity = (int)f;
+    }
     int slot = lc->flow_slots[c];
     if (exported < 0 || slot < 0) {
         fprintf(stderr, "umami: switch target without exported helicity or flow\n");
@@ -565,11 +646,24 @@ static UmamiStatus evaluate_switched(Instance *instance, double const *momenta, 
                 !reserve(&instance->resolved, &instance->resolved_capacity, points * size))
                 return UMAMI_ERROR;
             size_t const *sorted = &instance->switch_sorted[start];
-            gather_switched(instance, momenta, stride, sorted, points);
+            gather_switched(instance, momenta, stride, sorted, points, false);
             size_t helicities = 0, colors = 0;
-            status = native_error(rusticol_runtime_evaluate_resolved_f64(
-                instance->reference[process], instance->batch, 4 * n * points, points, NULL,
-                0, NULL, 0, instance->resolved, points * size, &helicities, &colors));
+            int assignment = sw->evaluations[e].assignment;
+            if (assignment >= 0) {
+                /* [helicity][flow] of the flavour-union assignment */
+                for (size_t i = 0; i <= points; ++i) instance->offsets[i] = i;
+                for (size_t i = 0; i < points; ++i)
+                    instance->assignments[i] = (uint32_t)assignment;
+                status = native_error(rusticol_runtime_evaluate_assignments_f64(
+                    instance->reference[process], instance->batch, 4 * n * points, points,
+                    instance->offsets, points + 1, instance->assignments, points, NULL, 0,
+                    NULL, 0, 2, instance->resolved, points * size));
+            } else {
+                status = native_error(rusticol_runtime_evaluate_resolved_f64(
+                    instance->reference[process], instance->batch, 4 * n * points, points,
+                    NULL, 0, NULL, 0, instance->resolved, points * size, &helicities,
+                    &colors));
+            }
             if (status != UMAMI_SUCCESS) return status;
             for (size_t i = 0; i < points; ++i) {
                 SwitchedEvent *s = &instance->switched[sorted[i]];
@@ -595,13 +689,15 @@ static UmamiStatus evaluate_switched(Instance *instance, double const *momenta, 
             if (kept == 0) continue;
             UmamiStatus status = ensure_loaded(instance, 1, t);
             if (status != UMAMI_SUCCESS) return status;
-            gather_switched(instance, momenta, stride, instance->positions, kept);
+            gather_switched(instance, momenta, stride, instance->positions, kept, true);
             status = native_error(rusticol_runtime_evaluate_selected_f64(
                 instance->target[t], instance->batch, 4 * n * kept, kept, NULL, 0, NULL, 0,
                 instance->helicities, kept, NULL, 0, instance->chunk_values, kept));
             if (status != UMAMI_SUCCESS) return status;
-            for (size_t i = 0; i < kept; ++i)
-                instance->switched[instance->positions[i]].value = instance->chunk_values[i];
+            for (size_t i = 0; i < kept; ++i) {
+                SwitchedEvent *s = &instance->switched[instance->positions[i]];
+                s->value = sw->targets[s->target].factor * instance->chunk_values[i];
+            }
         }
     }
     return UMAMI_SUCCESS;
@@ -609,10 +705,10 @@ static UmamiStatus evaluate_switched(Instance *instance, double const *momenta, 
 
 /* ---- batched evaluation ------------------------------------------------ */
 
-/* Values of one process at the points events[0..count), each through the permutation
- * of its flavour, at the runtime helicities[point], natively batched over runs of equal
- * alpha_s (or alpha_s NULL). */
-static UmamiStatus evaluate_points(Instance *instance, RusticolRuntimeHandle *runtime,
+/* Values of one process of a side at the points events[0..count), each through the
+ * permutation of its flavour (and its flavour-union assignment), at the runtime
+ * helicities[point], natively batched over runs of equal alpha_s (or alpha_s NULL). */
+static UmamiStatus evaluate_points(Instance *instance, int side, RusticolRuntimeHandle *runtime,
                                    ReweightProcess const *process,
                                    ReweightFlavour const *const *entries, double const *momenta,
                                    size_t stride, size_t const *events, size_t count,
@@ -626,7 +722,7 @@ static UmamiStatus evaluate_points(Instance *instance, RusticolRuntimeHandle *ru
             runtime, process->alpha_s_name, &reference, &imaginary));
         if (status != UMAMI_SUCCESS) return status;
         if (reference > 0.0 && imaginary == 0.0) {
-            status = evaluate_points(instance, runtime, process, entries, momenta, stride,
+            status = evaluate_points(instance, side, runtime, process, entries, momenta, stride,
                                      events, count, helicities, NULL, values);
             if (status != UMAMI_SUCCESS) return status;
             for (size_t i = 0; i < count; ++i)
@@ -644,7 +740,9 @@ static UmamiStatus evaluate_points(Instance *instance, RusticolRuntimeHandle *ru
             for (size_t j = 0; j < n; ++j)
                 for (size_t k = 0; k < 4; ++k)
                     instance->batch[4 * (n * i + j) + k] = momenta[
-                        events[start + i] + stride * (n * k + entries[start + i]->permutation[j])];
+                        events[start + i] + stride * (n * k + (side == 0
+                            ? entries[start + i]->permutation[j]
+                            : entries[start + i]->target_permutation[j]))];
         double previous_real = 0.0, previous_imaginary = 0.0;
         bool changed = false;
         UmamiStatus status;
@@ -660,9 +758,19 @@ static UmamiStatus evaluate_points(Instance *instance, RusticolRuntimeHandle *ru
                 if (status != UMAMI_SUCCESS) return status;
             }
         }
-        status = native_error(rusticol_runtime_evaluate_selected_f64(
-            runtime, instance->batch, 4 * n * size, size, NULL, 0, NULL, 0,
-            helicities + start, size, NULL, 0, values + start, size));
+        if (side == 0 && entries[start]->reference_assignment >= 0) {
+            for (size_t i = 0; i <= size; ++i) instance->offsets[i] = i;
+            for (size_t i = 0; i < size; ++i)
+                instance->assignments[i] = (uint32_t)entries[start + i]->reference_assignment;
+            status = native_error(rusticol_runtime_evaluate_assignments_f64(
+                runtime, instance->batch, 4 * n * size, size, instance->offsets, size + 1,
+                instance->assignments, size, helicities + start, size, NULL, 0, 0,
+                values + start, size));
+        } else {
+            status = native_error(rusticol_runtime_evaluate_selected_f64(
+                runtime, instance->batch, 4 * n * size, size, NULL, 0, NULL, 0,
+                helicities + start, size, NULL, 0, values + start, size));
+        }
         if (changed) {
             UmamiStatus restored = native_error(rusticol_runtime_set_model_parameter(
                 runtime, process->alpha_s_name, previous_real, previous_imaginary));
@@ -715,14 +823,15 @@ static UmamiStatus evaluate_side(Instance *instance, int side, void const *const
             UmamiStatus status = ensure_loaded(instance, side, index);
             if (status != UMAMI_SUCCESS) return status;
             status = evaluate_points(
-                instance, side == 0 ? instance->reference[index] : instance->target[index],
+                instance, side, side == 0 ? instance->reference[index] : instance->target[index],
                 side == 0 ? &reweight_provider.reference_processes[index]
                           : &reweight_provider.target_processes[index],
                 instance->entries, in[UMAMI_IN_MOMENTA], stride, instance->events, kept,
                 instance->helicities, in[UMAMI_IN_ALPHA_S], instance->chunk_values);
             if (status != UMAMI_SUCCESS) return status;
             for (size_t i = 0; i < kept; ++i)
-                result[instance->positions[i]] = instance->chunk_values[i];
+                result[instance->positions[i]] = side == 0 ? instance->chunk_values[i]
+                    : instance->entries[i]->target_factor * instance->chunk_values[i];
         }
     return UMAMI_SUCCESS;
 }
@@ -904,7 +1013,9 @@ UmamiStatus umami_free(UmamiHandle handle) {
     free(instance->enhancements); free(instance->side_values[0]); free(instance->side_values[1]);
     free(instance->starts); free(instance->cursor); free(instance->chunk_values);
     free(instance->events); free(instance->positions); free(instance->entries);
-    free(instance->helicities);
+    free(instance->helicities); free(instance->offsets); free(instance->assignments);
+    free(instance->call_offsets); free(instance->call_ids); free(instance->call_values);
+    free(instance->slot_helicities);
     free(instance->switched); free(instance->switch_sorted); free(instance->switch_starts);
     free(instance->overrides); free(instance->base);
     free(instance->reference); free(instance->target); free(instance);

@@ -316,7 +316,9 @@ def test_per_point_helicities_build_each_restriction_once(
     templates = _templates(artifacts["union"])
     template_id = max(
         templates,
-        key=lambda key: len(Runtime.load(artifacts["union"], process=key).physics.helicities),
+        key=lambda key: len(
+            Runtime.load(artifacts["union"], process=key).physics.helicities
+        ),
     )
     template = Runtime.load(artifacts["union"], process=template_id)
     helicities = [helicity.id for helicity in template.physics.helicities]
@@ -380,7 +382,8 @@ static void fail(const char *what) {
 int main(int argc, char **argv) {
     RusticolRuntimeHandle *handle = NULL;
     if (rusticol_runtime_load(argv[1], argv[2], NULL, &handle) != 0) fail("load");
-    if (argc > 4 && rusticol_runtime_set_kinematics_improvement_binary64(handle, 1) != 0)
+    if (argc > 4 &&
+        rusticol_runtime_set_kinematics_improvement_binary64(handle, 1) != 0)
         fail("binary64");
     size_t count = 0;
     if (rusticol_runtime_assignment_count(handle, &count) != 0) fail("count");
@@ -408,7 +411,8 @@ int main(int argc, char **argv) {
     printf("%s\n", process);
     int conjugated = -1;
     for (size_t i = 0; i < count; ++i) {
-        if (rusticol_runtime_assignment_conjugated(handle, i, &conjugated) != 0) fail("conj");
+        if (rusticol_runtime_assignment_conjugated(handle, i, &conjugated) != 0)
+            fail("conj");
         printf("%d\n", conjugated);
     }
     rusticol_runtime_free(handle);
