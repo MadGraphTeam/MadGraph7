@@ -35,6 +35,10 @@ const MP_ACCURACY_BITS: u32 = 120;
 const DEFAULT_BUDGET: u64 = 268_435_456;
 const DP_ROUTE_FIELDS: usize = 10;
 const DP_ROUTE_STATS_COUNT: usize = 2 * DP_ROUTE_FIELDS;
+/// Relative shift of the invariants of MadLoop's binary64 check pass: 2^-52,
+/// the smallest relative factor that moves every binary64 value (by one or
+/// two units in its last place; see [`shift_check_invariants`]).
+const CHECK_INVARIANT_SHIFT: f64 = f64::EPSILON;
 type Key = (usize, u16);
 type Result<T> = std::result::Result<T, String>;
 
@@ -685,6 +689,41 @@ fn dp_batch(n: usize, p: &[f64], s: &[f64], m: &[C64], mu2: f64) -> Result<Kinem
         values,
     })
 }
+/// The invariants of MadLoop's binary64 check pass (column-major `n` x `n`,
+/// symmetric), each multiplied by 1 +- [`CHECK_INVARIANT_SHIFT`]. The sign is
+/// a fixed function of the value's bits, so equal invariants of different
+/// integrals stay equal and still share subintegrals. Exact zeros and values
+/// within 2^-50 of a lane mass squared (MadLoop's on-shell projections) are
+/// kept: they define the integral's singularity structure.
+///
+/// The precision tiers evaluate the binary64 invariants exactly, so both loop
+/// directions agree even where those invariants do not determine the result.
+/// At the e+e- > t t~ a threshold of the stress set, s - 4 m_t^2 is only 46
+/// ulps of s: the Coulomb-enhanced vertex moves by 2.4% under this shift, and
+/// the matrix element was 1.1% off while MadLoop reported 6.5e-9. With the
+/// shift, MadLoop's check reports that dependence, and a point whose matrix
+/// element moves by more than MLStabThres goes to quadruple precision, where
+/// MadLoop's ImprovePSPoint restores the kinematics. The check also sees the
+/// binary64 rounding of form factors, which depends only on the invariants and
+/// so was identical in both directions. The check pass already recomputes
+/// every integral, so the shift costs nothing. MadLoop returns the midpoint of
+/// the two passes, which moves by half the difference the check reports.
+fn shift_check_invariants(n: usize, s: &[f64], m: &[C64]) -> Vec<f64> {
+    let mut out = s.to_vec();
+    for i in 0..n {
+        for j in i + 1..n {
+            let v = s[i + n * j];
+            let kept = v == 0.0 || m.iter().any(|z| (v - z.re).abs() <= 4.0 * f64::EPSILON * z.re.abs());
+            if !kept {
+                let sign = if v.to_bits().wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 63 == 0 { 1.0 } else { -1.0 };
+                let w = v * (1.0 + sign * CHECK_INVARIANT_SHIFT);
+                out[i + n * j] = w;
+                out[j + n * i] = w;
+            }
+        }
+    }
+    out
+}
 fn pack_dp(values: &[Complex<f64>], poles: i32, slots: usize) -> Vec<C64> {
     let nc = values.len() / slots;
     let mut out = vec![C64::default(); nc * 4];
@@ -1055,13 +1094,19 @@ pub unsafe extern "C" fn ml_tirust_evaluate_dp(
         length("masses", m_len, n)?;
         length("tensor output", out_len, 4 * nc)?;
         validate_output(out)?;
-        let batch = dp_batch(
-            n,
-            unsafe { read(p, p_len)? },
-            unsafe { read(s, s_len)? },
-            unsafe { read(m, m_len)? },
-            mu2,
-        )?;
+        let masses = unsafe { read(m, m_len)? };
+        let invariants = unsafe { read(s, s_len)? };
+        // MadLoop's check pass reads slightly shifted invariants, so that its
+        // comparison also measures how far the binary64 inputs determine the
+        // result (see `shift_check_invariants`).
+        let shifted;
+        let invariants = if mode.check {
+            shifted = shift_check_invariants(n, invariants, masses);
+            &shifted[..]
+        } else {
+            invariants
+        };
+        let batch = dp_batch(n, unsafe { read(p, p_len)? }, invariants, masses, mu2)?;
         let (status, values) = unsafe { context(handle)? }
             .state
             .lock()
@@ -1481,6 +1526,102 @@ mod tests {
             }
         }
         drop(state);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    // The Coulomb vertex (top, photon, top) of e+e- > t t~ a at its threshold
+    // stress point, sqrt(s) = 2 m_t (1 + 1e-7), as MadLoop supplied it: s - 4 m_t^2
+    // is 46 ulps of s. The tiers evaluate these inputs exactly.
+    const COULOMB_VERTEX_P: [u64; 12] = [
+        0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x3d15692f40000000,
+        0xc065a999999999e4, 0x3ef2b440f5517ccb, 0x3ef4242f861f91e8, 0x3edb20b1d08a5fdc,
+        0xc075a999999999c9, 0x3eff4ff39a75e1a6, 0x3ef26d0393420659, 0xbea3ae92954b6860,
+    ];
+    const COULOMB_VERTEX_S: [u64; 9] = [
+        0x0000000000000000, 0x40dd5438f5c28f5d, 0x40fd5438f5c28f8b,
+        0x40dd5438f5c28f5d, 0x0000000000000000, 0x40dd5438f5c28f5d,
+        0x40fd5438f5c28f8b, 0x40dd5438f5c28f5d, 0x0000000000000000,
+    ];
+    const COULOMB_VERTEX_M: [u64; 6] = [
+        0x40dd5438f5c28f5d, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+        0x40dd5438f5c28f5d, 0x0000000000000000,
+    ];
+    const COULOMB_VERTEX_MU2: u64 = 0x40fd5439582bf9b6;
+    fn evaluate_dp_bits(c: *mut Context, n: i32, rank: i32, p: &[u64], s: &[f64], m: &[u64], mu2: u64, check: i32) -> (i32, Vec<C64>) {
+        let p: Vec<f64> = p.iter().map(|&x| f64::from_bits(x)).collect();
+        let m: Vec<C64> = m.chunks_exact(2).map(|z| C64 { re: f64::from_bits(z[0]), im: f64::from_bits(z[1]) }).collect();
+        let nc = dimensions(n, rank).unwrap().1;
+        let mut out = vec![C64::default(); 4 * nc];
+        let status = unsafe {
+            ml_tirust_evaluate_dp(
+                c, n, rank, p.as_ptr(), p.len(), s.as_ptr(), s.len(), m.as_ptr(), m.len(), f64::from_bits(mu2),
+                out.as_mut_ptr(), out.len(), 0, 1, check, 1,
+            )
+        };
+        (status, out)
+    }
+    /// Largest |a - b| of a slot relative to the largest |b| of that slot
+    /// (absolute for a slot of zeros).
+    fn slot_difference(a: &[C64], b: &[C64], slot: usize) -> f64 {
+        let nc = b.len() / 4;
+        let range = slot * nc..(slot + 1) * nc;
+        let scale = b[range.clone()].iter().map(|z| z.re.hypot(z.im)).fold(0.0, f64::max);
+        let difference = range.map(|k| (a[k].re - b[k].re).hypot(a[k].im - b[k].im)).fold(0.0, f64::max);
+        if scale == 0.0 { difference } else { difference / scale }
+    }
+    #[test]
+    fn check_pass_shift_keeps_zeros_and_on_shell_masses() {
+        let m2 = 30032.89;
+        let masses = [C64 { re: m2, im: 0.0 }, C64::default(), C64 { re: 8315.25, im: -227.86 }];
+        // (0,1) zero, (0,2) MadLoop's projection of an on-shell leg, one ulp
+        // off m2 after its rounding; (1,2) a generic invariant.
+        let projected = f64::from_bits(m2.to_bits() + 1);
+        let s = [0.0, 0.0, projected, 0.0, 0.0, 1.2e5, projected, 1.2e5, 0.0];
+        let shifted = shift_check_invariants(3, &s, &masses);
+        assert_eq!(shifted[3], 0.0);
+        assert_eq!(shifted[6].to_bits(), projected.to_bits());
+        assert_eq!(shifted[5].to_bits(), shifted[7].to_bits());
+        let relative = (shifted[5] / 1.2e5 - 1.0).abs();
+        assert!((relative - CHECK_INVARIANT_SHIFT).abs() <= f64::EPSILON, "relative shift {relative:e}");
+        // A deterministic function of the value: equal inputs stay equal.
+        assert_eq!(shift_check_invariants(3, &s, &masses), shifted);
+    }
+    #[test]
+    fn check_pass_sees_the_input_dependence_of_a_coulomb_threshold() {
+        let c = handle();
+        assert_eq!(unsafe { ml_tirust_register_plan(c, 3, 2) }, SUCCESS);
+        let s: Vec<f64> = COULOMB_VERTEX_S.iter().map(|&x| f64::from_bits(x)).collect();
+        let masses: Vec<C64> =
+            COULOMB_VERTEX_M.chunks_exact(2).map(|z| C64 { re: f64::from_bits(z[0]), im: f64::from_bits(z[1]) }).collect();
+        let eval = |s: &[f64], check: i32| {
+            evaluate_dp_bits(c, 3, 2, &COULOMB_VERTEX_P, s, &COULOMB_VERTEX_M, COULOMB_VERTEX_MU2, check)
+        };
+        let (status, primary) = eval(&s, 0);
+        assert_eq!(status, SUCCESS);
+        let (status, check) = eval(&s, 1);
+        assert_eq!(status, SUCCESS);
+        // The check reads exactly the shifted invariants and nothing else.
+        let (status, shifted) = eval(&shift_check_invariants(3, &s, &masses), 0);
+        assert_eq!(status, SUCCESS);
+        assert_eq!(check, shifted);
+        // Two ulps of s move the Coulomb-enhanced finite part by percents, so
+        // MadLoop's check fails and the point goes to QP.
+        let moved = slot_difference(&check, &primary, 3);
+        assert!(moved > 1e-2, "finite part moved by {moved:e}");
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[test]
+    fn check_pass_shift_leaves_a_well_determined_box_unchanged() {
+        let c = handle();
+        assert_eq!(unsafe { ml_tirust_register_plan(c, 4, 2) }, SUCCESS);
+        let s: Vec<f64> = FORWARD_BOX_S.iter().map(|&x| f64::from_bits(x)).collect();
+        let eval = |check| evaluate_dp_bits(c, 4, 2, &FORWARD_BOX_P, &s, &FORWARD_BOX_M, FORWARD_BOX_MU2, check);
+        let ((status, primary), (check_status, check)) = (eval(0), eval(1));
+        assert_eq!((status, check_status), (SUCCESS, SUCCESS));
+        assert_ne!(check, primary);
+        for slot in 0..4 {
+            let moved = slot_difference(&check, &primary, slot);
+            assert!(moved < 1e-13, "slot {slot} moved by {moved:e}");
+        }
         assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
     }
     #[test]

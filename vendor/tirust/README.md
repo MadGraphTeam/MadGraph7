@@ -115,6 +115,25 @@ both directions repeat it. With the method choice, Zggg tensors were up to
 while MadLoop reported 1e-15. On MadLoop's Zggg traces the tiers cost about
 5% (check profile) to 22% (default card) more TIRust time per point.
 
+MadLoop's binary64 check pass reads its invariants multiplied by 1 +- 2^-52,
+which moves each by one or two units in its last place. The sign is a fixed
+function of each value's bits, so equal invariants of different integrals stay
+equal and still share subintegrals. Exact zeros and values within 2^-50 of a
+lane mass squared (MadLoop's on-shell projections) are kept, and QP calls are
+not shifted. The tiers evaluate the binary64 invariants exactly, so without
+the shift both loop directions agree even where those invariants do not
+determine the integral. At the e+e- > t t~ a threshold stress point,
+sqrt(s) = 2 m_t (1 + 1e-7), s - 4 m_t^2 is 46 ulps of s: the Coulomb-enhanced
+vertex moves by 2.4% under the shift, and the matrix element was 1.1% off while
+MadLoop reported 6.5e-9. With the shift, MadLoop's check reports that
+dependence and rebuilds the point in QP, where ImprovePSPoint restores the
+kinematics. The check also sees binary64 rounding of form factors, which
+depends only on the invariants and so was identical in both directions. The
+check pass already recomputes every integral, so the shift adds no work.
+MadLoop returns the midpoint of the two passes, which moves by half the
+difference the check reports: at 646 ordinary points of seven processes no
+status changed, and 4 values moved by more than 1e-9 (at most 2.7e-8).
+
 Register each `(N,rank)` plan before reducing a point. Clear numerical caches at
 the end of each phase-space point while retaining plans/workspaces. Full and
 pole-only DP workspaces have separate subintegral stores. MadLoop requests each
