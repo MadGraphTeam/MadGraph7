@@ -1340,6 +1340,7 @@ def test_a_cost_that_cannot_change_the_counts_is_not_measured(
     each backend runs the minimum counts with one reference point, its costs
     measured by its own runtime timing (the plan's record)."""
 
+    import pyamplicol.loop_profile as lp
     import pyamplicol.profile_plan as plan_module
     from pyamplicol.api import Runtime
     from pyamplicol.config import resolve_config
@@ -1347,6 +1348,9 @@ def test_a_cost_that_cannot_change_the_counts_is_not_measured(
 
     name = f"{rule}_affects_counts"
     monkeypatch.setattr(plan_module, name, lambda *args, **kwargs: False)
+    # An absurd reference prior: the record and the counts row must come
+    # from the reference the runtime timing measured (ptimereview B3).
+    monkeypatch.setattr(lp, "_MULTIPLIER_PRIOR", {"tirust": 1e7, "ninjars": 1e7})
     calls: list = []
     evaluate = Runtime.evaluate
 
@@ -1366,6 +1370,12 @@ def test_a_cost_that_cannot_change_the_counts_is_not_measured(
     assert report.runtime is not None
     for row in report.runtime:
         assert row.profile is not None and row.profile.reference is not None
+        # The expected seconds from the measured costs (ptimereview m4).
+        expected = report.plan["runtime"][row.backend]["expected_seconds"]
+        assert expected > row.profile.batch * row.profile.seconds_per_point
+    assert report.seconds is not None
+    assert report.plan["minimum_seconds"] < 10.0 * report.seconds
+    assert report.plan["feasible"] is True
     if rule == "reference":
         # Binary64 only in this process; the reference budget is the share's
         # quarter alone (the estimate sets none).

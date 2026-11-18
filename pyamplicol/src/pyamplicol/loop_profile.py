@@ -1005,6 +1005,10 @@ def profile_loop(
         raise
     measured_at = monitor.elapsed()
     priors: dict[str, Any] = {}
+    # The minimum runtime timing, as the notices name it.
+    minimum_calls = "one timed call of one chunk per backend" + (
+        " and its reference point" if truth.present else ""
+    )
     if blind:
         # The minimum counts; a previous profile's costs only for the ETA.
         priors = {
@@ -1034,12 +1038,13 @@ def profile_loop(
         stability_start = load_seconds + 1.0
         # Start-ups are outside the budgets: whether the minimums exceed it
         # is known once the runtime timing measured them (the counts row).
+        share = DEFAULT_RUNTIME_SECONDS / max(len(_serving(runtime, backends)), 1)
         _notice(
-            f"loading the artifact takes {_duration(load_seconds)} per process, "
-            "more than a backend's share of the "
-            f"{DEFAULT_RUNTIME_SECONDS:g} s runtime budget: running the "
-            "minimums (one timed call of one chunk per backend and its "
-            "reference point), their costs measured as they run"
+            "starting a process that loads the artifact takes about "
+            f"{_duration(load_seconds + 1.0)}, at least a backend's share "
+            f"({share:g} s of the {DEFAULT_RUNTIME_SECONDS:g} s runtime "
+            f"budget): running the minimums ({minimum_calls}), their costs "
+            "measured as they run"
         )
     else:
         planned, stability_start = planning(costs, measured_at)
@@ -1068,7 +1073,7 @@ def profile_loop(
                 + ")"
             )
         unmet_stability = completion is not None or "stability" in planned.unmet
-        minimums = "one timed call of one chunk per backend and its reference point" + (
+        minimums = minimum_calls + (
             ", five stability points per backend"
             if want_stability and unmet_stability
             else ""
@@ -1333,16 +1338,21 @@ def profile_loop(
                     reference,
                     load_seconds + 1.0,
                 )
-            # The counts that ran stay the record's; the minimums' time and
-            # whether they exceed the budget from the costs measured.
+        if blind or timed_references:
+            # The record and the counts row from the costs measured: the
+            # minimums' time, whether they exceed the budget, the stability
+            # plan, the expected seconds; the counts that ran stay its own.
             replanned, stability_start = planning(costs, measured_at)
-            planned = replace(replanned, runtime=planned.runtime)
-        elif timed_references and want_stability:
-            replanned, stability_start = planning(costs, monitor.elapsed())
             planned = replace(
-                planned,
-                stability_points=replanned.stability_points,
-                stability_seconds=replanned.stability_seconds,
+                replanned,
+                runtime={
+                    backend: (
+                        replace(counts, expected=replanned.runtime[backend].expected)
+                        if backend in replanned.runtime
+                        else counts
+                    )
+                    for backend, counts in planned.runtime.items()
+                },
             )
 
     stability_rows = None
@@ -1447,9 +1457,10 @@ def profile_loop(
         # The next profile's priors and whole estimate.
         history.store(
             backends,
-            # The measurement's costs (a blind run measured none: its
-            # runtime timing's are warm, not the measurement's first calls).
-            {} if blind else costs,
+            # The costs this run measured (without a measurement phase, or
+            # with an estimated reference: the runtime timing's), the next
+            # profile's priors.
+            costs,
             {"load": load_seconds, settings: monitor.elapsed()},
         )
     monitor.close(
