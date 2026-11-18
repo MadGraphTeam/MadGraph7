@@ -817,7 +817,17 @@ took):
   and one minute of work per `--n_core` worker for the stability run (about
   a minute of wall time whatever `--n_core`: more workers, more points). On
   an expensive process whose minimums exceed them by more than a factor 1.5
-  the same warning says so, with the time the minimums take.
+  the same warning says so, with the time the minimums take. The
+  measurement times only what can change the counts: a backend whose share
+  of the 10 s (its start-up excluded) affords no more than its binary64
+  warm-up gets the minimum counts whatever its reference costs, so its
+  reference is not timed there (its runtime timing's untimed reference call
+  measures it); when loading the artifact alone takes a backend's share,
+  every backend gets the minimums and there is no measurement phase at all
+  (nothing is evaluated before the runtime timing, whose warm-ups measure
+  the costs; a notice names the load time, and whether the minimums exceed
+  the budget, with their time in the `counts` row, follows from the costs
+  the timing measured).
 
 Loading, process start-up, warm-up calls and the reference pass's minimum
 are outside the default budgets by nature; they are visible phases with

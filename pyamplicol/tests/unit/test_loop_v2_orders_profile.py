@@ -1081,3 +1081,58 @@ def test_one_runtime_thread_is_the_default(uux_ddx):
     assert keys(default_json) == keys(one_json)
     assert all(row["profile"]["threads"] == 1 for row in one_json["runtime"])
     assert "one_thread_seconds_per_point" not in json.dumps(one_json)
+
+
+@pytest.mark.parametrize("rule", ["reference", "measurement"])
+def test_a_cost_that_cannot_change_the_counts_is_not_measured(
+    uux_ddx, monkeypatch, rule
+):
+    """Under the default budget the measurement times only what can change
+    the counts (``profile_plan.reference_affects_counts``,
+    ``measurement_affects_counts``; forced here, as on an expensive process):
+    without the reference's the parent evaluates binary64 only and each
+    backend still times its reference; without any it evaluates nothing and
+    each backend runs the minimum counts with one reference point, its costs
+    measured by its own runtime timing (the plan's record)."""
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.api import Runtime
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    name = f"{rule}_affects_counts"
+    monkeypatch.setattr(plan_module, name, lambda *args, **kwargs: False)
+    calls: list = []
+    evaluate = Runtime.evaluate
+
+    def recorded(self, batch, *args, **kwargs):
+        calls.append(kwargs.get("arithmetic"))
+        return evaluate(self, batch, *args, **kwargs)
+
+    monkeypatch.setattr(Runtime, "evaluate", recorded)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    assert report.runtime is not None
+    for row in report.runtime:
+        assert row.profile is not None and row.profile.reference is not None
+    if rule == "reference":
+        # Binary64 only in this process; the reference budget is the share's
+        # quarter alone (the estimate sets none).
+        assert calls and set(calls) == {None}
+        return
+    assert calls == []
+    for row in report.runtime:
+        assert (row.profile.batch, row.profile.samples) == (16, 1)
+        assert row.profile.reference.points == 1
+        counts = report.plan["runtime"][row.backend]
+        assert (counts["batch"], counts["minimum"], counts["budget_seconds"]) == (
+            16,
+            1,
+            0.0,
+        )

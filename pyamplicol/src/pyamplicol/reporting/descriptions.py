@@ -170,7 +170,11 @@ def _profile(report: Any) -> list[Block]:
                     "minimums take when they alone exceed it), as given "
                     "(counts on the command line or in the card), or from the "
                     "default time budgets (10 s for the runtime timing, one "
-                    "minute per --n_core worker for the stability run)",
+                    "minute per --n_core worker for the stability run; a cost "
+                    "that cannot change the counts is not measured first, "
+                    "and when loading the artifact alone takes a backend's "
+                    "share every backend runs the minimums, measured as they "
+                    "run)",
                 ),
                 (
                     "ground truth",

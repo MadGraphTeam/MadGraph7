@@ -1025,10 +1025,17 @@ def profile_loop(
                 )
                 for backend in backends
             },
-            feasible=False,
-            unmet=("runtime",),
         )
         stability_start = load_seconds + 1.0
+        # Start-ups are outside the budgets: whether the minimums exceed it
+        # is known once the runtime timing measured them (the counts row).
+        _notice(
+            f"loading the artifact takes {_duration(load_seconds)} per process, "
+            "more than a backend's share of the "
+            f"{DEFAULT_RUNTIME_SECONDS:g} s runtime budget: running the "
+            "minimums (one timed call of one chunk per backend and its "
+            "reference point), their costs measured as they run"
+        )
     else:
         planned, stability_start = planning(costs, measured_at)
     if not planned.feasible:
@@ -1062,16 +1069,9 @@ def profile_loop(
             else ""
         )
         _notice(
-            f"{asked} cannot be met on this process: "
-            + (
-                f"loading the artifact takes {_duration(load_seconds)} per "
-                f"process, more than a backend's share; running the minimums "
-                f"({minimums}), their costs measured as they run"
-                if blind
-                else f"the minimums ({minimums}) take about "
-                f"{_duration(planned.minimum_seconds)} in all; running the "
-                "minimums"
-            ),
+            f"{asked} cannot be met on this process: the minimums ({minimums}) "
+            f"take about {_duration(planned.minimum_seconds)} in all; running "
+            "the minimums",
             warning=True,
         )
     future = future_of(planned, costs)
@@ -1330,7 +1330,10 @@ def profile_loop(
                     ),
                     load_seconds + 1.0,
                 )
-            planned, stability_start = planning(costs, measured_at)
+            # The counts that ran stay the record's; the minimums' time and
+            # whether they exceed the budget from the costs measured.
+            replanned, stability_start = planning(costs, measured_at)
+            planned = replace(replanned, runtime=planned.runtime)
         elif timed_references and want_stability:
             replanned, stability_start = planning(costs, monitor.elapsed())
             planned = replace(
