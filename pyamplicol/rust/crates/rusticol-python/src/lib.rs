@@ -820,6 +820,21 @@ impl Runtime {
             .map_err(python_error)
     }
 
+    /// Pattern endpoint pairs `[[f, a], ...]` per pattern of a template, or None.
+    fn flavour_union_pattern_pairs(&self) -> Option<Vec<Vec<[u32; 2]>>> {
+        self.runtime
+            .flavour_union_pattern_pairs()
+            .map(<[Vec<[u32; 2]>]>::to_vec)
+    }
+
+    /// Id of `assignment` relabelled by a template slot symmetry (see the core docs).
+    fn relabel_assignment(&mut self, assignment: u32, permutation: Vec<usize>) -> PyResult<u32> {
+        let _unlock = pyamplicol::unlock();
+        self.runtime
+            .relabel_assignment(assignment, &permutation)
+            .map_err(python_error)
+    }
+
     /// Flat values of `evaluate_assignments_f64_into` (momenta in template slot order).
     #[pyo3(signature=(momenta, request_offsets, assignment_ids, *, helicity_by_point=None, color_flow_by_point=None, mode="total"))]
     #[allow(clippy::too_many_arguments)]

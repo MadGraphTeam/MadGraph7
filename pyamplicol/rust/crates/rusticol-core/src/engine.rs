@@ -197,6 +197,9 @@ pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runti
 /// of flavour-union templates.
 pub const FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY: &str =
     "rusticol.flavour-union-assignments.v1";
+/// Runtime feature: pattern tables and assignments relabelled by template slot symmetries.
+pub const FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY: &str =
+    "rusticol.flavour-union-relabelling.v1";
 pub const COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY: &str = "compiled-plane-arena-v1";
 pub const COMPILED_PLANE_DIRECT_APPLICATION_ABI: &str = "pyamplicol-compiled-plane-kernel-v2";
 pub const COMPILED_PLANE_SOURCE_APPLICATION_ABI: &str = "pyamplicol-symjit-plane-application-v2";
@@ -351,6 +354,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
@@ -411,6 +416,7 @@ fn runtime_capability_is_supported(capability: &str) -> bool {
         | EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
         | EAGER_RUNTIME_LAYOUT_CAPABILITY
         | FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY
+        | FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY
         | RECURRENCE_RUNTIME_CAPABILITY
         | RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY
         | RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY
@@ -4579,8 +4585,32 @@ pub struct NativeRuntime {
     selector_simd_lane_width: usize,
     // Cold, opt-in metadata and vector defaults; ordinary evaluation never reads it.
     correlated: Option<correlated::CorrelatedRuntime>,
-    // Assignments of a pattern-resolved template: the template, then its members.
-    flavour_union_assignments: Option<Box<[NativeUnionAssignment]>>,
+    // Assignments of a pattern-resolved template: the template, its members, relabellings.
+    flavour_union_assignments: Option<Arc<[NativeUnionAssignment]>>,
+    flavour_union_relabelling: Option<Box<NativeUnionRelabelling>>,
+}
+
+/// Slot symmetries of a loaded template and the relabelled assignments derived so far.
+#[derive(Clone, Debug)]
+pub(crate) struct NativeUnionRelabelling {
+    template_pdgs: Vec<i32>,
+    initial_count: usize,
+    /// Endpoint pairs per pattern, sorted; `None` for artifacts without the table.
+    pattern_pairs: Option<Vec<Vec<[u32; 2]>>>,
+    pattern_by_pairs: BTreeMap<Vec<[u32; 2]>, u32>,
+    /// (base assignment, derived signed patterns) -> derived assignment id.
+    derived: BTreeMap<(u32, Vec<(u32, i32)>), u32>,
+}
+
+/// Bound on relabelled assignments per loaded runtime (ids are never evicted).
+pub const MAX_RELABELLED_ASSIGNMENTS: usize = 4096;
+
+/// How a relabelled assignment was derived: `assignment` evaluated at momenta
+/// `q'[r] = q[permutation[r]]` equals the relabelled one at `q`.
+#[derive(Clone, Debug, Serialize)]
+pub struct NativeAssignmentRelabelling {
+    pub assignment: u32,
+    pub permutation: Vec<usize>,
 }
 
 /// One flavour assignment of a pattern-resolved template (`evaluate_assignments`).
@@ -4596,6 +4626,8 @@ pub struct NativeUnionAssignment {
     pub conjugated: bool,
     pub patterns: Vec<u32>,
     pub pattern_signs: Vec<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relabelled: Option<NativeAssignmentRelabelling>,
     #[serde(skip)]
     signs: Box<[f64]>,
     #[serde(skip)]
@@ -4660,9 +4692,113 @@ impl NativeUnionAssignment {
             conjugated,
             patterns,
             pattern_signs,
+            relabelled: None,
             signs: signs.into_boxed_slice(),
             mask,
         })
+    }
+}
+
+impl NativeUnionRelabelling {
+    pub(crate) fn new(
+        template_pdgs: Vec<i32>,
+        initial_count: usize,
+        pattern_pairs: Option<Vec<Vec<[u32; 2]>>>,
+        pattern_count: usize,
+    ) -> RusticolResult<Self> {
+        let pattern_pairs = pattern_pairs.map(|pairs| {
+            pairs
+                .into_iter()
+                .map(|mut pattern| {
+                    pattern.sort_unstable();
+                    pattern
+                })
+                .collect::<Vec<_>>()
+        });
+        let mut pattern_by_pairs = BTreeMap::new();
+        if let Some(pairs) = &pattern_pairs {
+            let slots = template_pdgs.len();
+            if pairs.len() != pattern_count
+                || pairs
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .any(|slot| *slot as usize >= slots)
+            {
+                return Err(RusticolError::artifact(format!(
+                    "flavour-union pattern table has {} patterns, the template {pattern_count}",
+                    pairs.len()
+                )));
+            }
+            for (pattern, key) in pairs.iter().enumerate() {
+                if pattern_by_pairs
+                    .insert(key.clone(), pattern as u32)
+                    .is_some()
+                {
+                    return Err(RusticolError::artifact(
+                        "flavour-union pattern table repeats a pairing",
+                    ));
+                }
+            }
+        }
+        Ok(Self {
+            template_pdgs,
+            initial_count,
+            pattern_pairs,
+            pattern_by_pairs,
+            derived: BTreeMap::new(),
+        })
+    }
+
+    pub(crate) fn pattern_pairs(&self) -> Option<&[Vec<[u32; 2]>]> {
+        self.pattern_pairs.as_deref()
+    }
+
+    /// Pattern `pattern` with its endpoint slots moved `r -> permutation[r]`.
+    fn map_pattern(&self, pattern: u32, permutation: &[usize]) -> RusticolResult<u32> {
+        let pairs = self
+            .pattern_pairs
+            .as_ref()
+            .and_then(|pairs| pairs.get(pattern as usize))
+            .ok_or_else(|| {
+                RusticolError::compatibility(
+                    "relabelled assignments need the artifact's flavour-union pattern table",
+                )
+            })?;
+        let mut mapped = pairs
+            .iter()
+            .map(|[f, a]| [permutation[*f as usize] as u32, permutation[*a as usize] as u32])
+            .collect::<Vec<_>>();
+        mapped.sort_unstable();
+        self.pattern_by_pairs.get(&mapped).copied().ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "relabelling maps pattern {pattern} outside the template's pairing catalog"
+            ))
+        })
+    }
+
+    /// Validate a template slot symmetry (side, PDG preserved).
+    fn validate_symmetry(&self, permutation: &[usize]) -> RusticolResult<()> {
+        let count = self.template_pdgs.len();
+        let mut seen = vec![false; count];
+        if permutation.len() != count
+            || permutation
+                .iter()
+                .any(|slot| *slot >= count || std::mem::replace(&mut seen[*slot], true))
+        {
+            return Err(RusticolError::invalid_argument(format!(
+                "relabelling must be a permutation of the {count} template slots"
+            )));
+        }
+        if permutation.iter().enumerate().any(|(slot, image)| {
+            (slot < self.initial_count) != (*image < self.initial_count)
+                || self.template_pdgs[slot] != self.template_pdgs[*image]
+        }) {
+            return Err(RusticolError::invalid_argument(
+                "relabelling must map every template slot to one of the same side and particle",
+            ));
+        }
+        Ok(())
     }
 }
 

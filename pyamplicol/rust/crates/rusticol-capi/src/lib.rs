@@ -1776,6 +1776,101 @@ pub unsafe extern "C" fn rusticol_runtime_assignment_permutation(
     })
 }
 
+/// Writes the number of fermion-pairing patterns of a flavour-union template with a
+/// pattern table, else 0 (requires `rusticol.flavour-union-relabelling.v1`).
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live. `count` must be writable for one `size_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_pattern_count(
+    handle: *const RusticolRuntimeHandle,
+    count: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let value = handle
+            .runtime
+            .flavour_union_pattern_pairs()
+            .map_or(0, <[_]>::len);
+        unsafe { write_size(value, count, "pattern count") }
+    })
+}
+
+/// Copies the endpoint pairs of one pattern as `(fundamental, antifundamental)` template
+/// slots, two values per pair; `required` receives the value count.
+///
+/// # Safety
+///
+/// As [`rusticol_runtime_assignment_pdgs`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_pattern_pairs(
+    handle: *const RusticolRuntimeHandle,
+    pattern: size_t,
+    output: *mut u32,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let pairs = handle
+            .runtime
+            .flavour_union_pattern_pairs()
+            .and_then(|patterns| patterns.get(pattern))
+            .ok_or_else(|| invalid(format!("flavour-union pattern {pattern} is out of range")))?;
+        let values = pairs.iter().flatten().copied().collect::<Vec<u32>>();
+        unsafe { write_size(values.len(), required, "pattern pair value count")? };
+        if output.is_null() {
+            return if capacity == 0 {
+                Ok(())
+            } else {
+                Err(invalid("pattern pair output is null"))
+            };
+        }
+        if capacity < values.len() {
+            return Err(buffer_too_small("pattern pair capacity is too small"));
+        }
+        // SAFETY: Capacity was checked.
+        unsafe { ptr::copy_nonoverlapping(values.as_ptr(), output, values.len()) };
+        Ok(())
+    })
+}
+
+/// Writes the id of `assignment` relabelled by a template slot symmetry `permutation`
+/// (template slot -> template slot of the same side and particle): the id evaluated at
+/// momenta `q` equals `assignment` at `q'[r] = q[permutation[r]]` (totals). Ids are
+/// interned and stay valid for the handle (requires `rusticol.flavour-union-relabelling.v1`).
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and exclusively accessible during the call.
+/// `permutation` must reference `permutation_count` readable values; `relabelled` must be
+/// writable for one `uint32_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_relabel_assignment(
+    handle: *mut RusticolRuntimeHandle,
+    assignment: u32,
+    permutation: *const size_t,
+    permutation_count: size_t,
+    relabelled: *mut u32,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle_mut(handle) }?;
+        if permutation.is_null() || permutation_count == 0 || relabelled.is_null() {
+            return Err(invalid("permutation and relabelled must not be null"));
+        }
+        // SAFETY: Checked non-null with the stated count.
+        let permutation = unsafe { slice::from_raw_parts(permutation, permutation_count) };
+        let id = handle.runtime.relabel_assignment(assignment, permutation)?;
+        // SAFETY: Checked non-null.
+        unsafe { *relabelled = id };
+        Ok(())
+    })
+}
+
 /// Evaluates resolved f64 matrix elements for a batch of momentum points.
 ///
 /// # Safety

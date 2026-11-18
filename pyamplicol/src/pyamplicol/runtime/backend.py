@@ -1009,6 +1009,31 @@ class RusticolRuntimeBackend:
             raise ArtifactError("native flavour-union assignments are invalid")
         return tuple(dict(entry) for entry in payload)
 
+    @property
+    def flavour_union_pattern_pairs(
+        self,
+    ) -> tuple[tuple[tuple[int, int], ...], ...] | None:
+        method = getattr(self._runtime, "flavour_union_pattern_pairs", None)
+        value = method() if callable(method) else None
+        if value is None:
+            return None
+        return tuple(tuple((int(f), int(a)) for f, a in pattern) for pattern in value)
+
+    def relabel_assignment(self, assignment: int, permutation: Sequence[int]) -> int:
+        method = getattr(self._runtime, "relabel_assignment", None)
+        if not callable(method):
+            raise CompatibilityError(
+                "this runtime cannot relabel flavour-union assignments"
+            )
+        return int(
+            _invoke(
+                self._native_module,
+                method,
+                int(assignment),
+                [int(slot) for slot in permutation],
+            )
+        )
+
     def evaluate_assignments(
         self,
         momenta: Momenta,

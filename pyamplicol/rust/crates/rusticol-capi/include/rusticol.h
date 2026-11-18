@@ -471,6 +471,36 @@ int rusticol_runtime_assignment_permutation(
     size_t *required
 );
 
+/*
+ * Pattern relabelling (runtime capability "rusticol.flavour-union-relabelling.v1").
+ * pattern_count is 0 unless the template's artifact stores its pattern table;
+ * pattern_pairs copies (fundamental, antifundamental) template slots, two values
+ * per pair. relabel_assignment returns the id of an assignment relabelled by a
+ * template slot symmetry (slot -> slot of the same side and particle): the new id
+ * at momenta q equals the old one at q'[r] = q[permutation[r]] (totals; helicity
+ * and flow axes relabel accordingly). Ids are interned and stay valid.
+ */
+int rusticol_runtime_pattern_count(
+    const RusticolRuntimeHandle *handle,
+    size_t *count
+);
+
+int rusticol_runtime_pattern_pairs(
+    const RusticolRuntimeHandle *handle,
+    size_t pattern,
+    uint32_t *output,
+    size_t capacity,
+    size_t *required
+);
+
+int rusticol_runtime_relabel_assignment(
+    RusticolRuntimeHandle *handle,
+    uint32_t assignment,
+    const size_t *permutation,
+    size_t permutation_count,
+    uint32_t *relabelled
+);
+
 /* Resolved output uses [point][helicity][color]. */
 int rusticol_runtime_evaluate_resolved_f64(
     RusticolRuntimeHandle *handle,

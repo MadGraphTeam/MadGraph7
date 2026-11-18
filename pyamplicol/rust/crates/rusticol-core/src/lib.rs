@@ -75,6 +75,8 @@ pub use eager_tables::{
 pub use engine::eager_direct_descriptor_for_source_application_bytes;
 pub use engine::{
     AmplitudeOrderCatalog, AssignmentOutputMode, FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY,
+    FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY, MAX_RELABELLED_ASSIGNMENTS,
+    NativeAssignmentRelabelling,
     NativeColorComponent, NativeCorrelatedEvaluation, NativeCorrelatedRequest,
     NativeDecimalCorrelatedEvaluation, NativeDecimalCorrelatedRequest, NativeDecimalEvaluation,
     NativeDecimalGradedEvaluation, NativeDecimalResolvedEvaluation,

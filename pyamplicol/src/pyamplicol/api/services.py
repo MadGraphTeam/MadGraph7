@@ -1911,6 +1911,32 @@ class Runtime:
         value = getattr(self._backend, "flavour_union_assignments", ())
         return tuple(value)
 
+    @property
+    def flavour_union_pattern_pairs(
+        self,
+    ) -> tuple[tuple[tuple[int, int], ...], ...] | None:
+        """Per pairing pattern of a union template, its ``(fundamental,
+        antifundamental)`` slot pairs in template slot order; ``None`` for other
+        processes and for artifacts without the table."""
+
+        return getattr(self._backend, "flavour_union_pattern_pairs", None)
+
+    def relabel_assignment(self, assignment: int, permutation: Sequence[int]) -> int:
+        """Id of ``assignment`` relabelled by a template slot symmetry.
+
+        ``permutation`` maps template slots to template slots of the same side
+        and particle. The returned assignment evaluated at momenta ``q`` equals
+        ``assignment`` at ``q'[r] = q[permutation[r]]`` (totals; helicity and flow
+        axes are relabelled). Ids are interned and stay valid for this runtime.
+        """
+
+        relabel = getattr(self._backend, "relabel_assignment", None)
+        if not callable(relabel):
+            raise CompatibilityError(
+                "this runtime cannot relabel flavour-union assignments"
+            )
+        return int(relabel(assignment, permutation))
+
     def evaluate_assignments(
         self,
         momenta: Momenta,

@@ -1136,6 +1136,17 @@ impl VerifiedArtifact {
         ProcessGroups::from_json(&bytes, &self.manifest).map(Some)
     }
 
+    /// Pairing-rule endpoint pairs `[fundamental, antifundamental]` per pattern of the
+    /// flavour-union template `template_id`, in its slot order (absent before phase 6).
+    pub fn flavour_union_pattern_pairs(
+        &self,
+        template_id: &str,
+    ) -> RusticolResult<Option<Vec<Vec<[u32; 2]>>>> {
+        Ok(self
+            .process_groups()?
+            .and_then(|groups| groups.pattern_pairs.get(template_id).cloned()))
+    }
+
     /// Flavour-union members routed through the stored process `template_id`.
     pub fn flavour_union_members(
         &self,
@@ -2504,6 +2515,8 @@ struct ProcessGroupsDocument {
 struct ProcessGroupRecord {
     representative: ProcessGroupRepresentativeRecord,
     members: Vec<ProcessGroupMemberRecord>,
+    #[serde(default)]
+    flavour_union_pattern_pairs: Option<Vec<Vec<[u32; 2]>>>,
 }
 
 #[derive(Deserialize)]
@@ -2537,6 +2550,8 @@ struct ProcessGroupFactorRecord {
 #[derive(Clone, Debug)]
 pub(crate) struct ProcessGroups {
     members: Vec<ProcessGroupMember>,
+    /// Template id to its pattern endpoint pairs.
+    pattern_pairs: BTreeMap<String, Vec<Vec<[u32; 2]>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -2581,6 +2596,7 @@ impl ProcessGroups {
             .collect::<BTreeSet<_>>();
         let mut member_ids = BTreeSet::new();
         let mut members = Vec::new();
+        let mut pattern_pairs = BTreeMap::new();
         for group in document.groups {
             let representative_id = group.representative.process_id;
             let process = manifest
@@ -2611,6 +2627,24 @@ impl ProcessGroups {
                 return Err(RusticolError::artifact(format!(
                     "process group {representative_id:?} must list its representative first with the identity relation"
                 )));
+            }
+            if let Some(pairs) = group.flavour_union_pattern_pairs {
+                let union = group
+                    .members
+                    .iter()
+                    .any(|member| member.flavour_union_patterns.is_some());
+                let valid = pairs.iter().all(|pattern| {
+                    let slots = pattern.iter().flatten().collect::<BTreeSet<_>>();
+                    !pattern.is_empty()
+                        && slots.len() == 2 * pattern.len()
+                        && slots.iter().all(|slot| (**slot as usize) < count)
+                });
+                if !union || pairs.is_empty() || !valid {
+                    return Err(RusticolError::artifact(format!(
+                        "process group {representative_id:?} has invalid flavour-union pattern pairs"
+                    )));
+                }
+                pattern_pairs.insert(representative_id.clone(), pairs);
             }
             for member in group.members {
                 let id = member.process_id;
@@ -2709,7 +2743,10 @@ impl ProcessGroups {
                 });
             }
         }
-        Ok(Self { members })
+        Ok(Self {
+            members,
+            pattern_pairs,
+        })
     }
 
     fn flavour_union_members(&self, template_id: &str) -> Vec<FlavourUnionMemberRecord> {

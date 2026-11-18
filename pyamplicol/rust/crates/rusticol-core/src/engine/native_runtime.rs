@@ -1835,6 +1835,7 @@ impl NativeRuntime {
             selector_simd_lane_width,
             correlated: None,
             flavour_union_assignments: None,
+            flavour_union_relabelling: None,
         };
         if let Some(union) = flavour_union_patterns {
             match &mut loaded.execution_lane {
@@ -2055,6 +2056,7 @@ impl NativeRuntime {
                 selector_simd_lane_width: 1,
                 correlated: None,
                 flavour_union_assignments: None,
+                flavour_union_relabelling: None,
             };
             if let Some(path) = model_parameters_path {
                 runtime.set_model_parameters_json(path)?;
@@ -2311,6 +2313,17 @@ impl NativeRuntime {
                     RusticolError::integrity("flavour-union template left the manifest")
                 })?;
             let count = template.external_pdgs.len();
+            let initial_count = template
+                .expression
+                .split_once('>')
+                .map(|(initial, _)| initial.split_whitespace().count())
+                .ok_or_else(|| RusticolError::artifact("template expression lacks '>'"))?;
+            let relabelling = NativeUnionRelabelling::new(
+                template.external_pdgs.clone(),
+                initial_count,
+                artifact.flavour_union_pattern_pairs(&template.id)?,
+                pattern_count,
+            )?;
             let all = (0..pattern_count)
                 .map(|pattern| {
                     u32::try_from(pattern)
@@ -2347,7 +2360,8 @@ impl NativeRuntime {
                     pattern_count,
                 )?);
             }
-            self.flavour_union_assignments = Some(assignments.into_boxed_slice());
+            self.flavour_union_assignments = Some(assignments.into());
+            self.flavour_union_relabelling = Some(Box::new(relabelling));
         }
         #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         let _ = artifact;
@@ -2378,6 +2392,96 @@ impl NativeRuntime {
     /// template (all patterns) first, then its union members.
     pub fn flavour_union_assignments(&self) -> Option<&[NativeUnionAssignment]> {
         self.flavour_union_assignments.as_deref()
+    }
+
+    /// Endpoint pairs `[fundamental, antifundamental]` (template slots) per pattern of a
+    /// loaded template, or `None` (not a template, or an artifact without the table).
+    pub fn flavour_union_pattern_pairs(&self) -> Option<&[Vec<[u32; 2]>]> {
+        self.flavour_union_relabelling
+            .as_ref()
+            .and_then(|relabelling| relabelling.pattern_pairs())
+    }
+
+    /// The assignment `assignment` relabelled by a template slot symmetry: the returned
+    /// id evaluated at `q` equals `assignment` at `q'[r] = q[permutation[r]]` (totals;
+    /// helicity and flow axes are relabelled accordingly). Patterns map as
+    /// `(f, a) -> (permutation[f], permutation[a])`; factor, signs and conjugation are kept.
+    /// Ids are interned per (assignment, derived patterns) and stay valid; at most
+    /// [`MAX_RELABELLED_ASSIGNMENTS`] are derived per runtime.
+    pub fn relabel_assignment(
+        &mut self,
+        assignment: u32,
+        permutation: &[usize],
+    ) -> RusticolResult<u32> {
+        let (Some(assignments), Some(relabelling)) = (
+            self.flavour_union_assignments.as_ref(),
+            self.flavour_union_relabelling.as_mut(),
+        ) else {
+            return Err(RusticolError::compatibility(
+                "relabelled assignments require a pattern-resolved flavour-union template",
+            ));
+        };
+        let base = assignments.get(assignment as usize).ok_or_else(|| {
+            RusticolError::selector(format!(
+                "unknown flavour-union assignment {assignment} (the template has {})",
+                assignments.len()
+            ))
+        })?;
+        relabelling.validate_symmetry(permutation)?;
+        let derived = base
+            .patterns
+            .iter()
+            .zip(&base.pattern_signs)
+            .map(|(pattern, sign)| Ok((relabelling.map_pattern(*pattern, permutation)?, *sign)))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let mut own = base
+            .patterns
+            .iter()
+            .copied()
+            .zip(base.pattern_signs.iter().copied())
+            .collect::<Vec<_>>();
+        own.sort_unstable();
+        let mut key = derived.clone();
+        key.sort_unstable();
+        if key == own {
+            return Ok(assignment);
+        }
+        if let Some(id) = relabelling.derived.get(&(assignment, key.clone())) {
+            return Ok(*id);
+        }
+        if relabelling.derived.len() >= MAX_RELABELLED_ASSIGNMENTS {
+            return Err(RusticolError::invalid_argument(format!(
+                "at most {MAX_RELABELLED_ASSIGNMENTS} relabelled assignments per runtime"
+            )));
+        }
+        let id = u32::try_from(assignments.len())
+            .map_err(|_| RusticolError::internal("assignment id exceeds u32"))?;
+        // Member leg perm[r] now reads template slot permutation[r].
+        let mut member_permutation = vec![0; permutation.len()];
+        for (slot, image) in permutation.iter().enumerate() {
+            member_permutation[*image] = base.permutation[slot];
+        }
+        let (patterns, signs): (Vec<u32>, Vec<i32>) = derived.into_iter().unzip();
+        let mut relabelled = NativeUnionAssignment::new(
+            base.process_id.clone(),
+            base.expression.clone(),
+            base.pdgs.clone(),
+            member_permutation,
+            base.factor,
+            base.conjugated,
+            signs,
+            patterns,
+            base.signs.len(),
+        )?;
+        relabelled.relabelled = Some(NativeAssignmentRelabelling {
+            assignment,
+            permutation: permutation.to_vec(),
+        });
+        let mut grown = assignments.to_vec();
+        grown.push(relabelled);
+        relabelling.derived.insert((assignment, key), id);
+        self.flavour_union_assignments = Some(grown.into());
+        Ok(id)
     }
 
     pub fn flavour_union_assignments_json(&self) -> RusticolResult<String> {
