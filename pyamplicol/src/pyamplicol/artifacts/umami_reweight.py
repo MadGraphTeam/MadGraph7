@@ -159,7 +159,9 @@ def switch_catalogue(
     # (runtime process, pdgs, permutation, conjugated, factor, assignment); a
     # flavour-union assignment (>= 0) includes its factor in the runtime value
     members = []
-    member_ids: dict[tuple[int, int], str] = {}
+    # per (runtime, assignment): its process id and its value class (equal
+    # patterns, signs and factor give equal values, so they share evaluations)
+    member_ids: dict[tuple[int, int], tuple[str, tuple]] = {}
     if groups is None:
         members = [
             (index, list(process["pdgs"]), list(range(len(process["pdgs"]))), False,
@@ -192,7 +194,13 @@ def switch_catalogue(
                     assignment if union else -1,
                 ))
                 if union:
-                    member_ids[(rep, assignment)] = member["process_id"]
+                    value_class = (
+                        tuple(member.get("flavour_union_patterns", ("template",))),
+                        tuple(member.get("flavour_union_pattern_signs", ())),
+                        factor["numerator"],
+                        factor["denominator"],
+                    )
+                    member_ids[(rep, assignment)] = (member["process_id"], value_class)
     # LHE colour tags of every flow of a runtime process, in its legs
     flows: dict[int, dict[str, int]] = {index: {} for index in by_id.values()}
     for channel in reference["channels"]:
@@ -205,6 +213,7 @@ def switch_catalogue(
     color_flows = [list(map(list, flow)) for flow in reference["color_flows"]]
     color_index = {json.dumps(flow): i for i, flow in enumerate(color_flows)}
     evaluations: dict[tuple, int] = {}
+    described: list[tuple] = []
     orderings, targets, target_pdgs, seen = [], [], [], set()
     # the outgoing non-partons of every row, in the same slots in every row;
     # their flavours may differ between rows (e+ ve and mu+ vm of l+ vl)
@@ -223,7 +232,7 @@ def switch_catalogue(
     for rep, pdgs, permutation, conjugated, factor, assignment in members:
         rep_pdgs = processes[rep]["pdgs"]
         # the member process id names a flavour-union assignment (checked at load)
-        pdgs_key = member_ids.get((rep, assignment)) if assignment >= 0 else None
+        assignment_key, value_class = member_ids.get((rep, assignment), (None, None))
         if assignment >= 0:
             # the member's identical legs in template slots; the runtime has its factor
             rep_pdgs = [pdgs[leg] for leg in permutation]
@@ -260,8 +269,10 @@ def switch_catalogue(
                     rep_pdgs, [slots[r] for r in permutation], incoming
                 )
                 evaluation = evaluations.setdefault(
-                    (rep, assignment, legs, pdgs_key), len(evaluations)
+                    (rep, value_class, legs), len(evaluations)
                 )
+                if evaluation == len(described):
+                    described.append((rep, assignment, legs, assignment_key))
                 target = -1
                 if lines >= switch_lines:
                     target = len(targets)
@@ -287,7 +298,7 @@ def switch_catalogue(
                 })
     # one native call per (runtime, legs): the assignments of a template share it
     calls: dict[tuple, dict[str, Any]] = {}
-    for (rep, assignment, legs, _), index in evaluations.items():
+    for index, (rep, assignment, legs, _) in enumerate(described):
         key = (rep, legs) if assignment >= 0 else (rep, legs, index)
         call = calls.setdefault(
             key,
@@ -309,7 +320,7 @@ def switch_catalogue(
                 "assignment": assignment,
                 "assignment_key": key,
             }
-            for (rep, assignment, legs, key) in evaluations
+            for (rep, assignment, legs, key) in described
         ],
         "calls": list(calls.values()),
         "orderings": orderings,
