@@ -2274,7 +2274,7 @@ class StoredColumns:
             if self.meta["companion_orders"] is None
             else [_orders_of(o) for o in self.meta["companion_orders"]]
         )
-        from .plan_export import point_measures, with_measures
+        from .plan_export import point_measures, point_rescued, with_measures
 
         failed: dict[int, list[str]] = {}
         for index, (evaluation, lanes, checks, failures) in enumerate(
@@ -2294,6 +2294,7 @@ class StoredColumns:
                     point_measures(output, extra, index),
                 )
                 continue
+            evaluation.lane_rescue = point_rescued(output, extra, index)
             numbers = evaluation.numbers
 
             def carrier(values, numbers=numbers):

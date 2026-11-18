@@ -1684,6 +1684,11 @@ class PointResult:
     # poles and its term scale are (the native executor forms the term scale
     # with the stability checks); None otherwise.
     finiteness: float | None = None
+    # The lane rescue (``api.virtual_results.VirtualLaneRescue``): per
+    # carrier ("double-double", "arbitrary") the point's reduction lanes it
+    # served, over the point's native evaluations (the reference and its
+    # rotations); empty when none was rescued.
+    lane_rescue: tuple[tuple[str, int], ...] = ()
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]

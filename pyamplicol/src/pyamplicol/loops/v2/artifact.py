@@ -114,6 +114,7 @@ from pyamplicol.api.virtual_results import (
     VirtualEvaluation,
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
+    VirtualLaneRescue,
     VirtualPoleParts,
     VirtualReduction,
     VirtualRescuePolicy,
@@ -2877,6 +2878,11 @@ class V2VirtualRuntime:
                     primary_color_contraction=contraction,
                     reduction=(served or {}).get(index, reduction),
                     finiteness=result.finiteness,
+                    lane_rescue=(
+                        VirtualLaneRescue(result.lane_rescue)
+                        if result.lane_rescue
+                        else None
+                    ),
                 )
             )
         return VirtualEvaluation(

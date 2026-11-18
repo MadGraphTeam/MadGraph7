@@ -948,6 +948,49 @@ class VirtualVerificationDiagnostic:
 
 
 @dataclass(frozen=True, slots=True)
+class VirtualLaneRescue:
+    """The lane rescue of one point (USER 2026-11-18; docs/user/
+    python-api.md, "Lane rescue"): reduction lanes (one family's
+    integrals in one Laurent column) that the backend refused in the
+    evaluation's carrier and whose REDUCTION alone was redone in a higher
+    carrier, from the same coefficients lifted exactly, the result rounded
+    back into the evaluation's sum. ``lanes`` gives per carrier
+    (``"double-double"``, ``"arbitrary"``) the lanes it served, counted
+    over the point's evaluations (the reference and its rotated
+    evaluations). The point's stability estimate covers the mixed total:
+    a rescued lane is not certified by itself."""
+
+    lanes: tuple[tuple[str, int], ...]
+
+    def __post_init__(self) -> None:
+        lanes = tuple((str(carrier), int(count)) for carrier, count in self.lanes)
+        if not lanes or any(
+            carrier not in {"double-double", "arbitrary"} or count < 1
+            for carrier, count in lanes
+        ):
+            raise ValueError(
+                "a lane rescue names double-double or arbitrary with at least one lane"
+            )
+        object.__setattr__(self, "lanes", lanes)
+
+    @property
+    def count(self) -> int:
+        """The rescued lanes over every carrier."""
+
+        return sum(count for _carrier, count in self.lanes)
+
+    @property
+    def carrier(self) -> str:
+        """The highest carrier that served a lane."""
+
+        return (
+            "arbitrary"
+            if any(c == "arbitrary" for c, _ in self.lanes)
+            else ("double-double")
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class VirtualLaneDiagnostic:
     """Accuracy is explicit; a finite output is not an accuracy certificate.
 
@@ -993,6 +1036,10 @@ class VirtualLaneDiagnostic:
     # evaluation without the binary64 switch (no improvement, values bitwise
     # as before), else the record (``"off"`` under the setting "off").
     kinematics: VirtualKinematics | None = None
+    # The lane rescue of the point (``VirtualLaneRescue``): the reduction
+    # lanes the backend refused in this carrier and a higher carrier served;
+    # None when no lane was rescued.
+    lane_rescue: VirtualLaneRescue | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {

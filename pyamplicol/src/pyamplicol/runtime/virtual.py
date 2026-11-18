@@ -30,6 +30,7 @@ from pyamplicol.api.virtual_results import (
     VirtualEvaluation,
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
+    VirtualLaneRescue,
     VirtualPoleParts,
     VirtualReduction,
     VirtualRescuePolicy,
@@ -90,7 +91,9 @@ def profile_stage_names(contribution: str) -> dict[str, tuple[str, ...]]:
         PROFILE_TREES: ("trees",),
         PROFILE_DRESSING: dressing,
         PROFILE_SCATTER: ("scatter",),
-        PROFILE_REDUCTION: ("reduction",),
+        # The lane rescue's reductions (``V2Options::rescue``) are
+        # reductions too.
+        PROFILE_REDUCTION: ("reduction", "lane rescue"),
     }
 
 
@@ -993,6 +996,7 @@ class V2ObservablesRuntime:
         reasons: Sequence[str] | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
         served: Mapping[int, VirtualReduction] | None = None,
+        lane_rescue: tuple[tuple[str, int], ...] = (),
     ) -> VirtualLaneDiagnostic:
         bits = {"double": 53, "double-double": 106}.get(arithmetic) or math.ceil(
             precision.digits * math.log2(10)
@@ -1036,6 +1040,7 @@ class V2ObservablesRuntime:
                 ),
                 reduction=reduction,
             )
+        rescue = VirtualLaneRescue(lane_rescue) if lane_rescue else None
         return VirtualLaneDiagnostic(
             "success",
             arithmetic,  # type: ignore[arg-type]
@@ -1046,8 +1051,15 @@ class V2ObservablesRuntime:
                 "accuracy is estimated only by the requested stability checks"
                 if checked
                 else "no stability check requested"
+            )
+            + (
+                ""
+                if rescue is None
+                else "; lane rescue: "
+                + ", ".join(f"{n} lanes in {c}" for c, n in rescue.lanes)
             ),
             reduction=reduction,
+            lane_rescue=rescue,
         )
 
     def _failed(self, failures: Mapping[int, Sequence[str]], on_failure: str) -> None:
@@ -1144,6 +1156,7 @@ class V2ObservablesRuntime:
                     index,
                     reductions=reductions,
                     served=served,
+                    lane_rescue=getattr(result, "lane_rescue", ()),
                 )
             )
         return VirtualEvaluation(
