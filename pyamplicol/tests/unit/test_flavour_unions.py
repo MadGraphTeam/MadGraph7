@@ -576,3 +576,66 @@ def test_flavour_unions_config_requires_strict_lc_recurrence() -> None:
                 color=color,
                 generation=generation,
             )
+
+
+def _entry(name: str, pdgs, members=(), aliases=()):
+    from types import SimpleNamespace
+
+    from pyamplicol.api.requests import ProcessRequest
+    from pyamplicol.generation.service import _ExpandedProcess
+
+    return _ExpandedProcess(
+        request=ProcessRequest.parse("d d~ > g g", name=name),
+        process_ir=SimpleNamespace(legs=[SimpleNamespace(pdg=pdg) for pdg in pdgs]),
+        aliases=aliases,
+        group_members=tuple(members),
+    )
+
+
+def _member(process_id: str, pdgs, *, union: bool) -> GroupMember:
+    return GroupMember(
+        process_id=process_id,
+        expression="d d~ > g g",
+        pdgs=pdgs,
+        initial_count=2,
+        permutation=(0, 1, 2, 3),
+        basis=GroupingBasis.FLAVOUR_UNION if union else GroupingBasis.FLAVOR_BLIND,
+        generated=False,
+        patterns=(0,) if union else None,
+        pattern_signs=(1,) if union else None,
+    )
+
+
+def test_applied_unions_replace_entries_and_skip_straddling_or_aliased_ones() -> None:
+    from pyamplicol.generation.process_grouping import GroupingProcess
+    from pyamplicol.generation.service import _apply_flavour_unions
+
+    pdgs = (1, -1, 21, 21)
+
+    def union(template: str, *members: str) -> FlavourUnion:
+        return FlavourUnion(
+            GroupingProcess(template, "d d~ > g g", pdgs, 2),
+            tuple(_member(member, pdgs, union=True) for member in members),
+            1,
+        )
+
+    entries = [
+        _entry("a", pdgs, [_member("b", pdgs, union=False)]),
+        _entry("c", pdgs),
+        _entry(
+            "e",
+            pdgs,
+            [_member("f", pdgs, union=False), _member("g", pdgs, union=False)],
+        ),
+        _entry("h", pdgs, aliases=({"id": "alias"},)),
+        _entry("i", pdgs),
+    ]
+    unions = [union("a", "b", "c"), union("e", "f"), union("i", "h")]
+    result = _apply_flavour_unions(entries, unions, lambda template: None)
+    assert [entry.request.name for entry in result] == ["a", "e", "h", "i"]
+    template = result[0]
+    assert template.flavour_union_template
+    assert [member.process_id for member in template.group_members] == ["b", "c"]
+    # f and g share an entry but only f joins the union; h carries an alias.
+    assert result[1] == entries[2]
+    assert result[2] == entries[3] and result[3] == entries[4]
