@@ -562,11 +562,12 @@ def test_flavour_unions_config_requires_strict_lc_recurrence() -> None:
         evaluator=recurrence,
         generation=no_bundle,
     )
+    # UMAMI providers evaluate union members as template assignments.
+    RunConfig(action=Action.GENERATE, process=process, evaluator=recurrence)
     for evaluator, color, generation in (
         (EvaluatorConfig(execution_mode="compiled"), ColorConfig(), no_bundle),
         (recurrence, ColorConfig(accuracy="full"), no_bundle),
         (recurrence, ColorConfig(lc_flow_layout="all-flow-union"), no_bundle),
-        (recurrence, ColorConfig(), GenerationConfig()),
     ):
         with pytest.raises(ConfigurationError, match="flavor_unions"):
             RunConfig(

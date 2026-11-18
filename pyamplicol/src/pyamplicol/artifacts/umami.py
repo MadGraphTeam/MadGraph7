@@ -6,8 +6,10 @@ Other equivalences require generation certificates or exact structural keys;
 equal masses or parameter defaults are not a proof. The exception is the
 explicit ``--flavor-blind`` assumption: its ungenerated group members are
 exported through their representative's runtime and recorded in
-``grouping.assumptions``. Integration multiplicities live in the JSON, not in
-the C provider.
+``grouping.assumptions``. Flavour-union members are evaluated through their
+template's runtime as assignments (``Runtime.evaluate_assignments``), which
+sum only their own pairing patterns. Integration multiplicities live in the
+JSON, not in the C provider.
 """
 
 from __future__ import annotations
@@ -775,6 +777,7 @@ def _merge_flavour_orbits(data):
                 runtime["color_index"],
                 tuple(runtime["permutation"]),
                 runtime["factor"],
+                runtime.get("_assignment_class"),
                 tuple(data["pdg_ids"][next(iter(pdgs))][:incoming]),
                 tuple(entry["multichannels"]),
             )
@@ -824,22 +827,6 @@ def build_umami_metadata(
     (``member`` is None) or one of its ungenerated group members, evaluated
     through the process's runtime without a runtime row of its own.
     """
-    union = next(
-        (
-            member.process_id
-            for process in processes
-            for member in process.group_members
-            if member.patterns is not None
-        ),
-        None,
-    )
-    if union is not None:
-        # Members route through the representative runtime, which would drop
-        # the member's pairing patterns.
-        raise ValueError(
-            f"UMAMI providers do not support flavour-union members ({union!r}); "
-            "generate with process.flavor_unions = false or without the API bundle"
-        )
     particles, parameters, defaults = _model_tables(compiled_model)
     groups: list[tuple[tuple, list[tuple], list[tuple[str, float]]]] = []
 
@@ -1034,6 +1021,42 @@ def _build_provider(
         process_index = runtime_indices[process.process_id]
         source_id, pdgs = process.process_id, process.external_pdgs
         relation = None
+        # Flavour-union templates evaluate every source as an assignment: the
+        # template is 0, its union members follow in process-groups order.
+        union_ids = {
+            m.process_id: index
+            for index, m in enumerate(
+                (m for m in process.group_members if m.patterns is not None), 1
+            )
+        }
+        assignment = None
+        if union_ids:
+            if group_member is None:
+                assignment = (0, process.process_id, ("template",))
+            elif group_member.patterns is None:
+                raise ValueError(
+                    f"UMAMI flavour-union template {process.process_id!r} has the "
+                    f"non-union member {group_member.process_id!r}"
+                )
+            else:
+                assignment = (
+                    union_ids[group_member.process_id],
+                    group_member.process_id,
+                    (
+                        tuple(group_member.patterns),
+                        tuple(group_member.pattern_signs or ()),
+                        group_member.factor,
+                        group_member.conjugated,
+                    ),
+                )
+        color_axis = {
+            str(c["id"]): i
+            for i, c in enumerate(_records(physics.get("color_components")))
+        }
+        # the source's flavours in runtime slots
+        slot_pdgs = list(process.external_pdgs)
+        if group_member is not None:
+            slot_pdgs = [int(group_member.pdgs[p]) for p in group_member.permutation]
         if group_member is not None:
             # Representative leg r is the member's leg relation[r]: helicity
             # values and colour tags move with it, momenta through the runtime.
@@ -1138,6 +1161,17 @@ def _build_provider(
                 blocks = _line_blocks(coloured_slots, roles) if coloured_slots else None
                 line_legs.update(frozenset(block) for block in blocks or ())
             rep_color, perm = replay.get(color_id, (color_id, tuple(identity)))
+            if assignment is not None and any(
+                slot_pdgs[perm[slot]] != slot_pdgs[slot] for slot in identity
+            ):
+                # A replay exchanging slots of different member flavours is no
+                # symmetry of the member: its own flow, computed by union templates.
+                if color.get("computed") is False:
+                    raise ValueError(
+                        f"UMAMI flavour-union member {source_id!r} needs the "
+                        f"uncomputed flow {color_id!r} of its template"
+                    )
+                rep_color, perm = color_id, tuple(identity)
             runtime = {
                 "process_index": process_index,
                 "process_id": process.process_id,
@@ -1146,8 +1180,16 @@ def _build_provider(
                 "permutation": list(perm),
                 "factor": 1.0,
             }
+            if assignment is not None:
+                # The runtime applies the member factor; flows are selected per point.
+                runtime.update(
+                    assignment=assignment[0],
+                    assignment_key=assignment[1],
+                    color_axis=0 if contracted else color_axis[rep_color],
+                    _assignment_class=assignment[2],
+                )
             semantic_key = (process.structural_keys or {}).get(color_id)
-            if semantic_key:
+            if semantic_key and assignment is None:
                 if semantic_key in structural_representatives:
                     runtime = dict(structural_representatives[semantic_key])
                 else:
@@ -1158,7 +1200,8 @@ def _build_provider(
                 runtime = {
                     **runtime,
                     "permutation": [relation[slot] for slot in runtime["permutation"]],
-                    "factor": runtime["factor"] * float(group_member.factor),
+                    "factor": runtime["factor"]
+                    * (1.0 if assignment is not None else float(group_member.factor)),
                 }
             member = {
                 "process_id": source_id,
@@ -1298,6 +1341,9 @@ def _build_provider(
             )
     _group_phasespace_channels(data, selectors, phasespace_channels)
     _merge_flavour_orbits(data)
+    for entry in (e for c in data["channels"] for e in c["processes"]):
+        for runtime in [entry["runtime"], *(m["runtime"] for m in entry["members"])]:
+            runtime.pop("_assignment_class", None)
     _export_helicities(data, runtime_helicities)
     alpha_names = {p["alpha_s_parameter"] for p in data["runtime_processes"]}
     data["provider"]["alpha_s_parameter"] = (
