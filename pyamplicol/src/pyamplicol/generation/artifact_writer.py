@@ -1412,16 +1412,18 @@ def _write_process_groups(
             for member in group.members
             if member.generated or member.process_id not in new_ids
         ]
+        # A template whose union members were all regenerated keeps no table.
+        if not any(member.patterns is not None for member in group.members):
+            group.pattern_pairs = None
     if process_groups is not None:
         for group in process_groups.groups.values():
-            group_map.add_group(
-                [
-                    member
-                    for member in group.members
-                    if member.generated or group_map.group_of(member.process_id) is None
-                ],
-                group.pattern_pairs,
-            )
+            members = [
+                member
+                for member in group.members
+                if member.generated or group_map.group_of(member.process_id) is None
+            ]
+            union = any(member.patterns is not None for member in members)
+            group_map.add_group(members, group.pattern_pairs if union else None)
         group_map.analyses.extend(process_groups.analyses)
     grouped = {member.process_id for member in group_map.members()}
     ungrouped = initial_process_groups(

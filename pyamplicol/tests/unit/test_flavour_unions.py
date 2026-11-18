@@ -732,3 +732,41 @@ def test_union_templates_are_requested_single_flavour_processes(
         pairing_rules,
         symmetry,
     )
+
+
+def test_append_regenerating_every_union_member_drops_the_pattern_table(
+    tmp_path: Path,
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    from pyamplicol.generation.artifact_writer import _write_process_groups
+
+    processes, _, table = _expansion("p p > j j", 4)
+    union = next(
+        union
+        for union in _unions(processes, table, model, pairing_rules, symmetry)
+        if union.template.expression == "d d > d d"
+    )
+    stored = ProcessGroupMap()
+    stored.add_group(union.group(), union.pattern_pairs)
+    (tmp_path / "process-groups.json").write_text(stored.to_json(), encoding="utf-8")
+
+    class _Builder:  # the two builder calls _write_process_groups makes
+        payload = b""
+
+        def staged_path(self, _path: object) -> Path:
+            return tmp_path / "process-groups.json"
+
+        def add_bytes(self, _path: object, data: bytes, **_: object) -> None:
+            self.payload = data
+
+    # The append generates every union member explicitly.
+    records = [
+        {"id": member.process_id, "expression": member.expression, "external_pdgs": member.pdgs}
+        for member in union.group()
+    ]
+    group_map = _write_process_groups(_Builder(), process_groups=None, process_records=records)
+    template = group_map.groups[union.template.process_id]
+    assert template.pattern_pairs is None
+    assert all(member.patterns is None for member in group_map.members())
