@@ -1356,6 +1356,11 @@ pub mod v2 {
         pending: Vec<Pending<T>>,
         /// Per point the lanes the lane rescue served.
         rescued: Vec<Vec<(LaneKey, RescueCarrier)>>,
+        /// The term scale's refused moments the lane rescue reduces again,
+        /// per (point, family, monomial): its unit-numerator lane (key column
+        /// = the monomial) and the (slot, weight) pairs its moduli add to
+        /// (`|N_α|`, and `|c| |N_α|` for a dependent column).
+        moments: BTreeMap<(usize, usize, usize), (Pending<T>, Vec<(usize, T)>)>,
     }
 
     /// A lane the backend refused (direct, re-test or both), held for the
@@ -1580,6 +1585,8 @@ pub mod v2 {
                 let monomials = group.coefficients.len() / group.keys.len().max(1);
                 let formed = Formed::of(self.plan, group.family, self.data);
                 let mut first = 0;
+                // Refused moments held for the lane rescue (`hold`).
+                let mut held = Vec::new();
                 for (lane, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
                     if lane > 0 && group.points[lane - 1] != point {
                         first += monomials;
@@ -1602,6 +1609,11 @@ pub mod v2 {
                                     *s += size.clone() * &z.clone().norm().re;
                                 }
                             }
+                            Err(status) if self.rescuing => {
+                                let slot = key.order * self.plan.columns + key.column;
+                                let weight = n.clone().norm().re;
+                                held.push((point, alpha, status.clone(), slot, weight));
+                            }
                             Err(status) => sink.failures[point].push(format!(
                                 "term scale of family {} monomial {alpha}: {status}",
                                 group.family
@@ -1617,20 +1629,73 @@ pub mod v2 {
                                 if n.re.is_fully_zero() && n.im.is_fully_zero() {
                                     continue;
                                 }
-                                if let Ok(moment) = &moments[first + alpha] {
-                                    let n = size.clone() * &n.clone().norm().re;
-                                    for (s, z) in slot.iter_mut().zip(moment) {
-                                        *s += n.clone() * &z.clone().norm().re;
+                                match &moments[first + alpha] {
+                                    Ok(moment) => {
+                                        let n = size.clone() * &n.clone().norm().re;
+                                        for (s, z) in slot.iter_mut().zip(moment) {
+                                            *s += n.clone() * &z.clone().norm().re;
+                                        }
                                     }
+                                    Err(status) if self.rescuing => {
+                                        let slot = key.order * self.plan.columns + column;
+                                        let weight = size.clone() * &n.clone().norm().re;
+                                        held.push((point, alpha, status.clone(), slot, weight));
+                                    }
+                                    Err(_) => {}
                                 }
                             }
                         }
                     }
                 }
+                for (point, alpha, status, slot, weight) in held {
+                    hold(sink, point, group, alpha, monomials, &status, slot, weight);
+                }
             }
             report.time(TERM_SCALE, start);
             Ok(())
         }
+    }
+
+    /// Hold a refused term-scale moment for the lane rescue
+    /// ([`Lanes::moments`]): the unit-numerator lane of monomial `alpha` of
+    /// `group`'s family at `point` (once), and the moduli's `weight` in
+    /// `slot`.
+    #[allow(clippy::too_many_arguments)]
+    fn hold<T: Carrier>(
+        sink: &mut Lanes<T>,
+        point: usize,
+        group: &FamilyLanes<T>,
+        alpha: usize,
+        monomials: usize,
+        status: &str,
+        slot: usize,
+        weight: T,
+    ) {
+        let zero = weight.zero();
+        let entry = sink
+            .moments
+            .entry((point, group.family, alpha))
+            .or_insert_with(|| {
+                let one = Complex::new(zero.one(), zero.clone());
+                let nil = Complex::new(zero.clone(), zero.clone());
+                (
+                    Pending {
+                        point,
+                        key: LaneKey {
+                            family: group.family,
+                            order: 0,
+                            column: alpha,
+                        },
+                        direct: Some(status.to_string()),
+                        check: None,
+                        coefficients: (0..monomials)
+                            .map(|m| if m == alpha { one.clone() } else { nil.clone() })
+                            .collect(),
+                    },
+                    Vec::new(),
+                )
+            });
+        entry.1.push((slot, weight));
     }
 
     /// Record a schedule-M run in the report (reals per lane).
@@ -1885,6 +1950,7 @@ pub mod v2 {
             terms: vec![Vec::new(); points],
             pending: Vec::new(),
             rescued: vec![Vec::new(); points],
+            moments: BTreeMap::new(),
         };
         let carriers = match options.rescue {
             RescueInputs::Off => Vec::new(),
@@ -1922,7 +1988,7 @@ pub mod v2 {
                 ))),
             }?;
         }
-        if !sink.pending.is_empty() {
+        if !sink.pending.is_empty() || !sink.moments.is_empty() {
             let start = Instant::now();
             rescue_lanes(
                 plan,
@@ -2056,14 +2122,15 @@ pub mod v2 {
     }
 
     /// The lane rescue of one evaluation ([`V2Options::rescue`]): the lanes
-    /// refused in its carrier ([`Lanes::pending`]) are reduced again in each
-    /// carrier of `carriers` in turn, every carrier's lanes in one backend
-    /// call grouped by family; a lane served in both frames (the direct one
-    /// and, with a check, the re-test) takes its integrals (and forms its
-    /// dependent columns) as a lane of the evaluation; a lane refused at
-    /// every carrier fails its point with the statuses of its first
-    /// refusal, followed by each carrier's. A point failed otherwise is not
-    /// rescued.
+    /// refused in its carrier ([`Lanes::pending`]) and the term scale's
+    /// refused moments ([`Lanes::moments`]) are reduced again in each
+    /// carrier of `carriers` in turn ([`ladder`]); a lane served in both
+    /// frames (the direct one and, with a check, the re-test) takes its
+    /// integrals (and forms its dependent columns) as a lane of the
+    /// evaluation, a served moment adds its weighted moduli to its slots; a
+    /// lane or moment refused at every carrier fails its point with the
+    /// status of its first refusal followed by each carrier's. A point failed
+    /// otherwise is not rescued.
     #[allow(clippy::too_many_arguments)]
     fn rescue_lanes<T: Carrier + Real>(
         plan: &LoopProgramV4,
@@ -2076,28 +2143,171 @@ pub mod v2 {
         report: &mut Report,
     ) -> RusticolResult<()> {
         let pending = std::mem::take(&mut sink.pending);
-        let mut left: Vec<usize> = (0..pending.len())
+        let moments: Vec<(Pending<T>, Vec<(usize, T)>)> =
+            std::mem::take(&mut sink.moments).into_values().collect();
+        // Per lane (and moment) its refusal statuses at the rescue carriers
+        // when it stays refused (empty: its point failed otherwise), None
+        // when it is served.
+        let live: Vec<usize> = (0..pending.len())
             .filter(|&i| sink.failures[pending[i].point].is_empty())
             .collect();
-        let mut attempts: Vec<Vec<String>> = vec![Vec::new(); pending.len()];
-        let mut done = vec![false; pending.len()];
-        // The improved legs of a point per carrier (`RescueInputs::Improved`).
-        let mut improved: BTreeMap<(usize, RescueCarrier), Vec<Rational>> = BTreeMap::new();
+        let live_units: Vec<usize> = (0..moments.len())
+            .filter(|&i| sink.failures[moments[i].0.point].is_empty())
+            .collect();
+        let mut refused: Vec<Option<Vec<String>>> = vec![Some(Vec::new()); pending.len()];
+        let mut refused_units: Vec<Option<Vec<String>>> = vec![Some(Vec::new()); moments.len()];
+        let mut improved = BTreeMap::new();
+        let lanes: Vec<&Pending<T>> = live.iter().map(|&i| &pending[i]).collect();
+        let (served, attempts) = ladder(
+            plan,
+            batch,
+            zero,
+            backend,
+            options,
+            options.check,
+            carriers,
+            &lanes,
+            &mut improved,
+            report,
+        )?;
+        for ((&i, outcome), attempts) in live.iter().zip(served).zip(attempts) {
+            let Some((value, test, carrier)) = outcome else {
+                refused[i] = Some(attempts);
+                continue;
+            };
+            refused[i] = None;
+            let (point, key) = (pending[i].point, pending[i].key);
+            let formed = Formed::with(plan, key.family, zero);
+            if let Some(formed) = &formed {
+                formed.push(&key, &value, &mut sink.families[point]);
+            }
+            sink.families[point].push((key, value));
+            if let Some(test) = test {
+                if let Some(formed) = &formed {
+                    formed.push(&key, &test, &mut sink.checks[point]);
+                }
+                sink.checks[point].push((key, test));
+            }
+            sink.rescued[point].push((key, carrier));
+        }
+        let units: Vec<&Pending<T>> = live_units.iter().map(|&i| &moments[i].0).collect();
+        let (served, attempts) = ladder(
+            plan,
+            batch,
+            zero,
+            backend,
+            options,
+            None,
+            carriers,
+            &units,
+            &mut improved,
+            report,
+        )?;
+        let width = options.poles.width();
+        let slots = plan.order_count * plan.columns;
+        for ((&i, outcome), attempts) in live_units.iter().zip(served).zip(attempts) {
+            let Some((moment, _, carrier)) = outcome else {
+                refused_units[i] = Some(attempts);
+                continue;
+            };
+            refused_units[i] = None;
+            let (unit, weights) = &moments[i];
+            let terms = &mut sink.terms[unit.point];
+            if terms.is_empty() {
+                *terms = vec![vec![zero.clone(); width]; slots];
+            }
+            for (slot, weight) in weights {
+                for (s, z) in terms[*slot].iter_mut().zip(&moment) {
+                    *s += weight.clone() * &z.clone().norm().re;
+                }
+            }
+            sink.rescued[unit.point].push((unit.key, carrier));
+        }
+        let suffix = |attempts: &[String]| {
+            if attempts.is_empty() {
+                String::new()
+            } else {
+                format!(" (lane rescue: {})", attempts.join("; "))
+            }
+        };
+        for (lane, attempts) in pending.iter().zip(&refused) {
+            let Some(attempts) = attempts else {
+                continue;
+            };
+            let (family, key) = (lane.key.family, lane.key);
+            if let Some(status) = &lane.direct {
+                sink.failures[lane.point].push(format!(
+                    "family {family} lane {key:?}: {status}{}",
+                    suffix(attempts)
+                ));
+            }
+            if let Some(status) = &lane.check {
+                let tail = if lane.direct.is_some() {
+                    String::new()
+                } else {
+                    suffix(attempts)
+                };
+                sink.failures[lane.point].push(format!(
+                    "re-test of family {family} lane {key:?}: {status}{tail}"
+                ));
+            }
+        }
+        for ((unit, _), attempts) in moments.iter().zip(&refused_units) {
+            let Some(attempts) = attempts else {
+                continue;
+            };
+            sink.failures[unit.point].push(format!(
+                "term scale of family {} monomial {}: {}{}",
+                unit.key.family,
+                unit.key.column,
+                unit.direct.as_deref().unwrap_or("refused"),
+                suffix(attempts)
+            ));
+        }
+        Ok(())
+    }
+
+    /// One rescue outcome per lane of [`ladder`]: the direct integrals, the
+    /// re-test's (with a check) and the carrier that served them, or None.
+    type Rescued<T> = Option<(Vec<Complex<T>>, Option<Vec<Complex<T>>>, RescueCarrier)>;
+
+    /// The lane rescue's ladder: `lanes` reduced in each carrier of
+    /// `carriers` in turn, every carrier's remaining lanes in ONE backend
+    /// call grouped by family (lanes of a point consecutive); a lane is
+    /// served by the first carrier that serves it in both frames (`check`).
+    /// Per lane its outcome and each refusing carrier's status; the report
+    /// counts the served lanes per carrier and the lanes left.
+    #[allow(clippy::too_many_arguments)]
+    fn ladder<T: Carrier + Real>(
+        plan: &LoopProgramV4,
+        batch: &V2Batch<T>,
+        zero: &T,
+        backend: &mut impl V2Backend<T>,
+        options: V2Options,
+        check: Option<ReductionCheck>,
+        carriers: &[RescueCarrier],
+        lanes: &[&Pending<T>],
+        improved: &mut BTreeMap<(usize, RescueCarrier), Vec<Rational>>,
+        report: &mut Report,
+    ) -> RusticolResult<(Vec<Rescued<T>>, Vec<Vec<String>>)> {
+        let mut out: Vec<Rescued<T>> = (0..lanes.len()).map(|_| None).collect();
+        let mut attempts: Vec<Vec<String>> = vec![Vec::new(); lanes.len()];
+        let mut left: Vec<usize> = (0..lanes.len()).collect();
         for &carrier in carriers {
             if left.is_empty() {
                 break;
             }
             let mut by_family: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
             for &i in &left {
-                by_family.entry(pending[i].key.family).or_default().push(i);
+                by_family.entry(lanes[i].key.family).or_default().push(i);
             }
             // Lanes of one point consecutive (a backend shares their
             // kinematics), in refusal order otherwise.
-            for lanes in by_family.values_mut() {
-                lanes.sort_by_key(|&i| pending[i].point);
+            for members in by_family.values_mut() {
+                members.sort_by_key(|&i| lanes[i].point);
             }
             let mut groups = Vec::with_capacity(by_family.len());
-            for (&family, lanes) in &by_family {
+            for (&family, members) in &by_family {
                 groups.push(exact_lanes(
                     plan,
                     batch,
@@ -2105,43 +2315,32 @@ pub mod v2 {
                     options.rescue,
                     carrier,
                     family,
-                    lanes.iter().map(|&i| &pending[i]),
-                    &mut improved,
+                    members.iter().map(|&i| lanes[i]),
+                    improved,
                 )?);
             }
-            let (direct, check) =
-                backend.rescue(carrier, &groups, options.poles, options.check, zero)?;
+            let (direct, retest) = backend.rescue(carrier, &groups, options.poles, check, zero)?;
             let mut next = Vec::new();
             let mut served = 0u64;
-            for (g, lanes) in by_family.values().enumerate() {
-                let formed = Formed::with(plan, groups[g].family, zero);
-                for (row, &i) in lanes.iter().enumerate() {
-                    let lane = &pending[i];
-                    let test = check.as_ref().map(|c| &c[g][row]);
+            for (g, members) in by_family.values().enumerate() {
+                for (row, &i) in members.iter().enumerate() {
+                    let test = retest.as_ref().map(|c| &c[g][row]);
                     match (&direct[g][row], test) {
-                        (Ok(value), None | Some(Ok(_))) => {
-                            let point = lane.point;
-                            if let Some(formed) = &formed {
-                                formed.push(&lane.key, value, &mut sink.families[point]);
-                            }
-                            sink.families[point].push((lane.key, value.clone()));
-                            if let Some(Ok(test)) = test {
-                                if let Some(formed) = &formed {
-                                    formed.push(&lane.key, test, &mut sink.checks[point]);
-                                }
-                                sink.checks[point].push((lane.key, test.clone()));
-                            }
-                            sink.rescued[point].push((lane.key, carrier));
-                            done[i] = true;
+                        (Ok(value), None) => {
+                            out[i] = Some((value.clone(), None, carrier));
                             served += 1;
                         }
-                        (direct, test) => {
-                            let status = match (direct, test) {
-                                (Err(status), _) => status.clone(),
-                                (_, Some(Err(status))) => format!("re-test {status}"),
-                                _ => unreachable!("a served lane"),
+                        (Ok(value), Some(Ok(test))) => {
+                            out[i] = Some((value.clone(), Some(test.clone()), carrier));
+                            served += 1;
+                        }
+                        (Err(status), _) | (_, Some(Err(status))) => {
+                            let frame = if direct[g][row].is_ok() {
+                                "re-test "
+                            } else {
+                                ""
                             };
-                            attempts[i].push(format!("{}: {status}", carrier.label()));
+                            attempts[i].push(format!("{}: {frame}{status}", carrier.label()));
                             next.push(i);
                         }
                     }
@@ -2157,33 +2356,12 @@ pub mod v2 {
             left = next;
         }
         report.count(LANES_UNRESCUED, left.len() as u64);
-        for (i, lane) in pending.iter().enumerate() {
-            if done[i] {
-                continue;
-            }
-            let family = lane.key.family;
-            let key = lane.key;
-            let tried = if attempts[i].is_empty() {
-                String::new()
-            } else {
-                format!(" (lane rescue: {})", attempts[i].join("; "))
-            };
-            if let Some(status) = &lane.direct {
-                sink.failures[lane.point]
-                    .push(format!("family {family} lane {key:?}: {status}{tried}"));
-            }
-            if let Some(status) = &lane.check {
-                let tried = if lane.direct.is_some() {
-                    ""
-                } else {
-                    tried.as_str()
-                };
-                sink.failures[lane.point].push(format!(
-                    "re-test of family {family} lane {key:?}: {status}{tried}"
-                ));
+        for i in 0..lanes.len() {
+            if out[i].is_some() {
+                attempts[i].clear();
             }
         }
-        Ok(())
+        Ok((out, attempts))
     }
 
     /// The exact inputs of the pending lanes `lanes` of `family` in
