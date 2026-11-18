@@ -4942,26 +4942,27 @@ mod replay_destination_helicity_tests {
             combined_re: Vec::new(),
             combined_im: Vec::new(),
         };
-        let mut visited = Vec::new();
-        let mut collect =
-            |destination: &DirectAmplitudeDestinationDescriptor, re: &[f64], im: &[f64]| {
-                visited.push((destination.id, re.to_vec(), im.to_vec()));
-                Ok(())
-            };
-        selection.visit(amplitudes(), 2, &mut collect).unwrap();
+        let mut run = |selection: &mut PatternSelection| {
+            let mut visited = Vec::new();
+            selection
+                .visit(amplitudes(), 2, |destination, re, im| {
+                    visited.push((destination.id, re.to_vec(), im.to_vec()));
+                    Ok(())
+                })
+                .unwrap();
+            visited
+        };
         assert_eq!(
-            visited,
+            run(&mut selection),
             [
                 (0, vec![11.0, 22.0], vec![0.5, 1.0]),
                 (2, vec![3.0, 4.0], vec![0.0, 0.0]),
                 (3, vec![5.0, 6.0], vec![1.0, 1.0]),
             ]
         );
-        visited.clear();
         selection.select(&[1], &[-1]).unwrap();
-        selection.visit(amplitudes(), 2, &mut collect).unwrap();
         assert_eq!(
-            visited,
+            run(&mut selection),
             [
                 (0, vec![-10.0, -20.0], vec![-0.0, -1.0]),
                 (2, vec![-3.0, -4.0], vec![-0.0, -0.0]),
