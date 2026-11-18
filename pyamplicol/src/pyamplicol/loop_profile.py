@@ -765,6 +765,8 @@ def profile_loop(
         POST_SECONDS_PER_RECORD,
         RECORD_SECONDS_PER_INPUT,
         RECORD_SECONDS_PER_RECORD,
+        STABILITY_PRIOR,
+        reference_affects_counts,
         runtime_counts,
         warmup_seconds,
     )
@@ -959,6 +961,21 @@ def profile_loop(
             load_seconds,
             history=history,
             provisional=provisional,
+            # Under the default budget a reference cost that cannot change
+            # the runtime counts is not timed here: each backend's runtime
+            # timing measures it with its own reference warm-up.
+            reference_needed=(
+                (
+                    lambda binary64, count: reference_affects_counts(
+                        binary64,
+                        load_seconds + 1.0,
+                        backends=count,
+                        lanes=DEFAULT_LANES,
+                    )
+                )
+                if want_runtime and completion is None and not runtime_given
+                else None
+            ),
         )
     except KeyboardInterrupt:
         monitor.close(False)
@@ -1197,6 +1214,35 @@ def profile_loop(
             )
             for row in rows
         )
+        # A reference cost the measurement left estimated: the runtime
+        # timing's measured one from now on (the stability run's priors and
+        # plan, the history).
+        timed_references = {
+            row.backend: row.profile.reference.seconds_per_point
+            for row in rows
+            if row.profile is not None
+            and row.profile.reference is not None
+            and row.backend in costs
+            and costs[row.backend].reference_estimated
+        }
+        for backend, seconds in timed_references.items():
+            costs[backend] = replace(
+                costs[backend],
+                reference=seconds,
+                stability_reference=(
+                    seconds
+                    if _reference_checks(truth) is None
+                    else STABILITY_PRIOR * seconds
+                ),
+                reference_estimated=False,
+            )
+        if timed_references and want_stability:
+            replanned, stability_start = planning(costs, monitor.elapsed())
+            planned = replace(
+                planned,
+                stability_points=replanned.stability_points,
+                stability_seconds=replanned.stability_seconds,
+            )
 
     stability_rows = None
     stability_setup = None
@@ -1889,10 +1935,14 @@ def _measure(
     *,
     history: _ProfileHistory | None = None,
     provisional: Callable[[dict[str, Any], float], None] | None = None,
+    reference_needed: Callable[[float, int], bool] | None = None,
 ) -> dict[str, Any]:
     """The measurement phase of a time-budgeted profile, on this process's
     loaded runtime, per backend: the binary64 cost per point of an
-    optimistic call and the reference's (none without a ground truth), each
+    optimistic call and the reference's (none without a ground truth; not
+    timed when ``reference_needed(binary64 cost, backends measured)`` is
+    False: then its prior, ``Costs.reference_estimated``, and the runtime
+    timing's reference warm-up measures it), each
     from one point (twice when it costs at most ``MEASURE_REPEAT_SECONDS``:
     a first call's lazy set-up) and, when a full SIMD chunk costs at most
     ``WARMUP_CALL_SECONDS`` at that price, from one call of a full chunk
@@ -2081,12 +2131,23 @@ def _measure(
     costs: dict[str, Any] = {}
     done = 0
     measured: dict[str, float] = {}
+    # The backends whose reference cost is a prior (``reference_needed``).
+    estimated: set[str] = set()
     report(0)
     for backend in backends:
         name = NAMES.get(backend, backend)
         measured.clear()
         try:
             for precision in precisions:
+                if (
+                    precision == "reference"
+                    and reference_needed is not None
+                    and not reference_needed(measured["binary64"], len(backends))
+                ):
+                    estimated.add(backend)
+                    done += 1
+                    report(done)
+                    continue
                 label = "binary64" if precision == "binary64" else truth.name
                 phase.update(
                     done,
@@ -2121,19 +2182,36 @@ def _measure(
             continue
         binary64 = measured["binary64"]
         reference = measured.get("reference")
+        if backend in estimated:
+            reference = prior_point(backend, "reference")
         costs[backend] = Costs(
             binary64,
             reference,
             STABILITY_PRIOR * binary64,
             checked_reference(reference),
             load_seconds + 1.0,
+            reference_estimated=backend in estimated,
         )
+    for backend in [b for b in costs if b in estimated]:
+        # A backend refused: the others' shares grew; a reference cost that
+        # can now change the counts is measured after all.
+        if reference_needed is None or reference_needed(
+            costs[backend].binary64, len(costs)
+        ):
+            reference = cost(backend, "reference")
+            known[(backend, "reference")] = reference
+            costs[backend] = replace(
+                costs[backend],
+                reference=reference,
+                stability_reference=checked_reference(reference),
+                reference_estimated=False,
+            )
     phase.end(
         ", ".join(
             f"{NAMES.get(b, b)} {_per_point_text(c.binary64)}"
             + (
                 ""
-                if c.reference is None
+                if c.reference is None or c.reference_estimated
                 else f" ({truth.label} {_multiplier_text(c.reference / c.binary64)})"
             )
             for b, c in costs.items()
@@ -2222,7 +2300,7 @@ class _ProfileHistory:
     ) -> None:
         for backend, cost in costs.items():
             self._store.observe(f"cost:{backend}:binary64", 1e6 * float(cost.binary64))
-            if cost.reference is not None:
+            if cost.reference is not None and not cost.reference_estimated:
                 self._store.observe(
                     f"cost:{backend}:reference", 1e6 * float(cost.reference)
                 )

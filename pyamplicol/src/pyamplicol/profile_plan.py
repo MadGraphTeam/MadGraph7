@@ -83,13 +83,16 @@ class Costs:
     None without a ground truth), of a stability point in binary64 with its
     checks and in the reference (``stability``, ``stability_reference``),
     and the fixed seconds of starting a process that loads the artifact
-    (``start``)."""
+    (``start``). ``reference_estimated``: the reference cost is a prior, not
+    measured (``reference_affects_counts`` False: the runtime timing's own
+    warm-up measures it); it sets no budget, only the expected seconds."""
 
     binary64: float
     reference: float | None
     stability: float
     stability_reference: float | None
     start: float
+    reference_estimated: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,9 +196,12 @@ def runtime_counts(
     lanes = max(lanes, 1)
     chunks_max = max(batch_max // lanes, 1)
     reference = 0.0
+    measured = 0.0 if costs.reference_estimated else (costs.reference or 0.0)
     if costs.reference is not None:
-        reference = max(REFERENCE_SHARE * budget, costs.reference)
-    left = max(budget - reference - (costs.reference or 0.0), 0.0)
+        # An estimated cost sets no budget: the reference pass's own warm-up
+        # fits its chunk to the share (at least one point).
+        reference = max(REFERENCE_SHARE * budget, measured)
+    left = max(budget - reference - measured, 0.0)
     per_chunk = lanes * costs.binary64
     chunks = (
         int(left // ((STABLE_CALLS + 1) * per_chunk)) if per_chunk > 0 else chunks_max
@@ -209,8 +215,25 @@ def runtime_counts(
     timed = max(left - warm, 0.0)
     expected = costs.start + warm + max(timed, RUNTIME_MINIMUM_CALLS * call)
     if costs.reference is not None:
-        expected += costs.reference + reference
+        expected += costs.reference + max(reference, costs.reference)
     return RuntimeCounts(batch, 1, RUNTIME_MINIMUM_CALLS, timed, reference, expected)
+
+
+def reference_affects_counts(
+    binary64: float, start: float, *, backends: int, lanes: int
+) -> bool:
+    """Whether a backend's reference cost can change its runtime counts
+    under the default budget (``DEFAULT_RUNTIME_SECONDS`` shared by
+    ``backends``, its ``start`` excluded, ``_split_runtime``) at ``binary64``
+    seconds per point: False when that share affords no more than the
+    binary64 warm-up (``warmup_seconds`` of one chunk of ``lanes``), so that
+    ``runtime_counts`` gives one chunk, one warm-up, the minimum timed calls
+    and no timed budget left whatever the reference costs (a reference cost
+    only takes from the share). Then the measurement need not time the
+    reference: the runtime timing's reference warm-up measures it."""
+
+    budget = max(DEFAULT_RUNTIME_SECONDS / max(backends, 1) - start, 0.0)
+    return budget > warmup_seconds(max(lanes, 1) * binary64, binary64)
 
 
 def runtime_minimum(costs: Costs, *, lanes: int) -> float:
@@ -541,6 +564,7 @@ __all__ = [
     "admit_chunk",
     "affordable_chunk",
     "plan",
+    "reference_affects_counts",
     "runtime_counts",
     "stability_points",
     "stability_wall",

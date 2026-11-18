@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import itertools
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pytest
 
@@ -21,6 +21,7 @@ from pyamplicol.profile_plan import (
     Costs,
     affordable_chunk,
     plan,
+    reference_affects_counts,
     runtime_counts,
     stability_points,
     stability_wall,
@@ -57,6 +58,57 @@ def test_runtime_counts_are_whole_chunks_and_never_below_the_minimum():
     cheap = runtime_counts(_costs(1e-5), 10.0, lanes=LANES, batch_max=128)
     dear = runtime_counts(_costs(0.5), 10.0, lanes=LANES, batch_max=128)
     assert cheap.batch == 128 and dear.batch == LANES
+
+
+def test_a_reference_cost_that_cannot_change_the_counts_is_not_needed():
+    """``reference_affects_counts``: under the default budget a backend whose
+    share (its start-up excluded) affords no more than the binary64 warm-up
+    gets the same counts whatever its reference costs (one chunk, the
+    minimum calls, no timed budget), so its reference need not be measured;
+    an estimated reference sets no budget, only the expected seconds."""
+
+    from pyamplicol.profile_plan import DEFAULT_RUNTIME_SECONDS, REFERENCE_SHARE
+
+    for binary64, start, backends in itertools.product(
+        (1e-5, 1e-3, 0.05, 0.6, 200.0), (0.5, 3.0, 1200.0), (1, 2)
+    ):
+        share = max(DEFAULT_RUNTIME_SECONDS / backends - start, 0.0)
+        needed = reference_affects_counts(
+            binary64, start, backends=backends, lanes=LANES
+        )
+        assert needed == (share > warmup_seconds(LANES * binary64, binary64))
+        if needed:
+            continue
+        counts = {
+            (c.batch, c.warmup, c.minimum, c.budget)
+            for multiplier in (None, 2.0, 60.0, 1e4)
+            for c in [
+                runtime_counts(
+                    _costs(binary64, multiplier, start),
+                    share,
+                    lanes=LANES,
+                    batch_max=128,
+                )
+            ]
+        }
+        assert counts == {(LANES, 1, 1, 0.0)}
+    # The cheap processes measure it (their counts depend on it).
+    assert reference_affects_counts(1e-3, 0.5, backends=2, lanes=LANES)
+    # g g > g g g g measured 1.8 s for its first one-point call, 3.2 s start-up.
+    assert not reference_affects_counts(1.8, 4.2, backends=2, lanes=LANES)
+    estimated = replace(_costs(200.0, 30.0, 1200.0), reference_estimated=True)
+    counts = runtime_counts(estimated, 0.0, lanes=LANES, batch_max=128)
+    assert counts.reference_budget == REFERENCE_SHARE * 0.0
+    assert counts.expected == pytest.approx(1200.0 + 200.0 + LANES * 200.0 + 2 * 6000.0)
+    measured = runtime_counts(
+        _costs(200.0, 30.0, 1200.0), 0.0, lanes=LANES, batch_max=128
+    )
+    assert measured.reference_budget == 6000.0
+    assert (measured.batch, measured.budget, measured.expected) == (
+        counts.batch,
+        counts.budget,
+        counts.expected,
+    )
 
 
 def test_stability_points_are_chunks_and_at_least_the_minimum():
