@@ -998,11 +998,23 @@ digits (57, `loops.v2.stability.DEFAULT_RESCUE`) or `arbitrary:DIGITS`
 tables' multipliers, and the labels follow it: the header's `ground truth`
 row, `(arb(57) x210)`, "Stable digits of binary64 vs arb(57)". The values
 judged are binary64's either way; a point whose reference fails is "no
-ref." as before. In arbitrary precision the stability run's reference pass
-runs the recommended stability checks (`RECOMMENDED_CHECKS`), and a point
-whose estimate exceeds the target counts as one whose reference fails (its
-cause names the estimate), so a wrong value with status success does not
-become the truth; the time multipliers stay those of one optimistic pass. Arbitrary precision costs far more than double-double; its
+ref." as before. In arbitrary precision the stability run cross-checks
+each point's references between the backends: a reference that agrees with
+another backend's to 2^-106 relative (binary64's unit roundoff squared, the
+accuracy of the double-double truth) is trusted as it is; one that does not,
+or the only one (the other backend failed or is not profiled), is evaluated
+again with the recommended stability checks (`RECOMMENDED_CHECKS`) and
+counts as one whose reference fails when its estimate exceeds the target
+(its cause names the estimate), so a wrong value with status success does
+not become the truth. The cross-check compares the two reductions and their
+master-integral code; the numerators, the R2 and counterterm parts and the
+assembly are common to both backends (as they are to the binary64 value
+judged), and TIRust's masters are generated from the same OneLOop
+expressions as NinjaRS's. With one backend profiled every reference takes
+the checked re-run. `--json` records each reference's certification
+(`reference_certified`). The runtime table's multiplier stays the time of
+one optimistic pass; the stability table's reference time includes the
+checked re-runs. Arbitrary precision costs far more than double-double; its
 runtime timing is bounded as the double-double one is. `--ground-truth none`
 runs no reference at all: no reference pass (the runtime table shows the
 time alone), and the stability run evaluates binary64 with its checks only
@@ -1079,9 +1091,11 @@ artifact and makes one untimed call per backend and precision before any
 timed one, so start-up costs stay out of both totals, and the points go in
 tasks of whole binary64 SIMD chunks. The binary64 calls
 include their stability checks (the default rotation test evaluates each
-point twice) while the reference evaluates each point once, so this
-multiplier is not the cost ratio of one evaluation: that is the runtime
-table's `(dd xN)`. No rescue runs: the statistics are those of pure binary64; the
+point twice) while the reference evaluates each point once (with an
+arbitrary-precision ground truth, plus the checked re-runs of the references
+the cross-check did not certify), so this multiplier is not the cost ratio
+of one evaluation: that is the runtime table's `(dd xN)`. No rescue runs:
+the statistics are those of pure binary64; the
 reference re-run is the reference only. When a backend served points
 best-effort, a third table shows how accurate those values and their
 uncertainties are: per backend the number of best-effort points, their true
@@ -1150,7 +1164,10 @@ total's estimated relative error), `estimate_digits`, `estimate_scale`,
 best-effort value, or none); `best_effort` and its `uncertainty` (relative);
 `reason` (a refusal or failure); `reference_value` (the exact decimal text
 of the reference's total finite part at its precision; null when it failed
-or with `--ground-truth none`) and `reference_reason`; `true_relative_error`
+or with `--ground-truth none`), `reference_reason` and `reference_certified`
+(an arbitrary-precision reference's certification: `"agreement"` with another
+backend's reference, `"checks"` from its checked re-run; null otherwise);
+`true_relative_error`
 and `true_digits` (null without both values); `binary64_task` and
 `reference_task`, indices into the table's `tasks` list of `[seconds,
 points]` of the task that evaluated the point (inside a batched call there
