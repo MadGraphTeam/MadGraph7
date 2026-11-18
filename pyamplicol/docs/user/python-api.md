@@ -697,6 +697,48 @@ colour zero (every colour coefficient of the loop amplitude vanishes at
 N_c = 3 by colour algebra, as for `h > g a`, Tr T^a = 0) evaluates to an
 exact 0 and its lanes say so.
 
+### Lane rescue of refused reduction lanes
+
+A one-loop point is reduced lane by lane: one lane per loop family and
+Laurent column, a tensor numerator (its coefficients) and the family's
+kinematics (propagator shifts, masses, scale, invariants). A reduction
+backend may refuse a lane in binary64 (NinjaRS `Unstable` at a nearly
+singular cut, TIRust's acceptance check), and then the whole point used to
+have no value. In the checked reduction (the default) such a lane is now
+**rescued**: only its reduction is redone in a higher carrier, double-double
+first, then arbitrary precision at 57 digits (the default rescue ladder's
+carriers), on the same backend. Its coefficients are the binary64 ones,
+lifted exactly (the numerators are not recomputed); its kinematic inputs are
+rebuilt in the higher carrier from the point's improved kinematics (exact
+momentum conservation and on-shell external legs in that carrier, as
+`kinematics_improvement` improves a point evaluated there). The lane's
+result, rounded to binary64, takes its place in the point's binary64 sum;
+every other lane, and every point without a refused lane, is bitwise as
+before. The same holds in double-double (a refused lane is reduced again
+in arbitrary precision), for the rotated evaluations of the stability
+checks and for the per-point fallback's evaluations.
+
+The reduction is linear in the coefficients and the tensor integrals they
+multiply are smooth where a Gram determinant is small: the amplification
+that made the lane unstable sits in the reduction's own arithmetic, which
+the higher carrier removes. A rescued lane is therefore about as accurate as
+an accepted binary64 lane (binary64 rounding of its coefficients against the
+size of the terms that cancel), not double-double accurate, and it is not
+certified by itself: the point's stability estimate (its rotation checks,
+the reduction-direction re-test) is formed on the mixed total as for any
+point.
+
+`lane.lane_rescue` (a `VirtualLaneRescue`, `None` without one) gives per
+carrier the lanes it served (`lanes`, e.g. `(("double-double", 3),)`,
+counted over the point's evaluations), `count` and the highest `carrier`.
+A lane refused at every rescue carrier leaves the point failed exactly as
+before (its reason ends with each carrier's status), and the mechanisms
+below then act unchanged: `"auto"`'s per-point fallback, a rescue policy's
+next level, the best-effort value. With `reduction_unchecked=True`
+(`--reduction-unchecked`) nothing is rescued. The lane rescue's time is part
+of the call (`profile`: the reduction stage) and its points are counted in
+`profile`'s cause tables under "lane rescue".
+
 ### Best-effort values of refused points
 
 Since 1.0.3 a per-point refusal never interrupts a run by default. A point
@@ -1354,7 +1396,9 @@ evaluates, with no estimate. How a batch runs:
 1. Level 0 evaluates the whole batch.
 2. A point that fails (also when one of its rotated evaluations fails) or whose
    estimate misses the target is evaluated again at the next level, from its
-   original exact inputs; no lower-precision value is reused. Escalated points
+   original exact inputs; no lower-precision value is reused (the lane
+   rescue, "Lane rescue of refused reduction lanes", happens inside each
+   level's evaluation, before a point counts as failed). Escalated points
    are evaluated one per native call, so each carrier builds one executor and
    compiles its kernels once.
 3. Accepted points are never evaluated again. At the last level a point that

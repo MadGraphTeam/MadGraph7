@@ -1500,7 +1500,10 @@ pub mod v2 {
                         refused(&direct[index]),
                         check.as_ref().and_then(|c| refused(&c[index])),
                     );
-                    if self.rescuing && (held.0.is_some() || held.1.is_some()) {
+                    // DEV (lanerescue measurement, removed before merge):
+                    // every lane through the rescue.
+                    let every = std::env::var_os("PYAMPLICOL_DEV_LANE_RESCUE_ALL").is_some();
+                    if self.rescuing && (every || held.0.is_some() || held.1.is_some()) {
                         sink.pending.push(Pending {
                             point,
                             key,
