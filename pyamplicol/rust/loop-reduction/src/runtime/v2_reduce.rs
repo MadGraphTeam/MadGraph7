@@ -957,8 +957,19 @@ impl V2Reducer {
         let mut sums = TrackedSums::default();
         for batch in batches {
             let columns = batch.values.columns().max(1);
-            if let Data::Arbitrary(values) = batch.values.data() {
-                for lane in values.chunks_exact(columns) {
+            let Data::Arbitrary(values) = batch.values.data() else {
+                continue;
+            };
+            // The successful lanes only, as the executor sums them: a row
+            // with a value whose status failed is not served.
+            let succeeded: std::collections::HashSet<u64> = batch
+                .statuses
+                .iter()
+                .filter(|(_, status)| status == "success")
+                .map(|&(id, _)| id)
+                .collect();
+            for (id, lane) in batch.values.ids().iter().zip(values.chunks_exact(columns)) {
+                if succeeded.contains(id) {
                     sums.add(lane, rule.working);
                 }
             }
@@ -1290,6 +1301,13 @@ mod tests {
                 .tracked_refusal(exact.iter().chain(&coarse))
                 .is_some()
         );
+        // Only successful rows count: the coarse value under a failed status
+        // is not summed (the executor sums successes only).
+        let failed = ReductionBatch {
+            values: coarse[0].values.clone(),
+            statuses: vec![(0, "Unstable".into())],
+        };
+        assert_eq!(reducer.tracked_refusal(exact.iter().chain([&failed])), None);
         reducer.set_unchecked(true);
         assert_eq!(reducer.tracked_precision(), None);
         assert_eq!(reducer.tracked_refusal(&coarse), None);
