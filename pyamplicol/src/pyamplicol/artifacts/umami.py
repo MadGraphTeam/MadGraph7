@@ -824,6 +824,22 @@ def build_umami_metadata(
     (``member`` is None) or one of its ungenerated group members, evaluated
     through the process's runtime without a runtime row of its own.
     """
+    union = next(
+        (
+            member.process_id
+            for process in processes
+            for member in process.group_members
+            if member.patterns is not None
+        ),
+        None,
+    )
+    if union is not None:
+        # Members route through the representative runtime, which would drop
+        # the member's pairing patterns.
+        raise ValueError(
+            f"UMAMI providers do not support flavour-union members ({union!r}); "
+            "generate with process.flavor_unions = false or without the API bundle"
+        )
     particles, parameters, defaults = _model_tables(compiled_model)
     groups: list[tuple[tuple, list[tuple], list[tuple[str, float]]]] = []
 

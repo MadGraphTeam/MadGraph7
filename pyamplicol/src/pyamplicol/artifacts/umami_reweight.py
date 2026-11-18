@@ -163,6 +163,11 @@ def switch_catalogue(
             if rep is None:
                 continue
             for member in group["members"]:
+                if "flavour_union_patterns" in member:
+                    raise ValueError(
+                        "the flavour switch does not support flavour-union members "
+                        f"({member['process_id']!r})"
+                    )
                 factor = member["factor"]
                 members.append((
                     rep,
