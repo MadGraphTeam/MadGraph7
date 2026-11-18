@@ -308,6 +308,45 @@ class TestEarlierJobs(unittest.TestCase):
             self.assertEqual(json.load(f)['job_ids'], {})
 
 
+    def test_failed_submission(self):
+        """Jobs submitted before a submission fails are recorded one by one
+        and removed."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        removed = []
+
+        class FailingCluster:
+            submitted_ids = []
+
+            def get_jobs_identifier(self, path):
+                return 'id'
+
+            def submit2(self, *args, **opts):
+                if len(self.submitted_ids) == 2:
+                    raise RuntimeError('sbatch failed')
+                self.submitted_ids.append(100 + len(self.submitted_ids))
+
+            def remove(self):
+                removed.append(list(self.submitted_ids))
+
+        run = cluster_run.ClusterRun(types.SimpleNamespace(run_card=card()), {})
+        run.cluster_type = 'slurm'
+        run.run_path = tmp.name
+        run.state_path = os.path.join(tmp.name, 'state.json')
+        run.state = {'stage': 'train'}
+        run.cluster_objects = {'train': (FailingCluster(), 'slurm')}
+        jobs = []
+        for i in range(4):
+            job_dir = os.path.join(tmp.name, 'job_%d' % i)
+            os.makedirs(job_dir)
+            jobs.append((job_dir, [], [], '/bin/true'))
+        with self.assertRaisesRegex(RuntimeError, 'sbatch'):
+            run.run_jobs('train', jobs)
+        self.assertEqual(removed, [[100, 101]])
+        with open(run.state_path) as f:
+            self.assertEqual(json.load(f)['job_ids'], {'train': ['100', '101']})
+
+
 class TestJobsIdentifier(unittest.TestCase):
 
     def test_fixed_identifier(self):
@@ -361,6 +400,51 @@ class TestPassOverrides(unittest.TestCase):
         self.assertEqual(job_card['run']['gpu_thread_pool_size'], 4)
         self.assertEqual(job_card['run']['cpu_thread_pool_size'], -1)
         self.assertFalse(job_card['cluster']['enable'])
+
+    def merged_shell_card(self, mode):
+        """The card of the shell of the merged gridpack, for a run card asking
+        for a gridpack with sources and without madspace."""
+        run_card = RunCardMG7(os.path.join('Cards', 'run_card.toml'))
+        run_card.set('gridpack.include_source', True, user=True)
+        run_card.set('gridpack.include_madspace', False, user=True)
+        run_card.set('cluster.mode', mode, user=True)
+        run_card.write(os.path.join('Cards', 'run_card.toml'))
+        self.run.section = run_card['cluster']
+        self.run.cluster_path = 'cluster'
+        self.run.state = {'train_jobs': []}
+        self.run.backends = {'deploy': ['cpp512y']}
+        self.run.process.custom_function_paths = []
+        self.run.process.subprocess_data = []
+        shell = mock.Mock()
+
+        def merge_data(inputs, output):
+            os.makedirs(output)
+            cluster_run.write_json(os.path.join(output, 'lhe_meta.json'), {'headers': [
+                {'name': 'MG7RunCard', 'content': 'seed of job 0'},
+                {'name': 'MG5ProcCard', 'content': 'generate p p > t t~'}]})
+
+        with mock.patch.object(cluster_run.merge_gridpacks, 'merge_gridpack_data',
+                               merge_data), \
+                mock.patch.object(cluster_run.launch.MadgraphProcess,
+                                  'write_gridpack_shell', shell):
+            self.run.merge()
+        return shell.call_args[0][1]
+
+    def test_merged_gridpack_runs_the_generation_jobs(self):
+        shell_card = self.merged_shell_card('full')
+        self.assertFalse(shell_card['gridpack']['include_source'])
+        self.assertTrue(shell_card['gridpack']['include_madspace'])
+        self.assertEqual(shell_card['run']['cpu_thread_pool_size'], 6)
+        # the LHE header has the run card of the run, not of a training job
+        headers = cluster_run.read_json(
+            os.path.join('cluster', 'gridpack', 'data', 'lhe_meta.json'))['headers']
+        with open(os.path.join('Cards', 'run_card.toml')) as f:
+            self.assertEqual(headers[0]['content'], f.read())
+        self.assertEqual(headers[1]['content'], 'generate p p > t t~')
+        # the result of gridpack_only is the gridpack the card asks for
+        shell_card = self.merged_shell_card('gridpack_only')
+        self.assertTrue(shell_card['gridpack']['include_source'])
+        self.assertFalse(shell_card['gridpack']['include_madspace'])
 
 
 @unittest.skipIf(cluster_run is None, 'madspace not available')

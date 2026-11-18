@@ -442,10 +442,17 @@ def deliver_lhe_from_binary(process) -> None:
 
 def cluster_enabled() -> bool:
     """Whether the run card asks for the cluster mode. Read from the file as it
-    is, so that a card with scan entries can still be refused properly."""
+    is, so that a card with scan entries can still be refused properly; a card
+    without the setting takes the site default, as RunCardMG7 does."""
     import tomllib
-    with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
-        return bool(tomllib.load(f).get("cluster", {}).get("enable", False))
+    for path in (os.path.join("Cards", "run_card.toml"), RunCardMG7.default_run_card):
+        if not path or not os.path.exists(path):
+            continue
+        with open(path, "rb") as f:
+            section = tomllib.load(f).get("cluster", {})
+        if "enable" in section:
+            return bool(section["enable"])
+    return False
 
 
 def run_cluster_job(job_dir: str) -> None:

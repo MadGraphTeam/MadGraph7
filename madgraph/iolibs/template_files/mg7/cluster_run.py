@@ -278,24 +278,6 @@ class ClusterRun:
         # found, taken for finished, and resubmitted once cluster_retry_wait has
         # passed without its output.
         cluster.jobs_identifier = cluster.get_jobs_identifier(self.run_path)
-        for job_dir, arguments, required_output, program in jobs:
-            # Batch systems run a copy of the submitted script (slurm: in its
-            # spool directory), but bin/generate_events finds the directory it
-            # works in from its own location. A launcher script that runs the
-            # real file keeps that location.
-            launcher = os.path.join(job_dir, "launch.sh")
-            with open(launcher, "w") as f:
-                # MG7_CLUSTER_JOB_ENV: an optional shell file, read on the node
-                # before the job starts (modules, a node-local TMPDIR, ...)
-                f.write('#!/bin/bash\n[ -n "${MG7_CLUSTER_JOB_ENV:-}" ] && '
-                        '. "$MG7_CLUSTER_JOB_ENV"\nexec %s "$@"\n'
-                        % shlex.quote(program))
-            os.chmod(launcher, 0o755)
-            cluster.submit2(
-                launcher, arguments, cwd=job_dir,
-                stdout=os.path.join(job_dir, "log"), stderr=-2,
-                required_output=required_output)
-        self.record_job_ids(name, cluster)
         state = []
 
         def update(idle, running, done):
@@ -306,7 +288,15 @@ class ClusterRun:
                 logger.info("%s jobs: %d waiting, %d running, %d done",
                             name, idle, running, done)
 
+        # a submission that fails or is interrupted partway leaves no job behind:
+        # each id is recorded as soon as it is known, for a rerun to cancel it
         try:
+            for job_dir, arguments, required_output, program in jobs:
+                cluster.submit2(
+                    self.write_launcher(job_dir, program), arguments, cwd=job_dir,
+                    stdout=os.path.join(job_dir, "log"), stderr=-2,
+                    required_output=required_output)
+                self.record_job_ids(name, cluster)
             cluster.wait(self.run_path, update)
         except BaseException:
             try:
@@ -315,6 +305,22 @@ class ClusterRun:
                 pass
             raise
         self.clear_job_ids(name)
+
+    @staticmethod
+    def write_launcher(job_dir: str, program: str) -> str:
+        """Batch systems run a copy of the submitted script (slurm: in its
+        spool directory), but bin/generate_events finds the directory it works
+        in from its own location. A launcher script that runs the real file
+        keeps that location."""
+        launcher = os.path.join(job_dir, "launch.sh")
+        with open(launcher, "w") as f:
+            # MG7_CLUSTER_JOB_ENV: an optional shell file, read on the node
+            # before the job starts (modules, a node-local TMPDIR, ...)
+            f.write('#!/bin/bash\n[ -n "${MG7_CLUSTER_JOB_ENV:-}" ] && '
+                    '. "$MG7_CLUSTER_JOB_ENV"\nexec %s "$@"\n'
+                    % shlex.quote(program))
+        os.chmod(launcher, 0o755)
+        return launcher
 
     def record_job_ids(self, name: str, cluster) -> None:
         """Keep the batch ids of the jobs of a pass in the state, for a rerun to
@@ -438,10 +444,18 @@ class ClusterRun:
             merge_gridpacks.merge_gridpack_data(inputs, os.path.join(gridpack_path, "data"))
         except merge_gridpacks.MergeError as error:
             raise ClusterRunError(f"merging the gridpacks failed: {error}") from error
+        self.write_header_run_card(os.path.join(gridpack_path, "data", "lhe_meta.json"))
         # the shell of the gridpack is the one for the generation pass: its
         # devices, and the resolved backend of its cpu
         card = RunCardMG7(os.path.join("Cards", "run_card.toml")).cluster_pass_card("deploy")
         card.set("cluster.enable", False, user=True)
+        # the generation jobs run it as it is: built libraries and madspace,
+        # whatever [gridpack] asks of the gridpack that gridpack_only keeps
+        if self.section["mode"] == "full":
+            for key, value in (("include_source", False), ("include_madspace", True),
+                               ("include_madspace_source", False),
+                               ("include_madtrex_source", False)):
+                card.set("gridpack." + key, value, user=True)
         # the mode of the training jobs (see write_train_card), not of the main card
         run_mode = "fix_max_weight" if self.section["fix_max_weight"] else "minimal"
         launch.MadgraphProcess.write_gridpack_shell(
@@ -449,6 +463,19 @@ class ClusterRun:
             self.process.custom_function_paths, self.process.subprocess_data,
             run_mode)
         return gridpack_path
+
+    @staticmethod
+    def write_header_run_card(meta_path: str) -> None:
+        """The run card in the LHE header of the merged gridpack: the card of
+        the run, not the one of the first training job (its seed, selection,
+        devices and output directory)."""
+        with open(os.path.join("Cards", "run_card.toml")) as f:
+            text = f.read()
+        meta = read_json(meta_path)
+        for header in meta["headers"]:
+            if header["name"] == "MG7RunCard":
+                header["content"] = text
+        write_json(meta_path, meta)
 
     def clean_training_data(self) -> None:
         """Drop the gridpacks of the training jobs (network weights and grids)

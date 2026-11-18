@@ -42,7 +42,8 @@ def write_globals(path, globals_):
 
 
 def write_data(path, subprocess_ids, seed=1, device="cpu", fix_max_weight=True,
-               source_hash="abc", shared=b"pdf", extra_channels=(), library="me"):
+               source_hash="abc", shared=b"pdf", extra_channels=(), library="me",
+               systematics=None):
     """The data/ of a run over the subprocesses ``subprocess_ids`` of a process
     with four, whose matrix elements carry the helicity choice of the run."""
     os.makedirs(path)
@@ -77,9 +78,14 @@ def write_data(path, subprocess_ids, seed=1, device="cpu", fix_max_weight=True,
         {"name": "MG7RunCard", "content": card, "escape_content": True}]}
     with open(os.path.join(path, "lhe_meta.json"), "w") as f:
         json.dump(meta, f)
-    for name in ("lhe.json", "systematics.json"):
-        with open(os.path.join(path, name), "w") as f:
-            f.write('{"same": true}')
+    with open(os.path.join(path, "lhe.json"), "w") as f:
+        f.write('{"same": true}')
+    if systematics is None:
+        # the helicity choices of the matrix elements the run loaded
+        systematics = {"same": True, "helicity_choices": [
+            [i, 10 + i] if i in subprocess_ids else [] for i in range(4)]}
+    with open(os.path.join(path, "systematics.json"), "w") as f:
+        json.dump(systematics, f)
     own = {"subproc%d.channel0.grid" % i: b"vegas%d" % i for i in subprocess_ids}
     write_globals(os.path.join(path, "globals.tar"), dict(own, pdf=shared))
 
@@ -120,6 +126,26 @@ class TestMergeGridpacks(unittest.TestCase):
             data = json.load(f)
         self.assertEqual(data["matrix_elements"], [
             ["lib/me%d.so" % i, "param_card.dat", {}, [i, 10 + i]] for i in range(4)])
+
+    def test_systematics_helicity_choices_are_merged(self):
+        out = self.merged(dict(subprocess_ids=[1, 3]), dict(subprocess_ids=[0, 2]))
+        with open(os.path.join(out, "systematics.json")) as f:
+            data = json.load(f)
+        self.assertEqual(data, {"same": True, "helicity_choices": [
+            [i, 10 + i] for i in range(4)]})
+
+    def test_different_systematics(self):
+        with self.assertRaisesRegex(merge.MergeError, "systematics.json differs"):
+            self.merged(dict(subprocess_ids=[0]),
+                        dict(subprocess_ids=[1], systematics={"same": False}))
+
+    def test_missing_data_file(self):
+        paths = [self.path("a"), self.path("b")]
+        write_data(paths[0], [0])
+        write_data(paths[1], [1])
+        os.remove(os.path.join(paths[1], "lhe.json"))
+        with self.assertRaisesRegex(merge.MergeError, "other data files"):
+            merge.merge_gridpack_data(paths, self.path("out"))
 
     def test_different_matrix_elements(self):
         with self.assertRaisesRegex(merge.MergeError, "matrix_elements"):

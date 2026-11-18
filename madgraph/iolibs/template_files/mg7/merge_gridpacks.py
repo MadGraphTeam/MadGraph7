@@ -144,7 +144,29 @@ def check_identical(paths: list, what: str) -> None:
 
 
 _MERGED_DATA_FILES = (
-    "channels.json", "data.json", "globals.tar", "lhe_meta.json", "groups.json")
+    "channels.json", "data.json", "globals.tar", "lhe_meta.json", "groups.json",
+    "systematics.json")
+
+
+def merge_systematics(paths: list, output: str) -> None:
+    """The systematics data of the gridpacks have to be the same, but for the
+    helicity choices of the matrix elements they re-evaluate: a gridpack only
+    has those of the subprocesses it integrated, so each is taken from one that
+    has it."""
+    datas = []
+    for path in paths:
+        with open(path) as f:
+            datas.append(json.load(f))
+    choices = [list(data.pop("helicity_choices", [])) for data in datas]
+    for path, data in zip(paths[1:], datas[1:]):
+        if data != datas[0]:
+            raise MergeError(f"data/systematics.json differs between {paths[0]} and {path}")
+    merged = [next((c[i] for c in choices if i < len(c) and c[i]), [])
+              for i in range(max(len(c) for c in choices))]
+    if any(choices):
+        datas[0]["helicity_choices"] = merged
+    with open(output, "w") as f:
+        json.dump(datas[0], f)
 
 
 def merge_weighting_groups(inputs: list, channel_offsets: list, output: str) -> None:
@@ -196,14 +218,15 @@ def merge_gridpack_data(inputs: list, output: str) -> None:
     """
     if not inputs:
         raise MergeError("no gridpack to merge")
+    # before comparing them, so that a missing file is a MergeError
+    for path in inputs[1:]:
+        if sorted(os.listdir(path)) != sorted(os.listdir(inputs[0])):
+            raise MergeError(f"{path} holds other data files than {inputs[0]}")
     for name in os.listdir(inputs[0]):
         if name not in _MERGED_DATA_FILES:
             check_identical(
                 [os.path.join(path, name) for path in inputs], f"data/{name}"
             )
-    for path in inputs[1:]:
-        if sorted(os.listdir(path)) != sorted(os.listdir(inputs[0])):
-            raise MergeError(f"{path} holds other data files than {inputs[0]}")
 
     datas = []
     for path in inputs:
@@ -257,6 +280,9 @@ def merge_gridpack_data(inputs: list, output: str) -> None:
         json.dump(data, f)
     merge_globals([os.path.join(path, "globals.tar") for path in inputs],
                   os.path.join(output, "globals.tar"))
+    if "systematics.json" in os.listdir(inputs[0]):
+        merge_systematics([os.path.join(path, "systematics.json") for path in inputs],
+                          os.path.join(output, "systematics.json"))
 
 
 def open_gridpack(path: str, scratch: str) -> str:

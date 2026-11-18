@@ -52,3 +52,30 @@ class TestClusterOptions(unittest.TestCase):
         self.assertNotIn('enforce_shared_disk', plain)
         # the madevent interface applies every option it is given
         self.assertFalse([key for key in plain if key.startswith('cluster')])
+
+    def test_cluster_enabled_takes_the_site_default(self):
+        """A card without cluster.enable takes the site default, as RunCardMG7
+        does; the setting of the card wins."""
+        from unittest import mock
+        from madgraph.various.banner import RunCardMG7
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            self.addCleanup(os.chdir, cwd)
+            os.makedirs('Cards')
+            site = os.path.join(tmp, 'default_run_card_mg7.toml')
+
+            def enabled(card, site_text):
+                with open(os.path.join('Cards', 'run_card.toml'), 'w') as f:
+                    f.write(card)
+                with open(site, 'w') as f:
+                    f.write(site_text)
+                with mock.patch.object(RunCardMG7, 'default_run_card', site):
+                    return launch.cluster_enabled()
+
+            on = '[cluster]\nenable = true\n'
+            off = '[cluster]\nenable = false\n'
+            self.assertTrue(enabled('[run]\n', on))
+            self.assertFalse(enabled('[run]\n', ''))
+            self.assertFalse(enabled(off, on))
+            self.assertTrue(enabled(on, off))
