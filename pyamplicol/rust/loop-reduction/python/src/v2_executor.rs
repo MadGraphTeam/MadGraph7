@@ -1829,7 +1829,7 @@ impl V2Executor {
     /// `reduction` backend as an evaluation builds it
     /// (TIRust: its plans at the default target, unless
     /// `prepare_reduction` set another) and, through one synthetic lane per
-    /// (propagators, rank) class of the plan that the backend admits, what
+    /// (propagators, rank) class its lanes reach (`runtime::warm_classes`), what
     /// its first reductions build (NinjaRS: each class's engine, whose
     /// generic engine builds its cut expansions on its first evaluation in
     /// double-double and arbitrary precision; TIRust: its workspaces), in
@@ -1878,9 +1878,8 @@ impl V2Executor {
                 })
             });
         }
-        let classes: Vec<(usize, usize)> = runtime::plan_histogram(self.executor.plan())
+        let classes: Vec<(usize, usize)> = runtime::warm_classes(self.executor.plan(), reduction)
             .into_iter()
-            .filter(|&(n, rank)| runtime::rank_refusal(reduction, n, rank).is_none())
             .collect();
         let mut taken = self.backends.take();
         let backend = backend_of(

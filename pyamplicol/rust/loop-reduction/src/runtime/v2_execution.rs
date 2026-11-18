@@ -494,37 +494,68 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
     }
 }
 
+/// The (propagators, rank) classes whose engines `reduction`'s first
+/// reductions of `plan` build ([`warm`]): TIRust's are the plan's declared
+/// classes (its plans); NinjaRS buckets a lane by its true rank (the highest
+/// monomial degree with a nonzero coefficient, `true_rank`), and a family's
+/// accumulator holds a polynomial of at most the largest output rank of the
+/// trace steps closing into it, below the family's declared rank when no
+/// such step reaches it: per family and accumulator that rank. A dressed-row
+/// plan's lanes (amplitude mode) fall below it too (measured: g g > Z Z and
+/// g g > h h build lower classes on their first reduction): every rank up to
+/// it. A lane whose top coefficients vanish otherwise falls into a lower
+/// class, built on its first use. Classes the backend refuses are left out
+/// (an evaluation refuses them).
+pub fn warm_classes(
+    plan: &rusticol_core::loop_v2::plan::LoopProgramV4,
+    reduction: Reduction,
+) -> std::collections::BTreeSet<(usize, usize)> {
+    let classes: std::collections::BTreeSet<(usize, usize)> = match reduction {
+        Reduction::TiRust => plan_histogram(plan),
+        Reduction::NinjaRs => plan
+            .families
+            .iter()
+            .flat_map(|family| {
+                let mut top: Vec<Option<usize>> = vec![None; family.orders.len()];
+                for step in &family.steps {
+                    if let Some(k) = step.trace {
+                        top[k] = top[k].max(Some(step.rank_out));
+                    }
+                }
+                let n = family.propagators();
+                let lowest = |rank: usize| if plan.dressed { 0 } else { rank };
+                top.into_iter()
+                    .flatten()
+                    .flat_map(move |rank| (lowest(rank)..=rank).map(move |r| (n, r)))
+            })
+            .collect(),
+    };
+    classes
+        .into_iter()
+        .filter(|&(n, rank)| rank_refusal(reduction, n, rank).is_none())
+        .collect()
+}
+
 /// Build now what a backend's first reductions of the (propagators, rank)
-/// classes `classes` (the plan's declared ones) would build lazily, in the
-/// carrier of `zero`, without reducing a point of the process (the warm
-/// entry, `V2Executor.warm`): NinjaRS's engine of each class (binary64: its
-/// fast amplitude and tensor numerator; the extended carriers: its generic
+/// classes `classes` ([`warm_classes`]) would build lazily, in the carrier
+/// of `zero`, without reducing a point of the process (the warm entry,
+/// `V2Executor.warm`): NinjaRS's engine of each class (binary64: its fast
+/// amplitude and tensor numerator; the extended carriers: its generic
 /// engine, whose cut expansions are built by the first evaluation), TIRust's
-/// plans and workspaces. NinjaRS buckets a lane by its true rank (the
-/// highest monomial degree with a nonzero coefficient, `true_rank`), which a
-/// numerator's structural zeros put below its family's declared rank: its
-/// engines are built for every rank up to the declared one. One synthetic
-/// lane per class (a fixed generic massive
-/// configuration with exact rational inputs cast to the carrier, unit-size
-/// coefficients) runs through the backend's own `reduce` in its current
-/// mode, and its outcome is dropped; the master cache and the counters it
-/// filled are reset after (`begin`, `take_statistics`, `take_lane_measures`),
-/// so the next call reports and caches only its own lanes. A later
-/// reduction's values do not depend on it: every lane's outcome is a
-/// function of its own inputs (the engines' caches are keyed by them).
+/// plans and workspaces. One synthetic lane per class (a fixed generic
+/// massive configuration with exact rational inputs cast to the carrier,
+/// unit-size coefficients) runs through the backend's own `reduce` in its
+/// current mode, and its outcome is dropped; the master cache and the
+/// counters it filled are reset after (`begin`, `take_statistics`,
+/// `take_lane_measures`), so the next call reports and caches only its own
+/// lanes. A later reduction's values do not depend on it: every lane's
+/// outcome is a function of its own inputs (the engines' caches are keyed by
+/// them).
 pub fn warm<T>(backend: &mut V2Backends, classes: &[(usize, usize)], zero: &T) -> RusticolResult<()>
 where
     T: TypedBatch + rusticol_core::loop_v2::dress::Carrier,
     V2Backends: V2Backend<T>,
 {
-    let classes: std::collections::BTreeSet<(usize, usize)> = match backend {
-        V2Backends::NinjaRs(_) => classes
-            .iter()
-            .flat_map(|&(n, rank)| (0..=rank).map(move |r| (n, r)))
-            .collect(),
-        #[cfg(feature = "tir")]
-        V2Backends::TiRust(_) => classes.iter().copied().collect(),
-    };
     let groups = classes
         .iter()
         .map(|&(n, rank)| synthetic_lane(n, rank, zero, 0))

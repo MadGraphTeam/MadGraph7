@@ -29,12 +29,12 @@ pub use ninjars::fast::tensor_layout::monomials as tensor_monomials;
 pub use reduction::{
     DecimalMomentum, PolynomialPlan, RawLane, ReductionBatch, light_mass_needs_invariants,
 };
-/// The warm entry of a reduction backend (`V2Executor.warm`).
-pub use v2_execution::warm as warm_backend;
 pub use v2_execution::{
     Reduction, TIRUST_NOT_BUILT, TypedBatch, V2Backends, V2ReductionBackend, backend_carriers,
     ninjars_refusal, plan_histogram, rank_refusal,
 };
+/// The warm entry of a reduction backend (`V2Executor.warm`).
+pub use v2_execution::{warm as warm_backend, warm_classes};
 pub use v2_reduce::{
     FamilyGroup, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles, ReduceOptions, ReductionFrame,
     V2Output, V2Reducer, fast_engine_threshold, fast_options, reaches_fast_threshold,
