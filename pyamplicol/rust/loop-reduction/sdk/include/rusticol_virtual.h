@@ -204,6 +204,17 @@ int rusticol_virtual_set_reduction_target(rusticol_virtual_handle *handle,
  * nothing changes. */
 int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
   int unchecked);
+/* Lane rescue of later evaluations (the Python API's lane_rescue=; additive,
+ * ABI version 2 kept): 1, the default, reduces a reduction lane (one family
+ * and Laurent column of one point) that the backend refuses again in a higher
+ * carrier, double-double then arbitrary precision, from its binary64
+ * coefficients and the point improved in that carrier, in the checked and the
+ * unchecked mode; the rescued integrals enter the point's binary64 sum and
+ * the point is a success. 0 leaves such a lane to fail its point (pure
+ * binary64, as before the lane rescue). Each result records it in its
+ * "reduction" diagnostics ("lane_rescue"). Any other value is
+ * RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
+int rusticol_virtual_set_lane_rescue(rusticol_virtual_handle *handle, int on);
 /* Failure policy of later evaluations (the Python API's on_failure=; m-lit
  * ux-besteffort; additive, ABI version 2 kept). "best-effort" (the default,
  * also for NULL): the call returns OK with every point; a point that no

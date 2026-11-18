@@ -488,9 +488,7 @@ def test_a_mixed_batch_escalates_only_the_worse_points(artifact, poles):
 
 
 @pytest.mark.loop_physics
-def test_a_light_top_lane_is_rescued_in_binary64_and_the_point_without_it(
-    artifact, monkeypatch
-):
+def test_a_light_top_lane_is_rescued_in_binary64_and_the_point_without_it(artifact):
     """The light box's binary64 lane is not finite (NonFiniteResult): the lane
     rescue reduces it again in double-double inside the binary64 call (the
     point is served in binary64 with its record); without the lane rescue
@@ -516,11 +514,15 @@ def test_a_light_top_lane_is_rescued_in_binary64_and_the_point_without_it(
     assert plain.valid[0] and lane.arithmetic == "double", lane.detail
     assert lane.lane_rescue is not None and lane.lane_rescue.carrier == "double-double"
     assert error(plain) < LIGHT_BOX_LANE_RESCUE, error(plain)
-    monkeypatch.setenv("RUSTICOL_LANE_RESCUE", "off")
-    plain = runtime.evaluate([LIGHT_POINT], mu_r2=LIGHT_SCALE, on_failure="return")
+    plain = runtime.evaluate(
+        [LIGHT_POINT], mu_r2=LIGHT_SCALE, on_failure="return", lane_rescue=False
+    )
     assert not plain.valid[0] and "NonFiniteResult" in plain.diagnostics[0].detail
     result = runtime.evaluate(
-        [LIGHT_POINT], mu_r2=LIGHT_SCALE, stability=VirtualRescuePolicy()
+        [LIGHT_POINT],
+        mu_r2=LIGHT_SCALE,
+        stability=VirtualRescuePolicy(),
+        lane_rescue=False,
     )
     (record,) = result.rescue
     assert record.level == 1 and record.met and record.arithmetic == "double-double"

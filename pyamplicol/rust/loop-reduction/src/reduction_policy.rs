@@ -132,6 +132,11 @@ pub fn target(value: f64) -> Result<f64, Refusal> {
 /// [`policy_json`], the native SDKs from here.
 pub const DEFAULT_UNCHECKED: bool = false;
 
+/// The lane rescue's default (USER 2026-11-18, "Both, with a switch"): on, in
+/// the checked and the unchecked mode; the Python API's `lane_rescue=`, the
+/// SDKs' `rusticol_virtual_set_lane_rescue`.
+pub const DEFAULT_LANE_RESCUE: bool = true;
+
 /// What the unchecked setting does, as the policy record states it (one
 /// text for every surface: the Python API's and the SDKs' inspect records).
 pub const UNCHECKED_RECORD: &str = "reduction_unchecked: TIRust keeps its conditioning gates and \
@@ -471,6 +476,7 @@ pub fn policy_json() -> serde_json::Value {
         "fallback_rotation": FALLBACK_ROTATION,
         "target": {"default": DEFAULT_TARGET, "refusal": TARGET_REFUSAL},
         "arbitrary": {"default_digits": DEFAULT_ARBITRARY_DIGITS},
+        "lane_rescue": {"default": DEFAULT_LANE_RESCUE},
         "unchecked": {
             "default": DEFAULT_UNCHECKED,
             "refusal": UNCHECKED_REFUSAL,

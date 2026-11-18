@@ -61,10 +61,14 @@ def _without_lane_rescue(monkeypatch):
     """These tests exercise the mechanisms behind the lane rescue (the
     per-point fallback and its guard, best-effort values, the unchecked
     mode against the checked one) on points whose refused lanes the lane
-    rescue would serve: they run without it (the developer switch
-    ``RUSTICOL_LANE_RESCUE=off``, ``runtime::lane_rescue_enabled``)."""
+    rescue would serve: they run without it, the Python runtimes by their
+    default (``lane_rescue``, ``reduction.default_lane_rescue``), the C ABI
+    handles by ``rusticol_virtual_set_lane_rescue(handle, 0)``
+    (``test_loop_v2_sdk_induced._open``)."""
 
-    monkeypatch.setenv("RUSTICOL_LANE_RESCUE", "off")
+    from pyamplicol.loops.v2 import reduction
+
+    monkeypatch.setattr(reduction, "default_lane_rescue", lambda: False)
 
 
 @pytest.fixture(scope="module")
@@ -125,11 +129,18 @@ def _json(sdk, function, handle) -> dict:
 
 
 def _open(sdk, artifact: Path):
+    """A C ABI handle; with the lane rescue off where the Python default is
+    (the tests of the mechanisms behind it, ``_without_lane_rescue``)."""
+
+    from pyamplicol.loops.v2.reduction import default_lane_rescue
+
     handle = ctypes.c_void_p()
     status = sdk.rusticol_virtual_open(
         str(artifact).encode(), b"p", None, None, ctypes.byref(handle)
     )
     assert status == 0, _error(sdk)
+    if not default_lane_rescue():
+        assert sdk.rusticol_virtual_set_lane_rescue(handle, 0) == 0, _error(sdk)
     return handle
 
 

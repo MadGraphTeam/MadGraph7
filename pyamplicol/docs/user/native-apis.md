@@ -938,6 +938,16 @@ the caller's inputs in the caller's leg order, before anything is evaluated
 `diagnostics_json` records it per point (`"kinematics"`: the Python API's
 `VirtualKinematics` fields); another value is an invalid argument
 ([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+The lane rescue `rusticol_virtual_set_lane_rescue(handle, on)` (C++
+`set_lane_rescue(bool)`, Fortran `set_lane_rescue(logical)`, the packaged
+Rust wrapper's `set_lane_rescue(bool)`; 1 or 0, default 1, as the Python
+API's `lane_rescue=`; additive, ABI version 2 kept) reduces a reduction lane
+a backend refuses again in double-double, then arbitrary precision, from its
+binary64 coefficients and the point improved in that carrier, in the checked
+and the unchecked mode ([Python API](python-api.md), "Lane rescue of refused
+reduction lanes"); 0 leaves such a lane to fail its point; each result
+records `"lane_rescue"` in its `"reduction"` diagnostics; any other value is
+an invalid argument.
 Additive symbols, ABI version 2 kept. The unchecked setting
 `rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++
 `set_reduction_unchecked(bool)`, Fortran `set_reduction_unchecked(logical)`,

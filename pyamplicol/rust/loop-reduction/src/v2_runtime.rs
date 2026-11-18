@@ -1177,6 +1177,8 @@ pub struct V2Runtime {
     target: f64,
     /// The unchecked mode of every evaluation ([`V2Runtime::set_unchecked`]).
     unchecked: bool,
+    /// The lane rescue of every evaluation ([`V2Runtime::set_lane_rescue`]).
+    lane_rescue: bool,
     backends: BTreeMap<V2Precision, V2Backends>,
     /// The other backend's, for the stability monitoring's cross-backend
     /// check (`monitor`), built on first use.
@@ -1405,6 +1407,7 @@ impl V2Runtime {
             reduction,
             target,
             unchecked: crate::reduction_policy::DEFAULT_UNCHECKED,
+            lane_rescue: crate::reduction_policy::DEFAULT_LANE_RESCUE,
             backends,
             cross_backends: BTreeMap::new(),
             scaleless_inputs: native.scaleless.map(Arc::new),
@@ -1896,6 +1899,9 @@ impl V2Runtime {
     /// order as the kinematics improvement takes them; the exact inputs when
     /// the legs do not put them first.
     pub(crate) fn rescue_inputs(&self) -> RescueInputs {
+        if !self.lane_rescue {
+            return RescueInputs::Off;
+        }
         let initial = self
             .record
             .legs
@@ -2020,6 +2026,19 @@ impl V2Runtime {
     /// The unchecked mode of the following evaluations.
     pub fn unchecked(&self) -> bool {
         self.unchecked
+    }
+
+    /// The lane rescue of the following evaluations (on by default,
+    /// `reduction_policy::DEFAULT_LANE_RESCUE`; the Python API's
+    /// `lane_rescue=`): a reduction lane a backend refuses is reduced again
+    /// in a higher carrier (`V2Options::rescue`); off, it fails its point.
+    pub fn set_lane_rescue(&mut self, on: bool) {
+        self.lane_rescue = on;
+    }
+
+    /// The lane rescue of the following evaluations.
+    pub fn lane_rescue(&self) -> bool {
+        self.lane_rescue
     }
 
     /// One batch through the tree program, the executor and the assembly in

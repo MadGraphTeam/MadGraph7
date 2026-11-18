@@ -1797,9 +1797,10 @@ class V2VirtualRuntime:
             if reduction_target is None
             else reduction_target_value(reduction_target)
         )
-        # The lane rescue of a call that sets none (USER 2026-11-18; on).
+        # The lane rescue of a call that sets none (USER 2026-11-18; None:
+        # the native policy's default, on).
         self._lane_rescue = (
-            True if lane_rescue is None else lane_rescue_value(lane_rescue)
+            None if lane_rescue is None else lane_rescue_value(lane_rescue)
         )
         # The unchecked setting of a call that sets none (m-lit lit-unchecked;
         # None: the native policy's default, off).
@@ -2232,6 +2233,17 @@ class V2VirtualRuntime:
             return carrier, Precision.double_double()
         return carrier, Precision.arbitrary(digits)
 
+    def _lane_rescue_of(self, chosen: object) -> bool:
+        """A call's lane rescue: its own (``lane_rescue=``), else the
+        runtime's (``Runtime.load``), else the native policy's default
+        (``reduction.default_lane_rescue``: on)."""
+
+        from .reduction import default_lane_rescue
+
+        if chosen is not None:
+            return lane_rescue_value(chosen)
+        return default_lane_rescue() if self._lane_rescue is None else self._lane_rescue
+
     def evaluate(self, momenta: Momenta, **options: Any) -> VirtualEvaluation:
         """``_evaluate`` (the virtual of every point) with the call's lane
         rescue (``lane_rescue``: the call's, else the runtime's, else on;
@@ -2240,7 +2252,7 @@ class V2VirtualRuntime:
         from .reduction import lane_rescue
 
         chosen = options.pop("lane_rescue", None)
-        on = self._lane_rescue if chosen is None else lane_rescue_value(chosen)
+        on = self._lane_rescue_of(chosen)
         with lane_rescue(on):
             return self._evaluate(momenta, **options)
 
@@ -3005,7 +3017,7 @@ class V2VirtualRuntime:
         target = options.pop("reduction_target", None)
         unchecked = options.pop("reduction_unchecked", None)
         chosen = options.pop("lane_rescue", None)
-        rescue = self._lane_rescue if chosen is None else lane_rescue_value(chosen)
+        rescue = self._lane_rescue_of(chosen)
         kinematics = self._kinematics(
             options.pop("kinematics_improvement", None),
             options.pop("kinematics_improvement_binary64", None),

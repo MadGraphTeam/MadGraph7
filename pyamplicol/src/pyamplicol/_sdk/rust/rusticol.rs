@@ -288,6 +288,15 @@ pub mod virtual_amplitudes {
                 )
             })
         }
+        /// Lane rescue of later evaluations, the Python API's `lane_rescue=`
+        /// (default true): a refused reduction lane reduced again in a
+        /// higher carrier; false leaves it to fail its point.
+        pub fn set_lane_rescue(&mut self, on: bool) -> Result<()> {
+            // SAFETY: exclusive live handle.
+            check(unsafe {
+                ffi::rusticol_virtual_set_lane_rescue(self.handle.as_ptr(), c_int::from(on))
+            })
+        }
         /// Failure policy of later evaluations, the Python API's
         /// `on_failure=`: `"best-effort"` (default: a refused point returns
         /// the unchecked value with `PointStatus::BestEffort` and its
@@ -1005,6 +1014,8 @@ pub mod virtual_amplitudes {
                 handle: *mut c_void,
                 unchecked: c_int,
             ) -> c_int;
+            pub(super) fn rusticol_virtual_set_lane_rescue(handle: *mut c_void, on: c_int)
+            -> c_int;
             pub(super) fn rusticol_virtual_set_on_failure(
                 handle: *mut c_void,
                 on_failure: *const c_char,

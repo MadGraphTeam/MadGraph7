@@ -412,6 +412,10 @@ pub struct Runtime {
     /// (`reduction_policy::DEFAULT_UNCHECKED`, off, until
     /// [`Runtime::set_reduction_unchecked`]).
     unchecked: bool,
+    /// The lane rescue of later evaluations
+    /// (`reduction_policy::DEFAULT_LANE_RESCUE`, on, until
+    /// [`Runtime::set_lane_rescue`]).
+    lane_rescue: bool,
     /// The failure policy of later evaluations (m-lit ux-besteffort;
     /// [`Runtime::set_on_failure`], best-effort by default).
     on_failure: OnFailure,
@@ -538,6 +542,7 @@ impl Runtime {
             reduction,
             target,
             unchecked: reduction_policy::DEFAULT_UNCHECKED,
+            lane_rescue: reduction_policy::DEFAULT_LANE_RESCUE,
             on_failure: OnFailure::default(),
             checks: StabilityChecks::default(),
             kinematics: Some(kinematics_improvement::DEFAULT_VARIANT),
@@ -647,6 +652,20 @@ impl Runtime {
     /// The unchecked setting of later evaluations.
     pub fn reduction_unchecked(&self) -> bool {
         self.unchecked
+    }
+    /// The lane rescue of later evaluations, the Python API's
+    /// `lane_rescue=` (on by default, `reduction_policy::
+    /// DEFAULT_LANE_RESCUE`; checked and unchecked mode): a reduction lane a
+    /// backend refuses is reduced again in double-double, then arbitrary
+    /// precision, from its binary64 coefficients and the point improved in
+    /// that carrier; off, such a lane fails its point (pure binary64). Each
+    /// result records it (its "reduction" diagnostics).
+    pub fn set_lane_rescue(&mut self, on: bool) {
+        self.lane_rescue = on;
+    }
+    /// The lane rescue of later evaluations.
+    pub fn lane_rescue(&self) -> bool {
+        self.lane_rescue
     }
     /// The stability checks of later evaluations, the Python API's
     /// `stability_checks=` (`VirtualStabilityChecks`): rotations, the
@@ -784,6 +803,7 @@ impl Runtime {
         native.set_reduction(Reduction::parse(&choice.effective)?)?;
         native.set_target(self.target)?;
         native.set_unchecked(self.unchecked);
+        native.set_lane_rescue(self.lane_rescue);
         Ok(Choice {
             unchecked: self.unchecked,
             ..choice
@@ -884,6 +904,8 @@ impl Runtime {
                 "default_target": reduction_policy::DEFAULT_TARGET,
                 "unchecked": self.unchecked,
                 "default_unchecked": reduction_policy::DEFAULT_UNCHECKED,
+                "lane_rescue": self.lane_rescue,
+                "default_lane_rescue": reduction_policy::DEFAULT_LANE_RESCUE,
             },
             "colour_zero": colour_zero,
             "fold_zero": fold_zero,

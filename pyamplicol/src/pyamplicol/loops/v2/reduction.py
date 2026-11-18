@@ -188,6 +188,13 @@ def default_unchecked() -> bool:
     return bool(policy()["unchecked"]["default"])
 
 
+def default_lane_rescue() -> bool:
+    """The default of the lane rescue (the native policy's one definition,
+    ``reduction_policy::DEFAULT_LANE_RESCUE``: on)."""
+
+    return bool(policy()["lane_rescue"]["default"])
+
+
 def auto_default(contribution: str, admitted: Collection[str] | None = None) -> str:
     """The backend ``"auto"`` takes by default for ``contribution`` on an
     artifact admitting ``admitted`` (None: every backend): the native

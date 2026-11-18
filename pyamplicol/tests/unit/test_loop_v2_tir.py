@@ -585,8 +585,10 @@ def test_validation_settings_rebuild_and_reset_the_tirust_backend(slices, monkey
         patch.setattr(plan_export, "prepare", lambda native: None)
         # The gate-refused rows' own reason: without the lane rescue, which
         # would reduce them again in double-double.
-        patch.setenv("RUSTICOL_LANE_RESCUE", "off")
-        chosen = _lanes(executor, points, scales, "tirust")
+        from pyamplicol.loops.v2.reduction import lane_rescue
+
+        with lane_rescue(False):
+            chosen = _lanes(executor, points, scales, "tirust")
     _no_method_choice(executor.last_report)
     if executor.last_report["counts"].get("TIR gate refusals", 0):
         # Every gate-refused row fails closed with the gates' reason.
