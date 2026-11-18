@@ -262,6 +262,20 @@ def reduction_unchecked(value: object) -> bool:
     raise ValueError(policy()["unchecked"]["refusal"])
 
 
+def lane_rescue(value: object) -> bool:
+    """The value of the lane rescue setting (``evaluation.lane_rescue``, the
+    CLI's ``--lane-rescue`` / ``--no-lane-rescue``, ``Runtime.load`` /
+    ``evaluate(..., lane_rescue=)``; USER 2026-11-18): True (the default)
+    reduces a reduction lane the backend refuses again in a higher carrier,
+    in the checked and the unchecked mode; False leaves a refused lane to
+    fail its point (a pure binary64 evaluation, e.g. for timing). A Python
+    bool; any other type is refused."""
+
+    if isinstance(value, bool):
+        return value
+    raise ValueError("lane_rescue takes True or False")
+
+
 class PoleSelection(StrEnum):
     """Which Laurent poles a one-loop evaluation computes (design §12.4).
 
@@ -1579,6 +1593,10 @@ class EvaluationConfig:
     # lit-unchecked): true drops the reduction backends' own acceptance and
     # refusal checks; false, the default, keeps them.
     reduction_unchecked: bool = field(default=False, metadata=_setting("bool"))
+    # The lane rescue (``lane_rescue``; USER 2026-11-18): true (the default)
+    # reduces a refused reduction lane again in a higher carrier (checked and
+    # unchecked mode alike); false leaves it to fail its point.
+    lane_rescue: bool = field(default=True, metadata=_setting("bool"))
     # The kinematics improvement of the input points (m-lit lit-psimprove;
     # ``pyamplicol.kinematics``): "z-shift" (MadLoop's ImprovePSPoint 2 with
     # its fallback to 1, finished by the projection where MadLoop leaves the
@@ -1672,6 +1690,10 @@ class EvaluationConfig:
             reduction_unchecked(self.reduction_unchecked)
         except ValueError as exc:
             raise ConfigurationError(f"evaluation.reduction_unchecked: {exc}") from exc
+        try:
+            lane_rescue(self.lane_rescue)
+        except ValueError as exc:
+            raise ConfigurationError(f"evaluation.lane_rescue: {exc}") from exc
         if self.kinematics_improvement is not None:
             from pyamplicol import kinematics
 

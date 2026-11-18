@@ -2081,8 +2081,9 @@ impl V2Executor {
     /// `initial_states` (the process's initial states, first in leg order)
     /// lets the lane rescue rebuild a refused lane's kinematic inputs from
     /// the point improved in the rescue carrier (`RescueInputs::Improved`);
-    /// without it they are the given point's exact inputs.
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars", unchecked=false, initial_states=None))]
+    /// without it they are the given point's exact inputs. `lane_rescue`
+    /// false turns the lane rescue off (`evaluation.lane_rescue`).
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars", unchecked=false, initial_states=None, lane_rescue=true))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -2112,6 +2113,7 @@ impl V2Executor {
         reduction: &str,
         unchecked: bool,
         initial_states: Option<usize>,
+        lane_rescue: bool,
     ) -> PyResult<Evaluation> {
         let _unlock = pyamplicol::unlock();
         let reduction = Reduction::parse(reduction).map_err(error)?;
@@ -2149,6 +2151,10 @@ impl V2Executor {
         if let Some(n_initial) = initial_states {
             options.rescue =
                 rusticol_core::loop_execution::v2::RescueInputs::Improved { n_initial };
+        }
+        // `evaluation.lane_rescue` off: a refused lane fails its point.
+        if !lane_rescue {
+            options.rescue = rusticol_core::loop_execution::v2::RescueInputs::Off;
         }
         if let Some(chunk) = chunk_families {
             options.chunk_families = chunk;

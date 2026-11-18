@@ -3062,6 +3062,8 @@ def profile_virtual(
                 options["reduction_target"] = evaluation.reduction_target
             if evaluation.reduction_unchecked:
                 options["reduction_unchecked"] = True
+            if not evaluation.lane_rescue:
+                options["lane_rescue"] = False
         runtime = Runtime.load(
             source,
             process=None if evaluation is None else evaluation.process,

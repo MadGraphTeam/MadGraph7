@@ -304,6 +304,8 @@ _EFFECTIVE: ContextVar[str] = ContextVar("pyamplicol_v2_reduction", default="nin
 _TARGET: ContextVar[float | None] = ContextVar("pyamplicol_v2_target", default=None)
 # The unchecked setting of the current context (off by default).
 _UNCHECKED: ContextVar[bool] = ContextVar("pyamplicol_v2_unchecked", default=False)
+# The lane rescue of the current context (on by default; ``lane_rescue``).
+_LANE_RESCUE: ContextVar[bool] = ContextVar("pyamplicol_v2_lane_rescue", default=True)
 _KEEP: Any = object()
 
 
@@ -364,6 +366,20 @@ def cross(backend: str) -> str:
     return others[0]
 
 
+@contextmanager
+def lane_rescue(on: bool) -> Iterator[None]:
+    """Run the native executor calls of this context with the lane rescue
+    on or off (``evaluation.lane_rescue``; the native executor's
+    ``lane_rescue``): a reduction lane the backend refuses is reduced again
+    in a higher carrier, or fails its point."""
+
+    token = _LANE_RESCUE.set(bool(on))
+    try:
+        yield
+    finally:
+        _LANE_RESCUE.reset(token)
+
+
 def executor_options() -> dict[str, object]:
     """The native executor's ``reduction`` and ``unchecked`` options in the
     current context (``running``): empty for NinjaRS without the unchecked
@@ -374,6 +390,8 @@ def executor_options() -> dict[str, object]:
     options: dict[str, object] = {} if backend == "ninjars" else {"reduction": backend}
     if _UNCHECKED.get():
         options["unchecked"] = True
+    if not _LANE_RESCUE.get():
+        options["lane_rescue"] = False
     return options
 
 

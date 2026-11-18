@@ -119,6 +119,8 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # (off by default).
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].default is False
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].kind == "bool"
+    assert FIELD_REGISTRY["evaluation.lane_rescue"].default is True
+    assert FIELD_REGISTRY["evaluation.lane_rescue"].kind == "bool"
     # m-lit lit-psimprove: the kinematics improvement, runtime options (None:
     # the native defaults, MadLoop's variant above binary64, off in binary64).
     assert FIELD_REGISTRY["evaluation.kinematics_improvement"].default is None

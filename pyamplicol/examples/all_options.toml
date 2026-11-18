@@ -438,6 +438,12 @@ poles = "all"
 # without a finite value fail. pyAmpliCol's stability checks stay their own
 # settings. Default false.
 reduction_unchecked = false
+# evaluation.lane_rescue: v2 virtuals: true reduces a reduction lane the
+# backend refuses again in a higher carrier (double-double, then arbitrary
+# precision), its binary64 coefficients lifted exactly and its kinematics
+# rebuilt there, in the checked and the unchecked mode; false leaves the lane
+# to fail its point (pure binary64). Default true.
+lane_rescue = true
 # evaluation.kinematics_improvement: the improvement of the input points to
 # exact energy-momentum conservation and exact on-shell externals, in each
 # carrier above binary64 (double-double, arbitrary precision) before anything

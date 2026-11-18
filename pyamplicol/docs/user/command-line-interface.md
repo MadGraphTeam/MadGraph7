@@ -619,7 +619,10 @@ serves what they refuse, NinjaRS runs with zero stability thresholds (its
 box mu-expansion's conditioning bound stays active); only points without a
 finite value or refused by that bound still fail, `auto` keeps its backend choice and
 its fallback acts on those only. It is a timing and benchmark mode with no
-accuracy certificate (the measured accuracy per process: [Python
+accuracy certificate; the lane rescue still serves the lanes the unchecked
+backend refuses (`--no-lane-rescue`, `evaluation.lane_rescue = false`, turns
+it off; [Python API](python-api.md), "Lane rescue of refused reduction
+lanes") (the measured accuracy per process: [Python
 API](python-api.md), "Unchecked reductions"). The JSON output's lane diagnostics name the requested and
 effective backends, the reason, the fallback, the target and the unchecked
 setting. A
@@ -876,7 +879,10 @@ fewer. What is timed, which the table header names: binary64, finite part
 only, **one fully optimistic pass per point** (the same pass as the reference
 multiplier's, below): each backend's unchecked reduction alone (no `auto`
 fallback), no stability checks, no rescue, no best-effort re-evaluation of a
-refused point (a point without a value is counted `failed`). `--checked`
+refused point (a point without a value is counted `failed`); a reduction lane
+the unchecked backend still refuses is rescued inside the timed call (the
+header says "refused lanes rescued"; `--no-lane-rescue` times pure binary64
+calls, such points then without a value). `--checked`
 (`benchmark.checked = true`) times the checked mode instead: the backends'
 own acceptance checks, a refused point returned with its best-effort value
 and timed as such (its unchecked re-evaluation and its uncertainty's checks

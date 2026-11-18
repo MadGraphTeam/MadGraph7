@@ -131,8 +131,9 @@ pub mod v2 {
         pub term_scale: bool,
         /// The lane rescue (USER 2026-11-18): a lane the backend refuses
         /// (either frame of the reduction-direction check) is reduced again
-        /// in the backend's higher carriers ([`V2Backend::rescue_carriers`],
-        /// none in the unchecked mode), from its coefficients lifted exactly
+        /// in the backend's higher carriers ([`V2Backend::rescue_carriers`];
+        /// the checked and the unchecked mode alike, the rescue reductions
+        /// themselves checked), from its coefficients lifted exactly
         /// and its kinematic inputs formed as this says; its integrals,
         /// rounded to the evaluation's carrier, take its place. `Off`: a
         /// refused lane fails its point.
@@ -366,7 +367,7 @@ pub mod v2 {
         }
         /// The carriers, lowest first, in which the backend reduces a lane
         /// it refused in the carrier of `zero` again (the lane rescue; none
-        /// by default and in the unchecked mode).
+        /// by default).
         fn rescue_carriers(&self, zero: &T) -> Vec<RescueCarrier> {
             let _ = zero;
             Vec::new()

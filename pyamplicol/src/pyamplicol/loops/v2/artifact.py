@@ -125,6 +125,7 @@ from pyamplicol.api.virtual_results import (
     splits_poles,
 )
 from pyamplicol.config import PoleSelection, R2Strategy
+from pyamplicol.config.models import lane_rescue as lane_rescue_value
 from pyamplicol.config.models import reduction_request
 from pyamplicol.config.models import reduction_target as reduction_target_value
 from pyamplicol.config.models import reduction_unchecked as reduction_unchecked_value
@@ -1635,6 +1636,7 @@ class V2VirtualRuntime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
     ) -> None:
         from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
         from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
@@ -1794,6 +1796,10 @@ class V2VirtualRuntime:
             None
             if reduction_target is None
             else reduction_target_value(reduction_target)
+        )
+        # The lane rescue of a call that sets none (USER 2026-11-18; on).
+        self._lane_rescue = (
+            True if lane_rescue is None else lane_rescue_value(lane_rescue)
         )
         # The unchecked setting of a call that sets none (m-lit lit-unchecked;
         # None: the native policy's default, off).
@@ -2226,7 +2232,19 @@ class V2VirtualRuntime:
             return carrier, Precision.double_double()
         return carrier, Precision.arbitrary(digits)
 
-    def evaluate(
+    def evaluate(self, momenta: Momenta, **options: Any) -> VirtualEvaluation:
+        """``_evaluate`` (the virtual of every point) with the call's lane
+        rescue (``lane_rescue``: the call's, else the runtime's, else on;
+        ``reduction.lane_rescue``)."""
+
+        from .reduction import lane_rescue
+
+        chosen = options.pop("lane_rescue", None)
+        on = self._lane_rescue if chosen is None else lane_rescue_value(chosen)
+        with lane_rescue(on):
+            return self._evaluate(momenta, **options)
+
+    def _evaluate(
         self,
         momenta: Momenta,
         *,
@@ -2986,6 +3004,8 @@ class V2VirtualRuntime:
 
         target = options.pop("reduction_target", None)
         unchecked = options.pop("reduction_unchecked", None)
+        chosen = options.pop("lane_rescue", None)
+        rescue = self._lane_rescue if chosen is None else lane_rescue_value(chosen)
         kinematics = self._kinematics(
             options.pop("kinematics_improvement", None),
             options.pop("kinematics_improvement_binary64", None),
@@ -3003,11 +3023,14 @@ class V2VirtualRuntime:
             unchecked,
         )
         operation = getattr(self._observable_runtime(), name)
-        return operation(
-            *args,
-            reductions=choices,
-            **self._observable_options(precision, arithmetic, options),
-        )
+        from .reduction import lane_rescue
+
+        with lane_rescue(rescue):
+            return operation(
+                *args,
+                reductions=choices,
+                **self._observable_options(precision, arithmetic, options),
+            )
 
     def evaluate_resolved(
         self,

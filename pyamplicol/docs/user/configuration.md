@@ -952,6 +952,7 @@ reduction = "auto"             # generation default: auto, ninjars, tirust
 reduction = "ninjars"          # override for this evaluation (default: the artifact's)
 reduction_target = 1e-5        # TIRust's target accuracy (relative, per point; default 1e-5)
 reduction_unchecked = false    # true: no backend acceptance or refusal checks (default false)
+lane_rescue = true             # false: a refused reduction lane fails its point (default true)
 ```
 
 `"auto"` takes the per-type default, TIRust for a loop-induced and NinjaRS
@@ -1037,7 +1038,8 @@ master failure, a NinjaRS lane whose tested quantity is exactly zero or NaN
 or that its box mu-expansion's conditioning bound refuses, which no setting
 turns off) still fail; `"auto"` keeps its choice of backend and its per-point fallback
 acts only on those. pyAmpliCol's stability checks and rescue stack stay
-their own settings and check the unchecked values when enabled. It is a
+their own settings and check the unchecked values when enabled; the lane
+rescue (below) still serves the lanes the unchecked backend refuses. It is a
 timing and benchmark mode with **no accuracy certificate**: a served value
 can be off (measured per process up to 1.4e-2 on TIRust and 1e64 on NinjaRS
 against a 256-bit truth; the table in [Python API](python-api.md),
@@ -1046,6 +1048,18 @@ target accuracy. TIRust's qualified domain is up to six
 loop propagators at numerator rank six (reported, never enforced: beyond it
 the achieved precision is measured, as everywhere). `loop.reduction` other
 than `"auto"` needs a one-loop request (`process.loop_coupling_orders`).
+
+`evaluation.lane_rescue` (CLI `--lane-rescue` / `--no-lane-rescue`,
+Python `Runtime.load` / `evaluate(..., lane_rescue=)`; default true) is the
+lane rescue: a reduction lane (one family and Laurent column of one point)
+that the backend refuses is reduced again in double-double, then in
+arbitrary precision, from its binary64 coefficients and its kinematics
+rebuilt in that carrier, in the checked and the unchecked mode alike
+([Python API](python-api.md), "Lane rescue of refused reduction lanes").
+`false` leaves such a lane to fail its point: pure binary64 evaluations,
+bitwise and failure for failure as before (e.g. to time binary64 alone over
+the points that survive it). The standalone SDKs always rescue (their C ABI
+has no setter for it).
 
 **Rank beyond N+2 (TIR-only artifacts; open, untested for correctness).**
 NinjaRS reduces loop numerators of rank at most N+2 over N propagators;

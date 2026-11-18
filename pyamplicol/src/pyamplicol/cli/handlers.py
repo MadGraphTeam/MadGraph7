@@ -557,6 +557,7 @@ class DefaultCliServices:
             or evaluation.reduction is not None
             or evaluation.reduction_target is not None
             or evaluation.reduction_unchecked
+            or not evaluation.lane_rescue
             or v2_options
         ):
             raise ConfigurationError(
@@ -627,6 +628,7 @@ class DefaultCliServices:
                         if evaluation.reduction_unchecked
                         else {}
                     ),
+                    **({} if evaluation.lane_rescue else {"lane_rescue": False}),
                     **kinematics,
                 )
             return Runtime.load(

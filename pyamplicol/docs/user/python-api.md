@@ -704,14 +704,23 @@ Laurent column, a tensor numerator (its coefficients) and the family's
 kinematics (propagator shifts, masses, scale, invariants). A reduction
 backend may refuse a lane in binary64 (NinjaRS `Unstable` at a nearly
 singular cut, TIRust's acceptance check), and then the whole point used to
-have no value. In the checked reduction (the default) such a lane is now
-**rescued**: only its reduction is redone in a higher carrier, double-double
-first, then arbitrary precision at 57 digits (the default rescue ladder's
-carriers), on the same backend. Its coefficients are the binary64 ones,
+have no value. Such a lane is now **rescued**, in the checked reduction (the
+default) and in the unchecked one (`reduction_unchecked=True`, where the
+lanes still refused have no value at all: NinjaRS's conditioning screen, a
+Euclidean-plane cut, a non-finite result): only its reduction is redone in a
+higher carrier, double-double first, then arbitrary precision (the default
+rescue ladder's digits), on the same backend, its rescue reductions always
+checked (a refusal there moves the lane to the next carrier, so no value a
+higher-precision engine rejects is served). Its coefficients are the binary64 ones,
 lifted exactly (the numerators are not recomputed); its kinematic inputs are
 rebuilt in the higher carrier from the point's improved kinematics (exact
 momentum conservation and on-shell external legs in that carrier, as
-`kinematics_improvement` improves a point evaluated there). The lane's
+`kinematics_improvement` improves a point evaluated there). This is why the
+rescue cannot live inside the reduction library alone: from its binary64
+inputs alone, lifted exactly, the shifts and the invariants stay
+inconsistent at binary64's rounding, which the reduction of such a lane
+amplifies (measured on NinjaRS: 9e-3 relative at worst on g g > g g g, 9e-10
+from the rebuilt inputs); only pyAmpliCol holds the point's exact momenta. The lane's
 result, rounded to binary64, takes its place in the point's binary64 sum;
 every other lane, and every point without a refused lane, is bitwise as
 before. The same holds in double-double (a refused lane is reduced again
@@ -734,8 +743,9 @@ counted over the point's evaluations), `count` and the highest `carrier`.
 A lane refused at every rescue carrier leaves the point failed exactly as
 before (its reason ends with each carrier's status), and the mechanisms
 below then act unchanged: `"auto"`'s per-point fallback, a rescue policy's
-next level, the best-effort value. With `reduction_unchecked=True`
-(`--reduction-unchecked`) nothing is rescued. The lane rescue's time is part
+next level, the best-effort value. `lane_rescue=False` (`Runtime.load` or
+`evaluate`; `evaluation.lane_rescue`, `--no-lane-rescue`) turns it off:
+refused lanes fail their points exactly as before. The lane rescue's time is part
 of the call (`profile`: the reduction stage) and its points are counted in
 `profile`'s cause tables under "lane rescue".
 

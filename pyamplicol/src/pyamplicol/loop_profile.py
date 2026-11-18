@@ -668,9 +668,12 @@ def _runtime_setup(
     threads: Sequence[int] = (),
     rows: Sequence[Any] = (),
     truth: GroundTruth | None = None,
+    lane_rescue: bool = True,
 ) -> str:
     """The runtime setup line; ``checked``: the checked mode
-    (``benchmark.checked``), else the optimistic pass; ``seed``: of the flat
+    (``benchmark.checked``), else the optimistic pass; ``lane_rescue``: the
+    timed calls rescue refused reduction lanes (``evaluation.lane_rescue``,
+    in both modes); ``seed``: of the flat
     points (None: the caller's points); ``threads``: the native threads each
     backend's timed calls report (one: one core, ``one_core``; another count
     is named); ``rows``: the backends' runtimes (their calls, points per
@@ -683,6 +686,9 @@ def _runtime_setup(
         if checked
         else "optimistic: unchecked reduction, no checks"
     )
+    if lane_rescue:
+        reduction += ", refused lanes rescued"
+
     points = (
         "points of --momenta" if seed is None else f"distinct flat points (seed {seed})"
     )
@@ -795,6 +801,9 @@ def profile_loop(
         options["reduction_target"] = evaluation.reduction_target
     if evaluation.reduction_unchecked:
         options["reduction_unchecked"] = True
+    if not evaluation.lane_rescue:
+        # --no-lane-rescue: pure binary64 calls, refused points without a value.
+        options["lane_rescue"] = False
     for name in ("kinematics_improvement", "kinematics_improvement_binary64"):
         if getattr(evaluation, name) is not None:
             options[name] = getattr(evaluation, name)
@@ -1345,6 +1354,7 @@ def profile_loop(
             ],
             runtime_rows or (),
             truth,
+            evaluation.lane_rescue,
         )
         if want_runtime
         else None,

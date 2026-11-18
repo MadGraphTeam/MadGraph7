@@ -374,10 +374,14 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
         }
     }
 
-    /// The carriers above the evaluation's ([`rescue_carriers`]); none in
-    /// the unchecked mode.
+    /// The carriers above the evaluation's ([`rescue_carriers`]), in the
+    /// checked and the unchecked mode alike (USER 2026-11-18, "Both, with a
+    /// switch"): in the unchecked mode the lanes it still refuses have no
+    /// value at all (NinjaRS's conditioning screen, a Euclidean-plane cut,
+    /// a non-finite result). The rescue backends are always checked
+    /// ([`RescueBackends`]).
     fn rescue_carriers(&self, zero: &T) -> Vec<RescueCarrier> {
-        if self.unchecked() || !lane_rescue_enabled() {
+        if !lane_rescue_enabled() {
             return Vec::new();
         }
         rescue_carriers(T::bits(zero))
