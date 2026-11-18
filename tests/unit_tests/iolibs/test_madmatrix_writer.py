@@ -16,9 +16,136 @@ from __future__ import absolute_import
 
 import re
 import os
+import shutil
 import tempfile
 
 import tests.unit_tests as unittest
+
+
+class TestRunningHelasParameters(unittest.TestCase):
+    """Custom propagators get running inputs independently of vertex couplings."""
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        from tests.input_files.running_helas_model import create_model
+        cls.directory = tempfile.mkdtemp(prefix='running_helas_')
+        cls.model = import_ufo.import_model(
+            create_model(os.path.join(cls.directory, 'running_ufo')),
+            options={'apply_flavor_grouping': False})
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.directory)
+
+    def converter(self, tags):
+        from madmatrix.model_handling import MadMatrixUFOModelConverter
+        return MadMatrixUFOModelConverter(
+            self.model, self.directory,
+            wanted_lorentz=[(('FFV2', 'FFV4'), tags, 3)],
+            wanted_couplings=['GC_1'])
+
+    def test_parameter_buffer_and_dependency_closure(self):
+        from madmatrix.model_handling import model_parameter_name
+        self.assertEqual(model_parameter_name('mdl_running'), 'mdl_running')
+        converter = self.converter(['PZrun'])
+        self.assertEqual(list(converter.coups_dep),
+                         ['HP_G', 'HP_aS', 'HP_mdl_running_complex', 'HP_mdl_running_real'])
+        self.assertIn('mdl_running_base', converter.used_dependent_parameters())
+        self.assertIn('mdl_running_real', converter.used_dependent_parameters())
+        self.assertNotIn('mdl_running_unused', converter.used_dependent_parameters())
+        # A process without a custom propagator has no additional buffer slots.
+        self.assertEqual(self.converter([]).coups_dep, {})
+
+    def test_combined_routine_arguments(self):
+        from aloha.create_aloha import AbstractALOHAModel
+        from madmatrix.model_handling import MadMatrixALOHAWriter
+        converter = self.converter(['PZrun'])
+        aloha_model = AbstractALOHAModel.from_model(self.model, explicit_combine=True)
+        aloha_model.compute_subset([(('FFV2', 'FFV4'), ['PZrun'], 3)])
+        text = '\n'.join(routine.write(output_dir=None, mode='no_include',
+                        language=converter.aloha_writer)[1]
+                         for routine in aloha_model.values())
+        self.assertIn('const cxtype_sv & running_complex', text)
+        self.assertIn('const fptype_sv & running_real', text)
+        self.assertIn('const fptype_sv & aS', text)
+        self.assertIn('const fptype_sv & G', text)
+        self.assertIn('constexpr fptype_amp PI = M_PI;', text)
+        self.assertNotIn('Parameters::mdl_PI', text)
+        self.assertNotIn('Parameters::mdl_running', text)
+        self.assertNotIn('Parameters::current->mdl_running', text)
+        # Model-specific configuration must not leak into later exports.
+        self.assertEqual(MadMatrixALOHAWriter.dependent_params, ())
+        self.assertEqual(MadMatrixALOHAWriter.propagator_parameters, {})
+
+    def test_fixed_vertex_coupling_with_running_propagator(self):
+        import copy
+        from madgraph.core import base_objects, diagram_generation, helas_objects
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter
+        process = base_objects.Process({'model': self.model,
+            'legs': base_objects.LegList([
+                base_objects.Leg({'id': pdg, 'state': i > 1})
+                for i, pdg in enumerate([-11, 11, -13, 13])])})
+        matrix_element = helas_objects.HelasMatrixElement(
+            diagram_generation.Amplitude(process))
+        writer = MadMatrixUFOHelasCallWriter(self.model)
+        wavefunctions = [wf for wf in matrix_element.get_all_wavefunctions()
+                         if wf.get('mothers') and wf.get('particle').get('pdg_code') == 23]
+        self.assertTrue(wavefunctions)
+        # Populate the call cache with an ordinary propagator first, as in
+        # SMEFTsim where h and its propagator-correction particle share a key.
+        ordinary = copy.copy(wavefunctions[0])
+        ordinary['particle'] = copy.copy(ordinary.get('particle'))
+        ordinary['particle']['propagator'] = ''
+        self.assertEqual(ordinary.get_call_key(), wavefunctions[0].get_call_key())
+        self.assertNotIn('idcoup_HP_', writer.get_wavefunction_call(ordinary))
+        calls = [writer.get_wavefunction_call(wf) for wf in wavefunctions]
+        self.assertTrue(calls)
+        for call in calls:
+            self.assertIn('<W_ACCESS, CI_ACCESS>', call)
+            self.assertIn('CD_ACCESS::kernelAccessConst', call)
+            self.assertIn('idcoup_HP_mdl_running_complex', call)
+            self.assertIn('cxreal( CD_ACCESS::kernelAccessConst', call)
+            self.assertIn('idcoup_HP_mdl_running_real', call)
+
+    def test_running_flavour_coupling_accepts_explicit_parameter_reads(self):
+        from madgraph.core.base_objects import FLV_Coupling
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter
+        writer = MadMatrixUFOHelasCallWriter(self.model)
+        coupling = next(coup.name for key, couplings in self.model['couplings'].items()
+                        if 'aS' in key for coup in couplings)
+        writer.flv_couplings_map['FLV_TEST'] = FLV_Coupling('FLV_TEST', {(1, 1, 0): coupling})
+        call = ('FFV1<W_ACCESS, CI_ACCESS>(m_pars->FLV_TEST, '
+                'CD_ACCESS::kernelAccessConst(COUPs['
+                'Parameters_dependentCouplings::idcoup_HP_mdl_running_real]), out);')
+        formatted = writer.format_coupling(call)
+        self.assertIn('<W_ACCESS, CDPF_ACCESS>', formatted)
+        self.assertIn('flvCOUPs_dep[0]', formatted)
+        self.assertIn('CD_ACCESS::kernelAccessConst', formatted)
+        with self.assertRaisesRegex(Exception, 'mixing a running flavored coupling'):
+            writer.format_coupling(call.replace('out);', 'COUPs[0], out);'))
+
+    def test_direct_alphas_without_an_indirect_dependency(self):
+        from madmatrix.model_handling import MadMatrixUFOModelConverter
+        converter = MadMatrixUFOModelConverter(self.model, self.directory,
+                         wanted_lorentz=[(('FFV2',), ['PZrun'], 3)],
+                         wanted_couplings=['GC_1'])
+        # Isolate the direct aS/G case from the indirect running_real chain.
+        converter.coups_dep = {name: value for name, value in converter.coups_dep.items()
+                              if name in ('HP_aS', 'HP_G')}
+        converter.generate_parameters_class_files()
+        definitions = converter.default_replace_dict['dcoupsetdpar']
+        self.assertIn('const fptype_sv aS = G * G / 4. / M_PI;', definitions)
+
+    def test_complex_parameter_names_are_matched_as_identifiers(self):
+        converter = self.converter(['PZrun'])
+        converter.generate_parameters_class_files()
+        definitions = converter.default_replace_dict
+        for key in ('dcoupsetdpar', 'dcoupsetdpar2'):
+            self.assertIn('(cxtype)mdl_running ', definitions[key])
+        self.assertIn('out.HP_mdl_running_complex = mdl_running_complex;',
+                      definitions['dcoupsetdcoup'])
+        self.assertNotIn('HP_(cxtype)', definitions['dcoupsetdcoup'])
 
 
 class TestMadMatrixProcessData(unittest.TestCase):
@@ -304,6 +431,8 @@ class TestPropagatorDenominators(unittest.TestCase):
     numerator, so madmatrix::denom gets none. In the complex mass scheme the
     mass is complex and carries the width. A custom denominator (axial gauge)
     is still divided in denominator precision, on the momenta-only TMPs.
+    Outside the complex mass scheme the default (aloha.t_channel_width False)
+    keeps the width on the timelike lanes only: madmatrix::denom_timelike.
     """
 
     @classmethod
@@ -311,15 +440,21 @@ class TestPropagatorDenominators(unittest.TestCase):
         import madgraph.models.import_ufo as import_ufo
         cls.model = import_ufo.import_model('sm', options={'apply_flavor_grouping': False})
 
-    def routines(self, request, complex_mass=False, gauge=True):
+    def routines(self, request, complex_mass=False, gauge=True,
+                 t_channel_width=True):
         """{routine name: C++ definition} of the ALOHA routines of *request*
         (the compute_subset format: Lorentz names, tags, off-shell leg) as
-        madmatrix writes them; *gauge* is aloha.unitary_gauge (2 is axial)."""
+        madmatrix writes them; *gauge* is aloha.unitary_gauge (2 is axial).
+        *t_channel_width* is aloha.t_channel_width: True keeps the width of
+        every propagator (madmatrix::denom), the default False only on the
+        timelike lanes (madmatrix::denom_timelike)."""
         import aloha
         import aloha.create_aloha as create_aloha
         from madmatrix import model_handling
-        saved = (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode)
+        saved = (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode,
+                 aloha.t_channel_width)
         aloha.complex_mass, aloha.unitary_gauge = complex_mass, gauge
+        aloha.t_channel_width = t_channel_width
         try:
             # explicit_combine as in write_aloha_routines outside of the FD gauge
             aloha_model = create_aloha.AbstractALOHAModel.from_model(
@@ -331,7 +466,8 @@ class TestPropagatorDenominators(unittest.TestCase):
                               language=model_handling.MadMatrixALOHAWriter)[1]
                 for routine in dict(aloha_model).values())
         finally:
-            aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode = saved
+            (aloha.complex_mass, aloha.unitary_gauge, aloha.loop_mode,
+             aloha.t_channel_width) = saved
         # a definition runs from its name, at the start of a line, to the next one
         parts = re.split(r'\n  ([A-Za-z0-9_]+)\(', text)
         return dict(zip(parts[1::2], parts[2::2]))
@@ -350,6 +486,19 @@ class TestPropagatorDenominators(unittest.TestCase):
             for old in ('cxtype_denom_sv denom', 'cId',
                         'static_cast<cxtype_amp_sv>(denom)'):
                 self.assertNotIn(old, body, name)
+
+    def test_spacelike_width_dropped(self):
+        """By default (aloha.t_channel_width False) the width of a propagator
+        is kept on the timelike lanes only, as the Fortran routines do event by
+        event: madmatrix::denom_timelike, with the coupling or without it."""
+        routines = self.routines([(('FFV2',), [], 3), (('FFV2', 'FFV4'), [], 3)],
+                                 t_channel_width=False)
+        self.assertIn('const cxtype_amp_sv denom = madmatrix::denom_timelike'
+                      '( Ccoeff, COUP, dP3, M3, W3 );', routines['FFV2_3'])
+        self.assertIn('const cxtype_amp_sv denom = madmatrix::denom_timelike'
+                      '( dP3, M3, W3 );', routines['FFV2_4_3'])
+        for body in routines.values():
+            self.assertNotIn('madmatrix::denom(', body)
 
     def test_assembled_routine(self):
         """The Z coupling to fermions is assembled from FFV2 and FFV4: the two
@@ -483,3 +632,46 @@ class TestPropagatorDenominators(unittest.TestCase):
         for tag in ('P1G', 'P1H', 'P1Q', 'P1W'):
             self.assertRaises(aloha.ALOHAERROR,
                               lambda: self.routines([(('FFV2',), [tag], 3)], gauge=3))
+
+class TestCustomPropagatorParameters(unittest.TestCase):
+    """A custom propagator reads its extra model parameters as routine
+    arguments, so they are runtime parameters like masses and widths."""
+
+    def test_parameters_by_propagator(self):
+        from types import SimpleNamespace
+        from madmatrix.model_handling import custom_propagator_parameters
+        denominator = "(P('mu', id) * P('mu', id) - Mass(id) * Mass(id) + complex(0,1) * Mass(id) * Width(id))**2"
+        model = SimpleNamespace(
+            all_parameters=[SimpleNamespace(name=name) for name in ('MZ', 'WZ', 'dWZ', 'dWW', 'cHl3')],
+            all_propagators=[
+                SimpleNamespace(name='V1', numerator='- Metric(1, 2)', denominator=denominator),
+                SimpleNamespace(name='Z1', numerator='- Metric(1, 2) * complex(0,1) * Mass(id) * dWZ',
+                                denominator=denominator),
+                SimpleNamespace(name='X1', numerator='dWW * cHl3 * Identity(1, 2)', denominator=denominator)])
+        self.assertEqual(custom_propagator_parameters(model), {'Z1': ['dWZ'], 'X1': ['cHl3', 'dWW']})
+
+    def test_model_without_propagators(self):
+        from types import SimpleNamespace
+        from madmatrix.model_handling import custom_propagator_parameters
+        model = SimpleNamespace(all_parameters=[SimpleNamespace(name='MZ')])
+        self.assertEqual(custom_propagator_parameters(model), {})
+
+
+class TestNoHardcodedParameters(unittest.TestCase):
+    """Model parameters are always read at runtime (#226): no template brings
+    back the hardcoded-parameter build or its device-side parameter pointer."""
+
+    def test_templates(self):
+        import os
+        from madgraph import MG5DIR
+        removed = ('MGONGPU_HARDCODE_PARAM', 'HRDCOD', 'Parameters::current', '%(hardcoded')
+        for root in ('madgraph/iolibs/template_files/madmatrix', 'aloha/template_files/madmatrix'):
+            for dirpath, _, filenames in os.walk(os.path.join(MG5DIR, root)):
+                for filename in filenames:
+                    path = os.path.join(dirpath, filename)
+                    with open(path, errors='replace') as template:
+                        text = template.read()
+                    for token in removed:
+                        if token == 'HRDCOD' and filename == 'madmatrix.mk':
+                            continue # Rejects HRDCOD=1 with an actionable error.
+                        self.assertNotIn(token, text, path)

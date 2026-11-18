@@ -42,9 +42,9 @@ def write_globals(path, globals_):
 
 
 def write_data(path, subprocess_ids, seed=1, device="cpu", fix_max_weight=True,
-               source_hash="abc", shared=b"pdf", extra_channels=()):
+               source_hash="abc", shared=b"pdf", extra_channels=(), library="me"):
     """The data/ of a run over the subprocesses ``subprocess_ids`` of a process
-    with four."""
+    with four, whose matrix elements carry the helicity choice of the run."""
     os.makedirs(path)
     channels = {}
     for i in subprocess_ids:
@@ -59,7 +59,10 @@ def write_data(path, subprocess_ids, seed=1, device="cpu", fix_max_weight=True,
         # pretty-printed, to make the text scanning earn its keep
         f.write(json.dumps(channels, indent=1))
     data = {
-        "matrix_elements": ["lib/me%d.so" % i for i in range(4)],
+        "matrix_elements": [
+            ["lib/%s%d.so" % (library, i), "param_card.dat", {}]
+            + ([[i, 10 + i]] if i in subprocess_ids else [])
+            for i in range(4)],
         "matrix_element_indices": list(subprocess_ids),
         "custom_functions": [], "me_parameters": {}, "source_hash": source_hash,
     }
@@ -110,6 +113,18 @@ class TestMergeGridpacks(unittest.TestCase):
             data = json.load(f)
         self.assertEqual(data["matrix_element_indices"], [0, 1, 2, 3])
         self.assertEqual(len(data["matrix_elements"]), 4)
+
+    def test_helicity_choices_of_every_gridpack_are_kept(self):
+        out = self.merged(dict(subprocess_ids=[1, 3]), dict(subprocess_ids=[0, 2]))
+        with open(os.path.join(out, "data.json")) as f:
+            data = json.load(f)
+        self.assertEqual(data["matrix_elements"], [
+            ["lib/me%d.so" % i, "param_card.dat", {}, [i, 10 + i]] for i in range(4)])
+
+    def test_different_matrix_elements(self):
+        with self.assertRaisesRegex(merge.MergeError, "matrix_elements"):
+            self.merged(dict(subprocess_ids=[0]),
+                        dict(subprocess_ids=[1], library="other"))
 
     def test_channel_text_is_kept(self):
         """The channels are not written out again, but copied as they are."""

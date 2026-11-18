@@ -34,7 +34,8 @@ MatrixElementApi::MatrixElementApi(
     ThreadPool& thread_pool,
     DevicePtr device,
     std::size_t index,
-    const std::unordered_map<std::string, double>& parameters
+    const std::unordered_map<std::string, double>& parameters,
+    const std::vector<int>& helicity_choice
 ) :
     _file_name(file), _index(index), _device(device) {
     _shared_lib = std::unique_ptr<void, std::function<void(void*)>>(
@@ -57,7 +58,7 @@ MatrixElementApi::MatrixElementApi(
     resolve_symbol(lib, "umami_matrix_element", _functions.matrix_element);
     resolve_symbol(lib, "umami_free", _functions.free);
     init_functions(parameters);
-    init_instances(thread_pool, device, param_card, parameters);
+    init_instances(thread_pool, device, param_card, parameters, helicity_choice);
 }
 
 MatrixElementApi::MatrixElementApi(
@@ -106,11 +107,25 @@ void MatrixElementApi::init_instances(
     ThreadPool& thread_pool,
     DevicePtr device,
     const std::string& param_card,
-    const std::unordered_map<std::string, double>& parameters
+    const std::unordered_map<std::string, double>& parameters,
+    const std::vector<int>& helicity_choice
 ) {
+    // MadMatrix: the good helicities, given to every instance, see load_matrix_element
+    std::function<UmamiStatus(UmamiHandle, int const*, int)> set_helicity_choice;
+    if (!helicity_choice.empty()) {
+        resolve_symbol(
+            _shared_lib.get(), "madmatrix_set_helicity_choice", set_helicity_choice
+        );
+        if (!set_helicity_choice) {
+            throw_error(
+                "a helicity choice for a library without "
+                "madmatrix_set_helicity_choice"
+            );
+        }
+    }
     _instances = ThreadResource<InstanceType>(
         thread_pool,
-        [this, device, param_card, parameters] {
+        [this, device, param_card, parameters, helicity_choice, set_helicity_choice] {
             device->activate();
             void* instance;
             check_umami_status(_functions.initialize(&instance, param_card.c_str()));
@@ -121,6 +136,16 @@ void MatrixElementApi::init_instances(
                     _functions.free(instance);
                     throw_error(std::format("could not set parameter {}", name));
                 }
+            }
+            // after the parameters, whose change makes an instance choose again
+            if (set_helicity_choice &&
+                set_helicity_choice(
+                    instance,
+                    helicity_choice.data(),
+                    static_cast<int>(helicity_choice.size())
+                ) != UMAMI_SUCCESS) {
+                _functions.free(instance);
+                throw_error("the helicity choice does not fit the process");
             }
             return InstanceType(instance, [this, device](void* proc) {
                 device->activate();
@@ -189,6 +214,7 @@ const MatrixElementApi& Context::load_matrix_element(
     const std::string& file,
     const std::string& param_card,
     const std::unordered_map<std::string, double>& parameters,
+    const std::vector<int>& helicity_choice,
     int index
 ) {
     std::size_t slot = index < 0 ? _matrix_elements.size() : index;
@@ -198,9 +224,9 @@ const MatrixElementApi& Context::load_matrix_element(
         );
     }
     // construct first, so that a failing load leaves the context untouched
-    auto api = std::unique_ptr<MatrixElementApi>(
-        new MatrixElementApi(file, param_card, *_thread_pool, _device, slot, parameters)
-    );
+    auto api = std::unique_ptr<MatrixElementApi>(new MatrixElementApi(
+        file, param_card, *_thread_pool, _device, slot, parameters, helicity_choice
+    ));
     if (slot >= _matrix_elements.size()) {
         _matrix_elements.resize(slot + 1);
         _param_card_paths.resize(slot + 1);

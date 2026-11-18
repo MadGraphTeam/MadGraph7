@@ -18,6 +18,7 @@ from madgraph.various import misc
 from madgraph.various.banner import RunCardMG7
 from madgraph.models.check_param_card import ParamCard
 from madgraph.models.model_reader import Alphas_Runner
+from madgraph.mg7 import helicity_choice as helicity_choice_module
 from madgraph.mg7 import hwu_output
 from madgraph.mg7 import lepton_density as lepton_density_module
 import madgraph.various.py8_bstrahl as py8_bstrahl
@@ -333,7 +334,15 @@ class MadgraphProcess:
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
             self.subprocess_data = json.load(f)
         merge_subprocesses = self.run_card["phasespace"]["merge_subprocesses"]
-        if merge_subprocesses and self.run_card["beam"]["dynamical_scale_choice"] == "mlm":
+        if merge_subprocesses and self.run_card.is_ckkwl_merged():
+            # the merging cut is built per subprocess from its leg flavours
+            logger.warning(
+                "merge_subprocesses is not supported with a CKKW-L merging cut "
+                "(ktdurham/ptlund); the subprocesses are kept separate"
+            )
+            merge_subprocesses = False
+        if merge_subprocesses and self.run_card["beam"]["dynamical_scale_choice"] in (
+                "mlm", "ckkwl"):
             # A merged subprocess bundles matrix elements whose legs differ -
             # q q~ > l l g next to q g > l l q - while the MLM clustering is
             # built once per subprocess from a single assignment of flavours to
@@ -342,7 +351,8 @@ class MadgraphProcess:
             # weights of one element only.
             logger.warning(
                 "merge_subprocesses is not supported with dynamical_scale_choice "
-                "= mlm; the subprocesses are kept separate"
+                "= %s; the subprocesses are kept separate",
+                self.run_card["beam"]["dynamical_scale_choice"]
             )
             merge_subprocesses = False
         if merge_subprocesses:
@@ -568,8 +578,12 @@ class MadgraphProcess:
         # AmpliCol libraries, shared by all channels of their process
         self.amplicol_apis = {}
         self.amplicol_positions = None
-        # [path format, init path, parameters] of every load_matrix_element, in order
+        # [path format, init path, parameters, helicity choice] of every
+        # load_matrix_element, in order
         self.loaded_matrix_elements = []
+        # the helicity choice of each madmatrix library (by path format), see
+        # helicity_choice()
+        self.helicity_choices = {}
         self.device_types = []
         self.devices = []
         self.pool_sizes = []
@@ -595,13 +609,16 @@ class MadgraphProcess:
             self.contexts.append(ms.Context(device=device, thread_count=pool_size))
 
     def load_matrix_element(
-        self, path_format: str, init_path: str, parameters: dict, position=None
+        self, path_format: str, init_path: str, parameters: dict,
+        helicity_choice=None, position=None
     ):
         """Load a matrix-element library into every context, recorded for the
         gridpack to load the same ones at the same indices. The init path is
-        the param card, or the artifact of an AmpliCol library. ``position`` is
-        its place among the matrix elements (default: after the last one), which
-        the compiled functions refer to it by."""
+        the param card, or the artifact of an AmpliCol library. A madmatrix
+        library is given its helicity choice (see helicity_choice()).
+        ``position`` is its place among the matrix elements (default: after the
+        last one), which the compiled functions refer to it by."""
+        helicity_choice = list(helicity_choice or [])
         # appended by default: [surrogate] libraries take context slots that
         # loaded_matrix_elements does not record
         index = -1 if position is None else len(self.custom_function_paths) + position
@@ -612,12 +629,46 @@ class MadgraphProcess:
                 path_format.format(device=backend, fptype=self.fptype),
                 os.path.abspath(init_path),
                 parameters,
+                helicity_choice,
                 index=index,
             )
         missing = position + 1 - len(self.loaded_matrix_elements)
         self.loaded_matrix_elements.extend([None] * max(missing, 0))
-        self.loaded_matrix_elements[position] = [path_format, init_path, parameters]
+        self.loaded_matrix_elements[position] = [
+            path_format, init_path, parameters, helicity_choice]
         return api
+
+    def helicity_choice(self, path_format: str, param_card: str, parameters: dict):
+        """The good helicities of a madmatrix library for every context,
+        chosen once, from the cards, on a CPU build (see
+        madgraph/mg7/helicity_choice.py): on 16 RAMBO points of the collider
+        of the run card, up to its centre-of-mass energy, from just above the
+        threshold of the process when the beams have PDFs, ISR or
+        beamstrahlung, and in the partonic centre-of-mass and lab frames. None
+        if the library cannot choose so: each instance then chooses on its
+        first events."""
+        if path_format not in self.helicity_choices:
+            backend, fptype = self.helicity_choice_build
+            spread = not self.is_decay and (
+                not self.leptonic or bool(self._lepton_density_name))
+            choice = helicity_choice_module.choose(
+                path_format.format(device=backend, fptype=fptype), param_card,
+                parameters, self.e_cm, self.beam_rapidity, spread)
+            if choice is not None and not any(self.helicity_choices.values()):
+                logger.info(
+                    "good helicities chosen from the cards on the %s build (16 points "
+                    "at sqrt(s) = %g GeV%s), for every thread and device",
+                    backend, self.e_cm, " and down to threshold" if spread else "")
+            if choice is None:
+                logger.debug("%s: the good helicities are chosen on the first "
+                             "events of each instance", os.path.basename(path_format))
+            else:
+                logger.debug(
+                    "%s: %d good helicities, chosen on the %s %s build at sqrt(s) = %g GeV%s",
+                    os.path.basename(path_format), len(choice) - 1, backend, fptype,
+                    self.e_cm, " and below" if spread else "")
+            self.helicity_choices[path_format] = choice
+        return self.helicity_choices[path_format]
 
     CUSTOM_FUNCTION_KINDS = ("cut", "scale", "pdf", "bias")
 
@@ -829,6 +880,21 @@ class MadgraphProcess:
             elif cuts.get(key, {}).get("min", 0.0) > xqcut:
                 cuts[key]["min"] = 0.0
 
+    def init_merging_cut(self) -> None:
+        """The CKKW-L merging cut (ktdurham or ptlund) of the run card, as
+        (measure, minimum, merging pdg ids), or None."""
+        self.merging_cut = None
+        ps = self.run_card["phasespace"]
+        if self.is_decay or not self.run_card.is_ckkwl_merged():
+            return
+        if float(ps["ktdurham"]) > 0:
+            measure, value = ms.MergingScale.Measure.kt_durham, float(ps["ktdurham"])
+        else:
+            measure, value = ms.MergingScale.Measure.pt_lund, float(ps["ptlund"])
+        # the list the banner reports as pdgs_for_merging_cut
+        pdgs = self.run_card.resolved_merging_pdgs()
+        self.merging_cut = (measure, value, {abs(pdg) for pdg in pdgs})
+
     def init_cuts(self) -> None:
         inf = float("inf")
         order_observable = self.run_card["cuts"].get("order_by", "pt")
@@ -838,6 +904,7 @@ class MadgraphProcess:
             if key != "order_by"
         }
         self.apply_auto_ptj_mjj(cuts)
+        self.init_merging_cut()
         self.cut_data = [
             CutItem(
                 observable_kwargs=self.parse_observable(key, order_observable),
@@ -988,14 +1055,17 @@ class MadgraphProcess:
         # "mlm" is not one of the closed-form scale choices: it needs the diagram
         # topologies of each subprocess, so the EnergyScale is built later, in
         # MadgraphSubprocess.init_madspace, from an MLMClustering instance.
-        if beam_args["dynamical_scale_choice"] == "mlm":
+        # "ckkwl" is the same clustering without the alpha_s and pdf ladders.
+        self.ckkwl_scale = beam_args["dynamical_scale_choice"] == "ckkwl"
+        if not self.is_decay:
+            # the jets of the clustering and of a merging cut have to be the
+            # massless quarks of the model: no free max_jet_flavor when merging
+            self.run_card.check_mlm_max_jet_flavor(
+                _proc_characteristic().get("max_jet_flavor", 0))
+        if beam_args["dynamical_scale_choice"] in ("mlm", "ckkwl"):
             self.mlm_clustering = True
             self.scale_kwargs = {}
             if not self.is_decay:
-                # the clustering's jets have to be the massless quarks of the
-                # model: no free choice of max_jet_flavor with MLM
-                self.run_card.check_mlm_max_jet_flavor(
-                    _proc_characteristic().get("max_jet_flavor", 0))
                 # where the shower of the particles that are not light partons
                 # starts: the hardest scale of the event (max of the
                 # core-process scale the clustering gives them, mu_F and the
@@ -1031,22 +1101,32 @@ class MadgraphProcess:
             # The merging needs the scales of its own clustering history: a
             # custom scale or a factor on it would move the merging scale away
             # from the one the shower is matched to.
+            choice = beam_args["dynamical_scale_choice"]
             if self.custom_functions.pop("scale", None) is not None:
                 logger.warning(
-                    "custom scale ignored under dynamical_scale_choice = mlm")
+                    "custom scale ignored under dynamical_scale_choice = %s", choice)
             if float(beam_args.get("scale_factor", 1.)) != 1.:
                 logger.warning(
-                    "scale_factor ignored under dynamical_scale_choice = mlm")
+                    "scale_factor ignored under dynamical_scale_choice = %s", choice)
+            # lepton beams have no factorisation scale, fixed by default
+            if beam_args["fixed_ren_scale"] or (
+                    beam_args["fixed_fact_scale"] and not self.leptonic):
+                logger.warning(
+                    "fixed_ren_scale/fixed_fact_scale ignored under "
+                    "dynamical_scale_choice = %s: the scales come from the "
+                    "clustering", choice)
         if self.is_decay:
             # One scale is available for a decay -- the decaying mass -- so use
             # it, fixed, whatever the card asks for. That includes "mlm": a
             # decay has no beams to cluster into, so there is no merging to do.
             if self.mlm_clustering:
                 logger.warning(
-                    "dynamical_scale_choice = mlm has no meaning for a decay; "
-                    "using the decaying mass as a fixed scale instead"
+                    "dynamical_scale_choice = %s has no meaning for a decay; "
+                    "using the decaying mass as a fixed scale instead",
+                    beam_args["dynamical_scale_choice"]
                 )
                 self.mlm_clustering = False
+                self.ckkwl_scale = False
             self.scale_kwargs.setdefault(
                 "dynamical_scale_type", ms.EnergyScale.half_transverse_mass
             )
@@ -1298,6 +1378,7 @@ class MadgraphProcess:
         # the emission scale of the MLM alpha_s vertices, which only an MLM
         # sample with per-vertex alpha_s has
         if (self.mlm_clustering and not self.is_decay
+                and self.run_card["beam"]["dynamical_scale_choice"] != "ckkwl"
                 and self.run_card["beam"]["alphas_reweighting"] != "none"):
             config.alps = [float(v) for v in syst["alps"]]
         else:
@@ -1368,6 +1449,9 @@ class MadgraphProcess:
             "nominal_info_file": info_path,
             # matrix elements re-evaluated for the mixed-order subprocesses
             "me_paths": [meta["me_path"] for meta in self.subprocess_data],
+            # and their helicity choices, see helicity_choice()
+            "helicity_choices": [self.helicity_choices.get(meta["me_path"]) or []
+                                 for meta in self.subprocess_data],
             "me_backend": me_backend,
             "flavor_remap": flavor_remap,
             "me_frame": self.me_frame,
@@ -1442,7 +1526,8 @@ class MadgraphProcess:
             api = context.load_matrix_element(
                 meta["me_path"].format(device=backend, fptype=self.fptype),
                 self.param_card_path,
-                me_parameters(self.run_card))
+                me_parameters(self.run_card),
+                self.helicity_choices.get(meta["me_path"]) or [])
             matrix_elements.append(ms.MatrixElement(
                 api,
                 [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
@@ -1826,6 +1911,7 @@ class MadgraphProcess:
         madmatrix_data = [
             meta for meta in self.subprocess_data if not is_amplicol(meta)
         ]
+        self.helicity_choice_build = None
         if not madmatrix_data:
             return backends
 
@@ -1881,7 +1967,15 @@ class MadgraphProcess:
                 {"": "10 (default)", "0": "<no limit>"}.get(limit, limit)
             )
         hr_flags = ":".join(arg.split("=", 1)[1] for arg in hr_args)
-        for backend in resolved:
+        # the good helicities are chosen on a CPU build (helicity_choice()):
+        # the CPU one of the run, else one in scalar double precision
+        cpu_backends = [b for b in resolved if not b.startswith(("cuda", "hip"))]
+        self.helicity_choice_build = (
+            (cpu_backends[0], fptype) if cpu_backends else ("scalar", "d"))
+        builds = [(backend, fptype) for backend in resolved]
+        if not cpu_backends and not self.run_card["run"]["dummy_matrix_element"]:
+            builds.append(self.helicity_choice_build)
+        for backend, fptype in builds:
             # by library: the flavours of a split subprocess share one; a library
             # built with other recycling settings is rebuilt too: its SigmaKin.o
             # records them in build.<backend>/.hrflags (madmatrix.mk)
@@ -2220,6 +2314,15 @@ class MadgraphProcess:
             phasespace = subproc.build_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
             trained_phasespaces.append(phasespace)
+            # the channel dropping keeps the last channel of every resonance
+            channel_resonances = []
+            if madnis_args["resonance_guard"]:
+                resonance_ids = {}
+                channel_resonances = [
+                    [resonance_ids.setdefault(key, len(resonance_ids))
+                     for key in channel.resonances]
+                    for channel in phasespace.channels
+                ]
             training_args.append(
                 ms.TrainingArgs(
                     config=config,
@@ -2229,6 +2332,7 @@ class MadgraphProcess:
                         drop_cuts_and_rescale=madnis_args["drop_zero_integrands"]
                     ),
                     cwnet=phasespace.cwnet,
+                    channel_resonances=channel_resonances,
                 )
             )
 

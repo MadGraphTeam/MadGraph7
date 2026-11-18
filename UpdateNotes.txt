@@ -5,6 +5,58 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   OM: color_basis ddm (and auto, for the outputs where auto picks it): the (n-2)!
+       Del Duca-Dixon-Maltoni colour basis is now also used when the gluons come with
+       colour singlets, e.g. g g > h + n g in the Higgs effective theory (any number of
+       scalars or pseudoscalars). The adjoint delta of the g g H vertex made these
+       processes fall back silently on the (n-1)! trace basis (120 instead of 24 colour
+       structures for g g > h + 4g). With 'set color_basis ddm' the processes that keep
+       the trace basis, and why, are now listed at info level. An explicit 'set
+       color_basis ddm' now only applies to the outputs which can use that basis: the
+       others keep the trace basis and say so (the Matchbox outputs, which pass its
+       color strings on; mg7_v5, which crashed on it; the loop and NLO outputs), and
+       'check' no longer leaves it on for the next command.
+   OM: 'output pythia8' (dropped in MadGraph7) is now refused by the NLO interface too,
+       where 'pythia8' was taken as the name of the output directory, and the message
+       says how to use Pythia 8 instead: shower the events of a madevent, mg7 or NLO
+       output (shower=Pythia8 at the launch question). The help no longer advertises
+       it, and 'output <format> auto' no longer writes into the Pythia 8 directory for
+       the formats without an automatic directory name (it used pythia8_path): it now
+       writes into a new PROC_<format>_<i> directory (e.g. 'output matrix auto' gives
+       PROC_matrix_0), which replaces the Pythia8_proc_<i> one. The code that wrote
+       Pythia 8 process and model code is removed (the Pythia 8 exporters of
+       export_cpp.py, template_files/pythia8, the unused '-name' output option, and
+       'launch' on a Pythia 8 directory, which now says that this is no longer
+       supported, from the LO, MadLoop and aMC@NLO interfaces alike).
+   OM: standalone/mg7 with --mask=False (no flavour guard) gave wrong |M|^2 for some flavours
+       of merged electroweak processes (p p > w+ w- j j QCD=0: 24 of 54, d d~ > w+ w- u u~
+       x55). This was also the root cause of the --hel_recycling bug of 0.3.0: the C++ flavoured
+       routines accepted a fermion pair in both orientations of its coupling table, which for
+       a W coupling is the W of the opposite charge. They now read it in one orientation, as
+       the Fortran routines do (Fortran --mask=False was right). Also:
+       - an output whose --mask differs from an earlier output of the same processes, or
+         that follows an add process, no longer reuses that output's matrix elements and
+         trimmed diagrams;
+       - a subprocess of more than 64 flavour groups (p p > j j j j QCD=0) keeps its flavour
+         guards;
+       - every output (Fortran and C++) refuses a flavoured coupling its flavour tables
+         cannot hold: an unmerged fermion coupled, as the first fermion of the vertex, to
+         several flavours of a merged one (e.g. a heavy quark xq mixing into d and s; none
+         in the bundled models). The tables kept one of them without a word: the Fortran
+         standalone gave |M|^2 = 0 for g d~ > xq~ z. Use "set apply_flavor_grouping False"
+         and explicit flavours for such a model;
+       - "save processes" / "load processes" are removed (the amplitudes kept after an
+         output have lost the diagrams its --mask trimmed). "save model", "load model" and
+         "save options" remain.
+   OM: flavour grouping: a process in which a merged quark is built from unmerged particles
+       only, through a flavoured coupling with several flavours (a heavy quark xq mixing into
+       d and s through the Z: p p > xq z j, xq xq~ > z z; none in the bundled models), crashed
+       the output with a FlavorTagError and a "report this bug" message (xq xq~ > z z, with no
+       merged external leg, only while writing check_sa.f). The merged output gives each
+       wavefunction the one flavour its inputs fix: it can neither take this one from the
+       other end of the fermion line nor sum over it. The output now stops before writing any
+       subprocess, with an error naming the process and the couplings; generate such a
+       process after "set apply_flavor_grouping False" and a new import of the model.
    OM: polarised propagators of a massive vector (w+{0}, w+{T}, w+{A}, w+{S}, ... on a
        particle decayed further) in the FD gauge: {0}, {T}, {+}, {-}, {A}, {S}, {0S} are the
        pieces of the five-component FD propagator (the FD longitudinal vector of the
@@ -66,6 +118,17 @@ ANNOUNCEMENT:
        same phase-space point, and the C++ FD vxxxxx has the FD longitudinal polarisation.
 
 0.3.0 (XX/XX/XX):
+   OM: --hel_recycling (standalone/mg7, CPU/SIMD builds, on by default): the recycled matrix
+       element left out the flavour masks of a flavour-merged subprocess, on the assumption
+       that an amplitude masked for a flavour vanishes there anyway. It does not always (a
+       diagram closed by a bosonic vertex, fed by fermion currents that follow the coupling
+       partner tables): |M|^2 was wrong for some flavours of merged electroweak multi-quark
+       processes with charged currents. p p > w+ w- j j QCD=0: 12 of 36 flavours, e.g.
+       d d~ > w+ w- u u~ x55, d u~ > w+ w- s c~ x169, and 83.7 pb instead of 0.934 pb in a
+       MadSpace run. Every copy of such an amplitude is now guarded with its mask, as in the
+       plain build. GPU builds, --hel_recycling=False and MadEvent were not affected; outputs
+       made before this fix must be regenerated. Also: a recycled build cut into chunks
+       (HelRecyclingChunks_*.cc) did not compile (ndcoup undeclared).
    OM: --hel_recycling (standalone/mg7): the good helicities and the amplitudes that
        vanish, which the recycled matrix element is built for, are now measured again at
        the param_card a run is launched with (after the launch question, and at each point

@@ -28,9 +28,7 @@ import tempfile
 import tomllib
 
 # data.json entries that have to be identical everywhere
-_IDENTICAL_DATA = (
-    "matrix_elements", "custom_functions", "me_parameters", "source_hash"
-)
+_IDENTICAL_DATA = ("custom_functions", "me_parameters", "source_hash")
 
 
 # What the run cards of the gridpacks to merge may differ in: the selection,
@@ -165,6 +163,29 @@ def merge_weighting_groups(inputs: list, channel_offsets: list, output: str) -> 
         json.dump(groups, f, separators=(",", ":"))
 
 
+def loaded_indices(data: dict):
+    """The matrix elements a gridpack loads; one from before the indices were
+    recorded loads every one."""
+    return data.get("matrix_element_indices", range(len(data["matrix_elements"])))
+
+
+def merge_matrix_elements(inputs: list, datas: list) -> list:
+    """The matrix elements of the merged gridpack. Every gridpack lists all of
+    them as [path format, init path, parameters], and the ones it loaded with
+    the helicity choice of its run: each entry is taken from a gridpack that
+    loaded it, so that the choice is kept."""
+    libraries = [[entry[:3] for entry in data["matrix_elements"]] for data in datas]
+    for path, entries in zip(inputs[1:], libraries[1:]):
+        if entries != libraries[0]:
+            raise MergeError(f"data.json matrix_elements differs in {path}")
+    merged = list(datas[0]["matrix_elements"])
+    for data in reversed(datas):
+        for i in loaded_indices(data):
+            if len(data["matrix_elements"][i]) > 3:
+                merged[i] = data["matrix_elements"][i]
+    return merged
+
+
 def merge_gridpack_data(inputs: list, output: str) -> None:
     """Merge the data/ directories ``inputs`` into the new directory ``output``.
 
@@ -214,11 +235,8 @@ def merge_gridpack_data(inputs: list, output: str) -> None:
             "(run_mode fix_max_weight) and some do not"
         )
 
-    # a gridpack from before the indices were recorded loads every matrix element
-    indices = sorted({
-        i for data in datas
-        for i in data.get("matrix_element_indices", range(len(data["matrix_elements"])))
-    })
+    matrix_elements = merge_matrix_elements(inputs, datas)
+    indices = sorted({i for data in datas for i in loaded_indices(data)})
     os.makedirs(output)
     for name in os.listdir(inputs[0]):
         if name not in _MERGED_DATA_FILES:
@@ -233,7 +251,8 @@ def merge_gridpack_data(inputs: list, output: str) -> None:
         merge_weighting_groups(
             [os.path.join(path, "groups.json") for path in inputs], channel_offsets,
             os.path.join(output, "groups.json"))
-    data = dict(datas[0], matrix_element_indices=indices)
+    data = dict(datas[0], matrix_elements=matrix_elements,
+                matrix_element_indices=indices)
     with open(os.path.join(output, "data.json"), "w") as f:
         json.dump(data, f)
     merge_globals([os.path.join(path, "globals.tar") for path in inputs],

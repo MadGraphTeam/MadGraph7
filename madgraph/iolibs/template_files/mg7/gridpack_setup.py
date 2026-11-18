@@ -148,11 +148,14 @@ def load_context_data(contexts, backends, madspace_data: dict, precision: str) -
     me_offset = len(madspace_data.get("custom_functions", []))
     for context, backend in zip(contexts, backends):
         for me_index in sorted(me_indices):
-            path_format, init_path, parameters = me_list[me_index]
+            path_format, init_path, parameters, *helicity_choice = me_list[me_index]
+            # the good helicities the run chose from its cards, given to every
+            # instance; older gridpacks store none (each instance chooses)
             context.load_matrix_element(
                 _gridpack_relative(path_format.format(device=backend, fptype=fptype)),
                 _gridpack_relative(init_path),
                 parameters,
+                (helicity_choice[0] if helicity_choice else None) or [],
                 index=me_offset + me_index,
             )
 
@@ -339,8 +342,10 @@ def load_systematics(run_card, backends=(), me_parameters=None):
                       "mixed-order subprocesses are dropped" % lib)
                 matrix_elements, flavor_remap = [], []
                 break
+            choices = data.get("helicity_choices") or []
             api = context.load_matrix_element(
-                lib, gridpack_path("Cards", "param_card.dat"), me_parameters or {}
+                lib, gridpack_path("Cards", "param_card.dat"), me_parameters or {},
+                (choices[i] if i < len(choices) else None) or []
             )
             matrix_elements.append(ms.MatrixElement(
                 api,

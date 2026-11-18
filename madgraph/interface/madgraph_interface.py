@@ -827,6 +827,17 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --cuda-arch=ARCHS  Semicolon-separated CUDA compute capabilities, e.g. 75;80;86.")
         logger.info("     --hip-arch=ARCHS   Semicolon-separated HIP architectures, e.g. gfx900;gfx906.")
         logger.info(" ")
+        logger.info("   \"install ninjars [options]\"",'$MG:BOLD')
+        logger.info("   Build the pinned NinjaRS/oneloopmaster Fortran interface (MLReductionLib=8).")
+        logger.info("   Requires Cargo/Rust >= 1.96, GNU make and a Fortran compiler with REAL(16).")
+        logger.info("     --source=DIR          Use a local NinjaRS checkout (copied before building).")
+        logger.info("     --oneloop-source=DIR  Use a local oneloopmaster checkout.")
+        logger.info("     --prefix=DIR          Override the HEPTools installation prefix.")
+        logger.info("     -j N/--jobs=N         Parallel compilation jobs (default: nb_core).")
+        logger.info("     --update              Rebuild with this checkout's committed dependency pins (after git pull).")
+        logger.info("                           Replace the installation after DP and QP smoke tests pass.")
+        logger.info("     --force               Equivalent backward-compatible alias for --update.")
+        logger.info(" ")
         logger.info("   \"install pyamplicol [options]\"",'$MG:BOLD')
         logger.info("   Install pyAmpliCol, the matrix-element generator of the [amplicol] backend.")
         logger.info("   Without options an interactive installer is launched. Available options:")
@@ -871,13 +882,11 @@ class HelpToCmd(cmd.HelpCmd):
         # color schemes.
         #_launch_parser.print_help()
         logger.info("syntax: launch <dir_path> <options>",'$MG:color:BLUE')
-        logger.info("-- execute the aMC@NLO/madevent/standalone/pythia8 output present in dir_path",'$MG:BOLD')
+        logger.info("-- execute the aMC@NLO/madevent/mg7/standalone output present in dir_path",'$MG:BOLD')
         logger.info("By default, dir_path points to the last created directory.")
-        logger.info("(for pythia8, it should be the Pythia 8 main directory)")
         logger.info("")
-        logger.info("Launch on madevent/pythia8/standalone outputs:",'$MG:BOLD')
+        logger.info("Launch on madevent/mg7/standalone outputs:",'$MG:BOLD')
         logger.info(" o Example: launch PROC_sm_1 --name=run2",'$MG:color:GREEN')
-        logger.info(" o Example: launch ../pythia8",'$MG:color:GREEN')
         logger.info(" > Options:")
         logger.info("     -h, --help            show this help message and exit")
         logger.info("     -f, --force           Use the card present in the directory in order")
@@ -986,10 +995,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   - If mode is standalone_fortran, create a Fortran Standalone directory")
         logger.info("   - If mode is matrix, output the matrix.f files for all")
         logger.info("     generated processes in directory \"path\".")
-        logger.info("   - If mode is pythia8, output all files needed to generate")
-        logger.info("     the processes using Pythia 8. The files are written in")
-        logger.info("     the Pythia 8 directory (default).")
-        logger.info("     NOTE: The Pythia 8 directory is set in the ./input/mg7_configuration.txt")
+        logger.info("   - pythia8 is no longer an output mode: Pythia 8 showers the events of")
+        logger.info("     a madevent, mg7 or NLO output (shower=Pythia8 at the launch question).")
         logger.info("   - If mode is aloha: Special syntax output:")
         logger.info("     syntax: aloha [ROUTINE] [--options]" )
         logger.info("     valid options for aloha output are:")
@@ -1004,13 +1011,12 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      -noclean: no cleaning performed in \"path\".")
         logger.info("      -nojpeg: no jpeg diagrams will be generated.")
         logger.info("      --noeps=True: no jpeg and eps diagrams will be generated.")
-        logger.info("      -name: the postfix of the main file in pythia8 mode.")
         logger.info("      --jamp_optim=[True|False]: [madevent(default:True)|standalone_fortran(default:False)] allows a more efficient code computing the color-factor.")
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent|standalone|mg7] forbids helicity recycling optimization (the plain matrix element)")
-        logger.info("      --hel_recycling=True: [standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (on by default). CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes; an mg7 launch measures them again at its param_card (each scan point, and the cards of a MadtRex reweighting) and rebuilds only when they change. Anywhere else (a standalone output whose param_card is edited, a parameter set through UMAMI) the build checks at run time that the amplitudes it skips still vanish, and uses the plain matrix element, with a warning, when one does not.")
-        logger.info("      --hel_recycling_chunk=<n>: [standalone|mg7] statements per function when the recycled block is cut up (default 200, 0 keeps it in one piece).")
+        logger.info("      --hel_recycling=True: [standalone_fortran|standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (on by default for standalone|mg7, off by default for standalone_fortran). C++: CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes; an mg7 launch measures them again at its param_card (each scan point, and the cards of a MadtRex reweighting) and rebuilds only when they change. Anywhere else (a standalone output whose param_card is edited, a parameter set through UMAMI) the build checks at run time that the amplitudes it skips still vanish, and uses the plain matrix element, with a warning, when one does not.")
+        logger.info("      --hel_recycling_chunk=<n>: [standalone_fortran|standalone|mg7] statements per function when the recycled block is cut up (default 1500 Fortran, 200 C++; 0 keeps it in one piece).")
         logger.info("      --hel_recycling_jamp=rows|fold|expanded: [standalone|mg7] how the recycled build makes the color flows: rows (default) stores every amplitude per helicity row and runs the plain color code once per row, as the fortran recycler does; fold adds each amplitude into per-row shared sub-expressions; expanded into every color flow.")
         logger.info("      --hel_recycling_tables=False: [standalone|mg7] write the recycled amplitudes as straight-line code instead of tables (default True; straight-line code stops fitting in the caches on large processes).")
         logger.info("      --hel_recycling_max=<n>: [standalone|mg7] keep the plain code when the recycled block would exceed n statements, which no longer runs from the caches and is slower (default 300000, 0 for no limit).")
@@ -1018,13 +1024,15 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --fermion_reference=False: with --axial_gauge=True, keep the massive fermions in the helicity basis (default:True; always False for a polarised process and with --density).")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
         logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
-        logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran(default:False)|standalone_rw/msP/msF(default:True)] set the t-channel widths to zero as madevent (see option zerowidth_tchannel)")
+        logger.info("      --f2py_per_process=False: [standalone_fortran with --prefix] build the combined all_matrix2py module with only its dispatching entry points (smatrixhel, smatrixhel_idx, py_get_density, ...), without the per-process py_<prefix>* ones: much faster to build for many subprocesses (used by MadSpin).")
+        logger.info("      --use_crossing=False: [standalone_fortran|standalone|mg7|madevent] write this output WITHOUT the crossing machinery (on by default, as on the generate line): the crossed subprocesses folded onto their base at generation are written back as their own directories. With it, mg7 evaluates each crossed subprocess with the library of its base (cpu, simd and GPU).")
+        logger.info("      --crossing_table=all: [standalone_fortran|standalone] with the crossing machinery, let the extended flavor index also reach every applicable crossing (each choice of the legs that start in the initial state), not only the crossed subprocesses the generation folded -- e.g. for a single generated process, which folds none. Only the extended-index entry (smatrixhel_idx) reaches these extra crossings: the Fortran PDG-keyed smatrixhel/density still answer only the generated and folded subprocesses (NaN otherwise).")
+        logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran|standalone_rw/msP/msF] drop the width of the spacelike (t-channel) propagators as madevent, for this output (default: the option zerowidth_tchannel)")
         logger.info("      --zerowidth_decay=True|False|<pdg>,<pdg>: [standalone_fortran] write the propagators of the final-state particles (of the decaying particle in a 1>N decay) with a zero width; a pdg list restricts to those.")
         logger.info("      --density=<i>[,<j>...]: [standalone_fortran, also for loop processes] keep the helicities of the external legs i, j, ... open and write their spin-density matrix (the other legs are summed over helicity). In the madevent, mg7 and NLO outputs it only selects the default me_frame of the run_card, as a polarized particle does.")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
         logger.info("       output standalone_fortran MYRUN -f",'$MG:color:GREEN')
-        logger.info("       output pythia8 ../pythia8/ -name qcdprocs",'$MG:color:GREEN')
 
     def help_check(self):
         logger.info("syntax: check [" + "|".join(self._check_opts) + "] [param_card] process_definition [--energy=] [--split_orders=] [--reduction=]",'$MG:color:BLUE')
@@ -1074,6 +1082,20 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Fortran standalone (SA), and C++ standalone (SA) back-ends")
         logger.info("   at the same phase-space point.  Requires gfortran / g++.")
         logger.info("   Example: check language p p > e+ e-",'$MG:color:GREEN')
+        logger.info("o crossing:",'$MG:color:GREEN')
+        logger.info("   Output the process to a standalone backend twice, with")
+        logger.info("   the crossing symmetry on (--use_crossing=True) and off,")
+        logger.info("   then compare each subprocess evaluated through the")
+        logger.info("   extended flavor-index crossing against its independent")
+        logger.info("   value. --exporter picks the backend (default")
+        logger.info("   standalone_fortran): standalone_fortran (fortran/f2py) or")
+        logger.info("   standalone (madmatrix). Requires gfortran+f2py")
+        logger.info("   (standalone_fortran) or a C++ compiler (standalone).")
+        logger.info("   For standalone, --simd picks the vectorisation width:")
+        logger.info("   auto (default), scalar, simd_128, simd_256, avx512y, simd_512;")
+        logger.info("   and --precision picks the float type: m mixed (default), d double, f float.")
+        logger.info("   Example: check crossing g u > g u",'$MG:color:GREEN')
+        logger.info("   Example: check crossing g u > g u --exporter=standalone --simd=simd_256 --precision=d",'$MG:color:GREEN')
         logger.info("o precision:",'$MG:color:GREEN')
         logger.info("   syntax: check precision m|f|v [m|f|v ...] process_definition [--nb_event=X] [--energy=] [--backend=]")
         logger.info("   Evaluate the madmatrix standalone output built in each of the given")
@@ -1155,6 +1177,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   optional argument.")
         logger.info(" > Notice multiparticle labels cannot be used with these checks.")
         logger.info(" > \"--reduction=\" allows to change what reduction methods should be used.")
+        logger.info(" > Timing/profile: --timing_provenance=True archives timing sources and")
+        logger.info("   hashes linked libraries for reproducible benchmarks (default: False).")
+        logger.info("   This opt-in mode requires those runtime files to remain unchanged.")
         logger.info(" > \"--split_orders=\" allows to change what specific combination of coupling orders to consider.")
         logger.info(" > For process syntax, please see help generate.")
         logger.info(" > In order to save the directory generated or the reuse an existing one")
@@ -1182,6 +1207,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > allowed coupling operator are: \"==\", \"=\", \"<=\" and \">\".")
         logger.info("    \"==\" request exactly that number of coupling while \"=\" is interpreted as \"<=\".")
         logger.info(" > To generate a second process use the \"add process\" command")
+        logger.info(" > Crossing symmetry is used by default: a subprocess that is a crossing of")
+        logger.info("   another one (u g > u g of u u~ > g g) is evaluated with the matrix element")
+        logger.info("   of its base. Append --use_crossing=False to generate every subprocess on")
+        logger.info("   its own (on any line of the definition, it applies to the whole definition).")
         logger.info("Decay chain syntax:",'$MG:BOLD')
         logger.info(" o core process, decay1, (decay2, (decay2', ...)), ...  etc")
         logger.info(" o Example: generate p p > t~ t QED=0, (t~ > W- b~, W- > l- vl~), t > j j b @2",'$MG:color:GREEN')
@@ -1603,13 +1632,26 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("zerowidth_tchannel <value>",'$MG:color:GREEN')
         logger.info(" > (default: True) [Used ONLY for tree-level output with madevent]")
         logger.info(" > set the width to zero for all T-channel propagator --no impact on complex-mass scheme mode")
-        logger.info("auto_convert_model <value>",'$MG:color:GREEN')   
+        logger.info("zerowidth_external <value>",'$MG:color:GREEN')
+        logger.info(" > (default: True) [tree-level output] drop the width of an internal")
+        logger.info(" > propagator whose particle is also an external (initial/final) state")
+        logger.info("auto_convert_model <value>",'$MG:color:GREEN')
         logger.info(" > (default: False) If set on True any python2 UFO model will be automatically converted to pyton3 format")   
         logger.info("nlo_mixed_expansion <value>",'$MG:color:GREEN') 
         logger.info("deactivates mixed expansion support at NLO, goes back to MG5aMCv2 behavior")
         logger.info("acknowledged_v3.1_syntax <value>",'$MG:color:GREEN') 
         logger.info("if set to True allows to use syntax which have change meaning between 3.0 and 3.1 version")
           
+# 'output pythia8' (the process code for Pythia 8's internal matrix elements)
+# was dropped in MadGraph7: Pythia 8 showers the events of a madevent, mg7 or
+# NLO output instead.
+PYTHIA8_OUTPUT_DROPPED = ("output pythia8 is no longer supported in MadGraph7. "
+    "Pythia 8 runs on the generated events instead: use an event-generation "
+    "output (output madevent, output mg7, or an NLO output) and select "
+    "shower=Pythia8 at the launch question.")
+PYTHIA8_LAUNCH_DROPPED = ("%s is a Pythia 8 directory: launching Pythia 8 "
+    "process code is no longer supported. " + PYTHIA8_OUTPUT_DROPPED)
+
 #===============================================================================
 # CheckValidForCmd
 #===============================================================================
@@ -1841,7 +1883,20 @@ class CheckValidForCmd(cmd.CheckCmd):
                    '--collier_internal_stability_test':'False',
                    '--collier_mode':'1',
                    '--events': None,
-                   '--skip_evt':0}
+                   '--skip_evt':0,
+                   # 'check crossing' backend: standalone_fortran (the default,
+                   # fortran/f2py) or standalone (madmatrix).
+                   '--exporter':'standalone_fortran',
+                   # 'check crossing --exporter=standalone' vectorisation (SIMD)
+                   # width: auto (default), scalar, simd_128, simd_256,
+                   # avx512y, simd_512 -- the madmatrix cpu_mode tokens.
+                   '--simd':'auto',
+                   # 'check crossing --exporter=standalone' float precision:
+                   # m mixed (default), d double, f float.
+                   '--precision':'m'}
+
+        if args[0] in ['timing', 'profile']:
+            user_options['--timing_provenance'] = 'False'
 
         if args[0] == 'precision':
             user_options['--nb_event'] = '1000000'
@@ -2330,6 +2385,8 @@ This will take effect only in a NEW terminal
         if mode == 'madweight':
             raise self.InvalidCmd('launch on a madweight directory is no longer supported; '
                                   'MadWeight has been removed')
+        if mode == 'pythia8':
+            raise self.InvalidCmd(PYTHIA8_LAUNCH_DROPPED % path)
 
         args[0] = mode
         args.append(path)
@@ -2655,7 +2712,7 @@ This will take effect only in a NEW terminal
             raise self.InvalidCmd('output madweight is no longer supported; please use a different output mode')
 
         if args and args[0] == 'pythia8':
-            raise self.InvalidCmd('output pythia8 is no longer supported; please use a different output mode')
+            raise self.InvalidCmd(PYTHIA8_OUTPUT_DROPPED)
 
         if args and args[0] == 'standalone_cpp':
             raise self.InvalidCmd('output standalone_cpp is no longer supported; '
@@ -2726,22 +2783,12 @@ This will take effect only in a NEW terminal
                         raise self.InvalidCmd("This name correspond to a builtin MG5 directory. Please choose another name")
                 self._export_dir = path
             elif path == 'auto':
-                if self.options['pythia8_path']:
-                    self._export_dir = self.options['pythia8_path']
-                else:
-                    self._export_dir = '.'
-        else:
-            if self._export_format != 'pythia8':
-                # No valid path
                 self.get_default_path()
-                if '-noclean' not in args and os.path.exists(self._export_dir):
-                    args.append('-noclean')
-                    
-            else:
-                if self.options['pythia8_path']:
-                    self._export_dir = self.options['pythia8_path']
-                else:
-                    self._export_dir = '.'
+        else:
+            # No valid path
+            self.get_default_path()
+            if '-noclean' not in args and os.path.exists(self._export_dir):
+                args.append('-noclean')
 
         self._export_dir = os.path.realpath(self._export_dir)
 
@@ -2922,12 +2969,6 @@ This will take effect only in a NEW terminal
                                     (self._curr_model['name'], i)
             auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
-        elif self._export_format == 'pythia8':
-            if self.options['pythia8_path']:
-                self._export_dir = self.options['pythia8_path']
-            else:
-                self._export_dir = '.'
-            return
         else:
             self._export_dir = '.'
             return
@@ -3217,7 +3258,8 @@ class CompleteForCmd(cmd.CompleteCmd):
                        misc.plugin_diagram_filter(self.plugin_path, None)
                        for opt in ['--diagram_filter', '--tree_diagram_filter',
                                    '--loop_diagram_filter']]
-            return self.list_completion(text, ['--no_crossing', 
+            return self.list_completion(text, ['--use_crossing=True',
+                                               '--use_crossing=False',
                                                '--no_warning=duplicate',
                                                '--diagram_filter',
                                                '--tree_diagram_filter',
@@ -3357,6 +3399,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                                                   categories=False)}, formatting)
 
         cms_check_mode = len(args) >= 2 and args[1]=='cms'
+        crossing_check_mode = len(args) >= 2 and args[1]=='crossing'
 
         cms_options = ['--name=','--tweak=','--seed=','--offshellness=',
           '--lambdaCMS=','--show_plot=','--report=','--lambda_plot_range=','--recompute_width=',
@@ -3364,10 +3407,31 @@ class CompleteForCmd(cmd.CompleteCmd):
           '--loop_filter=','--resonances=']
 
         options = ['--energy=']
+        if len(args) >= 2 and args[1] in ['timing', 'profile']:
+            options.append('--timing_provenance=')
         if len(args) >= 2 and args[1] == 'precision':
             options.extend(['--nb_event=', '--backend='])
         if cms_options:
             options.extend(cms_options)
+        if crossing_check_mode:
+            # 'check crossing' only understands --energy, --exporter and (for
+            # the madmatrix 'standalone') --simd / --precision; the cms options above do not
+            # apply.
+            crossing_options = ['--energy=', '--exporter=', '--simd=',
+                                '--precision=']
+            # Value completion for the crossing-specific options.
+            if args[-1] == '--exporter=':
+                return self.list_completion(
+                    text, list(process_checks.CROSSING_EXPORTERS))
+            elif args[-1] == '--simd=':
+                return self.list_completion(
+                    text, list(process_checks.MG7_SIMD_CHOICES))
+            elif args[-1] == '--precision=':
+                return self.list_completion(
+                    text, list(process_checks.MG7_PRECISION_CHOICES))
+            # Propose the options themselves once the user starts an option.
+            if text.startswith('-'):
+                return self.list_completion(text, crossing_options)
 
         # Directory continuation
         if args[-1].endswith(os.path.sep):
@@ -3670,7 +3734,8 @@ class CompleteForCmd(cmd.CompleteCmd):
                         possible_options = ['f', 'noclean', 'nojpeg'],
                         possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False', '--hel_recycling=True', '--hel_recycling_chunk=', '--hel_recycling_max=', '--hel_recycling_jamp=', '--hel_recycling_tables=False',
                                                  '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
-                                                 '--mask=False', '--prefix=', '--axial_gauge=True', '--fermion_reference=False']):
+                                                 '--mask=False', '--prefix=', '--use_crossing=True', '--use_crossing=False',
+                                                 '--crossing_table=all', '--axial_gauge=True', '--fermion_reference=False']):
         "Complete the output command"
 
         possible_format = list(self._export_formats)
@@ -3687,16 +3752,13 @@ class CompleteForCmd(cmd.CompleteCmd):
         args = self.split_arg(line[0:begidx])
         if len(args) >= 1:
             
-            if len(args) > 1 and args[1] == 'pythia8':
-                possible_options_full = list(possible_options_full) + ['--version=8.1','--version=8.2'] 
-            
             if len(args) > 1 and args[1] == 'aloha':
                 try:
                     return self.aloha_complete_output(text, line, begidx, endidx)
                 except Exception as error:
                     print(error)
             if 'standalone_fortran' in args:
-                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=', '--zerowidth_decay=']
+                possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=', '--f2py_per_process=False', '--zerowidth_decay=']
 
             # Directory continuation
             if args[-1].endswith(os.path.sep):
@@ -4107,7 +4169,10 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                      'checks', 'parameters', 'options', 'coupling_order','variable',
                      'modellist', 'fockstates', 'boundstates']
     _add_opts = ['process', 'model']
-    _save_opts = ['model', 'processes', 'options']
+    # (no 'processes': the amplitudes kept after an output are the base
+    # amplitudes of its matrix elements, which lost the diagrams its --mask
+    # trimmed, so a saved list could not be output with the other --mask)
+    _save_opts = ['model', 'options']
     # commands the running tutorial provides, also accepted as `tutorial X`:
     # people reach for `tutorial hint` as readily as `hint`
     _tutorial_step_cmds = ('hint', 'solution', 'next', 'repeat', 'back', 'skip')
@@ -4122,12 +4187,12 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
                    'gauge','lorentz', 'brs', 'cms', 'flavor', 'language',
-                   'precision']
+                   'crossing', 'precision']
     _import_formats = ['model_v4', 'model', 'proc_v4', 'command', 'banner']
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
                      'looptools', 'cuttools_iregi', 'MadSTR', 'RunningCoupling',
-                     'madspace', 'pyamplicol', 'madtrex']
+                     'madspace', 'ninjars', 'pyamplicol', 'madtrex']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
@@ -4144,6 +4209,24 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _export_formats = _v4_export_formats + ['aloha',
                                             'matchbox_cpp', 'matchbox', 'mg7_v5', 'mg7',
                                             'standalone']
+    # Formats that CONSUME the recorded crossings (merge_crossing='record')
+    # instead of needing them expanded back into separate subprocesses: they fold
+    # each crossed subprocess into its base directory and reach it through the
+    # base's crossing-aware SMATRIX/sigmaKin at an extended flavor index.
+    # 'standalone_fortran' is the fortran standalone and 'standalone' the
+    # madmatrix one (the names flipped in PR #64 -- test membership EXACTLY,
+    # 'standalone' is a prefix of every other standalone_* format).
+    # 'standalone_rw' is the reweight's own output: its python driver resolves a
+    # crossed event through the generated GET_PDG_FOR_FLAVOR entry points (see
+    # reweight_interface.ReweightInterface.build_cross_resolve).
+    # 'mg7' (madspace) writes one subprocesses.json entry per crossed
+    # subprocess, pointing at its base's library with the extended flavor id
+    # (export_mg7.OneProcessExporterMG7.get_crossed_subprocess_info); the
+    # crossings it cannot represent, and those recorded inside a decay chain,
+    # are expanded (the exporter's crossing_foldable /
+    # folds_decay_chain_crossings).
+    _crossing_folding_formats = ('standalone_fortran', 'standalone',
+                                 'standalone_rw', 'mg7')
     _set_options = ['group_subprocesses',
                     'ignore_six_quark_processes',
                     'stdout_level',
@@ -4158,6 +4241,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'max_npoint_for_channel',
                     'max_t_for_channel',
                     'zerowidth_tchannel',
+                    'zerowidth_external',
                     'default_unset_couplings',
                     'nlo_mixed_expansion',
                     'color_basis',
@@ -4210,6 +4294,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'golem':'auto',
                        'samurai':None,
                        'ninja':'./HEPTools/lib',
+                       'ninjars':None,
                        'collier':'./HEPTools/lib',
                        'dmtcp': None,
                        'lhapdf':'lhapdf-config',
@@ -4246,6 +4331,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'default_unset_couplings': 99, # 99 means infinity
                           'max_t_for_channel': 99, # means no restrictions
                           'zerowidth_tchannel': True,
+                          'zerowidth_external': True,
                           'nlo_mixed_expansion':True,
                           'apply_flavor_grouping': True,
                           'color_basis': 'auto',
@@ -4272,6 +4358,24 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _curr_helas_model = None
     _curr_exporter = None
     _second_exporter = None
+    # UI flag --use_crossing; see do_add. DEFAULT ON: the crossed subprocesses
+    # are recorded on their base at generation and reached through its
+    # crossing-aware matrix element (the fortran/C++ standalone and mg7 fold
+    # them, madevent expands them and shares the base matrix element through
+    # its router; any other output expands them), and --use_crossing=False
+    # gives the complete un-crossed output.
+    _use_crossing = True
+    # Sticky: an explicit --use_crossing=False on ANY line of the current
+    # process definition keeps it off, even if a later line asks for it.
+    _use_crossing_off = False
+    # Same flag on the output line, for the output being written (see do_output).
+    # do_output sets it on every call, so it can never leak to the next output.
+    _output_use_crossing = True
+    # _crossing_fold_signature() of the output _curr_matrix_elements were built
+    # for (None: not built by _export). Recorded crossings come out folded or
+    # expanded depending on it, so an output asking for the other answer must
+    # not reuse them; see generate_matrix_elements in _export.
+    _curr_me_folds_crossings = None
     _done_export = False
     _curr_decaymodel = None
 
@@ -4400,6 +4504,41 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         
         return value
 
+    def pop_use_crossing_flag(self, args):
+        """Remove --use_crossing[=True|False] from `args` and return its value.
+
+        Returns None when the flag is absent, so the caller keeps its own
+        default. Shared by do_add (where the flag decides whether the crossed
+        subprocesses are folded onto their base at generation) and by do_output
+        (where it decides whether this output keeps them folded).
+
+        '--no_crossing' (the MG5 3.x flag) is accepted as a deprecated alias of
+        '--use_crossing=False': left in `args` it would reach check_add as a
+        particle name. It means the complete output, never the 3.x behaviour
+        of dropping the crossed subprocesses (see do_add).
+        """
+        value = None
+        for arg in args[:]:
+            if arg == '--no_crossing':
+                logger.warning('--no_crossing is deprecated: use '
+                               '--use_crossing=False instead (treated as such)')
+                value = False
+            elif arg == '--use_crossing':
+                value = True
+            elif arg.startswith('--use_crossing='):
+                given = arg.split('=', 1)[1]
+                if given.lower() in ['true', 't', '1', 'yes', 'on']:
+                    value = True
+                elif given.lower() in ['false', 'f', '0', 'no', 'off']:
+                    value = False
+                else:
+                    raise self.InvalidCmd('--use_crossing expects True or '
+                                          'False, got \'%s\'' % given)
+            else:
+                continue
+            args.remove(arg)
+        return value
+
     def extract_diagram_filter(self, args, option='--diagram_filter'):
         """Remove the --diagram_filter[=PLUGINNAME] option from args and return
         the filter to use: False if absent, True for the filter of
@@ -4490,20 +4629,76 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         standalone_only = False
         if '--standalone' in args:
             standalone_only = True
-            merge_crossing = True
-            args.remove('--standalone')            
+            args.remove('--standalone')
 
-        merge_crossing = False
-        if '--no_crossing' in args:
-            merge_crossing = True
-            args.remove('--no_crossing') 
+        # Crossing symmetry is ON by default. --use_crossing (bare) or
+        # --use_crossing=True asks for it, --use_crossing=False turns it off for
+        # the whole definition. --standalone does not affect it.
+        use_crossing = self.pop_use_crossing_flag(args)
+        # The flag has to be popped HERE, before check_add sees `args`, but it
+        # is resolved into self._use_crossing further down -- after check_add.
+        # See the comment there.
 
         # Check the validity of the arguments
         self.check_add(args)
 
         if args[0] == 'model':
             return self.add_model(args[1:])
-        
+
+        # Resolve what THIS line means for the definition as a whole. (With the
+        # default off, an `and` accumulator could never be lifted -- False and
+        # True is False -- so an explicit --use_crossing=True was silently
+        # ignored.) Instead: an explicit True switches it on, an explicit False
+        # switches it off for good (a multi-line definition must not end up
+        # half crossed), and a line with no flag inherits what the definition
+        # already chose -- which starts on.
+        #
+        # AFTER check_add, and that is load-bearing: with no model imported yet
+        # check_generate imports the Standard Model for the user, and do_import
+        # calls clean_process(), which resets exactly these attributes. Setting
+        # them earlier left the LOCAL merge_crossing below enabled while
+        # self._use_crossing went back to False -- so the crossings were folded
+        # onto their base at generation and the exporter, which reads the
+        # attribute, then wrote no decoder for them. `p p > j j
+        # --use_crossing=True` came out as 3 subprocess directories covering 15
+        # of its 65 flavor columns, with the other 50 unreachable and an
+        # extended FLAV_IDX returning 0 in silence -- but only in a script that
+        # had not imported a model of its own first, which is why it survived.
+        if use_crossing is False:
+            self._use_crossing_off = True
+        elif use_crossing is True:
+            self._use_crossing = True
+        if getattr(self, '_use_crossing_off', False):
+            self._use_crossing = False
+        use_crossing = self._use_crossing
+        # Crossed subprocesses are ALWAYS kept (merge_crossing=False, the
+        # historical 3.x default): use_crossing only decides later, at the
+        # exporter stage, whether they collapse into a single extended-FLAV_IDX
+        # matrix element (fortran standalone) or are written out as their own
+        # matrix elements (every other output, incl. madevent). The old
+        # merge_crossing=True / --no_crossing path DROPS the crossed processes
+        # from the amplitude list ("do not generate diagrams"), silently losing
+        # those partonic contributions, so it must not be reachable from
+        # --use_crossing: use_crossing=False has to remain a complete output.
+        #
+        # merge_crossing='record' keeps the partonic contribution: the crossed
+        # process is recorded on the base (not generated on its own) and reached
+        # through the base's crossing-aware SMATRIX. This is the DEFAULT for a
+        # crossing-enabled generation -> the standalone output is one directory
+        # per base ME, and the grouped backends (madevent/mg7) reconstruct the
+        # crossed subprocesses at output time (see do_output). A process that
+        # breaks crossing (s-channel constraint, decay chain, loop, ...) falls
+        # back to full generation per-process inside generate_matrix_elements.
+        # --use_crossing=False keeps the complete unmerged generation, and
+        # MG_MERGE_CROSSING=off is a debug escape hatch to the same.
+        merge_crossing = 'record' if use_crossing else False
+        if os.environ.get('MG_MERGE_CROSSING') == 'off':
+            merge_crossing = False
+
+        # self._use_crossing is the definition-wide choice resolved just above
+        # (and reset per definition by clean_process/do_generate); the exporter
+        # reads that attribute, `merge_crossing` here only drives generation.
+
         # special option for 1->N to avoid generation of kinematically forbidden
         #decay.
         if args[-1].startswith('--optimize'):
@@ -4694,12 +4889,14 @@ This implies that with decay chains:
             ndiags = sum([amp.get_number_of_diagrams() for \
                               amp in myproc.get('amplitudes')])
             
-            logger.info("%i processes with %i diagrams generated in %0.3f s" % \
-                  (nprocs, ndiags, (cpu_time2 - cpu_time1)))
+            logger.info("%i processes with %i diagrams generated in %0.3f s%s" % \
+                  (nprocs, ndiags, (cpu_time2 - cpu_time1),
+                   self._crossing_summary(myproc.get('amplitudes'))))
             ndiags = sum([amp.get_number_of_diagrams() for \
                               amp in self._curr_amps])
-            logger.info("Total: %i processes with %i diagrams" % \
-                  (len(self._curr_amps), ndiags))        
+            logger.info("Total: %i processes with %i diagrams%s" % \
+                  (len(self._curr_amps), ndiags,
+                   self._crossing_summary(self._curr_amps)))
 
             self._line_ranges.append((first_amp, len(self._curr_amps),
                     amplitudes_prefer_fd_gauge(self._curr_amps[first_amp:])))
@@ -5563,6 +5760,15 @@ This implies that with decay chains:
         elif args[0] == 'processes':
             for amp in self._curr_amps:
                 print(amp.nice_string_processes())
+                # the crossed processes folded into it (--use_crossing) are no
+                # amplitude of their own, but are part of the generation
+                last = None
+                for base, xproc in self._recorded_crossings([amp]):
+                    if base is not last:
+                        print('  Crossed processes evaluated through %s:'
+                              % base.get('process').base_string())
+                        last = base
+                    print(xproc.nice_string(4))
             for procdef in self._curr_amplicol_defs:
                 print('Process: %s [amplicol] (no diagrams)'
                       % procdef.nice_string(prefix=False).strip())
@@ -6257,6 +6463,8 @@ This implies that with decay chains:
         self.set_color_basis_mode()
 
         args = self.split_arg(line)
+        automatic_reduction = (args and args[0] in ('timing', 'profile') and
+                               not any(arg.startswith('--reduction=') for arg in args))
         # Check args validity
         param_card = self.check_check(args)
 
@@ -6320,6 +6528,13 @@ This implies that with decay chains:
                                        " must be an integer, not %s."%option[1])
             elif option[0]=='--reduction':
                 MLoptions['MLReductionLib']=[int(ir) for ir in option[1].split('|')]
+                if 2 in MLoptions['MLReductionLib']:
+                    raise self.InvalidCmd('PJFry (reduction ID 2) is retired; '
+                                          'use 8 for NinjaRS or 6 for Ninja.')
+            elif option[0]=='--timing_provenance':
+                if len(option) != 2 or option[1].lower() not in ('true', 'false'):
+                    raise self.InvalidCmd("The value of 'timing_provenance' must be True or False.")
+                options['timing_provenance'] = option[1].lower() == 'true'
             elif option[0]=='--collier_mode':
                 MLoptions['COLLIERMode']=int(option[1])
             elif option[0]=='--collier_cache':
@@ -6348,6 +6563,36 @@ This implies that with decay chains:
                 options['report'] = option[1].lower()
             elif option[0]=='--seed':
                 options['seed'] = int(option[1])
+            elif option[0]=='--exporter':
+                # Backend for 'check crossing': which standalone output to build
+                # and run the crossing self-check against.
+                if option[1] not in process_checks.CROSSING_EXPORTERS:
+                    raise self.InvalidCmd(
+                        "The '--exporter' option for 'check crossing' must be "
+                        "one of %s, not '%s'." % (
+                            ', '.join(process_checks.CROSSING_EXPORTERS),
+                            option[1]))
+                options['exporter'] = option[1]
+            elif option[0]=='--simd':
+                # Vectorisation width for 'check crossing --exporter=
+                # standalone' (madmatrix; ignored by the fortran backend).
+                if option[1] not in process_checks.MG7_SIMD_CHOICES:
+                    raise self.InvalidCmd(
+                        "The '--simd' option for 'check crossing' must be one "
+                        "of %s, not '%s'." % (
+                            ', '.join(process_checks.MG7_SIMD_CHOICES),
+                            option[1]))
+                options['simd'] = option[1]
+            elif option[0]=='--precision':
+                # Floating-point precision for 'check crossing --exporter=
+                # standalone' (madmatrix; ignored by the fortran backend).
+                if option[1] not in process_checks.MG7_PRECISION_CHOICES:
+                    raise self.InvalidCmd(
+                        "The '--precision' option for 'check crossing' must be "
+                        "one of %s, not '%s'." % (
+                            ', '.join(process_checks.MG7_PRECISION_CHOICES),
+                            option[1]))
+                options['precision'] = option[1]
             elif option[0]=='--name':
                 if '.' in option[1]:
                     raise self.InvalidCmd("Do not specify the extension in the"+
@@ -6611,6 +6856,24 @@ This implies that with decay chains:
         # specified below where the user must be sure to have writing access.
         output_path = os.getcwd()
 
+        # The crossing check does not use the analytic MatrixElementEvaluator /
+        # gauge / CMS machinery: it regenerates the process to fortran
+        # standalone twice (crossing on and off) and compares the compiled
+        # matrix elements. Route it here and return early.
+        if args[0] == 'crossing':
+            options['proc_line'] = proc_line
+            options.setdefault('exporter', 'standalone_fortran')
+            crossing_result = process_checks.check_crossing(
+                myprocdef, param_card=param_card, options=options, cmd=self)
+            text = ('Crossing symmetry check (crossing on vs off, exporter=%s):'
+                    '\n' % options['exporter'])
+            text += process_checks.output_crossing(crossing_result) + '\n'
+            logging.getLogger('madgraph.check_cmd').info(text)
+            process_checks.clean_added_globals(process_checks.ADDED_GLOBAL)
+            if not options['reuse']:
+                process_checks.clean_up(self._mgme_dir)
+            return
+
         if args[0] in ['timing','stability', 'profile'] and not \
                                         myprocdef.get('perturbation_couplings'):
             raise self.InvalidCmd("Only loop processes can have their "+
@@ -6670,6 +6933,11 @@ This implies that with decay chains:
         # check modes for which no process could be checked at all
         not_checked = []
 
+        if automatic_reduction and myprocdef and myprocdef.get('has_born'):
+            from madgraph.various import ninjars_install
+            MLoptions['MLReductionLib'] = ninjars_install.default_reduction_library(
+                myprocdef.get('has_born'), self.options.get('ninjars'))
+
         if "_cuttools_dir" in dir(self):
             CT_dir = self._cuttools_dir
         else:
@@ -6688,10 +6956,9 @@ This implies that with decay chains:
                     MLoptions["MLReductionLib"].remove(3)
 
 
-        if "MLReductionLib" in MLoptions:
-            if 2 in MLoptions["MLReductionLib"]:
-                logger_check.warning('PJFRY not supported anymore; it will be skipped.')                    
-                MLoptions["MLReductionLib"].remove(2)
+        if 2 in MLoptions.get('MLReductionLib', []):
+            raise self.InvalidCmd('PJFry (reduction ID 2) is retired; '
+                                  'use 8 for NinjaRS or 6 for Ninja.')
                     
         if 'golem' in self.options and isinstance(self.options['golem'],str):
             TIR_dir['golem_dir']=self.options['golem']
@@ -6724,6 +6991,18 @@ This implies that with decay chains:
                 if 6 in MLoptions["MLReductionLib"]:
                     logger_check.warning('Ninja not available on your system; it will be skipped.')
                     MLoptions["MLReductionLib"].remove(6)
+
+        if isinstance(self.options.get('ninjars'), str):
+            from madgraph.various import ninjars_install
+            TIR_dir['ninjars_dir'] = self.options['ninjars']
+            if 8 in MLoptions.get('MLReductionLib', []) and not ninjars_install.is_available(
+                    self.options['ninjars']):
+                raise self.InvalidCmd("NinjaRS is unavailable or unusable at %s. "
+                                      "Run 'install ninjars --update'." %
+                                      self.options['ninjars'])
+        elif 8 in MLoptions.get('MLReductionLib', []):
+            raise self.InvalidCmd("NinjaRS is disabled. Run 'install ninjars' "
+                                  "or set ninjars to its library directory.")
         
         if args[0] in ['timing']:
             timings = process_checks.check_timing(myprocdef,
@@ -7119,6 +7398,14 @@ This implies that with decay chains:
         # Reset polarization-citation marker (a new process definition starts)
         self._uses_polarization = False
         self._uses_density_matrix = False
+        # Reset the --use_crossing choice (a new process definition starts).
+        # The output-line one is set by every do_output, but the loop/aMC@NLO
+        # interfaces have their own do_output which does not, so give it the
+        # same lifetime as the generate-line flag rather than leaving the last
+        # output's choice behind.
+        self._use_crossing = True
+        self._use_crossing_off = False
+        self._output_use_crossing = True
         # Reset _done_export, since we have new process
         self._done_export = False
         # Also reset _export_format and _export_dir
@@ -9779,6 +10066,22 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
         elif args[0] == 'looptools':
             self.install_reduction_library(force=True)
             return
+        elif args[0] == 'ninjars':
+            from madgraph.various import ninjars_install
+            prefix, config_file = self.heptools_install_target(
+                self.options['heptools_install_dir'])
+            libdir = ninjars_install.install(
+                MG5DIR, prefix,
+                arguments=install_options['options_for_HEPToolsInstaller'] + add_options,
+                fortran_compiler=self.options['fortran_compiler'],
+                jobs=self.options['nb_core'])
+            if libdir is not None:
+                self.options['ninjars'] = libdir
+                _, config_file = self.heptools_install_target(
+                    os.path.dirname(os.path.dirname(libdir)))
+                self.exec_cmd('save options %s ninjars' % config_file,
+                              printcmd=False, log=False)
+            return
         elif args[0] == 'cuttools_iregi':
             self.install_cuttools_iregi()
             return
@@ -10763,6 +11066,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     if key in self.options_madgraph:
                         self.history.append('set %s %s' % (key, self.options[key]))
 
+        # Check for the minimal required compiler version (C++20 with
+        # std::format, needed by madspace): gcc 13, LLVM clang 17,
+        # Apple clang 15
+        for warnings in [misc.check_gcc_version('13'),
+                         misc.check_clang_version('17', '15')]:
+            if warnings:
+                logger.warning(warnings)
+
         # Configure the way to open a file:
         launch_ext.open_file.configure(self.options)
         # Configure the way to compress a file:
@@ -10903,9 +11214,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                                 shell = isinstance(self, cmd.CmdShell),
                                 options=self.options,**options)
 
-        elif args[0] == 'pythia8':
-            ext_program = launch_ext.Pythia8Launcher( args[1], self, **options)
-
         elif args[0] == 'aMC@NLO':
             if options['interactive']:
                 if isinstance(self, cmd.CmdShell):
@@ -10913,10 +11221,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 else:
                     ME = amcatnlo_run.aMCatNLOCmd(me_dir=args[1],options=self.options)
                     ME.pass_in_web_mode()
-                # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')
-                               and not cmd.is_question_answer(l)]
-                for line in config_line:
+                # transfer interactive configuration (without the
+                # generation-time options the run interface rejects)
+                for line in cmd.set_lines_for_run(self.history):
                     ME.exec_cmd(line)
                 stop = self.define_child_cmd_interface(ME)
                 return stop
@@ -11004,32 +11311,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             else:
                 raise self.RWError('Could not load model from file %s' \
                                       % args[1])
-        elif args[0] == 'processes':
-            amps,proc_defs = save_load_object.load_from_file(args[1])
-            if isinstance(amps, diagram_generation.AmplitudeList):
-                cpu_time2 = time.time()
-                logger.info("Loaded processes from file in %0.3f s" % \
-                      (cpu_time2 - cpu_time1))
-                if amps:
-                    model = amps[0].get('process').get('model')
-                    if not model.get('parameters'):
-                        # This is a v4 model.  Look for path.
-                        self._model_v4_path = import_v4.find_model_path(\
-                                   model.get('name').replace("_v4", ""),
-                                   self._mgme_dir)
-                    else:
-                        self._model_v4_path = None
-                    # If not exceptions from previous steps, set
-                    # _curr_amps and _curr_model
-                    self._curr_amps = amps
-                    self._curr_model = model
-                    self._curr_proc_defs = proc_defs
-                    logger.info("Model set from process.")
-                    # Do post-processing of model
-                    self.process_model()
-                self._done_export = None
-            else:
-                raise self.RWError('Could not load processes from file %s' % args[1])
 
 
     def post_install_RunningCoupling(self):
@@ -12195,13 +12476,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     logger.info('Saved model to file %s' % args[1])
             else:
                 raise self.InvalidCmd('No model to save!')
-        elif args[0] == 'processes':
-            if self._curr_amps:
-                if save_load_object.save_to_file(args[1], (self._curr_amps,self._curr_proc_defs) ):
-                    logger.info('Saved processes to file %s' % args[1])
-            else:
-                raise self.InvalidCmd('No processes to save!')
-
         elif args[0] == 'options':
             partial_save = False
             to_define = {}
@@ -12808,12 +13082,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
 
     def setup_path_for_options(self,name, args, log=True):
-        """Set the path for golem/samurai/ninja/collier options.
+        """Set the path for golem/samurai/ninja/ninjars/collier options.
         Example: set golem /PATH/TO/golem/lib
         or: set golem None
         """
         args = [name] + args[:]
-        if not (args[0] in ['ninja','collier'] and args[1]=='./HEPTools/lib'):
+        if not (args[0] in ['ninja','ninjars','collier'] and args[1]=='./HEPTools/lib'):
             if args[1] in ['None',"''",'""']:
                 self.options[args[0]] = None
             else:
@@ -12836,6 +13110,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     set2_golem = lambda self, *args, **opts : self.setup_path_for_options('golem'   , *args, **opts)
     set2_samurai = lambda self, *args, **opts : self.setup_path_for_options('samurai' , *args, **opts)  
     set2_ninja = lambda self, *args, **opts : self.setup_path_for_options('ninja'   , *args,   **opts)
+    set2_ninjars = lambda self, *args, **opts : self.setup_path_for_options('ninjars', *args, **opts)
     set2_collier = lambda self,*args, **opts : self.setup_path_for_options('collier' , *args, **opts)
 
     def set2_lhapdf(self, args, log=True):
@@ -13178,19 +13453,46 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         
     def help_set2_zerowidth_tchannel(self):
         logger.info("zerowidth_tchannel <value>",'$MG:color:GREEN')
-        logger.info(" > (default: True) [Used ONLY for tree-level output with madevent]")
-        logger.info(" > set the width to zero for all T-channel propagator --no impact on complex-mass scheme mode")
+        logger.info(" > (default: True) [generation/output-time option for tree-level output]")
+        logger.info(" > drop the width in the propagator denominator for spacelike (t-channel,")
+        logger.info(" > P^2<0) momenta. Done inside the ALOHA routine (runtime sign of P^2), so it")
+        logger.info(" > applies to every tree-level output. No impact in complex-mass-scheme mode.")
         
 
 
     def set2_zerowidth_tchannel(self, args, log=True):
         """Set whether the code should use zero-width for t-channel propagators.
         Default is set to True. (since v2.8.0)
-        Example: set zerowidth_tchannel False 
-        """ 
+        The treatment is now performed inside the ALOHA propagator routine (it
+        drops the width for spacelike, P^2<0, momenta); this flag is therefore an
+        output-time (code-generation) option and propagates to aloha here.
+        Example: set zerowidth_tchannel False
+        """
         args = ['zerowidth_tchannel'] + args
         self.check_set(args)
-        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0]) 
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
+        aloha.t_channel_width = not self.options[args[0]]
+
+    def help_set2_zerowidth_external(self):
+        logger.info("zerowidth_external <value>",'$MG:color:GREEN')
+        logger.info(" > (default: True) [generation/output-time option for tree-level output]")
+        logger.info(" > drop the width in the propagator denominator of any internal propagator")
+        logger.info(" > whose particle also appears as an external (initial/final) state -- an")
+        logger.info(" > external particle is an on-shell asymptotic state, so its internal")
+        logger.info(" > propagator (e.g. the s/u-channel top in t a > t a) must not carry the")
+        logger.info(" > i*M*Gamma resonance term. In the complex-mass scheme the real mass is")
+        logger.info(" > used there too. External legs themselves have no width argument.")
+
+    def set2_zerowidth_external(self, args, log=True):
+        """Set whether the width should be dropped for internal propagators whose
+        particle is also an external state. Default True. Applied at output time
+        per matrix element (HelasMatrixElement.set_onshell_particles_width_to_zero),
+        so it is a code-generation option like zerowidth_tchannel.
+        Example: set zerowidth_external False
+        """
+        args = ['zerowidth_external'] + args
+        self.check_set(args)
+        self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
 
     def help_set2_merge_quartic_vertices(self):
         logger.info("merge_quartic_vertices <value>",'$MG:color:GREEN')
@@ -13459,14 +13761,19 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     def help_set2_color_basis(self):
         logger.info("color_basis <value>",'$MG:color:GREEN')
         logger.info(" > (default: auto) select the color basis used for processes")
-        logger.info("   whose color structure is purely adjoint (multi-gluon).")
+        logger.info("   whose color structure is purely adjoint (all the colored")
+        logger.info("   particles are gluons, next to any number of color singlets,")
+        logger.info("   e.g. g g > h + n g in the Higgs effective theory).")
         logger.info(" > trace: the (n-1)! basis of traces of fundamental generators")
         logger.info(" > ddm:   the (n-2)! Del Duca-Dixon-Maltoni half-ladder basis")
         logger.info("          (n-1 times fewer JAMPs, (n-1)^2 times smaller color matrix)")
-        logger.info(" > auto:  ddm for the output formats which support it (madevent, mg7,")
-        logger.info("          standalone and standalone_fortran; the trace basis is still")
-        logger.info("          used next to it for the color flow of each event), trace")
-        logger.info("          otherwise (NLO, pythia8, matchbox, ...)")
+        logger.info("          for the output formats which can use it. The others keep")
+        logger.info("          the trace basis, with an info message (loop processes,")
+        logger.info("          NLO, matchbox, mg7_v5, ...)")
+        logger.info(" > auto:  ddm for the output formats which use it by default (madevent,")
+        logger.info("          mg7, standalone and standalone_fortran; the trace basis is")
+        logger.info("          still used next to it for the color flow of each event),")
+        logger.info("          trace otherwise")
 
     def set2_color_basis(self, args, log=True):
         """Set the color basis used for fully adjoint (multi-gluon) processes.
@@ -13583,7 +13890,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         elif args[0] == 'fastjet':
             raise Exception('This option is now handled by a dedicated function.')
             # set_fastjet(args[1:], log=log)
-        elif args[0] in ['golem','samurai','ninja','collier']:
+        elif args[0] in ['golem','samurai','ninja','ninjars','collier']:
             raise Exception('This option is now handled by a dedicated function.')
             # setup_path_for_options(args, log=log)
         elif args[0].startswith('lhapdf'):
@@ -13744,6 +14051,17 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         """Main commands: Initialize a new Template or reinitialize one"""
 
         args = self.split_arg(line)
+
+        # --use_crossing=False on the output line: write THIS output without the
+        # crossing machinery, whatever the generation chose. The exporters read
+        # it through _use_crossing (see Export{V4,CPP}Factory) and the crossings
+        # folded onto their base at generation are expanded back into explicit
+        # subprocesses (_output_folds_crossings), so the output stays complete --
+        # it is exactly the generate --use_crossing=False output. Set on every
+        # do_output, so it never leaks to the next one.
+        output_use_crossing = self.pop_use_crossing_flag(args)
+        self._output_use_crossing = output_use_crossing is not False
+
         # Check Argument validity
         self._export_plugin = None
         self.check_output(args)
@@ -13821,12 +14139,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if self._export_format in ('standalone', 'mg7', 'mg7_v5') and \
                                             'hel_recycling' not in line_options:
             line_options['hel_recycling'] = 'auto'
-        main_file_name = ""
-        try:
-            main_file_name = args[args.index('-name') + 1]
-        except Exception:
-            pass
-
 
         ################
         # ALOHA OUTPUT #
@@ -13883,7 +14195,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         config['standalone_msF'] = {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_msP'] = {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_rw'] =  {'check': False, 'exporter': 'v4',  'output':'Template'}
-        config['pythia8'] =        {'check': False, 'exporter': 'cpp', 'output':'dir'}
         config['matchbox_cpp'] =   {'check': True, 'exporter': 'cpp', 'output': 'Template'}
         config['matchbox'] =       {'check': True, 'exporter': 'v4',  'output': 'Template'}
         config['mg7_v5'] =         {'check': True, 'exporter': 'cpp', 'output': 'Template'}
@@ -13907,6 +14218,20 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             options['me_exporter']['name'] = me_exporter
         else:
             options['me_exporter'] = {}
+
+        # A loop-induced process is exported by this tree-level do_output (see
+        # create_loop_induced), but only the madevent formats have a
+        # loop-induced exporter to route it to. Refuse the others here, ahead
+        # of the directory cleaning just below, so that a guaranteed refusal
+        # never deletes an existing output directory first. The exporter
+        # factories carry the same check as a backstop.  Kept first in this
+        # block so a refusal costs nothing: everything below it configures a
+        # build that is not going to happen.
+        if self._export_format not in export_v4.LOOP_INDUCED_FORMATS and \
+           self._curr_amps and isinstance(self._curr_amps[0],
+                                    loop_diagram_generation.LoopAmplitude):
+            raise self.InvalidCmd(export_v4.loop_induced_not_supported_msg(
+                        self._export_format, self._curr_amps[0].get('process')))
 
         # now that the backend getting the matrix elements is known, an 'auto'
         # merge_quartic_vertices can be resolved -- before anything is built
@@ -13947,17 +14272,20 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         % (format, ', '.join(
                                diagram_generation.TREE_INTERFERENCE_FORMATS)))
 
-        # check
+        # check: never write into the current directory itself (e.g. 'output
+        # matrix auto', for the formats without an automatic directory name),
+        # but into a new PROC_<format>_<i> directory in it
         if os.path.realpath(self._export_dir) == os.getcwd():
             if len(args) == 0:
                 i=0
                 while 1:
-                    if os.path.exists('Pythia8_proc_%i' %i):
+                    if os.path.exists('PROC_%s_%i' % (self._export_format, i)):
                         i+=1
                     else:
                         break
-                os.mkdir('Pythia8_proc_%i' %i) 
-                self._export_dir = pjoin(self._export_dir, 'Pythia8_proc_%i' %i)
+                new_dir = 'PROC_%s_%i' % (self._export_format, i)
+                os.mkdir(new_dir)
+                self._export_dir = pjoin(self._export_dir, new_dir)
                 logger.info('Create output in %s' % self._export_dir)
             elif not args[0] in ['.', '-f']:
                 raise self.InvalidCmd('Wrong path directory to create in local directory use \'.\'')
@@ -14065,7 +14393,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             base_objects.Vertex.max_tpropa = int(self.options['max_t_for_channel'])   
 
         # Perform export and finalize right away
-        self.export(nojpeg, main_file_name, group_processes, args)
+        self.export(nojpeg, group_processes, args)
 
         # Automatically run finalize
         self.finalize(nojpeg, flaglist=flaglist)
@@ -14076,21 +14404,319 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # Reset _export_dir, so we don't overwrite by mistake later
         self._export_dir = None
 
+    def output_uses_crossing(self):
+        """Whether the output being written gets the crossing machinery: the
+        generation asked for it (--use_crossing of generate / add process,
+        sticky off, see do_add) and the output line did not refuse it. This is
+        the use_crossing option the exporter factories (ExportV4Factory,
+        ExportCPPFactory) hand the exporters."""
+        return bool(getattr(self, '_use_crossing', True) and
+                    getattr(self, '_output_use_crossing', True))
+
+    def _output_folds_crossings(self, decay_chains=False):
+        """True if the output being written consumes the recorded crossings.
+
+        Only the folding-capable backends do, and only when this output gets
+        the crossing machinery (output_uses_crossing): --use_crossing=False on
+        the output line, or on any line of the generation, drops it, so the
+        crossings have to come back as explicit subprocesses just like for a
+        non-folding backend. Asking the output line alone left the crossings
+        recorded by an earlier `generate ... --use_crossing=True` neither
+        expanded nor written once a later `add process ... --use_crossing=False`
+        turned the machinery off.
+
+        With `decay_chains`, the question is asked for the crossings recorded
+        inside a decay chain, which a folding backend may still not read (the
+        mg7 one: folds_decay_chain_crossings on the exporter).
+        """
+        folds = self._export_format in self._crossing_folding_formats and \
+            self.output_uses_crossing()
+        if folds and decay_chains:
+            folds = getattr(self._curr_exporter,
+                            'folds_decay_chain_crossings', True)
+        return folds
+
+    def _crossing_foldable(self, amp, record):
+        """Whether the folding output being written can fold the recorded
+        crossing `record` of `amp` into its base: the exporter decides
+        (crossing_foldable), a crossing it refuses is expanded instead."""
+        check = getattr(self._curr_exporter, 'crossing_foldable', None)
+        return True if check is None else bool(check(amp, record))
+
+    def _crossing_fold_signature(self):
+        """What the matrix elements built for this output depend on, as far
+        as the recorded crossings go: folded or expanded, the decay chains'
+        answer, and -- since which crossings fold is the exporter's call --
+        the format."""
+        folds = self._output_folds_crossings()
+        return (folds, self._output_folds_crossings(decay_chains=True),
+                self._export_format if folds else None)
+
+    def _crossing_needs_expansion(self, amps):
+        """True if `amps` carry folded crossings the current output cannot read.
+
+        Only the folding-capable standalone backends consume the recorded
+        crossings directly (they reach them through the base's crossing-aware
+        SMATRIX/sigmaKin). Every other output needs them back as explicit
+        subprocesses, and expanding is always safe: it just reproduces the
+        complete unmerged (--use_crossing=False) output.
+
+        This used to carve out squared-order processes as well: their matrix
+        element is written from matrix_standalone_splitOrders_v4.inc, which had
+        no crossing machinery, so folding into it dropped the crossed
+        subprocesses outright. That template folds now
+        (fill_crossing_replace_dict_so), so the carve-out is gone and the
+        answer is the format again. The other two folding formats never needed
+        it: standalone_rw writes the same fortran template, and the
+        mg7/cudacpp exporter has no split-orders variant at all.
+        """
+        crossed = [amp for amp in amps if 'crossed_processes' in amp
+                   and amp.get('crossed_processes')]
+        if not crossed:
+            return False
+        if not self._output_folds_crossings():
+            return True
+        # a folding output may still refuse some of them (crossing_foldable)
+        return any(not self._crossing_foldable(amp, record)
+                   for amp in crossed for record in amp.get('crossed_processes'))
+
+    def _expand_recorded_crossings(self, amps):
+        """Expand each amplitude's recorded crossings back into separate
+        (mirror-folded) amplitudes, reproducing a merge_crossing=False
+        generation. The crossed diagrams are reused (cross_amplitude), not
+        regenerated. Record mode stores a crossing and its beam-swap as two
+        separate entries (neither is in the amplitude list when the other is
+        met, so the generator's mirror check never fires); the beam-swap is
+        folded back into has_mirror_process here, exactly as
+        generate_matrix_elements would.
+
+        Shared by the grouped and the ungrouped paths so that an output which
+        cannot read folded crossings gets them expanded automatically, without
+        the user having to pass --use_crossing=False.
+
+        `amps` is left untouched: the bases come back as shallow copies (same
+        process and diagrams, their own crossed_processes and
+        has_mirror_process -- the mirror fold can mark a base that recorded
+        nothing, so every one is copied). They are self._curr_amps' own
+        amplitudes, and emptying their crossed_processes or marking their
+        mirror in place made every later output depend on this one -- a
+        standalone_fortran written after a madevent one, from the same
+        generation, folded nothing.
+
+        A folding output expands only the crossings its exporter refuses to
+        fold (crossing_foldable); the others stay recorded on the base copy.
+        """
+        if self.options['group_subprocesses'] == 'Auto':
+            collect_mirror = True
+        else:
+            collect_mirror = self.options['group_subprocesses']
+
+        def _fastproc(amp):
+            return tuple(l.get('id') for l in amp.get('process').get('legs'))
+
+        folds = self._output_folds_crossings()
+        originals = []
+        for amp in amps:
+            crossed = amp.get('crossed_processes') \
+                if 'crossed_processes' in amp else []
+            kept = [record for record in crossed
+                    if folds and self._crossing_foldable(amp, record)]
+            originals.append((amp, [record for record in crossed
+                                    if not any(record is k for k in kept)],
+                              kept))
+        # Each subprocess goes back where the merge_crossing=False generation
+        # lists it (generation_rank, see MultiProcess), crossings between
+        # the bases instead of after all of them. Sorted by number of
+        # diagrams afterwards, as the caller does, the madevent P directories
+        # then come in the --use_crossing=False order, and so get the same
+        # iproc.dat, hence random seeds. Without every rank, the bases keep
+        # their order and the crossings follow.
+        entries = [(amp.get('process'), amp, None, kept)
+                   for amp, _crossed, kept in originals] + \
+                  [(record[0], amp, record, None)
+                   for amp, crossed, _kept in originals for record in crossed]
+        ranks = [getattr(entry[0], 'generation_rank', None)
+                 for entry in entries]
+        if None not in ranks:
+            entries = [entry for _rank, _i, entry in
+                       sorted(zip(ranks, range(len(entries)), entries))]
+
+        expanded = diagram_generation.AmplitudeList()
+        seen = {}   # fast_proc -> amplitude, for mirror fold
+        for proc, amp, record, kept in entries:
+            if record is None:
+                # a base, with the crossings it still folds
+                amp = copy.copy(amp)
+                if 'crossed_processes' in amp:
+                    amp.set('crossed_processes', kept)
+                expanded.append(amp)
+                seen[_fastproc(amp)] = amp
+                continue
+            _proc, base_perm, cross_perm = record
+            xamp = diagram_generation.MultiProcess.\
+                cross_amplitude(amp, proc, base_perm, cross_perm)
+            xamp.set('crossed_processes', [])
+            fp = _fastproc(xamp)
+            mirror = (fp[1], fp[0]) + fp[2:]
+            if collect_mirror and mirror in seen and \
+                    proc.get_ninitial() == 2:
+                seen[mirror].set('has_mirror_process', True)
+                continue
+            xamp.set('has_mirror_process', False)
+            expanded.append(xamp)
+            seen[fp] = xamp
+        return expanded
+
+    @staticmethod
+    def _recorded_crossings(amps):
+        """The crossed processes recorded on `amps` at generation
+        (merge_crossing='record'), as (amplitude, crossed Process) pairs: a plain
+        amplitude's own `crossed_processes`, a decay chain's inner amplitudes'.
+        A crossing and its beam swap are recorded apart; the swap is left out
+        here, as the mirror of a generated process is (has_mirror_process)."""
+        pairs = []
+        for amp in amps:
+            if isinstance(amp, diagram_generation.DecayChainAmplitude):
+                inner = amp.get('amplitudes')
+            else:
+                inner = [amp]
+            for a in inner:
+                if 'crossed_processes' not in a:
+                    continue
+                seen = set()
+                for record in a.get('crossed_processes'):
+                    xproc = record[0]
+                    initial = xproc.get_initial_ids()
+                    if len(initial) == 2:
+                        key = (tuple(sorted(initial)), tuple(xproc.get_final_ids()))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                    pairs.append((a, xproc))
+        return pairs
+
+    @classmethod
+    def _crossing_summary(cls, amps):
+        """What the generation summary adds for the crossed processes folded
+        into `amps`: they have no amplitude, hence are not in its counts."""
+        ncross = len(cls._recorded_crossings(amps))
+        if not ncross:
+            return ''
+        return (' (and %i crossed process%s evaluated through them, see '
+                '"display processes")' % (ncross, '' if ncross == 1 else 'es'))
+
+    @staticmethod
+    def _has_recorded_crossings(amps):
+        """True if any amplitude of `amps` folds crossings recorded at
+        generation (merge_crossing='record'): a plain amplitude on its own
+        `crossed_processes`, a decay chain on its inner amplitudes'."""
+        for amp in amps:
+            if isinstance(amp, diagram_generation.DecayChainAmplitude):
+                inner = amp.get('amplitudes')
+            else:
+                inner = [amp]
+            if any(a.get('crossed_processes') for a in inner
+                   if 'crossed_processes' in a):
+                return True
+        return False
+
+    @staticmethod
+    def _copy_decay_chain(dc_amp):
+        """A copy of the DecayChainAmplitude `dc_amp` that the matrix-element
+        builders may consume.
+
+        HelasDecayChainProcess pops the decay chains off the amplitude it is
+        built from, recursively, to save memory, so building straight from
+        self._curr_amps empties the generation's own chains. The end-of-export
+        replacement of self._curr_amps used to hide that; a generation with
+        recorded crossings keeps its amplitudes (see _export), and a later
+        output rebuilt from an emptied chain wrote the core process with its
+        resonance left undecayed -- p p > z j, z > e+ e- came out as P1_gQ_zQ,
+        without an error. Only the lists are copied: the amplitudes and their
+        diagrams are shared.
+        """
+        new = copy.copy(dc_amp)
+        new.set('amplitudes',
+                diagram_generation.AmplitudeList(dc_amp.get('amplitudes')))
+        new.set('decay_chains', diagram_generation.DecayChainAmplitudeList(
+            [MadGraphCmd._copy_decay_chain(dc)
+             for dc in dc_amp.get('decay_chains')]))
+        return new
+
+    def _expand_crossings_for_ungrouped_output(self):
+        """The amplitudes an ungrouped output builds its matrix elements from:
+        self._curr_amps, with the folded crossings put back if the output
+        cannot read them.
+
+        Counterpart of the grouped path's expansion, for the ungrouped one. A
+        plain amplitude carries its crossings in `crossed_processes` and is
+        expanded (on copies); a decay chain records them on its inner
+        amplitudes instead, and its grouping does not survive a partial
+        expansion, so the affected chains are regenerated whole with
+        merge_crossing=False (the base diagrams are still reused by
+        cross_amplitude). Either way the result is exactly the complete
+        unmerged output.
+
+        Returned rather than stored: self._curr_amps is the generation, and an
+        output must not rewrite it. It used to be replaced by the expanded list,
+        so any later output rebuilt from it -- a folding one included -- came
+        out unfolded.
+        """
+        dc_amps = [amp for amp in self._curr_amps
+                   if isinstance(amp, diagram_generation.DecayChainAmplitude)]
+        non_dc_amps = diagram_generation.AmplitudeList(
+            [amp for amp in self._curr_amps
+             if not isinstance(amp, diagram_generation.DecayChainAmplitude)])
+
+        dc_crossed = not self._output_folds_crossings(decay_chains=True) and \
+            self._has_recorded_crossings(dc_amps)
+        expand_non_dc = self._crossing_needs_expansion(non_dc_amps)
+        if not dc_crossed and not expand_non_dc:
+            return self._curr_amps
+
+        if expand_non_dc:
+            non_dc_amps = self._expand_recorded_crossings(non_dc_amps)
+
+        if dc_crossed:
+            ign6 = self.options.get('ignore_six_quark_processes', []) or []
+            if self.options['group_subprocesses'] == 'Auto':
+                collect_mirror = True
+            else:
+                collect_mirror = self.options['group_subprocesses']
+            dc_amps = [diagram_generation.DecayChainAmplitude(
+                           procdef, collect_mirror, ign6, merge_crossing=False)
+                       for procdef in self._curr_proc_defs
+                       if procdef.get('decay_chains')]
+
+        new_amps = diagram_generation.AmplitudeList()
+        new_amps.extend(non_dc_amps)
+        new_amps.extend(dc_amps)
+        new_amps.sort(key=lambda x: x.get_number_of_diagrams(), reverse=True)
+        return new_amps
+
     # Export a matrix element
     def set_color_basis_mode(self, *exporters):
-        """Set the color basis used for fully adjoint (multi-gluon) processes.
-        The (n-2)! Del Duca-Dixon-Maltoni basis can only be used by the output
-        formats which never need a color flow decomposition, so in 'auto' mode
-        every exporter involved must support it."""
+        """Set the color basis used for fully adjoint (multi-gluon) processes,
+        from the color_basis option and what every exporter involved can do
+        with the (n-2)! Del Duca-Dixon-Maltoni basis (their ddm_color_basis):
+        'auto' uses it when all of them take it by default, 'ddm' unless one of
+        them can never use it. Without any exporter (check), 'auto' is the
+        trace basis and 'ddm' the DDM one."""
 
         mode = self.options.get('color_basis', 'auto')
         exporters = [exporter for exporter in exporters if exporter]
+        support = [getattr(exporter, 'ddm_color_basis', 'never')
+                   for exporter in exporters]
         if mode == 'auto':
-            use_ddm = bool(exporters) and \
-                all(getattr(exporter, 'support_ddm_color_basis', False)
-                    for exporter in exporters)
+            use_ddm = bool(support) and all(s == 'auto' for s in support)
+        elif mode == 'ddm':
+            use_ddm = 'never' not in support
+            if not use_ddm:
+                logger.info("color_basis ddm: output %s keeps the trace color "
+                            "basis, the only one it can use",
+                            getattr(self, '_export_format', None))
         else:
-            use_ddm = (mode == 'ddm')
+            use_ddm = False
 
         # An exporter which has to write a color flow per event also needs the
         # trace basis next to the DDM one
@@ -14102,39 +14728,81 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger.debug('Using the Del Duca-Dixon-Maltoni color basis for '
                          'fully adjoint processes (flow basis: %s)', with_flow)
 
-    def export(self, nojpeg = False, main_file_name = "", group_processes=True,
-                                                                       args=[]):
+    def report_ddm_fallbacks(self):
+        """After 'set color_basis ddm', tell the user which processes kept the
+        trace color basis and why (with 'auto' this stays at debug level)."""
+
+        if self.options.get('color_basis', 'auto') != 'ddm' or \
+           not color_amp.ddm_fallbacks:
+            return
+        reasons = collections.OrderedDict()
+        for process, reason in color_amp.ddm_fallbacks:
+            reasons.setdefault(reason, []).append(process)
+        for reason, processes in reasons.items():
+            shown = ', '.join(processes[:5])
+            if len(processes) > 5:
+                shown += ', ... (%d processes)' % len(processes)
+            logger.info('color_basis ddm: trace color basis kept for %s: %s',
+                        shown, reason)
+
+    def export(self, nojpeg=False, group_processes=True, args=[]):
         """Export a generated amplitude to file."""
 
         self.set_color_basis_mode(self._curr_exporter, self._me_curr_exporter)
         try:
-            return self._export(nojpeg, main_file_name, group_processes, args)
+            out = self._export(nojpeg, group_processes, args)
+            self.report_ddm_fallbacks()
+            return out
         finally:
             # the color basis is tied to this output, it must not leak to the
             # next command
             color_amp.set_ddm_basis(False)
 
-    def _export(self, nojpeg = False, main_file_name = "", group_processes=True,
-                                                                       args=[]):
+    def _export(self, nojpeg=False, group_processes=True, args=[]):
         """Export a generated amplitude to file, with the color basis already
         selected."""
+
+        # T-channel width treatment is now baked into ALOHA (the propagator
+        # routine drops the width i*M*Gamma for spacelike, P^2<0, momenta -- the
+        # correct tree-level treatment outside the complex-mass scheme). Propagate
+        # the zerowidth_tchannel option to the aloha flag it now controls, so the
+        # generated propagator routines carry the runtime sign check. A 1->N decay
+        # has no t-channel, so keep every width there (as the legacy code did).
+        zerowidth_tchannel = self.options['zerowidth_tchannel']
+        if self._curr_amps and self._curr_amps[0].get_ninitial() == 1:
+            zerowidth_tchannel = False
+        # The output option --zerowidth_tchannel=True|False of the standalone
+        # Fortran outputs overrides it for that output (MadSpin passes True).
+        # Without it the option decides for every output alike -- standalone
+        # (Fortran and C++), the reweighting (standalone_rw) and MadSpin
+        # (standalone_msP/msF) all drop the width of a spacelike propagator, as
+        # madevent: the runtime check is right for every crossing of a matrix
+        # element too, where the generation-time t-channel tag is not. The
+        # loop exporters (MadLoop, aMC@NLO, loop-induced madevent) are not
+        # concerned.
+        output_options = getattr(self._curr_exporter, 'opt', {}) or {}
+        output_options = output_options.get('output_options') or {}
+        if isinstance(self._curr_exporter, export_v4.ProcessExporterFortranSA) \
+           and not isinstance(self._curr_exporter,
+                              loop_exporters.LoopExporterFortran) \
+           and 'zerowidth_tchannel' in output_options \
+           and not (self._curr_amps and self._curr_amps[0].get_ninitial() == 1):
+            zerowidth_tchannel = banner_module.ConfigFile.format_variable(
+                output_options['zerowidth_tchannel'], bool, 'zerowidth_tchannel')
+        aloha.t_channel_width = not zerowidth_tchannel
 
         # Define the helas call  writer
         if hasattr(self._curr_exporter, 'helas_exporter') and self._curr_exporter.helas_exporter:
             self._curr_helas_model = self._curr_exporter.helas_exporter(self._curr_model, options=self.options)
-        elif self._curr_exporter.exporter == 'cpp':       
+        elif self._curr_exporter.exporter == 'cpp':
             self._curr_helas_model = helas_call_writers.CPPUFOHelasCallWriter(self._curr_model)
-        elif self._curr_exporter.exporter == 'gpu':       
+        elif self._curr_exporter.exporter == 'gpu':
             self._curr_helas_model = helas_call_writers.GPUFOHelasCallWriter(self._curr_model)
         elif self._curr_exporter.exporter == 'v4':
             if self._model_v4_path:
                 self._curr_helas_model = helas_call_writers.FortranHelasCallWriter(self._curr_model)
             else:
-                options = {'zerowidth_tchannel': self.options['zerowidth_tchannel']}
-                if self._curr_amps and self._curr_amps[0].get_ninitial() == 1:
-                    options['zerowidth_tchannel'] = False
-                self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model,
-                                                                                      options=options)
+                self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
         else:
             raise Exception('unable to associate an helas format')
 
@@ -14144,7 +14812,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             if self._curr_exporter.exporter == 'v4':
                 self._curr_exporter.gauge_writers = dict(
                     (gauge, helas_call_writers.FortranUFOHelasCallWriter(
-                                    self.model_for_gauge(gauge), options=options))
+                                    self.model_for_gauge(gauge)))
                     for gauge in self._curr_exporter.gauge_libraries)
             else:
                 self._curr_exporter.gauge_models = dict(
@@ -14167,14 +14835,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     assert self._me_curr_exporter.exporter == 'v4'
                     self._me_curr_helas_model = helas_call_writers.FortranHelasCallWriter(self._curr_model)
                 else:                    
-                    self._me_curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model,
-                                                                                             options=options)
-
-        version = [arg[10:] for arg in args if arg.startswith('--version=')]
-        if version:
-            version = version[-1]
-        else:
-            version = '8.2'
+                    self._me_curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
 
         def generate_matrix_elements(self, group_processes=True):
             """Helper function to generate the matrix elements before
@@ -14193,13 +14854,32 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # to get most efficient multichannel output
             self._curr_amps.sort(key=lambda x: x.get_number_of_diagrams(),reverse=True)
 
+            # The matrix elements of the previous output are reused as they
+            # are, but with recorded crossings they are not the same for every
+            # output: folded into their base for a folding standalone backend,
+            # expanded into explicit subprocesses for anything else. Reusing
+            # them across that line made the output depend on the one written
+            # before it -- a madevent output after a standalone_fortran one
+            # dropped every crossed subprocess, a standalone_fortran after a
+            # madevent one folded nothing. Rebuild them instead.
+            folds_crossings = self._crossing_fold_signature()
+            if self._curr_matrix_elements.get_matrix_elements() and \
+                    self._curr_me_folds_crossings != folds_crossings and \
+                    self._has_recorded_crossings(self._curr_amps):
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+
             cpu_time1 = time.time()
             ndiags = 0
             if not self._curr_matrix_elements.get_matrix_elements():
+                self._curr_me_folds_crossings = folds_crossings
                 if group_processes:
                     cpu_time1 = time.time()
+                    # Copies: building the matrix elements empties a decay
+                    # chain, and self._curr_amps must keep its own for the next
+                    # output (see _copy_decay_chain).
                     dc_amps = diagram_generation.DecayChainAmplitudeList(\
-                        [amp for amp in self._curr_amps if isinstance(amp, \
+                        [self._copy_decay_chain(amp) for amp in self._curr_amps
+                         if isinstance(amp, \
                                         diagram_generation.DecayChainAmplitude)])
                     non_dc_amps = diagram_generation.AmplitudeList(\
                              [amp for amp in self._curr_amps if not \
@@ -14212,6 +14892,90 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     grouping_criteria = self._curr_exporter.grouped_mode
                     if grouping_criteria == 'gpu':
                         grouping_criteria = 'madevent'
+
+                    # merge_crossing='record' skipped generating the crossed
+                    # subprocesses so the standalone output collapses to one
+                    # directory per base. The grouped (madevent) backends need
+                    # them back as integration units -- each crossing is its own
+                    # partonic channel with its own PDF/phase-space -- so expand
+                    # the recorded metadata into crossed amplitudes here, reusing
+                    # the base's diagrams via cross_amplitude (no diagram
+                    # regeneration). The normal grouping + crossing routing then
+                    # handles them exactly as an unmerged (merge_crossing=False)
+                    # generation would.
+                    # The standalone exporters ('standalone_fortran' and the
+                    # madmatrix 'standalone') consume the crossed_processes
+                    # metadata directly -- they fold the crossings into the base
+                    # directory and reach them through the base's crossing-aware
+                    # SMATRIX/sigmaKin (extended flavor id), so they must NOT
+                    # reconstruct. Every other (summation / event-generation)
+                    # backend needs the crossings back as integration units, and
+                    # reconstructing is also the safe default for any format that
+                    # does not implement folding (it just reproduces the complete
+                    # unmerged output) -- or for a folding backend told to write
+                    # this output without the machinery (--use_crossing=False).
+                    # DecayAmplitude / DecayChainAmplitude are Amplitude
+                    # subclasses that override default_setup with their own
+                    # key set and do NOT carry crossed_processes (e.g. the
+                    # compute_widths and MadSpin decay paths reach here), so
+                    # guard on the dict key rather than the amplitude type
+                    # (_crossing_needs_expansion does that).
+                    # Asked OUTSIDE the format gate below, because the format
+                    # is not the whole answer: a folding backend still cannot
+                    # fold a process carrying a squared order, whose matrix
+                    # element is written from a template with no decoder. See
+                    # _crossing_needs_expansion.
+                    if self._crossing_needs_expansion(non_dc_amps):
+                        non_dc_amps = \
+                            self._expand_recorded_crossings(non_dc_amps)
+                        # sorted as self._curr_amps above, which decides the
+                        # P directory order (and iproc.dat)
+                        non_dc_amps.sort(
+                            key=lambda x: x.get_number_of_diagrams(),
+                            reverse=True)
+
+                    if not self._output_folds_crossings(decay_chains=True):
+                        # Decay chains: the crossing dedup (folding the crossed
+                        # decay-chain subprocesses into the base's crossing-aware
+                        # SMATRIX) is implemented for the standalone backends only.
+                        # For the summation backends each crossed decay-chain
+                        # subprocess must stay its own integration unit; rather
+                        # than reconstruct-and-route them (whose grouping does not
+                        # reproduce the historical layout), regenerate the affected
+                        # decay chains fully (merge_crossing=False), giving exactly
+                        # the pre-dedup output. cross_amplitude reuse still avoids
+                        # regenerating the diagrams of the base subprocess.
+                        # The chains are regenerated into a list of their own:
+                        # self._curr_amps keeps the recorded ones for the next
+                        # output.
+                        if self._has_recorded_crossings(dc_amps):
+                            ign6 = self.options.get(
+                                'ignore_six_quark_processes', []) or []
+                            if self.options['group_subprocesses'] == 'Auto':
+                                collect_mirror = True
+                            else:
+                                collect_mirror = \
+                                    self.options['group_subprocesses']
+                            regenerated = \
+                                diagram_generation.DecayChainAmplitudeList()
+                            for procdef in self._curr_proc_defs:
+                                if not procdef.get('decay_chains'):
+                                    continue
+                                regenerated.append(
+                                    diagram_generation.DecayChainAmplitude(
+                                        procdef, collect_mirror, ign6,
+                                        merge_crossing=False))
+                            # Regenerating walks _curr_proc_defs, so the
+                            # diagram-count ordering _curr_amps was sorted into
+                            # above is lost -- and that ordering decides the
+                            # subprocess group numbering (P1_/P2_...). Restore it
+                            # so the output is named exactly as an uncrossed
+                            # generation would name it.
+                            regenerated.sort(
+                                key=lambda x: x.get_number_of_diagrams(),
+                                reverse=True)
+                            dc_amps = regenerated
+
                     if non_dc_amps:
                         subproc_groups.extend(\
                           group_subprocs.SubProcessGroup.group_amplitudes(\
@@ -14248,14 +15012,31 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     if uid == 0 and last_error:
                         raise last_error
                 else: # Not grouped subprocesses
+                    # Same automatic expansion as the grouped path above: an
+                    # ungrouped output (e.g. the ungrouped madevent) cannot read
+                    # the folded crossings, so put them back as explicit
+                    # subprocesses instead of forcing the user to regenerate with
+                    # --use_crossing=False. Without this the crossings would be
+                    # silently missing from the output. For this output only:
+                    # self._curr_amps keeps the recorded crossings.
+                    amps = self._expand_crossings_for_ungrouped_output()
+                    # And the decay chains as copies, which the matrix elements
+                    # may empty (see _copy_decay_chain).
+                    if any(isinstance(amp,
+                                      diagram_generation.DecayChainAmplitude)
+                           for amp in amps):
+                        amps = diagram_generation.AmplitudeList(
+                            [self._copy_decay_chain(amp) if isinstance(amp,
+                                      diagram_generation.DecayChainAmplitude)
+                             else amp for amp in amps])
                     mode = {}
-                    if self._export_format in [ 'standalone_msP' , 
+                    if self._export_format in [ 'standalone_msP' ,
                                              'standalone_msF', 'standalone_rw']:
                         mode['mode'] = 'MadSpin'
                     # The conditional statement tests whether we are dealing
                     # with a loop induced process.
                     # (an output with only [amplicol] processes has no amplitudes)
-                    if self._curr_amps and isinstance(self._curr_amps[0], 
+                    if amps and isinstance(amps[0],
                                          loop_diagram_generation.LoopAmplitude):
                         mode['optimized_output']=self.options['loop_optimized_output']
                         HelasMultiProcessClass = loop_helas_objects.LoopHelasProcess
@@ -14265,7 +15046,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         compute_loop_nc = False
                     
                     self._curr_matrix_elements = HelasMultiProcessClass(
-                      self._curr_amps, compute_loop_nc=compute_loop_nc,
+                      amps, compute_loop_nc=compute_loop_nc,
                                                        matrix_element_opts=mode)
                     
                     ndiags = sum([len(me.get('diagrams')) for \
@@ -14295,10 +15076,61 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # the flavor machinery to enumerate all combinations: permutation-
         # duplicate diagrams then keep a valid flavor and are not trimmed, while
         # genuinely unphysical diagrams (no flavor at all) are still removed.
-        helas_objects.HelasMatrixElement.enumerate_all_flavors = \
-            not getattr(self._curr_exporter, 'use_flavor_mask', True)
+        enumerate_all = not getattr(self._curr_exporter, 'use_flavor_mask', True)
+        # An output replaces self._curr_amps by the base amplitudes of its
+        # matrix elements (end of export), which only have the diagrams that
+        # output kept: with merged flavors, those its --mask trimmed are gone,
+        # and the other --mask needs them (the orderings --mask=False adds:
+        # q q > w+ w- q q QCD=0, q = u d, 183 diagrams of 294 and 3 of its 6
+        # flavors wrong). self._trimmed_amps keeps, for an output that
+        # trimmed, [those base amplitudes, the amplitudes they were made
+        # from, the --mask of its matrix elements]. Matrix elements kept from
+        # an output with the other --mask are made again (`output
+        # standalone_fortran A` then `output standalone B --mask=False` used
+        # to write B from A's flavors and diagrams), and whenever they are
+        # made, from the amplitudes as generated (the base amplitudes of that
+        # output may sit in self._curr_amps with processes added since).
+        trimmed = getattr(self, '_trimmed_amps', None)
+        if trimmed is not None:
+            base_amps, generated_amps, trimmed_all = trimmed
+            if self._curr_matrix_elements.get_matrix_elements() and \
+                    trimmed_all != enumerate_all:
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+            if not self._curr_matrix_elements.get_matrix_elements() and base_amps:
+                base_ids = set(id(amp) for amp in base_amps)
+                kept = [amp for amp in self._curr_amps if id(amp) not in base_ids]
+                if len(kept) + len(base_amps) == len(self._curr_amps):
+                    self._curr_amps = diagram_generation.AmplitudeList(
+                                                    list(generated_amps) + kept)
+        helas_objects.HelasMatrixElement.enumerate_all_flavors = enumerate_all
 
+        made = not self._curr_matrix_elements.get_matrix_elements()
+        generated_amps = self._curr_amps
         ndiags, cpu_time = generate_matrix_elements(self,group_processes)
+        if made:
+            self._trimmed_amps = None
+            if any(getattr(me, '_flavor_allow_trimming', False) for me in
+                   self._curr_matrix_elements.get_matrix_elements()):
+                # the base amplitudes are known at the end of export
+                self._trimmed_amps = [None, generated_amps, enumerate_all]
+
+        # zerowidth_external: an external (initial/final) particle is an on-shell
+        # asymptotic state, so an internal propagator of the same field must not
+        # carry the i*M*Gamma resonance term (e.g. the s/u-channel top in
+        # t a > t a). Drop that width per matrix element before any backend
+        # writes the propagator calls (all UFO backends read the wavefunction
+        # width). Tree-level only; complex-mass scheme then uses the real mass.
+        if self.options.get('zerowidth_external', True) and \
+                self._curr_matrix_elements.get_matrix_elements():
+            n_dropped = 0
+            for me in self._curr_matrix_elements.get_matrix_elements():
+                if me.set_onshell_particles_width_to_zero():
+                    n_dropped += 1
+            if n_dropped:
+                logger.info("Some on-shell (external) particle widths have been "
+                            "set to zero in their internal propagators [new]\n if "
+                            "you want to keep them set \"zerowidth_external\" to "
+                            "False", '$MG:BOLD')
 
         calls = 0
 
@@ -14307,7 +15139,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             
         cpu_time1 = time.time()
 
-        # First treat madevent and pythia8 exports, where we need to
+        # First treat madevent exports, where we need to
         # distinguish between grouped and ungrouped subprocesses
 
         # MadEvent
@@ -14363,38 +15195,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 #    misc.sprint('command history fails.', 10)
                 #    pass
 
-        # Pythia 8
-        elif self._export_format == 'pythia8':
-            # Output the process files
-            process_names = []
-            if isinstance(self._curr_matrix_elements, group_subprocs.SubProcessGroupList):
-                for (group_number, me_group) in enumerate(self._curr_matrix_elements):
-                    exporter = self._curr_exporter.generate_process_directory(\
-                            me_group.get('matrix_elements'), self._curr_helas_model,
-                            process_string = me_group.get('name'),
-                            process_number = group_number+1,
-                            version = version)
-                    process_names.append(exporter.process_name)
-            else:
-                exporter =  self._curr_exporter.generate_process_directory(\
-                            self._curr_matrix_elements, self._curr_helas_model,
-                            process_string = self._generate_info, version = version)
-                process_names.append(exporter.process_file_name)
-
-            wanted_lorentz = self._curr_matrix_elements.get_used_lorentz()
-            # Output the model parameter and ALOHA files
-            model_name, model_path = exporter.convert_model_to_pythia8(\
-                            self._curr_model, self._export_dir, wanted_lorentz=wanted_lorentz)
-
-            # Generate the main program file
-            filename, make_filename = \
-                      self._curr_exporter.generate_example_file_pythia8(path,
-                                                               model_path,
-                                                               process_names,
-                                                               exporter,
-                                                               main_file_name)
-                      
-                      
         matrix_elements = self._curr_matrix_elements.get_matrix_elements()
         if matrix_elements and any(l.get('flavor') is None for l in matrix_elements[0].get('processes')[0].get('legs')):
             [m.get_external_flavors() for m in matrix_elements]  #precompute all flavors
@@ -14410,7 +15210,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 calls = calls + self._curr_exporter.write_matrix_element_v4(\
                     writers.FortranWriter(filename),\
                     me, self._curr_helas_model)
-        elif self._export_format in ['madevent', 'pythia8']:
+        elif self._export_format == 'madevent':
             pass
         # grouping mode
         elif isinstance(self._curr_matrix_elements, group_subprocs.SubProcessGroupList) and\
@@ -14463,22 +15263,25 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 logger.info("Wrote files for %d helas calls" % \
                             (calls))
 
-        if self._export_format == 'pythia8':
-            logger.info("- All necessary files for Pythia 8 generated.")
-            logger.info("- Run \"launch\" and select %s.cc," % filename)
-            logger.info("  or go to %s/examples and run" % path)
-            logger.info("      make -f %s" % make_filename)
-            logger.info("  (with process_name replaced by process name).")
-            logger.info("  You can then run ./%s to produce events for the process" % \
-                        filename)
-
         # Replace the amplitudes with the actual amplitudes from the
         # matrix elements, which allows proper diagram drawing also of
-        # decay chain processes
-        matrix_elements = self._curr_matrix_elements.get_matrix_elements()
-        self._curr_amps = diagram_generation.AmplitudeList(\
-               [me.get('base_amplitude') for me in \
-                matrix_elements])
+        # decay chain processes.
+        # Not when the generation recorded crossings: the amplitudes rebuilt
+        # from the matrix elements carry none (get_base_amplitude keeps only the
+        # process and the diagrams), and they are this output's -- folded, or
+        # expanded into explicit subprocesses -- not the generation's. The next
+        # output would inherit that choice: after a standalone_fortran one, a
+        # madevent output rebuilt from them misses every crossed subprocess.
+        if not self._has_recorded_crossings(self._curr_amps):
+            matrix_elements = self._curr_matrix_elements.get_matrix_elements()
+            self._curr_amps = diagram_generation.AmplitudeList(\
+                   [me.get('base_amplitude') for me in \
+                    matrix_elements])
+            # These lost the diagrams this output's --mask trimmed: record
+            # them, so that the next regeneration starts again from the
+            # amplitudes as generated (see the --mask above).
+            if getattr(self, '_trimmed_amps', None) is not None:
+                self._trimmed_amps[0] = list(self._curr_amps)
 
     def finalize(self, nojpeg, online = False, flaglist=[]):
         """Make the html output, write proc_card_mg5.dat and create
@@ -14502,8 +15305,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             wanted_couplings = self._curr_matrix_elements.get_used_couplings()
 
             # the P1N (amplitude split) routines: madevent's helicity recycling,
-            # and the C++ one of a madmatrix output (--hel_recycling, on by
-            # default: 'auto')
+            # the Fortran standalone --hel_recycling (same machinery, off by
+            # default) and the C++ one of a madmatrix output (--hel_recycling,
+            # on by default: 'auto')
+            sa_hel_recycling = str(getattr(self._curr_exporter, 'cmd_options', {}).get(
+                    'hel_recycling', False)).lower() in ('true', '1', 'yes')
             exporter_opts = (getattr(self._curr_exporter, 'opt', None) or {}).get(
                                                        'output_options') or {}
             cpp_recycling = hasattr(getattr(self._curr_exporter,
@@ -14511,7 +15317,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                                     'write_recycled') and \
                 str(exporter_opts.get('hel_recycling', False)).lower() in \
                                                ('true', '1', 'yes', 'auto')
-            if (self._export_format == 'madevent' or cpp_recycling) and \
+            if (self._export_format == 'madevent' or sa_hel_recycling or
+                    cpp_recycling) and \
                 not 'no_helrecycling' in flaglist and \
                 not (self._curr_amps and isinstance(
                     self._curr_amps[0], loop_diagram_generation.LoopAmplitude)):
@@ -14940,7 +15747,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger_mg.info('More info in temporary files:\n    %s/index.html' % (decay_dir))
             with misc.MuteLogger(['madgraph','ALOHA','cmdprint','madevent'], [40,40,40,40]):
                 self.exec_cmd('output madevent %s -f' % decay_dir,child=False)
-                
+
                 #modify some parameter of the default run_card
                 run_card = banner_module.RunCard(pjoin(decay_dir,'Cards','run_card.dat'))
                 if run_card['ickkw']:
@@ -15644,11 +16451,9 @@ _draw_parser.add_option("", "--generate_only", default=False, action='store_true
                           help="forbid to display the generate file and only generate the eps file")
 # LAUNCH PROGRAM
 _launch_usage = "launch [DIRPATH] [options]\n" + \
-         "-- execute the madevent/standalone/standalone_fortran/pythia8/NLO output present in DIRPATH\n" + \
+         "-- execute the madevent/mg7/standalone/standalone_fortran/NLO output present in DIRPATH\n" + \
          "   By default DIRPATH is the latest created directory \n" + \
-         "   (for pythia8, it should be the Pythia 8 main directory) \n" + \
-         "   Example: launch PROC_sm_1 --name=run2 \n" + \
-         "   Example: launch ../pythia8 \n"
+         "   Example: launch PROC_sm_1 --name=run2 \n"
 _launch_parser = misc.OptionParser(usage=_launch_usage)
 _launch_parser.add_option("--allow_qed_ps", default=False, action='store_true',
                             help="Allow experimental NLO QED+PS matching by bypassing the launch restriction")

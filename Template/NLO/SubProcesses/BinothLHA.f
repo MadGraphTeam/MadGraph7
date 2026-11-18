@@ -43,6 +43,8 @@ c Dimensions and buffers are initialized once, with firsttime_run.
       save nsqso, MLResArrayDim
 c statistics for MadLoop
       double precision avgPoleRes(2),PoleDiff(2)
+      INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
       parameter (nbadmax = 5)
@@ -495,6 +497,11 @@ c Update the statistics using the MadLoop return code (ret_code)
          n10=n10+1              ! no known ret_code (10)
       endif
       n1(mod(ret_code,10))=n1(mod(ret_code,10))+1 ! unit ret code distribution
+c Unit 2 is NinjaRS; classify precision with T, not the stability digit H.
+      if (mod(ret_code,10).eq.2.and.(mod(ret_code,100)/10.eq.1.or.
+     $     mod(ret_code,100)/10.eq.3)) NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
+      if (mod(ret_code,10).eq.2.and.(mod(ret_code,100)/10.eq.2.or.
+     $     mod(ret_code,100)/10.eq.4)) NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
 
 c Write out the unstable, non-rescued phase-space points (MadLoop return
 c code is in the four hundreds) or the ones that are found by the pole

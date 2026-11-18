@@ -149,6 +149,19 @@ def get_axial_gauge_refs(matrix_element, massive_fermions=True):
     polarisation of the run_card acts on its helicity), a leg that is
     off-shell or a constituent of a bound state. The event file must not
     present the state as a helicity either: see get_spin_reference_legs.
+
+    Crossing: the choice is made on the base process and a crossed call keeps
+    it as a base SLOT (fortran P(0,ref), C++ xmom/xperm[ref]), so the crossed
+    amplitude is the analytic continuation of the base one in the same gauge
+    and the gauge zeros are the same for every crossing served (what lets the
+    recycled zero-amplitude scan drop them under crossing). The price: a slot
+    that was initial in the base can be final in a crossing, so the
+    numerical-safety argument above holds for the base only. When a crossed
+    vector and its reference end up on the same beam (g c > g c served by
+    g g > c c~, the outgoing gluon at angle theta from the incoming one) r.p
+    is ~theta**2 and the relative precision is ~1e-16/theta**2 instead of
+    machine precision: below 1e-11 for theta > 1e-2, i.e. for any physical
+    jet cut. --use_crossing=False picks the reference per process.
     """
 
     externals = {}
@@ -659,9 +672,12 @@ class HelasCallWriter(base_objects.PhysicsObject):
            call = fct(wavefunction) 
 
         
-        if  self.options['zerowidth_tchannel'] and wavefunction.is_t_channel():
-            call, n = re.subn(r',\s*fk_(?!ZERO)\w*\s*,', ', ZERO,', str(call), flags=re.I)
-            if n:
+        if self.options['zerowidth_tchannel'] and wavefunction.is_t_channel():
+            # The width i*M*Gamma is now dropped inside the ALOHA propagator
+            # routine itself, at runtime, for spacelike (P^2<0) momenta -- see
+            # aloha.t_channel_width / aloha_writers. We no longer rewrite the call
+            # to pass ZERO; we only flag a non-zero width here for the notice.
+            if re.search(r',\s*fk_(?!ZERO)\w*\s*,', str(call), flags=re.I):
                 self.width_tchannel_set_tozero = True
         # zerowidth_pdgs: propagators of these particles (|pdg|) get a zero
         # width in this call only -- the model parameter itself is untouched.
@@ -1525,6 +1541,11 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
         self.use_flavor_mask = False
         self.me_n_flavors = 0
         self.me_active_flavor_mask = None
+        # When True the external wavefunction NSF/NSV flag is multiplied by
+        # IC(i), letting the caller cross a leg between the initial and the
+        # final state. Only the exporters whose template passes a meaningful
+        # IC turn this on (see generate_external_wavefunction).
+        self.use_crossing_ic = False
         super(FortranUFOHelasCallWriter, self).__init__(argument, options=options)
 
     def format_helas_object(self, prefix, number):
@@ -1699,27 +1720,45 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 else:
                     call = call + "%(mass)s,"
                 call = call + "NHEL(%(number_external)d),"
+            wf_object = self.format_helas_object('W(', '%(me_id)d')
+            # The reference momentum of an R routine goes right before the
+            # output, after the flavor of a fermion:
+            # IXXXXXR(P, FMASS, NHEL, NSF, FLAVOR, R, FI).
             if argument.get('spin') == 2:
-                if axial:
-                    axial_call = call.replace('XXXXX(', 'XXXXXR(', 1) + \
-                        "%(state_id)+d, FLAVOR(%(number_external)d),P(0,%(axial_ref)d),{0})".format(\
-                                    self.format_helas_object('W(','%(me_id)d'))
-                call = call + "%(state_id)+d, FLAVOR(%(number_external)d),{0})".format(\
-                                    self.format_helas_object('W(','%(me_id)d'))
+                suffix = ", FLAVOR(%(number_external)d)," + wf_object + ")"
+                axial_suffix = ", FLAVOR(%(number_external)d)," + \
+                               "P(0,%(axial_ref)d)," + wf_object + ")"
             else:
-                if axial:
-                    axial_call = call.replace('XXXXX(', 'XXXXXR(', 1) + \
-                        "%(state_id)+d,P(0,%(axial_ref)d),{0})".format(\
-                                    self.format_helas_object('W(','%(me_id)d'))
-                call = call + "%(state_id)+d,{0})".format(\
-                                    self.format_helas_object('W(','%(me_id)d'))
+                suffix = "," + wf_object + ")"
+                axial_suffix = ",P(0,%(axial_ref)d)," + wf_object + ")"
+            # Two variants of the NSF/NSV flag: bare, or multiplied by IC so
+            # that the caller can flip a leg between the initial and the final
+            # state (crossing). Flipping that flag is what crosses the leg:
+            # helas stores the momentum as p*nsf and uses nhel*nsf. Only
+            # templates that actually pass a meaningful IC may use the second
+            # form -- several (e.g. the madevent MATRIX) declare IC as a local
+            # and never set it, so reading it there would give garbage.
+            flags = ("%(state_id)+d", "%(state_id)+d*IC(%(number_external)d)")
+            if axial:
+                axial_call = tuple(
+                    call.replace('XXXXX(', 'XXXXXR(', 1) + flag +
+                    axial_suffix for flag in flags)
+            call = tuple(call + flag + suffix for flag in flags)
 
-        if axial:
-            call_function = lambda wf: axial_call % dict(
-                wf.get_external_helas_call_dict(),
-                axial_ref=self.get_axial_gauge_ref(wf)) \
-                if self.has_axial_gauge_ref(wf) else \
-                call % wf.get_external_helas_call_dict()
+        if isinstance(call, tuple):
+            # The flag is read at emission time, not here: a single writer
+            # instance is reused across outputs (standalone then madevent), so
+            # the choice must not be baked into the cached call.
+            pick = lambda calls: calls[1 if self.use_crossing_ic else 0]
+            if axial:
+                call_function = lambda wf: pick(axial_call) % dict(
+                    wf.get_external_helas_call_dict(),
+                    axial_ref=self.get_axial_gauge_ref(wf)) \
+                    if self.has_axial_gauge_ref(wf) else \
+                    pick(call) % wf.get_external_helas_call_dict()
+            else:
+                call_function = lambda wf: \
+                    pick(call) % wf.get_external_helas_call_dict()
         else:
             call_function = lambda wf: call % wf.get_external_helas_call_dict()
         self.add_wavefunction(argument.get_call_key(), call_function)
@@ -1937,8 +1976,64 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
         else:
             return '%s%s)'%(prefix, number)
 
+    @staticmethod
+    def get_terminal_wavefunctions(matrix_element):
+        """Prove private diagonal-only roots in the complete optimized graph.
+
+        Unknown graph members or aliases disable the optimization. The emitted
+        calls and their generated COMMON consumers are checked separately.
+        """
+        try:
+            producers, consumed, roots = {}, set(), set()
+            for diagram in matrix_element.get_loop_diagrams():
+                for wf in diagram.get('loop_wavefunctions'):
+                    number = wf.get('number')
+                    mother = wf.get_loop_mother()
+                    if (number <= 0 or number != wf.get('me_id') or
+                            number in producers or not wf.get('is_loop') or
+                            mother is None):
+                        return {}
+                    origin = mother.get('number')
+                    if (origin != mother.get('me_id') or origin == number or
+                            (origin not in producers and origin not in (-1, 0))):
+                        return {}
+                    info = wf.get_helas_call_dict(OptimizedOutput=True)
+                    required = ('loop_mother_number', 'loop_mother_rank',
+                                'vertex_rank', 'lcut_size', 'in_size', 'out_size', 'out')
+                    if any(key not in info for key in required):
+                        return {}
+                    if info['out'] != number or info['loop_mother_number'] != origin:
+                        return {}
+                    producers[number] = {key: info[key] for key in required}
+                    consumed.add(origin)
+                for amplitude in diagram.get_loop_amplitudes():
+                    root = amplitude.get_final_loop_wavefunction()
+                    if (root.get('number') != root.get('me_id') or
+                            root.get('number') not in producers):
+                        return {}
+                    roots.add(root.get('number'))
+            for wf in matrix_element.get_all_wavefunctions():
+                if not wf.get('is_loop') and any(m.get('is_loop') for m in wf.get('mothers')):
+                    return {}
+            result = {}
+            for number in roots - consumed:
+                info = producers[number]
+                left, right = info['loop_mother_rank'], info['vertex_rank']
+                # The measured compact path is vertex-first. Other effective
+                # theory kernels retain the full updater.
+                if (min(left, right) < 0 or
+                        (left < right and left != 0 and right != 0) or
+                        not 0 < info['lcut_size'] <= info['out_size'] <= 16 or
+                        not 0 < info['in_size'] <= 16):
+                    continue
+                result[number] = info
+            return result
+        except (KeyError, ValueError, TypeError, AttributeError, MadGraph5Error):
+            return {}
+
     def get_coef_construction_calls(self, matrix_element, group_loops=True,
-                                            squared_orders=[], split_orders=[]):
+                                            squared_orders=[], split_orders=[],
+                                            terminal_wavefunctions=None):
         """ Return the calls to the helas routines to construct the coefficients
         of the polynomial representation of the loop numerator (i.e. Pozzorini
         method). Group the coefficients of the loop with same denominator 
@@ -1952,12 +2047,40 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
         res = []
         sqso_max_lamp = [sqso[1][2] for sqso in squared_orders]     
 
+        # Validate all generated updater statements before redirecting any.
+        # This leaves the generic cached wavefunction call functions untouched.
+        terminal_calls = {}
+        if terminal_wavefunctions:
+            for diagram in matrix_element.get_loop_diagrams():
+                for wf in diagram.get('loop_wavefunctions'):
+                    number = wf.get('number')
+                    if number not in terminal_wavefunctions:
+                        continue
+                    info = terminal_wavefunctions[number]
+                    expected = ('CALL %(proc_prefix)sUPDATE_WL_{loop_mother_rank}_{vertex_rank}'
+                        '(WL(1,0,1,{loop_mother_number}),{lcut_size},COEFS,'
+                        '{in_size},{out_size},WL(1,0,1,{out}))').format(**info)
+                    call = self.get_wavefunction_call(wf)
+                    if call.splitlines().count(expected) != 1:
+                        terminal_calls = {}
+                        break
+                    terminal_calls[number] = (expected, expected.replace(
+                        'UPDATE_WL_', 'TERMINAL_WL_', 1)[:-1]+',WL_ENTRY_INEXACT)')
+                else:
+                    continue
+                break
+            if set(terminal_calls) != set(terminal_wavefunctions):
+                terminal_calls = {}
         i=0
         for ldiag in matrix_element.get_loop_diagrams():
             res.append("# Coefficient construction for loop diagram with ID %d"\
                        %ldiag.get('number'))
             for lwf in ldiag.get('loop_wavefunctions'):
-                    res.append(self.get_wavefunction_call(lwf))
+                    call = self.get_wavefunction_call(lwf)
+                    if lwf.get('number') in terminal_calls:
+                        before, after = terminal_calls[lwf.get('number')]
+                        call = call.replace(before, after, 1)
+                    res.append(call)
             for lamp in ldiag.get_loop_amplitudes():
                 # If the loop grouping is not desired, then make sure it is 
                 # turned off here. It is of course not to be included for 
@@ -2187,6 +2310,10 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
         self.use_flavor_mask = False
         self.me_n_flavors = 0
         self.me_active_flavor_mask = None
+        # When True, external HELAS calls read their momentum through perm[]
+        # and multiply their NSF flag by ic[] so a crossed leg flips (set by the
+        # standalone_cpp exporter around calculate_wavefunctions generation).
+        self.use_crossing_ic = False
         super(CPPUFOHelasCallWriter, self).__init__(argument, options=options)
 
     def _flavor_mask_prefix(self, obj, kind):
@@ -2213,6 +2340,40 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
         word = (idx - 1) // 64
         bit = (idx - 1) % 64
         return 'if ((%s[%d] & (1ULL << %d)) != 0ULL) ' % (array, word, bit)
+
+    def _cpp_external_call(self, wf, routine, spin, is_boson):
+        """Build the ixxxxx/oxxxxx/vxxxxx/sxxxxx call for an external leg.
+
+        When self.use_crossing_ic is False this reproduces the historical call
+        byte-for-byte. When True the momentum is read through perm[] (base
+        slot n takes the momentum of input slot perm[n]) and the NSF flag is
+        multiplied by ic[], so a leg the crossing moved between the initial and
+        the final state flips (helas folds the momentum sign change out of that
+        flag). The helicity is the base slot's own, times the same ic[] (as the
+        fortran APPLY_CROSSING_ROWS): every crossing then evaluates the same
+        helicity configuration of row ihel, so they share one good-helicity
+        filter. Read through perm[] it would instead feed a slot helicity
+        values of another leg's state set -- a quark helicity 0 when a Z moves
+        in."""
+        n = wf.get('number_external') - 1
+        me = wf.get('me_id') - 1
+        if not is_boson:
+            # For fermions, need particle/antiparticle
+            nsf = - (-1) ** wf.get_with_flow('is_part')
+        else:
+            # For bosons (incl. scalars), need initial/final
+            nsf = (-1) ** (wf.get('state') == 'initial')
+        cross = getattr(self, 'use_crossing_ic', False)
+        hel_tok = ('hel[%d]*ic[%d]' % (n, n)) if cross else ('hel[%d]' % n)
+        nsf_tok = ('%+d*ic[%d]' % (nsf, n)) if cross else ('%+d' % nsf)
+        if spin == 1:
+            return '%s(p[perm[%d]],%s,w[%d]);' % (routine, n, nsf_tok, me)
+        elif spin == 2:
+            return '%s(p[perm[%d]],mME[%d],%s,%s, flavor[%d],w[%d]);' % \
+                   (routine, n, n, hel_tok, nsf_tok, n, me)
+        else:
+            return '%s(p[perm[%d]],mME[%d],%s,%s,w[%d]);' % \
+                   (routine, n, n, hel_tok, nsf_tok, me)
 
     def generate_helas_call(self, argument):
         """Routine for automatic generation of C++ Helas calls
@@ -2254,50 +2415,17 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
         if isinstance(argument, helas_objects.HelasWavefunction) and \
                not argument.get('mothers'):
             # String is just ixxxxx, oxxxxx, vxxxxx or sxxxxx
-            call = call + HelasCallWriter.mother_dict[\
+            routine = HelasCallWriter.mother_dict[\
                 argument.get_spin_state_number()].lower()
             # Fill out with X up to 6 positions
-            call = call + 'x' * (6 - len(call))
-            # Specify namespace for Helas calls
-            call = call + "(p[perm[%d]],"
-            if argument.get('spin') != 1:
-                # For non-scalars, need mass and helicity
-                call = call + "mME[%d],hel[%d],"
-            if argument.get('spin') == 2:
-                call = call + "%+d, flavor[%i],w[%d]);"
-            else:
-                call = call + "%+d,w[%d]);"
-            if argument.get('spin') == 1:
-                call_function = lambda wf: call % \
-                                (wf.get('number_external')-1,
-                                 # For boson, need initial/final here
-                                 (-1) ** (wf.get('state') == 'initial'),
-                                 wf.get('me_id')-1)
-            elif argument.is_boson():
-                call_function = lambda wf: call % \
-                                (wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 # For boson, need initial/final here
-                                 (-1) ** (wf.get('state') == 'initial'),
-                                 wf.get('me_id')-1)
-            elif argument.get('spin') == 2:
-                call_function = lambda wf: call % \
-                                (wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 # For fermions, need particle/antiparticle
-                                 - (-1) ** wf.get_with_flow('is_part'),
-                                 wf.get('number_external')-1, 
-                                 wf.get('me_id')-1)
-            else:
-                call_function = lambda wf: call % \
-                                (wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 wf.get('number_external')-1,
-                                 # For fermions, need particle/antiparticle
-                                 - (-1) ** wf.get_with_flow('is_part'),
-                                 wf.get('me_id')-1)
+            routine = routine + 'x' * (6 - len(routine))
+            spin = argument.get('spin')
+            is_boson = argument.is_boson()
+            # The crossing decision (use_crossing_ic) is read at emission time,
+            # inside the cached lambda, because one session reuses the writer
+            # across a crossing output and a plain one (see the fortran writer).
+            call_function = lambda wf: self._cpp_external_call(
+                wf, routine, spin, is_boson)
         else:
             if isinstance(argument, helas_objects.HelasWavefunction):
                 outgoing = argument.find_outgoing_number()

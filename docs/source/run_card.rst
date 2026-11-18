@@ -244,7 +244,16 @@ in the ``[cluster_train]`` and ``[cluster_deploy]`` sections, for example
     transverse masses, :math:`H_T`. ``half_transverse_mass`` is :math:`H_T/2`.
     ``partonic_energy`` is the partonic center-of-mass energy. ``set dynamical_scale_choice
     HT/4`` is a shortcut that sets this parameter and ``scale_factor`` to give
-    :math:`H_T/4`.
+    :math:`H_T/4`. ``ckkwl`` is the clustering scale of the diagram, without the
+    :math:`\alpha_s` and PDF reweighting of MLM merging: MadEvent's default ``-1`` for a
+    CKKW-L merged sample, where Pythia8 does that reweighting. An ``[amplicol]`` event is
+    clustered along the planar diagrams of its leading-colour flow, which differ from the
+    diagrams a madmatrix event is clustered along. Under ``mlm`` and ``ckkwl`` the scales
+    are those of the clustering: the fixed scales and ``scale_factor`` are ignored.
+    For madmatrix, ``ckkwl`` scores clusterings with the hidden ``clustering_measure``, so
+    the scales of jet events differ slightly from MadEvent's ``-1``: higher with the default
+    ``"fxfx"``, lower with ``"madevent"``. The merged cross section barely changes, since Pythia8
+    redoes the :math:`\alpha_s` reweighting.
 
 ``scale_factor`` (``1.0``)
     Factor applied to the dynamical scale. Fixed scales are not affected. With the default
@@ -393,6 +402,30 @@ VEGAS grids adapt the phase-space sampling during the survey.
     are dropped. ``-1`` keeps all channels. This helps with processes that have too many
     channels.
 
+``ew_channel_reduction`` (``20``)
+    If a subprocess still has more channels than this, channels that differ only in the
+    bosons of some of their off-shell propagators are merged into one, which takes over
+    their channel weights, and redundant ones are dropped (see
+    ``ew_channel_reduction_mode``). Channels that map a flavor or a (flavor, resonance) pair
+    no kept channel does are always kept. ``-1`` keeps all channels. This is the
+    counterpart of ``drop_qcd_s_channel`` for processes with many electroweak diagrams.
+
+``ew_channel_reduction_mode`` (``"partial"``)
+    How far ``ew_channel_reduction`` goes:
+
+    - ``"t_channel"``: merge channels that differ only in the bosons of their t-channel
+      propagators (a photon, Z or W); every s-channel structure keeps its channel.
+    - ``"partial"``: merge as ``"t_channel"``, and keep only the channels with at most one
+      non-resonant s-channel propagator more than the fewest.
+    - ``"full"``: also merge channels that differ in their off-shell s-channel bosons, and
+      keep only the channels with the fewest non-resonant s-channel propagators. This
+      gives the fewest channels, but trains to lower unweighting efficiencies.
+
+``channel_reduction_with_vegas`` (``false``)
+    ``ew_channel_reduction`` is meant for MadNIS, which trains poorly with many channels.
+    By default it is skipped when the run is certain to use VEGAS: ``madnis.enable =
+    false``, or ``"auto"`` for a 2 -> 2 process. ``true`` applies it then as well.
+
 ``invariant_power`` (``0.7``)
     Exponent :math:`p` of the :math:`1/s^p` sampling of time-like invariants.
 
@@ -407,6 +440,30 @@ VEGAS grids adapt the phase-space sampling during the survey.
 ``adaptive_symmetry_sampling`` (``true``)
     Learn the probabilities of the permutations of identical particles instead of using
     equal ones.
+
+``ktdurham`` (``0.0``)
+    CKKW-L merging with Pythia8: the smallest Durham :math:`k_T` an event may have, taken
+    over the :math:`p_T` of each merging parton (hadron colliders only) and the
+    :math:`k_T = \min(p_{T,i}, p_{T,j})\,\Delta R_{ij}/D` of each pair. ``0`` disables it.
+    Pythia8's ``Merging:TMS`` defaults to this value, and ``Merging:Process`` has to be set
+    in the Pythia8 card. Only one of ``ktdurham`` and ``ptlund`` can be set, and neither
+    together with ``xqcut``. On hadron colliders the phase-space sampling starts the
+    :math:`p_T` of the merging partons at this value.
+
+``ptlund`` (``0.0``)
+    CKKW-L merging with Pythia8: the smallest Pythia8 evolution :math:`p_T` over all ISR and
+    FSR splittings that can produce a merging parton. ``0`` disables it. An ``[amplicol]``
+    subprocess usually groups flavours that split differently (quarks and gluons), which
+    this cut cannot tell apart: use ``ktdurham`` there.
+
+``dparameter`` (``0.4``)
+    :math:`D` of the hadron-collider ``ktdurham`` measure, Pythia8's ``Merging:Dparameter``.
+
+``merging_pdgs`` (``"auto"``)
+    PDG ids of the particles the ``ktdurham`` or ``ptlund`` cut applies to. ``auto`` takes,
+    as in MadEvent, all colored particles of the model (including the top and any colored
+    BSM particles); only those in the final state matter. As in MadEvent, decay-chain products are never
+    merging partons.
 
 [custom_functions]
 ------------------
@@ -729,6 +786,12 @@ Channel dropping
 ``channel_dropping_threshold`` (``0.01``), ``channel_dropping_interval`` (``100``)
     Every ``channel_dropping_interval`` batches, channels that contribute less than the
     threshold fraction of the integral are dropped.
+
+``resonance_guard`` (``true``)
+    The channel dropping never drops the last channel that maps a resonance (a propagator
+    that can go on shell, with its decay products) for a flavor. The last channel of a
+    flavor is kept in any case. Without the guard, a resonance with a small share of the cross section, such as
+    H -> W W* in a VBS process, can lose its only channel and end up undersampled.
 
 Networks
 ^^^^^^^^
