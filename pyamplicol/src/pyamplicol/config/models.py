@@ -1746,7 +1746,7 @@ class BenchmarkConfig:
     n_core: int = field(default=10, metadata=_setting("int"))
     # The reference ("ground truth") of a loop profile (``--ground-truth``):
     # "double-double" or "arbitrary[:DIGITS]" (decimal digits; without them
-    # the built-in rescue's arbitrary-precision level's), "dd" and "arb"
+    # the default arbitrary-precision digits, 500), "dd" and "arb"
     # accepted; read by both tables (``loop_profile.ground_truth``).
     ground_truth: str = field(default="double-double", metadata=_setting("str"))
     # The runtime timing of a loop profile in the checked mode (``--checked``):

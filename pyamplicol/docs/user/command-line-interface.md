@@ -996,11 +996,12 @@ measured `peak RAM`.
 
 **Ground truth.** `--ground-truth` (`benchmark.ground_truth`) selects the
 reference of both tables: `double-double` (`dd`, the default) or arbitrary
-precision, `arbitrary` (`arb`) at the built-in rescue's arbitrary-precision
-digits (57, `loops.v2.stability.DEFAULT_RESCUE`) or `arbitrary:DIGITS`
+precision, `arbitrary` (`arb`) at the default arbitrary-precision digits
+(500, `loops.v2.reduction.default_arbitrary_digits()`, the native policy's
+`DEFAULT_ARBITRARY_DIGITS`) or `arbitrary:DIGITS`
 (`arb:DIGITS`). It is the stability run's truth and the precision of both
 tables' multipliers, and the labels follow it: the header's `ground truth`
-row, `(arb(57) x210)`, "Stable digits of binary64 vs arb(57)". The values
+row, `(arb(500) x210)`, "Stable digits of binary64 vs arb(500)". The values
 judged are binary64's either way; a point whose reference fails is "no
 ref." as before. Arbitrary precision costs far more than double-double; its
 runtime timing is bounded as the double-double one is. `--ground-truth none`
