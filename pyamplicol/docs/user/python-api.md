@@ -398,8 +398,9 @@ largest Laurent coefficient) exceeds the guard's limit: the call's target
 never below 1e-5, i.e. max(target, 1e-5). The point's one reason names the
 fallback, TIRust's failure, the arithmetic, the estimate and the limit,
 e.g. `auto: TIRust refused or failed the point (...); the per-point NinjaRS
-fallback's value failed its rotation check: estimate 1.4e2 >
-1e-5 = max(target 1e-5, 1e-5) (double-double)`; `on_failure="raise"`
+fallback's value failed its rotation check: estimate >1, above
+1e-5 = max(target 1e-5, 1e-5) (double-double)` (an estimate above 1 reads
+`>1`; the record keeps the number); `on_failure="raise"`
 raises `EvaluationError` with it, `"return"` returns the point as a failed
 lane (and a rescue stack escalates it), and the default `"best-effort"`
 returns it with its unchecked value as a `"best-effort"` lane. The estimate is recorded in the

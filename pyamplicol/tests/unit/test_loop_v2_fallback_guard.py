@@ -130,7 +130,7 @@ def test_the_guard_has_one_rule_and_one_reason(loop_native):
     assert reason == (
         "auto: TIRust refused or failed the point (TIRust refused the row); the "
         "per-point NinjaRS fallback's value failed its rotation check: "
-        "estimate 1.4e2 > 1e-5 = max(target 1e-5, 1e-5) (double-double)"
+        "estimate >1, above 1e-5 = max(target 1e-5, 1e-5) (double-double)"
     )
     assert loop_native.reduction_text(
         "rejected",
@@ -140,7 +140,7 @@ def test_the_guard_has_one_rule_and_one_reason(loop_native):
         carrier="arbitrary",
         estimate=3.0,
         target=1e-7,
-    ).endswith("estimate 3.0e0 > 1e-5 = max(target 1e-7, 1e-5) (arbitrary)")
+    ).endswith("estimate >1, above 1e-5 = max(target 1e-7, 1e-5) (arbitrary)")
 
 
 # ------------------------------------------------- with_fallback, scripted

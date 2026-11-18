@@ -346,6 +346,10 @@ pub fn fallback_rejected(
     );
     let verdict = if estimate.is_nan() {
         format!("estimate NaN, not within {limit}")
+    } else if estimate > 1.0 {
+        // A relative estimate above 1 shows as ">1" (USER 2026-11-18, a
+        // display rule; the records keep the number).
+        format!("estimate >1, above {limit}")
     } else {
         format!("estimate {estimate:.1e} > {limit}")
     };
@@ -816,7 +820,7 @@ mod tests {
                 1e-5
             ),
             "auto: TIRust refused or failed the point (TIRust refused the row); the per-point \
-             NinjaRS fallback's value failed its rotation check: estimate 1.4e2 > \
+             NinjaRS fallback's value failed its rotation check: estimate >1, above \
              1e-5 = max(target 1e-5, 1e-5) (double-double)"
         );
         assert!(
