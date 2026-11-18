@@ -1137,8 +1137,9 @@ class _ReferenceRuntime:
     one its checks trust, one whose estimate exceeds the target (a wrong
     value served as a success, alphal00p/ninjars#15)."""
 
-    def __init__(self) -> None:
+    def __init__(self, relatives=(1e-40, 49.0)) -> None:
         self.calls: list[dict[str, object]] = []
+        self.relatives = relatives
 
     def evaluate(self, batch, **options):
         from types import SimpleNamespace
@@ -1153,10 +1154,7 @@ class _ReferenceRuntime:
             values=values,
             valid=[True, True],
             diagnostics=[None, None],
-            stability=[
-                SimpleNamespace(relative=1e-40),
-                SimpleNamespace(relative=49.0),
-            ]
+            stability=[SimpleNamespace(relative=r) for r in self.relatives]
             if checked
             else None,
         )
@@ -1175,7 +1173,7 @@ def test_an_arbitrary_precision_reference_point_failing_its_checks_is_no_referen
     try:
         runtime = _ReferenceRuntime()
         _WORKER.clear()
-        _WORKER.update(runtime=runtime, truth=GroundTruth("arbitrary", 57), target=1e-5)
+        _WORKER.update(runtime=runtime, truth=GroundTruth("arbitrary", 57))
         # The plain reference (the cross-check's): one evaluation, no checks.
         records = _stability_records("ninjars", "reference", [29, 30], [0, 1], 1.0)
         assert "stability_checks" not in runtime.calls[0]
@@ -1201,15 +1199,26 @@ def test_an_arbitrary_precision_reference_point_failing_its_checks_is_no_referen
         index, value, reason, text = records[1]
         assert (index, value, text) == (30, None, None)
         assert reason == (
-            "failed: stability checks: estimate 4.9e+01 above the target 1e-05"
+            "failed: stability checks: estimate 4.9e+01 above binary64's unit "
+            "roundoff 1.1e-16"
         )
-        # At the target exactly the estimate is met: the value is kept.
-        runtime = _ReferenceRuntime()
-        _WORKER.update(runtime=runtime, target=49.0)
+        # The bound is binary64's unit roundoff, inclusive: an estimate of
+        # 2^-53 is kept, the next float above it is not (not the run's
+        # target: 1e-5 would keep a reference unable to resolve binary64).
+        u = 2.0**-53
+        runtime = _ReferenceRuntime((u, math.nextafter(u, 1.0)))
+        _WORKER.update(runtime=runtime)
         records = _stability_records(
             "ninjars", _REFERENCE_CHECKED, [29, 30], [0, 1], 1.0
         )
-        assert records[1][1] == [[Fraction(58 * 10**16)]]
+        assert records[0][1] == [[Fraction(7, 4)]]
+        assert records[1][1] is None
+        runtime = _ReferenceRuntime((1e-6, 1e-40))
+        _WORKER.update(runtime=runtime)
+        records = _stability_records(
+            "ninjars", _REFERENCE_CHECKED, [29, 30], [0, 1], 1.0
+        )
+        assert records[0][1] is None and records[1][1] is not None
         # Double-double: one plain evaluation, every success the reference.
         runtime = _ReferenceRuntime()
         _WORKER.update(runtime=runtime, truth=GroundTruth("double-double"))
@@ -1242,6 +1251,10 @@ def test_the_backends_references_agree_to_the_unit_roundoff_squared():
     assert not _references_agree(one, -one)
     # Two exact zeros agree; a zero and anything else do not, nor do two
     # rounding-level values of an integrated zero: the checked re-run judges.
+    # The contradiction bound of two checked references: binary64's unit
+    # roundoff.
+    assert _references_agree(one, one * (1 + u), u)
+    assert not _references_agree(one, one * (1 + 2 * u), u)
     assert _references_agree(Fraction(0), Fraction(0))
     assert not _references_agree(Fraction(0), Fraction(1, 10**60))
     assert not _references_agree(Fraction(3, 10**60), Fraction(-2, 10**60))
@@ -1256,13 +1269,26 @@ def test_the_tracker_counts_checked_reruns_as_reference_time_and_eta():
     tracker.queue_checked("ninjars", 2)
     assert tracker.checked_rate("ninjars") is None
     tracker.add_checked("ninjars", 1, 4.0)
-    # The re-run's seconds are the reference stream's, not its points.
+    # The re-run's seconds are the reference stream's time, not its points
+    # nor its plain rate; its cost per point adds their share once.
     assert tracker.done[("ninjars", "reference")] == 10
     assert tracker.seconds[("ninjars", "reference")] == 14.0
-    assert tracker.rate(("ninjars", "reference")) == 1.4
+    assert tracker.rate(("ninjars", "reference")) == 1.0
+    assert tracker.stream_cost(("ninjars", "reference")) == 1.4
     assert (tracker.checking["ninjars"], tracker.checked_rate("ninjars")) == (1, 4.0)
     for key in tracker.done:
         tracker.done[key] = 10
         tracker.timed[key][0] = max(tracker.timed[key][0], 1)
-    # The one queued re-run left is the whole remaining estimate.
+    # The one queued re-run left is the whole remaining estimate (counted
+    # once: the done points carry no expected share).
     assert tracker._eta() == 4.0
+    # Ten more points: each at its plain rate plus the re-runs' share, and
+    # the queued re-run once.
+    tracker.set_points(20)
+    tracker.done = {key: 10 for key in tracker.done}
+    eta = tracker._eta()
+    others = sum(
+        10 * tracker.stream_cost(key) for key in tracker.done if key[0] != "ninjars"
+    )
+    binary64 = 10 * tracker.stream_cost(("ninjars", "binary64"))
+    assert eta == pytest.approx(others + binary64 + 10 * 1.4 + 4.0)

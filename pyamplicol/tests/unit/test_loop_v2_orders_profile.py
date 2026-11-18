@@ -686,7 +686,14 @@ def test_disagreeing_references_are_rerun_checked_on_the_worker_pool(
     from pyamplicol import loop_profile
     from pyamplicol.cli.main import run_cli
 
-    monkeypatch.setattr(loop_profile, "_references_agree", lambda a, b: False)
+    def plain_disagree(a, b, tolerance=loop_profile._AGREEMENT):
+        # The cross-check's agreement off; the checked references' own
+        # comparison (to binary64's unit roundoff) as it is.
+        return tolerance is not loop_profile._AGREEMENT and abs(a - b) <= (
+            tolerance * max(abs(a), abs(b))
+        )
+
+    monkeypatch.setattr(loop_profile, "_references_agree", plain_disagree)
     found = {}
     for cores in ("1", "3"):
         stdout = io.StringIO()
@@ -711,6 +718,12 @@ def test_disagreeing_references_are_rerun_checked_on_the_worker_pool(
         assert code == 0
         report = json.loads(stdout.getvalue())
         assert report["stability_setup"]["interrupted"] is False
+        assert report["stability_setup"]["n_core"] == int(cores)
+        for row in report["stability"]:
+            tasks = row["samples"]["tasks"]
+            for sample in _records(row["samples"]):
+                # The re-run's own task (seconds, points) is recorded.
+                assert tasks[sample["reference_checked_task"]][1] >= 1
         found[cores] = {
             row["backend"]: [
                 (s["index"], s["reference_certified"], s["true_digits"])
@@ -724,6 +737,124 @@ def test_disagreeing_references_are_rerun_checked_on_the_worker_pool(
     assert found["1"] == found["3"]
     assert {c for rows in found["1"].values() for _, c, _ in rows} == {"checks"}
     assert all(len(rows) == 5 for rows in found["1"].values())
+
+
+def _profile_json(artifact, *extra):
+    from pyamplicol.cli.main import run_cli
+
+    stdout = io.StringIO()
+    code = run_cli(
+        [
+            "profile",
+            str(artifact),
+            "--stability",
+            "--progress",
+            "off",
+            "--json",
+            *extra,
+        ],
+        stdout=stdout,
+        stderr=io.StringIO(),
+    )
+    assert code == 0
+    return json.loads(stdout.getvalue())
+
+
+@pytest.mark.loop_fast
+def test_checked_references_that_contradict_each_other_are_no_reference(
+    uux_ddx, monkeypatch
+):
+    """Two checked re-runs that both pass their checks but still differ by
+    more than binary64's unit roundoff contradict their estimates: neither
+    is kept, the point has no reference, its reason says so."""
+
+    from pyamplicol import loop_profile
+
+    monkeypatch.setattr(loop_profile, "_references_agree", lambda a, b, t=None: False)
+    report = _profile_json(
+        uux_ddx, "--stability-points", "4", "--ground-truth", "arb:30", "--n_core", "1"
+    )
+    for row in report["stability"]:
+        assert row["failed_reference"] == 4
+        for sample in _records(row["samples"]):
+            assert sample["reference_value"] is None
+            assert sample["reference_certified"] is None
+            assert sample["reference_reason"].startswith(
+                "failed: stability checks: the backends' checked references differ by"
+            )
+
+
+@pytest.mark.loop_fast
+def test_the_deadline_admits_checked_reruns_and_ends_in_time(uux_ddx, monkeypatch):
+    """Under --completion-time on three workers, with every reference sent to
+    its checked re-run: no chunk is admitted on an unmeasured stream, the
+    re-runs of the admitted points are all done, the run ends within the
+    plan's tolerance."""
+
+    import time
+
+    from pyamplicol import loop_profile
+    from pyamplicol.profile_plan import BUDGET_TOLERANCE, STABILITY_MINIMUM
+
+    monkeypatch.setattr(
+        loop_profile,
+        "_references_agree",
+        lambda a, b, t=loop_profile._AGREEMENT: t is not loop_profile._AGREEMENT,
+    )
+    begin = time.perf_counter()
+    report = _profile_json(
+        uux_ddx,
+        "--ground-truth",
+        "arb:30",
+        "--completion-time",
+        "40s",
+        "--n_core",
+        "3",
+    )
+    assert time.perf_counter() - begin <= BUDGET_TOLERANCE * 40
+    setup = report["stability_setup"]
+    assert setup["interrupted"] is False and setup["n_core"] == 3
+    for row in report["stability"]:
+        samples = _records(row["samples"])
+        assert len(samples) >= STABILITY_MINIMUM
+        assert {s["reference_certified"] for s in samples} == {"checks"}
+
+
+@pytest.mark.loop_fast
+def test_a_backend_refused_mid_run_leaves_the_other_certified(uux_ddx, monkeypatch):
+    """TIRust refused from the second chunk on (in process): its row is
+    refused, NinjaRS's references of the first chunk stay certified by the
+    agreement, the later ones by their checks (one live backend)."""
+
+    from pyamplicol import loop_profile
+    from pyamplicol.api.errors import ReductionUnavailable
+
+    task = loop_profile._stability_task
+
+    def refusing(backend, precision, indices, batch, scales):
+        if backend == "tirust" and min(indices) >= 16:
+            raise ReductionUnavailable("refused for the test")
+        return task(backend, precision, indices, batch, scales)
+
+    monkeypatch.setattr(loop_profile, "_stability_task", refusing)
+    report = _profile_json(
+        uux_ddx,
+        "--stability-points",
+        "20",
+        "--ground-truth",
+        "arb:30",
+        "--n_core",
+        "1",
+    )
+    rows = {row["backend"]: row for row in report["stability"]}
+    assert rows["tirust"]["refusal"] == "refused for the test"
+    labels = {
+        s["index"]: s["reference_certified"]
+        for s in _records(rows["ninjars"]["samples"])
+    }
+    assert sorted(labels) == list(range(20))
+    assert {labels[i] for i in range(16)} == {"agreement"}
+    assert {labels[i] for i in range(16, 20)} == {"checks"}
 
 
 def _records(table):
