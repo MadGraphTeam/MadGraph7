@@ -506,7 +506,10 @@ def test_a_light_top_lane_is_rescued_in_binary64_and_the_point_without_it(
 
     def error(result):
         ((mine,),) = result.values[0:1]
-        return max(abs(a - b) for a, b in zip(mine, exact, strict=True)) / scale
+        return (
+            max(abs(Decimal(str(a)) - b) for a, b in zip(mine, exact, strict=True))
+            / scale
+        )
 
     plain = runtime.evaluate([LIGHT_POINT], mu_r2=LIGHT_SCALE, on_failure="return")
     lane = plain.diagnostics[0]

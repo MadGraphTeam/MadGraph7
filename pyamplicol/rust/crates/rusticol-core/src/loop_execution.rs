@@ -237,6 +237,10 @@ pub mod v2 {
 
     /// Report stage of the lane rescue, and its counts per carrier.
     pub const LANE_RESCUE: &str = "lane rescue";
+    /// The lane rescue's reductions per carrier (sub-stages of
+    /// [`LANE_RESCUE`], which also forms the lanes' exact inputs).
+    pub const LANE_RESCUE_DD: &str = "lane rescue: double-double";
+    pub const LANE_RESCUE_ARB: &str = "lane rescue: arbitrary";
     pub const LANES_RESCUED_DD: &str = "lanes rescued in double-double";
     pub const LANES_RESCUED_ARB: &str = "lanes rescued in arbitrary precision";
     pub const LANES_UNRESCUED: &str = "lanes refused at every rescue carrier";
@@ -2319,7 +2323,15 @@ pub mod v2 {
                     improved,
                 )?);
             }
+            let start = Instant::now();
             let (direct, retest) = backend.rescue(carrier, &groups, options.poles, check, zero)?;
+            report.time(
+                match carrier {
+                    RescueCarrier::DoubleDouble => LANE_RESCUE_DD,
+                    RescueCarrier::Arbitrary(_) => LANE_RESCUE_ARB,
+                },
+                start,
+            );
             let mut next = Vec::new();
             let mut served = 0u64;
             for (g, members) in by_family.values().enumerate() {
