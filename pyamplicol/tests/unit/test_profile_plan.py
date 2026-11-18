@@ -78,12 +78,25 @@ def test_a_reference_cost_that_cannot_change_the_counts_is_not_needed():
         needed = reference_affects_counts(
             binary64, start, backends=backends, lanes=LANES
         )
-        assert needed == (share > warmup_seconds(LANES * binary64, binary64))
+        left = (1.0 - REFERENCE_SHARE) * share
+        assert needed == (left > warmup_seconds(LANES * binary64, binary64))
         if needed:
+            # The exact condition: a free reference would leave a timed
+            # budget that a dear one takes.
+            cheap, dear = (
+                runtime_counts(
+                    _costs(binary64, multiplier, start),
+                    share,
+                    lanes=LANES,
+                    batch_max=128,
+                ).budget
+                for multiplier in (0.0, 1e9)
+            )
+            assert cheap > 0.0 == dear
             continue
         counts = {
             (c.batch, c.warmup, c.minimum, c.budget)
-            for multiplier in (None, 2.0, 60.0, 1e4)
+            for multiplier in (0.0, 2.0, 60.0, 1e4)
             for c in [
                 runtime_counts(
                     _costs(binary64, multiplier, start),

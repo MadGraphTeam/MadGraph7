@@ -819,8 +819,9 @@ took):
   an expensive process whose minimums exceed them by more than a factor 1.5
   the same warning says so, with the time the minimums take. The
   measurement times only what can change the counts: a backend whose share
-  of the 10 s (its start-up excluded) affords no more than its binary64
-  warm-up gets the minimum counts whatever its reference costs, so its
+  of the 10 s (its start-up excluded), less the reference pass's quarter of
+  it, affords no more than its binary64 warm-up gets the minimum counts
+  whatever its reference costs, so its
   reference is not timed there (its runtime timing's untimed reference call
   measures it); when loading the artifact alone takes a backend's share,
   every backend gets the minimums and there is no measurement phase at all

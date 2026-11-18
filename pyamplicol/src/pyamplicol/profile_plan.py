@@ -256,15 +256,19 @@ def reference_affects_counts(
     """Whether a backend's reference cost can change its runtime counts
     under the default budget (``DEFAULT_RUNTIME_SECONDS`` shared by
     ``backends``, its ``start`` excluded, ``_split_runtime``) at ``binary64``
-    seconds per point: False when that share affords no more than the
-    binary64 warm-up (``warmup_seconds`` of one chunk of ``lanes``), so that
+    seconds per point: False when what the share leaves after the
+    reference's ``REFERENCE_SHARE`` (``runtime_counts`` takes it first, at
+    least that much whatever the reference costs) affords no more than the
+    binary64 warm-up (``warmup_seconds`` of one chunk of ``lanes``): then
     ``runtime_counts`` gives one chunk, one warm-up, the minimum timed calls
-    and no timed budget left whatever the reference costs (a reference cost
-    only takes from the share). Then the measurement need not time the
+    and no timed budget left whatever the reference costs, and with a
+    larger share a cheap reference would leave a timed budget a dear one
+    would not (the exact condition). Then the measurement need not time the
     reference: the runtime timing's reference warm-up measures it."""
 
     budget = max(DEFAULT_RUNTIME_SECONDS / max(backends, 1) - start, 0.0)
-    return budget > warmup_seconds(max(lanes, 1) * binary64, binary64)
+    left = (1.0 - REFERENCE_SHARE) * budget
+    return left > warmup_seconds(max(lanes, 1) * binary64, binary64)
 
 
 def runtime_minimum(costs: Costs, *, lanes: int) -> float:
