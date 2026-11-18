@@ -1,0 +1,718 @@
+# SPDX-License-Identifier: 0BSD
+from __future__ import annotations
+
+from dataclasses import FrozenInstanceError, is_dataclass, replace
+
+import pytest
+
+from pyamplicol.config import (
+    CONFIG_SECTIONS,
+    FIELD_REGISTRY,
+    Action,
+    BenchmarkConfig,
+    CheckConfig,
+    ColorAccuracy,
+    ColorConfig,
+    ColorContraction,
+    ColorFFTBasis,
+    ConfigurationError,
+    CppConfig,
+    EagerEvaluatorConfig,
+    EvaluationConfig,
+    EvaluationStabilityConfig,
+    EvaluatorBackend,
+    EvaluatorConfig,
+    EvaluatorExecutionMode,
+    EvaluatorOptimizationConfig,
+    GenerationConfig,
+    GenerationRelationDiscoveryConfig,
+    GenerationValidationConfig,
+    JITConfig,
+    LCFlowLayout,
+    LoopConfig,
+    ModelConfig,
+    OutputConfig,
+    ProcessConfig,
+    ProcessEntry,
+    ProcessGroupAnalysis,
+    R2Strategy,
+    RecurrenceEvaluatorConfig,
+    ReductionBackend,
+    RelationDiscoveryMode,
+    RunConfig,
+    SymbolicaConfig,
+)
+
+
+def test_check_arbitrary_digits_is_a_positive_count_of_the_auto_ladder() -> None:
+    """m-lit lit-check (DECISIONS 2026-11-10 00:08): null derives the
+    arbitrary-precision rung's digits per row; an explicit precision has no
+    rung."""
+
+    assert CheckConfig().arbitrary_digits is None
+    assert CheckConfig(arbitrary_digits=50).arbitrary_digits == 50
+    for invalid in (0, -3, 1.5, "50", True):
+        with pytest.raises(ConfigurationError, match=r"check\.arbitrary_digits"):
+            CheckConfig(arbitrary_digits=invalid)
+    for precision in ("double", "double-double"):
+        with pytest.raises(ConfigurationError, match=r"check\.precision must be auto"):
+            CheckConfig(precision=precision, arbitrary_digits=50)
+
+
+def test_check_energy_must_be_a_positive_finite_number() -> None:
+    assert CheckConfig().sqrt_s is None
+    assert CheckConfig(sqrt_s=2500).sqrt_s == 2500.0
+    for invalid in (0.0, -1.0, float("inf"), float("nan"), "1000", True):
+        with pytest.raises(ConfigurationError, match=r"check\.sqrt_s"):
+            CheckConfig(sqrt_s=invalid)
+
+
+def test_schema_v1_registry_contains_every_contract_leaf() -> None:
+    # 142: lit-ewprep's model.loop_preparation_cache, M-LIT lit-fold's
+    # generation.loop_induced_folding (USER ~22:39), lit-examples' check
+    # section, lit-ew-blocks' check.sqrt_s, lit-check's check.arbitrary_digits
+    # and lit-psimprove's evaluation.kinematics_improvement /
+    # evaluation.kinematics_improvement_binary64; 147: ux-process's
+    # process.squared_coupling_orders, loop.external_widths and the
+    # evaluation.phase_space section (points, seed, sqrt_s); 150: ux-profile's
+    # benchmark.runtime, stability and stability_points (`pyamplicol profile
+    # --runtime / --stability` of loop artifacts); 152: benchmark.ground_truth
+    # (`profile --ground-truth`); 153: benchmark.checked (`profile --checked`).
+    # 154: benchmark.completion_time (`profile --completion-time`); 155:
+    # benchmark.samples_output (`profile --samples-output`); 156:
+    # benchmark.runtime_threads (`profile --runtime-threads`). MadGraph7 adds
+    # process.flavor_blind_strict and generation.pack_payloads.
+    assert len(FIELD_REGISTRY) == 158
+    assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()
+    assert FIELD_REGISTRY["loop.external_widths"].default == "model"
+    assert FIELD_REGISTRY["evaluation.phase_space.points"].default == 2
+    assert FIELD_REGISTRY["benchmark.runtime"].default is False
+    assert FIELD_REGISTRY["benchmark.stability"].default is False
+    assert FIELD_REGISTRY["benchmark.stability_points"].default == 1000
+    assert FIELD_REGISTRY["benchmark.n_core"].default == 10
+    assert FIELD_REGISTRY["benchmark.ground_truth"].default == "double-double"
+    assert FIELD_REGISTRY["benchmark.checked"].default is False
+    assert FIELD_REGISTRY["benchmark.completion_time"].default is None
+    assert FIELD_REGISTRY["benchmark.samples_output"].default is None
+    assert FIELD_REGISTRY["benchmark.runtime_threads"].default == 1
+    # m-lit lit-examples: `pyamplicol check` (the check action's section).
+    assert FIELD_REGISTRY["check.points"].default == 3
+    assert FIELD_REGISTRY["check.seed"].nullable
+    assert FIELD_REGISTRY["check.seed"].default is None
+    assert FIELD_REGISTRY["check.precision"].choices == (
+        "auto",
+        "double",
+        "double-double",
+    )
+    assert "check" in FIELD_REGISTRY["action"].choices
+    assert FIELD_REGISTRY["check.model"].nullable
+    assert FIELD_REGISTRY["check.model"].default is None
+    # m-lit lit-ew-blocks: the check points' energy override (None: the
+    # generation's validation convention).
+    assert FIELD_REGISTRY["check.sqrt_s"].nullable
+    assert FIELD_REGISTRY["check.sqrt_s"].default is None
+    assert FIELD_REGISTRY["check.sqrt_s"].kind == "float"
+    # m-lit lit-check: the arbitrary-precision rung's digits (None: derived).
+    assert FIELD_REGISTRY["check.arbitrary_digits"].nullable
+    assert FIELD_REGISTRY["check.arbitrary_digits"].default is None
+    assert FIELD_REGISTRY["check.arbitrary_digits"].kind == "int"
+    # m-lit lit-unchecked: the unchecked reduction setting, a runtime option
+    # (off by default).
+    assert FIELD_REGISTRY["evaluation.reduction_unchecked"].default is False
+    assert FIELD_REGISTRY["evaluation.reduction_unchecked"].kind == "bool"
+    # m-lit lit-psimprove: the kinematics improvement, runtime options (None:
+    # the native defaults, MadLoop's variant above binary64, off in binary64).
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement"].default is None
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement"].nullable
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement"].kind == "str"
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement_binary64"].default is None
+    assert FIELD_REGISTRY["evaluation.kinematics_improvement_binary64"].kind == "bool"
+    # m-lit F3: TIRust's target accuracy, a runtime option (None: 1e-5).
+    assert FIELD_REGISTRY["evaluation.reduction_target"].default is None
+    assert FIELD_REGISTRY["evaluation.reduction_target"].nullable
+    assert FIELD_REGISTRY["evaluation.reduction_target"].kind == "float"
+    # m-lit LIT-API: the reduction backend (Q17 / Q18), a generation default
+    # and its runtime override.
+    assert FIELD_REGISTRY["loop.reduction"].default == "auto"
+    assert FIELD_REGISTRY["loop.reduction"].choices == ("auto", "ninjars", "tirust")
+    assert FIELD_REGISTRY["evaluation.reduction"].default is None
+    assert FIELD_REGISTRY["evaluation.reduction"].nullable
+    assert FIELD_REGISTRY["evaluation.reduction"].choices == (
+        "auto",
+        "ninjars",
+        "tirust",
+    )
+    # m-lit LIT-REQ: loop-induced routing (Q2 (b)).
+    assert FIELD_REGISTRY["process.loop_induced"].default == "auto"
+    assert FIELD_REGISTRY["process.loop_induced"].choices == (
+        "auto",
+        "skip",
+        "only",
+        "include",
+    )
+    # Tuning settings (no capability bound): defaults of the former literals.
+    assert FIELD_REGISTRY["color.adjoint_dense_max_gluons"].default == 12
+    assert FIELD_REGISTRY["color.fused_selector_max_sectors"].default == 128
+    assert FIELD_REGISTRY["color.fused_selector_max_sectors"].nullable
+    assert (
+        FIELD_REGISTRY["generation.validation.max_resolved_components"].default
+        == 1_000_000
+    )
+    assert FIELD_REGISTRY["generation.validation.max_resolved_components"].nullable
+    # MS-PHOTON: the photons' alpha(0) tags (MG5_aMC's !a!).
+    assert FIELD_REGISTRY["loop.external_photons"].kind == "choice_or_list_int"
+    assert FIELD_REGISTRY["loop.external_photons"].default == "final"
+    assert FIELD_REGISTRY["loop.alpha0_inverse_parameter"].nullable
+    # The legacy one-loop engine and its switch were removed (v2 only).
+    assert "loop.engine" not in FIELD_REGISTRY
+    assert FIELD_REGISTRY["loop.alpha_s_parameter"].nullable
+    assert FIELD_REGISTRY["loop.alpha_s_parameter"].default is None
+    assert FIELD_REGISTRY["generation.particle_veto"].kind == "list_str"
+    assert FIELD_REGISTRY["generation.particle_veto"].default == ()
+    assert FIELD_REGISTRY["generation.allow_anomalous_veto"].kind == "bool"
+    assert FIELD_REGISTRY["generation.allow_anomalous_veto"].default is False
+    assert FIELD_REGISTRY["generation.allow_failed_probes"].kind == "bool"
+    assert FIELD_REGISTRY["generation.allow_failed_probes"].default is False
+    # m-lit Q12 as ruled 2026-11-08 22:34 (3): the generation-time probes of
+    # loop-induced processes are off by default, enabled by the user.
+    assert FIELD_REGISTRY["generation.loop_induced_probes"].kind == "bool"
+    assert FIELD_REGISTRY["generation.loop_induced_probes"].default is False
+    filter_failure = FIELD_REGISTRY["generation.helicity_filter_failure_probability"]
+    assert filter_failure.kind == "float" and filter_failure.default == 1e-12
+    # M-LIT lit-fold (USER 2026-11-08 ~22:39): F1 folding, on by default.
+    assert FIELD_REGISTRY["generation.loop_induced_folding"].kind == "bool"
+    assert FIELD_REGISTRY["generation.loop_induced_folding"].default is True
+    assert FIELD_REGISTRY["evaluation.poles"].default == "all"
+    assert FIELD_REGISTRY["evaluation.poles"].choices == ("all", "none", "uv", "ir")
+    assert FIELD_REGISTRY["evaluation.stability_checks.rotations"].kind == "list_str"
+    assert FIELD_REGISTRY["evaluation.stability_checks.rotation_count"].default == 0
+    assert FIELD_REGISTRY["evaluation.stability_checks.rescaled"].default is False
+    assert FIELD_REGISTRY["loop.preparation"].nullable
+    # lit-ewprep: the persistent cache of one-loop model preparations is on
+    # by default (``loops.preparation_cache``).
+    assert FIELD_REGISTRY["model.loop_preparation_cache"].kind == "bool"
+    assert FIELD_REGISTRY["model.loop_preparation_cache"].default is True
+
+
+def test_loop_preparation_cache_is_a_boolean_model_option() -> None:
+    """lit-ewprep: ``model.loop_preparation_cache`` takes a boolean only;
+    any other value is refused with the one message."""
+
+    assert ModelConfig().loop_preparation_cache is True
+    assert ModelConfig(loop_preparation_cache=False).loop_preparation_cache is False
+    for value in (1, 0, "true", "off", None, 1.0):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"^model\.loop_preparation_cache must be a boolean$",
+        ):
+            ModelConfig(loop_preparation_cache=value)
+
+
+def test_loop_induced_probes_is_an_explicit_boolean_option() -> None:
+    """DECISIONS 2026-11-08 22:34 (3): the loop-induced generation-time
+    probes are off by default and enabled only by a boolean; any other value
+    is refused with the one message."""
+
+    assert GenerationConfig().loop_induced_probes is False
+    assert GenerationConfig(loop_induced_probes=True).loop_induced_probes is True
+    for value in (1, 0, "true", "on", None, 1.0):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"^generation\.loop_induced_probes must be true or false$",
+        ):
+            GenerationConfig(loop_induced_probes=value)
+
+
+def test_loop_induced_folding_is_an_explicit_boolean_option() -> None:
+    """M-LIT lit-fold (USER 2026-11-08 ~22:39, F1): the fold of loop-induced
+    chains is on by default and switched off only by a boolean; any other
+    value is refused with the one message."""
+
+    assert GenerationConfig().loop_induced_folding is True
+    assert GenerationConfig(loop_induced_folding=False).loop_induced_folding is False
+    for value in (1, 0, "false", "off", None, 0.0):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"^generation\.loop_induced_folding must be true or false$",
+        ):
+            GenerationConfig(loop_induced_folding=value)
+
+
+def test_helicity_filter_failure_probability_is_a_probability_below_one() -> None:
+    """m-lit Q10 (LIT-R2): the exact helicity-zero filter's stated failure
+    probability is overridable; 0 drops nothing, 1 and above, negative,
+    non-finite and non-numeric values are refused."""
+
+    assert GenerationConfig().helicity_filter_failure_probability == 1e-12
+    assert (
+        GenerationConfig(
+            helicity_filter_failure_probability=0
+        ).helicity_filter_failure_probability
+        == 0.0
+    )
+    for value in (1, 1.5, -1e-3, float("inf"), float("nan"), True, "1e-9"):
+        with pytest.raises(
+            ConfigurationError, match="helicity_filter_failure_probability"
+        ):
+            GenerationConfig(helicity_filter_failure_probability=value)
+
+
+def test_loop_config_refuses_the_removed_engine_with_the_reason() -> None:
+    for value in ("legacy", "v2"):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"'loop\.engine' was removed: the legacy one-loop engine was removed",
+        ):
+            LoopConfig(engine=value)
+    assert LoopConfig(r2_strategy="model").r2_strategy is R2Strategy.MODEL
+    assert LoopConfig().reduction is ReductionBackend.AUTO
+    assert LoopConfig(reduction="tirust").reduction is ReductionBackend.TIRUST
+    with pytest.raises(ConfigurationError, match=r"loop\.reduction must be one"):
+        LoopConfig(reduction="engine")
+    assert EvaluationConfig().reduction is None
+    assert EvaluationConfig(reduction="ninjars").reduction is ReductionBackend.NINJARS
+    with pytest.raises(ConfigurationError, match=r"evaluation\.reduction must be"):
+        EvaluationConfig(reduction="fast")
+    assert (
+        FIELD_REGISTRY["loop.preparation.fixed_parameters"].kind == "map_exact_scalar"
+    )
+    assert "evaluation.stability" in CONFIG_SECTIONS
+    assert FIELD_REGISTRY["evaluation.stability.higher"].kind == "list_str"
+    assert FIELD_REGISTRY["evaluation.on_failure"].default is None
+    assert "generation.umami_grouping" not in FIELD_REGISTRY
+    assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
+    assert FIELD_REGISTRY["action"].required
+    assert FIELD_REGISTRY["generation.workers"].default == "auto"
+    assert FIELD_REGISTRY["generation.validation.samples"].default == 2
+    assert FIELD_REGISTRY["evaluator.jit.optimization_level"].choices == (
+        0,
+        1,
+        2,
+        3,
+    )
+    assert FIELD_REGISTRY["evaluator.jit.compress"].kind == "auto_bool"
+    assert FIELD_REGISTRY["evaluator.jit.compress"].default == "auto"
+    assert FIELD_REGISTRY["evaluator.execution_mode"].choices == (
+        EvaluatorExecutionMode.AUTO,
+        EvaluatorExecutionMode.COMPILED,
+        EvaluatorExecutionMode.EAGER,
+        EvaluatorExecutionMode.RECURRENCE,
+        EvaluatorExecutionMode.ON_THE_FLY,
+        EvaluatorExecutionMode.LOOP_RECURRENCE,
+    )
+    assert (
+        FIELD_REGISTRY["evaluator.execution_mode"].default
+        is EvaluatorExecutionMode.AUTO
+    )
+    assert FIELD_REGISTRY["process.loop_coupling_orders"].nullable
+    assert FIELD_REGISTRY["loop.r2_strategy"].choices == tuple(R2Strategy)
+    assert FIELD_REGISTRY["color.lc_flow_layout"].default == (
+        LCFlowLayout.TOPOLOGY_REPLAY
+    )
+    assert FIELD_REGISTRY["color.lc_flow_layout"].choices == (
+        LCFlowLayout.TOPOLOGY_REPLAY,
+        LCFlowLayout.ALL_FLOW_UNION,
+    )
+    assert FIELD_REGISTRY["color.contraction"].default is ColorContraction.AUTO
+    assert FIELD_REGISTRY["color.contraction"].choices == (
+        ColorContraction.AUTO,
+        ColorContraction.DIRECT,
+        ColorContraction.SYMMETRIC_GROUP_FFT,
+    )
+    assert FIELD_REGISTRY["color.fft_basis"].default is ColorFFTBasis.ADJOINT
+    assert FIELD_REGISTRY["color.fft_basis"].choices == tuple(ColorFFTBasis)
+    assert FIELD_REGISTRY["evaluator.eager.point_tile_size"].default == 1024
+    assert FIELD_REGISTRY["evaluator.eager.workspace_mib"].default == 256
+    assert "evaluator.eager" in CONFIG_SECTIONS
+    assert FIELD_REGISTRY["evaluator.recurrence.point_tile_size"].default == 1024
+    assert FIELD_REGISTRY["evaluator.recurrence.workspace_mib"].default == 256
+    assert "evaluator.recurrence" in CONFIG_SECTIONS
+    assert FIELD_REGISTRY["generation.relation_discovery.mode"].default is (
+        RelationDiscoveryMode.OFF
+    )
+    assert (
+        FIELD_REGISTRY["generation.relation_discovery.precision_digits"].default == 96
+    )
+    assert (
+        FIELD_REGISTRY["generation.relation_discovery.verification_probe_count"].default
+        == 4
+    )
+    assert (
+        FIELD_REGISTRY["generation.relation_discovery.relative_tolerance"].default
+        == 1.0e-70
+    )
+    assert (
+        FIELD_REGISTRY["generation.relation_discovery.absolute_tolerance"].default
+        == 1.0e-80
+    )
+    assert "generation.relation_discovery" in CONFIG_SECTIONS
+    assert FIELD_REGISTRY["process.multiparticles"].dynamic_kind == "list_str"
+    assert FIELD_REGISTRY["process.entries"].kind == "process_entries"
+    assert FIELD_REGISTRY["process.reference_color_order"].kind == "list_int"
+    assert FIELD_REGISTRY["process.selected_color_sector_ids"].kind == "list_int"
+    assert FIELD_REGISTRY["process.selected_source_helicities"].dynamic_kind == "int"
+    assert FIELD_REGISTRY["process.flavor_blind"].default is False
+    assert FIELD_REGISTRY["process.consider_charge_conjugation"].default is True
+    assert FIELD_REGISTRY["process.only_unit_multiplier"].default is False
+    assert FIELD_REGISTRY["process.analyze_process_groups"].choices == (
+        ProcessGroupAnalysis.NONE,
+        ProcessGroupAnalysis.NUMERICAL,
+    )
+    assert "process.requests" not in FIELD_REGISTRY
+    assert "process.names" not in FIELD_REGISTRY
+    assert "evaluator.stage_local_parameter_layout" not in FIELD_REGISTRY
+    assert {
+        "color.coverage",
+        "color.flow_ids",
+        "generation.validation.zero_current_filter",
+        "generation.validation.current_merging",
+    }.isdisjoint(FIELD_REGISTRY)
+
+
+def test_all_public_configuration_dataclasses_are_frozen() -> None:
+    classes = (
+        BenchmarkConfig,
+        ColorConfig,
+        CppConfig,
+        EagerEvaluatorConfig,
+        EvaluationConfig,
+        EvaluationStabilityConfig,
+        EvaluatorConfig,
+        EvaluatorOptimizationConfig,
+        GenerationConfig,
+        GenerationRelationDiscoveryConfig,
+        GenerationValidationConfig,
+        JITConfig,
+        LoopConfig,
+        ModelConfig,
+        OutputConfig,
+        ProcessConfig,
+        ProcessEntry,
+        RecurrenceEvaluatorConfig,
+        RunConfig,
+        SymbolicaConfig,
+    )
+    assert all(is_dataclass(cls) and cls.__dataclass_params__.frozen for cls in classes)
+    config = RunConfig(action="generate")
+    with pytest.raises(FrozenInstanceError):
+        config.action = "evaluate"  # type: ignore[misc]
+
+
+def test_configuration_collections_are_immutable() -> None:
+    entry = ProcessEntry(expression="d d~ > z g", name="ddbar_zg")
+    process = ProcessConfig(
+        entries=(entry,),
+        multiparticles={"j": ["u", "d", "g"]},
+        max_coupling_orders={"QCD": 2},
+    )
+    assert process.entries == (entry,)
+    assert process.multiparticles["j"] == ("u", "d", "g")
+    with pytest.raises(FrozenInstanceError):
+        entry.name = "renamed"  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        process.max_coupling_orders["QED"] = 1  # type: ignore[index]
+
+
+def test_process_entries_validate_names_and_uniqueness() -> None:
+    with pytest.raises(ConfigurationError, match="must start with a letter"):
+        ProcessEntry(expression="d d~ > z", name="1-invalid")
+    with pytest.raises(ConfigurationError, match="duplicates: 'same'"):
+        ProcessConfig(
+            entries=(
+                ProcessEntry("d d~ > z", "same"),
+                ProcessEntry("u u~ > z", "same"),
+            )
+        )
+
+
+def test_process_grouping_settings_are_typed() -> None:
+    process = ProcessConfig()
+    assert not process.flavor_blind
+    assert process.consider_charge_conjugation
+    assert not process.only_unit_multiplier
+    assert process.analyze_process_groups is ProcessGroupAnalysis.NONE
+    assert (
+        ProcessConfig(analyze_process_groups="numerical").analyze_process_groups  # type: ignore[arg-type]
+        is ProcessGroupAnalysis.NUMERICAL
+    )
+    with pytest.raises(ConfigurationError, match=r"process\.flavor_blind"):
+        ProcessConfig(flavor_blind=1)  # type: ignore[arg-type]
+    with pytest.raises(ConfigurationError, match=r"process\.analyze_process_groups"):
+        ProcessConfig(analyze_process_groups="symbolic")  # type: ignore[arg-type]
+    assert RunConfig(action="group-processes").action is Action.GROUP_PROCESSES
+
+
+def test_schema_and_jit_settings_reject_wrong_boolean_integer_types() -> None:
+    with pytest.raises(ConfigurationError, match="schema_version"):
+        RunConfig(action="generate", schema_version=True)  # type: ignore[arg-type]
+    with pytest.raises(ConfigurationError, match="optimization_level"):
+        JITConfig(optimization_level=True)  # type: ignore[arg-type]
+    with pytest.raises(ConfigurationError, match="compress"):
+        JITConfig(compress=1)  # type: ignore[arg-type]
+
+
+def test_contract_defaults_are_typed() -> None:
+    config = RunConfig(action="evaluate")
+    assert config.action is Action.EVALUATE
+    assert config.color.accuracy is ColorAccuracy.LC
+    assert config.color.contraction is ColorContraction.AUTO
+    assert config.color.fft_basis is ColorFFTBasis.ADJOINT
+    assert config.resolved_color.contraction is ColorContraction.DIRECT
+    assert config.resolved_color.fft_basis is ColorFFTBasis.TRACE
+    assert config.color.lc_flow_layout is LCFlowLayout.TOPOLOGY_REPLAY
+    assert config.evaluator.backend is EvaluatorBackend.JIT
+    assert config.evaluator.execution_mode is EvaluatorExecutionMode.AUTO
+    assert config.resolved_execution_mode is EvaluatorExecutionMode.RECURRENCE
+    assert config.evaluator.jit.compress == "auto"
+    assert config.evaluator.resolved_jit_compress is False
+    assert config.evaluator.eager == EagerEvaluatorConfig()
+    assert config.evaluator.recurrence == RecurrenceEvaluatorConfig()
+    assert config.schema_version == 1
+    assert config.generation.validation.samples == 2
+    assert config.generation.relation_discovery.mode is RelationDiscoveryMode.OFF
+    assert config.generation.relation_discovery.precision_digits == 96
+    assert config.generation.relation_discovery.probe_count == 4
+    assert config.generation.relation_discovery.verification_probe_count == 4
+    assert config.generation.relation_discovery.relative_tolerance == 1.0e-70
+    assert config.generation.relation_discovery.absolute_tolerance == 1.0e-80
+    assert config.evaluator.output_chunk_size == 512
+    assert not config.evaluator.cpp.native_arch
+    assert config.evaluator.optimization.max_common_pair_cache_entries == 5_000_000
+    assert config.benchmark.target_runtime == 10.0
+    assert config.benchmark.precision == 16
+    assert config.output == OutputConfig()
+
+
+def test_jit_compression_auto_tracks_python_configuration_overrides() -> None:
+    recurrence = EvaluatorConfig()
+    compiled = replace(recurrence, execution_mode="compiled")
+
+    assert recurrence.jit.compress == compiled.jit.compress == "auto"
+    assert recurrence.resolved_jit_compress is False
+    assert compiled.resolved_jit_compress is True
+    assert (
+        replace(compiled, jit=JITConfig(optimization_level=3)).resolved_jit_compress
+        is False
+    )
+    assert (
+        replace(compiled, jit=JITConfig(compress=False)).resolved_jit_compress is False
+    )
+
+
+def test_relation_discovery_defaults_off_and_validates_certification_policy() -> None:
+    assert GenerationRelationDiscoveryConfig().mode is RelationDiscoveryMode.OFF
+    assert (
+        GenerationRelationDiscoveryConfig(mode="off").mode is RelationDiscoveryMode.OFF
+    )
+    assert (
+        GenerationRelationDiscoveryConfig(mode="diagnostic").mode
+        is RelationDiscoveryMode.DIAGNOSTIC
+    )
+    assert (
+        GenerationRelationDiscoveryConfig(mode="certified-reuse").mode
+        is RelationDiscoveryMode.CERTIFIED_REUSE
+    )
+    with pytest.raises(ConfigurationError, match="precision_digits"):
+        GenerationRelationDiscoveryConfig(precision_digits=79)
+    with pytest.raises(ConfigurationError, match="probe_count"):
+        GenerationRelationDiscoveryConfig(probe_count=1)
+    with pytest.raises(ConfigurationError, match="verification_probe_count"):
+        GenerationRelationDiscoveryConfig(verification_probe_count=1)
+    with pytest.raises(ConfigurationError, match="relative_tolerance"):
+        GenerationRelationDiscoveryConfig(relative_tolerance=-1.0)
+    with pytest.raises(ConfigurationError, match="absolute_tolerance"):
+        GenerationRelationDiscoveryConfig(absolute_tolerance=-1.0)
+    with pytest.raises(ConfigurationError, match="negative zero"):
+        GenerationRelationDiscoveryConfig(
+            relative_tolerance=-0.0,
+            absolute_tolerance=1.0e-80,
+        )
+    with pytest.raises(ConfigurationError, match="negative zero"):
+        GenerationRelationDiscoveryConfig(
+            relative_tolerance=1.0e-70,
+            absolute_tolerance=-0.0,
+        )
+    subnormal = GenerationRelationDiscoveryConfig(
+        relative_tolerance=float.fromhex("0x0.0000000000001p-1022"),
+        absolute_tolerance=0.0,
+    )
+    assert subnormal.relative_tolerance.hex() == "0x0.0000000000001p-1022"
+    with pytest.raises(ConfigurationError, match="cannot both be zero"):
+        GenerationRelationDiscoveryConfig(
+            relative_tolerance=0.0,
+            absolute_tolerance=0.0,
+        )
+
+
+def test_all_flow_union_layout_requires_lc_accuracy() -> None:
+    assert (
+        ColorConfig(lc_flow_layout="all-flow-union").lc_flow_layout
+        is LCFlowLayout.ALL_FLOW_UNION
+    )
+    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy='lc'"):
+        ColorConfig(accuracy="nlc", lc_flow_layout="all-flow-union")
+    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy='lc'"):
+        ColorConfig(accuracy="full", lc_flow_layout="all-flow-union")
+
+
+@pytest.mark.parametrize("fft_basis", tuple(ColorFFTBasis))
+def test_symmetric_group_fft_requires_contracted_color_and_supported_lane(
+    fft_basis: ColorFFTBasis,
+) -> None:
+    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy"):
+        ColorConfig(
+            accuracy="lc", contraction="symmetric-group-fft", fft_basis=fft_basis
+        )
+    # Without an accuracy a tree request resolves to LC (``RunConfig``).
+    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy"):
+        RunConfig(
+            action="generate",
+            color=ColorConfig(contraction="symmetric-group-fft", fft_basis=fft_basis),
+        )
+
+    for accuracy in ("nlc", "full"):
+        for execution_mode in ("recurrence", "on-the-fly"):
+            config = RunConfig(
+                action="generate",
+                color=ColorConfig(
+                    accuracy=accuracy,
+                    contraction="symmetric-group-fft",
+                    fft_basis=fft_basis,
+                ),
+                evaluator=EvaluatorConfig(execution_mode=execution_mode),
+            )
+            assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+            assert config.color.fft_basis is fft_basis
+
+    compiled_direct = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy="full"),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
+    )
+    assert compiled_direct.resolved_color.contraction is ColorContraction.DIRECT
+
+    for execution_mode in ("compiled", "eager"):
+        with pytest.raises(
+            ConfigurationError,
+            match=r"requires evaluator\.execution_mode='recurrence'",
+        ):
+            RunConfig(
+                action="generate",
+                process=ProcessConfig(selected_source_helicities={"1": 1}),
+                color=ColorConfig(
+                    accuracy="full",
+                    contraction="symmetric-group-fft",
+                    fft_basis=fft_basis,
+                ),
+                evaluator=EvaluatorConfig(execution_mode=execution_mode),
+            )
+
+
+def test_direct_contraction_ignores_the_default_adjoint_basis() -> None:
+    config = RunConfig(
+        action="generate", color=ColorConfig(accuracy="full", contraction="direct")
+    )
+    assert config.resolved_color.contraction is ColorContraction.DIRECT
+    assert config.resolved_color.fft_basis is ColorFFTBasis.TRACE
+
+
+def test_automatic_color_tracks_python_configuration_overrides() -> None:
+    config = RunConfig(action="generate")
+    full = replace(config, color=replace(config.color, accuracy="full"))
+    assert full.resolved_color.contraction is ColorContraction.AUTO
+    assert full.resolved_color.fft_basis is ColorFFTBasis.ADJOINT
+    compiled = replace(
+        full, evaluator=replace(full.evaluator, execution_mode="compiled")
+    )
+    assert compiled.resolved_color.contraction is ColorContraction.DIRECT
+    assert compiled.resolved_color.fft_basis is ColorFFTBasis.TRACE
+
+
+def test_fft_basis_rejects_unknown_values() -> None:
+    with pytest.raises(ConfigurationError, match=r"color\.fft_basis"):
+        ColorConfig(accuracy="full", fft_basis="other")
+
+
+def test_on_the_fly_execution_supports_every_color_accuracy() -> None:
+    selected_flow = RunConfig(
+        action="generate",
+        evaluator=EvaluatorConfig(execution_mode="on-the-fly"),
+    )
+    all_flow = RunConfig(
+        action="generate",
+        color=ColorConfig(lc_flow_layout="all-flow-union"),
+        evaluator=EvaluatorConfig(execution_mode="on-the-fly"),
+    )
+    assert selected_flow.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
+    assert all_flow.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
+    for accuracy in ("nlc", "full"):
+        contracted = RunConfig(
+            action="generate",
+            color=ColorConfig(accuracy=accuracy),
+            evaluator=EvaluatorConfig(execution_mode="on-the-fly"),
+        )
+        assert contracted.color.accuracy.value == accuracy
+        assert contracted.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    (("point_tile_size", 0), ("workspace_mib", -1), ("workspace_mib", True)),
+)
+def test_eager_evaluator_sizes_must_be_positive_integers(
+    field_name: str, value: object
+) -> None:
+    with pytest.raises(ConfigurationError, match=rf"evaluator\.eager\.{field_name}"):
+        EagerEvaluatorConfig(**{field_name: value})  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    (("point_tile_size", 0), ("workspace_mib", -1), ("workspace_mib", True)),
+)
+def test_recurrence_evaluator_sizes_must_be_positive_integers(
+    field_name: str, value: object
+) -> None:
+    with pytest.raises(
+        ConfigurationError, match=rf"evaluator\.recurrence\.{field_name}"
+    ):
+        RecurrenceEvaluatorConfig(**{field_name: value})  # type: ignore[arg-type]
+
+
+def test_particle_veto_is_a_virtual_generation_option() -> None:
+    from pyamplicol.config import GenerationConfig, LoopConfig, ProcessConfig
+
+    veto = GenerationConfig(particle_veto=["t"])
+    assert veto.particle_veto == ("t",)
+    virtual = ProcessConfig(loop_coupling_orders=("QCD",))
+    config = RunConfig(
+        action="generate", process=virtual, loop=LoopConfig(), generation=veto
+    )
+    assert config.generation.particle_veto == ("t",)
+    with pytest.raises(ConfigurationError, match="particle_veto requires"):
+        RunConfig(
+            action="generate",
+            process=ProcessConfig(),
+            loop=LoopConfig(),
+            generation=veto,
+        )
+    with pytest.raises(ConfigurationError, match="non-empty strings"):
+        GenerationConfig(particle_veto=[""])
+    with pytest.raises(ConfigurationError, match="list of strings"):
+        GenerationConfig(particle_veto="t")
+    # [U2]: the override of an anomalous veto accompanies a veto.
+    assert GenerationConfig(particle_veto=["t"], allow_anomalous_veto=True)
+    with pytest.raises(ConfigurationError, match=r"requires generation\.particle_veto"):
+        GenerationConfig(allow_anomalous_veto=True)
+    with pytest.raises(ConfigurationError, match="must be a boolean"):
+        GenerationConfig(particle_veto=["t"], allow_anomalous_veto="yes")
+
+
+def test_cpp_flags_cannot_hide_target_cpu_requirements() -> None:
+    assert CppConfig(extra_flags=("-fno-math-errno",)).extra_flags == (
+        "-fno-math-errno",
+    )
+    with pytest.raises(ConfigurationError, match="unrecorded target CPU"):
+        CppConfig(extra_flags=("-march=native",))
+    with pytest.raises(ConfigurationError, match="unsupported compiler arguments"):
+        CppConfig(extra_flags=("-mavx2",))

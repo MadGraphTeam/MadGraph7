@@ -4,6 +4,7 @@ c*****************************************************************************
 c     Given identical particles, and the configurations. This program identifies
 c     identical configurations and specifies which ones can be skipped
 c*****************************************************************************
+          use model_object
       implicit none
 c
 c     Constants
@@ -161,7 +162,7 @@ c
 c     Arguments
 c
       integer mapconfig(0:lmaxconfigs),use_config(0:lmaxconfigs)
-      double precision prwidth(-max_branch:-1,lmaxconfigs) !Propagotor width
+      double precision prwidth(-nexternal:0,lmaxconfigs) !Propagotor width
       integer iforest(2,-max_branch:-1,lmaxconfigs)
       integer sprop(maxsproc,-max_branch:-1,lmaxconfigs)
       integer jcomp
@@ -288,6 +289,7 @@ c     $        'Please check particle masses.'
 c***************************************************************************
 c     Determines which BW conflict
 c***************************************************************************
+          use model_object
       implicit none
 c
 c     Constants
@@ -438,6 +440,7 @@ c***************************************************************************
 c     Determines if the configuration allows integration based on
 c     mass relations
 c***************************************************************************
+          use model_object
       implicit none
 c
 c     Constants

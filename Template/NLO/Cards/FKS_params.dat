@@ -11,7 +11,7 @@
 !
 ! This threshold sets the limiting value for the comparison of the
 ! relative difference of the IR pole from the OLP and the one computed
-! internaly by MadFKS.  The value below is used for the first PS
+! internally by MadFKS.  The value below is used for the first PS
 ! points to assess the sanity of the computation. A value ten times
 ! smaller will be used for the systematic check of IR poles at
 ! runtime.
@@ -56,7 +56,7 @@
 ! Default :: -1
 !
 ! Alternatively the user can defined a list of squared orders to select
-! The first entry is the number of specifed squared orders, and the ordering
+! The first entry is the number of specified squared orders, and the ordering
 ! is indicated in orders.inc with typically QCD first, followed by QED
 ! This is just the generalization of the short-hand above.
 !
@@ -84,7 +84,6 @@
 !     type=4 : soft counter-term
 !     type=5 : collinear counter-term
 !     type=6 : soft-collinear counter-term
-!     type=7 : O(alphaS) expansion of Sudakov factor for NNLL+NLO
 !     type=8 : soft counter-term (with n+1-body kin.)
 !     type=9 : collinear counter-term (with n+1-body kin.)
 !     type=10: soft-collinear counter-term (with n+1-body kin.)
@@ -154,7 +153,7 @@
 ! Default :: 0.005d0
 !
 ! Use a polynomial fit for the virtual corrections. Gets a better accuracy,
-! but uses more memmory and disk space.
+! but uses more memory and disk space.
 #UsePolyVirtual
 .False.
 ! Default :: .True.
@@ -181,7 +180,7 @@
 ! ==========================================================================
 !
 ! For fixed order calculations only (ignored for (N)LO+PS runs): This
-! parameter determines if parton flavour configurations with idential
+! parameter determines if parton flavour configurations with identical
 ! matrix elements should be separated at the level of the analysis or
 ! not (these contributions are typically added together in
 ! parton_lum_?.f files and only the PDG info of the first contribution
@@ -206,6 +205,11 @@
 ! A forced symmetric mapping with shower matching is rejected. The same
 ! choice is used for the real point, its counterevents, inverse projection,
 ! and the lepton recoil chart without event projection.
+! At fixed order and NLO+PS the asymmetric mapping samples log(1-xi)
+! for the outer real contribution and its counterterms to resolve the
+! ISR tail of light systems at small tau (e.g. M=3 GeV at 13 TeV).
+! The Born auxiliary measure and native shower-history maps are unchanged.
+! This changes only the sampling, not the physical FKS-to-shower mapping.
 #FKSISRMapping
 0
 ! Default :: 0
@@ -269,8 +273,7 @@
 ! sampling chart so that the S events have identical underlying momenta.
 ! Any separate initial/final-state integration channels remain separate.
 ! Independent of MCExplicitKLSum (the inner matching-history sum).
-! Requires event projection. Ignored at fixed order; not supported for
-! UNLOPS (ickkw=4).
+! Requires event projection. Ignored at fixed order.
 ! Rerun integration/grid setup after changing this setting.
 #FKSExplicitSum
 .true.

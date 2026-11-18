@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -104,10 +104,11 @@ def async_generate_born(args):
     loop_optimized = args[5]
     OLP = args[6]
     realmapout = args[7]
+    loop_filter = args[8]
 
     logger.info('Generating born %s' % \
             born.born_amp['process'].nice_string(print_weighted=False).replace('Process', 'process'))
-    #load informations on reals from temp files
+    #load information on reals from temp files
     helasreal_list = []
     amp_to_remove = []
     for amp in born.real_amps:
@@ -144,7 +145,10 @@ def async_generate_born(args):
         myproc['legs'] = fks_common.to_legs(copy.copy(myproc['legs']))
 
         try:
-            myamp = loop_diagram_generation.LoopAmplitude(myproc)
+            myamp = loop_diagram_generation.LoopAmplitude(myproc,
+                                    loop_filter=loop_filter,
+                                    diagram_filter=getattr(born, 'diagram_filter', False),
+                                    loop_diagram_filter=getattr(born, 'loop_diagram_filter', False))
             has_loops = True
             born.virt_amp = myamp
         except InvalidCmd:
@@ -332,7 +336,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                 modelpath = born_procs[0].born_amp['process']['model'].get('modelpath')
                 #modelpath = self.get('processes')[0].get('model').get('modelpath')
                 with misc.TMP_variable(sys, 'path', sys.path + [pjoin(MG5DIR, 'models'), modelpath]):
-                    realmapout = pool.map_async(async_generate_real,realmapin).get(9999999)
+                    realmapout = pool.map_async(async_generate_real,realmapin,
+                                       chunksize=misc.pool_chunksize(pool, len(realmapin))).get(9999999)
             except KeyboardInterrupt:
                 pool.terminate()
                 raise KeyboardInterrupt
@@ -355,10 +360,12 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             bornmapin = []
             OLP=fksmulti['OLP']
             for i,born in enumerate(born_procs):
-                bornmapin.append([i,born,born_pdg_list,loop_orders,real_keys,loop_optimized,OLP,realmapfiles])
+                bornmapin.append([i,born,born_pdg_list,loop_orders,real_keys,loop_optimized,OLP,realmapfiles,
+                                  fksmulti['loop_filter']])
 
             try:
-                bornmapout = pool.map_async(async_generate_born,bornmapin).get(9999999)
+                bornmapout = pool.map_async(async_generate_born,bornmapin,
+                                    chunksize=misc.pool_chunksize(pool, len(bornmapin))).get(9999999)
             except KeyboardInterrupt:
                 pool.terminate()
                 raise KeyboardInterrupt 
@@ -402,7 +409,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                     memapin.append([i,mefile, duplicate_me_lists[i]])
 
                 try:
-                    memapout.append(pool.map_async(async_finalize_matrix_elements,memapin).get(9999999))
+                    memapout.append(pool.map_async(async_finalize_matrix_elements,memapin,
+                                    chunksize=misc.pool_chunksize(pool, len(memapin))).get(9999999))
                 except KeyboardInterrupt:
                     pool.terminate()
                     raise KeyboardInterrupt 
@@ -477,6 +485,16 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                 nparticles_list.append(meout[2])
             self['max_particles'] = max(nparticles_list)        
 
+        if fksmulti['ncores_for_proc_gen']:
+            # Only the real amplitudes with diagrams survived the workers.
+            # Do not report radiation from an empty/restricted amplitude.
+            for born in born_procs:
+                born.update_radiation_flags([
+                    real for real in born.real_amps
+                    if fks_common.external_process_identity(real.process)
+                    in real_keys])
+            fksmulti['has_isr'] = any(born.isr for born in born_procs)
+            fksmulti['has_fsr'] = any(born.fsr for born in born_procs)
         self['has_isr'] = fksmulti['has_isr']
         self['has_fsr'] = fksmulti['has_fsr']
         self['ewsudakov'] = fksmulti['ewsudakov']
@@ -694,7 +712,9 @@ class FKSHelasProcess(object):
             self.real_processes = []
             self.extra_cnt_me_list = []
             self.perturbation = fksproc.perturbation
-            self.charges_born = fksproc.get_charges() 
+            self.charges_born = fksproc.get_charges()
+            # user numbering of the born legs, for me_frame (frame_info.inc)
+            self.user_leg_order = fksproc.user_leg_order
             real_amps_new = []
 
             for extra_cnt in fksproc.extra_cnt_amp_list:
@@ -849,15 +869,15 @@ class FKSHelasProcess(object):
         return (nexternal, ninitial)
     
     def __eq__(self, other):
-        """the equality between two FKSHelasProcesses is defined up to the 
+        """the equality between two FKSHelasProcesses is defined up to the
         color links"""
         #first compare the born
-        selftag = helas_objects.IdentifyMETag.\
-                        create_tag(self.born_me.get('base_amplitude'))
-        othertag = helas_objects.IdentifyMETag.\
-                        create_tag(other.born_me.get('base_amplitude'))
+        selfamp = self.born_me.get('base_amplitude')
+        otheramp = other.born_me.get('base_amplitude')
+        selftag = helas_objects.IdentifyMETag.create_tag(selfamp)
+        othertag = helas_objects.IdentifyMETag.create_tag(otheramp)
 
-        # MZ: if EW sudakov are included, do not combine. 
+        # MZ: if EW sudakov are included, do not combine.
         # This is not 100% ideal, as it is quite inefficient, but it is the safest option
         if self.ewsudakov:
             logger.warning('With --ewsudakov, matrix elements will not be combined')
@@ -958,7 +978,7 @@ class FKSHelasRealProcess(object): #test written
         initialization for HelasMatrixElement.
         Sets i/j fks and the permutation.
         real_me_list and real_amp_list are the lists of pre-generated matrix elements in 1-1 
-        correspondance with the amplitudes"""
+        correspondence with the amplitudes"""
         
         if fksrealproc != None:
             self.isfinite = False

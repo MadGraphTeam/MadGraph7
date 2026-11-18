@@ -22,6 +22,7 @@ POLYNOMIAL_OPTIMIZATION = -O3
 POLYNOMIAL_BOUNDS_CHECK =
 
 include $(ROOT)/Source/make_opts
+FFLAGS += -I$(ROOT)/Source/MODEL -I$(ROOT)/Source/DHELAS
 include $(ROOT)/SubProcesses/MadLoop_makefile_definitions
 SHELL = /bin/bash
 
@@ -50,7 +51,8 @@ PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard TIR_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard GOLEM_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard COLLIER_interface.f)) \
- $(patsubst $(DOTF),$(DOTO),$(wildcard compute_color_flows.f))
+ $(patsubst $(DOTF),$(DOTO),$(wildcard compute_color_flows.f)) \
+ $(patsubst $(DOTF),$(DOTO),$(wildcard mg5_citation.f))
 
 OLP_PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/polynomial.f)) \
@@ -111,8 +113,8 @@ $(DOTO) : $(DOTF) $(POLYNOMIAL) $(OLP_POLYNOMIAL)
 $(DOTO) : $(DOTF)
 	$(FC) $(FFLAGS) -c $< -o $@ $(LOOP_INCLUDE)
 
-$(OLP): $(OLP_PROCESS) $(LIBS) 
-	$(FC) -shared $(OLP_PROCESS) -o libMadLoop.$(dylibext) $(LINKLIBS)
+$(OLP): $(OLP_PROCESS) $(LIBS) mg5_citation.o
+	$(FC) -shared $(OLP_PROCESS) mg5_citation.o -o libMadLoop.$(dylibext) $(LINKLIBS)
 
 $(OLP)_static: $(OLP_PROCESS)
 	ar rcs libMadLoop.$(libext) $(OLP_PROCESS)
@@ -150,7 +152,7 @@ ALL_DOTF := $(wildcard */polynomial.f */loop_matrix.f */improve_ps.f */born_matr
              */loop_num.f \
              */helas_calls*.f */mp_compute_loop_coefs.f */mp_helas_calls*.f */coef_construction_*.f \
              */loop_CT_calls_*.f */mp_coef_construction_*.f */TIR_interface.f */COLLIER_interface.f \
-             MadLoopParamReader.f MadLoopCommons.f */GOLEM_interface.f */compute_color_flows.f \
+             MadLoopParamReader.f MadLoopCommons.f mg5_citation.f */GOLEM_interface.f */compute_color_flows.f \
              */mp_born_amps_and_wfs.f */jamp?_calls_*.f)
 
 # Convert .f to .o
@@ -173,6 +175,11 @@ endif
 ifeq ($(origin MENUM),undefined)
   MENUM=2
 endif
+
+# name of the f2py python module. A caller importing a rebuild of this
+# directory in a python process that already imported the previous build has
+# to give it (and ROOTNAME) a new value: a module cannot be imported twice.
+F2PYMOD= all_matrix$(MENUM)py
 
 liball$(ROOTNAME)_$(MENUM)me.$(dylibext): all_matrix.o libMadLoop.$(dylibext) $(WRAPPER_OBJS) $(LIBS)  $(OLP) 
 	$(CXX) $(DYNLIBFLAG)  $(LIBALLME_DYNFLAG)  $(STDLIB_FLAG)  -o liball$(ROOTNAME)_$(MENUM)me.$(dylibext) all_matrix.o */f2py_wrapper.o ../Source/DHELAS/*.o ../Source/MODEL/*.o $(STAT_LIB) $(RPATH_LIBS) $(LINK_LOOP_LIBS) $(ALL_DOTO) $(STDLIB) $(LINK_LOOP_LIBS) 
@@ -199,7 +206,7 @@ allmatrix$(MENUM)py.so: $(OLP)_static all_matrix.f $(LIBS) $(WRAPPER)
 
 
 all_matrix$(MENUM)py.so:  liball$(ROOTNAME)_$(MENUM)me.$(dylibext) f2py_wrapper.f makefile
-	LDFLAGS="-Wl,-rpath,$(HERE) -L$(HERE) $(RPATH_LIBS)  $(LINK_LOOP_LIBS) $(LD_F2PY)" $(F2PY)  -c f2py_wrapper.f -L$(HERE) -lall$(ROOTNAME)_$(MENUM)me -m all_matrix$(MENUM)py  
+	LDFLAGS="-Wl,-rpath,$(HERE) -L$(HERE) $(RPATH_LIBS)  $(LINK_LOOP_LIBS) $(LD_F2PY)" $(F2PY)  -c f2py_wrapper.f -L$(HERE) -lall$(ROOTNAME)_$(MENUM)me -m $(F2PYMOD)
 	touch all_matrix$(MENUM)py.so
 	touch __init__.py
 

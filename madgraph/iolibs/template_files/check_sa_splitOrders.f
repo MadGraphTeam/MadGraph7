@@ -4,6 +4,7 @@ C     THIS IS THE DRIVER FOR CHECKING THE STANDALONE MATRIX ELEMENT.
 C     IT USES A SIMPLE PHASE SPACE GENERATOR
 C     Fabio Maltoni - 3rd Febraury 2007
 C **************************************************************************
+          use model_object
       IMPLICIT NONE
 C     
 C     CONSTANTS  
@@ -35,6 +36,8 @@ C
       REAL*8 MATELEM, MATELEMS(0:NSPLITORDERS)        
       REAL*8 PIN(0:3), POUT(0:3)
       CHARACTER*120 BUFF(NEXTERNAL)
+      INTEGER FLAVOR(NEXTERNAL)
+      DATA FLAVOR /%(nexternal)d*1/
 
       integer NChosen
       character*20 chosen_so_indices(NSPLITORDERS)
@@ -69,7 +72,7 @@ c     models are read from Cards/param_card.dat. The secondary parameters are ca
 c     in Source/MODEL/couplings.f. The values are stored in common blocks that are listed
 c     in coupl.inc .
 
-      call setpara('param_card.dat')  !first call to setup the paramaters
+      call setpara('param_card.dat')  !first call to set up the parameters
       include "pmass.inc"             !set up masses
 
       TOTALMASS = 0.0d0
@@ -110,7 +113,7 @@ c
 c     
 c     Now we can call the matrix element!
 c
-      CALL %(proc_prefix)sSMATRIX_SPLITORDERS(P,MATELEMS)
+      CALL %(proc_prefix)sSMATRIX_SPLITORDERS(P,FLAVOR,MATELEMS)
       MATELEM=MATELEMS(0)
       %(printout_sqorders)s
 c

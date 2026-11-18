@@ -1,0 +1,4001 @@
+// SPDX-License-Identifier: 0BSD
+
+use super::super::*;
+use super::*;
+
+impl EvaluatorGroup {
+    pub(crate) fn load(manifest: &EvaluatorManifest, root: &Path) -> RusticolResult<Self> {
+        let payloads = EvaluatorPayloadStore::directory(root);
+        Self::load_from_store(manifest, &payloads)
+    }
+
+    pub(crate) fn load_from_store(
+        manifest: &EvaluatorManifest,
+        payloads: &EvaluatorPayloadStore,
+    ) -> RusticolResult<Self> {
+        ensure_evaluator_capabilities_supported(manifest)?;
+        let (input_len, _) = manifest.io_len()?;
+        let leaf_layout = manifest.leaf_layout()?;
+        let mut evaluators = Vec::new();
+        let mut input_mappings = Vec::new();
+        for leaf in &leaf_layout {
+            let before = evaluators.len();
+            flatten_evaluators_from_store(leaf.evaluator, payloads, &mut evaluators)?;
+            if evaluators.len() != before + 1 {
+                return Err(RusticolError::integrity(
+                    "canonical evaluator leaf layout did not load exactly one evaluator",
+                ));
+            }
+            let mapping = if leaf.input_indices.len() == input_len
+                && leaf
+                    .input_indices
+                    .iter()
+                    .enumerate()
+                    .all(|(expected, index)| expected == *index)
+            {
+                None
+            } else {
+                Some(leaf.input_indices.clone())
+            };
+            input_mappings.push(mapping);
+        }
+        let input_mapping_spans = input_mappings
+            .iter()
+            .map(|mapping| {
+                mapping
+                    .as_deref()
+                    .map(contiguous_input_spans)
+                    .unwrap_or_default()
+            })
+            .collect();
+        let output_len = leaf_layout.last().map_or(0, |leaf| leaf.output_range.end);
+        Ok(Self {
+            evaluators,
+            input_len,
+            input_mappings,
+            input_mapping_spans,
+            output_len,
+            chunk_parameter_scratch_f64: Vec::new(),
+            chunk_scratch_f64: Vec::new(),
+            chunk_parameter_scratch_aosoa_f64: Vec::new(),
+            chunk_scratch_aosoa_f64: Vec::new(),
+            chunk_input_mapping_scratch: Vec::new(),
+        })
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn has_exact_plane_state(
+        stage: &GenericSerializedStageEvaluatorManifest,
+    ) -> RusticolResult<bool> {
+        Ok(stage.evaluator.leaf_layout()?.iter().all(|leaf| {
+            matches!(
+                leaf.evaluator,
+                EvaluatorManifest::SymjitApplication {
+                    evaluator_state_path: Some(_),
+                    ..
+                } | EvaluatorManifest::CompiledComplex {
+                    evaluator_state_path: Some(_),
+                    native_direct_application: Some(_),
+                    ..
+                }
+            )
+        }))
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn load_exact_from_plane(
+        stage: &GenericSerializedStageEvaluatorManifest,
+        payloads: &EvaluatorPayloadStore,
+    ) -> RusticolResult<Self> {
+        let manifest = &stage.evaluator;
+        let direct = stage.compiled_plane_arena.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled plane-arena exact evaluator has no serialized bindings",
+            )
+        })?;
+        let (input_len, _) = manifest.io_len()?;
+        let leaf_layout = manifest.leaf_layout()?;
+        if leaf_layout.len() != direct.leaves.len() {
+            return Err(RusticolError::integrity(
+                "compiled plane-arena exact leaf bindings are incomplete",
+            ));
+        }
+        let mut evaluators = Vec::new();
+        let mut input_mappings = Vec::new();
+        for (leaf, binding) in leaf_layout.iter().zip(&direct.leaves) {
+            flatten_exact_evaluators_from_store(leaf.evaluator, payloads, &mut evaluators)?;
+            let mapping = if binding.input_indices.len() == input_len
+                && binding
+                    .input_indices
+                    .iter()
+                    .enumerate()
+                    .all(|(expected, index)| expected == *index)
+            {
+                None
+            } else {
+                Some(binding.input_indices.clone())
+            };
+            input_mappings.push(mapping);
+        }
+        let input_mapping_spans = input_mappings
+            .iter()
+            .map(|mapping| {
+                mapping
+                    .as_deref()
+                    .map(contiguous_input_spans)
+                    .unwrap_or_default()
+            })
+            .collect();
+        let output_len = direct.leaves.last().map_or(0, |leaf| leaf.output_stop);
+        Ok(Self {
+            evaluators,
+            input_len,
+            input_mappings,
+            input_mapping_spans,
+            output_len,
+            chunk_parameter_scratch_f64: Vec::new(),
+            chunk_scratch_f64: Vec::new(),
+            chunk_parameter_scratch_aosoa_f64: Vec::new(),
+            chunk_scratch_aosoa_f64: Vec::new(),
+            chunk_input_mapping_scratch: Vec::new(),
+        })
+    }
+
+    pub(crate) fn uses_simd_jit(&self) -> bool {
+        self.evaluators
+            .iter()
+            .any(|evaluator| match &evaluator.eval {
+                #[cfg(feature = "symbolica-runtime")]
+                F64Evaluator::ExactOnly => false,
+                #[cfg(feature = "f64-symjit")]
+                F64Evaluator::SymjitApplication(_) => true,
+                #[cfg(feature = "symbolica-runtime")]
+                F64Evaluator::Jit(_) => true,
+                #[cfg(feature = "f64-compiled")]
+                F64Evaluator::Compiled(_) => false,
+            })
+    }
+
+    pub(crate) fn evaluate_batch(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+    ) -> RusticolResult<Vec<Complex<f64>>> {
+        let mut out = Vec::new();
+        self.evaluate_batch_into(batch_size, params, &mut out)?;
+        Ok(out)
+    }
+
+    pub(crate) fn evaluate_single_row(
+        &mut self,
+        params: &[Complex<f64>],
+    ) -> RusticolResult<Vec<Complex<f64>>> {
+        self.evaluate_batch(1, params)
+    }
+
+    pub(crate) fn output_chunk_lengths(&self) -> Vec<usize> {
+        self.evaluators
+            .iter()
+            .map(|evaluator| evaluator.output_len)
+            .collect()
+    }
+
+    pub(crate) fn is_chunked(&self) -> bool {
+        self.evaluators.len() > 1
+    }
+
+    pub(crate) fn evaluate_chunks_f64_into_state(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        state_parameter_count: usize,
+        state: &mut [Complex<f64>],
+        chunk_outputs: &[Vec<(usize, usize)>],
+        chunk_output_spans: &[Vec<(usize, usize, usize)>],
+    ) -> RusticolResult<()> {
+        if chunk_outputs.len() != self.evaluators.len()
+            || chunk_output_spans.len() != self.evaluators.len()
+        {
+            return Err(RusticolError::invalid_argument(
+                "stage chunk-output layout does not match evaluator chunks",
+            ));
+        }
+        let expected_state_len = batch_size
+            .checked_mul(state_parameter_count)
+            .ok_or_else(|| RusticolError::invalid_argument("stage state length overflows usize"))?;
+        if state.len() != expected_state_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "stage state has length {}, expected {expected_state_len}",
+                state.len()
+            )));
+        }
+        if params.len() != batch_size * self.input_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "parameter buffer has length {}, expected {}",
+                params.len(),
+                batch_size * self.input_len
+            )));
+        }
+        for ((((evaluator, input_mapping), input_spans), outputs), spans) in self
+            .evaluators
+            .iter_mut()
+            .zip(&self.input_mappings)
+            .zip(&self.input_mapping_spans)
+            .zip(chunk_outputs)
+            .zip(chunk_output_spans)
+        {
+            if let Some(lane_width) = evaluator
+                .simd_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let mapping = input_mapping.as_deref();
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    mapping,
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                if evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )? {
+                    scatter_f64_aosoa_outputs_to_state(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        state_parameter_count,
+                        state,
+                        outputs,
+                        spans,
+                    )?;
+                    continue;
+                }
+            }
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                input_mapping.as_deref(),
+                input_spans,
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            self.chunk_scratch_f64
+                .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
+            evaluator.evaluate_f64_batch_unpadded(
+                batch_size,
+                evaluator_params,
+                &mut self.chunk_scratch_f64,
+            )?;
+            for row in 0..batch_size {
+                let row_state = row * state_parameter_count;
+                let row_eval = row * evaluator.output_len;
+                if spans.is_empty() {
+                    for (column, state_offset) in outputs {
+                        state[row_state + *state_offset] =
+                            self.chunk_scratch_f64[row_eval + *column];
+                    }
+                } else {
+                    for (column_start, state_offset_start, len) in spans {
+                        let source_start = row_eval + *column_start;
+                        let target_start = row_state + *state_offset_start;
+                        state[target_start..target_start + *len].copy_from_slice(
+                            &self.chunk_scratch_f64[source_start..source_start + *len],
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn evaluate_chunks_f64_into_state_profile(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        state_parameter_count: usize,
+        state: &mut [Complex<f64>],
+        chunk_outputs: &[Vec<(usize, usize)>],
+        chunk_output_spans: &[Vec<(usize, usize, usize)>],
+    ) -> RusticolResult<(EvaluatorBatchProfile, f64)> {
+        if chunk_outputs.len() != self.evaluators.len()
+            || chunk_output_spans.len() != self.evaluators.len()
+        {
+            return Err(RusticolError::invalid_argument(
+                "stage chunk-output layout does not match evaluator chunks",
+            ));
+        }
+        let expected_state_len = batch_size
+            .checked_mul(state_parameter_count)
+            .ok_or_else(|| RusticolError::invalid_argument("stage state length overflows usize"))?;
+        if state.len() != expected_state_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "stage state has length {}, expected {expected_state_len}",
+                state.len()
+            )));
+        }
+
+        // Keep timing state out of floating-point registers while generated
+        // evaluators execute. Some native evaluator ABIs use the full SIMD
+        // register file, whereas Duration remains integer-backed.
+        let mut leaf_input_pack_elapsed = Duration::ZERO;
+        let mut evaluator_elapsed = Duration::ZERO;
+        let mut leaf_input_copy_component_count = 0u64;
+        let mut backend_call_count = 0u64;
+        let mut scratch_reallocation_count = 0u64;
+        let mut assign_elapsed = Duration::ZERO;
+        if params.len() != batch_size * self.input_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "parameter buffer has length {}, expected {}",
+                params.len(),
+                batch_size * self.input_len
+            )));
+        }
+        for ((((evaluator, input_mapping), input_spans), outputs), spans) in self
+            .evaluators
+            .iter_mut()
+            .zip(&self.input_mappings)
+            .zip(&self.input_mapping_spans)
+            .zip(chunk_outputs)
+            .zip(chunk_output_spans)
+        {
+            if let Some(lane_width) = evaluator
+                .simd_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let parameter_capacity = self.chunk_parameter_scratch_aosoa_f64.capacity();
+                let leaf_start = Instant::now();
+                let mapping = input_mapping.as_deref();
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    mapping,
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                leaf_input_pack_elapsed += leaf_start.elapsed();
+                leaf_input_copy_component_count +=
+                    (self.chunk_parameter_scratch_aosoa_f64.len() / 2) as u64;
+                scratch_reallocation_count += u64::from(
+                    self.chunk_parameter_scratch_aosoa_f64.capacity() != parameter_capacity,
+                );
+
+                let output_capacity = self.chunk_scratch_aosoa_f64.capacity();
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_scratch_aosoa_f64.capacity() != output_capacity);
+                let eval_start = Instant::now();
+                let evaluated = evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )?;
+                evaluator_elapsed += eval_start.elapsed();
+                backend_call_count += 1;
+                if evaluated {
+                    let assign_start = Instant::now();
+                    scatter_f64_aosoa_outputs_to_state(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        state_parameter_count,
+                        state,
+                        outputs,
+                        spans,
+                    )?;
+                    assign_elapsed += assign_start.elapsed();
+                    continue;
+                }
+            }
+            let leaf_capacity = self.chunk_parameter_scratch_f64.capacity();
+            let leaf_start = Instant::now();
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                input_mapping.as_deref(),
+                input_spans,
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            leaf_input_pack_elapsed += leaf_start.elapsed();
+            if input_mapping.is_some() {
+                leaf_input_copy_component_count += evaluator_params.len() as u64;
+            }
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let chunk_capacity = self.chunk_scratch_f64.capacity();
+            self.chunk_scratch_f64
+                .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
+            let eval_start = Instant::now();
+            evaluator.evaluate_f64_batch_unpadded(
+                batch_size,
+                evaluator_params,
+                &mut self.chunk_scratch_f64,
+            )?;
+            evaluator_elapsed += eval_start.elapsed();
+            backend_call_count += 1;
+            scratch_reallocation_count +=
+                u64::from(self.chunk_scratch_f64.capacity() != chunk_capacity);
+            // The mapped slice is no longer live after the backend call.
+            scratch_reallocation_count +=
+                u64::from(self.chunk_parameter_scratch_f64.capacity() != leaf_capacity);
+
+            let assign_start = Instant::now();
+            for row in 0..batch_size {
+                let row_state = row * state_parameter_count;
+                let row_eval = row * evaluator.output_len;
+                if spans.is_empty() {
+                    for (column, state_offset) in outputs {
+                        state[row_state + *state_offset] =
+                            self.chunk_scratch_f64[row_eval + *column];
+                    }
+                } else {
+                    for (column_start, state_offset_start, len) in spans {
+                        let source_start = row_eval + *column_start;
+                        let target_start = row_state + *state_offset_start;
+                        state[target_start..target_start + *len].copy_from_slice(
+                            &self.chunk_scratch_f64[source_start..source_start + *len],
+                        );
+                    }
+                }
+            }
+            assign_elapsed += assign_start.elapsed();
+        }
+        let leaf_input_pack_s = profile_duration_seconds(leaf_input_pack_elapsed);
+        let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
+        let profile = EvaluatorBatchProfile {
+            leaf_input_pack_s,
+            legacy_evaluator_call_s: leaf_input_pack_s + evaluator_call_s,
+            evaluator_call_s,
+            leaf_input_copy_component_count,
+            backend_call_count,
+            scratch_reallocation_count,
+            ..EvaluatorBatchProfile::default()
+        };
+        Ok((profile, assign_elapsed.as_secs_f64()))
+    }
+
+    // The explicit slices avoid constructing a descriptor in this selector hot path.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate_selected_chunks_f64_into_state(
+        &mut self,
+        batch_size: usize,
+        state_parameter_count: usize,
+        state: &mut [Complex<f64>],
+        parent_input_components: Option<&[usize]>,
+        parent_input_spans: &[(usize, usize, usize)],
+        chunk_outputs: &[Vec<(usize, usize)>],
+        chunk_output_spans: &[Vec<(usize, usize, usize)>],
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<()> {
+        if chunk_outputs.len() != self.evaluators.len()
+            || chunk_output_spans.len() != self.evaluators.len()
+        {
+            return Err(RusticolError::invalid_argument(
+                "stage chunk-output layout does not match evaluator chunks",
+            ));
+        }
+        validate_active_chunk_indices(active_chunk_indices, self.evaluators.len())?;
+        let expected_state_len = batch_size
+            .checked_mul(state_parameter_count)
+            .ok_or_else(|| RusticolError::invalid_argument("stage state length overflows usize"))?;
+        if state.len() != expected_state_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "stage state has length {}, expected {expected_state_len}",
+                state.len()
+            )));
+        }
+        match parent_input_components {
+            Some(components) => {
+                if components.len() != self.input_len {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "stage input-component map has length {}, expected {}",
+                        components.len(),
+                        self.input_len
+                    )));
+                }
+                if components
+                    .iter()
+                    .any(|component| *component >= state_parameter_count)
+                {
+                    return Err(RusticolError::invalid_argument(
+                        "stage input-component map references state outside the parameter layout",
+                    ));
+                }
+            }
+            None if self.input_len != state_parameter_count => {
+                return Err(RusticolError::invalid_argument(format!(
+                    "evaluator input length {} does not match stage state parameter count {state_parameter_count}",
+                    self.input_len
+                )));
+            }
+            None => {}
+        }
+        for &chunk_index in active_chunk_indices {
+            let evaluator = &mut self.evaluators[chunk_index];
+            if let Some(lane_width) = evaluator
+                .simd_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let input_mapping = self.input_mappings[chunk_index].as_deref();
+                self.chunk_input_mapping_scratch.clear();
+                self.chunk_input_mapping_scratch
+                    .reserve(evaluator.input_len);
+                for local_component in 0..evaluator.input_len {
+                    let parent_component =
+                        input_mapping.map_or(local_component, |indices| indices[local_component]);
+                    self.chunk_input_mapping_scratch.push(
+                        parent_input_components
+                            .map_or(parent_component, |components| components[parent_component]),
+                    );
+                }
+                let block_count = pack_f64_parameters_aosoa(
+                    state,
+                    batch_size,
+                    state_parameter_count,
+                    evaluator.input_len,
+                    lane_width,
+                    Some(&self.chunk_input_mapping_scratch),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                if evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )? {
+                    scatter_f64_aosoa_outputs_to_state(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        state_parameter_count,
+                        state,
+                        &chunk_outputs[chunk_index],
+                        &chunk_output_spans[chunk_index],
+                    )?;
+                    continue;
+                }
+            }
+            let evaluator_params = selected_chunk_f64_parameters(
+                state,
+                batch_size,
+                state_parameter_count,
+                self.input_len,
+                parent_input_components,
+                parent_input_spans,
+                self.input_mappings[chunk_index].as_deref(),
+                &self.input_mapping_spans[chunk_index],
+                &mut self.chunk_parameter_scratch_f64,
+            )?;
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let scratch_len = batch_size
+                .checked_mul(evaluator.output_len)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("stage chunk output length overflows usize")
+                })?;
+            self.chunk_scratch_f64.resize(scratch_len, c64(0.0, 0.0));
+            evaluator.evaluate_f64_batch_unpadded(
+                batch_size,
+                evaluator_params,
+                &mut self.chunk_scratch_f64,
+            )?;
+            let outputs = &chunk_outputs[chunk_index];
+            let spans = &chunk_output_spans[chunk_index];
+            for row in 0..batch_size {
+                let row_state = row * state_parameter_count;
+                let row_eval = row * evaluator.output_len;
+                if spans.is_empty() {
+                    for (column, state_offset) in outputs {
+                        state[row_state + *state_offset] =
+                            self.chunk_scratch_f64[row_eval + *column];
+                    }
+                } else {
+                    for (column_start, state_offset_start, len) in spans {
+                        let source_start = row_eval + *column_start;
+                        let target_start = row_state + *state_offset_start;
+                        state[target_start..target_start + *len].copy_from_slice(
+                            &self.chunk_scratch_f64[source_start..source_start + *len],
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate_selected_chunks_f64_into_state_profile(
+        &mut self,
+        batch_size: usize,
+        state_parameter_count: usize,
+        state: &mut [Complex<f64>],
+        parent_input_components: Option<&[usize]>,
+        parent_input_spans: &[(usize, usize, usize)],
+        chunk_outputs: &[Vec<(usize, usize)>],
+        chunk_output_spans: &[Vec<(usize, usize, usize)>],
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<(EvaluatorBatchProfile, f64)> {
+        if chunk_outputs.len() != self.evaluators.len()
+            || chunk_output_spans.len() != self.evaluators.len()
+        {
+            return Err(RusticolError::invalid_argument(
+                "stage chunk-output layout does not match evaluator chunks",
+            ));
+        }
+        validate_active_chunk_indices(active_chunk_indices, self.evaluators.len())?;
+        let expected_state_len = batch_size
+            .checked_mul(state_parameter_count)
+            .ok_or_else(|| RusticolError::invalid_argument("stage state length overflows usize"))?;
+        if state.len() != expected_state_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "stage state has length {}, expected {expected_state_len}",
+                state.len()
+            )));
+        }
+        match parent_input_components {
+            Some(components) => {
+                if components.len() != self.input_len {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "stage input-component map has length {}, expected {}",
+                        components.len(),
+                        self.input_len
+                    )));
+                }
+                if components
+                    .iter()
+                    .any(|component| *component >= state_parameter_count)
+                {
+                    return Err(RusticolError::invalid_argument(
+                        "stage input-component map references state outside the parameter layout",
+                    ));
+                }
+            }
+            None if self.input_len != state_parameter_count => {
+                return Err(RusticolError::invalid_argument(format!(
+                    "evaluator input length {} does not match stage state parameter count {state_parameter_count}",
+                    self.input_len
+                )));
+            }
+            None => {}
+        }
+
+        let mut input_pack_elapsed = Duration::ZERO;
+        let mut evaluator_elapsed = Duration::ZERO;
+        let mut assign_elapsed = Duration::ZERO;
+        let mut leaf_input_copy_component_count = 0u64;
+        let mut backend_call_count = 0u64;
+        let mut scratch_reallocation_count = 0u64;
+        for &chunk_index in active_chunk_indices {
+            let evaluator = &mut self.evaluators[chunk_index];
+            if let Some(lane_width) = evaluator
+                .simd_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let parameter_capacity = self.chunk_parameter_scratch_aosoa_f64.capacity();
+                let input_pack_start = Instant::now();
+                let input_mapping = self.input_mappings[chunk_index].as_deref();
+                let mapping_capacity = self.chunk_input_mapping_scratch.capacity();
+                self.chunk_input_mapping_scratch.clear();
+                self.chunk_input_mapping_scratch
+                    .reserve(evaluator.input_len);
+                for local_component in 0..evaluator.input_len {
+                    let parent_component =
+                        input_mapping.map_or(local_component, |indices| indices[local_component]);
+                    self.chunk_input_mapping_scratch.push(
+                        parent_input_components
+                            .map_or(parent_component, |components| components[parent_component]),
+                    );
+                }
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_input_mapping_scratch.capacity() != mapping_capacity);
+                let block_count = pack_f64_parameters_aosoa(
+                    state,
+                    batch_size,
+                    state_parameter_count,
+                    evaluator.input_len,
+                    lane_width,
+                    Some(&self.chunk_input_mapping_scratch),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                input_pack_elapsed += input_pack_start.elapsed();
+                leaf_input_copy_component_count +=
+                    (self.chunk_parameter_scratch_aosoa_f64.len() / 2) as u64;
+                scratch_reallocation_count += u64::from(
+                    self.chunk_parameter_scratch_aosoa_f64.capacity() != parameter_capacity,
+                );
+
+                let output_capacity = self.chunk_scratch_aosoa_f64.capacity();
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_scratch_aosoa_f64.capacity() != output_capacity);
+                let eval_start = Instant::now();
+                let evaluated = evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )?;
+                evaluator_elapsed += eval_start.elapsed();
+                backend_call_count += 1;
+                if evaluated {
+                    let assign_start = Instant::now();
+                    scatter_f64_aosoa_outputs_to_state(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        state_parameter_count,
+                        state,
+                        &chunk_outputs[chunk_index],
+                        &chunk_output_spans[chunk_index],
+                    )?;
+                    assign_elapsed += assign_start.elapsed();
+                    continue;
+                }
+            }
+            let parameter_capacity = self.chunk_parameter_scratch_f64.capacity();
+            let input_pack_start = Instant::now();
+            let evaluator_params = selected_chunk_f64_parameters(
+                state,
+                batch_size,
+                state_parameter_count,
+                self.input_len,
+                parent_input_components,
+                parent_input_spans,
+                self.input_mappings[chunk_index].as_deref(),
+                &self.input_mapping_spans[chunk_index],
+                &mut self.chunk_parameter_scratch_f64,
+            )?;
+            input_pack_elapsed += input_pack_start.elapsed();
+            if parent_input_components.is_some() || self.input_mappings[chunk_index].is_some() {
+                leaf_input_copy_component_count += evaluator_params.len() as u64;
+            }
+
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let scratch_len = batch_size
+                .checked_mul(evaluator.output_len)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("stage chunk output length overflows usize")
+                })?;
+            let output_capacity = self.chunk_scratch_f64.capacity();
+            self.chunk_scratch_f64.resize(scratch_len, c64(0.0, 0.0));
+            let eval_start = Instant::now();
+            evaluator.evaluate_f64_batch_unpadded(
+                batch_size,
+                evaluator_params,
+                &mut self.chunk_scratch_f64,
+            )?;
+            evaluator_elapsed += eval_start.elapsed();
+            backend_call_count += 1;
+            scratch_reallocation_count +=
+                u64::from(self.chunk_parameter_scratch_f64.capacity() != parameter_capacity)
+                    + u64::from(self.chunk_scratch_f64.capacity() != output_capacity);
+
+            let assign_start = Instant::now();
+            let outputs = &chunk_outputs[chunk_index];
+            let spans = &chunk_output_spans[chunk_index];
+            for row in 0..batch_size {
+                let row_state = row * state_parameter_count;
+                let row_eval = row * evaluator.output_len;
+                if spans.is_empty() {
+                    for (column, state_offset) in outputs {
+                        state[row_state + *state_offset] =
+                            self.chunk_scratch_f64[row_eval + *column];
+                    }
+                } else {
+                    for (column_start, state_offset_start, len) in spans {
+                        let source_start = row_eval + *column_start;
+                        let target_start = row_state + *state_offset_start;
+                        state[target_start..target_start + *len].copy_from_slice(
+                            &self.chunk_scratch_f64[source_start..source_start + *len],
+                        );
+                    }
+                }
+            }
+            assign_elapsed += assign_start.elapsed();
+        }
+        let leaf_input_pack_s = profile_duration_seconds(input_pack_elapsed);
+        let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
+        Ok((
+            EvaluatorBatchProfile {
+                leaf_input_pack_s,
+                legacy_evaluator_call_s: evaluator_call_s,
+                evaluator_call_s,
+                leaf_input_copy_component_count,
+                backend_call_count,
+                scratch_reallocation_count,
+                ..EvaluatorBatchProfile::default()
+            },
+            profile_duration_seconds(assign_elapsed),
+        ))
+    }
+
+    pub(crate) fn evaluate_selected_chunks_f64_into_output(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        parent_input_components: Option<&[usize]>,
+        parent_input_spans: &[(usize, usize, usize)],
+        out: &mut Vec<Complex<f64>>,
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<()> {
+        validate_active_chunk_indices(active_chunk_indices, self.evaluators.len())?;
+        if batch_size == 0 || !params.len().is_multiple_of(batch_size) {
+            return Err(RusticolError::invalid_argument(
+                "amplitude evaluator parameter buffer has an inconsistent batch size",
+            ));
+        }
+        let state_parameter_count = params.len() / batch_size;
+        match parent_input_components {
+            Some(components) => {
+                if components.len() != self.input_len
+                    || components
+                        .iter()
+                        .any(|component| *component >= state_parameter_count)
+                {
+                    return Err(RusticolError::invalid_argument(
+                        "amplitude input-component map is inconsistent with runtime state",
+                    ));
+                }
+            }
+            None if self.input_len != state_parameter_count => {
+                return Err(RusticolError::invalid_argument(format!(
+                    "evaluator input length {} does not match amplitude state parameter count {state_parameter_count}",
+                    self.input_len
+                )));
+            }
+            None => {}
+        }
+        let output_len = batch_size
+            .checked_mul(self.output_len)
+            .ok_or_else(|| RusticolError::invalid_argument("amplitude output length overflows"))?;
+        out.resize(output_len, c64(0.0, 0.0));
+        out.fill(c64(0.0, 0.0));
+
+        let mut output_start = 0usize;
+        for chunk_index in 0..self.evaluators.len() {
+            let evaluator_output_len = self.evaluators[chunk_index].output_len;
+            if active_chunk_indices.binary_search(&chunk_index).is_ok() {
+                let evaluator = &mut self.evaluators[chunk_index];
+                let mut evaluated_aosoa = false;
+                if let Some(lane_width) = evaluator
+                    .amplitude_aosoa_lane_width()
+                    .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+                {
+                    let input_mapping = self.input_mappings[chunk_index].as_deref();
+                    self.chunk_input_mapping_scratch.clear();
+                    self.chunk_input_mapping_scratch
+                        .reserve(evaluator.input_len);
+                    for local_component in 0..evaluator.input_len {
+                        let parent_component = input_mapping
+                            .map_or(local_component, |indices| indices[local_component]);
+                        self.chunk_input_mapping_scratch.push(
+                            parent_input_components.map_or(parent_component, |components| {
+                                components[parent_component]
+                            }),
+                        );
+                    }
+                    let block_count = pack_f64_parameters_aosoa(
+                        params,
+                        batch_size,
+                        state_parameter_count,
+                        evaluator.input_len,
+                        lane_width,
+                        Some(&self.chunk_input_mapping_scratch),
+                        &mut self.chunk_parameter_scratch_aosoa_f64,
+                    )?;
+                    self.chunk_scratch_aosoa_f64.resize(
+                        aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                        0.0,
+                    );
+                    if evaluator.evaluate_f64_aosoa_blocks(
+                        block_count,
+                        &self.chunk_parameter_scratch_aosoa_f64,
+                        &mut self.chunk_scratch_aosoa_f64,
+                    )? {
+                        scatter_f64_aosoa_outputs_to_rows(
+                            &self.chunk_scratch_aosoa_f64,
+                            batch_size,
+                            evaluator.output_len,
+                            lane_width,
+                            self.output_len,
+                            output_start,
+                            out,
+                        )?;
+                        evaluated_aosoa = true;
+                    }
+                }
+                if !evaluated_aosoa {
+                    let evaluator_params = selected_chunk_f64_parameters(
+                        params,
+                        batch_size,
+                        state_parameter_count,
+                        self.input_len,
+                        parent_input_components,
+                        parent_input_spans,
+                        self.input_mappings[chunk_index].as_deref(),
+                        &self.input_mapping_spans[chunk_index],
+                        &mut self.chunk_parameter_scratch_f64,
+                    )?;
+                    validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+                    self.chunk_scratch_f64.resize(
+                        batch_size
+                            .checked_mul(evaluator_output_len)
+                            .ok_or_else(|| {
+                                RusticolError::invalid_argument(
+                                    "amplitude chunk output length overflows usize",
+                                )
+                            })?,
+                        c64(0.0, 0.0),
+                    );
+                    evaluator.evaluate_f64_batch_unpadded(
+                        batch_size,
+                        evaluator_params,
+                        &mut self.chunk_scratch_f64,
+                    )?;
+                    for row in 0..batch_size {
+                        let source_start = row * evaluator_output_len;
+                        let target_start = row * self.output_len + output_start;
+                        out[target_start..target_start + evaluator_output_len].copy_from_slice(
+                            &self.chunk_scratch_f64
+                                [source_start..source_start + evaluator_output_len],
+                        );
+                    }
+                }
+            }
+            output_start = output_start
+                .checked_add(evaluator_output_len)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("amplitude chunk output range overflows")
+                })?;
+        }
+        if output_start != self.output_len {
+            return Err(RusticolError::integrity(
+                "amplitude evaluator chunk outputs do not cover the declared output length",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn evaluate_selected_chunks_f64_into_output_profile(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        parent_input_components: Option<&[usize]>,
+        parent_input_spans: &[(usize, usize, usize)],
+        out: &mut Vec<Complex<f64>>,
+        active_chunk_indices: &[usize],
+    ) -> RusticolResult<EvaluatorBatchProfile> {
+        validate_active_chunk_indices(active_chunk_indices, self.evaluators.len())?;
+        if batch_size == 0 || !params.len().is_multiple_of(batch_size) {
+            return Err(RusticolError::invalid_argument(
+                "amplitude evaluator parameter buffer has an inconsistent batch size",
+            ));
+        }
+        let state_parameter_count = params.len() / batch_size;
+        match parent_input_components {
+            Some(components) => {
+                if components.len() != self.input_len
+                    || components
+                        .iter()
+                        .any(|component| *component >= state_parameter_count)
+                {
+                    return Err(RusticolError::invalid_argument(
+                        "amplitude input-component map is inconsistent with runtime state",
+                    ));
+                }
+            }
+            None if self.input_len != state_parameter_count => {
+                return Err(RusticolError::invalid_argument(format!(
+                    "evaluator input length {} does not match amplitude state parameter count {state_parameter_count}",
+                    self.input_len
+                )));
+            }
+            None => {}
+        }
+        let output_len = batch_size
+            .checked_mul(self.output_len)
+            .ok_or_else(|| RusticolError::invalid_argument("amplitude output length overflows"))?;
+        let mut output_gather_elapsed = Duration::ZERO;
+        let output_prepare_start = Instant::now();
+        let output_capacity = out.capacity();
+        out.resize(output_len, c64(0.0, 0.0));
+        out.fill(c64(0.0, 0.0));
+        output_gather_elapsed += output_prepare_start.elapsed();
+        let mut output_gather_component_count = output_len as u64;
+        let mut scratch_reallocation_count = u64::from(out.capacity() != output_capacity);
+
+        let mut chunk_output_starts = Vec::with_capacity(self.evaluators.len());
+        let mut output_start = 0usize;
+        for evaluator in &self.evaluators {
+            chunk_output_starts.push(output_start);
+            output_start = output_start
+                .checked_add(evaluator.output_len)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument("amplitude chunk output range overflows")
+                })?;
+        }
+        if output_start != self.output_len {
+            return Err(RusticolError::integrity(
+                "amplitude evaluator chunk outputs do not cover the declared output length",
+            ));
+        }
+
+        let mut input_pack_elapsed = Duration::ZERO;
+        let mut evaluator_elapsed = Duration::ZERO;
+        let mut leaf_input_copy_component_count = 0u64;
+        let mut backend_call_count = 0u64;
+        for &chunk_index in active_chunk_indices {
+            let evaluator = &mut self.evaluators[chunk_index];
+            if let Some(lane_width) = evaluator
+                .amplitude_aosoa_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let parameter_capacity = self.chunk_parameter_scratch_aosoa_f64.capacity();
+                let mapping_capacity = self.chunk_input_mapping_scratch.capacity();
+                let input_pack_start = Instant::now();
+                let input_mapping = self.input_mappings[chunk_index].as_deref();
+                self.chunk_input_mapping_scratch.clear();
+                self.chunk_input_mapping_scratch
+                    .reserve(evaluator.input_len);
+                for local_component in 0..evaluator.input_len {
+                    let parent_component =
+                        input_mapping.map_or(local_component, |indices| indices[local_component]);
+                    self.chunk_input_mapping_scratch.push(
+                        parent_input_components
+                            .map_or(parent_component, |components| components[parent_component]),
+                    );
+                }
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    state_parameter_count,
+                    evaluator.input_len,
+                    lane_width,
+                    Some(&self.chunk_input_mapping_scratch),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                input_pack_elapsed += input_pack_start.elapsed();
+                leaf_input_copy_component_count +=
+                    (self.chunk_parameter_scratch_aosoa_f64.len() / 2) as u64;
+                scratch_reallocation_count +=
+                    u64::from(
+                        self.chunk_parameter_scratch_aosoa_f64.capacity() != parameter_capacity,
+                    ) + u64::from(self.chunk_input_mapping_scratch.capacity() != mapping_capacity);
+
+                let chunk_capacity = self.chunk_scratch_aosoa_f64.capacity();
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_scratch_aosoa_f64.capacity() != chunk_capacity);
+                let eval_start = Instant::now();
+                let evaluated = evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )?;
+                evaluator_elapsed += eval_start.elapsed();
+                backend_call_count += 1;
+                if evaluated {
+                    let output_gather_start = Instant::now();
+                    scatter_f64_aosoa_outputs_to_rows(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        self.output_len,
+                        chunk_output_starts[chunk_index],
+                        out,
+                    )?;
+                    output_gather_elapsed += output_gather_start.elapsed();
+                    output_gather_component_count += (batch_size * evaluator.output_len) as u64;
+                    continue;
+                }
+            }
+            let parameter_capacity = self.chunk_parameter_scratch_f64.capacity();
+            let input_pack_start = Instant::now();
+            let evaluator_params = selected_chunk_f64_parameters(
+                params,
+                batch_size,
+                state_parameter_count,
+                self.input_len,
+                parent_input_components,
+                parent_input_spans,
+                self.input_mappings[chunk_index].as_deref(),
+                &self.input_mapping_spans[chunk_index],
+                &mut self.chunk_parameter_scratch_f64,
+            )?;
+            input_pack_elapsed += input_pack_start.elapsed();
+            if parent_input_components.is_some() || self.input_mappings[chunk_index].is_some() {
+                leaf_input_copy_component_count += evaluator_params.len() as u64;
+            }
+
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let chunk_capacity = self.chunk_scratch_f64.capacity();
+            self.chunk_scratch_f64.resize(
+                batch_size
+                    .checked_mul(evaluator.output_len)
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(
+                            "amplitude chunk output length overflows usize",
+                        )
+                    })?,
+                c64(0.0, 0.0),
+            );
+            let eval_start = Instant::now();
+            evaluator.evaluate_f64_batch_unpadded(
+                batch_size,
+                evaluator_params,
+                &mut self.chunk_scratch_f64,
+            )?;
+            evaluator_elapsed += eval_start.elapsed();
+            backend_call_count += 1;
+            scratch_reallocation_count +=
+                u64::from(self.chunk_parameter_scratch_f64.capacity() != parameter_capacity)
+                    + u64::from(self.chunk_scratch_f64.capacity() != chunk_capacity);
+            let output_gather_start = Instant::now();
+            let chunk_output_start = chunk_output_starts[chunk_index];
+            for row in 0..batch_size {
+                let source_start = row * evaluator.output_len;
+                let target_start = row * self.output_len + chunk_output_start;
+                out[target_start..target_start + evaluator.output_len].copy_from_slice(
+                    &self.chunk_scratch_f64[source_start..source_start + evaluator.output_len],
+                );
+            }
+            output_gather_elapsed += output_gather_start.elapsed();
+            output_gather_component_count += (batch_size * evaluator.output_len) as u64;
+        }
+        let leaf_input_pack_s = profile_duration_seconds(input_pack_elapsed);
+        let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
+        let output_gather_s = profile_duration_seconds(output_gather_elapsed);
+        Ok(EvaluatorBatchProfile {
+            leaf_input_pack_s,
+            legacy_evaluator_call_s: evaluator_call_s + output_gather_s,
+            evaluator_call_s,
+            output_gather_s,
+            leaf_input_copy_component_count,
+            output_gather_component_count,
+            backend_call_count,
+            scratch_reallocation_count,
+        })
+    }
+
+    pub(crate) fn evaluate_batch_into(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        out: &mut Vec<Complex<f64>>,
+    ) -> RusticolResult<()> {
+        self.evaluate_batch_into_unprofiled(batch_size, params, out, false)
+    }
+
+    pub(crate) fn evaluate_batch_into_padded_simd_tail(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        out: &mut Vec<Complex<f64>>,
+    ) -> RusticolResult<()> {
+        self.evaluate_batch_into_unprofiled(batch_size, params, out, true)
+    }
+
+    fn evaluate_batch_into_unprofiled(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        out: &mut Vec<Complex<f64>>,
+        pad_incomplete_simd_tail: bool,
+    ) -> RusticolResult<()> {
+        let expected_output_len = batch_size * self.output_len;
+        if out.len() != expected_output_len {
+            out.resize(expected_output_len, c64(0.0, 0.0));
+        }
+        if params.len() != batch_size * self.input_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "parameter buffer has length {}, expected {}",
+                params.len(),
+                batch_size * self.input_len
+            )));
+        }
+        if self.evaluators.len() == 1 {
+            let evaluator = &mut self.evaluators[0];
+            if let Some(lane_width) = evaluator
+                .amplitude_aosoa_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    self.input_mappings[0].as_deref(),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                if evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )? {
+                    scatter_f64_aosoa_outputs_to_rows(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        self.output_len,
+                        0,
+                        out,
+                    )?;
+                    return Ok(());
+                }
+            }
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                self.input_mappings[0].as_deref(),
+                &self.input_mapping_spans[0],
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            if pad_incomplete_simd_tail {
+                evaluator.evaluate_f64_batch(batch_size, evaluator_params, out)?;
+            } else {
+                evaluator.evaluate_f64_batch_unpadded(batch_size, evaluator_params, out)?;
+            }
+            return Ok(());
+        }
+        let mut output_offset = 0;
+        for ((evaluator, input_mapping), input_spans) in self
+            .evaluators
+            .iter_mut()
+            .zip(&self.input_mappings)
+            .zip(&self.input_mapping_spans)
+        {
+            if let Some(lane_width) = evaluator
+                .amplitude_aosoa_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    input_mapping.as_deref(),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                if evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )? {
+                    scatter_f64_aosoa_outputs_to_rows(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        self.output_len,
+                        output_offset,
+                        out,
+                    )?;
+                    output_offset += evaluator.output_len;
+                    continue;
+                }
+            }
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                input_mapping.as_deref(),
+                input_spans,
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            self.chunk_scratch_f64
+                .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
+            if pad_incomplete_simd_tail {
+                evaluator.evaluate_f64_batch(
+                    batch_size,
+                    evaluator_params,
+                    &mut self.chunk_scratch_f64,
+                )?;
+            } else {
+                evaluator.evaluate_f64_batch_unpadded(
+                    batch_size,
+                    evaluator_params,
+                    &mut self.chunk_scratch_f64,
+                )?;
+            }
+            for row in 0..batch_size {
+                let src = row * evaluator.output_len;
+                let dst = row * self.output_len + output_offset;
+                out[dst..dst + evaluator.output_len]
+                    .copy_from_slice(&self.chunk_scratch_f64[src..src + evaluator.output_len]);
+            }
+            output_offset += evaluator.output_len;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn evaluate_batch_into_profile(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        out: &mut Vec<Complex<f64>>,
+        pad_incomplete_simd_tail: bool,
+    ) -> RusticolResult<EvaluatorBatchProfile> {
+        let mut leaf_input_pack_elapsed = Duration::ZERO;
+        let mut evaluator_elapsed = Duration::ZERO;
+        let mut output_gather_elapsed = Duration::ZERO;
+        let mut leaf_input_copy_component_count = 0u64;
+        let mut output_gather_component_count = 0u64;
+        let mut backend_call_count = 0u64;
+        let mut scratch_reallocation_count = 0u64;
+        let expected_output_len = batch_size * self.output_len;
+        let output_capacity = out.capacity();
+        if out.len() != expected_output_len {
+            out.resize(expected_output_len, c64(0.0, 0.0));
+        }
+        scratch_reallocation_count += u64::from(out.capacity() != output_capacity);
+        if params.len() != batch_size * self.input_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "parameter buffer has length {}, expected {}",
+                params.len(),
+                batch_size * self.input_len
+            )));
+        }
+        if self.evaluators.len() == 1 {
+            let evaluator = &mut self.evaluators[0];
+            if let Some(lane_width) = evaluator
+                .amplitude_aosoa_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let leaf_capacity = self.chunk_parameter_scratch_aosoa_f64.capacity();
+                let leaf_start = Instant::now();
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    self.input_mappings[0].as_deref(),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                leaf_input_pack_elapsed += leaf_start.elapsed();
+                leaf_input_copy_component_count +=
+                    (self.chunk_parameter_scratch_aosoa_f64.len() / 2) as u64;
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_parameter_scratch_aosoa_f64.capacity() != leaf_capacity);
+                let chunk_capacity = self.chunk_scratch_aosoa_f64.capacity();
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_scratch_aosoa_f64.capacity() != chunk_capacity);
+                let backend_start = Instant::now();
+                let evaluated = evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )?;
+                evaluator_elapsed += backend_start.elapsed();
+                backend_call_count += 1;
+                if evaluated {
+                    let gather_start = Instant::now();
+                    scatter_f64_aosoa_outputs_to_rows(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        self.output_len,
+                        0,
+                        out,
+                    )?;
+                    output_gather_elapsed += gather_start.elapsed();
+                    output_gather_component_count += (batch_size * evaluator.output_len) as u64;
+                    let leaf_input_pack_s = profile_duration_seconds(leaf_input_pack_elapsed);
+                    let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
+                    let output_gather_s = profile_duration_seconds(output_gather_elapsed);
+                    return Ok(EvaluatorBatchProfile {
+                        leaf_input_pack_s,
+                        legacy_evaluator_call_s: leaf_input_pack_s
+                            + evaluator_call_s
+                            + output_gather_s,
+                        evaluator_call_s,
+                        output_gather_s,
+                        leaf_input_copy_component_count,
+                        output_gather_component_count,
+                        backend_call_count,
+                        scratch_reallocation_count,
+                    });
+                }
+            }
+            let leaf_capacity = self.chunk_parameter_scratch_f64.capacity();
+            let leaf_start = Instant::now();
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                self.input_mappings[0].as_deref(),
+                &self.input_mapping_spans[0],
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            leaf_input_pack_elapsed += leaf_start.elapsed();
+            if self.input_mappings[0].is_some() {
+                leaf_input_copy_component_count += evaluator_params.len() as u64;
+            }
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let backend_start = Instant::now();
+            if pad_incomplete_simd_tail {
+                evaluator.evaluate_f64_batch(batch_size, evaluator_params, out)?;
+            } else {
+                evaluator.evaluate_f64_batch_unpadded(batch_size, evaluator_params, out)?;
+            }
+            evaluator_elapsed += backend_start.elapsed();
+            backend_call_count += 1;
+            scratch_reallocation_count +=
+                u64::from(self.chunk_parameter_scratch_f64.capacity() != leaf_capacity);
+            let leaf_input_pack_s = profile_duration_seconds(leaf_input_pack_elapsed);
+            let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
+            return Ok(EvaluatorBatchProfile {
+                leaf_input_pack_s,
+                legacy_evaluator_call_s: leaf_input_pack_s + evaluator_call_s,
+                evaluator_call_s,
+                leaf_input_copy_component_count,
+                backend_call_count,
+                scratch_reallocation_count,
+                ..EvaluatorBatchProfile::default()
+            });
+        }
+        let mut output_offset = 0;
+        for ((evaluator, input_mapping), input_spans) in self
+            .evaluators
+            .iter_mut()
+            .zip(&self.input_mappings)
+            .zip(&self.input_mapping_spans)
+        {
+            if let Some(lane_width) = evaluator
+                .amplitude_aosoa_lane_width()
+                .filter(|lane_width| *lane_width > 1 && batch_size >= *lane_width)
+            {
+                let leaf_capacity = self.chunk_parameter_scratch_aosoa_f64.capacity();
+                let leaf_start = Instant::now();
+                let block_count = pack_f64_parameters_aosoa(
+                    params,
+                    batch_size,
+                    self.input_len,
+                    evaluator.input_len,
+                    lane_width,
+                    input_mapping.as_deref(),
+                    &mut self.chunk_parameter_scratch_aosoa_f64,
+                )?;
+                leaf_input_pack_elapsed += leaf_start.elapsed();
+                leaf_input_copy_component_count +=
+                    (self.chunk_parameter_scratch_aosoa_f64.len() / 2) as u64;
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_parameter_scratch_aosoa_f64.capacity() != leaf_capacity);
+                let chunk_capacity = self.chunk_scratch_aosoa_f64.capacity();
+                self.chunk_scratch_aosoa_f64.resize(
+                    aosoa_scalar_len(block_count, evaluator.output_len, lane_width, "output")?,
+                    0.0,
+                );
+                scratch_reallocation_count +=
+                    u64::from(self.chunk_scratch_aosoa_f64.capacity() != chunk_capacity);
+                let backend_start = Instant::now();
+                let evaluated = evaluator.evaluate_f64_aosoa_blocks(
+                    block_count,
+                    &self.chunk_parameter_scratch_aosoa_f64,
+                    &mut self.chunk_scratch_aosoa_f64,
+                )?;
+                evaluator_elapsed += backend_start.elapsed();
+                backend_call_count += 1;
+                if evaluated {
+                    let gather_start = Instant::now();
+                    scatter_f64_aosoa_outputs_to_rows(
+                        &self.chunk_scratch_aosoa_f64,
+                        batch_size,
+                        evaluator.output_len,
+                        lane_width,
+                        self.output_len,
+                        output_offset,
+                        out,
+                    )?;
+                    output_gather_elapsed += gather_start.elapsed();
+                    output_gather_component_count += (batch_size * evaluator.output_len) as u64;
+                    output_offset += evaluator.output_len;
+                    continue;
+                }
+            }
+            let leaf_capacity = self.chunk_parameter_scratch_f64.capacity();
+            let leaf_start = Instant::now();
+            let evaluator_params = mapped_f64_parameters(
+                params,
+                batch_size,
+                self.input_len,
+                input_mapping.as_deref(),
+                input_spans,
+                &mut self.chunk_parameter_scratch_f64,
+            );
+            leaf_input_pack_elapsed += leaf_start.elapsed();
+            if input_mapping.is_some() {
+                leaf_input_copy_component_count += evaluator_params.len() as u64;
+            }
+            validate_leaf_parameter_length(evaluator, batch_size, evaluator_params)?;
+            let chunk_capacity = self.chunk_scratch_f64.capacity();
+            self.chunk_scratch_f64
+                .resize(batch_size * evaluator.output_len, c64(0.0, 0.0));
+            scratch_reallocation_count +=
+                u64::from(self.chunk_scratch_f64.capacity() != chunk_capacity);
+            let backend_start = Instant::now();
+            if pad_incomplete_simd_tail {
+                evaluator.evaluate_f64_batch(
+                    batch_size,
+                    evaluator_params,
+                    &mut self.chunk_scratch_f64,
+                )?;
+            } else {
+                evaluator.evaluate_f64_batch_unpadded(
+                    batch_size,
+                    evaluator_params,
+                    &mut self.chunk_scratch_f64,
+                )?;
+            }
+            evaluator_elapsed += backend_start.elapsed();
+            backend_call_count += 1;
+            scratch_reallocation_count +=
+                u64::from(self.chunk_parameter_scratch_f64.capacity() != leaf_capacity);
+            let gather_start = Instant::now();
+            for row in 0..batch_size {
+                let src = row * evaluator.output_len;
+                let dst = row * self.output_len + output_offset;
+                out[dst..dst + evaluator.output_len]
+                    .copy_from_slice(&self.chunk_scratch_f64[src..src + evaluator.output_len]);
+            }
+            output_gather_elapsed += gather_start.elapsed();
+            output_gather_component_count += (batch_size * evaluator.output_len) as u64;
+            output_offset += evaluator.output_len;
+        }
+        let leaf_input_pack_s = profile_duration_seconds(leaf_input_pack_elapsed);
+        let evaluator_call_s = profile_duration_seconds(evaluator_elapsed);
+        let output_gather_s = profile_duration_seconds(output_gather_elapsed);
+        Ok(EvaluatorBatchProfile {
+            leaf_input_pack_s,
+            legacy_evaluator_call_s: leaf_input_pack_s + evaluator_call_s + output_gather_s,
+            evaluator_call_s,
+            output_gather_s,
+            leaf_input_copy_component_count,
+            output_gather_component_count,
+            backend_call_count,
+            scratch_reallocation_count,
+        })
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn evaluate_selected_chunks_generic<T>(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<T>],
+        binary_precision: Option<u32>,
+        active_chunk_indices: Option<&[usize]>,
+    ) -> RusticolResult<Vec<Complex<T>>>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        if let Some(indices) = active_chunk_indices {
+            validate_active_chunk_indices(indices, self.evaluators.len())?;
+        }
+        let mut out = vec![complex_zero::<T>(); batch_size * self.output_len];
+        if params.len() != batch_size * self.input_len {
+            return Err(RusticolError::invalid_argument(format!(
+                "parameter buffer has length {}, expected {}",
+                params.len(),
+                batch_size * self.input_len
+            )));
+        }
+        let mut output_offset = 0;
+        let mut active_position = 0;
+        for (chunk_index, (evaluator, input_mapping)) in self
+            .evaluators
+            .iter_mut()
+            .zip(&self.input_mappings)
+            .enumerate()
+        {
+            if let Some(indices) = active_chunk_indices {
+                if indices.get(active_position) != Some(&chunk_index) {
+                    output_offset += evaluator.output_len;
+                    continue;
+                }
+                active_position += 1;
+            }
+            let mapped_params = input_mapping.as_ref().map(|indices| {
+                let mut mapped = Vec::with_capacity(batch_size * indices.len());
+                for row in 0..batch_size {
+                    let row_start = row * self.input_len;
+                    mapped.extend(
+                        indices
+                            .iter()
+                            .map(|index| params[row_start + *index].clone()),
+                    );
+                }
+                mapped
+            });
+            let evaluator_params = mapped_params.as_deref().unwrap_or(params);
+            let mut chunk_out = vec![complex_zero::<T>(); batch_size * evaluator.output_len];
+            for row in 0..batch_size {
+                let in_start = row * evaluator.input_len;
+                let out_start = row * evaluator.output_len;
+                T::evaluate_loaded(
+                    evaluator,
+                    &evaluator_params[in_start..in_start + evaluator.input_len],
+                    &mut chunk_out[out_start..out_start + evaluator.output_len],
+                    binary_precision,
+                )?;
+            }
+            for row in 0..batch_size {
+                let src = row * evaluator.output_len;
+                let dst = row * self.output_len + output_offset;
+                out[dst..dst + evaluator.output_len]
+                    .clone_from_slice(&chunk_out[src..src + evaluator.output_len]);
+            }
+            output_offset += evaluator.output_len;
+        }
+        Ok(out)
+    }
+}
+
+fn aosoa_scalar_len(
+    block_count: usize,
+    component_count: usize,
+    lane_width: usize,
+    label: &str,
+) -> RusticolResult<usize> {
+    block_count
+        .checked_mul(component_count)
+        .and_then(|len| len.checked_mul(2))
+        .and_then(|len| len.checked_mul(lane_width))
+        .ok_or_else(|| {
+            RusticolError::invalid_argument(format!("{label} AoSoA buffer length overflows usize"))
+        })
+}
+
+fn pack_f64_parameters_aosoa(
+    source: &[Complex<f64>],
+    batch_size: usize,
+    source_parameter_count: usize,
+    leaf_input_len: usize,
+    lane_width: usize,
+    input_components: Option<&[usize]>,
+    scratch: &mut Vec<f64>,
+) -> RusticolResult<usize> {
+    if batch_size == 0 || lane_width <= 1 {
+        return Err(RusticolError::invalid_argument(
+            "AoSoA parameter packing requires a non-empty SIMD batch",
+        ));
+    }
+    let expected_source_len = batch_size
+        .checked_mul(source_parameter_count)
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("source parameter length overflows usize")
+        })?;
+    if source.len() != expected_source_len {
+        return Err(RusticolError::invalid_argument(format!(
+            "source parameter buffer has length {}, expected {expected_source_len}",
+            source.len()
+        )));
+    }
+    match input_components {
+        Some(components)
+            if components.len() != leaf_input_len
+                || components
+                    .iter()
+                    .any(|component| *component >= source_parameter_count) =>
+        {
+            return Err(RusticolError::integrity(
+                "AoSoA leaf input mapping is inconsistent with source parameters",
+            ));
+        }
+        None if leaf_input_len != source_parameter_count => {
+            return Err(RusticolError::integrity(
+                "AoSoA identity leaf input length does not match source parameters",
+            ));
+        }
+        Some(_) | None => {}
+    }
+    let block_count = batch_size.div_ceil(lane_width);
+    scratch.resize(
+        aosoa_scalar_len(block_count, leaf_input_len, lane_width, "parameter")?,
+        0.0,
+    );
+    match lane_width {
+        // SAFETY: the checks above establish every source component and the
+        // complete destination length required by the fixed-lane packers.
+        2 => unsafe {
+            pack_f64_parameters_aosoa_lanes::<2>(
+                source,
+                batch_size,
+                source_parameter_count,
+                leaf_input_len,
+                input_components,
+                scratch,
+            )
+        },
+        // SAFETY: see the lane-2 branch.
+        4 => unsafe {
+            pack_f64_parameters_aosoa_lanes::<4>(
+                source,
+                batch_size,
+                source_parameter_count,
+                leaf_input_len,
+                input_components,
+                scratch,
+            )
+        },
+        // SAFETY: see the lane-2 branch.
+        8 => unsafe {
+            pack_f64_parameters_aosoa_lanes::<8>(
+                source,
+                batch_size,
+                source_parameter_count,
+                leaf_input_len,
+                input_components,
+                scratch,
+            )
+        },
+        _ => pack_f64_parameters_aosoa_dynamic(
+            source,
+            batch_size,
+            source_parameter_count,
+            leaf_input_len,
+            lane_width,
+            input_components,
+            scratch,
+        ),
+    }
+    Ok(block_count)
+}
+
+/// # Safety
+///
+/// `source` must contain `batch_size * source_parameter_count` elements,
+/// `input_components` must contain `leaf_input_len` in-range indices when
+/// present, and `scratch` must contain the complete padded AoSoA destination.
+unsafe fn pack_f64_parameters_aosoa_lanes<const LANES: usize>(
+    source: &[Complex<f64>],
+    batch_size: usize,
+    source_parameter_count: usize,
+    leaf_input_len: usize,
+    input_components: Option<&[usize]>,
+    scratch: &mut [f64],
+) {
+    let block_count = batch_size.div_ceil(LANES);
+    let source_ptr = source.as_ptr();
+    let target_ptr = scratch.as_mut_ptr();
+    for block in 0..block_count {
+        let first_row = block * LANES;
+        for local_component in 0..leaf_input_len {
+            let component =
+                input_components.map_or(local_component, |components| components[local_component]);
+            let target = (block * leaf_input_len + local_component) * 2 * LANES;
+            for lane in 0..LANES {
+                let row = (first_row + lane).min(batch_size - 1);
+                // SAFETY: the caller validated the complete source and target
+                // lengths plus every mapped component before entering this
+                // fixed-lane hot loop.
+                unsafe {
+                    let value = *source_ptr.add(row * source_parameter_count + component);
+                    *target_ptr.add(target + lane) = value.re;
+                    *target_ptr.add(target + LANES + lane) = value.im;
+                }
+            }
+        }
+    }
+}
+
+fn pack_f64_parameters_aosoa_dynamic(
+    source: &[Complex<f64>],
+    batch_size: usize,
+    source_parameter_count: usize,
+    leaf_input_len: usize,
+    lane_width: usize,
+    input_components: Option<&[usize]>,
+    scratch: &mut [f64],
+) {
+    let block_count = batch_size.div_ceil(lane_width);
+    let scalar_stride = lane_width * 2;
+    for block in 0..block_count {
+        let first_row = block * lane_width;
+        for local_component in 0..leaf_input_len {
+            let component =
+                input_components.map_or(local_component, |components| components[local_component]);
+            let target = (block * leaf_input_len + local_component) * scalar_stride;
+            for lane in 0..lane_width {
+                let row = (first_row + lane).min(batch_size - 1);
+                let value = source[row * source_parameter_count + component];
+                scratch[target + lane] = value.re;
+                scratch[target + lane_width + lane] = value.im;
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scatter_f64_aosoa_outputs_to_state(
+    outputs_aosoa: &[f64],
+    batch_size: usize,
+    evaluator_output_len: usize,
+    lane_width: usize,
+    state_parameter_count: usize,
+    state: &mut [Complex<f64>],
+    outputs: &[(usize, usize)],
+    spans: &[(usize, usize, usize)],
+) -> RusticolResult<()> {
+    let expected_state_len = batch_size
+        .checked_mul(state_parameter_count)
+        .ok_or_else(|| RusticolError::invalid_argument("stage state length overflows usize"))?;
+    if state.len() != expected_state_len {
+        return Err(RusticolError::invalid_argument(format!(
+            "stage state has length {}, expected {expected_state_len}",
+            state.len()
+        )));
+    }
+    let block_count = batch_size.div_ceil(lane_width);
+    let expected_output_len =
+        aosoa_scalar_len(block_count, evaluator_output_len, lane_width, "output")?;
+    if outputs_aosoa.len() != expected_output_len {
+        return Err(RusticolError::integrity(format!(
+            "AoSoA evaluator output has length {}, expected {expected_output_len}",
+            outputs_aosoa.len()
+        )));
+    }
+    let scalar_stride = lane_width * 2;
+    for block in 0..block_count {
+        let first_row = block * lane_width;
+        let valid_lanes = (batch_size - first_row).min(lane_width);
+        for lane in 0..valid_lanes {
+            let row_state = (first_row + lane) * state_parameter_count;
+            if spans.is_empty() {
+                for (column, state_offset) in outputs {
+                    let source = (block * evaluator_output_len + *column) * scalar_stride;
+                    state[row_state + *state_offset] = Complex::new(
+                        outputs_aosoa[source + lane],
+                        outputs_aosoa[source + lane_width + lane],
+                    );
+                }
+            } else {
+                for (column_start, state_offset_start, len) in spans {
+                    for offset in 0..*len {
+                        let source =
+                            (block * evaluator_output_len + column_start + offset) * scalar_stride;
+                        state[row_state + state_offset_start + offset] = Complex::new(
+                            outputs_aosoa[source + lane],
+                            outputs_aosoa[source + lane_width + lane],
+                        );
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scatter_f64_aosoa_outputs_to_rows(
+    outputs_aosoa: &[f64],
+    batch_size: usize,
+    evaluator_output_len: usize,
+    lane_width: usize,
+    row_output_len: usize,
+    output_offset: usize,
+    out: &mut [Complex<f64>],
+) -> RusticolResult<()> {
+    let expected_output_rows = batch_size.checked_mul(row_output_len).ok_or_else(|| {
+        RusticolError::invalid_argument("amplitude output length overflows usize")
+    })?;
+    if out.len() != expected_output_rows {
+        return Err(RusticolError::invalid_argument(format!(
+            "amplitude output has length {}, expected {expected_output_rows}",
+            out.len()
+        )));
+    }
+    let output_end = output_offset
+        .checked_add(evaluator_output_len)
+        .ok_or_else(|| RusticolError::invalid_argument("amplitude output range overflows usize"))?;
+    if output_end > row_output_len {
+        return Err(RusticolError::integrity(
+            "AoSoA evaluator output range exceeds the amplitude row",
+        ));
+    }
+    let block_count = batch_size.div_ceil(lane_width);
+    let expected_aosoa_len =
+        aosoa_scalar_len(block_count, evaluator_output_len, lane_width, "output")?;
+    if outputs_aosoa.len() != expected_aosoa_len {
+        return Err(RusticolError::integrity(format!(
+            "AoSoA evaluator output has length {}, expected {expected_aosoa_len}",
+            outputs_aosoa.len()
+        )));
+    }
+    let scalar_stride = lane_width * 2;
+    for block in 0..block_count {
+        let first_row = block * lane_width;
+        let valid_lanes = (batch_size - first_row).min(lane_width);
+        for lane in 0..valid_lanes {
+            let row_output = (first_row + lane) * row_output_len + output_offset;
+            for column in 0..evaluator_output_len {
+                let source = (block * evaluator_output_len + column) * scalar_stride;
+                out[row_output + column] = Complex::new(
+                    outputs_aosoa[source + lane],
+                    outputs_aosoa[source + lane_width + lane],
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn mapped_f64_parameters<'a>(
+    params: &'a [Complex<f64>],
+    batch_size: usize,
+    parent_input_len: usize,
+    input_mapping: Option<&[usize]>,
+    input_spans: &[(usize, usize, usize)],
+    scratch: &'a mut Vec<Complex<f64>>,
+) -> &'a [Complex<f64>] {
+    let Some(indices) = input_mapping else {
+        return params;
+    };
+    scratch.resize(batch_size * indices.len(), c64(0.0, 0.0));
+    for row in 0..batch_size {
+        let source_start = row * parent_input_len;
+        let target_start = row * indices.len();
+        if input_spans.is_empty() {
+            for (local_index, parent_index) in indices.iter().enumerate() {
+                scratch[target_start + local_index] = params[source_start + *parent_index];
+            }
+        } else {
+            for (local_start, parent_start, len) in input_spans {
+                let target = target_start + *local_start;
+                let source = source_start + *parent_start;
+                scratch[target..target + *len].copy_from_slice(&params[source..source + *len]);
+            }
+        }
+    }
+    scratch
+}
+
+#[allow(clippy::too_many_arguments, dead_code)]
+fn selected_chunk_f64_parameters<'a>(
+    state: &'a [Complex<f64>],
+    batch_size: usize,
+    state_parameter_count: usize,
+    parent_input_len: usize,
+    parent_input_components: Option<&[usize]>,
+    parent_input_spans: &[(usize, usize, usize)],
+    input_mapping: Option<&[usize]>,
+    input_mapping_spans: &[(usize, usize, usize)],
+    scratch: &'a mut Vec<Complex<f64>>,
+) -> RusticolResult<&'a [Complex<f64>]> {
+    let Some(parent_components) = parent_input_components else {
+        return Ok(mapped_f64_parameters(
+            state,
+            batch_size,
+            state_parameter_count,
+            input_mapping,
+            input_mapping_spans,
+            scratch,
+        ));
+    };
+    let mapped_input_len = input_mapping.map_or(parent_input_len, <[usize]>::len);
+    let scratch_len = batch_size.checked_mul(mapped_input_len).ok_or_else(|| {
+        RusticolError::invalid_argument("selected stage input length overflows usize")
+    })?;
+    scratch.resize(scratch_len, c64(0.0, 0.0));
+    for row in 0..batch_size {
+        let source_start = row * state_parameter_count;
+        let target_start = row * mapped_input_len;
+        if let Some(indices) = input_mapping {
+            for (local_index, parent_index) in indices.iter().copied().enumerate() {
+                scratch[target_start + local_index] =
+                    state[source_start + parent_components[parent_index]];
+            }
+        } else if parent_input_spans.is_empty() {
+            for (local_index, global_index) in parent_components.iter().copied().enumerate() {
+                scratch[target_start + local_index] = state[source_start + global_index];
+            }
+        } else {
+            for (local_start, global_start, len) in parent_input_spans {
+                let target = target_start + *local_start;
+                let source = source_start + *global_start;
+                scratch[target..target + *len].copy_from_slice(&state[source..source + *len]);
+            }
+        }
+    }
+    Ok(scratch)
+}
+
+#[allow(dead_code)]
+fn validate_active_chunk_indices(
+    active_chunk_indices: &[usize],
+    chunk_count: usize,
+) -> RusticolResult<()> {
+    let mut previous = None;
+    for &chunk_index in active_chunk_indices {
+        if chunk_index >= chunk_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "active evaluator chunk index {chunk_index} is outside chunk count {chunk_count}",
+            )));
+        }
+        if previous.is_some_and(|previous| previous >= chunk_index) {
+            return Err(RusticolError::invalid_argument(
+                "active evaluator chunk indices must be strictly increasing",
+            ));
+        }
+        previous = Some(chunk_index);
+    }
+    Ok(())
+}
+
+fn validate_leaf_parameter_length(
+    evaluator: &LoadedEvaluator,
+    batch_size: usize,
+    params: &[Complex<f64>],
+) -> RusticolResult<()> {
+    if params.len() != batch_size * evaluator.input_len {
+        return Err(RusticolError::artifact(format!(
+            "mapped evaluator parameter buffer has length {}, expected {}",
+            params.len(),
+            batch_size * evaluator.input_len
+        )));
+    }
+    Ok(())
+}
+
+impl LoadedEvaluator {
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn exact_evaluator(
+        &mut self,
+    ) -> RusticolResult<&ExpressionEvaluator<Complex<Rational>>> {
+        if self.exact_eval.is_none() {
+            let source = self.exact_eval_source.as_ref().ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "high-precision evaluation requires an evaluator-state artifact, but this process artifact has no evaluator_state_path for one or more chunks",
+                )
+            })?;
+            self.exact_eval = Some(load_evaluator_state_source(source)?.1);
+        }
+        Ok(self
+            .exact_eval
+            .as_ref()
+            .expect("exact evaluator initialized from its state path"))
+    }
+
+    fn simd_lane_width(&self) -> Option<usize> {
+        match &self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => None,
+            #[cfg(feature = "f64-symjit")]
+            F64Evaluator::SymjitApplication(eval) => eval.simd_lane_width(),
+            #[cfg(feature = "f64-compiled")]
+            F64Evaluator::Compiled(_) => None,
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::Jit(_) => None,
+        }
+    }
+
+    fn amplitude_aosoa_lane_width(&self) -> Option<usize> {
+        // Tiny amplitude leaves (notably LC's common 4 -> 1 kernels) do not
+        // amortize direct packing and scattering. This static shape gate keeps
+        // the portable path for substantive kernels without runtime tuning or
+        // architecture-specific thresholds.
+        const MINIMUM_COMPONENT_FOOTPRINT: usize = 32;
+        if self.input_len.saturating_add(self.output_len) < MINIMUM_COMPONENT_FOOTPRINT {
+            None
+        } else {
+            self.simd_lane_width()
+        }
+    }
+
+    fn evaluate_f64_aosoa_blocks(
+        &self,
+        block_count: usize,
+        params: &[f64],
+        out: &mut [f64],
+    ) -> RusticolResult<bool> {
+        match &self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => Ok(false),
+            #[cfg(feature = "f64-symjit")]
+            F64Evaluator::SymjitApplication(eval) => {
+                eval.evaluate_aosoa_blocks(block_count, params, out)
+            }
+            #[cfg(feature = "f64-compiled")]
+            F64Evaluator::Compiled(_) => Ok(false),
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::Jit(_) => Ok(false),
+        }
+    }
+
+    pub(crate) fn evaluate_f64_batch(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        out: &mut [Complex<f64>],
+    ) -> RusticolResult<()> {
+        match &mut self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => Err(RusticolError::integrity(
+                "compiled plane-arena exact evaluator cannot execute f64",
+            )),
+            #[cfg(feature = "f64-symjit")]
+            F64Evaluator::SymjitApplication(eval) => eval.evaluate_batch(batch_size, params, out),
+            #[cfg(feature = "f64-compiled")]
+            F64Evaluator::Compiled(eval) => eval.evaluate_batch(batch_size, params, out),
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::Jit(eval) => {
+                if params.len() != batch_size * self.input_len {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "parameter buffer has length {}, expected {}",
+                        params.len(),
+                        batch_size * self.input_len
+                    )));
+                }
+                if out.len() != batch_size * self.output_len {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "output buffer has length {}, expected {}",
+                        out.len(),
+                        batch_size * self.output_len
+                    )));
+                }
+                eval.evaluate_batch(batch_size, params, out)
+                    .map_err(RusticolError::evaluation)
+            }
+        }
+    }
+
+    fn evaluate_f64_batch_unpadded(
+        &mut self,
+        batch_size: usize,
+        params: &[Complex<f64>],
+        out: &mut [Complex<f64>],
+    ) -> RusticolResult<()> {
+        match &mut self.eval {
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::ExactOnly => Err(RusticolError::integrity(
+                "compiled plane-arena exact evaluator cannot execute f64",
+            )),
+            #[cfg(feature = "f64-symjit")]
+            F64Evaluator::SymjitApplication(eval) => {
+                eval.evaluate_batch_unpadded(batch_size, params, out)
+            }
+            #[cfg(feature = "f64-compiled")]
+            F64Evaluator::Compiled(eval) => eval.evaluate_batch(batch_size, params, out),
+            #[cfg(feature = "symbolica-runtime")]
+            F64Evaluator::Jit(eval) => {
+                if params.len() != batch_size * self.input_len {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "parameter buffer has length {}, expected {}",
+                        params.len(),
+                        batch_size * self.input_len
+                    )));
+                }
+                if out.len() != batch_size * self.output_len {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "output buffer has length {}, expected {}",
+                        out.len(),
+                        batch_size * self.output_len
+                    )));
+                }
+                eval.evaluate_batch(batch_size, params, out)
+                    .map_err(RusticolError::evaluation)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn flatten_exact_evaluators_from_store(
+    manifest: &EvaluatorManifest,
+    payloads: &EvaluatorPayloadStore,
+    output: &mut Vec<LoadedEvaluator>,
+) -> RusticolResult<()> {
+    match manifest {
+        EvaluatorManifest::SymjitApplication {
+            input_len,
+            output_len,
+            evaluator_state_path,
+            evaluator_state_runtime_capability,
+            ..
+        } => {
+            let state_path = evaluator_state_path.as_ref().ok_or_else(|| {
+                RusticolError::compatibility(
+                    "compiled plane-arena exact execution requires evaluator-state payloads",
+                )
+            })?;
+            if evaluator_state_runtime_capability.as_deref()
+                != Some(SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY)
+            {
+                return Err(RusticolError::compatibility(format!(
+                    "SymJIT evaluator state {state_path:?} does not declare capability {:?}",
+                    SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
+                )));
+            }
+            output.push(LoadedEvaluator {
+                eval: F64Evaluator::ExactOnly,
+                exact_eval: None,
+                exact_eval_source: Some(payloads.source(state_path)?),
+                double_eval: None,
+                arb_eval: None,
+                input_len: *input_len,
+                output_len: *output_len,
+            });
+            Ok(())
+        }
+        EvaluatorManifest::CompiledComplex {
+            input_len,
+            output_len,
+            evaluator_state_path,
+            native_direct_application: Some(_),
+            ..
+        } => {
+            let state_path = evaluator_state_path.as_ref().ok_or_else(|| {
+                RusticolError::compatibility(
+                    "compiled plane-arena exact execution requires evaluator-state payloads",
+                )
+            })?;
+            output.push(LoadedEvaluator {
+                eval: F64Evaluator::ExactOnly,
+                exact_eval: None,
+                exact_eval_source: Some(payloads.source(state_path)?),
+                double_eval: None,
+                arb_eval: None,
+                input_len: *input_len,
+                output_len: *output_len,
+            });
+            Ok(())
+        }
+        EvaluatorManifest::Chunked { chunks, .. } => {
+            for chunk in chunks {
+                flatten_exact_evaluators_from_store(chunk, payloads, output)?;
+            }
+            Ok(())
+        }
+        _ => Err(RusticolError::compatibility(
+            "compiled plane-arena exact execution requires direct leaves with evaluator state",
+        )),
+    }
+}
+
+pub(crate) fn flatten_evaluators_from_store(
+    manifest: &EvaluatorManifest,
+    payloads: &EvaluatorPayloadStore,
+    output: &mut Vec<LoadedEvaluator>,
+) -> RusticolResult<()> {
+    match manifest {
+        EvaluatorManifest::SymjitApplication {
+            runtime_capability,
+            application_path,
+            application_abi,
+            input_len,
+            output_len,
+            element_layout,
+            batch_layout,
+            compiler_type,
+            translation_mode,
+            optimization_level,
+            word_bits,
+            endianness,
+            required_defuns,
+            evaluator_state_path,
+            evaluator_state_runtime_capability,
+            ..
+        } => {
+            #[cfg(feature = "f64-symjit")]
+            {
+                let application_source = payloads.source(application_path)?;
+                let application_bytes = application_source.read()?;
+                let eval = SymjitApplicationEvaluator::load_bytes(
+                    application_bytes.as_ref(),
+                    PathBuf::from(application_source.display_name()),
+                    SymjitApplicationMetadata {
+                        runtime_capability,
+                        application_abi,
+                        input_len: *input_len,
+                        output_len: *output_len,
+                        element_layout,
+                        batch_layout,
+                        compiler_type,
+                        translation_mode,
+                        optimization_level: *optimization_level,
+                        word_bits: *word_bits,
+                        endianness,
+                        required_defuns,
+                    },
+                )?;
+                #[cfg(feature = "symbolica-runtime")]
+                let exact_eval_source = match evaluator_state_path {
+                    Some(state_path) => {
+                        if evaluator_state_runtime_capability.as_deref()
+                            != Some(SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY)
+                        {
+                            return Err(RusticolError::compatibility(format!(
+                                "SymJIT evaluator state {:?} does not declare capability {:?}",
+                                state_path, SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
+                            )));
+                        }
+                        Some(payloads.source(state_path)?)
+                    }
+                    None => None,
+                };
+                #[cfg(not(feature = "symbolica-runtime"))]
+                let _ = (evaluator_state_path, evaluator_state_runtime_capability);
+                output.push(LoadedEvaluator {
+                    eval: F64Evaluator::SymjitApplication(eval),
+                    #[cfg(feature = "symbolica-runtime")]
+                    exact_eval: None,
+                    #[cfg(feature = "symbolica-runtime")]
+                    exact_eval_source,
+                    #[cfg(feature = "symbolica-runtime")]
+                    double_eval: None,
+                    #[cfg(feature = "symbolica-runtime")]
+                    arb_eval: None,
+                    input_len: *input_len,
+                    output_len: *output_len,
+                });
+                Ok(())
+            }
+            #[cfg(not(feature = "f64-symjit"))]
+            {
+                let _ = (
+                    application_path,
+                    application_abi,
+                    input_len,
+                    output_len,
+                    element_layout,
+                    batch_layout,
+                    compiler_type,
+                    translation_mode,
+                    optimization_level,
+                    word_bits,
+                    endianness,
+                    required_defuns,
+                    evaluator_state_path,
+                    evaluator_state_runtime_capability,
+                );
+                Err(unsupported_capability(runtime_capability))
+            }
+        }
+        EvaluatorManifest::Jit {
+            runtime_capability,
+            input_len,
+            output_len,
+            evaluator_state_path,
+        } => {
+            #[cfg(feature = "symbolica-runtime")]
+            {
+                let _ = runtime_capability;
+                let (jit_settings, exact_eval, jit_eval) =
+                    load_evaluator_state_source(&payloads.source(evaluator_state_path)?)?;
+                let eval = F64Evaluator::Jit(match jit_eval {
+                    Some(eval) => eval,
+                    None => exact_eval
+                        .jit_compile::<Complex<f64>>(jit_settings)
+                        .map_err(|err| {
+                            RusticolError::evaluation(format!(
+                                "could not compile scalar JIT evaluator from {}: {err}",
+                                evaluator_state_path
+                            ))
+                        })?,
+                });
+                output.push(LoadedEvaluator {
+                    eval,
+                    exact_eval: Some(exact_eval),
+                    exact_eval_source: None,
+                    double_eval: None,
+                    arb_eval: None,
+                    input_len: *input_len,
+                    output_len: *output_len,
+                });
+                Ok(())
+            }
+            #[cfg(not(feature = "symbolica-runtime"))]
+            {
+                let _ = (input_len, output_len, evaluator_state_path);
+                Err(unsupported_capability(runtime_capability))
+            }
+        }
+        EvaluatorManifest::CompiledComplex {
+            runtime_capability,
+            function_name,
+            input_len,
+            output_len,
+            library_path,
+            evaluator_state_path,
+            number_type,
+            native_direct_application: _,
+        } => {
+            #[cfg(feature = "f64-compiled")]
+            {
+                let _ = runtime_capability;
+                if number_type != "complex" {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "rusticol currently supports compiled complex evaluators, got {number_type}"
+                    )));
+                }
+                let library = payloads.load_native_library(library_path)?;
+                let eval = CompiledComplexF64Evaluator::load(
+                    library,
+                    function_name,
+                    *input_len,
+                    *output_len,
+                )?;
+                #[cfg(feature = "symbolica-runtime")]
+                let exact_eval_source = evaluator_state_path
+                    .as_deref()
+                    .map(|state_path| payloads.source(state_path))
+                    .transpose()?;
+                #[cfg(not(feature = "symbolica-runtime"))]
+                let _ = evaluator_state_path;
+                output.push(LoadedEvaluator {
+                    eval: F64Evaluator::Compiled(eval),
+                    #[cfg(feature = "symbolica-runtime")]
+                    exact_eval: None,
+                    #[cfg(feature = "symbolica-runtime")]
+                    exact_eval_source,
+                    #[cfg(feature = "symbolica-runtime")]
+                    double_eval: None,
+                    #[cfg(feature = "symbolica-runtime")]
+                    arb_eval: None,
+                    input_len: *input_len,
+                    output_len: *output_len,
+                });
+                Ok(())
+            }
+            #[cfg(not(feature = "f64-compiled"))]
+            {
+                let _ = (
+                    function_name,
+                    input_len,
+                    output_len,
+                    library_path,
+                    evaluator_state_path,
+                    number_type,
+                );
+                Err(unsupported_capability(runtime_capability))
+            }
+        }
+        EvaluatorManifest::Chunked { chunks, .. } => {
+            for chunk in chunks {
+                flatten_evaluators_from_store(chunk, payloads, output)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+pub(crate) fn ensure_evaluator_capabilities_supported(
+    manifest: &EvaluatorManifest,
+) -> RusticolResult<()> {
+    let declared = evaluator_runtime_capabilities(manifest)?;
+    ensure_runtime_capabilities_supported(declared.iter().map(String::as_str))
+}
+
+pub(crate) fn evaluator_runtime_capabilities(
+    manifest: &EvaluatorManifest,
+) -> RusticolResult<BTreeSet<String>> {
+    let mut capabilities = BTreeSet::new();
+    collect_evaluator_capabilities(manifest, &mut capabilities)?;
+    Ok(capabilities)
+}
+
+fn collect_evaluator_capabilities(
+    manifest: &EvaluatorManifest,
+    output: &mut BTreeSet<String>,
+) -> RusticolResult<()> {
+    match manifest {
+        EvaluatorManifest::SymjitApplication {
+            runtime_capability, ..
+        } => validate_and_insert_capability(
+            runtime_capability,
+            &[SYMJIT_APPLICATION_RUNTIME_CAPABILITY],
+            output,
+        ),
+        EvaluatorManifest::Jit {
+            runtime_capability, ..
+        } => validate_and_insert_capability(
+            runtime_capability,
+            &[SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY],
+            output,
+        ),
+        EvaluatorManifest::CompiledComplex {
+            runtime_capability, ..
+        } => validate_and_insert_capability(
+            runtime_capability,
+            &[
+                SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY,
+                SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY,
+            ],
+            output,
+        ),
+        EvaluatorManifest::Chunked {
+            required_runtime_capabilities,
+            chunks,
+            ..
+        } => {
+            let mut actual = BTreeSet::new();
+            for chunk in chunks {
+                collect_evaluator_capabilities(chunk, &mut actual)?;
+            }
+            let declared = required_runtime_capabilities
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            if declared.len() != required_runtime_capabilities.len() || declared != actual {
+                return Err(RusticolError::integrity(format!(
+                    "chunked evaluator capabilities {:?} do not match child capabilities {:?}",
+                    required_runtime_capabilities, actual
+                )));
+            }
+            output.extend(actual);
+            Ok(())
+        }
+    }
+}
+
+fn validate_and_insert_capability(
+    capability: &str,
+    expected: &[&str],
+    output: &mut BTreeSet<String>,
+) -> RusticolResult<()> {
+    if !expected.contains(&capability) {
+        return Err(RusticolError::compatibility(format!(
+            "evaluator declares runtime capability {capability:?}, expected one of {expected:?}"
+        )));
+    }
+    output.insert(capability.to_string());
+    Ok(())
+}
+
+#[cfg(any(
+    not(feature = "f64-compiled"),
+    not(feature = "f64-symjit"),
+    not(feature = "symbolica-runtime")
+))]
+fn unsupported_capability(capability: &str) -> RusticolError {
+    RusticolError::unsupported_runtime_capability(
+        capability,
+        format!(
+            "this Rusticol build supports {:?}",
+            supported_runtime_capabilities()
+        ),
+    )
+}
+
+#[cfg(feature = "symbolica-runtime")]
+type LoadedEvaluatorState = (
+    JITCompilationSettings,
+    ExpressionEvaluator<Complex<Rational>>,
+    Option<JITCompiledEvaluator<Complex<f64>>>,
+);
+
+#[cfg(feature = "symbolica-runtime")]
+fn load_evaluator_state_source(
+    source: &EvaluatorPayloadSource,
+) -> RusticolResult<LoadedEvaluatorState> {
+    let bytes = source.read()?;
+    load_evaluator_state_bytes(bytes.as_ref(), &source.display_name())
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn load_evaluator_state_bytes(
+    bytes: &[u8],
+    display_name: &str,
+) -> RusticolResult<LoadedEvaluatorState> {
+    let incompatible = |error: &dyn std::fmt::Display| {
+        RusticolError::compatibility(format!(
+            "evaluator state {} does not match Symbolica serialization ABI {}: {error}; regenerate the schema-v3 artifact",
+            display_name,
+            crate::SYMBOLICA_SERIALIZATION_ABI
+        ))
+    };
+    // Python's `Evaluator.save()` envelope (`saved_evaluator_envelope`):
+    // whether the producer had native code generation (the JIT members
+    // below), then, when the evaluator refers to symbolic data, the Symbolica
+    // state it references, then the bincode payload whose symbols that state
+    // maps onto this process's symbols.
+    let envelope = saved_evaluator_envelope(bytes).map_err(|error| incompatible(&error))?;
+    if envelope.native_code_generation != 1 {
+        return Err(incompatible(
+            &"saved without native code generation (no JIT members)",
+        ));
+    }
+    let mut payload = envelope.rest;
+    // Importing the state registers its symbols: pyAmpliCol's library key.
+    // A producer symbol defined with other attributes than this process's
+    // (Python Community modules of another FeynKit/Spenso revision than the
+    // native's; a Python save carries the producer's whole state) is
+    // imported under a fresh name instead of failing the load: the payload's
+    // references follow the state map, and evaluation reads no symbol
+    // attributes. A symbol that conflicts again under that name is refused.
+    let _unlock = crate::licence::unlock();
+    let state_map = if envelope.has_state {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            symbolica::state::State::import(
+                &mut payload,
+                Some(Box::new(|name: &str| import_conflict_name(name).into())),
+            )
+        }))
+        .map_err(|_| {
+            incompatible(&"a symbol conflicts with this process's also under its import name")
+        })?
+        .map_err(|error| incompatible(&error))?
+    } else {
+        symbolica::state::StateMap::default()
+    };
+    let ((_, settings, evaluator, _, jit_complex), consumed) =
+        bincode::decode_from_slice_with_context::<_, SavedEvaluator, _>(
+            payload,
+            bincode::config::standard(),
+            state_map,
+        )
+        .map_err(|error| incompatible(&error))?;
+    ensure_evaluator_state_consumed(display_name, payload.len(), consumed)?;
+    Ok((settings, evaluator, jit_complex))
+}
+
+/// The leading bytes of Python Symbolica's `Evaluator.save()`; the envelope
+/// version follows.
+#[cfg(feature = "symbolica-runtime")]
+const SAVED_EVALUATOR_MAGIC: &[u8] = b"\xffSYMEVAL";
+
+/// Envelope version 1 (Symbolica 3.0.3, pyAmpliCol's stored form): the
+/// native-code flag, then always a state section, then the payload.
+#[cfg(feature = "symbolica-runtime")]
+const SAVED_EVALUATOR_V1: u8 = 1;
+
+/// Envelope version 2 (Symbolica c9406581 "Omit state from saved evaluators
+/// without symbolic data"): the native-code flag, whether a state section
+/// follows (0 or 1), then the payload. Read, and stored as version 1, which
+/// every Python Symbolica since 3.0.3 loads (PyPI 3.0.3 does not read
+/// version 2).
+#[cfg(feature = "symbolica-runtime")]
+const SAVED_EVALUATOR_V2: u8 = 2;
+
+/// A saved evaluator's envelope fields: `rest` is the state section and the
+/// payload (`has_state`) or the payload alone.
+#[cfg(feature = "symbolica-runtime")]
+struct SavedEvaluatorEnvelope<'a> {
+    native_code_generation: u8,
+    has_state: bool,
+    rest: &'a [u8],
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn saved_evaluator_envelope(bytes: &[u8]) -> Result<SavedEvaluatorEnvelope<'_>, String> {
+    let Some(header) = bytes.strip_prefix(SAVED_EVALUATOR_MAGIC) else {
+        return Err("no saved-evaluator envelope".into());
+    };
+    match header {
+        [SAVED_EVALUATOR_V1, native_code_generation, rest @ ..] => Ok(SavedEvaluatorEnvelope {
+            native_code_generation: *native_code_generation,
+            has_state: true,
+            rest,
+        }),
+        [
+            SAVED_EVALUATOR_V2,
+            native_code_generation,
+            flag @ (0 | 1),
+            rest @ ..,
+        ] => Ok(SavedEvaluatorEnvelope {
+            native_code_generation: *native_code_generation,
+            has_state: *flag == 1,
+            rest,
+        }),
+        [SAVED_EVALUATOR_V2, ..] => {
+            Err("invalid state flag in the saved-evaluator envelope".into())
+        }
+        [version, ..] => Err(format!(
+            "unsupported saved-evaluator envelope version {version}"
+        )),
+        [] => Err("truncated saved-evaluator envelope".into()),
+    }
+}
+
+/// The envelope header of pyAmpliCol's stored form (version 1).
+#[cfg(feature = "symbolica-runtime")]
+fn stored_envelope(native_code_generation: u8) -> Vec<u8> {
+    let mut bytes = SAVED_EVALUATOR_MAGIC.to_vec();
+    bytes.extend([SAVED_EVALUATOR_V1, native_code_generation]);
+    bytes
+}
+
+/// A saved evaluator's bincode payload: the native-code flag, the JIT
+/// settings, the exact evaluator and the JIT members.
+#[cfg(feature = "symbolica-runtime")]
+type SavedEvaluator = (
+    bool,
+    JITCompilationSettings,
+    ExpressionEvaluator<Complex<Rational>>,
+    Option<JITCompiledEvaluator<f64>>,
+    Option<JITCompiledEvaluator<Complex<f64>>>,
+);
+
+/// Suffix of a saved evaluator's symbol imported under a fresh name.
+#[cfg(feature = "symbolica-runtime")]
+const IMPORT_CONFLICT_SUFFIX: &str = "_pyamplicol_import";
+
+/// The import name of a saved evaluator's symbol whose definition conflicts
+/// with this process's: the suffix before its trailing underscores (Symbolica
+/// keeps a symbol's wildcard level on import). A name that already carries the
+/// suffix conflicted again: refused (a panic the loader turns into an error,
+/// as Symbolica's import retries until a name is accepted).
+#[cfg(feature = "symbolica-runtime")]
+fn import_conflict_name(name: &str) -> String {
+    let base = name.trim_end_matches('_');
+    assert!(
+        !base.ends_with(IMPORT_CONFLICT_SUFFIX),
+        "saved-evaluator symbol {name} conflicts under its import name"
+    );
+    format!("{base}{IMPORT_CONFLICT_SUFFIX}{}", &name[base.len()..])
+}
+
+/// A Python `Evaluator.save()` in its canonical stored form, or `None` when it
+/// already is in it.
+///
+/// The canonical form depends on the evaluator alone: neither on the Python
+/// Symbolica that produced it nor on the symbols the producing process (or
+/// this one) created before. It is Symbolica's envelope version 1
+/// (`SAVED_EVALUATOR_V1`), which every Python Symbolica since 3.0.3 loads
+/// (the version 2 Symbolica c9406581 writes is not read by PyPI 3.0.3):
+/// - An evaluator that refers to no symbolic data (Symbolica's
+///   `uses_symbolic_state`: only fixed built-in functions and constants, no
+///   tags, in its instructions, function bodies, hot start and JIT members;
+///   the payload must decode without any state to the same evaluator) keeps
+///   an empty partial-state section: Symbolica's version 2 stores no state
+///   for it at all.
+/// - Otherwise the save keeps only the symbols its evaluator references
+///   (`export_referenced_symbols`): Symbolica's save writes the producer's
+///   whole state, after a model compile tens of MB per evaluator, all of it
+///   imported again by each load. The symbol records of that partial-state
+///   section are ordered by name and numbered 0, 1, ...
+///   (`canonically_numbered_section`); a producer numbers them by its
+///   registry, which depends on every namespace and symbol the process
+///   created first. These bytes are those of pyAmpliCol 1.0.x.
+///
+/// Version 2 saves are rewritten the same way; one without a state (an
+/// evaluator without symbolic data) gets the empty section.
+///
+/// The bincode payload is kept byte for byte. Renumbering is exact because
+/// the identifiers only map stored expressions onto symbols and the payload
+/// stores none: instructions and function containers encode a symbol by its
+/// definition, function tags as canonical strings (only an optimisation hot
+/// start, which the Python API cannot set, would hold expressions). A section
+/// whose symbol data embeds expressions keeps its numbering, which those
+/// expressions carry. The evaluator decoded from the result must re-encode to
+/// the original's bytes, else the save is refused.
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) fn canonical_saved_evaluator(bytes: &[u8]) -> RusticolResult<Option<Vec<u8>>> {
+    use std::borrow::Cow;
+    use symbolica::state::{State, StateMap};
+
+    let incompatible = |error: &dyn std::fmt::Display| {
+        RusticolError::compatibility(format!(
+            "Python Evaluator.save() does not match Symbolica serialization ABI {}: {error}",
+            crate::SYMBOLICA_SERIALIZATION_ABI
+        ))
+    };
+    // Imports a state section as the loader does (a producer symbol defined
+    // otherwise than this process's under its import name); returns its
+    // length and map.
+    let import = |section: &[u8]| {
+        let mut rest = section;
+        let state_map = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            State::import(
+                &mut rest,
+                Some(Box::new(|name: &str| import_conflict_name(name).into())),
+            )
+        }))
+        .map_err(|_| {
+            incompatible(&"a symbol conflicts with this process's also under its import name")
+        })?
+        .map_err(|error| incompatible(&error))?;
+        Ok::<_, RusticolError>((section.len() - rest.len(), state_map))
+    };
+    let decode = |payload: &[u8], state_map: &StateMap| {
+        bincode::decode_from_slice_with_context::<_, SavedEvaluator, _>(
+            payload,
+            bincode::config::standard(),
+            BorrowedStateMap(state_map),
+        )
+        .map(|(saved, _)| saved)
+        .map_err(|error| incompatible(&error))
+    };
+    let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
+        bincode::encode_to_vec(evaluator, bincode::config::standard())
+            .map_err(|error| incompatible(&error))
+    };
+
+    let envelope = saved_evaluator_envelope(bytes).map_err(|error| incompatible(&error))?;
+    let native_code_generation = envelope.native_code_generation;
+    if !envelope.has_state {
+        // Symbolica stores no state only for an evaluator without symbolic
+        // data: the payload decodes without any.
+        let mut canonical = stored_envelope(native_code_generation);
+        canonical.extend_from_slice(&empty_partial_state()?);
+        canonical.extend_from_slice(envelope.rest);
+        let _unlock = crate::licence::unlock();
+        decode(envelope.rest, &StateMap::default())?;
+        return Ok(Some(canonical));
+    }
+    let state = envelope.rest;
+    // The state header: Symbolica's magic (u32), its export format (u16), then
+    // whether the whole state follows (1) or only listed symbols.
+    let Some(header) = state.get(..STATE_HEADER_LEN) else {
+        return Err(incompatible(&"truncated state header"));
+    };
+    let whole = header[STATE_HEADER_LEN - 1] == WHOLE_STATE_EXPORT;
+    let _unlock = crate::licence::unlock();
+    crate::source_scalar::register_scalar_primitives();
+    let (section_len, saved) = if whole {
+        // A producer's consecutive saves mostly carry the same state (one
+        // import of a 30 MB loop_sm state takes about 0.5 s): the last
+        // imported section and its map are kept. The section is
+        // self-delimiting, so a save that starts with it carries exactly it.
+        let mut last = LAST_WHOLE_STATE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (section, state_map, producer_functions) = match last.take() {
+            Some((section, state_map, producer_functions))
+                if state.len() > section.len() && state.starts_with(&section) =>
+            {
+                (section, state_map, producer_functions)
+            }
+            _ => {
+                // The whole state holds every symbol of the producer, also
+                // the ones its Python Community modules define with
+                // user-defined functions (symbolica_integrate, hyperbolica,
+                // gammaloop, ...), which this process does not know. The
+                // import only maps the evaluator's references, so it reads
+                // them as plain symbols (`whole_state_for_import`); the
+                // evaluator's own references to them are reported below.
+                //
+                // The copy reads Symbolica's private record layout; a layout
+                // it cannot read (a producer whose records drifted) falls
+                // back to the unpatched import, as before: the same symbols,
+                // only Symbolica's warning per function-bearing record.
+                let (len, state_map, producer_functions) = match whole_state_for_import(state) {
+                    Some((patched, producer_functions)) => {
+                        let (len, state_map) = import(&patched)?;
+                        (len, state_map, producer_functions)
+                    }
+                    None => {
+                        let (len, state_map) = import(state)?;
+                        (len, state_map, std::collections::HashSet::new())
+                    }
+                };
+                (state[..len].to_vec(), state_map, producer_functions)
+            }
+        };
+        let len = section.len();
+        let saved = decode(&state[len..], &state_map);
+        if let Ok((_, _, evaluator, _, _)) = &saved {
+            warn_on_referenced_producer_functions(evaluator, &producer_functions);
+        }
+        *last = Some((section, state_map, producer_functions));
+        (len, saved?)
+    } else {
+        let (len, state_map) = import(state)?;
+        (len, decode(&state[len..], &state_map)?)
+    };
+    let payload = &state[section_len..];
+    let (_, _, evaluator, jit_real, jit_complex) = &saved;
+    let original = encoded(evaluator)?;
+
+    // Without symbolic data the payload decodes without any state (as
+    // Symbolica's own load of such a save does): stored with an empty section.
+    let uses_symbolic_state = evaluator.uses_symbolic_state()
+        || jit_real
+            .as_ref()
+            .is_some_and(JITCompiledEvaluator::uses_symbolic_state)
+        || jit_complex
+            .as_ref()
+            .is_some_and(JITCompiledEvaluator::uses_symbolic_state);
+    if !uses_symbolic_state
+        && decode(payload, &StateMap::default())
+            .and_then(|(_, _, stateless, _, _)| encoded(&stateless))
+            .is_ok_and(|stateless| stateless == original)
+    {
+        let mut canonical = stored_envelope(native_code_generation);
+        canonical.extend_from_slice(&empty_partial_state()?);
+        canonical.extend_from_slice(payload);
+        return Ok((canonical != bytes).then_some(canonical));
+    }
+
+    // A whole state, or a partial one in another export format than this
+    // build's, is written again with only the referenced symbols.
+    let minimal: Cow<[u8]> = if whole
+        || header[..STATE_HEADER_LEN - 1] != partial_state_header()?[..STATE_HEADER_LEN - 1]
+    {
+        let mut symbols = Vec::new();
+        referenced(&evaluator.export_instructions(), &mut symbols);
+        Cow::Owned(export_referenced_symbols(symbols).map_err(|error| incompatible(&error))?)
+    } else {
+        Cow::Borrowed(&state[..section_len])
+    };
+    let section =
+        match canonically_numbered_section(&minimal).map_err(|error| incompatible(&error))? {
+            Some(numbered) => numbered,
+            None => minimal.into_owned(),
+        };
+    let mut canonical = stored_envelope(native_code_generation);
+    canonical.extend_from_slice(&section);
+    canonical.extend_from_slice(payload);
+    if canonical == bytes {
+        return Ok(None);
+    }
+
+    let (len, state_map) = import(&section)?;
+    if len != section.len() || encoded(&decode(payload, &state_map)?.2)? != original {
+        return Err(incompatible(
+            &"its payload depends on state identifiers beyond the referenced symbols",
+        ));
+    }
+    Ok(Some(canonical))
+}
+
+/// The length of Symbolica's state header: its magic (u32), export format
+/// (u16) and whole-state flag (u8).
+#[cfg(feature = "symbolica-runtime")]
+const STATE_HEADER_LEN: usize = 7;
+
+/// This build's partial-state header (magic, export format, partial flag), as
+/// `State::export_partial` writes it.
+#[cfg(feature = "symbolica-runtime")]
+fn partial_state_header() -> RusticolResult<[u8; STATE_HEADER_LEN]> {
+    static HEADER: std::sync::OnceLock<[u8; STATE_HEADER_LEN]> = std::sync::OnceLock::new();
+    if let Some(header) = HEADER.get() {
+        return Ok(*header);
+    }
+    let mut empty = Vec::new();
+    symbolica::state::State::export_partial(&mut empty, Default::default())
+        .map_err(|error| RusticolError::compatibility(error.to_string()))?;
+    let header = empty
+        .get(..STATE_HEADER_LEN)
+        .and_then(|header| <[u8; STATE_HEADER_LEN]>::try_from(header).ok())
+        .ok_or_else(|| RusticolError::compatibility("truncated partial-state export"))?;
+    Ok(*HEADER.get_or_init(|| header))
+}
+
+/// The partial-state section of no symbol (no finite fields, no variable
+/// lists): the state of an evaluator without symbolic data.
+#[cfg(feature = "symbolica-runtime")]
+fn empty_partial_state() -> RusticolResult<Vec<u8>> {
+    let mut section = partial_state_header()?.to_vec();
+    section.extend_from_slice(&[0; 24]);
+    Ok(section)
+}
+
+/// A partial-state section of `symbols` and the symbols their data depends
+/// on, without finite fields or variable lists: unlike
+/// `State::export_partial`, its content depends only on these symbols, not
+/// on the unrelated symbols, finite fields and variable lists the process
+/// registered before. The records are numbered by their position in the
+/// registry, as Symbolica's partial export numbers them.
+#[cfg(feature = "symbolica-runtime")]
+fn export_referenced_symbols(
+    symbols: impl IntoIterator<Item = symbolica::atom::Symbol>,
+) -> std::io::Result<Vec<u8>> {
+    use std::io::{Error, ErrorKind};
+    use symbolica::state::State;
+
+    let mut closure = std::collections::HashSet::new();
+    let mut pending: Vec<_> = symbols.into_iter().collect();
+    while let Some(symbol) = pending.pop() {
+        if closure.insert(symbol) {
+            let mut data = Default::default();
+            symbol.get_data().get_symbols(&mut data);
+            pending.extend(data);
+        }
+    }
+    let header = partial_state_header()
+        .map_err(|error| Error::new(ErrorKind::InvalidData, error.to_string()))?;
+    let mut section = header.to_vec();
+    section.extend_from_slice(&(closure.len() as u64).to_le_bytes());
+    let mut written = 0;
+    for (index, (symbol, _)) in State::symbol_iter().enumerate() {
+        if closure.contains(&symbol) {
+            let index =
+                u32::try_from(index).map_err(|error| Error::new(ErrorKind::InvalidData, error))?;
+            section.extend_from_slice(&index.to_le_bytes());
+            symbol.export(&mut section)?;
+            written += 1;
+        }
+    }
+    if written != closure.len() {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "a referenced symbol is not in the registry",
+        ));
+    }
+    // No finite fields and no variable lists.
+    section.extend_from_slice(&[0; 16]);
+    Ok(section)
+}
+
+/// A partial-state section of this build's export format with its symbol
+/// records ordered by namespace and name and numbered 0, 1, ...; `None` when
+/// `section_records` keeps its numbering.
+#[cfg(feature = "symbolica-runtime")]
+fn canonically_numbered_section(section: &[u8]) -> std::io::Result<Option<Vec<u8>>> {
+    let Some(mut records) = section_records(section)? else {
+        return Ok(None);
+    };
+    records.sort_unstable();
+    numbered_section(
+        &section[..STATE_HEADER_LEN],
+        records.into_iter().map(|(_, _, record)| record),
+    )
+    .map(Some)
+}
+
+/// The symbol records (namespace, name, definition without the index) of a
+/// partial-state section of this build's export format: a count, then per
+/// symbol an index (u32) and its definition, then no finite fields and no
+/// variable lists. `None` when a symbol's data embeds an expression (whose
+/// symbol identifiers would have to follow a renumbering) or the section
+/// holds finite fields or variable lists.
+#[cfg(feature = "symbolica-runtime")]
+fn section_records(section: &[u8]) -> std::io::Result<Option<Vec<(&[u8], &[u8], &[u8])>>> {
+    use std::io::{Error, ErrorKind, Read};
+    use symbolica::atom::{UserData, UserDataKey};
+
+    fn embeds_expression(data: &UserData) -> bool {
+        match data {
+            UserData::Atom(_) => true,
+            UserData::List(items) => items.iter().any(embeds_expression),
+            UserData::Map(map) => map.iter().any(|(key, value)| {
+                matches!(key, UserDataKey::Atom(_)) || embeds_expression(value)
+            }),
+            _ => false,
+        }
+    }
+    fn take<const N: usize>(rest: &mut &[u8]) -> std::io::Result<[u8; N]> {
+        let mut value = [0; N];
+        rest.read_exact(&mut value)?;
+        Ok(value)
+    }
+    fn string<'a>(rest: &mut &'a [u8]) -> std::io::Result<&'a [u8]> {
+        let len = u32::from_le_bytes(take(rest)?) as usize;
+        let value = rest
+            .get(..len)
+            .ok_or_else(|| Error::from(ErrorKind::UnexpectedEof))?;
+        *rest = &rest[len..];
+        Ok(value)
+    }
+
+    let mut rest = section
+        .get(STATE_HEADER_LEN..)
+        .ok_or_else(|| Error::from(ErrorKind::UnexpectedEof))?;
+    let count = u64::from_le_bytes(take(&mut rest)?);
+    let mut records = Vec::new();
+    for _ in 0..count {
+        take::<4>(&mut rest)?;
+        let start = rest;
+        // Symbol::export: name, namespace, flags (u8, u32), tags, aliases,
+        // user data, whether the definition is exportable (u8).
+        let name = string(&mut rest)?;
+        let namespace = string(&mut rest)?;
+        take::<5>(&mut rest)?;
+        for _ in 0..2 {
+            for _ in 0..u16::from_le_bytes(take(&mut rest)?) {
+                string(&mut rest)?;
+            }
+        }
+        if embeds_expression(&UserData::read(&mut rest)?) {
+            return Ok(None);
+        }
+        take::<1>(&mut rest)?;
+        records.push((namespace, name, &start[..start.len() - rest.len()]));
+    }
+    // No finite fields, no variable lists, nothing after.
+    Ok((rest == [0; 16]).then_some(records))
+}
+
+/// A partial-state section: `header`, then `records` (symbol definitions)
+/// numbered 0, 1, ... in their order, no finite fields, no variable lists.
+#[cfg(feature = "symbolica-runtime")]
+fn numbered_section<'a>(
+    header: &[u8],
+    records: impl ExactSizeIterator<Item = &'a [u8]>,
+) -> std::io::Result<Vec<u8>> {
+    let mut section = header.to_vec();
+    section.extend_from_slice(&(records.len() as u64).to_le_bytes());
+    for (index, record) in records.enumerate() {
+        let index = u32::try_from(index)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+        section.extend_from_slice(&index.to_le_bytes());
+        section.extend_from_slice(record);
+    }
+    section.extend_from_slice(&[0; 16]);
+    Ok(section)
+}
+
+/// Symbolica's state-header flag of a whole-state export (`State::export`).
+#[cfg(feature = "symbolica-runtime")]
+const WHOLE_STATE_EXPORT: u8 = 1;
+
+/// The last whole-state section `canonical_saved_evaluator` imported,
+/// with its state map and the producer's function-bearing symbol names.
+#[cfg(feature = "symbolica-runtime")]
+#[allow(clippy::type_complexity)]
+static LAST_WHOLE_STATE: std::sync::Mutex<
+    Option<(
+        Vec<u8>,
+        symbolica::state::StateMap,
+        std::collections::HashSet<String>,
+    )>,
+> = std::sync::Mutex::new(None);
+
+/// A whole-state save (`state`: the section, then the payload) as
+/// `canonical_saved_evaluator` imports it, and the full names of the
+/// producer's symbols defined with user-defined functions.
+///
+/// Python Symbolica saves the producer's whole state (version 1 always,
+/// version 2 for an evaluator with symbolic data), including the symbols its Community modules
+/// (symbolica_integrate, hyperbolica, gammaloop, ...) define with
+/// user-defined functions, which are not exportable. Importing such a record
+/// into a process that lacks the symbol creates it without functions, and
+/// Symbolica logs a warning for each one (29 per process for the 3.0.3
+/// wheel). The import here only maps the evaluator's references onto this
+/// process's symbols and the stored form keeps only the referenced ones, so
+/// the copy marks every record exportable: the import creates exactly the
+/// symbols it created before (the flag only selects that warning), and an
+/// evaluator that does reference such a symbol is reported by
+/// `warn_on_referenced_producer_functions` instead.
+///
+/// The record layout read here is Symbolica's private `Symbol::export` of the
+/// serialization ABI `crate::SYMBOLICA_SERIALIZATION_ABI` (3.0.x). None when
+/// the state does not parse as that layout (a short read, or an exportable
+/// byte other than 0 or 1): the caller then imports the unpatched state.
+#[cfg(feature = "symbolica-runtime")]
+fn whole_state_for_import(state: &[u8]) -> Option<(Vec<u8>, std::collections::HashSet<String>)> {
+    parse_whole_state(state).ok().flatten()
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn parse_whole_state(
+    state: &[u8],
+) -> std::io::Result<Option<(Vec<u8>, std::collections::HashSet<String>)>> {
+    use std::io::{Error, ErrorKind, Read};
+    use symbolica::atom::UserData;
+
+    fn take<const N: usize>(rest: &mut &[u8]) -> std::io::Result<[u8; N]> {
+        let mut value = [0; N];
+        rest.read_exact(&mut value)?;
+        Ok(value)
+    }
+    fn string<'a>(rest: &mut &'a [u8]) -> std::io::Result<&'a [u8]> {
+        let len = u32::from_le_bytes(take(rest)?) as usize;
+        let value = rest
+            .get(..len)
+            .ok_or_else(|| Error::from(ErrorKind::UnexpectedEof))?;
+        *rest = &rest[len..];
+        Ok(value)
+    }
+
+    let mut rest = state
+        .get(STATE_HEADER_LEN..)
+        .ok_or_else(|| Error::from(ErrorKind::UnexpectedEof))?;
+    let count = u64::from_le_bytes(take(&mut rest)?);
+    let mut patched = state.to_vec();
+    let mut functions = std::collections::HashSet::new();
+    for _ in 0..count {
+        // Symbol::export: name, namespace, flags (u8, u32), tags, aliases,
+        // user data, whether the definition is exportable (u8).
+        let name = string(&mut rest)?;
+        string(&mut rest)?;
+        take::<5>(&mut rest)?;
+        for _ in 0..2 {
+            for _ in 0..u16::from_le_bytes(take(&mut rest)?) {
+                string(&mut rest)?;
+            }
+        }
+        UserData::read(&mut rest)?;
+        let at = state.len() - rest.len();
+        match take::<1>(&mut rest)?[0] {
+            0 => {
+                patched[at] = 1;
+                functions.insert(String::from_utf8_lossy(name).into_owned());
+            }
+            1 => {}
+            // Not a boolean: the layout drifted, patch nothing.
+            _ => return Ok(None),
+        }
+    }
+    Ok(Some((patched, functions)))
+}
+
+/// The symbols an exported evaluator references: its function heads and
+/// their tags, constant functions and sub-evaluators.
+#[cfg(feature = "symbolica-runtime")]
+fn referenced<T>(
+    exported: &symbolica::evaluate::ExportedInstructions<T>,
+    symbols: &mut impl Extend<symbolica::atom::Symbol>,
+) {
+    use symbolica::prelude::AtomCore;
+
+    for instruction in &exported.instructions {
+        if let symbolica::evaluate::Instruction::Fun(_, call, _) = instruction {
+            symbols.extend([call.0]);
+            for tag in &call.1 {
+                symbols.extend(tag.get_all_symbols(true));
+            }
+        }
+    }
+    for constant in &exported.constant_functions {
+        symbols.extend([constant.symbol]);
+        for tag in &constant.tags {
+            symbols.extend(tag.get_all_symbols(true));
+        }
+    }
+    for body in &exported.sub_evaluators {
+        symbols.extend([body.symbol]);
+        for tag in &body.tags {
+            symbols.extend(tag.get_all_symbols(true));
+        }
+        referenced(&body.instructions, symbols);
+    }
+}
+
+/// Warn about each symbol `evaluator` references that its producer defined
+/// with user-defined functions while this process has it without any (the
+/// one case of Symbolica's import warning that concerns the evaluator).
+#[cfg(feature = "symbolica-runtime")]
+fn warn_on_referenced_producer_functions(
+    evaluator: &ExpressionEvaluator<Complex<Rational>>,
+    producer_functions: &std::collections::HashSet<String>,
+) {
+    if producer_functions.is_empty() {
+        return;
+    }
+    let mut symbols = Vec::new();
+    referenced(&evaluator.export_instructions(), &mut symbols);
+    for symbol in symbols {
+        let name = symbol.get_name();
+        let producer = name.replacen(IMPORT_CONFLICT_SUFFIX, "", 1);
+        if symbol.is_exportable()
+            && (producer_functions.contains(name) || producer_functions.contains(&producer))
+        {
+            tracing::warn!(
+                "the saved evaluator references {name}, which its producer defined with \
+                 user-defined functions; this process has it without any"
+            );
+        }
+    }
+}
+
+/// A borrowed state map as a bincode decoding context.
+#[cfg(feature = "symbolica-runtime")]
+struct BorrowedStateMap<'a>(&'a symbolica::state::StateMap);
+
+#[cfg(feature = "symbolica-runtime")]
+impl symbolica::state::HasStateMap for BorrowedStateMap<'_> {
+    fn get_state_map(&self) -> &symbolica::state::StateMap {
+        self.0
+    }
+}
+
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) fn decode_exact_evaluator_state(
+    bytes: &[u8],
+) -> RusticolResult<ExpressionEvaluator<Complex<Rational>>> {
+    // Decoding creates Symbolica state: pyAmpliCol's library key unlocks it.
+    let _unlock = crate::licence::unlock();
+    crate::source_scalar::register_scalar_primitives();
+    load_evaluator_state_bytes(bytes, "Python Evaluator.save()").map(|(_, evaluator, _)| evaluator)
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn ensure_evaluator_state_consumed(
+    display_name: &str,
+    encoded_len: usize,
+    consumed: usize,
+) -> RusticolResult<()> {
+    if consumed == encoded_len {
+        return Ok(());
+    }
+    Err(RusticolError::integrity(format!(
+        "evaluator state {} contains {} trailing bytes",
+        display_name,
+        encoded_len - consumed
+    )))
+}
+
+#[cfg(all(test, feature = "symbolica-runtime"))]
+mod python_serialization_tests {
+    use super::*;
+
+    fn evaluate_saved<T>(
+        exact: &ExpressionEvaluator<Complex<Rational>>,
+        convert: impl Fn(&Rational) -> T,
+        tolerance: T,
+    ) where
+        T: Real + PartialOrd + EvaluationDomain,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let complex =
+            |value: &Complex<Rational>| Complex::new(convert(&value.re), convert(&value.im));
+        let mut evaluator = exact.clone().map_coeff(&complex);
+        let x = Complex::new(
+            Rational::from(2) + Rational::from((1, 2)).pow(80),
+            Rational::from(0),
+        );
+        let y = Complex::new(Rational::from(3), Rational::from(1));
+        let third = Complex::new(Rational::from((1, 3)), Rational::from(0));
+        let seventh = Complex::new(Rational::from((1, 7)), Rational::from(0));
+        let expected = [
+            x.clone() + y.clone() * third,
+            x.clone() * y.clone() + seventh,
+        ];
+        let inputs = [complex(&x), complex(&y)];
+        let mut output =
+            vec![Complex::new(convert(&Rational::from(0)), convert(&Rational::from(0))); 2];
+        evaluator.evaluate(&inputs, &mut output);
+        for (actual, expected) in output.iter().zip(expected.iter().map(complex)) {
+            let error = actual - &expected;
+            assert!(
+                error.re.norm() < tolerance && error.im.norm() < tolerance,
+                "serialized evaluator gave {actual}, expected {expected}"
+            );
+        }
+    }
+
+    /// Exercise the actual Python producer and this crate's production decoder.
+    /// Requires Python Symbolica when the optional runtime feature is tested:
+    /// one whose `Evaluator.save()` writes the state-aware envelope (PyPI 3.0.3,
+    /// or the Community build of the pinned revision, `PYTHONPATH` or
+    /// `PYAMPLICOL_TEST_PYTHON`); 3.0.2's raw-bincode saves are refused.
+    #[test]
+    fn python_saved_evaluator_roundtrips_in_three_precisions() {
+        let python = std::env::var_os("PYAMPLICOL_TEST_PYTHON").unwrap_or_else(|| "python3".into());
+        let producer = std::process::Command::new(python)
+            .env("SYMBOLICA_HIDE_BANNER", "1")
+            .arg("-c")
+            .arg(
+                r#"
+import sys
+from symbolica import E, S, Expression
+x, y = S('pyamplicol_serialization_x', 'pyamplicol_serialization_y')
+evaluator = Expression.evaluator_multiple(
+    [x + y/3, x*y + E('1')/7], [x, y], n_cores=1, jit_compile=False)
+sys.stdout.buffer.write(evaluator.save())
+"#,
+            )
+            .output()
+            .expect("launch Python Symbolica producer (or set PYAMPLICOL_TEST_PYTHON)");
+        assert!(
+            producer.status.success(),
+            "Python evaluator producer failed: {}{}",
+            String::from_utf8_lossy(&producer.stderr),
+            String::from_utf8_lossy(&producer.stdout)
+        );
+        let (_, exact, _) = load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
+            .expect(
+                "decode the installed Python Symbolica evaluator with the shared core \
+                 (Python Symbolica >= 3.0.3 or the pinned Community build)",
+            );
+        evaluate_saved(&exact, Rational::to_f64, 1e-14);
+        evaluate_saved(&exact, |r| DoubleFloat::from(r), DoubleFloat::from(1e-28));
+        evaluate_saved(
+            &exact,
+            |r| r.to_multi_prec_float(256),
+            Float::with_val(256, 1e-60),
+        );
+        // The stored (canonical) form of the installed Python Symbolica's save
+        // (version 1 with the whole state, PyPI 3.0.3; version 2 without state
+        // for this evaluator without symbolic data, the pinned Community
+        // build) decodes to the same evaluator.
+        let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
+            bincode::encode_to_vec(evaluator, bincode::config::standard()).unwrap()
+        };
+        let stored = canonical_saved_evaluator(&producer.stdout)
+            .unwrap()
+            .unwrap_or_else(|| producer.stdout.clone());
+        // At most the empty partial state (31 bytes) more than a version 2
+        // save without state.
+        assert!(stored.len() <= producer.stdout.len() + STATE_HEADER_LEN + 24);
+        assert!(stored.starts_with(b"\xffSYMEVAL\x01"));
+        let (_, reloaded, _) = load_evaluator_state_bytes(&stored, "canonical").unwrap();
+        assert_eq!(encoded(&reloaded), encoded(&exact));
+        assert_eq!(canonical_saved_evaluator(&stored).unwrap(), None);
+        let mut trailing = producer.stdout;
+        trailing.push(0);
+        assert!(load_evaluator_state_bytes(&trailing, "trailing byte").is_err());
+    }
+
+    /// A producer symbol defined with other tags than this process's (another
+    /// FeynKit/Spenso revision in the Python Community modules) loads under
+    /// its import name, with the same values.
+    #[test]
+    fn python_saved_evaluator_with_a_conflicting_symbol_loads() {
+        let python = std::env::var_os("PYAMPLICOL_TEST_PYTHON").unwrap_or_else(|| "python3".into());
+        let producer = std::process::Command::new(python)
+            .env("SYMBOLICA_HIDE_BANNER", "1")
+            .arg("-c")
+            .arg(
+                r#"
+import sys
+from symbolica import E, S, Expression
+q = S('pyamplicol_conflict::q', tags=['pyamplicol_conflict::python'])
+x = S('pyamplicol_conflict::x')
+evaluator = Expression.evaluator_multiple(
+    [q + x/3, q*x + E('1')/7], [q, x], n_cores=1, jit_compile=False)
+sys.stdout.buffer.write(evaluator.save())
+"#,
+            )
+            .output()
+            .expect("launch Python Symbolica producer (or set PYAMPLICOL_TEST_PYTHON)");
+        assert!(
+            producer.status.success(),
+            "Python evaluator producer failed: {}{}",
+            String::from_utf8_lossy(&producer.stderr),
+            String::from_utf8_lossy(&producer.stdout)
+        );
+        // Defined after the producer ran: an unlicensed (restricted) Symbolica
+        // admits one process at a time.
+        let (native,) =
+            symbolica::symbol!("pyamplicol_conflict::q"; tags = ["pyamplicol_conflict::native"]);
+        let (_, exact, _) = load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
+            .expect("a conflicting producer symbol loads under its import name");
+        evaluate_saved(&exact, Rational::to_f64, 1e-14);
+        assert_eq!(
+            native.get_tags(),
+            &["pyamplicol_conflict::native".to_string()],
+            "this process's symbol keeps its definition"
+        );
+        // A second load reuses the import name's definition.
+        load_evaluator_state_bytes(&producer.stdout, "Python Evaluator.save()")
+            .expect("the import name is reused");
+        assert_eq!(import_conflict_name("q"), "q_pyamplicol_import");
+        assert_eq!(import_conflict_name("x__"), "x_pyamplicol_import__");
+        assert!(std::panic::catch_unwind(|| import_conflict_name("q_pyamplicol_import")).is_err());
+    }
+}
+
+#[cfg(all(test, feature = "symbolica-runtime"))]
+mod canonical_save_tests {
+    use super::*;
+    use symbolica::{atom::AtomCore, parse, state::State, symbol};
+
+    /// Envelope version 1 (Symbolica 3.0.3, pyAmpliCol 1.0.x artifacts).
+    fn v1_envelope(section: &[u8], payload: &[u8]) -> Vec<u8> {
+        let mut bytes = SAVED_EVALUATOR_MAGIC.to_vec();
+        bytes.extend([SAVED_EVALUATOR_V1, 1]);
+        bytes.extend_from_slice(section);
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    /// Envelope version 2 (Symbolica c9406581 and later).
+    fn v2_envelope(section: Option<&[u8]>, payload: &[u8]) -> Vec<u8> {
+        let mut bytes = SAVED_EVALUATOR_MAGIC.to_vec();
+        bytes.extend([SAVED_EVALUATOR_V2, 1, u8::from(section.is_some())]);
+        bytes.extend_from_slice(section.unwrap_or_default());
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    fn payload(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> Vec<u8> {
+        bincode::encode_to_vec(
+            (
+                true,
+                JITCompilationSettings::default(),
+                evaluator,
+                None::<JITCompiledEvaluator<f64>>,
+                None::<JITCompiledEvaluator<Complex<f64>>>,
+            ),
+            bincode::config::standard(),
+        )
+        .unwrap()
+    }
+
+    fn whole_state() -> Vec<u8> {
+        let mut section = Vec::new();
+        State::export(&mut section).unwrap();
+        section
+    }
+
+    /// The save of Python Symbolica 3.0.3: the version 1 envelope, the
+    /// producer's whole state, then the payload.
+    fn whole_state_save(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> Vec<u8> {
+        v1_envelope(&whole_state(), &payload(evaluator))
+    }
+
+    /// The save of the current Python Symbolica for an evaluator with
+    /// symbolic data: the version 2 envelope and the whole state.
+    fn community_save(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> Vec<u8> {
+        v2_envelope(Some(&whole_state()), &payload(evaluator))
+    }
+
+    /// A version 1 save with the referenced symbols numbered by the
+    /// producer's registry (the former fork's Community build).
+    fn registry_numbered_save(evaluator: &ExpressionEvaluator<Complex<Rational>>) -> Vec<u8> {
+        let mut symbols = Vec::new();
+        referenced(&evaluator.export_instructions(), &mut symbols);
+        v1_envelope(
+            &export_referenced_symbols(symbols).unwrap(),
+            &payload(evaluator),
+        )
+    }
+
+    /// The indices of a canonical save's symbol records and the section.
+    fn indices_and_section(saved: &[u8]) -> (Vec<u32>, &[u8], Vec<(&[u8], &[u8], &[u8])>) {
+        assert!(saved.starts_with(&[SAVED_EVALUATOR_MAGIC, &[SAVED_EVALUATOR_V1]].concat()));
+        let envelope = saved_evaluator_envelope(saved).unwrap();
+        assert!(envelope.has_state);
+        let state = envelope.rest;
+        let mut rest = state;
+        State::import(&mut rest, None).unwrap();
+        let section = &state[..state.len() - rest.len()];
+        let records = section_records(section).unwrap().unwrap();
+        let mut indices = Vec::new();
+        let mut at = STATE_HEADER_LEN + 8;
+        for (_, _, record) in &records {
+            indices.push(u32::from_le_bytes(section[at..at + 4].try_into().unwrap()));
+            at += 4 + record.len();
+        }
+        (indices, section, records)
+    }
+
+    /// Built-in functions and constants only: no symbolic data.
+    fn evaluator() -> ExpressionEvaluator<Complex<Rational>> {
+        parse!("pyamplicol_canonical::x^2 + pi + cos(pyamplicol_canonical::y)/3 + sqrt(pyamplicol_canonical::x) + log(pyamplicol_canonical::y)")
+            .evaluator(&[
+                parse!("pyamplicol_canonical::x"),
+                parse!("pyamplicol_canonical::y"),
+            ])
+            .build()
+            .unwrap()
+    }
+
+    /// With one of pyAmpliCol's scalar primitives, a registered function
+    /// that is not a Symbolica built-in: symbolic data.
+    fn symbolic_evaluator() -> ExpressionEvaluator<Complex<Rational>> {
+        crate::source_scalar::register_scalar_primitives();
+        parse!("pyamplicol_canonical::x^2 + pi + cos(pyamplicol_canonical::y)/3 + pyamplicol_scalar_v1::real_part(pyamplicol_canonical::x)")
+            .evaluator(&[
+                parse!("pyamplicol_canonical::x"),
+                parse!("pyamplicol_canonical::y"),
+            ])
+            .build()
+            .unwrap()
+    }
+
+    fn values(loaded: ExpressionEvaluator<Complex<Rational>>) -> f64 {
+        let mut values = loaded.map_coeff(&|c| Complex::new(c.re.to_f64(), c.im.to_f64()));
+        let mut output = [Complex::new(0.0, 0.0)];
+        values.evaluate(
+            &[Complex::new(2.0, 0.0), Complex::new(0.5, 0.0)],
+            &mut output,
+        );
+        assert_eq!(output[0].im, 0.0);
+        output[0].re
+    }
+
+    /// A whole-state save (PyPI Symbolica 3.0.3) carries the producer's
+    /// function-bearing symbols as not exportable; the import copy marks them
+    /// exportable (Symbolica's per-symbol import warning) and names them,
+    /// changing nothing else, and the save stays canonicalisable.
+    #[test]
+    fn whole_state_import_copy_reads_function_bearing_symbols_as_plain() {
+        let _unlock = crate::licence::unlock();
+        let f = symbolica::atom::SymbolBuilder::new(symbolica::wrap_symbol!(
+            "pyamplicol_function_bearing::f"
+        ))
+        .with_normalization_function(|_view, _out| {})
+        .build()
+        .unwrap();
+        assert!(!f.is_exportable());
+        let evaluator = symbolic_evaluator();
+        let whole = whole_state_save(&evaluator);
+        let state = saved_evaluator_envelope(&whole).unwrap().rest;
+        let (patched, functions) = whole_state_for_import(state).unwrap();
+        assert!(functions.contains("pyamplicol_function_bearing::f"));
+        assert_eq!(patched.len(), state.len());
+        let changed = state
+            .iter()
+            .zip(&patched)
+            .filter(|(before, after)| before != after)
+            .map(|(before, after)| (*before, *after))
+            .collect::<Vec<_>>();
+        assert_eq!(changed, vec![(0, 1); functions.len()]);
+        let (mut original, mut copy) = (state, patched.as_slice());
+        State::import(&mut original, None).unwrap();
+        State::import(&mut copy, None).unwrap();
+        assert_eq!(original.len(), copy.len(), "the same section length");
+        assert!(canonical_saved_evaluator(&whole).unwrap().is_some());
+        // A layout the copy cannot read is not patched (the caller imports
+        // the unpatched state): a truncated state, and an exportable byte
+        // that is not a boolean.
+        assert!(whole_state_for_import(&state[..STATE_HEADER_LEN + 4]).is_none());
+        let first = state
+            .iter()
+            .zip(&patched)
+            .position(|(before, after)| before != after)
+            .unwrap();
+        let mut drifted = state.to_vec();
+        drifted[first] = 7;
+        assert!(whole_state_for_import(&drifted).is_none());
+    }
+
+    /// An evaluator without symbolic data is stored with an empty state
+    /// section (Symbolica's own version 2 save stores none), whichever
+    /// envelope produced it.
+    #[test]
+    fn saves_without_symbolic_data_are_stored_without_state() {
+        let _unlock = crate::licence::unlock();
+        let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
+            bincode::encode_to_vec(evaluator, bincode::config::standard()).unwrap()
+        };
+        let evaluator = evaluator();
+        assert!(!evaluator.uses_symbolic_state());
+        // Version 1 (every Python Symbolica since 3.0.3 loads it) with the
+        // partial state of no symbol.
+        let mut canonical = v1_envelope(&empty_partial_state().unwrap(), &payload(&evaluator));
+        assert_eq!(canonical_saved_evaluator(&canonical).unwrap(), None);
+        assert_eq!(
+            canonical.len(),
+            SAVED_EVALUATOR_MAGIC.len() + 2 + STATE_HEADER_LEN + 24 + payload(&evaluator).len()
+        );
+        for save in [
+            v2_envelope(None, &payload(&evaluator)),
+            whole_state_save(&evaluator),
+            community_save(&evaluator),
+            registry_numbered_save(&evaluator),
+        ] {
+            assert_eq!(
+                canonical_saved_evaluator(&save).unwrap(),
+                Some(canonical.clone())
+            );
+        }
+        let (_, loaded, _) = load_evaluator_state_bytes(&canonical, "stateless save").unwrap();
+        assert_eq!(encoded(&loaded), encoded(&evaluator));
+        // Symbolica's own version 2 form loads too.
+        let (_, loaded_v2, _) =
+            load_evaluator_state_bytes(&v2_envelope(None, &payload(&evaluator)), "v2").unwrap();
+        assert_eq!(encoded(&loaded_v2), encoded(&evaluator));
+        canonical.push(0);
+        assert!(load_evaluator_state_bytes(&canonical, "trailing byte").is_err());
+        assert_eq!(encoded(&loaded), encoded(&evaluator));
+        let expected =
+            4.0 + std::f64::consts::PI + 0.5f64.cos() / 3.0 + 2.0f64.sqrt() + 0.5f64.ln();
+        assert!((values(loaded) - expected).abs() < 1e-14);
+        // Envelope errors are typed compatibility errors.
+        for bad in [
+            &b"\xffSYMEVAL"[..],
+            b"\xffSYMEVAL\x02\x01\x07",
+            b"\xffSYMEVAL\x03\x01\x00",
+            b"no envelope",
+        ] {
+            assert_eq!(
+                canonical_saved_evaluator(bad).unwrap_err().kind(),
+                crate::RusticolErrorKind::Compatibility
+            );
+            assert_eq!(
+                load_evaluator_state_bytes(bad, "bad envelope")
+                    .err()
+                    .unwrap()
+                    .kind(),
+                crate::RusticolErrorKind::Compatibility
+            );
+        }
+    }
+
+    #[test]
+    fn stored_saves_depend_only_on_their_evaluator() {
+        let _unlock = crate::licence::unlock();
+        let encoded = |evaluator: &ExpressionEvaluator<Complex<Rational>>| {
+            bincode::encode_to_vec(evaluator, bincode::config::standard()).unwrap()
+        };
+        let evaluator = symbolic_evaluator();
+        assert!(evaluator.uses_symbolic_state());
+        let whole = whole_state_save(&evaluator);
+        let canonical = canonical_saved_evaluator(&whole)
+            .unwrap()
+            .expect("a whole-state save is re-encoded");
+        // Only the referenced symbols, ordered by namespace and name and
+        // numbered 0, 1, ... (the registry numbers the built-ins otherwise).
+        let (indices, section, records) = indices_and_section(&canonical);
+        assert_eq!(indices, (0..records.len() as u32).collect::<Vec<_>>());
+        assert!(records.windows(2).all(|pair| pair[0] < pair[1]));
+        let names: Vec<_> = records
+            .iter()
+            .map(|(_, name, _)| String::from_utf8_lossy(name))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "pyamplicol_scalar_v1::real_part",
+                "symbolica::cos",
+                "symbolica::𝜋"
+            ]
+        );
+        assert!(canonical.len() < 2048, "{} bytes", canonical.len());
+        assert!(canonical.ends_with(&payload(&evaluator)));
+        // The same bytes from the current Python Symbolica's save (version 2,
+        // whole state), from a state-minimal version 1 save numbered by the
+        // producer's registry (the former fork's Community form, pyAmpliCol
+        // 1.0.x artifacts), from one numbered by any other registry (another
+        // process history: other identifiers, another order), from the kept
+        // whole state, and after unrelated symbols in new namespaces.
+        assert_eq!(
+            canonical_saved_evaluator(&community_save(&evaluator)).unwrap(),
+            Some(canonical.clone())
+        );
+        let registry = registry_numbered_save(&evaluator);
+        assert_ne!(registry, canonical);
+        assert_eq!(
+            canonical_saved_evaluator(&registry).unwrap(),
+            Some(canonical.clone())
+        );
+        let mut foreign = section[..STATE_HEADER_LEN].to_vec();
+        foreign.extend_from_slice(&(records.len() as u64).to_le_bytes());
+        for (k, (_, _, record)) in records.iter().rev().enumerate() {
+            foreign.extend_from_slice(&(0x000a_0016 + 3 * k as u32).to_le_bytes());
+            foreign.extend_from_slice(record);
+        }
+        foreign.extend_from_slice(&[0; 16]);
+        let foreign = v1_envelope(&foreign, &payload(&evaluator));
+        assert_eq!(
+            canonical_saved_evaluator(&foreign).unwrap(),
+            Some(canonical.clone())
+        );
+        assert_eq!(
+            canonical_saved_evaluator(&whole).unwrap(),
+            Some(canonical.clone())
+        );
+        for i in 0..2000 {
+            symbol!(format!("pyamplicol_canonical_{}::unrelated{i}", i % 7));
+        }
+        let later = whole_state_save(&evaluator);
+        assert!(later.len() > whole.len() + 2000 * 20);
+        assert_eq!(
+            canonical_saved_evaluator(&later).unwrap(),
+            Some(canonical.clone())
+        );
+        assert_eq!(
+            canonical_saved_evaluator(&registry_numbered_save(&evaluator)).unwrap(),
+            Some(canonical.clone())
+        );
+        // The canonical form loads to the same evaluator and values.
+        let (_, loaded, _) = load_evaluator_state_bytes(&canonical, "canonical save").unwrap();
+        assert_eq!(encoded(&loaded), encoded(&evaluator));
+        let expected = 4.0 + std::f64::consts::PI + 0.5f64.cos() / 3.0 + 2.0;
+        assert!((values(loaded) - expected).abs() < 1e-14);
+        assert_eq!(canonical_saved_evaluator(&canonical).unwrap(), None);
+    }
+
+    /// A symbol whose data embeds an expression keeps the section's numbering:
+    /// the expression's identifiers would have to follow it.
+    #[test]
+    fn sections_whose_symbol_data_embeds_expressions_keep_their_numbering() {
+        let _unlock = crate::licence::unlock();
+        let plain = symbol!("pyamplicol_canonical::plain");
+        let datum = symbol!(
+            "pyamplicol_canonical::datum",
+            data = symbolica::atom::UserData::Atom(parse!("pyamplicol_canonical::z"))
+        );
+        let section = |symbols: &[symbolica::atom::Symbol]| {
+            export_referenced_symbols(symbols.iter().copied()).unwrap()
+        };
+        assert!(
+            canonically_numbered_section(&section(&[plain]))
+                .unwrap()
+                .is_some()
+        );
+        // The symbol `z` in `datum`'s data is exported with it.
+        let with_datum = section(&[datum]);
+        let count = &with_datum[STATE_HEADER_LEN..STATE_HEADER_LEN + 8];
+        assert_eq!(u64::from_le_bytes(count.try_into().unwrap()), 2);
+        let mut rest = &with_datum[..];
+        State::import(&mut rest, None).unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(
+            canonically_numbered_section(&section(&[plain, datum])).unwrap(),
+            None
+        );
+    }
+}
+
+#[cfg(test)]
+mod aosoa_tests {
+    use super::*;
+
+    fn source_value(row: usize, component: usize) -> Complex<f64> {
+        Complex::new(
+            (100 * row + component) as f64,
+            -((100 * row + component) as f64) - 0.5,
+        )
+    }
+
+    fn check_pack_and_scatter(lane_width: usize) {
+        let batch_size = lane_width + 1;
+        let source_parameter_count = 4;
+        let input_components = [2, 0, 3];
+        let source = (0..batch_size)
+            .flat_map(|row| {
+                (0..source_parameter_count).map(move |component| source_value(row, component))
+            })
+            .collect::<Vec<_>>();
+        let mut packed = Vec::new();
+        let block_count = pack_f64_parameters_aosoa(
+            &source,
+            batch_size,
+            source_parameter_count,
+            input_components.len(),
+            lane_width,
+            Some(&input_components),
+            &mut packed,
+        )
+        .unwrap();
+        assert_eq!(block_count, 2);
+        for block in 0..block_count {
+            for (local_component, source_component) in input_components.iter().copied().enumerate()
+            {
+                let scalar_start =
+                    (block * input_components.len() + local_component) * 2 * lane_width;
+                for lane in 0..lane_width {
+                    let row = (block * lane_width + lane).min(batch_size - 1);
+                    let expected = source_value(row, source_component);
+                    assert_eq!(packed[scalar_start + lane], expected.re);
+                    assert_eq!(packed[scalar_start + lane_width + lane], expected.im);
+                }
+            }
+        }
+
+        let evaluator_output_len = 4;
+        let mut evaluator_outputs = vec![0.0; block_count * evaluator_output_len * 2 * lane_width];
+        for block in 0..block_count {
+            for column in 0..evaluator_output_len {
+                let scalar_start = (block * evaluator_output_len + column) * 2 * lane_width;
+                for lane in 0..lane_width {
+                    let row = block * lane_width + lane;
+                    evaluator_outputs[scalar_start + lane] = (1000 * row + column) as f64;
+                    evaluator_outputs[scalar_start + lane_width + lane] =
+                        -((1000 * row + column) as f64);
+                }
+            }
+        }
+
+        let state_parameter_count = 7;
+        let sentinel = Complex::new(12345.0, -12345.0);
+        let mut mapped_state = vec![sentinel; batch_size * state_parameter_count];
+        scatter_f64_aosoa_outputs_to_state(
+            &evaluator_outputs,
+            batch_size,
+            evaluator_output_len,
+            lane_width,
+            state_parameter_count,
+            &mut mapped_state,
+            &[(0, 1), (2, 5)],
+            &[],
+        )
+        .unwrap();
+        for row in 0..batch_size {
+            assert_eq!(
+                mapped_state[row * state_parameter_count + 1],
+                Complex::new((1000 * row) as f64, -((1000 * row) as f64))
+            );
+            assert_eq!(
+                mapped_state[row * state_parameter_count + 5],
+                Complex::new((1000 * row + 2) as f64, -((1000 * row + 2) as f64))
+            );
+            assert_eq!(mapped_state[row * state_parameter_count], sentinel);
+        }
+
+        let mut spanned_state = vec![sentinel; batch_size * state_parameter_count];
+        scatter_f64_aosoa_outputs_to_state(
+            &evaluator_outputs,
+            batch_size,
+            evaluator_output_len,
+            lane_width,
+            state_parameter_count,
+            &mut spanned_state,
+            &[],
+            &[(1, 3, 2)],
+        )
+        .unwrap();
+        for row in 0..batch_size {
+            for offset in 0..2 {
+                assert_eq!(
+                    spanned_state[row * state_parameter_count + 3 + offset],
+                    Complex::new(
+                        (1000 * row + 1 + offset) as f64,
+                        -((1000 * row + 1 + offset) as f64)
+                    )
+                );
+            }
+            assert_eq!(spanned_state[row * state_parameter_count], sentinel);
+        }
+
+        let row_output_len = evaluator_output_len + 2;
+        let mut row_outputs = vec![sentinel; batch_size * row_output_len];
+        scatter_f64_aosoa_outputs_to_rows(
+            &evaluator_outputs,
+            batch_size,
+            evaluator_output_len,
+            lane_width,
+            row_output_len,
+            1,
+            &mut row_outputs,
+        )
+        .unwrap();
+        for row in 0..batch_size {
+            assert_eq!(row_outputs[row * row_output_len], sentinel);
+            assert_eq!(
+                row_outputs[row * row_output_len + row_output_len - 1],
+                sentinel
+            );
+            for column in 0..evaluator_output_len {
+                assert_eq!(
+                    row_outputs[row * row_output_len + 1 + column],
+                    Complex::new(
+                        (1000 * row + column) as f64,
+                        -((1000 * row + column) as f64)
+                    )
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn portable_aosoa_pack_and_scatter_cover_fixed_and_dynamic_widths() {
+        for lane_width in [2, 4, 8, 3] {
+            check_pack_and_scatter(lane_width);
+        }
+    }
+
+    #[test]
+    fn aosoa_pack_rejects_inconsistent_mappings_and_lengths() {
+        let mut scratch = Vec::new();
+        let source = vec![c64(0.0, 0.0); 8];
+        assert!(pack_f64_parameters_aosoa(&source, 2, 4, 2, 4, Some(&[0]), &mut scratch).is_err());
+        assert!(
+            pack_f64_parameters_aosoa(&source, 2, 4, 2, 4, Some(&[0, 4]), &mut scratch).is_err()
+        );
+        assert!(
+            pack_f64_parameters_aosoa(&source[..7], 2, 4, 2, 4, Some(&[0, 1]), &mut scratch)
+                .is_err()
+        );
+    }
+}

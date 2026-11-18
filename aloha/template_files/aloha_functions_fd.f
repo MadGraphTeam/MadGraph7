@@ -2,7 +2,7 @@ C###############################################################################
 C
 C Copyright (c) 2010 The ALOHA Development team and Contributors
 C
-C This file is a part of the MadGraph5_aMC@NLO project, an application which
+C This file is a part of the MadGraph7 project, an application which
 C automatically generates Feynman diagrams and matrix elements for arbitrary
 C high-energy processes in the Standard Model and beyond.
 C
@@ -10,7 +10,23 @@ C It is subject to the ALOHA license which should accompany this
 C distribution.
 C
 C###############################################################################
-      subroutine ixxxxx(p, fmass, nhel, nsf ,fi)
+           module ALOHA_OBJECT
+              TYPE ALOHA
+                 SEQUENCE
+                 double complex::W(5)
+                 double precision :: P(0:3)
+                 integer :: flv_index
+              END TYPE ALOHA
+              TYPE ALOHA2D
+                 SEQUENCE
+                 double complex::W(16)
+                 double precision :: P(0:3)
+                 integer :: flv_index
+              END TYPE ALOHA2D
+       end module ALOHA_OBJECT
+
+      subroutine ixxxxx(p, fmass, nhel, nsf ,flav,fi)
+          use aloha_object
 c
 c This subroutine computes a fermion wavefunction with the flowing-IN
 c fermion number.
@@ -25,7 +41,9 @@ c output:
 c       complex fi(6)          : fermion wavefunction               |fi>
 c
       implicit none
-      double complex fi(6),chi(2)
+      double complex chi(2)
+      type(aloha) fi
+      integer flav
       double precision p(0:3),sf(2),sfomeg(2),omega(2),fmass,
      &     pp,pp3,sqp0p3,sqm(0:1)
       integer nhel,nsf,ip,im,nh
@@ -70,9 +88,8 @@ c         write(stdo,*) '             : nsf = ',nsf
 c      endif
 c#endif
 
-      fi(1) = dcmplx(p(0),p(3))*nsf*-1
-      fi(2) = dcmplx(p(1),p(2))*nsf*-1
-
+      fi % P(:) = nsf*-1*p(:)
+      fi % flv_index = flav
       nh = nhel*nsf
 
       if ( fmass.ne.rZero ) then
@@ -86,10 +103,10 @@ c#endif
             ip = (1+nh)/2
             im = (1-nh)/2
 
-            fi(3) = ip     * sqm(ip)
-            fi(4) = im*nsf * sqm(ip)
-            fi(5) = ip*nsf * sqm(im)
-            fi(6) = im     * sqm(im)
+            fi % W(1) = ip     * sqm(ip)
+            fi % W(2) = im*nsf * sqm(ip)
+            fi % W(3) = ip*nsf * sqm(im)
+            fi % W(4) = im     * sqm(im)
 
          else
 
@@ -101,7 +118,12 @@ c#endif
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -109,16 +131,21 @@ c#endif
                chi(2) = dcmplx( nh*p(1) , p(2) )/dsqrt(rTwo*pp*pp3)
             endif
 
-            fi(3) = sfomeg(1)*chi(im)
-            fi(4) = sfomeg(1)*chi(ip)
-            fi(5) = sfomeg(2)*chi(im)
-            fi(6) = sfomeg(2)*chi(ip)
+            fi % W(1) = sfomeg(1)*chi(im)
+            fi % W(2) = sfomeg(1)*chi(ip)
+            fi % W(3) = sfomeg(2)*chi(im)
+            fi % W(4) = sfomeg(2)*chi(ip)
 
          endif
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsf
@@ -130,15 +157,15 @@ c#endif
             chi(2) = dcmplx( nh*p(1), p(2) )/sqp0p3
          endif
          if ( nh.eq.1 ) then
-            fi(3) = dcmplx( rZero )
-            fi(4) = dcmplx( rZero )
-            fi(5) = chi(1)
-            fi(6) = chi(2)
+            fi % W(1) = dcmplx( rZero )
+            fi % W(2) = dcmplx( rZero )
+            fi % W(3) = chi(1)
+            fi % W(4) = chi(2)
          else
-            fi(3) = chi(2)
-            fi(4) = chi(1)
-            fi(5) = dcmplx( rZero )
-            fi(6) = dcmplx( rZero )
+            fi % W(1) = chi(2)
+            fi % W(2) = chi(1)
+            fi % W(3) = dcmplx( rZero )
+            fi % W(4) = dcmplx( rZero )
          endif
       endif
 c
@@ -225,7 +252,12 @@ c$$$      fi(2) = dcmplx(p(1),p(2))*nsf*-1
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -242,7 +274,12 @@ c$$$      fi(2) = dcmplx(p(1),p(2))*nsf*-1
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsf
@@ -270,7 +307,8 @@ c
       end
 
 
-      subroutine oxxxxx(p,fmass,nhel,nsf , fo)
+      subroutine oxxxxx(p,fmass,nhel,nsf , flav, fo)
+          use aloha_object
 c
 c This subroutine computes a fermion wavefunction with the flowing-OUT
 c fermion number.
@@ -285,7 +323,9 @@ c output:
 c       complex fo(6)          : fermion wavefunction               <fo|
 c
       implicit none
-      double complex fo(6),chi(2)
+      double complex chi(2)
+      type(aloha) fo
+      integer flav
       double precision p(0:3),sf(2),sfomeg(2),omega(2),fmass,
      &     pp,pp3,sqp0p3,sqm(0:1)
       integer nhel,nsf,nh,ip,im
@@ -330,8 +370,8 @@ c         write(stdo,*) '             : nsf = ',nsf
 c      endif
 c#endif
 
-      fo(1) = dcmplx(p(0),p(3))*nsf
-      fo(2) = dcmplx(p(1),p(2))*nsf
+      fo % P(:) =nsf*P(:)
+      fo % flv_index = flav
 
       nh = nhel*nsf
 
@@ -345,10 +385,10 @@ c#endif
             sqm(1) = sign(sqm(0),fmass) ! possibility of negative fermion masses
             im = nhel * (1+nh)/2
             ip = nhel * -1 * ((1-nh)/2)
-            fo(3) = im     * sqm(abs(ip))
-            fo(4) = ip*nsf * sqm(abs(ip))
-            fo(5) = im*nsf * sqm(abs(im))
-            fo(6) = ip     * sqm(abs(im))
+            fo % W(1) = im     * sqm(abs(ip))
+            fo % W(2) = ip*nsf * sqm(abs(ip))
+            fo % W(3) = im*nsf * sqm(abs(im))
+            fo % W(4) = ip     * sqm(abs(im))
          else
 
             pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
@@ -360,7 +400,12 @@ c#endif
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -368,16 +413,21 @@ c#endif
                chi(2) = dcmplx( nh*p(1) , -p(2) )/dsqrt(rTwo*pp*pp3)
             endif
 
-            fo(3) = sfomeg(2)*chi(im)
-            fo(4) = sfomeg(2)*chi(ip)
-            fo(5) = sfomeg(1)*chi(im)
-            fo(6) = sfomeg(1)*chi(ip)
+            fo % W(1) = sfomeg(2)*chi(im)
+            fo % W(2) = sfomeg(2)*chi(ip)
+            fo % W(3) = sfomeg(1)*chi(im)
+            fo % W(4) = sfomeg(1)*chi(ip)
 
          endif
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsf
@@ -389,15 +439,15 @@ c#endif
             chi(2) = dcmplx( nh*p(1), -p(2) )/sqp0p3
          endif
          if ( nh.eq.1 ) then
-            fo(3) = chi(1)
-            fo(4) = chi(2)
-            fo(5) = dcmplx( rZero )
-            fo(6) = dcmplx( rZero )
+            fo % W(1) = chi(1)
+            fo % W(2) = chi(2)
+            fo % W(3) = dcmplx( rZero )
+            fo % W(4) = dcmplx( rZero )
          else
-            fo(3) = dcmplx( rZero )
-            fo(4) = dcmplx( rZero )
-            fo(5) = chi(2)
-            fo(6) = chi(1)
+            fo % W(1) = dcmplx( rZero )
+            fo % W(2) = dcmplx( rZero )
+            fo % W(3) = chi(2)
+            fo % W(4) = chi(1)
          endif
 
       endif
@@ -485,7 +535,12 @@ c$$$      fo(2) = dcmplx(p(1),p(2))*nsf
             im = (3-nh)/2
             sfomeg(1) = sf(1)*omega(ip)
             sfomeg(2) = sf(2)*omega(im)
-            pp3 = max(pp+p(3),rZero)
+c           Light-cone identity avoids the |p|+p3 cancellation.
+            if ( p(3).lt.rZero ) then
+               pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+            else
+               pp3 = max(pp+p(3),rZero)
+            endif
             chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
             if ( pp3.eq.rZero ) then
                chi(2) = dcmplx(-nh )
@@ -502,7 +557,12 @@ c$$$      fo(2) = dcmplx(p(1),p(2))*nsf
 
       else
 
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsf
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsf
@@ -567,7 +627,8 @@ c
       return
       end
 
-      subroutine sxxxxx(p,nss , sc)
+      subroutine sxxxxx(p, nss, sc)
+          use aloha_object
 c
 c This subroutine computes a complex SCALAR wavefunction.
 c
@@ -579,7 +640,7 @@ c output:
 c       complex sc(3)          : scalar wavefunction                   s
 c
       implicit none
-      double complex sc(20)
+      type(aloha) sc
       double precision p(0:3)
       integer nss
 
@@ -617,14 +678,12 @@ c         write(stdo,*) ' helas-error : nss in sxxxxx is not -1,1'
 c         write(stdo,*) '             : nss = ',nss
 c      endif
 c#endif
-
-      sc(1) = dcmplx(p(0),p(3))*nss
-      sc(2) = dcmplx(p(1),p(2))*nss
-      sc(3) = dcmplx(0.d0)
-      sc(4) = dcmplx(0.d0)
-      sc(5) = dcmplx(0.d0)
-      sc(6) = dcmplx(0.d0)
-      sc(7) = dcmplx( rOne )
+      sc % P(:) = nss*p(:)
+      sc % W(1) = dcmplx(0.d0)
+      sc % W(2) = dcmplx(0.d0)
+      sc % W(3) = dcmplx(0.d0)
+      sc % W(4) = dcmplx(0.d0)
+      sc % W(5) = dcmplx( rOne )
 
       return
       end
@@ -799,7 +858,8 @@ c construct eps0
       end
 
 
-      subroutine vxxxxx(p,vmass,nhel,nsv , vc)
+      subroutine vxxxxx(p,vmass,nhel,nsv, vc)
+          use aloha_object
 c
 c This subroutine computes a VECTOR wavefunction.
 c
@@ -814,7 +874,7 @@ c output:
 c       complex vc(6)          : vector wavefunction       epsilon^mu(v)
 c
       implicit none
-      double complex vc(7) !!!
+      type(aloha) vc 
       double precision p(0:3),vmass,hel,hel0,pt,pt2,pp,pzpt,emp,sqh
       integer nhel,nsv,nsvahl
 
@@ -879,8 +939,7 @@ c#endif
       pp = min(p(0),dsqrt(pt2+p(3)**2))
       pt = min(pp,dsqrt(pt2))
 
-      vc(1) = dcmplx(p(0),p(3))*nsv
-      vc(2) = dcmplx(p(1),p(2))*nsv
+      vc % P(:) = nsv*p(:)
 
 c#ifdef HELAS_CHECK
 c nhel=4 option for scalar polarization
@@ -906,25 +965,25 @@ c#endif
 
          if ( pp.eq.rZero ) then
 
-            vc(3) = dcmplx( rZero )
-            vc(4) = dcmplx(-hel*sqh )
-            vc(5) = dcmplx( rZero , nsvahl*sqh )
-            vc(6) = dcmplx( hel0 ) 
+            vc % W(1) = dcmplx( rZero )
+            vc % W(2) = dcmplx(-hel*sqh )
+            vc % W(3) = dcmplx( rZero , nsvahl*sqh )
+            vc % W(4) = dcmplx( hel0 ) 
 
          else
 
             emp = p(0)/(vmass*pp)
-            vc(3) = dcmplx( hel0*pp/vmass )
-            vc(6) = dcmplx( hel0*p(3)*emp+hel*pt/pp*sqh )
+            vc % W(1) = dcmplx( hel0*pp/vmass )
+            vc % W(4) = dcmplx( hel0*p(3)*emp+hel*pt/pp*sqh )
             if ( pt.ne.rZero ) then
                pzpt = p(3)/(pp*pt)*sqh*hel
-               vc(4) = dcmplx( hel0*p(1)*emp-p(1)*pzpt ,
+               vc % W(2) = dcmplx( hel0*p(1)*emp-p(1)*pzpt ,
      &                         -nsvahl*p(2)/pt*sqh       )
-               vc(5) = dcmplx( hel0*p(2)*emp-p(2)*pzpt ,
+               vc % W(3) = dcmplx( hel0*p(2)*emp-p(2)*pzpt ,
      &                          nsvahl*p(1)/pt*sqh       )
             else
-               vc(4) = dcmplx( -hel*sqh )
-               vc(5) = dcmplx( rZero , nsvahl*sign(sqh,p(3)) )
+               vc % W(2) = dcmplx( -hel*sqh )
+               vc % W(3) = dcmplx( rZero , nsvahl*sign(sqh,p(3)) )
             endif
 
          endif
@@ -950,28 +1009,28 @@ c#endif
          nk = n(0)*p(0)-n(1)*p(1)-n(2)*p(2)-n(3)*p(3)
 
          if (abs(nhel)==1) then
-            vc(7) = dcmplx(0.d0)
+            vc % W(5) = dcmplx(0.d0)
          else
-            vc(3:6) = -vmass/nk*n(0:3)
-            vc(7) = -nsv*ci
+            vc % W(1:4) = -vmass/nk*n(0:3)
+            vc % W(5) = -nsv*ci
          endif
 
       else
 
          pp = p(0)
          pt = sqrt(p(1)**2+p(2)**2)
-         vc(3) = dcmplx( rZero )
-         vc(6) = dcmplx( hel*pt/pp*sqh )
+         vc % W(1) = dcmplx( rZero )
+         vc % W(4) = dcmplx( hel*pt/pp*sqh )
          if ( pt.ne.rZero ) then
             pzpt = p(3)/(pp*pt)*sqh*hel
-            vc(4) = dcmplx( -p(1)*pzpt , -nsv*p(2)/pt*sqh )
-            vc(5) = dcmplx( -p(2)*pzpt ,  nsv*p(1)/pt*sqh )
+            vc % W(2) = dcmplx( -p(1)*pzpt , -nsv*p(2)/pt*sqh )
+            vc % W(3) = dcmplx( -p(2)*pzpt ,  nsv*p(1)/pt*sqh )
          else
-            vc(4) = dcmplx( -hel*sqh )
-            vc(5) = dcmplx( rZero , nsv*sign(sqh,p(3)) )
+            vc % W(2) = dcmplx( -hel*sqh )
+            vc % W(3) = dcmplx( rZero , nsv*sign(sqh,p(3)) )
          endif
 
-         vc(7) = dcmplx( 0.d0 )
+         vc % W(5) = dcmplx( 0.d0 )
 
       endif
 
@@ -1517,7 +1576,7 @@ c construct eps0
       end if
 
       if ( nhel.ge.-1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = nsr
        if ( rmass.ne.rZero ) then
          pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
@@ -1551,7 +1610,16 @@ c constract spinor+
               fip(4) = sfomeg(2)*chi(ip)
          endif
        else
-         sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsr
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+            sqp0p3 = 0d0
+         else
+            sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr
+         endif
          chi(1) = dcmplx( sqp0p3 )
          if ( sqp0p3.eq.rZero ) then
             chi(2) = dcmplx(-nhel )*dsqrt(rTwo*p(0))
@@ -1573,7 +1641,7 @@ c constract spinor+
       end if
 
       if ( nhel.le.1 ) then
-c constract spinor-
+c contract spinor-
        nh = -nsr
        if ( rmass.ne.rZero ) then
          pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
@@ -1607,7 +1675,16 @@ c constract spinor-
               fim(4) = sfomeg(2)*chi(ip)
          endif
        else
-         sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsr
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+            sqp0p3 = 0d0
+         else
+            sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr
+         endif
          chi(1) = dcmplx( sqp0p3 )
          if ( sqp0p3.eq.rZero ) then
             chi(2) = dcmplx(-nhel )*dsqrt(rTwo*p(0))
@@ -1841,7 +1918,7 @@ c construct eps0
       end if
 
       if ( nhel.ge.-1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = nsr
 
        if ( rmass.ne.rZero ) then
@@ -1888,7 +1965,12 @@ c constract spinor+
          
       else
          
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsr
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr
@@ -1914,7 +1996,7 @@ c constract spinor+
       endif
 
       if ( nhel.le.1 ) then
-c constract spinor+ 
+c contract spinor+
        nh = -nsr
 
       if ( rmass.ne.rZero ) then
@@ -1961,7 +2043,12 @@ c constract spinor+
          
       else
          
-         if(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
+c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
+c  backward-moving massless fermion, and everything below divides by
+c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(abs(p(0))-p(3)))*nsr
+         elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
             sqp0p3 = dsqrt(max(p(0)+p(3),rZero))*nsr
@@ -2092,68 +2179,67 @@ c spin-3/2 fermion wavefunction
 
 
       subroutine CombineAmp(nb, ihels, iwfcts, W1, Wall, Amp)
-
+        use aloha_object
+        implicit none
       integer nb ! size of the vectors
       integer ihels(*), iwfcts(*)
-      double complex W1(6)
-      double complex Wall(7,*)
+      type(aloha)  W1, Wall(*)
       double complex Amp(*)
 c     local variable
       integer i
 
       do i = 1, nb
-         Amp(ihels(i)) =  W1(3) * Wall(3,iwfcts(i)) +
-     &                    W1(4) * Wall(4,iwfcts(i))+
-     &                    W1(5) * Wall(5,iwfcts(i))+
-     &                    W1(6) * Wall(6,iwfcts(i))
+         Amp(ihels(i)) =  W1 % W(1) * Wall(iwfcts(i)) % W(1) +
+     &                    W1 % W(2) * Wall(iwfcts(i)) % W(2)+
+     &                    W1 % W(3) * Wall(iwfcts(i)) % W(3)+
+     &                    W1 % W(4) * Wall(iwfcts(i)) % W(4)
       enddo
       return
       end
       
       subroutine CombineAmpFD(nb, ihels, iwfcts, W1, Wall, Amp)
-
+      use aloha_object
+      implicit none
       integer nb ! size of the vectors
       integer ihels(*), iwfcts(*)
-      double complex W1(7)
-      double complex Wall(7,*)
+      type(aloha) W1, Wall(*)
       double complex Amp(*)
 c     local variable
       integer i
 
       do i = 1, nb
-         Amp(ihels(i)) =  W1(3) * Wall(3,iwfcts(i)) +
-     &                    W1(4) * Wall(4,iwfcts(i))+
-     &                    W1(5) * Wall(5,iwfcts(i))+
-     &                    W1(6) * Wall(6,iwfcts(i))+
-     &                    W1(7) * Wall(7,iwfcts(i))
+         Amp(ihels(i)) =  W1 % W(1) * Wall(iwfcts(i)) % W(1)+
+     &                    W1 % W(2) * Wall(iwfcts(i)) % W(2)+
+     &                    W1 % W(3) * Wall(iwfcts(i)) % W(3)+
+     &                    W1 % W(4) * Wall(iwfcts(i)) % W(4)+
+     &                    W1 % W(5) * Wall(iwfcts(i)) % W(5)
       enddo
       return
       end
       
 
       subroutine CombineAmpS(nb, ihels, iwfcts, W1, Wall, Amp)
-
+        use aloha_object
+        implicit none
       integer nb ! size of the vectors
       integer ihels(*), iwfcts(*)
-      double complex W1(7)
-      double complex Wall(7,*)
+      type(aloha) W1, Wall(*)
       double complex Amp(*)
 c     local variable
       integer i
 
       do i = 1, nb
-         Amp(ihels(i)) =  W1(7) * Wall(7,iwfcts(i))
+         Amp(ihels(i)) =  W1 % W(5) * Wall(iwfcts(i)) % W(5)
       enddo
       return
       end
 
       subroutine multiply_propagator_factor(win, m, wout)
-
+      use aloha_object
       implicit none
 
-      double complex win(7)
+      type(aloha)  win, wout
       double precision m
-      double complex wout(7)
 
 
       double complex q(0:4)
@@ -2166,28 +2252,105 @@ c     local variable
       double complex ci
       parameter (ci=(0.d0,1.d0))
 
-      wout(1:2) = win(1:2)
-      
-      q(0) = -dble(win(1))
-      q(1) = -dble(win(2))
-      q(2) = -dimag(win(2))
-      q(3) = -dimag(win(1))
+      wout % P(:) = win % P(:)
+     
+      q(0:3) = - win % P(:)
       q(4) = -ci*m
       
       call define_gauge_dir(q,n)
 
-      w0(0:4) = win(3:7)
+      w0(0:4) = win % W (1:5)
       
       nq = n(0)*dble(q(0))-n(1)*dble(q(1))-n(2)*dble(q(2))-n(3)*dble(q(3))
       
       js1 = (n(0)*w0(0)-n(1)*w0(1)-n(2)*w0(2)-n(3)*w0(3)) / nq
+c     q(4) = -i*m enters as +i*m, not as its conjugate: the two only agree
+c     for a real mass, and the complex-mass scheme needs the analytic form
       js2 = (q(0)*w0(0)-q(1)*w0(1)-q(2)*w0(2)-q(3)*w0(3) 
-     &     - dconjg(q(4))*w0(4)) / nq
+     &     + q(4)*w0(4)) / nq
 
       w1(0:4) = w0(0:4)-q(0:4)*js1-n(0:4)*js2
 
-      wout(3:7) = w1(0:4)
+      wout % W(1:5) = w1(0:4)
       
+      end
+
+      subroutine fd_polarized_propagator(w, m, width, ipol)
+c
+c FD gauge: polarised propagator of a massive vector. w is the off-shell
+c wavefunction an ALOHA routine built with the ordinary FD numerator (the
+c vector in w%W(1:4), the Goldstone boson in w%W(5)), before the FD
+c projector. Instead of the full projector, w is projected on one piece of
+c the FD numerator
+c     N = sum_T eps eps* + eps0 eps0* + (q^2-M^2) n n/(n.q)^2
+c with eps0 = (-M n/(n.q), i) and n the FD gauge direction:
+c   ipol = 0 {0}, 1 {T}, 2 {+}, 3 {-}, 4 {A}, 5 {S}, 6 {0S}
+c (aloha_writers.FD_POLARIZED_PROPAGATORS). {S} is {A} with its factor
+c (q^2-M^2)/(q^2-M^2+i M width) replaced by 1.
+c
+      use aloha_object
+      implicit none
+      type(aloha) w
+      double precision m, width
+      integer ipol
+
+      double complex q(0:4), w0(0:4), w1(0:4), nw, c, cross(3), sca
+      double precision n(0:4), nq, q2, qh(3), qw
+      integer i
+
+      double complex ci
+      parameter (ci=(0.d0,1.d0))
+
+      q(0:3) = -w % P(:)
+c     a line at rest (|q| below 1e-10 q0, rounding): pin the axis of the
+c     helicities to +z, as the unitary-gauge polarised routines do
+      if (abs(dble(q(0)))*1d-10.gt.abs(dble(q(1)))) q(1) = 1d-30
+      if (abs(dble(q(0)))*1d-10.gt.abs(dble(q(2)))) q(2) = 0d0
+      if (abs(dble(q(0)))*1d-10.gt.abs(dble(q(3)))) q(3) = 1d-15
+      q(4) = -ci*m
+      call define_gauge_dir(q, n)
+      w0(0:4) = w % W(1:5)
+      w1(0:4) = (0.d0, 0.d0)
+
+      nq = n(0)*dble(q(0))-n(1)*dble(q(1))-n(2)*dble(q(2))-n(3)*dble(q(3))
+      q2 = dble(q(0))**2-dble(q(1))**2-dble(q(2))**2-dble(q(3))**2
+      nw = n(0)*w0(0)-n(1)*w0(1)-n(2)*w0(2)-n(3)*w0(3)
+c     unit vector along the momentum (n = (+-1, -qh))
+      qh(1:3) = -n(1:3)
+
+      if (ipol.ge.1.and.ipol.le.3) then
+c        transverse: the components orthogonal to qh
+         sca = qh(1)*w0(1)+qh(2)*w0(2)+qh(3)*w0(3)
+         do i = 1, 3
+            w1(i) = w0(i) - qh(i)*sca
+         enddo
+         if (ipol.ne.1) then
+            cross(1) = qh(2)*w0(3) - qh(3)*w0(2)
+            cross(2) = qh(3)*w0(1) - qh(1)*w0(3)
+            cross(3) = qh(1)*w0(2) - qh(2)*w0(1)
+c           helicity +1: (T - i qh x w)/2, -1: (T + i qh x w)/2
+            qw = -1.d0
+            if (ipol.eq.3) qw = 1.d0
+            do i = 1, 3
+               w1(i) = 0.5d0*(w1(i) + qw*ci*cross(i))
+            enddo
+         endif
+      endif
+      if (ipol.eq.0.or.ipol.eq.6) then
+c        longitudinal: eps0 (eps0*. w)
+         c = m/nq*nw - ci*w0(4)
+         w1(0:3) = w1(0:3) - m/nq*n(0:3)*c
+         w1(4) = w1(4) + ci*c
+      endif
+      if (ipol.eq.4) then
+         w1(0:3) = w1(0:3) - (q2-m*m)/nq**2*n(0:3)*nw
+      endif
+      if (ipol.eq.5.or.ipol.eq.6) then
+         w1(0:3) = w1(0:3) - (q2-m*m+ci*m*width)/nq**2*n(0:3)*nw
+      endif
+
+      w % W(1:5) = w1(0:4)
+
       end
 
       subroutine define_gauge_dir(q, n)
@@ -2225,3 +2388,43 @@ c     local variable
       end
 
       
+
+      subroutine sumw_1(w1, w2, wout)
+c
+c     Sum two currents standing for the same off shell line: the four
+c     gluon current and the pair of three gluon vertices it factorises
+c     into carry the same colour factor, so the amplitude reading the sum
+c     gets both contributions from a single call. See
+c     HelasMatrixElement.get_quartic_current_sums.
+c
+c     The two share their momentum, so only the wavefunction is added and
+c     everything else is taken over from the first one.
+c
+          use ALOHA_OBJECT
+      implicit none
+      type(aloha) w1
+      type(aloha) w2
+      type(aloha) wout
+
+      wout = w1
+      wout%W(:) = w1%W(:) + w2%W(:)
+
+      return
+      end
+
+
+      subroutine subw_1(w1, w2, wout)
+c
+c     As sumw_1, for the contributions which enter with a minus sign.
+c
+          use ALOHA_OBJECT
+      implicit none
+      type(aloha) w1
+      type(aloha) w2
+      type(aloha) wout
+
+      wout = w1
+      wout%W(:) = w1%W(:) - w2%W(:)
+
+      return
+      end

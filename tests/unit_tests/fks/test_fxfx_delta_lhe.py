@@ -23,9 +23,9 @@ class TestFxFxDeltaLHE(unittest.TestCase):
             '      logical store_rwgt_info\n'
             '      common/test_run/ickkw,mcatnlo_delta,do_rwgt_scale,\n'
             '     & do_rwgt_pdf,store_rwgt_info\n')
-        shutil.copyfile(TEMPLATE / 'unlops.inc', cls.work / 'unlops.inc')
         names = ('write_lhef_event', 'read_lhef_event', 'read_lhef_event_catch',
-                 'read_lhef_delta_scales', 'read_rwgt_line')
+                 'read_lhef_delta_scales', 'read_rwgt_line',
+                 'require_lhef_fxfx_info', 'is_fxfx_ptclusstring')
         (cls.work / 'routines.f').write_text('\n'.join(
             fortran_routine(TEMPLATE / 'handling_lhe_events.f', name)
             for name in names))
@@ -62,7 +62,8 @@ class TestFxFxDeltaLHE(unittest.TestCase):
             self.assertEqual(len(event.findall('rwgt')), int(reweight))
 
     def test_combined_uses_ordinary_fxfx_format_in_both_readers(self):
-        for comments, reweight in ((False, False), (True, False), (True, True)):
+        # FxFx events always carry the #aMCatNLO info line (AddInfoLHE).
+        for comments, reweight in ((True, False), (True, True)):
             with self.subTest(comments=comments, reweight=reweight):
                 self.roundtrip('fxfx', comments, reweight)
                 ordinary = (self.work / 'roundtrip.lhe').read_text()

@@ -19,7 +19,7 @@ module process_module
 end module
 
 module mint_module
-  logical :: pass_cuts_check=.false.
+  logical :: pass_cuts_check=.false.,fixed_order=.false.
 end module
 
 module weight_lines
@@ -338,4 +338,12 @@ end subroutine
 integer function get_orders_tag(orders)
   integer :: orders(1)
   get_orders_tag=orders(1)
+end function
+
+double precision function real_channel_soft_fraction(p)
+  ! Fixed-order real-channel damping is not used by NLO+PS events.
+  implicit none
+  double precision :: p(0:3,*)
+  real_channel_soft_fraction=1d0
+  error stop 'real-channel damping called for an NLO+PS event'
 end function

@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2012 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2012 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -41,7 +41,7 @@ else:
     
 logger = logging.getLogger('madevent.combine_run') # -> stdout
 
-#usefull shortcut
+#useful shortcut
 pjoin = os.path.join
 
    
@@ -142,7 +142,14 @@ class CombineRuns(object):
             #                                           result.xerru, result.nunwgt))
             
 
-            ratio = result.nunwgt/results.nunwgt
+            # The events of each job sum to its cross-section and the channel
+            # cross-section is their plain average (compute_average), so every
+            # job gets the same weight. Weighting by its number of unweighted
+            # events instead penalised the jobs whose events contain a large
+            # weight: they have fewer unweighted events (the overweight events
+            # below keep their weight), and that suppressed exactly the rare
+            # large-weight contributions, i.e. the tails of the distributions.
+            ratio = 1./len(results)
             i = result.name
             if channel.endswith(os.path.pathsep):
                 path = channel[:-1] + i 
@@ -186,7 +193,12 @@ class CombineRuns(object):
             for line in fin:
                 # The line immediately after <event> contains the event header and raw weight
                 if pending_event:
-                    data = line.split(None, 5)
+                    # A plain split, not split(None, 5): with a maxsplit the
+                    # last field keeps the trailing newline, and the write
+                    # below adds another one, leaving a blank line after every
+                    # event header. Pythia's LHEF reader rejects such an event
+                    # as corrupt, so the whole file becomes unshowerable.
+                    data = line.split()
                     if len(data) != 6:
                         raise MadGraph5Error("Line after <event> should have 6 entries")
 

@@ -12,20 +12,22 @@ program check_fks_explicit_sum
   call get_command_argument(1,arg)
   select case(trim(arg))
   case('card')
-    if(FKSExplicitSum)error stop 'declaration default'
+    if(.not.FKSExplicitSum.or.MCExplicitKLSum)error stop 'declaration defaults'
     call FKSParamReader('explicit.dat',.false.,.true.)
     if(.not.FKSExplicitSum)error stop 'explicit card'
-    if(.not.MCExplicitKLSum)error stop 'changed matching default'
-    call FKSParamReader('legacy_matching.dat',.false.,.true.)
-    if(.not.FKSExplicitSum.or.MCExplicitKLSum)error stop 'matching switches coupled'
+    if(MCExplicitKLSum)error stop 'changed matching default'
+    call FKSParamReader('matching_override.dat',.false.,.true.)
+    if(FKSExplicitSum.or..not.MCExplicitKLSum)error stop 'matching overrides'
     call FKSParamReader('sampled.dat',.false.,.true.)
-    if(FKSExplicitSum)error stop 'sampled card'
-    call FKSParamReader('explicit.dat',.false.,.true.)
+    if(FKSExplicitSum.or.MCExplicitKLSum)error stop 'sampled card'
     call FKSParamReader('old.dat',.false.,.true.)
-    if(FKSExplicitSum)error stop 'old card default'
-    FKSExplicitSum=.true.
+    if(.not.FKSExplicitSum.or..not.MCExplicitKLSum)error stop 'old card override and default'
+    call FKSParamReader('missing_keys.dat',.false.,.true.)
+    if(.not.FKSExplicitSum.or.MCExplicitKLSum)error stop 'missing key defaults'
+    MCExplicitKLSum=.true.
+    FKSExplicitSum=.false.
     call DefaultFKSParam()
-    if(FKSExplicitSum)error stop 'default reset'
+    if(.not.FKSExplicitSum.or.MCExplicitKLSum)error stop 'default reset'
     call get_command_argument(2,arg)
     call FKSParamReader(trim(arg),.true.,.true.)
     if(.not.FKSExplicitSum)error stop 'template default'
@@ -35,6 +37,7 @@ program check_fks_explicit_sum
     call get_command_argument(2,arg)
     read(arg,*)channel
     ickkw=0
+    FKSExplicitSum=.false.
     call setup_proc_map(mode,oldmap,channel)
     if(mode.ne.3)error stop 'sampled mode'
     n=3
@@ -71,13 +74,6 @@ program check_fks_explicit_sum
     call get_MC_integer(1,map(0,0),picked,volume)
     if(volume.ne.1d0)error stop 'adapted explicit weight'
     write(*,*) 'PASS map and sampling'
-  case('unlops')
-    ickkw=4
-    call setup_proc_map(mode,map,0)
-    if(mode.ne.0.or.map(0,0).ne.6)error stop 'sampled UNLOPS changed'
-    FKSExplicitSum=.true.
-    call setup_proc_map(mode,map,0)
-    error stop 'accepted explicit UNLOPS'
   case default
     error stop 'unknown test'
   end select

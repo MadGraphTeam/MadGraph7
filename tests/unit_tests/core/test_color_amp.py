@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -17,14 +17,18 @@
 color information for diagrams."""
 
 from __future__ import absolute_import
+import collections
 import copy
 import fractions
 
+import madgraph
+import madgraph.various.misc as misc
 import madgraph.core.base_objects as base_objects
 import madgraph.core.diagram_generation as diagram_generation
 
 import madgraph.core.color_amp as color_amp
 import madgraph.core.color_algebra as color
+import madgraph.loop.loop_color_amp as loop_color_amp
 
 import tests.unit_tests as unittest
 class ColorAmpTest(unittest.TestCase):
@@ -255,7 +259,11 @@ class ColorAmpTest(unittest.TestCase):
 
         myamplitude.set('process', myprocess)
 
-        myamplitude.generate_diagrams()
+        # What is checked below is colorize, against diagrams picked by their
+        # position, so it wants the plain generation order -- the four gluon
+        # merging reorders them
+        with misc.TMP_variable(madgraph, 'merge_quartic_vertices', False):
+            myamplitude.generate_diagrams()
 
         my_col_basis = color_amp.ColorBasis()
 
@@ -765,3 +773,721 @@ class ColorSquareTest(unittest.TestCase):
 
         self.assertEqual(color_amp.ColorMatrix.lcm(6, 3), 6)
         self.assertEqual(color_amp.ColorMatrix.lcmm(6, 3, 5, 2), 30)
+
+    def get_gluon_amplitude(self, n_final):
+        """Amplitude for g g > n_final gluons, using the test model."""
+
+        myleglist = base_objects.LegList()
+        myleglist.append(base_objects.Leg({'id':21, 'state':False}))
+        myleglist.append(base_objects.Leg({'id':21, 'state':False}))
+        myleglist.extend([base_objects.Leg({'id':21,
+                                            'state':True})] * n_final)
+        myamplitude = diagram_generation.Amplitude()
+        myamplitude.set('process', base_objects.Process({'legs':myleglist,
+                                                      'model':self.mymodel}))
+        myamplitude.generate_diagrams()
+        return myamplitude
+
+    def get_quark_amplitude(self, n_pairs):
+        """Amplitude for u u~ > n_pairs (u u~), using the test model."""
+
+        myleglist = base_objects.LegList()
+        myleglist.append(base_objects.Leg({'id':2, 'state':False}))
+        myleglist.append(base_objects.Leg({'id':-2, 'state':False}))
+        for _ in range(n_pairs):
+            myleglist.append(base_objects.Leg({'id':2, 'state':True}))
+            myleglist.append(base_objects.Leg({'id':-2, 'state':True}))
+        myamplitude = diagram_generation.Amplitude()
+        myamplitude.set('process', base_objects.Process({'legs':myleglist,
+                                                      'model':self.mymodel}))
+        myamplitude.generate_diagrams()
+        return myamplitude
+
+    def test_permute_immutable(self):
+        """Test the canonical form of a permuted color structure: traces are
+        cyclic so they are rotated to start on their smallest index, open
+        chains are not, and the color objects are sorted."""
+
+        # Tr is cyclic: exchanging 1 and 3 has to be rotated back
+        self.assertEqual(color_amp.permute_immutable((('Tr', (1, 2, 3, 4)),),
+                                                     {1: 3, 3: 1}),
+                         (('Tr', (1, 4, 3, 2)),))
+        # identity permutation still canonicalises
+        self.assertEqual(color_amp.permute_immutable((('Tr', (3, 4, 1, 2)),),
+                                                     {}),
+                         (('Tr', (1, 2, 3, 4)),))
+        # T is an open chain, no rotation, but the factors get sorted
+        self.assertEqual(color_amp.permute_immutable((('T', (5, 2, 1)),
+                                                      ('T', (5, 4, 3))),
+                                                     {1: 3, 3: 1}),
+                         (('T', (5, 2, 3)), ('T', (5, 4, 1))))
+        # indices which are not in the permutation are left alone
+        self.assertEqual(color_amp.permute_immutable((('ColorOne', ()),), {}),
+                         (('ColorOne', ()),))
+
+    def test_color_basis_symmetry(self):
+        """The permutations found have to map the basis onto itself, and for
+        a pure gluon process they act transitively so a single row of the
+        color matrix determines all the others."""
+
+        for n_final in range(1, 4):
+            col_basis = color_amp.ColorBasis(self.get_gluon_amplitude(n_final))
+            keys = sorted(col_basis.keys())
+            symmetry = color_amp.ColorBasisSymmetry(keys)
+
+            positions = dict((key, i) for i, key in enumerate(keys))
+            for induced in symmetry.generators1:
+                # a permutation of the basis, and an involution
+                self.assertEqual(sorted(induced), list(range(len(keys))))
+                for i in range(len(keys)):
+                    self.assertEqual(induced[induced[i]], i)
+
+            # all gluons are equivalent, so there is a single orbit
+            self.assertEqual(len(symmetry.representatives), 1)
+            # every row is reachable from the representative
+            self.assertEqual(symmetry.row_rep, [0] * len(keys))
+            self.assertEqual(len(positions), len(keys))
+
+    def test_color_basis_symmetry_no_symmetry(self):
+        """When no index permutation maps the basis onto itself, every row is
+        its own representative and the color matrix falls back to the plain
+        scan, which still has to give a correct symmetric matrix."""
+
+        # no transposition maps these bases onto themselves
+        for keys in [[(('T', (1, 2, 3)),), (('Tr', (1, 2, 3)),)],
+                     [(('T', (1, 2, 3)),)]]:
+            symmetry = color_amp.ColorBasisSymmetry(keys)
+            self.assertEqual(symmetry.generators1, [])
+            self.assertFalse(symmetry.has_symmetry())
+            self.assertEqual(symmetry.representatives, list(range(len(keys))))
+
+        # the color matrix then falls back to the plain scan
+        keys = [(('T', (1, 2, 3)),)]
+        col_matrix = color_amp.ColorMatrix(dict((key, []) for key in keys),
+                                           Nc=3)
+        self.assertEqual(len(col_matrix), 1)
+        self.assertEqual(col_matrix.col_matrix_fixed_Nc[(0, 0)],
+                         (fractions.Fraction(4), 0))
+
+    def test_color_matrix_matches_direct_computation(self):
+        """The color matrix built by orbits must agree entry by entry with the
+        one obtained by computing every entry independently."""
+
+        for amplitude in [self.get_gluon_amplitude(2),
+                          self.get_gluon_amplitude(3),
+                          self.get_quark_amplitude(1)]:
+            col_basis = color_amp.ColorBasis(amplitude)
+            col_matrix = color_amp.ColorMatrix(col_basis, Nc=3)
+            keys = sorted(col_basis.keys())
+
+            for i1, struct1 in enumerate(keys):
+                for i2, struct2 in enumerate(keys):
+                    new_struct2 = color_amp.ColorMatrix.fix_summed_indices(
+                                                            struct1, struct2)
+                    result, result_fixed_Nc = col_matrix.create_new_entry(
+                                        struct1, new_struct2, None, None, 3)
+                    self.assertEqual(col_matrix.col_matrix_fixed_Nc[(i1, i2)],
+                                     result_fixed_Nc)
+                    # entries are recycled between equivalent index pairs, so
+                    # the terms of the color factor can come in another order
+                    self.assertEqual(sorted(map(str, col_matrix[(i1, i2)])),
+                                     sorted(map(str, result)))
+
+            # the mapping interface still behaves like the dictionary it was
+            self.assertEqual(len(col_matrix), len(keys) ** 2)
+            self.assertTrue(col_matrix)
+            self.assertTrue((0, 0) in col_matrix)
+            self.assertFalse((0, len(keys)) in col_matrix)
+            self.assertEqual(sorted(col_matrix.keys()),
+                             sorted([(i, j) for i in range(len(keys))
+                                            for j in range(len(keys))]))
+
+    def test_relabel_canonical(self):
+        """The shortcut taken when a simplified color factor is recycled with
+        relabelled indices must agree with the full simplification, and it has
+        to be the path actually taken for QCD processes."""
+
+        col_basis = color_amp.ColorBasis()
+        col_basis.build(self.get_gluon_amplitude(3))
+        self.assertTrue(col_basis._fast_relabel_dict)
+        self.assertTrue(all(col_basis._fast_relabel_dict.values()))
+
+        # explicitly compare both paths on every recycled structure
+        for color_dict in col_basis._list_color_dict:
+            for col_str in color_dict.values():
+                canonical_rep, rep_dict = col_str.to_canonical()
+                if canonical_rep not in col_basis._canonical_dict:
+                    continue
+                col_fact = col_basis._canonical_dict[canonical_rep].create_copy()
+                col_fact.replace_indices(col_basis._invert_dict(rep_dict))
+                for one_str in col_fact:
+                    one_str.coeff = one_str.coeff * col_str.coeff
+                slow = col_fact.create_copy().simplify().simplify()
+                fast = col_basis._canonicalize_strings(col_fact)
+                self.assertEqual([s.to_immutable() for s in fast],
+                                 [s.to_immutable() for s in slow])
+                self.assertEqual([s.coeff for s in fast],
+                                 [s.coeff for s in slow])
+
+    def test_color_factor_simplify_merges_like_strings(self):
+        """ColorFactor.simplify has to add up similar strings, keeping them in
+        order of first appearance."""
+
+        col_fact = color.ColorFactor([
+                color.ColorString([color.T(1, 2, 3)],
+                                  coeff=fractions.Fraction(2, 3)),
+                color.ColorString([color.T(4, 5, 6)],
+                                  coeff=fractions.Fraction(1, 5)),
+                color.ColorString([color.T(1, 2, 3)],
+                                  coeff=fractions.Fraction(1, 3))])
+        result = col_fact.simplify()
+        self.assertEqual([col_str.to_immutable() for col_str in result],
+                         [(('T', (1, 2, 3)),), (('T', (4, 5, 6)),)])
+        self.assertEqual([col_str.coeff for col_str in result],
+                         [fractions.Fraction(1, 1), fractions.Fraction(1, 5)])
+
+        # strings adding up to zero are dropped
+        col_fact = color.ColorFactor([
+                color.ColorString([color.T(1, 2, 3)],
+                                  coeff=fractions.Fraction(1, 3)),
+                color.ColorString([color.T(1, 2, 3)],
+                                  coeff=fractions.Fraction(-1, 3))])
+        self.assertEqual(len(col_fact.simplify()), 0)
+
+    def test_spanning_generators(self):
+        """The spanning subset has to still reach every line, and dropping the
+        redundant generators has to make a real difference."""
+
+        col_basis = color_amp.ColorBasis(self.get_gluon_amplitude(3))
+        keys = sorted(col_basis.keys())
+        symmetry = color_amp.ColorBasisSymmetry(keys)
+        kept = symmetry.spanning_generators()
+        self.assertTrue(0 < len(kept) < len(symmetry.generators1))
+
+        representatives, representative, parent, gens = symmetry.spanning_tree()
+        self.assertEqual(len(gens), len(kept))
+        # a single orbit, and every line but the representative has a parent
+        self.assertEqual(representatives, [0])
+        self.assertEqual(representative, [0] * len(keys))
+        self.assertEqual(parent[0], None)
+        self.assertTrue(all(parent[i] is not None
+                            for i in range(1, len(keys))))
+        # every parent link is a generator applied to the parent line
+        for line in range(1, len(keys)):
+            origin, local = parent[line]
+            self.assertEqual(gens[local][origin], line)
+
+    def test_spanning_tree_rebuilds_color_matrix(self):
+        """Following the parents back to the representative gives the column
+        permutation relating the two lines, which has to rebuild the matrix."""
+
+        for amplitude in [self.get_gluon_amplitude(2),
+                          self.get_gluon_amplitude(3),
+                          self.get_quark_amplitude(1)]:
+            col_basis = color_amp.ColorBasis(amplitude)
+            col_matrix = color_amp.ColorMatrix(col_basis, Nc=3)
+            keys = sorted(col_basis.keys())
+            symmetry = color_amp.ColorBasisSymmetry(keys)
+            representatives, representative, parent, gens = \
+                                                    symmetry.spanning_tree()
+            denominator = max(col_matrix.get_line_denominators())
+            rows = [col_matrix.get_line_numerators(i, denominator)
+                    for i in range(len(keys))]
+
+            for line in range(len(keys)):
+                # walk up to the representative, permuting the columns
+                perm = list(range(len(keys)))
+                node = line
+                while parent[node] is not None:
+                    origin, local = parent[node]
+                    perm = [gens[local][p] for p in perm]
+                    node = origin
+                self.assertEqual(node, representative[line])
+                self.assertEqual([rows[node][perm[j]]
+                                  for j in range(len(keys))], rows[line])
+
+
+class DDMColorBasisTest(unittest.TestCase):
+    """Test the Del Duca-Dixon-Maltoni (n-2)! adjoint color basis"""
+
+    mypartlist = base_objects.ParticleList()
+    myinterlist = base_objects.InteractionList()
+    mymodel = base_objects.Model()
+
+    def setUp(self):
+        # same gluon + quark model as ColorSquareTest, built only once
+        if not len(self.mypartlist):
+            ColorSquareTest.setUp(self)
+        color_amp.set_ddm_basis(True)
+
+    def tearDown(self):
+        color_amp.set_ddm_basis(False)
+
+    def get_amplitude(self, ids):
+        """Amplitude for the process with the given pdg codes, the first two
+        being in the initial state."""
+
+        myleglist = base_objects.LegList()
+        for i, pdg in enumerate(ids):
+            myleglist.append(base_objects.Leg({'id': pdg, 'state': i > 1}))
+
+        myamplitude = diagram_generation.Amplitude()
+        myamplitude.set('process', base_objects.Process({'legs': myleglist,
+                                                    'model': self.mymodel}))
+        myamplitude.generate_diagrams()
+
+        return myamplitude
+
+    def test_ddm_half_ladder(self):
+        """The half-ladder structures written down explicitly"""
+
+        self.assertEqual(color_amp.ddm_half_ladder((2,), 1, 3),
+                         (('f', (1, 2, 3)),))
+        self.assertEqual(color_amp.ddm_half_ladder((3, 2), 1, 4),
+                         (('f', (-1, 2, 4)), ('f', (1, 3, -1))))
+        self.assertEqual(color_amp.ddm_half_ladder((2, 3, 4), 1, 5),
+                         (('f', (-2, 4, 5)), ('f', (-1, 3, -2)),
+                          ('f', (1, 2, -1))))
+
+    def test_ddm_basis_size_multi_gluons(self):
+        """The DDM basis of gg > n*g has (n+2-2)! elements instead of (n+1)!"""
+
+        for n, size in enumerate([1, 2, 6, 24]):
+            amplitude = self.get_amplitude([21] * (n + 3))
+            self.assertEqual(len(color_amp.ColorBasis(amplitude)), size)
+
+    def test_ddm_reduction_matches_trace_basis(self):
+        """Expanding the DDM decomposition of every diagram back on the trace
+        basis must give the direct trace decomposition."""
+
+        def trace_expand(col_str):
+            res = collections.defaultdict(fractions.Fraction)
+            for cs in color.ColorFactor([col_str]).full_simplify():
+                res[(cs.to_immutable(), cs.is_imaginary, cs.Nc_power)] += \
+                                                                     cs.coeff
+            return dict((k, v) for k, v in res.items() if v)
+
+        for nb_gluons in range(3, 6):
+            amplitude = self.get_amplitude([21] * nb_gluons)
+            col_basis = color_amp.ColorBasis()
+            color_dicts = col_basis.create_color_dict_list(amplitude)
+            ends = col_basis.get_ddm_ends()
+            self.assertEqual(ends, (1, nb_gluons))
+
+            nb_checked = 0
+            for color_dict in color_dicts:
+                for col_str in color_dict.values():
+                    via_ddm = collections.defaultdict(fractions.Fraction)
+                    for ddm_str in color_amp.reduce_to_ddm(col_str, *ends):
+                        for k, v in trace_expand(ddm_str).items():
+                            via_ddm[k] += v
+                    self.assertEqual(trace_expand(col_str),
+                                dict((k, v) for k, v in via_ddm.items() if v))
+                    nb_checked += 1
+            self.assertTrue(nb_checked > 0)
+
+    def test_ddm_color_matrix_gg_gg(self):
+        """The 2x2 DDM color matrix of gg > gg, N^2(N^2-1) on the diagonal and
+        half of it off diagonal"""
+
+        col_basis = color_amp.ColorBasis(self.get_amplitude([21] * 4))
+        col_matrix = color_amp.ColorMatrix(col_basis, Nc=3)
+
+        self.assertEqual(len(col_basis), 2)
+        for i, j, goal in [(0, 0, 72), (1, 1, 72), (0, 1, 36), (1, 0, 36)]:
+            self.assertEqual(col_matrix.col_matrix_fixed_Nc[(i, j)],
+                             (fractions.Fraction(goal, 1), 0))
+
+    def test_ddm_color_matrix_is_positive_definite(self):
+        """A Gram matrix of real color tensors: the diagonal must be positive
+        and the matrix symmetric, for an even as well as an odd number of
+        gluons."""
+
+        for nb_gluons in range(3, 6):
+            col_basis = color_amp.ColorBasis(self.get_amplitude([21] * nb_gluons))
+            col_matrix = color_amp.ColorMatrix(col_basis, Nc=3)
+            for i in range(len(col_basis)):
+                real, imag = col_matrix.col_matrix_fixed_Nc[(i, i)]
+                self.assertTrue(real > 0)
+                self.assertEqual(imag, 0)
+                for j in range(len(col_basis)):
+                    self.assertEqual(col_matrix.col_matrix_fixed_Nc[(i, j)],
+                                     col_matrix.col_matrix_fixed_Nc[(j, i)])
+
+    def test_ddm_fall_back_on_trace_basis(self):
+        """Processes which are not fully adjoint keep the trace basis"""
+
+        # u u~ > g g has T objects in its color structures
+        col_basis = color_amp.ColorBasis(self.get_amplitude([2, -2, 21, 21]))
+        self.assertEqual(col_basis._ddm_ends, None)
+        self.assertEqual(len(col_basis), 2)
+
+        # and so has u u~ > u u~
+        col_basis = color_amp.ColorBasis(self.get_amplitude([2, -2, 2, -2]))
+        self.assertEqual(col_basis._ddm_ends, None)
+        self.assertEqual(len(col_basis), 2)
+
+    def test_ddm_no_color_flow_decomposition(self):
+        """The color flow decomposition is not defined in the DDM basis, and
+        must say so instead of returning something wrong."""
+
+        col_basis = color_amp.ColorBasis(self.get_amplitude([21] * 4))
+        self.assertRaises(color_amp.ColorBasis.ColorBasisError,
+                          col_basis.color_flow_decomposition,
+                          {1: 8, 2: 8, 3: 8, 4: 8}, 2)
+
+
+class DDMColorSingletTest(unittest.TestCase):
+    """The DDM basis for gluons next to color singlets, as in the effective
+    g g H theory: a scalar h with g g h (adjoint delta, 2 Tr(a,b)), g g g h (f)
+    and g g g g h (f f) vertices, a second (pseudo)scalar a with g g a and
+    g g g a vertices, and a colorless h h h vertex (QED order) giving
+    color-disconnected structures."""
+
+    mypartlist = base_objects.ParticleList()
+    myinterlist = base_objects.InteractionList()
+    mymodel = base_objects.Model()
+
+    def setUp(self):
+        if not len(self.mypartlist):
+            # the gluon, quark and pure QCD vertices of ColorSquareTest
+            ColorSquareTest.setUp(self)
+            for name, pdg in [('h', 25), ('a', 36)]:
+                self.mypartlist.append(base_objects.Particle({'name': name,
+                      'antiname': name, 'spin': 1, 'color': 1,
+                      'mass': 'M' + name, 'width': 'zero', 'texname': name,
+                      'antitexname': name, 'line': 'dashed', 'charge': 0.,
+                      'pdg_code': pdg, 'propagating': True, 'is_part': True,
+                      'self_antipart': True}))
+            gluon = self.mypartlist[0]
+            delta = color.ColorString([color.Tr(0, 1)],
+                                      fractions.Fraction(2, 1))
+            ggggh = [color.ColorString([color.f(-1, 0, 1), color.f(2, 3, -1)]),
+                     color.ColorString([color.f(-1, 0, 2), color.f(1, 3, -1)]),
+                     color.ColorString([color.f(-1, 0, 3), color.f(1, 2, -1)])]
+            new_id = len(self.myinterlist) + 1
+            for scalar, vertices in [(self.mypartlist[-2],
+                                      [(2, [delta]),
+                                       (3, [color.ColorString([color.f(0, 1, 2)])]),
+                                       (4, ggggh)]),
+                                     (self.mypartlist[-1],
+                                      [(2, [delta]),
+                                       (3, [color.ColorString([color.f(0, 1, 2)])])])]:
+                for nb_gluons, col in vertices:
+                    self.myinterlist.append(base_objects.Interaction({
+                        'id': new_id,
+                        'particles': base_objects.ParticleList(
+                                                [gluon] * nb_gluons + [scalar]),
+                        'color': col,
+                        'lorentz': ['L%d' % i for i in range(len(col))],
+                        'couplings': dict(((i, i), 'GH') for i in range(len(col))),
+                        'orders': {'HIG': 1, 'QCD': nb_gluons - 2}}))
+                    new_id += 1
+            self.myinterlist.append(base_objects.Interaction({
+                'id': new_id,
+                'particles': base_objects.ParticleList([self.mypartlist[-2]] * 3),
+                'color': [],
+                'lorentz': ['L1'],
+                'couplings': {(0, 0): 'GHHH'},
+                'orders': {'QED': 1}}))
+            self.mymodel.set('particles', self.mypartlist)
+            self.mymodel.set('interactions', self.myinterlist)
+        color_amp.set_ddm_basis(True)
+
+    def tearDown(self):
+        color_amp.set_ddm_basis(False)
+
+    def get_amplitude(self, ids, orders=None):
+        """Amplitude for the process with the given pdg codes, the first two
+        being in the initial state. By default one effective vertex per
+        scalar (expansion order 1 per scalar, as in the effective theory) and
+        no h h h vertex."""
+
+        if orders is None:
+            orders = {'QED': 0,
+                      'HIG': sum(1 for pdg in ids if pdg in (25, 36))}
+        myleglist = base_objects.LegList()
+        for i, pdg in enumerate(ids):
+            myleglist.append(base_objects.Leg({'id': pdg, 'state': i > 1}))
+
+        myamplitude = diagram_generation.Amplitude()
+        myamplitude.set('process', base_objects.Process({'legs': myleglist,
+                                                    'model': self.mymodel,
+                                                    'orders': dict(orders)}))
+        myamplitude.generate_diagrams()
+
+        return myamplitude
+
+    def test_contract_adjoint_deltas(self):
+        """The deltas 2 Tr(a,b) are contracted into the f's"""
+
+        def contract(objs, coeff):
+            return color_amp.contract_adjoint_deltas(
+                color.ColorString(objs, fractions.Fraction(coeff, 1)))
+
+        # g g g h diagram: a gluon line emitting the scalar
+        res = contract([color.f(-1, 1, 2), color.Tr(-2, 4),
+                        color.f(-1, -2, 5)], 2)
+        self.assertEqual(res.to_immutable(),
+                         color.ColorString([color.f(-1, 1, 2),
+                                            color.f(-1, 4, 5)]).to_immutable())
+        self.assertEqual(res.coeff, 1)
+        # two scalars on the same internal line: a chain of deltas
+        res = contract([color.Tr(-1, -2), color.Tr(-2, 3), color.f(1, 2, -1)], 4)
+        self.assertEqual(res.to_immutable(), (('f', (1, 2, 3)),))
+        self.assertEqual(res.coeff, 1)
+        # the attributes are kept and the input is not modified
+        col_str = color.ColorString([color.Tr(-1, 3), color.f(1, 2, -1)],
+                                    fractions.Fraction(2, 1), True, -1)
+        res = color_amp.contract_adjoint_deltas(col_str)
+        self.assertEqual((res.is_imaginary, res.Nc_power), (True, -1))
+        self.assertEqual(str(col_str), '2 I 1/Nc^1 Tr(-1,3) f(1,2,-1)')
+        # a delta between two external legs cannot be contracted
+        res = contract([color.Tr(1, 2), color.f(3, 4, 5)], 2)
+        self.assertEqual(res.to_immutable(),
+                         color.ColorString([color.Tr(1, 2),
+                                            color.f(3, 4, 5)]).to_immutable())
+        # a closed delta is not a tree
+        self.assertRaises(color_amp.DDMError, contract,
+                          [color.Tr(-1, -1)], 2)
+
+    def test_ddm_basis_size_scalar_gluons(self):
+        """g g > (scalars) + n g has the (n+2-2)! DDM structures of the gluons,
+        with the first and last gluons at the ends of the half-ladders"""
+
+        for ids, size, ends in [([21, 21, 25, 21], 1, (1, 4)),
+                                ([21, 21, 25, 21, 21], 2, (1, 5)),
+                                ([21, 21, 25, 21, 21, 21], 6, (1, 6)),
+                                ([21, 21, 36, 21, 21, 21], 6, (1, 6)),
+                                ([21, 21, 25, 36, 21, 21], 2, (1, 6)),
+                                ([21, 21, 25, 25, 21, 21], 2, (1, 6))]:
+            col_basis = color_amp.ColorBasis(self.get_amplitude(ids))
+            self.assertEqual(col_basis._ddm_ends, ends)
+            self.assertEqual(len(col_basis), size)
+        self.assertEqual(color_amp.ddm_fallbacks, [])
+
+    def test_ddm_reduction_matches_trace_basis_scalars(self):
+        """Expanding the DDM decomposition of every diagram back on the trace
+        basis must give the direct trace decomposition, including the
+        diagrams with one or two adjoint deltas."""
+
+        def trace_expand(col_str):
+            res = collections.defaultdict(fractions.Fraction)
+            for cs in color.ColorFactor([col_str]).full_simplify():
+                res[(cs.to_immutable(), cs.is_imaginary, cs.Nc_power)] += \
+                                                                     cs.coeff
+            return dict((k, v) for k, v in res.items() if v)
+
+        for ids in ([21, 21, 25, 21], [21, 21, 36, 21],
+                    [21, 21, 25, 21, 21], [21, 21, 25, 21, 21, 21],
+                    [21, 21, 25, 36, 21, 21], [21, 21, 36, 21, 21, 21]):
+            col_basis = color_amp.ColorBasis()
+            color_dicts = col_basis.create_color_dict_list(
+                                                    self.get_amplitude(ids))
+            ends = col_basis.get_ddm_ends()
+            nb_deltas = collections.Counter()
+            for color_dict in color_dicts:
+                for col_str in color_dict.values():
+                    nb_deltas[sum(1 for o in col_str
+                                  if isinstance(o, color.Tr))] += 1
+                    via_ddm = collections.defaultdict(fractions.Fraction)
+                    for ddm_str in color_amp.reduce_to_ddm(col_str, *ends):
+                        for k, v in trace_expand(ddm_str).items():
+                            via_ddm[k] += v
+                    self.assertEqual(trace_expand(col_str),
+                                dict((k, v) for k, v in via_ddm.items() if v))
+            # diagrams with and without a delta were both checked
+            self.assertTrue(nb_deltas[0] and nb_deltas[1])
+            if 36 in ids and 25 in ids:
+                self.assertTrue(nb_deltas[2])
+
+    def test_ddm_color_matrix_scalar_is_the_gluon_one(self):
+        """A color singlet does not change the color space: the DDM color
+        matrix of g g > h g g is the one of g g > g g"""
+
+        col_matrix = color_amp.ColorMatrix(
+            color_amp.ColorBasis(self.get_amplitude([21, 21, 25, 21, 21])),
+            Nc=3)
+        for i, j, goal in [(0, 0, 72), (1, 1, 72), (0, 1, 36), (1, 0, 36)]:
+            self.assertEqual(col_matrix.col_matrix_fixed_Nc[(i, j)],
+                             (fractions.Fraction(goal, 1), 0))
+
+    def test_ddm_flow_basis_scalar_gluons(self):
+        """With the flow basis, the (n-1)! trace structures of the gluons are
+        rebuilt from the (n-2)! DDM ones"""
+
+        color_amp.set_ddm_basis(True, with_flow=True)
+        col_basis = color_amp.ColorBasis(
+                            self.get_amplitude([21, 21, 25, 21, 21, 21]))
+        self.assertEqual(len(col_basis), 6)
+        self.assertEqual(len(col_basis.get_flow_basis()), 24)
+        projection = col_basis.get_flow_projection()
+        self.assertEqual(len(projection), 24)
+        self.assertTrue(all(projection))
+
+    def test_ddm_flow_projection_reproduces_trace_jamps(self):
+        """The color flows (madevent JAMP2, event colors) are rebuilt from the
+        DDM JAMPs through get_flow_projection. For every diagram and color
+        chain, the trace coefficients obtained that way from its DDM
+        coefficients must be its direct trace coefficients, exactly (Nc=3),
+        including g g > h g, whose single DDM structure feeds two flows."""
+
+        def value(coeff, is_imaginary, Nc_power):
+            number = coeff * fractions.Fraction(3) ** Nc_power
+            return (0, number) if is_imaginary else (number, 0)
+
+        def vectors(basis):
+            res = collections.defaultdict(dict)
+            for index, struct in enumerate(sorted(basis.keys())):
+                for diag, chain, coeff, imag, power, loop in basis[struct]:
+                    re, im = res[(diag, chain)].get(index, (0, 0))
+                    v_re, v_im = value(coeff, imag, power)
+                    res[(diag, chain)][index] = (re + v_re, im + v_im)
+            return res
+
+        for ids in ([21, 21, 25, 21], [21, 21, 36, 21], [21, 21, 25, 21, 21],
+                    [21, 21, 25, 21, 21, 21], [21, 21, 25, 36, 21, 21],
+                    [21, 21, 21, 21, 21]):
+            color_amp.set_ddm_basis(True, with_flow=True)
+            col_basis = color_amp.ColorBasis(self.get_amplitude(ids))
+            flow_basis = col_basis.get_flow_basis()
+            self.assertTrue(col_basis._ddm_ends)
+            self.assertTrue(len(flow_basis) > len(col_basis))
+            projection = col_basis.get_flow_projection()
+            ddm_vectors, trace_vectors = vectors(col_basis), vectors(flow_basis)
+            self.assertEqual(set(ddm_vectors), set(trace_vectors))
+            for key, ddm_vector in ddm_vectors.items():
+                for row, terms in enumerate(projection):
+                    re, im = 0, 0
+                    for (one, coeff, imag, power), column in terms:
+                        a, b = value(coeff, imag, power)
+                        c, d = ddm_vector.get(column - 1, (0, 0))
+                        re, im = re + a * c - b * d, im + a * d + b * c
+                    self.assertEqual((re, im),
+                                     trace_vectors[key].get(row, (0, 0)),
+                                     '%s, diagram/chain %s, flow %d' % \
+                                     (ids, key, row))
+
+    def test_ddm_fall_back_disconnected_scalars(self):
+        """g g > h* > h h* > h g g gives delta^12 delta^45, which is not in the
+        span of the half-ladders: trace basis, with the reason recorded"""
+
+        col_basis = color_amp.ColorBasis(
+                    self.get_amplitude([21, 21, 25, 21, 21], orders={}))
+        self.assertEqual(col_basis._ddm_ends, None)
+        self.assertEqual(len(color_amp.ddm_fallbacks), 1)
+        self.assertTrue(color_amp.ddm_fallbacks[0][1].startswith(
+                                        'color structure not connected'))
+        # and a process with quarks says why as well, while g g > h, with
+        # only two colored legs, has nothing to report
+        color_amp.set_ddm_basis(True)
+        color_amp.ColorBasis(self.get_amplitude([2, -2, 21, 21]))
+        color_amp.ColorBasis(self.get_amplitude([21, 21, 25]))
+        self.assertEqual([reason.split(' (')[0] for proc, reason in
+                          color_amp.ddm_fallbacks],
+                         ['not all the colored legs are gluons'])
+
+    def test_contract_adjoint_deltas_fast_path_and_coefficient(self):
+        """Without a delta the string itself is returned, with no copy, and
+        a contraction keeps an exact Fraction coefficient, also from an int"""
+
+        col_str = color.ColorString([color.f(1, 2, -1), color.f(-1, 3, 4)])
+        self.assertIs(color_amp.contract_adjoint_deltas(col_str), col_str)
+        # an external-external delta is kept, so no copy either
+        col_str = color.ColorString([color.Tr(1, 2), color.f(3, 4, 5)])
+        self.assertIs(color_amp.contract_adjoint_deltas(col_str), col_str)
+
+        col_str = color.ColorString([color.Tr(-1, 3), color.f(1, 2, -1)])
+        col_str.coeff = 1
+        res = color_amp.contract_adjoint_deltas(col_str)
+        self.assertIsInstance(res.coeff, fractions.Fraction)
+        self.assertEqual(res.coeff, fractions.Fraction(1, 2))
+
+    def test_find_ddm_ends_reasons(self):
+        """Each structure which cannot go on the DDM basis is reported with a
+        fixed reason (the specific object only in the detail)"""
+
+        def reason(*objs):
+            col_basis = color_amp.ColorBasis()
+            col_basis._list_color_dict = [{(0,): color.ColorString(list(objs))}]
+            try:
+                col_basis.find_ddm_ends()
+            except color_amp.DDMError as error:
+                return error.reason
+            self.fail('no DDMError for %s' % [str(o) for o in objs])
+
+        # a repeated external index is reported, not taken for a process
+        # with fewer than three colored legs
+        self.assertEqual(reason(color.f(1, 1, 2)), 'repeated external index')
+        # a fundamental trace over gluons only (e.g. from a quark loop) is
+        # not a quark leg
+        self.assertEqual(reason(color.Tr(1, 2, 4)),
+                         'not a product of f objects')
+        self.assertEqual(reason(color.d(1, 2, 4)),
+                         'not a product of f objects')
+        self.assertEqual(reason(color.T(4, 1, 2)),
+                         'not all the colored legs are gluons')
+        self.assertEqual(reason(color.Tr(1, 2), color.Tr(4, 5)),
+                         'color structure not connected')
+
+        error = color_amp.DDMError('closed adjoint delta', 'Tr(-1,-1)')
+        self.assertEqual(str(error), 'closed adjoint delta (Tr(-1,-1))')
+        self.assertEqual(str(color_amp.DDMError('empty color string')),
+                         'empty color string')
+
+    def test_ddm_fall_back_records_the_fixed_reason(self):
+        """ddm_fallbacks holds (process, reason) with the fixed reason only,
+        so a process failing twice in the same way is listed once"""
+
+        col_basis = color_amp.ColorBasis()
+        col_basis._process_name = 'g g > h g g'
+        for index in (-1, -2):
+            col_basis.ddm_fall_back(color_amp.DDMError(
+                'summed index of an adjoint delta not contracted with anything',
+                'index %i' % index))
+        self.assertEqual(color_amp.ddm_fallbacks,
+            [('g g > h g g',
+              'summed index of an adjoint delta not contracted with anything')])
+
+
+class LoopNcMemoTest(unittest.TestCase):
+    """The process-wide canonical color memo must not leak loop_Nc_power."""
+
+    def setUp(self):
+        self.saved = dict(color_amp.ColorBasis._canonical_dict)
+        color_amp.ColorBasis._canonical_dict.clear()
+
+    def tearDown(self):
+        color_amp.ColorBasis._canonical_dict.clear()
+        color_amp.ColorBasis._canonical_dict.update(self.saved)
+
+    @staticmethod
+    def _fill(compute_loop_nc, loop_Nc_power):
+        """Feed one T(-1,1,2)T(-1,3,4) chain through a fresh LoopColorBasis."""
+        basis = loop_color_amp.LoopColorBasis(compute_loop_nc=compute_loop_nc)
+        col_str = color.ColorString([color.T(-1, 1, 2), color.T(-1, 3, 4)])
+        col_str.loop_Nc_power = loop_Nc_power
+        basis.update_color_basis({(0,): col_str}, 0)
+        return basis
+
+    def test_loop_Nc_power_survives_a_poisoned_memo(self):
+        """A compute_loop_nc=False basis must not pin loop_Nc_power for the
+        next basis: the memo is keyed on the canonical color string only."""
+
+        # A [sqrvirt=]/standalone-style generation: loop_Nc_power is None.
+        self._fill(False, None)
+        # A later loop-induced madevent generation asks for the real value.
+        basis = self._fill(True, 1)
+
+        powers = [entry[5] for entries in basis.values() for entry in entries]
+        self.assertTrue(powers)
+        self.assertEqual(powers, [1] * len(powers))
+
+    def test_memo_is_shared_across_loop_bases(self):
+        """The memo must stay process-wide: that sharing is what makes
+        multi-subprocess loop generation tractable."""
+
+        self._fill(True, 1)
+        self.assertTrue(color_amp.ColorBasis._canonical_dict)
+        self.assertTrue(self._fill(True, 1)._canonical_dict is
+                        color_amp.ColorBasis._canonical_dict)

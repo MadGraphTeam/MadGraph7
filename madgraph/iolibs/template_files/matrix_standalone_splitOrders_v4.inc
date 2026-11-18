@@ -1,55 +1,20 @@
-      
-      SUBROUTINE %(proc_prefix)sSMATRIXHEL(P,HEL,ANS_SUMMED)
-      IMPLICIT NONE
-C
-C CONSTANT
-C
-      INTEGER    NEXTERNAL
-      PARAMETER (NEXTERNAL=%(nexternal)d)
-      INTEGER                 NCOMB         
-      PARAMETER (             NCOMB=%(ncomb)d)
-      INTEGER NSQAMPSO
-      PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
-C  
-C ARGUMENTS 
-C  
-      REAL*8 P(0:3,NEXTERNAL),ANS_SUMMED
-      INTEGER HEL
-CF2PY INTENT(OUT) :: ANS_SUMMED
-CF2PY INTENT(IN) ::HEL
-CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
-C
-C GLOBAL VARIABLES
-C
-      INTEGER USERHEL
-      COMMON/%(proc_prefix)sHELUSERCHOICE/USERHEL
-C ----------
-C BEGIN CODE
-C ----------
-      USERHEL=HEL
-      CALL %(proc_prefix)sSMATRIX(P,ANS_SUMMED)
-      USERHEL=-1
-
-      END
-
-      SUBROUTINE %(proc_prefix)sSMATRIX(P,ANS_SUMMED)
+      SUBROUTINE %(proc_prefix)sSMATRIX(P, FLAV_IDX, ANS_SUMMED)
 C
 C     Simple routine wrapper to provide the same interface for
 C     backward compatibility for usage without split orders.
 C
-C  
+C
 C CONSTANTS
-C 
+C
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER NSQAMPSO
       PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
-C  
-C ARGUMENTS 
-C 
+C
+C ARGUMENTS
+C
       REAL*8 P(0:3,NEXTERNAL), ANS_SUMMED
-CF2PY INTENT(OUT) :: ANS_SUMMED
-CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
+      INTEGER FLAV_IDX
 C
 C VARIABLES
 C
@@ -58,30 +23,26 @@ C
 C
 C BEGIN CODE
 C
-      CALL %(proc_prefix)sSMATRIX_SPLITORDERS(P,ANS)
+      CALL %(proc_prefix)sSMATRIX_SPLITORDERS(P, FLAV_IDX, ANS)
       ANS_SUMMED=ANS(0)
 
       END
 
-      SUBROUTINE %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P,HEL,ANS)
+      SUBROUTINE %(proc_prefix)sSMATRIXHEL(P,HEL, FLAV_IDX, ANS)
       IMPLICIT NONE
 C
 C CONSTANT
 C
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
-      INTEGER                 NCOMB         
+      INTEGER                 NCOMB
       PARAMETER (             NCOMB=%(ncomb)d)
-      INTEGER NSQAMPSO
-      PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
-C  
-C ARGUMENTS 
-C  
-      REAL*8 P(0:3,NEXTERNAL),ANS(0:NSQAMPSO)
+C
+C ARGUMENTS
+C
+      REAL*8 P(0:3,NEXTERNAL),ANS
       INTEGER HEL
-CF2PY INTENT(OUT) :: ANS
-CF2PY INTENT(IN) ::HEL
-CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
+      INTEGER FLAV_IDX
 C
 C GLOBAL VARIABLES
 C
@@ -90,35 +51,66 @@ C
 C ----------
 C BEGIN CODE
 C ----------
-      USERHEL=HEL
-      CALL %(proc_prefix)sSMATRIX_SPLITORDERS(P,ANS)
+%(smatrixhel_userhel)s
+      CALL %(proc_prefix)sSMATRIX(P, FLAV_IDX, ANS)
       USERHEL=-1
 
       END
 
-      SUBROUTINE %(proc_prefix)sSMATRIX_SPLITORDERS(P,ANS)
-C  
+      SUBROUTINE %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P,HEL, FLAV_IDX, ANS)
+      IMPLICIT NONE
+C
+C CONSTANT
+C
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
+C
+C ARGUMENTS
+C
+      REAL*8 P(0:3,NEXTERNAL),ANS(0:NSQAMPSO)
+      INTEGER HEL
+      INTEGER FLAV_IDX
+C
+C GLOBAL VARIABLES
+C
+      INTEGER USERHEL
+      COMMON/%(proc_prefix)sHELUSERCHOICE/USERHEL
+C ----------
+C BEGIN CODE
+C ----------
+%(smatrixhel_userhel)s
+      CALL %(proc_prefix)sSMATRIX_SPLITORDERS(P, FLAV_IDX, ANS)
+      USERHEL=-1
+
+      END
+
+      SUBROUTINE %(proc_prefix)sSMATRIX_SPLITORDERS(P, FLAV_IDX, ANS)
+C
 %(info_lines)s
-C 
-C MadGraph5_aMC@NLO StandAlone Version
-C 
+C
+C MadGraph StandAlone Version
+C
 C Returns amplitude squared summed/avg over colors
 c and helicities
 c for the point in phase space P(0:3,NEXTERNAL)
-C  
+C
 %(process_lines)s
-C  
+C
       IMPLICIT NONE
-C  
+C
 C CONSTANTS
-C  
+C
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
-      INTEGER    NINITIAL 
+      INTEGER    NINITIAL
       PARAMETER (NINITIAL=%(nincoming)d)
       INTEGER NPOLENTRIES
       PARAMETER (NPOLENTRIES=(NEXTERNAL+1)*6)
-      INTEGER                 NCOMB         
+      INTEGER                 NCOMB
       PARAMETER (             NCOMB=%(ncomb)d)
       INTEGER NSQAMPSO
       PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
@@ -127,16 +119,15 @@ C
       LOGICAL CHOSEN_SO_CONFIGS(NSQAMPSO)
       DATA CHOSEN_SO_CONFIGS/%(chosen_so_configs)s/
       COMMON/%(proc_prefix)sCHOSEN_BORN_SQSO/CHOSEN_SO_CONFIGS
-C  
-C ARGUMENTS 
-C  
-      REAL*8 P(0:3,NEXTERNAL),ANS(0:NSQAMPSO)
-CF2PY INTENT(OUT) :: ANS
-CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
-C  
-C LOCAL VARIABLES 
 C
-      INTEGER NTRY
+C ARGUMENTS
+C
+      REAL*8 P(0:3,NEXTERNAL),ANS(0:NSQAMPSO)
+C     FLAV_IDX (the dummy argument) is declared with NFLAV below.
+C
+C LOCAL VARIABLES
+C
+      INTEGER FLAVOR(NEXTERNAL)
       REAL*8 T(NSQAMPSO), BUFF
       INTEGER IHEL,IDEN, I, J, JJ
 C     beam polarisation, see the same block in matrix_standalone_v4.inc
@@ -146,25 +137,56 @@ C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
       INTEGER BEAMS_HELAVGFACTOR(2)
       DATA (BEAMS_HELAVGFACTOR(I),I=1,2)/%(beamone_helavgfactor)d,%(beamtwo_helavgfactor)d/
       INTEGER JC(NEXTERNAL)
-      LOGICAL GOODHEL(NCOMB)
-      DATA NTRY/0/
-      DATA GOODHEL/NCOMB*.FALSE./
+      INTEGER NFLAV
+      PARAMETER (NFLAV=%(nflav)d)
+      INTEGER NNTRY_FLAV, NGOODHEL_FLAV
+      PARAMETER (NNTRY_FLAV=NFLAV)
+      PARAMETER (NGOODHEL_FLAV=NCOMB*NFLAV)
+      INTEGER FLAV_IDX
+      INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+C     FLAV_USE is the flavor part of FLAV_IDX. Without crossing
+C     the two are the same; with crossing FLAV_IDX also carries
+C     a crossing code and only the reduced index may travel down
+C     to MATRIX / GET_AMP.
+      INTEGER FLAV_USE
+%(so_cross_decl)s
+      INTEGER NTRY(NFLAV)
+      LOGICAL GOODHEL(NCOMB,NFLAV)
+      DATA NTRY/NNTRY_FLAV*0/
+      DATA GOODHEL/NGOODHEL_FLAV*.FALSE./
+C     C-parity: FLIP(IHEL) is the row with every helicity
+C     negated. If each row and its flip give the same |M|^2
+C     (checked on the first calls, per squared order), only
+C     one row of each pair is computed and counted twice.
+      INTEGER FLIP(NCOMB)
+      LOGICAL CSYM(NFLAV), DEDUP
+      REAL*8 TSTORE(NSQAMPSO,NCOMB)
+      REAL*8 TSMAX
+%(flip_data)s
+      DATA CSYM/NNTRY_FLAV*.TRUE./
+%(so_csym_decl)s
 %(den_factor_line)s
 C
 C GLOBAL VARIABLES
 C
+C     Materialized by FILL_NHEL, which is called below before
+C     the loop that reads it (a DATA statement may not
+C     initialise a COMMON outside a BLOCK DATA, which is what
+C     this template used to rely on).
       INTEGER NHEL(NEXTERNAL,NCOMB)
-%(helicity_lines)s
-%(den_factor_line)s
       COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
-      
+
+C     USERHEL selects one helicity configuration: here it is its
+C     row in the NHEL table, which is what the NLO callers pass.
+C     The helicity code of the other standalone outputs runs
+C     over the same per-leg lists (polarization included), so
+C     this row number is also that code.
       INTEGER USERHEL
-      DATA USERHEL/-1/        
+      DATA USERHEL/-1/
       COMMON/%(proc_prefix)sHELUSERCHOICE/USERHEL
       LOGICAL HELRESET
       common/%(proc_prefix)shelreset/HELRESET
       data HELRESET/.true./
-
 
       INTEGER POLARIZATIONS(0:NEXTERNAL,0:5)
       COMMON/%(proc_prefix)sBORN_BEAM_POL/POLARIZATIONS
@@ -174,44 +196,115 @@ C
 C     FUNCTIONS
 C
       LOGICAL %(proc_prefix)sIS_BORN_HEL_SELECTED
+      INTEGER %(proc_prefix)sBROKEN_SYM
 
 c----------
 c   Check if helreset mode is on
 c---------
  if (HELRESET) then
-    NTRY = 0
-    do i=1,NCOMB
-       GOODHEL(I) = .false.
-    enddo
-    HELRESET = .false.
+   do i=1,NFLAV
+      NTRY(i) = 0
+      CSYM(i) = .true.
+%(so_csym_reset)s
+   enddo
+   do i=1,NCOMB
+      do j=1,NFLAV
+         GOODHEL(I,j) = .false.
+      enddo
+   enddo
+    HELRESET = .false.%(helreset_cross)s
  endif
 
 
 C ----------
 C BEGIN CODE
 C ----------
-      IF(USERHEL.EQ.-1) NTRY=NTRY+1
+C     FLAV_IDX=0 (or out of range): GET_FLAVOR_INDEX could not
+C     resolve the requested flavor -- it is not an allowed
+C     combination, so its matrix element is identically zero.
+C     Short-circuit before touching the 1..NFLAV GOODHEL/NTRY
+C     arrays. With the crossing machinery written out an index
+C     ABOVE NFLAV is legal -- it names a crossing -- so only the
+C     lower bound is checked there and the crossing decode below
+C     rejects the rest.
+%(so_entry_guard)s
+      FLAV_USE = MOD(FLAV_IDX-1, NFLAV) + 1
+%(so_cross_decode)s
+C     The helicity filter is deliberately shared by every
+C     crossing of a given flavor, so it is indexed by FLAV_USE
+C     rather than by the full FLAV_IDX.
+      CALL %(proc_prefix)sGET_FLAVOR(FLAV_USE, FLAVOR)
+      CALL %(proc_prefix)sFILL_NHEL()
+      IF(USERHEL.EQ.-1) NTRY(FLAV_USE)=NTRY(FLAV_USE)+1
+%(so_csym_incr)s
       DO IHEL=1,NEXTERNAL
          JC(IHEL) = +1
       ENDDO
+%(so_cross_apply)s
       ANS(:) = 0d0
 C     When spin-2 particles are involved, the Helicity filtering is dangerous for the 2->1 topology.
 C     This is because depending on the MC setup the initial PS points have back-to-back initial states
 C     for which some of the spin-2 helicity configurations are zero. But they are no longer zero
 C     if the point is boosted on the z-axis. Remember that HELAS helicity amplitudes are no longer
 C     lorentz invariant with expternal spin-2 particles (only the helicity sum is).
-C     For this reason, we simply remove the filterin when there is only three external particles.
+C     For this reason, we simply remove the filtering when there is only three external particles.
       IF (NEXTERNAL.LE.3) THEN
-        GOODHEL(:) = .True.
+        GOODHEL(:,:) = .True.
+      ENDIF
+C     C-parity de-duplication is only safe for the plain
+C     unpolarized helicity sum of the UNCROSSED process and only
+C     once its own scan has settled. ... and never with a
+C     polarised beam: a row and its C-parity flip carry OPPOSITE
+C     beam helicities, so after the beam weight they are not
+C     equal.
+      DEDUP = %(so_csym_ntry)s.GE.20 .AND. CSYM(FLAV_USE)
+     &        .AND. USERHEL.EQ.-1 .AND. POLARIZATIONS(0,0).EQ.-1%(so_dedup_cross)s
+     &        .AND. ABS(BEAMPOL(1)).LE.1D0 .AND. ABS(BEAMPOL(2)).LE.1D0
+C     A crossed flavor evaluates the BASE helicity table, so
+C     NHEL(JJ,IHEL) is not the crossed beam's helicity: refused
+C     rather than guessed, as in matrix_standalone_v4.inc.
+      IF (FLAV_IDX.GT.NFLAV.AND.NINITIAL.EQ.2.AND.
+     &   (ABS(BEAMPOL(1)).GT.1D0.OR.ABS(BEAMPOL(2)).GT.1D0)) THEN
+        WRITE(*,*) 'ERROR: beam polarisation is not supported for a',
+     &    ' crossed flavor index (FLAV_IDX=',FLAV_IDX,')'
+        STOP 1
       ENDIF
       DO IHEL=1,NCOMB
          IF (USERHEL.EQ.-1.OR.USERHEL.EQ.IHEL) THEN
-           IF (GOODHEL(IHEL) .OR. NTRY .LT. 20 .OR.USERHEL.NE.-1) THEN
-              IF(NTRY.GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
+%(so_goodhel_gate)s
+              IF(NTRY(FLAV_USE).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                 CYCLE
               ENDIF
-              CALL %(proc_prefix)sMATRIX(P ,NHEL(1,IHEL),JC(1), T)
-C Support for polarised beam, see matrix_standalone_v4.inc
+C             Fast phase: a row whose fully flipped C-parity partner has
+C             an identical |M|^2 (CSYM) is computed once, at the lower
+C             index, and counted twice -- skip the higher-index partner
+C             here.
+              IF (DEDUP.AND.IHEL.GT.FLIP(IHEL)) CYCLE
+C             MATRIX / GET_AMP get already crossed arrays and the
+C             reduced flavor index: the crossing was applied once,
+C             above.
+%(so_matrix_call)s
+C             Scan phase: cache |M|^2 to test the C-parity partner below
+C             -- BEFORE the beam weight, which makes a row and its flip
+C             differ by design.
+              IF (%(so_csym_ntry)s.LT.20%(so_dedup_cross)s) THEN
+                DO I=1,NSQAMPSO
+                  TSTORE(I,IHEL)=T(I)
+                ENDDO
+              ENDIF
+C             Fast phase: the representative carries its skipped
+C             partner's identical contribution, component by component.
+C             DEDUP is off whenever a beam is polarised (see its
+C             definition).
+              IF (DEDUP.AND.IHEL.LT.FLIP(IHEL)) THEN
+                DO I=1,NSQAMPSO
+                  T(I)=T(I)+T(I)
+                ENDDO
+              ENDIF
+C Support for polarised beam, see matrix_standalone_v4.inc.
+C NHEL(JJ,IHEL) is the beam's own helicity only for an
+C uncrossed flavor; a crossed one is refused before the
+C helicity loop.
               IF (NINITIAL.EQ.2) THEN
                 DO JJ=1,NINITIAL
                   IF (ABS(BEAMPOL(JJ)).LE.1D0) CYCLE
@@ -233,28 +326,65 @@ C Support for polarised beam, see matrix_standalone_v4.inc
                 ENDIF
                 BUFF=BUFF+T(I)
               ENDDO
-              IF (BUFF .NE. 0D0 .AND. .NOT.    GOODHEL(IHEL)) THEN
-                GOODHEL(IHEL)=.TRUE.
-              ENDIF
+%(so_goodhel_train)s
             ENDIF
           ENDIF
        ENDDO
+C     Scan phase: drop the C-parity pairing of any row whose
+C     fully flipped partner gave a different |M|^2 (parity/C
+C     violation). One mismatch at any scan point permanently
+C     invalidates the pair (robust, like the zero-filter), and
+C     because the verdict is all-or-nothing that turns the reuse
+C     off for the whole flavor. There is no way to reach the
+C     fast phase without having run this block: the two are
+C     gated on the same counter (NTRY<20 here, NTRY>=20 for
+C     DEDUP), which nothing but this routine advances.
+      IF (USERHEL.EQ.-1.AND.%(so_csym_ntry)s.LT.20
+     &    .AND.POLARIZATIONS(0,0).EQ.-1%(so_dedup_cross)s) THEN
+C     A pair of rows that are BOTH numerically zero differ only
+C     by roundoff, and a purely RELATIVE test on that noise
+C     fails at random -- one such pair then vetoes every real
+C     pair. So also require the difference to be significant
+C     against TSMAX, the largest |M|^2 of this scan point.
+        TSMAX=0D0
+        DO IHEL=1,NCOMB
+          DO I=1,NSQAMPSO
+            IF (ABS(TSTORE(I,IHEL)).GT.TSMAX) TSMAX=ABS(TSTORE(I,IHEL))
+          ENDDO
+        ENDDO
+        DO IHEL=1,NCOMB
+          IF (FLIP(IHEL).EQ.IHEL) THEN
+C           Self-paired row: no distinct partner, so the loop cannot
+C           be halved uniformly -- refuse the reuse for this flavor.
+            CSYM(FLAV_USE)=.FALSE.
+          ELSE IF (FLIP(IHEL).GT.IHEL) THEN
+            DO I=1,NSQAMPSO
+              IF (ABS(TSTORE(I,IHEL)-TSTORE(I,FLIP(IHEL))).GT.
+     &            1D-6*(ABS(TSTORE(I,IHEL))+ABS(TSTORE(I,FLIP(IHEL))))
+     &            .AND.ABS(TSTORE(I,IHEL)-TSTORE(I,FLIP(IHEL))).GT.
+     &            1D-12*TSMAX) THEN
+                CSYM(FLAV_USE)=.FALSE.
+              ENDIF
+            ENDDO
+          ENDIF
+        ENDDO
+      ENDIF
       ANS(0)=0.0d0
+%(so_iden_line)s
       DO I=1,NSQAMPSO
-        ANS(I)=ANS(I)/DBLE(IDEN)
         IF (CHOSEN_SO_CONFIGS(I)) THEN
           ANS(0)=ANS(0)+ANS(I)
         ENDIF
       ENDDO
       IF(USERHEL.NE.-1) THEN
         DO I=0,NSQAMPSO
-          ANS(I)=ANS(I)*HELAVGFACTOR
+          ANS(I)=ANS(I)*%(helavg_user)s
         ENDDO
       ELSE
         DO J=1,NINITIAL
           IF (POLARIZATIONS(J,0).ne.-1) THEN
             DO I=0,NSQAMPSO
-              ANS(I)=ANS(I)*BEAMS_HELAVGFACTOR(J)
+              ANS(I)=ANS(I)*%(helavg_beam)s
               ANS(I)=ANS(I)/POLARIZATIONS(J,0)
             ENDDO
           ENDIF
@@ -262,26 +392,34 @@ C Support for polarised beam, see matrix_standalone_v4.inc
       ENDIF
       END
 
- 
-      SUBROUTINE %(proc_prefix)sMATRIX(P,NHEL,IC,RES)
-C  
+
+      SUBROUTINE %(proc_prefix)sMATRIX(P,NHEL,IC,FLAV_IDX,RES)
+      use model_object
+C
+C CONTRACT: P, NHEL and IC must ALREADY be crossed and
+C FLAV_IDX must ALREADY be reduced to [1,NFLAV] (see
+C GET_AMP). SMATRIX_SPLITORDERS applies the crossing once,
+C before its helicity loop; this routine never decodes
+C anything.
+C
 %(info_lines)s
 C
-C Returns amplitude squared -- no average over initial state/symmetry factor
+C Returns amplitude squared summed/avg over colors
 c for the point with external lines W(0:6,NEXTERNAL)
-C  
+C
 %(process_lines)s
-C  
+C
+      use aloha_object
       IMPLICIT NONE
-C  
+C
 C CONSTANTS
-C  
+C
       INTEGER    NGRAPHS
-      PARAMETER (NGRAPHS=%(ngraphs)d) 
+      PARAMETER (NGRAPHS=%(ngraphs)d)
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER    NWAVEFUNCS, NCOLOR
-      PARAMETER (NWAVEFUNCS=%(nwavefuncs)d, NCOLOR=%(ncolor)d) 
+      PARAMETER (NWAVEFUNCS=%(nwavefuncs)d, NCOLOR=%(ncolor)d)
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
       REAL*8     ZERO
@@ -291,41 +429,42 @@ C
       INTEGER %(proc_prefix)sDENOM
       INTEGER %(proc_prefix)sCF(%(ncolortriang)d)
       COMMON /%(proc_prefix)sCOLOR_MATRIX/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
-C  
-C ARGUMENTS 
-C  
+C
+C ARGUMENTS
+C
       REAL*8 P(0:3,NEXTERNAL)
       INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
+      INTEGER FLAV_IDX
       REAL*8 RES(NSQAMPSO)
-C  
-C LOCAL VARIABLES 
-C  
+C
+C LOCAL VARIABLES
+C
       INTEGER I,J,M,N
       COMPLEX*16 ZTEMP
       COMPLEX*16 AMP(NGRAPHS)
       INTEGER CF_INDEX
       COMPLEX*16 JAMP(NCOLOR,NAMPSO)
       COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
-      COMPLEX*16 W(20,NWAVEFUNCS)
+      type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
 C
 C FUNCTION
 C
       INTEGER %(proc_prefix)sSQSOINDEX
-C  
+C
 C GLOBAL VARIABLES
-C  
+C
       include 'coupl.inc'
 %(global_variable)s
-C  
+C
 C COLOR DATA
-C  
+C
 %(color_data_lines)s
 C ----------
 C BEGIN CODE
 C ----------
-       call %(proc_prefix)sGET_AMP(P,NHEL,IC,AMP)
+       call %(proc_prefix)sGET_AMP(P,NHEL,IC,FLAV_IDX,AMP)
 c      WRITE (*,*) '  -> AMP = ', AMP
        call %(proc_prefix)sGET_JAMP(AMP,JAMP)
 c      WRITE (*,*) '  -> JAMP = ', JAMP
@@ -337,27 +476,85 @@ c      write (*,*) "  -> col.ave. |M|^2 for HEL=[", NHEL ,"] = ", %(proc_prefix)
        END
 
 
-       SUBROUTINE %(proc_prefix)sGET_NHEL(IDEN_STAR,NHEL_STAR)
+      SUBROUTINE %(proc_prefix)sGET_NHEL(IDEN_STAR,NHEL_STAR)
 C CONSTANTS
 C
 CF2PY INTENT(OUT) :: NHEL_STAR
 CF2PY INTENT(OUT) :: IDEN_STAR
-       INTEGER    NEXTERNAL
-       PARAMETER (NEXTERNAL=%(nexternal)d)
-       INTEGER                 NCOMB
-       PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
 
-       INTEGER NHEL(NEXTERNAL,NCOMB),NHEL_STAR(NEXTERNAL,NCOMB)
-       INTEGER IDEN,IDEN_STAR
+      INTEGER NHEL(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+      INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
+      INTEGER IDEN,IDEN_STAR
+%(den_factor_line)s
+      CALL %(proc_prefix)sFILL_NHEL()
+      IDEN_STAR = IDEN
+      NHEL_STAR = NHEL
+      END
 
- %(helicity_lines)s
- %(den_factor_line)s
-       IDEN_STAR = IDEN
-       NHEL_STAR = NHEL
-       END
+      SUBROUTINE %(proc_prefix)sGET_NHEL_IDX(FLAV_IDX_IN,IDEN_STAR,
+     & NHEL_STAR)
+C     Same as GET_NHEL, but reporting the denominator
+C     SMATRIX_SPLITORDERS ACTUALLY divides by for FLAV_IDX_IN,
+C     rather than the static IDEN.
+C
+C     The static IDEN is the averaging/symmetry factor of the
+C     *representative* flavor. SMATRIX_SPLITORDERS never uses it
+C     bare: it applies IDEN/BROKEN_SYM(FLAVOR), BROKEN_SYM
+C     correcting the identical-particle count of the
+C     representative to that of the actual flavor. A caller that
+C     reads GET_NHEL and multiplies ANS by it to recover the raw
+C     helicity/color sum -- the natural thing to do -- is
+C     therefore wrong for every non-representative flavor of a
+C     merged matrix element.
+C
+C     NHEL_STAR is the helicity table of the process FLAV_IDX_IN
+C     names, in its own leg order: column C is the code C that
+C     SMATRIXHEL takes for it (the base table when uncrossed).
+C
+C     GET_NHEL is deliberately left alone: its signature and its
+C     value are what existing callers expect.
+C
+%(nhel_idx_decl)s
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER    NFLAV
+      PARAMETER (NFLAV=%(nflav)d)
+CF2PY INTENT(IN) :: FLAV_IDX_IN
+CF2PY INTENT(OUT) :: NHEL_STAR
+CF2PY INTENT(OUT) :: IDEN_STAR
+      INTEGER FLAV_IDX_IN
+      INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
+      INTEGER IDEN_STAR
+      INTEGER NHI_FLAV, NHI_CROSS
+      INTEGER FLAVOR(NEXTERNAL)
+      INTEGER %(proc_prefix)sBROKEN_SYM
+
+      CALL %(proc_prefix)sGET_NHEL(IDEN_STAR, NHEL_STAR)
+C     An index naming no valid flavor gives a zero matrix
+C     element (see the guard at the top of SMATRIX_SPLITORDERS);
+C     report a 0 denominator rather than a plausible-looking
+C     one.
+      IF (FLAV_IDX_IN .LT. 1) THEN
+        IDEN_STAR = 0
+        RETURN
+      ENDIF
+      NHI_FLAV = MOD(FLAV_IDX_IN-1, NFLAV) + 1
+      NHI_CROSS = (FLAV_IDX_IN-1) / NFLAV
+      CALL %(proc_prefix)sGET_FLAVOR(NHI_FLAV, FLAVOR)
+%(nhel_idx_body)s
+      RETURN
+      END
 
 
-SUBROUTINE %(proc_prefix)sGET_AMP(P,NHEL,IC,AMP)
+SUBROUTINE %(proc_prefix)sGET_AMP(P,NHEL,IC,FLAV_IDX,AMP)
+      use model_object
 C
 %(process_lines)s
 C
@@ -365,7 +562,9 @@ CF2PY INTENT(OUT) :: AMP
 CF2PY INTENT(IN) :: NHEL
 CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
 CF2PY INTENT(IN) :: IC
+CF2PY INTENT(IN) :: FLAV_IDX
 
+      use aloha_object
       IMPLICIT NONE
 C
 C CONSTANTS
@@ -383,13 +582,20 @@ C ARGUMENTS
 C
       REAL*8 P(0:3,NEXTERNAL)
       INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
+      INTEGER FLAV_IDX
+      INTEGER FLAVOR(NEXTERNAL)
 C
 C LOCAL VARIABLES
 C
       COMPLEX*16 AMP(NGRAPHS)
-      COMPLEX*16 W(20,NWAVEFUNCS)
+      type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
+      double precision bwcutoff
+      INTEGER    NFLAV
+      PARAMETER (NFLAV=%(nflav)d)
+      INTEGER AMP_I
+%(flavor_mask_decl)s
 C
 C GLOBAL VARIABLES
 C
@@ -397,6 +603,9 @@ C
 %(global_variable)s
 C
 C
+      bwcutoff=15 ! use if $ syntax is defined in the process
+%(so_getamp_guard)s
+%(flavor_mask_setup)s
 %(helas_calls)s
 %(amp2_lines)s
 END
@@ -464,7 +673,7 @@ C
 C COLOR DATA
 C
 
-     RES(:) = 0.D0 
+     RES(:) = 0.D0
      DO M = 1, NAMPSO
        CF_INDEX= 0
        DO I = 1, NCOLOR
@@ -478,7 +687,7 @@ C
          ENDDO
        ENDDO
      ENDDO
-     RES(:) = RES(:)/%(proc_prefix)sDENOM     
+     RES(:) = RES(:)/%(proc_prefix)sDENOM
      END
 
       SUBROUTINE %(proc_prefix)sGET_INTER(JAMP_1,JAMP_2, INTER)
@@ -504,17 +713,17 @@ C
 C COLOR DATA
 C
 
-      INTER(:) = 0.D0 
+      INTER(:) = 0.D0
       DO M = 1, NAMPSO
         CF_INDEX= 0
         DO I = 1, NCOLOR
           DO J = I, NCOLOR
               CF_INDEX = CF_INDEX +1
               DO N = 1, NAMPSO
-                 INTER(%(proc_prefix)sSQSOINDEX(M,N)) = 
-     $            INTER(%(proc_prefix)sSQSOINDEX(M,N)) + 
+                 INTER(%(proc_prefix)sSQSOINDEX(M,N)) =
+     $            INTER(%(proc_prefix)sSQSOINDEX(M,N)) +
      $            %(proc_prefix)sCF(CF_INDEX)*(DCONJG(JAMP_2(I,N))*
-     $            JAMP_1(J,M)+DCONJG(JAMP_2(J,N))*JAMP_1(I,M))             
+     $            JAMP_1(J,M)+DCONJG(JAMP_2(J,N))*JAMP_1(I,M))
               ENDDO
            ENDDO
         ENDDO
@@ -523,19 +732,21 @@ C
       RETURN
       END
 
-     SUBROUTINE  %(proc_prefix)sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, ALPHAS, MU_R2, INTER_SUM)
+     SUBROUTINE  %(proc_prefix)sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, MU_R2, INTER_SUM)
 c     P momenta
 c     NHEL base of helicity that are not changing
 c     POS(N_CHNGING): position of the changing helicity
 c     n_changing: number of changing helicity
 c     ALLOW_HEL(NCOMB, N_CHANGING): combination of helicity to consider (all jamp computed)
 c     INTER((NCOMB*NCOMB+1)/2i,NSQAMPSO) : all interference term (not the symmetric one)
+      use model_object
       implicit none
 CF2PY INTENT(IN) :: P(0:3,%(nexternal)d)
 CF2PY INTENT(IN) :: POS(N_CHANGING)
 CF2PY INTENT(IN) :: N_CHANGING
 CF2PY INTENT(IN) :: ALLOW_HEL(N_CHANGING*N_COMB)
 CF2PY INTENT(IN) :: N_COMB
+CF2PY INTENT(IN) :: FLAVOR(%(nexternal)d)
 CF2PY INTENT(IN) :: ALPHAS
 CF2PY INTENT(OUT) :: INTER_SUM(N_COMB*(N_COMB+1)/2)
 c
@@ -555,6 +766,7 @@ C
       INTEGER NINTER
       INTEGER POS(*)
       INTEGER ALLOW_HEL(*)
+      INTEGER FLAVOR(NEXTERNAL)
       DOUBLE COMPLEX, ALLOCATABLE :: TMP_INTER(:,:)
       DOUBLE PRECISION ALPHAS, MU_R2
       DOUBLE COMPLEX INTER_SUM(*)
@@ -583,11 +795,11 @@ C
 C     include coupling definition to update the value of alphas
 C
       include 'coupl.inc'
-      
+
       ninter = N_COMB*(N_COMB+1)/2
       allocate(TMP_INTER(NSQAMPSO, ninter))
       TMP_INTER(:,:) = (0d0, 0d0)
-      
+
       do I = 1,  N_COMB*(N_COMB+1)/2
         INTER_SUM(I) = 0d0
       enddo
@@ -597,6 +809,11 @@ C
           G = 2* DSQRT(ALPHAS*pi)
           call UPDATE_AS_PARAM()
       ENDIF
+C     The NHEL table is materialized at runtime (see FILL_NHEL),
+C     so it has to be filled here too: a caller reaching the
+C     density matrix before any SMATRIX evaluation would
+C     otherwise read a table of zeros.
+      CALL %(proc_prefix)sFILL_NHEL()
 
       DO IHEL =1, NB_NHEL
         THISNHEL(:) = NHEL(:, IHEL)
@@ -604,7 +821,7 @@ C
             if(THISNHEL(POS(IPART)).NE.ALLOW_HEL(IPART)) GOTO 10 !BYPASS COMPUTATION FOR HELICITY
         ENDDO
         TMP_INTER(:,:) = 0
-        call  %(proc_prefix)sGET_ALL_INTER(P, THISNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, TMP_INTER)
+        call  %(proc_prefix)sGET_ALL_INTER(P, THISNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, TMP_INTER)
 C       Support for polarised beam: reweight the initial-state helicity
 C       sum exactly as SMATRIX_PROD does in the v1 path. Skipped unless
 C       the process has two incoming legs -- the same shared library
@@ -640,7 +857,7 @@ C           in BLOCK DATA BEAMPOL_DEFAULT.
 
 
 
-      SUBROUTINE  %(proc_prefix)sGET_ALL_INTER(P, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, INTER)
+      SUBROUTINE  %(proc_prefix)sGET_ALL_INTER(P, NHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)
 c     P momenta
 c     NHEL base of helicity that are not changing
 c     POS(N_CHNGING): position of the changing helicity
@@ -654,6 +871,7 @@ CF2PY INTENT(IN) :: POS(N_CHANGING)
 CF2PY INTENT(IN) :: N_CHANGING
 CF2PY INTENT(IN) :: ALLOW_HEL(N_CHANGING*N_COMB)
 CF2PY INTENT(IN) :: N_COMB
+CF2PY INTENT(IN) :: FLAVOR(%(nexternal)d)
 CF2PY INTENT(OUT) :: INTER(NSQAMPSO,NCOMB*(NCOMB+1)/2)
 c
 C
@@ -668,6 +886,7 @@ C
       INTEGER N_CHANGING, N_COMB
       INTEGER POS(*)
       INTEGER ALLOW_HEL(*)
+      INTEGER FLAVOR(NEXTERNAL)
       DOUBLE COMPLEX INTER(NSQAMPSO,*)
 c
 c     Intermediate array
@@ -685,6 +904,10 @@ c
 c     LOCAL
 c
       INTEGER I,J,SOL,N
+      INTEGER FLAV_IDX
+      INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+      INTEGER %(proc_prefix)sBROKEN_SYM
+      DOUBLE PRECISION RESCALE
 
 C ----------
 C BEGIN CODE
@@ -697,19 +920,27 @@ C ----------
         s_ncomb=n_comb
       endif
       IC(:)=1
+      FLAV_IDX = %(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR)
       do I = 1, N_COMB
          do N = 1, N_CHANGING
             NHEL(POS(N)) = ALLOW_HEL((I-1)*N_CHANGING+N)
          enddo
-         call %(proc_prefix)sGET_AMP(P,NHEL,IC,AMP)
+         call %(proc_prefix)sGET_AMP(P,NHEL,IC,FLAV_IDX,AMP)
          call %(proc_prefix)sGET_JAMP(AMP,JAMP(1,1,I))
       enddo
 
+C     GET_INTER only sees JAMPs, so it normalises with the bare
+C     static IDEN and cannot apply any flavor dependent factor.
+C     SMATRIX does ANS/IDEN*BROKEN_SYM(FLAVOR); the density
+C     matrix must use the same normalisation or the sum of its
+C     diagonal stops matching SMATRIX.
+      RESCALE = DBLE(%(proc_prefix)sBROKEN_SYM(FLAVOR))
      SOL = 0
      DO I = 1, N_COMB
         DO J= I, N_COMB
           SOL = SOL +1
           call %(proc_prefix)sGET_INTER(JAMP(1,1,I), JAMP(1,1,J), INTER(1,SOL))
+          INTER(:,SOL) = INTER(:,SOL) * RESCALE
         ENDDO
      ENDDO
 
@@ -718,56 +949,127 @@ C ----------
      END
 
 
+      SUBROUTINE %(proc_prefix)sGET_ALL_INTER_SUMSO(P, NHEL, POS,
+     & N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)
+C     GET_ALL_INTER summed over the chosen squared split
+C     orders, as GET_DENSITY sums them: one INTER per pair of
+C     helicity combinations, the shape the f2py dispatch
+C     (py_get_all_inter) allocates.
+      implicit none
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL)
+      INTEGER N_CHANGING, N_COMB
+      INTEGER POS(*)
+      INTEGER ALLOW_HEL(*)
+      INTEGER FLAVOR(NEXTERNAL)
+      DOUBLE COMPLEX INTER(*)
+      INTEGER I, J, NINTER
+      DOUBLE COMPLEX, ALLOCATABLE :: TMP_INTER(:,:)
+      LOGICAL CHOSEN_SO_CONFIGS(NSQAMPSO)
+      COMMON/%(proc_prefix)sCHOSEN_BORN_SQSO/CHOSEN_SO_CONFIGS
+
+      NINTER = N_COMB*(N_COMB+1)/2
+      ALLOCATE(TMP_INTER(NSQAMPSO, NINTER))
+      TMP_INTER(:,:) = (0d0, 0d0)
+      CALL %(proc_prefix)sGET_ALL_INTER(P, NHEL, POS, N_CHANGING,
+     & ALLOW_HEL, N_COMB, FLAVOR, TMP_INTER)
+      DO I = 1, NINTER
+        INTER(I) = (0d0, 0d0)
+        DO J = 1, NSQAMPSO
+          IF (CHOSEN_SO_CONFIGS(J)) INTER(I) = INTER(I) + TMP_INTER(J,I)
+        ENDDO
+      ENDDO
+      DEALLOCATE(TMP_INTER)
+      RETURN
+      END
 
 
 
-      SUBROUTINE %(proc_prefix)sGET_value(P, ALPHAS, NHEL ,ANS)
-      IMPLICIT NONE   
+
+      SUBROUTINE %(proc_prefix)sGET_value(P, ALPHAS, NHEL, FLAVOR ,ANS)
+C     f2py interface accepting the full FLAVOR(NEXTERNAL) array (back-compat):
+C     resolve it to FLAV_IDX and forward to GET_value_idx.
+      use model_object
+      IMPLICIT NONE
 C
 C CONSTANT
 C
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
-C  
-C ARGUMENTS 
-C  
+C
+C ARGUMENTS
+C
       REAL*8 P(0:3,NEXTERNAL),ANS
       INTEGER NHEL
-      DOUBLE PRECISION ALPHAS 
-      real*8 pi     
-CF2PY INTENT(OUT) :: ANS  
-CF2PY INTENT(IN) :: NHEL   
-CF2PY INTENT(IN) :: P(0:3,NEXTERNAL) 
+      DOUBLE PRECISION ALPHAS
+      INTEGER FLAVOR(NEXTERNAL)
+      INTEGER FLAV_IDX
+      INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+CF2PY INTENT(OUT) :: ANS
+CF2PY INTENT(IN) :: NHEL
+CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
 CF2PY INTENT(IN) :: ALPHAS
-C     ROUTINE FOR F2PY to read the benchmark point.    
-C     the include file with the values of the parameters and masses 
+CF2PY INTENT(IN) :: FLAVOR(NEXTERNAL)
+
+      FLAV_IDX = %(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR)
+      CALL %(proc_prefix)sGET_value_idx(P, ALPHAS, NHEL, FLAV_IDX, ANS)
+      return
+      end
+
+      SUBROUTINE %(proc_prefix)sGET_value_idx(P, ALPHAS, NHEL, FLAV_IDX ,ANS)
+C     f2py interface accepting the flavor index directly.
+      use model_object
+      IMPLICIT NONE
+C
+C CONSTANT
+C
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+C
+C ARGUMENTS
+C
+      REAL*8 P(0:3,NEXTERNAL),ANS
+      INTEGER NHEL
+      DOUBLE PRECISION ALPHAS
+      real*8 pi
+      INTEGER FLAV_IDX
+CF2PY INTENT(OUT) :: ANS
+CF2PY INTENT(IN) :: NHEL
+CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
+CF2PY INTENT(IN) :: ALPHAS
+CF2PY INTENT(IN) :: FLAV_IDX
+C     the include file with the values of the parameters and masses
       include "coupl.inc"
-      
+
       pi = 3.141592653589793d0
       G = 2* DSQRT(ALPHAS*pi)
       call UPDATE_AS_PARAM()
       if (NHEL.ne.0) then
-        CALL %(proc_prefix)sSMATRIXHEL(P, NHEL, ANS)
+        CALL %(proc_prefix)sSMATRIXHEL(P, NHEL, FLAV_IDX, ANS)
       else
-        CALL %(proc_prefix)sSMATRIX(P, ANS)
+        CALL %(proc_prefix)sSMATRIX(P, FLAV_IDX, ANS)
       endif
-      return 
+      return
       end
 
       SUBROUTINE %(proc_prefix)sINITIALISEMODEL(PATH)
-C     ROUTINE FOR F2PY to read the benchmark point.    
-      IMPLICIT NONE   
+C     ROUTINE FOR F2PY to read the benchmark point.
+      IMPLICIT NONE
       CHARACTER*512 PATH
-CF2PY INTENT(IN) :: PATH 
-      call setpara(PATH)  !first call to setup the paramaters    
-      return 
+CF2PY INTENT(IN) :: PATH
+      call setpara(PATH)  !first call to set up the parameters
+      return
       end
 
       LOGICAL FUNCTION %(proc_prefix)sIS_BORN_HEL_SELECTED(HELID)
       IMPLICIT NONE
-C     
+C
 C     CONSTANTS
-C     
+C
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER    NCOMB
@@ -792,7 +1094,7 @@ C
 C     ----------
 C     BEGIN CODE
 C     ----------
-      
+
       %(proc_prefix)sIS_BORN_HEL_SELECTED = .True.
       if (POLARIZATIONS(0,0).eq.-1) THEN
         RETURN
@@ -817,3 +1119,91 @@ C     ----------
 
       RETURN
       END
+
+
+      SUBROUTINE %(proc_prefix)sDECODE_HEL(CODE, THISNHEL)
+C     Decode a canonical mixed-radix helicity CODE
+C     (1..NCOMBFULL) into the per-leg helicity values
+C     THISNHEL(NEXTERNAL). The last external leg is the
+C     least-significant digit, matching the itertools.product
+C     ordering used to build the allowed-code list HELALLOW.
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=%(maxhel)d)
+      INTEGER CODE, THISNHEL(NEXTERNAL)
+      INTEGER I, K, R, D
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+%(nhstate_data)s
+%(states_data)s
+      R = CODE - 1
+      DO K=NEXTERNAL,1,-1
+        D = MOD(R, NHSTATE(K))
+        THISNHEL(K) = STATES(D+1, K)
+        R = R / NHSTATE(K)
+      ENDDO
+      RETURN
+      END
+
+      SUBROUTINE %(proc_prefix)sFILL_NHEL()
+C     Materialize the PROCESS_NHEL config table by decoding the
+C     list of allowed canonical helicity codes (HELALLOW). Runs
+C     once; the table is a runtime cache of the encoder
+C     representation, kept for the density-matrix and python
+C     (f2py) interfaces.
+C
+C     The inverse (code from helicity values) that
+C     matrix_standalone_v4.inc also carries is deliberately NOT
+C     written here: nothing in the tree calls it -- the crossing
+C     routines that would are not part of this template, and
+C     they inline their own encode anyway. A split-orders
+C     matrix.f is written once per MadLoop / FKS born as well as
+C     per standalone subprocess, so a dead routine there is paid
+C     for many times over.
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER NHEL(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+C     A DATA statement may not initialise a COMMON outside a
+C     BLOCK DATA, so the list is a local DATA here and the table
+C     it decodes into is filled on the first call -- every
+C     reader is ordered behind that call.
+C     matrix_standalone_v4.inc additionally publishes this list
+C     through a common of its own, because there the external
+C     helicity label IS the code; here it is the row number (see
+C     SMATRIX_SPLITORDERS), so that common would have no reader.
+      INTEGER HELALLOW(NCOMB)
+      INTEGER I, K, THIS(NEXTERNAL)
+      LOGICAL DONE
+      SAVE DONE
+%(hel_allow_data)s
+      DATA DONE /.FALSE./
+      IF (DONE) RETURN
+      DO I=1,NCOMB
+        CALL %(proc_prefix)sDECODE_HEL(HELALLOW(I), THIS)
+        DO K=1,NEXTERNAL
+          NHEL(K,I) = THIS(K)
+        ENDDO
+      ENDDO
+      DONE = .TRUE.
+      RETURN
+      END
+
+
+%(so_crossing_routines)s
+
+
+%(broken_sym_function)s
+
+
+%(flavor_index_function)s
+
+
+%(flavor_array_function)s
+
+
+%(so_pdg_function)s

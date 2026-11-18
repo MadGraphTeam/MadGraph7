@@ -23,7 +23,9 @@ class TestFxFxDeltaWeights(unittest.TestCase):
                               'parameter(nsplitorders=1,amp_split_size=1,qcd_pos=1,cpower_pos=0)\n'
                               'double precision amp_split(1)\ncommon/test_amplitudes/amp_split',
                 'pmass.inc': 'pmass=0d0',
-                'run.inc': 'integer ickkw,ktscheme\ncommon/test_run/ickkw,ktscheme',
+                'run.inc': 'integer ickkw,ktscheme\ncommon/test_run/ickkw,ktscheme\n'
+                           'double precision real_channels_x0\n'
+                           'common/c_real_channels_x0/real_channels_x0',
             }
             for name, source in includes.items():
                 (work / name).write_text(''.join(

@@ -43,6 +43,8 @@ c Dimensions and buffers are initialized once, with firsttime_run.
       save nsqso, MLResArrayDim
 c statistics for MadLoop
       double precision avgPoleRes(2),PoleDiff(2)
+      INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
       parameter (nbadmax = 5)
@@ -163,7 +165,7 @@ C        look for orders which match the nlo order constraint
              virt_wgt= virt_wgt + virt_wgts(1,i)
              single  = single + virt_wgts(2,i)
              double  = double + virt_wgts(3,i)
-C         keep track of the separate pieces correspoinding to
+C         keep track of the separate pieces corresponding to
 C          different coupling combinations
              do j = 1, nsplitorders
               amp_orders(j) = getordpowfromindex_ML5(j, i)
@@ -191,7 +193,7 @@ c once the initial pole check is performed.
                 virt_wgt= virt_wgt + virt_wgts(1,i)
                 single  = single + virt_wgts(2,i)
                 double  = double + virt_wgts(3,i)
-C         keep track of the separate pieces correspoinding to
+C         keep track of the separate pieces corresponding to
 C          different coupling combinations
                 do j = 1, nsplitorders
                  amp_orders(j) = getordpowfromindex_ML5(j, i)
@@ -221,7 +223,7 @@ c virtual as flat as possible
                 virt_wgt= virt_wgt + virt_wgts_hel(1,i) * hel_fact
                 single  = single + virt_wgts_hel(2,i) * hel_fact
                 double  = double + virt_wgts_hel(3,i) * hel_fact
-C         keep track of the separate pieces correspoinding to
+C         keep track of the separate pieces corresponding to
 C          different coupling combinations
                 do j = 1, nsplitorders
                  amp_orders(j) = getordpowfromindex_ML5(j, i)
@@ -495,6 +497,11 @@ c Update the statistics using the MadLoop return code (ret_code)
          n10=n10+1              ! no known ret_code (10)
       endif
       n1(mod(ret_code,10))=n1(mod(ret_code,10))+1 ! unit ret code distribution
+c Unit 2 is NinjaRS; classify precision with T, not the stability digit H.
+      if (mod(ret_code,10).eq.2.and.(mod(ret_code,100)/10.eq.1.or.
+     $     mod(ret_code,100)/10.eq.3)) NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
+      if (mod(ret_code,10).eq.2.and.(mod(ret_code,100)/10.eq.2.or.
+     $     mod(ret_code,100)/10.eq.4)) NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
 
 c Write out the unstable, non-rescued phase-space points (MadLoop return
 c code is in the four hundreds) or the ones that are found by the pole

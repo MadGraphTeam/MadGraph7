@@ -1,0 +1,1599 @@
+# SPDX-License-Identifier: 0BSD
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from types import MappingProxyType
+from typing import Literal, cast
+
+from pyamplicol.config import (
+    ACTIONS,
+    Action,
+    ClampRequest,
+    ColorContraction,
+    ColorFFTBasis,
+    ConfigResolution,
+    ConfigurationError,
+    EvaluatorExecutionMode,
+    LoopInducedPolicy,
+    PoleSelection,
+    ProcessGroupAnalysis,
+    ReductionBackend,
+    resolve_config,
+)
+from pyamplicol.config.models import ON_FAILURE
+
+from .licensing import LicenseKind, LicenseRequestInvocation
+from .recurrence_export import (
+    RecurrenceExportInvocation,
+    add_export_options,
+    parse_export_recurrence,
+)
+from .utilities import UtilityInvocation, parse_utility
+
+_LICENSE_ACTIONS: dict[str, LicenseKind] = {
+    "request-symbolica-trial-license": "trial",
+    "request-symbolica-hobbyist-license": "hobbyist",
+}
+_MODEL_ACTIONS: dict[str, Action] = {
+    "inspect": Action.MODEL_INSPECT,
+    "compile": Action.MODEL_COMPILE,
+    "processes": Action.MODEL_PROCESSES,
+}
+_UTILITY_COMMANDS = frozenset({"config", "examples", "doctor", "self-test"})
+_DIRECT_COMMANDS = frozenset(
+    {
+        *(action.value for action in ACTIONS if not action.value.startswith("model-")),
+        "profile",
+        "model",
+        *_LICENSE_ACTIONS,
+    }
+)
+_REMOVED_FLAT_MODEL_COMMANDS = frozenset(
+    action.value for action in _MODEL_ACTIONS.values()
+)
+
+
+def _freeze(value: object) -> object:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {str(key): _freeze(entry) for key, entry in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(entry) for entry in value)
+    return value
+
+
+def _auto_int(value: str) -> str | int:
+    if value == "auto":
+        return value
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected 'auto' or an integer") from exc
+
+
+def _nullable_int(value: str) -> int | None:
+    if value.lower() in ("none", "null"):
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected an integer or 'null'") from exc
+
+
+def _key_list(value: str) -> tuple[str, tuple[str, ...]]:
+    if "=" not in value:
+        raise argparse.ArgumentTypeError("expected NAME=ITEM[,ITEM...]")
+    key, raw_entries = value.split("=", 1)
+    entries = tuple(entry.strip() for entry in raw_entries.split(",") if entry.strip())
+    if not key.strip() or not entries:
+        raise argparse.ArgumentTypeError("expected NAME=ITEM[,ITEM...]")
+    return key.strip(), entries
+
+
+def _key_int(value: str) -> tuple[str, int]:
+    if "=" not in value:
+        raise argparse.ArgumentTypeError("expected NAME=INTEGER")
+    key, raw_entry = value.split("=", 1)
+    try:
+        entry = int(raw_entry)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected NAME=INTEGER") from exc
+    if not key.strip():
+        raise argparse.ArgumentTypeError("expected NAME=INTEGER")
+    return key.strip(), entry
+
+
+@dataclass(frozen=True, slots=True)
+class CliInvocation:
+    action: Action | None
+    card: Path | None
+    dedicated: Mapping[str, object]
+    overrides: tuple[str, ...]
+    dry_run: bool = False
+    full_physics: bool = False
+    correlators: Path | None = None
+    # --fields-description-help: describe the tables after them.
+    fields_help: bool = False
+
+    def __post_init__(self) -> None:
+        frozen = _freeze(self.dedicated)
+        assert isinstance(frozen, Mapping)
+        object.__setattr__(self, "dedicated", frozen)
+        object.__setattr__(self, "overrides", tuple(self.overrides))
+
+    def resolve(
+        self,
+        *,
+        clamps: Sequence[ClampRequest] = (),
+    ) -> ConfigResolution:
+        if any(
+            str(override).partition("=")[0].strip() == "output.format"
+            and str(override).partition("=")[2].strip().strip("\"'").casefold()
+            == "json"
+            for override in self.overrides
+        ):
+            raise ConfigurationError(
+                "CLI JSON output is selected only with --json; "
+                "remove the output.format override"
+            )
+        return resolve_config(
+            self.card,
+            action=self.action,
+            dedicated=self.dedicated,
+            overrides=self.overrides,
+            clamps=clamps,
+        )
+
+
+def _common_parent(*, include_card: bool = True) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(add_help=False)
+    if include_card:
+        parser.add_argument(
+            "--card",
+            type=Path,
+            default=argparse.SUPPRESS,
+            help="Read defaults from a TOML run card.",
+        )
+    parser.add_argument(
+        "--set",
+        dest="_overrides",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="PATH=VALUE",
+        help="Override one schema field; repeat to apply overrides in order.",
+    )
+    parser.add_argument(
+        "--json",
+        dest="_json_output",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Emit machine-readable JSON instead of human-facing tables.",
+    )
+    parser.add_argument(
+        "--fields-description-help",
+        dest="_fields_help",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=(
+            "after the tables, describe each table and its columns in plain "
+            "words (the command runs as usual)"
+        ),
+    )
+    parser.add_argument(
+        "--color",
+        dest="output.color",
+        choices=("auto", "always", "never"),
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--progress",
+        dest="output.progress",
+        choices=("auto", "tty", "log", "off"),
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--log-level",
+        dest="output.log_level",
+        choices=("debug", "info", "warning", "error"),
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--symbolica-suggestion",
+        dest="symbolica.suggest_license",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    return parser
+
+
+def _add_model_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--model", dest="model.source", default=argparse.SUPPRESS)
+    parser.add_argument(
+        "--restriction", dest="model.restriction", default=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--simplify",
+        dest="model.simplify",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--model-cache",
+        dest="model.cache",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--model-cache-dir",
+        dest="model.cache_dir",
+        type=Path,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--loop-preparation-cache",
+        dest="model.loop_preparation_cache",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "reuse the persistent cache of one-loop model preparations "
+            "(default on; off with --no-model-cache too)"
+        ),
+    )
+
+
+def _add_process_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--loop-coupling-order",
+        dest="process.loop_coupling_orders",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="NAME",
+        help="Request a virtual correction; repeat for a union of correction orders.",
+    )
+    parser.add_argument(
+        "--loop-induced",
+        dest="process.loop_induced",
+        choices=tuple(LoopInducedPolicy),
+        default=argparse.SUPPRESS,
+        help=(
+            "one-loop processes without a Born amplitude (|A_loop|^2): 'auto' "
+            "(default) serves a request with no Born member loop-induced, "
+            "'skip' serves none, 'only' serves only them, 'include' serves "
+            "both kinds as separate contributions"
+        ),
+    )
+    parser.add_argument(
+        "--name",
+        dest="_process_names",
+        action="append",
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--multiparticle",
+        dest="_multiparticles",
+        type=_key_list,
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="NAME=ITEM[,ITEM...]",
+    )
+    parser.add_argument(
+        "--flavor-scheme",
+        dest="process.flavor_scheme",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--max-quark-lines",
+        dest="process.max_quark_lines",
+        type=_nullable_int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--coupling-order-policy",
+        dest="process.coupling_order_policy",
+        choices=("minimal", "explicit"),
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--max-coupling-order",
+        dest="_max_coupling_orders",
+        type=_key_int,
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="NAME=INTEGER",
+    )
+
+
+def _add_process_grouping_options(
+    parser: argparse.ArgumentParser,
+    *,
+    generation: bool,
+) -> None:
+    if generation:
+        parser.add_argument(
+            "--flavor-blind",
+            dest="process.flavor_blind",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help=(
+                "generate one representative per flavour-relabelling class and "
+                "record the others as its group members (assumed, not verified)"
+            ),
+        )
+        parser.add_argument(
+            "--flavor-blind-strict",
+            dest="process.flavor_blind_strict",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help=(
+                "like --flavor-blind, but route only the relations that are "
+                "symmetries of the allowed model vertices and generate the others"
+            ),
+        )
+    parser.add_argument(
+        "--consider-charge-conjugation",
+        dest="process.consider_charge_conjugation",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help="also relate processes through charge conjugation (default: on)",
+    )
+    parser.add_argument(
+        "--only-unit-multiplier",
+        dest="process.only_unit_multiplier",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="accept only numerically found relations with factor 1",
+    )
+    parser.add_argument(
+        "--analyze-process-groups",
+        dest="process.analyze_process_groups",
+        choices=tuple(ProcessGroupAnalysis),
+        default=argparse.SUPPRESS if generation else ProcessGroupAnalysis.NUMERICAL,
+        help=(
+            "search for subprocesses with equal matrix elements up to a "
+            f"rational factor (default: {'none' if generation else 'numerical'})"
+        ),
+    )
+
+
+def _add_color_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--color-accuracy",
+        dest="color.accuracy",
+        choices=("lc", "nlc", "full", "strict-lc", "strict-nlc"),
+        default=argparse.SUPPRESS,
+        help=(
+            "trees: lc/nlc the inherited colour-matrix approximation, "
+            "strict-lc/strict-nlc the formal 1/N_c expansion (graded output); "
+            "one loop: lc/nlc the formal-N_c projection, strict-* refused"
+        ),
+    )
+    parser.add_argument(
+        "--color-graded",
+        dest="color.graded",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=(
+            "report trees split by power of N_c (implied by strict-lc and "
+            "strict-nlc; with full colour, every degree)"
+        ),
+    )
+    contraction = parser.add_mutually_exclusive_group()
+    contraction.add_argument(
+        "--color-contraction",
+        dest="color.contraction",
+        choices=tuple(ColorContraction),
+        default=argparse.SUPPRESS,
+        help=(
+            "Default: auto, using adaptive FFT for supported NLC/full recurrence "
+            "or on-the-fly plans and direct otherwise. Select direct to opt out."
+        ),
+    )
+    contraction.add_argument(
+        "--fft",
+        dest="_fft_basis",
+        choices=tuple(ColorFFTBasis),
+        default=argparse.SUPPRESS,
+        help=(
+            "Force symmetric-group FFT contraction. 'adjoint' selects certified "
+            "DDM where applicable, otherwise exact fundamental chains or an "
+            "explicit trace fallback; requires --color-accuracy nlc or full."
+        ),
+    )
+    parser.add_argument(
+        "--lc-flow-layout",
+        dest="color.lc_flow_layout",
+        choices=("topology-replay", "all-flow-union"),
+        default=argparse.SUPPRESS,
+    )
+
+
+def _add_generation_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--mode",
+        dest="generation.mode",
+        choices=("error", "append", "replace"),
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--force",
+        dest="generation.mode",
+        action="store_const",
+        const="replace",
+        default=argparse.SUPPRESS,
+        help="atomically replace an existing output artifact",
+    )
+    parser.add_argument(
+        "--workers",
+        dest="generation.workers",
+        type=_auto_int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--emit-api-bundle",
+        dest="generation.emit_api_bundle",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--pack-payloads",
+        dest="generation.pack_payloads",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--particle-veto",
+        dest="generation.particle_veto",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="PARTICLE",
+        help=(
+            "v2 virtuals: remove PARTICLE (and its antiparticle) from every tree "
+            "vertex and its loops from the counterterms; repeat for each particle"
+        ),
+    )
+    parser.add_argument(
+        "--allow-anomalous-veto",
+        dest="generation.allow_anomalous_veto",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: lower the Levi-Civita counterterms a --particle-veto "
+            "keeps from cancelling (e.g. a veto breaking a quark doublet), "
+            "refused by default; recorded in the artifact"
+        ),
+    )
+    parser.add_argument(
+        "--loop-induced-probes",
+        dest="generation.loop_induced_probes",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop-induced processes: run the generation-time finiteness, Ward "
+            "and Goldstone probes (binary64, double-double where a binary64 "
+            "probe fails or is refused; off by default: the artifact does not "
+            "depend on them); a failure refuses the process"
+        ),
+    )
+    parser.add_argument(
+        "--loop-induced-folding",
+        dest="generation.loop_induced_folding",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop-induced processes: fold the loop chains the exact test "
+            "certifies proportional (one dressing per group; a group that "
+            "cancels exactly is an exact zero, with its certificate); on by "
+            "default, --no-loop-induced-folding writes the unfolded plans"
+        ),
+    )
+    parser.add_argument(
+        "--allow-failed-probes",
+        dest="generation.allow_failed_probes",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop-induced processes: store a process whose generation-time "
+            "finiteness or Ward probe failed, refused by default; recorded in "
+            "the artifact (acts only with --loop-induced-probes)"
+        ),
+    )
+    parser.add_argument(
+        "--validation",
+        dest="generation.validation.enabled",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--validation-samples",
+        dest="generation.validation.samples",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--validation-seed",
+        dest="generation.validation.seed",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--relative-tolerance",
+        dest="generation.validation.relative_tolerance",
+        type=float,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--absolute-tolerance",
+        dest="generation.validation.absolute_tolerance",
+        type=float,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--post-build-validation",
+        dest="generation.validation.post_build_validation",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "re-open and numerically smoke-test the written artifact (off by default)"
+        ),
+    )
+    numerical_reuse = parser.add_mutually_exclusive_group()
+    numerical_reuse.add_argument(
+        "--numerical-current-reuse",
+        dest="generation.relation_discovery.mode",
+        action="store_const",
+        const="certified-reuse",
+        default=argparse.SUPPRESS,
+        help=(
+            "search for and apply independently certified numerical current "
+            "relations (off by default: the high-precision probes are costly at "
+            "generation time)"
+        ),
+    )
+    numerical_reuse.add_argument(
+        "--no-numerical-current-reuse",
+        dest="generation.relation_discovery.mode",
+        action="store_const",
+        const="off",
+        default=argparse.SUPPRESS,
+        help="disable numerical current-relation discovery and reuse (the default)",
+    )
+
+
+def _add_evaluator_options(
+    parser: argparse.ArgumentParser,
+    *,
+    include_runtime_controls: bool = True,
+) -> None:
+    parser.add_argument(
+        "--backend",
+        dest="evaluator.backend",
+        choices=("jit", "asm", "cpp"),
+        default=argparse.SUPPRESS,
+    )
+    if include_runtime_controls:
+        parser.add_argument(
+            "--r2-strategy",
+            dest="loop.r2_strategy",
+            choices=("auto", "model", "direct"),
+            default=argparse.SUPPRESS,
+        )
+        parser.add_argument(
+            "--loop-reduction",
+            dest="loop.reduction",
+            choices=tuple(ReductionBackend),
+            default=argparse.SUPPRESS,
+            help=(
+                "one-loop reduction backend recorded as the artifact's default: "
+                "'auto' (default: TIRust for loop-induced processes, a point it "
+                "refuses or fails evaluated again on NinjaRS; NinjaRS for "
+                "Born-interfered ones), 'ninjars' or 'tirust'"
+            ),
+        )
+        # Removed with the legacy loop engine; still parsed so that naming it
+        # is refused with the removal reason (``config.resolver.REMOVED_FIELDS``).
+        parser.add_argument(
+            "--loop-engine",
+            dest="loop.engine",
+            default=argparse.SUPPRESS,
+            help=argparse.SUPPRESS,
+        )
+        parser.add_argument(
+            "--execution-mode",
+            dest="evaluator.execution_mode",
+            choices=tuple(mode.value for mode in EvaluatorExecutionMode),
+            default=argparse.SUPPRESS,
+        )
+        parser.add_argument(
+            "--batch-size",
+            dest="evaluator.batch_size",
+            type=int,
+            default=argparse.SUPPRESS,
+        )
+        parser.add_argument(
+            "--output-chunk-size",
+            dest="evaluator.output_chunk_size",
+            type=_nullable_int,
+            default=argparse.SUPPRESS,
+        )
+    parser.add_argument(
+        "--horner-iterations",
+        dest="evaluator.optimization.horner_iterations",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--cpe-iterations",
+        dest="evaluator.optimization.cpe_iterations",
+        type=_nullable_int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--cores",
+        dest="evaluator.optimization.cores",
+        type=_auto_int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--max-horner-variables",
+        dest="evaluator.optimization.max_horner_variables",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--max-common-pair-cache-entries",
+        dest="evaluator.optimization.max_common_pair_cache_entries",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--max-common-pair-distance",
+        dest="evaluator.optimization.max_common_pair_distance",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--collect-factors",
+        dest="evaluator.optimization.collect_factors",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--jit-optimization-level",
+        dest="evaluator.jit.optimization_level",
+        type=int,
+        choices=(0, 1, 2, 3),
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--jit-compress",
+        dest="evaluator.jit.compress",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--cpp-optimization",
+        dest="evaluator.cpp.optimization",
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--cpp-compiler",
+        dest="evaluator.cpp.compiler",
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--cpp-native-arch",
+        dest="evaluator.cpp.native_arch",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--cpp-extra-flag",
+        dest="evaluator.cpp.extra_flags",
+        action="append",
+        default=argparse.SUPPRESS,
+    )
+
+
+def _add_evaluation_options(
+    parser: argparse.ArgumentParser, *, include_artifact: bool = True
+) -> None:
+    if include_artifact:
+        parser.add_argument("artifact", type=Path, nargs="?", default=None)
+    parser.add_argument(
+        "--correlated-requests",
+        dest="evaluation.correlated_requests",
+        type=Path,
+        default=argparse.SUPPRESS,
+        metavar="JSON",
+        help="named colour/spin requests evaluated together over the point batch",
+    )
+    parser.add_argument(
+        "--on-failure",
+        dest="evaluation.on_failure",
+        choices=ON_FAILURE,
+        default=argparse.SUPPRESS,
+        help=(
+            "virtual points no configured alternative accepts: best-effort "
+            "(the default) returns each with its best available value (the "
+            "unchecked reduction's), the refusal and its uncertainty, status "
+            "best-effort, never a success; return keeps them as failed rows "
+            "without a value; raise stops at the first one"
+        ),
+    )
+    # The precision-rescue options were removed with the legacy loop engine;
+    # still parsed so that naming one is refused with the removal reason
+    # (``config.models.EVALUATION_STABILITY_REMOVED``).
+    parser.add_argument(
+        "--stability-higher",
+        dest="evaluation.stability.higher",
+        action="append",
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--stability-relative-tolerance",
+        dest="evaluation.stability.relative_tolerance",
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--stability-absolute-tolerance",
+        dest="evaluation.stability.absolute_tolerance",
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--poles",
+        dest="evaluation.poles",
+        choices=tuple(selection.value for selection in PoleSelection),
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: the poles computed; 'none' evaluates the finite part "
+            "only, 'uv' gives the bare loop's UV poles, 'ir' the renormalised "
+            "virtual's IR poles"
+        ),
+    )
+    parser.add_argument(
+        "--stability-rotation",
+        dest="evaluation.stability_checks.rotations",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="ROTATION",
+        help=(
+            "v2 virtual rotation check, '<x|y|z>:<cos>:<sin>' or "
+            "'<ax>,<ay>,<az>:<radians>'; repeat for each rotation"
+        ),
+    )
+    parser.add_argument(
+        "--stability-rotations",
+        dest="evaluation.stability_checks.rotation_count",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="COUNT",
+        help="v2 virtual rotation checks with COUNT default rotations",
+    )
+    parser.add_argument(
+        "--stability-reduction-direction",
+        dest="evaluation.stability_checks.reduction_direction",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help="v2 virtual check: reduce every loop numerator again, reversed",
+    )
+    parser.add_argument(
+        "--stability-rescaled",
+        dest="evaluation.stability_checks.rescaled",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtual check: run the reduction-direction check at rescaled "
+            "inputs, evaluating the master integrals again (with "
+            "--stability-reduction-direction)"
+        ),
+    )
+    parser.add_argument(
+        "--verify-successful",
+        dest="evaluation.stability.verify_successful",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--process",
+        dest="evaluation.process",
+        default=argparse.SUPPRESS,
+        help="stable process/alias ID or exact concrete process expression",
+    )
+    parser.add_argument(
+        "--precision",
+        dest="evaluation.precision",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--arithmetic",
+        dest="evaluation.arithmetic",
+        choices=("double", "double-double", "arbitrary"),
+        default=argparse.SUPPRESS,
+        help=(
+            "virtual carrier selected before parameter binding, or tree "
+            "correlated arithmetic (arbitrary or double-double)"
+        ),
+    )
+    scales = parser.add_mutually_exclusive_group()
+    scales.add_argument(
+        "--mu-r2",
+        dest="evaluation.mu_r2",
+        default=argparse.SUPPRESS,
+        metavar="EXACT_VALUE",
+        help="positive renormalization scale squared, supplied as exact text",
+    )
+    scales.add_argument(
+        "--mu-r2-file",
+        dest="evaluation.mu_r2_file",
+        type=Path,
+        default=argparse.SUPPRESS,
+        metavar="JSON",
+        help="per-point scale-squared JSON list; numbers and strings retain precision",
+    )
+    parser.add_argument(
+        "--r2-strategy",
+        dest="loop.r2_strategy",
+        choices=("auto", "model", "direct"),
+        default=argparse.SUPPRESS,
+        help="select a complete R2 strategy present in the virtual artifact",
+    )
+    parser.add_argument(
+        "--loop-reduction",
+        dest="evaluation.reduction",
+        choices=tuple(ReductionBackend),
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: the reduction backend, overriding the artifact's "
+            "default; 'auto' takes TIRust for loop-induced processes (a point "
+            "TIRust refuses or fails is evaluated again on NinjaRS, recorded "
+            "per point) and NinjaRS for Born-interfered ones; 'ninjars' and "
+            "'tirust' request one backend, without a fallback"
+        ),
+    )
+    parser.add_argument(
+        "--reduction-target",
+        dest="evaluation.reduction_target",
+        type=float,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: the target accuracy (relative, per point) that "
+            "TIRust's method-choice acceptance follows; default 1e-5"
+        ),
+    )
+    parser.add_argument(
+        "--reduction-unchecked",
+        dest="evaluation.reduction_unchecked",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: reduce without the reduction backends' own "
+            "acceptance and refusal checks (TIRust: its gates and method "
+            "choice as method selection, no acceptance pass, plain PV at gate "
+            "0 for what they refuse; NinjaRS: zero stability thresholds); "
+            "default off"
+        ),
+    )
+    _add_kinematics_options(parser)
+    parser.add_argument(
+        "--resolved",
+        dest="evaluation.resolved",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--orders",
+        dest="evaluation.orders",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help="split tree values by squared coupling order alongside the total",
+    )
+    parser.add_argument(
+        "--helicity",
+        dest="evaluation.helicity_ids",
+        action="append",
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--color-flow",
+        dest="evaluation.color_flow_ids",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="ID_OR_NUMBER",
+        help="stable color-flow ID or one-based ordinal shown by inspect",
+    )
+    parser.add_argument(
+        "--model-parameters",
+        dest="evaluation.model_parameters",
+        type=Path,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--momenta",
+        dest="evaluation.momenta",
+        type=Path,
+        default=argparse.SUPPRESS,
+    )
+
+
+def _add_kinematics_options(parser: argparse.ArgumentParser) -> None:
+    """The kinematics improvement options (m-lit lit-psimprove;
+    ``pyamplicol.kinematics``)."""
+
+    # No ``choices``: the value is validated by the native policy (its one
+    # refusal text, ``pyamplicol.kinematics.setting_value``) when the
+    # evaluation configuration is resolved, as on every other surface.
+    parser.add_argument(
+        "--kinematics-improvement",
+        dest="evaluation.kinematics_improvement",
+        metavar="VARIANT",
+        default=argparse.SUPPRESS,
+        help=(
+            "improve the input points to exact energy-momentum conservation "
+            "and exact on-shell externals in each carrier above binary64: "
+            "'z-shift' (MadLoop's ImprovePSPoint 2 with its fallback to 1, "
+            "finished by the projection where MadLoop leaves the point "
+            "inexact; the default), 'rescaling' (MadLoop's ImprovePSPoint 1), "
+            "'projection' (the frame-independent minimal-norm projection) or "
+            "'off'"
+        ),
+    )
+    parser.add_argument(
+        "--kinematics-improvement-binary64",
+        dest="evaluation.kinematics_improvement_binary64",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "also improve the points of binary64 (double-precision) "
+            "evaluations; default off"
+        ),
+    )
+
+
+def _add_profile_options(parser: argparse.ArgumentParser) -> None:
+    from .profile_options import add_profile_mode_options
+
+    parser.add_argument("target", type=Path, nargs="?", default=None, metavar="OUTPUT")
+    add_profile_mode_options(parser)
+    # Loop (v2 virtual) artifacts: the profiled calls' backend, setting and
+    # scale (the per-stage table of ``benchmarking.profile_virtual``).
+    parser.add_argument(
+        "--loop-reduction",
+        dest="evaluation.reduction",
+        choices=tuple(ReductionBackend),
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: profile this reduction backend only (default: "
+            "both, side by side; auto: the process type's default)"
+        ),
+    )
+    parser.add_argument(
+        "--reduction-unchecked",
+        dest="evaluation.reduction_unchecked",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: load the runtime with the unchecked reduction, "
+            "so that the stability run's binary64 calls are unchecked too (the "
+            "runtime timing's optimistic pass is unchecked by default); not "
+            "with --checked"
+        ),
+    )
+    parser.add_argument(
+        "--checked",
+        dest="benchmark.checked",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: time the checked mode instead of the optimistic "
+            "pass: the backends' own acceptance checks, a refused point served "
+            "best-effort, the default backend as auto (benchmark.checked; "
+            "default off)"
+        ),
+    )
+    _add_kinematics_options(parser)
+    parser.add_argument(
+        "--mu-r2",
+        dest="evaluation.mu_r2",
+        default=argparse.SUPPRESS,
+        metavar="EXACT_VALUE",
+        help=(
+            "loop artifacts: the renormalisation scale squared (default: per "
+            "point the squared invariant mass of its initial state)"
+        ),
+    )
+    parser.add_argument(
+        "--process",
+        dest="evaluation.process",
+        default=argparse.SUPPRESS,
+        metavar="PROCESS",
+        help="select a stable process/alias ID or exact process expression",
+    )
+    parser.add_argument(
+        "--target-runtime",
+        dest="benchmark.target_runtime",
+        type=float,
+        default=argparse.SUPPRESS,
+        metavar="SECONDS",
+        help=(
+            "target cumulative Rusticol timing duration; Ctrl-C reports "
+            "statistics from complete samples collected so far"
+        ),
+    )
+    parser.add_argument(
+        "--batch-size",
+        dest="benchmark.batch_size",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="POINTS",
+        help="number of phase-space points evaluated by each runtime call",
+    )
+    parser.add_argument(
+        "--precision",
+        dest="benchmark.precision",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="DIGITS",
+        help="decimal digits used by the Python runtime evaluator",
+    )
+    parser.add_argument(
+        "--warmup-runs",
+        dest="benchmark.warmup_runs",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="COUNT",
+    )
+    parser.add_argument(
+        "--minimum-samples",
+        dest="benchmark.minimum_samples",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="COUNT",
+        help="minimum number of independent timed blocks",
+    )
+    parser.add_argument(
+        "--helicity",
+        dest="benchmark.helicity_ids",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="ID",
+        help=(
+            "stable helicity ID; omitting both selector options chooses the "
+            "artifact layout's optimized profiling workload"
+        ),
+    )
+    parser.add_argument(
+        "--color-flow",
+        dest="benchmark.color_flow_ids",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="ID_OR_NUMBER",
+        help=(
+            "stable color-flow ID or one-based ordinal shown by inspect; "
+            "omitting both selector options chooses the artifact layout's "
+            "optimized profiling workload"
+        ),
+    )
+    parser.add_argument(
+        "--momenta",
+        dest="evaluation.momenta",
+        type=Path,
+        default=argparse.SUPPRESS,
+        metavar="PATH",
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="pyamplicol",
+        description=(
+            "Generate, inspect, evaluate, and profile pyAmpliCol process artifacts."
+        ),
+    )
+    subparsers = parser.add_subparsers(dest="_action", required=True)
+    common = _common_parent()
+
+    export = subparsers.add_parser(
+        "export-recurrence",
+        help="Export resolved LC recurrence programs without evaluating momenta.",
+    )
+    add_export_options(export)
+
+    generate = subparsers.add_parser(
+        "generate",
+        parents=[common],
+        help="Generate a process artifact.",
+    )
+    generate.add_argument("process", nargs="?", default=None)
+    generate.add_argument("output", type=Path, nargs="?", default=None)
+    generate.add_argument(
+        "--process",
+        dest="_extra_processes",
+        action="append",
+        default=argparse.SUPPRESS,
+    )
+    generate.add_argument(
+        "--dry-run",
+        dest="_dry_run",
+        action="store_true",
+        help="Plan and validate generation without writing an artifact.",
+    )
+    _add_model_options(generate)
+    _add_process_options(generate)
+    _add_process_grouping_options(generate, generation=True)
+    _add_color_options(generate)
+    _add_generation_options(generate)
+    generate.add_argument(
+        "--correlators",
+        dest="_correlators",
+        type=Path,
+        default=argparse.SUPPRESS,
+        help="JSON declaration of colour IDs and allowed joint spin-correlation legs",
+    )
+    _add_evaluator_options(generate)
+
+    evaluate = subparsers.add_parser(
+        "evaluate",
+        parents=[common],
+        help="Evaluate momenta with a generated artifact.",
+    )
+    _add_evaluation_options(evaluate)
+
+    profile = subparsers.add_parser(
+        "profile",
+        parents=[common],
+        help="Profile a generated artifact.",
+    )
+    _add_profile_options(profile)
+
+    benchmark = subparsers.add_parser(
+        "benchmark",
+        parents=[common],
+        help="Compatibility alias for the profile command.",
+    )
+    _add_profile_options(benchmark)
+
+    check = subparsers.add_parser(
+        "check",
+        parents=[common],
+        help=(
+            "Check the poles (Catani; loop-induced: finiteness) and Ward "
+            "identities of a one-loop request, regenerated in memory."
+        ),
+    )
+    check.add_argument(
+        "_check_target",
+        type=Path,
+        nargs="?",
+        default=None,
+        metavar="CARD_OR_ARTIFACT",
+        help=(
+            "a run card (its generation request) or a generated one-loop "
+            "artifact directory (the processes its artifact.json stores, "
+            "regenerated with its config/effective.toml; refused when the "
+            "model or processes differ from the stored ones)"
+        ),
+    )
+    # The rungs' kinematics improvement (m-lit lit-psimprove (G5)): the
+    # evaluation keys, as Runtime.evaluate's.
+    _add_kinematics_options(check)
+    check.add_argument(
+        "--points",
+        dest="check.points",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="seeded phase-space points per process (default 3)",
+    )
+    check.add_argument(
+        "--seed",
+        dest="check.seed",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="seed of the first point (default: generation.validation.seed)",
+    )
+    check.add_argument(
+        "--precision",
+        dest="check.precision",
+        choices=("auto", "double", "double-double"),
+        default=argparse.SUPPRESS,
+        help=(
+            "auto (default): binary64 first, double-double only where binary64 "
+            "fails, is refused or is out of scope, arbitrary precision only "
+            "for a row double-double leaves undecided; or one carrier alone"
+        ),
+    )
+    check.add_argument(
+        "--arbitrary-digits",
+        dest="check.arbitrary_digits",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="DIGITS",
+        help=(
+            "digits of the auto ladder's arbitrary-precision rung (default: "
+            "derived per row from the double-double shortfall)"
+        ),
+    )
+    check.add_argument(
+        "--sqrt-s",
+        dest="check.sqrt_s",
+        type=float,
+        default=argparse.SUPPRESS,
+        metavar="ENERGY",
+        help=(
+            "centre-of-mass energy of a scattering's points, in the model's "
+            "mass unit (default: the generation's validation convention, "
+            "max(1000, final threshold + 100) for massless beams)"
+        ),
+    )
+    check.add_argument(
+        "--model",
+        dest="check.model",
+        default=argparse.SUPPRESS,
+        metavar="SOURCE",
+        help=(
+            "the model source to regenerate the request from (default: the "
+            "card's model.source; an artifact: the source its "
+            "config/effective.toml records, which must resolve to the stored "
+            "model)"
+        ),
+    )
+
+    inspect = subparsers.add_parser(
+        "inspect",
+        parents=[common],
+        help="Summarize a generated artifact and its processes.",
+    )
+    inspect.add_argument("artifact", type=Path, nargs="?", default=None)
+    inspect.add_argument(
+        "--process",
+        dest="evaluation.process",
+        default=argparse.SUPPRESS,
+        help=(
+            "show compact metadata for one stable process/alias ID or exact "
+            "concrete process expression"
+        ),
+    )
+    inspect.add_argument(
+        "--full-physics",
+        dest="_full_physics",
+        action="store_true",
+        help=(
+            "load the selected runtime and materialize complete helicity/color "
+            "physics (potentially very large at high multiplicity)"
+        ),
+    )
+
+    group_processes = subparsers.add_parser(
+        "group-processes",
+        parents=[common],
+        help=(
+            "Find generated subprocesses with equal matrix elements and update "
+            "the artifact's process-groups.json in place."
+        ),
+    )
+    group_processes.add_argument("artifact", type=Path, nargs="?", default=None)
+    _add_process_grouping_options(group_processes, generation=False)
+
+    model = subparsers.add_parser(
+        "model",
+        help="Inspect, compile, or enumerate processes for a model.",
+    )
+    model_commands = model.add_subparsers(dest="_model_action", required=True)
+
+    model_inspect = model_commands.add_parser(
+        "inspect",
+        parents=[common],
+        help="Inspect a built-in, UFO, JSON, or compiled model.",
+    )
+    model_inspect.add_argument("source", nargs="?", default=None)
+    _add_model_options(model_inspect)
+
+    model_compile = model_commands.add_parser(
+        "compile",
+        parents=[common],
+        help=(
+            "Compile portable model IR or prepare one evaluator kernel bundle "
+            "shared by eager, recurrence, and on-the-fly execution."
+        ),
+    )
+    model_compile.add_argument("source", nargs="?", default=None)
+    model_compile.add_argument(
+        "output",
+        type=Path,
+        nargs="?",
+        default=None,
+        help=(
+            "IR output path, or a .pyamplicol-model path for a self-contained "
+            "prepared bundle"
+        ),
+    )
+    _add_model_options(model_compile)
+    _add_generation_options(model_compile)
+    _add_evaluator_options(model_compile, include_runtime_controls=False)
+
+    model_processes = model_commands.add_parser(
+        "processes",
+        parents=[common],
+        help="Expand concrete processes using a model's particle catalog.",
+    )
+    model_processes.add_argument("process", nargs="?", default=None)
+    model_processes.add_argument(
+        "--process",
+        dest="_extra_processes",
+        action="append",
+        default=argparse.SUPPRESS,
+    )
+    _add_model_options(model_processes)
+    _add_process_options(model_processes)
+
+    for name, help_text in (
+        ("config", "Create or resolve run configuration."),
+        ("examples", "List, copy, or run packaged examples."),
+        ("doctor", "Diagnose the installed pyAmpliCol environment."),
+        ("self-test", "Run the installed-package self-test."),
+    ):
+        subparsers.add_parser(name, help=help_text)
+
+    trial = subparsers.add_parser(
+        "request-symbolica-trial-license",
+        help="Request a Symbolica trial license.",
+    )
+    trial.add_argument("--name")
+    trial.add_argument("--email")
+    trial.add_argument("--organization")
+    trial.add_argument("--yes", dest="assume_yes", action="store_true")
+    trial.add_argument("--json", dest="_json_output", action="store_true")
+    trial.add_argument(
+        "--color",
+        dest="_output_color",
+        choices=("auto", "always", "never"),
+        default="auto",
+    )
+
+    hobbyist = subparsers.add_parser(
+        "request-symbolica-hobbyist-license",
+        help="Request a Symbolica hobbyist license.",
+    )
+    hobbyist.add_argument("--name")
+    hobbyist.add_argument("--email")
+    hobbyist.add_argument("--yes", dest="assume_yes", action="store_true")
+    hobbyist.add_argument("--json", dest="_json_output", action="store_true")
+    hobbyist.add_argument(
+        "--color",
+        dest="_output_color",
+        choices=("auto", "always", "never"),
+        default="auto",
+    )
+    return parser
+
+
+def build_card_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="pyamplicol", parents=[_common_parent(include_card=False)]
+    )
+    parser.add_argument("card", type=Path)
+    return parser
+
+
+def _is_prepared_model_output(value: object) -> bool:
+    if value is None or value == argparse.SUPPRESS:
+        return False
+    try:
+        return (
+            str(os.fspath(cast("str | os.PathLike[str]", value)))
+            .lower()
+            .endswith(".pyamplicol-model")
+        )
+    except TypeError:
+        return False
+
+
+def _namespace_to_invocation(
+    namespace: argparse.Namespace,
+) -> CliInvocation | LicenseRequestInvocation:
+    raw = vars(namespace).copy()
+    action_value = raw.pop("_action", None)
+    model_action = raw.pop("_model_action", None)
+    if action_value == "model":
+        if model_action not in _MODEL_ACTIONS:
+            raise ValueError("model requires an inspect, compile, or processes command")
+        action_value = _MODEL_ACTIONS[model_action].value
+    if action_value == "profile":
+        action_value = Action.BENCHMARK.value
+    if action_value in _LICENSE_ACTIONS:
+        return LicenseRequestInvocation(
+            kind=_LICENSE_ACTIONS[action_value],
+            name=raw.pop("name", None),
+            email=raw.pop("email", None),
+            organization=raw.pop("organization", None),
+            assume_yes=bool(raw.pop("assume_yes", False)),
+            output_format="json" if bool(raw.pop("_json_output", False)) else "human",
+            output_color=cast(
+                Literal["auto", "always", "never"],
+                str(raw.pop("_output_color", "auto")),
+            ),
+        )
+    action = Action(action_value) if action_value is not None else None
+    if action is Action.MODEL_COMPILE:
+        evaluator_arguments = tuple(
+            sorted(key for key in raw if key.startswith("evaluator."))
+        )
+        evaluator_overrides = tuple(
+            value
+            for value in raw.get("_overrides", ())
+            if str(value).partition("=")[0].strip().startswith("evaluator.")
+        )
+        has_evaluator_options = evaluator_arguments or evaluator_overrides
+        if has_evaluator_options and not _is_prepared_model_output(raw.get("output")):
+            raise ConfigurationError(
+                "model compile evaluator options require an output ending with "
+                "'.pyamplicol-model'; IR-only model outputs do not compile kernels"
+            )
+    card_value = raw.pop("card", None)
+    card = (
+        Path(os.fspath(card_value)).expanduser().resolve(strict=False)
+        if card_value is not None
+        else None
+    )
+    overrides = tuple(raw.pop("_overrides", ()))
+    raw["output.format"] = "json" if bool(raw.pop("_json_output", False)) else "human"
+    dry_run = bool(raw.pop("_dry_run", False))
+    full_physics = bool(raw.pop("_full_physics", False))
+    fields_help = bool(raw.pop("_fields_help", False))
+    correlators = raw.pop("_correlators", None)
+
+    positional_process = raw.pop("process", None)
+    extra_processes = tuple(raw.pop("_extra_processes", ()))
+    process_names = tuple(raw.pop("_process_names", ()))
+    if positional_process == argparse.SUPPRESS:
+        positional_process = None
+    process_expressions = tuple(
+        entry for entry in (positional_process, *extra_processes) if entry is not None
+    )
+    if process_names and len(process_names) != len(process_expressions):
+        raise ConfigurationError(
+            "direct process names must be empty or aligned with process expressions"
+        )
+    if process_expressions:
+        raw["process.entries"] = tuple(
+            {
+                "expression": expression,
+                **({"name": process_names[index]} if process_names else {}),
+            }
+            for index, expression in enumerate(process_expressions)
+        )
+
+    positional_output = raw.pop("output", None)
+    if positional_output != argparse.SUPPRESS and positional_output is not None:
+        raw["generation.output"] = positional_output
+    positional_artifact = raw.pop("artifact", None)
+    if positional_artifact != argparse.SUPPRESS and positional_artifact is not None:
+        raw["evaluation.artifact"] = positional_artifact
+    positional_target = raw.pop("target", None)
+    if positional_target != argparse.SUPPRESS and positional_target is not None:
+        raw["evaluation.artifact"] = positional_target
+    check_target = raw.pop("_check_target", None)
+    if check_target != argparse.SUPPRESS and check_target is not None:
+        resolved_target = Path(os.fspath(check_target)).expanduser()
+        if resolved_target.is_file():
+            if card is not None:
+                raise ConfigurationError(
+                    "check takes a run card or an artifact: give the card "
+                    "either as CARD_OR_ARTIFACT or with --card"
+                )
+            card = resolved_target.resolve(strict=False)
+        else:
+            raw["evaluation.artifact"] = check_target
+    positional_source = raw.pop("source", None)
+    if positional_source != argparse.SUPPRESS and positional_source is not None:
+        raw["model.source"] = positional_source
+
+    multiparticles = raw.pop("_multiparticles", None)
+    if multiparticles is not None:
+        raw["process.multiparticles"] = dict(multiparticles)
+    coupling_orders = raw.pop("_max_coupling_orders", None)
+    if coupling_orders is not None:
+        raw["process.max_coupling_orders"] = dict(coupling_orders)
+    fft_basis = raw.pop("_fft_basis", None)
+    if fft_basis is not None:
+        raw["color.contraction"] = ColorContraction.SYMMETRIC_GROUP_FFT
+        raw["color.fft_basis"] = fft_basis
+    return CliInvocation(
+        action=action,
+        card=card,
+        dedicated=raw,
+        overrides=overrides,
+        dry_run=dry_run,
+        full_physics=full_physics,
+        correlators=correlators,
+        fields_help=fields_help,
+    )
+
+
+def _normalize_direct_arguments(
+    arguments: Sequence[str],
+    command_index: int,
+) -> list[str]:
+    command = arguments[command_index]
+    before = list(arguments[:command_index])
+    after = list(arguments[command_index + 1 :])
+    if command != "model":
+        return [command, *before, *after]
+
+    model_index = next(
+        (index for index, argument in enumerate(after) if argument in _MODEL_ACTIONS),
+        None,
+    )
+    if model_index is None:
+        return [command, *before, *after]
+    return [
+        command,
+        after[model_index],
+        *before,
+        *after[:model_index],
+        *after[model_index + 1 :],
+    ]
+
+
+def parse_cli(
+    argv: Sequence[str] | None = None,
+) -> (
+    CliInvocation
+    | LicenseRequestInvocation
+    | UtilityInvocation
+    | RecurrenceExportInvocation
+):
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "export-recurrence":
+        return parse_export_recurrence(arguments[1:])
+    if arguments and arguments[0] in _UTILITY_COMMANDS:
+        return parse_utility(arguments)
+    # ``pyamplicol CARD ACTION [--output DIR] ...`` (``card_actions``).
+    from .card_actions import rewrite_card_action
+
+    arguments = rewrite_card_action(arguments) or arguments
+    if any(argument in _REMOVED_FLAT_MODEL_COMMANDS for argument in arguments):
+        return _namespace_to_invocation(build_parser().parse_args(arguments))
+    command_index = next(
+        (
+            index
+            for index, argument in enumerate(arguments)
+            if argument in _DIRECT_COMMANDS
+        ),
+        None,
+    )
+    if command_index is not None:
+        normalized = _normalize_direct_arguments(arguments, command_index)
+        return _namespace_to_invocation(build_parser().parse_args(normalized))
+    if arguments == ["--help"]:
+        return _namespace_to_invocation(build_parser().parse_args(arguments))
+    card_parser = build_card_parser()
+    _, unknown = card_parser.parse_known_args(arguments)
+    if unknown:
+        # ``pyamplicol CARD --stability``: options of the card's own action.
+        from .card_actions import card_action_options
+
+        rewritten = card_action_options(arguments)
+        if rewritten is not None:
+            return parse_cli(rewritten)
+    return _namespace_to_invocation(card_parser.parse_args(arguments))
+
+
+__all__ = [
+    "CliInvocation",
+    "UtilityInvocation",
+    "build_card_parser",
+    "build_parser",
+    "parse_cli",
+]

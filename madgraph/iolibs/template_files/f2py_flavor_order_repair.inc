@@ -1,0 +1,187 @@
+      SUBROUTINE FLAVOR_ORDER_REPAIR(GETIDX, GETFLV, NEXT, NINI, NFLAV,
+     &   DOREPAIR, FLAVOR, PDGS, P, PFIX, LEGOF)
+C     Re-order the external legs so that GETIDX resolves their flavor.
+C
+C     The generated FLAV_TABLE tabulates ONE leg ordering per flavor
+C     combination: get_external_flavors keeps a single representative per
+C     class of orderings that differ only by permuting legs inside the
+C     initial or inside the final state, so for `q q' > z q q'` the column
+C     (1,2,1,1,2) is there and (2,1,1,2,1) is not.  GETIDX answers the 0
+C     sentinel for every other ordering and the matrix element is then 0.
+C     That is by design -- absorbing the ordering is the caller's job -- and
+C     this is where it is done, once, for every python caller of the
+C     all_matrix wrapper (MadSpin's density, reweighting's smatrixhel).
+C
+C     Moving two legs of the same merged pdg inside the same block -- taking
+C     their momentum and their flavor together -- is a pure renaming of
+C     external lines, so |M|^2 and every entry of the density are unchanged
+C     (the fermionic sign of the exchange is a phase on M and cancels in
+C     M M*).  Any ordering that resolves therefore gives the same answer and
+C     the first one found is taken.
+C
+C     Arguments:
+C       GETIDX  : the ME's GET_FLAVOR_INDEX (FLAVOR -> 1..NFLAV, 0 if absent)
+C       GETFLV  : the ME's GET_FLAVOR (index -> the tabulated FLAVOR column)
+C       NEXT    : number of external legs of this ME
+C       NINI    : number of initial legs (legs never move across that split)
+C       NFLAV   : number of columns of the ME's flavor table
+C       DOREPAIR: .FALSE. leaves the ordering untouched.  Per-leg
+C                 helicities must move with their legs: GET_ALL_INTER's
+C                 NHEL array through LEGOF, a SMATRIXHEL helicity code
+C                 through FLAVOR_ORDER_HEL (below), and the open legs
+C                 POS of a density too (POS(K) -> the slot J with
+C                 LEGOF(J) = POS(K), in the same order K): the open
+C                 index K of rho then still names the caller's leg
+C                 POS(K), so rho comes out unpermuted.  Freezing
+C                 those legs instead left a resolvable ordering
+C                 (u~ d~ > u~ d~ with POS = 1 2 on a table holding
+C                 d~ u~ > d~ u~) at a silent 0.
+C       FLAVOR  : per-leg group positions, repaired in place
+C       PDGS    : per-leg merged pdg codes (read only; two legs may only be
+C                 exchanged when they carry the same merged code)
+C       P       : input momenta
+C       PFIX    : momenta to hand to the matrix element.  Always written --
+C                 a copy of P when nothing had to move -- so that the caller
+C                 has a single array to pass on and P is never modified.
+C       LEGOF   : the input leg now in slot J is LEGOF(J)
+C                 (the identity when nothing moved), for
+C                 a caller moving more per-leg data along
+C                 (GET_ALL_INTER's NHEL).
+      IMPLICIT NONE
+      INTEGER MAXLEG
+      PARAMETER (MAXLEG=%(maxpart)i)
+      INTEGER GETIDX
+      EXTERNAL GETIDX
+      EXTERNAL GETFLV
+      INTEGER NEXT, NINI, NFLAV
+      LOGICAL DOREPAIR
+      INTEGER FLAVOR(*), PDGS(*), LEGOF(*)
+      DOUBLE PRECISION P(0:3,*), PFIX(0:3,*)
+
+      INTEGER FR_I, FR_J, FR_K, FR_LO, FR_HI, FR_IFLAV
+      INTEGER CAND(MAXLEG), PERM(MAXLEG), TAKEN(MAXLEG), FTMP(MAXLEG)
+      LOGICAL FR_OK
+
+      DO FR_J = 1, NEXT
+        LEGOF(FR_J) = FR_J
+        DO FR_K = 0, 3
+          PFIX(FR_K, FR_J) = P(FR_K, FR_J)
+        ENDDO
+      ENDDO
+
+      IF (.NOT. DOREPAIR) RETURN
+      IF (NEXT .GT. MAXLEG) RETURN
+C     the ordering we were given is tabulated: nothing to repair
+      IF (GETIDX(FLAVOR) .NE. 0) RETURN
+
+      DO FR_IFLAV = 1, NFLAV
+        CALL GETFLV(FR_IFLAV, CAND)
+        DO FR_J = 1, NEXT
+          PERM(FR_J) = 0
+          TAKEN(FR_J) = 0
+        ENDDO
+C       Match FLAVOR onto this column leg by leg, taking the fixed points
+C       first so that an ordering only moves the legs it has to.  Matching
+C       is on equal values inside one block, so the greedy choice is never
+C       wrong: if any within-block permutation maps FLAVOR onto CAND, this
+C       finds one.
+        DO FR_J = 1, NEXT
+          IF (FLAVOR(FR_J) .EQ. CAND(FR_J)) THEN
+            PERM(FR_J) = FR_J
+            TAKEN(FR_J) = 1
+          ENDIF
+        ENDDO
+        FR_OK = .TRUE.
+        DO FR_J = 1, NEXT
+          IF (PERM(FR_J) .NE. 0) CYCLE
+          IF (FR_J .LE. NINI) THEN
+            FR_LO = 1
+            FR_HI = NINI
+          ELSE
+            FR_LO = NINI + 1
+            FR_HI = NEXT
+          ENDIF
+          DO FR_I = FR_LO, FR_HI
+            IF (TAKEN(FR_I) .EQ. 0
+     &         .AND. FLAVOR(FR_I) .EQ. CAND(FR_J)
+     &         .AND. PDGS(FR_I) .EQ. PDGS(FR_J)) THEN
+              PERM(FR_J) = FR_I
+              TAKEN(FR_I) = 1
+              EXIT
+            ENDIF
+          ENDDO
+          IF (PERM(FR_J) .EQ. 0) THEN
+            FR_OK = .FALSE.
+            EXIT
+          ENDIF
+        ENDDO
+        IF (.NOT. FR_OK) CYCLE
+C       slot FR_J takes the leg that currently sits in PERM(FR_J)
+        DO FR_J = 1, NEXT
+          LEGOF(FR_J) = PERM(FR_J)
+          FTMP(FR_J) = FLAVOR(PERM(FR_J))
+          DO FR_K = 0, 3
+            PFIX(FR_K, FR_J) = P(FR_K, PERM(FR_J))
+          ENDDO
+        ENDDO
+        DO FR_J = 1, NEXT
+          FLAVOR(FR_J) = FTMP(FR_J)
+        ENDDO
+        RETURN
+      ENDDO
+C     No tabulated ordering matches: FLAVOR stays unresolved
+C     (GETIDX = 0), which the density and get_all_inter
+C     dispatch treat as a miss (crossed fallback, then NaN).
+      RETURN
+      END
+
+
+      SUBROUTINE FLAVOR_ORDER_HEL(NHEL, NEXT, NCOMB, TAB, LEGOF,
+     &   NHELFIX)
+C     Re-key a SMATRIXHEL helicity code through the leg
+C     permutation of FLAVOR_ORDER_REPAIR (or of the folded
+C     crossing dispatch), so that every helicity stays with
+C     its leg.
+C
+C     The caller names code NHEL in ITS leg order: leg I has
+C     helicity TAB(I,NHEL), TAB being the table of the
+C     process asked for (GET_NHEL_IDX), whose column C is the
+C     code C.  Slot J now holds the caller's leg LEGOF(J), so
+C     the code to hand on is the column C' with
+C     TAB(J,C') = TAB(LEGOF(J),NHEL) for every J.  Only legs
+C     of one merged code are exchanged, so both carry the
+C     same helicity states and that column exists.
+C
+C     NHELFIX is NHEL for the helicity sum (NHEL .LT. 1) or
+C     when nothing moved, and 0 (no helicity, |M|^2 = 0) when
+C     NHEL names no column or no column matches.
+      IMPLICIT NONE
+      INTEGER NHEL, NEXT, NCOMB, NHELFIX
+      INTEGER TAB(NEXT,*), LEGOF(*)
+      INTEGER FH_J, FH_C
+      LOGICAL FH_SAME
+
+      NHELFIX = NHEL
+      IF (NHEL .LT. 1) RETURN
+      FH_SAME = .TRUE.
+      DO FH_J = 1, NEXT
+        IF (LEGOF(FH_J) .NE. FH_J) FH_SAME = .FALSE.
+      ENDDO
+      IF (FH_SAME) RETURN
+      NHELFIX = 0
+      IF (NHEL .GT. NCOMB) RETURN
+      DO FH_C = 1, NCOMB
+        FH_SAME = .TRUE.
+        DO FH_J = 1, NEXT
+          IF (TAB(FH_J,FH_C) .NE. TAB(LEGOF(FH_J),NHEL)) THEN
+            FH_SAME = .FALSE.
+            EXIT
+          ENDIF
+        ENDDO
+        IF (FH_SAME) THEN
+          NHELFIX = FH_C
+          RETURN
+        ENDIF
+      ENDDO
+      RETURN
+      END

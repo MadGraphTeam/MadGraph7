@@ -42,10 +42,12 @@ class TestFxFxFixedOrder(unittest.TestCase):
             noops = ('update_fks_dir', 'compute_prefactors_nbody',
                      'compute_prefactors_n1body', 'include_multichannel_enhance',
                      'compute_ewsudakov', 'init_process_module_n1body_wrapper',
-                     'include_veto_multiplier', 'include_PDF_and_alphas',
-                     'include_bias_wgt', 'reweight_scale', 'reweight_scale_NNLL',
+                     'include_PDF_and_alphas',
+                     'include_bias_wgt', 'reweight_scale',
                      'reweight_pdf', 'fill_pineappl_weights', 'fill_MC_integer',
-                     'fill_plots')
+                     'fill_plots', 'vs_begin_point', 'reset_folded_virtual',
+                     'virt_surrogate_fit_point',
+                     'compute_hard_real_channels')
             (work / 'noops.f90').write_text('\n'.join(
                 'subroutine ' + name + '\nend subroutine' for name in noops))
             executable = work / 'check_fixed_order'

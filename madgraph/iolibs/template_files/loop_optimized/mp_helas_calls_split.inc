@@ -1,7 +1,8 @@
       SUBROUTINE %(proc_prefix)s%(bunch_name)s_%(bunch_number)d(P,NHEL,H,IC)
 C       
-      use %(proc_prefix)sPOLYNOMIAL_CONSTANTS      
-      IMPLICIT NONE
+      use %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE ALOHA_OBJECT
+%(terminal_ieee_use)s      IMPLICIT NONE
 C  
 C CONSTANTS
 C  
@@ -36,7 +37,9 @@ C
 C
 C LOCAL VARIABLES
 C
-	  INTEGER I,J,K
+%(terminal_ieee_declarations)s	  INTEGER I,J,K
+	  INTEGER FLAVOR(NEXTERNAL)
+	  DATA FLAVOR /NEXTERNAL*1/
 	  %(complex_mp_format)s COEFS(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)	  
 C  
 C GLOBAL VARIABLES
@@ -58,7 +61,7 @@ C
 	  %(complex_mp_format)s AMP(NBORNAMPS)
 	  common/%(proc_prefix)sMP_AMPS/AMP
 ## }	  
-	  %(complex_mp_format)s W(20,NWAVEFUNCS)
+	  type(mp_aloha) W(NWAVEFUNCS)
 	  common/%(proc_prefix)sMP_W/W
 
 	  %(complex_mp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)

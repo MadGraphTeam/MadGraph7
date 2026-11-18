@@ -19,9 +19,9 @@ module FKSParams
   ! Native virtual surrogate: 0 = grid/polynomial, 1 = colour dipoles,
   ! 2 = colour dipoles and logarithms of all Born pairs (default).
   integer :: VirtTrickSurrogate=2
-  logical :: MCExplicitKLSum=.true.
+  logical :: MCExplicitKLSum=.false.
   logical :: MCSubtractionAtFixedFlow=.true.
-  logical :: FKSExplicitSum=.false.
+  logical :: FKSExplicitSum=.true.
   logical :: FxFxPythia8FiniteTerms=.false.
   ! Default-off incoming-parton Delta prototype. Its coupling/running
   ! always come from the active Sudakov-table provider, without overrides.
@@ -61,7 +61,7 @@ contains
              endif
           elseif (buff .eq. '#PrecisionVirtualAtRunTime') then
              read(68,*,end=999) PrecisionVirtualAtRunTime
-             if (IRPoleCheckThreshold .lt. -1.01d0 ) then
+             if (PrecisionVirtualAtRunTime .lt. -1.01d0 ) then
                 stop 'PrecisionVirtualAtRunTime must be >= -1.0d0.'
              endif
           else if (buff .eq. '#NHelForMCoverHels') then
@@ -290,9 +290,9 @@ contains
     FKSFinalRecoil=0
     FKSISRMapping=0
     Pythia8MMaxGamma=10d0
-    MCExplicitKLSum=.true.
+    MCExplicitKLSum=.false.
     MCSubtractionAtFixedFlow=.true.
-    FKSExplicitSum=.false.
+    FKSExplicitSum=.true.
     FxFxPythia8FiniteTerms=.false.
     delta_backward_isr=.false.
     IncludeBornContributions=.true.

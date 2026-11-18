@@ -1,18 +1,18 @@
 ################################################################################
 #
-# Copyright (c) 2011 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2011 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access MadGraph5_aMC@NLO features.
+"""A user friendly command line interface to access MadGraph7 features.
    Uses the cmd package for command interpretation and tab completion.
 """
 from __future__ import division
@@ -57,7 +57,7 @@ sys.path.insert(0, os.path.join(root_path,'bin'))
 
 __maxint__ = 2**31 - 1
 
-# usefull shortcut
+# useful shortcut
 pjoin = os.path.join
 # Special logger for the Cmd Interface
 logger = logging.getLogger('madgraph.stdout') # -> stdout
@@ -81,6 +81,7 @@ except ImportError:
     import internal.FO_analyse_card as analyse_card 
     import internal.lhe_parser as lhe_parser
     import internal.collect_events as collect_events
+    import internal.mcatnlo_shower as mcatnlo_shower
 else:
     # import from madgraph directory
     aMCatNLO = False
@@ -98,9 +99,37 @@ else:
     import madgraph.various.lhe_parser as lhe_parser
     from madgraph import InvalidCmd, aMCatNLOError, MadGraph5Error,MG5DIR
     import madgraph.various.collect_events as collect_events
+    import madgraph.various.mcatnlo_shower as mcatnlo_shower
 
 class aMCatNLOError(Exception):
     pass
+
+
+def stdhep_status(me_dir, mg5_path=None):
+    """('compiled', path), ('source', path of the sources, which can be
+    compiled) or ('missing', None), for the StdHEP library used to write
+    HERWIG6 and PYTHIA6 event files."""
+    libdir = pjoin(me_dir, 'MCatNLO', 'lib')
+    if all(os.path.exists(os.path.realpath(pjoin(libdir, name)))
+           for name in ['libstdhep.a', 'libFmcfio.a']):
+        return 'compiled', libdir
+    candidates = [pjoin(me_dir, 'Source', 'StdHEP')]
+    link = pjoin(libdir, 'libstdhep.a')
+    if os.path.islink(link):
+        # output_dependencies = external: the libraries of MG5_aMC/vendor
+        candidates.append(os.path.dirname(os.path.dirname(os.path.realpath(link))))
+    if mg5_path:
+        candidates.append(pjoin(mg5_path, 'vendor', 'StdHEP'))
+    for path in candidates:
+        if os.path.isfile(pjoin(path, 'makefile')) and \
+                os.path.isdir(pjoin(path, 'mcfio')):
+            return 'source', path
+    return 'missing', None
+
+
+def derive_shower_seed(iseed, job=1):
+    """Reproducible shower seed in Pythia8's range [1, 900000000]."""
+    return (abs(int(iseed)) * 69069 + 1013904223 + int(job) - 1) % 900000000 + 1
 
 
 def check_pythia8_fxfx_plugin(pythia8_path, reference_header):
@@ -132,14 +161,15 @@ def check_pythia8_fxfx_plugin(pythia8_path, reference_header):
         reference = stream.read()
     with open(plugin) as stream:
         contents = stream.read()
-    if contents != reference:
+    # Legacy installations may differ only in comments or layout.
+    if not misc.same_cpp_code(contents, reference):
         raise aMCatNLOError('FxFx requires a dedicated plugin to be installed '
                            'in Pythia8. Incorrect plugin detected. '
                            'See http://cern.ch/amcatnlo/FxFx_merging.htm')
 
 
 def compile_dir(*arguments):
-    """compile the direcory p_dir
+    """compile the directory p_dir
     arguments is the tuple (me_dir, p_dir, mode, options, tests, exe, run_mode)
     this function needs not to be a class method in order to do
     the compilation on multicore"""
@@ -181,12 +211,24 @@ def compile_dir(*arguments):
                 tf.close()
             
         if not options['reweightonly']:
+            # Publish the compiled setting only after both binaries and their
+            # channel catalogues are ready. A failed rebuild must not permit
+            # --nocompile to reuse an executable with stale channel metadata.
+            has_real_channels = os.path.exists(pjoin(this_dir, 'real_channels.inc'))
+            marker = pjoin(this_dir, 'real_channels_x0.dat')
+            executable_marker = pjoin(this_dir, exe + '.real_channels_x0.dat')
+            if has_real_channels:
+                for path in (marker, executable_marker):
+                    with open(path, 'w') as stream:
+                        stream.write('compilation incomplete\n')
             misc.compile(['gensym'], cwd=this_dir, job_specs = False)
+            #compile madevent_mintMC/mintFO
+            misc.compile([exe], cwd=this_dir, job_specs = False)
             misc.call(['./gensym', mode],cwd= this_dir,
                      stdout=open(pjoin(this_dir, 'gensym.log'), 'w'),
                      close_fds=True) 
-            #compile madevent_mintMC/mintFO
-            misc.compile([exe], cwd=this_dir, job_specs = False)
+            if has_real_channels:
+                shutil.copyfile(marker, executable_marker)
         if mode in ['aMC@NLO', 'aMC@LO', 'noshower', 'noshowerLO']:
             misc.compile(['reweight_xsec_events'], cwd=this_dir, job_specs = False)
 
@@ -200,7 +242,7 @@ def check_compiler(options, block=False):
     """check that the current fortran compiler is gfortran 4.6 or later.
     If block, stops the execution, otherwise just print a warning"""
 
-    msg = 'In order to be able to run MadGraph5_aMC@NLO at NLO, you need to have ' + \
+    msg = 'In order to be able to run MadGraph7 at NLO, you need to have ' + \
             'gfortran 4.6 or later installed.\n%s has been detected.\n'+\
             'Note that you can still run MadEvent (at LO) without any problem!'
     #first check that gfortran is installed
@@ -252,7 +294,7 @@ class CmdExtended(common_run.CommonRunCmd):
 
 
     keyboard_stop_msg = """stopping all operation
-            in order to quit MadGraph5_aMC@NLO please enter exit"""
+            in order to quit MadGraph7 please enter exit"""
     
     # Define the Error
     InvalidCmd = InvalidCmd
@@ -285,18 +327,26 @@ class CmdExtended(common_run.CommonRunCmd):
         # Remember to fill in time at writeout time!
         self.history_header = \
         '#************************************************************\n' + \
-        '#*                    MadGraph5_aMC@NLO                     *\n' + \
+        '#*                        MadGraph7                         *\n' + \
         '#*                                                          *\n' + \
-        "#*                *                       *                 *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                    * * * * 5 * * * *                     *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                *                       *                 *\n" + \
+        "#*                        ..........                        *\n" + \
+        "#*                      @          ....                     *\n" + \
+        "#*                    @               ...                   *\n" + \
+        "#*                  @    M         M    .                   *\n" + \
+        "#*                 @     MM       MM    ..                  *\n" + \
+        "#*                 .     M  M   M  M  ..                    *\n" + \
+        "#*                 ..    M   M M   M ..                     *\n" + \
+        "#*                  .    M    M    M.                       *\n" + \
+        "#*                  ...                   7777777           *\n" + \
+        "#*                    ....                     7            *\n" + \
+        "#*                       .................... 7             *\n" + \
+        "#*                                           7              *\n" + \
+        "#*                                          7               *\n" + \
         "#*                                                          *\n" + \
         "#*                                                          *\n" + \
         info_line + \
         "#*                                                          *\n" + \
-        "#*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "#*       The MadGraph7 Development Team - Find us at        *\n" + \
         "#*    https://server06.fynu.ucl.ac.be/projects/madgraph     *\n" + \
         "#*                           and                            *\n" + \
         "#*                http://amcatnlo.cern.ch                   *\n" + \
@@ -315,18 +365,26 @@ class CmdExtended(common_run.CommonRunCmd):
         logger.info(\
         "************************************************************\n" + \
         "*                                                          *\n" + \
-        "*           W E L C O M E  to  M A D G R A P H 5           *\n" + \
+        "*           W E L C O M E  to  M A D G R A P H 7           *\n" + \
         "*                       a M C @ N L O                      *\n" + \
         "*                                                          *\n" + \
-        "*                 *                       *                *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                     * * * * 5 * * * *                    *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                 *                       *                *\n" + \
+        "*                        ..........                        *\n" + \
+        "*                      @          ....                     *\n" + \
+        "*                    @               ...                   *\n" + \
+        "*                  @    M         M    .                   *\n" + \
+        "*                 @     MM       MM    ..                  *\n" + \
+        "*                 .     M  M   M  M  ..                    *\n" + \
+        "*                 ..    M   M M   M ..                     *\n" + \
+        "*                  .    M    M    M.                       *\n" + \
+        "*                  ...                   7777777           *\n" + \
+        "*                    ....                     7            *\n" + \
+        "*                       .................... 7             *\n" + \
+        "*                                           7              *\n" + \
+        "*                                          7               *\n" + \
         "*                                                          *\n" + \
         info_line + \
         "*                                                          *\n" + \
-        "*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "*       The MadGraph7 Development Team - Find us at        *\n" + \
         "*                 http://amcatnlo.cern.ch                  *\n" + \
         "*                                                          *\n" + \
         "*               Type 'help' for in-line help.              *\n" + \
@@ -340,7 +398,7 @@ class CmdExtended(common_run.CommonRunCmd):
         return self.history_header % misc.get_time_info()
     
     def stop_on_keyboard_stop(self):
-        """action to perform to close nicely on a keyboard interupt"""
+        """action to perform to close nicely on a keyboard interrupt"""
         try:
             if hasattr(self, 'cluster'):
                 logger.info('rm jobs on queue')
@@ -419,7 +477,7 @@ class HelpToCmd(object):
         _compile_parser.print_help()
 
     def help_generate_events(self):
-        """help for generate_events commandi
+        """help for generate_events command
         just call help_launch"""
         _generate_events_parser.print_help()
 
@@ -470,59 +528,11 @@ class CheckValidForCmd(object):
             self.help_shower()
             raise self.InvalidCmd('Invalid syntax, please specify the run name')
         if not os.path.isdir(pjoin(self.me_dir, 'Events', args[0])):
-            raise self.InvalidCmd('Directory %s does not exists' % \
+            raise self.InvalidCmd('Directory %s does not exist' % \
                             pjoin(os.getcwd(), 'Events',  args[0]))
 
         self.set_run_name(args[0], level= 'shower')
         args[0] = pjoin(self.me_dir, 'Events', args[0])
-    
-    def check_plot(self, args):
-        """Check the argument for the plot command
-        plot run_name modes"""
-
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']
-        
-        if not madir or not td:
-            logger.info('Retry to read configuration file to find madanalysis/td')
-            self.set_configuration()
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']        
-        
-        if not madir:
-            error_msg = 'No valid Madanalysis path set.'
-            error_msg += 'Please use the set command to define the path and retry.'
-            error_msg += 'You can also define it in the configuration file.'
-            raise self.InvalidCmd(error_msg)  
-        if not  td:
-            error_msg = 'No valid path to your topdrawer directory set.'
-            error_msg += 'Please use the set command to define the path and retry.'
-            error_msg += 'You can also define it in the configuration file.'
-            raise self.InvalidCmd(error_msg)  
-                     
-        if len(args) == 0:
-            if not hasattr(self, 'run_name') or not self.run_name:
-                self.help_plot()
-                raise self.InvalidCmd('No run name defined. Please add this information.')             
-            args.append('all')
-            return
-
-        
-        if args[0] not in self._plot_mode:
-            self.set_run_name(args[0], level='plot')
-            del args[0]
-            if len(args) == 0:
-                args.append('all')
-        elif not self.run_name:
-            self.help_plot()
-            raise self.InvalidCmd('No run name defined. Please add this information.')                             
-        
-        for arg in args:
-            if arg not in self._plot_mode and arg != self.run_name:
-                 self.help_plot()
-                 raise self.InvalidCmd('unknown options %s' % arg)        
     
     def check_pgs(self, arg):
         """Check the argument for pythia command
@@ -900,7 +910,7 @@ class CompleteForCmd(CheckValidForCmd):
 
     def complete_generate_events(self, text, line, begidx, endidx):
         """auto-completion for generate_events command
-        call the compeltion for launch"""
+        call the completion for launch"""
         self.complete_launch(text, line, begidx, endidx)
 
 
@@ -967,7 +977,7 @@ class AskRunNLO(cmd.ControlSwitch):
     
     def __init__(self, question, line_args=[], mode=None, force=False,
                                                                   *args, **opt):
-        
+        self.allow_qed_ps = opt.pop('allow_qed_ps', False)
         self.me_dir = opt['mother_interface'].me_dir
         self.check_available_module(opt['mother_interface'].options)
         self.last_mode = opt['mother_interface'].last_mode
@@ -978,11 +988,18 @@ class AskRunNLO(cmd.ControlSwitch):
 
         hide_line = []
         if 'QED' in self.proc_characteristics['splitting_types']:
-            hide_line = ['madspin', 'shower', 'reweight', 'madanalysis']        
+            hide_line = ['madspin', 'shower', 'reweight', 'madanalysis']
+            if self.allow_qed_ps:
+                hide_line.remove('shower')
         
         super(AskRunNLO,self).__init__(self.to_control, opt['mother_interface'],
                                      *args, hide_line=hide_line, force=force,
                                       **opt)
+
+    @property
+    def qed_ps_restricted(self):
+        return ('QED' in self.proc_characteristics['splitting_types'] and
+                not self.allow_qed_ps)
 
     @property
     def answer(self):
@@ -1013,11 +1030,12 @@ class AskRunNLO(cmd.ControlSwitch):
         if options['herwig7_path'] and options['thepeg_path'] and options['hepmc_path']:
             self.available_module.add('HW7')
             
-        MCatNLO_libdir = pjoin(self.me_dir, 'MCatNLO', 'lib')
-        if os.path.exists(os.path.realpath(pjoin(MCatNLO_libdir, 'libstdhep.a'))):
+        # StdHEP is compiled when it is first needed by a HERWIG6 or PYTHIA6
+        # shower: it is available if compiled, or if its sources are.
+        if stdhep_status(self.me_dir, options.get('mg5_path'))[0] != 'missing':
             self.available_module.add('StdHEP')
 #
-#   shorcut
+#   shortcut
 #
     def ans_lo(self, value):
         """ function called if the user type lo=value. or lo (then value is None)"""
@@ -1103,12 +1121,9 @@ class AskRunNLO(cmd.ControlSwitch):
 #    
     def get_allowed_fixed_order(self):
         """ """
-        
-        if self.proc_characteristics['ninitial'] == 1 or \
-           'QED' in self.proc_characteristics['splitting_types']:
+        if self.proc_characteristics['ninitial'] == 1 or self.qed_ps_restricted:
             return ['ON']
-        else:
-            return ['ON', 'OFF']
+        return ['ON', 'OFF']
         
     def set_default_fixed_order(self):
           
@@ -1116,8 +1131,8 @@ class AskRunNLO(cmd.ControlSwitch):
             self.switch['fixed_order'] = 'ON'
         elif self.proc_characteristics['ninitial'] == 1:
             self.switch['fixed_order'] = 'ON'
-        elif 'QED' in self.proc_characteristics['splitting_types']:
-             self.switch['fixed_order'] = 'ON'
+        elif self.qed_ps_restricted:
+            self.switch['fixed_order'] = 'ON'
         else:
             self.switch['fixed_order'] = 'OFF'
 
@@ -1129,11 +1144,9 @@ class AskRunNLO(cmd.ControlSwitch):
             return self.red % switch_value
     
     def print_options_fixed_order(self):
-        
-        if 'QED' in self.proc_characteristics['splitting_types']:
+        if self.qed_ps_restricted:
             return "No NLO+PS available for EW correction"
-        else:
-            return self.print_options('fixed_order', keep_default=True)
+        return self.print_options('fixed_order', keep_default=True)
     
     def print_options_madspin(self):
         if 'QED' in self.proc_characteristics['splitting_types']:
@@ -1152,26 +1165,24 @@ class AskRunNLO(cmd.ControlSwitch):
     
    
     def consistency_QED(self, key, value, switch):
-        """ temporary way to forbid event generation due to lack of validation"""
-        
-#        if True:
-        if 'QED' in self.proc_characteristics['splitting_types']:
+        """Restrict unvalidated QED matching unless explicitly enabled."""
+        if self.qed_ps_restricted:
             out = {}
-            to_check ={'fixed_order': ['ON'],
-                       'shower': ['OFF'],
-                       'madanalysis': ['OFF'],
-                       'madspin': ['OFF','none'],
-                       'reweight': ['OFF']}
-            for key, allowed  in to_check.items():        
-                if switch[key] not in allowed:
-                    out[key] = allowed[0]
+            to_check = {'fixed_order': ['ON'],
+                        'shower': ['OFF'],
+                        'madanalysis': ['OFF'],
+                        'madspin': ['OFF', 'none'],
+                        'reweight': ['OFF']}
+            for name, allowed in to_check.items():
+                if switch[name] not in allowed:
+                    out[name] = allowed[0]
                     if not self.nb_fo_warning:
-                        if 'QED' in self.proc_characteristics['splitting_types']:
-                            logger.warning("NLO+PS mode is not allowed for processes including electroweak corrections")
+                        logger.warning('NLO+PS mode is not allowed for processes '
+                                       'including electroweak corrections. Use '
+                                       '--allow_qed_ps for experimental runs.')
                         self.nb_fo_warning = 1
-        else: 
-            return self.check_consistency_with_all(key, value)
-        return out 
+            return out
+        return self.check_consistency_with_all(key, value)
     #apply to all related to the group 
     consistency_fixed_order = lambda self, *args, **opts: self.consistency_QED('fixed_order', *args, **opts)
     consistency_shower = lambda self, *args, **opts: self.consistency_QED('shower', *args, **opts)
@@ -1226,7 +1237,7 @@ class AskRunNLO(cmd.ControlSwitch):
         if hasattr(self, 'allowed_shower'):
             return self.allowed_shower
         
-        if 'QED' in self.proc_characteristics['splitting_types']:
+        if self.qed_ps_restricted:
             self.allowed_shower = ['OFF']
             return self.allowed_shower
 
@@ -1273,7 +1284,7 @@ class AskRunNLO(cmd.ControlSwitch):
     
     def set_default_shower(self): 
         
-        if 'QED' in self.proc_characteristics['splitting_types']:
+        if self.qed_ps_restricted:
             self.switch['shower'] = 'Not Avail'
         elif self.last_mode in ['LO', 'NLO', 'noshower', 'noshowerLO']:
             self.switch['shower'] = 'OFF'         
@@ -1323,7 +1334,7 @@ class AskRunNLO(cmd.ControlSwitch):
         return None
     
     def get_cardcmd_for_shower(self, value):
-        """ adpat run_card according to this setup. return list of cmd to run"""
+        """ adapt run_card according to this setup. return list of cmd to run"""
         
         if value != 'OFF':
             return  ['set parton_shower %s' % self.switch['shower']]
@@ -1434,7 +1445,7 @@ class AskRunNLO(cmd.ControlSwitch):
             self.switch['reweight'] = 'Not Avail'      
             
     def get_cardcmd_for_reweight(self, value):
-        """ adpat run_card according to this setup. return list of cmd to run"""
+        """ adapt run_card according to this setup. return list of cmd to run"""
         
         if value == 'LO':
             return ["edit reweight_card --replace_line='change mode' --before_line='launch' change mode LO"]
@@ -1545,7 +1556,9 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         self.load_results_db()
         self.results.def_web_mode(self.web)
         # check that compiler is gfortran 4.6 or later if virtuals have been exported
-        proc_card = open(pjoin(self.me_dir, 'Cards', 'proc_card_mg5.dat')).read()
+        # joined by ProcCard: cards from older versions are wrapped at 70
+        # characters, which can fall inside '[real=QCD]'
+        proc_card = '\n'.join(banner_mod.ProcCard(pjoin(self.me_dir, 'Cards', 'proc_card_mg5.dat')))
 
         if not '[real=QCD]' in proc_card:
             check_compiler(self.options, block=True)
@@ -1565,114 +1578,6 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         self.run_mcatnlo(evt_file, options)
 
         self.update_status('', level='all', update_results=True)
-
-    ################################################################################
-    def do_plot(self, line):
-        """Create the plot for a given run"""
-
-        # Since in principle, all plot are already done automaticaly
-        args = self.split_arg(line)
-        # Check argument's validity
-        self.check_plot(args)
-        logger.info('plot for run %s' % self.run_name)
-        
-        if not self.force:
-            self.ask_edit_cards([], args, plot=True)
-                
-        if any([arg in ['parton'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 'events.lhe')
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                logger.info('Found events.lhe file for run %s' % self.run_name) 
-                shutil.move(filename, pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'))
-                self.create_plot('parton')
-                shutil.move(pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'), filename)
-                misc.gzip(filename)
-                
-        if any([arg in ['all','parton'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 'MADatNLO.top')
-            if  os.path.exists(filename):
-                logger.info('Found MADatNLO.top file for run %s' % \
-                             self.run_name) 
-                output = pjoin(self.me_dir, 'HTML',self.run_name, 'plots_parton.html')
-                plot_dir = pjoin(self.me_dir, 'HTML', self.run_name, 'plots_parton')
-                
-                if not os.path.isdir(plot_dir):
-                    os.makedirs(plot_dir) 
-                top_file = pjoin(plot_dir, 'plots.top')
-                files.cp(filename, top_file)
-                madir = self.options['madanalysis_path']
-                tag = self.run_card['run_tag']  
-                td = self.options['td_path']
-                misc.call(['%s/plot' % self.dirbin, madir, td],
-                                stdout = open(pjoin(plot_dir, 'plot.log'),'a'),
-                                stderr = subprocess.STDOUT,
-                                cwd=plot_dir)
-
-                misc.call(['%s/plot_page-pl' % self.dirbin, 
-                                    os.path.basename(plot_dir),
-                                    'parton'],
-                                stdout = open(pjoin(plot_dir, 'plot.log'),'a'),
-                                stderr = subprocess.STDOUT,
-                                cwd=pjoin(self.me_dir, 'HTML', self.run_name))
-                shutil.move(pjoin(self.me_dir, 'HTML',self.run_name ,'plots.html'),
-                                                                             output)
-
-                os.remove(pjoin(self.me_dir, 'Events', 'plots.top'))
-                
-        if any([arg in ['all','shower'] for arg in args]):
-            filenames = misc.glob('events_*.lhe.gz', pjoin(self.me_dir, 'Events', self.run_name))
-            if len(filenames) != 1:
-                filenames = misc.glob('events_*.hep.gz', pjoin(self.me_dir, 'Events', self.run_name)) 
-                if len(filenames) != 1:
-                    logger.info('No shower-level event file found for run %s' % \
-                                self.run_name)
-                    return
-                filename = filenames[0]
-                misc.gunzip(filename, keep=True, stdout=pjoin(self.me_dir, 'Events','pythia_events.hep'))
-                
-                if not os.path.exists(pjoin(self.me_dir, 'Cards', 'pythia_card.dat')):
-                    if aMCatNLO and not self.options['mg5_path']:
-                        raise Exception("plotting NLO HEP files requires MG5 utilities.")
-                    
-                    files.cp(pjoin(self.options['mg5_path'], 'Template','LO', 'Cards', 'pythia_card_default.dat'),
-                             pjoin(self.me_dir, 'Cards', 'pythia_card.dat'))
-                self.run_hep2lhe()
-            else:
-                filename = filenames[0]
-                misc.gunzip(filename, keep=True, stdout=pjoin(self.me_dir, 'Events','pythia_events.hep'))
-
-            self.create_plot('shower')
-            lhe_file_name = filename.replace('.hep.gz', '.lhe')
-            shutil.move(pjoin(self.me_dir, 'Events','pythia_events.lhe'), 
-                        lhe_file_name)
-            misc.gzip(lhe_file_name)
-                    
-        if any([arg in ['all','pgs'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                            '%s_pgs_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                self.create_plot('PGS')
-                misc.gzip(filename)                
-            else:
-                logger.info('No valid files to make PGS plots')
-                
-        if any([arg in ['all','delphes'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                        '%s_delphes_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                #shutil.move(filename, pjoin(self.me_dir, 'Events','delphes_events.lhco'))
-                self.create_plot('Delphes')
-                #shutil.move(pjoin(self.me_dir, 'Events','delphes_events.lhco'), filename)
-                misc.gzip(filename)                
-            else:
-                logger.info('No valid files to make Delphes plots')
-
 
     ############################################################################      
     def do_calculate_xsect(self, line):
@@ -1753,6 +1658,26 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             if name in FO_card:
                 self.run_card.set(name, FO_card[name], user=False)
 
+        # me_frame needs the process: what [1,2] means, and which legs may not
+        # enter a frame once real emission is computed (see
+        # RunCardNLO.get_me_frame_legs, which raises for a frame that is not
+        # infrared safe). A run being compiled hands it over here, with the
+        # mode. A bare 'treatcards run' (the reweighting compiles its rw_me
+        # Source that way) has no run_card loaded: the parent reads the card,
+        # and RunCardNLO.write_include_file finds the process on disk.
+        if isinstance(getattr(self, 'run_card', None), banner_mod.RunCardNLO):
+            proc_charac = getattr(self, 'proc_characteristics', None) or \
+                          self.get_characteristics()
+            self.run_card.set_me_frame_process(proc_charac,
+                real_emission=mode not in ['LO', 'aMC@LO', 'noshowerLO'])
+            legs = self.run_card.get_me_frame_legs()
+            if legs != (self.run_card['me_frame'] if 'me_frame' in
+                        self.run_card.user_set else []):
+                logger.info('me_frame: the matrix elements are evaluated in '
+                            'the rest frame of legs %s, which is the partonic '
+                            'c.m. of the Born and stays infrared safe for the '
+                            'real emission.' % legs)
+
         return super(aMCatNLOCmd,self).do_treatcards(line, amcatnlo)
     
     ############################################################################
@@ -1766,7 +1691,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         """Main commands: launch the full chain 
         options and args are relevant if the function is called from other 
         functions, such as generate_events or calculate_xsect
-        mode gives the list of switch needed for the computation (usefull for banner_run)
+        mode gives the list of switch needed for the computation (useful for banner_run)
         """
 
         if not argss and not options:
@@ -1817,18 +1742,30 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             misc.open_file(os.path.join(self.me_dir, 'crossx.html'))
             self.options['automatic_html_opening'] = False
 
+        self.setup_citation_tracking()
+        if common_run.citation is not None:
+            common_run.citation.cite('Alwall:2014hca',
+                'core matrix-element generation (MadGraph7)')
+            self.cite_nlo_run_options(mode)
+            try:
+                self.run_card.add_citation(common_run.citation.cite)
+            except Exception:
+                pass
+
         self.run_generate_events(mode, options, argss, switch)
- 
+
+        self.finalize_citation_tracking()
+
         #check if the param_card defines a scan.
         if False:# self.param_card_iterator:
             cpath = pjoin(self.me_dir,'Cards','param_card.dat')
             param_card_iterator = self.param_card_iterator
-            self.param_card_iterator = [] #avoid to next generate go trough here
+            self.param_card_iterator = [] #avoid to next generate go through here
             param_card_iterator.store_entry(self.run_name, self.results.current['cross'],
                                             error=self.results.current['error'],
                                             param_card_path=cpath)
             orig_name = self.run_name
-            #go trough the scan
+            #go through the scan
             with misc.TMP_variable(self, 'allow_notification_center', False):
                 for i,card in enumerate(param_card_iterator):
                     card.write(cpath)
@@ -1853,12 +1790,49 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             logger.info("write all cross-section results in %s" % path, '$MG:BOLD')
             param_card_iterator.write_summary(path)
             
-        if self.allow_notification_center:    
-            misc.system_notify('Run %s finished' % os.path.basename(self.me_dir), 
-                              '%s: %s +- %s ' % (self.results.current['run_name'], 
+        if self.allow_notification_center:
+            misc.system_notify('Run %s finished' % os.path.basename(self.me_dir),
+                              '%s: %s +- %s ' % (self.results.current['run_name'],
                                                  self.results.current['cross'],
                                                  self.results.current['error']))
-    
+
+    def cite_nlo_run_options(self, mode):
+        """Record the references implied by the NLO run configuration: the
+        general NLO (FKS) formalism, FxFx merging, the parton-shower matching
+        paper for the chosen shower, and MC@NLO-delta/folding."""
+        cite = common_run.citation
+        if cite is None:
+            return
+        rc = self.run_card
+        loop_induced = self.proc_characteristics['loop_induced']
+
+        # general NLO QCD formalism (FKS subtraction), for any NLO computation
+        # on a [QCD] output that is not loop-induced
+        if mode in ['NLO', 'aMC@NLO', 'noshower'] and not loop_induced:
+            cite.cite('Frixione:1997np', 'NLO QCD computation (FKS subtraction)')
+
+        # the following only apply to showered NLO (aMC@NLO)
+        if mode == 'aMC@NLO':
+            try:
+                if int(rc['ickkw']) == 3:
+                    cite.cite('Frederix:2012ps', 'FxFx NLO+PS merging')
+            except (KeyError, ValueError, TypeError):
+                pass
+            shower = str(rc['parton_shower']).upper()
+            if shower == 'HERWIG6':
+                cite.cite('Frixione:2002ik', 'MC@NLO matching to HERWIG6')
+            elif shower.startswith('PYTHIA6'):
+                cite.cite('Torrielli:2010aw', 'MC@NLO matching to PYTHIA6')
+            delta = bool(rc['mcatnlo_delta']) if 'mcatnlo_delta' in rc else False
+            try:
+                folding = list(rc['folding']) if 'folding' in rc else [1, 1, 1]
+            except (KeyError, TypeError):
+                folding = [1, 1, 1]
+            if delta or folding != [1, 1, 1]:
+                cite.cite('Frederix:2020trv',
+                    'MC@NLO-delta / folding (negative-weight reduction)')
+
+
     # this decorator handle the loop related to scan.
     @common_run.scanparamcardhandling(run_card_scan=True)
     def run_generate_events(self, mode, options, args, switch): 
@@ -1949,6 +1923,15 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         randinit.close()
             
         
+    def check_shower_compatibility(self, mode, options=None):
+        """Reject unsupported matching before compiling or submitting jobs."""
+        if options and options.get('reweightonly'):
+            return
+        if mode.split('+', 1)[0] in ['aMC@NLO', 'aMC@LO', 'noshower', 'noshowerLO']:
+            if self.run_card['parton_shower'].upper() == 'PYTHIA6PT' and \
+                    self.proc_characteristics['has_fsr']:
+                raise aMCatNLOError('PYTHIA6PT does not support processes with FSR')
+
     def run(self, mode, options):
         """runs aMC@NLO. Returns the name of the event file created"""
         logger.info('Starting run')
@@ -1957,6 +1940,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             options['only_generation'] = False
 
         self.get_characteristics(pjoin(self.me_dir, 'SubProcesses', 'proc_characteristics'))
+        self.check_shower_compatibility(mode, options)
         self.setup_cluster_or_multicore()
         self.update_random_seed()
         #find and keep track of all the jobs
@@ -2036,10 +2020,6 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                                     'Please use one of the following: %s' \
                                     % (shower, ', '.join(shower_list)))
 
-# check that PYTHIA6PT is not used for processes with FSR
-            if shower == 'PYTHIA6PT' and self.proc_characteristics['has_fsr']:
-                raise aMCatNLOError('PYTHIA6PT does not support processes with FSR')
-
             if mode in ['aMC@NLO', 'aMC@LO']:
                 logger.info('Doing %s matched to parton shower' % mode[4:])
             elif mode in ['noshower','noshowerLO']:
@@ -2090,7 +2070,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
 
 
     def write_orders_tag_info(self):
-        """Collects the informations on the orders_tag variable from the 
+        """Collects the information on the orders_tag variable from the
         different channels and writes a file, linked to the P0 dirs
         """
         log = pjoin(self.me_dir, 'Events', self.run_name, 'alllogs_0.html')
@@ -2101,7 +2081,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             tag = int(l.split()[1])
             if not tag in orderstags:
                 orderstags.append(tag)
-        # now write a fortran include file with all the informations
+        # now write a fortran include file with all the information
         content = '%d\n' % len(orderstags)
         content+= '%s\n' % ' '.join(['%d' % v for v in orderstags])
         outfile = open(pjoin(self.me_dir, 'SubProcesses', 'orderstags_glob.dat'), 'w')
@@ -2120,10 +2100,85 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         return
 
 
+    @staticmethod
+    def effective_real_channels_x0(value):
+        """Use a single value for all settings that disable real channels."""
+        return value if 0.0 < value < 1.0 else -1.0
+
+    def check_real_channels_mode(self,mode):
+        """Real-diagram channels are supported only for ordinary fixed-order NLO.
+        The run_card of a process can enable them by default (chosen at output),
+        so they are switched off, not refused, for the other modes."""
+        value = self.run_card['real_channels_x0'] if 'real_channels_x0' in self.run_card else -1.0
+        x0 = self.effective_real_channels_x0(value)
+        if x0 > 0 and (mode != 'NLO' or self.run_card['ickkw'] != 0):
+            logger.info('real_channels_x0 = %s ignored: the real-emission integration '
+                        'channels are only used for fixed-order NLO with ickkw=0.' % value)
+            # before the run_card.inc is written: the executable and the
+            # channel lists of this run are built without them
+            self.run_card['real_channels_x0'] = -1.0
+            x0 = -1.0
+        return x0
+
+    def check_real_channels_restart(self,jobs,x0):
+        """Do not reuse adaptive grids made for a different real-emission split."""
+        for job in jobs:
+            saved = self.effective_real_channels_x0(job.get('real_channels_x0', -1.0))
+            kind = job.get('channel_type', 0)
+            if saved != x0:
+                raise aMCatNLOError('Cannot restart with a different real_channels_x0 '
+                                    'setting. Start a fresh integration to rebuild the grids.')
+            if kind not in (0, 1) or (kind == 1 and saved < 0):
+                raise aMCatNLOError('Invalid real-channel metadata in saved job status.')
+            job['channel_type'] = kind
+            job['real_channels_x0'] = saved
+
+    def check_real_channels_nocompile(self,p_dirs,exe='madevent_mintFO'):
+        """Keep job construction consistent with the setting in existing binaries."""
+        requested_x0 = self.run_card['real_channels_x0'] if 'real_channels_x0' in self.run_card else -1.0
+        requested_x0 = self.effective_real_channels_x0(requested_x0)
+        for p_dir in p_dirs:
+            # The catalogue and selected executable can come from different
+            # builds when switching between fixed order and MC@NLO.
+            for filename in ('real_channels_x0.dat', exe + '.real_channels_x0.dat'):
+                path = pjoin(self.me_dir, 'SubProcesses', p_dir, filename)
+                compiled_x0 = -1.0
+                try:
+                    with open(path) as stream:
+                        compiled_x0 = float(stream.read().strip().lower().replace('d', 'e'))
+                    if not math.isfinite(compiled_x0):
+                        raise ValueError('Non-finite compiled setting')
+                except FileNotFoundError:
+                    # Processes generated before this feature have no markers
+                    # and can only be reused with real channels disabled.
+                    pass
+                except (OSError, ValueError):
+                    raise self.InvalidCmd('Cannot determine the compiled real_channels_x0 '
+                                          'setting in %s. Rerun without --nocompile.' % p_dir)
+                if self.effective_real_channels_x0(compiled_x0) != requested_x0:
+                    raise self.InvalidCmd('real_channels_x0 differs from the compiled setting '
+                                          'in %s. Rerun without --nocompile to update the '
+                                          'executable and integration channels.' % p_dir)
+
+    @staticmethod
+    def fixed_order_job_identity(job):
+        """A split job belongs to one subprocess, channel group and channel kind."""
+        return job['p_dir'], job['channel'], job.get('channel_type', 0)
+
+    def check_fixed_order_job_group(self,jobs):
+        """Check channel identities before summing jobs or touching their grids."""
+        identities = {(self.fixed_order_job_identity(job), job.get('configs'),
+                       self.effective_real_channels_x0(job.get('real_channels_x0', -1.0)))
+                      for job in jobs}
+        if len(identities) != 1:
+            raise aMCatNLOError('Cannot combine fixed-order jobs with different channels, '
+                                'channel types or real_channels_x0 settings.')
+
     def create_jobs_to_run(self,options,p_dirs,req_acc,run_mode,\
                            integration_step,mode,fixed_order=True):
         """Creates a list of dictionaries with all the jobs to be run"""
         jobs_to_run=[]
+        real_channels_x0 = self.check_real_channels_mode(mode)
         if not options['only_generation']:
             # Fresh, new run. Check all the P*/channels.txt files
             # (created by the 'gensym' executable) to set-up all the
@@ -2138,18 +2193,37 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                     logger.warning('No integration channels found for contribution %s (too large masses/low energy?)' % p_dir)
                     continue
                 if fixed_order:
-                    lch=len(channels)
+                    channel_groups = [(0, channels)]
+                    if real_channels_x0 > 0 and run_mode[:4] not in ('born', 'bovi', 'bosk') \
+                            and not run_mode.startswith('vi'):
+                        hard_file = pjoin(self.me_dir,'SubProcesses',p_dir,'channels_hard.txt')
+                        try:
+                            with open(hard_file) as chan_file:
+                                hard_channels = chan_file.read().split()
+                        except IOError:
+                            raise aMCatNLOError('Missing hard real-emission channel list %s. '
+                                                'Recompile this process before running.' % hard_file)
+                        channel_groups.append((1, hard_channels))
                     maxchannels=20    # combine up to 20 channels in a single job
-                    njobs=(int(lch/maxchannels)+1 if lch%maxchannels!= 0 \
-                           else int(lch/maxchannels))
-                    for nj in range(1,njobs+1):
+                    grouped_channels=[]
+                    for kind, pool in channel_groups:
+                        lch=len(pool)
+                        njobs=(lch+maxchannels-1)//maxchannels
+                        for nj in range(1,njobs+1):
+                            nchans=lch//njobs + (1 if nj <= lch%njobs else 0)
+                            grouped_channels.append((kind, pool[:nchans]))
+                            del pool[:nchans]
+                        if pool:
+                            raise aMCatNLOError('"channels" is not empty %s' % pool)
+                    for nj, (kind, configs) in enumerate(grouped_channels, 1):
                         job={}
                         job['p_dir']=p_dir
                         job['p_label']=p_dir[1:].split('_')[0]
                         job['channel']=str(nj)
-                        job['nchans']=(int(lch/njobs)+1 if nj <= lch%njobs else int(lch/njobs))
-                        job['configs']=' '.join(channels[:job['nchans']])
-                        del channels[:job['nchans']]
+                        job['nchans']=len(configs)
+                        job['configs']=' '.join(configs)
+                        job['channel_type']=kind
+                        job['real_channels_x0']=real_channels_x0
                         job['split']=0
                         if req_acc == -1:
                             job['accuracy']=0
@@ -2167,8 +2241,6 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                         job['wgt_frac']=1.0
                         job['wgt_mult']=1.0
                         jobs_to_run.append(job)
-                    if channels:
-                        raise aMCatNLOError('"channels" is not empty %s' % channels)
                 else:
                     for channel in channels:
                         job={}
@@ -2195,6 +2267,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             except:
                 raise aMCatNLOError('Cannot reconstruct jobs from saved job status in %s' % \
                                     pjoin(self.me_dir,'SubProcesses','job_status.pkl'))
+            self.check_real_channels_restart(jobs_to_collect,real_channels_x0)
             # Update cross sections and determine which jobs to run next
             if fixed_order:
                 jobs_to_run,jobs_to_collect=self.collect_the_results(options,req_acc,jobs_to_run,
@@ -2265,6 +2338,8 @@ RUN_MODE = %(run_mode)s
 RESTART = %(mint_mode)s
 """ \
               % job
+            if job.get('channel_type', 0) == 1:
+                content = content.replace('\nCHANNEL =', '\nCHANNEL_TYPE = 1\nCHANNEL =')
         else:
             if job['mint_mode'] == 0:
                 job['fold_string']='1 1 1'
@@ -2439,8 +2514,8 @@ RESTART = %(mint_mode)s
                 job['combined']=1
                 jobs_to_run_new.append(job) # this jobs wasn't split
             elif job['split'] == 1:
-                jobgroups_to_combine.append([j for j in jobs_to_run if j['p_dir'] == job['p_dir'] and \
-                                            j['channel'] == job['channel']])
+                jobgroups_to_combine.append([j for j in jobs_to_run if \
+                    self.fixed_order_job_identity(j) == self.fixed_order_job_identity(job)])
             else:
                 continue
         for job_group in jobgroups_to_combine:
@@ -2451,6 +2526,7 @@ RESTART = %(mint_mode)s
 
     def combine_split_order_jobs(self,job_group):
         """combine the jobs in job_group and return a single summed job"""
+        self.check_fixed_order_job_group(job_group)
         # first copy one of the jobs in 'jobs'
         sum_job=copy.copy(job_group[0])
         # update the information to have a 'non-split' job:
@@ -2485,6 +2561,7 @@ RESTART = %(mint_mode)s
         """Combines the mint_grids and MC-integer grids from the split order
         jobs (fixed order only).
         """
+        self.check_fixed_order_job_group(job_group)
         files_mint_grids=[]
         files_MC_integer=[]
         location=None
@@ -2516,7 +2593,13 @@ RESTART = %(mint_mode)s
             for rowgrp in zip(*linesoffiles):
                 action=misc.make_unique([row.strip().split()[0] for row in rowgrp]) 
                 floatsbyfile = [[float(a) for a in row.strip().split()[1:]] for row in rowgrp]
-                if any(len(values) != len(floatsbyfile[0]) for values in floatsbyfile[1:]):
+                # A legacy SPE record has three fields; new records append
+                # the conditional sampling moment and its count. If a split
+                # lacks those fields, combine only the shared legacy part.
+                compatible_sampling = (action == ['SPE'] and
+                                       all(len(values) in (3, 5) for values in floatsbyfile))
+                if (any(len(values) != len(floatsbyfile[0]) for values in floatsbyfile[1:])
+                        and not compatible_sampling):
                     raise aMCatNLOError('Split grid rows have different numbers of values.')
                 floatgrps = list(zip(*floatsbyfile))
                 if len(action) != 1:
@@ -2542,15 +2625,24 @@ RESTART = %(mint_mode)s
                     # Any fixed surrogate is exact; keep the first job's fit.
                     write_string = rowgrp[0].strip().split()[1:]
                 elif 'SPE' in action:
-                    # special: average first; sum second; average third (ALL INTEGERS)
+                    # Average points/iteration and grid hits; sum iterations.
                     write_string=[]
-                    for i,floatgrp in enumerate(floatgrps):
+                    for i,floatgrp in enumerate(floatgrps[:3]):
                         if i==0: # average number of PS points per iterations
                             write_string.append(int(sum(floatgrp)/len(floatgrp)))
-                        elif i==1: # sum te number of iterations
+                        elif i==1: # sum the number of iterations
                             write_string.append(int(sum(floatgrp)))
                         elif i==2: # average the nhits_in_grids
                             write_string.append(int(sum(floatgrp)/len(floatgrp)))
+                    if len(floatgrps) >= 5:
+                        # New MINT grids also store the conditional second
+                        # moment and its sample count. These weights exclude
+                        # wgt_mult: pool samples rather than summing moments
+                        # as for the split contributions to the integral.
+                        moment_calls = sum(floatgrps[4])
+                        moment = (sum(row[3]*row[4] for row in floatsbyfile)/moment_calls
+                                  if moment_calls else sum(floatgrps[3])/len(floatgrps[3]))
+                        write_string.extend([moment, int(moment_calls)])
                 else:
                     raise aMCatNLOError('Unknown action for combining grids: %s' % action[0])
                 combined_row = action[0] + " " + (" ".join(str(ws) for ws in write_string)) + "\n"
@@ -2620,8 +2712,8 @@ RESTART = %(mint_mode)s
             # remove current job from jobs_to_collect. Make sure
             # to remove all the split ones in case the original
             # job had been a split one (before it was re-combined)
-            for j in [j for j in jobs_to_collect_new if j['p_dir'] == job['p_dir'] and \
-                                j['channel'] == job['channel']]:
+            for j in [j for j in jobs_to_collect_new if \
+                    self.fixed_order_job_identity(j) == self.fixed_order_job_identity(job)]:
                 jobs_to_collect_new.remove(j)
             time_expected=job['time_spend']*(job['niters']*job['npoints'])/  \
                            (job['niters_done']*job['npoints_done'])
@@ -2728,7 +2820,7 @@ RESTART = %(mint_mode)s
                     raise aMCatNLOError('Cannot determine number of iterations and PS points '+
                                         'for integration step %i' % step )
             elif ( req_acc > 0 and err/abs(tot) > req_acc*1.2 ) or step <= 0:
-                req_accABS=req_acc*abs(tot)/totABS # overal relative required accuracy on ABS Xsec.
+                req_accABS=req_acc*abs(tot)/totABS # overall relative required accuracy on ABS Xsec.
                 for job in jobs:
                     # skip jobs with 0 xsec
                     if job['resultABS'] == 0.:
@@ -3318,7 +3410,8 @@ RESTART = %(mint_mode)s
         step corresponds to the mintMC step, if =2 (i.e. after event generation)
         some additional infos are printed"""
         # find process name
-        proc_card_lines = open(pjoin(self.me_dir, 'Cards', 'proc_card_mg5.dat')).read().split('\n')
+        # ProcCard joins the lines older versions wrapped at 70 characters
+        proc_card_lines = banner_mod.ProcCard(pjoin(self.me_dir, 'Cards', 'proc_card_mg5.dat'))
         process = ''
         for line in proc_card_lines:
             if line.startswith('generate') or line.startswith('add process'):
@@ -3386,14 +3479,9 @@ RESTART = %(mint_mode)s
                     message = message + '\n      Scale variation %s:' % computed
                     for s in scale_pdf_info[0]:
                         if s['unc']:
-                            if self.run_card['ickkw'] != -1:
-                                message = message + \
-                                          ('\n          Dynamical_scale_choice %(label)i (envelope of %(size)s values): '\
-                                           '\n              %(cen)8.3e pb  +%(max)0.1f%% -%(min)0.1f%%') % s
-                            else:
-                                message = message + \
-                                          ('\n          Soft and hard scale dependence (added in quadrature): '\
-                                           '\n              %(cen)8.3e pb  +%(max_q)0.1f%% -%(min_q)0.1f%%') % s
+                            message = message + \
+                                      ('\n          Dynamical_scale_choice %(label)i (envelope of %(size)s values): '\
+                                       '\n              %(cen)8.3e pb  +%(max)0.1f%% -%(min)0.1f%%') % s
                                     
                         else:
                             message = message + \
@@ -3453,7 +3541,7 @@ RESTART = %(mint_mode)s
             debug_msg = 'Advanced statistics collection failed with error "%s"\n'%str(e)
             err_string = io.StringIO()
             traceback.print_exc(limit=4, file=err_string)
-            debug_msg += 'Please report this backtrace to a MG5_aMC developer:\n%s'\
+            debug_msg += 'Please report this backtrace to a MadGraph7 developer:\n%s'\
                                                           %err_string.getvalue()
 
         logger.debug(debug_msg+'\n')
@@ -3517,7 +3605,7 @@ RESTART = %(mint_mode)s
         # Recuperate the fraction of unstable PS points found in the runs for
         # the virtuals
         UPS_stat_finder = re.compile(
-             r"Satistics from MadLoop:.*"+\
+             r"(?:Statistics|Satistics) from MadLoop:.*"+\
              r"Total points tried\:\s+(?P<ntot>\d+).*"+\
              r"Stability unknown\:\s+(?P<nsun>\d+).*"+\
              r"Stable PS point\:\s+(?P<nsps>\d+).*"+\
@@ -3529,23 +3617,34 @@ RESTART = %(mint_mode)s
              r"Unknown return code \(100\)\:\s+(?P<n100>\d+).*"+\
              r"Unknown return code \(10\)\:\s+(?P<n10>\d+).*",re.DOTALL)
     
-        unit_code_meaning = { 0 : 'Not identified (CTModeRun != -1)',
-                              1 : 'CutTools (double precision)',
-                              2 : 'PJFry++',
-                              3 : 'IREGI',
-                              4 : 'Golem95',
-                              5 : 'Samurai',
-                              6 : 'Ninja (double precision)',
-                              7 : 'COLLIER',
-                              8 : 'Ninja (quadruple precision)',
-                              9 : 'CutTools (quadruple precision)'}
         RetUnit_finder =re.compile(
                            r"#Unit\s*(?P<unit>\d+)\s*=\s*(?P<n_occurences>\d+)")
+        ninjars_finder = re.compile(r"#NinjaRS\s+(DP|QP)\s*=\s*(\d+)")
+        version_finder = re.compile(r"#ReturnCodeVersion\s*=\s*(\S+)")
+        backend_usage = {}
     #Unit
     
         for gv_log in log_GV_files:
             channel_name = '/'.join(gv_log.split('/')[-5:-1])
-            log=open(gv_log,'r').read()                
+            with open(gv_log, 'r') as stream:
+                log = stream.read()
+            ninjars_usage = {'DP': 0, 'QP': 0}
+            for precision, count in ninjars_finder.findall(log):
+                ninjars_usage[precision] += int(count)
+            try:
+                versions = {int(value) for value in version_finder.findall(log)}
+            except ValueError:
+                raise MadGraph5Error('Invalid MadLoop return-code format in %s.' % gv_log)
+            if len(versions) > 1:
+                raise MadGraph5Error('Mixed MadLoop return-code formats in %s.' % gv_log)
+            version = next(iter(versions)) if versions else 1
+            unit_counts = [0] * 10
+            for match in RetUnit_finder.finditer(log):
+                unit_counts[int(match.group('unit'))] += int(match.group('n_occurences'))
+            for backend, count in sum_html.decode_madloop_backend_usage(
+                    unit_counts, ninjars_usage['DP'], ninjars_usage['QP'],
+                    version).items():
+                backend_usage[backend] = backend_usage.get(backend, 0) + count
             UPS_stats = re.search(UPS_stat_finder,log)
             for retunit_stats in re.finditer(RetUnit_finder, log):
                 if channel_name not in list(stats['UPS'].keys()):
@@ -3583,8 +3682,6 @@ RESTART = %(mint_mode)s
             nTotini = sum([chan[7] for chan in stats['UPS'].values()],0)
             nTot100 = sum([chan[8] for chan in stats['UPS'].values()],0)
             nTot10  = sum([chan[9] for chan in stats['UPS'].values()],0)
-            nTot1  = [sum([chan[10][i] for chan in stats['UPS'].values()],0) \
-                                                             for i in range(10)]
             UPSfracs = [(chan[0] , 0.0 if chan[1][0]==0 else \
               safe_float(chan[1][4]*100)/chan[1][0]) for chan in stats['UPS'].items()]
             maxUPS = max(UPSfracs, key = lambda w: w[1])
@@ -3599,19 +3696,15 @@ RESTART = %(mint_mode)s
             tmpStr += '\n    Quadruple precision used:            %d'%nTotqdp
             tmpStr += '\n    Initialization phase-space points:   %d'%nTotini
             tmpStr += '\n    Reduction methods used:'
-            red_methods = [(unit_code_meaning[i],nTot1[i]) for i in \
-                                         unit_code_meaning.keys() if nTot1[i]>0]
+            red_methods = [(sum_html.MADLOOP_BACKEND_LABELS[backend], count)
+                           for backend, count in backend_usage.items()
+                           if count > 0]
             for method, n in sorted(red_methods, key= lambda l: l[1], reverse=True):
                 tmpStr += '\n      > %s%s%s'%(method,' '*(33-len(method)),n)                
             if nTot100 != 0:
                 debug_msg += '\n  Unknown return code (100):             %d'%nTot100
             if nTot10 != 0:
                 debug_msg += '\n  Unknown return code (10):              %d'%nTot10
-            nUnknownUnit = sum(nTot1[u] for u in range(10) if u \
-                                                not in list(unit_code_meaning.keys()))
-            if nUnknownUnit != 0:
-                debug_msg += '\n  Unknown return code (1):               %d'\
-                                                                   %nUnknownUnit
 
             if maxUPS[1]>0.001:
                 message += tmpStr
@@ -3701,7 +3794,7 @@ RESTART = %(mint_mode)s
             except KeyError:
                     relevant_log_GV_files.append(log_file)
         
-        # Now we want to use the latest occurence of accumulated result in the log file
+        # Now we want to use the latest occurrence of accumulated result in the log file
         for gv_log in relevant_log_GV_files:
             logfile=open(gv_log,'r')
             log = logfile.read()
@@ -3780,7 +3873,7 @@ RESTART = %(mint_mode)s
             tmpStr = '\n    Max. MC err. on virt ratio from grids  %.1f %% (%s)'\
                                   %tuple(stats['virt_stats']['v_ratio_err_max'])
             debug_msg += tmpStr
-            # After all it was decided that it is better not to alarm the user unecessarily
+            # After all it was decided that it is better not to alarm the user unnecessarily
             # with such printout of the statistics.
 #            if stats['virt_stats']['v_ratio_err_max'][0]>100.0 or \
 #                                stats['virt_stats']['v_ratio_err_max'][0]>100.0:
@@ -3878,11 +3971,11 @@ RESTART = %(mint_mode)s
                                              (TimeList[0][0],TimeList[0][1])
 
         # =============================     
-        # == log file eror detection ==
+        # == log file error detection ==
         # =============================
         
         # Find the number of potential errors found in all log files
-        # This re is a simple match on a case-insensitve 'error' but there is 
+        # This re is a simple match on a case-insensitive 'error' but there is
         # also some veto added for excluding the sentence 
         #  "See Section 6 of paper for error calculation."
         # which appear in the header of lhapdf in the logs.
@@ -3934,11 +4027,24 @@ RESTART = %(mint_mode)s
         evt_file=pjoin(self.me_dir, 'Events', self.run_name, 'events.lhe.gz')
         banner=pjoin(self.me_dir, 'Events', self.run_name, 
                           '%s_%s_banner.txt' % (self.run_name, self.run_tag))
-        
+
+        # Record the choices of the MC@NLO subtraction that the shower must
+        # reproduce, so that showering does not depend on the cards present
+        # when it is run (see mcatnlo_shower.py).
+        try:
+            contract = mcatnlo_shower.contract_from_generation(
+                self.me_dir, self.run_card, self.proc_characteristics, evt_files)
+            mcatnlo_shower.add_contract_to_banner_file(banner, contract)
+            logger.debug('MC@NLO matching contract:\n%s' % contract.to_text())
+        except Exception as error:
+            logger.warning('Could not record the MC@NLO matching information '
+                           'in the event file: %s' % error)
+
         collect_events.collect_events(
             output=evt_file,
             header_template=banner,
-            template_header_keep_tags=['MGVersion','MG5ProcCard','MGRunCard','slha','MGShowerCard'],
+            template_header_keep_tags=['MGVersion','MG5ProcCard','MGRunCard','slha',
+                                       'MGShowerCard', mcatnlo_shower.CONTRACT_TAG],
             input_files=evt_files,
             seed=self.get_randinit_seed(),
             subset=None,
@@ -3960,6 +4066,70 @@ RESTART = %(mint_mode)s
         self.update_status('Events generated', level='parton', update_results=True)
         return evt_file[:-3]
 
+
+    def collect_shower_logs(self, rundir):
+        """Archive logs per shower invocation, retaining links for diagnostics."""
+        event_dir = pjoin(self.me_dir, 'Events', self.run_name)
+        label = os.path.basename(rundir)[len('RUN_'):]
+        compile_log = pjoin(self.me_dir, 'mcatnlo.log')
+        if os.path.isfile(compile_log):
+            files.mv(compile_log, pjoin(event_dir, 'mcatnlo_%s.log' % label))
+
+        split_logs = sorted(misc.glob('mcatnlo_run_[0-9]*.log', rundir),
+                            key=lambda path: int(os.path.basename(path)[12:-4]))
+        logs = split_logs or misc.glob('mcatnlo_run.log', rundir)
+        archived = []
+        for log in logs:
+            job = '__%s' % os.path.basename(log)[12:-4] if split_logs else ''
+            destination = pjoin(event_dir, 'mcatnlo_run_%s%s.log' % (label, job))
+            files.mv(log, destination)
+            files.ln(destination, rundir, os.path.basename(log))
+            archived.append(destination)
+
+        # Existing diagnostic links and the FxFx summary use mcatnlo_run.log.
+        if split_logs:
+            combined = pjoin(event_dir, 'mcatnlo_run_%s.log' % label)
+            with open(combined, 'w') as output:
+                for log in archived:
+                    job = os.path.basename(log).rsplit('__', 1)[1][:-4]
+                    output.write('\n===== Shower job %s =====\n' % job)
+                    with open(log) as source:
+                        shutil.copyfileobj(source, output)
+            files.ln(combined, rundir, 'mcatnlo_run.log')
+        return archived
+
+
+    def get_pythia8_hepmc_setup(self):
+        """The HepMC version (2 or 3) the Pythia8 shower driver uses, following
+        'hepmc_format' in the shower_card, and the flags linking it to HepMC.
+        With an analysis (ANALYSE), HEPEVT is filled directly from the
+        Pythia8 event record and no HepMC library is needed."""
+
+        if self.shower_card['analyse']:
+            return 0, ''
+
+        hepmc_format = str(self.shower_card['hepmc_format']).lower()
+        pythia8_path = self.options['pythia8_path']
+        version = misc.get_pythia8_version(pythia8_path)
+        pythia83 = version is not None and float(version) >= 8.3
+
+        if hepmc_format != 'auto':
+            versions = [int(hepmc_format[-1])]
+        elif not pythia83:
+            versions = [2]
+        else:
+            versions = [self.get_auto_hepmc_version()]
+            versions.append(5 - versions[0])
+        for i, hepmc_version in enumerate(versions):
+            try:
+                return hepmc_version, misc.get_pythia8_hepmc_flags(pythia8_path,
+                                  hepmc_version, self.get_hepmc_paths(hepmc_version))
+            except MadGraph5Error as error:
+                if i + 1 == len(versions):
+                    raise aMCatNLOError('The Pythia8 shower cannot use HepMC%d: %s'
+                                        % (hepmc_version, error))
+                logger.warning('%s The Pythia8 shower uses HepMC%d instead.'
+                               % (error, versions[i + 1]))
 
     def run_mcatnlo(self, evt_file, options):
         """runs mcatnlo on the generated event file, to produce showered-events
@@ -3992,7 +4162,13 @@ RESTART = %(mint_mode)s
                 'Setting nsplit_jobs in the shower_card to 1.')
             self.shower_card['nsplit_jobs'] = 1
 
-        self.banner_to_mcatnlo(evt_file)
+        contract = self.get_matching_contract(evt_file)
+        if shower in ['HERWIG6', 'PYTHIA6Q', 'PYTHIA6PT'] and (
+                not self.shower_card['analyse'] or
+                set(self.shower_card['extralibs'].split()) & set(['stdhep', 'Fmcfio'])):
+            self.ensure_stdhep(shower)
+        if shower != 'PYTHIA8':
+            self.banner_to_mcatnlo(evt_file, contract)
 
         # if fastjet has to be linked (in extralibs) then
         # add lib /include dirs for fastjet if fastjet-config is present on the
@@ -4056,24 +4232,14 @@ RESTART = %(mint_mode)s
             extrapaths.append(pjoin(self.options['hepmc_path'], 'lib'))
             self.shower_card['extrapaths'] += ' %s' % pjoin(self.options['hepmc_path'], 'lib')
 
-        # add the HEPMC path of the pythia8 installation
-        if shower == 'PYTHIA8':
-            hepmc = subprocess.Popen([pjoin(self.options['pythia8_path'], 'bin', 'pythia8-config'), '--hepmc2'],
-                         stdout = subprocess.PIPE).stdout.read().decode(errors='ignore').strip()
-            #this gives all the flags, i.e.
-            #-I/Path/to/HepMC/include -L/Path/to/HepMC/lib -lHepMC
-            # we just need the path to the HepMC libraries
-            for token in hepmc.split():
-                if token.startswith('-L'):
-                    extrapaths.append(token[2:])
 
         # check that if FxFx is activated the correct shower plugin is present
-        if shower == 'PYTHIA8' and self.run_card['ickkw'] == 3:
+        if shower == 'PYTHIA8' and contract['ickkw'] == 3:
             check_pythia8_fxfx_plugin(self.options['pythia8_path'],
                                      pjoin(self.me_dir, 'MCatNLO', 'Scripts',
                                            'JetMatching.h'))
 
-        if shower == 'PYTHIA8' and not os.path.exists(pjoin(self.options['pythia8_path'], 'xmldoc')):
+        if shower == 'PYTHIA8':
             extrapaths.append(pjoin(self.options['pythia8_path'], 'lib'))
 
         # HwU.f now contains some calls to the PineAPPL functions. One should add the 
@@ -4094,6 +4260,18 @@ RESTART = %(mint_mode)s
         paths += ':' + ':'.join(extrapaths)
         os.putenv(ld_library_path, paths)
 
+        # Without an explicit seed every split job would repeat the same
+        # random sequence. Derive a reproducible seed from the generation
+        # seed; shower_template.sh offsets it for each split job.
+        if shower in ['PYTHIA8', 'HERWIG7'] and self.shower_card['rnd_seed'] == 0:
+            try:
+                iseed = int(self.banner.get_detail('run_card', 'iseed'))
+            except Exception:
+                iseed = 0
+            self.shower_card['rnd_seed'] = derive_shower_seed(iseed)
+            logger.info('Shower random seed derived from the generation seed: %d'
+                        % self.shower_card['rnd_seed'])
+
         shower_card_path = pjoin(self.me_dir, 'MCatNLO', 'shower_card.dat')
         self.shower_card.write_card(shower, shower_card_path)
 
@@ -4104,6 +4282,16 @@ RESTART = %(mint_mode)s
         
         mcatnlo_log = pjoin(self.me_dir, 'mcatnlo.log')
         self.update_status('Compiling MCatNLO for %s...' % shower, level='shower') 
+
+        if shower == 'PYTHIA8':
+            with open(mcatnlo_log, 'w') as log:
+                log.write('MC@NLO matching recorded in the event file:\n%s\n'
+                          % contract.to_text())
+            try:
+                pythia8_inputs = self.prepare_pythia8_shower(
+                    evt_file, contract, mcatnlo_log)
+            except mcatnlo_shower.ShowerInterfaceError as error:
+                raise aMCatNLOError(str(error))
 
         
         # libdl may be needded for pythia 82xx
@@ -4116,14 +4304,25 @@ RESTART = %(mint_mode)s
         #                  "It is needed for the correct running of PY8.2xx.\n" + \
         #                  "If this library cannot be found on your system, a crash will occur.")
 
-        misc.call(['./MCatNLO_MadFKS.inputs'], stdout=open(mcatnlo_log, 'w'),
-                    stderr=open(mcatnlo_log, 'w'), 
-                    cwd=pjoin(self.me_dir, 'MCatNLO'),
-                    close_fds=True)
+        else:
+            # Objects are reused between compilations; recompile HwU if its
+            # module files are missing (they are needed by the analyses).
+            objdir = pjoin(self.me_dir, 'MCatNLO', 'objects')
+            if os.path.exists(pjoin(objdir, 'HwU.o')) and \
+                    not os.path.exists(pjoin(objdir, 'hwu_wgts_info_len.mod')):
+                os.remove(pjoin(objdir, 'HwU.o'))
+            # The scripts run make, which reads the number of jobs from MAKEFLAGS.
+            env = dict(os.environ)
+            env['MAKEFLAGS'] = ('%s -j%d' % (env.get('MAKEFLAGS', ''),
+                                            self.compilation_jobs())).strip()
+            with open(mcatnlo_log, 'w') as log:
+                misc.call(['./MCatNLO_MadFKS.inputs'], stdout=log,
+                          stderr=subprocess.STDOUT, env=env,
+                          cwd=pjoin(self.me_dir, 'MCatNLO'), close_fds=True)
 
         exe = 'MCATNLO_%s_EXE' % shower
-        if not os.path.exists(pjoin(self.me_dir, 'MCatNLO', exe)) and \
-            not os.path.exists(pjoin(self.me_dir, 'MCatNLO', 'Pythia8.exe')):
+        if shower != 'PYTHIA8' and \
+                not os.path.exists(pjoin(self.me_dir, 'MCatNLO', exe)):
             print(open(mcatnlo_log).read())
             raise aMCatNLOError('Compilation failed, check %s for details' % mcatnlo_log)
         logger.info('                     ... done')
@@ -4138,20 +4337,30 @@ RESTART = %(mint_mode)s
         os.mkdir(rundir)
         files.cp(shower_card_path, rundir)
 
-        #look for the event files (don't resplit if one asks for the 
-        # same number of event files as in the previous run)
-        event_files = misc.glob('events.lhe_*', pjoin(self.me_dir, 'Events', self.run_name))
-        if max(len(event_files), 1) != self.shower_card['nsplit_jobs']:
-            logger.info('Cleaning old files and splitting the event file...')
-            #clean the old files
-            files.rm([f for f in event_files if 'events.lhe' not in f])
-            if self.shower_card['nsplit_jobs'] > 1:
-                eventfile = lhe_parser.EventFile(evt_file)
-                eventfile.split(self.banner.get_detail('run_card', 'nevents') / self.shower_card['nsplit_jobs'], cwd = pjoin(self.me_dir, 'Events', self.run_name))
-                logger.info('Splitting done.')
-            event_files = misc.glob('events.lhe_*', pjoin(self.me_dir, 'Events', self.run_name)) 
-
-        event_files.sort()
+        # Splits are temporary. Regenerate them from the current input, since a
+        # previous interrupted run may have left incomplete or outdated files.
+        event_dir = pjoin(self.me_dir, 'Events', self.run_name)
+        old_splits = [path for path in misc.glob('events.lhe_*', event_dir)
+                      if re.fullmatch(r'events\.lhe_\d+\.lhe(?:\.gz)?',
+                                      os.path.basename(path))]
+        files.rm(old_splits)
+        event_files = []
+        if self.shower_card['nsplit_jobs'] > 1:
+            logger.info('Splitting the event file...')
+            eventfile = lhe_parser.EventFile(evt_file)
+            try:
+                nb_files = eventfile.split(
+                    self.banner.get_detail('run_card', 'nevents') //
+                    self.shower_card['nsplit_jobs'], cwd=event_dir)
+            finally:
+                eventfile.close()
+            if nb_files != self.shower_card['nsplit_jobs']:
+                raise aMCatNLOError('Expected %d split event files, found %d. '
+                                   'Check the event count in the LHE banner.' %
+                                   (self.shower_card['nsplit_jobs'], nb_files))
+            # Numeric order matters once there are more than ten jobs.
+            event_files = ['%s_%d.lhe' % (evt_file, i) for i in range(nb_files)]
+            logger.info('Splitting done.')
 
         self.update_status('Showering events...', level='shower')
         logger.info('(Running in %s)' % rundir)
@@ -4159,15 +4368,19 @@ RESTART = %(mint_mode)s
             files.mv(pjoin(self.me_dir, 'MCatNLO', exe), rundir)
             files.mv(pjoin(self.me_dir, 'MCatNLO', 'MCATNLO_%s_input' % shower), rundir)
         else:
-        # special treatment for pythia8
-            files.mv(pjoin(self.me_dir, 'MCatNLO', 'Pythia8.cmd'), rundir)
-            files.mv(pjoin(self.me_dir, 'MCatNLO', 'Pythia8.exe'), rundir)
-            if os.path.exists(pjoin(self.options['pythia8_path'], 'xmldoc')): # this is PY8.1xxx
-                files.ln(pjoin(self.options['pythia8_path'], 'examples', 'config.sh'), rundir)
-                files.ln(pjoin(self.options['pythia8_path'], 'xmldoc'), rundir)
-            else: # this is PY8.2xxx
-                files.ln(pjoin(self.options['pythia8_path'], 'share/Pythia8/xmldoc'), rundir)
-                files.ln(pjoin(self.options['pythia8_path'], 'share/Pythia8/tunes'), rundir)
+            # Pythia8: the driver, its command file and the list of the
+            # settings it has to verify.
+            files.cp(pythia8_inputs['exe'], pjoin(rundir, 'Pythia8.exe'))
+            with open(pjoin(rundir, 'Pythia8.cmd'), 'w') as stream:
+                stream.write(pythia8_inputs['cmd'])
+            with open(pjoin(rundir, 'mcatnlo_locked.dat'), 'w') as stream:
+                stream.write(pythia8_inputs['locked'])
+            datadir = pjoin(self.options['pythia8_path'], 'share', 'Pythia8')
+            # PYTHIA8DATA points to rundir/xmldoc; Pythia 8.3 finds its
+            # internal PDF grids in PYTHIA8DATA/../pdfdata.
+            for name in ['xmldoc', 'tunes', 'pdfdata']:
+                if os.path.isdir(pjoin(datadir, name)):
+                    files.ln(pjoin(datadir, name), rundir)
 
         #link the hw7 exe in the rundir
         if shower == 'HERWIG7':
@@ -4195,15 +4408,27 @@ RESTART = %(mint_mode)s
                 out_id = 'TOP'
 
         # write the executable
-        with open(pjoin(rundir, 'shower.sh'), 'w') as fsock:
+        with open(pjoin(rundir, 'shower.sh'), 'w') as fsock, \
+             open(pjoin(self.me_dir, 'MCatNLO', 'shower_template.sh')) as template:
             # set the PATH for the dynamic libraries
             if sys.platform == 'darwin':
                 ld_library_path = 'DYLD_LIBRARY_PATH'
             else:
                 ld_library_path = 'LD_LIBRARY_PATH'
-            fsock.write(open(pjoin(self.me_dir, 'MCatNLO', 'shower_template.sh')).read() \
+            lhapdf_paths = [pjoin(self.me_dir, 'lib', 'PDFsets')]
+            if self.options.get('lhapdf'):
+                try:
+                    lhapdf_paths.append(subprocess.Popen(
+                        [self.options['lhapdf'], '--datadir'], stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL).communicate()[0].decode(
+                            errors='ignore').strip())
+                except OSError:
+                    pass
+            fsock.write(template.read() \
                 % {'ld_library_path': ld_library_path,
-                   'extralibs': ':'.join(extrapaths)})
+                   'extralibs': ':'.join(extrapaths),
+                   'lhapdf_data_path': ':'.join(p for p in lhapdf_paths
+                                                if p and os.path.isdir(p))})
         subprocess.call(['chmod', '+x', pjoin(rundir, 'shower.sh')])
 
         if event_files:
@@ -4212,7 +4437,26 @@ RESTART = %(mint_mode)s
         else:
             arg_list = [[shower, out_id, self.run_name]]
 
-        self.run_all({rundir: 'shower.sh'}, arg_list, 'shower')
+        try:
+            self.run_all({rundir: 'shower.sh'}, arg_list, 'shower')
+        except Exception as error:
+            shower_logs = self.collect_shower_logs(rundir)
+            mismatches = []
+            for log in shower_logs:
+                with open(log, errors='replace') as stream:
+                    mismatches.extend(l.strip() for l in stream
+                                      if l.startswith('MG5_MCATNLO_CONTRACT mismatch'))
+            if mismatches:
+                raise aMCatNLOError(
+                    'The shower changed settings required by the MC@NLO matching:\n  %s\n'
+                    'Check pythia8_options in the shower card and the logs:\n  %s'
+                    % ('\n  '.join(sorted(set(mismatches))), '\n  '.join(shower_logs)))
+            raise aMCatNLOError('%s\nShower logs:\n  %s'
+                                % (error, '\n  '.join(shower_logs)))
+        else:
+            shower_logs = self.collect_shower_logs(rundir)
+            if shower == 'PYTHIA8' and pythia8_inputs.get('settings'):
+                self.check_pythia8_logs(shower_logs, pythia8_inputs['settings'])
         #self.njobs = 1
         #self.wait_for_complete('shower')
 
@@ -4260,15 +4504,7 @@ RESTART = %(mint_mode)s
 
             except OSError as IOError:
                 raise aMCatNLOError('No file has been generated, an error occurred.'+\
-             ' More information in %s' % pjoin(os.getcwd(), 'amcatnlo_run.log'))
-
-            # run the plot creation in a secure way
-            if hep_format == 'StdHEP':
-                try:
-                    self.do_plot('%s -f' % self.run_name)
-                except Exception as error:
-                    logger.info("Fail to make the plot. Continue...")
-                    pass
+             ' More information in %s' % ', '.join(shower_logs))
 
         elif out_id == 'TOP' or out_id == 'HWU':
             #copy the topdrawer or HwU file(s) back in events
@@ -4277,9 +4513,12 @@ RESTART = %(mint_mode)s
             elif out_id=='HWU':
                 ext='HwU'
             topfiles = []
-            top_tars = [tarfile.TarFile(f) for f in misc.glob('histfile*.tar', rundir)]
+            top_tars = sorted(misc.glob('histfile*.tar', rundir),
+                              key=lambda path: int(re.search(r'_(\d+)\.tar$', path)[1])
+                              if re.search(r'_(\d+)\.tar$', path) else 0)
             for top_tar in top_tars:
-                topfiles.extend(top_tar.getnames())
+                with tarfile.open(top_tar) as archive:
+                    topfiles.extend(archive.getnames())
 
             # safety check
             if len(top_tars) != self.shower_card['nsplit_jobs']:
@@ -4304,11 +4543,16 @@ RESTART = %(mint_mode)s
 
             if not topfiles:
                 # if no topfiles are found just warn the user
-                warning = 'No .top file has been generated. For the results of your ' +\
+                warning = 'No .%s file has been generated. For the results of your ' % ext +\
                                'run, please check inside %s' % rundir
+                if shower_logs:
+                    warning += ('\nThe analysis may have stopped early (a Fortran STOP '
+                                'exits with status 0). Check the shower log(s): %s'
+                                % ', '.join(shower_logs))
             elif self.shower_card['nsplit_jobs'] == 1:
                 # only one job for the shower
-                top_tars[0].extractall(path = rundir) 
+                with tarfile.open(top_tars[0]) as archive:
+                    archive.extractall(path=rundir)
                 plotfiles = [] 
                 for i, file in enumerate(topfiles):
                     if out_id=='TOP':
@@ -4342,10 +4586,11 @@ RESTART = %(mint_mode)s
                         hist_format, evt_file, shower)
             else:
                 # many jobs for the shower have been run
-                topfiles_set = set(topfiles)
+                topfiles_set = sorted(set(topfiles))
                 plotfiles = [] 
                 for j, top_tar in enumerate(top_tars):
-                    top_tar.extractall(path = rundir) 
+                    with tarfile.open(top_tar) as archive:
+                        archive.extractall(path=rundir)
                     for i, file in enumerate(topfiles_set):
                         plotfile = pjoin(self.me_dir, 'Events', self.run_name, 
                                              '%s%d__%d.%s' % (filename, i, j + 1,ext))
@@ -4354,7 +4599,8 @@ RESTART = %(mint_mode)s
 
                 # check if the user asked to combine the .top into a single file
                 if self.shower_card['combine_td']:
-                    misc.compile(['sum_plots'], cwd = pjoin(self.me_dir, 'Utilities'))
+                    if out_id == 'TOP':
+                        misc.compile(['sum_plots'], cwd=pjoin(self.me_dir, 'Utilities'))
 
                     if self.banner.get('run_card', 'event_norm').lower() == 'sum':
                         norm = 1.
@@ -4382,8 +4628,8 @@ RESTART = %(mint_mode)s
                                       self.run_name,'%s%d'% (filename,i))
                             histos=[]
                             norms=[]
-                            for plotfile in plotfiles:
-                                histos.append({'dirname':plotfile})
+                            for plotfile in filelist:
+                                histos.append({'dirname':pjoin(event_dir, plotfile)})
                                 norms.append(norm)
                             self.combine_plots_HwU(histos,out,normalisation=norms)
                             try:
@@ -4394,13 +4640,11 @@ RESTART = %(mint_mode)s
                                 pass
 
                         plotfiles2.append(pjoin(self.me_dir, 'Events', self.run_name, '%s%d.%s' % (filename, i,ext)))
-                        tar = tarfile.open(
-                                pjoin(self.me_dir, 'Events', self.run_name, '%s%d.tar.gz' % (filename, i)), 'w:gz')
-                        for f in filelist:
-                            tar.add(pjoin(self.me_dir, 'Events', self.run_name, f), arcname=f)
+                        with tarfile.open(pjoin(event_dir, '%s%d.tar.gz' %
+                                                (filename, i)), 'w:gz') as tar:
+                            for f in filelist:
+                                tar.add(pjoin(event_dir, f), arcname=f)
                         files.rm([pjoin(self.me_dir, 'Events', self.run_name, f) for f in filelist])
-
-                    tar.close()
 
                     ffiles = 'files'
                     have = 'have'
@@ -4435,46 +4679,57 @@ RESTART = %(mint_mode)s
                                                            cwd=run_dir_path)
             shutil.rmtree(pjoin(run_dir_path,'RunMaterial'))
         
-        if self.run_card['ickkw'] >0 :
-            if self.run_card['ickkw'] != 3 or shower != 'PYTHIA8':
+        if contract['ickkw'] > 0:
+            if contract['ickkw'] != 3 or shower != 'PYTHIA8':
                 logger.warning("Merged cross-section not retrieved by MadGraph. Please check the parton-shower log to get the correct cross-section after merging")
             else:
-                pythia_log = misc.BackRead(pjoin(rundir, "mcatnlo_run.log") )
-                
-                pythiare = re.compile(r"\s*Les Houches User Process\(es\)\s+9999\s*\|\s*(?P<generated>\d+)\s+(?P<tried>\d+)\s+(?P<accepted>\d+)\s*\|\s*(?P<xsec>[\d\.DeE\-+]+)\s+(?P<xerr>[\d\.DeE\-+]+)\s*\|")    
-                # | Les Houches User Process(es)                  9999 |       10000      10000       7115 |   1.120e-04  0.000e+00 |     
-                                                         
-                for line in pythia_log:
-                    info = pythiare.search(line)
-                    if not info:
-                        continue
-                    try:
-                        # Pythia cross section in mb, we want pb
-                        sigma_m = float(info.group('xsec').replace('D','E')) *1e9
-                        sigma_err = float(info.group('xerr').replace('D','E')) *1e9
-                        Nacc = int(info.group('accepted'))
-                        #Ntry = int(info.group('accepted'))
-                    except:
-                        logger.warning("Merged cross-section not retrieved by MadGraph. Please check the parton-shower log to get the correct cross-section after merging")
-                        break
-                    
+                pythiare = re.compile(
+                    r"Les Houches User Process\(es\)\s+9999\s*\|\s*"
+                    r"(?P<generated>\d+)\s+(?P<tried>\d+)\s+(?P<accepted>\d+)\s*\|\s*"
+                    r"(?P<xsec>[\d\.DeE\-+]+)\s+(?P<xerr>[\d\.DeE\-+]+)\s*\|")
+                summaries = []
+                for log in shower_logs:
+                    with open(log) as source:
+                        for line in reversed(source.readlines()):
+                            info = pythiare.search(line)
+                            if info:
+                                summaries.append(info.groupdict())
+                                break
+                if len(summaries) != self.shower_card['nsplit_jobs']:
+                    logger.warning("Merged cross-section not retrieved by MadGraph. Please check the parton-shower log to get the correct cross-section after merging")
+                else:
+                    # Each Pythia table is an estimate of the full cross section.
+                    # Average independent estimates, and sum accepted events.
+                    generated = sum(int(s['generated']) for s in summaries)
+                    fractions = [int(s['generated']) / float(generated)
+                                 for s in summaries] if generated else [
+                                     1. / len(summaries)] * len(summaries)
+                    sigma_m = sum(float(s['xsec'].replace('D', 'E')) * f
+                                  for s, f in zip(summaries, fractions)) * 1e9
+                    sigma_err = math.sqrt(sum(
+                        (float(s['xerr'].replace('D', 'E')) * f)**2
+                        for s, f in zip(summaries, fractions))) * 1e9
+                    Nacc = sum(int(s['accepted']) for s in summaries)
                     self.results.add_detail('cross_pythia', sigma_m)
                     self.results.add_detail('nb_event_pythia', Nacc)
                     self.results.add_detail('error_pythia', sigma_err)
                     self.results.add_detail('shower_dir', os.path.basename(rundir))
-                    logger.info("\nFxFx  Cross-Section:\n"+\
-                                "======================\n"+\
+                    logger.info("\nFxFx  Cross-Section:\n"+
+                                "======================\n"+
                                 "    %f pb.\n"
-                                "    Number of events after merging: %s\n", sigma_m, Nacc, '$MG:BOLD')
-                    break
-                else:
-                    logger.warning("Merged cross-section not retrieved by MadGraph. Please check the parton-shower log to get the correct cross-section after merging")
-                                    
-                
-            
-            
-            
-            
+                                "    Number of events after merging: %s\n",
+                                sigma_m, Nacc, '$MG:BOLD')
+
+        # All shower jobs and output collection have finished. Remove both the
+        # temporary splits and their links (including copies left by older
+        # shower templates). Keep the original event sample.
+        files.rm(pjoin(rundir, 'events.lhe'))
+        for i in range(len(event_files)):
+            files.rm(pjoin(rundir, 'events_%d.lhe' % (i + 1)))
+            for name in ('events.lhe', 'events.lhe.gz'):
+                files.rm(pjoin(rundir, 'run_%d' % (i + 1), name))
+        files.rm(event_files)
+
         # end of the run, gzip files and print out the message/warning
         for f in to_gzip:
             misc.gzip(f)
@@ -4493,8 +4748,7 @@ RESTART = %(mint_mode)s
         upgrade_tag = {'parton': ['parton','delphes','shower','madanalysis5_hadron'],
                        'shower': ['shower','delphes','madanalysis5_hadron'],
                        'delphes':['delphes'],
-                       'madanalysis5_hadron':['madanalysis5_hadron'],
-                       'plot':[]}
+                       'madanalysis5_hadron':['madanalysis5_hadron']}
         
         if name == self.run_name:        
             if reload_card:
@@ -4574,7 +4828,7 @@ RESTART = %(mint_mode)s
         self.run_tag = self.run_card['run_tag']
 
         # Return the tag of the previous run having the required data for this
-        # tag/run to working wel.
+        # tag/run to working well.
         if level == 'parton':
             return
         elif level == 'pythia':
@@ -4670,7 +4924,226 @@ RESTART = %(mint_mode)s
         return init_dict
 
 
-    def banner_to_mcatnlo(self, evt_file):
+    def ensure_stdhep(self, shower):
+        """Compile StdHEP, needed to write HERWIG6 and PYTHIA6 event files,
+        the first time such a shower is run."""
+        status, source = stdhep_status(self.me_dir, self.options.get('mg5_path'))
+        if status == 'compiled':
+            return
+        if status == 'missing':
+            raise aMCatNLOError(
+                'The StdHEP library, needed for %s event files, is not available '
+                '(check the MG5_aMC option output_dependencies). Use an analysis '
+                'without stdhep in the shower card (ANALYSE, EXTRALIBS), or '
+                'PYTHIA8/HERWIG7.' % shower)
+        logger.info('Compiling StdHEP for %s (only needed once; can take a couple '
+                    'of minutes) ...' % shower)
+        if not os.environ.get('FC'):
+            fc = mcatnlo_shower.fortran_compiler(self.me_dir)
+            make_opts = pjoin(source, 'src', 'make_opts')
+            if os.path.isfile(make_opts):
+                text = open(make_opts).read()
+                for base in ['FC=g77', 'FC=gfortran']:
+                    text = text.replace(base, 'FC=%s' % fc)
+                with open(make_opts, 'w') as stream:
+                    stream.write(text)
+        log = pjoin(self.me_dir, 'MCatNLO', 'stdhep_compilation.log')
+        with open(log, 'w') as output:
+            status = subprocess.call(['make'], cwd=source, stdout=output,
+                                     stderr=subprocess.STDOUT)
+        libs = [pjoin(source, 'lib', name) for name in ['libstdhep.a', 'libFmcfio.a']]
+        if status or not all(os.path.exists(lib) for lib in libs):
+            raise aMCatNLOError(
+                'StdHEP failed to compile in %s (needed for %s event files). '
+                'See %s and the logs in that directory; on Linux the XDR headers '
+                'of libtirpc (e.g. package libtirpc-dev) may be missing.'
+                % (source, shower, log))
+        if os.path.exists(pjoin(source, 'fail')):
+            os.remove(pjoin(source, 'fail'))
+        for lib in libs:
+            files.ln(lib, pjoin(self.me_dir, 'MCatNLO', 'lib'))
+        logger.info('                     ... done')
+
+    def get_matching_contract(self, evt_file):
+        """MC@NLO matching choices recorded at generation time.
+
+        Event files written before these were recorded get a reconstruction
+        from the current cards, with a warning."""
+        contract = mcatnlo_shower.MatchingContract.from_banner(self.banner)
+        if contract is None:
+            contract = mcatnlo_shower.legacy_contract(self.banner, self.me_dir, evt_file)
+            logger.warning(
+                'The event file does not record the MC@NLO matching choices '
+                '(it was produced by an older version). They are reconstructed '
+                'from the current cards (Cards/FKS_params.dat, run_card). Make '
+                'sure that these have not changed since the events were generated.')
+        else:
+            current = mcatnlo_shower.file_md5(pjoin(self.me_dir, 'Cards', 'FKS_params.dat'))
+            if contract['fks_params_md5'] and current and current != contract['fks_params_md5']:
+                logger.info('Cards/FKS_params.dat changed after the events were '
+                            'generated. The shower uses the values recorded in '
+                            'the event file.')
+        shower = self.banner.get_detail('run_card', 'parton_shower').upper()
+        if contract['parton_shower'] and contract['parton_shower'] != shower:
+            raise aMCatNLOError(
+                'The events were generated with MC counterterms for %s, but the '
+                'run card in the event file asks for %s.'
+                % (contract['parton_shower'], shower))
+        logger.info('MC@NLO matching: %s' % contract.summary())
+        return contract
+
+    def compilation_jobs(self):
+        """Number of parallel jobs for compiling the shower: the nb_core
+        option, or the number of cores of this machine if it is not set."""
+        try:
+            jobs = int(self.options.get('nb_core') or 0)
+        except (TypeError, ValueError):
+            jobs = 0
+        if jobs <= 0:
+            try:
+                import multiprocessing
+                jobs = multiprocessing.cpu_count()
+            except (ImportError, NotImplementedError):
+                jobs = 1
+        return max(1, jobs)
+
+    def check_pythia8_logs(self, logs, settings):
+        """Require successful matching checks and report each job's summary."""
+        expected = int(settings.get('Main:spareMode1').value)
+        split_logs = [l for l in logs if '__' in os.path.basename(l)] or logs
+        reports = [(log, mcatnlo_shower.check_shower_log(log)) for log in split_logs]
+        required = bool(settings.locked())
+        errors = []
+        for log, info in reports:
+            if info['contract'] is False:
+                errors.append('%s: MC@NLO matching check failed' % log)
+                errors.extend(info['mismatches'])
+            elif required and info['contract'] is None:
+                errors.append('%s: no MC@NLO matching check was reported' % log)
+        if required and len(split_logs) != self.shower_card['nsplit_jobs']:
+            errors.append('Expected %d Pythia8 shower logs, found %d.'
+                          % (self.shower_card['nsplit_jobs'], len(split_logs)))
+        if errors:
+            raise aMCatNLOError(
+                'Pythia8 did not verify the settings required by the MC@NLO matching:\n  %s\n'
+                'Check pythia8_options in the shower card and the archived shower logs.'
+                % '\n  '.join(errors))
+        total = 0
+        for log, info in reports:
+            if info['showered'] is None:
+                logger.warning('No summary from the Pythia8 driver in %s' % log)
+                continue
+            total += int(info['showered'])
+            read = int(info.get('read') or info['showered'])
+            if read < expected:
+                logger.warning('%s: %d events read instead of %d (see the log)'
+                               % (os.path.basename(log), read, expected))
+            if info['failed'] and int(info['failed']):
+                logger.info('%s: %s events failed in Pythia8 and were skipped'
+                            % (os.path.basename(log), info['failed']))
+        if required:
+            logger.info('Pythia8 settings required by the MC@NLO matching verified '
+                        '(%d events showered)' % total)
+
+    def get_shower_pdf(self, evt_file):
+        """PDF for the Pythia8 shower: ('internal'|'lhapdf6', set name,
+        extrapolate), following pdfcode in the shower card."""
+        pdfcode = int(self.shower_card['pdfcode'])
+        if pdfcode == 0:
+            return ('internal', None, False)
+        if abs(pdfcode) == 1:
+            init_dict = self.get_init_dict(evt_file)
+            lhaid = max([init_dict['pdfsup1'], init_dict['pdfsup2']])
+        else:
+            lhaid = abs(pdfcode)
+        try:
+            pdfsetsdir = self.get_lhapdf_pdfsetsdir()
+            self.copy_lhapdf_set([lhaid], pdfsetsdir)
+            name = mcatnlo_shower.lhapdf_set_name(
+                self.options['lhapdf'], lhaid, pdfsetsdir=pdfsetsdir)
+            if not name:
+                raise aMCatNLOError('LHAPDF set %d not found' % lhaid)
+        except Exception as error:
+            if abs(pdfcode) == 1:
+                logger.warning(
+                    'The shower should use the PDF of the event generation '
+                    '(LHAPDF id %s), but it is not available through LHAPDF (%s). '
+                    'Using the internal Pythia8 PDF instead.' % (lhaid, error))
+                return ('internal', None, False)
+            raise aMCatNLOError('The PDF set %s requested in the shower card '
+                                'is not available: %s' % (lhaid, error))
+        return ('lhapdf6', name, pdfcode < 0)
+
+    def prepare_pythia8_shower(self, evt_file, contract, log):
+        """Build the Pythia8 driver and write its settings.
+
+        The settings consistent with the MC@NLO subtraction are taken from
+        the event file (contract); see madgraph/various/mcatnlo_shower.py."""
+        card = self.shower_card
+        installation = mcatnlo_shower.Pythia8Installation(self.options['pythia8_path'])
+        logger.info('Using Pythia %s (%s)' % (installation.version, installation.path))
+
+        nevents_file = self.banner.get_detail('run_card', 'nevents')
+        nevents = card['nevents']
+        if nevents == 0:
+            raise aMCatNLOError('nevents = 0 in the shower card: use -1 to shower '
+                                'all the events, or a positive number.')
+        if nevents < 0 or nevents > nevents_file:
+            nevents = nevents_file
+        nsplit = card['nsplit_jobs']
+
+        mc_masses = {}
+        for line in [l for l in dict.get(self.banner, 'montecarlomasses', '').split('\n')
+                     if l.strip()]:
+            pdg, mass = line.split()[:2]
+            mc_masses[int(pdg)] = float(mass.replace('d', 'e').replace('D', 'e'))
+        if not mc_masses:
+            raise aMCatNLOError('The event file does not contain the '
+                                '<montecarlomasses> block.')
+        masses, widths = {}, {}
+        for pdg in [6, 23, 24, 25]:
+            try:
+                masses[pdg] = float(self.banner.get_detail('param_card', 'mass', pdg).value)
+                widths[pdg] = float(self.banner.get_detail('param_card', 'decay', pdg).value)
+            except Exception:
+                continue
+
+        run = {'nevents': nevents // nsplit,
+               'nevents_total': nevents_file // nsplit,
+               'event_norm': self.banner.get_detail('run_card', 'event_norm').lower(),
+               'mc_masses': mc_masses, 'masses': masses, 'widths': widths,
+               'pdf': self.get_shower_pdf(evt_file),
+               'pdf_fallback': abs(int(card['pdfcode'])) == 1,
+               'seed': card['rnd_seed'] or derive_shower_seed(0)}
+        settings = mcatnlo_shower.pythia8_settings(contract, card, run, installation)
+        for note in settings.notes:
+            if note.startswith(('UNSAFE', 'WARNING:')):
+                logger.warning(note)
+            else:
+                logger.info(note)
+
+        # Libraries and include paths of the shower card. stdhep is only
+        # used by HERWIG6 and PYTHIA6.
+        mcatnlo_dir = pjoin(self.me_dir, 'MCatNLO')
+        libs = [l for l in card['extralibs'].split() if l not in ['stdhep', 'Fmcfio']]
+        paths = [os.path.normpath(pjoin(mcatnlo_dir, p)) for p in card['extrapaths'].split()]
+        ldflags = ' '.join(['-L%s -Wl,-rpath,%s' % (p, p) for p in paths if os.path.isdir(p)] +
+                           ['-l%s' % l for l in libs])
+        cxxflags = ' '.join('-I%s' % os.path.normpath(pjoin(mcatnlo_dir, p))
+                            for p in card['includepaths'].split())
+        hepmc = self.get_pythia8_hepmc_setup()
+        exe = mcatnlo_shower.build_pythia8_driver(
+            mcatnlo_dir, installation, analysis=card['analyse'].split(),
+            hepmc=hepmc, fc=mcatnlo_shower.fortran_compiler(self.me_dir),
+            extra_cxxflags=cxxflags, extra_ldflags=ldflags, log=log,
+            jobs=self.compilation_jobs())
+        header = ('Pythia8 settings for showering %s\nwritten by MG5_aMC for '
+                  'Pythia %s. MC@NLO matching: %s' % (os.path.basename(evt_file),
+                  installation.version, contract.summary()))
+        return {'exe': exe, 'cmd': settings.render(header),
+                'locked': settings.render_locked(), 'settings': settings}
+
+    def banner_to_mcatnlo(self, evt_file, contract=None):
         """creates the mcatnlo input script using the values set in the header of the event_file.
         It also checks if the lhapdf library is used"""
 
@@ -4705,7 +5178,7 @@ RESTART = %(mint_mode)s
         except KeyError:
             mod = self.get_model()
             if not hasattr(mod, 'parameter_dict'):
-                from models import model_reader
+                from madgraph.models import model_reader
                 mod = model_reader.ModelReader(mod)
                 if "set EWscheme MZ_MW_alpha" in self.banner.get_detail('proc_card'):
                     mod.change_electroweak_mode("MZ_MW_alpha")
@@ -4747,6 +5220,17 @@ RESTART = %(mint_mode)s
         content += 'beammom2=%s\n' % self.banner.get_detail('run_card', 'ebeam2')
         content += 'BEAM1=%s\n' % self.banner.get_detail('run_card', 'lpp1')
         content += 'BEAM2=%s\n' % self.banner.get_detail('run_card', 'lpp2')
+        # The events were put on the shower mass shells of MCmasses_*.inc: a
+        # different b mass in the shower is inconsistent with them.
+        b_mass = float(self.shower_card['b_mass'])
+        if b_mass >= 0. and 5 in mcmass_dict and abs(b_mass - mcmass_dict[5]) > 1e-9:
+            text = ('b_mass = %s in the shower card differs from the b mass %s used '
+                    'to put the events on the shower mass shell (MCmasses_%s.inc).'
+                    % (b_mass, mcmass_dict[5], shower))
+            if not self.shower_card['allow_unsafe_shower_options']:
+                raise aMCatNLOError(text + ' Set b_mass = -1, or set '
+                                    'allow_unsafe_shower_options = T to use it anyway.')
+            logger.warning('UNSAFE: ' + text)
         content += 'DMASS=%s\n' % mcmass_dict[1]
         content += 'UMASS=%s\n' % mcmass_dict[2]
         content += 'SMASS=%s\n' % mcmass_dict[3]
@@ -4783,6 +5267,7 @@ RESTART = %(mint_mode)s
             lhapdfpath = subprocess.Popen([self.options['lhapdf'], '--prefix'], 
                                           stdout = subprocess.PIPE).stdout.read().decode(errors='ignore').strip()
             content += 'LHAPDFPATH=%s\n' % lhapdfpath
+            content += 'LHAPDFCONFIG=%s\n' % self.options['lhapdf']
             pdfsetsdir = self.get_lhapdf_pdfsetsdir()
             if self.shower_card['pdfcode']==0:
                 lhaid_list = ''
@@ -4800,13 +5285,14 @@ RESTART = %(mint_mode)s
             # as was used for the event generation. However, for the
             # event generation, LHAPDF was not used, so non-trivial to
             # see if if LHAPDF is available with the corresponding PDF
-            # set. If not found, give a warning and use build-in PDF
+            # set. If not found, give a warning and use built-in PDF
             # set instead.
             try:
                 lhapdfpath = subprocess.Popen([self.options['lhapdf'], '--prefix'], 
                                               stdout = subprocess.PIPE).stdout.read().decode(errors='ignore').strip()
                 self.link_lhapdf(pjoin(self.me_dir, 'lib'))
                 content += 'LHAPDFPATH=%s\n' % lhapdfpath
+                content += 'LHAPDFCONFIG=%s\n' % self.options['lhapdf']
                 pdfsetsdir = self.get_lhapdf_pdfsetsdir()
                 lhaid_list = [max([init_dict['pdfsup1'],init_dict['pdfsup2']])]
                 content += 'PDFCODE=%s\n' % max([init_dict['pdfsup1'],init_dict['pdfsup2']])
@@ -4816,19 +5302,19 @@ RESTART = %(mint_mode)s
                                    ' of the events using LHAPDF. However, no valid LHAPDF installation found with the'+\
                                    ' needed PDF set. Will use default internal PDF for the shower instead. To use the'+\
                                    ' same set as was used in the event generation install LHAPDF and set the path using'+\
-                                   ' "set /path_to_lhapdf/bin/lhapdf-config" from the MadGraph5_aMC@NLO python shell')
+                                   ' "set /path_to_lhapdf/bin/lhapdf-config" from the MadGraph7 python shell')
                 content += 'LHAPDFPATH=\n' 
                 content += 'PDFCODE=0\n'
         else:
             content += 'LHAPDFPATH=\n' 
             content += 'PDFCODE=0\n'
 
-        content += 'ICKKW=%s\n' % self.banner.get_detail('run_card', 'ickkw')
-        if self.banner.get_detail('run_card', 'mcatnlo_delta') :
-            content += 'DELTA=ON\n'
-        else:
-            content += 'DELTA=OFF\n'
-        content += 'PTJCUT=%s\n' % self.banner.get_detail('run_card', 'ptj')
+        # Settings fixed by the MC@NLO subtraction come from the event file.
+        if contract is None:
+            contract = self.get_matching_contract(evt_file)
+        content += 'ICKKW=%s\n' % contract['ickkw']
+        content += 'DELTA=%s\n' % ('ON' if contract['mcatnlo_delta'] else 'OFF')
+        content += 'PTJCUT=%s\n' % contract['ptj']
         # add the pythia8/hw7 path(s)
         if self.options['pythia8_path']:
             content+='PY8PATH=%s\n' % self.options['pythia8_path']
@@ -4847,11 +5333,11 @@ RESTART = %(mint_mode)s
 
     def run_reweight(self, only):
         """runs the reweight_xsec_events executables on each sub-event file generated
-        to compute on the fly scale and/or PDF uncertainities"""
+        to compute on the fly scale and/or PDF uncertainties"""
         logger.info('   Doing reweight')
         with open(pjoin(self.me_dir, 'SubProcesses', 'nevents_unweighted')) as file:
             lines = file.read().split('\n')
-        # loop over lines (all but the last one whith is empty) and check that the
+        # loop over lines (all but the last one with is empty) and check that the
         #  number of events is not 0
         evt_files = [line.split()[0] for line in lines[:-1] if line.split()[1] != '0']
         evt_wghts = [float(line.split()[3]) for line in lines[:-1] if line.split()[1] != '0']
@@ -4921,24 +5407,13 @@ RESTART = %(mint_mode)s
                 # max and min of the full envelope
                 s_max=(max(scale)/s_cen-1)*100
                 s_min=(1-min(scale)/s_cen)*100
-                # ren and fac scale dependence added in quadrature
-                ren_var=[]
-                fac_var=[]
-                for i in range(len(self.run_card['rw_rscale'])):
-                    ren_var.append(scale[i]-s_cen) # central fac scale
-                for i in range(len(self.run_card['rw_fscale'])):
-                    fac_var.append(scale[i*len(self.run_card['rw_rscale'])]-s_cen) # central ren scale
-                s_max_q=((s_cen+math.sqrt(math.pow(max(ren_var),2)+math.pow(max(fac_var),2)))/s_cen-1)*100
-                s_min_q=(1-(s_cen-math.sqrt(math.pow(min(ren_var),2)+math.pow(min(fac_var),2)))/s_cen)*100
                 s_size=len(scale)
             else:
                 s_max=0.0
                 s_min=0.0
-                s_max_q=0.0
-                s_min_q=0.0
                 s_size=len(scale)
             scale_info.append({'cen':s_cen, 'min':s_min, 'max':s_max, \
-                               'min_q':s_min_q, 'max_q':s_max_q, 'size':s_size, \
+                               'size':s_size, \
                                'label':self.run_card['dynamical_scale_choice'][j], \
                                'unc':self.run_card['reweight_scale'][j]})
 
@@ -5072,14 +5547,17 @@ RESTART = %(mint_mode)s
             execpath = exe
         else:
             raise aMCatNLOError('Cannot find executable %s in %s' \
-                % (exe, os.getcwd()))
+                % (exe, cwd or os.getcwd()))
         # check that the executable has exec permissions
         if self.cluster_mode == 1 and not os.access(execpath, os.X_OK):
             subprocess.call(['chmod', '+x', exe], cwd=cwd)
         # finally run it
         if self.cluster_mode == 0:
             #this is for the serial run
-            misc.call(['./'+exe] + args, cwd=cwd)
+            status = misc.call(['./'+exe] + args, cwd=cwd)
+            if run_type == 'shower' and status:
+                raise aMCatNLOError('Shower job failed (status %d). Check the '
+                                   'mcatnlo_run log in %s.' % (status, cwd))
             self.ijob += 1
             self.update_status((max([self.njobs - self.ijob - 1, 0]), 
                                 min([1, self.njobs - self.ijob]),
@@ -5091,7 +5569,7 @@ RESTART = %(mint_mode)s
             # Find the correct PDF input file
             input_files, output_files = [], []
             pdfinput = self.get_pdf_input_filename()
-            if os.path.exists(pdfinput):
+            if pdfinput.strip() and os.path.exists(pdfinput):
                 input_files.append(pdfinput)
             input_files.append(pjoin(os.path.dirname(exe), os.path.pardir, 'reweight_xsec_events'))
             input_files.append(pjoin(cwd, os.path.pardir, 'leshouche_info.dat'))
@@ -5099,15 +5577,14 @@ RESTART = %(mint_mode)s
             input_files.append(args[0])
             input_files.extend(sorted(glob.glob(pjoin(self.me_dir, 'lib',
                                                       'libmc_born_support.*'))))
-            open('%s.rwgt' % os.path.basename(args[0]), "a").close()
-            open('reweight_xsec_events.output', "a").close()
-            open('scale_pdf_dependence.dat', "a").close()
-            input_files.append('%s.rwgt' % os.path.basename(args[0]))
-            input_files.append('reweight_xsec_events.output')
-            input_files.append('scale_pdf_dependence.dat')
-            output_files.append('%s.rwgt' % os.path.basename(args[0]))
-            output_files.append('reweight_xsec_events.output')
-            output_files.append('scale_pdf_dependence.dat')
+            # Cluster paths are relative to cwd; truncate stale outputs.
+            rwgt_files = ['%s.rwgt' % os.path.basename(args[0]),
+                          'reweight_xsec_events.output',
+                          'scale_pdf_dependence.dat']
+            for name in rwgt_files:
+                open(pjoin(cwd, name), 'w').close()
+            input_files.extend(rwgt_files)
+            output_files.extend(rwgt_files)
 
             return self.cluster.submit2(exe, args, cwd=cwd, 
                              input_files=input_files, output_files=output_files,
@@ -5123,7 +5600,7 @@ RESTART = %(mint_mode)s
                              input_files=input_files, output_files=output_files,
                              required_output=required_output)
 
-#                # keep track of folders and arguments for splitted evt gen
+#                # keep track of folders and arguments for split evt gen
 #                subfolder=output_files[-1].split('/')[0]
 #                if len(args) == 4 and '_' in subfolder:
 #                    self.split_folders[pjoin(cwd,subfolder)] = [exe] + args
@@ -5138,13 +5615,11 @@ RESTART = %(mint_mode)s
             if shower == 'PYTHIA8':
                 input_files.append(pjoin(cwd, 'Pythia8.exe'))
                 input_files.append(pjoin(cwd, 'Pythia8.cmd'))
-                if os.path.exists(pjoin(self.options['pythia8_path'], 'xmldoc')):
-                    input_files.append(pjoin(cwd, 'config.sh'))
-                    input_files.append(pjoin(self.options['pythia8_path'], 'xmldoc'))
-                else:
-                    input_files.append(pjoin(self.options['pythia8_path'], 'share/Pythia8/xmldoc'))
-                if os.path.exists(pjoin(self.options['pythia8_path'], 'share', 'Pythia8', 'tunes')):
-                    input_files.append(pjoin(self.options['pythia8_path'], 'share', 'Pythia8', 'tunes'))
+                input_files.append(pjoin(cwd, 'mcatnlo_locked.dat'))
+                for name in ['xmldoc', 'tunes', 'pdfdata']:
+                    path = pjoin(self.options['pythia8_path'], 'share', 'Pythia8', name)
+                    if os.path.exists(path):
+                        input_files.append(path)
             else:
                 input_files.append(pjoin(cwd, 'MCATNLO_%s_EXE' % shower))
                 input_files.append(pjoin(cwd, 'MCATNLO_%s_input' % shower))
@@ -5281,7 +5756,7 @@ RESTART = %(mint_mode)s
 
         #Find the correct PDF input file
         pdfinput = self.get_pdf_input_filename()
-        if os.path.exists(pdfinput):
+        if pdfinput.strip() and os.path.exists(pdfinput):
             input_files.append(pdfinput)            
         return input_files, output_files, required_output,  args
 
@@ -5290,6 +5765,9 @@ RESTART = %(mint_mode)s
         pdlabel is in the form epdf:setname
         """
         logger.info('Using eMELA for leptonic densities')
+        if common_run.citation is not None:
+            common_run.citation.cite('Bertone:2022ktl',
+                                     'leptonic PDFs at NLO-QED accuracy (eMELA)')
 
         epdflibdir = subprocess.Popen([self.options['eMELA'], '--libdir'],
                  stdout = subprocess.PIPE).stdout.read().decode().strip()
@@ -5353,84 +5831,23 @@ RESTART = %(mint_mode)s
             files.cp(os.path.join(lep_d_path, filename), pdf_path)
 
 
-    def link_and_copy_epdf(self, pdlabel, lhaid, libdir):
-        """links and copies the libraries/PDFs from ePDF/eMELA
-        pdlabel is in the form epdf:setname
-        """
-        logger.info('Using eMELA for leptonic densities')
-
-        epdflibdir = subprocess.Popen([self.options['eMELA'], '--libdir'],
-                 stdout = subprocess.PIPE).stdout.read().decode().strip()
-
-        epdfdatadir = subprocess.Popen([self.options['eMELA'], '--data'],
-                 stdout = subprocess.PIPE).stdout.read().decode().strip()
-
-        # update the LHAPDF data path
-
-        if 'LHAPDF_DATA_PATH' in os.environ and os.environ['LHAPDF_DATA_PATH']:
-            os.environ['LHAPDF_DATA_PATH'] = '%s:%s' % (epdfdatadir, os.environ['LHAPDF_DATA_PATH'])
-        else:
-            os.environ['LHAPDF_DATA_PATH'] = epdfdatadir
-
-        pdfsets = self.get_lhapdf_pdfsets_list_static(epdfdatadir, '6.2')
-        pdfsetname = [pdfsets[i]['filename'] for i in lhaid]
-
-        # link the static library in lib
-        lib = 'libeMELA.a'
-
-        if os.path.exists(pjoin(libdir, lib)):
-            files.rm(pjoin(libdir, lib))
-        files.ln(pjoin(epdflibdir, lib), libdir)
-
-        # create the PDFsets dir
-        if not os.path.isdir(pjoin(libdir, 'PDFsets')):
-            os.mkdir(pjoin(libdir, 'PDFsets'))
-
-        #clean previous set of pdf used
-        for name in os.listdir(pjoin(libdir, 'PDFsets')):
-            if name not in pdfsetname:
-                try:
-                    if os.path.isdir(pjoin(libdir, 'PDFsets', name)):
-                        shutil.rmtree(pjoin(libdir, 'PDFsets', name))
-                    else:
-                        os.remove(pjoin(libdir, 'PDFsets', name))
-                except Exception as error:
-                    logger.debug('%s', error)
-
-        # copy the ePDF set in the PDFsets dir
-        for setname in pdfsetname:
-            shutil.copytree(os.path.join(epdfdatadir, setname), os.path.join(libdir, 'PDFsets', setname))
-
-        # finally return the parsed info file
-        return banner_mod.eMELA_info(os.path.join(libdir, 'PDFsets', setname, setname + '.info'), self.me_dir)
 
 
-    def copy_lep_densities(self, name, sourcedir):
-        """copies the leptonic densities so that they are correctly compiled
-        """
-        lep_d_path = os.path.join(sourcedir, 'PDF', 'lep_densities', name)
-        pdf_path = os.path.join(sourcedir, 'PDF')
-        # check that the name is correct, ie that the path exists
-        if not os.path.isdir(lep_d_path):
-            raise aMCatNLOError(('Invalid name for the dressed-lepton PDFs: %s\n' % (name)) + \
-                    'The corresponding directory cannot be found in \n' + \
-                    'Source/PDF/lep_densities')
-
-        # now copy the files
-        for filename in ['eepdf.f', 'gridpdfaux.f']:
-            files.cp(os.path.join(lep_d_path, filename), pdf_path)
 
 
     def compile(self, mode, options):
         """compiles aMC@NLO to compute either NLO or NLO matched to shower, as
         specified in mode"""
-        os.mkdir(pjoin(self.me_dir, 'Events', self.run_name))
+        self.get_characteristics(pjoin(self.me_dir,
+                                      'SubProcesses', 'proc_characteristics'))
+        self.check_shower_compatibility(mode, options)
+        # the run directory may already exist (e.g. created by
+        # setup_citation_tracking for Events/<run>/citations)
+        if not os.path.exists(pjoin(self.me_dir, 'Events', self.run_name)):
+            os.mkdir(pjoin(self.me_dir, 'Events', self.run_name))
 
         self.banner.write(pjoin(self.me_dir, 'Events', self.run_name, 
                           '%s_%s_banner.txt' % (self.run_name, self.run_tag)))
-
-        self.get_characteristics(pjoin(self.me_dir, 
-                                        'SubProcesses', 'proc_characteristics'))
 
         #define a bunch of log files
         amcatnlo_log = pjoin(self.me_dir, 'compile_amcatnlo.log')
@@ -5474,6 +5891,7 @@ RESTART = %(mint_mode)s
         # If they exists, return
         if all([os.path.exists(pjoin(self.me_dir, 'SubProcesses', p_dir, exe)) \
                 for p_dir in p_dirs]) and options['nocompile']:
+            self.check_real_channels_nocompile(p_dirs,exe)
             return
 
         # rm links to lhapdflib/ PDFsets if exist
@@ -5499,7 +5917,7 @@ RESTART = %(mint_mode)s
                 raise aMCatNLOError('Usage of LHAPDF with dressed-lepton collisions not possible')
 
             elif self.run_card['pdlabel'].startswith('emela'):
-                logger.warning('For informations on the simulation of leptonic collisions at NLO accuracy')
+                logger.warning('For information on the simulation of leptonic collisions at NLO accuracy')
                 logger.warning('please refer to arXiv:2207.03265 and to the FAQ')
                 logger.warning('https://answers.launchpad.net/mg5amcnlo/+faq/3324')
 
@@ -5537,10 +5955,12 @@ RESTART = %(mint_mode)s
             if self.run_card['lpp1'] == 1 == self.run_card['lpp2']:
                 logger.info('Using built-in libraries for PDFs')
 
-            elif self.run_card['lpp1'] == 2 == self.run_card['lpp2']:
-                if self.run_card['pdlabel'] in ['edff', 'chff']:
+            elif abs(self.run_card['lpp1']) == 2 == abs(self.run_card['lpp2']):
+                if banner_mod.is_upc_label(self.run_card['pdlabel']):
                     logger.info('Using '+self.run_card['pdlabel'].upper()+' in gamma-UPC')
                     self.make_opts_var['pdlabel'] = self.run_card['pdlabel']
+                    # also in RunCard.check_validity (only a warning on some read paths): stop before compiling
+                    banner_mod.check_upc_neutron_tagging(self.run_card, self.run_card['pdlabel'])
 
             self.make_opts_var['lhapdf'] = ""
 
@@ -5558,7 +5978,7 @@ RESTART = %(mint_mode)s
                 except OSError:
                     raise aMCatNLOError(('No valid %s installation found. \n' + \
                        'Please set the path to %s-config by using \n' + \
-                       'MG5_aMC> set <absolute-path-to-%s>/bin/%s \n') % (code,code,code,code))
+                       'MadGraph7> set <absolute-path-to-%s>/bin/%s \n') % (code,code,code,code))
         else:
             self.make_opts_var['pineappl'] = ""
 
@@ -5607,25 +6027,8 @@ RESTART = %(mint_mode)s
         else:
             raise aMCatNLOError('Compilation failed')
         
-        # make StdHep (only necessary with MG option output_dependencies='internal')
-        MCatNLO_libdir = pjoin(self.me_dir, 'MCatNLO', 'lib')
-        if not os.path.exists(os.path.realpath(pjoin(MCatNLO_libdir, 'libstdhep.a'))) or \
-            not os.path.exists(os.path.realpath(pjoin(MCatNLO_libdir, 'libFmcfio.a'))):  
-            if  os.path.exists(pjoin(sourcedir,'StdHEP')):
-                logger.info('Compiling StdHEP (can take a couple of minutes) ...')
-                try:
-                    misc.compile(['StdHEP'], cwd = sourcedir)
-                except Exception as error:
-                    logger.debug(str(error))
-                    logger.warning("StdHep failed to compiled. This forbids to run NLO+PS with PY6 and Herwig6")
-                    logger.info("details on the compilation error are available if the code is run with --debug flag")
-                else:
-                    logger.info('          ...done.')      
-            else:
-                logger.warning('Could not compile StdHEP because its'+\
-                   ' source directory could not be found in the SOURCE folder.\n'+\
-                             " Check the MG5_aMC option 'output_dependencies'.\n"+\
-                   " This will prevent the use of HERWIG6/Pythia6 shower.")
+        # StdHEP (HERWIG6 and PYTHIA6 event files) is compiled when such a
+        # shower is run: see ensure_stdhep.
 
         # make CutTools (only necessary with MG option output_dependencies='internal')
         if not os.path.exists(os.path.realpath(pjoin(libdir, 'libcts.a'))) or \
@@ -5637,7 +6040,7 @@ RESTART = %(mint_mode)s
             else:
                 raise aMCatNLOError('Could not compile CutTools because its'+\
                    ' source directory could not be found in the SOURCE folder.\n'+\
-                             " Check the MG5_aMC option 'output_dependencies.'")
+                             " Check the MadGraph7 option 'output_dependencies.'")
         if not os.path.exists(os.path.realpath(pjoin(libdir, 'libcts.a'))) or \
             not os.path.exists(os.path.realpath(pjoin(libdir, 'mpmodule.mod'))):
             raise aMCatNLOError('CutTools compilation failed.')            
@@ -5660,7 +6063,8 @@ RESTART = %(mint_mode)s
                     raise aMCatNLOError("CutTools installation in %s"\
                                  %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MG5_aMC. Please recompile CutTools.")
+                    " the one specified in MadGraph7. Please recompile it by typing"+\
+                    " 'install cuttools_iregi' in the MadGraph7 interface.")
 
         # make IREGI (only necessary with MG option output_dependencies='internal')
         if not os.path.exists(os.path.realpath(pjoin(libdir, 'libiregi.a'))) \
@@ -5688,7 +6092,8 @@ RESTART = %(mint_mode)s
                         raise aMCatNLOError("IREGI installation in %s"\
                                 %os.path.realpath(pjoin(libdir, 'libiregi.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MG5_aMC. Please recompile IREGI.")
+                    " the one specified in MadGraph7. Please recompile it by typing"+\
+                    " 'install cuttools_iregi' in the MadGraph7 interface.")
 
         # check if MadLoop virtuals have been generated
         if self.proc_characteristics['has_loops'] and \
@@ -5831,6 +6236,13 @@ RESTART = %(mint_mode)s
             mode = None
         if not mode and (options['parton'] or options['reweightonly']):
             mode = 'noshower'  
+
+        allow_qed_ps = options.get('allow_qed_ps', False)
+        if ('QED' in self.proc_characteristics['splitting_types'] and
+                not allow_qed_ps and mode in
+                ['aMC@NLO', 'aMC@LO', 'noshower', 'noshowerLO', 'onlyshower']):
+            raise self.InvalidCmd('NLO QED+PS matching is disabled. Use '
+                                  '--allow_qed_ps to enable experimental runs.')
         
         passing_cmd = []
         for key,value in switch.keys():
@@ -5852,6 +6264,7 @@ RESTART = %(mint_mode)s
         switch, cmd_switch = self.ask('', '0', [], ask_class = self.action_switcher,
                               mode=mode, force=(force or mode),
                               first_cmd=passing_cmd,
+                              allow_qed_ps=allow_qed_ps,
                               return_instance=True)
 
         if 'mode' in switch:
@@ -5912,7 +6325,7 @@ RESTART = %(mint_mode)s
         first_cmd = cmd_switch.get_cardcmd()
                 
         if not options['force'] and not self.force:
-            self.ask_edit_cards(cards, plot=False, first_cmd=first_cmd, switch=switch)
+            self.ask_edit_cards(cards, first_cmd=first_cmd, switch=switch)
 
         self.banner = banner_mod.Banner()
 
@@ -5925,6 +6338,7 @@ RESTART = %(mint_mode)s
 
         if not mode =='onlyshower':
             self.run_card = self.banner.charge_card('run_card')
+            self.check_real_channels_mode(mode)
             self.run_tag = self.run_card['run_tag']
             #this is if the user did not provide a name for the current run
             if not hasattr(self, 'run_name') or not self.run_name:
@@ -5953,9 +6367,6 @@ RESTART = %(mint_mode)s
                         error = '''Stop opertation'''
                         self.ask_run_configuration(mode, options)
     #                    raise aMCatNLOError(error)
-            elif self.run_card['ickkw'] == -1 and mode in ['aMC@NLO', 'noshower']:
-                    # NNLL+NLO jet-veto only possible for LO event generation or fNLO runs.
-                raise self.InvalidCmd("""NNLL+NLO jet veto runs (ickkw=-1) only possible for fNLO or LO.""")
         if 'aMC@' in mode or mode == 'onlyshower':
             self.shower_card = self.banner.charge_card('shower_card')
             
@@ -5978,6 +6389,8 @@ _compile_usage = "compile [MODE] [options]\n" + \
                 "   or MC for matching with parton-shower monte-carlos. \n" + \
                 "   (if omitted, it is set to MC)\n"
 _compile_parser = misc.OptionParser(usage=_compile_usage)
+_compile_parser.add_option("--allow_qed_ps", default=False, action='store_true',
+                            help="Allow experimental NLO QED+PS matching by bypassing the launch restriction")
 _compile_parser.add_option("-f", "--force", default=False, action='store_true',
                                 help="Use the card present in the directory for the launch, without editing them")
 
@@ -5991,6 +6404,8 @@ _launch_usage = "launch [MODE] [options]\n" + \
                 "     in the run_card.dat\n"
 
 _launch_parser = misc.OptionParser(usage=_launch_usage)
+_launch_parser.add_option("--allow_qed_ps", default=False, action='store_true',
+                            help="Allow experimental NLO QED+PS matching by bypassing the launch restriction")
 _launch_parser.add_option("-f", "--force", default=False, action='store_true',
                                 help="Use the card present in the directory for the launch, without editing them")
 _launch_parser.add_option("-c", "--cluster", default=False, action='store_true',
@@ -6081,8 +6496,8 @@ if '__main__' == __name__:
     # This can ONLY run a single command !!
     import sys
 
-    if sys.version_info < (3, 7):
-        sys.exit('MadGraph5_aMc@NLO works only with python 3.7 and later.\n'+\
+    if sys.version_info < (3, 12):
+        sys.exit('MadGraph7 works only with python 3.12 and later.\n'+\
                'Please upgrade your version of python or specify a compatible version.')
 
     import os
@@ -6167,9 +6582,18 @@ if '__main__' == __name__:
                     print('and %s  can not be interpreted as a valid command.' % args[0])
                 else:
                     print('ERROR: %s  not a valid command. Please retry' % args[0])
+                sys.exit(1)
             else:
                 cmd_line.use_rawinput = False
-                cmd_line.run_cmd(' '.join(args))
+                # Whoever started this process (e.g. a reweighting split over
+                # several cores) only sees its exit status: a failed command
+                # must not end with 0.
+                line = ' '.join(args)
+                try:
+                    cmd_line.exec_cmd(line, precmd=True)
+                except (Exception, KeyboardInterrupt) as error:
+                    cmd_line.error_handling(error, line)
+                    sys.exit(1)
                 cmd_line.run_cmd('quit')
 
     except KeyboardInterrupt:

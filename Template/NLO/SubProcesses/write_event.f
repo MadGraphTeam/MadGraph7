@@ -8,8 +8,6 @@
       implicit none
       include 'nexternal.inc'
       include "genps.inc"
-      include "unlops.inc"
-      include "run.inc"
       logical Hevents
       common/SHevents/Hevents
       integer i,lunlhe,p_label
@@ -38,7 +36,7 @@
       
       wgt=1d0
       evnt_wgt=evtsgn*weight
-      if(.not.Hevents.and.ickkw.ne.4)then
+      if(.not.Hevents)then
 c S events need the Born momenta and their beam frame only.
          call generate_born_event(ndim,iconfig,wgt,x,
      $        phase_space)
@@ -46,7 +44,7 @@ c S events need the Born momenta and their beam frame only.
          p_lab=phase_space%p_lab
          p_cms=phase_space%p_cms
       else
-c H events and the additional ickkw=4 record need real momenta.
+c H events need real momenta.
          call generate_momenta(ndim,iconfig,wgt,x,p,p_lab,p_cms)
       endif
 c
@@ -58,42 +56,12 @@ c
          call set_cms_stuff(0)
       endif
 
-      if (ickkw.eq.4) putonshell=.false.
-
-      if (ickkw.eq.4) then
-         if (Hevents) then
-            write (*,*) 'For ickkw=4, Hevents should be false',Hevents
-            stop
-         endif
-         Hevents=.true.
-         call add_write_info(p_born,p,ybst_til_tolab,iconfig,Hevents,
-     &        .false.,ndim,x,jpart,npart,pb,shower_scale_a)
-c Put the Hevent info in a common block
-         NUP_H=npart
-         do i=1,NUP_H
-            IDUP_H(i)=jpart(1,i)
-            ISTUP_H(i)=jpart(6,i)
-            MOTHUP_H(1,i)=jpart(2,i)
-            MOTHUP_H(2,i)=jpart(3,i)
-            ICOLUP_H(1,i)=jpart(4,i)
-            ICOLUP_H(2,i)=jpart(5,i)
-            PUP_H(1,i)=pb(1,i)
-            PUP_H(2,i)=pb(2,i)
-            PUP_H(3,i)=pb(3,i)
-            PUP_H(4,i)=pb(0,i)
-            PUP_H(5,i)=pb(4,i)
-            VTIMUP_H(i)=0.d0
-            SPINUP_H(i)=dfloat(jpart(7,i))
-         enddo
-         Hevents=.false.
-      endif
-      
       call add_write_info(p_born,p,ybst_til_tolab,iconfig,Hevents,
      &     putonshell,ndim,x,jpart,npart,pb,shower_scale_a)
       
 c Write-out the events
       call write_events_lhe(pb(0,1),evnt_wgt,jpart(1,1),npart,lunlhe
-     $     ,ickkw,shower_scale_a,p_label)
+     $     ,shower_scale_a,p_label)
       
       return
       end
@@ -133,7 +101,7 @@ c get info on beam and PDFs
       return
       end
 
-      subroutine write_events_lhe(p,wgt,ic,npart,lunlhe ,ickkw
+      subroutine write_events_lhe(p,wgt,ic,npart,lunlhe
      $     ,shower_scale_a,p_label)
       use extra_weights
       use process_module
@@ -142,7 +110,7 @@ c get info on beam and PDFs
       include "nexternal.inc"
       include "coupl.inc"
       double precision p(0:4,2*nexternal-3),wgt
-      integer ic(7,2*nexternal-3),npart,lunlhe,kwgtinfo,ickkw,p_label
+      integer ic(7,2*nexternal-3),npart,lunlhe,kwgtinfo,p_label
       double precision pi,zero
       parameter (pi=3.1415926535897932385d0)
       parameter (zero=0.d0)
@@ -150,7 +118,7 @@ c get info on beam and PDFs
       parameter (izero=0)
       double precision aqcd,aqed
       character*1000 buff
-      INTEGER MAXNUP,i,j,k
+      INTEGER MAXNUP,i
       PARAMETER (MAXNUP=500)
       INTEGER NUP,IDPRUP,IDUP(MAXNUP),ISTUP(MAXNUP),
      # MOTHUP(2,MAXNUP),ICOLUP(2,MAXNUP)
@@ -168,57 +136,34 @@ c Reuse the large event-scale workspace without using the call stack.
       common/cto_LHE1/iSorH_lhe,ifks_lhe,jfks_lhe,
      #                fksfather_lhe,ipartner_lhe
       common/cto_LHE2/scale1_lhe,scale2_lhe
-      double precision muR2_current,muF12_current,
-     #                 muF22_current,QES2_current
-      common/cscales_current_values/muR2_current,muF12_current,
-     #                              muF22_current,QES2_current
       logical firsttime
       data firsttime/.true./
       double precision shower_scale_a(-nexternal+3:2
      $     *nexternal-3,-nexternal+3:2*nexternal-3)
 c
       scalup_a=-1d0
-      if (ickkw.eq.4) then
-         SCALUP = sqrt(muF12_current)
-         do j=1,2*nexternal-3
-            do k=1,2*nexternal-3
-               if(j.eq.k)cycle
-               scalup_a(j,k)=sqrt(muF12_current)
-            enddo
-         enddo
-      elseif (ickkw.eq.-1) then
-         SCALUP = mu_r
-         do j=1,2*nexternal-3
-            do k=1,2*nexternal-3
-               if(j.eq.k)cycle
-               scalup_a(j,k)=mu_r
-            enddo
-         enddo
-      else
-         if (mcatnlo_delta_mod.and.ickkw.ne.3)
-     $        scalup_a(1:npart,1:npart)=
-     $        shower_scale_a(1:npart,1:npart)
-         if (ickkw.eq.3.and.mcatnlo_delta_mod) then
+      if (mcatnlo_delta_mod.and.ickkw_mod.ne.3)
+     $     scalup_a(1:npart,1:npart)=shower_scale_a(1:npart,1:npart)
+      if (ickkw_mod.eq.3.and.mcatnlo_delta_mod) then
 c FxFx-Delta writes its selected scalar, including the H stopping-scale mean.
-            if (iSorH_lhe.eq.1) then
-               SCALUP=showerscaleS_hard
-            else
-               SCALUP=showerscaleH_hard
-            endif
-         elseif (iSorH_lhe.eq.1.and.scalar_S_scales()) then
+         if (iSorH_lhe.eq.1) then
+            SCALUP=showerscaleS_hard
+         else
+            SCALUP=showerscaleH_hard
+         endif
+      elseif (iSorH_lhe.eq.1.and.scalar_S_scales()) then
 c The scalar is the damped hard scale. The shower applies its dipole
 c limits; Delta additionally records the effective directed scales.
-            SCALUP=showerscaleS_hard
-         elseif (.not.mcatnlo_delta_mod) then
-            if (iSorH_lhe.eq.1) then ! S-event
-               SCALUP=showerscaleS(1,1)
-            else
-               SCALUP=showerscaleH(1,1)
-            endif
+         SCALUP=showerscaleS_hard
+      elseif (.not.mcatnlo_delta_mod) then
+         if (iSorH_lhe.eq.1) then ! S-event
+            SCALUP=showerscaleS(1,1)
          else
-            ! Delta supplies its shower scales through the matrix above.
-            SCALUP=-1d0
+            SCALUP=showerscaleH(1,1)
          endif
+      else
+         ! Delta supplies its shower scales through the matrix above.
+         SCALUP=-1d0
       endif
 c
       aqcd=g**2/(4d0*pi)

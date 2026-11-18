@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: 0BSD
+# Loop example: generate u u~ > d d~ e+ e-, NLO QCD+EW virtual (every order), complex-mass scheme.
+# Walkthrough: python python/loop_walkthrough.py loop_uux_ddxepem_generate.toml (README, One-Loop Examples).
+
+schema_version = 1
+action = "generate"
+
+[model]
+source = "loop_qcd_qed_sm_Gmu"
+restriction = "default"
+
+[process]
+entries = [{ expression = "u u~ > d d~ e+ e-", name = "uux_ddxepem" }]
+loop_coupling_orders = ["QCD", "QED"]
+# Every Born amplitude order (QCD^2 QED^2 and QED^4): "minimal" would keep
+# the lowest only.
+coupling_order_policy = "explicit"
+max_coupling_orders = { QCD = 2, QED = 4 }
+
+[loop.preparation]
+# Massless b and tau (under the complex-mass scheme the masses are fixed, the
+# Yukawas follow); the widths of the unstable particles in the propagators.
+fixed_parameters = { MB = "0", MTA = "0", WT = "1.37758", WZ = "2.49877", WW = "2.09291", WH = "0.00407468" }
+
+[loop.model.scheme]
+mass_scheme = "complex-mass"
+
+[generation]
+output = "artifacts/loop_uux_ddxepem"

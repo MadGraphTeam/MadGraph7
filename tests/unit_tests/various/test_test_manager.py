@@ -1,4 +1,4 @@
-"""Exercise the test-manager CLI's process status, including optional skips."""
+"""Exercise the test-manager CLI's process status: skips fail the run."""
 
 from pathlib import Path
 import subprocess
@@ -52,8 +52,8 @@ runpy.run_path(sys.argv[0], run_name='__main__')
 '''
             cases = [
                 (['test_pass'], 0, False),
-                (['test_skip'], 0, True),
-                (['test_pass', 'test_skip'], 0, True),
+                (['test_skip'], 1, True),
+                (['test_pass', 'test_skip'], 1, True),
                 (['test_fail'], 1, False),
                 (['test_error'], 1, False),
                 (['test_expected_failure'], 0, False),
@@ -71,6 +71,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
                         output = result.stdout + result.stderr
                         self.assertEqual(result.returncode, expected, output)
                         if skipped:
-                            self.assertIn('OK (skipped=1)', output)
+                            self.assertIn('Skipped 1:', output)
+                            self.assertIn('optional dependency absent', output)
                         self.assertEqual('FIXTURE NOTIFICATION' in output, notify,
                                          output)

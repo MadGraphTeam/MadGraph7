@@ -2,7 +2,37 @@ C --=========================================--
 C   Main subroutine
 C --=========================================--
 
-	  SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+## if(ninjars_available) {
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      %(real_dp_format)s P_USER(0:3,NEXTERNAL),ANS(0:3,*)
+      LOGICAL NRS_RETRY_MODE,NRS_RETRY_USED
+      INTEGER NRS_RETRY_COUNT,NRS_RETRY_PASS,NRS_RETRY_FAIL
+      INTEGER NRS_RETRY_HARD_SKIP
+      REAL*8 NRS_NATIVE_ACC,NRS_COMP_ACC
+      COMMON/%(proc_prefix)sNRS_RETRY_FLAGS/NRS_RETRY_MODE,NRS_RETRY_USED
+      COMMON/%(proc_prefix)sNRS_RETRY_STATS/NRS_RETRY_COUNT,NRS_RETRY_PASS,
+     $ NRS_RETRY_FAIL,NRS_RETRY_HARD_SKIP
+      COMMON/%(proc_prefix)sNRS_RETRY_ACC/NRS_NATIVE_ACC,NRS_COMP_ACC
+      NRS_RETRY_MODE=.FALSE.
+      NRS_RETRY_USED=.FALSE.
+      NRS_RETRY_COUNT=0
+      NRS_RETRY_PASS=0
+      NRS_RETRY_FAIL=0
+      NRS_RETRY_HARD_SKIP=0
+      NRS_NATIVE_ACC=-1D0
+      NRS_COMP_ACC=-1D0
+      CALL %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
+C     Guaranteed reset after every ordinary return from the implementation.
+      NRS_RETRY_MODE=.FALSE.
+      END
+
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
+## } else {
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+## }
 C  
 %(info_lines)s
 C
@@ -14,9 +44,23 @@ C
 C
 C Modules
 C
-      use %(proc_prefix)sPOLYNOMIAL_CONSTANTS      
+      use %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE ALOHA_OBJECT
 C
+## if(ninjars_available) {
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+## }
       IMPLICIT NONE
+## if(ninjars_available) {
+      LOGICAL NRS_RETRY_MODE,NRS_RETRY_USED
+      INTEGER NRS_RETRY_COUNT,NRS_RETRY_PASS,NRS_RETRY_FAIL
+      INTEGER NRS_RETRY_HARD_SKIP
+      REAL*8 NRS_NATIVE_ACC,NRS_COMP_ACC
+      COMMON/%(proc_prefix)sNRS_RETRY_FLAGS/NRS_RETRY_MODE,NRS_RETRY_USED
+      COMMON/%(proc_prefix)sNRS_RETRY_STATS/NRS_RETRY_COUNT,NRS_RETRY_PASS,
+     $ NRS_RETRY_FAIL,NRS_RETRY_HARD_SKIP
+      COMMON/%(proc_prefix)sNRS_RETRY_ACC/NRS_NATIVE_ACC,NRS_COMP_ACC
+## }
 C
 C USER CUSTOMIZABLE OPTIONS
 C 
@@ -99,16 +143,25 @@ C     These are constants related to the split orders
 	  INTEGER NSQUAREDSOP1
 	  PARAMETER (NSQUAREDSOP1=NSQUAREDSO+1)
 C     The total number of loop reduction libraries
-C     At present, there are only CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja and COLLIER
+C     CutTools, IREGI, Golem95, Samurai, Ninja, COLLIER and NinjaRS are supported.
       INTEGER NLOOPLIB
-      PARAMETER (NLOOPLIB=7)
-C     Only CutTools or possibly Ninja (if installed with qp support) provide QP
+      PARAMETER (NLOOPLIB=8)
+C     CutTools, Ninja and NinjaRS can provide QP when installed with support
       INTEGER QP_NLOOPLIB
 ## if(ninja_supports_quad_prec) {
+## if(ninjars_supports_quad_prec) {
+      PARAMETER (QP_NLOOPLIB=3)
+## } else {
+      PARAMETER (QP_NLOOPLIB=2)
+## }
+## } else {
+## if(ninjars_supports_quad_prec) {
       PARAMETER (QP_NLOOPLIB=2)
 ## } else {
       PARAMETER (QP_NLOOPLIB=1)
 ## }
+## }
+
 	  INTEGER MAXSTABILITYLENGTH
 	  DATA MAXSTABILITYLENGTH/20/
 	  common/%(proc_prefix)sstability_tests/maxstabilitylength
@@ -150,7 +203,7 @@ C
 	  LOGICAL HEL_INCONSISTENT	  
       %(real_dp_format)s P(0:3,NEXTERNAL)	  
 C DP_RES STORES THE DOUBLE PRECISION RESULT OBTAINED FROM DIFFERENT EVALUATION METHODS IN ORDER TO ASSESS STABILITY.
-C THE STAB_STAGE COUNTER I CORRESPONDANCE GOES AS FOLLOWS
+C THE STAB_STAGE COUNTER CORRESPONDENCE GOES AS FOLLOWS
 C  I=1 -> ORIGINAL PS, CTMODE=1
 C  I=2 -> ORIGINAL PS, CTMODE=2, (ONLY WITH CTMODERUN=-1)
 C  I=3 -> PS WITH ROTATION 1, CTMODE=1, (ONLY WITH CTMODERUN=-2)
@@ -218,7 +271,7 @@ C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
 	  INTEGER NEPS
 	  DATA NEPS/0/
 C     Below are variables to bypass the checkphase and insure stability check to take place
-      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED
+      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED,BYPASS_FILTERS
 	  INTEGER OLD_GOODHEL(NCOMB)
 	  LOGICAL OLD_GOODAMP(NSQUAREDSO,NLOOPGROUPS)
 	  LOGICAL BYPASS_CHECK, ALWAYS_TEST_STABILITY
@@ -280,17 +333,24 @@ C     A FLAG TO DENOTE WHETHER THE CORRESPONDING LOOPLIBS ARE AVAILABLE OR NOT
 	  common/%(proc_prefix)sLOOPLIBS_AV/ LOOPLIBS_AVAILABLE
 C     A FLAG TO DENOTE WHETHER THE CORRESPONDING DIRECTION TESTS AVAILABLE OR NOT IN THE LOOPLIBS
       LOGICAL LOOPLIBS_DIRECTEST(NLOOPLIB)
-	  DATA LOOPLIBS_DIRECTEST /.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE./
+	  DATA LOOPLIBS_DIRECTEST /8*.TRUE./
 C     Specifying for which reduction tool quadruple precision is available.
 C     The index 0 is dummy and simply means that the corresponding loop_library is not available
 C     in which case neither is its quadruple precision version.
-      LOGICAL LOOPLIBS_QPAVAILABLE(0:7)
+      LOGICAL LOOPLIBS_QPAVAILABLE(0:NLOOPLIB)
+      DATA LOOPLIBS_QPAVAILABLE(0:5)/.FALSE.,.TRUE.,4*.FALSE./
 ## if(ninja_supports_quad_prec) {
-	  DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.TRUE.,.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(6)/.TRUE./
 ## } else {
-	  DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(6)/.FALSE./
 ## }
-C     PS CAN POSSIBILY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
+      DATA LOOPLIBS_QPAVAILABLE(7)/.FALSE./
+## if(ninjars_supports_quad_prec) {
+      DATA LOOPLIBS_QPAVAILABLE(8)/.TRUE./
+## } else {
+      DATA LOOPLIBS_QPAVAILABLE(8)/.FALSE./
+## }
+C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT USED ANYWHERE ELSE
 	  %(real_dp_format)s PS(0:3,NEXTERNAL)
 	  common/%(proc_prefix)sPSPOINT/PS
@@ -362,10 +422,10 @@ C     This can be accessed with the SET_FORBID_HEL_DOUBLECHECK subroutine of Mad
 	  %(complex_dp_format)s AMP(NBORNAMPS)
 	  common/%(proc_prefix)sAMPS/AMP
 ## }
-	  %(complex_dp_format)s W(20,NWAVEFUNCS)
+	  type(aloha) W(NWAVEFUNCS)
 	  common/%(proc_prefix)sW/W  
 
-      %(complex_mp_format)s MPW(20,NWAVEFUNCS)
+      type(mp_aloha) MPW(NWAVEFUNCS)
 	  common/%(proc_prefix)sMP_W/MPW
 
 	  %(complex_dp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
@@ -479,6 +539,7 @@ IF(ML_INIT) THEN
   CALL setMadLoopPath(TMP)
   CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
   CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
+  CALL ML_APPLY_LOOP_POLE_MODE()
   IF (FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION) THEN
     COLLIERComputeUVpoles = COLLIER_UV_POLE_COMPUTATION_CHOICE
   ENDIF
@@ -523,10 +584,27 @@ C Make sure that NROTATIONS_QP and NROTATIONS_DP are set to zero if AUTOMATIC_CA
 
 ENDIF
 
+C Check every evaluation because callers may change the mode at runtime.
+CALL ML_CHECK_LOOP_POLE_MODE()
+C Learned zero and equivalent-helicity filters belong to the pole convention
+C that produced them.  Diagnostic modes must include cancelling UV/IR loops.
+BYPASS_FILTERS=BYPASS_CHECK.OR.LoopPoleMode.GT.0
+C Legacy COLLIER filters may have been trained without one pole origin.
+C Isolate them when explicit combined poles override those switches.
+IF (LoopPoleMode.EQ.0.AND.ANY(MLReductionLib.EQ.7).AND.(.NOT.COLLIERComputeUVpoles.OR..NOT.COLLIERComputeIRpoles)) THEN
+  BYPASS_FILTERS=.TRUE.
+ENDIF
+
 IF (LOCAL_ML_INIT) THEN
   LOCAL_ML_INIT = .FALSE.
   QP_TOOLS_AVAILABLE=.FALSE.
   INDEX_QP_TOOLS(1:QP_NLOOPLIB+1)=0
+C Explain an explicit NinjaRS-only request before dropping unavailable tools.
+  IF(MLReductionLib(1).EQ.8.AND.MLReductionLib(2).EQ.0.AND..NOT.LOOPLIBS_AVAILABLE(8))THEN
+     WRITE(*,*) 'NinjaRS (MLReductionLib=8) is unavailable in this generated process.'
+     WRITE(*,*) 'Run install ninjars in MadGraph, then regenerate and rebuild this process.'
+     STOP 'Requested NinjaRS backend is unavailable.'
+  ENDIF
 C SKIP THE ONES THAT NOT AVAILABLE
   J=1
   DO I=1,NLOOPLIB
@@ -563,9 +641,17 @@ C Setup the file paths
 
   CALL %(proc_prefix)sSET_N_EVALS(N_DP_EVAL,N_QP_EVAL)  
 
-C Make sure that the loop filter is disabled when there is spin-2 particles for 2>1 or 1>2 processes
-  if(MAX_SPIN_EXTERNAL_PARTICLE.gt.3.AND.(NEXTERNAL.LE.3.AND.HelicityFilterLevel.NE.0)) THEN
-    WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1 processes involving spin 2 particles.'
+C Disable the helicity filter for 2>1 and 1>2 processes.
+C In the c.m. frame one particle is then at rest (the
+C final state of a 2>1, the decaying one of a 1>2), and
+C which helicities vanish depends on the frame: at rest
+C the helicity is defined along z, a boost changes it.
+C A filter learned in one frame silently drops part of
+C the result in another (u d~ > w+: virtual = 0 with the
+C W along -z) and the stability test cannot see it.
+C The tree-level standalone output does the same.
+  if(NEXTERNAL.LE.3.AND.HelicityFilterLevel.NE.0) THEN
+    WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1 and 1>2 processes.'
     HelicityFilterLevel = 0	
 C   We write a dummy filter for structural reasons here
     OPEN(1, FILE=HelFilterFN, err=6116, status='NEW',action='WRITE')
@@ -726,7 +812,7 @@ C the split_order summed value I=0 is used in ML5 code.
 DO I=0,NSQSO_BORN
   BORNBUFF(I)=0.0d0
 ENDDO
-CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,BORNBUFF(0))
+CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))
 DO I=0,NSQSO_BORN
   ANS(0,I)=BORNBUFF(I)
 ENDDO
@@ -765,9 +851,9 @@ ENDDO
 ## if(LoopInduced) {
 C For loop-induced processes, we should make sure not to use the first points
 C to set the filters because it doesn't have a reasonable REF scale yet.
-IF(.NOT.BYPASS_CHECK.AND.NPSPOINTS.GE.1) THEN
+IF(.NOT.BYPASS_FILTERS.AND.NPSPOINTS.GE.1) THEN
 ## } else {
-IF(.NOT.BYPASS_CHECK) THEN
+IF(.NOT.BYPASS_FILTERS) THEN
 ## }
   NTRY=NTRY+1
 ENDIF
@@ -779,7 +865,7 @@ C In the initialization, I cannot perform stability test and therefore guarantee
   CTMODEINIT_BU=CTMODEINIT
 C So either one choses quad precision directly
 C  CTMODEINIT=4
-C Or, because this is very slow, we keep the orignal value. The accuracy returned is -1 and tells the MC that he should not trust the evaluation for checks.
+C Or, because this is very slow, we keep the original value. The accuracy returned is -1 and tells the MC that he should not trust the evaluation for checks.
   CTMODEINIT=CTMODEINIT_BU
 ENDIF
 
@@ -790,7 +876,7 @@ ENDIF
 
 CHECKPHASE=(NTRY.LE.CHECKCYCLE).AND.(((.NOT.FOUNDLOOPFILTER).AND.USELOOPFILTER).OR.(.NOT.FOUNDHELFILTER))
 
-IF (WriteOutFilters) THEN
+IF (WriteOutFilters.AND..NOT.BYPASS_FILTERS) THEN
 IF ((HelicityFilterLevel.ne.0).AND.(.NOT. CHECKPHASE).AND.(.NOT.FOUNDHELFILTER)) THEN
 OPEN(1, FILE=HelFilterFN, err=110, status='NEW',action='WRITE')
   DO I=1,NCOMB
@@ -812,7 +898,7 @@ FOUNDLOOPFILTER=.TRUE.
 ENDIF
 ENDIF
 
-IF (BYPASS_CHECK) THEN
+IF (BYPASS_FILTERS) THEN
   OLD_CHECKPHASE = CHECKPHASE
   OLD_HELDOUBLECHECKED = HELDOUBLECHECKED
   CHECKPHASE = .FALSE.
@@ -1140,7 +1226,7 @@ C It is however a good cross-check.
       TEMP2(2) = HEL_MULT*DBLE(CFTOT*(AMPL(2,I)*DCONJG(AMPL(1,J)) + AMPL(1,I)*DCONJG(AMPL(2,J))))
       TEMP2(3) = HEL_MULT*DBLE(CFTOT*(AMPL(3,I)*DCONJG(AMPL(1,J)) + AMPL(1,I)*DCONJG(AMPL(3,J))+AMPL(2,I)*DCONJG(AMPL(2,J))))
 ## }
-C To mimick the structure of the squared amplitude reduction, we add here the squared counterterm contribution directly to the result ANS() and put the loop contributions in the LOOPRES array which will be added to ANS later
+C To mimic the structure of the squared amplitude reduction, we add here the squared counterterm contribution directly to the result ANS() and put the loop contributions in the LOOPRES array which will be added to ANS later
       IF (I.LE.NCTAMPS) THEN
         IF (.NOT.FILTER_SO.OR.SQSO_TARGET.EQ.ITEMP) THEN
           DO K=1,3
@@ -1198,7 +1284,7 @@ C   The quantity LOOPRES defined below is not physical, but it's ok since it is 
       ENDIF
 C   The if statement below is not strictly necessary but makes it clear when it is executed.
     ELSEIF(H.EQ.USERHEL.OR.USERHEL.EQ.-1) THEN
-C     Make sure that that no polarization constraint filters out this helicity
+C     Make sure that no polarization constraint filters out this helicity
       IF (POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(H)) THEN
 C       If both computational method is used, then we must just update RES_FROM_JAMP
         DO K=0,3
@@ -1209,7 +1295,7 @@ C       If both computational method is used, then we must just update RES_FROM_
       ENDIF
     ENDIF
 	IF (H.EQ.USERHEL.OR.USERHEL.EQ.-1) THEN
-C     Make sure that that no polarization constraint filters out this helicity
+C     Make sure that no polarization constraint filters out this helicity
       IF (POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(H)) THEN
 	    CALL %(proc_prefix)sCOMPUTE_COLOR_FLOWS_DERIVED_QUANTITIES(HEL_MULT)
 	  ENDIF
@@ -1341,7 +1427,7 @@ ENDDO
 
 IF (CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED)) THEN
   IF((USERHEL.EQ.-1).OR.(USERHEL.EQ.HELPICKED)) THEN
-C   Make sure that that no polarization constraint filters out this helicity
+C   Make sure that no polarization constraint filters out this helicity
     IF (POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_HEL_SELECTED(HELPICKED)) THEN
 C     TO KEEP TRACK OF THE FINAL ANSWER TO BE RETURNED DURING CHECK PHASE
       DO I=0,NSQUAREDSO
@@ -1429,7 +1515,7 @@ C Of course if it is one, then we do not need to do anything (because with HELIN
 			ENDIF
 		  ENDDO
 		ENDIF
-C In all cases, from now on this helicity will be computed independantly of the others.
+C In all cases, from now on this helicity will be computed independently of the others.
 C In particular, it is the only thing to do if the helicity was flagged not contributing.
 		GOODHEL(HELPICKED)=1
 	  ENDIF
@@ -1461,7 +1547,7 @@ C   DOUBLE CHECK THE HELICITY FILTER
     IF (GOODHEL(HELPICKED).EQ.-HELOFFSET) THEN
 	  IF (.NOT.%(proc_prefix)sIsZero(DABS(HELSAVED(1,HELPICKED))+DABS(HELSAVED(2,HELPICKED))+DABS(HELSAVED(2,HELPICKED)),REF/DBLE(NCOMB),-1,-1)) THEN
 	    write(*,*) '##W15 Helicity filter could not be successfully double checked.'
-	    write(*,*) '##One reason for this is that you might have changed sensible parameters which affected what are the zero helicity configurations.'
+	    write(*,*) '##One reason for this is that you might have changed sensitive parameters which affected what are the zero helicity configurations.'
 	    write(*,*) '##MadLoop will try to reset the Helicity filter with the next PS points it receives.'
 	    NTRY=0
 	    OPEN(29,FILE=HelFilterFN,err=348)
@@ -1472,7 +1558,7 @@ C   DOUBLE CHECK THE HELICITY FILTER
 	IF (GOODHEL(HELPICKED).LT.-HELOFFSET.AND.NTRY.NE.0) THEN
 	  IF(%(proc_prefix)sISSAME(HELSAVED(1,HELPICKED),HELSAVED(1,ABS(GOODHEL(HELPICKED)+HELOFFSET)),REF,.TRUE.).EQ.0) THEN
 	    write(*,*) '##W15 Helicity filter could not be successfully double checked.'
-	    write(*,*) '##One reason for this is that you might have changed sensible parameters which affected the helicity dependance relations.'
+	    write(*,*) '##One reason for this is that you might have changed sensitive parameters which affected the helicity dependence relations.'
 	    write(*,*) '##MadLoop will try to reset the Helicity filter with the next PS points it receives.'
 	    NTRY=0
 	    OPEN(30,FILE=HelFilterFN,err=349)
@@ -1528,7 +1614,7 @@ C and wait for a point for which the evaluation isn't be zero.
 ## if(LoopInduced){
 ELSE
 C When not in checking mode, update the ref for the first MAXNREF_EVALS points (The ref. scale could still be used after this stage if BYPASS_CHECK was set to true at some point using SLOOPMATRIX_THRES).
-C Is is possible to simply remove the if statement below to have a running reference scale which always depends on the MAXNREF_EVALS *last* evaluations. 
+C It is possible to simply remove the if statement below to have a running reference scale which always depends on the MAXNREF_EVALS *last* evaluations.
     if (NPSPOINTS.LE.MAXNREF_EVALS) THEN
 	  TMPR = ABS(ANS(1,0)) + ABS(ANS(2,0)) + ABS(ANS(3,0))
 	  IF (TMPR.ne.0.0d0) THEN
@@ -1768,7 +1854,45 @@ C   the result cannot be trusted at all and we hardset all accuracies to 1.0
         ACC(I)=1.0d0
       ENDDO
     ENDIF
+## if(ninjars_available) {
+C         One explicit compensated DP retry with the same stability checks.
+          IF(NRS_RETRY_MODE) THEN
+            NRS_COMP_ACC=MAXVAL(ACC)
+            NRS_RETRY_MODE=.FALSE.
+            IF(MAXVAL(ACC).LT.MLSTABTHRES.AND..NOT.FPE_IN_DP_REDUCTION) THEN
+              NRS_RETRY_PASS=NRS_RETRY_PASS+1
+            ELSE
+              NRS_RETRY_FAIL=NRS_RETRY_FAIL+1
+            ENDIF
+          ENDIF
+          IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN
+            IF(MLREDUCTIONLIB(I_LIB).EQ.8.AND..NOT.NRS_RETRY_USED) THEN
+              NRS_NATIVE_ACC=MAXVAL(ACC)
+              IF(.NOT.FPE_IN_DP_REDUCTION.AND.ALL(IEEE_IS_FINITE(ACC)).AND.ALL(IEEE_IS_FINITE(DP_RES(:,:,1:N_DP_EVAL)))) THEN
+                NRS_RETRY_USED=.TRUE.
+                NRS_RETRY_MODE=.TRUE.
+                NRS_RETRY_COUNT=NRS_RETRY_COUNT+1
+                EVAL_DONE(1)=.TRUE.
+                DO I=2,MAXSTABILITYLENGTH
+                  EVAL_DONE(I)=.FALSE.
+                ENDDO
+                STAB_INDEX=0
+                CTMODE=1
+                DP_RES=0D0
+                IF(NROTATIONS_DP.GE.1) THEN
+                  GOTO 200
+                ELSE
+                  GOTO 300
+                ENDIF
+              ELSE
+                NRS_RETRY_HARD_SKIP=NRS_RETRY_HARD_SKIP+1
+              ENDIF
+            ENDIF
+C           Mode is off before advancing a backend or entering genuine QP.
+            NRS_RETRY_MODE=.FALSE.
+## } else {
 	IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN
+## }
 	  I_LIB=I_LIB+1
 	  IF((I_LIB.GT.NLOOPLIB.OR.MLReductionLib(I_LIB).EQ.0).AND.QP_TOOLS_AVAILABLE)THEN
 	        I_LIB=INDEX_QP_TOOLS(1)
@@ -1898,7 +2022,7 @@ NROTATIONS_DP = NROTATIONS_DP_BU
 NROTATIONS_QP = NROTATIONS_QP_BU
 
 C Reinitialize the check phase logicals and the filters if check bypassed
-IF (BYPASS_CHECK) THEN
+IF (BYPASS_FILTERS) THEN
   CHECKPHASE = OLD_CHECKPHASE
   HELDOUBLECHECKED = OLD_HELDOUBLECHECKED
   DO I=1,NCOMB
@@ -2024,7 +2148,7 @@ C BEGIN CODE
 C ----------
 	  IF(abs(reference_value).eq.0.0d0) then
 	    %(proc_prefix)sIsZero=.FALSE.
-		write(*,*) '##E02 ERRROR Reference value for comparison is zero.'
+		write(*,*) '##E02 ERROR Reference value for comparison is zero.'
 		STOP 1
 	  else
 	    %(proc_prefix)sIsZero=((abs(toTest)/abs(reference_value)).lt.ZEROTHRES)
@@ -2573,6 +2697,15 @@ C --=========================================--
 C   Definition of additional access routines
 C --=========================================--
 
+      SUBROUTINE %(proc_prefix)sSET_LOOP_POLE_MODE(MODE)
+C     Select bare loop poles: -1 legacy, 0 both, 1 UV, 2 IR, 3 none.
+C     Counterterms and rational R2 contributions are not changed.
+      IMPLICIT NONE
+      INTEGER MODE
+C     All subprocesses share MadLoop's card and initialization state.
+      CALL ML_SET_LOOP_POLE_MODE(MODE)
+      END SUBROUTINE
+
 	  SUBROUTINE %(proc_prefix)sCOLLIER_COMPUTE_UV_POLES(ONOFF)
 C
 C This function can be called by the MadLoop user so as to chose to have COLLIER
@@ -2896,7 +3029,9 @@ C     PREC_FOUND         double  :: Relative accuracy estimated for the result
 C                                   Returns -1 if no stab test could be performed.
 C	  RET_CODE			 integer :: Return code. See below for details
 C
-C     Return code conventions: RET_CODE = H*100 + T*10 + U
+C     Return-code format 2: RET_CODE = H*100 + T*10 + U
+C     PJFry is retired. NinjaRS uses U=2 in both precisions.
+C     Record ML_GET_RETURN_CODE_VERSION() alongside saved return codes.
 C
 C     H == 1
 C         Stability unknown.
@@ -2924,7 +3059,7 @@ C         Not stable.
 C     U == 1
 C         Stable with CutTools in double precision.
 C     U == 2
-C         Stable with PJFry++.
+C         Stable with NinjaRS. T records whether quadruple precision was used.
 C     U == 3
 C         Stable with IREGI.
 C     U == 4
@@ -2933,8 +3068,10 @@ C     U == 5
 C         Stable with Samurai
 C     U == 6
 C         Stable with Ninja in double precision
+C     U == 7
+C         Stable with COLLIER.
 C     U == 8
-C         Stable with Ninja in quadruple precision
+C         Stable with Ninja in quadruple precision.
 C     U == 9
 C         Stable with CutTools in quadruple precision.         
 C
@@ -2999,8 +3136,14 @@ C Reset it to default value not to affect next runs
 C The subroutine below perform clean-up duties for MadLoop like de-allocating
 c arrays
 	  SUBROUTINE %(proc_prefix)sEXIT_MADLOOP()
+## if(ninjars_available) {
+        USE MNINJARS, ONLY: NINJARS_FINALIZE
+## }
 ## if(ComputeColorFlows) {
 	    CALL %(proc_prefix)sDEALLOCATE_COLOR_FLOWS()
+## }
+## if(ninjars_available) {
+        CALL NINJARS_FINALIZE()
 ## }
         CONTINUE
 	  END

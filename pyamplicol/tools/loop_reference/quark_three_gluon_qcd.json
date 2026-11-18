@@ -1,0 +1,123 @@
+{
+  "process": "u u~ > g g g",
+  "born_orders": {
+    "QCD": 3,
+    "QED": 0
+  },
+  "loop_orders": {
+    "QCD": 5,
+    "QED": 0
+  },
+  "squared_orders": {
+    "QCD": 8,
+    "QED": 0
+  },
+  "parameters": {
+    "alpha_s": 0.118,
+    "mu": 1000.0,
+    "mt": 173.0,
+    "mb": 0.0
+  },
+  "renormalization_flavours": 5,
+  "loop_quark_flavours": 6,
+  "external_momenta": "positive-energy incoming legs 1,2; outgoing legs 3,4,5; E,px,py,pz in GeV",
+  "normalization": "initial spin/colour average and final identical-gluon factor 1/6; physical couplings; Cepsilon=(4pi)^epsilon/Gamma(1-epsilon)",
+  "points": [
+    [
+      [
+        663.0,
+        0.0,
+        0.0,
+        663.0
+      ],
+      [
+        663.0,
+        0.0,
+        0.0,
+        -663.0
+      ],
+      [
+        331.5,
+        -12.24,
+        315.18,
+        -102.0
+      ],
+      [
+        442.0,
+        -112.24,
+        127.68,
+        408.0
+      ],
+      [
+        552.5,
+        124.48,
+        -442.86,
+        -306.0
+      ]
+    ],
+    [
+      [
+        663.0,
+        0.0,
+        0.0,
+        663.0
+      ],
+      [
+        663.0,
+        0.0,
+        0.0,
+        -663.0
+      ],
+      [
+        331.5,
+        116.16,
+        302.4,
+        70.38
+      ],
+      [
+        442.0,
+        -333.84,
+        62.4,
+        282.88
+      ],
+      [
+        552.5,
+        217.68,
+        -364.8,
+        -353.26
+      ]
+    ],
+    [
+      [
+        663.0,
+        0.0,
+        0.0,
+        663.0
+      ],
+      [
+        663.0,
+        0.0,
+        0.0,
+        -663.0
+      ],
+      [
+        331.5,
+        -92.4,
+        164.88,
+        -272.34
+      ],
+      [
+        442.0,
+        -332.4,
+        -285.12,
+        -59.84
+      ],
+      [
+        552.5,
+        424.8,
+        120.24,
+        332.18
+      ]
+    ]
+  ]
+}
