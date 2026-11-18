@@ -44,8 +44,8 @@
       ],
       "url": "https://github.com/huashengshao/TIRust.git",
       "ref": "main",
-      "revision": "2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1",
-      "note": "2b9ba961 (branch symbolica-community-2 = main a5d4afbf + the d0424f9e / oneloopmaster 07fc754f re-pin); a5d4afbf = PR #35 + branch symbolica-community (per-row evaluation instead of the batch evaluator in iregi-masters/iregi-rust/iregi-cli/iregi-python; Symbolica community d0424f9e, oneloopmaster 07fc754f); behind the default cargo feature tir of the crates that link it; oneloop 07fc754f and Symbolica d0424f9e as this workspace's (one source each); its own manifests' gammaloop crates are not in this graph; 0BSD (licenses/TIRust.txt)"
+      "revision": "1c130a81c4d1145ad5368664b580070eab9ebd7c",
+      "note": "1c130a81c4d1145ad5368664b580070eab9ebd7c = main a8dba684 (2b9ba961 = branch symbolica-community-2 = main a5d4afbf + the d0424f9e / oneloopmaster 07fc754f re-pin; + PR #41 supplied-invariant mismatch, PR #42 docs) + PR #43 (direct engine: MPFR rounded at the working precision, issue #40); a5d4afbf = PR #35 + branch symbolica-community (per-row evaluation instead of the batch evaluator in iregi-masters/iregi-rust/iregi-cli/iregi-python; Symbolica community d0424f9e, oneloopmaster 07fc754f); behind the default cargo feature tir of the crates that link it; oneloop 07fc754f and Symbolica d0424f9e as this workspace's (one source each); its own manifests' gammaloop crates are not in this graph; 0BSD (licenses/TIRust.txt)"
     },
     {
       "name": "feynkit",
