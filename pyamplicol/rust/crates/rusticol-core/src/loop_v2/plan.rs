@@ -45,10 +45,12 @@ use super::poly::{MonomialProductTable, SegmentEntry, SegmentLayout};
 use crate::{RusticolError, RusticolResult};
 
 pub mod binary;
+mod hash;
 mod links;
 mod live;
 mod packed;
 pub use binary::{read_binary, read_binary_with};
+use hash::WordMap;
 pub use live::{KEPT_SHARE, LiveRows};
 use ninjars::fast::tensor_layout::ncoeff;
 pub use packed::{LinkInterner, PackedLinks, SharedLinks};
@@ -1705,7 +1707,7 @@ pub struct ReadRows {
 }
 
 struct Tables {
-    index: HashMap<(usize, usize), usize>,
+    index: WordMap<(usize, usize), usize>,
     tables: Vec<MonomialProductTable>,
     /// The split parts' distinct link lists (`plan/packed.rs`).
     links: LinkInterner,
@@ -1714,8 +1716,8 @@ struct Tables {
 /// Ids of the split inputs the chosen split steps read.
 #[derive(Default)]
 struct SplitInputs {
-    instances: HashMap<(usize, u64), usize>,
-    currents: HashMap<(usize, usize), usize>,
+    instances: WordMap<(usize, u64), usize>,
+    currents: WordMap<(usize, usize), usize>,
 }
 
 impl SplitInputs {
@@ -1729,7 +1731,7 @@ impl SplitInputs {
         *self.currents.entry((content, term)).or_insert(next)
     }
 
-    fn ordered<K: Copy>(map: &HashMap<K, usize>) -> Vec<K> {
+    fn ordered<K: Copy>(map: &WordMap<K, usize>) -> Vec<K> {
         let mut out: Vec<(usize, K)> = map.iter().map(|(&key, &id)| (id, key)).collect();
         out.sort_unstable_by_key(|&(id, _)| id);
         out.into_iter().map(|(_, key)| key).collect()
@@ -1780,6 +1782,15 @@ fn expand_links(flat: &[u32], columns: usize) -> RusticolResult<Vec<super::kerne
     require(flat.len().is_multiple_of(3), "row links are not triples")?;
     let columns = u32::try_from(columns).map_err(|_| invalid("too many columns"))?;
     let mut out = reserved(flat.len() / 3 * columns as usize, "row links")?;
+    if columns == 1 {
+        // Object row = helicity row: the links as they are.
+        out.extend(flat.chunks_exact(3).map(|link| super::kernels::RowLink {
+            output: link[0],
+            input: link[1],
+            block: link[2],
+        }));
+        return Ok(out);
+    }
     for link in flat.chunks_exact(3) {
         for o in 0..columns {
             let row = |r: u32| {
@@ -1869,9 +1880,9 @@ fn term_vertex(
         .collect();
     entries.sort_unstable();
     entries.dedup();
-    let index: HashMap<VertexEntry, usize> =
+    let index: WordMap<VertexEntry, usize> =
         entries.iter().enumerate().map(|(i, &e)| (e, i)).collect();
-    let fused_index: HashMap<(usize, usize, [u32; 4]), usize> = content
+    let fused_index: WordMap<(usize, usize, [u32; 4]), usize> = content
         .fused
         .iter()
         .enumerate()
@@ -1944,7 +1955,7 @@ struct Shared<'a> {
     seeds: usize,
     policy: FormPolicy,
     rows: &'a links::RowSpace,
-    content_rows: &'a [HashMap<links::Row, u32>],
+    content_rows: &'a [WordMap<links::Row, u32>],
     /// Dressed-row plans: each content's rows in block-row order.
     dressed: Option<&'a [Vec<links::Row>]>,
 }
@@ -2000,8 +2011,13 @@ fn split_candidate(
     }
     let (cut, m_in) = step_shape(s.seeded, s.d_alpha, rank_in);
     let mut groups: Vec<SplitGroup> = Vec::new();
-    let mut group_of: HashMap<(usize, u64), usize> = HashMap::new();
-    let mut targets: Vec<BTreeSet<u32>> = Vec::new();
+    let mut group_of: WordMap<(usize, u64), usize> = WordMap::default();
+    // Per group the outputs its parts' links write (sorted and deduplicated
+    // once at the end: the B-tree set's iteration order).
+    let mut targets: Vec<Vec<u32>> = Vec::new();
+    // One part's filtered links and its block-row map (reused).
+    let mut filtered: Vec<super::kernels::RowLink> = Vec::new();
+    let mut row_of: Vec<Option<u32>> = Vec::new();
     let mut iterations = 0;
     let mut parts = Vec::with_capacity(edges.len());
     for edge in edges {
@@ -2023,21 +2039,23 @@ fn split_candidate(
                     products: tables.get(rank_in, shape.degree),
                     targets: Vec::new(),
                 });
-                targets.push(BTreeSet::new());
+                targets.push(Vec::new());
                 groups.len() - 1
             });
-            let mut row_of = reserved(content.rows, "content rows")?;
+            row_of.clear();
+            if row_of.capacity() < content.rows {
+                row_of = reserved(content.rows, "content rows")?;
+            }
             row_of.resize(content.rows, None);
             for (k, (row, _blocks)) in term.rows.iter().enumerate() {
                 row_of[*row] = Some(crate::narrow::checked::<u32>(k, "content row position")?);
             }
-            let links = PackedLinks::collect(|| {
-                edge.links.iter().filter_map(|link| {
-                    row_of[link.block as usize]
-                        .map(|block| super::kernels::RowLink { block, ..*link })
-                })
-            });
-            targets[group].extend(links.iter().map(|link| link.output));
+            filtered.clear();
+            filtered.extend(edge.links.iter().filter_map(|link| {
+                row_of[link.block as usize].map(|block| super::kernels::RowLink { block, ..*link })
+            }));
+            let links = PackedLinks::from_links(&filtered);
+            targets[group].extend(filtered.iter().map(|link| link.output));
             let incoming = if s.seeded { 1 } else { content.d_in };
             iterations += links.len() * cut * incoming * shape.width;
             edge_parts.push(SplitPart {
@@ -2050,8 +2068,11 @@ fn split_candidate(
         }
         parts.push(edge_parts);
     }
-    for (group, rows) in groups.iter_mut().zip(targets) {
-        group.targets = rows.into_iter().collect();
+    for (group, mut rows) in groups.iter_mut().zip(targets) {
+        rows.sort_unstable();
+        rows.dedup();
+        rows.shrink_to_fit();
+        group.targets = rows;
         iterations += group.targets.len() * cut * shared.vertices[group.vertex].entries.len();
     }
     let cost = StepCost {
@@ -2472,7 +2493,7 @@ impl LoopProgramV4 {
             })
             .collect::<RusticolResult<Vec<_>>>()?;
         let mut tables = Tables {
-            index: HashMap::new(),
+            index: WordMap::default(),
             tables: Vec::new(),
             links: LinkInterner::default(),
         };
@@ -2701,15 +2722,23 @@ impl LoopProgramV4 {
                     step_key = key;
                 }
                 require(source_rank <= s.rank_in, "source rank above step rank")?;
-                for link in links.chunks(3) {
-                    require(
-                        link.len() == 3
-                            && (link[0] as usize) < rows
-                            && (link[1] as usize) < source_rows
-                            && (link[2] as usize) < c.rows,
-                        "row link out of range",
-                    )?;
+                // Every link a triple in range: each column's largest value.
+                let mut most = [0u32; 3];
+                for link in links.chunks_exact(3) {
+                    most = [
+                        most[0].max(link[0]),
+                        most[1].max(link[1]),
+                        most[2].max(link[2]),
+                    ];
                 }
+                require(
+                    links.len().is_multiple_of(3)
+                        && (links.is_empty()
+                            || ((most[0] as usize) < rows
+                                && (most[1] as usize) < source_rows
+                                && (most[2] as usize) < c.rows)),
+                    "row link out of range",
+                )?;
                 edges.push(Edge {
                     source,
                     factor: e.factor,
