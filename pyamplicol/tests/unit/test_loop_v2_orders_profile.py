@@ -612,6 +612,120 @@ def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
     assert one["failure_causes"] == three["failure_causes"]
 
 
+@pytest.mark.loop_fast
+def test_arbitrary_precision_references_are_certified_on_any_worker_count(uux_ddx):
+    """profile --stability --ground-truth arb: every reference is certified,
+    by the other backend's agreeing reference or by its checked re-run,
+    with the same records on one and on three workers; with one backend
+    every reference is the checked one."""
+
+    from pyamplicol.cli.main import run_cli
+
+    def profile(*extra):
+        stdout = io.StringIO()
+        code = run_cli(
+            [
+                "profile",
+                str(uux_ddx),
+                "--stability",
+                "--stability-points",
+                "6",
+                "--ground-truth",
+                "arb:30",
+                "--progress",
+                "off",
+                "--json",
+                *extra,
+            ],
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+        assert code == 0
+        return json.loads(stdout.getvalue())
+
+    certified = {}
+    for cores in ("1", "3"):
+        report = profile("--n_core", cores)
+        assert "certified" in report["stability_setup"]["reference"]
+        certified[cores] = {
+            row["backend"]: [
+                (s["index"], s["reference_certified"], s["true_digits"])
+                for s in _records(row["samples"])
+            ]
+            for row in report["stability"]
+        }
+        for row in report["stability"]:
+            timing = row["precision_timing"]
+            assert {k: v["points"] for k, v in timing.items()} == {
+                "binary64": 6,
+                "arbitrary": 6,
+            }
+            for sample in _records(row["samples"]):
+                if sample["reference_value"] is None:
+                    assert sample["reference_certified"] is None
+                else:
+                    assert sample["reference_certified"] in ("agreement", "checks")
+    assert certified["1"] == certified["3"]
+    # Both backends served every point here: they agree everywhere.
+    assert {c for rows in certified["1"].values() for _, c, _ in rows} == {"agreement"}
+    alone = profile("--n_core", "1", "--loop-reduction", "ninjars")
+    (row,) = alone["stability"]
+    assert {s["reference_certified"] for s in _records(row["samples"])} == {"checks"}
+
+
+@pytest.mark.loop_fast
+def test_disagreeing_references_are_rerun_checked_on_the_worker_pool(
+    uux_ddx, monkeypatch
+):
+    """References that do not agree go to their checked re-run, queued
+    after both backends' plain references and submitted to the pool before
+    any further chunk: every reference ends certified by its checks, the
+    records equal on one and three workers. (The agreement is decided in
+    the parent process, so forcing it off holds for spawned workers.)"""
+
+    from pyamplicol import loop_profile
+    from pyamplicol.cli.main import run_cli
+
+    monkeypatch.setattr(loop_profile, "_references_agree", lambda a, b: False)
+    found = {}
+    for cores in ("1", "3"):
+        stdout = io.StringIO()
+        code = run_cli(
+            [
+                "profile",
+                str(uux_ddx),
+                "--stability",
+                "--stability-points",
+                "5",
+                "--ground-truth",
+                "arb:30",
+                "--n_core",
+                cores,
+                "--progress",
+                "off",
+                "--json",
+            ],
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+        assert code == 0
+        report = json.loads(stdout.getvalue())
+        assert report["stability_setup"]["interrupted"] is False
+        found[cores] = {
+            row["backend"]: [
+                (s["index"], s["reference_certified"], s["true_digits"])
+                for s in _records(row["samples"])
+            ]
+            for row in report["stability"]
+        }
+        for row in report["stability"]:
+            # The re-runs' time is the reference stream's, not new points.
+            assert row["precision_timing"]["arbitrary"]["points"] == 5
+    assert found["1"] == found["3"]
+    assert {c for rows in found["1"].values() for _, c, _ in rows} == {"checks"}
+    assert all(len(rows) == 5 for rows in found["1"].values())
+
+
 def _records(table):
     """A columnar --json table ({"fields": ..., "rows": ...}) as records."""
 

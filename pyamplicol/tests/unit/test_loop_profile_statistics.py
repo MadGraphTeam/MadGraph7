@@ -1163,7 +1163,12 @@ class _ReferenceRuntime:
 
 
 def test_an_arbitrary_precision_reference_point_failing_its_checks_is_no_reference():
-    from pyamplicol.loop_profile import _WORKER, GroundTruth, _stability_records
+    from pyamplicol.loop_profile import (
+        _REFERENCE_CHECKED,
+        _WORKER,
+        GroundTruth,
+        _stability_records,
+    )
     from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
 
     saved = dict(_WORKER)
@@ -1171,8 +1176,18 @@ def test_an_arbitrary_precision_reference_point_failing_its_checks_is_no_referen
         runtime = _ReferenceRuntime()
         _WORKER.clear()
         _WORKER.update(runtime=runtime, truth=GroundTruth("arbitrary", 57), target=1e-5)
+        # The plain reference (the cross-check's): one evaluation, no checks.
         records = _stability_records("ninjars", "reference", [29, 30], [0, 1], 1.0)
-        options = runtime.calls[0]
+        assert "stability_checks" not in runtime.calls[0]
+        assert [record[1] for record in records] == [
+            [[Fraction(7, 4)]],
+            [[Fraction(58 * 10**16)]],
+        ]
+        # The checked re-run of a reference the cross-check did not certify.
+        records = _stability_records(
+            "ninjars", _REFERENCE_CHECKED, [29, 30], [0, 1], 1.0
+        )
+        options = runtime.calls[1]
         checks = options["stability_checks"].to_checks()
         assert (checks.rotations, checks.reduction_direction, checks.rescaled) == (
             RECOMMENDED_CHECKS.rotations,
@@ -1188,15 +1203,66 @@ def test_an_arbitrary_precision_reference_point_failing_its_checks_is_no_referen
         assert reason == (
             "failed: stability checks: estimate 4.9e+01 above the target 1e-05"
         )
+        # At the target exactly the estimate is met: the value is kept.
+        runtime = _ReferenceRuntime()
+        _WORKER.update(runtime=runtime, target=49.0)
+        records = _stability_records(
+            "ninjars", _REFERENCE_CHECKED, [29, 30], [0, 1], 1.0
+        )
+        assert records[1][1] == [[Fraction(58 * 10**16)]]
         # Double-double: one plain evaluation, every success the reference.
         runtime = _ReferenceRuntime()
         _WORKER.update(runtime=runtime, truth=GroundTruth("double-double"))
-        records = _stability_records("ninjars", "reference", [29, 30], [0, 1], 1.0)
+        records = _stability_records(
+            "ninjars", _REFERENCE_CHECKED, [29, 30], [0, 1], 1.0
+        )
         assert "stability_checks" not in runtime.calls[0]
-        assert [record[1] for record in records] == [
-            [[Fraction(7, 4)]],
-            [[Fraction(58 * 10**16)]],
-        ]
+        assert records[1][1] == [[Fraction(58 * 10**16)]]
     finally:
         _WORKER.clear()
         _WORKER.update(saved)
+
+
+def test_the_backends_references_agree_to_the_unit_roundoff_squared():
+    """The cross-check's tolerance: binary64's unit roundoff squared,
+    relative to the larger reference (the double-double truth's accuracy)."""
+
+    from pyamplicol.loop_profile import _AGREEMENT, _references_agree
+
+    u = Fraction(1, 2**53)
+    assert u * u == _AGREEMENT
+    one = Fraction(-7, 3)
+    # Agreement up to the tolerance, inclusive.
+    assert _references_agree(one, one)
+    assert _references_agree(one, one * (1 + u * u))
+    assert _references_agree(one * (1 + u * u), one)
+    assert not _references_agree(one, one * (1 + 2 * u * u))
+    # A disagreement at binary64's resolution is one.
+    assert not _references_agree(one, one * (1 + u))
+    assert not _references_agree(one, -one)
+    # Two exact zeros agree; a zero and anything else do not, nor do two
+    # rounding-level values of an integrated zero: the checked re-run judges.
+    assert _references_agree(Fraction(0), Fraction(0))
+    assert not _references_agree(Fraction(0), Fraction(1, 10**60))
+    assert not _references_agree(Fraction(3, 10**60), Fraction(-2, 10**60))
+
+
+def test_the_tracker_counts_checked_reruns_as_reference_time_and_eta():
+    from pyamplicol.loop_profile import _StabilityProgress
+
+    tracker = _StabilityProgress(None, ["ninjars", "tirust"], 10, 1)
+    tracker.add("ninjars", "reference", 10, 10.0)
+    assert tracker.rate(("ninjars", "reference")) == 1.0
+    tracker.queue_checked("ninjars", 2)
+    assert tracker.checked_rate("ninjars") is None
+    tracker.add_checked("ninjars", 1, 4.0)
+    # The re-run's seconds are the reference stream's, not its points.
+    assert tracker.done[("ninjars", "reference")] == 10
+    assert tracker.seconds[("ninjars", "reference")] == 14.0
+    assert tracker.rate(("ninjars", "reference")) == 1.4
+    assert (tracker.checking["ninjars"], tracker.checked_rate("ninjars")) == (1, 4.0)
+    for key in tracker.done:
+        tracker.done[key] = 10
+        tracker.timed[key][0] = max(tracker.timed[key][0], 1)
+    # The one queued re-run left is the whole remaining estimate.
+    assert tracker._eta() == 4.0
