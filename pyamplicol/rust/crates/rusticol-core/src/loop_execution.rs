@@ -23,7 +23,8 @@ pub struct LoopInputs {
 pub mod v2 {
     use crate::loop_v2::closure::FamilyNumerator;
     use crate::loop_v2::dress::{
-        Carrier, ChunkInputs, LaneData, Reads, V2Batch, Workspaces, input_vectors,
+        Carrier, ChunkInputs, LaneData, Reads, V2Batch, Workspaces, cast, exact_kinematics,
+        exact_value, input_vectors,
     };
     use crate::loop_v2::forward::{forward_factors, run_forward};
     pub use crate::loop_v2::fourier::SeedFourier;
@@ -40,6 +41,7 @@ pub mod v2 {
     use std::sync::Arc;
     use std::time::Instant;
     use symbolica::domains::float::{Complex, Real};
+    use symbolica::domains::rational::Rational;
 
     /// Default SIMD lanes per chunk (gate G0, DESIGN.md §5.4).
     pub const DEFAULT_LANES: usize = 16;
@@ -127,6 +129,14 @@ pub mod v2 {
         /// monomial, family and point, so the option costs `C(R+4, 4)`
         /// lanes per family and point; refused for seeded plans.
         pub term_scale: bool,
+        /// The lane rescue (USER 2026-11-18): a lane the backend refuses
+        /// (either frame of the reduction-direction check) is reduced again
+        /// in the backend's higher carriers ([`V2Backend::rescue_carriers`],
+        /// none in the unchecked mode), from its coefficients lifted exactly
+        /// and its kinematic inputs formed as this says; its integrals,
+        /// rounded to the evaluation's carrier, take its place. `Off`: a
+        /// refused lane fails its point.
+        pub rescue: RescueInputs,
     }
 
     impl Default for V2Options {
@@ -141,9 +151,91 @@ pub mod v2 {
                 input_budget: DEFAULT_INPUT_BUDGET,
                 raw_lanes: false,
                 term_scale: false,
+                rescue: RescueInputs::default(),
             }
         }
     }
+
+    /// A carrier of the lane rescue ([`V2Backend::rescue`]), above the
+    /// evaluation's.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum RescueCarrier {
+        DoubleDouble,
+        /// MPFR at these decimal working digits.
+        Arbitrary(u32),
+    }
+
+    impl RescueCarrier {
+        /// The carrier's name in the Python and SDK records.
+        pub fn name(self) -> &'static str {
+            match self {
+                Self::DoubleDouble => "double-double",
+                Self::Arbitrary(_) => "arbitrary",
+            }
+        }
+
+        /// The carrier's bits.
+        pub fn bits(self) -> u32 {
+            match self {
+                Self::DoubleDouble => 106,
+                Self::Arbitrary(digits) => {
+                    symbolica::domains::float::Float::decimal_digits_to_bits(f64::from(digits))
+                        .unwrap_or(u32::MAX)
+                }
+            }
+        }
+
+        /// The carrier's label in a lane's status text.
+        fn label(self) -> String {
+            match self {
+                Self::DoubleDouble => "double-double".to_string(),
+                Self::Arbitrary(digits) => format!("arbitrary ({digits} working digits)"),
+            }
+        }
+    }
+
+    /// How a rescued lane's kinematic inputs (shifts, squared masses, scale,
+    /// invariant matrix) are formed for its carrier ([`V2Options::rescue`]).
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub enum RescueInputs {
+        /// No lane rescue.
+        Off,
+        /// The evaluation carrier's own inputs of the lane lifted exactly.
+        #[default]
+        Lifted,
+        /// The exact inputs of the given point, cast to the carrier.
+        Exact,
+        /// The given point improved in the carrier (exact conservation and
+        /// external shells, `kinematics_improvement::improve_exact`, MadLoop's
+        /// default chain; `n_initial` initial states first in leg order),
+        /// then its exact inputs cast.
+        Improved { n_initial: usize },
+    }
+
+    /// Refused lanes of one family for a reduction in a higher carrier (the
+    /// lane rescue), lane-major as [`FamilyLanes`], every input an exact
+    /// rational: `shifts` `4N` per lane, `masses` `N` (re, im), `scales`
+    /// one, `s_matrix` `N²`, `coefficients` `C(R+4, 4)` (re, im: the
+    /// evaluation carrier's values lifted exactly).
+    pub struct ExactLanes {
+        pub family: usize,
+        pub propagators: usize,
+        pub rank: usize,
+        /// The batch point of each lane (lanes of one point consecutive).
+        pub points: Vec<usize>,
+        pub keys: Vec<LaneKey>,
+        pub shifts: Vec<Rational>,
+        pub masses: Vec<[Rational; 2]>,
+        pub scales: Vec<Rational>,
+        pub s_matrix: Vec<Rational>,
+        pub coefficients: Vec<[Rational; 2]>,
+    }
+
+    /// Report stage of the lane rescue, and its counts per carrier.
+    pub const LANE_RESCUE: &str = "lane rescue";
+    pub const LANES_RESCUED_DD: &str = "lanes rescued in double-double";
+    pub const LANES_RESCUED_ARB: &str = "lanes rescued in arbitrary precision";
+    pub const LANES_UNRESCUED: &str = "lanes refused at every rescue carrier";
 
     /// The seed contraction of an evaluation (DESIGN.md §7.3): `Auto`
     /// contracts the certified orbit pairs of the executor's seed Fourier
@@ -269,6 +361,29 @@ pub mod v2 {
         fn take_lane_measures(&mut self) -> Vec<MeasuredLane> {
             Vec::new()
         }
+        /// The carriers, lowest first, in which the backend reduces a lane
+        /// it refused in the carrier of `zero` again (the lane rescue; none
+        /// by default and in the unchecked mode).
+        fn rescue_carriers(&self, zero: &T) -> Vec<RescueCarrier> {
+            let _ = zero;
+            Vec::new()
+        }
+        /// Reduce `groups` in `carrier` (one of [`Self::rescue_carriers`]):
+        /// the outcomes as [`Self::reduce`]'s, rounded to the carrier of
+        /// `zero`.
+        fn rescue(
+            &mut self,
+            carrier: RescueCarrier,
+            groups: &[ExactLanes],
+            poles: Poles,
+            check: Option<ReductionCheck>,
+            zero: &T,
+        ) -> RusticolResult<Reduced<T>> {
+            let _ = (carrier, groups, poles, check, zero);
+            Err(RusticolError::internal(
+                "this reduction backend has no lane rescue",
+            ))
+        }
     }
 
     /// Modelled kernel work of the chosen forms of `steps` (complex
@@ -334,6 +449,10 @@ pub mod v2 {
         /// The backend's measures of the point's refused lanes, where it
         /// states one ([`V2Backend::take_lane_measures`]); empty otherwise.
         pub measures: Vec<LaneMeasure>,
+        /// The lanes of the point the lane rescue served ([`V2Options::
+        /// rescue`]): the backend refused them in the evaluation's carrier
+        /// and reduced them in this carrier; empty otherwise.
+        pub rescued: Vec<(LaneKey, RescueCarrier)>,
     }
 
     /// Development measurements of one run: seconds per stage, work counts
@@ -1138,6 +1257,11 @@ pub mod v2 {
             family: usize,
             data: &LaneData<T, L>,
         ) -> Option<Self> {
+            Self::with(plan, family, &data.zero)
+        }
+
+        /// [`Self::of`] in the carrier of `zero`.
+        fn with(plan: &'a LoopProgramV4, family: usize, zero: &T) -> Option<Self> {
             let family = &plan.families[family];
             let dependents = family_dependents(plan, family)?;
             let factors = dependents
@@ -1146,7 +1270,7 @@ pub mod v2 {
                 .map(|list| {
                     list.iter()
                         .map(|(_, _, [re, im])| {
-                            let (x, y) = (data.cast(re), data.cast(im));
+                            let (x, y) = (cast(zero, re), cast(zero, im));
                             let size = Complex::new(x.clone(), y.clone()).norm().re;
                             (x, (!im.is_zero()).then_some(y), size)
                         })
@@ -1227,6 +1351,21 @@ pub mod v2 {
         /// slot `Σ_f Σ_α |N_{f,α}| |I_{f,α}|` per coefficient (without the
         /// loop factor); empty until a point's first lane is reduced.
         terms: Vec<Vec<Vec<T>>>,
+        /// The refused lanes the lane rescue reduces again after the last
+        /// chunk ([`V2Options::rescue`]), in the order they were refused.
+        pending: Vec<Pending<T>>,
+        /// Per point the lanes the lane rescue served.
+        rescued: Vec<Vec<(LaneKey, RescueCarrier)>>,
+    }
+
+    /// A lane the backend refused (direct, re-test or both), held for the
+    /// lane rescue: its coefficients and the statuses of its refusal.
+    struct Pending<T> {
+        point: usize,
+        key: LaneKey,
+        direct: Option<String>,
+        check: Option<String>,
+        coefficients: Vec<Complex<T>>,
     }
 
     /// The unit-numerator lanes of a family group: per point of the group
@@ -1294,6 +1433,9 @@ pub mod v2 {
         backend: &'a mut B,
         options: V2Options,
         sink: &'a mut Lanes<T>,
+        /// Whether a refused lane waits for the lane rescue (the backend
+        /// has rescue carriers and the options ask for it).
+        rescuing: bool,
     }
 
     impl<T: Carrier + Real, B: V2Backend<T>, const L: usize> Reduction<'_, T, B, L> {
@@ -1350,7 +1492,26 @@ pub mod v2 {
                 // A family's dependent columns (lit-fold F1d): `c` times
                 // their representative's integrals, direct and re-test.
                 let dependents = Formed::of(self.plan, group.family, self.data);
+                let monomials = group.coefficients.len() / group.keys.len().max(1);
                 for (row, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
+                    let refused =
+                        |outcomes: &[LaneOutcome<T>]| outcomes[row].as_ref().err().cloned();
+                    let held = (
+                        refused(&direct[index]),
+                        check.as_ref().and_then(|c| refused(&c[index])),
+                    );
+                    if self.rescuing && (held.0.is_some() || held.1.is_some()) {
+                        sink.pending.push(Pending {
+                            point,
+                            key,
+                            direct: held.0,
+                            check: held.1,
+                            coefficients: group.coefficients
+                                [row * monomials..(row + 1) * monomials]
+                                .to_vec(),
+                        });
+                        continue;
+                    }
                     match &direct[index][row] {
                         Ok(value) => {
                             if let Some(formed) = &dependents {
@@ -1532,6 +1693,7 @@ pub mod v2 {
         merged: Option<&'a Merged>,
         merged_parts: &'a [crate::loop_v2::merged::Part],
         workspaces: &'a Workspaces<T>,
+        rescuing: bool,
     }
 
     impl<T: Carrier + Real> ChunkCall<'_, T> {
@@ -1557,6 +1719,7 @@ pub mod v2 {
                 merged,
                 merged_parts,
                 workspaces,
+                rescuing,
             } = self;
             backend.begin();
             let start = Instant::now();
@@ -1604,6 +1767,7 @@ pub mod v2 {
                 backend,
                 options,
                 sink,
+                rescuing,
             };
             for (k, part) in buckets.iter().enumerate() {
                 let numerators = dress_families(
@@ -1716,6 +1880,12 @@ pub mod v2 {
             families: vec![Vec::new(); points],
             checks: vec![Vec::new(); points],
             terms: vec![Vec::new(); points],
+            pending: Vec::new(),
+            rescued: vec![Vec::new(); points],
+        };
+        let carriers = match options.rescue {
+            RescueInputs::Off => Vec::new(),
+            _ => backend.rescue_carriers(zero),
         };
         // The call's buffer pools, kept across its family walks and chunks
         // (lit-dress lever E).
@@ -1733,6 +1903,7 @@ pub mod v2 {
             merged,
             merged_parts: &merged_parts,
             workspaces: &workspaces,
+            rescuing: !carriers.is_empty(),
         };
         let simd = (zero as &dyn std::any::Any).is::<f64>();
         for (points, width) in lane_chunks(points, lanes, simd) {
@@ -1748,12 +1919,28 @@ pub mod v2 {
                 ))),
             }?;
         }
+        if !sink.pending.is_empty() {
+            let start = Instant::now();
+            rescue_lanes(
+                plan,
+                batch,
+                zero,
+                backend,
+                options,
+                &carriers,
+                &mut sink,
+                &mut report,
+            )?;
+            report.time(LANE_RESCUE, start);
+        }
         let Lanes {
             mut failures,
             mut measures,
             mut families,
             mut checks,
             mut terms,
+            mut rescued,
+            ..
         } = sink;
         let zero = zero.zero();
         let pi = zero.pi();
@@ -1773,6 +1960,7 @@ pub mod v2 {
             amplitude_scale: Vec::new(),
             failures,
             measures,
+            rescued: Vec::new(),
         };
         if plan.amplitude {
             // Amplitude-mode plans (decided once per call): the native
@@ -1795,15 +1983,10 @@ pub mod v2 {
                 let terms = options
                     .term_scale
                     .then(|| std::mem::take(&mut terms[point]));
-                results.push(amplitude_result(
-                    plan,
-                    &zero,
-                    width,
-                    lanes,
-                    tests,
-                    terms,
-                    options.raw_lanes,
-                ));
+                let mut result =
+                    amplitude_result(plan, &zero, width, lanes, tests, terms, options.raw_lanes);
+                result.rescued = std::mem::take(&mut rescued[point]);
+                results.push(result);
             }
             report.count("points", points as u64);
             return Ok((results, report));
@@ -1862,10 +2045,265 @@ pub mod v2 {
                 amplitude_scale: Vec::new(),
                 failures: Vec::new(),
                 measures: Vec::new(),
+                rescued: std::mem::take(&mut rescued[point]),
             });
         }
         report.count("points", points as u64);
         Ok((results, report))
+    }
+
+    /// The lane rescue of one evaluation ([`V2Options::rescue`]): the lanes
+    /// refused in its carrier ([`Lanes::pending`]) are reduced again in each
+    /// carrier of `carriers` in turn, every carrier's lanes in one backend
+    /// call grouped by family; a lane served in both frames (the direct one
+    /// and, with a check, the re-test) takes its integrals (and forms its
+    /// dependent columns) as a lane of the evaluation; a lane refused at
+    /// every carrier fails its point with the statuses of its first
+    /// refusal, followed by each carrier's. A point failed otherwise is not
+    /// rescued.
+    #[allow(clippy::too_many_arguments)]
+    fn rescue_lanes<T: Carrier + Real>(
+        plan: &LoopProgramV4,
+        batch: &V2Batch<T>,
+        zero: &T,
+        backend: &mut impl V2Backend<T>,
+        options: V2Options,
+        carriers: &[RescueCarrier],
+        sink: &mut Lanes<T>,
+        report: &mut Report,
+    ) -> RusticolResult<()> {
+        let pending = std::mem::take(&mut sink.pending);
+        let mut left: Vec<usize> = (0..pending.len())
+            .filter(|&i| sink.failures[pending[i].point].is_empty())
+            .collect();
+        let mut attempts: Vec<Vec<String>> = vec![Vec::new(); pending.len()];
+        let mut done = vec![false; pending.len()];
+        // The improved legs of a point per carrier (`RescueInputs::Improved`).
+        let mut improved: BTreeMap<(usize, RescueCarrier), Vec<Rational>> = BTreeMap::new();
+        for &carrier in carriers {
+            if left.is_empty() {
+                break;
+            }
+            let mut by_family: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+            for &i in &left {
+                by_family.entry(pending[i].key.family).or_default().push(i);
+            }
+            // Lanes of one point consecutive (a backend shares their
+            // kinematics), in refusal order otherwise.
+            for lanes in by_family.values_mut() {
+                lanes.sort_by_key(|&i| pending[i].point);
+            }
+            let mut groups = Vec::with_capacity(by_family.len());
+            for (&family, lanes) in &by_family {
+                groups.push(exact_lanes(
+                    plan,
+                    batch,
+                    zero,
+                    options.rescue,
+                    carrier,
+                    family,
+                    lanes.iter().map(|&i| &pending[i]),
+                    &mut improved,
+                )?);
+            }
+            let (direct, check) =
+                backend.rescue(carrier, &groups, options.poles, options.check, zero)?;
+            let mut next = Vec::new();
+            let mut served = 0u64;
+            for (g, lanes) in by_family.values().enumerate() {
+                let formed = Formed::with(plan, groups[g].family, zero);
+                for (row, &i) in lanes.iter().enumerate() {
+                    let lane = &pending[i];
+                    let test = check.as_ref().map(|c| &c[g][row]);
+                    match (&direct[g][row], test) {
+                        (Ok(value), None | Some(Ok(_))) => {
+                            let point = lane.point;
+                            if let Some(formed) = &formed {
+                                formed.push(&lane.key, value, &mut sink.families[point]);
+                            }
+                            sink.families[point].push((lane.key, value.clone()));
+                            if let Some(Ok(test)) = test {
+                                if let Some(formed) = &formed {
+                                    formed.push(&lane.key, test, &mut sink.checks[point]);
+                                }
+                                sink.checks[point].push((lane.key, test.clone()));
+                            }
+                            sink.rescued[point].push((lane.key, carrier));
+                            done[i] = true;
+                            served += 1;
+                        }
+                        (direct, test) => {
+                            let status = match (direct, test) {
+                                (Err(status), _) => status.clone(),
+                                (_, Some(Err(status))) => format!("re-test {status}"),
+                                _ => unreachable!("a served lane"),
+                            };
+                            attempts[i].push(format!("{}: {status}", carrier.label()));
+                            next.push(i);
+                        }
+                    }
+                }
+            }
+            report.count(
+                match carrier {
+                    RescueCarrier::DoubleDouble => LANES_RESCUED_DD,
+                    RescueCarrier::Arbitrary(_) => LANES_RESCUED_ARB,
+                },
+                served,
+            );
+            left = next;
+        }
+        report.count(LANES_UNRESCUED, left.len() as u64);
+        for (i, lane) in pending.iter().enumerate() {
+            if done[i] {
+                continue;
+            }
+            let family = lane.key.family;
+            let key = lane.key;
+            let tried = if attempts[i].is_empty() {
+                String::new()
+            } else {
+                format!(" (lane rescue: {})", attempts[i].join("; "))
+            };
+            if let Some(status) = &lane.direct {
+                sink.failures[lane.point]
+                    .push(format!("family {family} lane {key:?}: {status}{tried}"));
+            }
+            if let Some(status) = &lane.check {
+                let tried = if lane.direct.is_some() {
+                    ""
+                } else {
+                    tried.as_str()
+                };
+                sink.failures[lane.point].push(format!(
+                    "re-test of family {family} lane {key:?}: {status}{tried}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// The exact inputs of the pending lanes `lanes` of `family` in
+    /// `carrier` ([`RescueInputs`]); `improved` caches each point's improved
+    /// legs per carrier.
+    #[allow(clippy::too_many_arguments)]
+    fn exact_lanes<'p, T: Carrier + 'p>(
+        plan: &LoopProgramV4,
+        batch: &V2Batch<T>,
+        zero: &T,
+        inputs: RescueInputs,
+        carrier: RescueCarrier,
+        family: usize,
+        lanes: impl Iterator<Item = &'p Pending<T>>,
+        improved: &mut BTreeMap<(usize, RescueCarrier), Vec<Rational>>,
+    ) -> RusticolResult<ExactLanes> {
+        let plan_family = &plan.families[family];
+        let n = plan_family.propagators();
+        let masks = plan_family.shift_masks();
+        let lift = |value: &T| {
+            exact_value(value).ok_or_else(|| {
+                RusticolError::evaluation("the lane rescue lifts a non-finite value")
+            })
+        };
+        // A kinematic input as `inputs` forms it.
+        let form = |value: Rational| -> RusticolResult<Rational> {
+            match inputs {
+                RescueInputs::Lifted => lift(&cast(zero, &value)),
+                _ => Ok(value),
+            }
+        };
+        let mut out = ExactLanes {
+            family,
+            propagators: n,
+            rank: plan_family.rank,
+            points: Vec::new(),
+            keys: Vec::new(),
+            shifts: Vec::new(),
+            masses: Vec::new(),
+            scales: Vec::new(),
+            s_matrix: Vec::new(),
+            coefficients: Vec::new(),
+        };
+        for lane in lanes {
+            let point = lane.point;
+            let legs = match inputs {
+                RescueInputs::Improved { n_initial } => improved
+                    .entry((point, carrier))
+                    .or_insert_with(|| improve_legs(batch, point, n_initial, carrier))
+                    .clone(),
+                _ => batch.momenta[point].clone(),
+            };
+            let (shifts, squares) = exact_kinematics(&legs, &batch.leg_masses, &masks);
+            out.points.push(point);
+            out.keys.push(lane.key);
+            for shift in shifts {
+                for component in shift {
+                    out.shifts.push(form(component)?);
+                }
+            }
+            for &(_, mass) in &plan_family.sequence {
+                let im = batch
+                    .masses_imaginary
+                    .get(mass)
+                    .cloned()
+                    .unwrap_or_else(|| Rational::from(0));
+                out.masses
+                    .push([form(batch.masses[mass].clone())?, form(im)?]);
+            }
+            out.scales.push(form(batch.scales[point].clone())?);
+            for square in squares {
+                out.s_matrix.push(form(square)?);
+            }
+            for c in &lane.coefficients {
+                out.coefficients.push([lift(&c.re)?, lift(&c.im)?]);
+            }
+        }
+        Ok(out)
+    }
+
+    /// The incoming legs of `point` improved in `carrier`
+    /// ([`RescueInputs::Improved`]): physical momenta (the `n_initial`
+    /// initial states first, the final states' negated), MadLoop's default
+    /// chain toward the bound leg masses, back to incoming; the given legs
+    /// where the improvement leaves the point as given.
+    fn improve_legs<T>(
+        batch: &V2Batch<T>,
+        point: usize,
+        n_initial: usize,
+        carrier: RescueCarrier,
+    ) -> Vec<Rational> {
+        use crate::kinematics_improvement::{Arithmetic, Tolerances, Variant, improve_exact};
+        let given = &batch.momenta[point];
+        let count = given.len() / 4;
+        if n_initial == 0 || n_initial >= count {
+            return given.clone();
+        }
+        let sign = |k: usize, x: &Rational| if k < n_initial { x.clone() } else { -x.clone() };
+        let legs: Vec<[Rational; 4]> = (0..count)
+            .map(|k| std::array::from_fn(|mu| sign(k, &given[4 * k + mu])))
+            .collect();
+        let masses: Vec<Option<Rational>> = if batch.leg_masses.len() == count {
+            batch.leg_masses.clone()
+        } else {
+            vec![None; count]
+        };
+        let arithmetic = match carrier {
+            RescueCarrier::DoubleDouble => Arithmetic::DoubleDouble,
+            RescueCarrier::Arbitrary(_) => Arithmetic::Arbitrary(carrier.bits()),
+        };
+        let (out, _) = improve_exact(
+            &legs,
+            n_initial,
+            &masses,
+            arithmetic,
+            Variant::ZShift,
+            true,
+            &Tolerances::default(),
+        );
+        out.iter()
+            .enumerate()
+            .flat_map(|(k, leg)| (0..4).map(move |mu| sign(k, &leg[mu])))
+            .collect()
     }
 
     /// The loop amplitude of an amplitude-mode point (M-LIT LIT-AMP, the
@@ -1939,6 +2377,7 @@ pub mod v2 {
             amplitude_scale,
             failures: Vec::new(),
             measures: Vec::new(),
+            rescued: Vec::new(),
         }
     }
 
@@ -2047,6 +2486,183 @@ pub mod v2 {
                 assert_eq!(value[0], Complex::new(6.0, 0.0));
             }
             assert_eq!(report.counts["reduction lanes"], 3);
+        }
+
+        /// Refuses every lane of point 0 in binary64; its lane rescue
+        /// refuses in double-double when `refuse_dd`, and serves in
+        /// arbitrary precision unless `refuse_all`, each lane's value its
+        /// exact coefficient (as binary64 serves the other points).
+        #[derive(Default)]
+        struct Rescuing {
+            calls: Vec<Vec<usize>>,
+            rescues: Vec<(RescueCarrier, Vec<(usize, Vec<usize>, Vec<[Rational; 2]>)>)>,
+            refuse_dd: bool,
+            refuse_all: bool,
+        }
+
+        impl V2Backend<f64> for Rescuing {
+            fn begin(&mut self) {}
+
+            fn reduce(
+                &mut self,
+                groups: &[FamilyLanes<f64>],
+                _poles: Poles,
+                _check: Option<ReductionCheck>,
+            ) -> RusticolResult<Reduced<f64>> {
+                self.calls
+                    .push(groups.iter().flat_map(|g| g.points.clone()).collect());
+                let direct = groups
+                    .iter()
+                    .map(|group| {
+                        group
+                            .points
+                            .iter()
+                            .zip(group.coefficients.iter())
+                            .map(|(&point, c)| -> LaneOutcome<f64> {
+                                if point == 0 {
+                                    Err("Unstable".into())
+                                } else {
+                                    let zero = Complex::new(0.0, 0.0);
+                                    Ok(vec![*c, zero, zero])
+                                }
+                            })
+                            .collect()
+                    })
+                    .collect();
+                Ok((direct, None))
+            }
+
+            fn rescue_carriers(&self, _zero: &f64) -> Vec<RescueCarrier> {
+                vec![RescueCarrier::DoubleDouble, RescueCarrier::Arbitrary(77)]
+            }
+
+            fn rescue(
+                &mut self,
+                carrier: RescueCarrier,
+                groups: &[ExactLanes],
+                _poles: Poles,
+                _check: Option<ReductionCheck>,
+                zero: &f64,
+            ) -> RusticolResult<Reduced<f64>> {
+                self.rescues.push((
+                    carrier,
+                    groups
+                        .iter()
+                        .map(|g| (g.family, g.points.clone(), g.coefficients.clone()))
+                        .collect(),
+                ));
+                let refused =
+                    self.refuse_all || (self.refuse_dd && carrier == RescueCarrier::DoubleDouble);
+                let direct = groups
+                    .iter()
+                    .map(|g| {
+                        g.coefficients
+                            .iter()
+                            .map(|[re, im]| -> LaneOutcome<f64> {
+                                if refused {
+                                    return Err(format!("{} refused", carrier.name()));
+                                }
+                                let z = Complex::new(cast(zero, re), cast(zero, im));
+                                Ok(vec![z, Complex::new(0.0, 0.0), Complex::new(0.0, 0.0)])
+                            })
+                            .collect()
+                    })
+                    .collect();
+                Ok((direct, None))
+            }
+        }
+
+        /// The lane rescue: a refused lane waits (its point stays in the
+        /// later bucket chunks), is reduced again in the backend's carriers
+        /// in turn, all of one carrier's lanes in one call, and takes the
+        /// rescued value; the other points are untouched; without the rescue
+        /// (or refused at every carrier) the point fails as before.
+        #[test]
+        fn a_refused_lane_is_rescued_in_a_higher_carrier() {
+            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
+            let plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+            let executor = V2Executor::new(Arc::new(plan), DEFAULT_LANES, Some(1)).unwrap();
+            let momentum = |e: i64| -> Vec<Rational> {
+                [e, 0, 0, e, e, 0, 0, -e].map(Rational::from).to_vec()
+            };
+            let batch = V2Batch {
+                momenta: vec![momentum(1), momentum(2)],
+                scales: vec![Rational::from(1); 2],
+                masses: vec![Rational::from(0)],
+                masses_imaginary: Vec::new(),
+                leg_masses: Vec::new(),
+                constants: vec![Complex::new(2.0, 0.0)],
+                block_rows: vec![Vec::new(); 2],
+                born: vec![vec![Complex::new(1.0, 1.0)], vec![Complex::new(3.0, 0.0)]],
+            };
+            let run = |backend: &mut Rescuing, rescue: RescueInputs| {
+                let options = V2Options {
+                    chunk_families: 1,
+                    rescue,
+                    ..V2Options::default()
+                };
+                executor.evaluate(&batch, &0.0, backend, options).unwrap()
+            };
+            let mut backend = Rescuing {
+                refuse_dd: true,
+                ..Rescuing::default()
+            };
+            let (results, report) = run(&mut backend, RescueInputs::Lifted);
+            // Point 0 is held, not compacted out of the second bucket chunk.
+            assert_eq!(backend.calls, [vec![0, 1], vec![0, 1]]);
+            // One call per carrier, both families' lanes in it.
+            let carriers: Vec<RescueCarrier> = backend.rescues.iter().map(|r| r.0).collect();
+            assert_eq!(
+                carriers,
+                [RescueCarrier::DoubleDouble, RescueCarrier::Arbitrary(77)]
+            );
+            for (_, groups) in &backend.rescues {
+                assert_eq!(groups.len(), 2);
+                for (_, points, coefficients) in groups {
+                    assert_eq!(points, &[0]);
+                    // 2 conj(A0) of the Born 1 + i, lifted exactly.
+                    assert_eq!(coefficients, &[[Rational::from(2), Rational::from(-2)]]);
+                }
+            }
+            assert!(results[0].failures.is_empty(), "{:?}", results[0].failures);
+            assert_eq!(results[0].families.len(), 2);
+            for (_, value) in &results[0].families {
+                assert_eq!(value[0], Complex::new(2.0, -2.0));
+            }
+            let rescued: Vec<RescueCarrier> = results[0].rescued.iter().map(|r| r.1).collect();
+            assert_eq!(rescued, [RescueCarrier::Arbitrary(77); 2]);
+            assert!(results[1].rescued.is_empty() && results[1].failures.is_empty());
+            for (_, value) in &results[1].families {
+                assert_eq!(value[0], Complex::new(6.0, 0.0));
+            }
+            assert_eq!(report.counts[LANES_RESCUED_ARB], 2);
+            assert_eq!(report.counts[LANES_RESCUED_DD], 0);
+            assert_eq!(report.counts[LANES_UNRESCUED], 0);
+
+            // Refused at every carrier: the point fails with its statuses.
+            let mut backend = Rescuing {
+                refuse_all: true,
+                ..Rescuing::default()
+            };
+            let (results, report) = run(&mut backend, RescueInputs::Exact);
+            assert_eq!(results[0].failures.len(), 2);
+            assert!(results[0].failures[0].ends_with(
+                ": Unstable (lane rescue: double-double: double-double refused; \
+                 arbitrary (77 working digits): arbitrary refused)"
+            ));
+            assert!(results[0].bare.is_empty() && results[0].rescued.is_empty());
+            assert_eq!(report.counts[LANES_UNRESCUED], 2);
+
+            // Off: today's behaviour, the point compacted out.
+            let mut backend = Rescuing::default();
+            let (results, _) = run(&mut backend, RescueInputs::Off);
+            assert_eq!(backend.calls, [vec![0, 1], vec![1]]);
+            assert!(backend.rescues.is_empty());
+            assert_eq!(results[0].failures.len(), 1);
+            assert!(
+                results[0].failures[0]
+                    .ends_with("lane LaneKey { family: 0, order: 0, column: 0 }: Unstable")
+            );
         }
 
         /// The chunks of a call: full chunks of the executor's lanes, then
