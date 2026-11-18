@@ -7542,7 +7542,7 @@ class RunCardMG7(RunCard):
         #   "madevent": DJ of Template/LO/Source/kin_functions.f, as madevent's
         #               LO clustering does: the massless one's transverse mass
         #               for a massless-massive pair, the kt measure otherwise
-        # Only read when dynamical_scale_choice = "mlm".
+        # Only read by madmatrix, when dynamical_scale_choice = "mlm" or "ckkwl".
         self.add_toml_param('beam', 'clustering_measure', "fxfx",
             allowed=['fxfx', 'madevent'],
             comment="measure scoring a candidate MLM final-state clustering",

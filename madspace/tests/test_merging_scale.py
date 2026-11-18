@@ -210,7 +210,7 @@ def ref_pt_lund(p, pdgs, merging, lpp1, lpp2):
 
 
 def evaluate(scale, p_ext):
-    return scale(p_ext).reshape(-1).double().numpy()
+    return scale(p_ext).reshape(-1).double().cpu().numpy()
 
 
 def compare(computed, reference):
@@ -322,7 +322,7 @@ def test_pt_lund_of_two_massless_legs_is_their_pt():
     merging = [False, False, True, True]
     p_ext = sample([0.0] * 4)
     computed = evaluate(ms.MergingScale(LUND, pdgs, merging), p_ext)
-    pt = torch.hypot(p_ext[:, 2, 1], p_ext[:, 2, 2]).double().numpy()
+    pt = torch.hypot(p_ext[:, 2, 1], p_ext[:, 2, 2]).double().cpu().numpy()
     np.testing.assert_allclose(computed, pt, rtol=1e-10)
     leptonic = ms.MergingScale(LUND, pdgs, merging, hadronic1=False, hadronic2=False)
     assert not leptonic.active()
@@ -342,7 +342,7 @@ def test_cut_masks_events_below_the_merging_scale(measure):
     values = evaluate(scale, p_ext)
     cut = float(np.median(values))
     mask = ms.Cuts(5, merging_cut=ms.MergingCut(scale, cut))(p_ext).reshape(-1)
-    np.testing.assert_array_equal(mask.numpy(), (values >= cut).astype(float))
+    np.testing.assert_array_equal(mask.cpu().numpy(), (values >= cut).astype(float))
     # combined with ordinary cut items, both have to pass
     O = ms.Observable
     cuts = ms.Cuts(
@@ -350,8 +350,10 @@ def test_cut_masks_events_below_the_merging_scale(measure):
         merging_cut=ms.MergingCut(scale, cut),
     )
     pt_ok = (torch.hypot(p_ext[:, 2:, 1], p_ext[:, 2:, 2]) >= 10.0).all(dim=1)
-    expected = (torch.from_numpy(values >= cut) & pt_ok).double()
-    np.testing.assert_array_equal(cuts(p_ext).reshape(-1).numpy(), expected.numpy())
+    expected = (torch.from_numpy(values >= cut).to(pt_ok.device) & pt_ok).double()
+    np.testing.assert_array_equal(
+        cuts(p_ext).reshape(-1).cpu().numpy(), expected.cpu().numpy()
+    )
 
 
 def test_hadronic_kt_durham_floors_the_pt_of_merging_legs():

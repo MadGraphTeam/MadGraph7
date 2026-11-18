@@ -187,6 +187,10 @@ See :doc:`gridpacks` for details.
     clustered along the planar diagrams of its leading-colour flow, which differ from the
     diagrams a madmatrix event is clustered along. Under ``mlm`` and ``ckkwl`` the scales
     are those of the clustering: the fixed scales and ``scale_factor`` are ignored.
+    For madmatrix, ``ckkwl`` scores clusterings with the hidden ``clustering_measure``, so
+    the scales of jet events differ slightly from MadEvent's ``-1``: higher with the default
+    ``"fxfx"``, lower with ``"madevent"``. The merged cross section barely changes, since Pythia8
+    redoes the :math:`\alpha_s` reweighting.
 
 ``scale_factor`` (``1.0``)
     Factor applied to the dynamical scale. Fixed scales are not affected. With the default
