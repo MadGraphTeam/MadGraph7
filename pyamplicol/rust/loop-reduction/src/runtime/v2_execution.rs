@@ -377,7 +377,7 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
     /// The carriers above the evaluation's ([`rescue_carriers`]); none in
     /// the unchecked mode.
     fn rescue_carriers(&self, zero: &T) -> Vec<RescueCarrier> {
-        if self.unchecked() {
+        if self.unchecked() || !lane_rescue_enabled() {
             return Vec::new();
         }
         rescue_carriers(T::bits(zero))
@@ -432,6 +432,19 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
 /// caches serve every later call (never one build per call or point).
 #[derive(Default)]
 pub struct RescueBackends(Vec<(RescueCarrier, V2Backends)>);
+
+/// The environment variable of the lane rescue's developer switch
+/// ([`lane_rescue_enabled`]).
+pub const LANE_RESCUE_SWITCH: &str = "RUSTICOL_LANE_RESCUE";
+
+/// Whether the lane rescue runs: on unless the environment sets
+/// [`LANE_RESCUE_SWITCH`] to `off` (a developer switch, no user option: the
+/// tests of the mechanisms behind the lane rescue, the per-point fallback,
+/// the rescue stack and best-effort values, need refused points in the
+/// Python API and the SDKs alike). Read once per evaluation call.
+pub fn lane_rescue_enabled() -> bool {
+    std::env::var(LANE_RESCUE_SWITCH).map_or(true, |value| value != "off")
+}
 
 /// The lane rescue's carriers above a carrier of `bits` bits, lowest
 /// first: double-double, then arbitrary precision at the default rescue

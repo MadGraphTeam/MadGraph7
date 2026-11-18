@@ -30,8 +30,9 @@ pub use reduction::{
     DecimalMomentum, PolynomialPlan, RawLane, ReductionBatch, light_mass_needs_invariants,
 };
 pub use v2_execution::{
-    Reduction, RescueBackends, TIRUST_NOT_BUILT, TypedBatch, V2Backends, V2ReductionBackend,
-    backend_carriers, ninjars_refusal, plan_histogram, rank_refusal, rescue_carriers,
+    LANE_RESCUE_SWITCH, Reduction, RescueBackends, TIRUST_NOT_BUILT, TypedBatch, V2Backends,
+    V2ReductionBackend, backend_carriers, lane_rescue_enabled, ninjars_refusal, plan_histogram,
+    rank_refusal, rescue_carriers,
 };
 pub use v2_reduce::{
     FamilyGroup, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles, ReduceOptions, ReductionFrame,
