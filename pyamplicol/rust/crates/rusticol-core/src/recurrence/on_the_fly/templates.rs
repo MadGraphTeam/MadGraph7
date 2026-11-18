@@ -80,7 +80,7 @@ pub(super) fn prepare_on_the_fly_grammar_v1(
     // is proved complete once, before the grammar enters the runtime cache.
     validate_prepared_closure_domain(templates, catalog, &closures)?;
     let propagators = propagator_by_state(templates)?;
-    let fermion_ordering = on_the_fly_fermion_ordering_context(seed)?;
+    let fermion_ordering = on_the_fly_fermion_ordering_context(seed, templates, catalog)?;
     let closure_anchor_policy =
         certified_cyclic_trace_closure_anchor_policy(templates.input(), catalog, seed)?;
     Ok(PreparedOnTheFlyGrammarV1 {
@@ -1000,7 +1000,8 @@ mod tests {
             grammar.closure_anchor_policy,
             OnTheFlyClosureAnchorPolicyV1::selector_endpoint(),
         );
-        let fresh_fermion_ordering = on_the_fly_fermion_ordering_context(&seed).unwrap();
+        let fresh_fermion_ordering =
+            on_the_fly_fermion_ordering_context(&seed, &templates, &catalog).unwrap();
         assert_eq!(
             fermion_ordering_factor(
                 &templates.input().current_states,

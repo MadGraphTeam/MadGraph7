@@ -124,11 +124,11 @@
     {
       "process": "h h > h h",
       "color_factor": 1,
-      "average_factor": 4,
+      "average_factor": 1,
       "identical_factor": 2,
       "qcd_coupling_power": 0,
-      "electroweak_coupling_power": 4,
-      "global_coupling_factor": "0.0012942082163584319"
+      "electroweak_coupling_power": 2,
+      "global_coupling_factor": "0.03597510550864906"
     },
     {
       "process": "g g > g g g",

@@ -20,16 +20,16 @@ use super::direct_backend::{
     DIRECT_STATUS_OK, DirectContributionFanoutProgram, DirectCurrentClearRange,
     DirectExecutionCounters, DirectExecutionRoleTimings, DirectExecutorCatalog, DirectFactorView,
     DirectMomentumView, DirectParameterView, DirectStageClearRanges,
-    DirectUnionSourceDispatchHandle, DirectWorkspace, execute_direct_plan_destination_selected,
-    execute_direct_plan_profiled_with_fanout_and_traffic,
+    DirectUnionSourceDispatchHandle, DirectWorkspace, execute_closure_rows,
+    execute_direct_plan_destination_selected, execute_direct_plan_profiled_with_fanout_and_traffic,
     execute_direct_plan_selected_profiled_with_fanout_and_traffic,
     execute_direct_plan_selected_unprofiled_with_fanout,
     execute_direct_plan_unprofiled_with_fanout,
 };
 use super::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
-    DirectAmplitudeDestinationDescriptor, DirectExecutorRole, DirectRecurrencePlan,
-    DirectResolvedHelicityDescriptor, DirectRowGroupDescriptor,
+    DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectExecutorRole,
+    DirectRecurrencePlan, DirectResolvedHelicityDescriptor, DirectRowGroupDescriptor,
 };
 use super::{DIRECT_NONE_U32, DirectNodeKind, RecurrenceStrategy, SemanticDigest};
 use crate::direct_arena::{
@@ -207,6 +207,98 @@ struct DirectReplayDestinationProgram {
     current_clear_stages: Box<[DirectStageClearRanges]>,
 }
 
+/// Amplitude coupling-order layout of one destination.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectDestinationOrders {
+    /// Every closure row has this component: the ordinary amplitude is it.
+    Single(u32),
+    /// Component `c` is stored in order slot `first_slot + c`.
+    Split { first_slot: u32 },
+}
+
+/// Plan-derived replay of closure rows into amplitude coupling-order slots.
+///
+/// Closures run after every current stage, so after a tile their parents are
+/// still in the arena. Only the closure rows of destinations that mix
+/// components are replayed, into scratch slots; the ordinary amplitudes and
+/// therefore every total are never modified.
+pub struct DirectAmplitudeOrderSplit {
+    runtime_layout_digest: SemanticDigest,
+    component_count: u32,
+    destination_orders: Box<[DirectDestinationOrders]>,
+    closure_slots: Box<[u32]>,
+    slot_count: u32,
+}
+
+impl DirectAmplitudeOrderSplit {
+    pub fn new(plan: &DirectRecurrencePlan) -> RusticolResult<Self> {
+        let orders = plan.amplitude_orders();
+        let closure_stage = plan
+            .row_groups()
+            .iter()
+            .filter(|group| group.role == DirectExecutorRole::Closure)
+            .map(|group| group.stage)
+            .min();
+        if let Some(closure_stage) = closure_stage
+            && plan.row_groups().iter().any(|group| {
+                (group.role == DirectExecutorRole::Closure) != (group.stage >= closure_stage)
+            })
+        {
+            return Err(invalid(
+                "order-resolved closures require every closure after every current stage",
+            ));
+        }
+        let mut destination_orders = Vec::with_capacity(plan.amplitude_destinations().len());
+        let mut closure_slots = vec![DIRECT_NONE_U32; plan.closures().len()];
+        let mut slot_count = 0_u32;
+        for destination in plan.amplitude_destinations() {
+            let start = usize::try_from(destination.closure_row_start)
+                .map_err(|_| invalid("order-split closure start exceeds usize"))?;
+            let range = start..start + destination.closure_row_count as usize;
+            let components = orders
+                .closure_components()
+                .get(range.clone())
+                .ok_or_else(|| invalid("order-split closure range is out of bounds"))?;
+            let first = *components
+                .first()
+                .ok_or_else(|| invalid("order-split destination has no closure rows"))?;
+            if components.iter().all(|&component| component == first) {
+                destination_orders.push(DirectDestinationOrders::Single(first));
+                continue;
+            }
+            let first_slot = slot_count;
+            slot_count = slot_count
+                .checked_add(orders.component_count())
+                .ok_or_else(|| invalid("order-split slot count exceeds u32"))?;
+            for (row, &component) in range.zip(components) {
+                closure_slots[row] = first_slot + component;
+            }
+            destination_orders.push(DirectDestinationOrders::Split { first_slot });
+        }
+        Ok(Self {
+            runtime_layout_digest: plan.runtime_layout_digest(),
+            component_count: orders.component_count(),
+            destination_orders: destination_orders.into_boxed_slice(),
+            closure_slots: closure_slots.into_boxed_slice(),
+            slot_count,
+        })
+    }
+
+    pub const fn component_count(&self) -> u32 {
+        self.component_count
+    }
+
+    pub const fn slot_count(&self) -> u32 {
+        self.slot_count
+    }
+
+    pub fn destination_orders(&self, destination_id: u32) -> Option<DirectDestinationOrders> {
+        self.destination_orders
+            .get(destination_id as usize)
+            .copied()
+    }
+}
+
 /// Prepared, plan-authenticated all-flow-union helicity selection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DirectUnionHelicitySelectorPlan {
@@ -239,8 +331,25 @@ impl DirectReplaySelectorPlan {
         self.multiplicity
     }
 
+    /// The complex factor replay applies to each representative amplitude:
+    /// the phase times the multiplicity. The recurrence export publishes this
+    /// value, so both read it from here.
+    pub fn amplitude_scale(&self) -> (f64, f64) {
+        let multiplicity = f64::from(self.multiplicity);
+        (self.phase_re * multiplicity, self.phase_im * multiplicity)
+    }
+
     pub fn mapped_external_source_slot(&self, representative_source_slot: u32) -> Option<u32> {
         self.source_permutation
+            .get(representative_source_slot as usize)
+            .copied()
+    }
+
+    pub(crate) fn mapped_external_source_sign(
+        &self,
+        representative_source_slot: u32,
+    ) -> Option<i32> {
+        self.source_momentum_signs
             .get(representative_source_slot as usize)
             .copied()
     }
@@ -260,7 +369,7 @@ impl DirectReplaySelectorPlan {
             .sum()
     }
 
-    fn selected_row_groups(&self) -> &[DirectRowGroupDescriptor] {
+    pub(crate) fn selected_row_groups(&self) -> &[DirectRowGroupDescriptor] {
         self.destination_program
             .as_ref()
             .map_or(self.row_groups.as_ref(), |program| {
@@ -403,6 +512,10 @@ pub struct DirectRecurrenceExecutionRuntime {
 }
 
 impl DirectRecurrenceExecutionRuntime {
+    pub(crate) fn export_fanout(&self) -> &DirectContributionFanoutProgram {
+        &self.contribution_fanout
+    }
+
     /// Allocate the initial workspace and convert the plan's exact factors to
     /// their persistent binary64 split-complex catalog. Packed-capable
     /// runtimes defer aligned tiled point storage until it is needed.
@@ -436,7 +549,7 @@ impl DirectRecurrenceExecutionRuntime {
         )
     }
 
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     fn new_inner(
         plan: DirectRecurrencePlan,
@@ -1201,6 +1314,132 @@ impl DirectRecurrenceExecutionRuntime {
         self.timings = DirectRuntimePhaseTimings::default();
     }
 
+    /// Replay the most recent tile's mixed-order closure rows into order slots.
+    ///
+    /// `selector` must be the replay selector of that tile (if any). Slots
+    /// are `point_stride` planes; replayed slots receive the same replay
+    /// phase as the ordinary amplitudes.
+    pub fn execute_amplitude_order_split(
+        &mut self,
+        split: &DirectAmplitudeOrderSplit,
+        selector: Option<&DirectReplaySelectorPlan>,
+        point_count: u32,
+        slots_re: &mut [f64],
+        slots_im: &mut [f64],
+        rows: &mut Vec<DirectClosureRow>,
+    ) -> RusticolResult<()> {
+        if split.runtime_layout_digest != self.plan.runtime_layout_digest() {
+            return Err(invalid("amplitude order split belongs to a different plan"));
+        }
+        if point_count == 0
+            || point_count != self.last_point_count
+            || selector.map(DirectReplaySelectorPlan::representative_flow_id)
+                != self.last_representative_flow_id
+        {
+            return Err(invalid(
+                "amplitude order split requires the most recently executed tile",
+            ));
+        }
+        let point_stride = self.point_stride as usize;
+        let slot_len = split.slot_count as usize * point_stride;
+        if slots_re.len() < slot_len || slots_im.len() < slot_len {
+            return Err(invalid("amplitude order slots are smaller than the split"));
+        }
+        let (slots_re, slots_im) = (&mut slots_re[..slot_len], &mut slots_im[..slot_len]);
+        if slot_len == 0 {
+            return Ok(());
+        }
+        for slot in 0..split.slot_count as usize {
+            let start = slot * point_stride;
+            slots_re[start..start + point_count as usize].fill(0.0);
+            slots_im[start..start + point_count as usize].fill(0.0);
+        }
+        let row_groups = selector.map_or(self.plan.row_groups(), |selector| {
+            selector
+                .destination_program
+                .as_ref()
+                .map_or(selector.row_groups.as_ref(), |program| {
+                    program.row_groups.as_ref()
+                })
+        });
+        let (current_re, current_im, _, _) = self.arena.split_slices_mut();
+        let mut workspace = DirectWorkspace {
+            current_re,
+            current_im,
+            amplitude_re: slots_re,
+            amplitude_im: slots_im,
+            momenta: self.momenta.as_slice(),
+            momentum_form_count: self.momentum_form_count,
+            lorentz_component_count: self.lorentz_component_count,
+            parameters_re: self.parameters_re.as_slice(),
+            parameters_im: self.parameters_im.as_slice(),
+            factors_re: self.factors_re.as_slice(),
+            factors_im: self.factors_im.as_slice(),
+            point_stride: self.point_stride,
+        };
+        for group in row_groups
+            .iter()
+            .filter(|group| group.role == DirectExecutorRole::Closure)
+        {
+            let start = usize::try_from(group.row_start)
+                .map_err(|_| invalid("order-split closure group start exceeds usize"))?;
+            let end = start + group.row_count as usize;
+            let group_rows = self
+                .plan
+                .closures()
+                .get(start..end)
+                .ok_or_else(|| invalid("order-split closure group is out of bounds"))?;
+            rows.clear();
+            rows.extend(
+                group_rows
+                    .iter()
+                    .zip(&split.closure_slots[start..end])
+                    .filter(|(_, slot)| **slot != DIRECT_NONE_U32)
+                    .map(|(row, &slot)| DirectClosureRow {
+                        amplitude_destination_id: slot,
+                        ..*row
+                    }),
+            );
+            execute_closure_rows(
+                &self.executors,
+                group.direct_executor_id,
+                rows,
+                &mut workspace,
+                point_count,
+            )?;
+        }
+        if let Some(selector) = selector {
+            let scale_re = selector.phase_re * f64::from(selector.multiplicity);
+            let scale_im = selector.phase_im * f64::from(selector.multiplicity);
+            for (destination, orders) in self
+                .plan
+                .amplitude_destinations()
+                .iter()
+                .zip(split.destination_orders.iter())
+            {
+                let DirectDestinationOrders::Split { first_slot } = *orders else {
+                    continue;
+                };
+                if destination.target_sector_id != selector.representative_flow_id {
+                    continue;
+                }
+                for slot in first_slot..first_slot + split.component_count {
+                    let start = slot as usize * point_stride;
+                    let values_re =
+                        &mut workspace.amplitude_re[start..start + point_count as usize];
+                    let values_im =
+                        &mut workspace.amplitude_im[start..start + point_count as usize];
+                    for (value_re, value_im) in values_re.iter_mut().zip(values_im.iter_mut()) {
+                        let (real, imaginary) = (*value_re, *value_im);
+                        *value_re = real * scale_re - imaginary * scale_im;
+                        *value_im = real * scale_im + imaginary * scale_re;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn outputs(&self) -> Option<DirectRecurrenceTileOutput<'_>> {
         (self.last_point_count != 0).then(|| {
             self.borrowed_output(
@@ -1293,8 +1532,7 @@ impl DirectRecurrenceExecutionRuntime {
         point_count: u32,
     ) -> RusticolResult<()> {
         let started = PROFILE.then(Instant::now);
-        let scale_re = selector.phase_re * f64::from(selector.multiplicity);
-        let scale_im = selector.phase_im * f64::from(selector.multiplicity);
+        let (scale_re, scale_im) = selector.amplitude_scale();
         let point_stride = self.point_stride as usize;
         let active_points = point_count as usize;
         let mut scaled_values = 0_u64;
@@ -1319,10 +1557,8 @@ impl DirectRecurrenceExecutionRuntime {
             let values_re = &mut amplitude_re[start..end];
             let values_im = &mut amplitude_im[start..end];
             for point in 0..active_points {
-                let value_re = values_re[point];
-                let value_im = values_im[point];
-                values_re[point] = value_re * scale_re - value_im * scale_im;
-                values_im[point] = value_re * scale_im + value_im * scale_re;
+                (values_re[point], values_im[point]) =
+                    apply_replay_scale(values_re[point], values_im[point], scale_re, scale_im);
             }
             scaled_values = scaled_values.saturating_add(u64::from(point_count));
         }
@@ -2022,7 +2258,7 @@ impl DirectRecurrenceExecutionRuntime {
                 )
             })?;
         for (source_slot, selection) in selections.iter().enumerate() {
-            if selection.source_slot != source_slot as u32 {
+            if !crate::narrow::is_index(selection.source_slot, source_slot) {
                 return Err(RusticolError::integrity(
                     "direct recurrence union source selections are not in source-slot order",
                 ));
@@ -2331,7 +2567,10 @@ fn selected_replay_destination_program(
             }
             row_groups.push(DirectRowGroupDescriptor {
                 row_start: start as u64,
-                row_count: (row - start) as u32,
+                row_count: crate::narrow::checked::<u32>(
+                    row - start,
+                    "direct row-group row count",
+                )?,
                 ..*group
             });
         }
@@ -2639,6 +2878,21 @@ fn fill_external_momentum_term<const INITIALIZE: bool, const SOURCE_MAJOR: bool>
             }
         }
     }
+}
+
+/// Multiply one representative amplitude by its replay scale, value first,
+/// as an ordinary complex product without fused operations.
+#[inline(always)]
+pub(crate) fn apply_replay_scale(
+    value_re: f64,
+    value_im: f64,
+    scale_re: f64,
+    scale_im: f64,
+) -> (f64, f64) {
+    (
+        value_re * scale_re - value_im * scale_im,
+        value_re * scale_im + value_im * scale_re,
+    )
 }
 
 fn validate_split_values(

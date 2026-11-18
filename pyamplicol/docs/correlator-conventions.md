@@ -93,6 +93,54 @@ residuals below that order; it does not imply exact finite-`N_c` cancellation
 of those extra terms. Full-colour identities hold without that truncation.
 LC/NLC matrices are approximations and are not generally positive operators.
 
+### Strict colour: the formal 1/N_c expansion
+
+`color.accuracy = "strict-lc"` and `"strict-nlc"` expand the whole squared
+amplitude in `N_c`, for ordinary and correlated trees. The tree engine writes
+the `-1/N_c` of the SU(N_c) Fierz identity as a U(1)-subtraction piece with
+the numeric weight `1/3`. Under the strict accuracies every such piece is
+graded instead:
+
+* an amplitude group (one helicity, colour sector and grade) whose trees
+  contain `k` U(1)-subtraction pieces has the N_c grade `g = -k`; its value at
+  `N_c = 3` is `3^g` times a coefficient that does not depend on `N_c`
+  (`generation/dag_grades.py`);
+* every metric entry, ordinary or connected, is kept as its exact Laurent
+  polynomial `sum_p c_p N_c^p` (the same trace reductions as the full-colour
+  factor, with every `-1/N_c` and closed index loop counted as a power);
+* the term `c_p N_c^p A_l conj(A_r)` has the N_c degree `d = p + g_l + g_r`.
+  Its value at `N_c = 3` is `c_p 3^p A_l conj(A_r)` with the amplitudes as
+  evaluated.
+
+With the reference degree `P` of this section (`n_g + n_qbarq` for the
+ordinary colour sum, `n_g + n_qbarq + r - s` for a connection), `strict-lc`
+keeps the degree `P` and `strict-nlc` the degrees `P`, `P-1` and `P-2`;
+`N_c = 3` is inserted after the truncation. No degree exceeds `P`. Every
+relation between colour structures, in particular colour conservation and the
+Casimirs (`C_A = N_c`, `C_F = N_c/2 - 1/(2 N_c)`), is a polynomial identity
+in `N_c`, so it holds degree by degree, and therefore exactly within each
+strict truncation: all dipoles of a process share the reference degree.
+
+Examples (colour-summed `|M|^2` up to a factor independent of `N_c`):
+
+| Process | Exact | Inherited `lc` | `strict-lc` | `strict-nlc` |
+| --- | --- | --- | --- | --- |
+| `u d > u d` | `(N^2 - 1)/4` | `(N^2 + 1)/4` | `N^2/4` | exact |
+| `u u~ > g g` | `N^3 X - N (X + 1) + 1/N` | `N^3 X` | `N^3 X` | `(N^3 - N) X - N` |
+| `g g > g g` | `N^4 - N^2` | `N^4` | `N^4` | exact |
+
+with `X = (t^2 + u^2)/s^2` for `u u~ > g g` (its inherited NLC keeps both
+open-line entries exactly, i.e. full colour).
+
+Strict artifacts are always **graded**: their contracted colour axis has one
+component per reported N_c degree (ID `color:nc-degree:<d>`, field
+`nc_degree`), and the components sum to the total. `color.graded = true` with
+`full` colour reports every degree of the exact colour sum, so complements
+such as full minus LC come from one evaluation. Graded output needs the
+complete trace/open-line basis and the direct contraction; it is implemented
+for tree requests in the compiled lane (the default execution mode for them),
+and generated without colour topology replay.
+
 ## Colour charges, indices, and crossing
 
 We use Hermitian physical generators with

@@ -18,13 +18,15 @@ from typing import Any
 
 import pytest
 
-from pyamplicol import EvaluationError, Generator, ProcessSet, Runtime
+from pyamplicol import EvaluationError, Generator, ModelSource, ProcessSet, Runtime
 from pyamplicol.config import (
     ColorConfig,
     EvaluatorConfig,
     EvaluatorOptimizationConfig,
     GenerationConfig,
     JITConfig,
+    ModelConfig,
+    ProcessConfig,
     RunConfig,
 )
 from pyamplicol.generation.phase_space import massive_rambo_final_state
@@ -1253,3 +1255,258 @@ def test_native_color_selectors_reject_contracted_axis(
         f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
     )
     assert completed.stdout.strip() == "ok"
+
+
+_ORDER_REFERENCE = _PROJECT_ROOT / "tests/fixtures/tree/madgraph-split-orders.json"
+
+_C_ORDER_PROBE = r"""
+#include <rusticol.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(int argc, char **argv) {
+    if (argc < 5) return 2;
+    const size_t point_count = strtoul(argv[3], NULL, 10);
+    const size_t momenta_count = (size_t)(argc - 4);
+    double *momenta = malloc(momenta_count * sizeof(double));
+    if (momenta == NULL) return 3;
+    for (size_t index = 0; index < momenta_count; ++index)
+        momenta[index] = strtod(argv[index + 4], NULL);
+    RusticolRuntimeHandle *runtime = NULL;
+    if (rusticol_runtime_load(argv[1], argv[2], NULL, &runtime) != RUSTICOL_STATUS_OK) return 10;
+    size_t required = 0, order_count = 0;
+    if (rusticol_runtime_coupling_orders_json(runtime, NULL, 0, &required) != RUSTICOL_STATUS_OK) return 11;
+    char *json = malloc(required);
+    if (json == NULL || rusticol_runtime_coupling_orders_json(
+            runtime, json, required, &required) != RUSTICOL_STATUS_OK) return 12;
+    if (rusticol_runtime_squared_order_count(runtime, &order_count) != RUSTICOL_STATUS_OK) return 13;
+    double *totals = malloc(point_count * sizeof(double));
+    double *partials = malloc(point_count * order_count * sizeof(double));
+    if (totals == NULL || partials == NULL) return 3;
+    if (rusticol_runtime_evaluate_orders_f64(
+            runtime, momenta, momenta_count, point_count, NULL, 0, NULL, 0,
+            totals, point_count, partials, point_count * order_count) != RUSTICOL_STATUS_OK) return 14;
+    printf("json %s\n", json);
+    for (size_t point = 0; point < point_count; ++point) {
+        printf("total %zu %.17g\n", point, totals[point]);
+        for (size_t order = 0; order < order_count; ++order)
+            printf("partial %zu %zu %.17g\n", point, order, partials[point * order_count + order]);
+    }
+    free(partials);
+    free(totals);
+    free(json);
+    free(momenta);
+    return rusticol_runtime_free(runtime) == RUSTICOL_STATUS_OK ? 0 : 15;
+}
+"""
+
+_CPP_ORDER_PROBE = r"""
+#include <rusticol.hpp>
+#include <cstdio>
+#include <string>
+#include <vector>
+
+int main(int argc, char **argv) {
+    if (argc < 5) return 2;
+    const std::size_t point_count = std::stoul(argv[3]);
+    std::vector<double> momenta;
+    for (int index = 4; index < argc; ++index) momenta.push_back(std::stod(argv[index]));
+    rusticol::Runtime runtime(argv[1], argv[2]);
+    const auto ordered = runtime.evaluate_orders(momenta, point_count);
+    std::printf("json %s\n", runtime.coupling_orders_json().c_str());
+    for (std::size_t point = 0; point < point_count; ++point) {
+        std::printf("total %zu %.17g\n", point, ordered.totals.at(point));
+        for (std::size_t order = 0; order < ordered.order_count; ++order)
+            std::printf("partial %zu %zu %.17g\n", point, order, ordered(point, order));
+    }
+}
+"""
+
+_RUST_ORDER_PROBE = r"""
+#[allow(dead_code)]
+mod rusticol {
+    include!(env!("RUSTICOL_RUST_SOURCE"));
+}
+
+use rusticol::{Runtime, Selectors};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments = std::env::args().collect::<Vec<_>>();
+    if arguments.len() < 5 {
+        return Err("missing artifact, process, point count, or momenta".into());
+    }
+    let point_count = arguments[3].parse::<usize>()?;
+    let momenta = arguments[4..]
+        .iter()
+        .map(|value| value.parse::<f64>())
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut runtime = Runtime::load(&arguments[1], Some(&arguments[2]), None)?;
+    let ordered = runtime.evaluate_orders_f64(&momenta, point_count, &Selectors::all())?;
+    println!("json {}", runtime.coupling_orders_json()?);
+    for point in 0..point_count {
+        println!("total {point} {:e}", ordered.totals()[point]);
+        for order in 0..ordered.order_count() {
+            let value = ordered.get(point, order).ok_or("missing partial")?;
+            println!("partial {point} {order} {value:e}");
+        }
+    }
+    Ok(())
+}
+"""
+
+_FORTRAN_ORDER_PROBE = r"""
+program order_probe
+  use, intrinsic :: iso_c_binding
+  use rusticol
+  implicit none
+  type(rusticol_runtime) :: runtime
+  character(len=4096) :: artifact, process, argument
+  character(len=:), allocatable :: json
+  real(c_double), allocatable :: momenta(:), totals(:), partials(:, :)
+  integer(c_int) :: status
+  integer :: argument_count, point_count, index, point, order
+
+  argument_count = command_argument_count()
+  if (argument_count < 4) stop 2
+  call get_command_argument(1, artifact)
+  call get_command_argument(2, process)
+  call get_command_argument(3, argument)
+  read(argument, *) point_count
+  allocate(momenta(argument_count - 3))
+  do index = 4, argument_count
+    call get_command_argument(index, argument)
+    read(argument, *) momenta(index - 3)
+  end do
+  call runtime%load(trim(artifact), trim(process), ierr=status)
+  if (status /= RUSTICOL_STATUS_OK) stop 10
+  call runtime%evaluate_orders(momenta, int(point_count, c_size_t), totals, partials, &
+      ierr=status)
+  if (status /= RUSTICOL_STATUS_OK) stop 11
+  json = runtime%coupling_orders_json(ierr=status)
+  if (status /= RUSTICOL_STATUS_OK) stop 12
+  write(*, '(A,A)') 'json ', json
+  do point = 1, point_count
+    write(*, '(A,I0,1X,ES25.17E3)') 'total ', point - 1, totals(point)
+    do order = 1, size(partials, 1)
+      write(*, '(A,I0,1X,I0,1X,ES25.17E3)') 'partial ', point - 1, order - 1, &
+          partials(order, point)
+    end do
+  end do
+  call runtime%close()
+end program order_probe
+"""
+
+
+@pytest.fixture(scope="module")
+def order_artifact(
+    madgraph_source: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    """A mixed QCD/QED recurrence artifact of the MadGraph UFO ``sm``."""
+
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        _unavailable("the Rusticol extension has not been built")
+    root = tmp_path_factory.mktemp("runtime-order-parity")
+    bundle = root / "sm.pyamplicol-model"
+    ModelSource.from_path(madgraph_source / "models/sm", restriction="default").compile(
+        cache_dir=root / "cache", prepared_output=bundle, evaluator=EvaluatorConfig()
+    )
+    artifact = root / "uu-dd"
+    config = RunConfig(
+        action="generate",
+        model=ModelConfig(cache=False),
+        color=ColorConfig(accuracy="full"),
+        process=ProcessConfig(
+            coupling_order_policy="explicit",
+            max_coupling_orders={"QCD": 99, "QED": 99},
+        ),
+        generation=GenerationConfig(workers=1, emit_api_bundle=False),
+        evaluator=EvaluatorConfig(
+            execution_mode="recurrence",
+            optimization=EvaluatorOptimizationConfig(cores=1),
+        ),
+    )
+    Generator(config).generate(
+        ProcessSet.from_expressions(("u u~ > d d~",), names=("uu_dd",)),
+        artifact,
+        model=ModelSource.from_path(bundle),
+    )
+    return artifact
+
+
+@pytest.mark.parametrize(
+    ("language", "source"),
+    (
+        ("c", _C_ORDER_PROBE),
+        ("cpp", _CPP_ORDER_PROBE),
+        ("fortran", _FORTRAN_ORDER_PROBE),
+        ("rust", _RUST_ORDER_PROBE),
+    ),
+)
+def test_native_order_partials_match_python(
+    language: str,
+    source: str,
+    order_artifact: Path,
+    native_sdk: _NativeSdk,
+    tmp_path: Path,
+) -> None:
+    """Every SDK returns the Python partials, columns and totals bitwise."""
+
+    (reference,) = (
+        entry
+        for entry in json.loads(_ORDER_REFERENCE.read_text(encoding="utf-8"))[
+            "processes"
+        ]
+        if entry["process"] == "u u~ > d d~"
+    )
+    points = reference["points"]
+    binary = _compile_probe(language, source, native_sdk, tmp_path)
+    completed = subprocess.run(
+        [
+            str(binary),
+            str(order_artifact),
+            "uu_dd",
+            str(len(points)),
+            *(
+                format(component, ".17g")
+                for point in points
+                for leg in point
+                for component in leg
+            ),
+        ],
+        env=_source_environment(),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert completed.returncode == 0, (
+        f"{language} order probe failed\n"
+        f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+    )
+    lines = [line.split(maxsplit=1) for line in completed.stdout.splitlines()]
+    catalog = json.loads(next(rest for key, rest in lines if key == "json"))
+    totals = [float(rest.split()[1]) for key, rest in lines if key == "total"]
+    partials = [[0.0] * len(catalog["squared"]) for _ in points]
+    for key, rest in lines:
+        if key == "partial":
+            point, order, value = rest.split()
+            partials[int(point)][int(order)] = float(value)
+
+    runtime = Runtime.load(order_artifact)
+    expected = runtime.evaluate_orders(points)
+    names = catalog["names"]
+    assert (
+        tuple(
+            tuple(
+                (name, power)
+                for name, power in zip(names, entry["powers"], strict=True)
+                if power
+            )
+            for entry in catalog["squared"]
+        )
+        == expected.orders
+    )
+    assert totals == [complex(value).real for value in runtime.evaluate(points)]
+    assert partials == [
+        [complex(value).real for value in point] for point in expected.values
+    ]

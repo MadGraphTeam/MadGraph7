@@ -35,31 +35,41 @@ Published dependencies are unchanged. Normal release builds still target
 `manylinux_2_28` and must run in the appropriate build environment; a host wheel
 is not a substitute for the audited release artifact.
 
-## Focused SymJIT dependency tests
+## One-loop test suite
 
-The source checkout includes small opt-in numerical/compiler regressions in
-`tests/integration/test_symjit_upstream_regressions.py`. They require Python
-3.11+, pytest and Cargo, but no pyAmpliCol native build or Symbolica installation.
-They are separate from full process-generation and performance tests.
-The reproducer bundles in `SYMJIT_FOLLOW_UP_FIXES/` and `DEPENDENCY_FIXES/`
-are local, untracked inputs; retain or supply those directories before running
-this optional suite. They are not included in a fresh checkout.
+Loop tests carry one cost marker: `loop_fast` (unit and saved-control checks),
+`loop_physics` (generation and provider-reference comparisons) or `loop_nightly`
+(the longest generation and precision controls); generic direct-R2 tests are
+additionally `deferred_direct_r2` and are deselected unless named in `-m`. Run
+`just test-loop loop_fast` (or another marker expression) after staging the
+native runtime, with `SYMBOLICA_LICENSE` set; without it loop tests skip rather
+than abort, or fail with `PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE=1` (the licensed
+CI jobs of `.github/workflows/tests.yml`, which also fail on a skipped loop
+test). `tests/conftest.py` resolves external inputs once: UFO models and
+MadGraph default to the reference checkout/workspace and are overridden by the
+documented `PYAMPLICOL_*` variables, saved PACBIN/artifact controls come from
+`PYAMPLICOL_LOOP_SAVED_FIXTURES` (default `<workspace>/fixtures`), and provider
+references are the committed `tests/fixtures/loop/*.json`, whose absence fails.
 
-```sh
-# Published SymJIT 2.25.4; outstanding regressions fail rather than being xfailed.
-PYAMPLICOL_RUN_SYMJIT_REGRESSIONS=1 \
-  python3 -m pytest tests/integration/test_symjit_upstream_regressions.py -q
+Profiling only: `PYAMPLICOL_LOOP_STAGE_MEMORY` (any value) makes the native
+counterterm-DAG builder print the process's resident and peak memory after
+each stage and then reset the peak (`/proc/self/clear_refs`), so a run that
+records its peak RSS (the G1 harness, `tools/loop_v2_generate.py`) must not
+set it.
 
-# Evaluate a local SymJIT source checkout instead, without modifying it.
-PYAMPLICOL_RUN_SYMJIT_REGRESSIONS=1 \
-PYAMPLICOL_SYMJIT_SOURCE=/absolute/path/to/symjit \
-  python3 -m pytest tests/integration/test_symjit_upstream_regressions.py -q
-```
+## Optimized loop native builds
 
-`just symjit-regressions` runs the same suite. The source-selection environment
-variable is honoured by either command. ARM-specific tests are skipped on other
-architectures. The root `SYMJIT_FOLLOW_UP_FIXES/README.md` maps the checks to the
-reported defects and explains the relevant pyAmpliCol evaluation paths.
+For long loop generation/validation runs, build the extension and loop SDK
+libraries optimized, rather than with the unoptimized Cargo dev profile:
+`tools/developer/build_loop_native.py build NEW_DIR` (Cargo `release`, 16
+codegen units, no cross-crate LTO unless `CARGO_PROFILE_RELEASE_*` say
+otherwise; digest, revision, profile, `RUSTFLAGS` and whether the tree was dirty
+are recorded in `NEW_DIR/build-info.json`), then
+`tools/developer/build_loop_native.py stage NEW_DIR` into a checkout whose
+native build-input digest matches. Cargo builds into a private target directory
+(`--target-dir`; by default `cargo-loop-native-<profile>` next to a set
+`CARGO_TARGET_DIR`, never the shared one itself), so concurrent dev builds of
+other checkouts neither block the build nor replace its `release/` outputs.
 
 <!-- Page hierarchy for the MadGraph7 (Sphinx) documentation. -->
 ```{toctree}

@@ -108,9 +108,29 @@ machine-readable stdout.
 | `benchmark_z6g_all_flows_single_helicity.toml` | Reusable all-flow-union selector workload | Substantial |
 | `benchmark_z6g_generation_specialized_flow_helicity_sum.toml` | Generation-selected flow baseline | Substantial |
 | `benchmark_z6g_generation_specialized_all_flows_single_helicity.toml` | Generation-selected helicity baseline | Substantial |
+| `loop_uux_ttxgg_generate.toml` (+ `_lc_generate`, `_check`, `_evaluate`, `_profile`) | One-loop `u u~ > t t~ g g`, NLO QCD (Born-interfered); helicity selection at full colour, the LC variant adds colour flows | Generation about 11 s, 0.7 GiB |
+| `loop_uux_ddxepem_generate.toml` (+ `_check`, `_evaluate`, `_orders`, `_profile`) | One-loop `u u~ > d d~ e+ e-`, NLO QCD+EW at every order, complex-mass scheme; partial weights per squared order | Generation about 3.7-3.9 minutes, 7.7-8.4 GiB |
+| `loop_gg_zgg_generate.toml` (+ `_check`, `_evaluate`, `_profile`) | Loop-induced `g g > z g g`, every quark loop; colour correlations over four gluons | Generation about 10 s, 0.7 GiB |
+| `loop_gg_epemmpmm_generate.toml` (+ `_check`, `_evaluate`, `_profile`) | Loop-induced `g g > e+ e- m+ m-`, complex-mass scheme | Generation about 2.5 minutes, 4.3 GiB |
 | `all_options.toml` | Exhaustive commented schema reference | Reference only; not runnable via `examples run` |
 
 Use the primary Z+jet sequence, not a six-gluon card, as an installation smoke.
+
+## One-loop walkthroughs
+
+`python python/loop_walkthrough.py loop_<example>_generate.toml --points 2`
+runs a one-loop example end to end: generation with its correlator
+declaration, `pyamplicol check` (poles against Catani's operator or the
+loop-induced finiteness, Ward identities, Goldstone where it applies),
+evaluation on the per-type default reduction backend and the other one, the
+coloured per-stage profile in the checked and the unchecked setting, colour-
+and spin-correlated evaluation, helicity selection, partial weights per
+squared coupling order with their sum check, and the native loop client
+(`make -C native loop`) with no Symbolica licence. The four examples are the
+Born-interfered `u u~ > t t~ g g` (QCD) and `u u~ > d d~ e+ e-` (QCD+EW,
+complex-mass scheme) and the loop-induced `g g > z g g` (QCD, every quark
+loop) and `g g > e+ e- m+ m-` (complex-mass scheme); see the examples
+README, "One-Loop Examples", for each one's choices and measured times.
 
 ## Packaged scalar HEFT
 

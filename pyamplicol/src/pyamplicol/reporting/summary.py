@@ -7,7 +7,9 @@ import importlib
 import math
 import re
 import textwrap
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, fields, is_dataclass
 from decimal import Decimal
 from fractions import Fraction
@@ -21,6 +23,7 @@ if TYPE_CHECKING:
         BenchmarkResult,
         BenchmarkStatistics,
         ResolvedEvaluation,
+        TreeOrderEvaluation,
     )
 
 
@@ -78,6 +81,17 @@ def _evaluation_scalar_text(value: Decimal | float | int) -> str:
 
 
 def _evaluation_value_text(value: complex | Decimal | float | int) -> str:
+    """A table value with an explicit sign ("+" on a positive real part, a
+    space on zero), so that the mantissas of a column align."""
+
+    text = _unsigned_value_text(value)
+    if text.startswith("-"):
+        return text
+    real = value.real if isinstance(value, complex) else value
+    return (" " if real == 0 and not text.endswith("j") else "+") + text
+
+
+def _unsigned_value_text(value: complex | Decimal | float | int) -> str:
     if isinstance(value, complex):
         real = _evaluation_scalar_text(value.real)
         if value.imag == 0.0:
@@ -123,6 +137,50 @@ def _total_evaluation_summary(
             )
         )
     return cast(str, table.get_string())
+
+
+def _tree_order_summary(
+    evaluation: TreeOrderEvaluation,
+    *,
+    prettytable: Any,
+    color: bool,
+) -> str:
+    from .virtual import _order
+
+    table = prettytable.PrettyTable(("point", "squared coupling order", "partial"))
+    table.title = _paint("Squared coupling-order partials", "CYAN", enabled=color)
+    table.align = "l"
+    table.align["partial"] = "r"
+    table.hrules = prettytable.HRuleStyle.FRAME
+    for point, values in enumerate(evaluation.values):
+        for order, value in zip(evaluation.orders, values, strict=True):
+            table.add_row(
+                (
+                    point,
+                    _paint(_order(order), "MAGENTA", enabled=color),
+                    _paint(_evaluation_value_text(value), "GREEN", enabled=color),
+                )
+            )
+    pairs = prettytable.PrettyTable(("squared coupling order", "amplitude orders"))
+    pairs.title = _paint("Contributing amplitude-order pairs", "CYAN", enabled=color)
+    pairs.align = "l"
+    pairs.hrules = prettytable.HRuleStyle.FRAME
+    for sector in evaluation.sectors:
+        pairs.add_row(
+            (
+                _order(sector.order),
+                "; ".join(
+                    f"({_order(left)}) x ({_order(right)})"
+                    for left, right in sector.pairs
+                ),
+            )
+        )
+    total = _total_evaluation_summary(
+        cast(tuple[object, ...], evaluation.total),
+        prettytable=prettytable,
+        color=color,
+    )
+    return "\n\n".join((str(table.get_string()), str(pairs.get_string()), total))
 
 
 def _resolved_evaluation_summary(
@@ -714,6 +772,8 @@ def _benchmark_summary(
                 result.evaluator_uncertainty,
                 sample_count=evaluator_sample_count,
             )
+    from .resources import peak_memory_text
+
     evaluator_total_text = "N/A"
     if result.evaluator_total_time_per_point is not None:
         evaluator_total_text = (
@@ -978,6 +1038,12 @@ def _benchmark_summary(
             None,
         ),
         ("precision", str(result.effective_config.precision), None),
+        *(
+            (("peak RAM", peak_text, None),)
+            if (peak_text := peak_memory_text(getattr(result, "peak_memory", None)))
+            is not None
+            else ()
+        ),
         (
             "timing sources",
             (
@@ -1557,6 +1623,122 @@ def _generated_group_texts(
     return texts
 
 
+def _duration_text(seconds: float) -> str:
+    """A wall time: three significant digits below a minute ("34.2 s",
+    "512 ms"), else hours, minutes and seconds as the progress display
+    ("12m05s")."""
+
+    if seconds < 60.0:
+        from .loop_profile import _seconds_text
+
+        return _seconds_text(seconds)
+    from .progress import _duration_text as progress_duration
+
+    return progress_duration(seconds)
+
+
+def _statistics_width(fields: Sequence[str], values: Sequence[str]) -> int:
+    """The wrap width of the ``generation time`` cell of a field/value
+    table: the width its other values already take, at least what keeps
+    the table within the loop tables' line (``loop_profile._LINE_WIDTH``),
+    at most the value column's ``_SUMMARY_VALUE_WIDTH``."""
+
+    from .loop_profile import _LINE_WIDTH
+
+    frame = len("|  |  |")
+    field_width = max(len(field) for field in fields)
+    widest = max(
+        (
+            len(line)
+            for value in values
+            for line in _ANSI_STYLE.sub("", value).split("\n")
+        ),
+        default=0,
+    )
+    return min(_SUMMARY_VALUE_WIDTH, max(widest, _LINE_WIDTH - frame - field_width))
+
+
+def _generation_statistics_rows(
+    statistics: object,
+    *,
+    color: bool,
+    width: int,
+) -> tuple[tuple[str, str], tuple[str, str]]:
+    """The ``generation time`` and ``peak RAM`` rows of a generation's
+    statistics (``GenerationStatistics`` or its plain fields), for the
+    `generate` and `inspect` field/value tables.
+
+    The time: the wall time in bold, then, muted, each phase and the
+    unattributed rest, wrapped at ``width``. The peak RAM: the peak with its
+    bound's prefix (``resources.bounded_memory_text``) and, when the
+    generation started processes, muted, the generating process's own peak
+    when the peak is not it and the largest one of a started process when
+    known. A muted ``-`` when nothing is recorded."""
+
+    from pyamplicol.api.results import GenerationStatistics
+
+    from . import palette
+    from .resources import bounded_memory_text, memory_text
+
+    stats: GenerationStatistics | None = None
+    if isinstance(statistics, GenerationStatistics):
+        stats = statistics
+    elif isinstance(statistics, Mapping):
+        try:
+            stats = GenerationStatistics(
+                **{str(key): value for key, value in statistics.items()}
+            )
+        except (TypeError, ValueError):
+            stats = None
+    missing = _paint("-", palette.MUTED, enabled=color)
+    if stats is None:
+        return (("generation time", missing), ("peak RAM", missing))
+
+    total = _duration_text(stats.wall_seconds)
+    parts = [f"{name} {_duration_text(seconds)}" for name, seconds in stats.phases]
+    if parts:
+        parts.append(f"unattributed {_duration_text(stats.unattributed_seconds)}")
+    if parts:
+        parts[0] = "(" + parts[0]
+        parts[-1] += ")"
+    # Whole "phase time" items per line, never a phase split from its time.
+    lines = [total]
+    for index, part in enumerate(parts):
+        item = part + ("," if index < len(parts) - 1 else "")
+        if len(lines[-1]) + 1 + len(item) <= width:
+            lines[-1] += " " + item
+        else:
+            lines.append(item)
+    head = lines[0][len(total) :]
+    time_text = "\n".join(
+        [
+            _paint(total, None, enabled=color, bold=True)
+            + _paint(head, palette.MUTED, enabled=color)
+        ]
+        + [_paint(line, palette.MUTED, enabled=color) for line in lines[1:]]
+    )
+
+    peak = bounded_memory_text(stats.peak_rss_bytes, stats.peak_rss_bound)
+    if peak is None:
+        peak_text = missing
+    else:
+        details = []
+        if stats.child_processes:
+            own = stats.process_peak_rss_bytes
+            if own is not None and own != stats.peak_rss_bytes:
+                details.append(f"process {memory_text(own)}")
+            if stats.child_peak_rss_bytes is not None:
+                details.append(
+                    f"largest started process {memory_text(stats.child_peak_rss_bytes)}"
+                )
+        peak_text = peak + (
+            " " + _paint(f"({', '.join(details)})", palette.MUTED, enabled=color)
+            if details
+            else ""
+        )
+    return (("generation time", time_text), ("peak RAM", peak_text))
+
+
 def _generation_summary(
     result: object,
     *,
@@ -1641,6 +1823,14 @@ def _generation_summary(
             table.add_row(
                 (_paint("process grouping", "CYAN", enabled=color), grouping_text)
             )
+    width = _statistics_width(
+        [field for field, _ in rows] + ["generation time"],
+        [value for _, value in rows] + ([grouping_text] if grouping_text else []),
+    )
+    for field, text in _generation_statistics_rows(
+        result.statistics, color=color, width=width
+    ):
+        table.add_row((_paint(field, "CYAN", enabled=color), text))
     group_texts = (
         {}
         if grouping is None or not grouping_text
@@ -2416,6 +2606,127 @@ def _process_group_selection_summary(
     return cast(str, table.get_string())
 
 
+def _loop_inspection_rows(loop: Mapping[str, object]) -> list[tuple[str, str]]:
+    """Execution rows of one virtual process (design §12.3)."""
+
+    sectors = cast(Sequence[Sequence[object]], loop["sectors"])
+    rows = [
+        (
+            "virtual engine",
+            f"{loop['engine']} ({loop['runtime_capability']}); "
+            f"R2 {loop['r2_strategy']}; scheme {loop['scheme_status']}",
+        ),
+        (
+            "Born orders",
+            ", ".join(
+                str(order) for order in cast(Sequence[object], loop["born_orders"])
+            ),
+        ),
+        (
+            "virtual sectors",
+            "; ".join(
+                f"{sector[0]} <- "
+                + ", ".join(
+                    f"Born {pair[0]} x loop {pair[1]}"
+                    for pair in cast(Sequence[Sequence[object]], sector[1])
+                )
+                for sector in sectors
+            ),
+        ),
+        (
+            "arithmetic",
+            ", ".join(
+                str(value) for value in cast(Sequence[object], loop["arithmetic"])
+            ),
+        ),
+    ]
+    families = loop.get("families")
+    if families is not None:
+        buckets = cast(Sequence[Sequence[object]], loop["buckets"])
+        rows.append(
+            (
+                "families / buckets",
+                f"{families} families in {len(buckets)} (N, R) buckets: "
+                + ", ".join(f"({n}, {r}) x {count}" for n, r, count in buckets),
+            )
+        )
+        degrees = loop.get("color_degrees")
+        if degrees is not None:
+            rows.append(
+                (
+                    "colour degrees",
+                    "; ".join(
+                        f"{sector}: N_c^{degree}"
+                        for sector, degree in cast(Sequence[Sequence[object]], degrees)
+                    ),
+                )
+            )
+        rows.extend(
+            (
+                (
+                    "schedule / contraction",
+                    f"{loop['schedule']}; seeds {loop['color_contraction']}",
+                ),
+                (
+                    "runtime options",
+                    "pole selections "
+                    + ", ".join(
+                        str(item) for item in cast(Sequence[object], loop["poles"])
+                    )
+                    + "; stability checks "
+                    + ", ".join(
+                        str(check)
+                        for check in cast(Sequence[object], loop["stability_checks"])
+                    )
+                    + f"; escalation by the {loop['rescue_policy']}",
+                ),
+                (
+                    "observables",
+                    "colour histories "
+                    + (
+                        ", ".join(
+                            map(str, cast(Sequence[object], loop["color_correlations"]))
+                        )
+                        or "none"
+                    )
+                    + "; spin classes "
+                    + (
+                        ", ".join(
+                            "(" + ",".join(map(str, legs)) + ")"
+                            for legs in cast(
+                                Sequence[Sequence[object]], loop["spin_correlations"]
+                            )
+                        )
+                        or "none"
+                    )
+                    + f"; resolved {'yes' if loop['resolved'] else 'no'}",
+                ),
+                (
+                    "plan v4",
+                    f"sha256 {loop['plan_sha256']}; point inputs "
+                    f"{loop['point_inputs']}",
+                ),
+            )
+        )
+
+    else:
+        rows.append(
+            (
+                "observables",
+                f"correlations {'yes' if loop['correlations'] else 'no'}; "
+                f"resolved {'yes' if loop['resolved'] else 'no'}",
+            )
+        )
+    # The conventions of an electroweak virtual (WP3.2 EWI-7), when recorded.
+    conventions = cast(Sequence[Sequence[object]], loop.get("conventions") or ())
+    if conventions:
+        rows.append(
+            ("conventions", "; ".join(f"{key} {value}" for key, value in conventions))
+        )
+    rows.append(("runtime payload", _byte_size(loop["runtime_bytes"])))
+    return rows
+
+
 def _artifact_inspection_summary(
     plain: Mapping[str, object],
     *,
@@ -2510,6 +2821,15 @@ def _artifact_inspection_summary(
                 _colored(text, key=key, enabled=color),
             )
         )
+        if key == "created":
+            width = _statistics_width(
+                [field for field, _ in summary_rows],
+                [_value_text(value) for _, value in summary_rows],
+            )
+            for field, cell in _generation_statistics_rows(
+                plain.get("generation_statistics"), color=color, width=width
+            ):
+                summary.add_row((_paint(field, "CYAN", enabled=color), cell))
 
     process_table = prettytable.PrettyTable(
         (
@@ -2607,6 +2927,11 @@ def _artifact_inspection_summary(
         backend = process.get("prepared_backend")
         mode_text = mode if backend is None else f"{mode} ({backend})"
         add_execution_row((process_id, "mode / backend", mode_text))
+        loop = process.get("loop")
+        if isinstance(loop, Mapping):
+            for row in _loop_inspection_rows(loop):
+                add_execution_row((process_id, *row))
+            continue
         lc_flow_layout = process.get("lc_flow_layout")
         if lc_flow_layout is not None:
             add_execution_row((process_id, "LC flow layout", str(lc_flow_layout)))
@@ -3146,6 +3471,89 @@ def _mapping_summary(
     return "\n\n".join(sections)
 
 
+_TABLE_WIDTH: ContextVar[int | None] = ContextVar(
+    "pyamplicol_summary_table_width", default=None
+)
+
+
+@contextmanager
+def table_width(width: int | None) -> Iterator[None]:
+    """Fit the tables ``render_summary`` renders in this block within
+    ``width`` columns (a terminal's; None: their natural width)."""
+
+    token = _TABLE_WIDTH.set(width)
+    try:
+        yield
+    finally:
+        _TABLE_WIDTH.reset(token)
+
+
+class _FittedTables:
+    """The prettytable module with tables that fit within ``width``
+    columns: a table wider than that has its widest column narrowed (its
+    cells wrap) until it fits, never a column below ``_FIT_MINIMUM``."""
+
+    def __init__(self, module: Any, width: int) -> None:
+        self._module = module
+        base = module.PrettyTable
+        limit = width
+
+        class FittedTable(base):  # type: ignore[misc, valid-type]
+            def get_string(self, **kwargs: Any) -> str:
+                text = str(super().get_string(**kwargs))
+                floors: list[int] | None = None
+                for _ in range(16):
+                    widest = max(
+                        (len(_ANSI_STYLE.sub("", line)) for line in text.splitlines()),
+                        default=0,
+                    )
+                    widths = list(getattr(self, "_widths", ()) or ())
+                    names = list(getattr(self, "_field_names", ()) or ())
+                    if widest <= limit or not widths or len(widths) != len(names):
+                        break
+                    if floors is None:
+                        floors = _column_floors(self, len(names))
+                    shrinkable = [
+                        index
+                        for index in range(len(widths))
+                        if widths[index] > floors[index]
+                    ]
+                    if not shrinkable:
+                        break
+                    column = max(shrinkable, key=widths.__getitem__)
+                    narrower = max(widths[column] - (widest - limit), floors[column])
+                    self.max_width[names[column]] = narrower
+                    text = str(super().get_string(**kwargs))
+                return text
+
+        self.PrettyTable = FittedTable
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._module, name)
+
+
+_FIT_MINIMUM = 16
+
+
+def _column_floors(table: Any, columns: int) -> list[int]:
+    """The narrowest each column of a fitted table may be: its header and
+    its longest word (a number, a name, an order never breaks), a path
+    breaking at ``_FIT_MINIMUM`` at most. A table that cannot fit keeps its
+    natural width."""
+
+    floors = [0] * columns
+    rows = list(getattr(table, "_rows", ()) or ())
+    for row in rows:
+        for index, cell in enumerate(row[:columns]):
+            for word in _ANSI_STYLE.sub("", str(cell)).split():
+                size = min(len(word), _FIT_MINIMUM) if "/" in word else len(word)
+                floors[index] = max(floors[index], size)
+    for index, name in enumerate(list(getattr(table, "_field_names", ()))[:columns]):
+        # A header never wraps (prettytable keeps it on one line).
+        floors[index] = max(floors[index], len(str(name)), 4)
+    return floors
+
+
 def render_summary(value: object, *, color: bool = False) -> str | None:
     """Return colored human tables for every CLI result shape."""
 
@@ -3153,20 +3561,99 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
         prettytable: Any = importlib.import_module("prettytable")
     except ImportError:
         return None
+    width = _TABLE_WIDTH.get()
+    from pyamplicol.benchmarking import VirtualProfileResult as _Profiled
+    from pyamplicol.loop_profile import LoopProfileReport as _Profile
+
+    if width is not None and not isinstance(value, (_Profile, _Profiled)):
+        # The profile tables lay themselves out within their line width.
+        prettytable = _FittedTables(prettytable, width)
     from pyamplicol.api.results import (
         BenchmarkResult,
         GenerationResult,
         ResolvedEvaluation,
+        TreeOrderEvaluation,
+    )
+    from pyamplicol.api.virtual_results import (
+        ResolvedVirtualEvaluation,
+        VirtualEvaluation,
     )
 
+    if isinstance(value, (VirtualEvaluation, ResolvedVirtualEvaluation)):
+        from .virtual import virtual_evaluation_summary
+
+        return virtual_evaluation_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.api.virtual_results import VirtualOrderEvaluation
+
+    if isinstance(value, VirtualOrderEvaluation):
+        from .virtual import virtual_order_summary
+
+        return virtual_order_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.loop_profile import LoopProfileReport
+
+    if isinstance(value, LoopProfileReport):
+        from .loop_profile import loop_profile_summary
+
+        return loop_profile_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.benchmarking import VirtualProfileResult
+
+    if isinstance(value, VirtualProfileResult):
+        from .virtual import virtual_profile_summary
+
+        return virtual_profile_summary(value, prettytable=prettytable, color=color)
+
+    from pyamplicol.loops.v2.checks import CheckReport
+
+    if isinstance(value, CheckReport):
+        from .checks import check_report_summary
+
+        return check_report_summary(
+            value, prettytable=prettytable, color=color
+        ) + _captured_line(value, color)
+
+    if isinstance(value, Mapping) and value:
+        from pyamplicol.correlators import CorrelatedValue
+
+        has_correlated_value = any(
+            isinstance(result, VirtualEvaluation)
+            or (
+                isinstance(result, tuple)
+                and any(isinstance(item, CorrelatedValue) for item in result)
+            )
+            for result in value.values()
+        )
+        if has_correlated_value and all(
+            isinstance(label, str)
+            and (
+                (isinstance(result, VirtualEvaluation) and result.correlated)
+                or (
+                    isinstance(result, tuple)
+                    and all(isinstance(item, CorrelatedValue) for item in result)
+                )
+            )
+            for label, result in value.items()
+        ):
+            return "\n\n".join(
+                f"{_paint(f'Correlated request: {label}', 'CYAN', enabled=color)}\n"
+                f"{render_summary(result, color=color)}"
+                for label, result in value.items()
+            )
+
     if isinstance(value, GenerationResult):
-        return _generation_summary(value, prettytable=prettytable, color=color)
+        return _generation_summary(
+            value, prettytable=prettytable, color=color
+        ) + _captured_line(value, color)
     if isinstance(value, ResolvedEvaluation):
         return _resolved_evaluation_summary(
             value,
             prettytable=prettytable,
             color=color,
         )
+    if isinstance(value, TreeOrderEvaluation):
+        return _tree_order_summary(value, prettytable=prettytable, color=color)
     if isinstance(value, tuple) and all(_is_evaluation_value(item) for item in value):
         return _total_evaluation_summary(
             cast(tuple[object, ...], value),
@@ -3185,6 +3672,26 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
             prettytable=prettytable,
             color=color,
         )
+    if isinstance(plain, Mapping) and isinstance(plain.get("virtual"), Mapping):
+        details = cast(Mapping[str, object], plain["virtual"])
+        sections = [
+            _mapping_summary(value, plain, prettytable=prettytable, color=color)
+        ]
+        histories = details.get("color_correlations")
+        if (
+            isinstance(histories, Sequence)
+            and not isinstance(histories, (str, bytes))
+            and histories
+        ):
+            sections.append(
+                _record_sequence_summary(
+                    histories,
+                    prettytable=prettytable,
+                    color=color,
+                    title="Virtual Colour Histories (directed interference)",
+                )
+            )
+        return "\n\n".join(sections)
     if isinstance(plain, Mapping) and isinstance(plain.get("process_group"), Mapping):
         # `inspect --process MEMBER --full-physics` of a grouped process
         physics = {key: entry for key, entry in plain.items() if key != "process_group"}
@@ -3228,3 +3735,13 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
 
 
 __all__ = ["render_summary"]
+
+
+def _captured_line(value: Any, color: bool) -> str:
+    """One dim line naming a result's captured warnings (``warnings``,
+    m-lit ux-besteffort), or nothing."""
+
+    from pyamplicol.api.result_warnings import summary_line
+
+    line = summary_line(tuple(getattr(value, "warnings", ())))
+    return "" if line is None else "\n" + _paint(line, "LIGHTBLACK_EX", enabled=color)

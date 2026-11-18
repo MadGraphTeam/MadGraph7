@@ -9,7 +9,7 @@ import json
 import math
 import re
 import struct
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
@@ -31,7 +31,6 @@ RECURRENCE_PROCESS_BINDING_ABI = "pyamplicol-recurrence-process-binding-v4"
 RECURRENCE_PROCESS_BINDING_MAGIC = b"PACRDBN4"
 _PROCESS_BINDING_VERSION = 4
 _PROCESS_BINDING_FIXED_SIZE = 344
-_MAX_SOURCE_BIJECTIONS = 4096
 
 _DIRECT_ROLE = {
     "source": 0,
@@ -1264,7 +1263,8 @@ def _wire_integer(
     ):
         qualifier = "positive " if positive else ""
         raise RecurrenceScheduleSharingError(
-            f"{context} must be a {qualifier}integer no larger than {maximum}"
+            f"{context} must be a {qualifier}integer no larger than {maximum} "
+            f"(its wire field width), not {value!r}"
         )
     return value
 
@@ -1328,7 +1328,15 @@ def exact_recurrence_process_bijection(
     ):
         return None
 
-    candidates = _source_slot_bijections(root.external_legs, target.external_legs)
+    candidates = _source_slot_bijections(
+        root.external_legs,
+        target.external_legs,
+        forced=_sector_forced_source_slots(
+            root.physical_sectors,
+            target.physical_sectors,
+            len(root.external_legs),
+        ),
+    )
     for source_slots in candidates:
         source_relation = _external_source_relation(
             root.external_legs,
@@ -1462,7 +1470,20 @@ def _variable_semantic_digests(
 def _source_slot_bijections(
     root: tuple[RecurrenceExternalLegV1, ...],
     target: tuple[RecurrenceExternalLegV1, ...],
-) -> tuple[tuple[int, ...], ...]:
+    *,
+    forced: Mapping[int, int] | None = None,
+) -> Iterator[tuple[int, ...]]:
+    """Every orbit-preserving root -> target slot bijection, lazily, in the
+    order of the product of each orbit group's permutations.
+
+    ``forced`` maps root slots to the only target slot an accepted relation
+    can give them (``_sector_forced_source_slots``); None means that no
+    candidate can be accepted. Skipping the inconsistent candidates keeps
+    the first accepted one, and enumeration is exact at any group size.
+    """
+
+    if forced is None:
+        return
     root_groups: dict[tuple[object, ...], list[int]] = {}
     target_groups: dict[tuple[object, ...], list[int]] = {}
     for leg in root:
@@ -1472,27 +1493,122 @@ def _source_slot_bijections(
             leg.source_slot
         )
     if set(root_groups) != set(target_groups):
-        return ()
-    groups: list[tuple[tuple[int, ...], tuple[tuple[int, ...], ...]]] = []
-    count = 1
+        return
+    groups: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
     for key in sorted(root_groups, key=repr):
         left = tuple(root_groups[key])
         right = tuple(target_groups[key])
         if len(left) != len(right):
-            return ()
-        permutations = tuple(itertools.permutations(right))
-        count *= len(permutations)
-        if count > _MAX_SOURCE_BIJECTIONS:
-            return ()
-        groups.append((left, permutations))
-    result: list[tuple[int, ...]] = []
-    for selection in itertools.product(*(rows[1] for rows in groups)):
-        mapping = [0] * len(root)
-        for (root_slots, _), target_slots in zip(groups, selection, strict=True):
+            return
+        groups.append((left, right))
+
+    def group_images(
+        left: tuple[int, ...], right: tuple[int, ...]
+    ) -> Iterator[tuple[int, ...]]:
+        # The permutations of ``right`` that agree with ``forced``, in
+        # ``itertools.permutations`` order: the free positions take the
+        # remaining targets in their original order.
+        fixed = {
+            index: forced[slot] for index, slot in enumerate(left) if slot in forced
+        }
+        if any(value not in right for value in fixed.values()) or len(
+            set(fixed.values())
+        ) != len(fixed):
+            return
+        remaining = tuple(value for value in right if value not in fixed.values())
+        free = [index for index in range(len(left)) if index not in fixed]
+        for chosen in itertools.permutations(remaining):
+            image = list(right)
+            for index, value in fixed.items():
+                image[index] = value
+            for index, value in zip(free, chosen, strict=True):
+                image[index] = value
+            yield tuple(image)
+
+    def product(index: int, mapping: list[int]) -> Iterator[tuple[int, ...]]:
+        if index == len(groups):
+            yield tuple(mapping)
+            return
+        root_slots, right = groups[index]
+        for target_slots in group_images(root_slots, right):
             for root_slot, target_slot in zip(root_slots, target_slots, strict=True):
                 mapping[root_slot] = target_slot
-        result.append(tuple(mapping))
-    return tuple(result)
+            yield from product(index + 1, mapping)
+
+    yield from product(0, [0] * len(root))
+
+
+def _sector_forced_source_slots(
+    root: tuple[RecurrencePhysicalLCSectorV1, ...],
+    target: tuple[RecurrencePhysicalLCSectorV1, ...],
+    slot_count: int,
+) -> dict[int, int] | None:
+    """Root slot -> target slot forced by the sector alignment that
+    ``exact_recurrence_process_bijection`` requires (root sector ``k`` maps to
+    the target sector with ID ``k``: equal sector keys slot by slot).
+
+    Returns None when no slot bijection can meet it, and an empty mapping
+    (no pruning) when the sectors are not uniquely indexed.
+    """
+
+    by_id: dict[int, RecurrencePhysicalLCSectorV1] = {}
+    for sector in target:
+        if sector.sector_id in by_id:
+            return {}
+        by_id[sector.sector_id] = sector
+    forced: dict[int, int] = {}
+    images: dict[int, int] = {}
+    for position, left in enumerate(root):
+        right = by_id.get(position)
+        if right is None:
+            return None
+        pairs = _aligned_sector_slots(left, right)
+        if pairs is None:
+            return None
+        for root_slot, target_slot in pairs:
+            if not (0 <= root_slot < slot_count and 0 <= target_slot < slot_count):
+                return {}
+            if forced.setdefault(root_slot, target_slot) != target_slot:
+                return None
+            if images.setdefault(target_slot, root_slot) != root_slot:
+                return None
+    return forced
+
+
+def _aligned_sector_slots(
+    left: RecurrencePhysicalLCSectorV1,
+    right: RecurrencePhysicalLCSectorV1,
+) -> list[tuple[int, int]] | None:
+    """The slot pairs two sectors' keys align, or None if their shapes
+    differ (``_sector_key``)."""
+
+    if (
+        left.kind != right.kind
+        or left.closure_proof_algorithm != right.closure_proof_algorithm
+        or len(left.open_strings) != len(right.open_strings)
+    ):
+        return None
+    pairs = [(left.closure_source_slot, right.closure_source_slot)]
+    sequences: list[tuple[Sequence[int], Sequence[int]]] = []
+    for row, other in zip(left.open_strings, right.open_strings, strict=True):
+        pairs.append((row.fundamental_source_slot, other.fundamental_source_slot))
+        pairs.append(
+            (row.antifundamental_source_slot, other.antifundamental_source_slot)
+        )
+        sequences.append((row.adjoint_source_slots, other.adjoint_source_slots))
+        sequences.append((row.singlet_source_slots, other.singlet_source_slots))
+    sequences.extend(
+        (
+            (left.trace_source_slots, right.trace_source_slots),
+            (left.singlet_source_slots, right.singlet_source_slots),
+            (left.word_source_slots, right.word_source_slots),
+        )
+    )
+    for first, second in sequences:
+        if len(first) != len(second):
+            return None
+        pairs.extend(zip(first, second, strict=True))
+    return pairs
 
 
 def _external_leg_orbit_key(leg: RecurrenceExternalLegV1) -> tuple[object, ...]:
@@ -2186,8 +2302,10 @@ def encode_recurrence_process_binding(
     executor_pack: RecurrenceProcessExecutorPack,
 ) -> bytes:
     process = _nonempty_text(process_id, "process ID").encode("utf-8")
-    if len(process) > 4096:
-        raise RecurrenceScheduleSharingError("process ID exceeds 4096 UTF-8 bytes")
+    if len(process) > _MISSING_U32:
+        raise RecurrenceScheduleSharingError(
+            f"process ID of {len(process)} UTF-8 bytes exceeds its u32 length field"
+        )
     mask = _single_bit(process_support_mask, "process support mask")
     words = tuple(
         (mask >> shift) & ((1 << 64) - 1)
