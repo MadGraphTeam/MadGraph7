@@ -1227,6 +1227,7 @@ class Runtime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
         color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
@@ -1265,6 +1266,7 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+                lane_rescue,
             )
         )
         options.update(
@@ -1323,6 +1325,7 @@ class Runtime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
         color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
@@ -1343,6 +1346,7 @@ class Runtime:
             kinematics_improvement=kinematics_improvement,
             kinematics_improvement_binary64=kinematics_improvement_binary64,
             color_resolution=color_resolution,
+            lane_rescue=lane_rescue,
         )
 
     @_collector.paused
@@ -1625,6 +1629,7 @@ class Runtime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
     ) -> tuple[_pyamplicol.CorrelatedValue, ...] | VirtualEvaluation:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
@@ -1654,6 +1659,7 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+                lane_rescue,
             )
         )
         options.update(
@@ -1773,6 +1779,7 @@ class Runtime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
     ) -> (
         dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]
         | dict[str, VirtualEvaluation]
@@ -1804,6 +1811,7 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+                lane_rescue,
             )
         )
         options.update(
