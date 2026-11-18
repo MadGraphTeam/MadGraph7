@@ -124,11 +124,12 @@ pub fn target(value: f64) -> Result<f64, Refusal> {
 pub const DEFAULT_UNCHECKED: bool = false;
 
 /// The decimal digits of the lane rescue's arbitrary-precision carrier
-/// (`rusticol_core::loop_execution::v2::RescueCarrier`): the last level of
-/// the default rescue ladder (`loops.v2.stability.DEFAULT_RESCUE`, 57
-/// digits), at its working digits (`v2_runtime::V2Precision::
-/// working_digits`).
-pub const LANE_RESCUE_DIGITS: u32 = 57;
+/// (`rusticol_core::loop_execution::v2::RescueCarrier`), at their working
+/// digits (`v2_runtime::V2Precision::working_digits`): 500, the user's
+/// arbitrary precision "everywhere" (USER 2026-11-18). The one place to
+/// point at the shared default of the rescue ladder (agent ladder,
+/// work/rescue-ladder) once it exists.
+pub const LANE_RESCUE_DIGITS: u32 = 500;
 
 /// What the unchecked setting does, as the policy record states it (one
 /// text for every surface: the Python API's and the SDKs' inspect records).

@@ -708,8 +708,7 @@ have no value. Such a lane is now **rescued**, in the checked reduction (the
 default) and in the unchecked one (`reduction_unchecked=True`, where the
 lanes still refused have no value at all: NinjaRS's conditioning screen, a
 Euclidean-plane cut, a non-finite result): only its reduction is redone in a
-higher carrier, double-double first, then arbitrary precision (the default
-rescue ladder's digits), on the same backend, its rescue reductions always
+higher carrier, double-double first, then arbitrary precision (500 digits), on the same backend, its rescue reductions always
 checked (a refusal there moves the lane to the next carrier, so no value a
 higher-precision engine rejects is served). Its coefficients are the binary64 ones,
 lifted exactly (the numerators are not recomputed); its kinematic inputs are
