@@ -197,6 +197,8 @@ pub struct DirectReplaySelectorPlan {
     row_groups: Arc<[DirectRowGroupDescriptor]>,
     amplitude_clear_ranges: Arc<[Range<usize>]>,
     destination_program: Option<Arc<DirectReplayDestinationProgram>>,
+    // Representative pattern -> this flow's pattern (flavour-union templates).
+    pattern_map: Option<Arc<[u32]>>,
 }
 
 /// A cold dependency closure, reusable across flows with the same representative.
@@ -356,6 +358,11 @@ impl DirectReplaySelectorPlan {
 
     pub(crate) fn helicity_map(&self) -> &[u32] {
         &self.helicity_map
+    }
+
+    /// Pattern of this flow for each representative pattern; `None` keeps them.
+    pub(crate) fn pattern_map(&self) -> Option<&[u32]> {
+        self.pattern_map.as_deref()
     }
 
     pub fn selected_row_group_count(&self) -> usize {
@@ -764,8 +771,9 @@ impl DirectRecurrenceExecutionRuntime {
             .plan
             .replay_targets()
             .iter()
-            .filter(|target| target.public_flow_id == public_flow_id);
-        let target = matches
+            .enumerate()
+            .filter(|(_, target)| target.public_flow_id == public_flow_id);
+        let (target_index, target) = matches
             .next()
             .ok_or_else(|| invalid(format!("public flow {public_flow_id} is not retained")))?;
         if matches.next().is_some() {
@@ -885,6 +893,11 @@ impl DirectRecurrenceExecutionRuntime {
             row_groups: row_groups.into(),
             amplitude_clear_ranges: amplitude_clear_ranges.into(),
             destination_program: None,
+            pattern_map: self
+                .plan
+                .destination_patterns()
+                .replay_pattern_map(target_index)
+                .map(Arc::from),
         })
     }
 

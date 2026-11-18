@@ -115,15 +115,18 @@ impl PatternSelection {
         Ok(())
     }
 
-    /// Visit each (sector, helicity) group once with the signed pattern sum.
+    /// Visit each (sector, helicity) group once with the signed pattern sum;
+    /// `pattern_map` relabels representative patterns for a replayed flow.
     fn visit<'a>(
         &mut self,
+        pattern_map: Option<&[u32]>,
         amplitudes: impl Iterator<Item = RusticolResult<DirectRecurrenceAmplitudeView<'a>>>,
         point_count: usize,
         visit: impl FnMut(&DirectAmplitudeDestinationDescriptor, &[f64], &[f64]) -> RusticolResult<()>,
     ) -> RusticolResult<()> {
         visit_pattern_groups(
             &self.destination_patterns,
+            pattern_map,
             &self.signs,
             &mut self.combined_re,
             &mut self.combined_im,
@@ -152,8 +155,10 @@ type ReplayRestriction = (Option<u64>, Option<BTreeSet<String>>);
 const SELECTED_REPLAY_CACHE_LIMIT: usize = 64;
 
 /// Sum the selected patterns of each consecutive (sector, helicity) group.
+#[allow(clippy::too_many_arguments)]
 fn visit_pattern_groups<'a>(
     destination_patterns: &[u32],
+    pattern_map: Option<&[u32]>,
     signs: &[f64],
     combined_re: &mut Vec<f64>,
     combined_im: &mut Vec<f64>,
@@ -186,10 +191,9 @@ fn visit_pattern_groups<'a>(
             group = None;
         }
         group.get_or_insert(destination);
-        let pattern = destination_patterns
-            .get(destination.id as usize)
+        let pattern = mapped_destination_pattern(destination_patterns, pattern_map, destination.id)
             .ok_or_else(|| RusticolError::integrity("destination has no pattern"))?;
-        let sign = signs.get(*pattern as usize).copied().unwrap_or(0.0);
+        let sign = signs.get(pattern as usize).copied().unwrap_or(0.0);
         if sign == 0.0 {
             continue;
         }
@@ -216,16 +220,31 @@ fn visit_pattern_groups<'a>(
     Ok(())
 }
 
+/// Pattern of a representative destination in a flow replayed with `pattern_map`.
+#[inline(always)]
+fn mapped_destination_pattern(
+    destination_patterns: &[u32],
+    pattern_map: Option<&[u32]>,
+    destination: u32,
+) -> Option<u32> {
+    let pattern = *destination_patterns.get(destination as usize)?;
+    match pattern_map {
+        Some(map) => map.get(pattern as usize).copied(),
+        None => Some(pattern),
+    }
+}
+
 /// Visit LC amplitudes per destination, or per pattern-combined group.
 #[inline(always)]
 fn visit_lc_amplitudes<'a>(
     patterns: Option<&mut PatternSelection>,
+    pattern_map: Option<&[u32]>,
     amplitudes: impl Iterator<Item = RusticolResult<DirectRecurrenceAmplitudeView<'a>>>,
     point_count: usize,
     mut visit: impl FnMut(&DirectAmplitudeDestinationDescriptor, &[f64], &[f64]) -> RusticolResult<()>,
 ) -> RusticolResult<()> {
     if let Some(patterns) = patterns {
-        return patterns.visit(amplitudes, point_count, visit);
+        return patterns.visit(pattern_map, amplitudes, point_count, visit);
     }
     for amplitude in amplitudes {
         let amplitude = amplitude?;
@@ -1240,6 +1259,7 @@ impl RecurrenceNativeRuntime {
                 for (output, signs) in outputs.iter_mut().zip(signs) {
                     visit_pattern_groups(
                         destination_patterns,
+                        replay_selector.pattern_map(),
                         signs,
                         combined_re,
                         combined_im,
@@ -2024,10 +2044,10 @@ impl RecurrenceNativeRuntime {
                     RusticolError::internal("pattern-restricted replay requires a template")
                 })?
                 .destination_patterns;
+            let pattern_map = selector.pattern_map();
             destinations.retain(|id| {
-                patterns
-                    .get(*id as usize)
-                    .is_some_and(|pattern| *pattern < 64 && mask & (1 << pattern) != 0)
+                mapped_destination_pattern(patterns, pattern_map, *id)
+                    .is_some_and(|pattern| pattern < 64 && mask & (1 << pattern) != 0)
             });
         }
         let program_key = (selector.representative_flow_id(), destinations);
@@ -2132,6 +2152,7 @@ impl RecurrenceNativeRuntime {
 
             visit_lc_amplitudes(
                 self.pattern_selection.as_mut(),
+                replay_selector.pattern_map(),
                 direct_output.selected_amplitudes(),
                 point_count,
                 |destination, real, imaginary| {
@@ -2429,6 +2450,7 @@ impl RecurrenceNativeRuntime {
                 let reduction_started = Instant::now();
                 visit_lc_amplitudes(
                     self.pattern_selection.as_mut(),
+                    replay_selector.pattern_map(),
                     output.selected_amplitudes(),
                     point_count,
                     |destination, real, imaginary| {
@@ -2590,6 +2612,7 @@ impl RecurrenceNativeRuntime {
                 let reduction_started = Instant::now();
                 visit_lc_amplitudes(
                     self.pattern_selection.as_mut(),
+                    replay_selector.pattern_map(),
                     output.selected_amplitudes(),
                     point_count,
                     |destination, real, imaginary| {
@@ -5234,7 +5257,7 @@ mod replay_destination_helicity_tests {
         let run = |selection: &mut PatternSelection| {
             let mut visited = Vec::new();
             selection
-                .visit(amplitudes(), 2, |destination, re, im| {
+                .visit(None, amplitudes(), 2, |destination, re, im| {
                     visited.push((destination.id, re.to_vec(), im.to_vec()));
                     Ok(())
                 })
@@ -5257,6 +5280,15 @@ mod replay_destination_helicity_tests {
                 (2, vec![-3.0, -4.0], vec![-0.0, -0.0]),
             ]
         );
+        // A replayed flow relabels the representative's patterns 0 <-> 1.
+        let mut mapped = Vec::new();
+        selection
+            .visit(Some(&[1, 0]), amplitudes(), 2, |destination, re, _| {
+                mapped.push((destination.id, re.to_vec()));
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(mapped, [(0, vec![-1.0, -2.0]), (3, vec![-5.0, -6.0])]);
         assert!(selection.select(&[2], &[1]).is_err());
         assert!(selection.select(&[0, 0], &[1, 1]).is_err());
     }

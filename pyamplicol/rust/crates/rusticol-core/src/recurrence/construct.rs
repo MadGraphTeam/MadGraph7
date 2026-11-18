@@ -5137,7 +5137,7 @@ fn build_recurrence_program_impl(
     let transition_reflections = TransitionReflectionIndex::new(template_input, &template_catalog)?;
     let replay_targets = build_replay_targets(strategy, process_input, &process_catalog)?;
     let pattern_count =
-        pattern_resolved_rule_count(strategy, process_input, pairing_catalog, &replay_targets)?;
+        pattern_resolution(strategy, pairing_catalog, &replay_targets)?;
     let materialized_sectors = materialized_sector_ids(strategy, process_input, &replay_targets);
     let mut color_states = DynamicLCColorStateInterner::default();
     let mut currents = Vec::<PendingCurrent>::new();
@@ -10628,7 +10628,7 @@ fn finish_program(
     helicity_support_rule: HelicitySupportRule,
     global_helicity_flip_rule: GlobalHelicityFlipRule,
     reflection_certificates: Vec<PendingReflectionCertificate>,
-    pattern_count: Option<u32>,
+    pattern_count: Option<(u32, Option<Box<[u32]>>)>,
 ) -> RusticolResult<RecurrenceProgram> {
     validate_pending_reflection_certificates(&reflection_certificates)?;
 
@@ -11035,8 +11035,8 @@ fn finish_program(
     if let Some(certificate) = closure_target_domain_certificate {
         program = program.with_closure_target_domain_certificate(certificate)?;
     }
-    if let Some(pattern_count) = pattern_count {
-        program = program.with_pattern_count(pattern_count)?;
+    if let Some((pattern_count, replay_maps)) = pattern_count {
+        program = program.with_pattern_count(pattern_count, replay_maps)?;
     }
     if let Some(projection) = color_projection.as_ref() {
         let body = encode_color_projection_certificate_body(
@@ -11051,13 +11051,13 @@ fn finish_program(
     }
 }
 
-/// Rule count of a pattern-resolved template after checking that replay never relabels patterns.
-fn pattern_resolved_rule_count(
+/// Rule count of a pattern-resolved template and, when replay moves fermion slots, the
+/// rule each replay target maps every representative rule to (target-major).
+fn pattern_resolution(
     strategy: RecurrenceStrategy,
-    process: &OwnedRecurrenceProcessInput,
     pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
     replay_targets: &[RecurrenceReplayTarget],
-) -> RusticolResult<Option<u32>> {
+) -> RusticolResult<Option<(u32, Option<Box<[u32]>>)>> {
     let Some(catalog) = pairing_catalog.filter(|catalog| catalog.pattern_resolved()) else {
         return Ok(None);
     };
@@ -11066,31 +11066,58 @@ fn pattern_resolved_rule_count(
             "pattern-resolved recurrence requires the LC topology-replay layout",
         ));
     }
-    for target in replay_targets {
-        for leg in process
-            .external_legs
-            .iter()
-            .filter(|leg| leg.is_fermionic != 0)
-        {
-            if target
-                .source_slot_permutation()
-                .get(leg.source_slot as usize)
-                .copied()
-                != Some(leg.source_slot)
-            {
-                return Err(invalid(
-                    "pattern-resolved topology replay moves a fermion source slot",
-                ));
-            }
-        }
-    }
     let rule_count = catalog.summary().rule_count();
     if rule_count == 0 || catalog.rules().len() != rule_count as usize {
         return Err(invalid(
             "pattern-resolved recurrence requires a nonempty fermion pairing catalog",
         ));
     }
-    Ok(Some(rule_count))
+    let mut rule_pairs = Vec::with_capacity(catalog.rules().len());
+    let mut rule_by_pairs = BTreeMap::new();
+    for (index, rule) in catalog.rules().iter().enumerate() {
+        let mut pairs = catalog
+            .endpoint_pairings(*rule)?
+            .iter()
+            .map(|pair| (pair.fundamental_source_slot, pair.antifundamental_source_slot))
+            .collect::<Vec<_>>();
+        pairs.sort_unstable();
+        if rule.rule_id as usize != index || rule_by_pairs.insert(pairs.clone(), rule.rule_id).is_some()
+        {
+            return Err(invalid(
+                "pattern-resolved pairing rules must be numbered in order with distinct pairings",
+            ));
+        }
+        rule_pairs.push(pairs);
+    }
+    // A replay route evaluates the representative at permuted sources, so its rule
+    // (f, a) lands on the target rule (perm[f], perm[a]).
+    let mut maps = Vec::with_capacity(replay_targets.len() * rule_pairs.len());
+    for target in replay_targets {
+        let permutation = target.source_slot_permutation();
+        for pairs in &rule_pairs {
+            let mut mapped = pairs
+                .iter()
+                .map(|(fundamental, antifundamental)| {
+                    Some((
+                        *permutation.get(*fundamental as usize)?,
+                        *permutation.get(*antifundamental as usize)?,
+                    ))
+                })
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| invalid("replay permutation does not cover a pairing endpoint"))?;
+            mapped.sort_unstable();
+            maps.push(*rule_by_pairs.get(&mapped).ok_or_else(|| {
+                invalid("topology replay maps a fermion pairing rule outside the catalog")
+            })?);
+        }
+    }
+    let identity = maps
+        .chunks(rule_pairs.len())
+        .all(|map| map.iter().enumerate().all(|(rule, image)| *image as usize == rule));
+    Ok(Some((
+        rule_count,
+        (!identity).then(|| maps.into_boxed_slice()),
+    )))
 }
 
 fn helicity_support_rule(

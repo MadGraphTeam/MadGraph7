@@ -3542,6 +3542,9 @@ fn lower_destination_patterns(
     };
     Ok(DirectDestinationPatterns {
         pattern_count,
+        replay_pattern_maps: program
+            .replay_pattern_maps()
+            .map_or_else(Vec::new, <[u32]>::to_vec),
         destination_patterns: destinations
             .iter()
             .map(|destination| {

@@ -79,6 +79,8 @@ _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE: Final = (
 )
 _GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE: Final = "helicity-equivalence:global-flip-v1"
 FERMION_PAIRING_PATTERN_RESOLVED_ROLE: Final = "fermion-pairing:pattern-resolved-v1"
+# Replay of pattern-resolved templates may move fermion slots (Rust maps the patterns).
+_PATTERN_RESOLVED_FERMION_REPLAY = True
 
 
 class RecurrenceProjectionError(ValueError):
@@ -140,7 +142,8 @@ def project_recurrence_process_v1(
     recurrence template catalog.
 
     ``pattern_resolved`` marks a flavour-union template: Rust keeps one
-    amplitude per fermion pairing rule and replay never moves a fermion slot.
+    amplitude per fermion pairing rule; a replay that moves fermion slots
+    relabels the patterns of its flow.
     """
 
     _validate_projection_roots(
@@ -1531,9 +1534,12 @@ def _project_replay_partitions(
                 fermion_sign=int(sign),
             )
             target_anchor = target_sector.closure_source_slot
-            # Pattern-resolved replay must not relabel fermion pairings.
-            anchor_compatible = permutation[representative_anchor] == target_anchor and (
+            # Without fermion replay, pattern-resolved replay keeps every fermion slot.
+            anchor_compatible = permutation[
+                representative_anchor
+            ] == target_anchor and (
                 not pattern_resolved
+                or _PATTERN_RESOLVED_FERMION_REPLAY
                 or all(
                     permutation[leg.source_slot] == leg.source_slot
                     for leg in external_legs

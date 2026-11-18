@@ -426,6 +426,9 @@ impl DirectAmplitudeOrders {
 pub struct DirectDestinationPatterns {
     pub pattern_count: u32,
     pub destination_patterns: Vec<u32>,
+    /// Empty (every replay keeps the patterns) or, per replay target, the pattern each
+    /// representative pattern lands on (target-major, `pattern_count` each).
+    pub replay_pattern_maps: Vec<u32>,
 }
 
 impl DirectDestinationPatterns {
@@ -433,11 +436,27 @@ impl DirectDestinationPatterns {
         self.pattern_count != 0
     }
 
+    /// Pattern map of replay target `target`, `None` when replay keeps the patterns.
+    pub fn replay_pattern_map(&self, target: usize) -> Option<&[u32]> {
+        let count = self.pattern_count as usize;
+        self.replay_pattern_maps
+            .get(target * count..(target + 1) * count)
+            .filter(|map| !map.is_empty())
+    }
+
     fn validate(
         &self,
         strategy: RecurrenceStrategy,
         destination_count: usize,
+        replay_target_count: usize,
     ) -> RusticolResult<()> {
+        if !self.replay_pattern_maps.is_empty() {
+            super::program::validate_replay_pattern_maps(
+                &self.replay_pattern_maps,
+                self.pattern_count,
+                replay_target_count,
+            )?;
+        }
         if !self.is_pattern_resolved() {
             return if self.destination_patterns.is_empty() {
                 Ok(())
@@ -1861,9 +1880,11 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     validate_contribution_initialization(parts)?;
     validate_closure_proofs(parts)?;
     parts.amplitude_orders.validate(parts.closures.len())?;
-    parts
-        .destination_patterns
-        .validate(parts.strategy, parts.amplitude_destinations.len())?;
+    parts.destination_patterns.validate(
+        parts.strategy,
+        parts.amplitude_destinations.len(),
+        parts.replay_targets.len(),
+    )?;
     Ok(())
 }
 
@@ -2591,6 +2612,13 @@ fn digest_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<SemanticDig
         count!(patterns.destination_patterns);
         for value in &patterns.destination_patterns {
             hash.update(value.to_le_bytes());
+        }
+        if !patterns.replay_pattern_maps.is_empty() {
+            hash.update(b"replay-pattern-maps-v1\0");
+            count!(patterns.replay_pattern_maps);
+            for value in &patterns.replay_pattern_maps {
+                hash.update(value.to_le_bytes());
+            }
         }
     }
     SemanticDigest::new(hash.finalize().into())

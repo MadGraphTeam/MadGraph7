@@ -2141,6 +2141,7 @@ pub struct RecurrenceProgram {
     closure_target_domain_certificate: Option<ClosureTargetDomainCertificateV1>,
     color_projection_certificate_body: Option<Box<[u8]>>,
     pattern_count: Option<u32>,
+    replay_pattern_maps: Option<Box<[u32]>>,
 }
 
 impl RecurrenceProgram {
@@ -2210,6 +2211,7 @@ impl RecurrenceProgram {
             closure_target_domain_certificate: None,
             color_projection_certificate_body: None,
             pattern_count: None,
+            replay_pattern_maps: None,
         };
         program.validate()?;
         Ok(program)
@@ -2321,8 +2323,13 @@ impl RecurrenceProgram {
         self.color_projection_certificate_body.as_deref()
     }
 
-    /// Mark a pattern-resolved template: every destination owns one of `pattern_count` rules.
-    pub(crate) fn with_pattern_count(mut self, pattern_count: u32) -> RusticolResult<Self> {
+    /// Mark a pattern-resolved template: every destination owns one of `pattern_count` rules;
+    /// `replay_maps` (target-major) maps representative rules to each replay target's.
+    pub(crate) fn with_pattern_count(
+        mut self,
+        pattern_count: u32,
+        replay_maps: Option<Box<[u32]>>,
+    ) -> RusticolResult<Self> {
         if self.strategy != RecurrenceStrategy::TopologyReplay || pattern_count == 0 {
             return Err(invalid(
                 "pattern-resolved programs require topology replay and at least one pattern",
@@ -2337,8 +2344,18 @@ impl RecurrenceProgram {
                 "pattern-resolved destination lacks a pattern inside the catalog",
             ));
         }
+        if let Some(maps) = &replay_maps {
+            validate_replay_pattern_maps(maps, pattern_count, self.replay_targets.len())?;
+        }
         self.pattern_count = Some(pattern_count);
+        self.replay_pattern_maps = replay_maps;
         Ok(self)
+    }
+
+    /// Per replay target the rule each representative rule maps to (target-major);
+    /// `None` when every replay keeps the rules.
+    pub fn replay_pattern_maps(&self) -> Option<&[u32]> {
+        self.replay_pattern_maps.as_deref()
     }
 
     /// Pairing-rule count of a pattern-resolved template; `None` for normal programs.
@@ -3818,4 +3835,28 @@ mod tests {
         .unwrap_err();
         assert!(error.message().contains("digest mismatch"));
     }
+}
+
+/// Every replay target's pattern map must be a permutation of the catalog rules.
+pub(crate) fn validate_replay_pattern_maps(
+    maps: &[u32],
+    pattern_count: u32,
+    target_count: usize,
+) -> RusticolResult<()> {
+    let count = pattern_count as usize;
+    if count == 0 || maps.len() != count * target_count {
+        return Err(invalid(
+            "replay pattern maps need one rule per (replay target, catalog rule)",
+        ));
+    }
+    for map in maps.chunks(count) {
+        let mut seen = vec![false; count];
+        for image in map {
+            match seen.get_mut(*image as usize) {
+                Some(slot) if !*slot => *slot = true,
+                _ => return Err(invalid("a replay pattern map is not a rule permutation")),
+            }
+        }
+    }
+    Ok(())
 }
