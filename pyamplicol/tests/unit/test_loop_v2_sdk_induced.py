@@ -56,6 +56,17 @@ FAILED_STATUS = 3
 BEST_EFFORT_STATUS = 5  # RUSTICOL_VIRTUAL_BEST_EFFORT (m-lit ux-besteffort)
 
 
+@pytest.fixture(autouse=True)
+def _without_lane_rescue(monkeypatch):
+    """These tests exercise the mechanisms behind the lane rescue (the
+    per-point fallback and its guard, best-effort values, the unchecked
+    mode against the checked one) on points whose refused lanes the lane
+    rescue would serve: they run without it (the developer switch
+    ``RUSTICOL_LANE_RESCUE=off``, ``runtime::lane_rescue_enabled``)."""
+
+    monkeypatch.setenv("RUSTICOL_LANE_RESCUE", "off")
+
+
 @pytest.fixture(scope="module")
 def artifacts(loop_sm_ufo, loop_native, tmp_path_factory):
     return {

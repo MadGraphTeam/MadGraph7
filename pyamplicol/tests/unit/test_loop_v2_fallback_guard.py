@@ -73,6 +73,17 @@ TARGET = 1e-5
 FLOOR = 1e-5
 
 
+@pytest.fixture(autouse=True)
+def _without_lane_rescue(monkeypatch):
+    """These tests exercise the mechanisms behind the lane rescue (the
+    per-point fallback and its guard, best-effort values, the unchecked
+    mode against the checked one) on points whose refused lanes the lane
+    rescue would serve: they run without it (the developer switch
+    ``RUSTICOL_LANE_RESCUE=off``, ``runtime::lane_rescue_enabled``)."""
+
+    monkeypatch.setenv("RUSTICOL_LANE_RESCUE", "off")
+
+
 def _limit(target: float) -> float:
     return max(target, FLOOR)
 

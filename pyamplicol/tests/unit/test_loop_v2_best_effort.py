@@ -27,6 +27,17 @@ import pytest
 from tests.unit.loop_v2_induced_observables_rows import generate
 
 
+@pytest.fixture(autouse=True)
+def _without_lane_rescue(monkeypatch):
+    """These tests exercise the mechanisms behind the lane rescue (the
+    per-point fallback and its guard, best-effort values, the unchecked
+    mode against the checked one) on points whose refused lanes the lane
+    rescue would serve: they run without it (the developer switch
+    ``RUSTICOL_LANE_RESCUE=off``, ``runtime::lane_rescue_enabled``)."""
+
+    monkeypatch.setenv("RUSTICOL_LANE_RESCUE", "off")
+
+
 def _tirust(native) -> bool:
     return "tirust" in json.loads(native.reduction_backends())
 
