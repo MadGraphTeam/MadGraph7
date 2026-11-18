@@ -1130,3 +1130,73 @@ def test_runtime_threads_setting_and_pools():
     invocation = parse_cli(["profile", "art", "--runtime", "--runtime-threads", "4"])
     overrides = repr(invocation)
     assert "runtime_threads" in overrides and "4" in overrides
+
+
+class _ReferenceRuntime:
+    """A runtime whose reference call serves two points with status success:
+    one its checks trust, one whose estimate exceeds the target (a wrong
+    value served as a success, alphal00p/ninjars#15)."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def evaluate(self, batch, **options):
+        from types import SimpleNamespace
+
+        self.calls.append(options)
+        values = [
+            [(Decimal("1.25"),), (Decimal("0.5"),)],
+            [(Decimal("5.8e17"),)],
+        ]
+        checked = "stability_checks" in options
+        return SimpleNamespace(
+            values=values,
+            valid=[True, True],
+            diagnostics=[None, None],
+            stability=[
+                SimpleNamespace(relative=1e-40),
+                SimpleNamespace(relative=49.0),
+            ]
+            if checked
+            else None,
+        )
+
+
+def test_an_arbitrary_precision_reference_point_failing_its_checks_is_no_reference():
+    from pyamplicol.loop_profile import _WORKER, GroundTruth, _stability_records
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
+
+    saved = dict(_WORKER)
+    try:
+        runtime = _ReferenceRuntime()
+        _WORKER.clear()
+        _WORKER.update(runtime=runtime, truth=GroundTruth("arbitrary", 57), target=1e-5)
+        records = _stability_records("ninjars", "reference", [29, 30], [0, 1], 1.0)
+        options = runtime.calls[0]
+        checks = options["stability_checks"].to_checks()
+        assert (checks.rotations, checks.reduction_direction, checks.rescaled) == (
+            RECOMMENDED_CHECKS.rotations,
+            RECOMMENDED_CHECKS.reduction_direction,
+            RECOMMENDED_CHECKS.rescaled,
+        )
+        assert (options["arithmetic"], options["precision"]) == ("arbitrary", 57)
+        # The trusted point is the reference, summed exactly.
+        assert records[0] == (29, [[Fraction(7, 4)]], None, "1.75")
+        # The other one has no reference, as a failed reference point has.
+        index, value, reason, text = records[1]
+        assert (index, value, text) == (30, None, None)
+        assert reason == (
+            "failed: stability checks: estimate 4.9e+01 above the target 1e-05"
+        )
+        # Double-double: one plain evaluation, every success the reference.
+        runtime = _ReferenceRuntime()
+        _WORKER.update(runtime=runtime, truth=GroundTruth("double-double"))
+        records = _stability_records("ninjars", "reference", [29, 30], [0, 1], 1.0)
+        assert "stability_checks" not in runtime.calls[0]
+        assert [record[1] for record in records] == [
+            [[Fraction(7, 4)]],
+            [[Fraction(58 * 10**16)]],
+        ]
+    finally:
+        _WORKER.clear()
+        _WORKER.update(saved)

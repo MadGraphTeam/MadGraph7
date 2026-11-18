@@ -998,7 +998,11 @@ digits (57, `loops.v2.stability.DEFAULT_RESCUE`) or `arbitrary:DIGITS`
 tables' multipliers, and the labels follow it: the header's `ground truth`
 row, `(arb(57) x210)`, "Stable digits of binary64 vs arb(57)". The values
 judged are binary64's either way; a point whose reference fails is "no
-ref." as before. Arbitrary precision costs far more than double-double; its
+ref." as before. In arbitrary precision the stability run's reference pass
+runs the recommended stability checks (`RECOMMENDED_CHECKS`), and a point
+whose estimate exceeds the target counts as one whose reference fails (its
+cause names the estimate), so a wrong value with status success does not
+become the truth; the time multipliers stay those of one optimistic pass. Arbitrary precision costs far more than double-double; its
 runtime timing is bounded as the double-double one is. `--ground-truth none`
 runs no reference at all: no reference pass (the runtime table shows the
 time alone), and the stability run evaluates binary64 with its checks only

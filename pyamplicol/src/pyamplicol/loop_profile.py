@@ -30,7 +30,8 @@ digits of a value v against a reference r is -log10(|v - r| / |r|).
 - TRUE digits: the binary64 value against a re-run of the same point on the
   same backend in the reference precision (``benchmark.ground_truth``:
   double-double by default, or arbitrary precision; the reference only, no
-  automatic rescue). A
+  automatic rescue; in arbitrary precision with the recommended stability
+  checks, a point whose estimate exceeds the target has no reference). A
   point the backend refused or failed in binary64 has no value: 0 true
   digits (it ranks at the worst end) and no estimate.
 - ESTIMATED digits: the binary64 call's own stability estimate with the
@@ -1988,6 +1989,15 @@ def _measure(
     # Every step measured so far, by (backend, precision).
     known: dict[tuple[str, str], float] = {}
 
+    def checked_reference(reference: float | None) -> float | None:
+        """A stability point's prior cost in the reference: one optimistic
+        pass, or with the reference pass's checks (``_reference_checks``)
+        the checked binary64 call's factor over its pass."""
+
+        if reference is None or _reference_checks(truth) is None:
+            return reference
+        return STABILITY_PRIOR * reference
+
     def prior_point(backend: str, precision: str) -> float | None:
         """The expected seconds per point of a step not measured yet."""
 
@@ -2056,7 +2066,7 @@ def _measure(
                 binary64,
                 reference,
                 STABILITY_PRIOR * binary64,
-                reference,
+                checked_reference(reference),
                 load_seconds + 1.0,
             )
         left = sum(
@@ -2115,7 +2125,7 @@ def _measure(
             binary64,
             reference,
             STABILITY_PRIOR * binary64,
-            reference,
+            checked_reference(reference),
             load_seconds + 1.0,
         )
     phase.end(
@@ -2516,13 +2526,15 @@ def _stability_worker(
     backends: Sequence[str] = (),
     truth: GroundTruth | None = None,
     cold: Sequence[tuple[str, str]] = (),
+    target: float | None = None,
 ) -> None:
     """Initialise a stability worker process: one thread per pool, Ctrl-C
     left to the parent (which collects what finished and stops the
     workers), the artifact loaded once with the reference precision
-    ``truth`` (default double-double; "none": no reference), and warmed up
-    on ``backends`` with ``warm`` (a point and its scale, ``_warm_up``;
-    the ``cold`` streams not)."""
+    ``truth`` (default double-double; "none": no reference) and the run's
+    ``target`` accuracy (the reference's checks; None: the default), and
+    warmed up on ``backends`` with ``warm`` (a point and its scale,
+    ``_warm_up``; the ``cold`` streams not)."""
 
     import signal
 
@@ -2535,6 +2547,7 @@ def _stability_worker(
         warm=warm,
         checks=checks,
         truth=truth or GroundTruth("double-double"),
+        target=target,
     )
     _warm_up(backends, cold)
 
@@ -2628,7 +2641,9 @@ def _stability_records(
     """The per-point records of a stability task (``_stability_task``):
     binary64 (index, [[total]], estimate summary, reason, status,
     best-effort uncertainty, the sectors' finite parts); reference (index,
-    [[exact total]], reason, its exact decimal text)."""
+    [[exact total]], reason, its exact decimal text; with the reference's
+    checks, ``_reference_checks``, a point whose estimate exceeds the
+    worker's target has no reference value, its reason says so)."""
 
     state = _WORKER
     common = {"mu_r2": scales, "poles": "none", "reduction": backend}
@@ -2677,13 +2692,39 @@ def _stability_records(
     else:
         # The reference counts only accepted values, summed exactly.
         truth = state.get("truth") or GroundTruth("double-double")
+        checks = _reference_checks(truth)
         result = state["runtime"].evaluate(
-            list(batch), on_failure="return", **truth.options, **common
+            list(batch),
+            on_failure="return",
+            **({} if checks is None else {"stability_checks": checks}),
+            **truth.options,
+            **common,
         )
+        target = state.get("target")
+        if target is None:
+            from pyamplicol.loops.v2.reduction import default_target
+
+            target = default_target()
         records = []
-        for index, value, reason in zip(
-            indices, result.values, _reasons(result), strict=True
+        for index, value, reason, estimate in zip(
+            indices,
+            result.values,
+            _reasons(result),
+            result.stability if checks is not None else [None] * len(indices),
+            strict=True,
         ):
+            if (
+                value is not None
+                and estimate is not None
+                and float(estimate.relative) > target
+            ):
+                # A success its checks do not trust is no reference: it
+                # takes the path of a failed reference point.
+                value = None
+                reason = (
+                    f"failed: stability checks: estimate "
+                    f"{float(estimate.relative):.1e} above the target {target:g}"
+                )
             exact = None if value is None else _exact_total(value)
             records.append(
                 (
@@ -2694,6 +2735,26 @@ def _stability_records(
                 )
             )
     return records
+
+
+def _reference_checks(truth: GroundTruth) -> Any:
+    """The stability checks of the stability run's reference pass: the
+    recommended ones (``loops.v2.stability.RECOMMENDED_CHECKS``) for an
+    arbitrary-precision ground truth, whose carriers can return a wrong
+    value with status success (NinjaRS at near-degenerate boxes; the
+    reference pass drops a point whose estimate exceeds the target); None
+    for double-double (one plain evaluation)."""
+
+    if truth.arithmetic != "arbitrary":
+        return None
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
+
+    return VirtualStabilityChecks(
+        RECOMMENDED_CHECKS.rotations,
+        RECOMMENDED_CHECKS.reduction_direction,
+        rescaled=RECOMMENDED_CHECKS.rescaled,
+    )
 
 
 def _exact_text(row: Any) -> str:
@@ -3248,7 +3309,9 @@ def _stability(
     warm = (first_point[0][0], inputs[0][1])
     try:
         if workers == 1:
-            _WORKER.update(runtime=runtime, warm=warm, checks=checks, truth=truth)
+            _WORKER.update(
+                runtime=runtime, warm=warm, checks=checks, truth=truth, target=target
+            )
             try:
                 _warm_up(backends, cold)
                 while (tasks := next_tasks()) is not None:
@@ -3278,6 +3341,7 @@ def _stability(
                     tuple(backends),
                     truth,
                     cold,
+                    target,
                 ),
                 next_tasks,
                 harvest,

@@ -177,7 +177,11 @@ def _profile(report: Any) -> list[Block]:
                     "the reference precision of both tables (--ground-truth): "
                     "the stability run's true values and the reference time "
                     "multipliers; 'none (estimates only)': no reference pass, "
-                    "the stability tables show the estimates alone",
+                    "the stability tables show the estimates alone. In "
+                    "arbitrary precision the stability run's reference pass "
+                    "runs the recommended stability checks, and a point whose "
+                    "estimate exceeds the target is 'no reference' (the time "
+                    "multipliers stay those of one optimistic pass)",
                 ),
                 ("backends", "the reduction backends compared. " + _DEFAULT_MARK),
             ],
@@ -386,7 +390,9 @@ def _profile(report: Any) -> list[Block]:
                         "(each on one core, one thread per pool), "
                         "after each worker's untimed start-up (loading, first "
                         f"calls); '({label} xN)': its {name} reference calls "
-                        "(one evaluation per point) took N times as long in "
+                        "(one evaluation per point; with an arbitrary-precision "
+                        "ground truth, with the recommended checks) took N "
+                        "times as long in "
                         "total, so N is not the cost ratio of one evaluation "
                         f"(the runtime table's '({label} xN)'); under the time "
                         "when "
