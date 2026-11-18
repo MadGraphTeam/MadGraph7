@@ -297,7 +297,11 @@ class VirtualStabilityEstimate:
     for a loop-induced result the pre-cancellation scale of its amplitudes,
     m-lit PLAN §2.a.8), and ``scale`` the largest E / S over them: the
     accuracy against the size of what cancelled (the ``"scale"`` metric of
-    a :class:`VirtualRescueLevel`). A value with ``|value| <= E`` is zero
+    a :class:`VirtualRescueLevel`). In arbitrary precision every ratio here
+    is formed from exponent-safe sizes and rounded last (below binary64's
+    range: 0.0, above it: inf); ``absolute`` and ``magnitude`` themselves are
+    binary64 floats, 0.0 where E or S lies below binary64's range (beyond
+    about 300 digits). A value with ``|value| <= E`` is zero
     within the estimate (m-lit Q13: zeros are numerical, never declared by
     a physics rule). For a loop-induced result
     (``contribution="loop-induced"``) the pole estimates ``single_pole`` and

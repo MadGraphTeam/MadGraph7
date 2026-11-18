@@ -2647,7 +2647,7 @@ class NativeExecutor:
                 reference,
                 [runs[index] for runs in rotated],
                 stability,
-                precision.unit_roundoff,
+                precision.estimate_roundoff,
             )
             out.append(replace(reference.result, stability=estimate))
         if failures:

@@ -668,7 +668,10 @@ With stability checks every estimate carries, besides the relative
 estimates, the absolute estimate E per sector and Laurent coefficient
 (`absolute`), the scale S it is measured against (`magnitude`, the size of
 the contributions before they cancel) and their largest ratio (`scale`). A
-value with `|value| <= E` is zero within the estimate: zeros of loop-induced
+value with `|value| <= E` is zero within the estimate (in arbitrary precision
+the ratios are formed from exponent-safe sizes, so they stay right beyond
+binary64's exponent range, e.g. at 500 digits; `absolute` and `magnitude`
+are binary64 floats and read 0.0 below it): zeros of loop-induced
 processes (Landau-Yang, Furry) are never declared by a rule, they are
 evaluated and reported this way. For a loop-induced result the pole
 estimates `single_pole` and `double_pole` are E / S as well (the poles

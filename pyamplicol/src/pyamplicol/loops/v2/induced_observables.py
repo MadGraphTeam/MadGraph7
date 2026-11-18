@@ -1138,7 +1138,7 @@ class InducedColumns:
                         reference,
                         [run[index] for run in rotated],
                         stability,
-                        precision.unit_roundoff,
+                        precision.estimate_roundoff,
                     )
                 elif stability.enabled:
                     other, skipped = cross(g)

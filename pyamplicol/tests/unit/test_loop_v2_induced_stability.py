@@ -55,6 +55,9 @@ CALIBRATION = (
 ESTIMATE_MARGIN = 10
 CALIBRATION_ROWS = ("li_gg_hh", "li_gg_z")
 TRUTH_DIGITS = 57
+# The relative estimate of a numerical zero is its absolute estimate against
+# rounding: far above any target (here: above 1e5 = 1 / 1e-5).
+RESCUE_TARGET_OF_ZERO = 1e-5
 
 
 @pytest.fixture(scope="module")
@@ -245,6 +248,39 @@ def test_the_rescue_of_g_g_to_z_terminates_under_either_metric(li, tmp_path):
     unchecked = runtime.evaluate([point], mu_r2=[str(scale)])
     assert scaled.values == unchecked.values
     assert scaled.contribution == "loop-induced"
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("digits", [57, 500])
+def test_g_g_to_z_reads_right_in_arbitrary_precision(li, tmp_path, digits):
+    """g g > z (Landau-Yang) in arbitrary precision, also beyond binary64's
+    exponent range (the default 500 digits: unit roundoff ~5e-500, |A|^2 ~
+    1e-1039): the estimate's sizes are exponent-safe (``loops.v2.wide``), so
+    its relative estimate exceeds the target (the value is rounding; it read
+    0.0, "met", through 0 / 0 in binary64 floats) while its E / S, the
+    floor's FLOOR_UNITS x u, meets the "scale" metric; the value is zero
+    within its absolute estimate."""
+
+    from decimal import Decimal
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+
+    output = _generate(tmp_path, (("gg_z", "g g > z"),), _fixture("li_gg_z"))
+    point, scale, parameters = li.point("li_gg_z")
+    runtime = Runtime.load(output, process="gg_z", model_parameters=parameters)
+    for metric, met in (("relative", False), ("scale", True)):
+        level = VirtualRescueLevel("arbitrary", digits, metric=metric)
+        result = runtime.evaluate(
+            [point], mu_r2=[str(scale)], stability=VirtualRescuePolicy((level,))
+        )
+        (record,) = result.rescue
+        (estimate,) = result.stability
+        assert record.met is met, (digits, metric, estimate)
+        assert estimate.relative > 1 / RESCUE_TARGET_OF_ZERO, estimate
+        assert estimate.scale <= level.target, estimate
+        (value,) = result.values[0]
+        assert abs(value.finite) < Decimal(10) ** (-digits), value
 
 
 # ------------------------------------------------------------ rotation check

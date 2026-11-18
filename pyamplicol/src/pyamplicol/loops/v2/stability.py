@@ -57,6 +57,15 @@ which understates either one's error by up to about 2, and the floor covers
 roundings no check samples (couplings, kernel constants, the final sums, and
 the master integrals unless the rescaled check runs).
 
+In arbitrary precision the sizes of an estimate (budgets, E, S, the unit
+roundoff) are exponent-safe ``loops.v2.wide.Wide`` magnitudes: at the default
+500 digits they lie far below binary64's range (u ~ 5e-500), so as floats
+every estimate read 0.0 and an integrated zero (|A|^2 ~ 1e-1039) "met" its
+target through 0 / 0. Every ratio (``relative``, ``coefficients``, the
+checks, E / S) is formed exactly and rounded to binary64 last: a ratio below
+its range is 0.0, one above it inf, both right against a target. Binary64
+and double-double keep their floats, bitwise.
+
 Calibration against Float(256) (DESIGN §10.4, O15: 2000 binary64 and 400
 double-double points each of gg -> ggg and uu~ -> e-e+dd~g) gives the rate at
 which the true error exceeds E in binary64: about 2.5 % for the cached
@@ -99,6 +108,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any
+
+from .wide import Wide, is_wide, magnitude, ratio
 
 SAFETY = 2
 FLOOR_UNITS = 16
@@ -552,8 +563,17 @@ def relative(reference: Mapping[Any, Any], absolute: Mapping[Any, Any]) -> float
 
     worst = 0.0
     for sector, laurent in reference.items():
-        scale = max(abs(float(x)) for x in laurent.coefficients)
         errors = absolute[sector].coefficients
+        if is_wide(errors):
+            # Arbitrary precision (``loops.v2.wide``): sizes and their ratio
+            # exponent-safe, rounded to binary64 last.
+            scale = max(magnitude(x, True) for x in laurent.coefficients)
+            if scale:
+                worst = max(
+                    worst, float(max(magnitude(x, True) for x in errors) / scale)
+                )
+            continue
+        scale = max(abs(float(x)) for x in laurent.coefficients)
         if scale:
             worst = max(worst, max(abs(float(x)) for x in errors) / scale)
     return worst
@@ -568,9 +588,16 @@ def per_coefficient(
     width = len(next(iter(reference.values())).coefficients)
     worst = [0.0] * width
     for sector, laurent in reference.items():
+        errors = absolute[sector].coefficients
+        wide = is_wide(errors)
         for k, (value, error) in enumerate(
-            zip(laurent.coefficients, absolute[sector].coefficients, strict=True)
+            zip(laurent.coefficients, errors, strict=True)
         ):
+            if wide:
+                value, error = magnitude(value, True), magnitude(error, True)
+                if error:
+                    worst[k] = max(worst[k], ratio(error, value))
+                continue
             value, error = abs(float(value)), abs(float(error))
             if error:
                 worst[k] = max(worst[k], error / value if value else math.inf)
@@ -980,8 +1007,10 @@ def _native_induced_estimate(
     )
 
 
-def _at(budget: Any, k: int) -> float:
-    return abs(float(budget.coefficients[k]))
+def _at(budget: Any, k: int) -> Any:
+    found = budget.coefficients[k]
+    # A ``Wide`` magnitude (arbitrary precision) stays exponent-safe.
+    return abs(found) if isinstance(found, Wide) else abs(float(found))
 
 
 __all__ = [

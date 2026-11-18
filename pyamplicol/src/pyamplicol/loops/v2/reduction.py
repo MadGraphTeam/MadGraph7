@@ -503,9 +503,47 @@ def fallback_estimate(
     estimate's rounding floor, ``FLOOR_UNITS`` u S) against the largest
     returned output of the point; NaN when any input is not a number."""
 
+    from .wide import Wide, is_wide
+
+    if isinstance(roundoff, Wide) or is_wide(
+        value for output in outputs for sector in output for value in sector
+    ):
+        return _wide_fallback_estimate(outputs, roundoff)
     from pyamplicol.loops.native import load_loop_native
 
     return float(load_loop_native().reduction_fallback_estimate(outputs, roundoff))
+
+
+def _wide_fallback_estimate(
+    outputs: list[list[tuple[Any, Any, Any]]], roundoff: Any
+) -> float:
+    """``fallback_estimate`` for arbitrary precision, whose sizes and unit
+    roundoff lie beyond binary64's exponent range (``loops.v2.wide``): the
+    native rule (``reduction_policy::fallback_estimate``) step by step on
+    exponent-safe magnitudes, the ratio rounded to binary64 last (equal to
+    the native rule wherever its floats represent the inputs)."""
+
+    import math
+
+    from .stability import FLOOR_UNITS
+    from .wide import ratio
+
+    sectors = max((len(output) for output in outputs), default=0)
+    largest: list[Any] = [0.0] * sectors
+    for output in outputs:
+        for s, (size, error, scale) in enumerate(output):
+            if any(math.isnan(float(x)) for x in (size, error, scale)):
+                return math.nan
+            if size > largest[s]:
+                largest[s] = size
+    worst = 0.0
+    for output in outputs:
+        for s, (size, error, scale) in enumerate(output):
+            vanishes = size <= FLOOR_UNITS * roundoff * scale
+            against = largest[s] if vanishes else size
+            if against:
+                worst = max(worst, ratio(error, against))
+    return worst
 
 
 def _guard_sectors(estimate: Any) -> list[tuple[float, float, float]]:
@@ -515,7 +553,15 @@ def _guard_sectors(estimate: Any) -> list[tuple[float, float, float]]:
     estimate E and its largest term scale S (NaN where a value is not a
     number: a NaN budget is no estimate, and ``max`` would pass over it)."""
 
-    def largest(values: Any) -> float:
+    from .wide import Wide, magnitude
+
+    wide = isinstance(estimate.roundoff, Wide)
+
+    def largest(values: Any) -> Any:
+        if wide:
+            # Arbitrary precision: exponent-safe sizes (``loops.v2.wide``).
+            sizes = [magnitude(x, True) for x in values]
+            return math.nan if any(math.isnan(float(x)) for x in sizes) else max(sizes)
         found = [abs(float(x)) for x in values]
         return math.nan if any(math.isnan(x) for x in found) else max(found)
 
