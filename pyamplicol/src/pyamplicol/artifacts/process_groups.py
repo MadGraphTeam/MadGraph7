@@ -102,6 +102,21 @@ def validate_process_groups(
                 f"process-group member {member.process_id!r} is not generated, so "
                 f"its factor {member.factor} must be positive"
             )
+        if (member.patterns is None) != (member.pattern_signs is None) or (
+            member.patterns is not None
+            and (
+                member.generated
+                or not member.patterns
+                or len(member.patterns) != len(member.pattern_signs or ())
+                or len(set(member.patterns)) != len(member.patterns)
+                or any(pattern < 0 for pattern in member.patterns)
+                or any(sign not in {-1, 1} for sign in member.pattern_signs or ())
+            )
+        ):
+            raise ArtifactError(
+                f"process-group member {member.process_id!r} has invalid "
+                "flavour-union patterns"
+            )
 
 
 @contextmanager

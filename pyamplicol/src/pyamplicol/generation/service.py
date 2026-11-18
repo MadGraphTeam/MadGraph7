@@ -10,7 +10,8 @@ import logging
 import math
 import os
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 from fractions import Fraction
@@ -2105,15 +2106,16 @@ def _validate_rust_recurrence_lowering_result(
     ):
         raise GenerationError("Rust recurrence amplitude destinations must be a list")
     amplitude_destinations = []
+    destination_keys: list[tuple[int, ...]] = []
     for destination_id, raw_row in enumerate(raw_destinations):
         if (
             isinstance(raw_row, str | bytes)
             or not isinstance(raw_row, Sequence)
-            or len(raw_row) != 2
+            or len(raw_row) not in {2, 3}
         ):
             raise GenerationError(
                 "Rust recurrence amplitude destination rows must be "
-                "[sector_id, helicity_id-or-null]"
+                "[sector_id, helicity_id-or-null(, pattern_id)]"
             )
         sector_id = _result_integer(
             raw_row[0],
@@ -2131,7 +2133,26 @@ def _validate_rust_recurrence_lowering_result(
             )
         )
         amplitude_destinations.append((sector_id, helicity_id))
-    if len(set(amplitude_destinations)) != len(amplitude_destinations):
+        # Pattern-resolved templates keep one destination per pairing rule.
+        destination_keys.append(
+            (
+                sector_id,
+                helicity_id,
+                *(
+                    ()
+                    if len(raw_row) == 2
+                    else (
+                        _result_integer(
+                            raw_row[2],
+                            f"Rust recurrence amplitude destination {destination_id} "
+                            "pattern ID",
+                            minimum=0,
+                        ),
+                    )
+                ),
+            )
+        )
+    if len(set(destination_keys)) != len(destination_keys):
         raise GenerationError(
             "Rust recurrence amplitude destinations repeat a sector/helicity pair"
         )
@@ -3318,6 +3339,29 @@ def _initial_process_groups(
         ),
         members,
     )
+
+
+_FLAVOUR_UNION_TEMPLATE_DEPTH = 0
+_FLAVOUR_UNION_TEMPLATE_LOCK = Lock()
+
+
+@contextmanager
+def flavour_union_template_generation() -> Iterator[None]:
+    """Generate LC recurrence processes as pattern-resolved flavour-union templates.
+
+    Internal hook until ``ProcessConfig.flavor_unions`` drives template generation:
+    every LC topology-replay process generated inside the context keeps one
+    amplitude per fermion pairing rule (see ``project_recurrence_process_v1``).
+    """
+
+    global _FLAVOUR_UNION_TEMPLATE_DEPTH
+    with _FLAVOUR_UNION_TEMPLATE_LOCK:
+        _FLAVOUR_UNION_TEMPLATE_DEPTH += 1
+    try:
+        yield
+    finally:
+        with _FLAVOUR_UNION_TEMPLATE_LOCK:
+            _FLAVOUR_UNION_TEMPLATE_DEPTH -= 1
 
 
 class GenerationBackend:
@@ -5556,6 +5600,7 @@ class GenerationBackend:
                     and self._run_config.color.contraction.value
                     in {"auto", "symmetric-group-fft"}
                 ),
+                pattern_resolved=_FLAVOUR_UNION_TEMPLATE_DEPTH > 0,
             )
             if selection.selected_color_sector_ids is not None:
                 selected_public_flow_ids = tuple(
@@ -9069,4 +9114,8 @@ def create_generator_backend(
     return GenerationBackend(config, progress, api_bundle_hook=api_bundle_hook)
 
 
-__all__ = ["GenerationBackend", "create_generator_backend"]
+__all__ = [
+    "GenerationBackend",
+    "create_generator_backend",
+    "flavour_union_template_generation",
+]

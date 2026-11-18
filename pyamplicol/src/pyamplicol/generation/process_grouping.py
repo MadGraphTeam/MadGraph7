@@ -44,6 +44,7 @@ class GroupingBasis(StrEnum):
     EXACT_LOOP_FLAVOR = "exact-loop-flavor"
     FLAVOR_BLIND = "flavor-blind"
     NUMERICAL = "numerical"
+    FLAVOUR_UNION = "flavour-union"
 
 
 # The least verified link decides the basis of a composed relation.
@@ -52,6 +53,7 @@ _BASIS_STRENGTH = {
     GroupingBasis.EXACT_LOOP_FLAVOR: 1,
     GroupingBasis.NUMERICAL: 2,
     GroupingBasis.FLAVOR_BLIND: 3,
+    GroupingBasis.FLAVOUR_UNION: 3,
 }
 
 
@@ -524,6 +526,9 @@ class GroupMember:
     basis: GroupingBasis = GroupingBasis.IDENTITY
     generated: bool = True
     warning: str | None = None
+    # Flavour-union member: template pairing rules summed with these signs.
+    patterns: tuple[int, ...] | None = None
+    pattern_signs: tuple[int, ...] | None = None
 
     @classmethod
     def identity(cls, process: GroupingProcess) -> GroupMember:
@@ -608,6 +613,10 @@ class GroupMember:
         }
         if self.warning:
             record["warning"] = self.warning
+        if self.patterns is not None:
+            record["flavour_union_patterns"] = list(self.patterns)
+        if self.pattern_signs is not None:
+            record["flavour_union_pattern_signs"] = list(self.pattern_signs)
         return record
 
     @classmethod
@@ -629,7 +638,17 @@ class GroupMember:
             basis=GroupingBasis(str(value["basis"])),
             generated=bool(value["generated"]),
             warning=(str(value["warning"]) if value.get("warning") else None),
+            patterns=_optional_int_tuple(value.get("flavour_union_patterns")),
+            pattern_signs=_optional_int_tuple(value.get("flavour_union_pattern_signs")),
         )
+
+
+def _optional_int_tuple(value: object) -> tuple[int, ...] | None:
+    if value is None:
+        return None
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise ValueError("flavour-union patterns must be a list of integers")
+    return tuple(int(item) for item in value)
 
 
 @dataclass(slots=True)
