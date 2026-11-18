@@ -639,3 +639,79 @@ def test_applied_unions_replace_entries_and_skip_straddling_or_aliased_ones() ->
     # f and g share an entry but only f joins the union; h carries an alias.
     assert result[1] == entries[2]
     assert result[2] == entries[3] and result[3] == entries[4]
+
+
+def _processes(*expressions: str) -> list[GroupingProcess]:
+    from pyamplicol.models.builtin.validation import generic_validation_point
+
+    return [
+        GroupingProcess(
+            f"p{index}",
+            expression,
+            tuple(int(leg.pdg) for leg in generic_validation_point(expression)),
+            len(expression.split(">")[0].split()),
+        )
+        for index, expression in enumerate(expressions)
+    ]
+
+
+def test_unpaired_or_filtered_members_keep_their_own_routing(
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    _, _, table = _expansion("p p > j j", 4)
+    processes = _processes(
+        "d d~ > d d~", "d d~ > u u~", "d u~ > d u~", "u d~ > c s~", "d s~ > d s~"
+    )
+    (union,) = _unions(processes, table, model, pairing_rules, symmetry)
+    # 'u d~ > c s~' has the union signature but no QCD pairing (W only).
+    assert set(_by_expression(union)) == {
+        "d d~ > d d~",
+        "d d~ > u u~",
+        "d u~ > d u~",
+        "d s~ > d s~",
+    }
+    (union,) = _unions(
+        processes,
+        table,
+        model,
+        pairing_rules,
+        symmetry,
+        member_filter=lambda template, process: process.expression != "d u~ > d u~",
+    )
+    assert "d u~ > d u~" not in _by_expression(union)
+    # Filtering down to one flavour class drops the union.
+    assert not _unions(
+        processes,
+        table,
+        model,
+        pairing_rules,
+        symmetry,
+        member_filter=lambda template, process: process.expression == "d d~ > d d~",
+    )
+
+
+def test_union_templates_are_requested_single_flavour_processes(
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    _, _, table = _expansion("p p > j j", 4)
+    (union,) = _unions(
+        _processes("u u~ > d d~", "u u~ > u u~", "u u~ > s s~"),
+        table,
+        model,
+        pairing_rules,
+        symmetry,
+    )
+    assert union.template.expression == "u u~ > u u~"
+    assert union.template.process_id == "p1"
+    # Without a single-flavour process no template is synthesized.
+    assert not _unions(
+        _processes("d d~ > u u~", "d u~ > d u~"),
+        table,
+        model,
+        pairing_rules,
+        symmetry,
+    )

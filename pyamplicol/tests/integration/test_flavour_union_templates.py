@@ -57,6 +57,8 @@ _EXPLICIT = (
 _CASES = {
     "explicit": _EXPLICIT,
     "pp2j": ("p p > j j",),
+    # No all-d process: the union template is the requested 'u u~ > u u~'.
+    "uu2j": ("u u~ > j j",),
     "pp3j": ("p p > j j j",),
     "pp4j": ("p p > j j j j",),
 }
@@ -292,3 +294,27 @@ def test_recurrence_export_refuses_union_processes(
     )
     with pytest.raises(ConfigurationError, match="flavour-union"):
         invocation.run()
+
+
+def test_plan_with_a_compiled_model_keeps_electroweak_flows_routed() -> None:
+    """Minimal coupling orders: W-only flavour changes stay out of the unions."""
+
+    _require_native_runtime()
+    from pyamplicol import ModelSource
+
+    def concrete(unions: bool) -> list[str]:
+        config = RunConfig(
+            action="generate",
+            color=ColorConfig(accuracy="lc"),
+            process=ProcessConfig(
+                flavor_scheme=4, flavor_blind_strict=True, flavor_unions=unions
+            ),
+            generation=GenerationConfig(workers=1, emit_api_bundle=False),
+            evaluator=EvaluatorConfig(execution_mode="recurrence"),
+        )
+        plan = Generator(config).plan("p p > j j", model=ModelSource.built_in_sm_heft())
+        return [process.expression for process in plan.concrete_processes]
+
+    blind, unions = concrete(False), concrete(True)
+    assert "u c~ > d s~" in blind and "u c~ > d s~" in unions
+    assert len(unions) < len(blind)

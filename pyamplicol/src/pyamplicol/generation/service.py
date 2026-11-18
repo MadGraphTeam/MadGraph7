@@ -4646,7 +4646,13 @@ class GenerationBackend:
     def _grouping_symmetry(
         self,
         resolved: _ResolvedModel,
-    ) -> tuple[Any, Callable[[str, CanonicalProcessIR], Mapping[str, int]]]:
+    ) -> tuple[
+        Any,
+        Callable[
+            [str, CanonicalProcessIR | Callable[[], CanonicalProcessIR]],
+            Mapping[str, int],
+        ],
+    ]:
         """Vertex symmetry table and the coupling-order limits of a process,
         as generation applies them (cached per process ID)."""
 
@@ -4664,7 +4670,11 @@ class GenerationBackend:
         minimal = run is not None and run.process.coupling_order_policy == "minimal"
         limits_by_process: dict[str, Mapping[str, int]] = {}
 
-        def limits_for(process_id: str, ir: CanonicalProcessIR) -> Mapping[str, int]:
+        def limits_for(
+            process_id: str,
+            ir: CanonicalProcessIR | Callable[[], CanonicalProcessIR],
+        ) -> Mapping[str, int]:
+            # ``ir`` may be a thunk: only the minimal policy needs the process IR.
             nonlocal model
             limits = limits_by_process.get(process_id)
             if limits is None:
@@ -4676,7 +4686,7 @@ class GenerationBackend:
                         model = CompiledUFOModel(cast(_CompiledModelPayload, compiled))
                     limits = (
                         infer_minimal_coupling_order_limits(
-                            ir,
+                            ir() if callable(ir) else ir,
                             model=model,
                             max_coupling_orders=explicit or None,
                         )
@@ -4724,13 +4734,19 @@ class GenerationBackend:
 
         model = resolved.model
         if model is None:
-            raise GenerationError("flavour unions require a resolved generation model")
+            if resolved.compiled is None:
+                raise GenerationError(
+                    "flavour unions require a resolved generation model"
+                )
+            from ..models.external import CompiledUFOModel
+
+            model = CompiledUFOModel(cast(_CompiledModelPayload, resolved.compiled))
         catalog = self._recurrence_model_inputs(resolved).catalog
         symmetry, limits_for = self._grouping_symmetry(resolved)
         by_name = {entry.request.name: entry for entry in entries}
         irs: dict[str, CanonicalProcessIR] = {}
 
-        def template_ir(template: GroupingProcess) -> CanonicalProcessIR:
+        def process_ir(template: GroupingProcess) -> CanonicalProcessIR:
             ir = irs.get(template.process_id)
             if ir is None:
                 entry = by_name.get(template.process_id)
@@ -4747,12 +4763,14 @@ class GenerationBackend:
                         leg.pdg for leg in expanded[0].legs
                     ) != tuple(template.pdgs):
                         raise GenerationError(
-                            f"flavour-union template {template.expression!r} does "
+                            f"flavour-union process {template.expression!r} does "
                             "not expand to its own legs"
                         )
                     ir = expanded[0]
                 irs[template.process_id] = ir
             return ir
+
+        template_ir = process_ir
 
         def pairing_rules(template: GroupingProcess) -> Sequence[Any]:
             return build_recurrence_fermion_pairing_catalog_v1(
@@ -4769,18 +4787,22 @@ class GenerationBackend:
                 template, flavours, table, limits=limits, conjugated=conjugated
             )
 
-        # Alias-carrying entries keep their own artifact entry and members.
-        candidates = [entry for entry in entries if not entry.aliases]
+        def same_orders(template: GroupingProcess, process: GroupingProcess) -> bool:
+            # A member needs the template's coupling orders (e.g. no EW-only flows).
+            return limits_for(
+                process.process_id, lambda: process_ir(process)
+            ) == limits_for(template.process_id, lambda: template_ir(template))
+
+        # Alias classes are discovered too; _apply_flavour_unions rejects them.
         unions = flavour_unions(
-            [_grouping_process(entry) for entry in candidates]
-            + [
-                member.process for entry in candidates for member in entry.group_members
-            ],
+            [_grouping_process(entry) for entry in entries]
+            + [member.process for entry in entries for member in entry.group_members],
             table,
             pairing_rules=pairing_rules,
             normalization=model.external_state_normalization,
             union_warning=union_warning,
             consider_charge_conjugation=self._consider_charge_conjugation,
+            member_filter=same_orders,
         )
         return _apply_flavour_unions(entries, unions, template_ir)
 
