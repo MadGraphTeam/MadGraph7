@@ -451,13 +451,15 @@ pub fn lane_rescue_enabled() -> bool {
 }
 
 /// The lane rescue's carriers above a carrier of `bits` bits, lowest
-/// first: double-double, then arbitrary precision at the default rescue
-/// ladder's last digits ([`crate::reduction_policy::LANE_RESCUE_DIGITS`],
-/// at its working digits).
+/// first: double-double, then arbitrary precision at the default
+/// arbitrary-precision digits
+/// ([`crate::reduction_policy::DEFAULT_ARBITRARY_DIGITS`], at their working
+/// digits).
 pub fn rescue_carriers(bits: u32) -> Vec<RescueCarrier> {
-    let digits =
-        crate::v2_runtime::V2Precision::Arbitrary(crate::reduction_policy::LANE_RESCUE_DIGITS)
-            .working_digits();
+    let digits = crate::v2_runtime::V2Precision::Arbitrary(
+        crate::reduction_policy::DEFAULT_ARBITRARY_DIGITS,
+    )
+    .working_digits();
     [
         RescueCarrier::DoubleDouble,
         RescueCarrier::Arbitrary(digits),
