@@ -1102,7 +1102,15 @@ def profile_loop(
                 f"{_duration(monitor.elapsed() + sum(future.values()))} in all "
                 "(estimated)"
             )
-    if want_runtime and not (want_stability and workers == 1):
+    # The stability run evaluates in this process when it has one worker:
+    # ``--n_core`` 1 (or one usable core), or, without a deadline (the points
+    # given, no --completion-time), when its planned tasks are fewer than the
+    # workers (``_stability`` lowers its count to them; a single stream of
+    # up to a chunk of points is one task).
+    in_process = want_stability and (
+        workers == 1 or (stability_given is not None and completion is None)
+    )
+    if not in_process:
         # Nothing evaluates in this process any more (the runtime timings and
         # the stability workers load their own): its runtime is released and
         # the allocator's free memory given back while they run (8 gluons:
@@ -3779,6 +3787,13 @@ def _stability(
     warm = (first_point[0][0], inputs[0][1])
     try:
         if workers == 1:
+            if runtime is None:
+                # Released by the caller (``profile_loop``): loaded again.
+                from pyamplicol.api import Runtime
+
+                runtime = Runtime.load(
+                    artifact, process=evaluation.process, **(load_options or {})
+                )
             _WORKER.update(
                 runtime=runtime, warm=warm, checks=checks, truth=truth, cold=cold
             )

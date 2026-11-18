@@ -1381,3 +1381,33 @@ def test_a_cost_that_cannot_change_the_counts_is_not_measured(
             1,
             0.0,
         )
+
+
+def test_a_one_task_stability_run_after_the_runtime_timing(uux_ddx, monkeypatch):
+    """The parent keeps (or loads again) the runtime an in-process stability
+    run needs: with the points given and a single stream (one backend, no
+    reference) its one task runs in this process although two workers were
+    asked for (``_stability`` lowers the count to the tasks), after the
+    runtime timing (ptimereview B1: AttributeError on a released runtime)."""
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.config import resolve_config
+
+    monkeypatch.setattr(lp, "usable_cores", lambda: 2)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx), "reduction": "tirust"},
+            "benchmark": {
+                "runtime": True,
+                "stability": True,
+                "n_core": 2,
+                "ground_truth": "none",
+                "stability_points": 5,
+            },
+        }
+    ).effective
+    report = lp.profile_loop(uux_ddx, config)
+    assert report.runtime is not None and report.stability is not None
+    (row,) = report.stability
+    assert row.backend == "tirust" and len(row.per_point) == 5
