@@ -1548,6 +1548,248 @@ def run_reweighting(
                   helicity_reweighting=helicity_reweighting, **common)
 
 
+# The name of the (identity) launch run_precision_validation() reweights
+# with: unlikely to collide with a weight the sample already has.
+_VALIDATION_LAUNCH = "madtrex_fp_validation"
+# the summary run_precision_validation() writes next to the events
+VALIDATION_CSV = "precision_validation.csv"
+# matching significant digits: 7 or more, 6, ..., 1, and fewer than 1 (None)
+VALIDATION_DIGIT_BINS = ("7+", "6", "5", "4", "3", "2", "1", "None")
+
+
+def matching_digits(original, reweighted):
+    """(relative difference, matching significant digits) of reweighted
+    against original, per event, as numpy arrays: |reweighted - original| /
+    |original|, and max(-log10 of that, 0) -- inf for identical weights, 0
+    for weights differing by 100% or more. Events with a zero original
+    weight have no relative difference: nan for both. A non-finite
+    reweighted weight gives an infinite difference and 0 digits."""
+    import numpy as np
+    original = np.asarray(original, dtype=np.float64)
+    reweighted = np.asarray(reweighted, dtype=np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        relative = np.abs(reweighted - original) / np.abs(original)
+        relative[~np.isfinite(reweighted)] = np.inf
+        relative[original == 0] = np.nan
+        digits = np.maximum(-np.log10(relative), 0.0)
+    return relative, digits
+
+
+def bin_matching_digits(digits) -> dict[str, int]:
+    """The events of digits (see matching_digits()) counted per
+    VALIDATION_DIGIT_BINS bin: "7+" for 7 or more matching digits, "6" for
+    [6, 7), ..., "1" for [1, 2), "None" for fewer than 1. nan (a zero
+    original weight) counts in no bin."""
+    import numpy as np
+    digits = np.asarray(digits, dtype=np.float64)
+    digits = digits[~np.isnan(digits)]
+    whole = np.floor(digits)
+    counts = {"7+": int(np.sum(whole >= 7))}
+    for n in range(6, 0, -1):
+        counts[str(n)] = int(np.sum(whole == n))
+    counts["None"] = int(np.sum(whole < 1))
+    return counts
+
+
+def run_precision_validation(
+    validation_fptype: str,
+    events_path: str | None = None,
+    process_directory: str = ".",
+    helicity_reweighting: bool | None = None,
+    csv_path: str | None = None,
+) -> dict:
+    """Checks how well the matrix elements of a sample's generation
+    precision agree with those at another one, validation_fptype: compiles
+    every subprocess of process_directory at validation_fptype (see
+    _compile_subprocesses()) and reweights the whole sample of events_path
+    (default: the latest run under process_directory/Events) to it, changing
+    nothing else -- the generation's param_card (from the events' header,
+    see _generation_param_card()) for both, normalised as
+    run_parameter_reweighting() does, by the matrix elements at the sample's
+    own fptype (_read_run_fptype()). Each reweighted weight then differs
+    from the original weight only by the precision of the matrix element.
+
+    No weights are written: the events file is left untouched, and the
+    weights are read from the reweighted sample in memory. Only the summary
+    is written, to csv_path (default: VALIDATION_CSV next to the events, ie
+    in their Events/<run> directory), see _write_precision_validation_csv().
+
+    Returns, and logs, a summary of the per-event relative difference
+    |w_validation - w_original| / |w_original| and of the matching
+    significant digits, max(-log10(relative difference), 0):
+      "events": events in the sample;
+      "compared": those with a nonzero original weight (the others have no
+        relative difference and are left out of everything below);
+      "max_relative_difference", "median_relative_difference",
+      "mean_relative_difference": over the compared events (inf when a
+        reweighted weight is not finite);
+      "median_matching_digits": over the compared events;
+      "digits": {bin: number of events} for VALIDATION_DIGIT_BINS ("7+",
+        "6", ..., "1", "None"), see bin_matching_digits();
+      "percent": {bin: percentage of the full sample ("events")};
+      "original_fptype", "validation_fptype": the two precisions compared;
+      "csv": the path of the summary written.
+    helicity_reweighting is as for run_parameter_reweighting()."""
+    _require_madtrex()
+    if events_path is None:
+        events_path = find_run_events(
+            find_latest_run_dir(os.path.join(process_directory, "Events"))
+        )
+    source_path = events_path
+    # a gzipped LHE file's decompressed copy is removed again unless it was
+    # there before (nothing of this validation stays on disk)
+    decompressed = source_path[: -len(".gz")] if source_path.endswith(".gz") else None
+    keep_decompressed = decompressed is None or os.path.isfile(decompressed)
+    try:
+        summary = _run_precision_validation(source_path, process_directory,
+                                            validation_fptype, helicity_reweighting)
+    finally:
+        if not keep_decompressed and os.path.isfile(decompressed):
+            os.remove(decompressed)
+    _log_precision_validation(source_path, summary)
+    if csv_path is None:
+        csv_path = os.path.join(os.path.dirname(os.path.abspath(source_path)), VALIDATION_CSV)
+    _write_precision_validation_csv(csv_path, source_path, summary)
+    summary["csv"] = csv_path
+    logger.info("MadtRex: precision validation summary written to %s", csv_path)
+    return summary
+
+
+def _run_precision_validation(source_path, process_directory, validation_fptype,
+                              helicity_reweighting):
+    """run_precision_validation(), for the events of source_path."""
+    import numpy as np
+    events_path = prepare_events(source_path)
+    init_meta = read_init_node(events_path)
+    original_fptype = (_read_run_fptype(process_directory, source_path)
+                       or param_rwgt_card.DEFAULT_FPTYPE)
+    if original_fptype == validation_fptype:
+        logger.warning(
+            "MadtRex: %s was generated at fptype '%s', the validation fptype itself: "
+            "the comparison only checks the reweighting", source_path, original_fptype)
+    devices = _read_devices(process_directory)
+
+    with tempfile.TemporaryDirectory() as card_dir:
+        generation_card = _generation_param_card(process_directory, source_path, "",
+                                                 card_dir)
+        # --hel_recycling: evaluated at the generation card only
+        _prepare_hel_recycling(process_directory, [generation_card], [], generation_card)
+        _compile_subprocesses(process_directory, devices, original_fptype)
+        _compile_subprocesses(process_directory, devices, validation_fptype)
+
+        rwgt_path = os.path.join(card_dir, "validation.rwgt")
+        with open(rwgt_path, "w") as f:
+            f.write(f"launch --rwgt_name={_VALIDATION_LAUNCH}\n")
+        logger.info(
+            "MadtRex: validating %s, generated at fptype '%s', against fptype '%s'",
+            source_path, original_fptype, validation_fptype)
+        driver = mtx.Driver()
+        driver.set_threads(reweighting_threads(process_directory, source_path))
+        driver.set_min_batch(param_rwgt_card.DEFAULT_MIN_BATCH)
+        if helicity_reweighting is not None:
+            driver.set_helicity_reweighting(helicity_reweighting)
+        driver.set_device_priority(devices)
+        driver.set_fptype_priority([validation_fptype])
+        driver.set_normaliser_fptype_priority([original_fptype])
+        driver.set_normaliser_param_card(generation_card)
+        driver.load_process_directory(process_directory, generation_card)
+        driver.load_param_reweighting(rwgt_path)
+        if init_meta is not None:
+            driver.load_events(events_path, init_meta)
+        else:
+            driver.load_events(events_path)
+        result = driver.warehouse().get()
+        result.run()
+
+    # the sample's own weights (eg systematics) come first in every event's
+    # wgts: the validation weight is the last one of its name
+    weight_ids = list(result.weight_ids)
+    if _VALIDATION_LAUNCH not in weight_ids:
+        raise RuntimeError(f"the reweighted sample has no weight {_VALIDATION_LAUNCH!r}")
+    column = len(weight_ids) - 1 - weight_ids[::-1].index(_VALIDATION_LAUNCH)
+    events = result.events
+    original = np.fromiter((event.weight for event in events), np.float64, len(events))
+    reweighted = np.fromiter((event.wgts[column] for event in events), np.float64,
+                             len(events))
+
+    relative, digits = matching_digits(original, reweighted)
+    compared = ~np.isnan(relative)
+    relative, digits = relative[compared], digits[compared]
+    empty = relative.size == 0
+    counts = bin_matching_digits(digits)
+    total = len(events)
+    summary = {
+        "events": int(len(events)),
+        "compared": int(relative.size),
+        "max_relative_difference": float("nan") if empty else float(np.max(relative)),
+        "median_relative_difference": float("nan") if empty else float(np.median(relative)),
+        "mean_relative_difference": float("nan") if empty else float(np.mean(relative)),
+        "median_matching_digits": float("nan") if empty else float(np.median(digits)),
+        "digits": counts,
+        "percent": {name: 100.0 * count / total if total else float("nan")
+                    for name, count in counts.items()},
+        "original_fptype": original_fptype,
+        "validation_fptype": validation_fptype,
+    }
+    return summary
+
+
+_DIGITS_ROW_LABEL = "significant digits"
+_PERCENT_ROW_LABEL = "% of sample"
+
+
+def _precision_validation_statistics(summary: dict) -> list[tuple[str, str]]:
+    """(label, value) of the summary's statistics, as logged and written."""
+    return [
+        ("original fptype", summary["original_fptype"]),
+        ("validation fptype", summary["validation_fptype"]),
+        ("events", str(summary["events"])),
+        ("events compared (nonzero weight)", str(summary["compared"])),
+        ("max relative difference", f"{summary['max_relative_difference']:.6e}"),
+        ("median relative difference", f"{summary['median_relative_difference']:.6e}"),
+        ("mean relative difference", f"{summary['mean_relative_difference']:.6e}"),
+        ("median matching digits", f"{summary['median_matching_digits']:.4f}"),
+    ]
+
+
+def _log_precision_validation(events_path: str, summary: dict) -> None:
+    """Logs the statistics of summary, then the table of matching
+    significant digits: the bins on the first row, the percentage of the
+    full sample in each on the second."""
+    statistics = _precision_validation_statistics(summary)
+    width = max(len(label) for label, _ in statistics)
+    lines = [f"MadtRex: precision validation of {events_path}"]
+    lines += [f"  {label:<{width}} : {value}" for label, value in statistics]
+    names = list(summary["digits"])
+    percents = [f"{summary['percent'][name]:.2f}" for name in names]
+    cells = [max(len(name), len(percent)) for name, percent in zip(names, percents)]
+    label_width = max(len(_DIGITS_ROW_LABEL), len(_PERCENT_ROW_LABEL))
+    lines.append(f"  {_DIGITS_ROW_LABEL:<{label_width}} | "
+                 + " | ".join(f"{n:>{w}}" for n, w in zip(names, cells)))
+    lines.append(f"  {_PERCENT_ROW_LABEL:<{label_width}} | "
+                 + " | ".join(f"{p:>{w}}" for p, w in zip(percents, cells)))
+    if summary["compared"] != summary["events"]:
+        lines.append(f"  ({summary['events'] - summary['compared']} events with a zero "
+                     "weight are in no bin)")
+    logger.info("\n".join(lines))
+
+
+def _write_precision_validation_csv(path: str, events_path: str, summary: dict) -> None:
+    """Writes summary to the CSV file path, laid out as it is logged: one
+    "label,value" row per statistic, an empty row, then the two-row table --
+    "significant digits,7+,6,...,None" and "% of sample,<percentages>"."""
+    import csv
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["events file", events_path])
+        writer.writerows(_precision_validation_statistics(summary))
+        writer.writerow([])
+        names = list(summary["digits"])
+        writer.writerow([_DIGITS_ROW_LABEL] + names)
+        writer.writerow([_PERCENT_ROW_LABEL]
+                        + [f"{summary['percent'][name]:.4f}" for name in names])
+
+
 def check_card_for_standalone(rwgt_path: str) -> None:
     """Raises when the reweight card at rwgt_path needs the classic
     reweighting module ("change backend classic", or a directive only the

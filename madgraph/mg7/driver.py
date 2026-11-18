@@ -439,6 +439,43 @@ def deliver_lhe_from_binary(process) -> None:
                 json.dump(content, f, indent=1)
 
 
+def validation_fptype(run_card):
+    """The FPTYPE of run_card [run] validation -- a precision name (all64,
+    ...) mapped to its FPTYPE, any other value as given -- or None when it
+    is unset ("", "none")."""
+    from madgraph.mg7.common import fptype_of
+    value = run_card["run"].get("validation", "")
+    if value is None or str(value).strip().lower() in ("", "none"):
+        return None
+    return fptype_of(str(value).strip())
+
+
+def run_precision_validation(process):
+    """run_card [run] validation: MadtRex reweights the events of process to
+    the matrix elements compiled at that FPTYPE and logs how many
+    significant digits the weights share with the generated ones
+    (madtrex_driver.run_precision_validation()); nothing is written to the
+    events. Off when unset. A failure is reported, the run goes on.
+    Returns the summary, or None."""
+    fptype = validation_fptype(process.run_card)
+    if fptype is None:
+        return None
+    log = logging.getLogger("madevent")
+    if process.run_card["run"]["output_format"] == "compact_npy":
+        log.warning(
+            "run_card [run] validation = %s is skipped: MadtRex needs the per-event "
+            "flavor/helicity information that output_format 'compact_npy' discards "
+            "(use 'lhe' or 'lhe_npy')", fptype)
+        return None
+    try:
+        from madgraph.iolibs.template_files.mg7 import madtrex
+        return madtrex.run_precision_validation(
+            fptype, events_path=process.events_path, process_directory=os.getcwd())
+    except Exception as error:
+        _report_failure(log, "precision validation", error, process.run_path)
+        return None
+
+
 def run_single(switch=None, reweight=None) -> "MadgraphProcess":
     """Run a single generation and return the process (for its result).
     reweight is the reweight_backend.Decision of prepare_reweighting(), or
@@ -474,6 +511,10 @@ def run_single(switch=None, reweight=None) -> "MadgraphProcess":
                 "reweight them once the problem is fixed: 'launch %s -i' in "
                 "MadGraph, then 'reweight %s'", os.path.basename(process.run_path),
                 os.getcwd(), os.path.basename(process.run_path))
+    # run_card [run] validation: compare the weights with matrix elements of
+    # another precision, before an npy-generated LHE run becomes LHE (the npy
+    # events are faster to read)
+    run_precision_validation(process)
     # the LHE file of an "lhe" run MadtRex reweighted as npy, with the
     # reweighting weights, or without them when the reweighting failed
     if process.lhe_from_binary:

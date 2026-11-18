@@ -17,7 +17,10 @@ Steps:
      current environment with --system);
   2. pip install ./Rex (the `pyrex` package) into install/;
   3. pip install this directory (the `madtrex` package) into install/,
-     built against that madspace.
+     built against that madspace;
+  4. pip install the runtime dependencies of pyproject.toml that are not
+     importable yet (numpy) into the current Python environment -- the one
+     MadGraph runs with -- or, when pip may not install there, into install/.
 
 Rebuilds reuse the CMake tree in build/ and are therefore incremental. --clean
 deletes build/ and install/ first.
@@ -155,6 +158,56 @@ def install_build_deps(env: dict, system: bool) -> None:
     run(cmd, env=env)
 
 
+# [project] dependencies built from this checkout (steps 1 and 2), never
+# installed from PyPI
+LOCAL_DEPENDENCIES = {"madspace", "pyrex"}
+
+
+def runtime_requirements() -> list[str]:
+    """The [project] dependencies of pyproject.toml other than
+    LOCAL_DEPENDENCIES: what MadtRex needs at run time from PyPI."""
+    import re
+    with open(SCRIPT_DIR / "pyproject.toml", "rb") as f:
+        dependencies = tomllib.load(f).get("project", {}).get("dependencies", [])
+    return [d for d in dependencies
+            if re.split(r"[\s<>=!~;\[]", d, maxsplit=1)[0].lower() not in LOCAL_DEPENDENCIES]
+
+
+def is_importable(module: str, env: dict) -> bool:
+    """Whether module imports with sys.executable and env."""
+    result = subprocess.run([sys.executable, "-c", f"import {module}"], env=env,
+                            capture_output=True)
+    return result.returncode == 0
+
+
+def install_runtime_deps(env: dict, system: bool) -> None:
+    """Installs the runtime_requirements() not importable yet (with env,
+    so one in install/ counts too) into the current Python environment,
+    where MadGraph and everything else it runs see it. When pip refuses to
+    install there (an externally managed system Python, PEP 668) and this is
+    no --system install, into install/ instead, which MadGraph puts on
+    sys.path before it imports madtrex."""
+    import re
+    missing = [requirement for requirement in runtime_requirements()
+               if not is_importable(re.split(r"[\s<>=!~;\[]", requirement, maxsplit=1)[0],
+                                    env)]
+    if not missing:
+        return
+    print(f"\nInstalling the runtime dependencies MadtRex needs: {', '.join(missing)}")
+    cmd = [sys.executable, "-m", "pip", "install", *missing]
+    display = " ".join(cmd)
+    print(f"\n$ {display}\n", flush=True)
+    if subprocess.run(cmd, cwd=SCRIPT_DIR, env=env).returncode == 0:
+        return
+    if system:
+        print(f"Installing {', '.join(missing)} failed: install it into this Python "
+              "environment yourself, MadtRex needs it.")
+        sys.exit(1)
+    print(f"Installing into the Python environment failed; installing into {INSTALL_DIR} "
+          "instead.")
+    run(cmd + [f"--target={INSTALL_DIR}"], env=env)
+
+
 def clean_install_dirs() -> None:
     for target in (BUILD_DIR, INSTALL_DIR, REX_DIR / "build"):
         if target.is_dir():
@@ -279,6 +332,9 @@ def main(argv: list[str] | None = None) -> None:
     if not args.system:
         cmd.append(f"--target={INSTALL_DIR}")
     run(cmd, env=env)
+
+    # 4. what madtrex needs at run time besides madspace and pyrex (numpy)
+    install_runtime_deps(env, args.system)
 
     if args.system:
         print("\nInstalled system-wide.")
