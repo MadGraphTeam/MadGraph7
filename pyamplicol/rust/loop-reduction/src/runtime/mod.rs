@@ -36,7 +36,7 @@ pub use v2_execution::{
 pub use v2_reduce::{
     FamilyGroup, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles, ReduceOptions, ReductionFrame,
     V2Output, V2Reducer, fast_engine_threshold, fast_options, reaches_fast_threshold,
-    shift_coefficients, tensor_rank, true_rank,
+    shift_coefficients, tensor_rank, tracked_refusal, tracked_rule, true_rank,
 };
 pub use v2_seeds::V2SeedFourier;
 

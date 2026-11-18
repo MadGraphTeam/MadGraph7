@@ -451,6 +451,34 @@ A value the bound does not flag is no more verified than before: an explicit
 `reduction="ninjars"` has no fallback guard, so request stability checks
 where such kinematics matter.
 
+**NinjaRS tracked precision (arbitrary precision).** Symbolica's
+arbitrary-precision numbers keep track of the bits that survive each
+operation, so every NinjaRS lane carries the uncertainty of its value.
+Per Laurent coefficient, pyAmpliCol sums that uncertainty and the size of
+each value over all NinjaRS lanes of a point, and fails the point (status
+`failed`, reason "NinjaRS tracked precision: the point's lanes keep ...
+tracked bits ...") when the largest summed uncertainty exceeds `2^-r` of
+the largest summed size. `r` is NinjaRS's own rule for its master
+integrals at the working precision: 53 bits up to 212 working bits, a
+quarter of them above, at most half (53 at 40 digits, 64 at 57, 66 at 60,
+83 at 80). Summed over the point, families that vanish identically
+(rounding noise of a few bits at regular points) weigh by their size, and
+the largest coefficient decides, so the identically vanishing poles of a
+loop-induced amplitude do not fail it. A rescue stack evaluates a failed
+point at its next level. The test applies to NinjaRS in arbitrary
+precision, in the inclusive and resolved evaluations, the Python reference
+path and the SDKs; binary64 and double-double track nothing, TIRust's
+values have their own acceptance tests, and the unchecked setting
+(`reduction_unchecked=True`) drops it with the backends' other checks. It
+never changes a served value.
+
+It catches what NinjaRS's cut tests miss at a nearly degenerate box Gram
+determinant (a 2 -> 3 point with a spatially collinear final state, NinjaRS
+issue 15): measured (2026-11-18, development host) on the 200 points of
+HC05 g g > x0 g g at sqrt(s) = 1 TeV, two such points were served with
+status `success` 3e18 and 9e13 off at 57 digits. The test fails them at 40,
+57, 60 and 80 digits, and at 40 digits also ...
+
 **Inexact inputs near forward.** Near forward, backward or threshold
 kinematics NinjaRS amplifies a point's on-shell and momentum-conservation
 defect by about the inverse box Gram determinant, and neither the
@@ -565,7 +593,8 @@ value for, the way the one-loop providers' most optimistic settings run
   engine (double-double, arbitrary precision, and the binary64 lanes the
   fast engine routes to it): it has no stability threshold to set to zero,
   and its conditioning bound refuses near-planar box mu-expansions there
-  too, at the carrier's precision. That is no accuracy statement: its
+  too, at the carrier's precision; in arbitrary precision the setting drops
+  the tracked-precision test of NinjaRS's lanes (above). That is no accuracy statement: its
   values are unverified there too, with or without the setting (the
   near-planar hazard above); stability checks, a rescue stack or, in
   double-double and arbitrary precision, the guard of the per-point

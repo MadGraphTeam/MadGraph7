@@ -269,6 +269,131 @@ pub mod v2 {
         fn take_lane_measures(&mut self) -> Vec<MeasuredLane> {
             Vec::new()
         }
+        /// The point-level tracked-precision test of this backend's lane
+        /// values ([`TrackedPrecision`]), or `None` (the default): no test.
+        fn tracked_precision(&self) -> Option<TrackedPrecision> {
+            None
+        }
+    }
+
+    /// The point-level tracked-precision test (NinjaRS #15, defence in
+    /// depth). A backend whose lane values carry the precision their carrier
+    /// tracked through the reduction (NinjaRS's generic engine on an
+    /// arbitrary-precision `Float`, whose operators round a sum to the bits
+    /// that survive its cancellation and a product to its less precise
+    /// factor) states it: the executor then sums, per Laurent coefficient
+    /// `k` over every reduced lane of a point, the absolute uncertainty
+    /// `U_k` the tracked precisions imply and the moduli `A_k`
+    /// ([`TrackedSums`]), and fails the point when `max_k U_k > 2^-r max_k
+    /// A_k` ([`TrackedSums::refusal`]). Summed over the point, lanes of
+    /// families that vanish identically (rounding noise of a few tracked
+    /// bits at a regular point) weigh by their size, which a per-lane test
+    /// cannot do; the maximum over the coefficients keeps the identically
+    /// vanishing poles of a loop-induced amplitude from failing it.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct TrackedPrecision {
+        /// The carrier's working precision, in bits.
+        pub working: u32,
+        /// The tracked bits `r` a point keeps at least: NinjaRS's rule for
+        /// its master integrals at `working` bits (`ninjars_symbolica::
+        /// required_tracked_bits`: `max(53, working / 4)`, at most
+        /// `working / 2`).
+        pub required: u32,
+    }
+
+    /// The reason text of a point the tracked-precision test fails starts
+    /// with this.
+    pub const TRACKED_PRECISION: &str = "NinjaRS tracked precision";
+
+    /// The absolute uncertainty `|x| 2^-p_x + |y| 2^-p_y` of `z = x + iy`
+    /// that the tracked precisions `p_x`, `p_y` of its parts imply (an
+    /// exactly zero part contributes nothing).
+    pub fn tracked_uncertainty<T: Carrier + Real>(z: &Complex<T>) -> T {
+        // Each part exactly (a power of two divides it), the sum at the
+        // larger precision.
+        let bits = z.re.get_precision().max(z.im.get_precision());
+        let part = |x: &T| {
+            let mut u = if x.is_fully_zero() {
+                x.zero()
+            } else {
+                x.norm() / x.from_i64(2).pow(u64::from(x.get_precision()))
+            };
+            u.set_precision(bits);
+            u
+        };
+        part(&z.re) + &part(&z.im)
+    }
+
+    /// Per Laurent coefficient, the sums of [`TrackedPrecision`] over the
+    /// lanes of one point: `U_k = Σ u(Ω_k)` ([`tracked_uncertainty`]) and
+    /// `A_k = Σ (|re Ω_k| + |im Ω_k|)`. Each term enters at the working
+    /// precision (lifted exactly): summed with the operators' own tracking,
+    /// a term of few tracked bits would round the sum to its own precision.
+    #[derive(Clone, Debug)]
+    pub struct TrackedSums<T> {
+        uncertainty: Vec<T>,
+        moduli: Vec<T>,
+    }
+
+    impl<T> Default for TrackedSums<T> {
+        fn default() -> Self {
+            Self {
+                uncertainty: Vec::new(),
+                moduli: Vec::new(),
+            }
+        }
+    }
+
+    impl<T: Carrier + Real> TrackedSums<T> {
+        /// Add one lane's Laurent coefficients, at `working` bits.
+        pub fn add(&mut self, value: &[Complex<T>], working: u32) {
+            let lifted = |mut x: T| {
+                x.set_precision(working);
+                x
+            };
+            for (k, z) in value.iter().enumerate() {
+                if k == self.moduli.len() {
+                    self.uncertainty.push(lifted(z.re.zero()));
+                    self.moduli.push(lifted(z.re.zero()));
+                }
+                let part = |x: &T| lifted(x.norm());
+                self.uncertainty[k] += &lifted(tracked_uncertainty(z));
+                self.moduli[k] += &(part(&z.re) + &part(&z.im));
+            }
+        }
+
+        /// The largest of `values` (None for none).
+        fn largest(values: &[T]) -> Option<&T> {
+            values.iter().reduce(|a, b| match b.real_cmp(a) {
+                Some(std::cmp::Ordering::Greater) => b,
+                _ => a,
+            })
+        }
+
+        /// `log2(max_k A_k / max_k U_k)`, the tracked bits the point keeps;
+        /// None without a nonzero uncertainty (no lane, or exact values).
+        pub fn kept_bits(&self) -> Option<f64> {
+            let uncertainty = Self::largest(&self.uncertainty)?;
+            if uncertainty.is_fully_zero() {
+                return None;
+            }
+            let moduli = Self::largest(&self.moduli)?;
+            Some((moduli.clone() / uncertainty).to_f64().log2())
+        }
+
+        /// The point's failure when it keeps fewer tracked bits than `rule`
+        /// requires (`max_k U_k > 2^-r max_k A_k`), else None.
+        pub fn refusal(&self, rule: TrackedPrecision) -> Option<String> {
+            let kept = self.kept_bits()?;
+            (kept < f64::from(rule.required)).then(|| {
+                format!(
+                    "{TRACKED_PRECISION}: the point's lanes keep {kept:.1} tracked bits (their \
+                     summed uncertainty against their summed moduli, largest Laurent coefficient), \
+                     {} required at {} working bits",
+                    rule.required, rule.working
+                )
+            })
+        }
     }
 
     /// Modelled kernel work of the chosen forms of `steps` (complex
@@ -1227,6 +1352,12 @@ pub mod v2 {
         /// slot `Σ_f Σ_α |N_{f,α}| |I_{f,α}|` per coefficient (without the
         /// loop factor); empty until a point's first lane is reduced.
         terms: Vec<Vec<Vec<T>>>,
+        /// The backend's tracked-precision test ([`V2Backend::
+        /// tracked_precision`]) and per point the sums over its reduced
+        /// lanes (direct values only: not the re-test's, not the dependent
+        /// columns formed from them, not the term scale's unit lanes).
+        tracked: Option<TrackedPrecision>,
+        tracked_sums: Vec<TrackedSums<T>>,
     }
 
     /// The unit-numerator lanes of a family group: per point of the group
@@ -1346,6 +1477,7 @@ pub mod v2 {
                     sink.measures[point].push(measured.measure);
                 }
             }
+            sink.tracked = self.backend.tracked_precision();
             for (index, group) in groups.iter().enumerate() {
                 // A family's dependent columns (lit-fold F1d): `c` times
                 // their representative's integrals, direct and re-test.
@@ -1353,6 +1485,9 @@ pub mod v2 {
                 for (row, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
                     match &direct[index][row] {
                         Ok(value) => {
+                            if let Some(rule) = sink.tracked {
+                                sink.tracked_sums[point].add(value, rule.working);
+                            }
                             if let Some(formed) = &dependents {
                                 formed.push(&key, value, &mut sink.families[point]);
                             }
@@ -1716,6 +1851,8 @@ pub mod v2 {
             families: vec![Vec::new(); points],
             checks: vec![Vec::new(); points],
             terms: vec![Vec::new(); points],
+            tracked: None,
+            tracked_sums: (0..points).map(|_| TrackedSums::default()).collect(),
         };
         // The call's buffer pools, kept across its family walks and chunks
         // (lit-dress lever E).
@@ -1754,7 +1891,17 @@ pub mod v2 {
             mut families,
             mut checks,
             mut terms,
+            tracked,
+            tracked_sums,
         } = sink;
+        // The tracked-precision test fails a point no lane failed.
+        if let Some(rule) = tracked {
+            for (failures, sums) in failures.iter_mut().zip(&tracked_sums) {
+                if failures.is_empty() {
+                    failures.extend(sums.refusal(rule));
+                }
+            }
+        }
         let zero = zero.zero();
         let pi = zero.pi();
         let factor = Complex::new(
@@ -1946,6 +2093,7 @@ pub mod v2 {
     mod tests {
         use super::*;
         use crate::loop_v2::dress::V2Batch;
+        use symbolica::domains::float::{Float, Numeric as _, RealScalar as _};
         use symbolica::domains::rational::Rational;
 
         /// Two scalar bubble families of a two-leg "process": one seeded
@@ -2047,6 +2195,214 @@ pub mod v2 {
                 assert_eq!(value[0], Complex::new(6.0, 0.0));
             }
             assert_eq!(report.counts["reduction lanes"], 3);
+        }
+
+        const BITS: u32 = 256;
+        const RULE: TrackedPrecision = TrackedPrecision {
+            working: BITS,
+            required: 64,
+        };
+
+        /// `x` at `bits` bits, as the real part of a lane coefficient.
+        fn lane(x: f64, bits: u32) -> Complex<Float> {
+            Complex::new(Float::with_val(bits, x), Float::with_val(BITS, 0))
+        }
+
+        fn sums(lanes: &[Vec<Complex<Float>>]) -> TrackedSums<Float> {
+            let mut sums = TrackedSums::default();
+            for lane in lanes {
+                sums.add(lane, BITS);
+            }
+            sums
+        }
+
+        /// `u(x + iy) = |x| 2^-p_x + |y| 2^-p_y`, an exactly zero part
+        /// contributing nothing.
+        #[test]
+        fn tracked_uncertainty_is_the_parts_magnitudes_at_their_precision() {
+            let z = Complex::new(Float::with_val(8, -0.75), Float::with_val(4, 2.0));
+            let u = tracked_uncertainty(&z);
+            assert_eq!(u.to_f64(), 0.75 / 256.0 + 2.0 / 16.0);
+            assert!(tracked_uncertainty(&lane(0.0, BITS)).is_fully_zero());
+        }
+
+        /// Full-precision lanes pass; a lane that kept 4 of its 256 bits
+        /// fails the point, at a size comparable to the others; the
+        /// threshold is the rule's: 66 tracked bits pass, 62 fail.
+        #[test]
+        fn a_point_fails_when_its_lanes_keep_fewer_tracked_bits_than_required() {
+            let zero = lane(0.0, BITS);
+            let regular = vec![lane(1.5, BITS), lane(-0.25, BITS), zero.clone()];
+            assert_eq!(
+                sums(&[regular.clone(), regular.clone()]).refusal(RULE),
+                None
+            );
+            let ruined = vec![lane(3.0, 4), zero.clone(), zero.clone()];
+            let refusal = sums(&[regular.clone(), ruined]).refusal(RULE).unwrap();
+            assert!(refusal.starts_with("NinjaRS tracked precision: the point's lanes keep "));
+            assert!(
+                refusal.ends_with("64 required at 256 working bits"),
+                "{refusal}"
+            );
+            for (bits, refused) in [(66, false), (62, true)] {
+                let lanes = [
+                    regular.clone(),
+                    vec![lane(1.0, bits), zero.clone(), zero.clone()],
+                ];
+                assert_eq!(sums(&lanes).refusal(RULE).is_some(), refused, "{bits}");
+            }
+            // A lost imaginary part counts as well.
+            let imaginary = Complex::new(Float::with_val(BITS, 1.0), Float::with_val(30, 0.5));
+            let lanes = [regular, vec![imaginary, zero.clone(), zero]];
+            assert!(sums(&lanes).refusal(RULE).is_some());
+        }
+
+        /// The sums weigh each lane by its size: an identically vanishing
+        /// family (rounding noise of 4 tracked bits, about 1e-59 at a
+        /// regular point, as `g g > h h`'s) beside regular lanes passes, and
+        /// so do identically vanishing poles (every lane's pole
+        /// coefficients noise: the largest coefficient decides). A point of
+        /// noise alone fails (no lane establishes a size).
+        #[test]
+        fn vanishing_families_and_poles_weigh_by_their_size() {
+            let zero = lane(0.0, BITS);
+            let noise = |x: f64| lane(x * 1e-59, 4);
+            let regular = vec![lane(2.0e-3, BITS), noise(1.0), noise(-3.0)];
+            let vanishing = vec![noise(5.0), noise(2.0), zero.clone()];
+            let lanes = [regular.clone(), vanishing.clone(), regular];
+            assert_eq!(sums(&lanes).refusal(RULE), None);
+            assert!(sums(&lanes).kept_bits().unwrap() > 180.0);
+            assert!(sums(&[vanishing]).refusal(RULE).is_some());
+            // Nothing to test: no lane, or exact zeros.
+            assert_eq!(sums(&[]).kept_bits(), None);
+            assert_eq!(
+                sums(&[vec![zero.clone(), zero.clone(), zero]]).kept_bits(),
+                None
+            );
+        }
+
+        /// Returns every lane's numerator coefficient (finite part; zero
+        /// poles) in arbitrary precision, stating the tracked-precision test
+        /// `rule`; point 0's lanes of family 1 are `ruined` (their
+        /// coefficient at that many bits) or, with `noise`, rounding noise.
+        struct Tracked {
+            rule: Option<TrackedPrecision>,
+            ruined: Option<u32>,
+            noise: bool,
+        }
+
+        impl V2Backend<Float> for Tracked {
+            fn begin(&mut self) {}
+
+            fn tracked_precision(&self) -> Option<TrackedPrecision> {
+                self.rule
+            }
+
+            fn reduce(
+                &mut self,
+                groups: &[FamilyLanes<Float>],
+                _poles: Poles,
+                _check: Option<ReductionCheck>,
+            ) -> RusticolResult<Reduced<Float>> {
+                let direct = groups
+                    .iter()
+                    .map(|group| {
+                        group
+                            .points
+                            .iter()
+                            .zip(group.coefficients.iter())
+                            .map(|(&point, c)| -> LaneOutcome<Float> {
+                                let zero = lane(0.0, BITS);
+                                let mut value = c.clone();
+                                if point == 0 && group.family == 1 {
+                                    if let Some(bits) = self.ruined {
+                                        value.re.set_precision(bits);
+                                        value.im.set_precision(bits);
+                                    }
+                                    if self.noise {
+                                        value = lane(1e-59, 4);
+                                    }
+                                }
+                                Ok(vec![value, zero.clone(), zero])
+                            })
+                            .collect()
+                    })
+                    .collect();
+                Ok((direct, None))
+            }
+        }
+
+        /// The executor sums a point's lanes over its bucket chunks (one per
+        /// family) and fails a point that keeps too few tracked bits typed,
+        /// with the rule's reason; every other point keeps its values
+        /// bitwise, and a backend stating no test refuses nothing.
+        #[test]
+        fn the_executor_fails_a_point_whose_lanes_lost_their_tracked_precision() {
+            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
+            let plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+            let executor = V2Executor::new(Arc::new(plan), DEFAULT_LANES, Some(1)).unwrap();
+            let momentum = |e: i64| -> Vec<Rational> {
+                [e, 0, 0, e, e, 0, 0, -e].map(Rational::from).to_vec()
+            };
+            let value = |x: f64| lane(x, BITS);
+            let batch = V2Batch {
+                momenta: vec![momentum(1), momentum(2)],
+                scales: vec![Rational::from(1); 2],
+                masses: vec![Rational::from(0)],
+                masses_imaginary: Vec::new(),
+                leg_masses: Vec::new(),
+                constants: vec![value(2.0)],
+                block_rows: vec![Vec::new(); 2],
+                born: vec![
+                    vec![Complex::new(value(1.0).re, value(1.0).re)],
+                    vec![value(3.0)],
+                ],
+            };
+            let options = V2Options {
+                chunk_families: 1,
+                ..V2Options::default()
+            };
+            let zero = Float::with_val(BITS, 0);
+            let mut run = |rule: Option<TrackedPrecision>, ruined: Option<u32>, noise: bool| {
+                let mut backend = Tracked {
+                    rule,
+                    ruined,
+                    noise,
+                };
+                executor
+                    .evaluate(&batch, &zero, &mut backend, options)
+                    .unwrap()
+                    .0
+            };
+            for (ruined, noise, refused) in [
+                (None, false, false),
+                (Some(4), false, true),
+                (Some(62), false, true),
+                (Some(66), false, false),
+                (None, true, false),
+            ] {
+                let plain = run(None, ruined, noise);
+                assert!(plain.iter().all(|r| r.failures.is_empty()));
+                let results = run(Some(RULE), ruined, noise);
+                assert_eq!(
+                    !results[0].failures.is_empty(),
+                    refused,
+                    "{ruined:?} {noise}"
+                );
+                if refused {
+                    let reason = &results[0].failures[0];
+                    assert!(reason.starts_with(TRACKED_PRECISION), "{reason}");
+                    assert!(results[0].bare.is_empty());
+                } else {
+                    assert_eq!(results[0].bare, plain[0].bare);
+                }
+                assert!(results[1].failures.is_empty());
+                assert_eq!(results[1].bare, plain[1].bare);
+                assert_eq!(
+                    format!("{:?}", results[1].families),
+                    format!("{:?}", plain[1].families)
+                );
+            }
         }
 
         /// The chunks of a call: full chunks of the executor's lanes, then

@@ -14,7 +14,7 @@ use super::v2_reduce::{
 };
 use crate::Complex;
 use rusticol_core::loop_execution::v2::{
-    BackendStatistics, FamilyLanes, LaneOutcome, MeasuredLane, Reduced, V2Backend,
+    BackendStatistics, FamilyLanes, LaneOutcome, MeasuredLane, Reduced, TrackedPrecision, V2Backend,
 };
 use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::{RusticolError, RusticolResult};
@@ -344,6 +344,19 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
         }
     }
 
+    /// NinjaRS's ([`V2Reducer::tracked_precision`]); none on TIRust, whose
+    /// extended-precision values its own acceptance tests (method-choice
+    /// deviations, Gram and Cayley conditioning) and whose direct kernels
+    /// round at the working precision (TIRust #43), so that their precision
+    /// as numerica tracks it says nothing about their loss.
+    fn tracked_precision(&self) -> Option<TrackedPrecision> {
+        match self {
+            Self::NinjaRs(backend) => V2Backend::<T>::tracked_precision(backend),
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) => None,
+        }
+    }
+
     fn reduce(
         &mut self,
         groups: &[FamilyLanes<T>],
@@ -383,6 +396,10 @@ fn frame(check: ReductionCheck) -> ReductionFrame {
 impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
     fn begin(&mut self) {
         self.reducer.clear_masters();
+    }
+
+    fn tracked_precision(&self) -> Option<TrackedPrecision> {
+        self.reducer.tracked_precision()
     }
 
     /// The master integrals inside the `reduction` stage (binary64 fast
