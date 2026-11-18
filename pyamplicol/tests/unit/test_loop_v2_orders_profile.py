@@ -673,6 +673,59 @@ def test_arbitrary_precision_references_are_certified_on_any_worker_count(uux_dd
     assert {s["reference_certified"] for s in _records(row["samples"])} == {"checks"}
 
 
+@pytest.mark.loop_fast
+def test_disagreeing_references_are_rerun_checked_on_the_worker_pool(
+    uux_ddx, monkeypatch
+):
+    """References that do not agree go to their checked re-run, queued
+    after both backends' plain references and submitted to the pool before
+    any further chunk: every reference ends certified by its checks, the
+    records equal on one and three workers. (The agreement is decided in
+    the parent process, so forcing it off holds for spawned workers.)"""
+
+    from pyamplicol import loop_profile
+    from pyamplicol.cli.main import run_cli
+
+    monkeypatch.setattr(loop_profile, "_references_agree", lambda a, b: False)
+    found = {}
+    for cores in ("1", "3"):
+        stdout = io.StringIO()
+        code = run_cli(
+            [
+                "profile",
+                str(uux_ddx),
+                "--stability",
+                "--stability-points",
+                "5",
+                "--ground-truth",
+                "arb:30",
+                "--n_core",
+                cores,
+                "--progress",
+                "off",
+                "--json",
+            ],
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+        assert code == 0
+        report = json.loads(stdout.getvalue())
+        assert report["stability_setup"]["interrupted"] is False
+        found[cores] = {
+            row["backend"]: [
+                (s["index"], s["reference_certified"], s["true_digits"])
+                for s in _records(row["samples"])
+            ]
+            for row in report["stability"]
+        }
+        for row in report["stability"]:
+            # The re-runs' time is the reference stream's, not new points.
+            assert row["precision_timing"]["arbitrary"]["points"] == 5
+    assert found["1"] == found["3"]
+    assert {c for rows in found["1"].values() for _, c, _ in rows} == {"checks"}
+    assert all(len(rows) == 5 for rows in found["1"].values())
+
+
 def _records(table):
     """A columnar --json table ({"fields": ..., "rows": ...}) as records."""
 
