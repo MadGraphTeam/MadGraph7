@@ -419,7 +419,10 @@ def _profile(report: Any) -> list[Block]:
                     "One line per backend and cause, most frequent first: the "
                     "number of points, their share of the backend's points, the "
                     "backend, and the cause. 'best-effort': refused, returned "
-                    "with the best available value; 'no value': no result; 'no "
+                    "with the best available value; 'no value': no result; 'lane "
+                    "rescue': served, with reduction lanes refused in binary64 "
+                    "reduced again in the carrier named (their coefficients the "
+                    "binary64 ones), within the point's estimate; 'no "
                     f"reference': the {name} re-run failed; '... in {name}': "
                     "the same in the runtime's reference timing (counted over "
                     "its points).",

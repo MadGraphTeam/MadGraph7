@@ -895,7 +895,10 @@ table, after a `---` line, the failed or refused points are listed per
 backend and cause, most frequent first, in the form
 `<count> (<fraction> %) <backend> | <kind>: <cause>` (causes grouped with
 their numbers masked; also in `--json` as `failure_causes`); nothing is
-printed when nothing failed. The
+printed when nothing failed. The kind `lane rescue` counts served points
+whose refused reduction lanes were reduced again in a higher carrier
+(`reduction lanes rescued in <carrier>`; python-api.md, "Lane rescue of
+refused reduction lanes"); their time is in the timed calls. The
 second table gives the time per point in each stage group (trees: the native
 trees and counterterm kets; dressing: seeds, factors and dressing of a
 Born-interfered process, the dressing of a loop-induced one; scatter;
@@ -1044,7 +1047,9 @@ backend's own checks refuse in binary64 is measured with its best-effort
 value (the unchecked reduction's, what the default `on_failure` returns,
 status best-effort; since 1.0.3) at its true digits, its estimate being the
 call's checks' estimate of that value; it is never accepted, so it always
-counts as flagged. A point with no binary64 value at all ("no value") counts
+counts as flagged. A point whose refused lanes the lane rescue served (cause
+kind `lane rescue`) is measured like an accepted one, its estimate covering
+the mixed total. A point with no binary64 value at all ("no value") counts
 0 true digits (the worst end of the ranking) and has no estimate. A point with a binary64 value whose
 reference failed has an unknown truth and is left out (shown as
 "no ref."). The measured points (N in what follows) are all others.
