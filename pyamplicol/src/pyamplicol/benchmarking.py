@@ -2863,6 +2863,9 @@ class PrecisionTiming:
     # ones in the same process (their state resident).
     peak_memory: PeakMemory | None = None
     digits: int | None = None
+    # The seconds of the carrier's warm entry when it replaced the untimed
+    # warm-up call (``_prepared``; None: no warm entry ran).
+    prepared_seconds: float | None = None
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -3425,6 +3428,12 @@ def _reference_timing(
                 },
             )
 
+    prepared = None
+    if warm:
+        # The warm entry instead of the untimed point where a point is dear.
+        report(0, 1, prior, ())
+        prepared = _prepared(runtime, prior, options, backend)
+        warm = prepared is None
     walls, size = _reference_calls(budget, warm, size, call, report, prior)
     return PrecisionTiming(
         arithmetic,
@@ -3438,7 +3447,47 @@ def _reference_timing(
         sum(reasons.values()),
         tuple(sorted(reasons.items(), key=lambda item: (-item[1], item[0]))),
         digits=cast("int | None", options.get("precision")),
+        prepared_seconds=prepared,
     )
+
+
+def _prepared(
+    runtime: Any,
+    point_seconds: float | None,
+    options: Mapping[str, Any],
+    backend: str | None,
+) -> float | None:
+    """The warm entry of a stream (``prepare`` of the runtime's backend: it
+    builds what the carrier's first evaluation with ``backend`` builds
+    lazily, without a point, in the unchecked mode of ``options``) in place
+    of its untimed warm-up point, when the runtime offers one and the
+    point's expected cost (``point_seconds``) exceeds
+    ``MEASURE_REPEAT_SECONDS``, the bound on a first call's lazy set-up
+    (else the point costs no more than the entry: a few seconds on a cheap
+    process). Its seconds, or None when it did not run (no entry, a cheap
+    point, an unknown backend, or the entry failed: the point then warms)."""
+
+    from pyamplicol.profile_plan import MEASURE_REPEAT_SECONDS
+
+    prepare = getattr(getattr(runtime, "_backend", runtime), "prepare", None)
+    if (
+        not callable(prepare)
+        or backend is None
+        or point_seconds is None
+        or point_seconds <= MEASURE_REPEAT_SECONDS
+    ):
+        return None
+    carrier = {k: options[k] for k in ("arithmetic", "precision") if k in options}
+    begin = time.perf_counter()
+    try:
+        prepare(
+            **carrier,
+            reduction=backend,
+            unchecked=bool(options.get("reduction_unchecked")),
+        )
+    except Exception:
+        return None
+    return time.perf_counter() - begin
 
 
 def _single_backend(runtime: Any, reduction: str | None) -> str | None:

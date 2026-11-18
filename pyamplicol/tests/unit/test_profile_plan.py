@@ -784,3 +784,79 @@ def test_a_budget_in_force_is_checked_whatever_else_is_given():
     assert roomy.feasible and roomy.unmet == ()
     assert plan(cheap, **common, stability_points_given=10).feasible
     assert plan(cheap, **common).feasible
+
+
+class _StubResult:
+    def __init__(self, size: int) -> None:
+        self.valid = [True] * size
+        self.diagnostics = [None] * size
+
+
+class _StubBackend:
+    def __init__(self, with_prepare: bool) -> None:
+        self.prepared: list[dict] = []
+        if with_prepare:
+            self.prepare = lambda **kwargs: self.prepared.append(kwargs)
+
+    def _reduction_summary(self):
+        return {"requested": "ninjars", "auto_default": "ninjars"}
+
+
+class _StubRuntime:
+    def __init__(self, with_prepare: bool) -> None:
+        self._backend = _StubBackend(with_prepare)
+        self.calls: list[tuple[int, str | None]] = []
+
+    def evaluate(self, batch, *, mu_r2=None, **options):
+        self.calls.append((len(batch), options.get("arithmetic")))
+        return _StubResult(len(batch))
+
+
+@pytest.mark.parametrize(
+    ("with_prepare", "point_seconds", "prepared"),
+    [
+        (True, 10.0 * MEASURE_REPEAT_SECONDS, True),
+        (True, 0.01, False),
+        (False, 1e3, False),
+    ],
+)
+def test_the_warm_entry_replaces_a_dear_reference_warm_up(
+    with_prepare, point_seconds, prepared
+):
+    """The reference pass warms its carrier through the runtime's warm entry
+    (``prepare``, when it has one) instead of the untimed warm-up point when
+    a point is dear (above ``MEASURE_REPEAT_SECONDS``): the entry runs once
+    in the timed calls' carrier, backend and unchecked mode, no untimed call
+    is made and the first timed call is call 0; a cheap point, or a runtime
+    without the entry, keeps today's untimed point."""
+
+    from pyamplicol.benchmarking import _PointBatches, _reference_timing
+
+    runtime = _StubRuntime(with_prepare)
+    points = [((1.0, 0.0, 0.0, 1.0),) * 4] * 4
+    timing = _reference_timing(
+        runtime,
+        _PointBatches(1, points),
+        BenchmarkConfig(batch_size=1, warmup_runs=1, minimum_samples=1),
+        "ninjars",
+        lambda batch: [1.0] * len(batch),
+        {
+            "arithmetic": "double-double",
+            "reduction": "ninjars",
+            "budget": 1e-9,
+            "seconds_per_point": point_seconds,
+        },
+        binary64=1e-3,
+    )
+    calls = [c for c in runtime.calls if c[1] == "double-double"]
+    if prepared:
+        assert runtime._backend.prepared == [
+            {"arithmetic": "double-double", "reduction": "ninjars", "unchecked": True}
+        ]
+        assert timing.warmup == 0 and timing.prepared_seconds is not None
+        assert calls == [(1, "double-double")]
+    else:
+        assert runtime._backend.prepared == []
+        assert timing.warmup == 1 and timing.prepared_seconds is None
+        assert calls == [(1, "double-double"), (1, "double-double")]
+    assert timing.samples == 1 and timing.points == 1
