@@ -474,10 +474,22 @@ never changes a served value.
 
 It catches what NinjaRS's cut tests miss at a nearly degenerate box Gram
 determinant (a 2 -> 3 point with a spatially collinear final state, NinjaRS
-issue 15): measured (2026-11-18, development host) on the 200 points of
-HC05 g g > x0 g g at sqrt(s) = 1 TeV, two such points were served with
-status `success` 3e18 and 9e13 off at 57 digits. The test fails them at 40,
-57, 60 and 80 digits, and at 40 digits also ...
+issue 15). Measured (2026-11-18, development host; truth: NinjaRS at 150
+digits) on 200 points of HC05 g g > x0 g g at sqrt(s) = 1 TeV, two such
+points were served with status `success`, 3.4e18 and 9.4e13 off at 57
+digits (4.7e34 and 6.7e30 at 40, 8.2e-5 and 4.4e-11 at 80). The test fails
+exactly these two at 40, 57, 60 and 80 digits (at 80 digits the second one
+was right), and no other point; every other value is unchanged bitwise, the
+worst within 1.2e-10 (40 digits). On g g > g g g, g g > h h, g g > z z,
+u u~ > d d~ and g g > z z g at 40 and 57 digits it fails no point. The
+default rescue stack ends at 57 digits, so there the two points stay
+flagged (`best-effort` under the default `on_failure`, as before not met);
+a stack with 100- and 150-digit levels serves them right (at 150 and 100
+digits). The test rests on numerica's tracked precision, an estimate
+rather than a bound: it overstates the accuracy of a ruined value (the two
+points report 10 to 12 kept bits where none are right), and a point whose
+lanes all vanish identically, or a loss that the tracking does not see,
+passes or fails without regard to the value.
 
 **Inexact inputs near forward.** Near forward, backward or threshold
 kinematics NinjaRS amplifies a point's on-shell and momentum-conservation
