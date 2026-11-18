@@ -964,7 +964,9 @@ def profile_loop(
         want_runtime
         and completion is None
         and not runtime_given
-        and not measurement_affects_counts(load_seconds + 1.0, backends=len(backends))
+        and not measurement_affects_counts(
+            load_seconds + 1.0, backends=len(_serving(runtime, backends))
+        )
     )
     try:
         costs = (
@@ -1682,6 +1684,31 @@ class _Monitor:
                     elapsed_seconds=self.elapsed(),
                 )
             )
+
+
+def _serving(runtime: Any, backends: Sequence[str]) -> list[str]:
+    """The ``backends`` this loaded runtime can serve, read without an
+    evaluation from its reduction record: those the artifact admits
+    (``admitted``: a TIR-only artifact refuses NinjaRS) and the native build
+    has (``native``); all of them when the record cannot be read. A backend
+    refused only by its first evaluation (a TIRust plan refusal) still
+    counts."""
+
+    summary = getattr(getattr(runtime, "_backend", runtime), "_reduction_summary", None)
+    try:
+        record = summary() if callable(summary) else None
+    except Exception:
+        record = None
+    if not isinstance(record, Mapping):
+        return list(backends)
+    admitted = record.get("admitted")
+    native = record.get("native")
+    return [
+        backend
+        for backend in backends
+        if (admitted is None or backend in admitted)
+        and (not isinstance(native, Mapping) or backend in native)
+    ]
 
 
 def _release_memory() -> None:

@@ -1411,3 +1411,50 @@ def test_a_one_task_stability_run_after_the_runtime_timing(uux_ddx, monkeypatch)
     assert report.runtime is not None and report.stability is not None
     (row,) = report.stability
     assert row.backend == "tirust" and len(row.per_point) == 5
+
+
+def test_a_refusing_backend_takes_no_share_of_the_budget(uux_ddx, monkeypatch):
+    """The no-measurement rule shares the budget among the backends that can
+    serve (``_serving``: admitted by the artifact, present in the native
+    build), not every requested one (ptimereview B2): NinjaRS absent from
+    the native build and a 5 s load leave TIRust the whole 10 s less its
+    start-up, so the parent measures and TIRust gets budgeted counts, as
+    before the rule."""
+
+    import time
+
+    import pyamplicol.loop_profile as lp
+    import pyamplicol.loops.v2.reduction as reduction
+    from pyamplicol.api import Runtime
+    from pyamplicol.config import resolve_config
+
+    native_backends = reduction.native_backends
+
+    def without_ninjars(native):
+        found = dict(native_backends(native))
+        found.pop("ninjars", None)
+        return found
+
+    monkeypatch.setattr(reduction, "native_backends", without_ninjars)
+    load = Runtime.load.__func__
+
+    def slow(cls, *args, **kwargs):
+        time.sleep(5.0)
+        return load(cls, *args, **kwargs)
+
+    monkeypatch.setattr(Runtime, "load", classmethod(slow))
+    runtime = load(Runtime, uux_ddx)
+    assert lp._serving(runtime, ("ninjars", "tirust")) == ["tirust"]
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = lp.profile_loop(uux_ddx, config)
+    rows = {row.backend: row for row in report.runtime or ()}
+    tirust = rows["tirust"].profile
+    assert tirust is not None
+    assert (tirust.batch, tirust.samples) != (16, 1)
+    assert report.plan["runtime"]["tirust"]["budget_seconds"] > 0.0
