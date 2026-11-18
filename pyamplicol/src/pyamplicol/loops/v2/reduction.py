@@ -807,7 +807,59 @@ def with_fallback(
     results, failures, records = _with_fallback(run, choice, count, checks, carrier)
     if failures and best_effort and not choice.unchecked:
         _best_effort(run, choice, checks, carrier, results, failures, records)
+    _rescued_estimates(run, checks, results, failures)
     return results, failures, records
+
+
+def rescued_checks(checks: Any) -> Any:
+    """The checks of a point served with rescued lanes (``VirtualLaneRescue``)
+    when the call's checks lack the reduction-direction check: the call's
+    with the recommended set's rescaled reduction-direction check added
+    (USER / coordinator 2026-11-18: one rotation alone under-states the
+    error of a rescued TIRust point, true above the estimate on 162 of 185
+    g g > g g g points; with the reduction check none above it); None when
+    nothing is added (no checks, or the call's include a reduction check)."""
+
+    enabled = checks is not None and bool(
+        getattr(checks, "rotations", ())
+        or getattr(checks, "reduction_direction", False)
+    )
+    if not enabled or getattr(checks, "reduction_direction", False):
+        return None
+    return replace(checks, reduction_direction=True, rescaled=True)
+
+
+def _rescued_estimates(
+    run: Callable[[list[int] | None, Any], tuple[list[Any], dict[int, list[str]]]],
+    checks: Any,
+    results: list[Any],
+    failures: dict[int, list[str]],
+) -> None:
+    """Give every served point with rescued lanes the estimate of the
+    call's checks with the rescaled reduction-direction check
+    (``rescued_checks``), in place: those points alone evaluated again, from
+    their exact inputs, with those checks (their values are bitwise the
+    same: the checks re-reduce, they change no direct lane). A point the
+    second run fails keeps its first result. Nothing runs for a call without
+    checks, with a reduction check, or without rescued lanes."""
+
+    extended = rescued_checks(checks)
+    if extended is None:
+        return
+    indices = [
+        index
+        for index, result in enumerate(results)
+        if result is not None
+        and index not in failures
+        and getattr(result, "lane_rescue", ())
+    ]
+    if not indices:
+        return
+    again, failed = run(indices, extended)
+    for local, index in enumerate(indices):
+        if local in failed or again[local] is None:
+            continue
+        results[index] = again[local]
 
 
 def backend_deviation(reasons: Collection[str]) -> float | None:

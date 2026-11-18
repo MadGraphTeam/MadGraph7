@@ -102,3 +102,105 @@ def test_the_lane_rescue_stage_is_part_of_the_reduction_group():
 
     stages = profile_stages({"reduction": 1.0, "lane rescue": 0.5}, 2.0, "virtual")
     assert stages[PROFILE_REDUCTION] == pytest.approx(1.5)
+
+
+# ------------------------------------------------------------ native paths
+
+from tests.unit.test_loop_v2_best_effort import aag  # noqa: E402,F401  (fixture)
+
+
+@pytest.mark.loop_physics
+def test_the_c_abi_serves_refused_lanes_and_its_setter_turns_the_rescue_off(
+    aag,  # noqa: F811
+    loop_native,
+):
+    """g g > a a g on explicit TIRust (LI-33's stream points, which it
+    refuses at the default acceptance): the Python API serves the refused
+    points by the lane rescue (records), and without it (``lane_rescue=
+    False``) they fail; the C ABI does the same by default (status
+    success-class, values bitwise the Python API's) and with
+    ``rusticol_virtual_set_lane_rescue(handle, 0)`` they fail again; any
+    other value of the setter is an invalid argument."""
+
+    import ctypes
+    from fractions import Fraction
+
+    from pyamplicol import Runtime
+    from tests.unit.test_loop_v2_sdk_extras import _error, _sdk
+    from tests.unit.test_loop_v2_sdk_induced import (
+        FAILED_STATUS,
+        STATUS_INVALID_ARGUMENT,
+        SUCCESS_STATUS,
+        _evaluate,
+        _open,
+        _python_flat,
+        _same,
+    )
+
+    artifact, exact_points, exact_scales = aag
+    points = [[[float(c) for c in leg] for leg in point] for point in exact_points]
+    scales = [float(Fraction(s)) for s in exact_scales]
+    runtime = Runtime.load(artifact, process="p")
+    call = dict(
+        mu_r2=exact_scales, poles="none", reduction="tirust", on_failure="return"
+    )
+    rescued = runtime.evaluate(exact_points, **call)
+    plain = runtime.evaluate(exact_points, lane_rescue=False, **call)
+    served = [p for p, lane in enumerate(rescued.diagnostics) if lane.lane_rescue]
+    assert served, "the fixture points include rescued ones"
+    assert all(rescued.diagnostics[p].valid for p in served)
+    assert all(plain.statuses[p] == "failed" for p in served)
+    sdk = _sdk()
+    sdk.rusticol_virtual_set_lane_rescue.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    sdk.rusticol_virtual_set_on_failure.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    handle = _open(sdk, artifact)
+    try:
+        assert sdk.rusticol_virtual_set_poles(handle, b"none") == 0, _error(sdk)
+        assert sdk.rusticol_virtual_set_reduction(handle, b"tirust") == 0
+        assert sdk.rusticol_virtual_set_on_failure(handle, b"return") == 0
+        found = _evaluate(sdk, handle, points, scales)
+        assert all(found["statuses"][p] == SUCCESS_STATUS for p in served), found
+        assert _same(found["virtual"], _python_flat(rescued))
+        assert (
+            sdk.rusticol_virtual_set_lane_rescue(handle, 2) == STATUS_INVALID_ARGUMENT
+        )
+        assert sdk.rusticol_virtual_set_lane_rescue(handle, 0) == 0, _error(sdk)
+        off = _evaluate(sdk, handle, points, scales)
+        assert all(off["statuses"][p] == FAILED_STATUS for p in served), off
+        assert sdk.rusticol_virtual_set_lane_rescue(handle, 1) == 0
+        again = _evaluate(sdk, handle, points, scales)
+        assert again["statuses"] == found["statuses"]
+    finally:
+        sdk.rusticol_virtual_close(handle)
+
+
+@pytest.mark.loop_physics
+def test_a_rescued_point_estimate_includes_the_reduction_direction_check(
+    aag,  # noqa: F811
+):
+    """With checks that lack the reduction-direction check (one rotation),
+    a point with rescued lanes is evaluated again with the rescaled one
+    added (``reduction.rescued_checks``), its value unchanged; the other
+    points keep the call's checks; a call without checks runs nothing more."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+
+    artifact, exact_points, exact_scales = aag
+    runtime = Runtime.load(artifact, process="p")
+    call = dict(
+        mu_r2=exact_scales, poles="none", reduction="tirust", on_failure="return"
+    )
+    checked = runtime.evaluate(
+        exact_points, stability_checks=VirtualStabilityChecks(1), **call
+    )
+    plain = runtime.evaluate(exact_points, **call)
+    served = [p for p, lane in enumerate(checked.diagnostics) if lane.lane_rescue]
+    assert served
+    for p, estimate in enumerate(checked.stability):
+        names = {name for name, _budget in estimate.checks}
+        if p in served:
+            assert "reduction-rescaled" in names, names
+        else:
+            assert "reduction-rescaled" not in names, names
+    assert checked.values == plain.values

@@ -470,7 +470,16 @@ precision, in the inclusive and resolved evaluations, the Python reference
 path and the SDKs; binary64 and double-double track nothing, TIRust's
 values have their own acceptance tests, and the unchecked setting
 (`reduction_unchecked=True`) drops it with the backends' other checks. It
-never changes a served value.
+never changes a served value. A lane the lane rescue (below) reduced in
+arbitrary precision inside a lower-precision point (binary64 or
+double-double) is held to the analogous rule at that point: per Laurent
+coefficient, the tracked uncertainty of its arbitrary-precision value
+(before it is rounded to the point's carrier), summed over the point's
+lanes rescued there, must stay below the point carrier's unit roundoff
+(`2^-53`, `2^-106`) of the point's summed lane sizes, the largest
+coefficient deciding; otherwise those lanes count as refused at that last
+carrier and the point fails (reason "NinjaRS tracked precision: the N lanes
+rescued in arbitrary ... keep ... tracked bits ...").
 
 It catches what NinjaRS's cut tests miss at a nearly degenerate box Gram
 determinant (a 2 -> 3 point with a spatially collinear final state, NinjaRS
@@ -786,6 +795,19 @@ certified by itself: the point's stability estimate (its rotation checks,
 the reduction-direction re-test) is formed on the mixed total as for any
 point.
 
+When the call runs stability checks without the reduction-direction check
+(for instance `VirtualStabilityChecks(1)`, one rotation, the default of
+`evaluation.stability_checks`), a point with rescued lanes is evaluated
+again, on such points only, with the call's checks and the rescaled
+reduction-direction check of the recommended set, and returns that
+estimate (its `checks` then include `reduction-rescaled`; its value is
+unchanged): one rotation does not see the reduction error of a rescued
+TIRust point's other lanes (true error above the one-rotation estimate on
+162 of 185 such g g > g g g points; none above the extended estimate),
+exactly as a best-effort value's uncertainty includes the recommended
+checks. Other points keep the call's checks. The standalone SDKs do not
+extend it yet.
+
 `lane.lane_rescue` (a `VirtualLaneRescue`, `None` without one) gives per
 carrier the lanes it served (`lanes`, e.g. `(("double-double", 3),)`,
 counted over the point's evaluations), `count` and the highest `carrier`.
@@ -794,7 +816,9 @@ before (its reason ends with each carrier's status), and the mechanisms
 below then act unchanged: `"auto"`'s per-point fallback, a rescue policy's
 next level, the best-effort value. `lane_rescue=False` (`Runtime.load` or
 `evaluate`; `evaluation.lane_rescue`, `--no-lane-rescue`) turns it off:
-refused lanes fail their points exactly as before. The lane rescue's time is part
+refused lanes fail their points exactly as before. `evaluate_resolved` and
+`evaluate_correlated` (and their variants) take the same keyword; their
+results carry no `lane_rescue` record yet. The lane rescue's time is part
 of the call (`profile`: the reduction stage) and its points are counted in
 `profile`'s cause tables under "lane rescue".
 
