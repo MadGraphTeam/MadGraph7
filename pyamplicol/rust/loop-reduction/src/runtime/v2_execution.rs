@@ -589,6 +589,11 @@ impl V2Backends {
             Self::TiRust(backend) => {
                 let mut options = *backend.options();
                 options.unchecked = false;
+                // The method choice in the rescue carriers too: a row the
+                // gates refuse there gets the method choice and its acceptance
+                // check instead of failing closed (and going on to the
+                // arbitrary-precision step).
+                options.extended_method_choice = true;
                 Self::tirust_with(backend.plans(), carrier.bits(), options)
             }
         }
