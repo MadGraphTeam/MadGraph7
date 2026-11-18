@@ -216,8 +216,8 @@ jobs:
       # first real doxygen run for these docs.
       - name: Install doxygen (pinned)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y graphviz
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y graphviz
           curl -fsSL https://github.com/doxygen/doxygen/releases/download/Release_1_9_8/doxygen-1.9.8.linux.bin.tar.gz | sudo tar xz -C /opt
           echo /opt/doxygen-1.9.8/bin >> "$GITHUB_PATH"
 

@@ -83,14 +83,6 @@
 //#undef MGONGPU_INLINE_HELAMPS // default
 ////#define MGONGPU_INLINE_HELAMPS 1
 
-// Choose whether to hardcode the cIPD physics parameters rather than reading them from user cards
-// This optimization can gain 20%% in CUDA in eemumu (issue #39)
-// By default, do not hardcode, but allow this macro to be set from outside with e.g. -DMGONGPU_HARDCODE_PARAM
-// ** NB: The option to use hardcoded cIPD physics parameters is supported again even now when alphas is running (#373)
-// ** NB: Note however that it now only refers to cIPD parameters (cIPC parameters are always accessed through global memory)
-//#undef MGONGPU_HARDCODE_PARAM // default
-////#define MGONGPU_HARDCODE_PARAM 1
-
 /* clang-format off */
 // Complex type in CUDA: thrust or cucomplex or cxsmpl (CHOOSE ONLY ONE)
 // (NB THIS IS MGONGPU_*CU*CXTYPE_xxx)
@@ -309,11 +301,20 @@ ispoweroftwo( int n )
   return ( n > 0 ) && !( n & ( n - 1 ) );
 }
 
-// Compiler version support (#96): require nvcc from CUDA >= 11.2, e.g. to use C++17 (see #333)
-#ifdef __NVCC__
-#if( __CUDACC_VER_MAJOR__ < 11 ) || ( __CUDACC_VER_MAJOR__ == 11 && __CUDACC_VER_MINOR__ < 2 )
-#error Unsupported CUDA version: please use CUDA >= 11.2
+#if __cplusplus < 202002L
+#error Unsupported C++ standard: please build with -std=c++20 or later
 #endif
+
+// nvcc supports -std=c++20 from CUDA 12.0.
+#ifdef __NVCC__
+#if( __CUDACC_VER_MAJOR__ < 12 )
+#error Unsupported CUDA version: please use CUDA >= 12.0
+#endif
+#endif
+
+// ROCm 6.0 hipcc is LLVM 17, same floor as the clang startup check. HIP_VERSION_MAJOR from hip_runtime.h.
+#if defined __HIPCC__ && defined HIP_VERSION_MAJOR && HIP_VERSION_MAJOR < 6
+#error Unsupported HIP version: please use ROCm >= 6.0
 #endif
 
 // Compiler version support (#96): require clang >= 11

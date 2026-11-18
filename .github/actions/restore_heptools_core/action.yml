@@ -18,6 +18,7 @@ runs:
     # superset, so it is the fallback until warm_cache has built a core one.
     - name: restore core cache
       id: core-cache
+      if: runner.environment != 'self-hosted'
       uses: actions/cache/restore@v5
       with:
         path: ~/.cache/HEPtools
@@ -29,14 +30,14 @@ runs:
     # A failed download is only a warning of actions/cache and leaves nothing
     # restored (see restore_heptools): try once more after a pause.
     - name: wait before retrying the restore
-      if: steps.core-cache.outputs.cache-matched-key == ''
+      if: runner.environment != 'self-hosted' && steps.core-cache.outputs.cache-matched-key == ''
       run: |
         echo "::warning::the core heptools cache was not restored, retrying in 60 s"
         rm -rf ~/.cache/HEPtools
         sleep 60
       shell: bash
     - name: restore core cache (retry)
-      if: steps.core-cache.outputs.cache-matched-key == ''
+      if: runner.environment != 'self-hosted' && steps.core-cache.outputs.cache-matched-key == ''
       uses: actions/cache/restore@v5
       with:
         path: ~/.cache/HEPtools
@@ -44,6 +45,14 @@ runs:
         restore-keys: |
           ${{ env.CACHE_KEY }}-
           ${{ env.FULL_CACHE_KEY }}-
+
+    # A self-hosted runner keeps its own ~/.cache/HEPtools and builds the core
+    # components there when missing, once per machine (see restore_heptools).
+    - name: build the core HEPTools on this machine
+      if: runner.environment == 'self-hosted'
+      uses: ./.github/actions/selfhosted_heptools
+      with:
+        tools: lhapdf pythia8
 
     # MG5 configuration for lhapdf and pythia8/hepmc only (setup_only: the
     # tree is already there)

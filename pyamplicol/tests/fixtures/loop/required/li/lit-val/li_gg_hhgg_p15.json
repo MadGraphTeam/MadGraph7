@@ -1,0 +1,118 @@
+{
+ "name": "li_gg_hhgg_p15",
+ "li_row": "LI-41",
+ "loop_induced": true,
+ "pdgs": [
+  21,
+  21,
+  25,
+  25,
+  21,
+  21
+ ],
+ "initial": 2,
+ "madloop_process": "g g > h h g g [sqrvirt=QCD]",
+ "loop_orders": {
+  "QCD": 4,
+  "QED": 2
+ },
+ "squared_orders": {
+  "QCD": 8,
+  "QED": 4
+ },
+ "correction": "QCD",
+ "scheme": "p15",
+ "scheme_data": {
+  "description": "arXiv:1507.00020 (Hirschi, Mattelaer: loop-induced in MG5_aMC) table tableParams with alpha_s = 0.118: the MG5 loop_sm model at its default restriction, massive b (m_b = y_b = 4.7) and tau (m_tau = y_tau = 1.777), alpha^-1 = 132.507 fixed with G_F and m_Z (m_W derived), m_t = y_t = 173 with Gamma_t = 0, m_H = 125; fixed widths in tree propagators at the MG5 default card values (Gamma_Z = 2.441404, Gamma_W = 2.0476, Gamma_H = 6.38233934e-03; the paper's table rounds them to 2.4414, 2.0476, 0.00638), loop propagators widthless, Feynman gauge.",
+  "restriction": "default",
+  "madloop_model": "{mg5}/models/loop_sm",
+  "parameters": {
+   "aS": "0.118",
+   "aEWM1": "132.507",
+   "Gf": "0.0000116639",
+   "MZ": "91.188",
+   "MH": "125",
+   "MT": "173",
+   "ymt": "173",
+   "MB": "4.7",
+   "ymb": "4.7",
+   "MTA": "1.777",
+   "ymtau": "1.777"
+  },
+  "fixed_parameters": {
+   "WT": "0",
+   "WZ": "2.441404",
+   "WW": "2.0476",
+   "WH": "0.00638233934"
+  },
+  "electroweak_inputs": "alpha_fixed",
+  "complex_mass_scheme": false,
+  "active_flavours": 4,
+  "loop_quark_flavours": 6
+ },
+ "normalization": {
+  "initial_average": 256,
+  "final_symmetry": 4,
+  "denominator": 1024,
+  "convention": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings"
+ },
+ "carriers": [
+  "double"
+ ],
+ "points": [
+  [
+   [
+    "500",
+    "0",
+    "0",
+    "500"
+   ],
+   [
+    "500",
+    "0",
+    "0",
+    "-500"
+   ],
+   [
+    "148.556611322403",
+    "-20.0350647739655",
+    "36.3342710976818",
+    "-68.7203295313605"
+   ],
+   [
+    "322.824972379014",
+    "-94.1433807610584",
+    "-273.713728753781",
+    "69.3453772222178"
+   ],
+   [
+    "138.118065647892",
+    "-95.9848700486689",
+    "-88.5772755257372",
+    "44.9173801606153"
+   ],
+   [
+    "390.500350650690",
+    "210.163315583693",
+    "325.956733181836",
+    "-45.5424278514726"
+   ]
+  ]
+ ],
+ "mu_r": [
+  "1000"
+ ],
+ "rows": [
+  {
+   "value": 1.3033633142042775e-12,
+   "value_source": "madloop",
+   "providers": {
+    "madloop": {
+     "value": 1.3033633142042775e-12
+    }
+   }
+  }
+ ],
+ "source": "arXiv:1507.00020, section 'Benchmark results for various loop-induced Higgs production processes' (LoopInduced.tex 1036-1051): |M^(LI)|^2 = 1.3033633142042775e-12 GeV^-4 for g g > h h g g at the quoted point, summed over helicities and colours (with the identical-particle factor and initial average of MG5's standalone output), MadLoop in quadruple precision, all 17 double-precision digits stable. The point is quoted to 15 digits: momentum conservation and the mass shells hold to ~1e-12 relative, so it is a binary64 check only (carriers); its renormalisation scale is irrelevant (finite; alpha_s fixed at 0.118).",
+ "rule": "PLAN \u00a74.1 LI-41 / \u00a73.4 Done: LI-41 equals the P15 point (L1, lax 1e-5; correctness only)"
+}

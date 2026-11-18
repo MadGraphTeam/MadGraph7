@@ -7,12 +7,15 @@ import csv
 import hashlib
 import io
 import json
+import lzma
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
 import tomllib
 import zipfile
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -23,6 +26,7 @@ _LOCK = tomllib.loads(
     (ROOT / "dependencies" / "release-lock.toml").read_text(encoding="utf-8")
 )
 _RELEASE_VERSION = str(_LOCK["project"]["version"])
+_CANDIDATE_VERSION = f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab"
 _CONTRIBUTOR_LOCK = tomllib.loads(
     (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
 )
@@ -30,20 +34,53 @@ _DEFAULT_REQUIREMENTS = [
     f"{entry['distribution']}=={entry['version']}"
     for entry in _LOCK["python_dependencies"]
 ]
-_CANDIDATE_REQUIREMENTS = [
-    (
-        f"{entry['distribution']}=="
-        f"{_CONTRIBUTOR_LOCK['symbolica']['candidate_version']}"
-        if entry["distribution"] == _LOCK["symbolica"]["python_distribution"]
-        else f"{entry['distribution']}=={entry['version']}"
-    )
-    for entry in _LOCK["python_dependencies"]
-]
+
+
+def _candidate_requirements(symbolica: str) -> list[str]:
+    """The release lock's runtime pins with Symbolica at ``symbolica``."""
+
+    return [
+        (
+            f"{entry['distribution']}=={symbolica}"
+            if entry["distribution"] == _LOCK["symbolica"]["python_distribution"]
+            else f"{entry['distribution']}=={entry['version']}"
+        )
+        for entry in _LOCK["python_dependencies"]
+    ]
+
+
+_CANDIDATE_REQUIREMENTS = _candidate_requirements(
+    _CONTRIBUTOR_LOCK["symbolica"]["candidate_version"]
+)
+# The contributor lock's historical Symbolica candidate (3.0.0 at its pinned
+# source revision) need not be the release lock's published Symbolica (3.0.2
+# since the release pins were aligned with the Community producer); the
+# audits hold each mode to its own pin, so a test whose expectation depends
+# on the two being equal or not reads this.
+_SYMBOLICA_PINS_DIFFER = _CANDIDATE_REQUIREMENTS != _DEFAULT_REQUIREMENTS
+_CANDIDATE_PIN_IN_RELEASE = (
+    "wheel Requires-Dist for symbolica excludes locked version "
+    + re.escape(str(_LOCK["symbolica"]["python_version"]))
+)
 _LEGAL_FILES = (
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "licenses/Symbolica.txt",
     "licenses/SymJIT.txt",
+    "licenses/NinjaRS.txt",
+    "licenses/oneloopmaster.txt",
+    "licenses/TIRust.txt",
+    "licenses/GammaLoop-crates.txt",
+    # GMP, MPFR and MPC: LGPL-3.0-or-later and the GPL-3.0 text it incorporates,
+    # from the gmp-mpfr-sys release Cargo.lock pins.
+    *(
+        f"licenses/rust/gmp-mpfr-sys-{package['version']}/LICENSE-{kind}.md"
+        for package in tomllib.loads((ROOT / "Cargo.lock").read_text(encoding="utf-8"))[
+            "package"
+        ]
+        if package["name"] == "gmp-mpfr-sys"
+        for kind in ("LGPL", "GPL")
+    ),
 )
 _COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
 _BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
@@ -141,7 +178,6 @@ from _artifacts import (  # noqa: E402
     MAX_WHEEL_BYTES,
     ArtifactError,
     _scan_capi_archive,
-    _scan_static_runtime_families,
     audit_sdist,
     audit_wheel,
 )
@@ -220,7 +256,7 @@ def _prepared_model_files(
                 "bundle_size": len(bundle),
                 "bundle_sha256": hashlib.sha256(bundle).hexdigest(),
                 "dependencies": {
-                    "symbolica_serialization_abi": "symbolica-bincode2-v1",
+                    "symbolica_serialization_abi": "symbolica-bincode2-v2",
                     "symjit_application_abi": "symjit-application-storage-v4",
                     "symjit_plane_application_abi": (
                         "pyamplicol-symjit-plane-application-v2"
@@ -434,6 +470,7 @@ def _selftest_files(
     missing_arena_capability: str | None = None,
     missing_symjit_capability: str | None = None,
     direct_codegen_optimization_level: int = 2,
+    umami_artifact_id: str | None = None,
 ) -> dict[str, bytes]:
     payload_path = "processes/smoke/evaluator.symjit"
     payload = b"synthetic trusted SymJIT application"
@@ -654,6 +691,42 @@ def _selftest_files(
         + "\n"
     ).encode()
     manifest["artifact_id"] = hashlib.sha256(canonical).hexdigest()
+    if umami_artifact_id is not None:
+        # A UMAMI provider is an API payload, outside the identity; "bound"
+        # names the artifact's identity, anything else a stale one.
+        bound = (
+            manifest["artifact_id"]
+            if umami_artifact_id == "bound"
+            else umami_artifact_id
+        )
+        umami_payloads = {
+            "API/umami/metadata.json": (
+                json.dumps(
+                    {"provider": {"id": "p0", "artifact_id": bound}},
+                    indent=2,
+                    sort_keys=True,
+                ).encode()
+                + b"\n",
+                "sdk-metadata",
+                "application/json",
+            ),
+            "API/umami/provider_p0.h": (
+                f'#define UMAMI_ARTIFACT_ID "{bound}"\n'.encode(),
+                "api-source",
+                "text/x-chdr",
+            ),
+        }
+        api_payloads.update(umami_payloads)
+        manifest["payloads"].extend(
+            {
+                "path": path,
+                "role": role,
+                "media_type": media_type,
+                "size_bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+            }
+            for path, (data, role, media_type) in sorted(umami_payloads.items())
+        )
     prefix = f"pyamplicol/assets/selftest/{rust_target}"
     files = {
         f"{prefix}/expected.json": json.dumps(
@@ -712,8 +785,11 @@ def _wheel(
     selftest_missing_arena_capability: str | None = None,
     selftest_missing_symjit_capability: str | None = None,
     selftest_direct_codegen_optimization_level: int = 2,
+    selftest_umami_artifact_id: str | None = None,
     selftest_fixture_bootstrap: bool = False,
     metadata_description: str = "",
+    sdk_compressed: bool | None = None,
+    sdk_archive: bytes = b"synthetic static archive",
 ) -> Path:
     if requirement is not None and requirements is not None:
         raise ValueError("use requirement or requirements, not both")
@@ -728,7 +804,28 @@ def _wheel(
     )
     declared_legal_files = _LEGAL_FILES if license_files is None else license_files
     dist_info = f"pyamplicol-{version}.dist-info"
-    sdk_archive = b"synthetic static archive"
+    # Distribution (release) wheels ship the SDK archive xz-compressed.
+    if sdk_compressed is None:
+        sdk_compressed = not candidate
+    sdk_metadata: dict[str, object] = {
+        "schema_version": 1,
+        "abi_version": 1,
+        "version": sdk_version or version,
+        "target": rust_target,
+        "archive": "lib/librusticol_capi.a",
+        "rust_source": "rust/rusticol.rs",
+    }
+    sdk_member = "pyamplicol/_sdk/lib/librusticol_capi.a"
+    sdk_member_data = sdk_archive
+    if sdk_compressed:
+        sdk_metadata["archive"] = "lib/librusticol_capi.a.xz"
+        sdk_metadata["archive_compression"] = {
+            "format": "xz",
+            "sha256": hashlib.sha256(sdk_archive).hexdigest(),
+            "size": len(sdk_archive),
+        }
+        sdk_member += ".xz"
+        sdk_member_data = lzma.compress(sdk_archive, format=lzma.FORMAT_XZ)
     files = {
         name: b"synthetic required wheel member\n"
         for name in _REQUIRED_WHEEL_PACKAGE_MEMBERS
@@ -743,17 +840,8 @@ def _wheel(
             "pyamplicol/_sdk/include/rusticol.hpp": b"#pragma once\n",
             "pyamplicol/_sdk/fortran/rusticol.f90": b"module rusticol\nend module\n",
             "pyamplicol/_sdk/rust/rusticol.rs": b"// safe Rust wrapper\n",
-            "pyamplicol/_sdk/lib/librusticol_capi.a": sdk_archive,
-            "pyamplicol/_sdk/metadata.json": json.dumps(
-                {
-                    "schema_version": 1,
-                    "abi_version": 1,
-                    "version": sdk_version or version,
-                    "target": rust_target,
-                    "archive": "lib/librusticol_capi.a",
-                    "rust_source": "rust/rusticol.rs",
-                }
-            ).encode(),
+            sdk_member: sdk_member_data,
+            "pyamplicol/_sdk/metadata.json": json.dumps(sdk_metadata).encode(),
             "pyamplicol/_sdk/link.json": json.dumps(
                 {
                     "schema_version": 1,
@@ -817,6 +905,7 @@ def _wheel(
             direct_codegen_optimization_level=(
                 selftest_direct_codegen_optimization_level
             ),
+            umami_artifact_id=selftest_umami_artifact_id,
         )
     )
     for relative in _LEGAL_FILES:
@@ -874,6 +963,7 @@ def _wheel(
     files[record_name] = record.getvalue().encode()
 
     filename = f"pyamplicol-{version}-cp311-abi3-{platform_tag}.whl"
+    directory.mkdir(parents=True, exist_ok=True)
     path = directory / filename
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, data in files.items():
@@ -1132,8 +1222,27 @@ def test_release_and_candidate_wheels_are_distinct_and_audited(
     )
     candidate_report = audit_wheel(candidate, mode="candidate", native_scan=False)
     assert candidate_report.version == candidate_version
-    with pytest.raises(ArtifactError, match="release wheel has invalid version"):
+    # Release mode refuses a candidate wheel: by its Symbolica pin while the
+    # contributor lock's candidate differs from the release lock's Symbolica
+    # (``_SYMBOLICA_PINS_DIFFER``), and by its version in any case.
+    with pytest.raises(
+        ArtifactError,
+        match=(
+            _CANDIDATE_PIN_IN_RELEASE
+            if _SYMBOLICA_PINS_DIFFER
+            else "release wheel has invalid version"
+        ),
+    ):
         audit_wheel(candidate, mode="release", native_scan=False)
+    candidate.unlink()
+    release_pins = _wheel(
+        tmp_path,
+        version=candidate_version,
+        candidate=True,
+        requirements=_DEFAULT_REQUIREMENTS,
+    )
+    with pytest.raises(ArtifactError, match="release wheel has invalid version"):
+        audit_wheel(release_pins, mode="release", native_scan=False)
 
 
 def test_release_metadata_may_document_candidate_workflows(tmp_path: Path) -> None:
@@ -1176,10 +1285,40 @@ def test_release_wheel_requires_the_minimal_build_marker(tmp_path: Path) -> None
         audit_wheel(invalid, mode="release", native_scan=False)
 
 
+def _candidate_symbolica_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str
+) -> None:
+    """Point the candidate provenance at a copy of the contributor lock whose
+    Symbolica ``candidate_version`` is ``version`` (its other pins, and the
+    pinned source revision the provenance binds, unchanged)."""
+
+    text = (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
+    pattern = re.compile(
+        r'(?ms)^(\[symbolica\]\n(?:(?!^\[).)*?^candidate_version = )"[^"]*"'
+    )
+    edited, count = pattern.subn(lambda match: f'{match[1]}"{version}"', text)
+    assert count == 1
+    assert tomllib.loads(edited)["symbolica"]["candidate_version"] == version
+    path = tmp_path / "contributor-lock-candidate-symbolica.toml"
+    path.write_text(edited, encoding="utf-8")
+    monkeypatch.setattr(artifacts, "_CONTRIBUTOR_DEPENDENCY_LOCK", path)
+
+
 def test_candidate_and_release_symbolica_wheel_pins_can_match(
     tmp_path: Path,
     candidate_dependency_provenance: None,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A candidate whose Symbolica version equals the release lock's accepts
+    the release pins, and a release wheel carries that same pin: the audit
+    has no rule that the two pins differ. The contributor lock's candidate
+    (Symbolica 3.0.0 at its pinned source revision, ``dependencies/
+    README.md``: historical candidate mode) is set to the release lock's
+    version for this, since the locks themselves differ since the release
+    lock's 3.0.2 (``test_candidate_and_release_symbolica_pins_are_their_own``)."""
+
+    release_symbolica = _LOCK["symbolica"]["python_version"]
+    _candidate_symbolica_lock(tmp_path, monkeypatch, release_symbolica)
     candidate_version = f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab"
     release_pin = _wheel(
         tmp_path,
@@ -1197,7 +1336,7 @@ def test_candidate_and_release_symbolica_wheel_pins_can_match(
     release_pin.unlink()
     candidate_pin = _wheel(
         tmp_path,
-        requirements=_CANDIDATE_REQUIREMENTS,
+        requirements=_candidate_requirements(release_symbolica),
     )
     release_report = audit_wheel(
         candidate_pin,
@@ -1205,6 +1344,48 @@ def test_candidate_and_release_symbolica_wheel_pins_can_match(
         native_scan=False,
     )
     assert release_report.version == _LOCK["project"]["version"]
+
+
+def test_candidate_and_release_symbolica_pins_are_their_own(
+    tmp_path: Path,
+    candidate_dependency_provenance: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A candidate whose Symbolica version differs from the release lock's
+    (the committed locks: candidate 3.0.0, release 3.0.2) is held to its own
+    pin in candidate mode and a release wheel to the release pin: each mode
+    refuses the other's Symbolica."""
+
+    release_symbolica = _LOCK["symbolica"]["python_version"]
+    other = "0.0.1" if release_symbolica != "0.0.1" else "0.0.2"
+    _candidate_symbolica_lock(tmp_path, monkeypatch, other)
+    candidate_version = f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab"
+    release_pin = _wheel(
+        tmp_path,
+        version=candidate_version,
+        candidate=True,
+        requirements=_DEFAULT_REQUIREMENTS,
+    )
+    with pytest.raises(
+        ArtifactError,
+        match=f"wheel Requires-Dist for symbolica excludes locked version {other}",
+    ):
+        audit_wheel(release_pin, mode="candidate", native_scan=False)
+    release_pin.unlink()
+    candidate_pin = _wheel(
+        tmp_path,
+        version=candidate_version,
+        candidate=True,
+        requirements=_candidate_requirements(other),
+    )
+    assert (
+        audit_wheel(candidate_pin, mode="candidate", native_scan=False).version
+        == candidate_version
+    )
+    candidate_pin.unlink()
+    release = _wheel(tmp_path, requirements=_candidate_requirements(other))
+    with pytest.raises(ArtifactError, match=_CANDIDATE_PIN_IN_RELEASE):
+        audit_wheel(release, mode="release", native_scan=False)
 
 
 def test_candidate_dependency_provenance_uses_compact_source_map(
@@ -1403,20 +1584,357 @@ def test_release_allows_remapped_rust_standard_library_backtrace_paths(
     )
 
 
-@pytest.mark.parametrize("marker", [b"__gmpz_init", b"mpfr_set", b"malachite-q"])
-def test_native_scan_rejects_static_arithmetic_runtime_markers(
-    tmp_path: Path,
-    marker: bytes,
+_ELF_TOOLS = (
+    sys.platform.startswith("linux")
+    and shutil.which("cc") is not None
+    and shutil.which("nm") is not None
+    and shutil.which("ar") is not None
+)
+
+
+def _compile(tmp_path: Path, name: str, source: str, *arguments: str) -> Path:
+    source_path = tmp_path / f"{name}.c"
+    source_path.write_text(source, encoding="utf-8")
+    output = tmp_path / name
+    subprocess.run(
+        ["cc", "-fPIC", *arguments, str(source_path), "-o", str(output)],
+        check=True,
+        capture_output=True,
+    )
+    return output
+
+
+def test_nm_symbols_reads_bsd_lines_and_darwin_bare_undefined_names() -> None:
+    output = (
+        "\nlibrusticol_capi.a(capi.o):\n"
+        "0000000000000448 T _rusticol_abi_version\n"
+        "                 U __gmpz_init\n"
+        "                 w __cxa_finalize\n"
+        "___gmpz_clear\n"
+        "_mpfr_init2\n"
+        "\n"
+    )
+    assert artifacts._nm_symbols(output) == [
+        ("T", "_rusticol_abi_version"),
+        ("U", "__gmpz_init"),
+        ("w", "__cxa_finalize"),
+        (None, "___gmpz_clear"),
+        (None, "_mpfr_init2"),
+    ]
+
+
+def _fake_nm(
+    monkeypatch: pytest.MonkeyPatch, *, defined: str = "", undefined: str = ""
 ) -> None:
-    binary = tmp_path / "native-artifact"
-    binary.write_bytes(b"prefix\x00" + marker + b"\x00suffix")
-    with pytest.raises(ArtifactError, match="forbidden static arithmetic runtime"):
-        _scan_static_runtime_families(binary, "test artifact")
+    """``nm`` as Darwin prints a Mach-O file: ``-u`` lists bare names."""
+
+    monkeypatch.delenv("LLVM_NM", raising=False)
+    monkeypatch.setattr(artifacts.shutil, "which", lambda _name: "/usr/bin/nm")
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        stdout = undefined if "-u" in command else defined
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(artifacts.subprocess, "run", run)
+
+
+def test_capi_archive_scan_rejects_darwin_bare_name_python_imports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"synthetic archive")
+    _fake_nm(
+        monkeypatch,
+        undefined="\nlibrusticol_capi.a(capi.o):\n___gmpz_init\n_mpfr_init2\n",
+    )
+    assert _scan_capi_archive(archive, allow_local_rustup=False)
+    _fake_nm(
+        monkeypatch,
+        undefined="\nlibrusticol_capi.a(capi.o):\n___gmpz_init\n_PyErr_SetString\n",
+    )
+    with pytest.raises(ArtifactError, match=r"undefined Python.*_PyErr_SetString"):
+        _scan_capi_archive(archive, allow_local_rustup=False)
+
+
+def test_nm_reads_the_native_symbol_table_before_any_embedded_bitcode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Apple's nm (LLVM's) reads an object's embedded bitcode by default and
+    # fails on bitcode newer than its LLVM; GNU nm rejects --no-llvm-bc.
+    archive = tmp_path / "librusticol_capi.a"
+    archive.write_bytes(b"!<arch>\n\0___gmpz_init\0_mpfr_init2\0_rusticol_abi\0")
+    monkeypatch.delenv("LLVM_NM", raising=False)
+    monkeypatch.setattr(artifacts.shutil, "which", lambda _name: "/usr/bin/nm")
+    calls: list[list[str]] = []
+
+    def listing(command: list[str]) -> str:
+        return "\nlibrusticol_capi.a(capi.o):\n___gmpz_init\n_mpfr_init2\n"
+
+    def apple(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(command[1:-1])
+        if "--no-llvm-bc" not in command:
+            return subprocess.CompletedProcess(
+                command, 1, stdout="", stderr="error: Unknown attribute kind (102)"
+            )
+        return subprocess.CompletedProcess(command, 0, stdout=listing(command))
+
+    monkeypatch.setattr(artifacts.subprocess, "run", apple)
+    assert _scan_capi_archive(archive, allow_local_rustup=False)
+    assert calls == [["--no-llvm-bc", "-u"]]
+
+    def gnu(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(command[1:-1])
+        if "--no-llvm-bc" in command:
+            return subprocess.CompletedProcess(
+                command, 1, stdout="", stderr="nm: unrecognized option '--no-llvm-bc'"
+            )
+        return subprocess.CompletedProcess(command, 0, stdout=listing(command))
+
+    calls.clear()
+    monkeypatch.setattr(artifacts.subprocess, "run", gnu)
+    assert _scan_capi_archive(archive, allow_local_rustup=False)
+    assert calls == [["--no-llvm-bc", "-u"], ["-u"]]
+
+
+def _macho_linker() -> list[str] | None:
+    """A clang driver that links Mach-O dylibs: native on macOS, else lld."""
+
+    if shutil.which("clang") is None:
+        return None
+    if sys.platform == "darwin":
+        return ["clang"]
+    if shutil.which("ld64.lld") is None or shutil.which("llvm-nm") is None:
+        return None
+    return ["clang", "-fuse-ld=lld"]
+
+
+_MACHO_LINKER = _macho_linker()
+_MACHO_CONSUMER = (
+    "int __gmpz_init(void); int mpfr_set(void);\n"
+    "int consume(void) { return __gmpz_init() + mpfr_set(); }\n"
+)
+
+
+def _macho_dylib(
+    tmp_path: Path, name: str, source: str, arch: str, *arguments: str
+) -> Path:
+    source_path = tmp_path / f"{name}.c"
+    source_path.write_text(source, encoding="utf-8")
+    output = tmp_path / name
+    assert _MACHO_LINKER is not None
+    subprocess.run(
+        [
+            *_MACHO_LINKER,
+            "-target",
+            f"{arch}-apple-macos11",
+            "-nostdlib",
+            "-dynamiclib",
+            "-Wl,-undefined,dynamic_lookup",
+            str(source_path),
+            *arguments,
+            "-o",
+            str(output),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return output
+
+
+@pytest.mark.skipif(_MACHO_LINKER is None, reason="needs a Mach-O C toolchain")
+@pytest.mark.parametrize("arch", ["arm64", "x86_64"])
+def test_relative_path_scan_skips_macho_code_sections(
+    tmp_path: Path, arch: str
+) -> None:
+    code = _macho_dylib(tmp_path, "code.so", _CODE_SECTION_PATH, arch)
+    assert b"\0../src\0" in code.read_bytes()
+    assert artifacts._machine_code_ranges(code.read_bytes())
+    artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": code.read_bytes()})
+    data = _macho_dylib(
+        tmp_path, "data.so", _CODE_SECTION_PATH + _DATA_SECTION_PATH, arch
+    )
+    with pytest.raises(ArtifactError, match=re.escape("marker '../': ")):
+        artifacts._scan_embedded_paths(
+            {"pyamplicol/_rusticol.abi3.so": data.read_bytes()}
+        )
+
+
+_STANDARD_LIBRARY_LIKE = "int standard_library_like(int x) { return 3 * x; }\n"
+
+
+def _macho_archive(
+    tmp_path: Path, name: str, sources: dict[str, str], arch: str
+) -> Path:
+    """A Mach-O archive as the macOS C API archive is built.
+
+    The first object stands for the precompiled Rust standard library: it
+    embeds LLVM bitcode, here unreadable, as Rust's newer bitcode is to
+    Apple's ``nm``; its native symbol table is intact. The crate objects
+    (``--profile sdk``: ``-C embed-bitcode=no``) embed none.
+    """
+
+    objects = []
+    for index, (stem, source) in enumerate(
+        {"std": _STANDARD_LIBRARY_LIKE, **sources}.items()
+    ):
+        source_path = tmp_path / f"{stem}.c"
+        source_path.write_text(source, encoding="utf-8")
+        output = tmp_path / f"{stem}.o"
+        subprocess.run(
+            [
+                "clang",
+                "-target",
+                f"{arch}-apple-macos11",
+                *(["-fembed-bitcode"] if index == 0 else []),
+                "-c",
+                str(source_path),
+                "-o",
+                str(output),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        if index == 0:
+            data = bytearray(output.read_bytes())
+            module = data.find(b"\xde\xc0\x17\x0b")  # the Darwin bitcode wrapper
+            if module < 0:
+                module = data.index(b"BC\xc0\xde")
+            data[module + 4 : module + 20] = b"\xff" * 16
+            output.write_bytes(bytes(data))
+        objects.append(str(output))
+    archive = tmp_path / name
+    subprocess.run(
+        ["llvm-ar", "--format=darwin", "rcs", str(archive), *objects], check=True
+    )
+    return archive
+
+
+@pytest.mark.skipif(
+    _MACHO_LINKER is None or shutil.which("llvm-ar") is None,
+    reason="needs a Mach-O C toolchain and llvm-ar",
+)
+@pytest.mark.parametrize("arch", ["arm64", "x86_64"])
+def test_capi_archive_scan_reads_macho_archives_with_unreadable_bitcode(
+    tmp_path: Path, arch: str
+) -> None:
+    archive = _macho_archive(
+        tmp_path, "librusticol_capi.a", {"consumer": _MACHO_CONSUMER}, arch
+    )
+    # The embedded module is what LLVM's nm reads by default.
+    default = subprocess.run(
+        ["llvm-nm", "--defined-only", str(archive)], capture_output=True, text=True
+    )
+    assert default.returncode != 0
+    assert _scan_capi_archive(archive, allow_local_rustup=False)
+
+
+@pytest.mark.parametrize(
+    "needed",
+    ["libc.so.6", "libgcc_s.so.1", "libpthread.so.0", "ld-linux-x86-64.so.2"],
+)
+def test_extension_may_need_target_c_runtime_libraries(needed: str) -> None:
+    assert artifacts._system_library(needed, "x86_64-unknown-linux-gnu")
+
+
+@pytest.mark.parametrize(
+    "needed", ["libgmp.so.10", "libmpfr-pyamplicol-0123abcd.so.6", "libpython3.so"]
+)
+def test_extension_needs_no_other_library(needed: str) -> None:
+    # GMP, MPFR and MPC are linked into the extension: nothing is bundled.
+    assert not artifacts._system_library(needed, "x86_64-unknown-linux-gnu")
+
+
+def test_versioned_shared_objects_are_scanned_as_native_members() -> None:
+    with pytest.raises(ArtifactError, match=re.escape("path marker '../'")):
+        artifacts._scan_embedded_paths(
+            {"pyamplicol/libexample.so.6": b"../../build-src/x.c"}
+        )
+
+
+def test_linked_in_gmp_mpfr_mpc_assertion_paths_are_accepted() -> None:
+    # gmp-mpfr-sys builds GMP, MPFR and MPC out of tree; their assertion
+    # texts name the sources relative to its build directories.
+    artifacts._scan_embedded_paths(
+        {
+            "pyamplicol/_rusticol.abi3.so": (
+                b"FR_RNDA\0../../mpfr-src/src/add1.c\0../../gmp-src/mpz/x.c\0"
+                b"../mpc-src/src/mul.c\0"
+            )
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "marker"),
+    [
+        (b"FR_RNDA\0../../build-src/src/add1.c\0", "../"),
+        (b"\0..\\..\\mpfr-src\\src\\add1.c\0", "..\\\\"),
+        (b'{"source": "..\\\\build\\\\x.c"}', "..\\\\"),
+        (b"assertion failed at ../src/x.c:12\n", "../"),
+        (b"..//src/x.c", "../"),
+        (b"../relative.c", "../"),
+    ],
+)
+def test_relative_paths_in_shared_object_text_are_rejected(
+    text: bytes, marker: str
+) -> None:
+    with pytest.raises(
+        ArtifactError, match=re.escape(f"non-relocatable path marker '{marker}': ")
+    ):
+        artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": text})
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        # x86-64 instructions of Linux release-profile extensions that the
+        # former rule reported as paths: callq rel32 0xff5c2e2e, callq
+        # *0x022f2e2e(%rip), leaq 0x12f2e2e(%rip), movsd 0x22f2e2e(%rip).
+        b"\0\0L\x89\xea\xe8..\\\xffH\x8d\xbc$",
+        b'SH\x89\xfb\xff\x15../\x02\xbf"\0\0',
+        b"\xf67\x01H\x8d=../\x01\xff\x15\x10\x8c",
+        b"W\xd1\xf2\x0f\x10\r../\x02A\xff\xd6\xf2",
+        # Binary data: the marker bytes with no path component after them.
+        b"\0\0\0\0\0\0..\\\0\0\0\x11\0",
+    ],
+)
+def test_relative_marker_bytes_in_binary_data_are_not_paths(data: bytes) -> None:
+    artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": data})
+
+
+# A text-shaped relative path placed in the code section, and the same text
+# as data: only the data is an embedded path.
+_CODE_SECTION_PATH = (
+    '__asm__(".text\\n.globl code_bytes\\ncode_bytes:\\n'
+    '.byte 0x00, 0x2e, 0x2e, 0x2f, 0x73, 0x72, 0x63, 0x00\\n");\n'
+    "int code(void) { return 1; }\n"
+)
+_DATA_SECTION_PATH = (
+    'const char *volatile data_path = "\\0../src/x.c";\n'
+    "int data(void) { return data_path[0]; }\n"
+)
+
+
+@pytest.mark.skipif(not _ELF_TOOLS, reason="needs an ELF C toolchain")
+def test_relative_path_scan_skips_elf_code_sections(tmp_path: Path) -> None:
+    code = _compile(tmp_path, "code.so", _CODE_SECTION_PATH, "-shared")
+    assert b"\0../src\0" in code.read_bytes()
+    assert artifacts._machine_code_ranges(code.read_bytes())
+    artifacts._scan_embedded_paths({"pyamplicol/_rusticol.abi3.so": code.read_bytes()})
+    data = _compile(
+        tmp_path, "data.so", _CODE_SECTION_PATH + _DATA_SECTION_PATH, "-shared"
+    )
+    with pytest.raises(ArtifactError, match=re.escape("marker '../': ")):
+        artifacts._scan_embedded_paths(
+            {"pyamplicol/_rusticol.abi3.so": data.read_bytes()}
+        )
 
 
 @pytest.mark.parametrize(
     "symbol",
-    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc"],
+    ["_PyErr_SetString", "PyLong_FromLong", "_Py_Dealloc", "__Py_Dealloc"],
 )
 def test_capi_archive_scan_rejects_undefined_python_symbols(
     tmp_path: Path,
@@ -1502,6 +2020,182 @@ def test_record_direct_dependency_and_size_fail_closed(tmp_path: Path) -> None:
         stream.truncate(MAX_WHEEL_BYTES + 1)
     with pytest.raises(ArtifactError, match="limit"):
         audit_wheel(oversized, mode="release", native_scan=False)
+
+
+def test_oversized_wheel_is_audited_in_full_before_the_size_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(artifacts, "MAX_WHEEL_BYTES", 1000)
+    bad_record = _wheel(tmp_path, bad_record=True)
+    with pytest.raises(ArtifactError, match="RECORD hash"):
+        audit_wheel(bad_record, mode="release", native_scan=False)
+
+    bad_record.unlink()
+    wheel = _wheel(tmp_path)
+    size = wheel.stat().st_size
+    with pytest.raises(ArtifactError) as raised:
+        audit_wheel(wheel, mode="release", native_scan=False)
+    message = str(raised.value)
+    assert message.startswith(
+        f"compressed wheel is {size} bytes; limit is 1000 bytes "
+        "(every other wheel check passed); "
+    )
+    assert "compressed bytes: extension " in message
+
+
+def test_wheel_size_summary_splits_the_compressed_bytes(tmp_path: Path) -> None:
+    wheel = _wheel(tmp_path)
+    summary = artifacts.wheel_size_summary(wheel)
+    size = wheel.stat().st_size
+    assert summary.startswith(f"{wheel.name} is {size} bytes (limit {MAX_WHEEL_BYTES})")
+    components, archive_sizes = summary.split("compressed bytes: ", 1)[1].split("; ")
+    parts = dict(item.rsplit(" ", 1) for item in components.split(", "))
+    assert list(parts) == [
+        "extension",
+        "SDK archive",
+        "prepared models",
+        "other",
+        "zip metadata",
+    ]
+    assert sum(int(value) for value in parts.values()) == size
+    with zipfile.ZipFile(wheel) as archive:
+        compressed = {info.filename: info.compress_size for info in archive.infolist()}
+    assert int(parts["extension"]) == compressed["pyamplicol/_rusticol.abi3.so"]
+    assert int(parts["prepared models"]) > 0
+    # The SDK archive ships xz-compressed: stored and unpacked sizes follow.
+    xz_member = "pyamplicol/_sdk/lib/librusticol_capi.a.xz"
+    assert int(parts["SDK archive"]) == compressed[xz_member]
+    with zipfile.ZipFile(wheel) as archive:
+        stored = archive.getinfo(xz_member).file_size
+    unpacked = len(b"synthetic static archive")
+    assert archive_sizes == (
+        f"SDK archive librusticol_capi.a.xz {stored} bytes xz, "
+        f"unpacked {unpacked} bytes"
+    )
+
+    plain = _wheel(tmp_path / "plain", candidate=True, version=_CANDIDATE_VERSION)
+    assert artifacts.wheel_size_summary(plain).endswith(
+        f"; SDK archive librusticol_capi.a {unpacked} bytes uncompressed"
+    )
+
+
+def test_release_wheel_requires_the_xz_compressed_sdk_archive(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ArtifactError, match="must ship the SDK archive xz"):
+        audit_wheel(
+            _wheel(tmp_path, sdk_compressed=False), mode="release", native_scan=False
+        )
+
+
+@pytest.mark.parametrize("compressed", (False, True))
+def test_candidate_wheel_accepts_either_sdk_archive_form(
+    tmp_path: Path, candidate_dependency_provenance: None, compressed: bool
+) -> None:
+    wheel = _wheel(
+        tmp_path,
+        candidate=True,
+        version=_CANDIDATE_VERSION,
+        sdk_compressed=compressed,
+    )
+    report = audit_wheel(wheel, mode="candidate", native_scan=False)
+    assert report.version == _CANDIDATE_VERSION
+
+
+def _rewritten_wheel(tmp_path: Path, edit: Callable[[dict[str, bytes]], None]) -> Path:
+    """A release wheel whose members ``edit`` changes; RECORD is rewritten."""
+
+    source = _wheel(tmp_path / "source")
+    with zipfile.ZipFile(source) as archive:
+        files = {name: archive.read(name) for name in archive.namelist()}
+    record_name = next(name for name in files if name.endswith(".dist-info/RECORD"))
+    del files[record_name]
+    edit(files)
+    rows = [
+        [name, _record_hash(data), str(len(data))]
+        for name, data in sorted(files.items())
+    ]
+    rows.append([record_name, "", ""])
+    record = io.StringIO(newline="")
+    csv.writer(record, lineterminator="\n").writerows(rows)
+    files[record_name] = record.getvalue().encode()
+    path = tmp_path / source.name
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, data in files.items():
+            archive.writestr(zipfile.ZipInfo(name, (2025, 1, 1, 0, 0, 0)), data)
+    return path
+
+
+def _sdk_metadata_edit(**changes: object) -> Callable[[dict[str, bytes]], None]:
+    def edit(files: dict[str, bytes]) -> None:
+        metadata = json.loads(files["pyamplicol/_sdk/metadata.json"])
+        compression = dict(metadata["archive_compression"])
+        compression.update(changes)
+        metadata["archive_compression"] = compression
+        files["pyamplicol/_sdk/metadata.json"] = json.dumps(metadata).encode()
+
+    return edit
+
+
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    (
+        (_sdk_metadata_edit(sha256="0" * 64), "does not unpack to the recorded"),
+        (_sdk_metadata_edit(size=1), "does not unpack to the recorded"),
+        (_sdk_metadata_edit(format="zstd"), "archive_compression metadata"),
+        (_sdk_metadata_edit(size=True), "archive_compression metadata"),
+        (
+            lambda files: files.update(
+                {"pyamplicol/_sdk/lib/librusticol_capi.a.xz": b"not xz"}
+            ),
+            "is not valid xz",
+        ),
+        (
+            lambda files: files.update(
+                {"pyamplicol/_sdk/lib/librusticol_capi.a": b"archive"}
+            ),
+            "exactly one SDK archive form",
+        ),
+        (
+            lambda files: files.pop("pyamplicol/_sdk/lib/librusticol_capi.a.xz"),
+            "missing the SDK archive",
+        ),
+    ),
+)
+def test_compressed_sdk_archive_is_checked_against_its_metadata(
+    tmp_path: Path,
+    edit: Callable[[dict[str, bytes]], None],
+    message: str,
+) -> None:
+    with pytest.raises(ArtifactError, match=message):
+        audit_wheel(_rewritten_wheel(tmp_path, edit), mode="release", native_scan=False)
+
+
+def test_compressed_sdk_archive_is_scanned_unpacked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A host path inside the archive is invisible in its xz bytes.
+    leaky = b"!<arch>\n" + b"built in /home/builder/rusticol/src/lib.rs\0" * 64
+    wheel = _wheel(tmp_path / "leaky", sdk_archive=leaky)
+    with zipfile.ZipFile(wheel) as archive:
+        assert b"/home/" not in archive.read(
+            "pyamplicol/_sdk/lib/librusticol_capi.a.xz"
+        )
+    with pytest.raises(ArtifactError, match=r"librusticol_capi\.a embeds"):
+        audit_wheel(wheel, mode="release", native_scan=False)
+
+    scanned: dict[str, bytes] = {}
+
+    def native_scan(entries, _extension, _target, **_kwargs) -> None:
+        scanned.update(entries)
+
+    monkeypatch.setattr(artifacts, "_host_matches", lambda _target: True)
+    monkeypatch.setattr(artifacts, "_native_scan", native_scan)
+    archive = b"!<arch>\nrelocatable archive\0"
+    audit_wheel(_wheel(tmp_path / "clean", sdk_archive=archive), mode="release")
+    assert scanned["pyamplicol/_sdk/lib/librusticol_capi.a"] == archive
+    assert "pyamplicol/_sdk/lib/librusticol_capi.a.xz" not in scanned
 
 
 def test_wheel_filename_version_must_match_metadata(tmp_path: Path) -> None:
@@ -1721,6 +2415,26 @@ def test_wheel_selftest_requires_the_complete_five_language_api_bundle(
         audit_wheel(wheel, mode="release", native_scan=False)
 
 
+def test_wheel_selftest_umami_provider_names_the_artifact_identity(
+    tmp_path: Path,
+) -> None:
+    audit_wheel(
+        _wheel(tmp_path / "bound", selftest_umami_artifact_id="bound"),
+        mode="release",
+        native_scan=False,
+    )
+    stale = _wheel(tmp_path / "stale", selftest_umami_artifact_id="e" * 64)
+
+    with pytest.raises(
+        ArtifactError,
+        match=re.escape(
+            "UMAMI provider does not name the artifact identity: "
+            "API/umami/metadata.json, API/umami/provider_p0.h"
+        ),
+    ):
+        audit_wheel(stale, mode="release", native_scan=False)
+
+
 def test_sdk_link_metadata_is_target_allowlisted(tmp_path: Path) -> None:
     wheel = _wheel(tmp_path, system_libraries=["python3.11"])
     with pytest.raises(ArtifactError, match="target-allowlisted"):
@@ -1893,13 +2607,14 @@ def test_wheel_rejects_generated_sboms(tmp_path: Path) -> None:
         audit_wheel(wheel, mode="release", native_scan=False)
 
 
-def test_wheel_rejects_non_library_repair_root_files(tmp_path: Path) -> None:
-    repair_secret = _wheel(
+def test_wheel_rejects_repair_library_roots(tmp_path: Path) -> None:
+    # GMP, MPFR and MPC are linked statically: the wheel repair bundles none.
+    repaired = _wheel(
         tmp_path,
-        extra_files={"pyamplicol.libs/token.txt": b"not a repaired library\n"},
+        extra_files={"pyamplicol.libs/libgmp-0123abcd.so.10": b"\x7fELF"},
     )
-    with pytest.raises(ArtifactError, match="non-library member"):
-        audit_wheel(repair_secret, mode="release", native_scan=False)
+    with pytest.raises(ArtifactError, match="members outside pyamplicol"):
+        audit_wheel(repaired, mode="release", native_scan=False)
 
 
 def test_wheel_requires_standard_license_metadata_and_allows_extra_notices(

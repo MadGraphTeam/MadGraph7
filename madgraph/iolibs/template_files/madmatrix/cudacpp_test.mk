@@ -29,7 +29,7 @@ BUILDDIR = build$(CXXNAMESUFFIX)
 INSTALLDIR = install$(CXXNAMESUFFIX)
 ###$(info INSTALLDIR=$(INSTALLDIR))
 
-CXXFLAGS += -Igoogletest/googletest/include/ -std=c++11
+CXXFLAGS += -Igoogletest/googletest/include/ -std=c++20
 
 all: googletest/$(INSTALLDIR)/lib64/libgtest.a
 

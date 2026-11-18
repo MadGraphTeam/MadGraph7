@@ -16,6 +16,7 @@ c********************************************************************
       include 'run_config.inc'
       include 'vector.inc'
       include 'run.inc'
+      include 'bstrahl.inc'
       double precision pi
       parameter (pi = 3.1415926d0)
 c
@@ -37,6 +38,10 @@ c
       integer i,j,k
       character*(s_bufflen) buftmp
       double precision xdum1,xdum2
+c     so that a file full of malformed <beamstrahlung> elements warns once
+      logical warn_bstrahl
+      save warn_bstrahl
+      data warn_bstrahl /.false./
 c
 c     Global
 c
@@ -127,6 +132,40 @@ c     Clustering info
          enddo
          nclus=i
       endif
+c     Beamstrahlung fractions.  Unlike the blocks above these are not
+c     handed back as an argument but restored into the common block of
+c     bstrahl.inc, because store_events reads an event and writes it
+c     straight back out -- write_event then picks them up from there.
+c     Without this the final event file would repeat whatever the last
+c     sampled event left behind.
+      read(lun,'(a300)',end=99,err=99) buftmp
+      if(buftmp(1:15).ne.'<beamstrahlung>') then
+         backspace(lun)
+         write_bstrahl=.false.
+         xbs_beam(1)=1d0
+         xbs_beam(2)=1d0
+      else
+c        List-directed rather than a fixed-column edit descriptor: this
+c        code writes the element with '(a,2e15.7,a)', but a file that has
+c        been through another LHEF writer need not keep those columns, and
+c        an unreadable element must degrade to "no beamstrahlung" rather
+c        than kill the run with an I/O error.  Both branches of the read
+c        are protected, like every other optional block in this routine.
+         read(buftmp(16:),*,err=98,end=98) xbs_beam(1),xbs_beam(2)
+         write_bstrahl=.true.
+         goto 97
+ 98      continue
+         if (.not.warn_bstrahl) then
+            write(*,*) 'WARNING: unreadable <beamstrahlung> element, ',
+     $           'treating the event as having no beamstrahlung:'
+            write(*,*) '         ',buftmp(1:min(80,len_trim(buftmp)))
+            warn_bstrahl=.true.
+         endif
+         write_bstrahl=.false.
+         xbs_beam(1)=1d0
+         xbs_beam(2)=1d0
+ 97      continue
+      endif
       return
  99   done=.true.
       return
@@ -143,6 +182,7 @@ c********************************************************************
 
       include 'maxparticles.inc'
       include 'run_config.inc'
+      include 'bstrahl.inc'
 c
 c     parameters
 c
@@ -150,7 +190,7 @@ c
       parameter (pi = 3.1415926d0)
 c
 c     Arguments
-c      
+c
       character*(maxEventLength) evt_record
       integer ievent
       integer nexternal, ic(7,*)
@@ -215,6 +255,12 @@ c      aqcd = g*g/4d0/pi
          write(largeBuff,'(a)') buffclus(i)(1:len_trim(buffclus(i)))
          evt_record=trim(evt_record)//CHAR(13)//CHAR(10)//trim(largeBuff)
       enddo
+c     see write_event for what this is
+      if (write_bstrahl) then
+         write(largeBuff,'(a,2e15.7,a)') '<beamstrahlung>',
+     $        xbs_beam(1),xbs_beam(2),' </beamstrahlung>'
+         evt_record=trim(evt_record)//CHAR(13)//CHAR(10)//trim(largeBuff)
+      endif
       write(largeBuff,'(a)') '</event>'
       evt_record=trim(evt_record)//CHAR(13)//CHAR(10)//trim(largeBuff)
       return
@@ -243,6 +289,7 @@ c********************************************************************
 
       include 'maxparticles.inc'
       include 'run_config.inc'
+      include 'bstrahl.inc'
 c
 c     parameters
 c
@@ -250,7 +297,7 @@ c
       parameter (pi = 3.1415926d0)
 c
 c     Arguments
-c      
+c
       integer lun, ievent
       integer nexternal, ic(7,*)
       double precision P(0:4,*),wgt
@@ -299,6 +346,13 @@ c      aqcd = g*g/4d0/pi
       do i=1,nclus
          write(lun,'(a)') buffclus(i)(1:len_trim(buffclus(i)))
       enddo
+c     Momentum fraction each beam retained after beamstrahlung.  The
+c     initial-state momenta above carry the full x = xbs*xisr, so a
+c     shower reading them cannot tell the two apart on its own.
+      if (write_bstrahl) then
+         write(lun,'(a,2e15.7,a)') '<beamstrahlung>',
+     $        xbs_beam(1),xbs_beam(2),' </beamstrahlung>'
+      endif
       write(lun,'(a)') '</event>'
       return
  51   format(i11,5i5,5e19.11,f3.0,f4.0)

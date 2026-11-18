@@ -2,6 +2,7 @@
 
 #include "phasespace/base.hpp"
 #include "phasespace/batch_sampler.hpp"
+#include "phasespace/beamstrahlung.hpp"
 #include "phasespace/channel_weight_network.hpp"
 #include "phasespace/channel_weights.hpp"
 #include "phasespace/color_ordered_mapping.hpp"
@@ -18,6 +19,7 @@
 #include "phasespace/luminosity.hpp"
 #include "phasespace/madnis.hpp"
 #include "phasespace/matrix_element.hpp"
+#include "phasespace/merging_scale.hpp"
 #include "phasespace/mlm_clustering.hpp"
 #include "phasespace/mlp.hpp"
 #include "phasespace/multichannel.hpp"

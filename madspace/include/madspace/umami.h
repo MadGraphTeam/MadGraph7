@@ -91,7 +91,11 @@ typedef enum {
     UMAMI_IN_RANDOM_DIAGRAM,
     /** externally selected helicity index, type: `int`, shape: `()` */
     UMAMI_IN_HELICITY_INDEX,
-    /** externally selected diagram index, type: `unsigned int`, shape: `()` */
+    /** externally selected zero-based diagram index, type: `int`, shape: `()`.
+     * Used for diagram output and color selection without changing the matrix element.
+     * Nonnegative indices must identify a diagram with a color configuration.
+     * A value of -1 requests diagram sampling; otherwise this input takes precedence
+     * over UMAMI_IN_RANDOM_DIAGRAM. */
     UMAMI_IN_DIAGRAM_INDEX,
     /** externally selected channel index, type: `unsigned int`, shape: `()` */
     UMAMI_IN_CHANNEL_INDEX,

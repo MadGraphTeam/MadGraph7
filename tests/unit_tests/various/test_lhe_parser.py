@@ -47,6 +47,40 @@ class TestEvent(unittest.TestCase):
 </mgrwt>
 </event>"""
 
+    # an e+ e- > mu+ mu- event written with a dressed-lepton density, so it
+    # carries the beamstrahlung fractions of the two beams alongside the
+    # usual blocks.
+    bstrahl_event = """<event>
+ 4 1 +1.3649000e+06 0.2333376E+02  0.7546771E-02  0.1686156E+00
+        -11   -1    0    0    0    0  0.00000000000E+00  0.00000000000E+00  0.24608470417E+03  0.24608470417E+03  0.00000000000E+00 0. -1.
+         11   -1    0    0    0    0 -0.00000000000E+00 -0.00000000000E+00 -0.23876093631E+03  0.23876093631E+03  0.00000000000E+00 0. -1.
+        -13    1    1    2    0    0 -0.14853818370E+02 -0.17995227830E+02  0.18062444552E+03  0.18209310050E+03  0.00000000000E+00 0. -1.
+         13    1    1    2    0    0  0.14853818370E+02  0.17995227830E+02 -0.17330067716E+03  0.17475253998E+03  0.00000000000E+00 0. -1.
+<clustering>
+</clustering>
+<beamstrahlung>  0.9814200E+00  0.9993100E+00 </beamstrahlung>
+</event>"""
+
+    def test_parse_beamstrahlung(self):
+        """the beamstrahlung fractions can be read back, and survive a
+        parse/write round trip: the shower interface reads them from the
+        file after MadSpin/reweight have passed the events along."""
+
+        event = lhe_parser.Event(self.bstrahl_event)
+        self.assertEqual(event.parse_beamstrahlung(),
+                         [0.98142, 0.99931])
+        # reading them must not consume the block
+        self.assertIn('<beamstrahlung>', str(event))
+        self.assertEqual(lhe_parser.Event(str(event)).parse_beamstrahlung(),
+                         [0.98142, 0.99931])
+
+    def test_parse_beamstrahlung_absent(self):
+        """an event without the block reads back as None rather than
+        raising: every non-leptonic run writes events like this."""
+
+        event = lhe_parser.Event(self.mgrwt_event)
+        self.assertIsNone(event.parse_beamstrahlung())
+
     def test_reconstruct_lo_weight(self):
         """The LO reweighting info (<mgrwt>) can be reconstructed from the event
         for a single-alpha_s process, matching what MadEvent writes."""
@@ -773,6 +807,88 @@ class TestEvent(unittest.TestCase):
                 if all_perms[i][j] == all_perms[0][j]:
                     nb_identical[j] +=1
         self.assertEqual(nb_identical, [4,4,2,2,2,2])
+
+
+class TestFxFxDecayScales(unittest.TestCase):
+
+    @staticmethod
+    def decay_event():
+        return lhe_parser.Event('''<event>
+3 1 1 50 0 0
+23 -1 0 0 0 0 0 0 0 100 100 0 9
+1   1 1 1 501 0 50 0 0 50 0 0 9
+-1  1 1 1 0 501 -50 0 0 50 0 0 9
+</event>''')
+
+    def test_scales_keep_full_lhe_rows_through_repeated_decays(self):
+        event = lhe_parser.Event('''<event>
+9 1 1 50 0 0
+2  -1 0 0 501 0 0 0 175 175 0 0 9
+-2 -1 0 0 0 501 0 0 -175 175 0 0 9
+24  2 1 2 0 0 0 0 0 100 100 0 9
+-11 1 3 3 0 0 50 0 0 50 0 0 9
+12  1 3 3 0 0 -50 0 0 50 0 0 9
+23  1 1 2 0 0 0 0 0 100 100 0 9
+23  1 1 2 0 0 0 0 0 100 100 0 9
+21  1 1 2 502 503 25 0 0 25 0 0 9
+1   1 1 2 503 0 -25 0 0 25 0 0 9
+<scales pt_clust_4="50" pt_clust_5="50" pt_clust_6="50" pt_clust_7="50" pt_clust_8="50" pt_clust_9="49.999"></scales>
+</event>''')
+        original = [-1, -1, -1, 50, 50, 50, 50, 50, 49.999]
+        for position, added in [(5, 2), (6, 4)]:
+            event.add_decay_to_particle(position, self.decay_event())
+            scales = lhe_parser.Event(str(event)).parse_matching_scale()
+            self.assertEqual(scales, original + [50] * added)
+            self.assertEqual(event[position].status, 2)
+            self.assertEqual(len(scales), len(event))
+        self.assertEqual(event[8].pid, 1)
+        self.assertEqual(event[8].status, 1)
+
+    def test_decay_scales_preserve_ew_jet_classification(self):
+        # After Z decay the only production final state is an EW jet.
+        # Pythia ignores the status-2 Z tag and resets SCALUP to the maximum
+        # explicitly tagged external scale, including the decay daughters.
+        event = lhe_parser.Event('''<event>
+4 1 1 50 0 0
+2  -1 0 0 501 0 0 0 100 100 0 0 9
+-2 -1 0 0 0 501 0 0 -100 100 0 0 9
+23  1 1 2 0 0 0 0 0 100 100 0 9
+1   1 1 2 502 0 0 0 0 100 0 0 9
+<scales pt_clust_3="50" pt_clust_4="49.999"></scales>
+</event>''')
+        event.add_decay_to_particle(2, self.decay_event())
+        output = lhe_parser.Event(str(event))
+        scales = output.parse_matching_scale()
+        self.assertEqual(scales, [-1, -1, 50, 49.999, 50, 50])
+        pythia_scalup = max(scale for particle, scale in zip(output, scales)
+                            if abs(particle.status) == 1)
+        self.assertEqual(pythia_scalup, 50)
+        self.assertLess(scales[3], pythia_scalup)
+        self.assertIs(output[4].mother1, output[2])
+        self.assertIs(output[5].mother1, output[2])
+
+    def test_decay_without_matching_tags(self):
+        event = lhe_parser.Event('''<event>
+1 1 1 50 0 0
+23 -1 0 0 0 0 0 0 0 100 100 0 9
+</event>''')
+        event.add_decay_to_particle(0, self.decay_event())
+        self.assertEqual(event.matched_scale_data, [])
+        self.assertNotIn('pt_clust_', str(event))
+
+    def test_parent_shower_scale_is_inherited(self):
+        # LO merging also uses pt_clust tags, with scales different from
+        # SCALUP. Preserve that per-particle scale when attaching a decay.
+        event = lhe_parser.Event('''<event>
+3 1 1 50 0 0
+2  -1 0 0 501 0 0 0 50 50 0 0 9
+-2 -1 0 0 0 501 0 0 -50 50 0 0 9
+23  1 1 2 0 0 0 0 0 100 100 0 9
+<scales pt_clust_3="100"></scales>
+</event>''')
+        event.add_decay_to_particle(2, self.decay_event())
+        self.assertEqual(lhe_parser.Event(str(event)).parse_matching_scale(),
+                         [-1, -1, 100, 100, 100])
 
 
 class TestMasslessProjection(unittest.TestCase):
@@ -1769,6 +1885,16 @@ class TestScalesTag(unittest.TestCase):
         event.parse_matching_scale()
         self.assertIn('<scales pt_clust_3="13000.0" pt_clust_4="13000.0" '
                       'pt_clust_5="12.00713"></scales>', str(event))
+
+    def test_unspecified_mur_keeps_the_legacy_scalar_fallback(self):
+        for mur in ('-1', '0', 'nan', 'inf'):
+            for scalup in (73., -1.):
+                with self.subTest(mur=mur, scalup=scalup):
+                    event = lhe_parser.Event(self._mg7_event)
+                    event.scale = scalup
+                    event.tag = "<scales mur='%s' scalup_1_2='20'></scales>" % mur
+                    self.assertEqual(event.get_ren_scale(), scalup)
+                    self.assertEqual(event.get_scales_attributes()['scalup_1_2'], 20.)
 
     def test_reconstruct_lo_weight_takes_mur_from_the_scales(self):
         """mu_R from <scales>, mu_F (SCALUP) for the PDFs."""

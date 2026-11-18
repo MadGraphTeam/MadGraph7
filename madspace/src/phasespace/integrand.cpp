@@ -120,6 +120,7 @@ Integrand::Integrand(
     const std::optional<PdfGrid>& pdf_grid2,
     const std::optional<MappingChannelWeights>& mapping_chan_weights,
     int mlm_history_qcd_power,
+    const std::optional<EELuminosity>& lepton_luminosity,
     bool parton_density_output
 ) :
     FunctionGenerator(
@@ -272,6 +273,7 @@ Integrand::Integrand(
     _pid_options(pid_options),
     _running_coupling(running_coupling),
     _energy_scale(energy_scale),
+    _lepton_luminosity(lepton_luminosity),
     _prop_chan_weights(prop_chan_weights),
     _mapping_chan_weights(mapping_chan_weights),
     _subchan_weights(subchan_weights),
@@ -506,7 +508,9 @@ Integrand::Integrand(
             }
         }
         for (std::size_t i = 0; bool active : mask_all) {
-            _active_flavors.push_back(i);
+            if (active) {
+                _active_flavors.push_back(i);
+            }
             ++i;
         }
     }
@@ -528,9 +532,10 @@ Integrand::Integrand(
     }
     for (auto input : me_first.external_inputs()) {
         if (input != MatrixElement::momenta_in && input != MatrixElement::flavor_in &&
-            input != MatrixElement::alpha_s_in) {
+            input != MatrixElement::alpha_s_in && input != MatrixElement::diagram_in) {
             throw std::invalid_argument(
-                "the integrand only supplies momenta, flavor and alpha_s to the "
+                "the integrand only supplies momenta, flavor, alpha_s and diagram to "
+                "the "
                 "matrix element, the random inputs have to be sampled internally"
             );
         }
@@ -651,9 +656,18 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
         ret.push_back("extra_weight_after_cuts", acc_float);
     }
     ret.push_back("ren_scale", acc_float);
-    if ((_pdfs.at(0) || _pdfs.at(1)) && _energy_scale) {
+    // a dressed-lepton run has no PartonDensity at all -- one luminosity
+    // replaces both PDFs -- but still returns pdf1/fact_scale1
+    if ((_pdfs.at(0) || _pdfs.at(1) || _lepton_luminosity) && _energy_scale) {
         auto flav_count = static_cast<int>(_pid_options.size());
-        if (has_multi_flavor) {
+        // pdf_prior is built from the per-flavour PartonDensity values, which
+        // a dressed-lepton run does not have: build_channel_part only sets it
+        // inside its own `_pdfs` test, and build_common_part likewise. Adding
+        // _lepton_luminosity here alone would promise an output that is never
+        // pushed. Whether such a run should get a flavour prior from the
+        // luminosity instead is a separate question; until it does, the three
+        // conditions have to say the same thing.
+        if (has_multi_flavor && (_pdfs.at(0) || _pdfs.at(1))) {
             ret.push_back("pdf_prior", acc_float_array(flav_count));
         }
         for (std::size_t i = 0; i < 2; ++i) {
@@ -831,6 +845,15 @@ NamedVector<Value> Integrand::build_channel_part(
     Value momenta = mapping_result["momenta"];
     Value x0 = mapping_result["x1"];
     Value x1 = mapping_result["x2"];
+    // A dressed-lepton mapping also hands back 1-x. It has to: it samples x
+    // close enough to 1 that recomputing 1-x from a double underflows to zero
+    // for about a quarter of the events, and the density's (1-x)^-kappa then
+    // has nothing to cancel the Jacobian's (1-x)^-p against.
+    Value omx0, omx1_val;
+    if (_lepton_luminosity) {
+        omx0 = mapping_result["omx1"];
+        omx1_val = mapping_result["omx2"];
+    }
 
     // Filter events that pass cuts
     Value weight_before_cuts = fb.product(weights_before_cuts);
@@ -843,6 +866,12 @@ NamedVector<Value> Integrand::build_channel_part(
     std::array<Value, 2> x_acc{
         {fb.batch_gather(indices_acc, x0), fb.batch_gather(indices_acc, x1)}
     };
+    std::array<Value, 2> omx_acc;
+    if (_lepton_luminosity) {
+        omx_acc = {
+            {fb.batch_gather(indices_acc, omx0), fb.batch_gather(indices_acc, omx1_val)}
+        };
+    }
     for (auto& cond : flow_conditions) {
         cond = fb.batch_gather(indices_acc, cond);
     }
@@ -1116,6 +1145,28 @@ NamedVector<Value> Integrand::build_channel_part(
     out.push_back("ren_scale", scales.at(0));
     if (has_pdf_prior) {
         out.push_back("pdf_prior", pdf_prior);
+    }
+    if (_lepton_luminosity) {
+        // A dressed-lepton density does not factorize into two independent
+        // PDFs: the beams pair term by term, so one luminosity replaces both.
+        // diff_cross_section expects the LHAPDF x*f convention while these
+        // densities are plain f(x), hence the x1*x2; it goes in on beam 1 with
+        // nothing on beam 2, giving L * ME / (2 s_hat).
+        auto batch = fb.batch_size({x_acc.at(0)});
+        auto lum = _lepton_luminosity.value().build_function(
+            fb,
+            ValueVec{
+                x_acc.at(0),
+                omx_acc.at(0),
+                x_acc.at(1),
+                omx_acc.at(1),
+                scales.at(1),
+                // the component choice does not enter the luminosity; the
+                // beamstrahlung split picks it again when events are written
+                fb.full({0.5, batch})
+            }
+        );
+        pdf_results.at(0) = fb.mul(lum.at(0), fb.mul(x_acc.at(0), x_acc.at(1)));
     }
     if (_diff_xs.at(0).has_pdf(0)) {
         out.push_back("pdf1", pdf_results.at(0));
@@ -1441,6 +1492,14 @@ NamedVector<Value> Integrand::build_common_part(
     int amp2_index = me_output_index(me_first, MatrixElement::diagram_amp2_out);
     Value me_flavor_id =
         _flavor_remap.size() > 0 ? flavor_table_lookup(_flavor_remap) : flavor_id;
+    // Union clustering's terminal diagram is a uniform bookkeeping choice.
+    // Leave the amplitude-weighted diagram/color draw to the matrix element.
+    Value mlm_diagram =
+        fb.full({static_cast<me_int_t>(-1), fb.batch_size({momenta_acc})});
+    const auto& me_inputs = me_first.external_inputs();
+    const bool accepts_diagram =
+        std::find(me_inputs.begin(), me_inputs.end(), MatrixElement::diagram_in) !=
+        me_inputs.end();
     auto make_xs_args = [&](std::array<Value, 2>& pdfs, Value alpha) {
         ValueVec xs_args;
         for (auto input : me_first.external_inputs()) {
@@ -1448,6 +1507,8 @@ NamedVector<Value> Integrand::build_common_part(
                 xs_args.push_back(momenta_acc);
             } else if (input == MatrixElement::flavor_in) {
                 xs_args.push_back(me_flavor_id);
+            } else if (input == MatrixElement::diagram_in) {
+                xs_args.push_back(mlm_diagram);
             }
         }
         xs_args.push_back(x1_acc);
@@ -1525,8 +1586,9 @@ NamedVector<Value> Integrand::build_common_part(
         }
     }
 
-    // Clustering history per diagram: pick a diagram from the diagram weights
-    // of the first evaluation (a choice of history, so no weight factor),
+    // Clustering history per diagram: reuse the matrix element's weighted draw
+    // if it has a clustering topology; otherwise sample on the eligible subset.
+    // This is a choice of history, so carries no weight factor. Then
     // cluster along it and take the cross section at the resulting scales.
     ValueVec mlm_history_weights;
     if (_energy_scale && _energy_scale->mlm_history_per_diagram()) {
@@ -1534,10 +1596,31 @@ NamedVector<Value> Integrand::build_common_part(
         auto diagram_mask = fb.gather_vector(
             fb.full({static_cast<me_int_t>(0), batch_size_acc}), _mlm_diagram_mask
         );
-        auto [diagram, diagram_det] = fb.sample_discrete_probs(
-            fb.squeeze(fb.random(batch_size_acc, 1)),
-            fb.mul(dxs_vec.at(amp2_index), diagram_mask)
+        auto random = fb.squeeze(fb.random(batch_size_acc, 1));
+        auto probabilities = fb.mul(dxs_vec.at(amp2_index), diagram_mask);
+        // A zero-weight event still needs a valid topology/color index. Use
+        // the eligible mask as its prior rather than the sampler's index 0.
+        auto zero_norm = fb.cut_one(fb.reduce_sum(probabilities), 0., 0.);
+        probabilities = fb.mul(
+            diagram_mask,
+            fb.add(
+                dxs_vec.at(amp2_index),
+                fb.stack(ValueVec(me_first.diagram_count(), zero_norm))
+            )
         );
+        const int diagram_index =
+            me_output_index(me_first, MatrixElement::diagram_index_out);
+        Value diagram, replaced;
+        if (diagram_index >= 0) {
+            auto choice = fb.sample_discrete_probs_reuse(
+                random, probabilities, dxs_vec.at(diagram_index)
+            );
+            diagram = choice.at(0);
+            replaced = choice.at(1);
+        } else {
+            diagram = fb.sample_discrete_probs(random, probabilities).at(0);
+            replaced = fb.full({static_cast<me_int_t>(1), batch_size_acc});
+        }
         auto scales = _energy_scale->build_mlm_from_start_state(
             fb,
             momenta_acc,
@@ -1570,6 +1653,10 @@ NamedVector<Value> Integrand::build_common_part(
         }
         alpha_qcd_acc =
             _running_coupling.value().build_function(fb, {ren_scale_acc}).at(0);
+        // Even when the optional union fallback supplies the scales, color
+        // follows this amplitude-weighted starting diagram, not its uniform
+        // terminal bookkeeping draw.
+        mlm_diagram = diagram;
         if (_mlm_history_qcd_power >= 0) {
             // |M|^2 ~ alpha_s^n: rescale the first evaluation by
             // (alpha_s' / alpha_s)^n f1' f2' / (f1 f2); colour, helicity and
@@ -1597,9 +1684,28 @@ NamedVector<Value> Integrand::build_common_part(
                 auto& raw_me = dxs_vec.at(me_first.outputs().size());
                 raw_me = fb.mul(raw_me, alpha_factor);
             }
+            if (accepts_diagram) {
+                // Only rejected first draws need a new color selection. Split
+                // the batch so eligible events keep their first helicity sum.
+                auto indices =
+                    fb.batch_split_by_index(replaced, static_cast<me_int_t>(2));
+                ValueVec retry_args;
+                for (auto arg : make_xs_args(pdfs_acc, alpha_qcd_acc)) {
+                    retry_args.push_back(fb.batch_gather(indices.at(1), arg));
+                }
+                auto retry = _diff_xs.at(0).build_function(fb, retry_args).values();
+                for (std::size_t i = 0; i < dxs_vec.size(); ++i) {
+                    dxs_vec.at(i) = fb.batch_merge_by_index(
+                        {fb.batch_gather(indices.at(0), dxs_vec.at(i)),
+                         indices.at(0),
+                         retry.at(i),
+                         indices.at(1)}
+                    );
+                }
+            }
         } else {
-            // several powers of alpha_s mix (gluon fusion and VBF in one
-            // process, say): the matrix element has to be evaluated again
+            // Mixed alpha_s powers require the full matrix element at the
+            // final scales. Preserve the selected diagram for its color draw.
             dxs_vec =
                 _diff_xs.at(0)
                     .build_function(fb, make_xs_args(pdfs_acc, alpha_qcd_acc))
@@ -1786,6 +1892,11 @@ NamedVector<Value> Integrand::build_common_part(
               std::pair{"helicity_index", MatrixElement::helicity_index_out},
               std::pair{"diagram_index", MatrixElement::diagram_index_out}}) {
             int index = me_output_index(me_first, me_output);
+            if (index == -1 && me_output == MatrixElement::diagram_index_out &&
+                _energy_scale && _energy_scale->is_mlm()) {
+                outputs.push_back(name, scatter_or_drop(zeros_int, mlm_diagram));
+                continue;
+            }
             if (index == -1 && me_output == MatrixElement::diagram_index_out &&
                 mapping_diagram_acc) {
                 outputs.push_back(

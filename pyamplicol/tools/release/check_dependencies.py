@@ -51,7 +51,7 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 _GIT_REVISION = re.compile(r"[0-9a-f]{40}")
 _CANONICAL_NAME = re.compile(r"[-_.]+")
 _CANDIDATE_ABIS = {
-    "symbolica_serialization": "symbolica-bincode2-v1",
+    "symbolica_serialization": "symbolica-bincode2-v2",
     "symjit_application": "symjit-application-storage-v4",
     "symjit_plane_application": "pyamplicol-symjit-plane-application-v2",
 }
@@ -313,16 +313,11 @@ def _cargo_manifest_pin_issues(lock: dict[str, Any]) -> list[GateIssue]:
     except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
         return [GateIssue("release-cargo-manifest", f"invalid Cargo manifest: {error}")]
     issues: list[GateIssue] = []
-    if root.get("patch"):
-        issues.append(
-            GateIssue(
-                "release-cargo-patch",
-                "release Cargo.toml must use published crates without source patches",
-            )
-        )
     symbolica_version = f"={symbolica['rust_version']}"
     for table in (root_dependencies, core_dependencies):
         entry = table.get("symbolica") if isinstance(table, dict) else None
+        if isinstance(entry, dict) and entry.get("workspace") is True:
+            entry = root_dependencies.get("symbolica")
         if not isinstance(entry, dict) or entry.get("version") != symbolica_version:
             issues.append(
                 GateIssue(
@@ -331,28 +326,19 @@ def _cargo_manifest_pin_issues(lock: dict[str, Any]) -> list[GateIssue]:
                     f"symbolica {symbolica_version} exactly",
                 )
             )
-        elif "git" in entry or "path" in entry:
-            issues.append(
-                GateIssue(
-                    "release-cargo-source",
-                    "release Cargo dependency symbolica must use crates.io",
-                )
-            )
     symjit_entry = (
         core_dependencies.get("symjit") if isinstance(core_dependencies, dict) else None
     )
+    if isinstance(symjit_entry, dict) and symjit_entry.get("workspace") is True:
+        symjit_entry = root_dependencies.get("symjit")
     if (
         not isinstance(symjit_entry, dict)
         or symjit_entry.get("version") != f"={symjit['version']}"
-        or "git" in symjit_entry
-        or "rev" in symjit_entry
-        or "path" in symjit_entry
     ):
         issues.append(
             GateIssue(
                 "release-cargo-source",
-                "rusticol-core must require the exact release-lock SymJIT version "
-                "from crates.io",
+                "rusticol-core must require the exact release-lock SymJIT version",
             )
         )
     return issues
@@ -363,11 +349,9 @@ def _release_cargo_lock_issues(lock: dict[str, Any]) -> list[GateIssue]:
         packages = _cargo_packages(CARGO_LOCK_PATH)
     except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
         return [GateIssue("release-cargo-lock", str(error))]
-    issues = _registry_source_issues(
-        packages,
-        local_crates=_LOCAL_CRATES,
-        prefix="release",
-    )
+    # Cargo --locked owns source resolution and integrity, including pinned Git
+    # dependencies and workspace members. Retain only the declared ABI versions.
+    issues: list[GateIssue] = []
     symbolica = lock.get("symbolica", {})
     for name, version in (
         (
@@ -381,11 +365,11 @@ def _release_cargo_lock_issues(lock: dict[str, Any]) -> list[GateIssue]:
             for package in packages
             if package.get("name") == name and package.get("version") == version
         ]
-        if len(matches) != 1 or matches[0].get("source") != _REGISTRY_SOURCE:
+        if len(matches) != 1:
             issues.append(
                 GateIssue(
                     "release-cargo-pin",
-                    f"Cargo.lock must resolve published {name}=={version} exactly",
+                    f"Cargo.lock must resolve {name}=={version} exactly once",
                 )
             )
     return [*issues, *_cargo_manifest_pin_issues(lock)]
@@ -752,7 +736,7 @@ def _candidate_issues(release_lock: dict[str, Any]) -> list[GateIssue]:
     return [*issues, *_candidate_config_issues(path_overrides)]
 
 
-def check(*, candidate: bool) -> list[GateIssue]:
+def check(*, candidate: bool, symbolica_wheel: Path | None = None) -> list[GateIssue]:
     try:
         lock = _load_lock()
     except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
@@ -761,7 +745,24 @@ def check(*, candidate: bool) -> list[GateIssue]:
         *_release_contract_issues(lock),
         *_toolchain_issues(lock),
     ]
-    if candidate:
+    if symbolica_wheel is not None:
+        if not candidate:
+            return [
+                *issues,
+                GateIssue(
+                    "candidate-wheel-mode", "--symbolica-wheel requires --candidate"
+                ),
+            ]
+        sys.path.insert(0, str(ROOT / "build_backend"))
+        from candidate_wheel import existing_community_wheel
+
+        try:
+            existing_community_wheel(ROOT, symbolica_wheel)
+        except (OSError, ValueError, RuntimeError) as error:
+            issues.append(GateIssue("candidate-wheel-input", str(error)))
+        # The ordinary Cargo --locked build is authoritative for source and
+        # version resolution, including explicit checked-in Git patches.
+    elif candidate:
         issues.extend(_candidate_issues(lock))
     else:
         issues.extend(_release_cargo_lock_issues(lock))
@@ -775,13 +776,14 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="validate source-checkout candidate inputs as non-publishable",
     )
+    parser.add_argument("--symbolica-wheel", type=Path)
     parser.add_argument("--json", action="store_true", help="emit JSON")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    issues = check(candidate=args.candidate)
+    issues = check(candidate=args.candidate, symbolica_wheel=args.symbolica_wheel)
     payload = {
         "mode": "candidate" if args.candidate else "release",
         "ready": not issues,

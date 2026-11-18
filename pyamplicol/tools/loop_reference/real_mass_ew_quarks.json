@@ -1,0 +1,373 @@
+{
+  "process": "e- e+ > u u~",
+  "loop_coupling_orders": [
+    "QED"
+  ],
+  "model": "loop_qcd_qed_sm_Gmu, complete real-mass source with official default restriction",
+  "gauge": "Feynman",
+  "r2_strategy": "model",
+  "scheme": "Gmu, GfRedefinitionChoice=1, lhv=1, epsUV=epsIR=1; real masses and zero widths; diagonal CKM",
+  "normalization": "physical couplings, initial average4, Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon); finite/single_pole/double_pole",
+  "source_compatibility": "existing explicit gmu_particle_anti with recorded source-constructor signature; no source mutation",
+  "covariant_multiplets": {
+    "23": [
+      23,
+      250,
+      9000002,
+      -9000002
+    ],
+    "24": [
+      24,
+      251,
+      9000003,
+      -9000004
+    ],
+    "-24": [
+      -24,
+      -251,
+      9000004,
+      -9000003
+    ]
+  },
+  "fixed_parameters": {
+    "aEW0M1": "0.00000000e+00",
+    "MD": "0.000000e+00",
+    "MU": "0.000000e+00",
+    "MS": "0.000000e+00",
+    "MC": "0.000000e+00",
+    "MB": "0.000000e+00",
+    "Me": "0.000000e+00",
+    "MM": "0.000000e+00",
+    "MTA": "0.000000e+00",
+    "lamWS": "0.000000e+00",
+    "AWS": "0.000000e+00",
+    "rhoWS": "0.000000e+00",
+    "etaWS": "0.000000e+00",
+    "ymdo": "0.000000e+00",
+    "ymup": "0.000000e+00",
+    "yms": "0.000000e+00",
+    "ymc": "0.000000e+00",
+    "ymb": "0.000000e+00",
+    "yme": "0.000000e+00",
+    "ymm": "0.000000e+00",
+    "ymtau": "0.000000e+00",
+    "epsUV": "1.0000000e+00",
+    "epsIR": "1.0000000e+00",
+    "LogSwitch": "1.0000000e+00",
+    "GfRedefinitionChoice": "1.0000000e+00"
+  },
+  "parameters": {
+    "MU_R": "1.00000000e+03",
+    "Gf": "1.16639000e-05",
+    "aS": "1.18000000e-01",
+    "MT": "1.733000e+02",
+    "MZ": "9.118800e+01",
+    "MW": "8.041900e+01",
+    "MH": "1.250000e+02",
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0",
+    "ymt": "1.733000e+02"
+  },
+  "born_orders": {
+    "1": {
+      "QCD": 0,
+      "QED": 4
+    }
+  },
+  "virtual_orders": {
+    "1": {
+      "QCD": 0,
+      "QED": 6
+    }
+  },
+  "mu_r2": [
+    "1000000",
+    "1000000",
+    "1000000",
+    "2250000"
+  ],
+  "points": [
+    [
+      [
+        "500",
+        "0",
+        "0",
+        "500"
+      ],
+      [
+        "500",
+        "0",
+        "0",
+        "-500"
+      ],
+      [
+        "500",
+        "300",
+        "0",
+        "400"
+      ],
+      [
+        "500",
+        "-300",
+        "0",
+        "-400"
+      ]
+    ],
+    [
+      [
+        "650",
+        "0",
+        "0",
+        "650"
+      ],
+      [
+        "650",
+        "0",
+        "0",
+        "-650"
+      ],
+      [
+        "650",
+        "600",
+        "0",
+        "250"
+      ],
+      [
+        "650",
+        "-600",
+        "0",
+        "-250"
+      ]
+    ],
+    [
+      [
+        "500",
+        "0",
+        "0",
+        "500"
+      ],
+      [
+        "500",
+        "0",
+        "0",
+        "-500"
+      ],
+      [
+        "500",
+        "0",
+        "400",
+        "-300"
+      ],
+      [
+        "500",
+        "0",
+        "-400",
+        "300"
+      ]
+    ],
+    [
+      [
+        "500",
+        "0",
+        "0",
+        "500"
+      ],
+      [
+        "500",
+        "0",
+        "0",
+        "-500"
+      ],
+      [
+        "500",
+        "300",
+        "0",
+        "400"
+      ],
+      [
+        "500",
+        "-300",
+        "0",
+        "-400"
+      ]
+    ]
+  ],
+  "madloop": {
+    "version": "3.7.0",
+    "source_diagram_counts": {
+      "born": 2,
+      "loops_sum_multiplier": 99,
+      "loop_records": 77,
+      "local_CT_amplitudes": 67
+    },
+    "component_method": "Generated SKIPLOOPEVAL switch plus CT interference-index filters in copied loop_matrix; all original rules and couplings unchanged. No separate particle-field amplitudes are generated: source EW UV vertex coefficients already include field renormalization constants; the all-rejected CT control independently returns zero. Bare=full\u2212CT. Complete Gmu scheme, not a pure QED model. Not a timing reference.",
+    "rows": [
+      {
+        "born": "0.04960749842717813",
+        "bare": [
+          "-0.002864588463562935",
+          "0.0006545371958210916",
+          "-0.0001721311784164292"
+        ],
+        "uv": [
+          "-0.0011068150996523648",
+          "-0.0005636162504527285",
+          "0.0"
+        ],
+        "uv_local": [
+          "-0.0011068150996523648",
+          "-0.0005636162504527285",
+          "0.0"
+        ],
+        "uv_external_fields": [
+          "0.0",
+          "0.0",
+          "0.0"
+        ],
+        "r2": [
+          "-6.010110710624895e-05",
+          "0.0",
+          "0.0"
+        ],
+        "virtual": [
+          "-0.004031504670321551",
+          "9.092094536836312e-05",
+          "-0.0001721311784164292"
+        ]
+      },
+      {
+        "born": "0.02982220901449579",
+        "bare": [
+          "-0.001575368457045746",
+          "0.00030315129957061515",
+          "-0.0001034789526462768"
+        ],
+        "uv": [
+          "-0.0005698073326134402",
+          "-0.00032661209968687746",
+          "0.0"
+        ],
+        "uv_local": [
+          "-0.0005698073326134402",
+          "-0.00032661209968687746",
+          "0.0"
+        ],
+        "uv_external_fields": [
+          "0.0",
+          "0.0",
+          "0.0"
+        ],
+        "r2": [
+          "-3.605225146064428e-05",
+          "0.0",
+          "0.0"
+        ],
+        "virtual": [
+          "-0.0021812280411198284",
+          "-2.346080011626233e-05",
+          "-0.0001034789526462768"
+        ]
+      },
+      {
+        "born": "0.006354286605948211",
+        "bare": [
+          "-8.837880935377417e-06",
+          "-6.228906473711042e-05",
+          "-2.2048498234258073e-05"
+        ],
+        "uv": [
+          "0.0004676123754046989",
+          "1.0018169795874954e-06",
+          "0.0"
+        ],
+        "uv_local": [
+          "0.0004676123754046989",
+          "1.0018169795874954e-06",
+          "0.0"
+        ],
+        "uv_external_fields": [
+          "0.0",
+          "0.0",
+          "0.0"
+        ],
+        "r2": [
+          "-2.5179595787193676e-05",
+          "0.0",
+          "0.0"
+        ],
+        "virtual": [
+          "0.00043359489868212723",
+          "-6.128724775752292e-05",
+          "-2.2048498234258073e-05"
+        ]
+      },
+      {
+        "born": "0.04960749842717813",
+        "bare": [
+          "-0.0023904018779492935",
+          "0.0005149508220902854",
+          "-0.0001721311784164292"
+        ],
+        "uv": [
+          "-0.0015638685474950265",
+          "-0.0005636162504527285",
+          "0.0"
+        ],
+        "uv_local": [
+          "-0.0015638685474950265",
+          "-0.0005636162504527285",
+          "0.0"
+        ],
+        "uv_external_fields": [
+          "0.0",
+          "0.0",
+          "0.0"
+        ],
+        "r2": [
+          "-6.010110710624895e-05",
+          "0.0",
+          "0.0"
+        ],
+        "virtual": [
+          "-0.0040143715325505714",
+          "-4.866542836244309e-05",
+          "-0.0001721311784164292"
+        ]
+      }
+    ]
+  },
+  "recola": {
+    "version": "2.3.0 / SM2.2.3 / Collier1.2.8",
+    "normalization": "raw Recola; finite_MadLoop=finite_Recola+(pi^2/6)*double_pole; other coefficients unchanged",
+    "rows": [
+      {
+        "born": "4.96074984271782440E-002",
+        "finite": "-3.74836023097769753E-003",
+        "single_pole": "9.09209453683652321E-005",
+        "double_pole": "-1.72131178416430700E-004"
+      },
+      {
+        "born": "2.98222090144958617E-002",
+        "finite": "-2.01101198671018583E-003",
+        "single_pole": "-2.34608001162615544E-005",
+        "double_pole": "-1.03478952646277484E-004"
+      },
+      {
+        "born": "6.35428660594824016E-003",
+        "finite": "4.69863224550499719E-004",
+        "single_pole": "-6.12872477575230864E-005",
+        "double_pole": "-2.20484982342582358E-005"
+      },
+      {
+        "born": "4.96074984271782440E-002",
+        "finite": "-3.73122709320671420E-003",
+        "single_pole": "-4.86654283624433448E-005",
+        "double_pole": "-1.72131178416430266E-004"
+      }
+    ]
+  },
+  "precision_limit": "independent providers are binary64 references; this fixture is not a high-precision finite-part oracle",
+  "timing_claim": false
+}

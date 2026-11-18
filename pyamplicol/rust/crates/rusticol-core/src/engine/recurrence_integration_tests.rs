@@ -13,14 +13,25 @@ fn assert_close(actual: f64, expected: f64, context: &str) {
 }
 
 #[cfg(feature = "f64-symjit")]
-fn generated_recurrence_validation_point(runtime: &NativeRuntime) -> Vec<[f64; 4]> {
-    let validation_path = runtime
-        .root()
-        .join("processes")
-        .join(&runtime.metadata().representative_process_key)
-        .join("validation-momenta.json");
+pub(super) fn generated_recurrence_validation_point(runtime: &NativeRuntime) -> Vec<[f64; 4]> {
+    // Read the declared payload through the artifact's own authenticated
+    // reader, not a path on disk, so a tree that stores payloads elsewhere
+    // (packed containers) can run the generated-artifact tests unchanged.
+    let artifact = VerifiedArtifact::open(runtime.root()).expect("open the generated artifact");
+    let process = &runtime.metadata().representative_process_key;
+    let payload = artifact
+        .manifest()
+        .payloads
+        .iter()
+        .find(|payload| {
+            payload.role == PayloadRole::ValidationMomenta
+                && payload.process_id.as_deref() == Some(process.as_str())
+        })
+        .unwrap_or_else(|| panic!("artifact declares validation momenta for {process:?}"));
     let validation: Value = serde_json::from_slice(
-        &fs::read(&validation_path).expect("read recurrence validation momenta"),
+        &artifact
+            .read_payload(&payload.path)
+            .expect("read recurrence validation momenta"),
     )
     .expect("parse recurrence validation momenta");
     validation["points"][0]
@@ -87,81 +98,83 @@ fn assert_zero_recurrence_direct_boundary_traffic(profile: &RuntimeProfile, cont
 #[cfg(feature = "f64-symjit")]
 #[test]
 fn generated_recurrence_artifact_loads_when_fixture_is_supplied() {
-    let Some(root) = std::env::var_os("RUSTICOL_RECURRENCE_ARTIFACT") else {
+    let Some(roots) = std::env::var_os("RUSTICOL_RECURRENCE_ARTIFACT") else {
         return;
     };
-    let mut runtime = NativeRuntime::load(PathBuf::from(root), None, None)
-        .expect("load generated recurrence artifact through NativeRuntime");
-    assert_eq!(runtime.metadata().execution_mode, "recurrence");
+    for root in std::env::split_paths(&roots) {
+        let mut runtime = NativeRuntime::load(root, None, None)
+            .expect("load generated recurrence artifact through NativeRuntime");
+        assert_eq!(runtime.metadata().execution_mode, "recurrence");
 
-    let point = generated_recurrence_validation_point(&runtime);
-    let momenta = point
-        .iter()
-        .flat_map(|momentum| momentum.iter().copied())
-        .collect::<Vec<_>>();
+        let point = generated_recurrence_validation_point(&runtime);
+        let momenta = point
+            .iter()
+            .flat_map(|momentum| momentum.iter().copied())
+            .collect::<Vec<_>>();
 
-    let values = runtime
-        .evaluate_f64(&momenta, 1)
-        .expect("evaluate generated recurrence artifact");
-    assert_eq!(values.len(), 1);
-    assert!(values[0].is_finite());
-    let mut direct_values = [f64::NAN];
-    runtime
-        .evaluate_f64_into(&momenta, 1, &mut direct_values)
-        .expect("evaluate generated recurrence artifact into caller storage");
-    assert_close(
-        direct_values[0],
-        values[0],
-        "recurrence direct-output total",
-    );
+        let values = runtime
+            .evaluate_f64(&momenta, 1)
+            .expect("evaluate generated recurrence artifact");
+        assert_eq!(values.len(), 1);
+        assert!(values[0].is_finite());
+        let mut direct_values = [f64::NAN];
+        runtime
+            .evaluate_f64_into(&momenta, 1, &mut direct_values)
+            .expect("evaluate generated recurrence artifact into caller storage");
+        assert_close(
+            direct_values[0],
+            values[0],
+            "recurrence direct-output total",
+        );
 
-    let resolved = runtime
-        .evaluate_resolved_f64(&momenta, 1, None, None)
-        .expect("resolve generated recurrence artifact");
-    assert_eq!(resolved.point_count, 1);
-    assert_close(resolved.totals()[0], values[0], "recurrence resolved sum");
+        let resolved = runtime
+            .evaluate_resolved_f64(&momenta, 1, None, None)
+            .expect("resolve generated recurrence artifact");
+        assert_eq!(resolved.point_count, 1);
+        assert_close(resolved.totals()[0], values[0], "recurrence resolved sum");
 
-    let selected_color = runtime
-        .color_ids()
-        .expect("recurrence color metadata")
-        .into_iter()
-        .next()
-        .expect("one recurrence color component");
-    let selected = runtime
-        .evaluate_resolved_f64(
-            &momenta,
-            1,
-            None,
-            Some(std::slice::from_ref(&selected_color)),
-        )
-        .expect("select recurrence color component");
-    assert_eq!(selected.color_ids, [selected_color]);
-    assert!(selected.values.iter().all(|value| value.is_finite()));
-    let selected_total = runtime
-        .evaluate_f64_with_selectors(&momenta, 1, None, Some(&selected.color_ids), None, None)
-        .expect("evaluate selected recurrence color component");
-    assert_close(
-        selected_total[0],
-        selected.totals()[0],
-        "recurrence selected color total",
-    );
-    let mut selected_direct = [f64::NAN];
-    runtime
-        .evaluate_f64_into_with_selectors(
-            &momenta,
-            1,
-            None,
-            Some(&selected.color_ids),
-            None,
-            None,
-            &mut selected_direct,
-        )
-        .expect("evaluate selected recurrence component into caller storage");
-    assert_close(
-        selected_direct[0],
-        selected_total[0],
-        "recurrence selected direct-output total",
-    );
+        let selected_color = runtime
+            .color_ids()
+            .expect("recurrence color metadata")
+            .into_iter()
+            .next()
+            .expect("one recurrence color component");
+        let selected = runtime
+            .evaluate_resolved_f64(
+                &momenta,
+                1,
+                None,
+                Some(std::slice::from_ref(&selected_color)),
+            )
+            .expect("select recurrence color component");
+        assert_eq!(selected.color_ids, [selected_color]);
+        assert!(selected.values.iter().all(|value| value.is_finite()));
+        let selected_total = runtime
+            .evaluate_f64_with_selectors(&momenta, 1, None, Some(&selected.color_ids), None, None)
+            .expect("evaluate selected recurrence color component");
+        assert_close(
+            selected_total[0],
+            selected.totals()[0],
+            "recurrence selected color total",
+        );
+        let mut selected_direct = [f64::NAN];
+        runtime
+            .evaluate_f64_into_with_selectors(
+                &momenta,
+                1,
+                None,
+                Some(&selected.color_ids),
+                None,
+                None,
+                &mut selected_direct,
+            )
+            .expect("evaluate selected recurrence component into caller storage");
+        assert_close(
+            selected_direct[0],
+            selected_total[0],
+            "recurrence selected direct-output total",
+        );
+    }
 }
 
 #[cfg(feature = "f64-symjit")]

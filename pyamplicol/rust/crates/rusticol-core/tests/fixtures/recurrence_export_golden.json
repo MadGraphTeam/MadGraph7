@@ -1,0 +1,4174 @@
+{
+  "execution_semantics": "rusticol-batched-f64-v1",
+  "about": "Golden vectors of the recurrence export's execution semantics; see docs/reference/recurrence-export.md and rust/crates/rusticol-core/src/engine/recurrence_export_golden.rs. f64 values are IEEE-754 bit patterns, 16 hex digits each.",
+  "points": 5,
+  "momentum_forms": [
+    [
+      "3ff9e11acceda12f3ff66666666666663ff45da9827156813feccccccccccccd40015fb59c3ea0b0",
+      "3ff5c6480e46cdcc0000000000000000bff2209536c8cd420000000000000000bff85df0de2a407e",
+      "bfe99a1e143687d000000000000000003fd09e114ee5f5000000000000000000bff8bc61eeb84794",
+      "3fd68946b39524b0bff6666666666666bfe09a44b7c724d83feccccccccccccdbfb56c8b555fc2c0"
+    ],
+    [
+      "c003ee4eca720f40bff199999999999ac0043a35ceaa43c6bfe6666666666666c004af5857650f2f",
+      "bfffed0eddb6a4440000000000000000bffeceb96de875b800000000000000003fff30281be67bee",
+      "3ff65d5f02d69fa00000000000000000bff156c22bf0fdac00000000000000003fe15f58efcd75b4",
+      "3fe0acb04b9abd043ff199999999999a3ff3ab1f0597b4f2bfe66666666666663ff9c145a1b41a8e"
+    ],
+    [
+      "3ffc86af260836213fe80000000000003ff7a366b7baaaee3ff6a43cee0fd582400261776cf7aa69",
+      "3ff5c6480e46cdcc0000000000000000bff2209536c8cd420000000000000000bff85df0de2a407e",
+      "bfe99a1e143687d000000000000000003fd09e114ee5f5000000000000000000bff8bc61eeb84794",
+      "3fd68946b39524b00000000000000000bfe09a44b7c724d8bff3333333333333bfb56c8b555fc2c0"
+    ],
+    [
+      "c004d07e47abd00ebfe8000000000000c0051937d3e79858bff18b9d5a419392c005899e0651fb14",
+      "bfffed0eddb6a4440000000000000000bffeceb96de875b800000000000000003fff30281be67bee",
+      "3ff65d5f02d69fa00000000000000000bff156c22bf0fdac00000000000000003fe15f58efcd75b4",
+      "3fe0acb04b9abd0400000000000000003ff3ab1f0597b4f23fe999999999999a3ff9c145a1b41a8e"
+    ],
+    [
+      "c008cd9baf057d68c0048fa3059e8d583ff12ef3a0253d10c00c0637ae2cca88bffc4e4dc81684e4",
+      "c00026093447e076c008122a60c9a90ebff367fef1f84bb8c009f392cc72f912bfeef0c2f8bdc0a0",
+      "40052e362bf9f1b440054e9aa2962428c00858f8bc62e4c0bfe2a44293bcd1a8bfe2d4a1ff9b3ed8",
+      "bfd75dc4ec011c703ff72523945b88ec400f651f75a5f7dabfa8583ce7267e803fe6cf84d19760f0"
+    ],
+    [
+      "3fe7100131645e9840058764f8454346c004135d50a8fb8a40018219e439655ec0070c94454a8b38",
+      "3fd0ca5c52a44be0c00694313432bc923fe83d4aad8cb9a0400f8561b511a4c43ffb574ef512da64",
+      "c009d20e9e155caabff04b51fc5bb2183ffbbcb473027efc400e09df0914999ebfe0f63253aabed8",
+      "4000ca8de3eb8b3ec0045ff0c31fdd5cbfec2cfc6f3e6f08400ebf84255f9bb440036aeecdd7be24"
+    ],
+    [
+      "3fe4cf501cba65c8c0041a5275ef0a02c005794fee6c8bf0c0093b871ce97126bffbc8879af40d84",
+      "bfe3f29116d5a970c00fbb6901d0c6583ff36dd95acd508cbffc54d7c7d6bc54bff3630899e240d4",
+      "400ecd73dec853a63fed385129d5dfb840050b0f8bb4578e4004507ab1cf6b02bfdc51a8113f4220",
+      "bff5615db46dd100bfe8729805ba00e03fffe6087ca19678c0057737b97a7f26c00b00f5de3179b0"
+    ],
+    [
+      "bfde4c95016abcd03ffe65fbca8f1e00c004b27cd8f5fd06c002234d30d7d08cc0043fe2928dbb88",
+      "3fdcdbe554f7bff0bff9acdd40020454bfb7d19748eefac04004103f2293ff32bffaec8567fc02a4",
+      "3ffb17cd5c34c114400092447e58605a400b4c23341ffa4c40062cc3a759d3dc3fb5ca910e7dfe80",
+      "bfe9ce26e6f80a50bfde1c051a694df0c00aa3bf94d02d24bfd3c5ef415cc1903ff65301fabb01f0"
+    ]
+  ],
+  "currents": [
+    "bfd96310471f09803fedef584c716c743fdfa4e74288ed783fa8678391e546003f893532aaa20a003ffaec9c13c5883c3feb2319af0ef1e43ff1eefbb803eb7a3ff057644665fc863fe22021951cbcf8",
+    "3ff3167d34ec3640bff79ff5a3a23ee080000000000000003ff26e5b7b7fe516bffe300ee5d50ba83ff681fab5afbad83fe24a25f3b1358cbff082d1f71baee4bffa2582c057c238bff1569c1236ad64",
+    "bff254b78011dcfc0000000000000000bfde30aa06d92e30bfe500ce47f029f4bfe81a56cdc6f9b8bff159698d71e56a3ffcf928852aa3dc3fa56afdd43f97c0bffd5c559559eab0bffcebb593deff86",
+    "bffce849f18bd306bfd5ed0edccea0803fdd513b99ccbb783ffaca1fb06dbfd63ff1330e3bc85b1c3fc71a80d42bd4003fec0e8abdd449603ff7e327b9ee97623ff7bc6ee41d5b86bff878089dce1496",
+    "bfe523f7ae410908bfd99227dfa17e38bfe6713ff6d264fc3ff723139ae19d5ebfe6bb91a5ea73bc3fd0a4c7c1d5ecd83fe4dfb2403324bc3ff5c22668c9d306bfe420afd7fb39243fcc19b952d2df00",
+    "bff6bafaac5be47e3fe637f9e5f0989c3ffd4efa7a333bca3ffdfd8c9f4120dabfd49d1d73a574603ff0bc8ee2633a1cbff7e7742d4436283fe8f600813215843ffed23ac3ffde7abfed7e8717f9b6e8",
+    "3ff92f4e172e9e34bff4adb12346f6a4bff50d1f9f26416ebfd42119e51509c03fff885e3cf075eabffc3a18f0dd305e3ff629d53e6d267ebfba6fe2023d96803ff731bdfa4aab023ff2574ef9ee0f7c",
+    "bfc8ce8ec2419f003fe8731424dadbf4bffb755e79d0f64ebff1ae29e396bdae3fe3c691dc1460843fed74a2019bbdb83ff44ad016c40bae3fcc22827324e8703fe8f57b8d057f3c3fee777b865d3494",
+    "3fee2c73612e427c3fe78891f200143cbff01156bbe0342c3fd4b31e9603d038bff02aaaa18cf6c43fde357780d94c78bfa83c2a2f6d7c403ff8def9b1cc582ebff8d852091e31243feeb7748c5cee5c",
+    "3ff249bebaae562e3fda9311dc265ae8bfd75d32bbe300503fed2688e9d201bc3fe5f18fd1b303083fe861d14a024ff0bfb2f3f64cffe440bff82511851f18763fe10fc3d31f8dd0bffba2e3de3fdfea",
+    "3fef6d3e8b4b91f03fda11527b13a6703fd7e367ba6d0898bfca65fa21198a803fdcb237ddec88683ff4160b0bfc2b62bff7d7f85c2a7850bfe49bde898ac6fcbfe84dbed79ad5043fe7cc03bdaabf00",
+    "3fee2ae0d30637b03fe4122a222db8fc3fec41223891d1c4bf89b5f195d80e00bff878f88a29593cbfe5a3342b5e9f10bffa1795cb9d129e3fe4c66cd12253e8bff73a2401e18fea3fcfe96b6a29fa20",
+    "3feb34f49cabfab8bff9ac1570fa64103fffb04dfff8be263fd7a9121bf4eda0bfa6d322e8c87700bfd311e682501c203fd532a1e8cb32a83ff560bd634d34023fd0d715668dd8f83fd80e11eb241d98",
+    "3ff6f5d10c57ef0a3ffba83f257fad68bff95176e70c89eebfe609dd4d4933ec3ff5666d5ae74c363feb25a7d6aa77a0bffb689a4a17b1dcbfe8a383fd2d589c3fe239c9b27118e03ff8c6b5ad5e5c66",
+    "bfece942a2af0674bff903f3de275f68bfacafe614135bc0bf9cdcfa8d50c3003fc874fb2ab03b703ff927b9d4a884883fc9f11ed5e39e00bff6a0b804c06652bfa6912d064412403ffa11918b39e17c",
+    "bfe35e4662b2d0b0bfe6a98be12f81d43fe48ab42c095b98bffda60f9283d92e3ff91c86433b74a4bff79f23680aaaa8bff418c1a719105cbfe908f91b80fde4bfd80774aafdea18bfcb6a523bade5c0",
+    "bfbbd989b0098f80bff7e9a1932d30b4bffa7f62aaa83bdcbfeb240d684054d03fe46f097816c148bfe9eb03758e1cc03ffcb5cf8b9cd362bff3a362b1d33df83ff502adbd93b590bfe92515923ca188",
+    "bff9c8b7029793d2bff11979a02849683fffc08db3cba1143fdd532495c329f03fc8987952b64ed080000000000000003ff259d0e3f7c376bff4217fc9a431783febfca15c485fe83ffd6b156b8f3adc",
+    "bf900f1286ffaa803fe55e874a7f0c0c3fcc1978383ce6a03fea08a1f24b80c4bffffa680219fe283ffeb9f38e91a24cbfc3e85054ad63d0bfdbe095666f46e8bfd5e7cde4d6da003ffa886a8c1701f6",
+    "3fd1723f861464783fee7538310a1840bff856ee2f2d6144bff9ecb3d3097e623fc04f037feb01d0bfe30e2114bc8694bfcff0c85960dab0bfea8f3cca89a83c3ff4f38fb234fa3abfeb8e28ed12dbbc",
+    "bfe0b9001cd39fe4bfdf003deaff6a88bff0bc85e2ce63b6bff50467e1f559ac3ff1e853354acb963fe9730ab2105db03ff5033a7ac8bed63fc588ee93699640bfccb9b129b01ab03fe6f7b3cb092e2c",
+    "bfb701711c31c0803ffba7b032ffd4823fe5e49b20a7ebd03fd6c649a4da7d38bfe5ab317b94366cbfd4c40a6613e4483f81b4aacc0b6b003fc035329d6e2b50bfe020b186d1db80bff9963756846896",
+    "bff82f54f87e9a4ebff530aa1cfe2372bff4eeabe648012abfeff93d3bbf67f4bff9f86026a1510a3ff3b947c5c2c4dabfc9e1e9e2144fe0bff978131c8156283ff51a7eddabf3c4bfaa4ae3230d6fc0",
+    "bffa8e13e3969f503ffa00dc5a7bbd763fe0c5ea30d54c54bfdfcbb6244fb0683ffc3d2c48ba51de3fd56088f52451183fe2ad3372145d80bff9bae59d374f3cbff792d4f166e7223ff6f8fbe2d2c614",
+    "bff901c71c31cfde3ff723c11aac80febffa1fda06893b8e80000000000000003ff91605941180ba3ffbd8e2388bc9483fef82905575878cbff154e10ed8bb0cbff49d88d89382343fd726e3ee593478",
+    "bfcb53d28aae13903ff2f9cd7ea5990ebfe3c2a8fea61e10bfe666874aaeda94bf964df40c2823803fef4534fe96b818bfe756589f899ca8bff6f453d1c65088bfe5771aa28842f43febfab0e04fe098",
+    "3ffbd78c2a2479b23ff320bb50542b863fe99fa78d1acaf83fe146f20899ed94bff67185da298bb0bfff4b98c5b7f6823ff53020bd29d508bfeef667d84600e0bffe5efc69375ccabff14f60e4cdaf48",
+    "bfc9443858546410bfdb2e8e312e09083fccb887d845f610bff7d6e952bbe68ebff7decd7cf00602bfda97bf948d6fc83ffbd48bf37850e03fe1504e9d7133c4bffae69c16d73240bff91ddb5e6c0b1e",
+    "3fffdc4f6d43480cbffb83331acc06f8bfee1aad26c72034bff314c8b503a1a83ffd6d4be0c0ac283fd8e08a207fbc803ff1fc3789d66ed63fd229a9bb424000bff19fe8895d699abfda9e53730da338",
+    "bfe52c523ca48940bff48d6d07358878bff066bb3eb817783ff91dbe6ba76f7abffe520a83098a0e3fe708ab027d9e5cbffb4f52df62377cbfdb97b281b856083fd58386dc7a71d0bff1b4a1804754b6",
+    "3fe3959d9037b5403ff78c53f3e17f4c3ffe9939ca63ff3ebfc9f25aa598fe60bfdf658aaeb77a28bfc247e59d8778f03fe5d66e3477de8c3fffb4709704ac2a3fb574a369b50580bfbc80730da2a4a0",
+    "bff79f4f79ba281ebff9a34d73a71b5ebfc0398cfa7f6fb03fd034eadbd7de48bfa467cd240944803ff828e2cc80ca8a3faf311859c6f8c0bfdd1040cf08f6403fee80531b89cf203ff228cf9191276e",
+    "3fe81688b9d156083fe7e5b3e1f98274bff94395890d28c4bffdf6dc0caed4723fde3a69ff697a983fa937a9fb3001c03fd38a4de2192570bfc30b11c1fef6f03ff3e5d0aad57146bff9f532d508b0f0",
+    "3fe6921e69cd7904bff242b702b080843fef1fa73430e7383fcc60e8e9200d40bfc1f3e1c80e7f203fe26b17c93d2e503fdcaa174ec3a7e8bff9425b212ecebe3ff9719aec2be79abffa544bc74f46fa",
+    "3ff6f8863894dc44bfe6ae1b31772ee43ff3b105d2eda38abff965f50938b4023ffd8549162afda4bff91f1b734e1c54bffbe0ff7e803dcabfe5d36e846639a0bfe038f8c64bd8a03fa476e23c0c0a00",
+    "3fa90225deaab7003fec07dfcc9483683ff2676a36612eecbff4b224d0f6d8d63ffe3bf8d9ea48b03feede8d0e77ccfcbfc63966018412503ffd98c00912e2a0bfee0ebd1279fe30bff2e563de237f6e",
+    "bff28726eadd967e3ff4ce35aa9a67963ffd15ed42df6114bff6e5dcab80cc5abfc941fcd632ca00bff528a2c2ef3deabfc99aa93cef3b30bff768685c6fcd36bfdc743a432da778bfe464e55eaee684",
+    "bffff80de8131d083ff8c5bfda29e2183ff7798b691293683fa3f470038b04803fe11400bbf524c4bfd166f89d83b840bfe97da4bf9b98683fe114a8f44edee83ff0f4616cafdb1abfffb651fcb65eec",
+    "3ffdee10e5d7105c3f89aa92b7c3a400bff6c87eb4f0f2663fcc8cee380083e03ff2f5b6afed1b60bff2dac2c79bfb80bff79771589f0344bffdc35141c0dcbc3fef50335995410cbff2d5c6a4906b80",
+    "bff7340b33e4faf03ff9a7355cf57a3a3ff4b4e9597f80143fd9f52077e37260bfce01481c15dd60bfec9a33dcebce103feb0716560a282cbfe965d95e188df8bff4a38c43abe5303ff963e6588987e6",
+    "bfe6af8fc40e346cbfd5598db8d22e88bff559e727b29c18bfe4734faf6e836cbffa0406ea1ba8ae3fe6993473ca69e43ffa9522ac4a3ea4bffbf4b590bd1da4bffad6546bd221e43fdb336044a85a68",
+    "bff77ca5dc35ebb0bfaba1227178ebc0bfa1fc9996d1ff003fe3238ca2f3d578bff3bdfb546b7586bff4941a1548d5803fa04a24a8d604c03ff17711e906dcd03ff870270f096a90bffa2d87d77ac024",
+    "3fd94f0968b2ec303fe444a5a647ec38bffbef79c01c07323fc52188064d2150bfb232229db959a0bfe7b079aeec66ccbffd6697792bff72bffbfc3babf09e0cbff53b7ff6324d68bfca83932dc8c2a0",
+    "3ff0b35b458e3782bfedbada066b577c3fe22a0d60cc46bcbfe00423b2b3f0f0bff624de45a3a0f0bffcb33a1274fd223ffa28a13b7ed6343ffa48614d08b8c8bff0416908f42d98bfff676a72411f3a",
+    "bfd830b2fcfcf2183ff5c621b5e88916bfeb4582ad5bf96cbfc00316d18adee0bfd9925c8c3287483fe5c7e639dca018bffb6f72cbc84da63ff616e9af4ce738bff64edd67bd0d963fb05be0a6f8f700",
+    "3ff28b55a52629aebfe4f4a82ef5a0983ff330e5e7e130483fcda171d99a9e803fe49c0a866925c4bfd1f5d11fffdec83fe6cd2ec090d4c43ff211d6ae5b3e943fd4e136e5444db83ff833b5d3f107a0",
+    "bfda87e8482b4430bfed134b9cba224cbfd7e75c1107eb60bffe8bf7ce8a1060bfd7c3216d9850183fc5c844016cebb0bff7b59dbe5d97babfb99caf103501603fe543ee45a6dbf0bffe950dfcec8fae",
+    "3fe30e2c73e8feecbfeb2c62fdbc1a243ff9d304e74756b63ff7d2d7a7ea7cfabff519676ccb8e06bfd2fc97f9bca220bff029a8889ac97ebffb856bf65ec672bff57a24fc98fc4ebfd0fbb0230eb330"
+  ],
+  "amplitudes": [
+    "3fed2bb0577a07603ff60e6dac7ca4303ff5fc2e52ea32f2bfd9017f37d52920bffed90158407ed6bffea8effbcd6f283fee006d9793f128bfffab040161300ebfe5d8f7b2997758bfe979e2dd9b9634",
+    "3ff6bf9b4098e3fc3ffb45d461cb283abffb36da781e293cbffa86f76c4033dc3ff2bbbb88bcc3cc3ff97b5fe8c5deba3fc66f288fee20c03fc9a61146c2f330bffd27bb9a170fe63ffde281781a5464"
+  ],
+  "cases": [
+    {
+      "name": "clear",
+      "case": "instruction",
+      "instruction": {
+        "kind": "clear",
+        "current": 24,
+        "component_count": 6
+      },
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "28": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "29": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "clear_amplitude",
+      "case": "instruction",
+      "instruction": {
+        "kind": "clear_amplitude",
+        "amplitude": 1
+      },
+      "expected": {
+        "amplitudes": {
+          "1": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "vertex rusticol.recurrence-intrinsic.weyl-vector-to-weyl-a.v1 set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "vertex",
+        "vertex": "rusticol.recurrence-intrinsic.weyl-vector-to-weyl-a.v1",
+        "current": 24,
+        "mode": "set",
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "coupling": {
+          "re": 0.375,
+          "im": -1.21875
+        },
+        "factor": {
+          "re": -0.5,
+          "im": 0.3125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "c01284cd4a153f664002eecaf80f2c93bfd3716064d17f1c3fead3237ea201134010f4128c480079bfe816bbc9983df2c006af49573c5a4cc0055165e046bcc83ffd0234d2faef2abffc925dac545f8c",
+          "25": "3ff828f1842595a2bfb26072420d4560bfd40408d0f030dc400902f250b270fec006b87847678fd33fe476207e40d2c24005f8589b1d19613ff512f809ac0dea401884edab7de7043ff55cd428c1df0c"
+        }
+      }
+    },
+    {
+      "name": "vertex rusticol.recurrence-intrinsic.weyl-vector-to-weyl-a.v1 add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "vertex",
+        "vertex": "rusticol.recurrence-intrinsic.weyl-vector-to-weyl-a.v1",
+        "current": 24,
+        "mode": "add",
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "coupling": {
+          "re": 0.375,
+          "im": -1.21875
+        },
+        "factor": {
+          "re": -0.5,
+          "im": 0.3125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "c018c53f1121b35e400e80ab85656d12bffefc321fbd9b553fead3237ea2011340173993f14c60a83fef9b08a77f549ebffd9d4a83bdf0d2c00dfbd667b31a4e3fe0c957f4ced9ecbff6c8a4b0be126e",
+          "25": "3ff4be7732cfd3303ff1d3c65a84c4b8bfedc4ad671e367e400369507e06ba59c006e5142f7fe01a3ff9ddaabe6bc56d400022c2733ab237bfbe15bc81a429e04015d60a572cdea64001ad164c74e7ac"
+        }
+      }
+    },
+    {
+      "name": "vertex rusticol.recurrence-intrinsic.weyl-vector-to-weyl-b.v1 set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "vertex",
+        "vertex": "rusticol.recurrence-intrinsic.weyl-vector-to-weyl-b.v1",
+        "current": 24,
+        "mode": "set",
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "coupling": {
+          "re": 0.375,
+          "im": -1.21875
+        },
+        "factor": {
+          "re": -0.5,
+          "im": 0.3125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "4002c3878d4df870c0042ec2aec043a43ffa0ac5e6bcf769bfda92da95d31116c01a9162d8fe7964bfd0e669cd8747e4bffbffe73488943c4003005a49242865c0118b3bd3291b2a40047eb67652ff28",
+          "25": "400419fd3affb0ae3ff869193b3644e0bfd7a17f15adccde3f9821fddebb42743ffff2d970dd9b4ec010c32c09142e2cbff689efe87649d54002660075d74a12bffb8721e686d9b0c00256f6fc5a6935"
+        }
+      }
+    },
+    {
+      "name": "vertex rusticol.recurrence-intrinsic.weyl-vector-to-weyl-b.v1 add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "vertex",
+        "vertex": "rusticol.recurrence-intrinsic.weyl-vector-to-weyl-b.v1",
+        "current": 24,
+        "mode": "add",
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "coupling": {
+          "re": 0.375,
+          "im": -1.21875
+        },
+        "factor": {
+          "re": -0.5,
+          "im": 0.3125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "3fe90a8ffcd44204bff139c442d4064abf75141fcc442500bfda92da95d31116c0144be173fa19363ff79f47c529f74fbfe87d3e139ba0ec3ff4abd3836f95bec016b29e094dfbb740076392f41e25b7",
+          "25": "400264c01254cf754005b1735cedeef7bfef9368897d047fbfe5a5775bb900803fff99a1a0acfac0c009b50ad282ae52c0011a8e1c1d8c143febaf5a33d08738c00321579be57d95bff6b095888ce21e"
+        }
+      }
+    },
+    {
+      "name": "vertex rusticol.recurrence-intrinsic.antisymmetric-tensor-vector.v1 set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "vertex",
+        "vertex": "rusticol.recurrence-intrinsic.antisymmetric-tensor-vector.v1",
+        "current": 24,
+        "mode": "set",
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "coupling": {
+          "re": 0.375,
+          "im": -1.21875
+        },
+        "factor": {
+          "re": -0.5,
+          "im": 0.3125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "3ff6d7053cc939c43ff67a615330edf6bffc2aaaad33b69a3fcbbc13e766a79240111d633269c5dcbfec3828b87d39ae3ff47f2edeaf0fe03fe8a045e35cd6563fcaa415f24eb4e4bff6afc1e108e7d5",
+          "25": "3ff6b43d464874bc3ff1977a8ae8c21e3feb9370487855e93feac45234956caac004618e77ed67c2bfc2c5c10834ad843ff3a3b00789181f4008a1b3175ed692c000e68acae05fbc40084a4da0fb0334",
+          "26": "400572ca15c11d03c0154f13f6337b904020c81e87ad132cbff636d3ed90b9a0bffe9fc81fe0ee623fe803cda67b40a23ff219497ae5c018bfff048ad35e2340400139b02fd227d4c0130755ae8cd5ae",
+          "27": "bfef2d9bb7c789493fca0f42004fba2240067c174a67235a3ffe60bd900b4a16bffd84001e43e15e3fe341157fc1230c400445a41c35607abfddbed018d69f933ffcd56bece05a3ec00b260f641d7a61"
+        }
+      }
+    },
+    {
+      "name": "vertex rusticol.recurrence-intrinsic.antisymmetric-tensor-vector.v1 add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "vertex",
+        "vertex": "rusticol.recurrence-intrinsic.antisymmetric-tensor-vector.v1",
+        "current": 24,
+        "mode": "add",
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "coupling": {
+          "re": 0.375,
+          "im": -1.21875
+        },
+        "factor": {
+          "re": -0.5,
+          "im": 0.3125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "bfc1560efb44b0d04006cf1136eeb77ac00b254259de79143fcbbc13e766a792401762e4976e260a3feb799bb89a58e24002203b84b4e9d3bfd412f874a93f84bff149061a49ab98bff0e608e5729ab7",
+          "25": "3ff349c2f4f2b24a400248a404c72d963fcf431d2748df643fc1772ba79a4858c0048e2a6005b8093fea93c4bc898cb73fdfe20edf11272c3ffa4f125cf75c9cc006445173827079400f48f9d90efb5a",
+          "26": "4011af481569aceec01086e5221e70ae40226219007ebfdcbfeb26b5d28785acc00a88a6fd053d09bff349b1f27a56314003a4b51c07ca90c0073fdf5fc091d83fd0518fd9b3cb78c0175b2de7c04180",
+          "27": "bff2bf54e6ee5126bfcc4dda620c57ee4008479fc7eb82bb3fda2750f53d8e20c00ab166cd99f3b03fc7d4d6d5e9aca0401117f50af8c4753fb38734882f1fd43fbeecfd60927fe0c013da7e89a9bff8"
+        }
+      }
+    },
+    {
+      "name": "vertex rusticol.recurrence-intrinsic.vector-wedge-vector.v1 set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "vertex",
+        "vertex": "rusticol.recurrence-intrinsic.vector-wedge-vector.v1",
+        "current": 24,
+        "mode": "set",
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "coupling": {
+          "re": 0.375,
+          "im": -1.21875
+        },
+        "factor": {
+          "re": -0.5,
+          "im": 0.3125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "3fd8251345e5fe604007f0f2f9d49730bff9f71adfc03a803fdac316a7c5a7643ff8a86647c657c2bfd6dfa848768e0bbff81aaaa6fbb07d400389ed76daed1cbff463a485fcb7dc4004726f3c0c7e2c",
+          "25": "3ff4db2512504a14bfed9a0db983533a3fe80562d0af9e3abfd47de7b49c40ba3fffff2d89a2510ac00010912b2d6d35bffbc0e2fc0fd4debffd4425eb8651aabff46775d3f479fa40028815a87ae335",
+          "26": "3fff22718f13b2c2bff0c9e1b04be46abffebacf2497732cbfe0ea5fe1332bbcbfe551c5eefdac503fd3dcae489d523a3ff5c0d4bd906797c0039e83e8664275bffff53161452da83ff5ef0f2a638626",
+          "27": "3fbfbeeb6546dab6bfe6f068805135efbff58726a5f1dbb53fbf8ff3351618c0401308e3ccd2cccebfd49865c74c05e4c00093a5b57f7434bff8634ebe42c357bffc6f8714c5e9e53fef03bda1192f6a",
+          "28": "3ff1d296e799573abfedc583b0bda7214010b1850615b12c3fcd954bcd3f9ca8bfeb108a662a596b3fe0ee310f7704abbfc348e3453ac3ecc007d9330f989201bfd7b0e225bc8c68c015f5377d96d0a9",
+          "29": "bfc8626d05bdb6bfbfd91bdf7fc6bbcdbfe21b9e5b14f92e3feb9e1acce227503ff59f06662240263ff012bf223e63743fde4b8872d0183bbfeb3656436b5ad33ff94e255d602ae0c014515d24276a13"
+        }
+      }
+    },
+    {
+      "name": "vertex rusticol.recurrence-intrinsic.vector-wedge-vector.v1 add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "vertex",
+        "vertex": "rusticol.recurrence-intrinsic.vector-wedge-vector.v1",
+        "current": 24,
+        "mode": "add",
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "coupling": {
+          "re": 0.375,
+          "im": -1.21875
+        },
+        "factor": {
+          "re": -0.5,
+          "im": 0.3125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "bff2f8824ab850464011c169c3956bd8c00a0b7a7324bb073fdac316a7c5a7644008df35edebec3e3ff620f8266e25c5bfe0b2c4f881d96e3ff5bef9dedd1f2cc0048096af481d084007574bb9d7a4bb",
+          "25": "3ff170aac0fa87a23fd0b31a878fbdc43fc10ae7482600a8bff052bd927e7d783fffa5f5b971b07cbff07e87d70f7e5ec003b607a5ea5199c00a1c3cdea65119bfff230325389b74400986c1e08edb5b",
+          "26": "400d7cfedc9c163a3fc2b6cd004238e0bff1eafb5e0a0db03f872489d9b07600c0008d3468d430ecbffa546d3390a1f44005787abd5d1e50c00b5c1dde77c2adc00f2a16e53e45393fd27eb916575b78",
+          "27": "bfb2c9854b61ed6abff243d7cc741d3abff1f015aae91cf3bff5ddea1f6a8502400a2260db2d969bbfe79812adecbad6bfd54afdde1a5e20bfef764edf1452eac00bab1195ce8e12bfe337f91bbee6d2",
+          "28": "4008d7732a6e4fa3c00532fa79956d444009dc5ec2799a4bbfeec43e76b75c263fefca0d5b56fee53fed5e761fb6e2eb3fef2636425e2cb1c00593fdd8304a01bff78c2112cc8cb4c0179f1cb4c7aadc",
+          "29": "bfeb44ed7e13f6f0bffad464e727376bbff9748a6c42940f40037665e90c4191bfe1660839ce93d03ffb9714a37d32a2bff3bc70c2ae316dbff48117c223c2ec3ffeaf07147ec754c018be8584393f40"
+        }
+      }
+    },
+    {
+      "name": "vertex rusticol.recurrence-intrinsic.color-ordered-three-vector.v1 set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "vertex",
+        "vertex": "rusticol.recurrence-intrinsic.color-ordered-three-vector.v1",
+        "current": 24,
+        "mode": "set",
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "coupling": {
+          "re": 0.375,
+          "im": -1.21875
+        },
+        "factor": {
+          "re": -0.5,
+          "im": 0.3125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "c003f40586c4a9d2c024d61d56b5bbcb403c44c1907151bcbff4f353f01e8384c013f6b8de854e8a402c86251f1d627ac02ce37f1d303ba6c040b33857d34d63c02bf7f2e1a3aa84400b71d2634cd8e5",
+          "25": "402bd1120f904c92c017226734163cba3fe28fe73fcd1fe0402060185663590cc03ccfd5042b9e934026b4cfdc94e4383feafa89c06b5be0c03eec33319644a2402d0da38486542ec03b29acfd735f46",
+          "26": "c016122e318d81584031f38f4de1a652c037f5ac050430d0c01273626b1eebcbc0337dd11a8460c0c01e844c32795dba4020ca057ca87b23bff228a3b103a3f93ff04612e8dd5d78c03a218991a15f6c",
+          "27": "c008bf05d50315abc034263dd99a22424048f2a423084e89c01e38c59642c5c340274348d7438317bffb3934e571cfbfc013b9c78683d8443ff42688c11e1161402d7839ebaefbedc025a08e64595f0e"
+        }
+      }
+    },
+    {
+      "name": "vertex rusticol.recurrence-intrinsic.color-ordered-three-vector.v1 add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "vertex",
+        "vertex": "rusticol.recurrence-intrinsic.color-ordered-three-vector.v1",
+        "current": 24,
+        "mode": "add",
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "coupling": {
+          "re": 0.375,
+          "im": -1.21875
+        },
+        "factor": {
+          "re": -0.5,
+          "im": 0.3125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "c0103a748a6ec8e0c021f1a533602bab403aa2c3f008be03bff4f353f01e8384c00b626ef301dcb7403000a0b3176dd2c02aeb5617d8e32dc0413ddf604a133bc02e8ba3fcb61aca400e56aee117ff74",
+          "25": "402b63c2c5659444c01263f3d46cd676bfa32c1bed8fe300401df35fc370d6c6c03cd568812ea89c4028a9232c7e4fba3fbd2189070df9c0c0402dbc375954d5402bb631da5dcfffc03a49d77670e041",
+          "26": "c00e38964e08c5d74033259b02e6e90ac03728aec89b5a78c0104a842a0bae18c034e4e97826f97bc0232b9931f3adad40237009944db5c4c000d1ebce935234bfec31d300b3fea4c03b367f9fee3a60",
+          "27": "c00a53495a885becc03492f8125eda6640490f5caae0947fc022173ff578dfb34024476f27a58257c000ef92654a95d8c0098949134b88183ffcceb00fd6ab43402a1b6668d415a5c028c449d026e072"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.weyl-propagator-a.v1 form 4",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.weyl-propagator-a.v1",
+        "current": 0,
+        "component_count": 2,
+        "momentum_form": 4,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "c00a2ff2e4776052400443348c78ecf03fc14f27c112baf2bfc733f913e73d12bfbaf58fd2dc947b3fd479c6810bb6d840074d55dd4f0309c002d401b83bb62e3fdd46e0213787fcc005e3251c364c16",
+          "1": "40115b341ebcbf0a3ff434a383482aedbfa5a24497e5184fbfb45009565a6c1d3fd347ac95919374bfaa01acf2204a42c004c5fc610a4e324005d2740d1f652c3fdf14aab91205fa3ffc6dd2a2db773c"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.weyl-propagator-a.v1 form 5",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.weyl-propagator-a.v1",
+        "current": 0,
+        "component_count": 2,
+        "momentum_form": 5,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "bf98895321c497b8bfd3a8a2d6d2e73c3fc856e961679646bfd2c1d2d649857a3ff09ec8bb4796a93ff1df38143da74e3fb58e73f0e450e93fbe3c9cba3e6929bfdd761e61d714384005ebbeec071bc4",
+          "1": "bfd5586eb16b3c00bfc7eb7e496c8ad8bfb78b9a4aa5ee1bbfb942b6dbda13384005beed97a50692bfceb76a29986930bfb285d9ebd802403fc2d456bed6c47ebfda8a69fa7c29e03ff1e296f3e6adb6"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.weyl-propagator-a.v1 form 6",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.weyl-propagator-a.v1",
+        "current": 0,
+        "component_count": 2,
+        "momentum_form": 6,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "3f8b6e8cd2fc96103fd400253488c2e63fd01334d1cec80ebfc89055ba6d0083bff0fcc2cf4b5f45bfd4ee661b1c9618bfcc1a4dea4f8dda3fdb57a8c4c15011bfb39537ba75425a3fa32ee123d50ae4",
+          "1": "3fc01985e092884b3fc64b42ced1cb3ebfd0863f0c532a873f9050d983c1d6d8bfb8588e9acd3d343fe43e70814777a83ff3a94c7e730090bfcc78799b726de2bfb1c5529ef30404bfeba6582eb9d2c8"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.weyl-propagator-a.v1 form 7",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.weyl-propagator-a.v1",
+        "current": 0,
+        "component_count": 2,
+        "momentum_form": 7,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "3fcae9fce82d6b643fe64eb81f30ff4abfb8591b61c53174bfec5c2f5f32e5593fc6cf222c1a122abfd9316a70ac73d63fcaaceb31eeb0803fde69da3cc2e2d5bfd5e9e168f213e4c00d91d091df234a",
+          "1": "3fe04af690a6e26e3fdb29da4e1195873fda01c69b296baebfde1c5f155086bbbfddb77c282433d03f8517377e9165e03fdee12ff35017323fd726c113f21be43fb3820f075192803fff8ebd64526ae7"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.weyl-propagator-b.v1 form 4",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.weyl-propagator-b.v1",
+        "current": 0,
+        "component_count": 2,
+        "momentum_form": 4,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "3fd60893dd73cec8bffe8d4a0570c9e6bfab0a618dd579983fd4edfeb4b2ae623fc8fed3610833dcbfd891bd09799530bff457c6504c7436c005d5440aed8a7abfe67a7b9863fcd63fd9673326659fcc",
+          "1": "3ff3e10a2517ac3ebfec185153e232ccbfd1a7948ea73c763fd3545053895115bfc3cc886a50e39f3fb9699b7674c4a3bffdc894f499fdc6c00210f2fc46c049bfd8b7c620b750cc40015d0740a9ef90"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.weyl-propagator-b.v1 form 5",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.weyl-propagator-b.v1",
+        "current": 0,
+        "component_count": 2,
+        "momentum_form": 5,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "3fb999e3168fc8d83fd29f82ced420c0bfd3f5e1a75421343fb3ea8054561a013ffa9f7f668c8516c0084ed7ed0caa50bfa877ccf4ca616cbfcd8d7b1af7d83c3ff22dcb1f4fb23a400db25e70298838",
+          "1": "3fc824c0fadf3d0c3fc6a4142feb45de3fe1fa8811fa2ad6bfcd7811f7155aff3ffaf5530b4895823ffb238348f2e178bf9b31c2a13f82b4bfc17f04035635463fc1fa12c2d9b5a0c028034e1b3a5017"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.weyl-propagator-b.v1 form 6",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.weyl-propagator-b.v1",
+        "current": 0,
+        "component_count": 2,
+        "momentum_form": 6,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "3fa799f9882ab5d8bfd4cf8fd0c28aa0bfc513b18e4323eb3fd612ced59a2f8abf9adfea248163a03ff19bcc4d149bf2bfb5a5e99b4691503fe076ef2e1a610c3fbbcce398faada03fd137012bbaa975",
+          "1": "bfce9c21ea1d4a2cbfc74b6892942cffbfb36222833708213fcbe0fc5b82a9edbffad664a0906564bff3803830cefb4ebfd9c781845ee6893fc156066a21115a3facdf54f095c9e83fd6338f374ffaa5"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.weyl-propagator-b.v1 form 7",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.weyl-propagator-b.v1",
+        "current": 0,
+        "component_count": 2,
+        "momentum_form": 7,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "bfda98b4245d6a82bfe4e8d2118b2733bfbbd3cd3caece903fe0d36d15810bbdbfe07fb5c0365ee33fe445bbf783ee51bfd80c71ae8173343fa609346c5a7f583faaeb20ca4cf9283fedbcaca5be1744",
+          "1": "bfbe315ba279dec6bfd96fde4744b77c3fd8571ab37f371cbfb48760ed62e01fbfb5d8ee1c710e91bfc8962f15e9719dbf9c97b0a952e410bfda3711613897463fa53324e6978d8040059391f67e043a"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.vector-propagator-feynman.v1 form 4",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.vector-propagator-feynman.v1",
+        "current": 0,
+        "component_count": 4,
+        "momentum_form": 4,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "bfde3b80329c2fe03fb9bbdc9e9ccde83f906afc377dbfa63f9d0919356f6d83bfa572080cc280333f9e7e538ac864973fcdfca6b41d2836bfe7370033082d14bfb1b9f55f0d4664bfe52768470502aa",
+          "1": "3feccdda5df098b03fafc7a27f6a4a38bfafaf6c761ea2fd3fa62dff1f7bd87fbfb1780cd0d10d92bf971bfa0b061748bfe45cc78b61c8333fb127a3684791783f9cc5e6ebec8b003ff1d97a0e6cc843",
+          "2": "bfd3fc69b4bace49bfdc8d294b54021e3f91f119817d1181bfa99ccea93750ea3f8c8b4c6cf8ef55bfa35f195ce8af6cbfe16de7f30daea1bfea2a47380da817bfcf36a52492f0183ff720d87a37e298",
+          "3": "bfd6fac91bc32a87bfe980283bb13924bfb29e028b8537043fb66b474e0c13613f8d4ec0369b57143f9ec6e9c49f91693fd900f1fc587685bfeb53ccf25364d8bff327c6a7aeec69bfc8a5abc246fa60"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.vector-propagator-feynman.v1 form 5",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.vector-propagator-feynman.v1",
+        "current": 0,
+        "component_count": 4,
+        "momentum_form": 5,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "bfab02d8de79cb763f86fdeab0e94eda3f9728edfc6ec1143fa47abd7310b8403fe13b6d9860c1ecbfd880a67a4a37f6bf8109efa5006df23f9a61b9366f6f563fbe0692bc3005343ff1ea6a53c545f6",
+          "1": "3fb9bc28dbbc2ba23f7c64c5c5de5f58bfb6592dc84602b33faf49a67ec86a2e3fec12e3f5cdf6cc3fd291b0915053093f9723e35591e3abbf637ebad0ff2bc8bfa85e53ea844d90bffe3bf5cad4bda9",
+          "2": "bfa1db40ac197805bfa9825c6392192d3f994f3e537cc5a3bfb210abcfdee5b0bfc6efaa15ab5f703fdf219c8f48d1243f93ce954a5a49ef3f9dbc087af02d783fda6f6f5d42a040c003967b2287b111",
+          "3": "bfa487f7a1c1ddf9bfb6c892e01b661fbfba4328aecf63883fbfa018fc78774bbfc78cb78d4e59a1bfd8baf9ee993568bf8c6a239bdec7f73f9f0e24761ef04a4000391acb46a11e3fd4dfc8eaadfc64"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.vector-propagator-feynman.v1 form 6",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.vector-propagator-feynman.v1",
+        "current": 0,
+        "component_count": 4,
+        "momentum_form": 6,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "bfa76b5579e0cf563f83ef3a2bc402593f91a05a33858ac43f9f2c3916b35642bfc9f0a43042c0ca3fc27131d0e1d4c6bfa8aefe132a437d3fc31bf2a5ffe7b63f82ede461a5bb003fb696e1dd33934e",
+          "1": "3fb65016920f24183f789e320af3bd68bfb1023d1a651e753fa7cfef24f3f770bfd5214f4b9ac056bfbbf3db624a40f03fc0c2dec9657c40bf8c3de7af1768ccbf6eb9bb77fb4c60bfc30f8c95f111d0",
+          "2": "bf9ef6c3f5ed45c8bfa61df9afa97afd3f93432e857a2b92bfab7f6e597241563fb143631caef3a4bfc76e6f6fef84443fbcb19604ffcca73fc589a67567bdde3fa0aa6f3296a226bfc8b29e4522a2ef",
+          "3": "bfa1cd0bddb90dbabfb3c0fa4290eec4bfb3fcd1c195c98c3fb811ba14290de53fb1b9984c31f38e3fc29d182d025c34bfb494e6fbdfbb8f3fc67e8dd9ea7b953fc47488740314b13f9a51d404d8fb60"
+        }
+      }
+    },
+    {
+      "name": "propagator rusticol.recurrence-intrinsic.vector-propagator-feynman.v1 form 7",
+      "case": "instruction",
+      "instruction": {
+        "kind": "propagator",
+        "propagator": "rusticol.recurrence-intrinsic.vector-propagator-feynman.v1",
+        "current": 0,
+        "component_count": 4,
+        "momentum_form": 7,
+        "factor": {
+          "re": 0.625,
+          "im": -0.4375
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "bfcbc110a74445273fa79fd488e54cca3fab765400231d253fb848aad1a52628bfb0b14fa94d35ba3fa7bc42b4983e1ebfa2e59443befe3d3fbd422d3886e13ebfad4ff3c7b19a48bfe17d7305e342b0",
+          "1": "3fda71640a9a31f23f9d2cb9f923c1b0bfca7ffbef81f4c33fc28cc9f47491bcbfbb31e07ba7b28bbfa1fcdb6177c4673fb9a9da4321bccbbf859ef0614fbdd83f97ca1d6b33bbf03fed84122121ab1a",
+          "2": "bfc25900610c1b99bfca36008aa395243fae02df3c4a3171bfc56bc81b03c2673f9637d43ec2c2acbfae2817835ab4183fb5f77ffbd48f423fc07d0a376901dabfc9cea6c0cae9623ff31f58447f5687",
+          "3": "bfc5188d3dbe3d21bfd769051103193fbfcf24194faca69f3fd2c00ac18aa2e03f96cff6ec7fed593fa7f4c2ac276fa1bfaf835728a7f3f43fc1388769c0a10cbfefacdde86c9195bfc460d32bdcf4d6"
+        }
+      }
+    },
+    {
+      "name": "source scalar self_conjugate form 0 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 1,
+          "family": "scalar",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": 0,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3fec000000000000bfd80000000000003fec000000000000bfd80000000000003fec000000000000bfd80000000000003fec000000000000bfd80000000000003fec000000000000bfd8000000000000"
+        }
+      }
+    },
+    {
+      "name": "source scalar self_conjugate form 2 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 1,
+          "family": "scalar",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": 0,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3fec000000000000bfd80000000000003fec000000000000bfd80000000000003fec000000000000bfd80000000000003fec000000000000bfd80000000000003fec000000000000bfd8000000000000"
+        }
+      }
+    },
+    {
+      "name": "source weyl particle form 0 helicity -1 chirality -1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": -1,
+          "chirality": -1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bfe44f95d0d60e8b3feb994a1880ae783ff76d2dd78b5c99bfe414706f9c063a3ff078d40ce636b5bfe80769c5839475800000000000000000000000000000003ff52c9ffdf232a33fe14f44989fa598",
+          "25": "3ff3a5dade13df20bfe0d74de2ec761b000000000000000000000000000000003fe85058ceb0c6e7bfd4d7278c9785ea3ff2c870c9c5f417bfe019853f3bf5ca3ff43ae7d2a1a67bbfe1570fd91cd7d7"
+        }
+      }
+    },
+    {
+      "name": "source weyl particle form 0 helicity -1 chirality 1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": -1,
+          "chirality": 1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source weyl particle form 0 helicity 1 chirality -1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": 1,
+          "chirality": -1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source weyl particle form 0 helicity 1 chirality 1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": 1,
+          "chirality": 1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3ff3a5dade13df20bfe0d74de2ec761b000000000000000000000000000000003fe85058ceb0c6e7bfd4d7278c9785ea3ff2c870c9c5f417bfe019853f3bf5ca3ff43ae7d2a1a67bbfe1570fd91cd7d7",
+          "25": "3ff0ff151beb29b43fc14d9609ffc8d2bff76d2dd78b5c993fe414706f9c063abff40f64ad19718d3fcd231b67a75cc400000000000000008000000000000000bfe0abdff893d6c23ff54d4db78e28ce"
+        }
+      }
+    },
+    {
+      "name": "source weyl particle form 1 helicity -1 chirality -1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": -1,
+          "chirality": -1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source weyl particle form 1 helicity -1 chirality 1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": -1,
+          "chirality": 1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bff3a6be17815e673fe0d810a66ee33400000000000000000000000000000000bfefea17240cfc2e3fdb5aef4378d827bff090a55f8107ec3fdc65adc84ae902bfeba9372d8a65783fd7b59d0276a01e",
+          "25": "bff9e0644331738abfd5a6104ad292883ff4c3ee5af79e17bfe1cc8329668782bff1f217b7d0974b3ff7724f238a39aa000000000000000080000000000000003ff853a8b4e444b2bff3885025727b91"
+        }
+      }
+    },
+    {
+      "name": "source weyl particle form 1 helicity 1 chirality -1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": 1,
+          "chirality": -1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3febda7b91099f47bff6788060de2f24bff4c3ee5af79e173fe1cc83296687823ffd5ad6e7f3f3333fc9662266423b9c80000000000000000000000000000000bffeebda8636f2ca3fd094c4f41b956d",
+          "25": "bff3a6be17815e673fe0d810a66ee33400000000000000000000000000000000bfefea17240cfc2e3fdb5aef4378d827bff090a55f8107ec3fdc65adc84ae902bfeba9372d8a65783fd7b59d0276a01e"
+        }
+      }
+    },
+    {
+      "name": "source weyl particle form 1 helicity 1 chirality 1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": 1,
+          "chirality": 1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source weyl antiparticle form 0 helicity -1 chirality -1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": -1,
+          "chirality": -1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bff3a5dade13df203fe0d74de2ec761b00000000000000000000000000000000bfe85058ceb0c6e73fd4d7278c9785eabff2c870c9c5f4173fe019853f3bf5cabff43ae7d2a1a67b3fe1570fd91cd7d7",
+          "25": "bfe44f95d0d60e8b3feb994a1880ae783ff76d2dd78b5c99bfe414706f9c063a3ff078d40ce636b5bfe80769c5839475800000000000000000000000000000003ff52c9ffdf232a33fe14f44989fa598"
+        }
+      }
+    },
+    {
+      "name": "source weyl antiparticle form 0 helicity -1 chirality 1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": -1,
+          "chirality": 1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source weyl antiparticle form 0 helicity 1 chirality -1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": 1,
+          "chirality": -1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source weyl antiparticle form 0 helicity 1 chirality 1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": 1,
+          "chirality": 1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3ff0ff151beb29b43fc14d9609ffc8d2bff76d2dd78b5c993fe414706f9c063abff40f64ad19718d3fcd231b67a75cc400000000000000008000000000000000bfe0abdff893d6c23ff54d4db78e28ce",
+          "25": "bff3a5dade13df203fe0d74de2ec761b00000000000000000000000000000000bfe85058ceb0c6e73fd4d7278c9785eabff2c870c9c5f4173fe019853f3bf5cabff43ae7d2a1a67b3fe1570fd91cd7d7"
+        }
+      }
+    },
+    {
+      "name": "source weyl antiparticle form 1 helicity -1 chirality -1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": -1,
+          "chirality": -1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source weyl antiparticle form 1 helicity -1 chirality 1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": -1,
+          "chirality": 1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bff9e0644331738abfd5a6104ad292883ff4c3ee5af79e17bfe1cc8329668782bff1f217b7d0974b3ff7724f238a39aa000000000000000080000000000000003ff853a8b4e444b2bff3885025727b91",
+          "25": "3ff3a6be17815e67bfe0d810a66ee334000000000000000000000000000000003fefea17240cfc2ebfdb5aef4378d8273ff090a55f8107ecbfdc65adc84ae9023feba9372d8a6578bfd7b59d0276a01e"
+        }
+      }
+    },
+    {
+      "name": "source weyl antiparticle form 1 helicity 1 chirality -1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": 1,
+          "chirality": -1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3ff3a6be17815e67bfe0d810a66ee334000000000000000000000000000000003fefea17240cfc2ebfdb5aef4378d8273ff090a55f8107ecbfdc65adc84ae9023feba9372d8a6578bfd7b59d0276a01e",
+          "25": "3febda7b91099f47bff6788060de2f24bff4c3ee5af79e173fe1cc83296687823ffd5ad6e7f3f3333fc9662266423b9c80000000000000000000000000000000bffeebda8636f2ca3fd094c4f41b956d"
+        }
+      }
+    },
+    {
+      "name": "source weyl antiparticle form 1 helicity 1 chirality 1",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 2,
+          "family": "weyl",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": 1,
+          "chirality": 1,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source dirac particle form 0 helicity -1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "bfe44f95d0d60e8b3feb994a1880ae783ff76d2dd78b5c99bfe414706f9c063a3ff078d40ce636b5bfe80769c5839475800000000000000000000000000000003ff52c9ffdf232a33fe14f44989fa598",
+          "27": "3ff3a5dade13df20bfe0d74de2ec761b000000000000000000000000000000003fe85058ceb0c6e7bfd4d7278c9785ea3ff2c870c9c5f417bfe019853f3bf5ca3ff43ae7d2a1a67bbfe1570fd91cd7d7"
+        }
+      }
+    },
+    {
+      "name": "source dirac particle form 0 helicity 1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3ff3a5dade13df20bfe0d74de2ec761b000000000000000000000000000000003fe85058ceb0c6e7bfd4d7278c9785ea3ff2c870c9c5f417bfe019853f3bf5ca3ff43ae7d2a1a67bbfe1570fd91cd7d7",
+          "25": "3ff0ff151beb29b43fc14d9609ffc8d2bff76d2dd78b5c993fe414706f9c063abff40f64ad19718d3fcd231b67a75cc400000000000000008000000000000000bfe0abdff893d6c23ff54d4db78e28ce",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source dirac particle form 1 helicity -1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bff3a6be17815e673fe0d810a66ee33400000000000000000000000000000000bfefea17240cfc2e3fdb5aef4378d827bff090a55f8107ec3fdc65adc84ae902bfeba9372d8a65783fd7b59d0276a01e",
+          "25": "bff9e0644331738abfd5a6104ad292883ff4c3ee5af79e17bfe1cc8329668782bff1f217b7d0974b3ff7724f238a39aa000000000000000080000000000000003ff853a8b4e444b2bff3885025727b91",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source dirac particle form 1 helicity 1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "3febda7b91099f47bff6788060de2f24bff4c3ee5af79e173fe1cc83296687823ffd5ad6e7f3f3333fc9662266423b9c80000000000000000000000000000000bffeebda8636f2ca3fd094c4f41b956d",
+          "27": "bff3a6be17815e673fe0d810a66ee33400000000000000000000000000000000bfefea17240cfc2e3fdb5aef4378d827bff090a55f8107ec3fdc65adc84ae902bfeba9372d8a65783fd7b59d0276a01e"
+        }
+      }
+    },
+    {
+      "name": "source dirac particle form 2 helicity -1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bfc25f3e48c8ee7e3fc8f6d9e53e2477000000000000000000000000000000003fd2acf23e87cde9bfcb3e55e90ae74c3fd9f8d4eabd9615bfc642ffa4a280a43fccd5c9400e66163fb7927bcb880ad6",
+          "25": "3fd1c5b71370f424bfbe7782fcc1a2883fe83fab8b4d4316bfd4c8dc2e4239803fcb9106b748b376bfb7a0e12f62e2f7000000000000000000000000000000003fcb8c9d132fe272bfb79d18ebdfe6ab",
+          "26": "bfe4d2dfbe06a97c3fec4bafdd83ff7e000000000000000000000000000000003ff11ef2a3fb4d91bfe8f9be97dfc9093ff6a3c7c3783232bfe367cfcc1de1e23ff57a9965dc19133fe18f02b4051544",
+          "27": "3ff424dba9f1ed04bfe14429ff61a6963fe83fab8b4d4315bfd4c8dc2e4239803fe9458d29e68baabfd5a9546d0ec0db000000000000000000000000000000003ff48567195783b8bfe196eaa801de9e"
+        }
+      }
+    },
+    {
+      "name": "source dirac particle form 2 helicity 1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3ff424dba9f1ed04bfe14429ff61a6963fe83fab8b4d4315bfd4c8dc2e4239803fe9458d29e68baabfd5a9546d0ec0db000000000000000000000000000000003ff48567195783b8bfe196eaa801de9e",
+          "25": "3ff16cf25859d0543fc1bd6eb83e5a4e00000000000000000000000000000000bff4d9b2f7872a6b3fce48f447f70984bff6a3c7c37832323fe367cfcc1de1e2bfe0e9446269b2143ff59bbf762e601c",
+          "26": "3fd1c5b71370f424bfbe7782fcc1a2883fe83fab8b4d4316bfd4c8dc2e4239803fcb9106b748b376bfb7a0e12f62e2f7000000000000000000000000000000003fcb8c9d132fe272bfb79d18ebdfe6ab",
+          "27": "3fcebf794af55dc83f9f4d7e53f6f9a800000000000000000000000000000000bfd6be6511283a073fb0847c243c8827bfd9f8d4eabd96153fc642ffa4a280a4bfb6b3f9bc241b083fcd0249a988c93f"
+        }
+      }
+    },
+    {
+      "name": "source dirac particle form 3 helicity -1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bff3de30b32e779c3fe10797750341f3bfe83fab8b4d43153fd4c8dc2e423980bff020cb0e8b41833fdba5ee62134bbc80000000000000000000000000000000bfebf1d08deccd0b3fd7f3d755141d77",
+          "25": "bffa296777d627debfd5e325a158d23080000000000000000000000000000000bff2234accbd18913ff7b296f627aa213ff347c31eb3ce12bfe086a73ee342eb3ff89381d621adbebff3bb93fb16c4d3",
+          "26": "3fc767c8ac2182c6bfb40fd0938a70173fe83fab8b4d4316bfd4c8dc2e4239803fc2bb974a58b3a4bfb00e81ad7099fa000000000000000000000000000000003fbfc4b3d30dc58ebfab3ae347306031",
+          "27": "3fced1dfa7e0ac363fa9c8c8d6edf552000000000000000000000000000000003fc5112e67f43e17bfcb86572d066870bfde7f56c07bdb513fca24013745976abfcbf066d1cb07953fc66ecebdf25642"
+        }
+      }
+    },
+    {
+      "name": "source dirac particle form 3 helicity 1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "particle",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bfc09652937d1c023fcac36c4f2cd32400000000000000000000000000000000bfd13afa99aa675dbf9dd11ac181f3003fde7f56c07bdb51bfca24013745976a3fd1c1a3467edb39bfa30b12cf45a39a",
+          "25": "3fc767c8ac2182c6bfb40fd0938a70173fe83fab8b4d4316bfd4c8dc2e4239803fc2bb974a58b3a4bfb00e81ad7099fa000000000000000000000000000000003fbfc4b3d30dc58ebfab3ae347306031",
+          "26": "3fec2912bebc3181bff6b7e77b6c9962800000000000000000000000000000003ffdab51746a2b093fc9abc488b6b268bff347c31eb3ce123fe086a73ee342ebbfff3d027e7729a83fd0c049c93d3965",
+          "27": "bff3de30b32e779c3fe10797750341f3bfe83fab8b4d43153fd4c8dc2e423980bff020cb0e8b41833fdba5ee62134bbc80000000000000000000000000000000bfebf1d08deccd0b3fd7f3d755141d77"
+        }
+      }
+    },
+    {
+      "name": "source dirac antiparticle form 0 helicity -1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "bff3a5dade13df203fe0d74de2ec761b00000000000000000000000000000000bfe85058ceb0c6e73fd4d7278c9785eabff2c870c9c5f4173fe019853f3bf5cabff43ae7d2a1a67b3fe1570fd91cd7d7",
+          "27": "bfe44f95d0d60e8b3feb994a1880ae783ff76d2dd78b5c99bfe414706f9c063a3ff078d40ce636b5bfe80769c5839475800000000000000000000000000000003ff52c9ffdf232a33fe14f44989fa598"
+        }
+      }
+    },
+    {
+      "name": "source dirac antiparticle form 0 helicity 1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3ff0ff151beb29b43fc14d9609ffc8d2bff76d2dd78b5c993fe414706f9c063abff40f64ad19718d3fcd231b67a75cc400000000000000008000000000000000bfe0abdff893d6c23ff54d4db78e28ce",
+          "25": "bff3a5dade13df203fe0d74de2ec761b00000000000000000000000000000000bfe85058ceb0c6e73fd4d7278c9785eabff2c870c9c5f4173fe019853f3bf5cabff43ae7d2a1a67b3fe1570fd91cd7d7",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source dirac antiparticle form 1 helicity -1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bff9e0644331738abfd5a6104ad292883ff4c3ee5af79e17bfe1cc8329668782bff1f217b7d0974b3ff7724f238a39aa000000000000000080000000000000003ff853a8b4e444b2bff3885025727b91",
+          "25": "3ff3a6be17815e67bfe0d810a66ee334000000000000000000000000000000003fefea17240cfc2ebfdb5aef4378d8273ff090a55f8107ecbfdc65adc84ae9023feba9372d8a6578bfd7b59d0276a01e",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "source dirac antiparticle form 1 helicity 1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "3ff3a6be17815e67bfe0d810a66ee334000000000000000000000000000000003fefea17240cfc2ebfdb5aef4378d8273ff090a55f8107ecbfdc65adc84ae9023feba9372d8a6578bfd7b59d0276a01e",
+          "27": "3febda7b91099f47bff6788060de2f24bff4c3ee5af79e173fe1cc83296687823ffd5ad6e7f3f3333fc9662266423b9c80000000000000000000000000000000bffeebda8636f2ca3fd094c4f41b956d"
+        }
+      }
+    },
+    {
+      "name": "source dirac antiparticle form 2 helicity -1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3fd1c5b71370f424bfbe7782fcc1a2883fe83fab8b4d4316bfd4c8dc2e4239803fcb9106b748b376bfb7a0e12f62e2f7000000000000000000000000000000003fcb8c9d132fe272bfb79d18ebdfe6ab",
+          "25": "3fc25f3e48c8ee7ebfc8f6d9e53e247700000000000000000000000000000000bfd2acf23e87cde93fcb3e55e90ae74cbfd9f8d4eabd96153fc642ffa4a280a4bfccd5c9400e6616bfb7927bcb880ad6",
+          "26": "bff424dba9f1ed043fe14429ff61a696bfe83fab8b4d43153fd4c8dc2e423980bfe9458d29e68baa3fd5a9546d0ec0db80000000000000000000000000000000bff48567195783b83fe196eaa801de9e",
+          "27": "bfe4d2dfbe06a97c3fec4bafdd83ff7e800000000000000000000000000000003ff11ef2a3fb4d91bfe8f9be97dfc9093ff6a3c7c3783232bfe367cfcc1de1e23ff57a9965dc19133fe18f02b4051544"
+        }
+      }
+    },
+    {
+      "name": "source dirac antiparticle form 2 helicity 1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3ff16cf25859d0543fc1bd6eb83e5a4e80000000000000000000000000000000bff4d9b2f7872a6b3fce48f447f70984bff6a3c7c37832323fe367cfcc1de1e2bfe0e9446269b2143ff59bbf762e601c",
+          "25": "bff424dba9f1ed043fe14429ff61a696bfe83fab8b4d43153fd4c8dc2e423980bfe9458d29e68baa3fd5a9546d0ec0db80000000000000000000000000000000bff48567195783b83fe196eaa801de9e",
+          "26": "bfcebf794af55dc8bf9f4d7e53f6f9a8000000000000000000000000000000003fd6be6511283a07bfb0847c243c88273fd9f8d4eabd9615bfc642ffa4a280a43fb6b3f9bc241b08bfcd0249a988c93f",
+          "27": "3fd1c5b71370f424bfbe7782fcc1a2883fe83fab8b4d4316bfd4c8dc2e4239803fcb9106b748b376bfb7a0e12f62e2f7000000000000000000000000000000003fcb8c9d132fe272bfb79d18ebdfe6ab"
+        }
+      }
+    },
+    {
+      "name": "source dirac antiparticle form 3 helicity -1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bffa296777d627debfd5e325a158d23000000000000000000000000000000000bff2234accbd18913ff7b296f627aa213ff347c31eb3ce12bfe086a73ee342eb3ff89381d621adbebff3bb93fb16c4d3",
+          "25": "3ff3de30b32e779cbfe10797750341f33fe83fab8b4d4315bfd4c8dc2e4239803ff020cb0e8b4183bfdba5ee62134bbc000000000000000000000000000000003febf1d08deccd0bbfd7f3d755141d77",
+          "26": "bfced1dfa7e0ac36bfa9c8c8d6edf55200000000000000000000000000000000bfc5112e67f43e173fcb86572d0668703fde7f56c07bdb51bfca24013745976a3fcbf066d1cb0795bfc66ecebdf25642",
+          "27": "3fc767c8ac2182c6bfb40fd0938a70173fe83fab8b4d4316bfd4c8dc2e4239803fc2bb974a58b3a4bfb00e81ad7099fa000000000000000000000000000000003fbfc4b3d30dc58ebfab3ae347306031"
+        }
+      }
+    },
+    {
+      "name": "source dirac antiparticle form 3 helicity 1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "dirac",
+          "orientation": "antiparticle",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3fc767c8ac2182c6bfb40fd0938a70173fe83fab8b4d4316bfd4c8dc2e4239803fc2bb974a58b3a4bfb00e81ad7099fa000000000000000000000000000000003fbfc4b3d30dc58ebfab3ae347306031",
+          "25": "3fc09652937d1c02bfcac36c4f2cd324000000000000000000000000000000003fd13afa99aa675d3f9dd11ac181f300bfde7f56c07bdb513fca24013745976abfd1c1a3467edb393fa30b12cf45a39a",
+          "26": "3ff3de30b32e779cbfe10797750341f33fe83fab8b4d4315bfd4c8dc2e4239803ff020cb0e8b4183bfdba5ee62134bbc000000000000000000000000000000003febf1d08deccd0bbfd7f3d755141d77",
+          "27": "3fec2912bebc3181bff6b7e77b6c9962000000000000000000000000000000003ffdab51746a2b093fc9abc488b6b268bff347c31eb3ce123fe086a73ee342ebbfff3d027e7729a83fd0c049c93d3965"
+        }
+      }
+    },
+    {
+      "name": "source vector self_conjugate form 0 helicity -1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "vector",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3fd00840be151f9f3fd0e21b03135f473fe3cc8a99af5453bfd0f876ccdf6cda3fc7e21c98e65adcbfcf2d26f88dbb4f3fe3cc8a99af5453bfd0f876ccdf6cda3fca52417efcede13fdbc029d15359ac",
+          "26": "3fc485844f9504d23fe201140d60db43bfd0f876ccdf6cdabfe3cc8a99af5453bfd425b3f3d41513bfe286ab3742de6e3fd0f876ccdf6cda3fe3cc8a99af5453bfc5a518bc28b30abfdc4135f673b05c",
+          "27": "bfe352f86bc534183fd09042a58475cc00000000000000000000000000000000bfe2145f5871a5be3fcefe5a4e79ae6a00000000000000000000000000000000bfe3c8c6dab2896f3fd0f53cbb7475cd"
+        }
+      }
+    },
+    {
+      "name": "source vector self_conjugate form 0 helicity 1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "vector",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3f92b48038cb399c3fd740cec0bb8d93bfe3cc8a99af54533fd0f876ccdf6cdabfd3860abadb0676bfa0d32180063b54bfe3cc8a99af54533fd0f876ccdf6cda3fc609b71e3436173fdcab22e610a5a0",
+          "26": "3fd2ffa8cbcba5d23fe021be0ece53adbfd0f876ccdf6cdabfe3cc8a99af5453bfc9df50004db6aabfe41240100c8f603fd0f876ccdf6cda3fe3cc8a99af5453bfc9fe3d18218cc4bfdb52ae2be2ef6a",
+          "27": "3fe352f86bc53418bfd09042a58475cc000000000000000000000000000000003fe2145f5871a5bebfcefe5a4e79ae6a000000000000000000000000000000003fe3c8c6dab2896fbfd0f53cbb7475cd"
+        }
+      }
+    },
+    {
+      "name": "source vector self_conjugate form 1 helicity -1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "vector",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3fd08526d1e68e0c3fd3cfe474fa6212bfe3cc8a99af54533fd0f876ccdf6cda3fc0e84985a83799bfda9ca05c04951cbfe3cc8a99af54533fd0f876ccdf6cdabfd331e02bd41cb93fd4cd44fe1186e4",
+          "26": "3fc24b93eaef71183fe13bf9208726a0bfd0f876ccdf6cdabfe3cc8a99af54533fd83b49f90fc1cc3fde76136dce185e3fd0f876ccdf6cda3fe3cc8a99af5453bfd6f6618d80db08bfe1a7e079bccf7e",
+          "27": "3fe35c702b9885f2bfd09860255e29ab000000000000000000000000000000003fe14d2dcf86cf7cbfcda8e0d17963b0000000000000000000000000000000003fdefd0cbade9960bfca8fc1c4becc9b"
+        }
+      }
+    },
+    {
+      "name": "source vector self_conjugate form 1 helicity 1 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "vector",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 1,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3fa7a0bf3a1392563fd9a058906549643fe3cc8a99af5453bfd0f876ccdf6cdabfd919cb449599a2bfc87672fad320ff3fe3cc8a99af5453bfd0f876ccdf6cda3fdc4d1c02585b013f7c91a848c29c00",
+          "26": "3fd2a6ba365f83b33fde6542253d3f54bfd0f876ccdf6cdabfe3cc8a99af54533fb56302485e76963fe34702961c38813fd0f876ccdf6cda3fe3cc8a99af5453bfc377f1fe8ba67fbfe47d892a80512a",
+          "27": "bfe35c702b9885f23fd09860255e29ab00000000000000000000000000000000bfe14d2dcf86cf7c3fcda8e0d17963b000000000000000000000000000000000bfdefd0cbade99603fca8fc1c4becc9b"
+        }
+      }
+    },
+    {
+      "name": "source vector self_conjugate form 2 helicity -1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "vector",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3fd00840be151f9f3fd0e21b03135f473fe3cc8a99af5453bfd0f876ccdf6cda3fc7e21c98e65adcbfcf2d26f88dbb4f3fe3cc8a99af5453bfd0f876ccdf6cda3fca52417efcede13fdbc029d15359ac",
+          "26": "3fc485844f9504d23fe201140d60db433fd0f876ccdf6cda3fe3cc8a99af5453bfd425b3f3d41513bfe286ab3742de6ebfd0f876ccdf6cdabfe3cc8a99af5453bfc5a518bc28b30abfdc4135f673b05c",
+          "27": "bfe352f86bc534183fd09042a58475cc00000000000000000000000000000000bfe2145f5871a5be3fcefe5a4e79ae6a00000000000000000000000000000000bfe3c8c6dab2896f3fd0f53cbb7475cd"
+        }
+      }
+    },
+    {
+      "name": "source vector self_conjugate form 2 helicity 0 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "vector",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": 0,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3ffe3149ef153c0dbfe9e11acceda130000000000000000000000000000000003ff7c29b182ee4ecbfe45da9827156813ff6666666666666bfe3333333333333400444fe8b9e6622bff15fb59c3ea0b0",
+          "25": "3ffc0074081916f9bfe8006374a7ca8c00000000000000000000000000000000bff88bf1f6cb371f3fe50a3d1cae2f3f00000000000000000000000000000000bffe135acb829cee3fe9c772654b61f1",
+          "26": "bff076413a8417153fdc386fd20702ff000000000000000000000000000000003fd6808dcac901b2bfc3499e1b87b85000000000000000008000000000000000bffe87ec0507e2703fea2b5c96990b3b",
+          "27": "3fdcfb36c2426243bfc8d75381efc1f03fec000000000000bfd8000000000000bfe67b68c7aa15983fd345353d6d3715bffa6a4715bd23c43fe6a43cee0fd583bfba7174206c3fd43fa6aa6389815b48"
+        }
+      }
+    },
+    {
+      "name": "source vector self_conjugate form 2 helicity 1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "vector",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3f92b48038cb399c3fd740cec0bb8d93bfe3cc8a99af54533fd0f876ccdf6cdabfd3860abadb0676bfa0d32180063b54bfe3cc8a99af54533fd0f876ccdf6cda3fc609b71e3436173fdcab22e610a5a0",
+          "26": "3fd2ffa8cbcba5d23fe021be0ece53ad3fd0f876ccdf6cda3fe3cc8a99af5453bfc9df50004db6aabfe41240100c8f60bfd0f876ccdf6cdabfe3cc8a99af5453bfc9fe3d18218cc4bfdb52ae2be2ef6a",
+          "27": "3fe352f86bc53418bfd09042a58475cc000000000000000000000000000000003fe2145f5871a5bebfcefe5a4e79ae6a000000000000000000000000000000003fe3c8c6dab2896fbfd0f53cbb7475cd"
+        }
+      }
+    },
+    {
+      "name": "source vector self_conjugate form 3 helicity -1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "vector",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3fd08526d1e68e0c3fd3cfe474fa6212bfe3cc8a99af54533fd0f876ccdf6cda3fc0e84985a83799bfda9ca05c04951cbfe3cc8a99af54533fd0f876ccdf6cdabfd331e02bd41cb93fd4cd44fe1186e4",
+          "26": "3fc24b93eaef71183fe13bf9208726a03fd0f876ccdf6cda3fe3cc8a99af54533fd83b49f90fc1cc3fde76136dce185ebfd0f876ccdf6cdabfe3cc8a99af5453bfd6f6618d80db08bfe1a7e079bccf7e",
+          "27": "3fe35c702b9885f2bfd09860255e29ab000000000000000000000000000000003fe14d2dcf86cf7cbfcda8e0d17963b0000000000000000000000000000000003fdefd0cbade9960bfca8fc1c4becc9b"
+        }
+      }
+    },
+    {
+      "name": "source vector self_conjugate form 3 helicity 0 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "vector",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": 0,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "400740b1418511cabff3ee4eca720f40000000000000000000000000000000004007993ec6714f11bff43a35ceaa43c63feddddddddddddebfd999999999999a400821e710a091b7bff4af5857650f2f",
+          "25": "400372f7430372f7bff0abaf5e02f4d4000000000000000000000000000000004002beb88df919edbff0113079b0f1a600000000000000000000000000000000c002f166eee2b8a63ff03ca15f0b79b3",
+          "26": "bffb3fb4e22546623fe75b2d541ff330000000000000000000000000000000003ff51992fc0428ffbfe215ebb37147b600000000000000008000000000000000bfe51a716a59cd643fd216aa5b2866e8",
+          "27": "bfe450e80b3926903fd169eb77558ec53fec000000000000bfd8000000000000bff7ef4b646755a83fe483f77aa1b722bff4783793f72c2a3fe18b9d5a419392bfff4937e3de35733fead10b5599e4ac"
+        }
+      }
+    },
+    {
+      "name": "source vector self_conjugate form 3 helicity 1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "vector",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3fa7a0bf3a1392563fd9a058906549643fe3cc8a99af5453bfd0f876ccdf6cdabfd919cb449599a2bfc87672fad320ff3fe3cc8a99af5453bfd0f876ccdf6cda3fdc4d1c02585b013f7c91a848c29c00",
+          "26": "3fd2a6ba365f83b33fde6542253d3f543fd0f876ccdf6cda3fe3cc8a99af54533fb56302485e76963fe34702961c3881bfd0f876ccdf6cdabfe3cc8a99af5453bfc377f1fe8ba67fbfe47d892a80512a",
+          "27": "bfe35c702b9885f23fd09860255e29ab00000000000000000000000000000000bfe14d2dcf86cf7c3fcda8e0d17963b000000000000000000000000000000000bfdefd0cbade99603fca8fc1c4becc9b"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 0 helicity -2 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": -2,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "28": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "29": "bfaf61aceeddcc8c3fbff18062b59db03fdc000000000002bfc80000000000023f8c9028ace5dc60bfb90ffc672401103fdc000000000002bfc8000000000002bfcb747c46f5a1023fbca413a278fed6",
+          "30": "bfc715ab5187f5263fc0e947563fe69cbfc8000000000002bfdc000000000002bfc706927b6ad7e2bfbce86d09d5c8b43fc80000000000023fdc0000000000023fcc0d641a80357cbfb7f7d3ed29fa55",
+          "31": "bfc6211266365a22bfc74dc5b75d48ba00000000000000000000000000000000bfbed7c14bcaa8b23fc4216c9bdd523400000000000000000000000000000000bfc29920a1d2a9ccbfd39babc4ee3e20",
+          "32": "0000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "33": "bfc715ab5187f5263fc0e947563fe69cbfc8000000000002bfdc000000000002bfc706927b6ad7e2bfbce86d09d5c8b43fc80000000000023fdc0000000000023fcc0d641a80357cbfb7f7d3ed29fa55",
+          "34": "bfd6c00f3f18ebe73fab903479494518bfdc0000000000023fc8000000000002bfd83d94173607253fd0459973b3ef3cbfdc0000000000023fc8000000000002bfcc7639f9feb6743fb349ad277d02fd",
+          "35": "bfbc5364973d19c4bfd8d9e100badddb000000000000000000000000000000003fca04a6708bca963fd7ecacf95cc301000000000000000000000000000000003fbe96793f7d01aa3fd3f6da8037c506",
+          "36": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "37": "bfc6211266365a22bfc74dc5b75d48ba00000000000000000000000000000000bfbed7c14bcaa8b23fc4216c9bdd523400000000000000000000000000000000bfc29920a1d2a9ccbfd39babc4ee3e20",
+          "38": "bfbc5364973d19c4bfd8d9e100badddb000000000000000000000000000000003fca04a6708bca963fd7ecacf95cc301000000000000000000000000000000003fbe96793f7d01aa3fd3f6da8037c506",
+          "39": "3fdaac44dcf4a576bfc6dccd4fad201c000000000000000080000000000000003fd75912d1ced841bfc40334b3d5ddee000000000000000080000000000000003fdbf55b207a2bbabfc7f6e064fb00e9"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 0 helicity 2 mass 0",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": 2,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "28": "0000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "29": "bfc0f9ef9c5f2bcfbfa555d2c0b22ae73fdc000000000002bfc80000000000023fb49c6ad52de3373fad65e205080c543fdc000000000002bfc8000000000002bfcd4df2e2efb0d43fb40294ca94b506",
+          "30": "bfcc2aa0fb19473c3fa436d32a5df1a63fc80000000000023fdc000000000002bfa5a707d37589263fcaa45ab509d8b6bfc8000000000002bfdc0000000000023fcc0646bc021a02bfb81907a621253b",
+          "31": "3f89d188dbcf68103fd00c4f40ed39b700000000000000000000000000000000bfc93676d19f875bbf95ba38fbfe7bcc000000000000000000000000000000003fbf24aa0bc47a4c3fd441b2d40f79fa",
+          "32": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000",
+          "33": "bfcc2aa0fb19473c3fa436d32a5df1a63fc80000000000023fdc000000000002bfa5a707d37589263fcaa45ab509d8b6bfc8000000000002bfdc0000000000023fcc0646bc021a02bfb81907a621253b",
+          "34": "bfd22f4d0ec50f913fcc3241ffd9aad8bfdc0000000000023fc8000000000002bfdc802d871a510f3fb953786527b5b6bfdc0000000000023fc8000000000002bfca9cc35e04a6a23fbbeb2bff614ccd",
+          "35": "3fca39467d7526c63fd644413f3173bd00000000000000000000000000000000bfc0b4ab09df50eabfd9eb876acadd1300000000000000000000000000000000bfc25dc3310b2e6dbfd34e4ff35e321c",
+          "36": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "37": "3f89d188dbcf68103fd00c4f40ed39b700000000000000000000000000000000bfc93676d19f875bbf95ba38fbfe7bcc000000000000000000000000000000003fbf24aa0bc47a4c3fd441b2d40f79fa",
+          "38": "3fca39467d7526c63fd644413f3173bd00000000000000000000000000000000bfc0b4ab09df50eabfd9eb876acadd1300000000000000000000000000000000bfc25dc3310b2e6dbfd34e4ff35e321c",
+          "39": "3fdaac44dcf4a576bfc6dccd4fad201c000000000000000000000000000000003fd75912d1ced841bfc40334b3d5ddee000000000000000000000000000000003fdbf55b207a2bbabfc7f6e064fb00e9"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 2 helicity -2 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": -2,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "28": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "29": "bfaf61aceeddcc8c3fbff18062b59db03fdc000000000002bfc80000000000023f8c9028ace5dc60bfb90ffc672401103fdc000000000002bfc8000000000002bfcb747c46f5a1023fbca413a278fed6",
+          "30": "bfc715ab5187f5263fc0e947563fe69c3fc80000000000023fdc000000000002bfc706927b6ad7e2bfbce86d09d5c8b4bfc8000000000002bfdc0000000000023fcc0d641a80357cbfb7f7d3ed29fa55",
+          "31": "bfc6211266365a22bfc74dc5b75d48ba00000000000000000000000000000000bfbed7c14bcaa8b23fc4216c9bdd523400000000000000000000000000000000bfc29920a1d2a9ccbfd39babc4ee3e20",
+          "32": "0000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "33": "bfc715ab5187f5263fc0e947563fe69c3fc80000000000023fdc000000000002bfc706927b6ad7e2bfbce86d09d5c8b4bfc8000000000002bfdc0000000000023fcc0d641a80357cbfb7f7d3ed29fa55",
+          "34": "bfd6c00f3f18ebe73fab903479494518bfdc0000000000023fc8000000000002bfd83d94173607253fd0459973b3ef3cbfdc0000000000023fc8000000000002bfcc7639f9feb6743fb349ad277d02fd",
+          "35": "bfbc5364973d19c4bfd8d9e100badddb000000000000000000000000000000003fca04a6708bca963fd7ecacf95cc301000000000000000000000000000000003fbe96793f7d01aa3fd3f6da8037c506",
+          "36": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "37": "bfc6211266365a22bfc74dc5b75d48ba00000000000000000000000000000000bfbed7c14bcaa8b23fc4216c9bdd523400000000000000000000000000000000bfc29920a1d2a9ccbfd39babc4ee3e20",
+          "38": "bfbc5364973d19c4bfd8d9e100badddb000000000000000000000000000000003fca04a6708bca963fd7ecacf95cc301000000000000000000000000000000003fbe96793f7d01aa3fd3f6da8037c506",
+          "39": "3fdaac44dcf4a576bfc6dccd4fad201c000000000000000000000000000000003fd75912d1ced841bfc40334b3d5ddee000000000000000080000000000000003fdbf55b207a2bbabfc7f6e064fb00e9"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 2 helicity -1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3fd872cb3c62b7953fd9bf024a7522b0000000000000000000000000000000003fcca95d19470bc6bfd2b4f8c41420553fe6666666666666bfd33333333333333fdaf263a25e68023fec68fe0f814eb8",
+          "26": "3fcf4b5e21371d203feb74a10b5b126900000000000000000000000000000000bfd82d9b1ef16bb0bfe63b892bd609f1bfd3333333333333bfe6666666666666bfd628c79b685ebfbfeced1b4d9f862e",
+          "27": "bfed77e6108ea2e23fd94232e99ed4c200000000000000000000000000000000bfe5b25f45527c1e3fd298e3f246b38700000000000000000000000000000000bff44123e566ed133fe15c67e933a6a2",
+          "28": "3fd872cb3c62b7953fd9bf024a7522b0000000000000000000000000000000003fcca95d19470bc6bfd2b4f8c41420553fe6666666666666bfd33333333333333fdaf263a25e68023fec68fe0f814eb8",
+          "29": "3fe6aca839e43fb03fe7e0c448eb728200000000000000000000000000000000bfdd9c3c8d75eb9e3fe3537d9ef941f200000000000000000000000000000000bfe3fddd7236d547bff513c7cb6e858f",
+          "30": "3f92e89c81f6ba983fe271d1afbd1218000000000000000000000000000000003fdc5f18bf641b993fe4c100f8378ee400000000000000000000000000000000bfaed609875e5a893f6052b9205c1708",
+          "31": "bfe8658d1989a1163fdd9aa994d73d1e3fdc000000000000bfc80000000000003fe3066483d222c0bfc4b998ded55a56bfea6a4715bd23c43fd6a43cee0fd5833fed8104d75389e7bfdc138ea9e197e0",
+          "32": "3fcf4b5e21371d203feb74a10b5b126900000000000000000000000000000000bfd82d9b1ef16bb0bfe63b892bd609f1bfd3333333333333bfe6666666666666bfd628c79b685ebfbfeced1b4d9f862e",
+          "33": "3f92e89c81f6ba983fe271d1afbd1218000000000000000000000000000000003fdc5f18bf641b993fe4c100f8378ee400000000000000000000000000000000bfaed609875e5a893f6052b9205c1708",
+          "34": "bfd1100d9f0155a2bfedf0772d5f449900000000000000000000000000000000bfc6e5e38287ec42bfd50e3089ebfe91000000000000000080000000000000003fe0b04fd358d1f83ff5c8f86d798642",
+          "35": "3fe1f1cc388155a7bf8307e4981033f03fc80000000000003fdc0000000000003f92a2ec4d2b53783fd9709495e3ce8f3fd6a43cee0fd5833fea6a4715bd23c43feef5c03d350232bfd7ca99fe6c403a",
+          "36": "bfed77e6108ea2e23fd94232e99ed4c200000000000000000000000000000000bfe5b25f45527c1e3fd298e3f246b38700000000000000000000000000000000bff44123e566ed133fe15c67e933a6a2",
+          "37": "bfe8658d1989a1163fdd9aa994d73d1e3fdc000000000000bfc80000000000003fe3066483d222c0bfc4b998ded55a56bfea6a4715bd23c43fd6a43cee0fd5833fed8104d75389e7bfdc138ea9e197e0",
+          "38": "3fe1f1cc388155a7bf8307e4981033f03fc80000000000003fdc0000000000003f92a2ec4d2b53783fd9709495e3ce8f3fd6a43cee0fd5833fea6a4715bd23c43feef5c03d350232bfd7ca99fe6c403a",
+          "39": "bfdc4942d4c729c03fc83ecb91cf485b000000000000000000000000000000003fe48797275cf0dfbfd198cab4068552000000000000000080000000000000003fba6c6cf6f01a6ebfa6a614416016a7"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 2 helicity 0 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": 0,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "400a951d56fd9a16bff6c8f493b4cd37000000000000000000000000000000004000766652ed64b4bfec38af6996f5c83ffd436387bbb6abbfe91530bd7c536e4017f6207fc6e2d9c00489d2b6aa794c",
+          "25": "4008a75641769fc8bff521b7a5d3646200000000000000000000000000000000c00101e65ccc58c73fed27d40ccc05e700000000000000000000000000000000c011c6dd48eb92963ffe797b586f446e",
+          "26": "bffcfcbb293d3ea43fe8d8a06c7da368000000000000000000000000000000003fdf2e8665830bcebfcaba2a0dde0a1e00000000000000000000000000000000c0120bc39061ffb83ffeef98653a48aa",
+          "27": "3fe9841d5c05b49fbfd5def49804e3f600000000000000000000000000000000bfef276562511b9d3fdab40dc1fc60d0c0014119ed8dd3043fed942c72a9fc06bfcf427433a3b6fe3fbacb3f07b0e5fe",
+          "28": "4008a75641769fc8bff521b7a5d3646200000000000000000000000000000000c00101e65ccc58c73fed27d40ccc05e700000000000000000000000000000000c011c6dd48eb92963ffe797b586f446e",
+          "29": "400607b799763ed8bff2e20b15d3114bbfd6dca5c20aa6b93fc3988e140921314000fa07170a3ac3bfed1a554c11894ebfd6dca5c20aa6b93fc3988e140921314008ecaf64f6374dbff55d289fae788b",
+          "30": "bffd433b6d909b213fe9150e5de9a98a00000000000000000000000000000000bfe22eb18249e8633fcf2b7971a3453c00000000000000000000000000000000400c33f1e553ec55bff82c863247ef24",
+          "31": "3fe9c22c62b9920ebfd614260b7a7d30000000000000000000000000000000003ff22a89533e520fbfdf245920fd1ef4000000000000000000000000000000003fc86d4582991a1dbfb4eff26ff0f1d0",
+          "32": "bffcfcbb293d3ea43fe8d8a06c7da368000000000000000000000000000000003fdf2e8665830bcebfcaba2a0dde0a1e00000000000000000000000000000000c0120bc39061ffb83ffeef98653a48aa",
+          "33": "bffd433b6d909b213fe9150e5de9a98a00000000000000000000000000000000bfe22eb18249e8633fcf2b7971a3453c00000000000000000000000000000000400c33f1e553ec55bff82c863247ef24",
+          "34": "3fe6f9b3c17d5864bfd3b1758146de0dbfd6dca5c20aa6b93fc3988e14092131bfcd0e4ac81f180c3fb8e7add01aa6e6bfd6dca5c20aa6b93fc3988e140921314009c5ac4ce03d9cbff61725f8c034cf",
+          "35": "bfde4948b20a33923fc9f5ac0651e30f00000000000000000000000000000000bfd0a7312fc36f3c3fbc8c5451e150fa000000000000000000000000000000003fc8cbf1fe50ab6dbfb5411890d76e5e",
+          "36": "3fe9841d5c05b49fbfd5def49804e3f600000000000000000000000000000000bfef276562511b9d3fdab40dc1fc60d0c0014119ed8dd3043fed942c72a9fc06bfcf427433a3b6fe3fbacb3f07b0e5fe",
+          "37": "3fe9c22c62b9920ebfd614260b7a7d30000000000000000000000000000000003ff22a89533e520fbfdf245920fd1ef4000000000000000000000000000000003fc86d4582991a1dbfb4eff26ff0f1d0",
+          "38": "bfde4948b20a33923fc9f5ac0651e30f00000000000000000000000000000000bfd0a7312fc36f3c3fbc8c5451e150fa000000000000000000000000000000003fc8cbf1fe50ab6dbfb5411890d76e5e",
+          "39": "bfc310732d7faddb3fb0573e26ffb9973fe6dca5c20aa6b7bfd3988e1409212f3fc4d43e8651b70cbfb1da7ebc460a9d400458db34608506bff170bbe3c07205bfd630d5924579ba3fc3054958cdd60d"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 2 helicity 1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3f9c863d74e88db03fe1bae071bee48000000000000000000000000000000000bfd76e0061bd244dbfa430dc13e7dfb8bfe66666666666663fd33333333333333fd68fca22103bee3fed598caaffc5e0",
+          "26": "3fdcf8da6eec7a8e3fe899aa096e4d8f00000000000000000000000000000000bfcf0c70be397698bfe81642e73a78e1bfd3333333333333bfe6666666666666bfda9c6016e5ad21bfebf8e857bb87ac",
+          "27": "3fed77e6108ea2e2bfd94232e99ed4c2000000000000000000000000000000003fe5b25f45527c1ebfd298e3f246b387000000000000000000000000000000003ff44123e566ed13bfe15c67e933a6a2",
+          "28": "3f9c863d74e88db03fe1bae071bee48000000000000000000000000000000000bfd76e0061bd244dbfa430dc13e7dfb8bfe66666666666663fd33333333333333fd68fca22103bee3fed598caaffc5e0",
+          "29": "3faa74641d81e2b83ff071896be60995000000000000000080000000000000003fe8348a54733a613fb4dbf4085045c400000000000000008000000000000000bfe0bd0438f5d611bff5c63f7c4597ad",
+          "30": "3fd9e5d97d546eda3fda4beeed3ed9ae000000000000000000000000000000003fc4fb536eb5be723fe895e1e7a74066000000000000000000000000000000003fa601496ed27b11bfa5a04120a17588",
+          "31": "3feb8b466f3a16e0bfcdd53c09ea2ed8bfdc0000000000003fc8000000000000bfe0df6333cd9d4a3fd46827e4d51c013fea6a4715bd23c4bfd6a43cee0fd583bfee835eb786e1213fd75deb3e475626",
+          "32": "3fdcf8da6eec7a8e3fe899aa096e4d8f00000000000000000000000000000000bfcf0c70be397698bfe81642e73a78e1bfd3333333333333bfe6666666666666bfda9c6016e5ad21bfebf8e857bb87ac",
+          "33": "3fd9e5d97d546eda3fda4beeed3ed9ae000000000000000000000000000000003fc4fb536eb5be723fe895e1e7a74066000000000000000000000000000000003fa601496ed27b11bfa5a04120a17588",
+          "34": "bfdf97cf58776616bfead35ff358411300000000000000000000000000000000bfbd679968b24c0cbfd6cfc7b61a96c3000000000000000080000000000000003fe40a91d7d3d95c3ff5110eda3a96f6",
+          "35": "bfd92e85339611cc3fd99416b4133d223fc80000000000003fdc0000000000003fd19e5cff489d043fd2635c33b146a53fd6a43cee0fd5833fea6a4715bd23c4bfedf740bfb5aed63fdc6e424813c53a",
+          "36": "3fed77e6108ea2e2bfd94232e99ed4c2000000000000000000000000000000003fe5b25f45527c1ebfd298e3f246b387000000000000000000000000000000003ff44123e566ed13bfe15c67e933a6a2",
+          "37": "3feb8b466f3a16e0bfcdd53c09ea2ed8bfdc0000000000003fc8000000000000bfe0df6333cd9d4a3fd46827e4d51c013fea6a4715bd23c4bfd6a43cee0fd583bfee835eb786e1213fd75deb3e475626",
+          "38": "bfd92e85339611cc3fd99416b4133d223fc80000000000003fdc0000000000003fd19e5cff489d043fd2635c33b146a53fd6a43cee0fd5833fea6a4715bd23c4bfedf740bfb5aed63fdc6e424813c53a",
+          "39": "3fdc4942d4c729c0bfc83ecb91cf485b00000000000000000000000000000000bfe48797275cf0df3fd198cab406855200000000000000000000000000000000bfba6c6cf6f01a6e3fa6a614416016a7"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 2 helicity 2 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 2,
+          "helicity": 2,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "28": "0000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "29": "bfc0f9ef9c5f2bcfbfa555d2c0b22ae73fdc000000000002bfc80000000000023fb49c6ad52de3373fad65e205080c543fdc000000000002bfc8000000000002bfcd4df2e2efb0d43fb40294ca94b506",
+          "30": "bfcc2aa0fb19473c3fa436d32a5df1a6bfc8000000000002bfdc000000000002bfa5a707d37589263fcaa45ab509d8b63fc80000000000023fdc0000000000023fcc0646bc021a02bfb81907a621253b",
+          "31": "3f89d188dbcf68103fd00c4f40ed39b700000000000000000000000000000000bfc93676d19f875bbf95ba38fbfe7bcc000000000000000000000000000000003fbf24aa0bc47a4c3fd441b2d40f79fa",
+          "32": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000",
+          "33": "bfcc2aa0fb19473c3fa436d32a5df1a6bfc8000000000002bfdc000000000002bfa5a707d37589263fcaa45ab509d8b63fc80000000000023fdc0000000000023fcc0646bc021a02bfb81907a621253b",
+          "34": "bfd22f4d0ec50f913fcc3241ffd9aad8bfdc0000000000023fc8000000000002bfdc802d871a510f3fb953786527b5b6bfdc0000000000023fc8000000000002bfca9cc35e04a6a23fbbeb2bff614ccd",
+          "35": "3fca39467d7526c63fd644413f3173bd00000000000000000000000000000000bfc0b4ab09df50eabfd9eb876acadd1300000000000000000000000000000000bfc25dc3310b2e6dbfd34e4ff35e321c",
+          "36": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "37": "3f89d188dbcf68103fd00c4f40ed39b700000000000000000000000000000000bfc93676d19f875bbf95ba38fbfe7bcc000000000000000000000000000000003fbf24aa0bc47a4c3fd441b2d40f79fa",
+          "38": "3fca39467d7526c63fd644413f3173bd00000000000000000000000000000000bfc0b4ab09df50eabfd9eb876acadd1300000000000000000000000000000000bfc25dc3310b2e6dbfd34e4ff35e321c",
+          "39": "3fdaac44dcf4a576bfc6dccd4fad201c000000000000000000000000000000003fd75912d1ced841bfc40334b3d5ddee000000000000000000000000000000003fdbf55b207a2bbabfc7f6e064fb00e9"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 3 helicity -2 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": -2,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "28": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "29": "bfb8258d8cc0aac83fc2344263c2a1fe3fdc000000000002bfc8000000000002bfbac967d439d632bfc5cf24f345aa243fdc000000000002bfc80000000000023fb0c62e8fcbd1eebfc8ed13c0e6ddc2",
+          "30": "bfc9c06e18c638093fbf8ba8cc8ba48bbfc8000000000002bfdc0000000000023fd1d2f203e85e043f871ba14930f0683fc80000000000023fdc0000000000023fd06fd80574a8af3fc53c8f1ad8f8d5",
+          "31": "3fc6d8a40ae8e3b53fcb6618a697afca000000000000000000000000000000003fb4e4fbe512c06ebfd071970d3e73e000000000000000000000000000000000bfc53e5700458f4c3fc705a46b8eb387",
+          "32": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000",
+          "33": "bfc9c06e18c638093fbf8ba8cc8ba48bbfc8000000000002bfdc0000000000023fd1d2f203e85e043f871ba14930f0683fc80000000000023fdc0000000000023fd06fd80574a8af3fc53c8f1ad8f8d5",
+          "34": "bfd4bd0ad8e461cb3fa2fbde1a607e46bfdc0000000000023fc8000000000002bfcd5ea21b7343563fd4116e0d1d282abfdc0000000000023fc8000000000002bfd5576c2cea8fd33fd3cfea1b26b174",
+          "35": "3fb94d15207709803fd7d578946eb968000000000000000000000000000000003fcdf2260f9e6b763fd2d28257a1535300000000000000000000000000000000bfc969c9c2c48898bfd38a49fecbbeda",
+          "36": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "37": "3fc6d8a40ae8e3b53fcb6618a697afca000000000000000000000000000000003fb4e4fbe512c06ebfd071970d3e73e000000000000000000000000000000000bfc53e5700458f4c3fc705a46b8eb387",
+          "38": "3fb94d15207709803fd7d578946eb968000000000000000000000000000000003fcdf2260f9e6b763fd2d28257a1535300000000000000000000000000000000bfc969c9c2c48898bfd38a49fecbbeda",
+          "39": "3fdac66e3c148c81bfc6f339ea5ac193000000000000000000000000000000003fd561ab02c81735bfc253b726f4a62e000000000000000000000000000000003fd125e088f79b56bfbd6580eacd0a4a"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 3 helicity -1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": -1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3fe366e1605617a73fe744a0c19313ce000000000000000000000000000000003fd426edc6c0e90ebfefb8099e5f233cbfddddddddddddde3fc999999999999abfe7656287562ac53fe95ad23d9a6232",
+          "26": "3fd57c937f1e303e3ff43d97d41030e1000000000000000000000000000000003fece1c31dbef73f3ff2274d662582a7bfc999999999999abfdddddddddddddebfebfcfe4e6e5932bff585269b320c5d",
+          "27": "3ff6bd08b3bf8334bfe37d752c5b02bf000000000000000000000000000000003ff49f2ec59cdab9bfe1ad0384cf96e8000000000000000000000000000000003ff2e2af84c3a96cbfe0300428a7b5ca",
+          "28": "3fe366e1605617a73fe744a0c19313ce000000000000000000000000000000003fd426edc6c0e90ebfefb8099e5f233cbfddddddddddddde3fc999999999999abfe7656287562ac53fe95ad23d9a6232",
+          "29": "3ff03a6916c0bbd43ff37641f52689e6000000000000000080000000000000003fe001dfa7c8e7c1bff931f5ef99cd2b000000000000000080000000000000003ff25d6c6061543dbff3e707ce34e687",
+          "30": "bfb30eade05e37f03fe439d7c46ef90a000000000000000000000000000000003feb723b2cc551b03fdd51a5266fba22000000000000000000000000000000003feb15a010d64b563fec3de5ba5ff1e8",
+          "31": "3ff0e664f1766a0ebfe56261845657bbbfdc0000000000003fc80000000000003feba6afb2d140033fb05c149d143a4c3fe4783793f72c2abfd18b9d5a419392bfdcf74eb2efd92cbfbdd4825976f6c2",
+          "32": "3fd57c937f1e303e3ff43d97d41030e1000000000000000000000000000000003fece1c31dbef73f3ff2274d662582a7bfc999999999999abfdddddddddddddebfebfcfe4e6e5932bff585269b320c5d",
+          "33": "bfb30eade05e37f03fe439d7c46ef90a000000000000000000000000000000003feb723b2cc551b03fdd51a5266fba22000000000000000000000000000000003feb15a010d64b563fec3de5ba5ff1e8",
+          "34": "bfd92de40c2a95eabff7b8168fe24a56000000000000000000000000000000003fe9d2e1992abc783ff03b3a3d1c731f000000000000000080000000000000003fd879a1f8f18ac23fe2d1a24b5054d5",
+          "35": "bfecfe286aa8935d3fb49ef6c87a2c8c3fc80000000000003fdc0000000000003fbe554f5a2934f4bfea5070c2497c733fd18b9d5a4193923fe4783793f72c2a3fd3c51572e687343fef7031140b7d18",
+          "36": "3ff6bd08b3bf8334bfe37d752c5b02bf000000000000000000000000000000003ff49f2ec59cdab9bfe1ad0384cf96e8000000000000000000000000000000003ff2e2af84c3a96cbfe0300428a7b5ca",
+          "37": "3ff0e664f1766a0ebfe56261845657bbbfdc0000000000003fc80000000000003feba6afb2d140033fb05c149d143a4c3fe4783793f72c2abfd18b9d5a419392bfdcf74eb2efd92cbfbdd4825976f6c2",
+          "38": "bfecfe286aa8935d3fb49ef6c87a2c8c3fc80000000000003fdc0000000000003fbe554f5a2934f4bfea5070c2497c733fd18b9d5a4193923fe4783793f72c2a3fd3c51572e687343fef7031140b7d18",
+          "39": "bfe3dde0276c2cb63fd107526aef01c000000000000000000000000000000000bff4ea60a079d21b3fe1ed7764fab41700000000000000000000000000000000bff87bd4de9db6ee3fe4fc6d5119783a"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 3 helicity 0 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": 0,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "401f8898bdb52a18c00b075e5976b65e0000000000000000000000000000000040203d47be8a1c10c00bd6c4221154ae3fea0303235185efbfd64bb98bfcbbf24020fb7d2c3a1e93c00d1cd694f5eb44",
+          "25": "401a6019f9f3e35ec0069b83fad10c08000000000000000000000000000000004019cc79b39cfcb4c0061cfa99f4465100000000000000000000000000000000c01aa934292cebe34006da2cb59437e7",
+          "26": "c01279f74c6f87603fffac835e760ca500000000000000000000000000000000400d0a2e8982344abff8e427e3942cd200000000000000000000000000000000bffdb3923fec2d2b3fe97558c913946e",
+          "27": "bffb8d14a698782c3fe79d7f6a398b9300000000000000000000000000000000c010787eba3b49223ffc3c46f61c7d5ebff1d3dc52ac5ecf3fde8fc2d6de5964c016043713df75f34002df0aa351d2d0",
+          "28": "401a6019f9f3e35ec0069b83fad10c08000000000000000000000000000000004019cc79b39cfcb4c0061cfa99f4465100000000000000000000000000000000c01aa934292cebe34006da2cb59437e7",
+          "29": "40158c76651f8676c00278657b3f97d3bfd6dca5c20aa6b93fc3988e140921314013e4737ff312b0c0010cf549197dbcbfd6dca5c20aa6b93fc3988e1409213140144f9c5555f7ddc00168cf2492d474",
+          "30": "c010189f2e3fa9aa3ffb97ec4f489092000000000000000000000000000000004007fff2f749fbacbff4923df8888e93000000000000000000000000000000003ff83818cbc49ee2bfe4c25e6583f5e6",
+          "31": "bff8007545db3c3c3fe492ada997583400000000000000000000000000000000c00b3968fbc26c3e3ff755c7b338ef11000000000000000000000000000000004011f3e08f68167ebffec6a588202690",
+          "32": "c01279f74c6f87603fffac835e760ca500000000000000000000000000000000400d0a2e8982344abff8e427e3942cd200000000000000000000000000000000bffdb3923fec2d2b3fe97558c913946e",
+          "33": "c010189f2e3fa9aa3ffb97ec4f489092000000000000000000000000000000004007fff2f749fbacbff4923df8888e93000000000000000000000000000000003ff83818cbc49ee2bfe4c25e6583f5e6",
+          "34": "4003b18e2c582e91bff0e1554a94ba33bfd6dca5c20aa6b93fc3988e140921313ff54ca37e62ebc0bfe241b0b5795c5cbfd6dca5c20aa6b93fc3988e140921313fb07a1c6d58475bbf9c3f0c29299ee4",
+          "35": "3ff0d04d167bfc71bfdcd2cd4b1db0c200000000000000000000000000000000bffea4f663ce7d193fea4440e7d58fcc000000000000000000000000000000003ff400015f9208dfbfe12493767d2c2d",
+          "36": "bffb8d14a698782c3fe79d7f6a398b9300000000000000000000000000000000c010787eba3b49223ffc3c46f61c7d5ebff1d3dc52ac5ecf3fde8fc2d6de5964c016043713df75f34002df0aa351d2d0",
+          "37": "bff8007545db3c3c3fe492ada997583400000000000000000000000000000000c00b3968fbc26c3e3ff755c7b338ef11000000000000000000000000000000004011f3e08f68167ebffec6a588202690",
+          "38": "3ff0d04d167bfc71bfdcd2cd4b1db0c200000000000000000000000000000000bffea4f663ce7d193fea4440e7d58fcc000000000000000000000000000000003ff400015f9208dfbfe12493767d2c2d",
+          "39": "3fa1ada134c62d0ebf8e4e38ecc171d03fe6dca5c20aa6b7bfd3988e1409212f3ffd0bcc7621aa11bfe8e58aae65ff7c3ff86fd472ae1652bfe4f223d002ee90400acaeb22d1c853bff6f712b0218722"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 3 helicity 1 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "3fbbbfe24de2f9103fee18b9cb42ac0600000000000000000000000000000000bfedeaf7da8769e1bfdd284699f787d73fdddddddddddddebfc999999999999a3ff13f6e18d59c3b3f916934a58262f0",
+          "26": "3fe5e7a0336e24813ff1d94e72174083000000000000000000000000000000003fc97db7c8b8d8143ff6fa1681c4877dbfc999999999999abfdddddddddddddebfd7baca6fd573d5bff8f9a2d6e089ed",
+          "27": "bff6bd08b3bf83343fe37d752c5b02bf00000000000000000000000000000000bff49f2ec59cdab93fe1ad0384cf96e800000000000000000000000000000000bff2e2af84c3a96c3fe0300428a7b5ca",
+          "28": "3fbbbfe24de2f9103fee18b9cb42ac0600000000000000000000000000000000bfedeaf7da8769e1bfdd284699f787d73fdddddddddddddebfc999999999999a3ff13f6e18d59c3b3f916934a58262f0",
+          "29": "3fc735d931f5b1783ff92c67ee82d57600000000000000000000000000000000bff7c3b897e99ddebfe729125e39d44600000000000000000000000000000000bffb13dda2d35c9dbf9b5573354b4140",
+          "30": "3fe04a0c568d728b3fd872a49d7f2e7b00000000000000000000000000000000bfd0a03b21eb65793fedfc1d2dac95d1000000000000000000000000000000003fac5a1e547c1d683ff38b84c1f3166a",
+          "31": "bff365d2dadadbaa3fd374c1310335c63fdc000000000000bfc8000000000000bfe196c25708f6513fe56efc97db7a00bfe4783793f72c2a3fd18b9d5a4193923fcd2711378544f7bfda1e584a611742",
+          "32": "3fe5e7a0336e24813ff1d94e72174083000000000000000000000000000000003fc97db7c8b8d8143ff6fa1681c4877dbfc999999999999abfdddddddddddddebfd7baca6fd573d5bff8f9a2d6e089ed",
+          "33": "3fe04a0c568d728b3fd872a49d7f2e7b00000000000000000000000000000000bfd0a03b21eb65793fedfc1d2dac95d1000000000000000000000000000000003fac5a1e547c1d683ff38b84c1f3166a",
+          "34": "bfe9ab5673e99911bff4ea9353c71506000000000000000000000000000000003fc6cabfbb7e5e0a3ff48b44e19a442f000000000000000080000000000000003fc4c04621ad2d803fe5d718eac3d243",
+          "35": "3fe5dc911bb4488fbfe337953bf3f41c3fc80000000000003fdc000000000000bfe5ab890ba2b28cbfdecdda67cc3ec23fd18b9d5a4193923fe4783793f72c2a3fdfe59963db95b83fecd6f03bd6f9fc",
+          "36": "bff6bd08b3bf83343fe37d752c5b02bf00000000000000000000000000000000bff49f2ec59cdab93fe1ad0384cf96e800000000000000000000000000000000bff2e2af84c3a96c3fe0300428a7b5ca",
+          "37": "bff365d2dadadbaa3fd374c1310335c63fdc000000000000bfc8000000000000bfe196c25708f6513fe56efc97db7a00bfe4783793f72c2a3fd18b9d5a4193923fcd2711378544f7bfda1e584a611742",
+          "38": "3fe5dc911bb4488fbfe337953bf3f41c3fc80000000000003fdc000000000000bfe5ab890ba2b28cbfdecdda67cc3ec23fd18b9d5a4193923fe4783793f72c2a3fdfe59963db95b83fecd6f03bd6f9fc",
+          "39": "3fe3dde0276c2cb6bfd107526aef01c0000000000000000000000000000000003ff4ea60a079d21bbfe1ed7764fab417000000000000000080000000000000003ff87bd4de9db6eebfe4fc6d5119783a"
+        }
+      }
+    },
+    {
+      "name": "source spin2 self_conjugate form 3 helicity 2 mass 0.75",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 16,
+          "family": "spin2",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 3,
+          "helicity": 2,
+          "chirality": 0,
+          "mass": {
+            "re": 0.75,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": []
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "28": "0000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "29": "bfc5823d934222f4bf9e7e967d0c97e83fdc000000000002bfc80000000000023faa39603ad249cc3fc8bd4c514dd0223fdc000000000002bfc80000000000023fc7d5884a8387df3fb63be7dfbc7f60",
+          "30": "bfcd2e72fa0ab6153faf1479629805fa3fc80000000000023fdc0000000000023fc789fc082576ccbfcacf633ffc9286bfc8000000000002bfdc0000000000023fad2c6a6f3b4d80bfd339bc1edd1694",
+          "31": "bfa05682deee4b3cbfd1b843e51eb260000000000000000000000000000000003fcf051ff83d9ab93fbe3b42904f418d00000000000000000000000000000000bfcf52639d85a708bf6f9e40d70ba200",
+          "32": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "33": "bfcd2e72fa0ab6153faf1479629805fa3fc80000000000023fdc0000000000023fc789fc082576ccbfcacf633ffc9286bfc8000000000002bfdc0000000000023fad2c6a6f3b4d80bfd339bc1edd1694",
+          "34": "bfd0054f72737b033fcac30cb9fc548cbfdc0000000000023fc8000000000002bfd8a8d70a226071bfa9a654a964a7d0bfdc0000000000023fc8000000000002bfdd10a4ae395f473f9ca6642c422bb8",
+          "35": "bfc9cb22ef163562bfd5047c801b4a6a00000000000000000000000000000000bfaa6e2028d71288bfd7d2c8c680e4c9000000000000000000000000000000003fb58be359cc51eb3fd6ad66037b65a2",
+          "36": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "37": "bfa05682deee4b3cbfd1b843e51eb260000000000000000000000000000000003fcf051ff83d9ab93fbe3b42904f418d00000000000000000000000000000000bfcf52639d85a708bf6f9e40d70ba200",
+          "38": "bfc9cb22ef163562bfd5047c801b4a6a00000000000000000000000000000000bfaa6e2028d71288bfd7d2c8c680e4c9000000000000000000000000000000003fb58be359cc51eb3fd6ad66037b65a2",
+          "39": "3fdac66e3c148c81bfc6f339ea5ac193000000000000000000000000000000003fd561ab02c81735bfc253b726f4a62e000000000000000080000000000000003fd125e088f79b56bfbd6580eacd0a4a"
+        }
+      }
+    },
+    {
+      "name": "source vector embedded",
+      "case": "instruction",
+      "instruction": {
+        "kind": "source",
+        "source": 0
+      },
+      "sources": [
+        {
+          "current": 24,
+          "component_count": 4,
+          "family": "vector",
+          "orientation": "self_conjugate",
+          "leg": 0,
+          "momentum_form": 0,
+          "helicity": 1,
+          "chirality": 0,
+          "mass": {
+            "re": 0.0,
+            "im": 0.0
+          },
+          "factor": {
+            "re": 0.875,
+            "im": -0.375
+          },
+          "embedding": [
+            {
+              "component": 0,
+              "source_component": 3,
+              "factor": {
+                "re": 0.5,
+                "im": 0.5
+              }
+            },
+            {
+              "component": 1,
+              "source_component": null,
+              "factor": {
+                "re": 1.0,
+                "im": 0.0
+              }
+            },
+            {
+              "component": 2,
+              "source_component": 1,
+              "factor": {
+                "re": -1.0,
+                "im": 0.0
+              }
+            },
+            {
+              "component": 5,
+              "source_component": 2,
+              "factor": {
+                "re": 0.0,
+                "im": -1.5
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3fd615ae3205f2653fd615ae3205f265000000000000000000000000000000003fd4a99189a674473fd4a99189a67447000000000000000000000000000000003fd69c50f9f09d113fd69c50f9f09d11",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "3fc0fc89f9c07b74bfd6ef61022d19a13fe6a09e667f3bcd80000000000000003fd1fae9bb081da73fc437f67bbf98153fe6a09e667f3bcd80000000000000003f9394c1ba70ff08bfe01ea83465b6a8",
+          "29": "3fed426af396283bbfbdf55fe9287968bff0f876ccdf6cda8000000000000000bff08aadf9fd7834bfb8b94d8c9b0f1e3ff0f876ccdf6cda0000000000000000bfe7d1aaea251fe73f9dd0f952181e20"
+        }
+      }
+    },
+    {
+      "name": "scale general",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scale",
+        "current": 0,
+        "component_count": 4,
+        "factor": {
+          "re": -0.34375,
+          "im": 1.6875
+        }
+      },
+      "expected": {
+        "currents": {
+          "0": "bff7136f1a6308b1bfefb5dc16492d4cbfd006853fa56e653fea2ce9cc811b5cc006c04dfa1952a6bfe1d884379807e6c00176a8984e97793ff0bb7724734326bff4e926ce034e3f3ff875f3712b29a7",
+          "1": "4000a719bcf84bba40042a77dcc73094bfff1a3a6067d295bfd957bdc9cfdafebffb9ad1f3974f4ac00d56e3a925f5f33ff8b803cb1c41ed3ff51b88328f094c40031f86286d37aec00314c37f28a612",
+          "2": "3fd9347c50188fdabffeeef5a81e24e93ff450dca9494d5ebfe240c88d0cb08c4000b5b485073307bfecbef9ea0177adbfe62d94a0f005a8400854c7135822d1400d72bfea6f9befc003cd6500998a19",
+          "3": "3ff32fdbb02f3c40c00772cec0511928c007dd084c7865eb3fc9465201e52928bfe59248229c3c133ffc08047bc437a3c00690e971318e093feeec5ed08233bf400090e435f0d5a440083b9f0b9830c3"
+        }
+      }
+    },
+    {
+      "name": "scale unit",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scale",
+        "current": 0,
+        "component_count": 4,
+        "factor": {
+          "re": 1.0,
+          "im": 0.0
+        }
+      },
+      "expected": {}
+    },
+    {
+      "name": "scale negative zero imaginary",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scale",
+        "current": 0,
+        "component_count": 4,
+        "factor": {
+          "re": 1.0,
+          "im": -0.0
+        }
+      },
+      "expected": {
+        "currents": {
+          "1": "3ff3167d34ec3640bff79ff5a3a23ee000000000000000003ff26e5b7b7fe516bffe300ee5d50ba83ff681fab5afbad83fe24a25f3b1358cbff082d1f71baee4bffa2582c057c238bff1569c1236ad64"
+        }
+      }
+    },
+    {
+      "name": "copy zero",
+      "case": "instruction",
+      "instruction": {
+        "kind": "copy",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "factor": {
+          "re": 0.0,
+          "im": 0.0
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "25": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "26": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "27": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    {
+      "name": "copy general",
+      "case": "instruction",
+      "instruction": {
+        "kind": "copy",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "factor": {
+          "re": 0.4375,
+          "im": -0.90625
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "3fe5933c75b800353fe8999a01abafc13fd09bdf14a2e0d2bfdb57c862518d613ff87c7bfe40513f3fe733a7b9a24bd03ff63041bd0ed251bfd1cd660b443a583feeb9962cbb4836bfe5b0570e5c4706",
+          "25": "bfea1e3faa47627ebffba25cef8d0cac3ff0b402e7ebe79c3fe020900c0fe8733fdcc312c06830ea40029a3597e2fa27bfe5ecabf544a590bfef05aa1d10d18ebffb26e6a4a7f21b3ff01c1a36579c27",
+          "26": "bfe00a20900fa15c3ff09cc64c103044bfe9a36022b128203fc1f6cb2e855a4cbff4fecaa532be883fcaa6893ae2a6483fea9092d50ae978bff9f6d64047c5ecc0038700ffacb71f3febe91c3d4fd9cb",
+          "27": "bff19d55b7b3fcb03ff7cc9562c01daf3ffb7c0f3cb5da5b3fd45019715e85d13fe448ada4613dc0bfeca5a3b52659f33ffbc90a5a06a93ebfc219abe55e7824bfe794ae966bd53bc0001ba421e261f9"
+        }
+      }
+    },
+    {
+      "name": "copy unit",
+      "case": "instruction",
+      "instruction": {
+        "kind": "copy",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "factor": {
+          "re": 1.0,
+          "im": 0.0
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "bfd96310471f09803fedef584c716c743fdfa4e74288ed783fa8678391e546003f893532aaa20a003ffaec9c13c5883c3feb2319af0ef1e43ff1eefbb803eb7a3ff057644665fc863fe22021951cbcf8",
+          "25": "3ff3167d34ec3640bff79ff5a3a23ee080000000000000003ff26e5b7b7fe516bffe300ee5d50ba83ff681fab5afbad83fe24a25f3b1358cbff082d1f71baee4bffa2582c057c238bff1569c1236ad64",
+          "26": "bff254b78011dcfc0000000000000000bfde30aa06d92e30bfe500ce47f029f4bfe81a56cdc6f9b8bff159698d71e56a3ffcf928852aa3dc3fa56afdd43f97c0bffd5c559559eab0bffcebb593deff86",
+          "27": "bffce849f18bd306bfd5ed0edccea0803fdd513b99ccbb783ffaca1fb06dbfd63ff1330e3bc85b1c3fc71a80d42bd4003fec0e8abdd449603ff7e327b9ee97623ff7bc6ee41d5b86bff878089dce1496"
+        }
+      }
+    },
+    {
+      "name": "scatter unit set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scatter",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "mode": "set",
+        "factor": {
+          "re": 1.0,
+          "im": 0.0
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "bfd96310471f09803fedef584c716c743fdfa4e74288ed783fa8678391e546003f893532aaa20a003ffaec9c13c5883c3feb2319af0ef1e43ff1eefbb803eb7a3ff057644665fc863fe22021951cbcf8",
+          "25": "3ff3167d34ec3640bff79ff5a3a23ee080000000000000003ff26e5b7b7fe516bffe300ee5d50ba83ff681fab5afbad83fe24a25f3b1358cbff082d1f71baee4bffa2582c057c238bff1569c1236ad64",
+          "26": "bff254b78011dcfc0000000000000000bfde30aa06d92e30bfe500ce47f029f4bfe81a56cdc6f9b8bff159698d71e56a3ffcf928852aa3dc3fa56afdd43f97c0bffd5c559559eab0bffcebb593deff86",
+          "27": "bffce849f18bd306bfd5ed0edccea0803fdd513b99ccbb783ffaca1fb06dbfd63ff1330e3bc85b1c3fc71a80d42bd4003fec0e8abdd449603ff7e327b9ee97623ff7bc6ee41d5b86bff878089dce1496"
+        }
+      }
+    },
+    {
+      "name": "scatter unit add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scatter",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "mode": "add",
+        "factor": {
+          "re": 1.0,
+          "im": 0.0
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "bfff5a8b2df9923e40030db6a0729b9cbff236a035e700303fa8678391e546003ff9486ff966c4ce400b62bf2628a8c23ffd52d502423cb83fa3435525660dc0bfd1189248b616b83fedb3938c495734",
+          "25": "3fef5805c72ce79cbfd298a093f29748bfe3c2a8fea61e103fdcec5f58a1df30bffe8946b605ac364003124a9a7d8b72bfc430caaf619c70c003bb92e470ffb6c002708808cdf1d9bfcaca1d1075e8c0",
+          "26": "3fe305a95425396c3ff320bb50542b863fd50ea5135c67c0bfbdcee1fab1e300c0013f58a0868446c00852812994edf6400914a4a12a3c72bfed9fb7fb020764c00ddda8ff48a3bdc0071d8b3c565767",
+          "27": "c00008687e4b2fc4bfe88dce86fe54c43fe5d6bfc2f7db403fc799b2ed8eca40bfdaaefd049eab98bfce14fe54ef0b904004ede8a9313ac8400045a7845398a2bfc9516995ceb5d0c008caf1fe1d0fda"
+        }
+      }
+    },
+    {
+      "name": "scatter minus unit set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scatter",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "mode": "set",
+        "factor": {
+          "re": -1.0,
+          "im": 0.0
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "3fd96310471f0980bfedef584c716c74bfdfa4e74288ed78bfa8678391e54600bf893532aaa20a00bffaec9c13c5883cbfeb2319af0ef1e4bff1eefbb803eb7abff057644665fc86bfe22021951cbcf8",
+          "25": "bff3167d34ec36403ff79ff5a3a23ee00000000000000000bff26e5b7b7fe5163ffe300ee5d50ba8bff681fab5afbad8bfe24a25f3b1358c3ff082d1f71baee43ffa2582c057c2383ff1569c1236ad64",
+          "26": "3ff254b78011dcfc80000000000000003fde30aa06d92e303fe500ce47f029f43fe81a56cdc6f9b83ff159698d71e56abffcf928852aa3dcbfa56afdd43f97c03ffd5c559559eab03ffcebb593deff86",
+          "27": "3ffce849f18bd3063fd5ed0edccea080bfdd513b99ccbb78bffaca1fb06dbfd6bff1330e3bc85b1cbfc71a80d42bd400bfec0e8abdd44960bff7e327b9ee9762bff7bc6ee41d5b863ff878089dce1496"
+        }
+      }
+    },
+    {
+      "name": "scatter minus unit add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scatter",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "mode": "add",
+        "factor": {
+          "re": -1.0,
+          "im": 0.0
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "bff2a9030a6a0d7e3fe05829e8e79588c0010489eb95bb76bfa8678391e546003ff8e39b2ebc3ca63fad88c498c821803fc17dda999a56a0c001a1ee636e5343c0027a768f7cbf5dbfca32be77c08af0",
+          "25": "bff680f78641f8b240054ce19123ebf7bfe3c2a8fea61e10bffda19f20d752603ffdd6d715a46b1abfdb7d80d9917b30bff4d03f499d691abfd9c6076aaa86903feed3eade27417c3fff53f4825e9db0",
+          "26": "40071621d51b2b573ff320bb50542b863ff45bfe4843b1083ff323e028450bc4bfe4c8b4e68c1da8bfebe45e708c2230bfdf241f20033b50bff0268bdac4fd2ebfb02a6d3dd721a03fe738a95e22a07c",
+          "27": "3ff9bfc2e6814684bfb505fd517da220bfcde9ef5b5380e0c00950848194d332c00488eddc5c308fbfe3127fff51ace43feb9a8d291c5860bfee7600d66bfb00c00951857d7a46e3bfa4ba5813bed100"
+        }
+      }
+    },
+    {
+      "name": "scatter real set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scatter",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "mode": "set",
+        "factor": {
+          "re": 0.3125,
+          "im": 0.0
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "bfbfbbd458e6cbe03fd2b5972fc6e3c83fc3c7108995946b3f8e8164765e97803f6f827f554a8c803fe0d3e18c5b75263fd0f5f00d69572e3fd66abaa604e6583fd46d3d57ff7ba83fc6a829fa63ec36",
+          "25": "3fd7dc1c822743d0bfdd87f30c8ace9880000000000000003fd709f25a5fde5cbfe2de094fa527493fdc2279631ba98e3fc6dcaf709d82efbfd4a38674e29a9dbfe05771b836d963bfd5ac4316c458bd",
+          "26": "bfd6e9e56016543b0000000000000000bfc2de6a4447bcdebfca4101d9ec3471bfce20ec8138b826bfd5afc3f0ce5ec43fe21bb9533aa66a3f8ac5bd494f7db0bfe259b57d5832aebfe213517c6b5fb4",
+          "27": "bfe2112e36f763e4bfbb6852940248a03fc252c5401ff52b3fe0be53ce4497e63fd57fd1caba71e33face1210936c9003fd18916b6a4addc3fdddbf1a86a3d3a3fddab8a9d24b268bfde960ac54199bc"
+        }
+      }
+    },
+    {
+      "name": "scatter real add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scatter",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "mode": "add",
+        "factor": {
+          "re": 0.3125,
+          "im": 0.0
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "bffafd8461c03c9c3ffbd126e69e39f0bff7a6f7f55689013f8e8164765e97803ff925c6d3bc2600400221697f5cc1ee3ff3fec42e151992bfe77464caaf02ecbfef0473052746943fe13d7c75c5954a",
+          "25": "3fc4646679a074103fe72fa17705cad0bfe3c2a8fea61e10bfd5c31c3afdd6ccbfe39078f00668653ff6ab38d8124670bfe19f2cc3623becbffc1d356efef72fbff2e7462d5f8e2c3fe1248f54edb43a",
+          "26": "3ff61d12d21ee4a33ff320bb50542b863fe4e80cfc08dbc03fd56d63243dc0f0bffa35a36a50a2b5c0025bc4e0f5c71a3ffe3dfd66c7283dbfee8b50e320c2e9c003c5eb93f1bb10bffa5909a3035f22",
+          "27": "bfe8623c4d0c7ce8bfe104516b174d983fd785a68c32f59ebfeeef7ed7333536bff27ed90a416989bfd6fb9b736696a840001b68d090be2c3ff01f23b8d32930bff37bb96f8e05a6c00061af07de38c6"
+        }
+      }
+    },
+    {
+      "name": "scatter imaginary set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scatter",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "mode": "set",
+        "factor": {
+          "re": 0.0,
+          "im": -0.8125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "3fe85277be1c281e3fd4a07d39c937b83fa3d41ae68a48e0bfd9b5fbe60f40f23ff5e03ed0107eb1bf847b392aa3a8203fed24590b065ea6bfe60c84de3c24893fdd7436924eb313bfea8e02f265ba5a",
+          "25": "bff331f794f3d316bfef048b75ffd8283fedf354a8afd44400000000000000003ff2499bb39ec7d03ff8870c1abd1978bfead495318cfc32bfddb87dabfff704bfec2cbd9d98d9c23ff53e7a3c474dce",
+          "26": "00000000000000003fedc9aa301d071abfe110a79a7322163fd8878a25907587bfec314b85d914cc3fe395668731aae63fa166ee3c73ab4cbff78a70ec32a523bff77f8388252f9d3ff7db0589590eaf",
+          "27": "bfd1d09c1367e2683ff77cbc14419b753ff5c439bf592bdebfd7d2006cf658523fc2c588ac639c40bfebf2f72125940e3ff368904711db00bfe6cbd0ba3c7b9ebff3e187003770babff3491a1957da5d"
+        }
+      }
+    },
+    {
+      "name": "scatter imaginary add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scatter",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "mode": "add",
+        "factor": {
+          "re": 0.0,
+          "im": -0.8125
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "bfe9b1167a47779e3ffc4be0691eceecbff981392f54e947bfd9b5fbe60f40f240077b223210ffb63ffbafebc63681f83ffe5374b03df319bffc5b237df6cd50bfea80f667ffaadebfddf521f672403c",
+          "25": "bff69c71e64995883fcbbc3e1d2d67d03fd4615754136c68bfe666874aaeda943ff1f063e36e2742400414d34d043ac2bff91576e88b4c6dbffe62733cc64e49bff8d1ec20108e5b40019de956379f0d",
+          "26": "3ffbd78c2a2479b2400102c83431578a3fd11dffe54f51c43fed8ab71b622858c0024515ce8b0b0bbff580e5821f210f3ff5bb582f0d7262c00382d26c2ad2cac00aef3ff8ae46343fda2e92922d7d9c",
+          "27": "bfde72b83f9214703ff0b11887f619333ff95b4aba61eaa0bffdcb696df97ca2bff5861c6763927abff49f6b75b625f940079e8e1d4515f0bfc5ee08732d1f68c00764118b87517dc006337abbe1f2be"
+        }
+      }
+    },
+    {
+      "name": "scatter general set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scatter",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "mode": "set",
+        "factor": {
+          "re": 0.59375,
+          "im": 0.6875
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "bfec1df589ab31623fd2181da9e15a423fd0b10400f798fb3fd7910dc1922774bff264bc216d2d3d3ff01f25d167e7b1bfd11785ba2908523ff3f9f6496f76f73fcbc6bff45567d23ff09d9ee8aaa5b6",
+          "25": "3ffb935337ebcb70bfacf07898be0120bfe957bdc9cfdafe3fe5e30ca2a7e00ac000b2f29aafa7b0bfdd8f75888884503ff0c7f39e3ba422bfcc217cf79c2b7cbfccd5d2ad7420e0bffc45368f0ccc7a",
+          "26": "bfe5c499e815366bbfe9347c50188fda3fc5e86d5db28c88bfe6d934ed1140ca3fd3169b309cee5abff2962482b8060e3ff0be239b01f3883ff45108113d7eb83fc399d027df62a0c002adb7533d1c88",
+          "27": "bfeaca5ab2ef036cbff720e30ad6cce7bfec21cde0ee201e3ff4f1f90f305a203fe07412c28663c13feb1422b1b1febebfe02fb43ef204953ff7d3df47a6a31b3ffeea67c3ef1c7e3fbca471f21d2b30"
+        }
+      }
+    },
+    {
+      "name": "scatter general add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "scatter",
+        "current": 24,
+        "source": 0,
+        "component_count": 4,
+        "mode": "add",
+        "factor": {
+          "re": 0.59375,
+          "im": 0.6875
+        }
+      },
+      "expected": {
+        "currents": {
+          "24": "c0038860f083b4483ffba9c88524d78ebff5f399064b554f3fd7910dc19227743fdac525ca914df44005fc0404f9d87c3fe6f6cd786103633fc528a9d4b5df58bff124b0da08d53a3ff66757e440f2d4",
+          "25": "3ff828d8e69608fe3ff21249b9dfa905bff68d33643afc87bf906f5500df5140c000df8e82c7f7f73fe07d7a3a5275f03fd4731d39db5738bffa788370b9d5f8bfecac8f4de54b2cbfec8fbc3dc9b85c",
+          "26": "3ff0f53f3619de7c3fda19f4a11f8e643fef19c2e4876e1abfc6490b91dd4cd8bff1abdf0e02501ac008f0dea437fe484002f7222c15e4483fd357509469f920bffbebc2643b7076c00b5567c5a3f42c",
+          "27": "bff08db464820e38bffdec8697224f29bfe4f3abeadca29abfc727821c5c6370bfef49883759a8433fdb9085ced68db43ff3bcb1d3ff4e9640003e034b2f9e7e3fd00f2eb45fa8f8bff753943f4a386b"
+        }
+      }
+    },
+    {
+      "name": "closure four components",
+      "case": "instruction",
+      "instruction": {
+        "kind": "closure",
+        "amplitude": 1,
+        "left": 0,
+        "right": 16,
+        "component_factors": [
+          {
+            "re": 1.0,
+            "im": 0.0
+          },
+          {
+            "re": -1.0,
+            "im": 0.0
+          },
+          {
+            "re": 0.0,
+            "im": 0.5
+          },
+          {
+            "re": 0.75,
+            "im": -1.25
+          }
+        ],
+        "factor": {
+          "re": 0.8125,
+          "im": -0.28125
+        }
+      },
+      "expected": {
+        "amplitudes": {
+          "1": "400a7d159ec81e92bfe1839e95dfec13c017b59f80a79572c01c47a97c181b5240029025a3343a7f4006cd9ee73079354008797edd41a912bfcb85115f822ad0c000cdcc494f5b524010d3345815df18"
+        }
+      }
+    },
+    {
+      "name": "closure unit factor",
+      "case": "instruction",
+      "instruction": {
+        "kind": "closure",
+        "amplitude": 0,
+        "left": 16,
+        "right": 0,
+        "component_factors": [
+          {
+            "re": 1.0,
+            "im": 0.0
+          },
+          {
+            "re": 1.0,
+            "im": 0.0
+          },
+          {
+            "re": 1.0,
+            "im": 0.0
+          },
+          {
+            "re": 1.0,
+            "im": 0.0
+          },
+          {
+            "re": 1.0,
+            "im": 0.0
+          },
+          {
+            "re": 1.0,
+            "im": 0.0
+          }
+        ],
+        "factor": {
+          "re": 1.0,
+          "im": 0.0
+        }
+      },
+      "expected": {
+        "amplitudes": {
+          "0": "c001bc341beb3d77bff97d67fc9d31a04016ef45187cbf5dbff13c74ce263f064003be9449dc10ecbff5b026e099a2af4011dc6c47f28b0ec008c02daf30cdc1400ba77a8ed29704c02b41ba28336f59"
+        }
+      }
+    },
+    {
+      "name": "kernel scaled set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "kernel",
+        "binding": 0,
+        "destination": 24,
+        "amplitude": false,
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "mode": "set",
+        "factor": {
+          "re": 0.59375,
+          "im": -1.3125
+        }
+      },
+      "kernel_bindings": [
+        {
+          "id": 0,
+          "sha256": "identity-4",
+          "inputs": [
+            {
+              "kind": "parent",
+              "parent": 0,
+              "component": 0,
+              "imaginary": false
+            },
+            {
+              "kind": "parent",
+              "parent": 0,
+              "component": 0,
+              "imaginary": true
+            },
+            {
+              "kind": "parent",
+              "parent": 1,
+              "component": 1,
+              "imaginary": false
+            },
+            {
+              "kind": "momentum",
+              "operand": 0,
+              "component": 3
+            },
+            {
+              "kind": "literal",
+              "value": 0.3125
+            },
+            {
+              "kind": "factor",
+              "imaginary": true
+            },
+            {
+              "kind": "destination",
+              "component": 1,
+              "imaginary": true,
+              "amplitude": false
+            },
+            {
+              "kind": "factor",
+              "imaginary": false
+            }
+          ],
+          "outputs": [
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": true,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 1,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 1,
+              "imaginary": true,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 2,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 2,
+              "imaginary": true,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 3,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 3,
+              "imaginary": true,
+              "amplitude": false
+            }
+          ],
+          "direct": false
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "3fefc0bb0f37a7863ff1378f8e07db503fd6cae4e570ea7bbfe3dc6061bfd9be4001ba3e030ef19d3fef74a20d7abf123fff9816017d94e0bfdca48d967debb63ff598f993a769f2bff01129a4215356",
+          "25": "bff6f9f146fa5d193ffe5f84f85ec7cb40089d896abc85adbffbeeacdbe4ea1e40150f30e57dcc9d40009f88ba1196b23fe3cb6b0fc00fbcbff889854c7f27643ff7472f10f0d416bfe7305cecad1c52",
+          "26": "bff8980000000000bff3080000000000bff8980000000000bff3080000000000bff8980000000000bff3080000000000bff8980000000000bff3080000000000bff8980000000000bff3080000000000",
+          "27": "3ff7bc52033252e0bff343ddb63958e23fd7463f57505c703ff45748c902bf713ff5c08bbb94bea7bfedc2d58e25d1a0bfb2911c48dbfd104001e25701aa24d93ff4c66c8297b6adbfe971082668d6c8"
+        }
+      }
+    },
+    {
+      "name": "kernel scaled add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "kernel",
+        "binding": 0,
+        "destination": 24,
+        "amplitude": false,
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "mode": "add",
+        "factor": {
+          "re": 0.59375,
+          "im": -1.3125
+        }
+      },
+      "kernel_bindings": [
+        {
+          "id": 0,
+          "sha256": "identity-4",
+          "inputs": [
+            {
+              "kind": "parent",
+              "parent": 0,
+              "component": 0,
+              "imaginary": false
+            },
+            {
+              "kind": "parent",
+              "parent": 0,
+              "component": 0,
+              "imaginary": true
+            },
+            {
+              "kind": "parent",
+              "parent": 1,
+              "component": 1,
+              "imaginary": false
+            },
+            {
+              "kind": "momentum",
+              "operand": 0,
+              "component": 3
+            },
+            {
+              "kind": "literal",
+              "value": 0.3125
+            },
+            {
+              "kind": "factor",
+              "imaginary": true
+            },
+            {
+              "kind": "destination",
+              "component": 1,
+              "imaginary": true,
+              "amplitude": false
+            },
+            {
+              "kind": "factor",
+              "imaginary": false
+            }
+          ],
+          "outputs": [
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": true,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 1,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 1,
+              "imaginary": true,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 2,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 2,
+              "imaginary": true,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 3,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 3,
+              "imaginary": true,
+              "amplitude": false
+            }
+          ],
+          "direct": false
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bfe242d3292bf83640042da8545a2e27bff46d20cd2d00efbfe3dc6061bfd9be400e4540cd17b1fa4005c9999fa494684007acaf161c2c53bff87e04747835fa3faf6e17627cf7c0bfe48ee151160c70",
+          "25": "bffa646b98501f8b4008aca93b82306c4003acdf2b12fe29c00390f8409e2bb44014f8e2f171a47a400870d5f9b744b8bfbc576c7e4c6760c007beec8f22bbf63fe917437f5965383fc3294fce8b1118",
+          "26": "3fc9fc615123cd903f78bb50542b8600bfe7905872e53508bfe4c90df766126cc00784c2ed14c5d8c00929cc62dbfb41bfcb3efa16b157c0c0014199f6118038c00b7b7e349bae65c0022bb07266d7a4",
+          "27": "3ff493caf827c65ebffa0f814284db243fe2d141a1b9abbcbfcbfd044dc938e8bfc0f20e0ada3ad8bff5875aac3644c23ffaab7a2eea910f4006366aa90671cabfd880be50fdee4cc002eb2fb8d03b41"
+        }
+      }
+    },
+    {
+      "name": "kernel direct set",
+      "case": "instruction",
+      "instruction": {
+        "kind": "kernel",
+        "binding": 0,
+        "destination": 24,
+        "amplitude": false,
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "mode": "set",
+        "factor": {
+          "re": 0.59375,
+          "im": -1.3125
+        }
+      },
+      "kernel_bindings": [
+        {
+          "id": 0,
+          "sha256": "identity-2",
+          "inputs": [
+            {
+              "kind": "parent",
+              "parent": 0,
+              "component": 2,
+              "imaginary": false
+            },
+            {
+              "kind": "parent",
+              "parent": 0,
+              "component": 2,
+              "imaginary": true
+            },
+            {
+              "kind": "parent",
+              "parent": 1,
+              "component": 0,
+              "imaginary": true
+            },
+            {
+              "kind": "momentum",
+              "operand": 1,
+              "component": 0
+            }
+          ],
+          "outputs": [
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": true,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 1,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 1,
+              "imaginary": true,
+              "amplitude": false
+            }
+          ],
+          "direct": true
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "bff254b78011dcfc0000000000000000bfde30aa06d92e30bfe500ce47f029f4bfe81a56cdc6f9b8bff159698d71e56a3ffcf928852aa3dc3fa56afdd43f97c0bffd5c559559eab0bffcebb593deff86",
+          "25": "bff7e9a1932d30b43fe7100131645e98bfeb240d684054d040058764f8454346bfe9eb03758e1cc0c004135d50a8fb8abff3a362b1d33df840018219e439655ebfe92515923ca188c0070c94454a8b38"
+        }
+      }
+    },
+    {
+      "name": "kernel direct add",
+      "case": "instruction",
+      "instruction": {
+        "kind": "kernel",
+        "binding": 0,
+        "destination": 24,
+        "amplitude": false,
+        "left": 0,
+        "right": 16,
+        "left_momentum": 4,
+        "right_momentum": 5,
+        "mode": "add",
+        "factor": {
+          "re": 0.59375,
+          "im": -1.3125
+        }
+      },
+      "kernel_bindings": [
+        {
+          "id": 0,
+          "sha256": "identity-2",
+          "inputs": [
+            {
+              "kind": "parent",
+              "parent": 0,
+              "component": 2,
+              "imaginary": false
+            },
+            {
+              "kind": "parent",
+              "parent": 0,
+              "component": 2,
+              "imaginary": true
+            },
+            {
+              "kind": "parent",
+              "parent": 1,
+              "component": 0,
+              "imaginary": true
+            },
+            {
+              "kind": "momentum",
+              "operand": 1,
+              "component": 0
+            }
+          ],
+          "outputs": [
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": true,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 1,
+              "imaginary": false,
+              "amplitude": false
+            },
+            {
+              "kind": "destination",
+              "component": 1,
+              "imaginary": true,
+              "amplitude": false
+            }
+          ],
+          "direct": true
+        }
+      ],
+      "expected": {
+        "currents": {
+          "24": "c005ab3f4e21d66d3ff723c11aac80fec000d602441fc38dbfe500ce47f029f43fea11b45a5c07bc3fe4fef15633c7bc40065d3857f2b3d1bff0a9892036be4ec008fcef36f6b672bff721fc9848b268",
+          "25": "bffb541be482f3263ffe81ce1757c85abff7735b337339703fffdb864b331942bfea9d7315ef5ddcbff8842022069b08bfff4e8f01980c4c3fe81fbfed58f468bff74e181a62723ec0000de80d369312"
+        }
+      }
+    },
+    {
+      "name": "kernel scaled add amplitude",
+      "case": "instruction",
+      "instruction": {
+        "kind": "kernel",
+        "binding": 0,
+        "destination": 1,
+        "amplitude": true,
+        "left": 0,
+        "right": null,
+        "left_momentum": null,
+        "right_momentum": null,
+        "mode": "add",
+        "factor": {
+          "re": -0.71875,
+          "im": 0.40625
+        }
+      },
+      "kernel_bindings": [
+        {
+          "id": 0,
+          "sha256": "identity-2-to-1",
+          "inputs": [
+            {
+              "kind": "parent",
+              "parent": 0,
+              "component": 3,
+              "imaginary": true
+            },
+            {
+              "kind": "parent",
+              "parent": 0,
+              "component": 3,
+              "imaginary": false
+            },
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": false,
+              "amplitude": true
+            },
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": true,
+              "amplitude": true
+            }
+          ],
+          "outputs": [
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": false,
+              "amplitude": true
+            },
+            {
+              "kind": "destination",
+              "component": 0,
+              "imaginary": true,
+              "amplitude": true
+            }
+          ],
+          "direct": false
+        }
+      ],
+      "expected": {
+        "amplitudes": {
+          "1": "40033748fb3369474006e95b027d55ccc008b930a645eb14bff4e9734236679c3fe357385ac6dd793fec960c71282e04bff41053aa34d79e3fc69e8381480c3cbff536027556de483fc71272204c11f8"
+        }
+      }
+    },
+    {
+      "name": "momentum forms uncrossed",
+      "case": "momentum_forms",
+      "external_count": 4,
+      "external": [
+        "3ff74346258f1b8abff2c3ebaa8ac8a8bfe5264ce64dc8443fd48fddfce5fa88bff5e49906e45a72bfc18f20a20487103ffc70ec0aaa509e3fe45207284b03e8bfd505b7e7226290bff7a976f099ba40bfec3bbacbd995bc3ffd132de74dc0a23fc5654f1b4ef350bfebf105da3d4e94bff7523a31fd3ababff978859b7932f8",
+        "bffe9f4c2d8a23a43fd499cd75f2ede03fd0b753ff5a5b50bfffe03c4323c028bff138a0be14aed23ffb95a800247d8e3ff9c60d700fc92cbff374786d321cb63ff1d2abf8e15a20bff5037874e938943ff319b0a934af343ff5619b93c781d6bff5655e3f035dbcbff41725f45a4582bfddf159def3cd783fff3aec6e1bdbbc",
+        "bff38f270ddf90723ff0d33f182b6f2a3fe510eff01d47cc3ff00c6be7a3d944bfd68ce7ee80aa383fd8031579492e483feda43e0bd49f4cbfe2dddb331a714c3fee39df362db94c3ff0527fea09c3703ffb3ef5586fb76abff74ad97ebf5f623ffca2a7bfcbe386bff2e369db2fce963f8eeaea11bb3f003ff7674ed2b0f9f8",
+        "bff337d3f1057ecebfedcc3a43535c143fdb5886699105503ffbcede62c24d08bff7390739b5c758bffce8c442196570bfe5dc6ac0b8037cbfc2a17f258b7390bfe3c6bc224698a43ff5ec686c1482c63ff4ea040f2e22823fe5e2504c519498bfff0cb2c8b8fb9ebff2122083d6275e3ff8175b4d66f2dcbff383f3999bb156",
+        "bfe4683e5b7b1fc4bfffe6ac8dbc330ebfe109ca1c506f803fecec41b6ebb824bfd72cbf1c2568b83fb5bcbaa9a5b020bfe42426f12b51103ff60c0f7db1df923fc67959644d3280bff4332f245c39c63ff9ed0fb9820674bff0fdfd819931aa3fff78a94708a8a4bff210d2ae37f3fabfca3e464025e4a0bfaeaa4eeccc1440"
+      ],
+      "forms": [
+        [
+          {
+            "leg": 0,
+            "coefficient": 1.0
+          },
+          {
+            "leg": 1,
+            "coefficient": 1.0
+          }
+        ],
+        [
+          {
+            "leg": 2,
+            "coefficient": -1.0
+          },
+          {
+            "leg": 3,
+            "coefficient": 1.0
+          },
+          {
+            "leg": 0,
+            "coefficient": 1.0
+          }
+        ],
+        [
+          {
+            "leg": 3,
+            "coefficient": -1.0
+          }
+        ]
+      ],
+      "crossing": null,
+      "expected": {
+        "momentum_forms": [
+          [
+            "3fb5ead1eaac1180c007ebf675cf693bbff93261097fbb00c005386d955da313bfeffe9de98dd420",
+            "bff4f5cfbecb598a40005e0daed09c833ff6d404767dbabcc005e770b1e189bdbffe8ae0e321d80c",
+            "3ff1ddc597836c7c3ffdf3e26fe660003ff95a96fdf8f38cbfd0604f17df01a8bff296f886bde048",
+            "3fee99f626be012cc009aa5a582aee6f3fda75f9385a82783ff97aae7e10de96400241182c93ddd2"
+          ],
+          [
+            "3fff315e02c19298c01175d5995bb6e0bfd825bba4aa2648c0043094544d970d3ff2755eecc17272",
+            "bfe225ef4e1f6b643fd84b17782eba28bff262aaad0e22dcc00b725308ca2c17bffdc4501797ed42",
+            "bff3c7833f3753febff66832211b0bbebff078a78c3d9d063fe406f1b13a235cc002dcdec7d77d64",
+            "c008b3de01c6ba7cbff606eb68cf6642400f5f4a1c8a194fbfc531eae81174d03ffe7ecbe5a8ad1a"
+          ],
+          [
+            "bfc5654f1b4ef3503ff5655e3f035dbcbffca2a7bfcbe3863fff0cb2c8b8fb9ebfff78a94708a8a4",
+            "3febf105da3d4e943ff41725f45a45823ff2e369db2fce963ff2122083d6275e3ff210d2ae37f3fa",
+            "3ff7523a31fd3aba3fddf159def3cd78bf8eeaea11bb3f00bff8175b4d66f2dc3fca3e464025e4a0",
+            "3ff978859b7932f8bfff3aec6e1bdbbcbff7674ed2b0f9f83ff383f3999bb1563faeaa4eeccc1440"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "momentum forms crossed",
+      "case": "momentum_forms",
+      "external_count": 4,
+      "external": [
+        "3ff74346258f1b8abff2c3ebaa8ac8a8bfe5264ce64dc8443fd48fddfce5fa88bff5e49906e45a72bfc18f20a20487103ffc70ec0aaa509e3fe45207284b03e8bfd505b7e7226290bff7a976f099ba40bfec3bbacbd995bc3ffd132de74dc0a23fc5654f1b4ef350bfebf105da3d4e94bff7523a31fd3ababff978859b7932f8",
+        "bffe9f4c2d8a23a43fd499cd75f2ede03fd0b753ff5a5b50bfffe03c4323c028bff138a0be14aed23ffb95a800247d8e3ff9c60d700fc92cbff374786d321cb63ff1d2abf8e15a20bff5037874e938943ff319b0a934af343ff5619b93c781d6bff5655e3f035dbcbff41725f45a4582bfddf159def3cd783fff3aec6e1bdbbc",
+        "bff38f270ddf90723ff0d33f182b6f2a3fe510eff01d47cc3ff00c6be7a3d944bfd68ce7ee80aa383fd8031579492e483feda43e0bd49f4cbfe2dddb331a714c3fee39df362db94c3ff0527fea09c3703ffb3ef5586fb76abff74ad97ebf5f623ffca2a7bfcbe386bff2e369db2fce963f8eeaea11bb3f003ff7674ed2b0f9f8",
+        "bff337d3f1057ecebfedcc3a43535c143fdb5886699105503ffbcede62c24d08bff7390739b5c758bffce8c442196570bfe5dc6ac0b8037cbfc2a17f258b7390bfe3c6bc224698a43ff5ec686c1482c63ff4ea040f2e22823fe5e2504c519498bfff0cb2c8b8fb9ebff2122083d6275e3ff8175b4d66f2dcbff383f3999bb156",
+        "bfe4683e5b7b1fc4bfffe6ac8dbc330ebfe109ca1c506f803fecec41b6ebb824bfd72cbf1c2568b83fb5bcbaa9a5b020bfe42426f12b51103ff60c0f7db1df923fc67959644d3280bff4332f245c39c63ff9ed0fb9820674bff0fdfd819931aa3fff78a94708a8a4bff210d2ae37f3fabfca3e464025e4a0bfaeaa4eeccc1440"
+      ],
+      "forms": [
+        [
+          {
+            "leg": 0,
+            "coefficient": 1.0
+          },
+          {
+            "leg": 1,
+            "coefficient": 1.0
+          }
+        ],
+        [
+          {
+            "leg": 2,
+            "coefficient": -1.0
+          },
+          {
+            "leg": 3,
+            "coefficient": 1.0
+          },
+          {
+            "leg": 0,
+            "coefficient": 1.0
+          }
+        ],
+        [
+          {
+            "leg": 3,
+            "coefficient": -1.0
+          }
+        ]
+      ],
+      "crossing": [
+        {
+          "program_leg": 0,
+          "caller_leg": 1,
+          "sign": -1.0
+        },
+        {
+          "program_leg": 1,
+          "caller_leg": 0,
+          "sign": -1.0
+        },
+        {
+          "program_leg": 2,
+          "caller_leg": 3,
+          "sign": 1.0
+        },
+        {
+          "program_leg": 3,
+          "caller_leg": 2,
+          "sign": 1.0
+        }
+      ],
+      "expected": {
+        "momentum_forms": [
+          [
+            "bfb5ead1eaac11804007ebf675cf693b3ff93261097fbb004005386d955da3133feffe9de98dd420",
+            "3ff4f5cfbecb598ac0005e0daed09c83bff6d404767dbabc4005e770b1e189bd3ffe8ae0e321d80c",
+            "bff1ddc597836c7cbffdf3e26fe66000bff95a96fdf8f38c3fd0604f17df01a83ff296f886bde048",
+            "bfee99f626be012c4009aa5a582aee6fbfda75f9385a8278bff97aae7e10de96c00241182c93ddd2"
+          ],
+          [
+            "3febed025363c6c8400c38557afcb357bfdf89f8a45371484006312df8a5bb52bff6de4e5375a826",
+            "bfddfc3fbcea0850bffc81fa80b370a03ffd352466e74674401139d34c8103e5bfcbf14105f50670",
+            "bff33c8f3e99e0c23fa9ff361c3b2cc03fe85e00fcc3e28c3fdf0378888cc5904003a375fd0e35c8",
+            "40063157f750b8d33fe3364f25bb85a0c002a19d5bf1905a400064a5d23af50ac0030a5d43f2584d"
+          ],
+          [
+            "3fd505b7e7226290bff1d2abf8e15a20bfee39df362db94c3fe3c6bc224698a4bfc67959644d3280",
+            "3ff7a976f099ba403ff5037874e93894bff0527fea09c370bff5ec686c1482c63ff4332f245c39c6",
+            "3fec3bbacbd995bcbff319b0a934af34bffb3ef5586fb76abff4ea040f2e2282bff9ed0fb9820674",
+            "bffd132de74dc0a2bff5619b93c781d63ff74ad97ebf5f62bfe5e2504c5194983ff0fdfd819931aa"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "reduction group factor 1/1",
+      "case": "reduction",
+      "helicity_count": 2,
+      "reduction": [
+        {
+          "helicity_output": 1,
+          "amplitude": 0,
+          "amplitude_scale": {
+            "re": 0.0,
+            "im": 3.0
+          },
+          "apply_amplitude_scale": true,
+          "weight": 1.25
+        },
+        {
+          "helicity_output": 0,
+          "amplitude": 1,
+          "amplitude_scale": {
+            "re": 1.0,
+            "im": 0.0
+          },
+          "apply_amplitude_scale": false,
+          "weight": 0.3671875
+        },
+        {
+          "helicity_output": 1,
+          "amplitude": 1,
+          "amplitude_scale": {
+            "re": -0.5,
+            "im": 0.875
+          },
+          "apply_amplitude_scale": true,
+          "weight": -0.0625
+        }
+      ],
+      "group_factor": {
+        "numerator": 1,
+        "denominator": 1
+      },
+      "expected": {
+        "outputs": [
+          "3ffcf21e27857589403e6a1ada7d7b0e",
+          "400092a8cc841e7940369998d0ab5cd6",
+          "3ff6f490dd9b71334054b84727891986",
+          "3f9aa5c1401daf8f404afa4d095429d5",
+          "4004006f3666c27e4027e26841f4419d"
+        ]
+      }
+    },
+    {
+      "name": "reduction group factor 2/3",
+      "case": "reduction",
+      "helicity_count": 2,
+      "reduction": [
+        {
+          "helicity_output": 1,
+          "amplitude": 0,
+          "amplitude_scale": {
+            "re": 0.0,
+            "im": 3.0
+          },
+          "apply_amplitude_scale": true,
+          "weight": 1.25
+        },
+        {
+          "helicity_output": 0,
+          "amplitude": 1,
+          "amplitude_scale": {
+            "re": 1.0,
+            "im": 0.0
+          },
+          "apply_amplitude_scale": false,
+          "weight": 0.3671875
+        },
+        {
+          "helicity_output": 1,
+          "amplitude": 1,
+          "amplitude_scale": {
+            "re": -0.5,
+            "im": 0.875
+          },
+          "apply_amplitude_scale": true,
+          "weight": -0.0625
+        }
+      ],
+      "group_factor": {
+        "numerator": 2,
+        "denominator": 3
+      },
+      "expected": {
+        "outputs": [
+          "3ff34c141a58f906403446bc91a8fcb4",
+          "3ff618e110b028a1402e22211639d11d",
+          "3fee9b6bd22496ef404ba05edf61775d",
+          "3f91c3d62abe750a4041fc335b8d7139",
+          "3ffaab3ef333adfd401fd88b029b0227"
+        ]
+      }
+    },
+    {
+      "name": "reduction group factor 7/5",
+      "case": "reduction",
+      "helicity_count": 2,
+      "reduction": [
+        {
+          "helicity_output": 1,
+          "amplitude": 0,
+          "amplitude_scale": {
+            "re": 0.0,
+            "im": 3.0
+          },
+          "apply_amplitude_scale": true,
+          "weight": 1.25
+        },
+        {
+          "helicity_output": 0,
+          "amplitude": 1,
+          "amplitude_scale": {
+            "re": 1.0,
+            "im": 0.0
+          },
+          "apply_amplitude_scale": false,
+          "weight": 0.3671875
+        },
+        {
+          "helicity_output": 1,
+          "amplitude": 1,
+          "amplitude_scale": {
+            "re": -0.5,
+            "im": 0.875
+          },
+          "apply_amplitude_scale": true,
+          "weight": -0.0625
+        }
+      ],
+      "group_factor": {
+        "numerator": 7,
+        "denominator": 5
+      },
+      "expected": {
+        "outputs": [
+          "400443151baa38ad40454a45ff57d623",
+          "400733b91e529110403fa3d5f0efe85e",
+          "400011989b200271405d01fd37598a22",
+          "3fa2a73a79ae614a4052e2692021507b",
+          "400c009bb28fdd164030b815c7c49454"
+        ]
+      }
+    }
+  ]
+}

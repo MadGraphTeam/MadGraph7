@@ -16,6 +16,11 @@ void ThreadPool::set_thread_count(int new_count) {
         _thread_count = new_count < 0 ? std::thread::hardware_concurrency() : new_count;
     }
 
+    // the per-thread resources grow before the new threads can run a job
+    for (auto& [id, listener] : _listeners) {
+        listener(_thread_count);
+    }
+
     if (_threads.size() < _thread_count) {
         for (int i = _threads.size(); i < _thread_count; ++i) {
             _threads.emplace_back(&ThreadPool::thread_loop, this, i);
@@ -28,10 +33,6 @@ void ThreadPool::set_thread_count(int new_count) {
             }
         );
         _threads.erase(_threads.begin() + _thread_count, _threads.end());
-    }
-
-    for (auto& [id, listener] : _listeners) {
-        listener(_thread_count);
     }
 }
 

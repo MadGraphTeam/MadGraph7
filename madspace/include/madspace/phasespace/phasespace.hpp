@@ -119,6 +119,18 @@ public:
      *                         AmpliCol), and @p invariant_power otherwise. A
      *                         resonant s_hat is sampled with its Breit-Wigner
      *                         either way.
+     * @param lepton_sampling_power
+     *                         Nonzero switches the beam split from the
+     *                         hadronic @f$x_1 = \tau^r@f$ to the
+     *                         dressed-lepton one of @ref lepton_split, which
+     *                         puts its weight at @f$x \to 1@f$ where a
+     *                         dressed-lepton density lives. It must equal the
+     *                         exponent the density was reduced with. One
+     *                         further random number is consumed, the mapping
+     *                         also returns `omx1`/`omx2` (1 - x, kept exact),
+     *                         and the inverse map is not available. Not
+     *                         compatible with @p mirror_beams or a 2 -> 1
+     *                         topology.
      */
     PhaseSpaceMapping(
         const Topology& topology,
@@ -131,7 +143,8 @@ public:
         const std::optional<ColorOrderedMapping::Options>& color_ordered = std::nullopt,
         double beam_rapidity = 0.,
         bool mirror_beams = false,
-        std::optional<double> s_hat_power = std::nullopt
+        std::optional<double> s_hat_power = std::nullopt,
+        double lepton_sampling_power = 0.
     );
 
     /**
@@ -173,6 +186,18 @@ public:
      *                         AmpliCol), and @p invariant_power otherwise. A
      *                         resonant s_hat is sampled with its Breit-Wigner
      *                         either way.
+     * @param lepton_sampling_power
+     *                         Nonzero switches the beam split from the
+     *                         hadronic @f$x_1 = \tau^r@f$ to the
+     *                         dressed-lepton one of @ref lepton_split, which
+     *                         puts its weight at @f$x \to 1@f$ where a
+     *                         dressed-lepton density lives. It must equal the
+     *                         exponent the density was reduced with. One
+     *                         further random number is consumed, the mapping
+     *                         also returns `omx1`/`omx2` (1 - x, kept exact),
+     *                         and the inverse map is not available. Not
+     *                         compatible with @p mirror_beams or a 2 -> 1
+     *                         topology.
      */
     PhaseSpaceMapping(
         const std::vector<double>& external_masses,
@@ -184,7 +209,8 @@ public:
         const std::optional<ColorOrderedMapping::Options>& color_ordered = std::nullopt,
         double beam_rapidity = 0.,
         bool mirror_beams = false,
-        std::optional<double> s_hat_power = std::nullopt
+        std::optional<double> s_hat_power = std::nullopt,
+        double lepton_sampling_power = 0.
     );
 
     /**
@@ -201,7 +227,9 @@ public:
      * @param leptonic  If true, skip the PDF convolution.
      * @throws std::invalid_argument for a 2 -> 1 topology without PDFs.
      */
-    static std::size_t random_dim_for(const Topology& topology, bool leptonic) {
+    static std::size_t random_dim_for(
+        const Topology& topology, bool leptonic, double lepton_sampling_power = 0.
+    ) {
         if (topology.outgoing_masses().size() == 1 &&
             (leptonic || topology.is_decay())) {
             throw std::invalid_argument(
@@ -209,11 +237,16 @@ public:
                 "energies s_hat is fixed and there is nothing to integrate"
             );
         }
-        return 3 * topology.outgoing_masses().size() -
+        std::size_t base = 3 * topology.outgoing_masses().size() -
             ((leptonic || topology.is_decay()) ? 4 : 2);
+        // the dressed split also decides which beam carries the drawn fraction
+        bool splits = !leptonic && !topology.is_decay();
+        return base + ((splits && lepton_sampling_power != 0.) ? 1 : 0);
     }
     /// Number of continuous unit-hypercube inputs consumed by the forward map.
-    std::size_t random_dim() const { return random_dim_for(_topology, _leptonic); }
+    std::size_t random_dim() const {
+        return random_dim_for(_topology, _leptonic, _lepton_power);
+    }
     /// Number of discrete channel choices.
     std::size_t discrete_dim() const override { return _n_discrete; }
     /// Total number of particles, incoming and outgoing.
@@ -275,6 +308,7 @@ private:
     bool _mirror_beams;
     bool _leptonic;
     bool _map_luminosity;
+    double _lepton_power;
     bool _two_to_one;
     // bound on the absolute rapidity of the partonic system, log(x1 / x2) / 2,
     // implied by the cuts; negative when they imply none

@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: 0BSD
+# Loop example: evaluate the gg_epemmpmm artifact (poles and the
+# recommended stability checks, the per-type default backend).
+
+schema_version = 1
+action = "evaluate"
+
+[evaluation]
+artifact = "artifacts/loop_gg_epemmpmm"
+momenta = "data/loop_gg_epemmpmm_momenta.json"
+mu_r2 = "1000000"
+poles = "all"
+
+[evaluation.stability_checks]
+rotation_count = 1
+reduction_direction = true
+rescaled = true

@@ -536,6 +536,67 @@ class TestFrameBoost(unittest.TestCase):
                 got = (2 - abs(pol), abs(pol))
             self.assertEqual(got, (hel_plus, hel_minus))
 
+    def test_beampol_follows_the_beams(self):
+        """BEAMPOL(J) acts on leg J of the matrix element: when beam 1 (the
+        incoming particle along +z) is its leg 2 -- the events of a madevent
+        mirror process -- the two values are swapped"""
+        options = interface_madspin.MadSpinOptions()
+        options['beampol'] = [-80., 30.]
+        beam1, beam2 = (250., 0., 0., 250.), (250., 0., 0., -250.)
+        self.assertEqual(options.beampol_me(), (-1.8, 1.3))
+        self.assertEqual(options.beampol_me([beam1, beam2]), (-1.8, 1.3))
+        self.assertEqual(options.beampol_me([beam2, beam1]), (1.3, -1.8))
+        # decay.momentum objects, as the v1 driver path hands them
+        self.assertEqual(options.beampol_me([madspin.momentum(*beam2),
+                                             madspin.momentum(*beam1)]),
+                         (1.3, -1.8))
+        # a 1 -> N matrix element has no beam to swap
+        self.assertEqual(options.beampol_me([beam2]), (-1.8, 1.3))
+
+    def test_event_beampol_is_set_on_change(self):
+        """the density modes push the beam polarisation of each event into the
+        library, calling it only when the orientation changes"""
+        class Module(object):
+            def __init__(self):
+                self.calls = []
+            def py_set_beampol(self, pol1, pol2):
+                self.calls.append((pol1, pol2))
+        stub = self._stub(6, beampol=(-80., 30.))
+        set_event = interface_madspin.MadSpinInterface._set_event_beampol
+        module = Module()
+        interface_madspin.MadSpinInterface._set_f2py_beampol(stub, module)
+        beam1, beam2 = (250., 0., 0., 250.), (250., 0., 0., -250.)
+        for incoming in ([beam1, beam2], [beam1, beam2], [beam2, beam1],
+                         [beam2, beam1], [beam1, beam2]):
+            set_event(stub, module, incoming)
+        self.assertEqual(module.calls, [(-1.8, 1.3), (1.3, -1.8), (-1.8, 1.3)])
+        # unpolarised beams never touch the library
+        stub = self._stub(6, beampol=(0., 0.))
+        module = Module()
+        set_event(stub, module, [beam2, beam1])
+        self.assertEqual(module.calls, [])
+
+    def test_v1_driver_beampol_per_event(self):
+        """the v1 driver gets the beam polarisation on the header of each event,
+        for the legs in the order event_map hands them over"""
+        class Stub(object):
+            event_beampol = madspin.decay_all_events.event_beampol
+        stub = Stub()
+        stub.options = interface_madspin.MadSpinOptions()
+        stub.options['beampol'] = [-80., 30.]
+        event = madspin.Event()
+        # particle 1: e- along +z (beam 1), 2: e+ along -z, 3/4: final state
+        event.particle = {
+            1: {'istup': -1, 'momentum': madspin.momentum(250., 0., 0., 250.)},
+            2: {'istup': -1, 'momentum': madspin.momentum(250., 0., 0., -250.)},
+            3: {'istup': 1, 'momentum': madspin.momentum(250., 0., 150., 200.)},
+            4: {'istup': 1, 'momentum': madspin.momentum(250., 0., -150., -200.)}}
+        stub.curr_event = event
+        self.assertEqual(stub.event_beampol({0: 0, 1: 1, 2: 2, 3: 3}), (-1.8, 1.3))
+        self.assertEqual(stub.event_beampol(None), (-1.8, 1.3))
+        # an `e+ e- >` matrix element: its leg 1 is particle 2, beam 2
+        self.assertEqual(stub.event_beampol({0: 1, 1: 0, 2: 2, 3: 3}), (1.3, -1.8))
+
     def test_beampol_needs_both_beams(self):
         """One number is ambiguous -- which beam? -- and used to surface only as
         an IndexError once the run reached a matrix element. It is refused when
@@ -1191,6 +1252,94 @@ class TestOnshellProductionNorm(unittest.TestCase):
         before = str(production)
         stub._onshell_production_norm(production, self.STATIC)
         self.assertEqual(str(production), before)
+
+
+class TestFxFxEvent(unittest.TestCase):
+    """FxFx particle tags follow LHE rows through resonance insertion."""
+
+    @staticmethod
+    def event(tags='pt_clust_6="99.999" pt_clust_4="100" pt_clust_5="100"'):
+        import io
+        text = '''<event npNLO="1">
+8 1 1 100 0.01 0.1
+2 -1 0 0 501 0 0 0 95 95 0 0 9
+-2 -1 0 0 0 501 0 0 -95 95 0 0 9
+23 2 1 2 0 0 0 0 0 90 90 0 9
+24 1 1 2 0 0 0 0 0 80 80 0 9
+21 1 1 2 502 503 10 0 0 10 0 0 9
+1 1 1 2 503 0 -10 0 0 10 0 0 9
+11 1 3 3 0 0 0 0 45 45 0 0 9
+-11 1 3 3 0 0 0 0 -45 45 0 0 9
+%s
+</event>
+''' % ('<scales %s></scales>' % tags if tags else '')
+        event = madspin.Event(io.StringIO(text))
+        assert event.get_next_event() == 1
+        return event
+
+    def test_sparse_tags_use_lhe_indices(self):
+        # The resonance occupies row 3. Attribute order and missing tags must
+        # not change which jet has the scale below SCALUP.
+        event = self.event('pt_clust_6 = \'99.999\' pt_clust_5="100"')
+        self.assertEqual(event.particle[5]['pt_scale'], '99.999')
+        self.assertEqual(event.particle[4]['pt_scale'], '100')
+        self.assertNotIn('pt_scale', event.particle[3])
+        self.assertIn('pt_clust_5="100"', event.string_event())
+        self.assertIn('pt_clust_6="99.999"', event.string_event())
+
+    def test_resonance_tag_roundtrip(self):
+        event = self.event('pt_clust_6="99.999" pt_clust_3="100"')
+        self.assertEqual(event.resonance[-1]['pt_scale'], '100')
+        self.assertIn('pt_clust_3="100"', event.string_event())
+        self.assertIn('pt_clust_6="99.999"', event.string_event())
+
+    def test_decay_preserves_jet_tags_and_scalup(self):
+        from types import MethodType, SimpleNamespace
+        stub = SimpleNamespace(pid2color={24: 1, -11: 1, 12: 1},
+                               MC_masses={11: 0.0, 12: 0.0})
+        stub.resolve_merged_pid_with_flavor = MethodType(
+            madspin.decay_all_events.resolve_merged_pid_with_flavor, stub)
+        decay = {3: {'tree': {-1: {'label': 24,
+                                  'd1': {'label': -11, 'index': 1},
+                                  'd2': {'label': 12, 'index': 2}}},
+                     'mg_tree': [(11, 12, 13)]}}
+        momenta = {11: madspin.momentum(80, 0, 0, 0),
+                   12: madspin.momentum(40, 40, 0, 0),
+                   13: madspin.momentum(40, -40, 0, 0)}
+        for jet_scale, scalup in [('100', 100), ('99.999', 100),
+                                  ('99.999', 99.999999)]:
+            with self.subTest(jet_scale=jet_scale, scalup=scalup):
+                event = self.event('pt_clust_6="99.999" pt_clust_4="100" '
+                                   'pt_clust_5="%s"' % jet_scale)
+                # The producer rounds tags to five decimals; the event's
+                # SCALUP can lie just below the rounded tag's 1 MeV bin.
+                event.scale = scalup
+                decayed = madspin.decay_all_events.decay_one_event_new(
+                    stub, event, decay, dict((i, i) for i in range(7)),
+                    momenta, True, [9] * 13)
+                output = decayed.string_event()
+                # W decay inserts two rows before both production jets. The
+                # old Z resonance also occupies a row in the output numbering.
+                self.assertEqual(decayed.particle[4]['istup'], 2)
+                self.assertEqual(decayed.particle[7]['pid'], 21)
+                self.assertEqual(decayed.particle[8]['pid'], 1)
+                self.assertIn('pt_clust_7="%s"' % jet_scale, output)
+                self.assertIn('pt_clust_8="99.999"', output)
+                self.assertIn('pt_clust_5="100"', output)
+                self.assertIn('pt_clust_6="100"', output)
+                # Pythia takes the maximum tagged external scale as SCALUP.
+                # Keep it even when all remaining production jets are EW.
+                parsed = lhe_parser.Event(output)
+                scales = parsed.parse_matching_scale()
+                pythia_scalup = max(scale for particle, scale in zip(parsed, scales)
+                                    if abs(particle.status) == 1)
+                self.assertEqual(pythia_scalup, 100)
+                self.assertLess(scales[7], pythia_scalup)
+                self.assertNotEqual(math.trunc(1000 * scales[7]),
+                                    math.trunc(1000 * pythia_scalup))
+
+    def test_without_fxfx_tags_no_scales_are_added(self):
+        self.assertNotIn('<scales', self.event(tags='').string_event())
 
 
 class TestDecayBranchPairing(unittest.TestCase):
@@ -7200,8 +7349,9 @@ class TestDecayLoopShortcuts(unittest.TestCase):
 
 class TestDensityBackendChoice(unittest.TestCase):
     """decay_all_events_onshell.density_backend: madmatrix, unless the Fortran
-    is asked for, the production is loop induced (MadLoop) or the sample uses
-    the complex-mass scheme, whose madmatrix parameters do not compile."""
+    is asked for or the production is loop induced (MadLoop). The complex-mass
+    scheme used to force the Fortran (madmatrix did not compile there); it
+    builds now, and gives byte-identical decayed events."""
 
     @staticmethod
     def _choose(commandline, backend='madmatrix', cms=False, with_cmd=True):
@@ -7216,7 +7366,7 @@ class TestDensityBackendChoice(unittest.TestCase):
         self.assertEqual(self._choose('generate p p > t t~', backend='fortran'),
                          'fortran')
         self.assertEqual(self._choose('generate g g > z z [sqrvirt=QCD]'), 'fortran')
-        self.assertEqual(self._choose('generate p p > t t~', cms=True), 'fortran')
+        self.assertEqual(self._choose('generate p p > t t~', cms=True), 'madmatrix')
         self.assertEqual(self._choose('generate p p > t t~', with_cmd=False),
                          'madmatrix')
 
@@ -7227,7 +7377,8 @@ class TestDensityOutputFallback(unittest.TestCase):
     which does not compile (e.g. a model whose parameters the C++ code
     generation cannot write) is replaced by the Fortran output."""
 
-    def _output(self, compile_error=None, scale_dependence=()):
+    def _output(self, compile_error=None, generation=None, polarised=False,
+                scale_dependence=()):
         import tempfile
         import json
         commands, builds = [], []
@@ -7251,6 +7402,7 @@ class TestDensityOutputFallback(unittest.TestCase):
         stub.mscmd = type('MSCmd', (), {'_ms_run_id': 3})()
         stub.density_libtag = \
             madspin.decay_all_events_onshell.density_libtag.__get__(stub)
+        stub.crossed_ok = lambda backend: backend != 'fortran' or not polarised
 
         def fake_compile(args, **opts):
             builds.append((list(args), opts.get('cwd')))
@@ -7262,12 +7414,28 @@ class TestDensityOutputFallback(unittest.TestCase):
         madspin.misc.compile = fake_compile
         try:
             backend = madspin.decay_all_events_onshell.output_density_me(
-                stub, path, 'madmatrix', 'p')
+                stub, path, 'madmatrix', 'p', generation=generation)
         finally:
             madspin.misc.compile = original
             if os.path.exists(path):
                 shutil.rmtree(path)
         return backend, commands, builds, path
+
+    def test_fallback_with_polarised_beams_drops_the_crossings(self):
+        """The Fortran refuses a crossed flavor index with polarised beams: a
+        madmatrix output folding crossings that falls back to it is generated
+        again without crossing (crossed_ok), and only then."""
+        line = 'generate p p > t* t~*'
+        backend, commands, _, _ = self._output('error', generation=line,
+                                               polarised=True)
+        self.assertEqual(backend, 'fortran')
+        self.assertEqual(commands[1], 'generate p p > t* t~* --use_crossing=False')
+        self.assertTrue(commands[2].startswith('output standalone_fortran'))
+        backend, commands, _, _ = self._output('error', generation=line)
+        self.assertFalse(any(c.startswith('generate') for c in commands))
+        backend, commands, _, _ = self._output(generation=line, polarised=True)
+        self.assertEqual(backend, 'madmatrix')
+        self.assertFalse(any(c.startswith('generate') for c in commands))
 
     def test_built_right_away(self):
         backend, commands, builds, path = self._output()
@@ -14511,6 +14679,93 @@ class TestDecayChainIdenticalFactor(unittest.TestCase):
         self.assertEqual(self.factor(production, decays), 0.25)
 
 
+class TestWithoutCrossing(unittest.TestCase):
+    """MadSpin replays the proc card's generate lines, so a --use_crossing=True
+    there would fold the crossed subprocesses onto their base, where the
+    madspin_v1 matrix elements (standalone_msP/msF, no crossing dimension)
+    cannot reach them, nor the Fortran with polarised beams. without_crossing
+    pins it off for those."""
+
+    def test_replayed_flag_is_overridden(self):
+        line = ('generate p p  > w+* j --use_crossing=True ;'
+                'output standalone_fortran X --prefix=int --density=1 ')
+        self.assertEqual(madspin.without_crossing(line),
+                         'generate p p  > w+* j --use_crossing=False;'
+                         'output standalone_fortran X --prefix=int --density=1 ')
+
+    def test_every_process_line_is_pinned(self):
+        line = ('generate t* > b w+ @0 --no_warning=duplicate;'
+                'add process p p > t t~, (t > b w+, w+ > e+ ve) --use_crossing;'
+                'output standalone_fortran Y -f')
+        pinned = madspin.without_crossing(line).split(';')
+        self.assertEqual(pinned[0], 'generate t* > b w+ @0 '
+                         '--no_warning=duplicate --use_crossing=False')
+        self.assertEqual(pinned[1],
+                         'add process p p > t t~, (t > b w+, w+ > e+ ve) '
+                         '--use_crossing=False')
+        # the output line is not a generation and is left as it is
+        self.assertEqual(pinned[2], 'output standalone_fortran Y -f')
+
+    def test_perturbative_line_is_left_alone(self):
+        line = 'add process p p > t t~ [QCD] ;'
+        self.assertEqual(madspin.without_crossing(line), line)
+
+    def test_polarised_beams_pin_the_fortran_only(self):
+        """With polarised beams the Fortran refuses a crossed flavor index,
+        the madmatrix density does not: only the Fortran production matrix
+        elements are generated without crossing (decays have no beam)."""
+        class Options(object):
+            def __init__(self, pol):
+                self.pol = pol
+
+            def beampol_me(self):
+                return self.pol
+
+        crossed_ok = madspin.decay_all_events_onshell.crossed_ok
+        stub = madspin.decay_all_events_onshell.__new__(madspin.decay_all_events_onshell)
+        stub.options = Options([1., 1.])
+        for backend in ('madmatrix', 'fortran', 'decay'):
+            self.assertTrue(crossed_ok(stub, backend))
+        stub.options = Options([1.8, 1.])
+        self.assertTrue(crossed_ok(stub, 'madmatrix'))
+        self.assertTrue(crossed_ok(stub, 'decay'))
+        self.assertFalse(crossed_ok(stub, 'fortran'))
+
+
+class TestCrossedProcessesWithDecays(unittest.TestCase):
+    """The density and onshell modes fold the crossings: fill_all_me files each
+    crossed process under its own tag and leg order, which for a decay-chain
+    base is the production crossing with the base's decays attached -- the
+    leaf order the base's crossing table serves (and the pdg-keyed entry
+    points take)."""
+
+    def test_decay_chain_crossings_carry_the_decays(self):
+        import madgraph.interface.master_interface as master_interface
+        import madgraph.core.helas_objects as helas_objects
+        cmd = master_interface.MasterCmd()
+        cmd.do_import('model sm')
+        cmd.exec_cmd('set group_subprocesses False')
+        cmd.exec_cmd('generate p p > t* t~ j, t~ > b~ w-')
+        mes = helas_objects.HelasMultiProcess(cmd._curr_amps).get_matrix_elements()
+        crossed = {}
+        for me in mes:
+            for process in madspin.crossed_processes_with_decays(me):
+                legs = process.get_legs_with_decays()
+                crossed[tuple(l.get('id') for l in legs)] = \
+                    [l.get('number') for l in legs if l.get('offshell')]
+        # g Q > t* t~ Q carries the other four quark/gluon assignments; the
+        # top stays off shell, in slot 3, the t~ decays
+        self.assertEqual(sorted(crossed), sorted([
+            (21, -81, 6, -5, -24, -81), (81, 21, 6, -5, -24, 81),
+            (81, -81, 6, -5, -24, 21), (-81, 21, 6, -5, -24, -81),
+            (-81, 81, 6, -5, -24, 21)]))
+        self.assertEqual(set(map(tuple, crossed.values())), {(3,)})
+        # nothing without crossing
+        cmd.exec_cmd('generate p p > t* t~ j, t~ > b~ w- --use_crossing=False')
+        mes = helas_objects.HelasMultiProcess(cmd._curr_amps).get_matrix_elements()
+        self.assertFalse(any(madspin.crossed_processes_with_decays(me) for me in mes))
+
+
 class _DensityBasisModelStub(object):
     """The two things _density_basis asks the model for: a particle's spin, and
     name2pdg (through _pure_interference)."""
@@ -15052,6 +15307,30 @@ class TestGlobalFlagGate(unittest.TestCase):
         self.assertEqual(calls, ['tree%d' % n for n in
                                  range(madspin.MS_GLOBAL_FLAG_MIN_DECAYS,
                                        madspin.MS_GLOBAL_FLAG_MIN_DECAYS + 2)])
+
+
+class TestF2pyDensityMiss(unittest.TestCase):
+    """The f2py density answers NaN (f77_no_process) for PDG codes that no
+    matrix element evaluates: MadSpin refuses it as the madmatrix backend
+    does, instead of contracting a NaN density into its weights."""
+
+    def test_nan_density_raises(self):
+        import numpy as np
+        check = interface_madspin.MadSpinInterface._check_f2py_density
+        nan = float('nan')
+        self.assertRaises(madmatrix_density.MadDensityError, check,
+                          np.array([nan, nan, nan], dtype=complex),
+                          [2, 21, -11, 11, 2])
+        self.assertRaises(madmatrix_density.MadDensityError, check,
+                          np.array([1.0, nan, 0.0]), [1, 1, 1, 1, 1])
+
+    def test_served_density_passes(self):
+        import numpy as np
+        check = interface_madspin.MadSpinInterface._check_f2py_density
+        # a vanishing density is a physical answer, not a miss
+        check(np.zeros(3, dtype=complex), [2, -2, -11, 11, 21])
+        check(np.array([4.6e-9, 0.0, 1.5e-8], dtype=complex),
+              [2, -2, -11, 11, 21])
 
 
 class TestAllMomentaMergedAntiparticles(unittest.TestCase):

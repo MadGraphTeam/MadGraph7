@@ -1,0 +1,39 @@
+# Build the MadGraph beamstrahlung main inside a Pythia8 installation.
+#
+# Copy mg5amc_bstrahl.cc (and this file) into the Pythia8 examples
+# directory and run
+#
+#     make -f Makefile.mgbstrahl
+#
+# Pythia's own Makefile.inc supplies the compiler, flags and the optional
+# HepMC settings, so the binary picks up whatever the local Pythia was
+# configured with.  Nothing in Pythia's own Makefile is modified.
+#
+# For a read-only Pythia installation, copy both files somewhere writable
+# and point PYTHIA8 at the installation:
+#
+#     make -f Makefile.mgbstrahl PYTHIA8=/path/to/pythia8
+
+PYTHIA8 ?= ..
+-include $(PYTHIA8)/Makefile.inc
+
+# Makefile.inc sets CXX_COMMON to the bare compiler flags; the include and
+# library parts are added by Pythia's own examples Makefile, so do the same
+# here rather than inventing our own.
+PREFIX_INCLUDE ?= $(PYTHIA8)/include
+PREFIX_LIB ?= $(PYTHIA8)/lib
+CXX ?= g++
+CXX_COMMON := -I$(PREFIX_INCLUDE) $(CXX_COMMON) $(GZIP_LIB)
+CXX_COMMON += -L$(PREFIX_LIB) -Wl,-rpath,$(PREFIX_LIB) -lpythia8 -ldl
+
+all: mg5amc_bstrahl
+
+mg5amc_bstrahl: mg5amc_bstrahl.cc
+	$(CXX) $< -o $@ $(CXX_COMMON) \
+	 $(if $(filter true,$(HEPMC2_USE)),$(HEPMC2_OPTS)) \
+	 $(if $(filter true,$(HEPMC3_USE)),$(HEPMC3_OPTS))
+
+clean:
+	rm -f mg5amc_bstrahl
+
+.PHONY: all clean

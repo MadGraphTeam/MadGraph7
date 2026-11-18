@@ -1,0 +1,109 @@
+MadGraph-owned Pythia8 main for beamstrahlung
+=============================================
+
+mg5amc_bstrahl.cc showers a dressed-lepton event file whose density
+includes beamstrahlung, consuming the per-event
+
+    <beamstrahlung> xbs1 xbs2 </beamstrahlung>
+
+tag that MadGraph writes (see Template/Common/Source/PDF/sample_bstrahl.f).
+Without it a shower attributes the whole of 1-x to ISR off a full-energy
+beam and gives the hard system a recoil beamstrahlung does not produce.
+
+Build
+-----
+Copy both files into the Pythia8 examples directory and
+
+    make -f Makefile.mgbstrahl
+
+Pythia's Makefile.inc supplies the flags, including HepMC, so the binary
+matches the local Pythia build.  Nothing in Pythia's own Makefile is
+touched.  For a read-only installation, copy them somewhere writable and
+
+    make -f Makefile.mgbstrahl PYTHIA8=/path/to/pythia8
+
+Pythia must be built with GZIP if the event file is compressed; the main
+aborts rather than run on a file it could not scan, because leaving the
+beams undegraded is exactly the wrong answer it exists to prevent.
+
+Why it is a main and not just a BeamShape
+-----------------------------------------
+Two Pythia facts, both verified against 8.318 and both silent if ignored:
+
+* Beams:allowVariableEnergy is read only for frameType < 4 (BeamSetup.cc),
+  and setKinematics() aborts unless frameType == 2, so neither works with
+  Les Houches input.  Beams:allowMomentumSpread is not gated on frameType,
+  so a custom BeamShape is the way to degrade beams per event.  Measured:
+  eCM then tracks sqrt(xbs1*xbs2*s) to 1e-12.
+
+* Pythia never boosts an incoming Les Houches event inward -- BeamSetup::
+  boostAndVertex is only ever called with toLab=true -- so it reads the LHE
+  momenta as already being in the beams' CM.  Once the beams are degraded
+  by different amounts that is not the frame MadGraph wrote, and the x<=1
+  test in ProcessContainer ("setting mass failed") rejects the event.
+  Measured on a 500 GeV ilc500ll sample: 58% of events rejected without the
+  boost the LHAup applies, 0% with it.
+
+The card
+--------
+MadGraph's own card uses names from the old MG5aMC_PY8_interface
+(HEPMCoutput:file and friends), but banner.py's PY8Card.interface_to_164
+table translates them before the card reaches a stock main, on both the
+single-core and the parallelised path.  So this main sees Pythia's own
+names only -- Main:HepMC and HepMC:output, with /dev/null meaning off --
+exactly as main164 does, and registers nothing of its own.
+
+Beams:LHEF does live inside a subrun block, so the card must be read as
+readFile(card, 0) rather than as a flat file.  Only a single subrun is
+supported: the beamstrahlung fractions belong to one event file, so
+several subruns would need a set of fractions each.
+
+Validated on 500 unmodified MadGraph events: 500 tried / 500 accepted,
+Info::x1() equal to x/xbs to 5e-8 (the LHE momentum precision), eCM equal
+to sqrt(xbs1*xbs2*s) to 1e-12, and no x above 1.  End to end through
+generate_events on a parallelised (3-way split) run: every split 100/100
+accepted, and Pythia's cross section 3.544e-10 mb against MadGraph's
+0.3544 pb.
+
+Not yet exercised: the HepMC output path, because the Pythia8 used for the
+above was built without HepMC.
+
+One-to-one showering
+--------------------
+The beams are chosen before the event is read, so the two must stay in
+lockstep.  They do not if ProcessLevel rejects an event and reads another
+within the same next() call, which would shower an event against another
+event's beams.  The main checks the two counters every event and aborts
+rather than write misassigned events.  Note that MadGraph declares its
+event files with IDWTUP = -4 (weighted), which permits Pythia to consume
+more than one event per next(); the guard is what makes that visible.
+
+Physics validation
+------------------
+Showering the same 1000-event ilc500ll file with and without the beam
+degradation, and splitting on whether the event actually had beamstrahlung
+(pT of the mu+mu- system, which is zero before the shower):
+
+                          <pT>     median    q75
+  xbs=1  control, plain   15.07     0.617   10.46
+  xbs=1  control, degrad  15.70     0.535   10.51
+  xbs<1  signal,  plain   18.39     0.934   16.21
+  xbs<1  signal,  degrad  14.43     0.499   10.22
+
+Events that had no beamstrahlung are unaffected, as they must be.  Events
+that did recoil visibly more when the loss is handed to the ISR shower, and
+once the beams are degraded they fall back onto the control sample: q75
+16.21 -> 10.22 against a control of 10.51.  That recoil is the artefact
+this main removes.
+
+Energy balance over the same sample:
+
+  plain     sum(E_final) = 2*Ebeam          to 4.5e-11
+  degraded  sum(E_final) = (y1+y2)*Ebeam    to 2.3e-08
+
+i.e. with the beams degraded the beamstrahlung energy is correctly absent
+from the event record, having left with the beam.
+
+The size of the effect is set by the density: ilc500ll loses on average
+under 1% per beam, so the shift is modest.  A machine with harder
+beamstrahlung would show more.

@@ -10,7 +10,10 @@ LIBDIR        = ../../lib/
 
 include ../make_opts
 
-PDF = opendata.o PhotonFlux.o
+# bstrahl.o/sample_bstrahl.o are needed whatever the PDF choice: the
+# default bstrahl_pars.inc declares no beamstrahlung, and is replaced by
+# copy_lep_densities() when a dressed-lepton density is selected.
+PDF = opendata.o PhotonFlux.o bstrahl.o sample_bstrahl.o
 TOREMOVE =  # file that need to be remove since not linked in current library. important to force recompilation
 TOCOMPILE = # the libraries that should be compiled
 
@@ -38,7 +41,7 @@ ifdef lhapdf
   else ifneq (,$(filter 0 1,$(lhapdfsubversion))) # 6.0.X, 6.1.X
     $(error LHAPDF 6.2 or later is required)
   else
-    CXXFLAGS+=-std=c++11
+    CXXFLAGS+=-std=c++20
     PDF  += pdf_lhapdf62.o
   endif
 else
@@ -58,6 +61,9 @@ reset:
 $(LIBDIR)$(LIBRARY): $(PDF)
 	rm $(LIBDIR)$(LIBRARY) || echo "recompilation of $(LIBDIR)$(LIBRARY)"
 	$(call CREATELIB, $@, $^)
+
+# the density's parameters are compiled into bstrahl.o
+bstrahl.o: bstrahl_pars.inc
 
 clean:
 	@($(RM) *.o $(LIBDIR)$(LIBRARY))

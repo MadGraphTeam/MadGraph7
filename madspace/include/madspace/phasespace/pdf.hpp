@@ -60,7 +60,12 @@ struct PdfGrid {
  *
  * Interpolates a @ref PdfGrid at the sampled @f$(x, q)@f$, returning
  * @f$x f(x, q)@f$ for the requested flavours; the numerical output agrees with
- * LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). With a @ref CustomPdf,
+ * LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). Outside of the grid the
+ * densities continue as with the continuation extrapolator of LHAPDF, its
+ * default: linearly in log x below the first x knot and in log q^2 above the
+ * last q knot, and below the first q knot with the anomalous dimension at that
+ * knot, going over into x f vanishing like q^2. Above the last x knot, where
+ * LHAPDF stops with an error, they are zero. With a @ref CustomPdf,
  * the user-supplied library is called for each requested flavour instead.
  *
  * `batch` is the leading batch dimension.
@@ -127,6 +132,152 @@ private:
 };
 
 /**
+ * Dressed-lepton density: an interpolated grid times its analytic reduction.
+ *
+ * A dressed-lepton density is singular as @f$x \to 1@f$, so it is tabulated in
+ * reduced form and the endpoint is restored analytically:
+ *
+ * @f[
+ *   f_n(x, Q) = \bar\phi_n(x, Q) \, (1-x)^{-\kappa_n(Q) + p},
+ *   \qquad
+ *   \kappa_n(Q) = -\beta(Q) + \kappa^{(0)}_n,
+ *   \qquad
+ *   \beta(Q) = \frac{\alpha}{\pi}\Big(\log\frac{Q^2}{m^2} - 1\Big),
+ * @f]
+ *
+ * with @f$p@f$ the exponent the phase-space mapping already absorbs. Only
+ * @f$\bar\phi_n@f$ is in the grid; baking the @f$(1-x)^{-\kappa}@f$ factor in
+ * would destroy exactly the endpoint resolution the reduction exists to keep.
+ *
+ * @f$1-x@f$ is taken as its own argument rather than recomputed from @p x:
+ * near the endpoint the density lives in @f$1-x@f$, and a caller that sampled
+ * it there must be able to pass it through at full precision.
+ *
+ * The component is chosen per event, which is what lets the caller sample the
+ * four components discretely instead of evaluating all of them.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - `x` – `float`, shape `(batch,)` – momentum fraction.
+ * - `omx` – `float`, shape `(batch,)` – @f$1-x@f$.
+ * - `q` – `float`, shape `(batch,)` – factorization scale.
+ * - `component_index` – `int`, shape `(batch,)` – which component to return,
+ *   indexing the `pids` given to the constructor.
+ *
+ * **Returns**
+ * - `pdf` – `float`, shape `(batch,)` – the unreduced density.
+ */
+class EEPartonDensity : public FunctionGenerator {
+public:
+    /**
+     * @param grid              Grid of the reduced density, one flavour per
+     *                          component (see
+     *                          `vendor/eepdfgrid/gen_eepdf_lhagrid.py`).
+     * @param pids              Component ids to select between.
+     * @param exponent_offsets  Per component, @f$p - \kappa^{(0)}_n@f$; the
+     *                          @f$Q@f$-dependent part of @f$\kappa@f$ is
+     *                          applied here. One entry per entry of @p pids.
+     * @param alpha_em          @f$\alpha@f$ in the scheme the grid was fitted
+     *                          in.
+     * @param lepton_mass       @f$m@f$ of the beam lepton, in GeV.
+     * @param prefix            Prefix for the grid global names.
+     */
+    EEPartonDensity(
+        const PdfGrid& grid,
+        const std::vector<int>& pids,
+        const std::vector<double>& exponent_offsets,
+        double alpha_em = 0.007562397,
+        double lepton_mass = 0.511e-3,
+        const std::string& prefix = ""
+    );
+
+    /// Upload the per-component exponents to @p context. The grid's own
+    /// globals are uploaded by @ref PdfGrid::initialize_globals.
+    void initialize_globals(ContextPtr context) const;
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    PartonDensity _density;
+    std::vector<double> _offsets;
+    double _alpha_em;
+    double _lepton_mass;
+    std::string _prefix;
+};
+
+/**
+ * Two-beam luminosity of a dressed-lepton density, and its component choice.
+ *
+ * The beam densities do not simply multiply. A dressed-lepton density is a
+ * sum of factorized terms, and the two-beam luminosity pairs them off term by
+ * term,
+ *
+ * @f[
+ *   L(x_1, x_2, Q) = \sum_{n} f^{(1)}_n(x_1, Q)\, f^{(2)}_n(x_2, Q),
+ * @f]
+ *
+ * which is `ee_comp_prod` of `pdg2pdf.f`. Pairing the *sums* instead would be
+ * wrong, so the two pid lists must be given in the same component order.
+ *
+ * One component is also sampled, with probability proportional to
+ * @f$|f^{(1)}_n f^{(2)}_n|@f$. That choice does not enter @p luminosity and so
+ * does not affect the cross section — it is what the beamstrahlung split needs
+ * downstream, where each component carries its own spectrum (the same choice
+ * `sample_bstrahl.f` makes).
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - `x1`, `omx1` – `float`, shape `(batch,)` – first beam's fraction and
+ *   @f$1-x@f$.
+ * - `x2`, `omx2` – `float`, shape `(batch,)` – second beam's.
+ * - `q` – `float`, shape `(batch,)` – factorization scale.
+ * - `r` – `float`, shape `(batch,)` – random number for the component choice.
+ *
+ * **Returns**
+ * - `luminosity` – `float`, shape `(batch,)` – @f$L@f$, signed.
+ * - `component_index` – `int`, shape `(batch,)` – the sampled component,
+ *   indexing the pid lists.
+ */
+class EELuminosity : public FunctionGenerator {
+public:
+    /**
+     * @param grid       Grid of the reduced densities.
+     * @param pids1      Components of the first beam, in component order.
+     * @param pids2      Components of the second beam, same order.
+     * @param offsets1   Per component, @f$p - \kappa^{(0)}_n@f$ for beam 1.
+     * @param offsets2   The same for beam 2. The two differ: which components
+     *                   are the sharply peaked ones depends on the beam.
+     * @param alpha_em   @f$\alpha@f$ in the scheme the grid was fitted in.
+     * @param lepton_mass @f$m@f$ of the beam leptons, in GeV.
+     * @param prefix     Prefix for the grid global names.
+     */
+    EELuminosity(
+        const PdfGrid& grid,
+        const std::vector<int>& pids1,
+        const std::vector<int>& pids2,
+        const std::vector<double>& offsets1,
+        const std::vector<double>& offsets2,
+        double alpha_em = 0.007562397,
+        double lepton_mass = 0.511e-3,
+        const std::string& prefix = ""
+    );
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    PartonDensity _density1, _density2;
+    std::vector<double> _offsets1, _offsets2;
+    double _alpha_em;
+    double _lepton_mass;
+};
+
+/**
  * A strong-coupling grid in the LHAPDF format, loaded from a file.
  *
  * Holds the @f$\alpha_s(q)@f$ knots of an LHAPDF `.info` set;
@@ -147,7 +298,10 @@ struct AlphaSGrid {
     AlphaSGrid(const std::string& file);
     /// Number of scale knots, counting the knots shared by two regions once.
     std::size_t q_count() const;
-    /// Fill @p tensor with the interpolation coefficients.
+    /// Fill @p tensor with the interpolation coefficients, and the padding
+    /// segments with the extrapolation: below the grid @f$\alpha_s@f$ at the
+    /// first knot and the logarithmic gradient to the next knot of another q,
+    /// above it the last value at both ends.
     void initialize_coefficients(Tensor tensor) const;
     /// Fill @p tensor with the `log(q^2)` knots.
     void initialize_logq2(Tensor tensor) const;
@@ -163,7 +317,9 @@ struct AlphaSGrid {
  * Strong-coupling interpolation as a compute-graph function.
  *
  * Interpolates an @ref AlphaSGrid to return @f$\alpha_s(q)@f$ at the sampled
- * scale (Sec. 3.2.3 of [1]).
+ * scale (Sec. 3.2.3 of [1]). Outside of the grid it continues as the
+ * interpolated @f$\alpha_s@f$ of LHAPDF: below the first knot with the
+ * logarithmic gradient to the next knot, above the last knot with the last value.
  *
  * `batch` is the leading batch dimension.
  *

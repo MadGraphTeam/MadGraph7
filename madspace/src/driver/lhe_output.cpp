@@ -1,4 +1,5 @@
 #include "madspace/driver/lhe_output.hpp"
+#include "madspace/driver/logger.hpp"
 
 #include "madspace/util.hpp"
 
@@ -213,6 +214,18 @@ void LHEEvent::format_to(std::string& buffer) const {
             std::format_to(insert_iter, "<wgt id='{}'> {:+13.7e} </wgt>\n", id, value);
         }
         buffer += "</rwgt>\n";
+    }
+    if (beamstrahlung) {
+        // Same element MadEvent writes (rw_events.f). The readers are
+        // format-tolerant -- lhe_parser splits on whitespace, mg5amc_bstrahl
+        // streams two doubles -- so this does not reproduce Fortran's E
+        // format exactly, only the element and its two values.
+        std::format_to(
+            insert_iter,
+            "<beamstrahlung>{:15.7e}{:15.7e} </beamstrahlung>\n",
+            beamstrahlung->first,
+            beamstrahlung->second
+        );
     }
     buffer += "</event>\n";
 }
@@ -961,46 +974,136 @@ void madspace::from_json(
     };
 }
 
-LHEFileWriter::LHEFileWriter(const std::string& file_name, const LHEMeta& meta) :
-    _file_stream(file_name) {
-    _file_stream << "<LesHouchesEvents version=\"3.0\">\n<header>\n";
-    for (auto [name, content, escape_content] : meta.headers) {
-        _file_stream
-            << (escape_content
-                    ? std::format("<{0}>\n<![CDATA[\n{1}\n]]>\n</{0}>\n", name, content)
-                    : std::format("<{0}>\n{1}\n</{0}>\n", name, content));
+LHEFileWriter::LHEFileWriter(
+    const std::string& file_name,
+    const LHEMeta& meta,
+    DevicePtr gzip_device,
+    int gzip_algorithm
+) {
+    if (gzip_device != nullptr) {
+        _compressor = gzip_device->gzip_compressor(gzip_algorithm);
+        if (!_compressor) {
+            throw std::invalid_argument(
+                "gzip_device has no gzip compressor (madspace built without GPU gzip?)"
+            );
+        }
     }
-    _file_stream << std::format(
-        "</header>\n<init>\n{} {} {:.10e} {:.10e} {} {} {} {} {} {}\n",
-        meta.beam1_pdg_id,
-        meta.beam2_pdg_id,
-        meta.beam1_energy,
-        meta.beam2_energy,
-        meta.beam1_pdf_authors,
-        meta.beam2_pdf_authors,
-        meta.beam1_pdf_id,
-        meta.beam2_pdf_id,
-        meta.weight_mode,
-        meta.processes.size()
-    );
-    for (auto process : meta.processes) {
-        _file_stream << std::format(
-            "{:.10e} {:.10e} {:.10e} {}\n",
-            process.cross_section,
-            process.cross_section_error,
-            process.max_weight,
-            process.process_id
+    _file_stream.open(file_name, std::ios::binary);
+    if (!_file_stream) {
+        throw std::runtime_error(
+            std::format("Could not open {} for writing", file_name)
         );
     }
-    _file_stream << "</init>\n";
+    emit("<LesHouchesEvents version=\"3.0\">\n<header>\n");
+    for (auto [name, content, escape_content] : meta.headers) {
+        emit(
+            escape_content
+                ? std::format("<{0}>\n<![CDATA[\n{1}\n]]>\n</{0}>\n", name, content)
+                : std::format("<{0}>\n{1}\n</{0}>\n", name, content)
+        );
+    }
+    emit(
+        std::format(
+            "</header>\n<init>\n{} {} {:.10e} {:.10e} {} {} {} {} {} {}\n",
+            meta.beam1_pdg_id,
+            meta.beam2_pdg_id,
+            meta.beam1_energy,
+            meta.beam2_energy,
+            meta.beam1_pdf_authors,
+            meta.beam2_pdf_authors,
+            meta.beam1_pdf_id,
+            meta.beam2_pdf_id,
+            meta.weight_mode,
+            meta.processes.size()
+        )
+    );
+    for (auto process : meta.processes) {
+        emit(
+            std::format(
+                "{:.10e} {:.10e} {:.10e} {}\n",
+                process.cross_section,
+                process.cross_section_error,
+                process.max_weight,
+                process.process_id
+            )
+        );
+    }
+    emit("</init>\n");
 }
 
 void LHEFileWriter::write(const LHEEvent& event) {
     std::string buffer;
     event.format_to(buffer);
-    _file_stream << buffer;
+    emit(buffer);
 }
 
-void LHEFileWriter::write_string(const std::string& str) { _file_stream << str; }
+void LHEFileWriter::write_string(const std::string& str) { emit(str); }
 
-LHEFileWriter::~LHEFileWriter() { _file_stream << "</LesHouchesEvents>\n"; }
+void LHEFileWriter::close() {
+    if (!_file_stream.is_open()) {
+        return;
+    }
+    emit("</LesHouchesEvents>\n");
+    if (_compressor) {
+        start_compression();
+        write_compressed();
+    }
+    _file_stream.close();
+    if (!_file_stream) {
+        throw std::runtime_error("Writing the LHE file failed");
+    }
+}
+
+LHEFileWriter::~LHEFileWriter() {
+    try {
+        close();
+    } catch (const std::exception& e) {
+        Logger::error(std::format("Closing the LHE file failed: {}", e.what()));
+    }
+}
+
+void LHEFileWriter::emit(std::string_view text) {
+    if (!_compressor) {
+        _file_stream << text;
+        return;
+    }
+    // Fixed-size blocks: compressor buffers are allocated once, whatever the batch.
+    while (!text.empty()) {
+        std::size_t take =
+            std::min(text.size(), compress_flush_bytes - _pending.size());
+        _pending.append(text.substr(0, take));
+        text.remove_prefix(take);
+        if (_pending.size() == compress_flush_bytes) {
+            start_compression();
+        }
+    }
+}
+
+void LHEFileWriter::start_compression() {
+    write_compressed();
+    std::swap(_pending, _in_flight);
+    _pending.clear();
+    try {
+        _compression = std::async(std::launch::async, [this] {
+            _compressed.clear();
+            _compressor->compress(_in_flight, _compressed);
+        });
+    } catch (...) {
+        _file_stream.close();
+        throw;
+    }
+}
+
+void LHEFileWriter::write_compressed() {
+    if (!_compression.valid()) {
+        return;
+    }
+    // Close so a lost batch is never followed by later ones.
+    try {
+        _compression.get();
+    } catch (...) {
+        _file_stream.close();
+        throw;
+    }
+    _file_stream.write(_compressed.data(), _compressed.size());
+}

@@ -439,6 +439,26 @@ C        Samurai could follow.
           STOP 1
         ENDIF
       ENDIF
+C     Reject a retired selection also after global initialization.
+      DO I=1,SIZE(MLREDUCTIONLIB)
+        IF(MLREDUCTIONLIB(I).EQ.0) EXIT
+        IF(MLREDUCTIONLIB(I).EQ.2) THEN
+          WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+          WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another'
+     $     //' supported backend.'
+          STOP 1
+        ENDIF
+      ENDDO
+
+C     The non-optimized output uses CutTools regardless of the
+C      requested chain.
+      IF(LOOPPOLEMODE.GT.0) THEN
+        WRITE(*,*) 'LoopPoleMode=1, 2 or 3 requires optimized MadLoop'
+     $   //' output with NinjaRS or COLLIER.'
+        WRITE(*,*) 'Regenerate with loop_optimized_output enabled and'
+     $   //' MLReductionLib=8 or 7.'
+        STOP 1
+      ENDIF
       IF (LOCAL_ML_INIT) THEN
 C       Setup the file paths
         CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
@@ -449,12 +469,18 @@ C       Setup the file paths
         CALL JOINPATH(TMP,COLORDENOMFNAME,COLORDENOMFN)
         CALL JOINPATH(TMP,HELFILTERFNAME,HELFILTERFN)
 
-C       Make sure that the loop filter is disabled when there is
-C        spin-2 particles for 2>1 or 1>2 processes
-        IF(MAX_SPIN_EXTERNAL_PARTICLE.GT.3.AND.(NEXTERNAL.LE.3.AND.HELI
-     $CITYFILTERLEVEL.NE.0)) THEN
-          WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1'
-     $     //' processes involving spin 2 particles.'
+C       Disable the helicity filter for 2>1 and 1>2 processes.
+C       In the c.m. frame one particle is then at rest (the
+C       final state of a 2>1, the decaying one of a 1>2), and
+C       which helicities vanish depends on the frame: at rest
+C       the helicity is defined along z, a boost changes it.
+C       A filter learned in one frame silently drops part of
+C       the result in another (u d~ > w+: virtual = 0 with the
+C       W along -z) and the stability test cannot see it.
+C       The tree-level standalone output does the same.
+        IF(NEXTERNAL.LE.3.AND.HELICITYFILTERLEVEL.NE.0) THEN
+          WRITE(*,*) '##INFO: Helicity filter deactivated for 2>1 and'
+     $     //' 1>2 processes.'
           HELICITYFILTERLEVEL = 0
 C         We write a dummy filter for structural reasons here
           OPEN(1, FILE=HELFILTERFN, ERR=6116, STATUS='NEW'

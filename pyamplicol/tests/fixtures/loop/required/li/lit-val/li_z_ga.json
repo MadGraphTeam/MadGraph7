@@ -1,0 +1,136 @@
+{
+ "name": "li_z_ga",
+ "li_row": "LI-Z1",
+ "loop_induced": true,
+ "pdgs": [
+  23,
+  21,
+  22
+ ],
+ "initial": 1,
+ "madloop_process": "z > g a [sqrvirt=QCD]",
+ "loop_orders": {
+  "QCD": 1,
+  "QED": 2
+ },
+ "squared_orders": {
+  "QCD": 2,
+  "QED": 4
+ },
+ "correction": "QCD",
+ "scheme": "qcd",
+ "scheme_data": {
+  "description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
+  "restriction": "no_b_mass",
+  "madloop_model": "{mg5}/models/loop_sm-no_b_mass",
+  "parameters": {
+   "aS": "0.118",
+   "aEWM1": "132.507",
+   "Gf": "0.0000116639",
+   "MZ": "91.188",
+   "MH": "125",
+   "MT": "173",
+   "ymt": "173"
+  },
+  "fixed_parameters": {
+   "MB": "0",
+   "ymb": "0",
+   "MTA": "0",
+   "ymtau": "0",
+   "WT": "0",
+   "WW": "0",
+   "WZ": "0",
+   "WH": "0"
+  },
+  "electroweak_inputs": "alpha_fixed",
+  "complex_mass_scheme": false,
+  "active_flavours": 5,
+  "loop_quark_flavours": 6
+ },
+ "normalization": {
+  "initial_average": 3,
+  "final_symmetry": 1,
+  "denominator": 3,
+  "convention": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings"
+ },
+ "exact_colour_zero": true,
+ "points": [
+  [
+   [
+    "91.188",
+    "0",
+    "0",
+    "0"
+   ],
+   [
+    "45.594",
+    "15.582759493670886075949367088608",
+    "-38.091189873417721518987341772152",
+    "19.622734177215189873417721518987"
+   ],
+   [
+    "45.594",
+    "-15.582759493670886075949367088608",
+    "38.091189873417721518987341772152",
+    "-19.622734177215189873417721518987"
+   ]
+  ],
+  [
+   [
+    "91.188",
+    "0",
+    "0",
+    "0"
+   ],
+   [
+    "45.594",
+    "16.454977443609022556390977443609",
+    "-42.508691729323308270676691729323",
+    "-1.028436090225563909774436090226"
+   ],
+   [
+    "45.594",
+    "-16.454977443609022556390977443609",
+    "42.508691729323308270676691729323",
+    "1.028436090225563909774436090226"
+   ]
+  ],
+  [
+   [
+    "91.188",
+    "0",
+    "0",
+    "0"
+   ],
+   [
+    "45.594",
+    "-35.995263157894736842105263157895",
+    "-23.996842105263157894736842105263",
+    "-14.398105263157894736842105263158"
+   ],
+   [
+    "45.594",
+    "35.995263157894736842105263157895",
+    "23.996842105263157894736842105263",
+    "14.398105263157894736842105263158"
+   ]
+  ]
+ ],
+ "mu_r": [
+  "91.188",
+  "91.188",
+  "91.188"
+ ],
+ "rows": [
+  {
+   "providers": {}
+  },
+  {
+   "providers": {}
+  },
+  {
+   "providers": {}
+  }
+ ],
+ "source": "\u00a74.1 LI-Z1: exact colour zero (every loop has one coloured attachment, Tr T^a = 0; MG5 generates no diagram, NoDiagramException); the base's points and scheme (tools/loop_benchmark/li_manifest.py write_stress)"
+}

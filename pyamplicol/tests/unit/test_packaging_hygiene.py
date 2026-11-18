@@ -80,7 +80,7 @@ def test_contributor_and_release_locks_share_compatibility_abi(
     lock = root / "dependencies" / "contributor-lock.toml"
     lock.write_text(
         lock.read_text(encoding="utf-8").replace(
-            'symbolica_serialization = "symbolica-bincode2-v1"',
+            'symbolica_serialization = "symbolica-bincode2-v2"',
             'symbolica_serialization = "incompatible-test-abi"',
             1,
         ),
@@ -115,8 +115,8 @@ def test_contributor_lock_has_no_local_symjit_source_or_patch_inventory() -> Non
         encoding="utf-8"
     )
 
-    assert "candidate_version = \"2.26.0\"" in contributor
-    assert "revision = \"530304a07d1be6d5abc80291aa5e92cf28ac5546\"" in contributor
+    assert 'candidate_version = "2.26.0"' in contributor
+    assert 'revision = "530304a07d1be6d5abc80291aa5e92cf28ac5546"' in contributor
     assert "\npatches =" not in contributor
     assert not tuple((ROOT / "dependencies/patches/symjit").rglob("*.patch"))
 

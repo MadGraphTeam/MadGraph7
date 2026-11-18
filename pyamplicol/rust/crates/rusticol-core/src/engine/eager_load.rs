@@ -329,6 +329,8 @@ fn load_prepared_model_parameter_evaluator(
         input_parameter_indices,
         outputs,
         evaluator,
+        #[cfg(feature = "symbolica-runtime")]
+        exact: None,
     }))
 }
 

@@ -3132,7 +3132,12 @@ impl<'a> RecurrenceProcessInputView<'a> {
             .iter()
             .map(|row| row.source_slot)
             .collect::<BTreeSet<_>>();
-        if endpoint_slots != expected_orientations.keys().copied().collect() {
+        if endpoint_slots
+            != expected_orientations
+                .keys()
+                .copied()
+                .collect::<BTreeSet<_>>()
+        {
             return Err(invalid(
                 "fermion-pairing endpoints do not cover the LC open-line endpoints",
             ));
