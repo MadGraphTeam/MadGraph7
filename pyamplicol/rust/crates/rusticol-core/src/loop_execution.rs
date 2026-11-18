@@ -282,8 +282,9 @@ pub mod v2 {
     /// arbitrary-precision `Float`, whose operators round a sum to the bits
     /// that survive its cancellation and a product to its less precise
     /// factor) states it: the executor then sums, per Laurent coefficient
-    /// `k` over every reduced lane of a point, the absolute uncertainty
-    /// `U_k` the tracked precisions imply and the moduli `A_k`
+    /// `k` over every reduced lane of a point and every dependent column
+    /// formed from one (lit-fold F1d), the absolute uncertainty `U_k` the
+    /// tracked precisions imply and the moduli `A_k`
     /// ([`TrackedSums`]), and fails the point when `max_k U_k > 2^-r max_k
     /// A_k` ([`TrackedSums::refusal`]). Summed over the point, lanes of
     /// families that vanish identically (rounding noise of a few tracked
@@ -1354,8 +1355,8 @@ pub mod v2 {
         terms: Vec<Vec<Vec<T>>>,
         /// The backend's tracked-precision test ([`V2Backend::
         /// tracked_precision`]) and per point the sums over its reduced
-        /// lanes (direct values only: not the re-test's, not the dependent
-        /// columns formed from them, not the term scale's unit lanes).
+        /// lanes and the dependent columns formed from them (direct values
+        /// only: not the re-test's, not the term scale's unit lanes).
         tracked: Option<TrackedPrecision>,
         tracked_sums: Vec<TrackedSums<T>>,
     }
@@ -1485,13 +1486,18 @@ pub mod v2 {
                 for (row, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
                     match &direct[index][row] {
                         Ok(value) => {
-                            if let Some(rule) = sink.tracked {
-                                sink.tracked_sums[point].add(value, rule.working);
-                            }
+                            let first = sink.families[point].len();
                             if let Some(formed) = &dependents {
                                 formed.push(&key, value, &mut sink.families[point]);
                             }
                             sink.families[point].push((key, value.clone()));
+                            // The lane and the dependent columns formed from
+                            // it (`c` times its value, at its precision).
+                            if let Some(rule) = sink.tracked {
+                                for (_, lane) in &sink.families[point][first..] {
+                                    sink.tracked_sums[point].add(lane, rule.working);
+                                }
+                            }
                         }
                         Err(status) => sink.failures[point]
                             .push(format!("family {} lane {key:?}: {status}", group.family)),
@@ -2363,7 +2369,7 @@ pub mod v2 {
                 ..V2Options::default()
             };
             let zero = Float::with_val(BITS, 0);
-            let mut run = |rule: Option<TrackedPrecision>, ruined: Option<u32>, noise: bool| {
+            let run = |rule: Option<TrackedPrecision>, ruined: Option<u32>, noise: bool| {
                 let mut backend = Tracked {
                     rule,
                     ruined,
@@ -2403,6 +2409,155 @@ pub mod v2 {
                     format!("{:?}", plain[1].families)
                 );
             }
+        }
+
+        /// A dressed-row (amplitude-mode) plan of two bubble families over a
+        /// leg of two helicity rows and three basis elements (as `loop_v2::
+        /// plan`'s tests): family `f` closes one seed key of class weights
+        /// `weights[f]` into accumulator 0, so a family whose key weights
+        /// two columns in one exact ratio has dependent columns (lit-fold
+        /// F1d).
+        fn dressed(weights: [[i64; 3]; 2]) -> LoopProgramV4 {
+            use serde_json::json;
+            let term = |row: usize, kernel: usize| {
+                json!({"slots": [], "dimensions": [], "vertex": -1, "split": [],
+                       "rows": [[row, []]],
+                       "bindings": [{"kernel": kernel, "inputs": [], "entries": [0]}]})
+            };
+            let family = |key: usize| {
+                json!({"sequence": [[1, 0], [2, 0]], "rank": 0, "orders": [0],
+                       "leaves": [{"seed": key, "weight": "3"}],
+                       "steps": [
+                           {"seeded": true, "trace": -1, "out": 2, "d_alpha": 1, "d_out": 1,
+                            "degree": 0, "rank_in": 0,
+                            "edges": [{"leaf": 0, "child": -1, "factor": 0}]},
+                           {"seeded": false, "trace": 0, "out": 0, "d_alpha": 1, "d_out": 1,
+                            "degree": 0, "rank_in": 0,
+                            "edges": [{"leaf": -1, "child": 0, "factor": 1}]}]})
+            };
+            let classes: Vec<_> = weights
+                .iter()
+                .map(|w| json!({"columns": w.map(|x| json!([[0, x.to_string(), "0"]]))}))
+                .collect();
+            let plan = json!({
+                "schema": 5, "legs": 2, "rows": 2, "helicities": [[0, 1], [0]], "columns": 6,
+                "average": 1, "born_components": 1, "constants": 2, "masses": 1,
+                "block_rows": [],
+                "kernels": [{"inputs": [], "outputs": [[[0, []]]]},
+                            {"inputs": [], "outputs": [[[1, []]]]}],
+                "contents": [
+                    {"d_in": 1, "d_out": 1, "degree": 0, "rows": 2, "mask": 1,
+                     "row_helicities": [[0], [1]], "fused": [[0, 0, 0, 0, 0, 0]],
+                     "terms": [term(0, 0), term(1, 1)]},
+                    {"d_in": 1, "d_out": 1, "degree": 0, "rows": 1, "mask": 2,
+                     "row_helicities": [[0]], "fused": [[0, 0, 0, 0, 0, 0]],
+                     "terms": [term(0, 1)]}],
+                "factors": [[0, 0], [1, 1]],
+                "seed_classes": classes,
+                "seeds": [{"classes": [[0, "1", "0"]]}, {"classes": [[1, "1", "0"]]}],
+                "families": [family(0), family(1)],
+                "forward": null, "merged": null,
+                "column_rows": [[0], [0], [0], [1], [1], [1]],
+                "column_weights": [0, 1, 2, 0, 1, 2], "dressed": true,
+            });
+            LoopProgramV4::load(&serde_json::to_vec(&plan).unwrap()).unwrap()
+        }
+
+        /// Returns `small` (at `bits` bits) for every reduced lane of family
+        /// 0 and `large` (at full precision) for family 1's, stating the
+        /// tracked-precision test.
+        struct Sized {
+            small: f64,
+            bits: u32,
+            large: f64,
+            reduced: Vec<(usize, usize)>,
+        }
+
+        impl V2Backend<Float> for Sized {
+            fn begin(&mut self) {}
+
+            fn tracked_precision(&self) -> Option<TrackedPrecision> {
+                Some(RULE)
+            }
+
+            fn reduce(
+                &mut self,
+                groups: &[FamilyLanes<Float>],
+                _poles: Poles,
+                _check: Option<ReductionCheck>,
+            ) -> RusticolResult<Reduced<Float>> {
+                let direct = groups
+                    .iter()
+                    .map(|group| {
+                        group
+                            .keys
+                            .iter()
+                            .map(|key| -> LaneOutcome<Float> {
+                                self.reduced.push((group.family, key.column));
+                                let zero = lane(0.0, BITS);
+                                let value = if group.family == 0 {
+                                    lane(self.small, self.bits)
+                                } else {
+                                    lane(self.large, BITS)
+                                };
+                                Ok(vec![value, zero.clone(), zero])
+                            })
+                            .collect()
+                    })
+                    .collect();
+                Ok((direct, None))
+            }
+        }
+
+        /// lit-fold F1d: the dependent columns formed from a representative
+        /// (`c` times its value, here `c = 1000`) count in the point's sums
+        /// at their own size. Family 0's representatives are small and keep
+        /// 60 tracked bits, family 1's lanes are large and exact: by the
+        /// representatives' size alone the point keeps about 70 bits (above
+        /// the 64 required), with their dependents about 61 (refused).
+        /// Without the dependent the same representatives pass.
+        #[test]
+        fn dependent_columns_count_in_the_tracked_sums() {
+            let point = |plan: LoopProgramV4| {
+                let executor = V2Executor::new(Arc::new(plan), DEFAULT_LANES, Some(1)).unwrap();
+                let momentum: Vec<Rational> =
+                    [1, 0, 0, 1, 1, 0, 0, -1].map(Rational::from).to_vec();
+                let one = lane(1.0, BITS);
+                let batch = V2Batch {
+                    momenta: vec![momentum],
+                    scales: vec![Rational::from(1)],
+                    masses: vec![Rational::from(0)],
+                    masses_imaginary: Vec::new(),
+                    leg_masses: Vec::new(),
+                    constants: vec![one.clone(), one.clone()],
+                    block_rows: vec![Vec::new()],
+                    born: vec![vec![one.clone(), one]],
+                };
+                let mut backend = Sized {
+                    small: 1e-3,
+                    bits: 60,
+                    large: 1.0,
+                    reduced: Vec::new(),
+                };
+                let zero = Float::with_val(BITS, 0);
+                let (results, _) = executor
+                    .evaluate(&batch, &zero, &mut backend, V2Options::default())
+                    .unwrap();
+                (results.into_iter().next().unwrap(), backend.reduced)
+            };
+            // Family 0: column 1 is 1000 times column 0 (and 4 of 3).
+            let (folded, reduced) = point(dressed([[1, 1000, 0], [0, 7, 0]]));
+            assert!(
+                !reduced.contains(&(0, 1)) && reduced.contains(&(0, 0)),
+                "{reduced:?}"
+            );
+            assert_eq!(folded.failures.len(), 1, "{:?}", folded.failures);
+            assert!(folded.failures[0].starts_with(TRACKED_PRECISION));
+            // Family 0 weighting column 0 alone: the same representatives
+            // without a dependent pass.
+            let (plain, reduced) = point(dressed([[1, 0, 0], [0, 7, 0]]));
+            assert_eq!(reduced, [(0, 0), (0, 3), (1, 1), (1, 4)]);
+            assert!(plain.failures.is_empty(), "{:?}", plain.failures);
         }
 
         /// The chunks of a call: full chunks of the executor's lanes, then
