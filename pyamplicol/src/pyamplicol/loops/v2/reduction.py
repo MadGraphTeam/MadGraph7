@@ -807,7 +807,7 @@ def with_fallback(
     results, failures, records = _with_fallback(run, choice, count, checks, carrier)
     if failures and best_effort and not choice.unchecked:
         _best_effort(run, choice, checks, carrier, results, failures, records)
-    _rescued_estimates(run, checks, results, failures)
+    _rescued_estimates(run, choice, checks, results, failures, records)
     return results, failures, records
 
 
@@ -831,38 +831,47 @@ def rescued_checks(checks: Any) -> Any:
 
 def _rescued_estimates(
     run: Callable[[list[int] | None, Any], tuple[list[Any], dict[int, list[str]]]],
+    choice: VirtualReduction,
     checks: Any,
     results: list[Any],
     failures: dict[int, list[str]],
+    records: dict[int, VirtualReduction],
 ) -> None:
     """Give every served point with rescued lanes the estimate of the
     call's checks with the rescaled reduction-direction check
     (``rescued_checks``), in place: those points alone evaluated again, from
-    their exact inputs, with those checks, each keeping its first result
-    (value and records) with the second run's estimate (the checks
-    re-reduce, they change no direct lane). A point the second run fails
-    keeps its first result. Nothing runs for a call without
+    their exact inputs, with those checks, on the backend and in the
+    acceptance mode that served each (``records``: the fallback's or the
+    best-effort's; else the call's ``choice``), at the call's target, each
+    keeping its first result (value and records) with the second run's
+    estimate (the checks re-reduce, they change no direct lane). A point the
+    second run fails keeps its first result. Nothing runs for a call without
     checks, with a reduction check, or without rescued lanes."""
 
     extended = rescued_checks(checks)
     if extended is None:
         return
-    indices = [
-        index
-        for index, result in enumerate(results)
-        if result is not None
-        and index not in failures
-        and getattr(result, "lane_rescue", ())
-    ]
-    if not indices:
-        return
-    again, failed = run(indices, extended)
-    for local, index in enumerate(indices):
-        estimate = getattr(again[local], "stability", None)
-        if local in failed or estimate is None:
+    groups: dict[tuple[str, bool], list[int]] = {}
+    for index, result in enumerate(results):
+        if (
+            result is None
+            or index in failures
+            or not getattr(result, "lane_rescue", ())
+        ):
             continue
-        # The first result (its value and records) with the extended estimate.
-        results[index] = replace(results[index], stability=estimate)
+        record = records.get(index)
+        served = choice if record is None else record
+        groups.setdefault((served.effective, bool(served.unchecked)), []).append(index)
+    for (backend, unchecked), indices in groups.items():
+        with running(backend, choice.target, unchecked):
+            again, failed = run(indices, extended)
+        for local, index in enumerate(indices):
+            estimate = getattr(again[local], "stability", None)
+            if local in failed or estimate is None:
+                continue
+            # The first result (its value and records) with the extended
+            # estimate.
+            results[index] = replace(results[index], stability=estimate)
 
 
 def backend_deviation(reasons: Collection[str]) -> float | None:

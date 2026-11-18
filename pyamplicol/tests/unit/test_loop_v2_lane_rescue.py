@@ -171,7 +171,7 @@ def test_the_c_abi_serves_refused_lanes_and_its_setter_turns_the_rescue_off(
         again = _evaluate(sdk, handle, points, scales)
         assert again["statuses"] == found["statuses"]
     finally:
-        sdk.rusticol_virtual_close(handle)
+        sdk.rusticol_virtual_free(handle)
 
 
 @pytest.mark.loop_physics
@@ -180,8 +180,10 @@ def test_a_rescued_point_estimate_includes_the_reduction_direction_check(
 ):
     """With checks that lack the reduction-direction check (one rotation),
     a point with rescued lanes is evaluated again with the rescaled one
-    added (``reduction.rescued_checks``), its value unchanged; the other
-    points keep the call's checks; a call without checks runs nothing more."""
+    added (``reduction.rescued_checks``), on the call's backend (TIRust
+    here), its value unchanged and its estimate the one of a call with
+    those checks; the other points keep the call's checks; a call without
+    checks runs nothing more."""
 
     from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
@@ -195,6 +197,11 @@ def test_a_rescued_point_estimate_includes_the_reduction_direction_check(
         exact_points, stability_checks=VirtualStabilityChecks(1), **call
     )
     plain = runtime.evaluate(exact_points, **call)
+    direct = runtime.evaluate(
+        exact_points,
+        stability_checks=VirtualStabilityChecks(1, True, rescaled=True),
+        **call,
+    )
     served = [p for p, lane in enumerate(checked.diagnostics) if lane.lane_rescue]
     assert served
     for p, estimate in enumerate(checked.stability):
@@ -202,6 +209,9 @@ def test_a_rescued_point_estimate_includes_the_reduction_direction_check(
         if p in served:
             assert "reduction-rescaled" in names, names
             assert checked.diagnostics[p].lane_rescue is not None
+            # Re-reduced on TIRust (not the default backend): the estimate
+            # of the direct call with the same checks, bitwise.
+            assert estimate == direct.stability[p]
         else:
             assert "reduction-rescaled" not in names, names
     assert checked.values == plain.values
