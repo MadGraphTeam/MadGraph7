@@ -1051,6 +1051,7 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
         selector_simd_lane_width: 1,
         correlated: None,
         flavour_union_assignments: None,
+        flavour_union_relabelling: None,
         process_group: None,
     };
     let metadata = runtime.metadata();
@@ -1209,6 +1210,7 @@ fn process_group_runtime_scales_outputs_and_translates_color_ids() {
         selector_simd_lane_width: 1,
         correlated: None,
         flavour_union_assignments: None,
+        flavour_union_relabelling: None,
     };
 
     // Without a relation, values and IDs pass through unchanged.
@@ -4333,6 +4335,7 @@ fn contracted_color_coverage_does_not_warn_as_incomplete() {
             selector_simd_lane_width: 1,
             correlated: None,
             flavour_union_assignments: None,
+            flavour_union_relabelling: None,
             process_group: None,
         };
 
@@ -4644,6 +4647,7 @@ fn zero_native_runtime() -> NativeRuntime {
         selector_simd_lane_width: 1,
         correlated: None,
         flavour_union_assignments: None,
+        flavour_union_relabelling: None,
         process_group: None,
     }
 }
@@ -4778,6 +4782,7 @@ fn scalar_on_the_fly_native_runtime_with_color_contraction(
         selector_simd_lane_width: 1,
         correlated: None,
         flavour_union_assignments: None,
+        flavour_union_relabelling: None,
         process_group: None,
     }
 }
