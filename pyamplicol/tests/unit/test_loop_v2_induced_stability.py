@@ -175,11 +175,15 @@ def test_g_g_to_z_is_zero_within_its_estimate(li, carrier):
 @pytest.mark.loop_physics
 def test_the_rescue_of_g_g_to_z_terminates_under_either_metric(li, tmp_path):
     """Under the default (relative) rescue metric an integrated zero can
-    never meet its target: g g > z climbs the loop-induced default stack
-    (TIRust binary64 -> NinjaRS binary64 -> double-double -> arbitrary(57),
-    m-lit F3 (b): ``VirtualRescuePolicy()`` on a loop-induced "auto" call)
-    and is kept at the last level with the target marked as not met (PLAN
-    §2.a.8: the rescue terminates, at the cost of every level). The opt-in
+    never meet its target: g g > z on the loop-induced default stack
+    (TIRust binary64 -> NinjaRS binary64 -> double-double -> arbitrary(57)
+    -> arbitrary(500), m-lit F3 (b): ``VirtualRescuePolicy()`` on a
+    loop-induced "auto" call) has a relative estimate that grows with the
+    digits (|A|^2 falls with the unit roundoff squared), so the stopping
+    rule keeps it at double-double, the first level of more precision that
+    does not improve it, with the target marked as not met (PLAN §2.a.8:
+    the rescue terminates; before the rule, at the cost of every level;
+    at 500 digits its estimate would underflow binary64). The opt-in
     "scale" metric (E <= target x S, ``VirtualRescueLevel.metric``) on the
     same ladder accepts it at the first level, its E / S
     the floor's FLOOR_UNITS x u, its value the binary64 one and within its
@@ -209,10 +213,15 @@ def test_the_rescue_of_g_g_to_z_terminates_under_either_metric(li, tmp_path):
         [point], mu_r2=[str(scale)], stability=VirtualRescuePolicy()
     )
     (record,) = result.rescue
-    assert record.level == len(policy.levels) - 1 and not record.met
+    assert not record.met and record.arithmetic == "double-double"
+    assert record.level < len(policy.levels) - 1
     assert [attempt.arithmetic for attempt in record.attempts] == [
-        level.arithmetic for level in policy.levels
+        level.arithmetic for level in policy.levels[: record.level + 1]
     ]
+    assert record.attempts[-1].estimate >= min(
+        attempt.estimate for attempt in record.attempts[:-1]
+    )
+    assert "not escalated" in result.diagnostics[0].detail
     assert all(
         attempt.estimate > policy.levels[0].target for attempt in record.attempts
     )

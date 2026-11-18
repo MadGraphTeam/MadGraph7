@@ -200,6 +200,43 @@ def test_only_failed_or_unconverged_points_escalate_in_order():
 
 
 @pytest.mark.loop_fast
+def test_a_point_whose_estimate_does_not_improve_is_not_escalated():
+    """The stopping rule: a point whose estimate is no smaller than its best
+    estimate at fewer precision bits stays at that level (target not met),
+    as an integrated zero whose relative estimate grows with the digits;
+    a failed attempt, or a level of the same precision on the other
+    backend, never stops a point; the last level keeps every point."""
+
+    table = (
+        (1e-2, 1e-4, FAIL, 1e-2),
+        (1e-1, 3e-5, 1e-1, FAIL),
+        (1e-9, 1e-9, 1e-9, 5e-2),
+    )
+    fake = _Fake(THREE, table)
+    result = rescue(THREE, 4, fake)
+    assert fake.calls == [(0, (0, 1, 2, 3)), (1, (0, 1, 2, 3)), (2, (1, 2, 3))]
+    assert [record.level for record in result.rescue] == [1, 2, 2, 2]
+    assert [record.met for record in result.rescue] == [False, True, True, False]
+    stopped = result.diagnostics[0]
+    assert stopped.status == "rescued" and not stopped.accuracy_established
+    assert "not escalated: no better than double's 1.00e-02" in stopped.detail
+    assert result.values[0][0].finite == _value(1, 0, "double-double")
+    # Point 3 failed at level 1 and reaches the last level, which keeps it.
+    assert "not met at the final level" in result.diagnostics[3].detail
+    # Two levels at the same precision (the other backend) never stop a point.
+    backends = VirtualRescuePolicy(
+        (
+            VirtualRescueLevel("double", reduction="tirust"),
+            VirtualRescueLevel("double", reduction="ninjars"),
+            VirtualRescueLevel("double-double"),
+        )
+    )
+    fake = _Fake(backends, ((1e-2,), (1e-1,), (1e-9,)))
+    (record,) = rescue(backends, 1, fake).rescue
+    assert record.level == 2 and record.met
+
+
+@pytest.mark.loop_fast
 def test_a_point_failing_at_every_level_is_failed_and_raises_only_on_request():
     table = ((1e-9, FAIL), (None, FAIL), (None, FAIL))
     fake = _Fake(THREE, table)

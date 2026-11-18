@@ -13,7 +13,11 @@ batch (``V2VirtualRuntime`` and ``V2ObservablesRuntime``):
    evaluations included) or whose estimate missed the level's target is
    evaluated again at the next level, from its original exact inputs (no
    value is promoted, MASTER_PLAN §2.18); an accepted point is never
-   evaluated again;
+   evaluated again; a point whose estimate is no smaller than its best
+   estimate at fewer precision bits (same metric) is not escalated either
+   (the stopping rule, ``_stalled``: more digits did not improve it, its
+   error is not the carrier's rounding) and keeps that level's value with
+   the target not met;
 3. at the last level a point that evaluates keeps its value with the target
    marked as not met; a point that failed at every level is a failed lane,
    or, under ``on_failure="best-effort"``, a best-effort lane when the last
@@ -23,8 +27,12 @@ batch (``V2VirtualRuntime`` and ``V2ObservablesRuntime``):
 A level compares the public estimate's field named by its ``metric`` with
 its target. An integrated zero (a Landau-Yang |A|^2 of a loop-induced
 process, m-lit PLAN §2.a.8; numerical, never declared, RULED Q13) can never
-meet a "relative" or "finite" target, its value being itself rounding: it
-climbs to the last level and is kept there with the target not met. The
+meet a "relative" or "finite" target, its value being itself rounding: its
+relative estimate grows with the precision (|A|^2 falls with the unit
+roundoff squared, E with the unit roundoff), so the stopping rule keeps it
+at the first level of higher precision whose estimate is no better, with
+the target not met (g g > z on the loop-induced default stack: the
+double-double level; before the rule it climbed to the last level). The
 opt-in "scale" metric (``VirtualRescueLevel.metric``: E <= target x S,
 the estimate against the pre-cancellation scale S of its floor,
 ``VirtualStabilityEstimate.scale``) accepts it at the first level, where
@@ -47,7 +55,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, cast
 
 from pyamplicol.api.errors import CompatibilityError, EvaluationError
 from pyamplicol.api.virtual_results import (
@@ -151,6 +159,9 @@ class _Kept:
     lane: int
     level: int
     met: bool
+    # Kept below the last level by the stopping rule (``_stalled``): the
+    # lower-precision attempt whose estimate it did not improve on.
+    stalled: VirtualRescueAttempt | None = None
 
 
 def rescue(
@@ -190,14 +201,51 @@ def rescue(
                     and attempt.estimate is not None
                     and attempt.estimate <= level.target
                 )
-                if met or last:
-                    kept[index] = _Kept(evaluation, lane, k, met)
+                stalled = (
+                    None
+                    if met or last or not diagnostic.valid
+                    else _stalled(attempts[index], levels)
+                )
+                if met or last or stalled is not None:
+                    kept[index] = _Kept(evaluation, lane, k, met, stalled)
                 else:
                     retry.append(index)
         pending = tuple(sorted(retry))
     if template is None:  # pragma: no cover - level 0 always runs
         raise EvaluationError("a rescue policy ran no level")
     return _merged(template, kept, attempts, policy, on_failure)
+
+
+def _stalled(
+    history: list[VirtualRescueAttempt], levels: tuple[VirtualRescueLevel, ...]
+) -> VirtualRescueAttempt | None:
+    """The stopping rule (USER 2026-11-18 ladder round): a point whose
+    estimate at its latest level (the last of ``history``, one attempt per
+    level from level 0) is no smaller than its best estimate at fewer
+    precision bits under the same metric is not escalated: more digits did
+    not improve it, so its error is not the carrier's rounding (an
+    integrated zero, whose relative estimate grows as |A|^2 falls with the
+    unit roundoff squared, e.g. g g > z: 4.7e15 in binary64, 8.4e33 in
+    double-double, 3.0e99 at 57 digits). Returns that lower-precision
+    attempt, or None (escalate). A failed attempt has no estimate and never
+    stops a point; nor does a level of the same precision (the other
+    backend)."""
+
+    latest = history[-1]
+    if latest.estimate is None:
+        return None
+    metric = levels[len(history) - 1].metric
+    lower = [
+        attempt
+        for attempt, level in zip(history[:-1], levels, strict=False)
+        if attempt.estimate is not None
+        and attempt.precision_bits < latest.precision_bits
+        and level.metric == metric
+    ]
+    if not lower:
+        return None
+    best = min(lower, key=lambda attempt: cast(float, attempt.estimate))
+    return best if latest.estimate >= cast(float, best.estimate) else None
 
 
 def _attempt(
@@ -228,16 +276,25 @@ def _attempt(
     )
 
 
-def _detail(record: VirtualRescueRecord, metric: str) -> str:
+def _detail(
+    record: VirtualRescueRecord,
+    metric: str,
+    stalled: VirtualRescueAttempt | None = None,
+) -> str:
     level = f"rescue level {record.level} ({record.arithmetic})"
     value = record.attempts[-1].estimate
     if value is None:
         return f"{level}: last level, no stability check; accuracy not estimated"
-    verdict = (
-        f"within the target {record.target:.1e}"
-        if record.met
-        else f"target {record.target:.1e} not met at the final level"
-    )
+    if record.met:
+        verdict = f"within the target {record.target:.1e}"
+    elif stalled is not None:
+        verdict = (
+            f"target {record.target:.1e} not met; not escalated: no better than "
+            f"{stalled.arithmetic}'s "
+            f"{relative_text(cast(float, stalled.estimate))} at fewer bits"
+        )
+    else:
+        verdict = f"target {record.target:.1e} not met at the final level"
     return f"{level}: estimated {metric} accuracy {relative_text(value)}, {verdict}"
 
 
@@ -286,7 +343,7 @@ def _merged(
                 original,
                 status="success" if item.level == 0 else "rescued",
                 accuracy_established=item.met,
-                detail=_detail(record, level.metric),
+                detail=_detail(record, level.metric, item.stalled),
             )
         else:
             reasons = "; ".join(

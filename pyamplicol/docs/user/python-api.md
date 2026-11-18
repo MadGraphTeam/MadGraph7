@@ -1360,8 +1360,16 @@ evaluates, with no estimate. How a batch runs:
    original exact inputs; no lower-precision value is reused. Escalated points
    are evaluated one per native call, so each carrier builds one executor and
    compiles its kernels once.
-3. Accepted points are never evaluated again. At the last level a point that
-   evaluates keeps its value with the target marked as not met; a point that
+3. Accepted points are never evaluated again. A point whose estimate is no
+   smaller than its best estimate at fewer precision bits is not escalated
+   either (more digits did not improve it, so its error is not the carrier's
+   rounding): it keeps that level's value with the target not met, and its
+   detail says `not escalated`. This stops an integrated zero (g g > z,
+   Landau-Yang: its relative estimate grows with the digits, 4.7e15 in
+   binary64, 8.4e33 in double-double) at double-double instead of every
+   higher level; a failed attempt never stops a point. At the last level a
+   point that evaluates keeps its value with the target marked as not met;
+   a point that
    failed at every level is returned with its best-effort value
    (`"best-effort"` lane, the default policy), else as a failed lane
    (raised only under `on_failure="raise"`).
