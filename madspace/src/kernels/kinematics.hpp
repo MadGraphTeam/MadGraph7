@@ -704,57 +704,60 @@ KERNELSPEC void kernel_x1x2_to_r_window(
 
 // The momentum fraction of a lepton beam from a random number, as generate_x_ee
 // of genps_fks.f samples it for a lepton density that behaves as (1 - x)^(-p)
-// (lpp = +-3, +-4 of MadGraph): with a = 1 / (1 - p),
-// x = x_min + (1 - x_min) (1 - r^a) and 1 - x = (1 - x_min) r^a, which
+// (lpp = +-3, +-4 of MadGraph): with a = 1 / (1 - p) and the width w = 1 -
+// x_min of the range of x, which the caller passes so that it can keep digits
+// that 1 - x_min would lose,
+// x = x_min + w (1 - r^a) and 1 - x = w r^a, which
 // stays exact for x close to 1, at least the smallest normal double, and x
 // keeps its precision close to a small x_min. The Jacobian
-// dx / dr = a (1 - x_min) r^(a - 1) = a (1 - x_min)^(1 - p) (1 - x)^p
+// dx / dr = a w r^(a - 1) = a w^(1 - p) (1 - x)^p
 // contains (1 - x)^p, which cancels the peak of the density. Here 1 - x
 // enters the Jacobian to the power jacobian_power, p for a full density and
 // 0 for one that carries (1 - x)^p itself (a reduced density). That factor
 // is computed from 1 - x, which stays a normal double where r^(a - 1) does
-// not. A range of x that is empty (x_min = 1) or not a number gives zero, as
-// kernel_pow gives zero for a base that is not positive.
+// not. A range that is empty or not a number (w <= 0 or NaN) gives x = 1,
+// 1 - x the smallest normal double and a zero Jacobian, the same on every
+// backend. The raw pow sees no base that is not positive (see positive_pow).
 template <typename T>
 KERNELSPEC void kernel_lepton_x_sample(
     FIn<T, 0> r,
     FIn<T, 0> x_min,
+    FIn<T, 0> width,
     FSIn<T, 0> power,
     FSIn<T, 0> jacobian_power,
     FOut<T, 0> x,
     FOut<T, 0> one_minus_x,
     FOut<T, 0> det
 ) {
-    FVal<T> rv = r, xm = x_min;
-    auto omb = 1. - power;
+    FVal<T> rv = r, xm = x_min, w = width;
+    FVal<T> omb = 1. - power;
     auto a = 1. / omb;
+    auto valid = w > 0.;
+    auto wv = where(valid, w, 1.);
     auto ra = pow(rv, a);
-    auto width = 1. - xm;
-    auto omx = max(width * ra, 2.2250738585072014e-308);
-    x = (1. - ra) * width + xm;
+    auto omx = where(valid, max(wv * ra, SMALLEST_NORMAL), SMALLEST_NORMAL);
+    x = where(valid, min((1. - ra) * wv + xm, 1.), 1.);
     one_minus_x = omx;
-    det =
-        where(width > 0., a * pow(width, omb) * pow(omx, FVal<T>(jacobian_power)), 0.);
+    det = a * positive_pow<T>(w, omb) * pow(omx, FVal<T>(jacobian_power));
 }
 
-// The inverse of kernel_lepton_x_sample, with the reciprocal of its Jacobian,
-// zero for a range of x that is empty or not a number.
+// The inverse of kernel_lepton_x_sample, from 1 - x and the width w of the
+// range, with the reciprocal of its Jacobian. A range that is empty or not a
+// number gives r = 0 and a zero Jacobian.
 template <typename T>
 KERNELSPEC void kernel_lepton_x_sample_inverse(
     FIn<T, 0> one_minus_x,
-    FIn<T, 0> x_min,
+    FIn<T, 0> width,
     FSIn<T, 0> power,
     FSIn<T, 0> jacobian_power,
     FOut<T, 0> r,
     FOut<T, 0> det
 ) {
-    FVal<T> omx = max(FVal<T>(one_minus_x), 2.2250738585072014e-308), xm = x_min;
-    auto omb = 1. - power;
-    auto width = 1. - xm;
-    r = pow(min(omx / width, 1.), omb);
-    det = where(
-        width > 0., omb / (pow(width, omb) * pow(omx, FVal<T>(jacobian_power))), 0.
-    );
+    FVal<T> omx = max(FVal<T>(one_minus_x), SMALLEST_NORMAL), w = width;
+    FVal<T> omb = 1. - power;
+    auto valid = w > 0.;
+    r = where(valid, pow(min(omx / where(valid, w, 1.), 1.), omb), 0.);
+    det = omb * positive_pow<T>(w, -omb) * pow(omx, -FVal<T>(jacobian_power));
 }
 
 template <typename T>

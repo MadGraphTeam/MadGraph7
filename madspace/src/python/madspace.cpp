@@ -904,7 +904,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "LeptonLuminosityInvariant", pydoc::doc("LeptonLuminosityInvariant")
     )
         .def(
-            py::init<double, double, double, double, double, double, double>(),
+            py::init<double, double, double, double, double, double, double, bool, bool>(),
             py::arg("s_lab"),
             py::arg("s_hat_min"),
             py::arg("s_hat_max") = 0.,
@@ -912,7 +912,19 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mass") = 0.,
             py::arg("width") = 0.,
             py::arg("invariant_power") = 1.,
+            py::arg("reduced_density") = true,
+            py::arg("s_hat_min_condition") = false,
             pydoc::doc("LeptonLuminosityInvariant::LeptonLuminosityInvariant")
+        )
+        .def(
+            "reduced_density",
+            &LeptonLuminosityInvariant::reduced_density,
+            pydoc::doc("LeptonLuminosityInvariant::reduced_density")
+        )
+        .def(
+            "s_hat_min_condition",
+            &LeptonLuminosityInvariant::s_hat_min_condition,
+            pydoc::doc("LeptonLuminosityInvariant::s_hat_min_condition")
         );
 
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
