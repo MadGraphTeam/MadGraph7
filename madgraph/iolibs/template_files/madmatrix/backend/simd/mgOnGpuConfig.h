@@ -242,6 +242,10 @@ ispoweroftwo( int n )
   return ( n > 0 ) && !( n & ( n - 1 ) );
 }
 
+#if __cplusplus < 202002L
+#error Unsupported C++ standard: please build with -std=c++20 or later
+#endif
+
 // Compiler version support (#96)
 #if defined __clang__
 #if( __clang_major__ < 11 )

@@ -116,7 +116,7 @@ ifneq ($(lhapdf),)
 # check if we need to activate c++11 (for lhapdf6.2)
   ifeq ($(origin CXX),default)
     ifeq ($lhapdfversion$lhapdfsubversion,62)
-      CXX=$(DEFAULT_CPP_COMPILER) -std=c++11
+      CXX=$(DEFAULT_CPP_COMPILER) -std=c++20
     else
       CXX=$(DEFAULT_CPP_COMPILER)
     endif

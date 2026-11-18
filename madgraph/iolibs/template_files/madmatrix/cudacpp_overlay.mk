@@ -23,12 +23,11 @@ UNAME_M ?= $(shell uname -m)
 FFLAGS+= -cpp
 
 # Compile counters with -O3 as in the cudacpp makefile (avoid being "unfair" to Fortran #740)
-CXXFLAGS = -O3 -Wall -Wshadow -Wextra
+CXXFLAGS = -O3 -std=c++20 -Wall -Wshadow -Wextra
 
-# Add -std=c++17 explicitly to avoid build errors on macOS
 # Add -mmacosx-version-min=11.3 to avoid "ld: warning: object file was built for newer macOS version than being linked"
 ifneq ($(shell $(CXX) --version | egrep '^Apple clang'),)
-	CXXFLAGS += -std=c++17 -mmacosx-version-min=11.3
+	CXXFLAGS += -mmacosx-version-min=11.3
 endif
 
 # Enable ccache for C++ if USECCACHE=1 (do not enable it for Fortran since it is not supported for Fortran)
