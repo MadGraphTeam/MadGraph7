@@ -949,22 +949,21 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
     def check_sudakov_param_card(self):
         """Stop before compiling if the event card breaks the Sudakov kernels.
 
-        Their parameter renormalisation needs YMT = MT and ntadpole = 1, and
-        otherwise stops the Fortran process at the first event. A card without
-        these parameters is left to the model.
+        Their parameter renormalisation needs YMT = MT, and otherwise stops
+        the Fortran process at the first event. (ntadpole is set to 1 when the
+        Sudakov library writes its param_card.inc.) A card without these
+        parameters is left to the model.
         """
         if not isinstance(self.banner, dict) or 'slha' not in self.banner:
             return
         try:
             card = check_param_card.ParamCard(self.banner['slha'].splitlines())
             mt, ymt = card['mass'].get(6).value, card['yukawa'].get(6).value
-            ntadpole = card['tadpole'].get(1).value
         except KeyError:
             return
-        if mt != ymt or ntadpole != 1:
-            raise self.InvalidCmd('EW Sudakov reweighting needs YMT = MT and ntadpole = 1 '
-                                  'in the param card (MT=%s, YMT=%s, ntadpole=%s)'
-                                  % (mt, ymt, ntadpole))
+        if mt != ymt:
+            raise self.InvalidCmd('EW Sudakov reweighting needs YMT = MT in the param card '
+                                  '(MT=%s, YMT=%s)' % (mt, ymt))
 
     @staticmethod
     def write_card_atomically(path, text):

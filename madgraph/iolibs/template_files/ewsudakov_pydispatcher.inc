@@ -144,8 +144,7 @@ def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False,
         p_transp, g, nres, res_idx_arr, res_dim_arr, nvariants,
         int(bool(goldstone_relative)))
     if status == 3:
-        raise NotImplementedError('The Sudakov kernels need YMT = MT and '
-                                  'ntadpole = 1 in the param card')
+        raise NotImplementedError('The Sudakov kernels need YMT = MT and ntadpole = 1')
     if status == 4:
         raise NotImplementedError('The density kernel cannot retain a polarised leg')
     if status:

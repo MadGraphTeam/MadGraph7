@@ -96,8 +96,9 @@ fallback and its accounting. A polarised leg cannot be retained: its helicity
 table is restricted, and the kernel refuses it. The Sudakov charge and
 reshuffling implementation assumes massless beams: generating any EW Sudakov
 output for a massive beam (W, Z, top) stops with an error, so neither kernel
-runs on them. Both kernels also need `YMT = MT` and `ntadpole = 1` in the
-param card; EW Sudakov reweighting checks this before it starts.
+runs on them. Both kernels also need `YMT = MT` in the param card, which EW
+Sudakov reweighting checks before it starts; `ntadpole` is set to 1 when the
+Sudakov library is compiled.
 
 ## Scope and validation
 
