@@ -23,11 +23,11 @@ from __future__ import annotations
 import itertools
 import json
 import math
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from fractions import Fraction
-from typing import Any
+from typing import Any, Protocol
 
 from .._internal.physics.rationals import simplest_rational_between
 
@@ -44,6 +44,7 @@ class GroupingBasis(StrEnum):
     EXACT_LOOP_FLAVOR = "exact-loop-flavor"
     FLAVOR_BLIND = "flavor-blind"
     NUMERICAL = "numerical"
+    FLAVOUR_UNION = "flavour-union"
 
 
 # The least verified link decides the basis of a composed relation.
@@ -52,6 +53,7 @@ _BASIS_STRENGTH = {
     GroupingBasis.EXACT_LOOP_FLAVOR: 1,
     GroupingBasis.NUMERICAL: 2,
     GroupingBasis.FLAVOR_BLIND: 3,
+    GroupingBasis.FLAVOUR_UNION: 4,
 }
 
 
@@ -524,6 +526,29 @@ class GroupMember:
     basis: GroupingBasis = GroupingBasis.IDENTITY
     generated: bool = True
     warning: str | None = None
+    # Flavour-union member: template pairing-rule ids summed before squaring.
+    patterns: tuple[int, ...] | None = None
+    pattern_signs: tuple[int, ...] | None = None
+
+    def __post_init__(self) -> None:
+        if (self.patterns is None) != (self.pattern_signs is None):
+            raise ValueError("patterns and pattern_signs must be given together")
+        if self.patterns is not None and self.pattern_signs is not None:
+            if not self.patterns or len(self.patterns) != len(self.pattern_signs):
+                raise ValueError(
+                    f"process-group member {self.process_id!r} needs one sign "
+                    "per flavour-union pattern"
+                )
+            if len(set(self.patterns)) != len(self.patterns) or min(self.patterns) < 0:
+                raise ValueError(
+                    f"process-group member {self.process_id!r} has invalid "
+                    f"flavour-union patterns {self.patterns!r}"
+                )
+            if any(sign not in (-1, 1) for sign in self.pattern_signs):
+                raise ValueError(
+                    f"process-group member {self.process_id!r} has flavour-union "
+                    "pattern signs other than +1 and -1"
+                )
 
     @classmethod
     def identity(cls, process: GroupingProcess) -> GroupMember:
@@ -570,6 +595,8 @@ class GroupMember:
         representative ``B``.
         """
 
+        if self.patterns is not None or middle.patterns is not None:
+            raise ValueError("flavour-union relations do not compose")
         return replace(
             self,
             factor=self.factor * middle.factor,
@@ -582,6 +609,8 @@ class GroupMember:
     def inverted_to(self, representative: GroupMember) -> GroupMember:
         """Relation of ``representative`` to ``self``, the inverse of ``self``."""
 
+        if self.patterns is not None:
+            raise ValueError("flavour-union relations are not invertible")
         return replace(
             representative,
             factor=1 / self.factor,
@@ -608,6 +637,9 @@ class GroupMember:
         }
         if self.warning:
             record["warning"] = self.warning
+        if self.patterns is not None and self.pattern_signs is not None:
+            record["flavour_union_patterns"] = list(self.patterns)
+            record["flavour_union_pattern_signs"] = list(self.pattern_signs)
         return record
 
     @classmethod
@@ -629,7 +661,19 @@ class GroupMember:
             basis=GroupingBasis(str(value["basis"])),
             generated=bool(value["generated"]),
             warning=(str(value["warning"]) if value.get("warning") else None),
+            patterns=_optional_int_tuple(value.get("flavour_union_patterns")),
+            pattern_signs=_optional_int_tuple(value.get("flavour_union_pattern_signs")),
         )
+
+
+def _optional_int_tuple(value: object) -> tuple[int, ...] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list) or any(
+        isinstance(item, bool) or not isinstance(item, int) for item in value
+    ):
+        raise ValueError("flavour-union patterns and signs must be integer lists")
+    return tuple(value)
 
 
 @dataclass(slots=True)
@@ -752,6 +796,312 @@ class ProcessGroupMap:
         return cls.from_document(json.loads(text))
 
 
+# --------------------------------------------------------------------------
+# Flavour unions
+
+
+class PairingRuleRow(Protocol):
+    """A template fermion pairing rule (``FermionPairingRuleRowV1``)."""
+
+    @property
+    def rule_id(self) -> int: ...
+
+    @property
+    def endpoint_pairings(self) -> tuple[tuple[int, int], ...]: ...
+
+
+UnionPairingRules = Callable[[GroupingProcess], Sequence[PairingRuleRow]]
+"""The template's fermion pairing rules, built as its recurrence projection does."""
+UnionNormalization = Callable[[Sequence[int], Sequence[int]], tuple[int, int]]
+"""``(average, identical)`` factors of physical initial and final PDGs."""
+UnionWarning = Callable[[GroupingProcess, frozenset[int], bool], str | None]
+"""Why merging ``flavours`` in the template (and conjugating, if set) may not be
+a symmetry of the allowed vertices, or ``None``."""
+
+
+def is_union_quark_type(particle_type: ParticleType) -> bool:
+    """Massless colour-triplet Dirac fermions: the flavours a union merges."""
+
+    return (
+        particle_type.spin == 2
+        and particle_type.color == 3
+        and not particle_type.self_conjugate
+        and particle_type.mass == "ZERO"
+    )
+
+
+def _union_slot(leg: _Leg) -> tuple[Any, ...]:
+    flavour = 0 if is_union_quark_type(leg.type) else leg.flavour
+    return (leg.initial, leg.type, leg.orientation, flavour)
+
+
+def _union_signature(
+    process: GroupingProcess,
+    table: ParticleTable,
+    *,
+    conjugate: bool = False,
+) -> tuple[Any, ...]:
+    legs = _legs(process, table, conjugate=conjugate)
+    return (
+        process.initial_count,
+        tuple(sorted(_union_slot(leg) for leg in legs)),
+    )
+
+
+def flavour_union_key(
+    process: GroupingProcess,
+    table: ParticleTable,
+    *,
+    consider_charge_conjugation: bool,
+) -> tuple[Any, ...]:
+    """Orientation-aware signature: per leg its side, type and particle or
+    antiparticle orientation, plus the flavour of every non-union leg."""
+
+    key = _union_signature(process, table)
+    if consider_charge_conjugation:
+        key = min(key, _union_signature(process, table, conjugate=True))
+    return key
+
+
+@dataclass(frozen=True, slots=True)
+class FlavourUnion:
+    """Subprocesses that differ only in the flavours of their union quarks.
+
+    ``template`` is the canonically smallest member with every union quark
+    relabelled to the smallest union flavour of its type; its legs are the
+    union's slots. A member evaluates the template's pairing patterns:
+    ``ME_member(p) = factor * |sum_P sign_P A_P(q)|^2`` with
+    ``q[r] = p[permutation[r]]``, summed per colour flow and helicity.
+    """
+
+    template: GroupingProcess
+    members: tuple[GroupMember, ...]
+    pattern_count: int
+
+    def group(self) -> list[GroupMember]:
+        """The template as generated representative, then the routed members."""
+
+        return [
+            GroupMember.identity(self.template),
+            *(
+                member
+                for member in self.members
+                if member.process_id != self.template.process_id
+            ),
+        ]
+
+
+_CONJUGATION_REFUSED = object()
+
+
+def _union_permutation(
+    member: Sequence[_Leg],
+    template: Sequence[_Leg],
+) -> tuple[int, ...]:
+    # Equal slots are paired in leg order, so equal layouts map identically.
+    free: dict[tuple[Any, ...], list[int]] = {}
+    for leg in member:
+        free.setdefault(_union_slot(leg), []).append(leg.index)
+    permutation = []
+    for leg in template:
+        legs = free.get(_union_slot(leg))
+        if not legs:
+            raise ValueError("member does not have the union's slot shape")
+        permutation.append(legs.pop(0))
+    return tuple(permutation)
+
+
+def _union_rules(
+    template: GroupingProcess,
+    legs: Sequence[_Leg],
+    pairing_rules: UnionPairingRules,
+) -> tuple[PairingRuleRow, ...]:
+    rules = tuple(pairing_rules(template))
+    if [int(rule.rule_id) for rule in rules] != list(range(len(rules))):
+        raise ValueError(
+            f"pairing rules of {template.expression!r} are not numbered 0..n-1"
+        )
+    # Colour-fundamental union slots: final quarks and initial antiquarks.
+    fundamental = {
+        leg.index
+        for leg in legs
+        if is_union_quark_type(leg.type) and (leg.orientation > 0) != leg.initial
+    }
+    antifundamental = {
+        leg.index for leg in legs if is_union_quark_type(leg.type)
+    } - fundamental
+    paired = {
+        (int(a), int(b))
+        for rule in rules
+        for a, b in rule.endpoint_pairings
+        if a in fundamental and b in antifundamental
+    }
+    if paired != set(itertools.product(fundamental, antifundamental)):
+        raise ValueError(
+            f"pairing rules of {template.expression!r} do not pair every union "
+            "quark with every union antiquark"
+        )
+    return rules
+
+
+def _flavour_union(
+    group: Sequence[GroupingProcess],
+    table: ParticleTable,
+    *,
+    pairing_rules: UnionPairingRules,
+    normalization: UnionNormalization,
+    union_warning: UnionWarning | None,
+    consider_charge_conjugation: bool,
+) -> FlavourUnion | object | None:
+    lowest: dict[ParticleType, int] = {}
+    for process in group:
+        for leg in _legs(process, table):
+            if is_union_quark_type(leg.type):
+                lowest[leg.type] = min(lowest.get(leg.type, leg.flavour), leg.flavour)
+    classes = {
+        flavor_class_key(
+            process, table, consider_charge_conjugation=consider_charge_conjugation
+        )
+        for process in group
+    }
+    if not lowest or len(classes) < 2:
+        return None
+    ordered = sorted(group, key=lambda process: representative_key(process, table))
+    anchor = ordered[0]
+    pdgs = tuple(
+        (lowest[leg.type] if leg.pdg > 0 else -lowest[leg.type])
+        if is_union_quark_type(leg.type)
+        else leg.pdg
+        for leg in _legs(anchor, table)
+    )
+    names = [_particle(table, pdg).name for pdg in pdgs]
+    count = anchor.initial_count
+    template = GroupingProcess(
+        process_id=(
+            anchor.process_id
+            if pdgs == anchor.pdgs
+            else f"{anchor.process_id}_flavour_union"
+        ),
+        expression=f"{' '.join(names[:count])} > {' '.join(names[count:])}",
+        pdgs=pdgs,
+        initial_count=count,
+    )
+    signature = _union_signature(anchor, table)
+    conjugated = {
+        process.process_id: _union_signature(process, table) != signature
+        for process in group
+    }
+    flavours = frozenset(
+        leg.flavour
+        for process in group
+        for leg in _legs(process, table)
+        if is_union_quark_type(leg.type)
+    )
+    if union_warning is not None:
+        if union_warning(template, flavours, False) is not None:
+            return None
+        if any(conjugated.values()) and union_warning(template, flavours, True):
+            return _CONJUGATION_REFUSED
+    template_legs = _legs(template, table)
+    rules = _union_rules(template, template_legs, pairing_rules)
+    union_slots = tuple(is_union_quark_type(leg.type) for leg in template_legs)
+    template_norm = math.prod(normalization(pdgs[:count], pdgs[count:]))
+    members = []
+    for process in ordered:
+        conjugate = conjugated[process.process_id]
+        permutation = _union_permutation(
+            _legs(process, table, conjugate=conjugate), template_legs
+        )
+        flavour = tuple(abs(process.pdgs[leg]) for leg in permutation)
+        patterns = tuple(
+            int(rule.rule_id)
+            for rule in rules
+            if all(
+                flavour[a] == flavour[b] or not (union_slots[a] or union_slots[b])
+                for a, b in rule.endpoint_pairings
+            )
+        )
+        if not patterns:
+            raise ValueError(
+                f"{process.expression!r} admits no pairing of {template.expression!r}"
+            )
+        initial = process.pdgs[: process.initial_count]
+        final = process.pdgs[process.initial_count :]
+        members.append(
+            GroupMember(
+                process_id=process.process_id,
+                expression=process.expression,
+                pdgs=process.pdgs,
+                initial_count=process.initial_count,
+                factor=Fraction(
+                    template_norm, math.prod(normalization(initial, final))
+                ),
+                permutation=permutation,
+                conjugated=conjugate,
+                basis=GroupingBasis.FLAVOUR_UNION,
+                generated=False,
+                patterns=patterns,
+                pattern_signs=(1,) * len(patterns),
+            )
+        )
+    return FlavourUnion(template, tuple(members), len(rules))
+
+
+def flavour_unions(
+    processes: Sequence[GroupingProcess],
+    table: ParticleTable,
+    *,
+    pairing_rules: UnionPairingRules,
+    normalization: UnionNormalization,
+    union_warning: UnionWarning | None = None,
+    consider_charge_conjugation: bool = True,
+) -> list[FlavourUnion]:
+    """Join ``processes`` that differ only in union-quark flavours.
+
+    ``processes`` are concrete subprocesses (flavour-class representatives
+    and their members alike). A union forms only where it joins at least two
+    flavour classes; other processes keep their flavour-class routing. With
+    ``union_warning`` (strict mode) a union whose flavour merge is no symmetry
+    is dropped, and one whose conjugation is none splits by orientation.
+    """
+
+    groups: dict[tuple[Any, ...], list[GroupingProcess]] = {}
+    for process in processes:
+        key = flavour_union_key(
+            process, table, consider_charge_conjugation=consider_charge_conjugation
+        )
+        groups.setdefault(key, []).append(process)
+    options = {
+        "pairing_rules": pairing_rules,
+        "normalization": normalization,
+        "union_warning": union_warning,
+    }
+    result: list[FlavourUnion] = []
+    for group in groups.values():
+        union = _flavour_union(
+            group,
+            table,
+            consider_charge_conjugation=consider_charge_conjugation,
+            **options,  # type: ignore[arg-type]
+        )
+        if union is _CONJUGATION_REFUSED:
+            parts: dict[tuple[Any, ...], list[GroupingProcess]] = {}
+            for process in group:
+                parts.setdefault(_union_signature(process, table), []).append(process)
+            for part in parts.values():
+                union = _flavour_union(
+                    part,
+                    table,
+                    consider_charge_conjugation=False,
+                    **options,  # type: ignore[arg-type]
+                )
+                if isinstance(union, FlavourUnion):
+                    result.append(union)
+        elif isinstance(union, FlavourUnion):
+            result.append(union)
+    return result
+
+
 def rational_factor(value: float, *, tolerance: float) -> Fraction | None:
     """``value`` as the simplest rational within its relative ``tolerance``
     (the precision to which numerical grouping compares matrix elements),
@@ -770,6 +1120,7 @@ __all__ = [
     "PROCESS_GROUPS_PATH",
     "PROCESS_GROUPS_ROLE",
     "PROCESS_GROUPS_SCHEMA_VERSION",
+    "FlavourUnion",
     "GroupMember",
     "GroupingAnalysis",
     "GroupingBasis",
@@ -786,8 +1137,11 @@ __all__ = [
     "flavor_blind_classes",
     "flavor_blind_mapping",
     "flavor_class_key",
+    "flavour_union_key",
+    "flavour_unions",
     "identity_permutation",
     "invert_permutation",
+    "is_union_quark_type",
     "particle_table",
     "profile_key",
     "profile_mappings",

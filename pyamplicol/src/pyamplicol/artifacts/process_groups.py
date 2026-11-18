@@ -21,6 +21,7 @@ from pyamplicol.api.errors import ArtifactError
 from pyamplicol.generation.process_grouping import (
     PROCESS_GROUPS_PATH,
     PROCESS_GROUPS_ROLE,
+    GroupingBasis,
     GroupingProcess,
     GroupMember,
     ProcessGroupMap,
@@ -83,7 +84,8 @@ def validate_process_groups(
     """Require exactly the artifact's processes to be generated members.
 
     Members that were not generated are evaluated through their representative,
-    so, as the runtime requires, their factor must be positive.
+    so, as the runtime requires, their factor must be positive. Flavour-union
+    members are routed permutations of their (template) representative.
     """
 
     generated = [
@@ -102,6 +104,31 @@ def validate_process_groups(
                 f"process-group member {member.process_id!r} is not generated, so "
                 f"its factor {member.factor} must be positive"
             )
+    for group in group_map.groups.values():
+        representative = group.representative
+        if representative.patterns is not None:
+            raise ArtifactError(
+                f"process-group representative {representative.process_id!r} "
+                "cannot be a flavour-union member"
+            )
+        for member in group.members[1:]:
+            union = member.basis is GroupingBasis.FLAVOUR_UNION
+            if union != (member.patterns is not None):
+                raise ArtifactError(
+                    f"process-group member {member.process_id!r} must carry "
+                    "flavour-union patterns exactly when its basis is "
+                    f"{str(GroupingBasis.FLAVOUR_UNION)!r}"
+                )
+            if union and (
+                member.generated
+                or sorted(member.permutation) != list(range(len(member.pdgs)))
+                or len(member.pdgs) != len(representative.pdgs)
+            ):
+                raise ArtifactError(
+                    f"flavour-union member {member.process_id!r} must be a "
+                    "routed leg permutation of its template "
+                    f"{representative.process_id!r}"
+                )
 
 
 @contextmanager
