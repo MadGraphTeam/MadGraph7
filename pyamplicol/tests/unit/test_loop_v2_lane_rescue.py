@@ -62,7 +62,8 @@ def test_a_rescued_point_is_a_success_whose_diagnostic_carries_the_record():
     )
     assert lane.valid and lane.lane_rescue.count == 1
     assert lane_rescue_reason(lane) == "reduction lanes rescued in double-double"
-    assert lane_rescue_reason(VirtualLaneDiagnostic("success", "double", 53, False)) is None
+    plain = VirtualLaneDiagnostic("success", "double", 53, False)
+    assert lane_rescue_reason(plain) is None
 
 
 def test_profile_counts_lane_rescued_points_in_the_stability_statistics():
