@@ -3037,6 +3037,8 @@ class _StabilityProgress:
             # The queued re-runs of points already done (the points' own
             # share in ``known`` covers future points only); one costs at
             # least a plain reference.
+            if not count:
+                continue
             rate = self.checked_rate(backend)
             if rate is None:
                 rate = self.rate((backend, "reference")) or fallback
