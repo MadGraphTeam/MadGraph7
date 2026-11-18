@@ -15,7 +15,7 @@ use super::v2_reduce::{
 use crate::Complex;
 use rusticol_core::loop_execution::v2::{
     BackendStatistics, ExactLanes, FamilyLanes, LaneOutcome, MeasuredLane, Reduced, RescueCarrier,
-    V2Backend,
+    RescueOutput, TrackedPrecision, V2Backend, tracked_uncertainty,
 };
 use rusticol_core::loop_v2::dress::{Carrier, cast, exact_value};
 use rusticol_core::loop_v2::retest::ReductionCheck;
@@ -361,6 +361,19 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
         }
     }
 
+    /// NinjaRS's ([`V2Reducer::tracked_precision`]); none on TIRust, whose
+    /// extended-precision values its own acceptance tests (method-choice
+    /// deviations, Gram and Cayley conditioning) and whose direct kernels
+    /// round at the working precision (TIRust #43), so that their precision
+    /// as numerica tracks it says nothing about their loss.
+    fn tracked_precision(&self) -> Option<TrackedPrecision> {
+        match self {
+            Self::NinjaRs(backend) => V2Backend::<T>::tracked_precision(backend),
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) => None,
+        }
+    }
+
     fn reduce(
         &mut self,
         groups: &[FamilyLanes<T>],
@@ -381,9 +394,6 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
     /// a non-finite result). The rescue backends are always checked
     /// ([`RescueBackends`]).
     fn rescue_carriers(&self, zero: &T) -> Vec<RescueCarrier> {
-        if !lane_rescue_enabled() {
-            return Vec::new();
-        }
         rescue_carriers(T::bits(zero))
     }
 
@@ -396,7 +406,7 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
         poles: Poles,
         check: Option<ReductionCheck>,
         zero: &T,
-    ) -> RusticolResult<Reduced<T>> {
+    ) -> RusticolResult<RescueOutput<T>> {
         let index = match self
             .rescue_store()
             .0
@@ -437,19 +447,6 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
 #[derive(Default)]
 pub struct RescueBackends(Vec<(RescueCarrier, V2Backends)>);
 
-/// The environment variable of the lane rescue's developer switch
-/// ([`lane_rescue_enabled`]).
-pub const LANE_RESCUE_SWITCH: &str = "RUSTICOL_LANE_RESCUE";
-
-/// Whether the lane rescue runs: on unless the environment sets
-/// [`LANE_RESCUE_SWITCH`] to `off` (a developer switch, no user option: the
-/// tests of the mechanisms behind the lane rescue, the per-point fallback,
-/// the rescue stack and best-effort values, need refused points in the
-/// Python API and the SDKs alike). Read once per evaluation call.
-pub fn lane_rescue_enabled() -> bool {
-    std::env::var(LANE_RESCUE_SWITCH).map_or(true, |value| value != "off")
-}
-
 /// The lane rescue's carriers above a carrier of `bits` bits, lowest
 /// first: double-double, then arbitrary precision at the default
 /// arbitrary-precision digits
@@ -487,7 +484,10 @@ fn reduce_exact<U: TypedBatch, T: TypedBatch>(
     check: Option<ReductionCheck>,
     high: &U,
     zero: &T,
-) -> RusticolResult<Reduced<T>> {
+) -> RusticolResult<RescueOutput<T>>
+where
+    U: symbolica::domains::float::Real,
+{
     let complex = |[re, im]: &[symbolica::domains::rational::Rational; 2]| {
         Complex::new(cast(high, re), cast(high, im))
     };
@@ -512,6 +512,27 @@ fn reduce_exact<U: TypedBatch, T: TypedBatch>(
     let (direct, retest) = V2Backend::<U>::reduce(backend, &lanes, poles, check)?;
     let _ = V2Backend::<U>::take_statistics(backend);
     let _ = V2Backend::<U>::take_lane_measures(backend);
+    // The tracked uncertainty of every served direct value, where the
+    // carrier's reduction tracks its precision (NinjaRS's arbitrary
+    // precision), before it is rounded (the executor's tracked-precision
+    // test of rescued lanes).
+    let tracked = V2Backend::<U>::tracked_precision(backend).map(|_| {
+        direct
+            .iter()
+            .map(|group| {
+                group
+                    .iter()
+                    .map(|outcome| match outcome {
+                        Ok(values) => values
+                            .iter()
+                            .map(|z| tracked_uncertainty(z).to_f64())
+                            .collect(),
+                        Err(_) => Vec::new(),
+                    })
+                    .collect()
+            })
+            .collect()
+    });
     let read = |outcomes: Vec<Vec<LaneOutcome<U>>>| -> Vec<Vec<LaneOutcome<T>>> {
         outcomes
             .into_iter()
@@ -530,7 +551,10 @@ fn reduce_exact<U: TypedBatch, T: TypedBatch>(
             })
             .collect()
     };
-    Ok((read(direct), retest.map(read)))
+    Ok(RescueOutput {
+        outcomes: (read(direct), retest.map(read)),
+        tracked,
+    })
 }
 
 impl V2Backends {
@@ -608,6 +632,10 @@ fn frame(check: ReductionCheck) -> ReductionFrame {
 impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
     fn begin(&mut self) {
         self.reducer.clear_masters();
+    }
+
+    fn tracked_precision(&self) -> Option<TrackedPrecision> {
+        self.reducer.tracked_precision()
     }
 
     /// The master integrals inside the `reduction` stage (binary64 fast

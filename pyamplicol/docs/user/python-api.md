@@ -451,6 +451,55 @@ A value the bound does not flag is no more verified than before: an explicit
 `reduction="ninjars"` has no fallback guard, so request stability checks
 where such kinematics matter.
 
+**NinjaRS tracked precision (arbitrary precision).** Symbolica's
+arbitrary-precision numbers keep track of the bits that survive each
+operation, so every NinjaRS lane carries the uncertainty of its value.
+Per Laurent coefficient, pyAmpliCol sums that uncertainty and the size of
+each value over all NinjaRS lanes of a point, and fails the point (status
+`failed`, reason "NinjaRS tracked precision: the point's lanes keep ...
+tracked bits ...") when the largest summed uncertainty exceeds `2^-r` of
+the largest summed size. `r` is NinjaRS's own rule for its master
+integrals at the working precision: 53 bits up to 212 working bits, a
+quarter of them above, at most half (53 at 40 digits, 64 at 57, 66 at 60,
+83 at 80). Summed over the point, families that vanish identically
+(rounding noise of a few bits at regular points) weigh by their size, and
+the largest coefficient decides, so the identically vanishing poles of a
+loop-induced amplitude do not fail it. A rescue stack evaluates a failed
+point at its next level. The test applies to NinjaRS in arbitrary
+precision, in the inclusive and resolved evaluations, the Python reference
+path and the SDKs; binary64 and double-double track nothing, TIRust's
+values have their own acceptance tests, and the unchecked setting
+(`reduction_unchecked=True`) drops it with the backends' other checks. It
+never changes a served value.
+
+It catches what NinjaRS's cut tests miss at a nearly degenerate box Gram
+determinant (a 2 -> 3 point with a spatially collinear final state, NinjaRS
+issue 15). Measured (2026-11-18, development host; truth: NinjaRS at 150
+digits) on 200 points of HC05 g g > x0 g g at sqrt(s) = 1 TeV, two such
+points were served with status `success`, 3.4e18 and 9.4e13 off at 57
+digits (4.7e34 and 6.7e30 at 40, 8.2e-5 and 4.4e-11 at 80). The test fails
+exactly these two at 40, 57, 60 and 80 digits (at 80 digits the second one
+was right), and no other point; every other value is unchanged bitwise, the
+worst within 1.2e-10 (40 digits). On g g > g g g, g g > h h, g g > z z,
+u u~ > d d~ and g g > z z g at 40 and 57 digits it fails no point. The
+default rescue stack ends at 57 digits, so there the two points stay
+flagged (`best-effort` under the default `on_failure`, as before not met);
+a stack with 100- and 150-digit levels serves them right (at 150 and 100
+digits). The test rests on numerica's tracked precision, an estimate
+rather than a bound: it overstates the accuracy of a ruined value (the two
+points still claim some kept bits, far below `r`, where none are right), and
+it does not see a loss that happens outside the tracked arithmetic.
+An amplitude that integrates to zero at every point (a Landau-Yang zero such
+as loop-induced g g > z, every family vanishing by itself) has only lanes of
+rounding noise, so on NinjaRS in arbitrary precision the test fails it
+(measured on g g > z at 40 and 57 digits); the value it
+would have served is that noise. The default loop-induced route (TIRust)
+does not take the test, and the opt-in `"scale"` metric of the rescue stack
+accepts such a zero at its binary64 level; under the default `"relative"`
+metric the point is kept at the last level with the target not met, as
+before, now as `best-effort` when that level is NinjaRS in arbitrary
+precision.
+
 **Inexact inputs near forward.** Near forward, backward or threshold
 kinematics NinjaRS amplifies a point's on-shell and momentum-conservation
 defect by about the inverse box Gram determinant, and neither the
@@ -565,7 +614,8 @@ value for, the way the one-loop providers' most optimistic settings run
   engine (double-double, arbitrary precision, and the binary64 lanes the
   fast engine routes to it): it has no stability threshold to set to zero,
   and its conditioning bound refuses near-planar box mu-expansions there
-  too, at the carrier's precision. That is no accuracy statement: its
+  too, at the carrier's precision; in arbitrary precision the setting drops
+  the tracked-precision test of NinjaRS's lanes (above). That is no accuracy statement: its
   values are unverified there too, with or without the setting (the
   near-planar hazard above); stability checks, a rescue stack or, in
   double-double and arbitrary precision, the guard of the per-point

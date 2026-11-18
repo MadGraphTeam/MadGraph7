@@ -909,7 +909,13 @@ measured windows and the estimates of each check are in the
 conditioning bound refuses such lanes typed (status Failed). The SDKs'
 binary64 monitoring, bitwise the Python API's binary64 estimate, flags what
 the bound does not refuse; in double-double and arbitrary precision the SDKs
-run no monitoring (`AccuracyNotEstablished`, no estimate). The target accuracy
+run no monitoring (`AccuracyNotEstablished`, no estimate). In arbitrary
+precision the SDKs apply the Python API's tracked-precision test of NinjaRS's
+lanes ([Python API](python-api.md), "NinjaRS tracked precision"): a point
+whose lanes kept too few of the bits their carrier tracked has status Failed
+with the reason "NinjaRS tracked precision: ..." (under the default
+`"best-effort"` it is returned as `BEST_EFFORT` with the unchecked
+reduction's value; the unchecked setting drops the test). The target accuracy
 `rusticol_virtual_set_reduction_target(handle, target)` (C++ and Fortran
 `set_reduction_target`, the packaged Rust wrapper's `set_reduction_target`;
 default 1e-5, the relative accuracy of each point's result) sets the
