@@ -172,6 +172,15 @@ def default_target() -> float:
     return float(policy()["target"]["default"])
 
 
+def default_arbitrary_digits() -> int:
+    """The default decimal digits of arbitrary precision (the native policy's
+    one definition, ``reduction_policy::DEFAULT_ARBITRARY_DIGITS``: 500,
+    USER 2026-11-18): the built-in rescue's last level and ``profile
+    --ground-truth arb``; an explicit digit count is never replaced."""
+
+    return int(policy()["arbitrary"]["default_digits"])
+
+
 def default_unchecked() -> bool:
     """The default of the unchecked setting (the native policy's one
     definition, ``reduction_policy::DEFAULT_UNCHECKED``: off)."""
@@ -1008,6 +1017,7 @@ __all__ = [
     "current",
     "current_target",
     "current_unchecked",
+    "default_arbitrary_digits",
     "default_target",
     "default_unchecked",
     "executor_options",
