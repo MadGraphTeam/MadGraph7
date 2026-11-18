@@ -1269,13 +1269,26 @@ def test_the_tracker_counts_checked_reruns_as_reference_time_and_eta():
     tracker.queue_checked("ninjars", 2)
     assert tracker.checked_rate("ninjars") is None
     tracker.add_checked("ninjars", 1, 4.0)
-    # The re-run's seconds are the reference stream's, not its points.
+    # The re-run's seconds are the reference stream's time, not its points
+    # nor its plain rate; its cost per point adds their share once.
     assert tracker.done[("ninjars", "reference")] == 10
     assert tracker.seconds[("ninjars", "reference")] == 14.0
-    assert tracker.rate(("ninjars", "reference")) == 1.4
+    assert tracker.rate(("ninjars", "reference")) == 1.0
+    assert tracker.stream_cost(("ninjars", "reference")) == 1.4
     assert (tracker.checking["ninjars"], tracker.checked_rate("ninjars")) == (1, 4.0)
     for key in tracker.done:
         tracker.done[key] = 10
         tracker.timed[key][0] = max(tracker.timed[key][0], 1)
-    # The one queued re-run left is the whole remaining estimate.
+    # The one queued re-run left is the whole remaining estimate (counted
+    # once: the done points carry no expected share).
     assert tracker._eta() == 4.0
+    # Ten more points: each at its plain rate plus the re-runs' share, and
+    # the queued re-run once.
+    tracker.set_points(20)
+    tracker.done = {key: 10 for key in tracker.done}
+    eta = tracker._eta()
+    others = sum(
+        10 * tracker.stream_cost(key) for key in tracker.done if key[0] != "ninjars"
+    )
+    binary64 = 10 * tracker.stream_cost(("ninjars", "binary64"))
+    assert eta == pytest.approx(others + binary64 + 10 * 1.4 + 4.0)

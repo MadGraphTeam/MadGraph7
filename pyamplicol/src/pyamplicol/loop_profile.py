@@ -435,6 +435,7 @@ SAMPLE_FIELDS = (
     "true_digits",
     "binary64_task",
     "reference_task",
+    "reference_checked_task",
 )
 # The columns of the points' inputs (``stability_setup.samples``).
 INPUT_FIELDS = ("index", "momenta", "mu_r2")
@@ -2525,7 +2526,8 @@ def _stability_worker(
     workers), the artifact loaded once with the reference precision
     ``truth`` (default double-double; "none": no reference), and warmed up
     on ``backends`` with ``warm`` (a point and its scale, ``_warm_up``; the
-    ``cold`` streams not)."""
+    ``cold`` streams not, nor a checked reference stream until its first
+    task, ``_stability_task``)."""
 
     import signal
 
@@ -2538,6 +2540,7 @@ def _stability_worker(
         warm=warm,
         checks=checks,
         truth=truth or GroundTruth("double-double"),
+        cold=tuple(cold),
     )
     _warm_up(backends, cold)
 
@@ -2614,11 +2617,30 @@ def _stability_task(
 
     from pyamplicol.benchmarking import _collector_off
 
+    if precision == _REFERENCE_CHECKED:
+        _warm_checked(backend, batch, scales)
     with _collector_off():
         begin = time.perf_counter()
         records = _stability_records(backend, precision, indices, batch, scales)
         seconds = time.perf_counter() - begin
     return backend, precision, records, seconds
+
+
+def _warm_checked(backend: str, batch: Sequence[Any], scales: Any) -> None:
+    """Before this worker's first checked reference task of ``backend``,
+    the checked call of its first point, untimed and dropped (``_warm_up``
+    for the checked stream, which only some points need: its first-call
+    costs, the checks' lazy set-up included, stay out of its timing); none
+    when the backend's reference stream is cold (``_warm_up``)."""
+
+    warmed = _WORKER.setdefault("warmed", set())
+    if backend in warmed or (backend, "reference") in _WORKER.get("cold", ()):
+        return
+    warmed.add(backend)
+    scale = scales[0] if isinstance(scales, list) else scales
+    with contextlib.suppress(Exception):
+        _stability_records(backend, _REFERENCE_CHECKED, [0], [batch[0]], [scale])
+    gc.collect()
 
 
 def _stability_records(
@@ -2862,7 +2884,9 @@ class _StabilityProgress:
         self.seconds = {key: 0.0 for key in self.done}
         # Per backend the checked reference re-runs queued or running
         # (``checking``) and the points and seconds of those back
-        # (``checked``): their seconds count in the reference stream's.
+        # (``checked``): their seconds count in the reference stream's time
+        # (``seconds``), not in its plain rate (``rate``); ``stream_cost``
+        # adds their expected share per point.
         self.checking = dict.fromkeys(backends, 0)
         self.checked = {b: [0, 0.0] for b in backends}
         # Per backend and precision the points and seconds of its returned
@@ -2919,8 +2943,7 @@ class _StabilityProgress:
 
     def add_checked(self, backend: str, count: int, seconds: float) -> None:
         """A finished checked re-run of ``count`` references: its seconds
-        are the reference stream's (its time and rate per point), its
-        points are not new points."""
+        are the reference stream's time, its points are not new points."""
 
         self.checking[backend] = max(self.checking[backend] - count, 0)
         self.checked[backend][0] += count
@@ -2928,8 +2951,18 @@ class _StabilityProgress:
         key = (backend, "reference")
         if key in self.seconds:
             self.seconds[key] += seconds
-            self.timed[key][1] += seconds
         self.emit()
+
+    def stream_cost(self, key: tuple[str, str]) -> float | None:
+        """A stream's measured cost per point (None: nothing back): its
+        rate, and for a reference stream the re-runs' seconds so far per
+        point (their expected share of a future point)."""
+
+        rate = self.rate(key)
+        if rate is None or key[1] != "reference":
+            return rate
+        points = self.timed[key][0]
+        return rate + self.checked[key[0]][1] / points
 
     def checked_rate(self, backend: str) -> float | None:
         """The measured cost of one checked reference re-run (None: none
@@ -2973,7 +3006,11 @@ class _StabilityProgress:
         return max(raw, self.deadline - time.perf_counter())
 
     def _eta(self) -> float | None:
-        known = {key: rate for key in self.done if (rate := self.rate(key)) is not None}
+        known = {
+            key: rate
+            for key in self.done
+            if (rate := self.stream_cost(key)) is not None
+        }
         self.estimated = len(known) < len(self.done)
         if not known:
             if not self.priors:
@@ -2997,10 +3034,12 @@ class _StabilityProgress:
                 key, max(fallback, self.priors.get(key, 0.0))
             )
         for backend, count in self.checking.items():
-            # A queued re-run costs at least one plain reference.
+            # The queued re-runs of points already done (the points' own
+            # share in ``known`` covers future points only); one costs at
+            # least a plain reference.
             rate = self.checked_rate(backend)
             if rate is None:
-                rate = known.get((backend, "reference"), fallback)
+                rate = self.rate((backend, "reference")) or fallback
             remaining += count * rate
         return remaining / max(self.workers, 1)
 
@@ -3357,7 +3396,7 @@ def _stability(
                 dd[backend][index] = (*record, "checks")
 
     def stream_rate(key: tuple[str, str]) -> float:
-        rate = tracker.rate(key)
+        rate = tracker.stream_cost(key)
         return rate if rate is not None else priors.get(key, 0.0)
 
     def waiting() -> bool:
@@ -3491,6 +3530,7 @@ def _stability(
             # certify: its time is the reference stream's, its points are not.
             for record in records:
                 rechecked.setdefault(record[0], {})[backend] = record
+                tasks_of[backend][("checked", record[0])] = (wall, len(records))
             for record in records:
                 settle(record[0])
             seconds[backend] += wall
@@ -3555,7 +3595,9 @@ def _stability(
     warm = (first_point[0][0], inputs[0][1])
     try:
         if workers == 1:
-            _WORKER.update(runtime=runtime, warm=warm, checks=checks, truth=truth)
+            _WORKER.update(
+                runtime=runtime, warm=warm, checks=checks, truth=truth, cold=cold
+            )
             try:
                 _warm_up(backends, cold)
                 while (tasks := next_tasks()) is not None:
@@ -3726,7 +3768,7 @@ def _stability(
                 ("binary64" if precision == "binary64" else truth.arithmetic): {
                     "points": tracker.done[(row.backend, precision)],
                     "seconds": tracker.seconds[(row.backend, precision)],
-                    "seconds_per_point": tracker.rate((row.backend, precision)),
+                    "seconds_per_point": tracker.stream_cost((row.backend, precision)),
                     **(
                         {"digits": truth.digits}
                         if precision != "binary64" and truth.digits is not None
@@ -4111,7 +4153,10 @@ def _sample_records(
     (an arbitrary-precision reference's certification: "agreement" with
     another backend's, "checks" from its checked re-run; null otherwise);
     ``true_relative_error`` and ``true_digits`` (null without both values);
-    ``binary64_task`` and ``reference_task`` (indices into ``tasks``).
+    ``binary64_task``, ``reference_task`` (the reference's first
+    evaluation: plain, or checked with one backend) and
+    ``reference_checked_task`` (its checked re-run; null without one),
+    indices into ``tasks``.
     Values, sectors and the reference are exact; the relative errors and
     scales carry 4 significant digits, the digits 3 decimals.
     ``progress(rows)`` as the rows are encoded."""
@@ -4182,6 +4227,7 @@ def _sample_records(
                 digits,
                 task(("binary64", index)),
                 task(("reference", index)),
+                task(("checked", index)),
             ]
 
     encoded = encode_rows(rows(), len(indices), progress)
