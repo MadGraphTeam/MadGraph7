@@ -2364,6 +2364,16 @@ impl NativeRuntime {
         }
     }
 
+    /// Restricted replay plans built since loading (cache misses).
+    #[doc(hidden)]
+    pub fn restricted_program_builds(&self) -> usize {
+        match &self.execution_lane {
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => runtime.selected_replay_builds(),
+            _ => 0,
+        }
+    }
+
     /// Assignments of a loaded pattern-resolved template or member: the
     /// template (all patterns) first, then its union members.
     pub fn flavour_union_assignments(&self) -> Option<&[NativeUnionAssignment]> {
@@ -2386,7 +2396,10 @@ impl NativeRuntime {
     /// `assignment_ids[request_offsets[p]..request_offsets[p + 1]]` (non-empty,
     /// duplicates repeat a row); `output` holds one row per request entry in
     /// order, of width 1, the helicity count, or helicities times flows.
-    /// Per-point selectors index the loaded runtime's physical axes. Points
+    /// Per-point selectors and per-flow rows index the loaded runtime's physical
+    /// axes (the template's execution flows); a row of an assignment whose
+    /// `conjugated` differs from the loaded process's holds the charge-conjugate
+    /// physical flow, which callers relabel as a member load does. Points
     /// are grouped by (pattern mask, selectors); a single-assignment request
     /// equals loading that member bitwise.
     #[allow(clippy::too_many_arguments)]

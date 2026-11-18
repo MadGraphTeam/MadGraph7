@@ -406,8 +406,13 @@ int rusticol_runtime_evaluate_selected_f64(
  * duplicates repeat a row); request_offsets has point_count + 1 entries from 0
  * to assignment_id_count. mode 0 writes one total per requested row, mode 1
  * one value per physical helicity, mode 2 [helicity][color flow] per row.
- * Per-point selectors follow rusticol_runtime_evaluate_selected_f64. A
- * single-assignment request equals loading that member bitwise.
+ * Per-point selectors follow rusticol_runtime_evaluate_selected_f64. Helicity
+ * and colour indices (selectors and mode 1/2 columns) are the loaded runtime's
+ * axes, labelled by rusticol_runtime_helicity_id/color_id in the loaded
+ * process's legs; colour j is the template's execution flow j, so a row whose
+ * assignment is conjugated relative to the loaded process holds the charge
+ * conjugate physical flow. A single-assignment request equals loading that
+ * member bitwise.
  */
 int rusticol_runtime_evaluate_assignments_f64(
     RusticolRuntimeHandle *handle,
@@ -448,6 +453,13 @@ int rusticol_runtime_assignment_pdgs(
     int32_t *output,
     size_t capacity,
     size_t *required
+);
+
+/* 1 if the assignment is the charge conjugate of the template, else 0. */
+int rusticol_runtime_assignment_conjugated(
+    const RusticolRuntimeHandle *handle,
+    size_t index,
+    int *conjugated
 );
 
 /* Template slot -> assignment leg. */

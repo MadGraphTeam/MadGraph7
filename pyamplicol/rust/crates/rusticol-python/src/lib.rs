@@ -808,6 +808,10 @@ impl Runtime {
         self.runtime.restricted_program_cache_len()
     }
 
+    fn _restricted_program_builds(&self) -> usize {
+        self.runtime.restricted_program_builds()
+    }
+
     /// Flavour-union assignments of a pattern-resolved template as JSON.
     fn flavour_union_assignments_json(&self) -> PyResult<String> {
         let _unlock = pyamplicol::unlock();

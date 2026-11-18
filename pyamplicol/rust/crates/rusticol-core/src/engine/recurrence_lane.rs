@@ -61,6 +61,8 @@ pub(super) struct RecurrenceNativeRuntime {
     selected_replay_cache:
         BTreeMap<ReplayRestriction, BTreeMap<usize, Arc<DirectReplaySelectorPlan>>>,
     selected_replay_programs: BTreeMap<(u32, Vec<u32>), Arc<DirectReplaySelectorPlan>>,
+    // Restricted plans built so far (diagnostics: cache hits build none).
+    selected_replay_builds: usize,
     helicity_selector_companion: Option<RecurrencePersistedHelicitySelectorRuntime>,
     order_catalog: AmplitudeOrderCatalog,
     order_state: Option<RecurrenceOrderState>,
@@ -145,7 +147,8 @@ impl PatternSelection {
 /// Restricted replay program key: a pattern mask and a helicity subset.
 type ReplayRestriction = (Option<u64>, Option<BTreeSet<String>>);
 
-/// Bound on cached restricted replay programs (per pattern mask and helicity subset).
+/// Bound on cached restricted replay restrictions per physical helicity (plus one),
+/// so per-point singletons of every helicity stay resident for up to 64 masks.
 const SELECTED_REPLAY_CACHE_LIMIT: usize = 64;
 
 /// Sum the selected patterns of each consecutive (sector, helicity) group.
@@ -1084,6 +1087,7 @@ impl RecurrenceNativeRuntime {
             replay_color_index_scratch: Vec::new(),
             selected_replay_cache: BTreeMap::new(),
             selected_replay_programs: BTreeMap::new(),
+            selected_replay_builds: 0,
             helicity_selector_companion,
             order_catalog,
             order_state: None,
@@ -1098,6 +1102,11 @@ impl RecurrenceNativeRuntime {
     /// Cached restricted replay restrictions (bounded by `SELECTED_REPLAY_CACHE_LIMIT`).
     pub(super) fn selected_replay_cache_len(&self) -> usize {
         self.selected_replay_cache.len()
+    }
+
+    /// Restricted replay plans built since loading.
+    pub(super) const fn selected_replay_builds(&self) -> usize {
+        self.selected_replay_builds
     }
 
     pub(super) fn pattern_count(&self) -> Option<usize> {
@@ -1979,12 +1988,13 @@ impl RecurrenceNativeRuntime {
         {
             return Ok(Some(Arc::clone(plan)));
         }
-        if self.selected_replay_cache.len() >= SELECTED_REPLAY_CACHE_LIMIT
+        let limit = SELECTED_REPLAY_CACHE_LIMIT
+            .saturating_mul(reduction.helicity_index_by_id.len().saturating_add(1));
+        if self.selected_replay_cache.len() >= limit
             && !self.selected_replay_cache.contains_key(&restriction)
         {
             // Bounded: restart rather than retain every requested restriction.
             self.selected_replay_cache.clear();
-            self.selected_replay_programs.clear();
         }
         let RecurrenceNativeSelectors::TopologyReplay {
             replay_selectors,
@@ -2021,6 +2031,13 @@ impl RecurrenceNativeRuntime {
             });
         }
         let program_key = (selector.representative_flow_id(), destinations);
+        let program_limit = limit.saturating_mul(replay_selectors.len().max(1));
+        if self.selected_replay_programs.len() >= program_limit
+            && !self.selected_replay_programs.contains_key(&program_key)
+        {
+            self.selected_replay_programs.clear();
+        }
+        self.selected_replay_builds += 1;
         // Different public flows and physical aliases can select the same
         // representative currents. Share their dependency program instead
         // of retaining another copy for every flow/permutation.

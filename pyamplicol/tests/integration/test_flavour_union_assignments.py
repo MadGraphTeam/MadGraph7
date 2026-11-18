@@ -305,7 +305,63 @@ def test_requests_are_validated_and_restricted_programs_bounded(
         )
         assert row[0] == pytest.approx(complex(expected[0]).real, rel=1.0e-13)
     cache = template._backend._runtime._restricted_program_cache_len()  # type: ignore[attr-defined]
-    assert 0 < cache <= 64
+    assert 0 < cache <= 64 * (len(helicities) + 1)
+
+
+def test_per_point_helicities_build_each_restriction_once(
+    artifacts: dict[str, Path],
+) -> None:
+    """More (mask, helicity) restrictions than 64 stay cached across calls."""
+
+    templates = _templates(artifacts["union"])
+    template_id = max(
+        templates,
+        key=lambda key: len(Runtime.load(artifacts["union"], process=key).physics.helicities),
+    )
+    template = Runtime.load(artifacts["union"], process=template_id)
+    helicities = [helicity.id for helicity in template.physics.helicities]
+    count = len(template.flavour_union_assignments)
+    members = list(range(1, count))[:3]
+    assert len(helicities) * len(members) > 64
+    expression = str(template.flavour_union_assignments[0]["expression"])
+    points, requests, selected = [], [], []
+    for index, member in enumerate(members):
+        for offset, helicity in enumerate(helicities):
+            points.append(_point(expression, 0.01 * (offset + 40 * index)))
+            requests.append([member])
+            selected.append(helicity)
+    native = template._backend._runtime  # type: ignore[attr-defined]
+    first = template.evaluate_assignments(points, requests, helicity_by_point=selected)
+    built = native._restricted_program_builds()
+    assert built > 64
+    again = template.evaluate_assignments(points, requests, helicity_by_point=selected)
+    assert native._restricted_program_builds() == built
+    assert again == first
+
+
+def test_assignments_apply_the_binary64_kinematics_improvement(
+    artifacts: dict[str, Path],
+) -> None:
+    template_id = next(iter(_templates(artifacts["union"])))
+    template = Runtime.load(artifacts["union"], process=template_id)
+    expression = str(template.flavour_union_assignments[0]["expression"])
+    # Slightly off shell: the improvement moves the point.
+    point = tuple(
+        (e * (1.0 + 3.0e-9 * index), px, py, pz)
+        for index, (e, px, py, pz) in enumerate(_point(expression, 0.9))
+    )
+    plain = template.evaluate_assignments([point], [[0]])[0][0]
+    improved = template.evaluate_assignments(
+        [point], [[0]], kinematics_improvement_binary64=True
+    )[0][0]
+    assert improved != plain
+    assert improved == complex(
+        template.evaluate([point], kinematics_improvement_binary64=True)[0]
+    ).real
+    switched = Runtime.load(
+        artifacts["union"], process=template_id, kinematics_improvement_binary64=True
+    )
+    assert switched.evaluate_assignments([point], [[0]])[0][0] == improved
 
 
 _C_PROBE = r"""
@@ -324,6 +380,8 @@ static void fail(const char *what) {
 int main(int argc, char **argv) {
     RusticolRuntimeHandle *handle = NULL;
     if (rusticol_runtime_load(argv[1], argv[2], NULL, &handle) != 0) fail("load");
+    if (argc > 4 && rusticol_runtime_set_kinematics_improvement_binary64(handle, 1) != 0)
+        fail("binary64");
     size_t count = 0;
     if (rusticol_runtime_assignment_count(handle, &count) != 0) fail("count");
     FILE *input = fopen(argv[3], "r");
@@ -348,6 +406,11 @@ int main(int argc, char **argv) {
     if (rusticol_runtime_assignment_process_id(
             handle, count - 1, process, sizeof process, &required) != 0) fail("id");
     printf("%s\n", process);
+    int conjugated = -1;
+    for (size_t i = 0; i < count; ++i) {
+        if (rusticol_runtime_assignment_conjugated(handle, i, &conjugated) != 0) fail("conj");
+        printf("%d\n", conjugated);
+    }
     rusticol_runtime_free(handle);
     return 0;
 }
@@ -406,3 +469,26 @@ def test_c_abi_evaluates_assignments(
     expected = template.evaluate_assignments([point], [list(range(count))[::-1]])[0]
     assert values == list(expected)
     assert lines[1 + count] == members[-1]
+    assert [bool(int(v)) for v in lines[2 + count : 2 + 2 * count]] == [
+        bool(entry["conjugated"]) for entry in template.flavour_union_assignments
+    ]
+    # The binary64 kinematics improvement: Python and the C ABI agree bitwise.
+    shifted = tuple(
+        (e * (1.0 + 3.0e-9 * index), px, py, pz)
+        for index, (e, px, py, pz) in enumerate(point)
+    )
+    momenta.write_text(
+        f"{len(point)}\n" + "\n".join(" ".join(repr(v) for v in p) for p in shifted),
+        encoding="utf-8",
+    )
+    improved = subprocess.run(
+        [str(binary), str(artifacts["union"]), template_id, str(momenta), "1"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    ).stdout.split()
+    expected = template.evaluate_assignments(
+        [shifted], [list(range(count))[::-1]], kinematics_improvement_binary64=True
+    )[0]
+    assert [float.fromhex(value) for value in improved[1 : 1 + count]] == list(expected)

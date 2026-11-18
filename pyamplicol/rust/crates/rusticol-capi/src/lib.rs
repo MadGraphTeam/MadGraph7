@@ -1531,7 +1531,10 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_selected_f64(
 /// assignment ids `assignment_ids[request_offsets[p]..request_offsets[p + 1]]` (at least one;
 /// duplicates repeat a row). `mode` 0 writes one total per requested row, 1 one value per
 /// physical helicity, 2 helicity-major values per (helicity, color flow). Per-point selectors
-/// follow [`rusticol_runtime_evaluate_selected_f64`]. A single-assignment request equals
+/// follow [`rusticol_runtime_evaluate_selected_f64`]; colour indices and flow columns are the
+/// loaded runtime's (the template's execution flows), so the physical flow of a row whose
+/// assignment conjugation differs from the loaded process's is the charge conjugate (see
+/// [`rusticol_runtime_assignment_conjugated`]). A single-assignment request equals
 /// loading that member bitwise. Requires the `rusticol.flavour-union-assignments.v1`
 /// runtime capability.
 ///
@@ -1715,6 +1718,25 @@ pub unsafe extern "C" fn rusticol_runtime_assignment_pdgs(
         // SAFETY: Capacity was checked.
         unsafe { ptr::copy_nonoverlapping(pdgs.as_ptr(), output, pdgs.len()) };
         Ok(())
+    })
+}
+
+/// Writes 1 if a flavour assignment is the charge conjugate of the template, else 0.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live. `conjugated` must be writable for one `int`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_assignment_conjugated(
+    handle: *const RusticolRuntimeHandle,
+    index: size_t,
+    conjugated: *mut c_int,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let value = c_int::from(union_assignment(handle, index)?.conjugated);
+        unsafe { write_i32(value, conjugated, "assignment conjugation") }
     })
 }
 

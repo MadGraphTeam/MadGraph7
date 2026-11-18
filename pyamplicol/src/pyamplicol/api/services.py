@@ -1919,6 +1919,8 @@ class Runtime:
         helicity_by_point: Sequence[str | HelicityConfiguration] | None = None,
         color_flow_by_point: Sequence[str | ColorFlow] | None = None,
         output: Literal["total", "helicity", "helicity-flow"] = "total",
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[tuple[object, ...], ...]:
         """Evaluate flavour assignments of a union template on each point.
 
@@ -1927,7 +1929,10 @@ class Runtime:
         point ``p``. Returns per point one entry per requested id: a total,
         per-helicity values, or ``[helicity][color flow]`` values. A single
         requested member equals loading that member (bitwise); several share
-        one template evaluation per point.
+        one template evaluation per point. Helicity and flow axes are the
+        loaded runtime's; a row of an assignment conjugated relative to the
+        loaded process holds the charge-conjugate physical flow. The
+        kinematics improvement options are those of :meth:`evaluate`.
         """
 
         evaluate = getattr(self._backend, "evaluate_assignments", None)
@@ -1951,6 +1956,8 @@ class Runtime:
                     name="color_flow_by_point",
                 ),
                 output=output,
+                kinematics_improvement=kinematics_improvement,
+                kinematics_improvement_binary64=kinematics_improvement_binary64,
             ),
         )
 

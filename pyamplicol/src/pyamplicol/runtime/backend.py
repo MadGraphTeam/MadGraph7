@@ -1017,7 +1017,13 @@ class RusticolRuntimeBackend:
         helicity_by_point: Sequence[str] | None = None,
         color_flow_by_point: Sequence[str] | None = None,
         output: str = "total",
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[tuple[object, ...], ...]:
+        # The same binary64 improvement as evaluate and the C ABI.
+        momenta = self._improved(
+            momenta, 16, kinematics_improvement, kinematics_improvement_binary64
+        )
         offsets = [0]
         ids: list[int] = []
         for requested in assignments:
