@@ -1,3 +1,0 @@
-# Preserve the hash-bound input cards and validated source snapshot.
-cards/** -text -whitespace
-source.patch -text -whitespace

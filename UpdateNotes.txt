@@ -116,6 +116,26 @@ ANNOUNCEMENT:
        exclusion window works (it was silently wrong in Fortran, did not compile in C++);
        $ on a massless particle is refused. check language evaluates every backend at the
        same phase-space point, and the C++ FD vxxxxx has the FD longitudinal polarisation.
+   RF: Combine FxFx merging with MC@NLO-Delta matching (ickkw=3,
+       mcatnlo_delta=True, parton_shower=PYTHIA8). The native-history
+       no-emission probability multiplies the MC counterterms once and splits
+       the real emission between H and S events, keeping the FxFx Sudakov
+       factors and the common FxFx hard-scale boundary, so the ordinary
+       first-order compensation is preserved. Events use the ordinary FxFx
+       shower interface (scalar SCALUP and pt_clust_i, Pythia's own
+       JetMatchingMadgraph). H events with reconstructed Delta stopping scales
+       start the shower at the geometric mean of their positive directed
+       starting scales, instead of the hard Born scale; this is a scalar
+       approximation to separate directed shower limits.
+   RF: Add the optional DeltaBackwardISR (FKS_params.dat, default off) for
+       MC@NLO-Delta and FxFx-Delta: incoming quarks and gluons use Pythia's
+       backward no-emission probability, from the LO forward Sudakov x PDF
+       ratio identity plus PDF evolution outside the massless II z bound,
+       instead of the Sudakov table and PDF ratio. Its coupling comes from
+       the active Sudakov-table provider (pysudakov_isr_parameters); unknown
+       or unsupported provider metadata stops the run. Final-state legs,
+       scales below 1.01 GeV and unsupported flavours keep the table. Changing
+       it requires a new integration.
 
 0.3.0 (XX/XX/XX):
    OM: --hel_recycling (standalone/mg7, CPU/SIMD builds, on by default): the recycled matrix
