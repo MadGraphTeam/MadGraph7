@@ -26,6 +26,7 @@ from pyamplicol.loops.v2.stability import (
     RESCUE_ROTATION,
     Rotation,
     StabilityChecks,
+    relative_text,
 )
 from pyamplicol.loops.v2.stability import default_rotation as _default_rotation
 from pyamplicol.models.base import CouplingOrders
@@ -448,9 +449,12 @@ def best_effort_detail(record: VirtualBestEffort) -> str:
     if record.uncertainty is None:
         tail = "no uncertainty could be estimated"
     else:
-        tail = f"relative uncertainty {record.uncertainty:.2e} ({where[record.source]})"
+        tail = (
+            f"relative uncertainty {relative_text(record.uncertainty)} "
+            f"({where[record.source]})"
+        )
     if record.backend_deviation is not None:
-        tail += f"; backend deviation {record.backend_deviation:.2e}"
+        tail += f"; backend deviation {relative_text(record.backend_deviation)}"
     if record.gram_conditioning is not None:
         tail += f"; Gram conditioning {record.gram_conditioning:.2e}"
     return f"{head}; {tail}; refusal in failures / --json"

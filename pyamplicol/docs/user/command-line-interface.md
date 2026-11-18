@@ -665,7 +665,11 @@ dim summary line (`N captured warning(s) (...); see --json /
 result.warnings`), and `--json` carries `statuses` and `warnings` (per kind:
 source, kind, first message, count, where, point indices; each lane's
 `reduction.best_effort` record holds `refusal`, `uncertainty`, `source`,
-`backend_deviation` and `gram_conditioning`). `--on-failure return` preserves successful
+`backend_deviation` and `gram_conditioning`). Wherever a relative
+uncertainty or stability estimate above 1 is shown to a human (the
+evaluation's stability table, lane details, failure and cause lines) it reads
+`>1`; `--json`, the samples file and the returned records keep the number.
+`--on-failure return` preserves successful
 points and returns an unavailable whole-point row for each numerical failure
 (no best-effort evaluation): `null` in JSON, with its failure diagnostics.
 `--on-failure raise` (the default before 1.0.3) stops at the first such

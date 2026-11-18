@@ -728,7 +728,9 @@ lane.best_effort.source       # "stability-and-recommended-checks" | "stability-
 `lane.best_effort`) holds `refusal` (one message per distinct reason class,
 with the count of the others), `uncertainty` (the relative estimate of the
 value, the `"relative"` metric: each squared-order sector against its own
-magnitude), its `source`, `backend_deviation` and `gram_conditioning`. The uncertainty always
+magnitude), its `source`, `backend_deviation` and `gram_conditioning`
+(the record keeps the numbers; a lane detail shows a relative uncertainty or
+estimate above 1 as `>1`). The uncertainty always
 includes the recommended checks (a rotation and the rescaled
 reduction-direction check, `VirtualStabilityChecks(1, True, rescaled=True)`),
 run on the refused points only, whatever checks the call asked for:

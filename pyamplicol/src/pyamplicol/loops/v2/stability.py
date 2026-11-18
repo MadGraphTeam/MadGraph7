@@ -498,6 +498,15 @@ DEFAULT_RESCUE: tuple[tuple[str, int | None], ...] = (
 )
 
 
+def relative_text(value: float, spec: str = ".2e") -> str:
+    """A relative uncertainty or stability estimate as shown to a human: the
+    number formatted by ``spec``, or ``">1"`` above 1, where its size says no
+    more than that no digit is known (USER 2026-11-18: a display rule only;
+    returned values, JSON and samples keep the number)."""
+
+    return ">1" if value > 1 else format(value, spec)
+
+
 def relative(reference: Mapping[Any, Any], absolute: Mapping[Any, Any]) -> float:
     """Largest absolute deviation relative to the size of its Laurent vector.
 
@@ -968,4 +977,5 @@ __all__ = [
     "native_estimate",
     "per_coefficient",
     "relative",
+    "relative_text",
 ]

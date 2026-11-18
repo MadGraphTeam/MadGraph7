@@ -59,6 +59,7 @@ from pyamplicol.api.virtual_results import (
     VirtualRescueRecord,
     splits_poles,
 )
+from pyamplicol.loops.v2.stability import relative_text
 
 # One level's evaluation of the points at the given batch indices (in that
 # order), failures returned as failed lanes (``on_failure="return"``).
@@ -237,7 +238,7 @@ def _detail(record: VirtualRescueRecord, metric: str) -> str:
         if record.met
         else f"target {record.target:.1e} not met at the final level"
     )
-    return f"{level}: estimated {metric} accuracy {value:.2e}, {verdict}"
+    return f"{level}: estimated {metric} accuracy {relative_text(value)}, {verdict}"
 
 
 def _merged(

@@ -564,7 +564,8 @@ def _virtual(value: Any) -> list[Block]:
                     (
                         None,
                         "Relative error estimates from the requested checks: "
-                        "green within the target, red above.",
+                        "green within the target, red above; an estimate "
+                        "above 1 shows as >1 (--json keeps the number).",
                     ),
                     ("checks", "each check and its own estimate"),
                 ],
