@@ -201,6 +201,7 @@ def test_a_rescued_point_estimate_includes_the_reduction_direction_check(
         names = {name for name, _budget in estimate.checks}
         if p in served:
             assert "reduction-rescaled" in names, names
+            assert checked.diagnostics[p].lane_rescue is not None
         else:
             assert "reduction-rescaled" not in names, names
     assert checked.values == plain.values

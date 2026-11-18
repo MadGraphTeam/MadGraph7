@@ -838,9 +838,10 @@ def _rescued_estimates(
     """Give every served point with rescued lanes the estimate of the
     call's checks with the rescaled reduction-direction check
     (``rescued_checks``), in place: those points alone evaluated again, from
-    their exact inputs, with those checks (their values are bitwise the
-    same: the checks re-reduce, they change no direct lane). A point the
-    second run fails keeps its first result. Nothing runs for a call without
+    their exact inputs, with those checks, each keeping its first result
+    (value and records) with the second run's estimate (the checks
+    re-reduce, they change no direct lane). A point the second run fails
+    keeps its first result. Nothing runs for a call without
     checks, with a reduction check, or without rescued lanes."""
 
     extended = rescued_checks(checks)
@@ -857,9 +858,11 @@ def _rescued_estimates(
         return
     again, failed = run(indices, extended)
     for local, index in enumerate(indices):
-        if local in failed or again[local] is None:
+        estimate = getattr(again[local], "stability", None)
+        if local in failed or estimate is None:
             continue
-        results[index] = again[local]
+        # The first result (its value and records) with the extended estimate.
+        results[index] = replace(results[index], stability=estimate)
 
 
 def backend_deviation(reasons: Collection[str]) -> float | None:
