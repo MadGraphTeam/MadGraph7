@@ -833,7 +833,13 @@ took):
 Loading, process start-up, warm-up calls and the reference pass's minimum
 are outside the default budgets by nature; they are visible phases with
 their own estimates. The reference pass is part of the budget of the phase
-it serves. On an expensive process the binary64 warm-up is one point (when
+it serves. Where the runtime offers a warm entry (it builds what a
+carrier's first evaluation builds, without evaluating a point) and a point
+costs more than 5 s (a first call's lazy set-up, the measurement's bound),
+the binary64 timing and the reference pass warm through it instead of their
+untimed warm-up point; the timed calls are the same warm passes, and the
+`runtime setup` row says "after a warm entry". On an expensive process the
+binary64 warm-up is one point (when
 a full call would cost more than 2 s; else one full call), and a stability
 task holds about 4 s of work: a point that costs more is a task of its own,
 so a few expensive points spread over the workers instead of running one
