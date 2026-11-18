@@ -159,7 +159,7 @@ ALL_DOTF := $(wildcard */polynomial.f */loop_matrix.f */improve_ps.f */born_matr
 ALL_DOTO := $(patsubst %.f,%.o,$(ALL_DOTF))
 
 ifeq ($(UNAME), Darwin)
-  LIBALLME_DYNFLAG = -install_name @rpath/liball$(ROOTNAME)_$(MENUM)me.dylib -undefined dynamic_lookup
+  LIBALLME_DYNFLAG = -install_name @rpath/$(notdir $@) -undefined dynamic_lookup
   WHOLE_ARCH=-Wl,-force_load,
   NOWHOLE_ARCH=
   STAT_LIB = $(WHOLE_ARCH)$(LIBDIR)libcts.$(libext) $(WHOLE_ARCH)$(LIBDIR)libiregi.$(libext)
@@ -181,8 +181,13 @@ endif
 # to give it (and ROOTNAME) a new value: a module cannot be imported twice.
 F2PYMOD= all_matrix$(MENUM)py
 
-liball$(ROOTNAME)_$(MENUM)me.$(dylibext): all_matrix.o libMadLoop.$(dylibext) $(WRAPPER_OBJS) $(LIBS)  $(OLP) 
-	$(CXX) $(DYNLIBFLAG)  $(LIBALLME_DYNFLAG)  $(STDLIB_FLAG)  -o liball$(ROOTNAME)_$(MENUM)me.$(dylibext) all_matrix.o */f2py_wrapper.o ../Source/DHELAS/*.o ../Source/MODEL/*.o $(STAT_LIB) $(RPATH_LIBS) $(LINK_LOOP_LIBS) $(ALL_DOTO) $(STDLIB) $(LINK_LOOP_LIBS) 
+# f2py links the shared libraries below with -l, and its meson backend names a
+# variable after that name: a '-' (output of a restricted model,
+# PROC_sm-no_b_mass_0) becomes '_'.
+LIBALLME = all$(subst -,_,$(ROOTNAME))_$(MENUM)me
+
+lib$(LIBALLME).$(dylibext): all_matrix.o libMadLoop.$(dylibext) $(WRAPPER_OBJS) $(LIBS)  $(OLP)
+	$(CXX) $(DYNLIBFLAG)  $(LIBALLME_DYNFLAG)  $(STDLIB_FLAG)  -o $@ all_matrix.o */f2py_wrapper.o ../Source/DHELAS/*.o ../Source/MODEL/*.o $(STAT_LIB) $(RPATH_LIBS) $(LINK_LOOP_LIBS) $(ALL_DOTO) $(STDLIB) $(LINK_LOOP_LIBS)
 
 
 
@@ -191,53 +196,51 @@ libcollier.$(dylibext):
 
 
 
-shared: liball$(ROOTNAME)_$(MENUM)me.$(dylibext)
+shared: lib$(LIBALLME).$(dylibext)
 
 
 
 
-# f2py's meson backend (numpy >= 1.26, and the only one on Python >= 3.12):
-# - names a meson variable after each -l library, which stdc++ and c++ are not
-#   valid names for. The C++ runtime therefore goes through LDFLAGS. The
-#   distutils backend puts LDFLAGS before the objects, where a linker running
-#   with --as-needed (Ubuntu's default) drops it although a static C++ reducer
-#   (Ninja) needs it: on Linux --no-as-needed keeps it.
-# - links .a files given as sources before its objects, where they resolve
-#   nothing: MadLoop is linked with -lMadLoop instead.
-# - compiles copies of the sources in a temporary directory, where their
-#   INCLUDE files are found only through -I, and where sources with the same
-#   file name overwrite each other. allmatrix therefore compiles all_matrix.f
-#   and the P*/f2py_wrapper.f in place, and builds the module from their
-#   signatures and objects (by absolute path: meson looks for relative ones in
-#   its build directory).
-# - takes the Fortran compiler from FC and ignores --f77exec.
-# libMadLoop.a leaves out cite(), which madevent takes from libgeneric: the
-# modules link mg5_citation.o, like the check executable.
-ifeq ($(UNAME), Darwin)
-  F2PY_STDLIB = $(STDLIB)
-else
-  F2PY_STDLIB = -Wl,--no-as-needed $(STDLIB)
-endif
-F2PY_LOOP_LDFLAGS = FC="$(FC)" LDFLAGS="$$LDFLAGS $(F2PY_STDLIB)"
-F2PY_CITATION = $(patsubst %.f,%.o,$(wildcard mg5_citation.f))
+# The three f2py modules are built the same way. A shared library, linked by
+# the C++ compiler, carries the Fortran objects (cite() included, through
+# mg5_citation.o), the reduction libraries and the C++ runtime. f2py then only
+# compiles the wrapper and links that library through LDFLAGS and -l, so no
+# -lc++ or -lstdc++ reaches f2py's command line: its meson backend (the only
+# one on Python >= 3.12) names a variable after each -l library, and c++ or
+# stdc++ is not a valid name for one. meson also ignores --f77exec and takes
+# the Fortran compiler from FC.
+# matrix and allmatrix wrap routines already compiled into their library: f2py
+# builds them from a signature file (f2py -h), so no Fortran source is copied
+# to meson's build directory, where INCLUDE files are not found and the
+# P*/f2py_wrapper.f of different subprocesses would overwrite each other.
+F2PY_ENV = FC="$(FC)" LDFLAGS="-Wl,-rpath,$(HERE) -L$(HERE) $(RPATH_LIBS) $(LINK_LOOP_LIBS) $(LD_F2PY)"
 
-matrix$(MENUM)py.so: ../$(OLP)_static f2py_wrapper.f $(F2PY_CITATION)
+# library of matrix$(MENUM)py, named after the output and subprocess
+# directories, like liball after the output one: f2py modules of several
+# subprocesses can be loaded in one process.
+MATRIXME = me$(subst -,_,$(ROOTNAME))_$(notdir $(abspath .))_$(MENUM)
+
+lib$(MATRIXME).$(dylibext): f2py_wrapper.o $(PROCESS) $(LIBS) makefile
+	$(CXX) $(DYNLIBFLAG) $(LIBALLME_DYNFLAG) $(STDLIB_FLAG) -o $@ f2py_wrapper.o $(PROCESS) $(ROOT)/Source/DHELAS/*.o $(ROOT)/Source/MODEL/*.o $(STAT_LIB) $(RPATH_LIBS) $(LINK_LOOP_LIBS) $(STDLIB)
+
+matrix$(MENUM)py.so: lib$(MATRIXME).$(dylibext) f2py_wrapper.f makefile
+	$(F2PY) -m matrix$(MENUM)py -h matrix$(MENUM)py.pyf --overwrite-signature f2py_wrapper.f
+	$(F2PY_ENV) $(F2PY) -c matrix$(MENUM)py.pyf -L$(HERE) -l$(MATRIXME)
 	touch __init__.py
-	$(F2PY_LOOP_LDFLAGS) $(F2PY) -m matrix$(MENUM)py -c f2py_wrapper.f $(F2PY_CITATION) --f77exec=$(FC) -I$(HERE) $(LINK_MADLOOP_LIB) -L../../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS)
 
 ALLMATRIX_WRAPPERS = $(wildcard $(LOOP_PREFIX)*/f2py_wrapper.f)
 
-allmatrix$(MENUM)py.so: $(OLP)_static all_matrix.o $(ALLMATRIX_WRAPPERS:.f=.o) $(LIBS) $(F2PY_CITATION)
-	touch __init__.py
+allmatrix$(MENUM)py.so: lib$(LIBALLME).$(dylibext) all_matrix.f $(ALLMATRIX_WRAPPERS) makefile
 	$(F2PY) -m allmatrix$(MENUM)py -h allmatrix$(MENUM)py.pyf --overwrite-signature all_matrix.f $(ALLMATRIX_WRAPPERS)
-	$(F2PY_LOOP_LDFLAGS) $(F2PY) -c allmatrix$(MENUM)py.pyf $(addprefix $(HERE),all_matrix.o $(ALLMATRIX_WRAPPERS:.f=.o) $(F2PY_CITATION)) --f77exec=$(FC) $(LINK_MADLOOP_LIB) -L../lib/ -ldhelas -lmodel $(LINK_LOOP_LIBS)
+	$(F2PY_ENV) $(F2PY) -c allmatrix$(MENUM)py.pyf -L$(HERE) -l$(LIBALLME)
+	touch __init__.py
 
 
-all_matrix$(MENUM)py.so:  liball$(ROOTNAME)_$(MENUM)me.$(dylibext) f2py_wrapper.f makefile
-	LDFLAGS="-Wl,-rpath,$(HERE) -L$(HERE) $(RPATH_LIBS)  $(LINK_LOOP_LIBS) $(LD_F2PY)" $(F2PY)  -c f2py_wrapper.f -L$(HERE) -lall$(ROOTNAME)_$(MENUM)me -m $(F2PYMOD)
+all_matrix$(MENUM)py.so:  lib$(LIBALLME).$(dylibext) f2py_wrapper.f makefile
+	$(F2PY_ENV) $(F2PY)  -c f2py_wrapper.f -L$(HERE) -l$(LIBALLME) -m $(F2PYMOD)
 	touch all_matrix$(MENUM)py.so
 	touch __init__.py
 
 
 clean:
-	@rm -f *.o *.so *.$(libext) *.$(dylibext)
+	@rm -f *.o *.so *.$(libext) *.$(dylibext) *.pyf
