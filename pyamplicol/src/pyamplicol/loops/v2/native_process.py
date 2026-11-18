@@ -518,6 +518,7 @@ class NativeProcess:
         native: Any,
         *,
         externals: Collection[str] | None = None,
+        programs: tuple[Any, Any] | None = None,
         **options: Any,
     ) -> Any:
         """The native executor of the process (``plan_export.NativeExecutor``
@@ -525,7 +526,10 @@ class NativeProcess:
         loop native module, ``externals`` the external parameters of the
         process's model (the caller's parameters are checked against them,
         ``_ProcessView._point_parameters``; the public runtime passes its
-        artifact model's; by default the record's ``externals``), ``options``
+        artifact model's; by default the record's ``externals``),
+        ``programs`` the plan's and the companion's programs as the
+        artifact's admission loaded them (``artifact.admit_programs``; the
+        executors share them instead of loading the plans again), ``options``
         the executor's (lanes, threads, forms)."""
 
         from .plan_export import NativeExecutor
@@ -552,6 +556,7 @@ class NativeProcess:
                 twin.plan,
             )
             view.scaleless = _ProcessView(record, native, externals)
+        program, scaleless_program = programs or (None, None)
         return NativeExecutor(
             view,
             forward=False,
@@ -559,6 +564,8 @@ class NativeProcess:
             plan_json=self.plan,
             inputs="native",
             scaleless=companion,
+            program=program,
+            scaleless_program=scaleless_program if companion is not None else None,
             **options,
         )
 

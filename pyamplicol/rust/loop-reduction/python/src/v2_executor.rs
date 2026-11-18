@@ -1444,7 +1444,9 @@ fn stored_tree_program_section<'py>(
 #[pymethods]
 impl V2Executor {
     /// `plan` is the plan v4: its binary member (bytes, M-FINAL MF-8G-1 item
-    /// 5), its JSON (text) or a stored member of either (`program_bytes`).
+    /// 5), its JSON (text), a stored member of either (`program_bytes`) or
+    /// the program an artifact's admission loaded (`V2AdmittedPlan`, with
+    /// `forms="rule"` and no `overlay`: shared, not loaded again).
     /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON, its
     /// binary container or a stored member (`program_bytes`),
     /// the saved exact evaluator of each kernel and of the parameter program
@@ -1497,7 +1499,17 @@ impl V2Executor {
         // (`program_bytes`); `load_with` reads either form. With `overlay`
         // (a column set's seed records, `native_observables.with_overlay`)
         // the plan with them, without forming the merged plan JSON.
-        let plan = {
+        // An admitted plan (`V2AdmittedPlan`) is the program itself, loaded
+        // with the default kernel forms and no overlay.
+        let plan = if let Ok(admitted) = plan.cast::<V2AdmittedPlan>() {
+            if policy != FormPolicy::Rule || overlay.is_some() {
+                return Err(error(
+                    "an admitted plan is loaded with the rule kernel forms and no \
+                     overlay; pass the stored plan for other forms or an overlay",
+                ));
+            }
+            admitted.get().program.clone()
+        } else {
             let data = program_bytes(&plan)?;
             Arc::new(
                 match &overlay {
@@ -2256,11 +2268,78 @@ impl V2Executor {
 #[pyo3(signature = (path, process=None))]
 fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
     let _unlock = pyamplicol::unlock();
-    use rusticol_core::loop_artifact::{loop_v2_capability, open_loop_v2_artifact};
-
     let loaded = py
-        .detach(|| open_loop_v2_artifact(path, process))
+        .detach(|| rusticol_core::loop_artifact::open_loop_v2_artifact(path, process))
         .map_err(error)?;
+    describe_admitted(&loaded)
+}
+
+/// A plan v4 program the native loader admitted and validated
+/// ([`admit_v2_artifact_program`]): the loaded program, with its derived
+/// tables (kernel forms by the default rule), that an executor takes as its
+/// `plan` instead of loading the plan member again (`V2Executor(plan=...)`).
+/// Immutable; executors built from it share it.
+#[pyclass(frozen)]
+struct V2AdmittedPlan {
+    program: Arc<LoopProgramV4>,
+    /// The stored plan's SHA-256 (the admission checked it).
+    sha256: String,
+}
+
+#[pymethods]
+impl V2AdmittedPlan {
+    /// The SHA-256 of the stored plan member this program was loaded from.
+    #[getter]
+    fn sha256(&self) -> &str {
+        &self.sha256
+    }
+
+    /// The plan's families.
+    #[getter]
+    fn families(&self) -> usize {
+        self.program.families.len()
+    }
+}
+
+/// [`admit_v2_artifact`], also returning the admitted programs (the plan's
+/// and its certified-scaleless companion's, or None) as [`V2AdmittedPlan`]s:
+/// the artifact runtime hands them to its executors, so a loaded process's
+/// plan is read and derived once (`loops/v2/artifact.py`).
+#[pyfunction]
+#[pyo3(signature = (path, process=None))]
+fn admit_v2_artifact_program(
+    py: Python<'_>,
+    path: &str,
+    process: Option<&str>,
+) -> PyResult<(String, V2AdmittedPlan, Option<V2AdmittedPlan>)> {
+    let _unlock = pyamplicol::unlock();
+    let loaded = py
+        .detach(|| rusticol_core::loop_artifact::open_loop_v2_artifact(path, process))
+        .map_err(error)?;
+    let described = describe_admitted(&loaded)?;
+    let scaleless = match (&loaded.scaleless_program, &loaded.scaleless_plan_sha256) {
+        (Some(program), Some(sha256)) => Some(V2AdmittedPlan {
+            program: program.clone(),
+            sha256: sha256.clone(),
+        }),
+        _ => None,
+    };
+    Ok((
+        described,
+        V2AdmittedPlan {
+            program: loaded.program.clone(),
+            sha256: loaded.plan_sha256.clone(),
+        },
+        scaleless,
+    ))
+}
+
+/// The JSON description of an admitted process ([`admit_v2_artifact`]).
+fn describe_admitted(
+    loaded: &rusticol_core::loop_artifact::LoadedLoopV2Artifact,
+) -> PyResult<String> {
+    use rusticol_core::loop_artifact::loop_v2_capability;
+
     // The admitted process's own runtime (v4 Born-interfered, v5
     // loop-induced): the loader checked it against its contribution.
     let runtime_capability = loop_v2_capability(&loaded.metadata.contribution_kind)
@@ -2721,6 +2800,8 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     module.add_function(wrap_pyfunction!(native_library_key_active, module)?)?;
     module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(admit_v2_artifact_program, module)?)?;
+    module.add_class::<V2AdmittedPlan>()?;
     module.add_function(wrap_pyfunction!(stored_tree_program_section, module)?)?;
     module.add_function(wrap_pyfunction!(evaluate_v2_artifact, module)?)
 }

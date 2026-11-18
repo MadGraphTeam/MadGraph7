@@ -2146,6 +2146,8 @@ class NativeExecutor:
         contraction: Literal["auto", "direct", "fft"] | None = None,
         catani: bool = False,
         route: Literal["R1", "R2"] | None = None,
+        program: Any = None,
+        scaleless_program: Any = None,
     ):
         if inputs not in ("python", "native"):
             raise ValueError(f"unknown input path {inputs!r}")
@@ -2195,6 +2197,14 @@ class NativeExecutor:
         # process's compressed stored member of either (``StoredMember``,
         # inflated by the native executor itself: M-FINAL MF-8G-2 item 2).
         self._plan_json = self.exported.stored() if plan_json is None else plan_json
+        # ``program``: the native program of ``plan_json`` as an artifact's
+        # admission loaded it (``V2AdmittedPlan``, the rule kernel forms):
+        # the first native executor takes it instead of loading the plan
+        # again; ``scaleless_program`` the companion's, for its executor.
+        if program is not None and plan_json is None:
+            raise ValueError("an admitted program needs its stored plan")
+        self._program = program
+        self._scaleless_program = scaleless_program
         self._native: dict[tuple[str, int | None, int], Any] = {}
         self._scaleless: list[NativeExecutor | None] = []
         # (exported plan, its JSON) of the companion when the caller holds it
@@ -2268,8 +2278,13 @@ class NativeExecutor:
                     )
                     return found
             trees = self.exported.trees.executor_argument() if native_trees else None
+            plan = (
+                self._program
+                if self._program is not None and self.forms == "rule"
+                else executor_program(self._plan_json)
+            )
             found = self._native[key] = self.slice.native.V2Executor(
-                executor_program(self._plan_json),
+                plan,
                 arithmetic,
                 digits,
                 lanes=lanes,
@@ -2320,6 +2335,7 @@ class NativeExecutor:
                     # The companion's families carry pole residues only: its
                     # seeds take the FFT where certified, never required.
                     contraction="direct" if self.contraction == "direct" else "auto",
+                    program=None if plan_json is None else self._scaleless_program,
                 )
             self._scaleless.append(built)
         return self._scaleless[0]

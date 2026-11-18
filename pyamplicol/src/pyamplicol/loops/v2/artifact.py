@@ -1348,6 +1348,24 @@ def admit(native: Any, root: Path, process_id: str) -> dict[str, Any]:
         raise ArtifactError(f"plan v4 admission failed: {error}") from error
 
 
+def admit_programs(
+    native: Any, root: Path, process_id: str
+) -> tuple[dict[str, Any], Any, Any]:
+    """``admit``, also returning the programs the admission loaded (the
+    plan's and its certified-scaleless companion's, or None): native
+    ``V2AdmittedPlan``s the runtime's executors take instead of loading the
+    plan members again (``NativeProcess.executor(programs=...)``), so a
+    loaded process reads and derives its plan once."""
+
+    try:
+        described, plan, scaleless = native.admit_v2_artifact_program(
+            str(root), process_id
+        )
+    except ValueError as error:
+        raise ArtifactError(f"plan v4 admission failed: {error}") from error
+    return cast(dict[str, Any], json.loads(described)), plan, scaleless
+
+
 def _select(manifest: Any, process: str | None) -> tuple[Mapping[str, Any], Any]:
     """The selected stored process record and, for a process it serves
     through a leg mapping (``mapping``: a permutation alias or a process-group
@@ -1664,7 +1682,10 @@ class V2VirtualRuntime:
         selected, group_member = _select(manifest, process)
         process_id = str(selected["id"])
         native = load_loop_native()
-        admission = admit(native, root, process_id)
+        # The admitted programs are kept: the executors take them instead of
+        # loading the plan members again (one load per process).
+        admission, *programs = admit_programs(native, root, process_id)
+        self._programs = tuple(programs)
         execution = _json_payload(manifest, f"processes/{process_id}/execution.json")
         physics = _json_payload(manifest, str(selected["physics_path"]))
         model_payload = _json_payload(manifest, "model/compiled-model.json")
@@ -1752,7 +1773,7 @@ class V2VirtualRuntime:
         self._prepared_fixed = frozenset(record.get("preparation_fixed_parameters", ()))
         self._scale_parameter = record["scale_parameter"]
         self._executor = self._native_process.executor(
-            native, externals=self._externals
+            native, externals=self._externals, programs=self._programs
         )
         self._parameters = self._checked_parameters(model_parameters)
         self._load_seconds = time.perf_counter() - started
@@ -3108,7 +3129,7 @@ class V2VirtualRuntime:
         """Drop the native executors (and their master caches)."""
         with self._lock:
             self._executor = self._native_process.executor(
-                self._native, externals=self._externals
+                self._native, externals=self._externals, programs=self._programs
             )
             if self._observables is not None:
                 self._observables.clear()
