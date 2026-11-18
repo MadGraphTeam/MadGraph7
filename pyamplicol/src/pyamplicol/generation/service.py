@@ -10,8 +10,7 @@ import logging
 import math
 import os
 import time
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 from fractions import Fraction
@@ -163,6 +162,7 @@ from .on_the_fly_seed import (
 )
 from .physics_metadata import build_resolved_physics_from_dag, public_color_accuracy
 from .process_grouping import (
+    FlavourUnion,
     GroupingBasis,
     GroupingParticle,
     GroupingProcess,
@@ -170,6 +170,7 @@ from .process_grouping import (
     LegMapping,
     flavor_blind_classes,
     flavor_blind_mapping,
+    flavour_unions,
     particle_table,
     profile_mappings,
 )
@@ -2692,6 +2693,8 @@ class _ExpandedProcess:
     source_request: ProcessRequest | None = None
     # Flavour-blind members represented by this process, never generated.
     group_members: tuple[GroupMember, ...] = ()
+    # Pattern-resolved flavour-union template: members select pairing patterns.
+    flavour_union_template: bool = False
 
 
 class _NoModelSupportedAmplitudes(GenerationError):
@@ -3339,29 +3342,6 @@ def _initial_process_groups(
         ),
         members,
     )
-
-
-_FLAVOUR_UNION_TEMPLATE_DEPTH = 0
-_FLAVOUR_UNION_TEMPLATE_LOCK = Lock()
-
-
-@contextmanager
-def flavour_union_template_generation() -> Iterator[None]:
-    """Generate LC recurrence processes as pattern-resolved flavour-union templates.
-
-    Internal hook until ``ProcessConfig.flavor_unions`` drives template generation:
-    every LC topology-replay process generated inside the context keeps one
-    amplitude per fermion pairing rule (see ``project_recurrence_process_v1``).
-    """
-
-    global _FLAVOUR_UNION_TEMPLATE_DEPTH
-    with _FLAVOUR_UNION_TEMPLATE_LOCK:
-        _FLAVOUR_UNION_TEMPLATE_DEPTH += 1
-    try:
-        yield
-    finally:
-        with _FLAVOUR_UNION_TEMPLATE_LOCK:
-            _FLAVOUR_UNION_TEMPLATE_DEPTH -= 1
 
 
 class GenerationBackend:
@@ -4647,6 +4627,8 @@ class GenerationBackend:
                 relation_warning=self._flavor_blind_relation_warning(resolved, table),
                 strict=self._flavor_blind_strict,
             )
+            if self._flavor_unions:
+                result = self._flavour_union_entries(result, resolved, table)
         return tuple(result)
 
     def _grouping_particle_table(
@@ -4661,12 +4643,12 @@ class GenerationBackend:
             {parameter.name: parameter for parameter in model.parameters},
         )
 
-    def _flavor_blind_relation_warning(
+    def _grouping_symmetry(
         self,
         resolved: _ResolvedModel,
-        table: Mapping[int, GroupingParticle],
-    ) -> _RelationWarning:
-        """Check relations against the vertices each representative is built from."""
+    ) -> tuple[Any, Callable[[str, CanonicalProcessIR], Mapping[str, int]]]:
+        """Vertex symmetry table and the coupling-order limits of a process,
+        as generation applies them (cached per process ID)."""
 
         from .process_grouping_symmetry import VertexSymmetryTable
 
@@ -4680,16 +4662,11 @@ class GenerationBackend:
         explicit = self._coupling_order_limits
         run = self._run_config
         minimal = run is not None and run.process.coupling_order_policy == "minimal"
-        limits_by_representative: dict[str, Mapping[str, int]] = {}
+        limits_by_process: dict[str, Mapping[str, int]] = {}
 
-        def warning(
-            member: GroupingProcess,
-            representative: GroupingProcess,
-            mapping: LegMapping,
-            representative_ir: CanonicalProcessIR,
-        ) -> str | None:
+        def limits_for(process_id: str, ir: CanonicalProcessIR) -> Mapping[str, int]:
             nonlocal model
-            limits = limits_by_representative.get(representative.process_id)
+            limits = limits_by_process.get(process_id)
             if limits is None:
                 limits = explicit
                 if minimal:
@@ -4699,18 +4676,113 @@ class GenerationBackend:
                         model = CompiledUFOModel(cast(_CompiledModelPayload, compiled))
                     limits = (
                         infer_minimal_coupling_order_limits(
-                            representative_ir,
+                            ir,
                             model=model,
                             max_coupling_orders=explicit or None,
                         )
                         or explicit
                     )
-                limits_by_representative[representative.process_id] = limits
+                limits_by_process[process_id] = limits
+            return limits
+
+        return symmetry, limits_for
+
+    def _flavor_blind_relation_warning(
+        self,
+        resolved: _ResolvedModel,
+        table: Mapping[int, GroupingParticle],
+    ) -> _RelationWarning:
+        """Check relations against the vertices each representative is built from."""
+
+        symmetry, limits_for = self._grouping_symmetry(resolved)
+
+        def warning(
+            member: GroupingProcess,
+            representative: GroupingProcess,
+            mapping: LegMapping,
+            representative_ir: CanonicalProcessIR,
+        ) -> str | None:
+            limits = limits_for(representative.process_id, representative_ir)
             return symmetry.relation_warning(
                 member, representative, mapping, table, limits=limits
             )
 
         return warning
+
+    def _flavour_union_entries(
+        self,
+        entries: list[_ExpandedProcess],
+        resolved: _ResolvedModel,
+        table: Mapping[int, GroupingParticle],
+    ) -> list[_ExpandedProcess]:
+        """Merge flavour classes that differ only in union-quark flavours into
+        pattern-resolved templates whose members select pairing patterns."""
+
+        from .recurrence_fermion_pairing import (
+            build_recurrence_fermion_pairing_catalog_v1,
+        )
+
+        model = resolved.model
+        if model is None:
+            raise GenerationError("flavour unions require a resolved generation model")
+        catalog = self._recurrence_model_inputs(resolved).catalog
+        symmetry, limits_for = self._grouping_symmetry(resolved)
+        by_name = {entry.request.name: entry for entry in entries}
+        irs: dict[str, CanonicalProcessIR] = {}
+
+        def template_ir(template: GroupingProcess) -> CanonicalProcessIR:
+            ir = irs.get(template.process_id)
+            if ir is None:
+                entry = by_name.get(template.process_id)
+                if entry is not None and _grouping_process(entry).pdgs == template.pdgs:
+                    ir = entry.process_ir
+                else:
+                    expanded = self._expand_request(
+                        ProcessRequest.parse(
+                            template.expression, name=template.process_id
+                        ),
+                        resolved,
+                    )
+                    if len(expanded) != 1 or tuple(
+                        leg.pdg for leg in expanded[0].legs
+                    ) != tuple(template.pdgs):
+                        raise GenerationError(
+                            f"flavour-union template {template.expression!r} does "
+                            "not expand to its own legs"
+                        )
+                    ir = expanded[0]
+                irs[template.process_id] = ir
+            return ir
+
+        def pairing_rules(template: GroupingProcess) -> Sequence[Any]:
+            return build_recurrence_fermion_pairing_catalog_v1(
+                template_ir(template),
+                catalog.current_states,
+                quantum_flows=catalog.quantum_flows,
+            ).rules
+
+        def union_warning(
+            template: GroupingProcess, flavours: frozenset[int], conjugated: bool
+        ) -> str | None:
+            limits = limits_for(template.process_id, template_ir(template))
+            return symmetry.flavour_union_warning(
+                template, flavours, table, limits=limits, conjugated=conjugated
+            )
+
+        # Alias-carrying entries keep their own artifact entry and members.
+        candidates = [entry for entry in entries if not entry.aliases]
+        unions = flavour_unions(
+            [_grouping_process(entry) for entry in candidates]
+            + [
+                member.process for entry in candidates for member in entry.group_members
+            ],
+            table,
+            pairing_rules=pairing_rules,
+            normalization=model.external_state_normalization,
+            union_warning=union_warning,
+            consider_charge_conjugation=self._consider_charge_conjugation,
+        )
+        return _apply_flavour_unions(entries, unions, template_ir)
 
     def _compile_for_generation(
         self,
@@ -5600,7 +5672,7 @@ class GenerationBackend:
                     and self._run_config.color.contraction.value
                     in {"auto", "symmetric-group-fft"}
                 ),
-                pattern_resolved=_FLAVOUR_UNION_TEMPLATE_DEPTH > 0,
+                pattern_resolved=expanded.flavour_union_template,
             )
             if selection.selected_color_sector_ids is not None:
                 selected_public_flow_ids = tuple(
@@ -7775,6 +7847,11 @@ class GenerationBackend:
         )
 
     @property
+    def _flavor_unions(self) -> bool:
+        run = self._run_config
+        return run is not None and run.process.flavor_unions
+
+    @property
     def _flavor_blind_strict(self) -> bool:
         run = self._run_config
         return run is not None and run.process.flavor_blind_strict
@@ -9067,6 +9144,78 @@ def _collapse_flavor_blind_classes(
     ]
 
 
+def _apply_flavour_unions(
+    entries: Sequence[_ExpandedProcess],
+    unions: Sequence[FlavourUnion],
+    template_ir: Callable[[GroupingProcess], CanonicalProcessIR],
+) -> list[_ExpandedProcess]:
+    """Replace the entries a union absorbs by its pattern-resolved template.
+
+    A union is skipped when an entry's own ID and member IDs straddle its
+    boundary or it would absorb an alias-carrying entry.
+    """
+
+    union_of: dict[str, int] = {}
+    for index, union in enumerate(unions):
+        for member in union.group():
+            union_of[member.process_id] = index
+    rejected: set[int] = set()
+    for entry in entries:
+        ids = [entry.request.name, *(m.process_id for m in entry.group_members)]
+        touched = {union_of.get(process_id) for process_id in ids}
+        if len(touched) > 1 or (entry.aliases and touched != {None}):
+            rejected.update(index for index in touched if index is not None)
+    accepted = {
+        index: union for index, union in enumerate(unions) if index not in rejected
+    }
+    by_name = {entry.request.name: entry for entry in entries}
+    result: list[_ExpandedProcess] = []
+    placed: set[int] = set()
+    for entry in entries:
+        index = union_of.get(entry.request.name)
+        if index is None or index not in accepted:
+            result.append(entry)
+            continue
+        if index in placed:
+            continue
+        placed.add(index)
+        union = accepted[index]
+        template = union.template
+        base = by_name.get(template.process_id)
+        if base is not None and tuple(leg.pdg for leg in base.process_ir.legs) != tuple(
+            template.pdgs
+        ):
+            raise GenerationError(
+                f"flavour-union template ID {template.process_id!r} names "
+                "another process"
+            )
+        if base is None:
+            base = replace(
+                entry,
+                request=ProcessRequest.parse(
+                    template.expression, name=template.process_id
+                ),
+                process_ir=template_ir(template),
+                aliases=(),
+            )
+        result.append(
+            replace(
+                base,
+                group_members=tuple(union.group()[1:]),
+                flavour_union_template=True,
+            )
+        )
+    if accepted:
+        _LOGGER.debug(
+            "Flavour unions: %d template%s for %d subprocesses (%d skipped)",
+            len(accepted),
+            "" if len(accepted) == 1 else "s",
+            sum(len(union.group()) for union in accepted.values()),
+            len(rejected),
+        )
+    return result
+
+
 def _permuted_process_identity(
     process: CanonicalProcessIR,
     representative_to_alias: Sequence[int],
@@ -9114,8 +9263,4 @@ def create_generator_backend(
     return GenerationBackend(config, progress, api_bundle_hook=api_bundle_hook)
 
 
-__all__ = [
-    "GenerationBackend",
-    "create_generator_backend",
-    "flavour_union_template_generation",
-]
+__all__ = ["GenerationBackend", "create_generator_backend"]

@@ -22,6 +22,7 @@ from pyamplicol.config import (
     Action,
     ColorConfig,
     EvaluatorConfig,
+    GenerationConfig,
     ProcessConfig,
     RunConfig,
 )
@@ -553,14 +554,19 @@ def test_flavour_unions_config_requires_strict_lc_recurrence() -> None:
     with pytest.raises(ConfigurationError, match="flavor_blind_strict"):
         ProcessConfig(flavor_unions=True)
     process = ProcessConfig(flavor_blind_strict=True, flavor_unions=True)
+    no_bundle = GenerationConfig(emit_api_bundle=False)
+    recurrence = EvaluatorConfig(execution_mode="recurrence")
     RunConfig(
         action=Action.GENERATE,
         process=process,
-        evaluator=EvaluatorConfig(execution_mode="recurrence"),
+        evaluator=recurrence,
+        generation=no_bundle,
     )
-    for evaluator, color in (
-        (EvaluatorConfig(execution_mode="compiled"), ColorConfig()),
-        (EvaluatorConfig(execution_mode="recurrence"), ColorConfig(accuracy="full")),
+    for evaluator, color, generation in (
+        (EvaluatorConfig(execution_mode="compiled"), ColorConfig(), no_bundle),
+        (recurrence, ColorConfig(accuracy="full"), no_bundle),
+        (recurrence, ColorConfig(lc_flow_layout="all-flow-union"), no_bundle),
+        (recurrence, ColorConfig(), GenerationConfig()),
     ):
         with pytest.raises(ConfigurationError, match="flavor_unions"):
             RunConfig(
@@ -568,4 +574,5 @@ def test_flavour_unions_config_requires_strict_lc_recurrence() -> None:
                 process=process,
                 evaluator=evaluator,
                 color=color,
+                generation=generation,
             )

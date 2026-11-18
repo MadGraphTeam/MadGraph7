@@ -2327,6 +2327,18 @@ class RunConfig:
                 "process.flavor_unions requires color.accuracy='lc' and "
                 "evaluator.execution_mode='recurrence'"
             )
+        if self.process.flavor_unions and (
+            self.color.lc_flow_layout is not LCFlowLayout.TOPOLOGY_REPLAY
+        ):
+            raise ConfigurationError(
+                "process.flavor_unions requires color.lc_flow_layout='topology-replay'"
+            )
+        if self.process.flavor_unions and self.generation.emit_api_bundle:
+            # UMAMI providers route members through the representative runtime.
+            raise ConfigurationError(
+                "process.flavor_unions does not support the UMAMI API bundle yet; "
+                "set generation.emit_api_bundle = false"
+            )
         if (
             self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
             and self.resolved_execution_mode
