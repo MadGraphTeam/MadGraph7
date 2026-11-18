@@ -1958,6 +1958,125 @@ c     i.e. after the symmetry permutation and mirroring of DSIGPROC.
       end
 
       
+      subroutine update_scale_pdf_selection(p, flavor, wgt)
+c     Factorisation scales for the PDF weights of the subprocess selection
+c     (DSIGPROC with IMODE=4), which run over every flavour combination,
+c     subprocess and beam orientation of a point. With MLM matching each of
+c     them needs the clustering of setclscales, which then dominates the run
+c     time of grouped multi-jet subprocesses. The scales are therefore kept
+c     per point (momenta P and ICONFIG) and flavour class, and computed only
+c     once per class.
+c     The flavour class is the set of labels cluster gives the external legs,
+c     with the merged jet quarks reduced to which legs share a flavour (and
+c     their sign): flavours of one class are clustered through the same
+c     graphs and mostly get the same scales. Where they do not, only the
+c     selection probabilities change: SELECT_GROUPING divides the event
+c     weight by the probability actually used, and the selected flavour is
+c     evaluated with its own clustering (UPDATE_SCALE_COUPLING, IMODE=0), so
+c     the result is unbiased. MG5aMC 3.5 used one clustering per point for all
+c     these weights.
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      include 'maxamps.inc'
+      include 'cluster.inc'     ! includes vector.inc that defines VECSIZE_MEMMAX
+      include 'run.inc'
+      include 'cuts.inc'
+      double precision p(0:3,nexternal), wgt
+      integer flavor(nexternal)
+c     cache of the last NCACHE classes
+      integer ncache
+      parameter (ncache=64)
+      double precision cache_p(0:3,nexternal,ncache), cache_q2(2,ncache)
+      integer cache_key(nexternal,ncache), cache_conf(ncache)
+      logical cache_fail(ncache)
+      integer nfilled, ilast
+      save cache_p, cache_q2, cache_key, cache_conf, cache_fail
+      save nfilled, ilast
+      data nfilled/0/, ilast/0/
+      integer key(nexternal), cls(nexternal), ncls
+      integer i, j, k, n, lab
+      logical same
+      double precision wtmp
+      integer idup(nexternal,maxproc,maxsproc)
+      integer mothup(2,nexternal)
+      integer icolup(2,nexternal,maxflow,maxsproc)
+      include 'leshouche.inc'
+      integer imirror, iproc
+      common/to_mirror/imirror, iproc
+      integer mapconfig(0:lmaxconfigs), iconfig
+      common/to_mconfigs/mapconfig, iconfig
+
+c     flavour class: the label of each leg after the relabelling in cluster
+c     (relabel_jet_legs), merged jet quarks numbered by first appearance
+      ncls=0
+      do i=1,nexternal
+         lab=idup(i,1,iproc)
+         if(flavor(i).ge.1.and.flavor(i).le.6.and.
+     $        abs(lab).ge.1.and.abs(lab).le.maxjetflavor)then
+            if(flavor(i).le.maxjetflavor)then
+               k=0
+               do j=1,ncls
+                  if(cls(j).eq.flavor(i)) k=j
+               enddo
+               if(k.eq.0)then
+                  ncls=ncls+1
+                  cls(ncls)=flavor(i)
+                  k=ncls
+               endif
+               lab=sign(1000+k,lab)
+            else
+               lab=sign(flavor(i),lab)
+            endif
+         endif
+         key(i)=lab
+      enddo
+
+      do n=1,nfilled
+         if(cache_conf(n).ne.iconfig) cycle
+         same=.true.
+         do i=1,nexternal
+            if(cache_key(i,n).ne.key(i))then
+               same=.false.
+               exit
+            endif
+         enddo
+         if(.not.same) cycle
+         do i=1,nexternal
+            do j=0,3
+               if(cache_p(j,i,n).ne.p(j,i))then
+                  same=.false.
+                  exit
+               endif
+            enddo
+            if(.not.same) exit
+         enddo
+         if(.not.same) cycle
+         q2fact(1)=cache_q2(1,n)
+         q2fact(2)=cache_q2(2,n)
+         if(cache_fail(n)) wgt=0d0
+         return
+      enddo
+
+      wtmp=1d0
+      call update_scale_coupling(p, flavor, wtmp)
+      if(wtmp.eq.0d0) wgt=0d0
+      ilast=mod(ilast,ncache)+1
+      nfilled=max(nfilled,ilast)
+      cache_conf(ilast)=iconfig
+      cache_fail(ilast)=(wtmp.eq.0d0)
+      cache_q2(1,ilast)=q2fact(1)
+      cache_q2(2,ilast)=q2fact(2)
+      do i=1,nexternal
+         cache_key(i,ilast)=key(i)
+         do j=0,3
+            cache_p(j,i,ilast)=p(j,i)
+         enddo
+      enddo
+      return
+      end
+
+
       subroutine update_scale_coupling_vec(all_p, all_wgt,all_q2fact, VECSIZE_USED, flavor_vec)
       implicit none
       include 'genps.inc'

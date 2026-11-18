@@ -1151,9 +1151,16 @@ c     endif
 c     set the running scale
 c     and update the couplings accordingly (but deactivate for discrete sampler(imode=5) and
 c     use P1 (permuted/mirrored momenta) to be consistent with the matrix element
+c     (imode=4, the PDF weights of the subprocess selection, only needs the
+c     factorisation scales: they are kept per point and flavour class, see
+c     update_scale_pdf_selection in reweight.f)
       IF (VECSIZE_MEMMAX.LE.1.and.imode.ne.5) THEN ! no-vector (NB not VECSIZE_USED!)
             CALL GET_FLAVOR(IFLAV, IPROC, FLAVOR)
-            call update_scale_coupling(p1, flavor,  wgt)
+            if (imode.eq.4) then
+               call update_scale_pdf_selection(p1, flavor, wgt)
+            else
+               call update_scale_coupling(p1, flavor,  wgt)
+            endif
       endif
 
 
