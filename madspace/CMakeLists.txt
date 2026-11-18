@@ -262,6 +262,7 @@ add_library(
     src/phasespace/pdf.cpp
     src/phasespace/matrix_element.cpp
     src/phasespace/mlm_clustering.cpp
+    src/phasespace/merging_scale.cpp
     src/phasespace/cross_section.cpp
     src/phasespace/scale.cpp
     src/phasespace/weighting_step.cpp
@@ -322,6 +323,7 @@ add_library(
     include/madspace/phasespace/pdf.hpp
     include/madspace/phasespace/matrix_element.hpp
     include/madspace/phasespace/mlm_clustering.hpp
+    include/madspace/phasespace/merging_scale.hpp
     include/madspace/phasespace/cross_section.hpp
     include/madspace/phasespace/scale.hpp
     include/madspace/phasespace/weighting_step.hpp
