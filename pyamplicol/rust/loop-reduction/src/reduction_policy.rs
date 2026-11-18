@@ -123,6 +123,13 @@ pub fn target(value: f64) -> Result<f64, Refusal> {
 /// [`policy_json`], the native SDKs from here.
 pub const DEFAULT_UNCHECKED: bool = false;
 
+/// The decimal digits of the lane rescue's arbitrary-precision carrier
+/// (`rusticol_core::loop_execution::v2::RescueCarrier`): the last level of
+/// the default rescue ladder (`loops.v2.stability.DEFAULT_RESCUE`, 57
+/// digits), at its working digits (`v2_runtime::V2Precision::
+/// working_digits`).
+pub const LANE_RESCUE_DIGITS: u32 = 57;
+
 /// What the unchecked setting does, as the policy record states it (one
 /// text for every surface: the Python API's and the SDKs' inspect records).
 pub const UNCHECKED_RECORD: &str = "reduction_unchecked: TIRust keeps its conditioning gates and \

@@ -621,6 +621,9 @@ struct Evaluation {
     /// Per point the backend's measures of its refused lanes, `(kind,
     /// value)` (`PointResult::measures`; m-lit ux-polish item 4).
     refusal_measures: Vec<Vec<(&'static str, f64)>>,
+    /// Per point the lanes the lane rescue served, `((family, order,
+    /// column), carrier)` (`PointResult::rescued`; USER 2026-11-18).
+    rescued: Vec<Vec<((usize, usize, usize), &'static str)>>,
     report: ReportObject,
 }
 
@@ -760,6 +763,15 @@ fn export_evaluation<T: Exchanged + Real>(
                     .collect()
             })
             .collect(),
+        rescued: results
+            .iter()
+            .map(|r| {
+                r.rescued
+                    .iter()
+                    .map(|(key, carrier)| ((key.family, key.order, key.column), carrier.name()))
+                    .collect()
+            })
+            .collect(),
         failures: results.into_iter().map(|r| r.failures).collect(),
         report: ReportObject {
             seconds: report.seconds,
@@ -885,10 +897,10 @@ fn backend_of<'a>(
                     Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
                 }
                 .map_err(error)?;
-                V2Backends::NinjaRs(V2ReductionBackend {
+                V2Backends::NinjaRs(V2ReductionBackend::new(
                     reducer,
-                    masters: v2::master_selection("both")?,
-                })
+                    v2::master_selection("both")?,
+                ))
             }
             Reduction::TiRust => V2Backends::tirust(
                 runtime::plan_histogram(plan),
@@ -2126,6 +2138,22 @@ impl V2Executor {
             term_scale,
             ..V2Options::default()
         };
+        // DEV (lanerescue experiment, removed before merge): the lane
+        // rescue's input variant.
+        if let Ok(text) = std::env::var("PYAMPLICOL_DEV_LANE_RESCUE") {
+            use rusticol_core::loop_execution::v2::RescueInputs;
+            options.rescue = match text.as_str() {
+                "off" => RescueInputs::Off,
+                "lifted" => RescueInputs::Lifted,
+                "exact" => RescueInputs::Exact,
+                other => match other.strip_prefix("improved:") {
+                    Some(n) => RescueInputs::Improved {
+                        n_initial: n.parse().map_err(error)?,
+                    },
+                    None => return Err(error("PYAMPLICOL_DEV_LANE_RESCUE")),
+                },
+            };
+        }
         if let Some(chunk) = chunk_families {
             options.chunk_families = chunk;
         }

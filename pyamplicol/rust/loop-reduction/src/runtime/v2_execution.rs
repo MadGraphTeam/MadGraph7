@@ -14,16 +14,21 @@ use super::v2_reduce::{
 };
 use crate::Complex;
 use rusticol_core::loop_execution::v2::{
-    BackendStatistics, FamilyLanes, LaneOutcome, MeasuredLane, Reduced, V2Backend,
+    BackendStatistics, ExactLanes, FamilyLanes, LaneOutcome, MeasuredLane, Reduced, RescueCarrier,
+    V2Backend,
 };
+use rusticol_core::loop_v2::dress::{Carrier, cast, exact_value};
 use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::{RusticolError, RusticolResult};
 use symbolica::domains::float::{DoubleFloat, Float};
 
 /// Typed access to the values of a [`Batch`], and the carrier's TIR
 /// reduction (every carrier, m-lit lit-tir-mp).
-pub trait TypedBatch: BatchCarrier {
+pub trait TypedBatch: BatchCarrier + Carrier {
     fn values(data: &Data) -> Option<&[Complex<Self>]>;
+
+    /// The carrier's bits (its precision).
+    fn bits(zero: &Self) -> u32;
 
     /// The TIR backend's reduction in this carrier.
     #[cfg(feature = "tir")]
@@ -41,6 +46,10 @@ impl TypedBatch for f64 {
             Data::Double(values) => Some(values),
             _ => None,
         }
+    }
+
+    fn bits(_: &Self) -> u32 {
+        f64::MANTISSA_DIGITS
     }
 
     #[cfg(feature = "tir")]
@@ -62,6 +71,10 @@ impl TypedBatch for DoubleFloat {
         }
     }
 
+    fn bits(_: &Self) -> u32 {
+        106
+    }
+
     #[cfg(feature = "tir")]
     fn tir_reduce(
         backend: &mut crate::v2_tir::TirReductionBackend,
@@ -79,6 +92,10 @@ impl TypedBatch for Float {
             Data::Arbitrary(values) => Some(values),
             _ => None,
         }
+    }
+
+    fn bits(zero: &Self) -> u32 {
+        zero.prec()
     }
 
     #[cfg(feature = "tir")]
@@ -356,6 +373,183 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
             Self::TiRust(backend) => T::tir_reduce(backend, groups, poles, check),
         }
     }
+
+    /// The carriers above the evaluation's ([`rescue_carriers`]); none in
+    /// the unchecked mode.
+    fn rescue_carriers(&self, zero: &T) -> Vec<RescueCarrier> {
+        if self.unchecked() {
+            return Vec::new();
+        }
+        rescue_carriers(T::bits(zero))
+    }
+
+    /// The lanes reduced by this backend's own reduction in `carrier`
+    /// ([`RescueBackends`]), rounded back to the evaluation's carrier.
+    fn rescue(
+        &mut self,
+        carrier: RescueCarrier,
+        groups: &[ExactLanes],
+        poles: Poles,
+        check: Option<ReductionCheck>,
+        zero: &T,
+    ) -> RusticolResult<Reduced<T>> {
+        let index = match self
+            .rescue_store()
+            .0
+            .iter()
+            .position(|(c, _)| *c == carrier)
+        {
+            Some(index) => index,
+            None => {
+                let built = self.rescue_backend(carrier)?;
+                let store = self.rescue_store();
+                store.0.push((carrier, built));
+                store.0.len() - 1
+            }
+        };
+        let backend = &mut self.rescue_store().0[index].1;
+        match carrier {
+            RescueCarrier::DoubleDouble => {
+                reduce_exact(backend, groups, poles, check, &DoubleFloat::from(0.0), zero)
+            }
+            RescueCarrier::Arbitrary(_) => reduce_exact(
+                backend,
+                groups,
+                poles,
+                check,
+                &Float::with_val(carrier.bits(), 0),
+                zero,
+            ),
+        }
+    }
+}
+
+/// The lane rescue's backends of one evaluation backend
+/// ([`V2Backend::rescue`]): per rescue carrier one backend of the same
+/// reduction (NinjaRS's generic engine with the same master selection;
+/// TIRust with the same plans and settings, checked), built on first use
+/// and kept with the evaluation backend, so that its engines, plans and
+/// caches serve every later call (never one build per call or point).
+#[derive(Default)]
+pub struct RescueBackends(Vec<(RescueCarrier, V2Backends)>);
+
+/// The lane rescue's carriers above a carrier of `bits` bits, lowest
+/// first: double-double, then arbitrary precision at the default rescue
+/// ladder's last digits ([`crate::reduction_policy::LANE_RESCUE_DIGITS`],
+/// at its working digits).
+pub fn rescue_carriers(bits: u32) -> Vec<RescueCarrier> {
+    let digits =
+        crate::v2_runtime::V2Precision::Arbitrary(crate::reduction_policy::LANE_RESCUE_DIGITS)
+            .working_digits();
+    [
+        RescueCarrier::DoubleDouble,
+        RescueCarrier::Arbitrary(digits),
+    ]
+    .into_iter()
+    .filter(|carrier| carrier.bits() > bits)
+    .collect()
+}
+
+/// A complex value of one carrier rounded to the carrier of `zero` (once,
+/// through its exact rational), `None` when it is not finite.
+fn rounded<U: Carrier, T: Carrier>(value: &Complex<U>, zero: &T) -> Option<Complex<T>> {
+    Some(Complex::new(
+        cast(zero, &exact_value(&value.re)?),
+        cast(zero, &exact_value(&value.im)?),
+    ))
+}
+
+/// Reduce exact lanes on `backend` in the carrier of `high`, the outcomes
+/// rounded to the carrier of `zero` (a non-finite value refuses its lane).
+fn reduce_exact<U: TypedBatch, T: TypedBatch>(
+    backend: &mut V2Backends,
+    groups: &[ExactLanes],
+    poles: Poles,
+    check: Option<ReductionCheck>,
+    high: &U,
+    zero: &T,
+) -> RusticolResult<Reduced<T>> {
+    let complex = |[re, im]: &[symbolica::domains::rational::Rational; 2]| {
+        Complex::new(cast(high, re), cast(high, im))
+    };
+    let real =
+        |x: &symbolica::domains::rational::Rational| Complex::new(cast(high, x), high.zero());
+    let lanes: Vec<FamilyLanes<U>> = groups
+        .iter()
+        .map(|g| FamilyLanes {
+            family: g.family,
+            propagators: g.propagators,
+            rank: g.rank,
+            points: g.points.clone(),
+            keys: g.keys.clone(),
+            shifts: g.shifts.iter().map(real).collect(),
+            masses: g.masses.iter().map(complex).collect(),
+            scales: g.scales.iter().map(real).collect(),
+            s_matrix: g.s_matrix.iter().map(real).collect(),
+            coefficients: g.coefficients.iter().map(complex).collect(),
+        })
+        .collect();
+    V2Backend::<U>::begin(backend);
+    let (direct, retest) = V2Backend::<U>::reduce(backend, &lanes, poles, check)?;
+    let _ = V2Backend::<U>::take_statistics(backend);
+    let _ = V2Backend::<U>::take_lane_measures(backend);
+    let read = |outcomes: Vec<Vec<LaneOutcome<U>>>| -> Vec<Vec<LaneOutcome<T>>> {
+        outcomes
+            .into_iter()
+            .map(|group| {
+                group
+                    .into_iter()
+                    .map(|outcome| {
+                        let values = outcome?;
+                        values
+                            .iter()
+                            .map(|z| rounded(z, zero))
+                            .collect::<Option<Vec<_>>>()
+                            .ok_or_else(|| "NonFinite".to_string())
+                    })
+                    .collect()
+            })
+            .collect()
+    };
+    Ok((read(direct), retest.map(read)))
+}
+
+impl V2Backends {
+    /// The lane rescue's backends ([`RescueBackends`]).
+    fn rescue_store(&mut self) -> &mut RescueBackends {
+        match self {
+            Self::NinjaRs(backend) => &mut backend.rescue,
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => &mut backend.rescue,
+        }
+    }
+
+    /// A backend of this reduction in `carrier` (checked).
+    fn rescue_backend(&self, carrier: RescueCarrier) -> RusticolResult<V2Backends> {
+        match self {
+            Self::NinjaRs(backend) => {
+                let reducer = match carrier {
+                    RescueCarrier::DoubleDouble => {
+                        V2Reducer::new("double-double", None, "generic", true)
+                    }
+                    RescueCarrier::Arbitrary(digits) => {
+                        V2Reducer::new("arbitrary", Some(digits), "generic", true)
+                    }
+                }
+                .map_err(failure)?;
+                Ok(Self::NinjaRs(V2ReductionBackend::new(
+                    reducer,
+                    backend.masters,
+                )))
+            }
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => {
+                let mut options = *backend.options();
+                options.unchecked = false;
+                Self::tirust_with(backend.plans(), carrier.bits(), options)
+            }
+        }
+    }
 }
 
 /// A [`V2Reducer`] as the executor's reduction backend. `masters` is the
@@ -365,6 +559,18 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
 pub struct V2ReductionBackend {
     pub reducer: V2Reducer,
     pub masters: PoleSelection,
+    /// The lane rescue's backends ([`RescueBackends`]).
+    pub rescue: RescueBackends,
+}
+
+impl V2ReductionBackend {
+    pub fn new(reducer: V2Reducer, masters: PoleSelection) -> Self {
+        Self {
+            reducer,
+            masters,
+            rescue: RescueBackends::default(),
+        }
+    }
 }
 
 fn failure(error: impl std::fmt::Display) -> RusticolError {

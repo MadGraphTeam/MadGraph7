@@ -613,10 +613,10 @@ impl V2Precision {
             }
         }
         .map_err(|e| invalid(e.to_string()))?;
-        Ok(V2Backends::NinjaRs(V2ReductionBackend {
+        Ok(V2Backends::NinjaRs(V2ReductionBackend::new(
             reducer,
-            masters: PoleSelection::BOTH,
-        }))
+            PoleSelection::BOTH,
+        )))
     }
 }
 
