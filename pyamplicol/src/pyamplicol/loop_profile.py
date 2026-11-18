@@ -318,6 +318,9 @@ class StabilityPoint:
     estimated_digits: float | None
     reason: str | None = None
     uncertainty_digits: float | None = None
+    # The point's lane rescue (``benchmarking.lane_rescue_reason``:
+    # "reduction lanes rescued in <carrier>"), None without one.
+    lane_rescue: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -353,6 +356,9 @@ class BackendStability:
     per_point: tuple[StabilityPoint, ...] = ()
     best_effort: int = 0
     best_effort_covered: int = 0
+    # Measured points served with a lane rescue (``StabilityPoint.
+    # lane_rescue``).
+    lane_rescued: int = 0
     # The evaluations of the run per precision: "binary64" (the checked call
     # with its stability estimate) and the reference's arithmetic
     # ("double-double", or "arbitrary" with its "digits"), each
@@ -392,6 +398,7 @@ class BackendStability:
                         _rounded(point.estimated_digits, 3),
                         point.reason,
                         _rounded(point.uncertainty_digits, 3),
+                        point.lane_rescue,
                     ]
                     for point in self.per_point
                 ),
@@ -409,6 +416,7 @@ PER_POINT_FIELDS = (
     "estimated_digits",
     "reason",
     "uncertainty_digits",
+    "lane_rescue",
 )
 # The columns of a backend's per-sample records (``_sample_records``).
 SAMPLE_FIELDS = (
@@ -432,6 +440,7 @@ SAMPLE_FIELDS = (
     "true_digits",
     "binary64_task",
     "reference_task",
+    "lane_rescue",
 )
 # The columns of the points' inputs (``stability_setup.samples``).
 INPUT_FIELDS = ("index", "momenta", "mu_r2")
@@ -466,7 +475,9 @@ class FailureCause:
     distribution printed under the runtime and stability tables): the
     ``backend``, the ``table`` ("runtime" or "stability"), the ``kind``
     ("best-effort": refused by the backend's own checks and served with its
-    best-effort value; "no value": no binary64 value at all; "no reference":
+    best-effort value; "no value": no binary64 value at all; "lane rescue":
+    served, with reduction lanes refused in binary64 reduced again in a
+    higher carrier (``VirtualLaneRescue``); "no reference":
     no reference value, stability only; "best-effort in <reference>", "no
     value in <reference>": the same for the runtime's reference timing,
     <reference> the ``GroundTruth.name``), the ``count`` of points of
@@ -1262,6 +1273,7 @@ def profile_loop(
         for kind, status, reasons in (
             ("best-effort", "best-effort", profile.best_effort_reasons),
             ("no value", "failed", profile.failure_reasons),
+            ("lane rescue", "success", profile.lane_rescue_reasons),
         ):
             for reason, count in reasons:
                 text = _strip_status(reason, status)
@@ -1284,6 +1296,15 @@ def profile_loop(
     for stability_row in stability_rows or ():
         totals[(stability_row.backend, "stability")] = len(stability_row.per_point)
         for point in stability_row.per_point:
+            if point.lane_rescue is not None:
+                causes.append(
+                    (
+                        stability_row.backend,
+                        "stability",
+                        "lane rescue",
+                        point.lane_rescue,
+                    )
+                )
             kind = _CAUSE_KINDS.get(point.status)
             if kind is not None:
                 text = _strip_status(
@@ -2642,13 +2663,16 @@ def _stability_records(
             **common,
         )
         records: list[tuple[Any, ...]] = []
-        for index, value, estimate, reason, status, uncertainty in zip(
+        from pyamplicol.benchmarking import lane_rescue_reason
+
+        for index, value, estimate, reason, status, uncertainty, lane in zip(
             indices,
             result.values,
             result.stability,
             _reasons(result),
             result.statuses,
             _uncertainties(result),
+            result.diagnostics,
             strict=True,
         ):
             total = None if value is None else _total_finite(value)
@@ -2672,6 +2696,7 @@ def _stability_records(
                     status,
                     uncertainty,
                     None if value is None else [float(sector[0]) for sector in value],
+                    lane_rescue_reason(lane),
                 )
             )
     else:
@@ -3380,6 +3405,7 @@ def _stability(
                         reasons=[b64[backend][i][3] for i in indices],
                         statuses=[b64[backend][i][4] for i in indices],
                         indices=indices,
+                        rescues=[_rescue_of(b64[backend][i]) for i in indices],
                     ),
                     samples=samples,
                 )
@@ -3401,6 +3427,7 @@ def _stability(
                     statuses=[b64[backend][i][4] for i in indices],
                     uncertainties=[b64[backend][i][5] for i in indices],
                     indices=indices,
+                    rescues=[_rescue_of(b64[backend][i]) for i in indices],
                 ),
                 samples=samples,
             )
@@ -3655,6 +3682,13 @@ def _stop_pool(executor: Any) -> None:
         raise
 
 
+def _rescue_of(record: Sequence[Any]) -> str | None:
+    """A binary64 stability record's lane rescue (its eighth entry, absent
+    in a shorter record)."""
+
+    return record[7] if len(record) > 7 else None
+
+
 def _uncertainties(result: Any) -> list[float | None]:
     """Per point the best-effort uncertainty (relative; None: no
     best-effort value, or none could be estimated)."""
@@ -3691,6 +3725,7 @@ def _estimate_statistics(
     reasons: Sequence[str | None],
     statuses: Sequence[str],
     indices: Sequence[int],
+    rescues: Sequence[str | None] | None = None,
 ) -> BackendStability:
     """The statistics of a run without a reference (``--ground-truth
     none``): the estimated digits of every point ranked at the percentiles
@@ -3701,9 +3736,10 @@ def _estimate_statistics(
 
     digits: list[float] = []
     per_point: list[StabilityPoint] = []
-    flagged = failed = best_effort = 0
-    for index, value, estimate, reason, status in zip(
-        indices, plain, estimates, reasons, statuses, strict=True
+    flagged = failed = best_effort = rescued = 0
+    rescues = rescues if rescues is not None else [None] * len(plain)
+    for index, value, estimate, reason, status, rescue in zip(
+        indices, plain, estimates, reasons, statuses, rescues, strict=True
     ):
         served = status == "best-effort"
         if value is None or (estimate is None and not served):
@@ -3727,6 +3763,7 @@ def _estimate_statistics(
         flagged += served or (
             estimate is not None and float(estimate.relative) > target
         )
+        rescued += rescue is not None
         per_point.append(
             StabilityPoint(
                 index,
@@ -3734,6 +3771,7 @@ def _estimate_statistics(
                 None,
                 estimated,
                 reason if served else None,
+                lane_rescue=rescue,
             )
         )
     return BackendStability(
@@ -3753,6 +3791,7 @@ def _estimate_statistics(
         tuple(per_point),
         best_effort,
         0,
+        rescued,
         estimate_only=True,
     )
 
@@ -3812,8 +3851,8 @@ def _sample_records(
             record = b64.get(index)
             if record is None:
                 continue
-            padded: tuple[Any, ...] = (*record, *(None,) * (7 - len(record)))
-            _, value, summary, reason, status, uncertainty, sectors = padded[:7]
+            padded: tuple[Any, ...] = (*record, *(None,) * (8 - len(record)))
+            _, value, summary, reason, status, uncertainty, sectors, rescue = padded[:8]
             total = None if value is None else float(_total_finite(value))
             estimate: list[object] = [None] * 6
             if summary is not None and total is not None:
@@ -3861,6 +3900,7 @@ def _sample_records(
                 digits,
                 task(("binary64", index)),
                 task(("reference", index)),
+                rescue,
             ]
 
     encoded = encode_rows(rows(), len(indices), progress)
@@ -3884,6 +3924,7 @@ def _backend_statistics(
     statuses: Sequence[str] | None = None,
     uncertainties: Sequence[float | None] | None = None,
     indices: Sequence[int] | None = None,
+    rescues: Sequence[str | None] | None = None,
 ) -> BackendStability:
     true_digits: list[float] = []
     estimated_digits: list[float | None] = []
@@ -3897,6 +3938,8 @@ def _backend_statistics(
         reference_reasons if reference_reasons is not None else [None] * count
     )
     uncertainties = uncertainties if uncertainties is not None else [None] * count
+    rescues = rescues if rescues is not None else [None] * count
+    rescued = 0
     for position, (
         value,
         estimate,
@@ -3964,6 +4007,8 @@ def _backend_statistics(
         )
         true_digits.append(digits)
         estimated_digits.append(estimated)
+        rescue = rescues[position]
+        rescued += rescue is not None
         per_point.append(
             StabilityPoint(
                 index,
@@ -3974,6 +4019,7 @@ def _backend_statistics(
                 None
                 if not served or uncertainty is None
                 else stable_digits(uncertainty),
+                rescue,
             )
         )
         if served:
@@ -4006,6 +4052,7 @@ def _backend_statistics(
         tuple(per_point),
         best_effort,
         covered,
+        rescued,
     )
 
 

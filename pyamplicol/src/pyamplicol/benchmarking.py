@@ -2802,6 +2802,12 @@ class VirtualProfileResult:
     # most frequent first.
     best_effort_points: int = 0
     best_effort_reasons: tuple[tuple[str, int], ...] = ()
+    # The timed points served with a lane rescue (``VirtualLaneDiagnostic.
+    # lane_rescue``: reduction lanes refused in binary64 reduced again in a
+    # higher carrier; the checked mode only) and their causes
+    # (``lane_rescue_reason``), most frequent first.
+    lane_rescue_points: int = 0
+    lane_rescue_reasons: tuple[tuple[str, int], ...] = ()
     # The peak resident set size of this process over the binary64 warm-up
     # and timed calls (``reporting.resources.peak_memory``).
     peak_memory: PeakMemory | None = None
@@ -3503,6 +3509,8 @@ def _profile_virtual_calls(
     reasons: dict[str, int] = {}
     served = 0
     served_reasons: dict[str, int] = {}
+    rescued = 0
+    rescued_reasons: dict[str, int] = {}
     contribution = runtime.contribution_kind
     reductions: list[Any] = []
     warmup = bench.warmup_runs
@@ -3511,7 +3519,7 @@ def _profile_virtual_calls(
     from pyamplicol.profile_plan import WARMUP_CALL_SECONDS
 
     def call(k: int) -> float:
-        nonlocal failed, served
+        nonlocal failed, served, rescued
         batch = batches(k)
         mu_r2 = scales(batch)
         if k < warmup:
@@ -3540,6 +3548,10 @@ def _profile_virtual_calls(
             wall = time.perf_counter() - begin
             cpu_seconds[0] += time.process_time() - cpu
         for valid, lane in zip(result.valid, result.diagnostics, strict=True):
+            rescue = lane_rescue_reason(lane)
+            if rescue is not None:
+                rescued += 1
+                rescued_reasons[rescue] = rescued_reasons.get(rescue, 0) + 1
             if valid:
                 continue
             reason = failure_reason(lane)
@@ -3586,9 +3598,24 @@ def _profile_virtual_calls(
         best_effort_reasons=tuple(
             sorted(served_reasons.items(), key=lambda item: (-item[1], item[0]))
         ),
+        lane_rescue_points=rescued,
+        lane_rescue_reasons=tuple(
+            sorted(rescued_reasons.items(), key=lambda item: (-item[1], item[0]))
+        ),
         threads=_native_threads(runtime),
         cpu_per_wall=cpu_seconds[0] / sum(walls) if sum(walls) > 0.0 else None,
     )
+
+
+def lane_rescue_reason(diagnostic: Any) -> str | None:
+    """A point's lane-rescue cause from its ``VirtualLaneDiagnostic``
+    (``lane_rescue``): "reduction lanes rescued in <carrier>", the highest
+    carrier that served one of its lanes; None without a lane rescue."""
+
+    rescue = getattr(diagnostic, "lane_rescue", None)
+    if rescue is None:
+        return None
+    return f"reduction lanes rescued in {rescue.carrier}"
 
 
 def failure_reason(diagnostic: Any) -> str:
