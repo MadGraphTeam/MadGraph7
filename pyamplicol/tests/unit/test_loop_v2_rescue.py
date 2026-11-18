@@ -49,8 +49,14 @@ from pyamplicol.config import R2Strategy
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
 from pyamplicol.loops.strategy import R2Selection
 from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
+from pyamplicol.loops.v2.reduction import default_arbitrary_digits
 from pyamplicol.loops.v2.rescue import rescue, rescue_policy
-from pyamplicol.loops.v2.stability import DEFAULT_RESCUE, Rotation
+from pyamplicol.loops.v2.stability import (
+    DEFAULT_RESCUE,
+    RESCUE_INTERMEDIATE_DIGITS,
+    Rotation,
+    default_rescue,
+)
 
 from .test_loop_v2_artifact import GG_PARAMETERS, _card, _fixture, _generate
 
@@ -126,7 +132,15 @@ class _Fake:
         )
 
 
-THREE = VirtualRescuePolicy()
+# The mechanics run on a three-level ladder of the default kind (binary64,
+# double-double, 57 digits); the default itself is checked below.
+THREE = VirtualRescuePolicy(
+    (
+        VirtualRescueLevel("double"),
+        VirtualRescueLevel("double-double"),
+        VirtualRescueLevel("arbitrary", 57),
+    )
+)
 
 
 @pytest.mark.loop_fast
@@ -232,16 +246,26 @@ def test_a_check_free_last_level_keeps_every_point_without_an_estimate():
 
 @pytest.mark.loop_fast
 def test_policies_are_validated():
-    assert [(level.arithmetic, level.precision) for level in THREE.levels] == list(
-        DEFAULT_RESCUE
-    )
-    for level in THREE.levels:
+    # The default ladder (USER 2026-11-18): binary64, double-double, 57 digits
+    # (the intermediate level) and the default arbitrary-precision digits
+    # (500, the native policy's one definition) last.
+    default = VirtualRescuePolicy()
+    assert default_rescue() == DEFAULT_RESCUE
+    assert [(level.arithmetic, level.precision) for level in default.levels] == [
+        ("double", None),
+        ("double-double", None),
+        ("arbitrary", RESCUE_INTERMEDIATE_DIGITS),
+        ("arbitrary", default_arbitrary_digits()),
+    ]
+    assert (RESCUE_INTERMEDIATE_DIGITS, default_arbitrary_digits()) == (57, 500)
+    assert [level.precision_bits for level in default.levels] == [53, 106, 190, 1661]
+    for level in default.levels:
         assert level.target == 1e-5 and level.metric == "relative"
         assert level.rotations == (parse_rotation("euler:0.1,0.2,0.3"),)
         assert level.checks == VirtualStabilityChecks(
             level.rotations, True, rescaled=True
         )
-    assert [level.precision_bits for level in THREE.levels] == [53, 106, 190]
+    assert THREE.levels == default.levels[:3]
     assert len(VirtualRescueLevel("double", rotations=3).rotations) == 3
     VirtualRescuePolicy((VirtualRescueLevel("double-double"),))
     VirtualRescuePolicy(

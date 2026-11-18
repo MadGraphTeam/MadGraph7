@@ -1380,12 +1380,14 @@ failure); `result.rescue_counts` counts the lanes accepted per level, plus
 `"not met"` and `"failed"`. Without a policy `rescue` is `None`.
 
 The default `VirtualRescuePolicy()` runs binary64, then double-double, then
-57-digit arbitrary precision, each with target 1e-5 on the relative estimate,
+arbitrary precision at 57 digits and at 500 digits (the default
+arbitrary-precision digits, `loops.v2.reduction.default_arbitrary_digits()`),
+each with target 1e-5 on the relative estimate,
 one rotation `"euler:0.1,0.2,0.3"` and the rescaled reduction check, every
 level `"auto"`. For a loop-induced call requesting `"auto"` (where `"auto"`
 takes TIRust with the NinjaRS fallback) it is the **loop-induced default
 stack**: TIRust in binary64 at the target, then NinjaRS in binary64, then the
-double-double and 57-digit levels (`"auto"`: TIRust with the per-point NinjaRS
+double-double, 57- and 500-digit levels (`"auto"`: TIRust with the per-point NinjaRS
 fallback in their arithmetic). A point TIRust refuses at level 0 is recorded
 at the NinjaRS level. A call naming a backend (`reduction="ninjars"` or
 `"tirust"`) runs the default ladder on that one backend at every level (no
@@ -1416,8 +1418,15 @@ target 1e-5, the same rotation) in three ways:
 
 - the rescaled reduction check is added, because a rotation keeps every
   master integral's invariants and cannot see its own rounding;
-- the last level has 57 digits (pyAmpliCol's calibration carrier) instead of
-  1000 bits; set `VirtualRescueLevel("arbitrary", 300)` for gammaloop's;
+- arbitrary precision is two levels, 57 digits (pyAmpliCol's calibration
+  carrier) and 500 digits, instead of one at 1000 bits (set
+  `VirtualRescueLevel("arbitrary", 302)` for gammaloop's). The last level
+  serves what 57 digits gets wrong (points of a nearly vanishing box Gram
+  determinant: TIRust #40, NinjaRS #15, right at 100-150 digits); the 57-digit
+  level serves every other point that reaches arbitrary precision at a
+  fraction of the cost (one 500-digit evaluation costs 1.7 to 10 times one at
+  57 digits; on 200 HC05 `g g > x0 g g` points, 25 of the 27 that leave
+  double-double stop at 57: 770 s with the level, 1489 s without);
 - the target applies to pyAmpliCol's error estimate, which sums the deviations
   of every reduction lane with a safety factor of two, not to the spread of the
   rotated values.

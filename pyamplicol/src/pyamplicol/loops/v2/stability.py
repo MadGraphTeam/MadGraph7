@@ -475,6 +475,8 @@ def __getattr__(name: str) -> Any:
         from pyamplicol.loops.v2.reduction import default_target
 
         return default_target()
+    if name == "DEFAULT_RESCUE":
+        return default_rescue()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -484,18 +486,49 @@ def __getattr__(name: str) -> Any:
 # 1e-5 with the one rotation ``euler_angles(0.1, 0.2, 0.3)``). Deviations:
 # every level adds the rescaled reduction check (rotations keep every master
 # invariant and cannot see a master integral's own rounding, module
-# docstring); the last level is 57 digits (O15's truth carrier) instead of
-# 1000 bits; the target applies to pyAmpliCol's estimate E. The levels'
-# default target, ``RESCUE_TARGET``, is the call's default target accuracy
-# (m-lit F3 (a): one definition, the native policy's
+# docstring); the target applies to pyAmpliCol's estimate E; the
+# arbitrary-precision part is two levels:
+#
+# * the last level has the default arbitrary-precision digits (USER
+#   2026-11-18: 500, the native policy's one definition
+#   ``reduction_policy::DEFAULT_ARBITRARY_DIGITS``, read on first use by
+#   ``loops.v2.reduction.default_arbitrary_digits``): it serves the points
+#   57 digits gets wrong (HC05 points 29 and 60 of TIRust #40, a nearly
+#   vanishing box Gram: right at 150 / 100 digits, NinjaRS #15);
+# * an intermediate level at ``RESCUE_INTERMEDIATE_DIGITS`` (57, the
+#   previous last level, O15's truth carrier) serves every other point that
+#   reaches arbitrary precision at a fraction of the cost (measured
+#   2026-11-18, one core, NinjaRS): one evaluation at 500 digits costs 1.7x
+#   one at 57 on u u~ > d d~, 2.4x on HC05 g g > x0 g g, 4.8x on g g > g g g
+#   and 10x on g g > h h; 25 of the 27 HC05 points (of 200) that leave
+#   double-double are served at 57, so the ladder with it takes 770 s on
+#   those 200 points, without it 1489 s (57 alone, today's: 619 s).
+#
+# The levels' default target, ``RESCUE_TARGET``, is the call's default
+# target accuracy (m-lit F3 (a): one definition, the native policy's
 # ``reduction_policy::DEFAULT_TARGET``, 1e-5, read on first use by
-# ``loops.v2.reduction.default_target``; module ``__getattr__`` below).
+# ``loops.v2.reduction.default_target``). ``DEFAULT_RESCUE`` (module
+# ``__getattr__`` above) is ``default_rescue()``, formed on use: importing
+# this module loads no native extension.
 RESCUE_ROTATION = "euler:0.1,0.2,0.3"
-DEFAULT_RESCUE: tuple[tuple[str, int | None], ...] = (
-    ("double", None),
-    ("double-double", None),
-    ("arbitrary", 57),
-)
+RESCUE_INTERMEDIATE_DIGITS = 57
+DEFAULT_RESCUE: tuple[tuple[str, int | None], ...]
+
+
+def default_rescue() -> tuple[tuple[str, int | None], ...]:
+    """The default ladder's (arithmetic, digits) levels: binary64,
+    double-double, ``RESCUE_INTERMEDIATE_DIGITS`` and the default
+    arbitrary-precision digits (``loops.v2.reduction.
+    default_arbitrary_digits``)."""
+
+    from pyamplicol.loops.v2.reduction import default_arbitrary_digits
+
+    return (
+        ("double", None),
+        ("double-double", None),
+        ("arbitrary", RESCUE_INTERMEDIATE_DIGITS),
+        ("arbitrary", default_arbitrary_digits()),
+    )
 
 
 def relative_text(value: float, spec: str = ".2e") -> str:
@@ -961,6 +994,7 @@ __all__ = [
     "RECOMMENDED_CHECKS",
     "REDUCTION",
     "RESCALED",
+    "RESCUE_INTERMEDIATE_DIGITS",
     "RESCUE_ROTATION",
     "ROTATION",
     "SAFETY",
@@ -971,6 +1005,7 @@ __all__ = [
     "StabilityChecks",
     "StabilityEstimate",
     "cross_check",
+    "default_rescue",
     "default_rotation",
     "deviation",
     "differences",

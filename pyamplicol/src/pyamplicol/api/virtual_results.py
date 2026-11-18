@@ -22,10 +22,10 @@ from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
 from pyamplicol.loops.v2.poles import ORIGINS
 from pyamplicol.loops.v2.stability import (
-    DEFAULT_RESCUE,
     RESCUE_ROTATION,
     Rotation,
     StabilityChecks,
+    default_rescue,
     relative_text,
 )
 from pyamplicol.loops.v2.stability import default_rotation as _default_rotation
@@ -682,7 +682,7 @@ class VirtualRescueLevel:
 def _default_levels() -> tuple[VirtualRescueLevel, ...]:
     return tuple(
         VirtualRescueLevel(cast(Any, arithmetic), digits)
-        for arithmetic, digits in DEFAULT_RESCUE
+        for arithmetic, digits in default_rescue()
     )
 
 
@@ -707,14 +707,16 @@ class VirtualRescuePolicy:
     the level reached and every attempt.
 
     The default ``VirtualRescuePolicy()`` runs binary64, then double-double,
-    then 57-digit arbitrary precision, each with the default target accuracy
+    then arbitrary precision at 57 digits and at the default
+    arbitrary-precision digits (500, ``loops.v2.reduction.
+    default_arbitrary_digits``), each with the default target accuracy
     (1e-5, ``loops.v2.reduction.default_target``) on the relative estimate,
     one rotation ``"euler:0.1,0.2,0.3"`` and the rescaled reduction
-    check (``loops.v2.stability.DEFAULT_RESCUE``), every level ``"auto"``.
+    check (``loops.v2.stability.default_rescue``), every level ``"auto"``.
     For a loop-induced call whose ``"auto"`` takes TIRust with the NinjaRS
     fallback (``loops.v2.rescue.default_stack``) it is the loop-induced
     default stack: TIRust binary64 at the target, then NinjaRS binary64, then
-    the double-double and 57-digit levels (``"auto"``: TIRust with the
+    the double-double, 57- and 500-digit levels (``"auto"``: TIRust with the
     per-point NinjaRS fallback at their carrier). A call naming a backend
     runs the default ladder on that backend at every level.
     """

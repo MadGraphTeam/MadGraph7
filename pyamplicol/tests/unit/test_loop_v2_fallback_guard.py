@@ -875,7 +875,7 @@ def test_the_default_rescue_stack_escalates_the_guarded_fallback(zzz, loop_nativ
     """(loop_nightly: ~340 s, its 57-digit level; DECISIONS 2026-11-09 14:30:
     the CI tier keeps the guard's rejections on every route below.) The
     loop-induced default stack (TIRust b64 -> NinjaRS b64 ->
-    double-double -> 57 digits) at z z z points 44 and 57: before the guard
+    double-double -> 57 -> 500 digits) at z z z points 44 and 57: before the guard
     both escalated past the double-double level on that level's rescaled
     estimates (64 / 31, ninjars-dd-zzz B.md §2.1). The double-double level is
     ``"auto"`` with the per-point fallback; its rescaled checks run no cached
