@@ -1851,6 +1851,8 @@ pub struct RecurrenceAmplitudeDestination {
     target_sector_id: u32,
     target_helicity_id: Option<u32>,
     closure_range: CheckedTableRange,
+    /// Fermion pairing rule of a pattern-resolved (flavour-union) template.
+    pattern_id: Option<u32>,
 }
 
 /// One exact topology-replay route from a materialized recurrence to a public sector.
@@ -1943,7 +1945,18 @@ impl RecurrenceAmplitudeDestination {
             target_sector_id,
             target_helicity_id,
             closure_range,
+            pattern_id: None,
         })
+    }
+
+    #[must_use]
+    pub const fn with_pattern_id(mut self, pattern_id: Option<u32>) -> Self {
+        self.pattern_id = pattern_id;
+        self
+    }
+
+    pub const fn pattern_id(self) -> Option<u32> {
+        self.pattern_id
     }
 
     pub const fn id(self) -> u32 {
@@ -2127,6 +2140,7 @@ pub struct RecurrenceProgram {
     closure_proofs: ClosureProofMetadataV2,
     closure_target_domain_certificate: Option<ClosureTargetDomainCertificateV1>,
     color_projection_certificate_body: Option<Box<[u8]>>,
+    pattern_count: Option<u32>,
 }
 
 impl RecurrenceProgram {
@@ -2195,6 +2209,7 @@ impl RecurrenceProgram {
             closure_proofs,
             closure_target_domain_certificate: None,
             color_projection_certificate_body: None,
+            pattern_count: None,
         };
         program.validate()?;
         Ok(program)
@@ -2304,6 +2319,31 @@ impl RecurrenceProgram {
 
     pub fn color_projection_certificate_body(&self) -> Option<&[u8]> {
         self.color_projection_certificate_body.as_deref()
+    }
+
+    /// Mark a pattern-resolved template: every destination owns one of `pattern_count` rules.
+    pub(crate) fn with_pattern_count(mut self, pattern_count: u32) -> RusticolResult<Self> {
+        if self.strategy != RecurrenceStrategy::TopologyReplay || pattern_count == 0 {
+            return Err(invalid(
+                "pattern-resolved programs require topology replay and at least one pattern",
+            ));
+        }
+        if self
+            .amplitude_destinations
+            .iter()
+            .any(|destination| destination.pattern_id.is_none_or(|id| id >= pattern_count))
+        {
+            return Err(invalid(
+                "pattern-resolved destination lacks a pattern inside the catalog",
+            ));
+        }
+        self.pattern_count = Some(pattern_count);
+        Ok(self)
+    }
+
+    /// Pairing-rule count of a pattern-resolved template; `None` for normal programs.
+    pub const fn pattern_count(&self) -> Option<u32> {
+        self.pattern_count
     }
 
     pub fn current_range(&self) -> CheckedTableRange {

@@ -517,6 +517,7 @@ struct PendingProjectedContribution {
 struct ProjectedClosureIdentity {
     target_sector_id: u32,
     complete_source_states: Box<[SourceStateAssignment]>,
+    pattern_id: Option<u32>,
     closure_template_id: u32,
     quantum_flow_template_id: Option<u32>,
     parent_projection_ids: Box<[u32]>,
@@ -1114,6 +1115,8 @@ enum GlobalHelicityFlipRule {
 struct PendingClosureKey {
     target_sector_id: u32,
     complete_source_states: Box<[SourceStateAssignment]>,
+    /// Pairing rule of a pattern-resolved (flavour-union) closure.
+    pattern_id: Option<u32>,
     closure_template_id: u32,
     quantum_flow_template_id: Option<u32>,
     parent_current_ids: Box<[u32]>,
@@ -5133,6 +5136,8 @@ fn build_recurrence_program_impl(
     let propagators = propagator_by_state(template_input)?;
     let transition_reflections = TransitionReflectionIndex::new(template_input, &template_catalog)?;
     let replay_targets = build_replay_targets(strategy, process_input, &process_catalog)?;
+    let pattern_count =
+        pattern_resolved_rule_count(strategy, process_input, pairing_catalog, &replay_targets)?;
     let materialized_sectors = materialized_sector_ids(strategy, process_input, &replay_targets);
     let mut color_states = DynamicLCColorStateInterner::default();
     let mut currents = Vec::<PendingCurrent>::new();
@@ -5511,6 +5516,7 @@ fn build_recurrence_program_impl(
             global_helicity_flip_rule
         },
         reflection_certificates,
+        pattern_count,
     )?;
     add_optional_elapsed_nanoseconds(
         &mut telemetry.canonical_emission_nanoseconds,
@@ -7072,6 +7078,12 @@ fn add_transition_contributions(
                     &currents[parent_ids[1] as usize].realized_pairing_rule_ids,
                 ],
             );
+            // Pattern-resolved templates never merge currents of different pairing rules.
+            let key = if pairing_catalog.is_some_and(|catalog| catalog.pattern_resolved()) {
+                key.with_pattern_mask(Some(realized_pairing_rule_ids.iter().copied().collect()))
+            } else {
+                key
+            };
             let result_id = if let Some(id) = current_ids.get(&key).copied() {
                 debug_assert_eq!(
                     current_support_keys
@@ -7247,6 +7259,7 @@ pub(super) fn current_key_with_dynamic_color(
         key.source_binding().clone(),
         key.propagator_template_id(),
     )
+    .map(|result| result.with_pattern_mask(key.pattern_mask().map(Box::from)))
 }
 
 pub(super) fn reciprocal_reflection_proof(
@@ -7742,6 +7755,30 @@ fn closure_pairing_certificate_ids(
         }))?
         .map(|rule_id| vec![rule_id])
         .ok_or_else(|| invalid("closure parent lineage realizes no fermion pairing rule")),
+    }
+}
+
+/// Pattern of a pattern-resolved closure: its parents must realize exactly one rule.
+fn closure_pattern_id(
+    currents: &[PendingCurrent],
+    parent_ids: [u32; 2],
+    pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
+) -> RusticolResult<Option<u32>> {
+    if !pairing_catalog.is_some_and(|catalog| catalog.pattern_resolved()) {
+        return Ok(None);
+    }
+    let [left, right] = parent_ids.map(|id| &currents[id as usize].realized_pairing_rule_ids);
+    let mut realized = left.intersection(right).copied();
+    match (realized.next(), realized.next()) {
+        (Some(rule_id), None) => Ok(Some(rule_id)),
+        (first, _) => Err(invalid(format!(
+            "pattern-resolved closure realizes {} fermion pairing rules, expected exactly one",
+            if first.is_none() {
+                0
+            } else {
+                left.intersection(right).count()
+            }
+        ))),
     }
 }
 
@@ -8410,6 +8447,7 @@ fn build_bulk_color_union_closures(
                                         parents,
                                         process.external_legs.len(),
                                     )?,
+                                    pattern_id: None,
                                     closure_template_id: closure.row.id,
                                     quantum_flow_template_id: quantum.template_id(),
                                     parent_current_ids: evaluator_parent_ids
@@ -8995,6 +9033,7 @@ fn add_closure_terms(
     let pairing_certificate_ids =
         closure_pairing_certificate_ids(currents, parent_ids, pairing_catalog)?;
     let pairing_rule = pairing_rule_for_certificate(&pairing_certificate_ids, pairing_catalog)?;
+    let pattern_id = closure_pattern_id(currents, parent_ids, pairing_catalog)?;
     for quantum in closure
         .quantum_flows
         .iter()
@@ -9076,6 +9115,7 @@ fn add_closure_terms(
                     parents,
                     process.external_legs.len(),
                 )?,
+                pattern_id,
                 closure_template_id: closure.row.id,
                 quantum_flow_template_id: quantum.template_id(),
                 parent_current_ids: evaluator_parent_ids.into(),
@@ -9448,6 +9488,7 @@ fn plan_topology_replay_color_projection(
         let identity = ProjectedClosureIdentity {
             target_sector_id: key.target_sector_id,
             complete_source_states: key.complete_source_states.clone(),
+            pattern_id: key.pattern_id,
             closure_template_id: key.closure_template_id,
             quantum_flow_template_id: key.quantum_flow_template_id,
             parent_projection_ids: parent_projection_ids.into_boxed_slice(),
@@ -9641,6 +9682,13 @@ fn projected_current_identity_digest(
             .unwrap_or(MISSING_U32)
             .to_le_bytes(),
     );
+    if let Some(pattern_mask) = key.pattern_mask() {
+        hash_u32_sequence(
+            &mut hash,
+            pattern_mask,
+            "projection-certificate pattern mask",
+        )?;
+    }
     hash_u32_sequence(
         &mut hash,
         &identity.selector_sector_ids,
@@ -9702,6 +9750,10 @@ fn projected_closure_identity_digest(
     for assignment in &identity.complete_source_states {
         hash.update(assignment.source_slot().to_le_bytes());
         hash.update(assignment.state_index().to_le_bytes());
+    }
+    if let Some(pattern_id) = identity.pattern_id {
+        hash.update(b"pattern\0");
+        hash.update(pattern_id.to_le_bytes());
     }
     hash.update(identity.closure_template_id.to_le_bytes());
     hash.update(
@@ -10102,23 +10154,51 @@ fn observe_established_selected_transition_slice(
     Ok(Some((materialized_sector_id, source_states)))
 }
 
+#[cfg(test)]
 fn consume_ordered_closure_destination<I, Row, Destination, Emit>(
     rows: &mut Peekable<I>,
     sector_id: u32,
     source_states: &[SourceStateAssignment],
     destination: Destination,
-    mut emit: Emit,
+    emit: Emit,
 ) -> RusticolResult<()>
 where
     I: Iterator<Item = Row>,
     Destination: for<'row> Fn(&'row Row) -> (u32, &'row [SourceStateAssignment]),
     Emit: FnMut(Row) -> RusticolResult<()>,
 {
+    consume_ordered_pattern_closure_destination(
+        rows,
+        sector_id,
+        source_states,
+        None,
+        |row| {
+            let (sector_id, source_states) = destination(row);
+            (sector_id, source_states, None)
+        },
+        emit,
+    )
+}
+
+fn consume_ordered_pattern_closure_destination<I, Row, Destination, Emit>(
+    rows: &mut Peekable<I>,
+    sector_id: u32,
+    source_states: &[SourceStateAssignment],
+    pattern_id: Option<u32>,
+    destination: Destination,
+    mut emit: Emit,
+) -> RusticolResult<()>
+where
+    I: Iterator<Item = Row>,
+    Destination: for<'row> Fn(&'row Row) -> (u32, &'row [SourceStateAssignment], Option<u32>),
+    Emit: FnMut(Row) -> RusticolResult<()>,
+{
     while let Some(row) = rows.peek() {
-        let (row_sector_id, row_source_states) = destination(row);
+        let (row_sector_id, row_source_states, row_pattern_id) = destination(row);
         let ordering = row_sector_id
             .cmp(&sector_id)
-            .then_with(|| row_source_states.cmp(source_states));
+            .then_with(|| row_source_states.cmp(source_states))
+            .then_with(|| row_pattern_id.cmp(&pattern_id));
         match ordering {
             std::cmp::Ordering::Less => {
                 return Err(invalid(
@@ -10548,6 +10628,7 @@ fn finish_program(
     helicity_support_rule: HelicitySupportRule,
     global_helicity_flip_rule: GlobalHelicityFlipRule,
     reflection_certificates: Vec<PendingReflectionCertificate>,
+    pattern_count: Option<u32>,
 ) -> RusticolResult<RecurrenceProgram> {
     validate_pending_reflection_certificates(&reflection_certificates)?;
 
@@ -10651,7 +10732,13 @@ fn finish_program(
     let destination_keys = pending_closures
         .iter()
         .filter(|(_, group)| !group.exact_factor.is_zero())
-        .map(|(key, _)| (key.target_sector_id, key.complete_source_states.clone()))
+        .map(|(key, _)| {
+            (
+                key.target_sector_id,
+                key.complete_source_states.clone(),
+                key.pattern_id,
+            )
+        })
         .collect::<BTreeSet<_>>();
     let mut closure_terms = Vec::new();
     let mut closure_proof_contributions = Vec::new();
@@ -10766,10 +10853,15 @@ fn finish_program(
         .map(|projection| projection.closures.values().peekable());
     let mut amplitude_destinations = Vec::with_capacity(destination_keys.len());
     let mut destination_ids = BTreeMap::new();
-    for (destination_id, (sector_id, source_states)) in destination_keys.into_iter().enumerate() {
+    for (destination_id, (sector_id, source_states, pattern_id)) in
+        destination_keys.into_iter().enumerate()
+    {
         let destination_id = u32::try_from(destination_id)
             .map_err(|_| invalid("closure destination ID exceeds u32"))?;
-        destination_ids.insert((sector_id, source_states.clone()), destination_id);
+        destination_ids.insert(
+            (sector_id, source_states.clone(), pattern_id),
+            destination_id,
+        );
         let start = closure_terms.len() as u64;
         let target_helicity_id = if source_states.is_empty() {
             None
@@ -10781,14 +10873,16 @@ fn finish_program(
             )
         };
         if let Some(rows) = projected_closure_rows.as_mut() {
-            consume_ordered_closure_destination(
+            consume_ordered_pattern_closure_destination(
                 rows,
                 sector_id,
                 &source_states,
+                pattern_id,
                 |projected| {
                     (
                         projected.identity.target_sector_id,
                         projected.identity.complete_source_states.as_ref(),
+                        projected.identity.pattern_id,
                     )
                 },
                 |projected| {
@@ -10821,11 +10915,18 @@ fn finish_program(
                 },
             )?;
         } else {
-            consume_ordered_closure_destination(
+            consume_ordered_pattern_closure_destination(
                 &mut pending_closure_rows,
                 sector_id,
                 &source_states,
-                |(key, _)| (key.target_sector_id, key.complete_source_states.as_ref()),
+                pattern_id,
+                |(key, _)| {
+                    (
+                        key.target_sector_id,
+                        key.complete_source_states.as_ref(),
+                        key.pattern_id,
+                    )
+                },
                 |(key, group)| {
                     let parents = key
                         .parent_current_ids
@@ -10864,12 +10965,15 @@ fn finish_program(
                 },
             )?;
         }
-        amplitude_destinations.push(RecurrenceAmplitudeDestination::new(
-            destination_id,
-            sector_id,
-            target_helicity_id,
-            CheckedTableRange::new(start, closure_terms.len() as u64 - start),
-        )?);
+        amplitude_destinations.push(
+            RecurrenceAmplitudeDestination::new(
+                destination_id,
+                sector_id,
+                target_helicity_id,
+                CheckedTableRange::new(start, closure_terms.len() as u64 - start),
+            )?
+            .with_pattern_id(pattern_id),
+        );
     }
     if let Some(rows) = projected_closure_rows.as_mut() {
         require_ordered_closure_destinations_exhausted(rows)?;
@@ -10881,7 +10985,11 @@ fn finish_program(
         .filter(|(_, group)| group.exact_factor.is_zero())
     {
         let target_destination_id = destination_ids
-            .get(&(key.target_sector_id, key.complete_source_states.clone()))
+            .get(&(
+                key.target_sector_id,
+                key.complete_source_states.clone(),
+                key.pattern_id,
+            ))
             .copied();
         let target_helicity_id = if key.complete_source_states.is_empty() {
             None
@@ -10927,6 +11035,9 @@ fn finish_program(
     if let Some(certificate) = closure_target_domain_certificate {
         program = program.with_closure_target_domain_certificate(certificate)?;
     }
+    if let Some(pattern_count) = pattern_count {
+        program = program.with_pattern_count(pattern_count)?;
+    }
     if let Some(projection) = color_projection.as_ref() {
         let body = encode_color_projection_certificate_body(
             &pending,
@@ -10938,6 +11049,48 @@ fn finish_program(
     } else {
         Ok(program)
     }
+}
+
+/// Rule count of a pattern-resolved template after checking that replay never relabels patterns.
+fn pattern_resolved_rule_count(
+    strategy: RecurrenceStrategy,
+    process: &OwnedRecurrenceProcessInput,
+    pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
+    replay_targets: &[RecurrenceReplayTarget],
+) -> RusticolResult<Option<u32>> {
+    let Some(catalog) = pairing_catalog.filter(|catalog| catalog.pattern_resolved()) else {
+        return Ok(None);
+    };
+    if strategy != RecurrenceStrategy::TopologyReplay {
+        return Err(invalid(
+            "pattern-resolved recurrence requires the LC topology-replay layout",
+        ));
+    }
+    for target in replay_targets {
+        for leg in process
+            .external_legs
+            .iter()
+            .filter(|leg| leg.is_fermionic != 0)
+        {
+            if target
+                .source_slot_permutation()
+                .get(leg.source_slot as usize)
+                .copied()
+                != Some(leg.source_slot)
+            {
+                return Err(invalid(
+                    "pattern-resolved topology replay moves a fermion source slot",
+                ));
+            }
+        }
+    }
+    let rule_count = catalog.summary().rule_count();
+    if rule_count == 0 || catalog.rules().len() != rule_count as usize {
+        return Err(invalid(
+            "pattern-resolved recurrence requires a nonempty fermion pairing catalog",
+        ));
+    }
+    Ok(Some(rule_count))
 }
 
 fn helicity_support_rule(
@@ -12804,6 +12957,7 @@ mod tests {
         let key = PendingClosureKey {
             target_sector_id: 119,
             complete_source_states: Vec::new().into_boxed_slice(),
+            pattern_id: None,
             closure_template_id: 3,
             quantum_flow_template_id: Some(5),
             parent_current_ids: vec![7, 9].into_boxed_slice(),
@@ -14915,6 +15069,7 @@ mod tests {
             HelicitySupportRule::None,
             GlobalHelicityFlipRule::None,
             reflection_certificates,
+            None,
         )
         .unwrap();
         (
@@ -16794,6 +16949,7 @@ mod tests {
                 PendingClosureKey {
                     target_sector_id: 0,
                     complete_source_states: Box::new([]),
+                    pattern_id: None,
                     closure_template_id: 0,
                     quantum_flow_template_id: None,
                     parent_current_ids: vec![parent, 0].into_boxed_slice(),
@@ -17083,6 +17239,7 @@ mod tests {
                 PendingClosureKey {
                     target_sector_id: 0,
                     complete_source_states: Box::new([]),
+                    pattern_id: None,
                     closure_template_id: 1,
                     quantum_flow_template_id: None,
                     parent_current_ids: vec![parent, 0].into_boxed_slice(),

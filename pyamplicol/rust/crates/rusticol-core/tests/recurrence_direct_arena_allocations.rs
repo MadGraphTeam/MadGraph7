@@ -569,6 +569,7 @@ fn direct_runtime(strategy: RecurrenceStrategy) -> DirectRecurrenceExecutionRunt
         )
         .unwrap(),
         amplitude_orders: DirectAmplitudeOrders::without_coupling_orders(1),
+        destination_patterns: Default::default(),
     })
     .unwrap();
 

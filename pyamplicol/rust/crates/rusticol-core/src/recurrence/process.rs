@@ -116,6 +116,7 @@ impl<'a> FermionPairingInputView<'a> {
             endpoint_count: header.endpoint_count,
             pairing_class_count: header.pairing_class_count,
             rule_count: header.rule_count,
+            pattern_resolved: false,
         })
     }
 
@@ -1246,7 +1247,11 @@ pub struct FermionPairingValidationSummary {
     endpoint_count: u32,
     pairing_class_count: u32,
     rule_count: u32,
+    pattern_resolved: bool,
 }
+
+/// Semantic role marking a flavour-union template: closures stay per pairing rule.
+pub const FERMION_PAIRING_PATTERN_RESOLVED_ROLE: &str = "fermion-pairing:pattern-resolved-v1";
 
 impl FermionPairingValidationSummary {
     pub const fn columnar_digest(&self) -> SemanticDigest {
@@ -1275,6 +1280,11 @@ impl FermionPairingValidationSummary {
 
     pub const fn rule_count(&self) -> u32 {
         self.rule_count
+    }
+
+    /// Whether amplitudes are kept per pairing rule (flavour-union template).
+    pub const fn pattern_resolved(&self) -> bool {
+        self.pattern_resolved
     }
 }
 
@@ -1440,6 +1450,10 @@ impl<'a> ValidatedFermionPairingCatalog<'a> {
 
     pub const fn rules(self) -> &'a [FermionPairingRuleRow] {
         self.input.rules
+    }
+
+    pub const fn pattern_resolved(self) -> bool {
+        self.summary.pattern_resolved
     }
 
     pub fn class_pairing_indices(
@@ -3081,8 +3095,11 @@ impl<'a> RecurrenceProcessInputView<'a> {
             .extension_digests()
             .get("fermion-pairing-semantic")
             .copied();
+        let pattern_resolved = semantic_identity
+            .extension_digests()
+            .contains_key(FERMION_PAIRING_PATTERN_RESOLVED_ROLE);
         let Some(pairing) = self.fermion_pairing else {
-            if topology_role.is_some() || semantic_role.is_some() {
+            if topology_role.is_some() || semantic_role.is_some() || pattern_resolved {
                 return Err(invalid(
                     "recurrence process claims fermion-pairing digests without pairing tables",
                 ));
@@ -3095,7 +3112,8 @@ impl<'a> RecurrenceProcessInputView<'a> {
         let semantic_role = semantic_role.ok_or_else(|| {
             invalid("recurrence fermion-pairing tables lack their semantic digest role")
         })?;
-        let summary = pairing.validate_internal(process_id)?;
+        let mut summary = pairing.validate_internal(process_id)?;
+        summary.pattern_resolved = pattern_resolved;
         if summary.topology_digest != topology_role {
             return Err(invalid(
                 "fermion-pairing topology digest disagrees with the process semantic identity",

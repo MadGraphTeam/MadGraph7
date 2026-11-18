@@ -507,6 +507,8 @@ pub struct CurrentCoreKey {
     coupling_orders: Box<[u32]>,
     source_binding: CurrentSourceBinding,
     propagator_template_id: Option<u32>,
+    /// Flavour-union pairing rules realised by this current; separates patterns.
+    pattern_mask: Option<Box<[u32]>>,
 }
 
 impl CurrentCoreKey {
@@ -597,7 +599,18 @@ impl CurrentCoreKey {
             coupling_orders: coupling_orders.into_boxed_slice(),
             source_binding,
             propagator_template_id,
+            pattern_mask: None,
         })
+    }
+
+    #[must_use]
+    pub fn with_pattern_mask(mut self, pattern_mask: Option<Box<[u32]>>) -> Self {
+        self.pattern_mask = pattern_mask;
+        self
+    }
+
+    pub fn pattern_mask(&self) -> Option<&[u32]> {
+        self.pattern_mask.as_deref()
     }
 
     pub const fn catalog_digest(&self) -> SemanticDigest {

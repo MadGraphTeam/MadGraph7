@@ -271,6 +271,7 @@ pub(crate) fn valid_parts() -> DirectRecurrencePlanParts {
         )
         .unwrap(),
         amplitude_orders: DirectAmplitudeOrders::without_coupling_orders(1),
+        destination_patterns: Default::default(),
     }
 }
 

@@ -417,6 +417,51 @@ impl DirectAmplitudeOrders {
     }
 }
 
+/// Cold pairing-rule table of a pattern-resolved (flavour-union) template.
+///
+/// Empty for normal plans. Otherwise destination `d` carries pattern
+/// `destination_patterns[d] < pattern_count`; amplitudes of one sector and
+/// helicity are combined over patterns before squaring.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct DirectDestinationPatterns {
+    pub pattern_count: u32,
+    pub destination_patterns: Vec<u32>,
+}
+
+impl DirectDestinationPatterns {
+    pub const fn is_pattern_resolved(&self) -> bool {
+        self.pattern_count != 0
+    }
+
+    fn validate(
+        &self,
+        strategy: RecurrenceStrategy,
+        destination_count: usize,
+    ) -> RusticolResult<()> {
+        if !self.is_pattern_resolved() {
+            return if self.destination_patterns.is_empty() {
+                Ok(())
+            } else {
+                Err(invalid("destination patterns require a pattern count"))
+            };
+        }
+        if strategy != RecurrenceStrategy::TopologyReplay {
+            return Err(invalid("destination patterns require topology replay"));
+        }
+        if self.destination_patterns.len() != destination_count
+            || self
+                .destination_patterns
+                .iter()
+                .any(|pattern| *pattern >= self.pattern_count)
+        {
+            return Err(invalid(
+                "destination patterns must assign every destination one catalog pattern",
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DirectRecurrencePlanParts {
     pub strategy: RecurrenceStrategy,
@@ -462,6 +507,7 @@ pub struct DirectRecurrencePlanParts {
     pub exact_factors: Vec<ExactComplexRational>,
     pub closure_proofs: ClosureProofMetadataV2,
     pub amplitude_orders: DirectAmplitudeOrders,
+    pub destination_patterns: DirectDestinationPatterns,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -779,6 +825,10 @@ impl DirectRecurrencePlan {
 
     pub const fn amplitude_orders(&self) -> &DirectAmplitudeOrders {
         &self.parts.amplitude_orders
+    }
+
+    pub const fn destination_patterns(&self) -> &DirectDestinationPatterns {
+        &self.parts.destination_patterns
     }
 
     pub fn into_parts(self) -> DirectRecurrencePlanParts {
@@ -1811,6 +1861,9 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     validate_contribution_initialization(parts)?;
     validate_closure_proofs(parts)?;
     parts.amplitude_orders.validate(parts.closures.len())?;
+    parts
+        .destination_patterns
+        .validate(parts.strategy, parts.amplitude_destinations.len())?;
     Ok(())
 }
 
@@ -2529,6 +2582,16 @@ fn digest_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<SemanticDig
     count!(orders.closure_components);
     for value in &orders.closure_components {
         hash.update(value.to_le_bytes());
+    }
+    // Absent for normal plans so their runtime-layout digest is unchanged.
+    let patterns = &parts.destination_patterns;
+    if patterns.is_pattern_resolved() {
+        hash.update(b"destination-patterns-v1\0");
+        hash.update(patterns.pattern_count.to_le_bytes());
+        count!(patterns.destination_patterns);
+        for value in &patterns.destination_patterns {
+            hash.update(value.to_le_bytes());
+        }
     }
     SemanticDigest::new(hash.finalize().into())
 }

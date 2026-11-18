@@ -1818,6 +1818,11 @@ fn apply_process_remap(
             "cross-process recurrence sharing currently supports topology-replay schedules only",
         ));
     }
+    if plan.destination_patterns().is_pattern_resolved() {
+        return Err(RusticolError::compatibility(
+            "pattern-resolved recurrence schedules cannot be shared across processes",
+        ));
+    }
     if !remap.parameter_slots.changes.is_empty() {
         return Err(RusticolError::compatibility(
             "cross-process recurrence sharing does not support prepared-parameter reordering",
