@@ -13,7 +13,11 @@
 #ifndef UMAMI_PROVIDER_HEADER
 #define UMAMI_PROVIDER_HEADER "provider_p0.h"
 #endif
+/* Contributions outside flavour unions omit the trailing (zero) assignment fields. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #include UMAMI_PROVIDER_HEADER
+#pragma GCC diagnostic pop
 
 /* Events are evaluated in batches of at most this many points per native call. */
 #define UMAMI_CHUNK 512
