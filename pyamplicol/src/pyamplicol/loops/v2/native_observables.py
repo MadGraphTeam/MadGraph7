@@ -2072,7 +2072,7 @@ class StoredColumns:
             _rotated_point,
             _rotated_spin,
         )
-        from .plan_export import FailedPoints, relabelled
+        from .plan_export import FailedPoints, RescuedOutputs, merged_rescue, relabelled
         from .stability import ROTATION, StabilityChecks
 
         if ward is not None:
@@ -2152,7 +2152,13 @@ class StoredColumns:
                 result = {rename.get(key, key): v for key, v in result.items()}
             if member is not None:
                 result = {_member_key(member, key): v for key, v in result.items()}
-            out.append(result)
+            # The point's lane rescue over its reference and rotated
+            # evaluations (review B1).
+            out.append(
+                RescuedOutputs(
+                    result, merged_rescue([reference, *(run[index] for run in runs)])
+                )
+            )
         if failures:
             raise FailedPoints(out, failures)
         return out
@@ -2188,7 +2194,7 @@ class StoredColumns:
 
         from .assemble import _fraction, _NativePoint, _Numbers
         from .native_trees import batch_parameters
-        from .plan_export import NativeExecutor, _fraction_text
+        from .plan_export import NativeExecutor, _fraction_text, rescue_options
         from .poles import has_poles, pole_mode, reducer_poles, splits
         from .reduction import executor_options, prepare
 
@@ -2228,6 +2234,7 @@ class StoredColumns:
             "rescale": retest == "rescaled",
             # The call's reduction backend (``reduction.running``).
             **executor_options(),
+            **rescue_options(view),
         }
         native = self._executor(arithmetic, digits, len(evaluations), False)
         prepare(native)
@@ -2274,7 +2281,7 @@ class StoredColumns:
             if self.meta["companion_orders"] is None
             else [_orders_of(o) for o in self.meta["companion_orders"]]
         )
-        from .plan_export import point_measures, with_measures
+        from .plan_export import point_measures, point_rescued, with_measures
 
         failed: dict[int, list[str]] = {}
         for index, (evaluation, lanes, checks, failures) in enumerate(
@@ -2294,6 +2301,7 @@ class StoredColumns:
                     point_measures(output, extra, index),
                 )
                 continue
+            evaluation.lane_rescue = point_rescued(output, extra, index)
             numbers = evaluation.numbers
 
             def carrier(values, numbers=numbers):

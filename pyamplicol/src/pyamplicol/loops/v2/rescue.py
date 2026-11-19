@@ -12,7 +12,9 @@ batch (``V2VirtualRuntime`` and ``V2ObservablesRuntime``):
 2. a point that failed (``FailedPoints`` reasons, failures of its rotated
    evaluations included) or whose estimate missed the level's target is
    evaluated again at the next level, from its original exact inputs (no
-   value is promoted, MASTER_PLAN §2.18); an accepted point is never
+   value is promoted, MASTER_PLAN §2.18, except the refused lanes' binary64
+   coefficients, lifted exactly into the lane rescue's higher-carrier
+   reduction inside a level); an accepted point is never
    evaluated again;
 3. at the last level a point that evaluates keeps its value with the target
    marked as not met; a point that failed at every level is a failed lane,

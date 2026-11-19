@@ -619,7 +619,10 @@ serves what they refuse, NinjaRS runs with zero stability thresholds (its
 box mu-expansion's conditioning bound stays active); only points without a
 finite value or refused by that bound still fail, `auto` keeps its backend choice and
 its fallback acts on those only. It is a timing and benchmark mode with no
-accuracy certificate (the measured accuracy per process: [Python
+accuracy certificate; the lane rescue still serves the lanes the unchecked
+backend refuses (`--no-lane-rescue`, `evaluation.lane_rescue = false`, turns
+it off; [Python API](python-api.md), "Lane rescue of refused reduction
+lanes") (the measured accuracy per process: [Python
 API](python-api.md), "Unchecked reductions"). The JSON output's lane diagnostics name the requested and
 effective backends, the reason, the fallback, the target and the unchecked
 setting. A
@@ -876,7 +879,10 @@ fewer. What is timed, which the table header names: binary64, finite part
 only, **one fully optimistic pass per point** (the same pass as the reference
 multiplier's, below): each backend's unchecked reduction alone (no `auto`
 fallback), no stability checks, no rescue, no best-effort re-evaluation of a
-refused point (a point without a value is counted `failed`). `--checked`
+refused point (a point without a value is counted `failed`); a reduction lane
+the unchecked backend still refuses is rescued inside the timed call (the
+header says "refused lanes rescued"; `--no-lane-rescue` times pure binary64
+calls, such points then without a value). `--checked`
 (`benchmark.checked = true`) times the checked mode instead: the backends'
 own acceptance checks, a refused point returned with its best-effort value
 and timed as such (its unchecked re-evaluation and its uncertainty's checks
@@ -895,7 +901,10 @@ table, after a `---` line, the failed or refused points are listed per
 backend and cause, most frequent first, in the form
 `<count> (<fraction> %) <backend> | <kind>: <cause>` (causes grouped with
 their numbers masked; also in `--json` as `failure_causes`); nothing is
-printed when nothing failed. The
+printed when nothing failed. The kind `lane rescue` counts served points
+whose refused reduction lanes were reduced again in a higher carrier
+(`reduction lanes rescued in <carrier>`; python-api.md, "Lane rescue of
+refused reduction lanes"); their time is in the timed calls. The
 second table gives the time per point in each stage group (trees: the native
 trees and counterterm kets; dressing: seeds, factors and dressing of a
 Born-interfered process, the dressing of a loop-induced one; scatter;
@@ -1040,11 +1049,14 @@ of the points done per backend and precision and an estimated time to
 completion; Ctrl-C stops the run and prints the tables of the points
 evaluated so far with a one-line notice (`stability_setup.requested`,
 `measured_points`, `interrupted` in `--json`; exit code 130), a second Ctrl-C aborts.
-The runtime timing runs before the pool, one process per backend. Each backend evaluates every point in pure binary64 with the default rotation
-test (one default rotation, what `evaluation.stability_checks` gives by
-default; `evaluation.stability_checks` replaces it when set; the rescue's own
-check set, a fixed Euler rotation plus the rescaled-reduction check, is
-stronger and is not what is measured here) and again in double-double on the
+The runtime timing runs before the pool, one process per backend. Each backend evaluates every point in pure binary64 with the default
+checks: one default rotation on a point NinjaRS serves, one default rotation
+and the rescaled reduction-direction check on a point TIRust serves (per
+point under `--reduction auto`: a per-point NinjaRS fallback point keeps the
+NinjaRS set; USER 2026-11-19); `evaluation.stability_checks` replaces them
+when set, unchanged per backend (the rescue's own check set, a fixed Euler
+rotation plus the rescaled-reduction check on every level, is not what is
+measured here) and again in double-double on the
 same backend in the reference precision (`--ground-truth`; double-double by
 default), the reference. Following the measure of MadLoop
 (arXiv:1103.0621, sect. 3.4) and MadGraph5_aMC@NLO (arXiv:1405.0301, "Checks,
@@ -1064,7 +1076,14 @@ backend's own checks refuse in binary64 is measured with its best-effort
 value (the unchecked reduction's, what the default `on_failure` returns,
 status best-effort; since 1.0.3) at its true digits, its estimate being the
 call's checks' estimate of that value; it is never accepted, so it always
-counts as flagged. A point with no binary64 value at all ("no value") counts
+counts as flagged. A point whose refused lanes the lane rescue served (cause
+kind `lane rescue`) is measured like an accepted one, its estimate covering
+the mixed total. With the default checks a TIRust point's value can differ, at a rescued
+lane's rounding, from a one-rotation run (a lane refused only in the
+reduction check's frame is rescued in both frames). Lanes a backend accepts
+are never rescued, however inaccurate: such points are measured (and flagged by their estimate) as
+before (on flat 2 -> 6 gluon points 10 of the 23 points NinjaRS accepts have
+an estimate above 1e-5, 3 above 1). A point with no binary64 value at all ("no value") counts
 0 true digits (the worst end of the ranking) and has no estimate. A point with a binary64 value whose
 reference failed has an unknown truth and is left out (shown as
 "no ref."). The measured points (N in what follows) are all others.
@@ -1094,14 +1113,14 @@ time per point are in `--json`, `precision_timing`). Every worker loads the
 artifact and makes one untimed call per backend and precision before any
 timed one, so start-up costs stay out of both totals, and the points go in
 tasks of whole binary64 SIMD chunks. The binary64 calls
-include their stability checks (the default rotation test evaluates each
-point twice) while the reference evaluates each point once (with an
-arbitrary-precision ground truth, plus the checked re-runs of the references
-the cross-check did not certify, or with one backend one checked evaluation
-per point; each worker's first checked call is untimed), so this multiplier
-is not the cost ratio
-of one evaluation: that is the runtime table's `(dd xN)`. No rescue runs:
-the statistics are those of pure binary64; the
+include their stability checks (the default checks evaluate each point
+again rotated, and re-reduce TIRust's points in the rescaled frame) while the
+reference evaluates each point once (with an arbitrary-precision ground truth,
+plus the checked re-runs of the references the cross-check did not certify, or
+with one backend one checked evaluation per point; each worker's first checked
+call is untimed), so this multiplier is not the cost ratio of one evaluation:
+that is the runtime table's `(dd xN)`. No rescue runs: the statistics are those
+of pure binary64; the
 reference re-run is the reference only. When a backend served points
 best-effort, a third table shows how accurate those values and their
 uncertainties are: per backend the number of best-effort points, their true

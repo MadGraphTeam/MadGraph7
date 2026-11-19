@@ -882,6 +882,10 @@ def test_profile_takes_the_loop_settings() -> None:
     checked = parse_cli(("profile", "artifact", "--checked")).resolve().effective
     assert checked.benchmark.checked is True
     assert checked.evaluation.reduction_unchecked is False
+    assert checked.evaluation.lane_rescue is True
+    for command in ("profile", "evaluate"):
+        off = parse_cli((command, "artifact", "--no-lane-rescue")).resolve().effective
+        assert off.evaluation.lane_rescue is False
 
 
 def test_evaluate_profile_and_check_take_the_kinematics_improvement() -> None:

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from itertools import pairwise
@@ -695,7 +695,9 @@ class VirtualRescuePolicy:
 
     Level 0 evaluates the whole batch. A point that fails (also in one of its
     rotated evaluations) or misses the level's target is evaluated again at
-    the next level from its original exact inputs (no value is promoted); an
+    the next level from its original exact inputs (no value is promoted,
+    except the refused lanes' binary64 coefficients, lifted exactly into the
+    lane rescue's higher-carrier reduction inside a level); an
     accepted point is never evaluated again. At the last level a point that
     evaluates keeps its value, with the target marked as not met; a point
     that fails at every level is a failed lane (raised under
@@ -947,6 +949,104 @@ class VirtualVerificationDiagnostic:
     detail: str
 
 
+def rescue_text(rescue: VirtualLaneRescue, added: bool) -> str:
+    """A lane diagnostic's text of its lane rescue (the "detail" column):
+    "lane rescue: N lanes in <carrier>, ..." (and the moments); when the
+    rescaled reduction-direction check was ADDED to the call's checks
+    (``added``: ``reduction.rescued_checks`` of them is not None) also that
+    the point's estimate includes it, the reason it may list a check the
+    call did not ask for (review B2, m-a)."""
+
+    def count(n: int, noun: str) -> str:
+        return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+    parts = [f"{count(n, 'lane')} in {c}" for c, n in rescue.lanes]
+    parts += [f"{count(n, 'term-scale moment')} in {c}" for c, n in rescue.moments]
+    return (
+        "lane rescue: "
+        + ", ".join(parts)
+        + (
+            " (its estimate includes the rescaled reduction-direction check)"
+            if added
+            else ""
+        )
+    )
+
+
+# The prefix of a term-scale moment's carrier in the merged per-carrier
+# counts of a point (``plan_export.point_rescued``; ``VirtualLaneRescue.of``).
+MOMENTS = "moments:"
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualLaneRescue:
+    """The lane rescue of one point (USER 2026-11-18; docs/user/
+    python-api.md, "Lane rescue"): reduction lanes (one family's
+    integrals in one Laurent column) that the backend refused in the
+    evaluation's carrier and whose REDUCTION alone was redone in a higher
+    carrier, from the same coefficients lifted exactly, the result rounded
+    back into the evaluation's sum. ``lanes`` gives per carrier
+    (``"double-double"``, ``"arbitrary"``) the lanes it served, counted
+    over the point's evaluations (the reference and its rotated
+    evaluations). ``moments`` gives the same for the term scale's moments
+    of a loop-induced checked call (the unit-numerator reductions behind its
+    estimate's scale, counted apart from the lanes; review m3). The point's
+    stability estimate covers the mixed total: a rescued lane is not
+    certified by itself."""
+
+    lanes: tuple[tuple[str, int], ...]
+    moments: tuple[tuple[str, int], ...] = ()
+
+    def __post_init__(self) -> None:
+        def counts(value: object, name: str) -> tuple[tuple[str, int], ...]:
+            found = tuple(
+                (str(carrier), int(count))
+                for carrier, count in cast(Iterable[tuple[str, int]], value)
+            )
+            if any(
+                carrier not in {"double-double", "arbitrary"} or count < 1
+                for carrier, count in found
+            ):
+                raise ValueError(
+                    f"a lane rescue's {name} name double-double or arbitrary with "
+                    "at least one each"
+                )
+            return found
+
+        lanes = counts(self.lanes, "lanes")
+        moments = counts(self.moments, "moments")
+        if not lanes and not moments:
+            raise ValueError("a lane rescue serves at least one lane or moment")
+        object.__setattr__(self, "lanes", lanes)
+        object.__setattr__(self, "moments", moments)
+
+    @classmethod
+    def of(cls, counts: Iterable[tuple[str, int]]) -> VirtualLaneRescue:
+        """The record of a point's merged per-carrier counts
+        (``plan_export.point_rescued``: a moment's carrier prefixed
+        ``"moments:"``)."""
+
+        lanes = [(c, n) for c, n in counts if not c.startswith(MOMENTS)]
+        moments = [(c[len(MOMENTS) :], n) for c, n in counts if c.startswith(MOMENTS)]
+        return cls(tuple(lanes), tuple(moments))
+
+    @property
+    def count(self) -> int:
+        """The rescued lanes over every carrier (moments not counted)."""
+
+        return sum(count for _carrier, count in self.lanes)
+
+    @property
+    def carrier(self) -> str:
+        """The highest carrier that served a lane or a moment."""
+
+        return (
+            "arbitrary"
+            if any(c == "arbitrary" for c, _ in (*self.lanes, *self.moments))
+            else ("double-double")
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class VirtualLaneDiagnostic:
     """Accuracy is explicit; a finite output is not an accuracy certificate.
@@ -993,6 +1093,10 @@ class VirtualLaneDiagnostic:
     # evaluation without the binary64 switch (no improvement, values bitwise
     # as before), else the record (``"off"`` under the setting "off").
     kinematics: VirtualKinematics | None = None
+    # The lane rescue of the point (``VirtualLaneRescue``): the reduction
+    # lanes the backend refused in this carrier and a higher carrier served;
+    # None when no lane was rescued.
+    lane_rescue: VirtualLaneRescue | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {

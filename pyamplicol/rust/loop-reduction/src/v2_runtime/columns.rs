@@ -993,6 +993,7 @@ impl V2Runtime {
         self.backend(precision)?;
         let options = V2Options {
             poles: mode.lanes(),
+            rescue: self.rescue_inputs(),
             ..V2Options::default()
         };
         let observables = self.observables.as_mut().expect("the observables");

@@ -365,6 +365,30 @@ Stability checks are off by default (no estimate is returned then); the
 reduction backends' own acceptance and refusal checks stay on unless
 `reduction_unchecked=True`.
 
+**Default checks per backend** (USER 2026-11-19: the rescaled reduction check
+"for TIRust as part of the default stability stack"). Where pyAmpliCol chooses
+the checks for the caller, a point TIRust serves runs one rotation **and** the
+rescaled reduction-direction check, a point NinjaRS serves exactly what it ran
+before; checks a caller gives are never changed (an explicit
+`VirtualStabilityChecks(1)` on TIRust stays one rotation, apart from the
+lane-rescue rule below). The defaults are:
+
+| where | NinjaRS-served point | TIRust-served point |
+|---|---|---|
+| `evaluate` / CLI `evaluate` without `stability_checks` | no checks (no estimate) | no checks (no estimate) |
+| every level of `VirtualRescuePolicy()` and of the loop-induced default stack | one rotation + rescaled reduction check | one rotation + rescaled reduction check |
+| best-effort uncertainty (`VirtualBestEffort`) | the call's checks with the recommended ones | the call's checks with the recommended ones |
+| `profile --stability` without `evaluation.stability_checks` | one default rotation | one default rotation + rescaled reduction check |
+| SDK (`rusticol_virtual_set_stability_checks` not called) | no checks | no checks |
+
+Under `"auto"` the set follows the backend that serves each point (a
+per-point NinjaRS fallback point keeps the NinjaRS set;
+`loops.v2.reduction.default_checks` / `backend_checks`). Why: one rotation
+alone under-states the error of accepted TIRust points (true error above the
+one-rotation estimate on 144 of 200 flat g g > g g g points, up to 1.1e4
+times, and on 24 of 50 g g > g g g g points; with the reduction check on none
+of them).
+
 The reduction backend is chosen once per call (`reduction="auto"`, `"ninjars"`
 or `"tirust"` on `Runtime.load` and on every evaluation; default: the
 artifact's `[loop] reduction`): `"auto"` takes TIRust for a loop-induced and
@@ -450,6 +474,64 @@ binary64 on the measured wrong points) and the rescue stack escalates them.
 A value the bound does not flag is no more verified than before: an explicit
 `reduction="ninjars"` has no fallback guard, so request stability checks
 where such kinematics matter.
+
+**NinjaRS tracked precision (arbitrary precision).** Symbolica's
+arbitrary-precision numbers keep track of the bits that survive each
+operation, so every NinjaRS lane carries the uncertainty of its value.
+Per Laurent coefficient, pyAmpliCol sums that uncertainty and the size of
+each value over all NinjaRS lanes of a point, and fails the point (status
+`failed`, reason "NinjaRS tracked precision: the point's lanes keep ...
+tracked bits ...") when the largest summed uncertainty exceeds `2^-r` of
+the largest summed size. `r` is NinjaRS's own rule for its master
+integrals at the working precision: 53 bits up to 212 working bits, a
+quarter of them above, at most half (53 at 40 digits, 64 at 57, 66 at 60,
+83 at 80). Summed over the point, families that vanish identically
+(rounding noise of a few bits at regular points) weigh by their size, and
+the largest coefficient decides, so the identically vanishing poles of a
+loop-induced amplitude do not fail it. A rescue stack evaluates a failed
+point at its next level. The test applies to NinjaRS in arbitrary
+precision, in the inclusive and resolved evaluations, the Python reference
+path and the SDKs; binary64 and double-double track nothing, TIRust's
+values have their own acceptance tests, and the unchecked setting
+(`reduction_unchecked=True`) drops it with the backends' other checks. It
+never changes a served value. A lane the lane rescue (below) reduced in
+arbitrary precision inside a lower-precision point (binary64 or
+double-double) is held to the analogous rule at that point: per Laurent
+coefficient, the tracked uncertainty of its arbitrary-precision value
+(before it is rounded to the point's carrier), summed over the point's
+lanes rescued there, must stay below the point carrier's unit roundoff
+(`2^-53`, `2^-106`) of the point's summed lane sizes, the largest
+coefficient deciding; otherwise those lanes count as refused at that last
+carrier and the point fails (reason "NinjaRS tracked precision: the N lanes
+rescued in arbitrary ... keep ... tracked bits ...").
+
+It catches what NinjaRS's cut tests miss at a nearly degenerate box Gram
+determinant (a 2 -> 3 point with a spatially collinear final state, NinjaRS
+issue 15). Measured (2026-11-18, development host; truth: NinjaRS at 150
+digits) on 200 points of HC05 g g > x0 g g at sqrt(s) = 1 TeV, two such
+points were served with status `success`, 3.4e18 and 9.4e13 off at 57
+digits (4.7e34 and 6.7e30 at 40, 8.2e-5 and 4.4e-11 at 80). The test fails
+exactly these two at 40, 57, 60 and 80 digits (at 80 digits the second one
+was right), and no other point; every other value is unchanged bitwise, the
+worst within 1.2e-10 (40 digits). On g g > g g g, g g > h h, g g > z z,
+u u~ > d d~ and g g > z z g at 40 and 57 digits it fails no point. The
+default rescue stack ends at 57 digits, so there the two points stay
+flagged (`best-effort` under the default `on_failure`, as before not met);
+a stack with 100- and 150-digit levels serves them right (at 150 and 100
+digits). The test rests on numerica's tracked precision, an estimate
+rather than a bound: it overstates the accuracy of a ruined value (the two
+points still claim some kept bits, far below `r`, where none are right), and
+it does not see a loss that happens outside the tracked arithmetic.
+An amplitude that integrates to zero at every point (a Landau-Yang zero such
+as loop-induced g g > z, every family vanishing by itself) has only lanes of
+rounding noise, so on NinjaRS in arbitrary precision the test fails it
+(measured on g g > z at 40 and 57 digits); the value it
+would have served is that noise. The default loop-induced route (TIRust)
+does not take the test, and the opt-in `"scale"` metric of the rescue stack
+accepts such a zero at its binary64 level; under the default `"relative"`
+metric the point is kept at the last level with the target not met, as
+before, now as `best-effort` when that level is NinjaRS in arbitrary
+precision.
 
 **Inexact inputs near forward.** Near forward, backward or threshold
 kinematics NinjaRS amplifies a point's on-shell and momentum-conservation
@@ -565,7 +647,8 @@ value for, the way the one-loop providers' most optimistic settings run
   engine (double-double, arbitrary precision, and the binary64 lanes the
   fast engine routes to it): it has no stability threshold to set to zero,
   and its conditioning bound refuses near-planar box mu-expansions there
-  too, at the carrier's precision. That is no accuracy statement: its
+  too, at the carrier's precision; in arbitrary precision the setting drops
+  the tracked-precision test of NinjaRS's lanes (above). That is no accuracy statement: its
   values are unverified there too, with or without the setting (the
   near-planar hazard above); stability checks, a rescue stack or, in
   double-double and arbitrary precision, the guard of the per-point
@@ -697,6 +780,109 @@ colour zero (every colour coefficient of the loop amplitude vanishes at
 N_c = 3 by colour algebra, as for `h > g a`, Tr T^a = 0) evaluates to an
 exact 0 and its lanes say so.
 
+### Lane rescue of refused reduction lanes
+
+A one-loop point is reduced lane by lane: one lane per loop family and
+Laurent column, a tensor numerator (its coefficients) and the family's
+kinematics (propagator shifts, masses, scale, invariants). A reduction
+backend may refuse a lane in binary64 (NinjaRS `Unstable` at a nearly
+singular cut, TIRust's acceptance check), and then the whole point used to
+have no value. Such a lane is now **rescued**, in the checked reduction (the
+default) and in the unchecked one (`reduction_unchecked=True`, where the
+lanes still refused have no value at all: NinjaRS's conditioning screen, a
+Euclidean-plane cut, a non-finite result): only its reduction is redone in a
+higher carrier, double-double first, then arbitrary precision (500 digits), on the same backend, its rescue reductions always
+checked (a refusal there moves the lane to the next carrier, so no value a
+higher-precision engine rejects is served; TIRust's rescue engines run its
+method choice in these carriers too, so a row its gates refuse is not sent
+straight to the dear 500-digit step). Its coefficients are the binary64 ones,
+lifted exactly (the numerators are not recomputed); its kinematic inputs are
+rebuilt in the higher carrier from the point's improved kinematics (exact
+momentum conservation and on-shell external legs in that carrier, as
+`kinematics_improvement` improves a point evaluated there). This is why the
+rescue cannot live inside the reduction library alone: from its binary64
+inputs alone, lifted exactly, the shifts and the invariants stay
+inconsistent at binary64's rounding, which the reduction of such a lane
+amplifies (measured on NinjaRS: 9e-3 relative at worst on g g > g g g, 9e-10
+from the rebuilt inputs); only pyAmpliCol holds the point's exact momenta. The lane's
+result, rounded to binary64, takes its place in the point's binary64 sum;
+every other lane, and every point without a refused lane, is bitwise as
+before. The same holds in double-double (a refused lane is reduced again
+in arbitrary precision), for the rotated evaluations of the stability
+checks and for the per-point fallback's evaluations. A lane counts as
+refused when the backend refuses it in the direct reduction OR in the
+reduction-direction check's re-test frame, and a rescued lane is served in
+both frames: with a reduction-direction check in the call's checks (also the
+default set on TIRust's points), a lane accepted directly but refused in the
+re-test frame is rescued, so the point's VALUE can differ, at the rescued
+lane's rounding (3e-15 relative on one 2 -> 6 gluon point; no case on 282
+flat g g > g g g points), from the same point evaluated with checks without
+a reduction check. It never differs from a release without the lane rescue,
+which failed such points.
+
+The reduction is linear in the coefficients and the tensor integrals they
+multiply are smooth where a Gram determinant is small: the amplification
+that made the lane unstable sits in the reduction's own arithmetic, which
+the higher carrier removes. A rescued lane is therefore about as accurate as
+an accepted binary64 lane (binary64 rounding of its coefficients against the
+size of the terms that cancel), not double-double accurate, and it is not
+certified by itself: the point's stability estimate (its rotation checks,
+the reduction-direction re-test) is formed on the mixed total as for any
+point.
+
+When the call runs stability checks without the reduction-direction check
+(for instance an explicit `VirtualStabilityChecks(1)`, one rotation, or the
+NinjaRS default set of `profile --stability`), a point with rescued lanes is evaluated
+again, on such points only, with the call's checks and the rescaled
+reduction-direction check of the recommended set, on the backend that
+served it (the call's, or its per-point fallback's), and returns that
+estimate (its `checks` then include `reduction-rescaled`; its value is
+unchanged): one rotation does not see the reduction error of a rescued
+TIRust point's other lanes (true error above the one-rotation estimate on
+162 of 185 such g g > g g g points and on 30 of 100 such g g > g g g g
+points; above the extended estimate on 1 of 185, by 3 %, and on none of
+the 100), exactly as a best-effort value's uncertainty includes the
+recommended checks. Other points keep the call's checks. The standalone
+SDKs' binary64 checks do the same (equal estimates). The selected
+(`helicities=`, `color_flows=`), resolved and correlated routes do the same
+for every output they return. The re-run costs a whole checked evaluation of
+the rescued points (g g > g g g TIRust: 0.42 s per rescued point with it,
+0.19 s without, 0.22 s for a direct call with the rotation and the rescaled
+check); a best-effort point with rescued lanes is re-run too (its public
+estimate then includes the check; its best-effort uncertainty already did).
+
+Lanes a backend ACCEPTS are never rescued, however inaccurate: the rescue
+acts on refusals only. On flat 2 -> 6 gluon points (NinjaRS, binary64, one
+rotation) 23 of 32 points are accepted, and 10 of those have an estimate
+above the default target 1e-5, 3 of them above 1: their accuracy is what
+the stability estimate says, and a rescue policy (`VirtualRescuePolicy`)
+is what raises it.
+
+`lane.lane_rescue` (a `VirtualLaneRescue`, `None` without one) gives per
+carrier the lanes it served (`lanes`, e.g. `(("double-double", 3),)`,
+counted over the point's evaluations), `moments` the same for a
+loop-induced checked call's term-scale moments (counted apart), `count` and
+the highest `carrier`; the lane's `detail` adds "lane rescue: N lanes in
+<carrier>" (with checks: "its estimate includes the rescaled
+reduction-direction check").
+A lane refused at every rescue carrier leaves the point failed exactly as
+before (its reason ends with each carrier's status), and the mechanisms
+below then act unchanged: `"auto"`'s per-point fallback, a rescue policy's
+next level, the best-effort value. `lane_rescue=False` (`Runtime.load` or
+`evaluate`; `evaluation.lane_rescue`, `--no-lane-rescue`) turns it off:
+refused lanes fail their points exactly as before. `evaluate_resolved` and
+`evaluate_correlated` (and their variants) take the same keyword and carry
+the same record. Under a rescue policy a level's attempt
+(`VirtualRescueAttempt`) records no lane rescue: a point rescued at level 0
+that then misses its target is evaluated again at the next level, and its
+diagnostic is that level's. The lane rescue's time is part of the call
+(`profile`: the reduction stage) and its points are counted in `profile`'s
+cause tables under "lane rescue". Its engines (per rescue carrier, one per
+evaluation backend, built at the first rescued lane and kept) cost a first
+call and memory: on 6-gluon NinjaRS points about 3.6 s and 19 MB for the
+double-double engine, 35 s and about 640 MB for the 500-digit one (TIRust's
+500-digit engine: about 57 MB).
+
 ### Best-effort values of refused points
 
 Since 1.0.3 a per-point refusal never interrupts a run by default. A point
@@ -739,9 +925,10 @@ public `stability` estimate stays that of the call's own checks);
 ones; `"recommended-checks"`: the call asked for no checks (the public
 result then carries no estimate); `"none"`: no estimate could be formed,
 `uncertainty` is None, said so in the lane's detail, never invented. Why:
-one rotation alone (the profile cards' check set) under-states the error of
-an unchecked TIRust value of a Born-interfered process. Measured with the
-shipped profile cards' check set (one default rotation; explicit TIRust,
+one rotation alone (the profile cards' check set before 2026-11-19, whose
+default now adds the rescaled reduction check on TIRust's points) under-states
+the error of an unchecked TIRust value of a Born-interfered process. Measured
+with the shipped profile cards' check set then (one default rotation; explicit TIRust,
 binary64, flat points seed 1 at sqrt(s) = 1000, truth = double-double), the
 one-rotation estimate covered the true error of 220 of 722 u u~ > t t~ g g
 best-effort points and 39 of 65 u u~ > d d~ e+ e- ones; with the
@@ -1354,7 +1541,9 @@ evaluates, with no estimate. How a batch runs:
 1. Level 0 evaluates the whole batch.
 2. A point that fails (also when one of its rotated evaluations fails) or whose
    estimate misses the target is evaluated again at the next level, from its
-   original exact inputs; no lower-precision value is reused. Escalated points
+   original exact inputs; no lower-precision value is reused (the lane
+   rescue, "Lane rescue of refused reduction lanes", happens inside each
+   level's evaluation, before a point counts as failed). Escalated points
    are evaluated one per native call, so each carrier builds one executor and
    compiles its kernels once.
 3. Accepted points are never evaluated again. At the last level a point that

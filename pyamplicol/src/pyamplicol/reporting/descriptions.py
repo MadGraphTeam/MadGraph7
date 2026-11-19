@@ -152,7 +152,12 @@ def _profile(report: Any) -> list[Block]:
                     "unchecked reduction alone, no stability checks, no "
                     "rescue, no best-effort re-evaluation; with --checked the "
                     "backends' own acceptance checks, a refused point served "
-                    "best-effort, the default backend as auto); the "
+                    "best-effort, the default backend as auto); 'refused "
+                    "lanes rescued': in both modes a reduction lane the "
+                    "backend still refuses is reduced again in double-double "
+                    "(then arbitrary precision) inside the timed call, its "
+                    "binary64 coefficients reused (--no-lane-rescue: pure "
+                    "binary64, such points without a value); the "
                     "distinct points per call (a new batch every call); the "
                     "timed calls (their count and size from the rule of the "
                     "counts row), after the untimed warm-up; the reference "
@@ -210,7 +215,8 @@ def _profile(report: Any) -> list[Block]:
                         f"time over its points; '({label} xN)', muted: the "
                         f"same optimistic pass in {name} (the ground truth) on "
                         "the same backend and core - the unchecked reduction, "
-                        "no stability checks, no rescue, no best-effort "
+                        "no stability checks, no rescue policy (its refused "
+                        "lanes rescued), no best-effort "
                         "re-evaluation - takes N times this time per point: N "
                         "is its median call's time per point over this one, "
                         "after one untimed point, its calls of one SIMD chunk "
@@ -295,8 +301,10 @@ def _profile(report: Any) -> list[Block]:
                     (
                         None,
                         "--ground-truth none: each flat point is evaluated in "
-                        "binary64 only, with the default rotation test; no "
-                        "reference, so no true digits. " + _MADLOOP,
+                        "binary64 only, with its stability estimate ("
+                        + setup.get("estimate", "the default checks")
+                        + "); no reference, so no true digits. "
+                        + _MADLOOP,
                     ),
                     (
                         "percentile",
@@ -364,9 +372,10 @@ def _profile(report: Any) -> list[Block]:
                     ("class", "the number of points between this and the previous row"),
                     (
                         "|est-true|",
-                        "how far the binary64 estimate of the digits (one default "
-                        "rotation of the point) is from the true digits: minimum, "
-                        "median and maximum over the class",
+                        "how far the binary64 estimate of the digits ("
+                        + setup.get("estimate", "the default checks")
+                        + ") is from the true digits: minimum, median and maximum "
+                        "over the class",
                     ),
                     (
                         "est-true med",
@@ -395,8 +404,9 @@ def _profile(report: Any) -> list[Block]:
                     (
                         "time",
                         "the wall time of the backend's binary64 calls with "
-                        "their stability checks (the default rotation test "
-                        "evaluates each point twice), summed over the workers "
+                        "their stability checks (the default checks evaluate "
+                        "each point again rotated, and re-reduce TIRust's points "
+                        "in the rescaled frame), summed over the workers "
                         "(each on one core, one thread per pool), "
                         "after each worker's untimed start-up (loading, first "
                         f"calls); '({label} xN)': its {name} reference calls "
@@ -438,7 +448,10 @@ def _profile(report: Any) -> list[Block]:
                     "One line per backend and cause, most frequent first: the "
                     "number of points, their share of the backend's points, the "
                     "backend, and the cause. 'best-effort': refused, returned "
-                    "with the best available value; 'no value': no result; 'no "
+                    "with the best available value; 'no value': no result; 'lane "
+                    "rescue': served, with reduction lanes refused in binary64 "
+                    "reduced again in the carrier named (their coefficients the "
+                    "binary64 ones), within the point's estimate; 'no "
                     f"reference': the {name} re-run failed; '... in {name}': "
                     "the same in the runtime's reference timing (counted over "
                     "its points).",
@@ -548,7 +561,14 @@ def _virtual(value: Any) -> list[Block]:
                 ("bits", "the mantissa bits of that precision"),
                 ("reduction", "the reduction backend that served the point"),
                 ("accuracy established", "whether a requested target was proven"),
-                ("detail", "the reason of a refusal or fallback"),
+                (
+                    "detail",
+                    "the reason of a refusal or fallback; for a point whose "
+                    "refused reduction lanes the lane rescue served, 'lane "
+                    "rescue: N lanes in <carrier>' and, when the call's checks "
+                    "had no reduction-direction check, that its estimate "
+                    "includes the rescaled one",
+                ),
             ],
         ),
     ]
@@ -582,10 +602,14 @@ def _virtual(value: Any) -> list[Block]:
                 [
                     (
                         None,
-                        "Relative error estimates from the requested checks: "
-                        "green within the target, red above.",
+                        "Relative error estimates from the requested checks, "
+                        "with the rescaled reduction-direction check added on "
+                        "points with rescued lanes when the requested checks "
+                        "had no reduction check (and on TIRust's points under "
+                        "a default check set): green within the target, red "
+                        "above.",
                     ),
-                    ("checks", "each check and its own estimate"),
+                    ("checks", "each check that ran and its own estimate"),
                 ],
             )
         )

@@ -2036,6 +2036,75 @@ def point_measures(
     return tuple(found)
 
 
+def rescue_options(slice_: Any) -> dict[str, int]:
+    """The native ``evaluate`` option of the lane rescue: the process's
+    initial states (first in leg order, ``kinematics.initial_count``), so
+    that a refused lane's kinematic inputs are rebuilt from the point
+    improved in the rescue carrier; empty when the legs do not say (the
+    lane rescue then takes the point's exact inputs)."""
+
+    from pyamplicol.kinematics import initial_count
+
+    try:
+        return {"initial_states": initial_count(slice_.blocks.process.legs)}
+    except (AttributeError, ValueError):
+        return {}
+
+
+def point_rescued(
+    output: Mapping[str, Any], extra: Mapping[str, Any] | None, index: int
+) -> tuple[tuple[str, int], ...]:
+    """The lane rescue of point ``index`` of a native executor output
+    (``"rescued"``: its rescued lanes and their carriers;
+    ``"rescued_moments"``: its rescued term-scale moments, counted apart,
+    their carrier prefixed ``virtual_results.MOMENTS``) and of its
+    companion's (``extra``): per carrier the lanes (and moments) it served."""
+
+    from pyamplicol.api.virtual_results import MOMENTS
+
+    counts: dict[str, int] = {}
+    for part in (output, extra):
+        for name, prefix in (("rescued", ""), ("rescued_moments", MOMENTS)):
+            rescued = None if part is None else part.get(name)
+            if rescued is not None:
+                for _lane, carrier in rescued[index]:
+                    key = prefix + carrier
+                    counts[key] = counts.get(key, 0) + 1
+    return tuple(sorted(counts.items()))
+
+
+class RescuedOutputs(dict):  # type: ignore[type-arg]
+    """The outputs of one point of a mapping route (resolved, correlated and
+    selected evaluations: output key -> ``PointResult``) with the point's
+    lane rescue (``lane_rescue``: ``merged_rescue`` over its reference and
+    rotated evaluations; review B1), read by the lane diagnostics and the
+    estimate extension (``reduction._rescued_estimates``)."""
+
+    __slots__ = ("lane_rescue",)
+
+    def __init__(
+        self, items: Any = (), lane_rescue: tuple[tuple[str, int], ...] = ()
+    ) -> None:
+        super().__init__(items)
+        self.lane_rescue = tuple(lane_rescue)
+
+    def __reduce__(self) -> Any:
+        return (RescuedOutputs, (dict(self), self.lane_rescue))
+
+
+def merged_rescue(
+    evaluations: Iterable[Any],
+) -> tuple[tuple[str, int], ...]:
+    """The lane rescue of one point over its native evaluations (the
+    reference and its rotated evaluations, ``point_rescued``)."""
+
+    counts: dict[str, int] = {}
+    for evaluation in evaluations:
+        for carrier, count in getattr(evaluation, "lane_rescue", ()):
+            counts[carrier] = counts.get(carrier, 0) + count
+    return tuple(sorted(counts.items()))
+
+
 class FailedPoints(ArithmeticError):
     """Some points of a native batch failed (a reduction lane's status, an
     ``ImpreciseResult`` master or a non-finite numerator, also in a rotation
@@ -2640,16 +2709,18 @@ class NativeExecutor:
             if index in failures:
                 out.append(None)
                 continue
+            turned = [runs[index] for runs in rotated]
+            rescue = merged_rescue([reference, *turned])
+            result = reference.result
+            if rescue:
+                result = replace(result, lane_rescue=rescue)
             if not stability.enabled:
-                out.append(reference.result)
+                out.append(result)
                 continue
             estimate = point_estimate(
-                reference,
-                [runs[index] for runs in rotated],
-                stability,
-                precision.unit_roundoff,
+                reference, turned, stability, precision.unit_roundoff
             )
-            out.append(replace(reference.result, stability=estimate))
+            out.append(replace(result, stability=estimate))
         if failures:
             raise FailedPoints(out, failures)
         return out
@@ -3105,6 +3176,7 @@ class NativeExecutor:
         # for NinjaRS, the executor's default), its TIRust plans built before
         # the first point (``reduction.prepare``).
         options.update(executor_options())
+        options.update(rescue_options(self.slice))
         prepare(native)
         catani = self.inputs == "native" and any(
             getattr(evaluation, "catani", False) for evaluation in evaluations
@@ -3163,6 +3235,7 @@ class NativeExecutor:
                     point_measures(output, extra, index),
                 )
                 continue
+            evaluation.lane_rescue = point_rescued(output, extra, index)
             numbers = evaluation.numbers
 
             carrier = _double_pairs if numbers.double else _carrier_pairs(numbers)

@@ -237,6 +237,52 @@ impl ExactInvariants {
     }
 }
 
+/// The exact kinematics of one point's family lanes (the lane rescue of
+/// the executor, `loop_execution::v2`): per propagator its exact shift
+/// `p(mask)` and the exact invariant matrix `s[a ^ b]`, as [`LaneData`]
+/// casts them (a single-leg subset or complement on its leg's shell,
+/// [`V2Batch::leg_masses`]). `legs` are the point's `4 × legs` incoming
+/// components.
+pub fn exact_kinematics(
+    legs: &[Rational],
+    onshell: &[Option<Rational>],
+    masks: &[u64],
+) -> (Vec<[Rational; 4]>, Vec<Rational>) {
+    let mut exact = ExactInvariants {
+        legs: vec![legs.to_vec()],
+        momenta: vec![HashMap::new()],
+        squares: vec![HashMap::new()],
+        onshell: onshell.to_vec(),
+    };
+    let shifts = masks.iter().map(|&mask| exact.momentum(0, mask)).collect();
+    let squares = masks
+        .iter()
+        .flat_map(|&a| masks.iter().map(move |&b| a ^ b))
+        .map(|mask| exact.square(0, mask))
+        .collect();
+    (shifts, squares)
+}
+
+/// The exact rational of a carrier value (binary64, double-double: the sum
+/// of its two parts, MPFR), `None` when it is not finite.
+pub fn exact_value<T: Carrier>(value: &T) -> Option<Rational> {
+    use symbolica::domains::float::{DoubleFloat, Float};
+    let any = value as &dyn std::any::Any;
+    if let Some(x) = any.downcast_ref::<f64>() {
+        return Rational::try_from(*x).ok();
+    }
+    if let Some(x) = any.downcast_ref::<DoubleFloat>() {
+        let parts = (*x).into_inner();
+        let hi = Rational::try_from(parts.hi()).ok()?;
+        let lo = Rational::try_from(parts.lo()).ok()?;
+        return Some(&hi + &lo);
+    }
+    if let Some(x) = any.downcast_ref::<Float>() {
+        return x.is_finite().then(|| x.to_rational());
+    }
+    None
+}
+
 /// The inputs of one chunk of `L` lanes as lane vectors.
 pub struct LaneData<T, const L: usize> {
     /// Batch point of each lane (padded lanes repeat the last point).

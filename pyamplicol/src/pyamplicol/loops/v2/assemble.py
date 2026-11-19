@@ -1684,6 +1684,11 @@ class PointResult:
     # poles and its term scale are (the native executor forms the term scale
     # with the stability checks); None otherwise.
     finiteness: float | None = None
+    # The lane rescue (``api.virtual_results.VirtualLaneRescue``): per
+    # carrier ("double-double", "arbitrary") the point's reduction lanes it
+    # served, over the point's native evaluations (the reference and its
+    # rotations); empty when none was rescued.
+    lane_rescue: tuple[tuple[str, int], ...] = ()
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
@@ -3899,6 +3904,20 @@ _COUPLING_DIGITS = 32
 _UNSET = object()
 
 
+def require_tracked_precision(reducer: Any, direct: Sequence[Any]) -> None:
+    """The point-level tracked-precision test of the Python reference path:
+    the native executor's (``rusticol_core::loop_execution::v2::
+    TrackedPrecision``), on the direct batches of one point's reduction
+    (``reducer.tracked_refusal``; NinjaRS's arbitrary-precision lanes only,
+    TIRust's reducer takes none). A point whose lanes kept too few of the
+    bits their carrier tracked fails typed (``ArithmeticError``, a failed
+    point with the reason, as a failed lane's)."""
+
+    refusal = reducer.tracked_refusal(direct)
+    if refusal is not None:
+        raise ArithmeticError(refusal)
+
+
 class _PointEvaluation:
     """All per-point work of ``LoopSlice.evaluate`` in one carrier."""
 
@@ -4529,7 +4548,8 @@ class _PointEvaluation:
                 dressed.numerators, len(lanes), columns
             )
             groups = groups + twin_groups
-        direct, check = self.reducer().reduce(
+        reducer = self.reducer()
+        direct, check = reducer.reduce(
             groups,
             poles=reducer_poles(self.mode),
             check=retest is not None,
@@ -4545,12 +4565,14 @@ class _PointEvaluation:
             }
 
         main, extra = set(lanes), set(twin_lanes)
-        self.set_lanes(
+        found = (
             values(direct, main),
             None if check is None else values(check, main),
             values(direct, extra) if extra else None,
             None if check is None or not extra else values(check, extra),
         )
+        require_tracked_precision(reducer, direct)
+        self.set_lanes(*found)
 
     def _groups(self, numerators, offset: int, columns=None) -> tuple[list, list]:
         """Reduction lanes ``(family, loop order, column label)`` and their

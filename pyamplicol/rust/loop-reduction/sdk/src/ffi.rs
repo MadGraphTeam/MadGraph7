@@ -389,6 +389,34 @@ pub unsafe extern "C" fn rusticol_virtual_set_reduction_unchecked(
         Ok(())
     })
 }
+/// The lane rescue of the handle's later evaluations, the Python API's
+/// `lane_rescue=` (USER 2026-11-18; additive, ABI version 2 kept): 1 (the
+/// default) reduces a reduction lane a backend refuses again in a higher
+/// carrier (double-double, then arbitrary precision) from its binary64
+/// coefficients, in the checked and the unchecked mode; 0 leaves such a lane
+/// to fail its point (pure binary64 evaluations, as before the lane
+/// rescue). Any other value is `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` and
+/// nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_lane_rescue(
+    handle: *mut VirtualHandle,
+    on: c_int,
+) -> c_int {
+    guard(|| unsafe {
+        let on = match on {
+            0 => false,
+            1 => true,
+            other => return Err(bad(format!("lane rescue takes 1 or 0 (got {other})"))),
+        };
+        mutable(handle)?.0.set_lane_rescue(on);
+        Ok(())
+    })
+}
 /// The kinematics improvement of the handle's later evaluations, the Python
 /// API's `kinematics_improvement=` (m-lit lit-psimprove; additive, ABI
 /// version 2 kept): `"z-shift"` (MadLoop's ImprovePSPoint 2 with MadLoop's

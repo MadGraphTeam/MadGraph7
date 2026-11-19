@@ -285,6 +285,12 @@ public:
         virtual_detail::check(
             rusticol_virtual_set_reduction_unchecked(handle_.get(), unchecked ? 1 : 0));
     }
+    // Lane rescue of later evaluations (the Python API's lane_rescue=;
+    // default true): a refused reduction lane reduced again in a higher
+    // carrier; false leaves it to fail its point.
+    void set_lane_rescue(bool on) {
+        virtual_detail::check(rusticol_virtual_set_lane_rescue(handle_.get(), on ? 1 : 0));
+    }
     // Failure policy of later evaluations (the Python API's on_failure=):
     // "best-effort" (default; refused points return the unchecked value with
     // status RUSTICOL_VIRTUAL_BEST_EFFORT and an uncertainty, nothing thrown),

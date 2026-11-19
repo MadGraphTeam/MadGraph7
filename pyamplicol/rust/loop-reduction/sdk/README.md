@@ -180,6 +180,12 @@ keeps its backend and per-point fallback; each result records `"unchecked"`
 in its `"reduction"` diagnostics; any other value is an invalid argument. It
 is a timing and benchmark mode with no accuracy certificate (measured
 accuracy per process: `docs/user/python-api.md`, "Unchecked reductions").
+`rusticol_virtual_set_lane_rescue(handle, on)` (C++ / Fortran / Rust
+`set_lane_rescue`; 1 by default, 0 off) is the lane rescue, as the Python
+API's `lane_rescue=`: a reduction lane a backend refuses is reduced again in
+double-double, then arbitrary precision, from its binary64 coefficients
+(checked and unchecked mode); 0 leaves it to fail its point; each result
+records `"lane_rescue"` in its `"reduction"` diagnostics.
 
 The ordinary package builds the tree and virtual APIs into one
 `librusticol_capi.a`. Its existing `_sdk` bundle carries the virtual C/C++ headers,

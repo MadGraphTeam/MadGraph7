@@ -265,6 +265,35 @@ fn reduction_text(
     }
 }
 
+/// The point-level tracked-precision test of NinjaRS's arbitrary-precision
+/// lanes (`runtime::tracked_refusal`, the one rule the executor and the
+/// reference path apply) on synthetic lanes: `lanes[l][k]` = `(re, im,
+/// p_re, p_im)`, Laurent coefficient `k` of lane `l` with its parts'
+/// tracked precisions in bits, at `working` bits. The point's failure text,
+/// or None.
+#[pyfunction]
+fn reduction_tracked_refusal(
+    lanes: Vec<Vec<(String, String, u32, u32)>>,
+    working: u32,
+) -> PyResult<Option<String>> {
+    let _unlock = pyamplicol::unlock();
+    let part = |text: &str, bits: u32| {
+        symbolica::domains::float::Float::parse(text, Some(bits.max(1))).map_err(error)
+    };
+    let lanes = lanes
+        .iter()
+        .map(|lane| {
+            lane.iter()
+                .map(|(re, im, p_re, p_im)| Ok(Complex::new(part(re, *p_re)?, part(im, *p_im)?)))
+                .collect::<PyResult<Vec<_>>>()
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    Ok(rusticol_loop_reduction::runtime::tracked_refusal(
+        lanes.iter().map(Vec::as_slice),
+        working,
+    ))
+}
+
 /// Whether the per-point fallback's guard accepts a served point whose
 /// reduction-direction estimate is `estimate` at the call's `target`
 /// (`reduction_policy::fallback_accepted`, the one rule: a number at most
@@ -340,6 +369,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(reduction_auto_default, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_text, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_accepted, module)?)?;
+    module.add_function(wrap_pyfunction!(reduction_tracked_refusal, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_guarded, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_estimate, module)?)?;
     module.add_function(wrap_pyfunction!(tir_acceptance, module)?)?;

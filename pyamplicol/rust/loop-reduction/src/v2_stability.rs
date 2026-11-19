@@ -571,6 +571,18 @@ impl StabilityChecks {
             ..self.clone()
         }
     }
+    /// The checks of a point the lane rescue served when these lack the
+    /// reduction-direction check: these with the rescaled one added (the
+    /// Python API's `reduction.rescued_checks`; USER / coordinator
+    /// 2026-11-18); None when nothing is added (no check, or a reduction
+    /// check already).
+    pub fn rescued_checks(&self) -> Option<Self> {
+        (self.enabled() && !self.reduction_direction).then(|| Self {
+            reduction_direction: true,
+            rescaled: true,
+            ..self.clone()
+        })
+    }
     /// Whether any check runs (an estimate is returned).
     pub fn enabled(&self) -> bool {
         !self.rotations.is_empty() || self.reduction_direction
@@ -1441,6 +1453,23 @@ mod tests {
 
     fn fq(n: i64, d: i64) -> Rational {
         Rational::from((n, d))
+    }
+
+    #[test]
+    fn rescued_points_add_the_rescaled_reduction_check() {
+        // `reduction.rescued_checks`: one rotation (and the cross-backend
+        // check) gain the rescaled reduction check; checks with a reduction
+        // check, or none, gain nothing.
+        let one = StabilityChecks::with_default_rotations(1, false, false, true).unwrap();
+        let extended = one.rescued_checks().unwrap();
+        assert_eq!(
+            extended,
+            StabilityChecks::with_default_rotations(1, true, true, true).unwrap()
+        );
+        assert_eq!(extended.rescued_checks(), None);
+        let reversed = StabilityChecks::with_default_rotations(1, true, false, false).unwrap();
+        assert_eq!(reversed.rescued_checks(), None);
+        assert_eq!(StabilityChecks::default().rescued_checks(), None);
     }
 
     #[test]

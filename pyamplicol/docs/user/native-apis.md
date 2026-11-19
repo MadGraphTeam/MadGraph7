@@ -829,7 +829,14 @@ Python API's `stability_checks=`: `rusticol_virtual_set_stability_checks`
 `set_stability_checks`) takes a count of default rotations or rotation
 specifications, the reduction-direction check, its rescaled variant and the
 cross-backend check. Without checks (the default, or a rotation count of 0
-with the other checks off) nothing else runs and no estimate is formed. With
+with the other checks off) nothing else runs and no estimate is formed. The
+SDK has no per-backend default set: the checks a caller sets are run as set
+on every backend (an explicit set is never changed, as in the Python API).
+For TIRust-served evaluations (the loop-induced `"auto"` and `"tirust"`) set
+one rotation with the reduction-direction check and its rescaled variant,
+the recommended checks and the Python API's default set for TIRust
+(USER 2026-11-19: one rotation alone under-states the error of accepted
+TIRust points, on 144 of 200 flat g g > g g g points). With
 checks, every successful point of a binary64 ordinary evaluation carries its
 estimate in the result's `diagnostics_json` (`"stability"`), equal bit for bit
 to the Python API's `VirtualStabilityEstimate`; the precision rescue stays the
@@ -909,7 +916,13 @@ measured windows and the estimates of each check are in the
 conditioning bound refuses such lanes typed (status Failed). The SDKs'
 binary64 monitoring, bitwise the Python API's binary64 estimate, flags what
 the bound does not refuse; in double-double and arbitrary precision the SDKs
-run no monitoring (`AccuracyNotEstablished`, no estimate). The target accuracy
+run no monitoring (`AccuracyNotEstablished`, no estimate). In arbitrary
+precision the SDKs apply the Python API's tracked-precision test of NinjaRS's
+lanes ([Python API](python-api.md), "NinjaRS tracked precision"): a point
+whose lanes kept too few of the bits their carrier tracked has status Failed
+with the reason "NinjaRS tracked precision: ..." (under the default
+`"best-effort"` it is returned as `BEST_EFFORT` with the unchecked
+reduction's value; the unchecked setting drops the test). The target accuracy
 `rusticol_virtual_set_reduction_target(handle, target)` (C++ and Fortran
 `set_reduction_target`, the packaged Rust wrapper's `set_reduction_target`;
 default 1e-5, the relative accuracy of each point's result) sets the
@@ -932,6 +945,21 @@ the caller's inputs in the caller's leg order, before anything is evaluated
 `diagnostics_json` records it per point (`"kinematics"`: the Python API's
 `VirtualKinematics` fields); another value is an invalid argument
 ([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+The lane rescue `rusticol_virtual_set_lane_rescue(handle, on)` (C++
+`set_lane_rescue(bool)`, Fortran `set_lane_rescue(logical)`, the packaged
+Rust wrapper's `set_lane_rescue(bool)`; 1 or 0, default 1, as the Python
+API's `lane_rescue=`; additive, ABI version 2 kept) reduces a reduction lane
+a backend refuses again in double-double, then arbitrary precision, from its
+binary64 coefficients and the point improved in that carrier, in the checked
+and the unchecked mode ([Python API](python-api.md), "Lane rescue of refused
+reduction lanes"); 0 leaves such a lane to fail its point; each result
+records `"lane_rescue"` in its `"reduction"` diagnostics (the setting; an SDK
+result carries no per-point record of which lanes were rescued, unlike the
+Python API's `VirtualLaneDiagnostic.lane_rescue`); any other value is
+an invalid argument. With stability checks that lack the
+reduction-direction check, a point with rescued lanes gets the estimate of
+the checks with the rescaled reduction-direction check added, as in the
+Python API.
 Additive symbols, ABI version 2 kept. The unchecked setting
 `rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++
 `set_reduction_unchecked(bool)`, Fortran `set_reduction_unchecked(logical)`,

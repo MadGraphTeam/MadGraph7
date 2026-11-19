@@ -335,6 +335,9 @@ LIGHT_POINT = [
 LIGHT_SCALE = "250000"
 # DoubleFloat on the light box against MPFR(32) (measured 2.05e-18).
 LIGHT_BOX_DOUBLE_DOUBLE = 1e-17
+# The binary64 call whose non-finite lane the lane rescue served (binary64
+# coefficients, double-double reduction) against MPFR(32).
+LIGHT_BOX_LANE_RESCUE = 1e-12
 
 
 @pytest.fixture(scope="module")
@@ -485,24 +488,47 @@ def test_a_mixed_batch_escalates_only_the_worse_points(artifact, poles):
 
 
 @pytest.mark.loop_physics
-def test_a_light_top_fails_in_binary64_and_is_rescued_in_double_double(artifact):
+def test_a_light_top_lane_is_rescued_in_binary64_and_the_point_without_it(artifact):
+    """The light box's binary64 lane is not finite (NonFiniteResult): the lane
+    rescue reduces it again in double-double inside the binary64 call (the
+    point is served in binary64 with its record); without the lane rescue
+    the point fails in binary64 and the rescue stack serves it in
+    double-double."""
+
     runtime = _load(artifact, "gg", LIGHT)
+    reference = runtime.evaluate(
+        [LIGHT_POINT], mu_r2=LIGHT_SCALE, arithmetic="arbitrary", precision=32
+    )
+    ((exact,),) = reference.values[0:1]
+    scale = max(abs(x) for x in exact)
+
+    def error(result):
+        ((mine,),) = result.values[0:1]
+        return (
+            max(abs(Decimal(str(a)) - b) for a, b in zip(mine, exact, strict=True))
+            / scale
+        )
+
     plain = runtime.evaluate([LIGHT_POINT], mu_r2=LIGHT_SCALE, on_failure="return")
+    lane = plain.diagnostics[0]
+    assert plain.valid[0] and lane.arithmetic == "double", lane.detail
+    assert lane.lane_rescue is not None and lane.lane_rescue.carrier == "double-double"
+    assert error(plain) < LIGHT_BOX_LANE_RESCUE, error(plain)
+    plain = runtime.evaluate(
+        [LIGHT_POINT], mu_r2=LIGHT_SCALE, on_failure="return", lane_rescue=False
+    )
     assert not plain.valid[0] and "NonFiniteResult" in plain.diagnostics[0].detail
     result = runtime.evaluate(
-        [LIGHT_POINT], mu_r2=LIGHT_SCALE, stability=VirtualRescuePolicy()
+        [LIGHT_POINT],
+        mu_r2=LIGHT_SCALE,
+        stability=VirtualRescuePolicy(),
+        lane_rescue=False,
     )
     (record,) = result.rescue
     assert record.level == 1 and record.met and record.arithmetic == "double-double"
     assert "NonFiniteResult" in record.attempts[0].failure
     assert result.diagnostics[0].status == "rescued"
-    reference = runtime.evaluate(
-        [LIGHT_POINT], mu_r2=LIGHT_SCALE, arithmetic="arbitrary", precision=32
-    )
-    ((mine,),), ((exact,),) = result.values[0:1], reference.values[0:1]
-    scale = max(abs(x) for x in exact)
-    error = max(abs(a - b) for a, b in zip(mine, exact, strict=True)) / scale
-    assert error < LIGHT_BOX_DOUBLE_DOUBLE, error
+    assert error(result) < LIGHT_BOX_DOUBLE_DOUBLE, error(result)
 
 
 @pytest.mark.loop_physics
