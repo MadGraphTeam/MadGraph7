@@ -1,0 +1,35 @@
+{
+  "reference_sha256": "18f6694dd5af873d847e39bd299957454c698aeb31f3bf4b2389593bc44d3970",
+  "driver_sha256": "904ed1844d14edbe98ff00f21c55b0c23299a9d2affe7e721d2a7fc36e8063b8",
+  "library_sha256": "43ed42c237412a81838a6c4c0b4f89015a0785b4f331bdb2fbf01020124c67c7",
+  "installation_sha256": "45b48d5991cef9b669c2942abb9020a864f462103c4943cb7e307235f84ba25c",
+  "ordinary_dp_unstable_controls_pass_mp": true,
+  "results": [
+    {
+      "passed": true,
+      "cases": 455,
+      "evaluations": 3640,
+      "checked_against_collier": 1820,
+      "repeated_state_checks": 1820,
+      "precision": "dp",
+      "diagnostic_all": false,
+      "worst_checked_normalized_error": 0.003925235246128018,
+      "failures": 0,
+      "ordinary_dp_diagnostics": 56,
+      "unstable": 280
+    },
+    {
+      "passed": true,
+      "cases": 455,
+      "evaluations": 3640,
+      "checked_against_collier": 3640,
+      "repeated_state_checks": 1820,
+      "precision": "mp",
+      "diagnostic_all": false,
+      "worst_checked_normalized_error": 0.0024993190990038033,
+      "failures": 0,
+      "ordinary_dp_diagnostics": 0,
+      "unstable": 0
+    }
+  ]
+}

@@ -1,0 +1,3749 @@
+{
+  "scope": "Independent complete model-rule scalar-QCD reference; no performance measurement",
+  "source": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0",
+  "ufo": "/shared/external/pyLoopAmpliCol/workspace/reference/models/bsm-candidates/sgluons_NLO_py3",
+  "original_source": "/shared/external/pyLoopAmpliCol/workspace/reference/models/bsm-candidates/sgluons_ufo/sgluons_NLO",
+  "source_change": "Existing MadGraph Python2-to3 conversion only; no physics formula edits",
+  "restriction": "full source import; exact runtime parameters and fixed inputs from inputs.json",
+  "process": "Process: u u~ > sig8 sig8 g NP=0 QED=0 [ virt = QCD ]",
+  "pdgs": [
+    2,
+    -2,
+    9000001,
+    9000001,
+    21
+  ],
+  "born": 6,
+  "loops": 201,
+  "native_identified_loop_records": 174,
+  "loop_count_convention": "sum of native diagram.multiplier",
+  "born_amplitude_orders": [
+    {
+      "QCD": 3,
+      "QED": 0,
+      "NP": 0,
+      "count": 6
+    }
+  ],
+  "loop_amplitude_orders": [
+    {
+      "QCD": 5,
+      "QED": 0,
+      "NP": 0,
+      "count": 201
+    }
+  ],
+  "UVCT_diagrams": 0,
+  "attached_CT_vertices": 317,
+  "retained_interaction_types": {
+    "base": 142,
+    "R2": 112,
+    "UVloop": 60,
+    "UVloop1eps": 169,
+    "UVmass": 4,
+    "UVmass1eps": 6
+  },
+  "split_order_names": [
+    "QCD",
+    "QED",
+    "NP"
+  ],
+  "gauge": "Feynman",
+  "complex_mass_scheme": false,
+  "inputs": {
+    "process": "u u~ > sig8 sig8 g [QCD]",
+    "pdgs": [
+      2,
+      -2,
+      9000001,
+      9000001,
+      21
+    ],
+    "ufo": "/shared/external/pyLoopAmpliCol/workspace/reference/models/bsm-candidates/sgluons_NLO_py3",
+    "original_source": "/shared/external/pyLoopAmpliCol/workspace/reference/models/bsm-candidates/sgluons_ufo/sgluons_NLO",
+    "points": [
+      [
+        [
+          "1250",
+          "0",
+          "0",
+          "1250"
+        ],
+        [
+          "1250",
+          "0",
+          "0",
+          "-1250"
+        ],
+        [
+          "781.25",
+          "375",
+          "-375",
+          "281.25"
+        ],
+        [
+          "781.25",
+          "-375",
+          "-375",
+          "281.25"
+        ],
+        [
+          "937.5",
+          "0",
+          "750",
+          "-562.5"
+        ]
+      ],
+      [
+        [
+          "1250",
+          "0",
+          "0",
+          "1250"
+        ],
+        [
+          "1250",
+          "0",
+          "0",
+          "-1250"
+        ],
+        [
+          "781.25",
+          "375",
+          "-450",
+          "131.25"
+        ],
+        [
+          "781.25",
+          "-375",
+          "-450",
+          "131.25"
+        ],
+        [
+          "937.5",
+          "0",
+          "900",
+          "-262.5"
+        ]
+      ],
+      [
+        [
+          "2600",
+          "0",
+          "0",
+          "2600"
+        ],
+        [
+          "2600",
+          "0",
+          "0",
+          "-2600"
+        ],
+        [
+          "1625",
+          "1200",
+          "-780",
+          "585"
+        ],
+        [
+          "1625",
+          "-1200",
+          "-780",
+          "585"
+        ],
+        [
+          "1950",
+          "0",
+          "1560",
+          "-1170"
+        ]
+      ]
+    ],
+    "mu_r": [
+      "1000",
+      "1000",
+      "1000"
+    ],
+    "mu_r2": [
+      "1000000",
+      "1000000",
+      "1000000"
+    ],
+    "changed_scale": {
+      "point_index": 0,
+      "mu_r": "1500",
+      "mu_r2": "2250000"
+    },
+    "parameters": {
+      "aS": "0.118",
+      "MT": "173",
+      "m8": "500",
+      "MU_R": "1000"
+    },
+    "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "WT": "0",
+      "w8": "0"
+    },
+    "external_source_defaults": {
+      "MU_R": {
+        "kind": "expression",
+        "expression": "91.188"
+      },
+      "g8g": {
+        "kind": "expression",
+        "expression": "1.e-6"
+      },
+      "g8Ld1x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ld1x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ld1x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ld2x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ld2x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ld2x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ld3x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ld3x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ld3x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Lu1x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Lu1x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Lu1x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Lu2x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Lu2x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Lu2x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Lu3x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Lu3x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Lu3x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Rd1x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Rd1x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Rd1x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Rd2x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Rd2x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Rd2x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Rd3x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Rd3x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Rd3x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ru1x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ru1x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ru1x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ru2x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ru2x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ru2x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ru3x1": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ru3x2": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "g8Ru3x3": {
+        "kind": "expression",
+        "expression": "0.001"
+      },
+      "aEWM1": {
+        "kind": "expression",
+        "expression": "127.9"
+      },
+      "Gf": {
+        "kind": "expression",
+        "expression": "0.0000116637"
+      },
+      "aS": {
+        "kind": "expression",
+        "expression": "0.1184"
+      },
+      "ymb": {
+        "kind": "expression",
+        "expression": "4.7"
+      },
+      "ymt": {
+        "kind": "expression",
+        "expression": "172"
+      },
+      "ymtau": {
+        "kind": "expression",
+        "expression": "1.777"
+      },
+      "MZ": {
+        "kind": "expression",
+        "expression": "91.1876"
+      },
+      "MTA": {
+        "kind": "expression",
+        "expression": "1.777"
+      },
+      "MT": {
+        "kind": "expression",
+        "expression": "172"
+      },
+      "MB": {
+        "kind": "expression",
+        "expression": "4.7"
+      },
+      "MH": {
+        "kind": "expression",
+        "expression": "125"
+      },
+      "m8": {
+        "kind": "expression",
+        "expression": "400"
+      },
+      "WZ": {
+        "kind": "expression",
+        "expression": "2.4952"
+      },
+      "WW": {
+        "kind": "expression",
+        "expression": "2.085"
+      },
+      "WT": {
+        "kind": "expression",
+        "expression": "1.50833649"
+      },
+      "WH": {
+        "kind": "expression",
+        "expression": "0.00407"
+      },
+      "w8": {
+        "kind": "expression",
+        "expression": "10"
+      }
+    },
+    "born_order_bounds": {
+      "QCD": [
+        0,
+        3
+      ],
+      "QED": [
+        0,
+        0
+      ],
+      "NP": [
+        0,
+        0
+      ]
+    },
+    "loop_order_bounds": {
+      "QCD": [
+        0,
+        5
+      ],
+      "QED": [
+        0,
+        0
+      ],
+      "NP": [
+        0,
+        0
+      ]
+    },
+    "corrections": [
+      "QCD"
+    ],
+    "colour": "full",
+    "r2_strategy": "model",
+    "covariant_multiplets": {
+      "23": [
+        23,
+        250,
+        9000002,
+        -9000002
+      ],
+      "24": [
+        24,
+        251,
+        9000003,
+        -9000004
+      ],
+      "-24": [
+        -24,
+        -251,
+        9000004,
+        -9000003
+      ]
+    },
+    "normalization_expectation": "1/72 from initial1/36 and identical scalar1/2; compare actual generated metadata before interpreting outputs",
+    "point_construction": "exact rational boosted scalar pair and noncollinear recoil; terminating decimal components; exact mass-shell/conservation checked",
+    "scheme": {
+      "mass_scheme": "real,stable scalar and top",
+      "scalar_mass_renormalization": "source on-shell UVmass",
+      "scalar_field_renormalization": "source scalar UV p2 cancels; explicit particle counterterm empty",
+      "extra_external_LSZ": "none added",
+      "alpha_s": "five light flavours; source top/scalar zero-momentum decoupling terms",
+      "regularization": "model R2 as supplied; NLOCT HV provenance supporting evidence; full MadLoop components are independent gate"
+    }
+  },
+  "normalization": "Raw MadLoop Born/interference with physical couplings and Cepsilon=(4pi)^epsilon/Gamma(1-epsilon); no alpha extraction",
+  "initial_average": 36,
+  "identical_scalar_factor": 2,
+  "generated_IDEN": 72,
+  "runtime_parameter_values": {
+    "aS": "0.118",
+    "MT": "173",
+    "m8": "500",
+    "MU_R": "1000",
+    "MB": "0",
+    "ymb": "0",
+    "WT": "0",
+    "w8": "0"
+  },
+  "runtime_parameter_lha": {
+    "aS": [
+      "sminputs",
+      [
+        3
+      ]
+    ],
+    "MT": [
+      "mass",
+      [
+        6
+      ]
+    ],
+    "m8": [
+      "mass",
+      [
+        9000001
+      ]
+    ],
+    "MU_R": [
+      "loop",
+      [
+        1
+      ]
+    ],
+    "MB": [
+      "mass",
+      [
+        5
+      ]
+    ],
+    "ymb": [
+      "yukawa",
+      [
+        5
+      ]
+    ],
+    "WT": [
+      "decay",
+      [
+        6
+      ]
+    ],
+    "w8": [
+      "decay",
+      [
+        9000001
+      ]
+    ]
+  },
+  "runtime_parameter_card_text": "######################################################################\n## PARAM_CARD AUTOMATICALY GENERATED BY MG5                       ####\n######################################################################\n###################################\n## INFORMATION FOR LOOP\n###################################\nBLOCK LOOP # \n      1 1.000000e+03 # mu_r\n###################################\n## INFORMATION FOR MASS\n###################################\nBLOCK MASS # \n      5 0.000000e+00 # mb\n      6 1.730000e+02 # mt\n      15 1.777000e+00 # mta\n      23 9.118760e+01 # mz\n      25 1.250000e+02 # mh\n      9000001 5.000000e+02 # m8\n      1 0.000000e+00 # d : 0.0\n      2 0.000000e+00 # u : 0.0\n      3 0.000000e+00 # s : 0.0\n      4 0.000000e+00 # c : 0.0\n      11 0.000000e+00 # e- : 0.0\n      12 0.000000e+00 # ve : 0.0\n      13 0.000000e+00 # mu- : 0.0\n      14 0.000000e+00 # vm : 0.0\n      16 0.000000e+00 # vt : 0.0\n      21 0.000000e+00 # g : 0.0\n      22 0.000000e+00 # a : 0.0\n      24 7.982436e+01 # w+ : cmath.sqrt(mz__exp__2/2. + cmath.sqrt(mz__exp__4/4. - (aew*cmath.pi*mz__exp__2)/(gf*sqrt__2)))\n      9000002 9.118760e+01 # ghz : mz\n      9000003 7.982436e+01 # ghwp : mw\n      9000004 7.982436e+01 # ghwm : mw\n      250 9.118760e+01 # g0 : mz\n      251 7.982436e+01 # g+ : mw\n###################################\n## INFORMATION FOR NPG8G\n###################################\nBLOCK NPG8G # \n      1 1.000000e-06 # g8g\n###################################\n## INFORMATION FOR NPG8LD\n###################################\nBLOCK NPG8LD # \n      1 1 1.000000e-03 # g8ld1x1\n      1 2 1.000000e-03 # g8ld1x2\n      1 3 1.000000e-03 # g8ld1x3\n      2 1 1.000000e-03 # g8ld2x1\n      2 2 1.000000e-03 # g8ld2x2\n      2 3 1.000000e-03 # g8ld2x3\n      3 1 1.000000e-03 # g8ld3x1\n      3 2 1.000000e-03 # g8ld3x2\n      3 3 1.000000e-03 # g8ld3x3\n###################################\n## INFORMATION FOR NPG8LU\n###################################\nBLOCK NPG8LU # \n      1 1 1.000000e-03 # g8lu1x1\n      1 2 1.000000e-03 # g8lu1x2\n      1 3 1.000000e-03 # g8lu1x3\n      2 1 1.000000e-03 # g8lu2x1\n      2 2 1.000000e-03 # g8lu2x2\n      2 3 1.000000e-03 # g8lu2x3\n      3 1 1.000000e-03 # g8lu3x1\n      3 2 1.000000e-03 # g8lu3x2\n      3 3 1.000000e-03 # g8lu3x3\n###################################\n## INFORMATION FOR NPG8RD\n###################################\nBLOCK NPG8RD # \n      1 1 1.000000e-03 # g8rd1x1\n      1 2 1.000000e-03 # g8rd1x2\n      1 3 1.000000e-03 # g8rd1x3\n      2 1 1.000000e-03 # g8rd2x1\n      2 2 1.000000e-03 # g8rd2x2\n      2 3 1.000000e-03 # g8rd2x3\n      3 1 1.000000e-03 # g8rd3x1\n      3 2 1.000000e-03 # g8rd3x2\n      3 3 1.000000e-03 # g8rd3x3\n###################################\n## INFORMATION FOR NPG8RU\n###################################\nBLOCK NPG8RU # \n      1 1 1.000000e-03 # g8ru1x1\n      1 2 1.000000e-03 # g8ru1x2\n      1 3 1.000000e-03 # g8ru1x3\n      2 1 1.000000e-03 # g8ru2x1\n      2 2 1.000000e-03 # g8ru2x2\n      2 3 1.000000e-03 # g8ru2x3\n      3 1 1.000000e-03 # g8ru3x1\n      3 2 1.000000e-03 # g8ru3x2\n      3 3 1.000000e-03 # g8ru3x3\n###################################\n## INFORMATION FOR SMINPUTS\n###################################\nBLOCK SMINPUTS # \n      1 1.279000e+02 # aewm1\n      2 1.166370e-05 # gf\n      3 1.180000e-01 # as (note: this parameter is not used if you use a pdf set)\n###################################\n## INFORMATION FOR YUKAWA\n###################################\nBLOCK YUKAWA # \n      5 0.000000e+00 # ymb\n      6 1.720000e+02 # ymt\n      15 1.777000e+00 # ymtau\n###################################\n## INFORMATION FOR DECAY\n###################################\nDECAY 6 0.000000e+00 # wt\nDECAY 23 2.495200e+00 # wz\nDECAY 24 2.085000e+00 # ww\nDECAY 25 4.070000e-03 # wh\nDECAY 9000001 0.000000e+00 # w8\nDECAY 1 0.000000e+00 # d : 0.0\nDECAY 2 0.000000e+00 # u : 0.0\nDECAY 3 0.000000e+00 # s : 0.0\nDECAY 4 0.000000e+00 # c : 0.0\nDECAY 5 0.000000e+00 # b : 0.0\nDECAY 11 0.000000e+00 # e- : 0.0\nDECAY 12 0.000000e+00 # ve : 0.0\nDECAY 13 0.000000e+00 # mu- : 0.0\nDECAY 14 0.000000e+00 # vm : 0.0\nDECAY 15 0.000000e+00 # ta- : 0.0\nDECAY 16 0.000000e+00 # vt : 0.0\nDECAY 21 0.000000e+00 # g : 0.0\nDECAY 22 0.000000e+00 # a : 0.0\nDECAY 9000002 2.495200e+00 # ghz : wz\nDECAY 9000003 2.085000e+00 # ghwp : ww\nDECAY 9000004 2.085000e+00 # ghwm : ww\nDECAY 250 2.495200e+00 # g0 : wz\nDECAY 251 2.085000e+00 # g+ : ww\n###################################\n## INFORMATION FOR QNUMBERS 9000005\n###################################\nBLOCK QNUMBERS 9000005 #  gha\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 9000002\n###################################\nBLOCK QNUMBERS 9000002 #  ghz\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 9000003\n###################################\nBLOCK QNUMBERS 9000003 #  ghwp\n      1 3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 9000004\n###################################\nBLOCK QNUMBERS 9000004 #  ghwm\n      1 -3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 82\n###################################\nBLOCK QNUMBERS 82 #  ghg\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 8 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 250\n###################################\nBLOCK QNUMBERS 250 #  g0\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 0 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 251\n###################################\nBLOCK QNUMBERS 251 #  g+\n      1 3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 9000001\n###################################\nBLOCK QNUMBERS 9000001 #  sig8\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 8 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 0 # particle/antiparticle distinction (0=own anti)\n\n",
+  "points": [
+    [
+      [
+        "1250",
+        "0",
+        "0",
+        "1250"
+      ],
+      [
+        "1250",
+        "0",
+        "0",
+        "-1250"
+      ],
+      [
+        "781.25",
+        "375",
+        "-375",
+        "281.25"
+      ],
+      [
+        "781.25",
+        "-375",
+        "-375",
+        "281.25"
+      ],
+      [
+        "937.5",
+        "0",
+        "750",
+        "-562.5"
+      ]
+    ],
+    [
+      [
+        "1250",
+        "0",
+        "0",
+        "1250"
+      ],
+      [
+        "1250",
+        "0",
+        "0",
+        "-1250"
+      ],
+      [
+        "781.25",
+        "375",
+        "-450",
+        "131.25"
+      ],
+      [
+        "781.25",
+        "-375",
+        "-450",
+        "131.25"
+      ],
+      [
+        "937.5",
+        "0",
+        "900",
+        "-262.5"
+      ]
+    ],
+    [
+      [
+        "2600",
+        "0",
+        "0",
+        "2600"
+      ],
+      [
+        "2600",
+        "0",
+        "0",
+        "-2600"
+      ],
+      [
+        "1625",
+        "1200",
+        "-780",
+        "585"
+      ],
+      [
+        "1625",
+        "-1200",
+        "-780",
+        "585"
+      ],
+      [
+        "1950",
+        "0",
+        "1560",
+        "-1170"
+      ]
+    ],
+    [
+      [
+        "1250",
+        "0",
+        "0",
+        "1250"
+      ],
+      [
+        "1250",
+        "0",
+        "0",
+        "-1250"
+      ],
+      [
+        "781.25",
+        "375",
+        "-375",
+        "281.25"
+      ],
+      [
+        "781.25",
+        "-375",
+        "-375",
+        "281.25"
+      ],
+      [
+        "937.5",
+        "0",
+        "750",
+        "-562.5"
+      ]
+    ]
+  ],
+  "mu_r2": [
+    "1000000",
+    "1000000",
+    "1000000",
+    "2250000"
+  ],
+  "born_orders": {
+    "1": {
+      "QCD": 6,
+      "QED": 0,
+      "NP": 0
+    }
+  },
+  "loop_orders": {
+    "1": {
+      "QCD": 8,
+      "QED": 0,
+      "NP": 0
+    }
+  },
+  "rows": [
+    {
+      "status": 216,
+      "accuracy": 3.2831684881250455e-14,
+      "born": {
+        "1": 7.160183003096292e-06
+      },
+      "full": {
+        "1": {
+          "finite": 7.513766943505988e-06,
+          "single_pole": -3.811783045255119e-08,
+          "double_pole": -7.619981692936694e-07,
+          "accuracy": 3.2831684881250455e-14
+        }
+      },
+      "total": [
+        7.160183003096292e-06,
+        7.513766943505988e-06,
+        -3.811783045255119e-08,
+        -7.619981692936694e-07
+      ],
+      "ct": {
+        "1": {
+          "finite": 8.796974526132908e-08,
+          "single_pole": -1.396704137485902e-06,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "r2": {
+        "1": {
+          "finite": -2.9310247652039606e-07,
+          "single_pole": 0.0,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "uv_local": {
+        "1": {
+          "finite": 3.8107222178172466e-07,
+          "single_pole": -1.396704137485902e-06,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "fields": {
+        "1": {
+          "finite": 0.0,
+          "single_pole": 0.0,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "bare": {
+        "1": {
+          "finite": 7.425797198244659e-06,
+          "single_pole": 1.3585863070333506e-06,
+          "double_pole": -7.619981692936694e-07
+        }
+      },
+      "uv": {
+        "1": {
+          "finite": 3.8107222178172466e-07,
+          "single_pole": -1.396704137485902e-06,
+          "double_pole": 0.0
+        }
+      }
+    },
+    {
+      "status": 216,
+      "accuracy": 2.3257507325298724e-15,
+      "born": {
+        "1": 4.522318553232727e-06
+      },
+      "full": {
+        "1": {
+          "finite": 4.752129185206101e-06,
+          "single_pole": 1.678020531351896e-07,
+          "double_pole": -4.812724000260843e-07,
+          "accuracy": 2.3257507325298724e-15
+        }
+      },
+      "total": [
+        4.522318553232727e-06,
+        4.752129185206101e-06,
+        1.678020531351896e-07,
+        -4.812724000260843e-07
+      ],
+      "ct": {
+        "1": {
+          "finite": 4.0553081213157226e-08,
+          "single_pole": -8.857459041907056e-07,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "r2": {
+        "1": {
+          "finite": -1.8674640527189065e-07,
+          "single_pole": 0.0,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "uv_local": {
+        "1": {
+          "finite": 2.2729948648504692e-07,
+          "single_pole": -8.857459041907056e-07,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "fields": {
+        "1": {
+          "finite": 0.0,
+          "single_pole": 0.0,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "bare": {
+        "1": {
+          "finite": 4.711576103992944e-06,
+          "single_pole": 1.0535479573258952e-06,
+          "double_pole": -4.812724000260843e-07
+        }
+      },
+      "uv": {
+        "1": {
+          "finite": 2.2729948648504692e-07,
+          "single_pole": -8.857459041907056e-07,
+          "double_pole": 0.0
+        }
+      }
+    },
+    {
+      "status": 216,
+      "accuracy": 7.665559262718088e-16,
+      "born": {
+        "1": 3.3121215296549493e-06
+      },
+      "full": {
+        "1": {
+          "finite": 2.825960222598793e-06,
+          "single_pole": 1.048661366490218e-06,
+          "double_pole": -3.5248129007091456e-07,
+          "accuracy": 7.665559262718088e-16
+        }
+      },
+      "total": [
+        3.3121215296549493e-06,
+        2.825960222598793e-06,
+        1.048661366490218e-06,
+        -3.5248129007091456e-07
+      ],
+      "ct": {
+        "1": {
+          "finite": 4.97702964408462e-08,
+          "single_pole": -6.439485720725251e-07,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "r2": {
+        "1": {
+          "finite": -1.3443375794825308e-07,
+          "single_pole": 0.0,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "uv_local": {
+        "1": {
+          "finite": 1.8420405438909876e-07,
+          "single_pole": -6.439485720725251e-07,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "fields": {
+        "1": {
+          "finite": 0.0,
+          "single_pole": 0.0,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "bare": {
+        "1": {
+          "finite": 2.776189926157947e-06,
+          "single_pole": 1.6926099385627432e-06,
+          "double_pole": -3.5248129007091456e-07
+        }
+      },
+      "uv": {
+        "1": {
+          "finite": 1.8420405438909876e-07,
+          "single_pole": -6.439485720725251e-07,
+          "double_pole": 0.0
+        }
+      }
+    },
+    {
+      "status": 216,
+      "accuracy": 3.905141350843085e-14,
+      "born": {
+        "1": 7.160183003096292e-06
+      },
+      "full": {
+        "1": {
+          "finite": 8.486337081123891e-06,
+          "single_pole": -6.560451706343135e-07,
+          "double_pole": -7.619981692936694e-07,
+          "accuracy": 3.905141350843085e-14
+        }
+      },
+      "total": [
+        7.160183003096292e-06,
+        8.486337081123891e-06,
+        -6.560451706343135e-07,
+        -7.619981692936694e-07
+      ],
+      "ct": {
+        "1": {
+          "finite": 2.0936917095791732e-07,
+          "single_pole": -1.396704137485902e-06,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "r2": {
+        "1": {
+          "finite": -2.9310247652039606e-07,
+          "single_pole": 0.0,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "uv_local": {
+        "1": {
+          "finite": 5.024716474783123e-07,
+          "single_pole": -1.396704137485902e-06,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "fields": {
+        "1": {
+          "finite": 0.0,
+          "single_pole": 0.0,
+          "double_pole": 0.0,
+          "accuracy": -1.0
+        }
+      },
+      "bare": {
+        "1": {
+          "finite": 8.276967910165974e-06,
+          "single_pole": 7.406589668515884e-07,
+          "double_pole": -7.619981692936694e-07
+        }
+      },
+      "uv": {
+        "1": {
+          "finite": 5.024716474783123e-07,
+          "single_pole": -1.396704137485902e-06,
+          "double_pole": 0.0
+        }
+      }
+    }
+  ],
+  "ct_amplitude_classification": {
+    "1": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_93_118"
+      ],
+      "call": "CALL VV4_0(W(1,7),W(1,12),R2GC_93_118,AMPL(1,1))"
+    },
+    "2": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_7"
+      ],
+      "call": "CALL VV1_0(W(1,7),W(1,12),UVGC_142_7_1EPS,AMPL(2,2))"
+    },
+    "3": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_93_118"
+      ],
+      "call": "CALL VV4_0(W(1,6),W(1,13),R2GC_93_118,AMPL(1,3))"
+    },
+    "4": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_7"
+      ],
+      "call": "CALL VV1_0(W(1,6),W(1,13),UVGC_142_7_1EPS,AMPL(2,4))"
+    },
+    "5": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_203_93",
+        "R2GC_204_95"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),R2GC_204_95,R2GC_203_93,AMPL(1,5))"
+    },
+    "6": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42",
+        "UVGC_203_111"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_166_42_1EPS,UVGC_203_111_1EPS,AMPL(2,6))"
+    },
+    "7": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42",
+        "UVGC_203_111"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_166_42_1EPS,UVGC_203_111_1EPS,AMPL(2,7))"
+    },
+    "8": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42",
+        "UVGC_203_111"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_166_42_1EPS,UVGC_203_111_1EPS,AMPL(2,8))"
+    },
+    "9": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42",
+        "UVGC_203_111"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_166_42_1EPS,UVGC_203_111_1EPS,AMPL(2,9))"
+    },
+    "10": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_203_110",
+        "UVGC_204_116"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_204_116_1EPS,UVGC_203_110_1EPS,AMPL(2,10))"
+    },
+    "11": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_203_112",
+        "UVGC_204_117"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_204_117_1EPS,UVGC_203_112_1EPS,AMPL(2,11))"
+    },
+    "12": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_203_113",
+        "UVGC_204_118"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_204_118_1EPS,UVGC_203_113_1EPS,AMPL(2,12))"
+    },
+    "13": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_203_114",
+        "UVGC_204_119"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_204_119_1EPS,UVGC_203_114_1EPS,AMPL(2,13))"
+    },
+    "14": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_203_115",
+        "UVGC_204_120"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_204_120_1EPS,UVGC_203_115_1EPS,AMPL(2,14))"
+    },
+    "15": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_203_110",
+        "UVGC_204_116"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_204_116,UVGC_203_110,AMPL(1,15))"
+    },
+    "16": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_203_114",
+        "UVGC_204_119"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_204_119,UVGC_203_114,AMPL(1,16))"
+    },
+    "17": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_203_115",
+        "UVGC_204_120"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),UVGC_204_120,UVGC_203_115,AMPL(1,17))"
+    },
+    "18": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_165_63",
+        "R2GC_188_79"
+      ],
+      "call": "CALL SS1_2_0(W(1,8),W(1,14),R2GC_188_79,R2GC_165_63,AMPL(1,18))"
+    },
+    "19": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_165_40",
+        "UVGC_188_79"
+      ],
+      "call": "CALL SS1_2_0(W(1,8),W(1,14),UVGC_188_79_1EPS,UVGC_165_40_1EPS,AMPL(2,19))"
+    },
+    "20": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_165_40",
+        "UVGC_188_79"
+      ],
+      "call": "CALL SS1_2_0(W(1,8),W(1,14),UVGC_188_79,UVGC_165_40,AMPL(1,20))"
+    },
+    "21": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_93_118"
+      ],
+      "call": "CALL VV4_0(W(1,6),W(1,15),R2GC_93_118,AMPL(1,21))"
+    },
+    "22": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_7"
+      ],
+      "call": "CALL VV1_0(W(1,6),W(1,15),UVGC_142_7_1EPS,AMPL(2,22))"
+    },
+    "23": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_166_64"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,4),W(1,8),R2GC_166_64,AMPL(1,23))"
+    },
+    "24": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_41"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,4),W(1,8),UVGC_166_41_1EPS,AMPL(2,24))"
+    },
+    "25": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,4),W(1,8),UVGC_166_42_1EPS,AMPL(2,25))"
+    },
+    "26": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,4),W(1,8),UVGC_166_42_1EPS,AMPL(2,26))"
+    },
+    "27": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,4),W(1,8),UVGC_166_42_1EPS,AMPL(2,27))"
+    },
+    "28": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,4),W(1,8),UVGC_166_42_1EPS,AMPL(2,28))"
+    },
+    "29": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_43"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,4),W(1,8),UVGC_166_43_1EPS,AMPL(2,29))"
+    },
+    "30": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_44"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,4),W(1,8),UVGC_166_44_1EPS,AMPL(2,30))"
+    },
+    "31": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_45"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,4),W(1,8),UVGC_166_45_1EPS,AMPL(2,31))"
+    },
+    "32": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,4),W(1,8),UVGC_166_46_1EPS,AMPL(2,32))"
+    },
+    "33": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,4),W(1,8),UVGC_166_46,AMPL(1,33))"
+    },
+    "34": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_166_64"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,3),W(1,14),R2GC_166_64,AMPL(1,34))"
+    },
+    "35": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_41"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,3),W(1,14),UVGC_166_41_1EPS,AMPL(2,35))"
+    },
+    "36": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,3),W(1,14),UVGC_166_42_1EPS,AMPL(2,36))"
+    },
+    "37": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,3),W(1,14),UVGC_166_42_1EPS,AMPL(2,37))"
+    },
+    "38": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,3),W(1,14),UVGC_166_42_1EPS,AMPL(2,38))"
+    },
+    "39": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,3),W(1,14),UVGC_166_42_1EPS,AMPL(2,39))"
+    },
+    "40": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_43"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,3),W(1,14),UVGC_166_43_1EPS,AMPL(2,40))"
+    },
+    "41": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_44"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,3),W(1,14),UVGC_166_44_1EPS,AMPL(2,41))"
+    },
+    "42": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_45"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,3),W(1,14),UVGC_166_45_1EPS,AMPL(2,42))"
+    },
+    "43": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,3),W(1,14),UVGC_166_46_1EPS,AMPL(2,43))"
+    },
+    "44": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,3),W(1,14),UVGC_166_46,AMPL(1,44))"
+    },
+    "45": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_166_64"
+      ],
+      "call": "CALL VSS1_0(W(1,12),W(1,3),W(1,4),R2GC_166_64,AMPL(1,45))"
+    },
+    "46": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_41"
+      ],
+      "call": "CALL VSS1_0(W(1,12),W(1,3),W(1,4),UVGC_166_41_1EPS,AMPL(2,46))"
+    },
+    "47": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,12),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,47))"
+    },
+    "48": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,12),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,48))"
+    },
+    "49": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,12),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,49))"
+    },
+    "50": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,12),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,50))"
+    },
+    "51": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_43"
+      ],
+      "call": "CALL VSS1_0(W(1,12),W(1,3),W(1,4),UVGC_166_43_1EPS,AMPL(2,51))"
+    },
+    "52": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_44"
+      ],
+      "call": "CALL VSS1_0(W(1,12),W(1,3),W(1,4),UVGC_166_44_1EPS,AMPL(2,52))"
+    },
+    "53": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_45"
+      ],
+      "call": "CALL VSS1_0(W(1,12),W(1,3),W(1,4),UVGC_166_45_1EPS,AMPL(2,53))"
+    },
+    "54": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,12),W(1,3),W(1,4),UVGC_166_46_1EPS,AMPL(2,54))"
+    },
+    "55": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,12),W(1,3),W(1,4),UVGC_166_46,AMPL(1,55))"
+    },
+    "56": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_161_58"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),R2GC_161_58,AMPL(1,56))"
+    },
+    "57": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_160_57"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),R2GC_160_57,AMPL(1,57))"
+    },
+    "58": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_161_58"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),R2GC_161_58,AMPL(1,58))"
+    },
+    "59": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_160_57"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),R2GC_160_57,AMPL(1,59))"
+    },
+    "60": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_160_57"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),R2GC_160_57,AMPL(1,60))"
+    },
+    "61": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_160_57"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),R2GC_160_57,AMPL(1,61))"
+    },
+    "62": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_167_65"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),R2GC_167_65,AMPL(1,62))"
+    },
+    "63": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_167_65"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),R2GC_167_65,AMPL(1,63))"
+    },
+    "64": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_162_59"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),R2GC_162_59,AMPL(1,64))"
+    },
+    "65": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_163_61"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),R2GC_163_61,AMPL(1,65))"
+    },
+    "66": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_163_61"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),R2GC_163_61,AMPL(1,66))"
+    },
+    "67": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_161_33"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_161_33_1EPS,AMPL(2,67))"
+    },
+    "68": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_160_31"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_160_31_1EPS,AMPL(2,68))"
+    },
+    "69": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_161_33"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_161_33_1EPS,AMPL(2,69))"
+    },
+    "70": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_160_31"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_160_31_1EPS,AMPL(2,70))"
+    },
+    "71": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_160_31"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_160_31_1EPS,AMPL(2,71))"
+    },
+    "72": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_160_31"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_160_31_1EPS,AMPL(2,72))"
+    },
+    "73": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_49"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_49_1EPS,AMPL(2,73))"
+    },
+    "74": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_49"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_49_1EPS,AMPL(2,74))"
+    },
+    "75": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_162_35"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_162_35_1EPS,AMPL(2,75))"
+    },
+    "76": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_163_37"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_163_37_1EPS,AMPL(2,76))"
+    },
+    "77": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_163_37"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_163_37_1EPS,AMPL(2,77))"
+    },
+    "78": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_161_34"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_161_34_1EPS,AMPL(2,78))"
+    },
+    "79": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_160_32"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_160_32_1EPS,AMPL(2,79))"
+    },
+    "80": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_161_34"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_161_34_1EPS,AMPL(2,80))"
+    },
+    "81": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_160_32"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_160_32_1EPS,AMPL(2,81))"
+    },
+    "82": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_160_32"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_160_32_1EPS,AMPL(2,82))"
+    },
+    "83": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_160_32"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_160_32_1EPS,AMPL(2,83))"
+    },
+    "84": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_52"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_52_1EPS,AMPL(2,84))"
+    },
+    "85": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_52"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_52_1EPS,AMPL(2,85))"
+    },
+    "86": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_162_36"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_162_36_1EPS,AMPL(2,86))"
+    },
+    "87": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_163_38"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_163_38_1EPS,AMPL(2,87))"
+    },
+    "88": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_163_38"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_163_38_1EPS,AMPL(2,88))"
+    },
+    "89": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_47"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_47_1EPS,AMPL(2,89))"
+    },
+    "90": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_47"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_47_1EPS,AMPL(2,90))"
+    },
+    "91": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_48"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_48_1EPS,AMPL(2,91))"
+    },
+    "92": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_48"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_48_1EPS,AMPL(2,92))"
+    },
+    "93": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_48"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_48_1EPS,AMPL(2,93))"
+    },
+    "94": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_48"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_48_1EPS,AMPL(2,94))"
+    },
+    "95": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_48"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_48_1EPS,AMPL(2,95))"
+    },
+    "96": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_48"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_48_1EPS,AMPL(2,96))"
+    },
+    "97": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_48"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_48_1EPS,AMPL(2,97))"
+    },
+    "98": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_48"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_48_1EPS,AMPL(2,98))"
+    },
+    "99": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_50"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_50_1EPS,AMPL(2,99))"
+    },
+    "100": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_50"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_50_1EPS,AMPL(2,100))"
+    },
+    "101": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_51"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_51_1EPS,AMPL(2,101))"
+    },
+    "102": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_51"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_51_1EPS,AMPL(2,102))"
+    },
+    "103": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_52"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_52,AMPL(1,103))"
+    },
+    "104": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_167_52"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,3),W(1,4),UVGC_167_52,AMPL(1,104))"
+    },
+    "105": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_166_64"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,3),W(1,9),R2GC_166_64,AMPL(1,105))"
+    },
+    "106": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_41"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,3),W(1,9),UVGC_166_41_1EPS,AMPL(2,106))"
+    },
+    "107": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,3),W(1,9),UVGC_166_42_1EPS,AMPL(2,107))"
+    },
+    "108": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,3),W(1,9),UVGC_166_42_1EPS,AMPL(2,108))"
+    },
+    "109": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,3),W(1,9),UVGC_166_42_1EPS,AMPL(2,109))"
+    },
+    "110": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,3),W(1,9),UVGC_166_42_1EPS,AMPL(2,110))"
+    },
+    "111": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_43"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,3),W(1,9),UVGC_166_43_1EPS,AMPL(2,111))"
+    },
+    "112": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_44"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,3),W(1,9),UVGC_166_44_1EPS,AMPL(2,112))"
+    },
+    "113": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_45"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,3),W(1,9),UVGC_166_45_1EPS,AMPL(2,113))"
+    },
+    "114": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,3),W(1,9),UVGC_166_46_1EPS,AMPL(2,114))"
+    },
+    "115": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,6),W(1,3),W(1,9),UVGC_166_46,AMPL(1,115))"
+    },
+    "116": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_165_63",
+        "R2GC_188_79"
+      ],
+      "call": "CALL SS1_2_0(W(1,9),W(1,16),R2GC_188_79,R2GC_165_63,AMPL(1,116))"
+    },
+    "117": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_165_40",
+        "UVGC_188_79"
+      ],
+      "call": "CALL SS1_2_0(W(1,9),W(1,16),UVGC_188_79_1EPS,UVGC_165_40_1EPS,AMPL(2,117))"
+    },
+    "118": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_165_40",
+        "UVGC_188_79"
+      ],
+      "call": "CALL SS1_2_0(W(1,9),W(1,16),UVGC_188_79,UVGC_165_40,AMPL(1,118))"
+    },
+    "119": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_93_118"
+      ],
+      "call": "CALL VV4_0(W(1,6),W(1,17),R2GC_93_118,AMPL(1,119))"
+    },
+    "120": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_7"
+      ],
+      "call": "CALL VV1_0(W(1,6),W(1,17),UVGC_142_7_1EPS,AMPL(2,120))"
+    },
+    "121": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_166_64"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,4),W(1,16),R2GC_166_64,AMPL(1,121))"
+    },
+    "122": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_41"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,4),W(1,16),UVGC_166_41_1EPS,AMPL(2,122))"
+    },
+    "123": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,4),W(1,16),UVGC_166_42_1EPS,AMPL(2,123))"
+    },
+    "124": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,4),W(1,16),UVGC_166_42_1EPS,AMPL(2,124))"
+    },
+    "125": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,4),W(1,16),UVGC_166_42_1EPS,AMPL(2,125))"
+    },
+    "126": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,4),W(1,16),UVGC_166_42_1EPS,AMPL(2,126))"
+    },
+    "127": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_43"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,4),W(1,16),UVGC_166_43_1EPS,AMPL(2,127))"
+    },
+    "128": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_44"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,4),W(1,16),UVGC_166_44_1EPS,AMPL(2,128))"
+    },
+    "129": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_45"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,4),W(1,16),UVGC_166_45_1EPS,AMPL(2,129))"
+    },
+    "130": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,4),W(1,16),UVGC_166_46_1EPS,AMPL(2,130))"
+    },
+    "131": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,5),W(1,4),W(1,16),UVGC_166_46,AMPL(1,131))"
+    },
+    "132": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_149_51"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,4),W(1,3),R2GC_149_51,AMPL(1,132))"
+    },
+    "133": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_160_56"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,4),W(1,3),R2GC_160_56,AMPL(1,133))"
+    },
+    "134": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_149_51"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,4),W(1,3),R2GC_149_51,AMPL(1,134))"
+    },
+    "135": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_160_56"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,4),W(1,3),R2GC_160_56,AMPL(1,135))"
+    },
+    "136": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_160_56"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,4),W(1,3),R2GC_160_56,AMPL(1,136))"
+    },
+    "137": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_160_56"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,4),W(1,3),R2GC_160_56,AMPL(1,137))"
+    },
+    "138": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_149_51"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,4),W(1,3),R2GC_149_51,AMPL(1,138))"
+    },
+    "139": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_149_51"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,4),W(1,3),R2GC_149_51,AMPL(1,139))"
+    },
+    "140": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_148_50"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,4),W(1,3),R2GC_148_50,AMPL(1,140))"
+    },
+    "141": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_163_60"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,4),W(1,3),R2GC_163_60,AMPL(1,141))"
+    },
+    "142": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_163_60"
+      ],
+      "call": "CALL VVSS1_0(W(1,5),W(1,6),W(1,4),W(1,3),R2GC_163_60,AMPL(1,142))"
+    },
+    "143": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_93_118"
+      ],
+      "call": "CALL VV4_0(W(1,6),W(1,18),R2GC_93_118,AMPL(1,143))"
+    },
+    "144": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_7"
+      ],
+      "call": "CALL VV1_0(W(1,6),W(1,18),UVGC_142_7_1EPS,AMPL(2,144))"
+    },
+    "145": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_93_118"
+      ],
+      "call": "CALL VV4_0(W(1,6),W(1,19),R2GC_93_118,AMPL(1,145))"
+    },
+    "146": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_7"
+      ],
+      "call": "CALL VV1_0(W(1,6),W(1,19),UVGC_142_7_1EPS,AMPL(2,146))"
+    },
+    "147": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_151_53"
+      ],
+      "call": "CALL FFV1_0(W(1,10),W(1,2),W(1,7),R2GC_151_53,AMPL(1,147))"
+    },
+    "148": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_151_22",
+        "UVGC_154_30"
+      ],
+      "call": "CALL FFV1_4_0(W(1,10),W(1,2),W(1,7),UVGC_151_22_1EPS,UVGC_154_30_1EPS,AMPL(2,148))"
+    },
+    "149": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_25"
+      ],
+      "call": "CALL FFV4_0(W(1,10),W(1,2),W(1,7),UVGC_154_25_1EPS,AMPL(2,149))"
+    },
+    "150": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,10),W(1,2),W(1,7),UVGC_154_26_1EPS,AMPL(2,150))"
+    },
+    "151": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,10),W(1,2),W(1,7),UVGC_154_26_1EPS,AMPL(2,151))"
+    },
+    "152": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,10),W(1,2),W(1,7),UVGC_154_26_1EPS,AMPL(2,152))"
+    },
+    "153": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,10),W(1,2),W(1,7),UVGC_154_26_1EPS,AMPL(2,153))"
+    },
+    "154": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_27"
+      ],
+      "call": "CALL FFV4_0(W(1,10),W(1,2),W(1,7),UVGC_154_27_1EPS,AMPL(2,154))"
+    },
+    "155": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_28"
+      ],
+      "call": "CALL FFV4_0(W(1,10),W(1,2),W(1,7),UVGC_154_28_1EPS,AMPL(2,155))"
+    },
+    "156": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_29"
+      ],
+      "call": "CALL FFV4_0(W(1,10),W(1,2),W(1,7),UVGC_154_29_1EPS,AMPL(2,156))"
+    },
+    "157": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_93_118"
+      ],
+      "call": "CALL VV4_0(W(1,7),W(1,20),R2GC_93_118,AMPL(1,157))"
+    },
+    "158": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_7"
+      ],
+      "call": "CALL VV1_0(W(1,7),W(1,20),UVGC_142_7_1EPS,AMPL(2,158))"
+    },
+    "159": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_152_54"
+      ],
+      "call": "CALL FF1_0(W(1,10),W(1,21),R2GC_152_54,AMPL(1,159))"
+    },
+    "160": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_132_2",
+        "UVGC_152_23"
+      ],
+      "call": "CALL FF1_9_0(W(1,10),W(1,21),UVGC_152_23_1EPS,UVGC_132_2_1EPS,AMPL(2,160))"
+    },
+    "161": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_166_64"
+      ],
+      "call": "CALL VSS1_0(W(1,20),W(1,3),W(1,4),R2GC_166_64,AMPL(1,161))"
+    },
+    "162": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_41"
+      ],
+      "call": "CALL VSS1_0(W(1,20),W(1,3),W(1,4),UVGC_166_41_1EPS,AMPL(2,162))"
+    },
+    "163": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,20),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,163))"
+    },
+    "164": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,20),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,164))"
+    },
+    "165": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,20),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,165))"
+    },
+    "166": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,20),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,166))"
+    },
+    "167": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_43"
+      ],
+      "call": "CALL VSS1_0(W(1,20),W(1,3),W(1,4),UVGC_166_43_1EPS,AMPL(2,167))"
+    },
+    "168": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_44"
+      ],
+      "call": "CALL VSS1_0(W(1,20),W(1,3),W(1,4),UVGC_166_44_1EPS,AMPL(2,168))"
+    },
+    "169": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_45"
+      ],
+      "call": "CALL VSS1_0(W(1,20),W(1,3),W(1,4),UVGC_166_45_1EPS,AMPL(2,169))"
+    },
+    "170": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,20),W(1,3),W(1,4),UVGC_166_46_1EPS,AMPL(2,170))"
+    },
+    "171": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,20),W(1,3),W(1,4),UVGC_166_46,AMPL(1,171))"
+    },
+    "172": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_151_53"
+      ],
+      "call": "CALL FFV1_0(W(1,1),W(1,11),W(1,7),R2GC_151_53,AMPL(1,172))"
+    },
+    "173": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_151_22",
+        "UVGC_154_30"
+      ],
+      "call": "CALL FFV1_4_0(W(1,1),W(1,11),W(1,7),UVGC_151_22_1EPS,UVGC_154_30_1EPS,AMPL(2,173))"
+    },
+    "174": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_25"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,11),W(1,7),UVGC_154_25_1EPS,AMPL(2,174))"
+    },
+    "175": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,11),W(1,7),UVGC_154_26_1EPS,AMPL(2,175))"
+    },
+    "176": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,11),W(1,7),UVGC_154_26_1EPS,AMPL(2,176))"
+    },
+    "177": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,11),W(1,7),UVGC_154_26_1EPS,AMPL(2,177))"
+    },
+    "178": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,11),W(1,7),UVGC_154_26_1EPS,AMPL(2,178))"
+    },
+    "179": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_27"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,11),W(1,7),UVGC_154_27_1EPS,AMPL(2,179))"
+    },
+    "180": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_28"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,11),W(1,7),UVGC_154_28_1EPS,AMPL(2,180))"
+    },
+    "181": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_29"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,11),W(1,7),UVGC_154_29_1EPS,AMPL(2,181))"
+    },
+    "182": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_151_53"
+      ],
+      "call": "CALL FFV1_0(W(1,1),W(1,2),W(1,13),R2GC_151_53,AMPL(1,182))"
+    },
+    "183": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_151_22",
+        "UVGC_154_30"
+      ],
+      "call": "CALL FFV1_4_0(W(1,1),W(1,2),W(1,13),UVGC_151_22_1EPS,UVGC_154_30_1EPS,AMPL(2,183))"
+    },
+    "184": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_25"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,13),UVGC_154_25_1EPS,AMPL(2,184))"
+    },
+    "185": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,13),UVGC_154_26_1EPS,AMPL(2,185))"
+    },
+    "186": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,13),UVGC_154_26_1EPS,AMPL(2,186))"
+    },
+    "187": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,13),UVGC_154_26_1EPS,AMPL(2,187))"
+    },
+    "188": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,13),UVGC_154_26_1EPS,AMPL(2,188))"
+    },
+    "189": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_27"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,13),UVGC_154_27_1EPS,AMPL(2,189))"
+    },
+    "190": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_28"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,13),UVGC_154_28_1EPS,AMPL(2,190))"
+    },
+    "191": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_29"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,13),UVGC_154_29_1EPS,AMPL(2,191))"
+    },
+    "192": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_151_53"
+      ],
+      "call": "CALL FFV1_0(W(1,1),W(1,2),W(1,15),R2GC_151_53,AMPL(1,192))"
+    },
+    "193": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_151_22",
+        "UVGC_154_30"
+      ],
+      "call": "CALL FFV1_4_0(W(1,1),W(1,2),W(1,15),UVGC_151_22_1EPS,UVGC_154_30_1EPS,AMPL(2,193))"
+    },
+    "194": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_25"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,15),UVGC_154_25_1EPS,AMPL(2,194))"
+    },
+    "195": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,15),UVGC_154_26_1EPS,AMPL(2,195))"
+    },
+    "196": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,15),UVGC_154_26_1EPS,AMPL(2,196))"
+    },
+    "197": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,15),UVGC_154_26_1EPS,AMPL(2,197))"
+    },
+    "198": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,15),UVGC_154_26_1EPS,AMPL(2,198))"
+    },
+    "199": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_27"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,15),UVGC_154_27_1EPS,AMPL(2,199))"
+    },
+    "200": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_28"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,15),UVGC_154_28_1EPS,AMPL(2,200))"
+    },
+    "201": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_29"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,15),UVGC_154_29_1EPS,AMPL(2,201))"
+    },
+    "202": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_151_53"
+      ],
+      "call": "CALL FFV1_0(W(1,1),W(1,2),W(1,17),R2GC_151_53,AMPL(1,202))"
+    },
+    "203": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_151_22",
+        "UVGC_154_30"
+      ],
+      "call": "CALL FFV1_4_0(W(1,1),W(1,2),W(1,17),UVGC_151_22_1EPS,UVGC_154_30_1EPS,AMPL(2,203))"
+    },
+    "204": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_25"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,17),UVGC_154_25_1EPS,AMPL(2,204))"
+    },
+    "205": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,17),UVGC_154_26_1EPS,AMPL(2,205))"
+    },
+    "206": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,17),UVGC_154_26_1EPS,AMPL(2,206))"
+    },
+    "207": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,17),UVGC_154_26_1EPS,AMPL(2,207))"
+    },
+    "208": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,17),UVGC_154_26_1EPS,AMPL(2,208))"
+    },
+    "209": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_27"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,17),UVGC_154_27_1EPS,AMPL(2,209))"
+    },
+    "210": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_28"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,17),UVGC_154_28_1EPS,AMPL(2,210))"
+    },
+    "211": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_29"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,17),UVGC_154_29_1EPS,AMPL(2,211))"
+    },
+    "212": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_151_53"
+      ],
+      "call": "CALL FFV1_0(W(1,1),W(1,2),W(1,18),R2GC_151_53,AMPL(1,212))"
+    },
+    "213": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_151_22",
+        "UVGC_154_30"
+      ],
+      "call": "CALL FFV1_4_0(W(1,1),W(1,2),W(1,18),UVGC_151_22_1EPS,UVGC_154_30_1EPS,AMPL(2,213))"
+    },
+    "214": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_25"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,18),UVGC_154_25_1EPS,AMPL(2,214))"
+    },
+    "215": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,18),UVGC_154_26_1EPS,AMPL(2,215))"
+    },
+    "216": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,18),UVGC_154_26_1EPS,AMPL(2,216))"
+    },
+    "217": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,18),UVGC_154_26_1EPS,AMPL(2,217))"
+    },
+    "218": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,18),UVGC_154_26_1EPS,AMPL(2,218))"
+    },
+    "219": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_27"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,18),UVGC_154_27_1EPS,AMPL(2,219))"
+    },
+    "220": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_28"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,18),UVGC_154_28_1EPS,AMPL(2,220))"
+    },
+    "221": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_29"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,18),UVGC_154_29_1EPS,AMPL(2,221))"
+    },
+    "222": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_151_53"
+      ],
+      "call": "CALL FFV1_0(W(1,1),W(1,2),W(1,19),R2GC_151_53,AMPL(1,222))"
+    },
+    "223": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_151_22",
+        "UVGC_154_30"
+      ],
+      "call": "CALL FFV1_4_0(W(1,1),W(1,2),W(1,19),UVGC_151_22_1EPS,UVGC_154_30_1EPS,AMPL(2,223))"
+    },
+    "224": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_25"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,19),UVGC_154_25_1EPS,AMPL(2,224))"
+    },
+    "225": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,19),UVGC_154_26_1EPS,AMPL(2,225))"
+    },
+    "226": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,19),UVGC_154_26_1EPS,AMPL(2,226))"
+    },
+    "227": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,19),UVGC_154_26_1EPS,AMPL(2,227))"
+    },
+    "228": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,19),UVGC_154_26_1EPS,AMPL(2,228))"
+    },
+    "229": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_27"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,19),UVGC_154_27_1EPS,AMPL(2,229))"
+    },
+    "230": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_28"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,19),UVGC_154_28_1EPS,AMPL(2,230))"
+    },
+    "231": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_29"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,2),W(1,19),UVGC_154_29_1EPS,AMPL(2,231))"
+    },
+    "232": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_151_53"
+      ],
+      "call": "CALL FFV1_0(W(1,1),W(1,21),W(1,5),R2GC_151_53,AMPL(1,232))"
+    },
+    "233": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_151_22",
+        "UVGC_154_30"
+      ],
+      "call": "CALL FFV1_4_0(W(1,1),W(1,21),W(1,5),UVGC_151_22_1EPS,UVGC_154_30_1EPS,AMPL(2,233))"
+    },
+    "234": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_25"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,21),W(1,5),UVGC_154_25_1EPS,AMPL(2,234))"
+    },
+    "235": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,21),W(1,5),UVGC_154_26_1EPS,AMPL(2,235))"
+    },
+    "236": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,21),W(1,5),UVGC_154_26_1EPS,AMPL(2,236))"
+    },
+    "237": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,21),W(1,5),UVGC_154_26_1EPS,AMPL(2,237))"
+    },
+    "238": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,21),W(1,5),UVGC_154_26_1EPS,AMPL(2,238))"
+    },
+    "239": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_27"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,21),W(1,5),UVGC_154_27_1EPS,AMPL(2,239))"
+    },
+    "240": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_28"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,21),W(1,5),UVGC_154_28_1EPS,AMPL(2,240))"
+    },
+    "241": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_29"
+      ],
+      "call": "CALL FFV4_0(W(1,1),W(1,21),W(1,5),UVGC_154_29_1EPS,AMPL(2,241))"
+    },
+    "242": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_93_118"
+      ],
+      "call": "CALL VV4_0(W(1,7),W(1,22),R2GC_93_118,AMPL(1,242))"
+    },
+    "243": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_7"
+      ],
+      "call": "CALL VV1_0(W(1,7),W(1,22),UVGC_142_7_1EPS,AMPL(2,243))"
+    },
+    "244": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_152_54"
+      ],
+      "call": "CALL FF1_0(W(1,23),W(1,11),R2GC_152_54,AMPL(1,244))"
+    },
+    "245": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_132_2",
+        "UVGC_152_23"
+      ],
+      "call": "CALL FF1_9_0(W(1,23),W(1,11),UVGC_152_23_1EPS,UVGC_132_2_1EPS,AMPL(2,245))"
+    },
+    "246": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_166_64"
+      ],
+      "call": "CALL VSS1_0(W(1,22),W(1,3),W(1,4),R2GC_166_64,AMPL(1,246))"
+    },
+    "247": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_41"
+      ],
+      "call": "CALL VSS1_0(W(1,22),W(1,3),W(1,4),UVGC_166_41_1EPS,AMPL(2,247))"
+    },
+    "248": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,22),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,248))"
+    },
+    "249": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,22),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,249))"
+    },
+    "250": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,22),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,250))"
+    },
+    "251": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_42"
+      ],
+      "call": "CALL VSS1_0(W(1,22),W(1,3),W(1,4),UVGC_166_42_1EPS,AMPL(2,251))"
+    },
+    "252": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_43"
+      ],
+      "call": "CALL VSS1_0(W(1,22),W(1,3),W(1,4),UVGC_166_43_1EPS,AMPL(2,252))"
+    },
+    "253": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_44"
+      ],
+      "call": "CALL VSS1_0(W(1,22),W(1,3),W(1,4),UVGC_166_44_1EPS,AMPL(2,253))"
+    },
+    "254": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_45"
+      ],
+      "call": "CALL VSS1_0(W(1,22),W(1,3),W(1,4),UVGC_166_45_1EPS,AMPL(2,254))"
+    },
+    "255": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,22),W(1,3),W(1,4),UVGC_166_46_1EPS,AMPL(2,255))"
+    },
+    "256": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_166_46"
+      ],
+      "call": "CALL VSS1_0(W(1,22),W(1,3),W(1,4),UVGC_166_46,AMPL(1,256))"
+    },
+    "257": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_151_53"
+      ],
+      "call": "CALL FFV1_0(W(1,23),W(1,2),W(1,5),R2GC_151_53,AMPL(1,257))"
+    },
+    "258": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_151_22",
+        "UVGC_154_30"
+      ],
+      "call": "CALL FFV1_4_0(W(1,23),W(1,2),W(1,5),UVGC_151_22_1EPS,UVGC_154_30_1EPS,AMPL(2,258))"
+    },
+    "259": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_25"
+      ],
+      "call": "CALL FFV4_0(W(1,23),W(1,2),W(1,5),UVGC_154_25_1EPS,AMPL(2,259))"
+    },
+    "260": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,23),W(1,2),W(1,5),UVGC_154_26_1EPS,AMPL(2,260))"
+    },
+    "261": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,23),W(1,2),W(1,5),UVGC_154_26_1EPS,AMPL(2,261))"
+    },
+    "262": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,23),W(1,2),W(1,5),UVGC_154_26_1EPS,AMPL(2,262))"
+    },
+    "263": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_26"
+      ],
+      "call": "CALL FFV4_0(W(1,23),W(1,2),W(1,5),UVGC_154_26_1EPS,AMPL(2,263))"
+    },
+    "264": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_27"
+      ],
+      "call": "CALL FFV4_0(W(1,23),W(1,2),W(1,5),UVGC_154_27_1EPS,AMPL(2,264))"
+    },
+    "265": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_28"
+      ],
+      "call": "CALL FFV4_0(W(1,23),W(1,2),W(1,5),UVGC_154_28_1EPS,AMPL(2,265))"
+    },
+    "266": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_154_29"
+      ],
+      "call": "CALL FFV4_0(W(1,23),W(1,2),W(1,5),UVGC_154_29_1EPS,AMPL(2,266))"
+    },
+    "267": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,12),UVGC_202_108_1EPS,AMPL(2,267))"
+    },
+    "268": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,12),UVGC_202_108,AMPL(1,268))"
+    },
+    "269": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,13),UVGC_202_108_1EPS,AMPL(2,269))"
+    },
+    "270": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,13),UVGC_202_108,AMPL(1,270))"
+    },
+    "271": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,15),UVGC_202_108_1EPS,AMPL(2,271))"
+    },
+    "272": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,15),UVGC_202_108,AMPL(1,272))"
+    },
+    "273": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,17),UVGC_202_108_1EPS,AMPL(2,273))"
+    },
+    "274": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,17),UVGC_202_108,AMPL(1,274))"
+    },
+    "275": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,18),UVGC_202_108_1EPS,AMPL(2,275))"
+    },
+    "276": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,18),UVGC_202_108,AMPL(1,276))"
+    },
+    "277": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,19),UVGC_202_108_1EPS,AMPL(2,277))"
+    },
+    "278": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,19),UVGC_202_108,AMPL(1,278))"
+    },
+    "279": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,20),UVGC_202_108_1EPS,AMPL(2,279))"
+    },
+    "280": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,20),UVGC_202_108,AMPL(1,280))"
+    },
+    "281": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,22),UVGC_202_108_1EPS,AMPL(2,281))"
+    },
+    "282": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_108"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,22),UVGC_202_108,AMPL(1,282))"
+    },
+    "283": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_8"
+      ],
+      "call": "CALL VV1_0(W(1,7),W(1,12),UVGC_142_8_1EPS,AMPL(2,283))"
+    },
+    "284": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_8"
+      ],
+      "call": "CALL VV1_0(W(1,6),W(1,13),UVGC_142_8_1EPS,AMPL(2,284))"
+    },
+    "285": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_8"
+      ],
+      "call": "CALL VV1_0(W(1,6),W(1,15),UVGC_142_8_1EPS,AMPL(2,285))"
+    },
+    "286": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_8"
+      ],
+      "call": "CALL VV1_0(W(1,6),W(1,17),UVGC_142_8_1EPS,AMPL(2,286))"
+    },
+    "287": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_8"
+      ],
+      "call": "CALL VV1_0(W(1,6),W(1,18),UVGC_142_8_1EPS,AMPL(2,287))"
+    },
+    "288": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_8"
+      ],
+      "call": "CALL VV1_0(W(1,6),W(1,19),UVGC_142_8_1EPS,AMPL(2,288))"
+    },
+    "289": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_8"
+      ],
+      "call": "CALL VV1_0(W(1,7),W(1,20),UVGC_142_8_1EPS,AMPL(2,289))"
+    },
+    "290": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_142_8"
+      ],
+      "call": "CALL VV1_0(W(1,7),W(1,22),UVGC_142_8_1EPS,AMPL(2,290))"
+    },
+    "291": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,12),R2GC_111_15,AMPL(1,291))"
+    },
+    "292": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,12),R2GC_111_15,AMPL(1,292))"
+    },
+    "293": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,12),R2GC_111_15,AMPL(1,293))"
+    },
+    "294": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,12),R2GC_111_15,AMPL(1,294))"
+    },
+    "295": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,13),R2GC_111_15,AMPL(1,295))"
+    },
+    "296": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,13),R2GC_111_15,AMPL(1,296))"
+    },
+    "297": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,13),R2GC_111_15,AMPL(1,297))"
+    },
+    "298": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,13),R2GC_111_15,AMPL(1,298))"
+    },
+    "299": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_203_92",
+        "R2GC_204_94"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),R2GC_204_94,R2GC_203_92,AMPL(1,299))"
+    },
+    "300": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_203_92",
+        "R2GC_204_94"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),R2GC_204_94,R2GC_203_92,AMPL(1,300))"
+    },
+    "301": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_203_92",
+        "R2GC_204_94"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),R2GC_204_94,R2GC_203_92,AMPL(1,301))"
+    },
+    "302": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_203_92",
+        "R2GC_204_94"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),R2GC_204_94,R2GC_203_92,AMPL(1,302))"
+    },
+    "303": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,15),R2GC_111_15,AMPL(1,303))"
+    },
+    "304": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,15),R2GC_111_15,AMPL(1,304))"
+    },
+    "305": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,15),R2GC_111_15,AMPL(1,305))"
+    },
+    "306": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,15),R2GC_111_15,AMPL(1,306))"
+    },
+    "307": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,17),R2GC_111_15,AMPL(1,307))"
+    },
+    "308": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,17),R2GC_111_15,AMPL(1,308))"
+    },
+    "309": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,17),R2GC_111_15,AMPL(1,309))"
+    },
+    "310": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,17),R2GC_111_15,AMPL(1,310))"
+    },
+    "311": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,18),R2GC_111_15,AMPL(1,311))"
+    },
+    "312": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,18),R2GC_111_15,AMPL(1,312))"
+    },
+    "313": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,18),R2GC_111_15,AMPL(1,313))"
+    },
+    "314": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,18),R2GC_111_15,AMPL(1,314))"
+    },
+    "315": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,19),R2GC_111_15,AMPL(1,315))"
+    },
+    "316": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,19),R2GC_111_15,AMPL(1,316))"
+    },
+    "317": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,19),R2GC_111_15,AMPL(1,317))"
+    },
+    "318": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,19),R2GC_111_15,AMPL(1,318))"
+    },
+    "319": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,20),R2GC_111_15,AMPL(1,319))"
+    },
+    "320": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,20),R2GC_111_15,AMPL(1,320))"
+    },
+    "321": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,20),R2GC_111_15,AMPL(1,321))"
+    },
+    "322": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,20),R2GC_111_15,AMPL(1,322))"
+    },
+    "323": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,22),R2GC_111_15,AMPL(1,323))"
+    },
+    "324": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,22),R2GC_111_15,AMPL(1,324))"
+    },
+    "325": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,22),R2GC_111_15,AMPL(1,325))"
+    },
+    "326": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,22),R2GC_111_15,AMPL(1,326))"
+    },
+    "327": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_7"
+      ],
+      "call": "CALL VV2_0(W(1,7),W(1,12),R2GC_107_7,AMPL(1,327))"
+    },
+    "328": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,12),R2GC_111_15,AMPL(1,328))"
+    },
+    "329": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,12),UVGC_202_107_1EPS,AMPL(2,329))"
+    },
+    "330": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,12),UVGC_202_107,AMPL(1,330))"
+    },
+    "331": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_7"
+      ],
+      "call": "CALL VV2_0(W(1,6),W(1,13),R2GC_107_7,AMPL(1,331))"
+    },
+    "332": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,13),R2GC_111_15,AMPL(1,332))"
+    },
+    "333": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,13),UVGC_202_107_1EPS,AMPL(2,333))"
+    },
+    "334": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,13),UVGC_202_107,AMPL(1,334))"
+    },
+    "335": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_203_92",
+        "R2GC_204_94"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),R2GC_204_94,R2GC_203_92,AMPL(1,335))"
+    },
+    "336": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_7"
+      ],
+      "call": "CALL VV2_0(W(1,6),W(1,15),R2GC_107_7,AMPL(1,336))"
+    },
+    "337": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,15),R2GC_111_15,AMPL(1,337))"
+    },
+    "338": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,15),UVGC_202_107_1EPS,AMPL(2,338))"
+    },
+    "339": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,15),UVGC_202_107,AMPL(1,339))"
+    },
+    "340": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_7"
+      ],
+      "call": "CALL VV2_0(W(1,6),W(1,17),R2GC_107_7,AMPL(1,340))"
+    },
+    "341": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,17),R2GC_111_15,AMPL(1,341))"
+    },
+    "342": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,17),UVGC_202_107_1EPS,AMPL(2,342))"
+    },
+    "343": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,17),UVGC_202_107,AMPL(1,343))"
+    },
+    "344": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_7"
+      ],
+      "call": "CALL VV2_0(W(1,6),W(1,18),R2GC_107_7,AMPL(1,344))"
+    },
+    "345": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,18),R2GC_111_15,AMPL(1,345))"
+    },
+    "346": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,18),UVGC_202_107_1EPS,AMPL(2,346))"
+    },
+    "347": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,18),UVGC_202_107,AMPL(1,347))"
+    },
+    "348": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_7"
+      ],
+      "call": "CALL VV2_0(W(1,6),W(1,19),R2GC_107_7,AMPL(1,348))"
+    },
+    "349": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,19),R2GC_111_15,AMPL(1,349))"
+    },
+    "350": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,19),UVGC_202_107_1EPS,AMPL(2,350))"
+    },
+    "351": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,19),UVGC_202_107,AMPL(1,351))"
+    },
+    "352": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_7"
+      ],
+      "call": "CALL VV2_0(W(1,7),W(1,20),R2GC_107_7,AMPL(1,352))"
+    },
+    "353": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,20),R2GC_111_15,AMPL(1,353))"
+    },
+    "354": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,20),UVGC_202_107_1EPS,AMPL(2,354))"
+    },
+    "355": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,20),UVGC_202_107,AMPL(1,355))"
+    },
+    "356": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_7"
+      ],
+      "call": "CALL VV2_0(W(1,7),W(1,22),R2GC_107_7,AMPL(1,356))"
+    },
+    "357": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,22),R2GC_111_15,AMPL(1,357))"
+    },
+    "358": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,22),UVGC_202_107_1EPS,AMPL(2,358))"
+    },
+    "359": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_107"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,22),UVGC_202_107,AMPL(1,359))"
+    },
+    "360": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_8"
+      ],
+      "call": "CALL VV2_0(W(1,7),W(1,12),R2GC_107_8,AMPL(1,360))"
+    },
+    "361": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,12),R2GC_111_15,AMPL(1,361))"
+    },
+    "362": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,12),UVGC_202_109_1EPS,AMPL(2,362))"
+    },
+    "363": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,12),UVGC_202_109,AMPL(1,363))"
+    },
+    "364": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_8"
+      ],
+      "call": "CALL VV2_0(W(1,6),W(1,13),R2GC_107_8,AMPL(1,364))"
+    },
+    "365": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,13),R2GC_111_15,AMPL(1,365))"
+    },
+    "366": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,13),UVGC_202_109_1EPS,AMPL(2,366))"
+    },
+    "367": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,13),UVGC_202_109,AMPL(1,367))"
+    },
+    "368": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_203_92",
+        "R2GC_204_94"
+      ],
+      "call": "CALL VVV10_9_0(W(1,5),W(1,6),W(1,7),R2GC_204_94,R2GC_203_92,AMPL(1,368))"
+    },
+    "369": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_8"
+      ],
+      "call": "CALL VV2_0(W(1,6),W(1,15),R2GC_107_8,AMPL(1,369))"
+    },
+    "370": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,15),R2GC_111_15,AMPL(1,370))"
+    },
+    "371": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,15),UVGC_202_109_1EPS,AMPL(2,371))"
+    },
+    "372": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,15),UVGC_202_109,AMPL(1,372))"
+    },
+    "373": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_8"
+      ],
+      "call": "CALL VV2_0(W(1,6),W(1,17),R2GC_107_8,AMPL(1,373))"
+    },
+    "374": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,17),R2GC_111_15,AMPL(1,374))"
+    },
+    "375": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,17),UVGC_202_109_1EPS,AMPL(2,375))"
+    },
+    "376": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,17),UVGC_202_109,AMPL(1,376))"
+    },
+    "377": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_8"
+      ],
+      "call": "CALL VV2_0(W(1,6),W(1,18),R2GC_107_8,AMPL(1,377))"
+    },
+    "378": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,18),R2GC_111_15,AMPL(1,378))"
+    },
+    "379": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,18),UVGC_202_109_1EPS,AMPL(2,379))"
+    },
+    "380": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,18),UVGC_202_109,AMPL(1,380))"
+    },
+    "381": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_8"
+      ],
+      "call": "CALL VV2_0(W(1,6),W(1,19),R2GC_107_8,AMPL(1,381))"
+    },
+    "382": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,6),W(1,19),R2GC_111_15,AMPL(1,382))"
+    },
+    "383": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,19),UVGC_202_109_1EPS,AMPL(2,383))"
+    },
+    "384": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,6),W(1,19),UVGC_202_109,AMPL(1,384))"
+    },
+    "385": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_8"
+      ],
+      "call": "CALL VV2_0(W(1,7),W(1,20),R2GC_107_8,AMPL(1,385))"
+    },
+    "386": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,20),R2GC_111_15,AMPL(1,386))"
+    },
+    "387": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,20),UVGC_202_109_1EPS,AMPL(2,387))"
+    },
+    "388": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,20),UVGC_202_109,AMPL(1,388))"
+    },
+    "389": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_107_8"
+      ],
+      "call": "CALL VV2_0(W(1,7),W(1,22),R2GC_107_8,AMPL(1,389))"
+    },
+    "390": {
+      "kind": "r2",
+      "source_couplings": [
+        "R2GC_111_15"
+      ],
+      "call": "CALL VV3_0(W(1,7),W(1,22),R2GC_111_15,AMPL(1,390))"
+    },
+    "391": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,22),UVGC_202_109_1EPS,AMPL(2,391))"
+    },
+    "392": {
+      "kind": "uv_local",
+      "source_couplings": [
+        "UVGC_202_109"
+      ],
+      "call": "CALL VV5_0(W(1,7),W(1,22),UVGC_202_109,AMPL(1,392))"
+    }
+  },
+  "native_ct_amplitudes": 392,
+  "ct_kind_counts": {
+    "r2": 121,
+    "uv_local": 271
+  },
+  "external_field_amplitudes": 0,
+  "component_instrumentation": "Generated SKIPLOOPEVAL plus source-type-based CT interference index filters in copied loop_matrix. All original generated rules/couplings unchanged. No separate external-field amplitudes generated; all-rejected CT control is exactlyzero. Bare=unmodified complete result\u2212CT. Diagnostic only, not timing data."
+}

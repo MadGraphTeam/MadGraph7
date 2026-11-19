@@ -827,6 +827,17 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --cuda-arch=ARCHS  Semicolon-separated CUDA compute capabilities, e.g. 75;80;86.")
         logger.info("     --hip-arch=ARCHS   Semicolon-separated HIP architectures, e.g. gfx900;gfx906.")
         logger.info(" ")
+        logger.info("   \"install ninjars [options]\"",'$MG:BOLD')
+        logger.info("   Build the pinned NinjaRS/oneloopmaster Fortran interface (MLReductionLib=8).")
+        logger.info("   Requires Cargo/Rust >= 1.96, GNU make and a Fortran compiler with REAL(16).")
+        logger.info("     --source=DIR          Use a local NinjaRS checkout (copied before building).")
+        logger.info("     --oneloop-source=DIR  Use a local oneloopmaster checkout.")
+        logger.info("     --prefix=DIR          Override the HEPTools installation prefix.")
+        logger.info("     -j N/--jobs=N         Parallel compilation jobs (default: nb_core).")
+        logger.info("     --update              Rebuild with this checkout's committed dependency pins (after git pull).")
+        logger.info("                           Replace the installation after DP and QP smoke tests pass.")
+        logger.info("     --force               Equivalent backward-compatible alias for --update.")
+        logger.info(" ")
         logger.info("   \"install pyamplicol [options]\"",'$MG:BOLD')
         logger.info("   Install pyAmpliCol, the matrix-element generator of the [amplicol] backend.")
         logger.info("   Without options an interactive installer is launched. Available options:")
@@ -871,13 +882,11 @@ class HelpToCmd(cmd.HelpCmd):
         # color schemes.
         #_launch_parser.print_help()
         logger.info("syntax: launch <dir_path> <options>",'$MG:color:BLUE')
-        logger.info("-- execute the aMC@NLO/madevent/standalone/pythia8 output present in dir_path",'$MG:BOLD')
+        logger.info("-- execute the aMC@NLO/madevent/mg7/standalone output present in dir_path",'$MG:BOLD')
         logger.info("By default, dir_path points to the last created directory.")
-        logger.info("(for pythia8, it should be the Pythia 8 main directory)")
         logger.info("")
-        logger.info("Launch on madevent/pythia8/standalone outputs:",'$MG:BOLD')
+        logger.info("Launch on madevent/mg7/standalone outputs:",'$MG:BOLD')
         logger.info(" o Example: launch PROC_sm_1 --name=run2",'$MG:color:GREEN')
-        logger.info(" o Example: launch ../pythia8",'$MG:color:GREEN')
         logger.info(" > Options:")
         logger.info("     -h, --help            show this help message and exit")
         logger.info("     -f, --force           Use the card present in the directory in order")
@@ -986,10 +995,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   - If mode is standalone_fortran, create a Fortran Standalone directory")
         logger.info("   - If mode is matrix, output the matrix.f files for all")
         logger.info("     generated processes in directory \"path\".")
-        logger.info("   - If mode is pythia8, output all files needed to generate")
-        logger.info("     the processes using Pythia 8. The files are written in")
-        logger.info("     the Pythia 8 directory (default).")
-        logger.info("     NOTE: The Pythia 8 directory is set in the ./input/mg7_configuration.txt")
+        logger.info("   - pythia8 is no longer an output mode: Pythia 8 showers the events of")
+        logger.info("     a madevent, mg7 or NLO output (shower=Pythia8 at the launch question).")
         logger.info("   - If mode is aloha: Special syntax output:")
         logger.info("     syntax: aloha [ROUTINE] [--options]" )
         logger.info("     valid options for aloha output are:")
@@ -1004,7 +1011,6 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      -noclean: no cleaning performed in \"path\".")
         logger.info("      -nojpeg: no jpeg diagrams will be generated.")
         logger.info("      --noeps=True: no jpeg and eps diagrams will be generated.")
-        logger.info("      -name: the postfix of the main file in pythia8 mode.")
         logger.info("      --jamp_optim=[True|False]: [madevent(default:True)|standalone_fortran(default:False)] allows a more efficient code computing the color-factor.")
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
@@ -1027,7 +1033,6 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
         logger.info("       output standalone_fortran MYRUN -f",'$MG:color:GREEN')
-        logger.info("       output pythia8 ../pythia8/ -name qcdprocs",'$MG:color:GREEN')
 
     def help_check(self):
         logger.info("syntax: check [" + "|".join(self._check_opts) + "] [param_card] process_definition [--energy=] [--split_orders=] [--reduction=]",'$MG:color:BLUE')
@@ -1172,6 +1177,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   optional argument.")
         logger.info(" > Notice multiparticle labels cannot be used with these checks.")
         logger.info(" > \"--reduction=\" allows to change what reduction methods should be used.")
+        logger.info(" > Timing/profile: --timing_provenance=True archives timing sources and")
+        logger.info("   hashes linked libraries for reproducible benchmarks (default: False).")
+        logger.info("   This opt-in mode requires those runtime files to remain unchanged.")
         logger.info(" > \"--split_orders=\" allows to change what specific combination of coupling orders to consider.")
         logger.info(" > For process syntax, please see help generate.")
         logger.info(" > In order to save the directory generated or the reuse an existing one")
@@ -1634,6 +1642,16 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("acknowledged_v3.1_syntax <value>",'$MG:color:GREEN') 
         logger.info("if set to True allows to use syntax which have change meaning between 3.0 and 3.1 version")
           
+# 'output pythia8' (the process code for Pythia 8's internal matrix elements)
+# was dropped in MadGraph7: Pythia 8 showers the events of a madevent, mg7 or
+# NLO output instead.
+PYTHIA8_OUTPUT_DROPPED = ("output pythia8 is no longer supported in MadGraph7. "
+    "Pythia 8 runs on the generated events instead: use an event-generation "
+    "output (output madevent, output mg7, or an NLO output) and select "
+    "shower=Pythia8 at the launch question.")
+PYTHIA8_LAUNCH_DROPPED = ("%s is a Pythia 8 directory: launching Pythia 8 "
+    "process code is no longer supported. " + PYTHIA8_OUTPUT_DROPPED)
+
 #===============================================================================
 # CheckValidForCmd
 #===============================================================================
@@ -1876,6 +1894,9 @@ class CheckValidForCmd(cmd.CheckCmd):
                    # 'check crossing --exporter=standalone' float precision:
                    # m mixed (default), d double, f float.
                    '--precision':'m'}
+
+        if args[0] in ['timing', 'profile']:
+            user_options['--timing_provenance'] = 'False'
 
         if args[0] == 'precision':
             user_options['--nb_event'] = '1000000'
@@ -2364,6 +2385,8 @@ This will take effect only in a NEW terminal
         if mode == 'madweight':
             raise self.InvalidCmd('launch on a madweight directory is no longer supported; '
                                   'MadWeight has been removed')
+        if mode == 'pythia8':
+            raise self.InvalidCmd(PYTHIA8_LAUNCH_DROPPED % path)
 
         args[0] = mode
         args.append(path)
@@ -2689,7 +2712,7 @@ This will take effect only in a NEW terminal
             raise self.InvalidCmd('output madweight is no longer supported; please use a different output mode')
 
         if args and args[0] == 'pythia8':
-            raise self.InvalidCmd('output pythia8 is no longer supported; please use a different output mode')
+            raise self.InvalidCmd(PYTHIA8_OUTPUT_DROPPED)
 
         if args and args[0] == 'standalone_cpp':
             raise self.InvalidCmd('output standalone_cpp is no longer supported; '
@@ -2760,22 +2783,12 @@ This will take effect only in a NEW terminal
                         raise self.InvalidCmd("This name correspond to a builtin MG5 directory. Please choose another name")
                 self._export_dir = path
             elif path == 'auto':
-                if self.options['pythia8_path']:
-                    self._export_dir = self.options['pythia8_path']
-                else:
-                    self._export_dir = '.'
-        else:
-            if self._export_format != 'pythia8':
-                # No valid path
                 self.get_default_path()
-                if '-noclean' not in args and os.path.exists(self._export_dir):
-                    args.append('-noclean')
-                    
-            else:
-                if self.options['pythia8_path']:
-                    self._export_dir = self.options['pythia8_path']
-                else:
-                    self._export_dir = '.'
+        else:
+            # No valid path
+            self.get_default_path()
+            if '-noclean' not in args and os.path.exists(self._export_dir):
+                args.append('-noclean')
 
         self._export_dir = os.path.realpath(self._export_dir)
 
@@ -2956,12 +2969,6 @@ This will take effect only in a NEW terminal
                                     (self._curr_model['name'], i)
             auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
-        elif self._export_format == 'pythia8':
-            if self.options['pythia8_path']:
-                self._export_dir = self.options['pythia8_path']
-            else:
-                self._export_dir = '.'
-            return
         else:
             self._export_dir = '.'
             return
@@ -3400,6 +3407,8 @@ class CompleteForCmd(cmd.CompleteCmd):
           '--loop_filter=','--resonances=']
 
         options = ['--energy=']
+        if len(args) >= 2 and args[1] in ['timing', 'profile']:
+            options.append('--timing_provenance=')
         if len(args) >= 2 and args[1] == 'precision':
             options.extend(['--nb_event=', '--backend='])
         if cms_options:
@@ -3742,9 +3751,6 @@ class CompleteForCmd(cmd.CompleteCmd):
         #name of the run =>proposes old run name
         args = self.split_arg(line[0:begidx])
         if len(args) >= 1:
-            
-            if len(args) > 1 and args[1] == 'pythia8':
-                possible_options_full = list(possible_options_full) + ['--version=8.1','--version=8.2'] 
             
             if len(args) > 1 and args[1] == 'aloha':
                 try:
@@ -4186,7 +4192,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
                      'looptools', 'cuttools_iregi', 'MadSTR', 'RunningCoupling',
-                     'madspace', 'pyamplicol', 'madtrex']
+                     'madspace', 'ninjars', 'pyamplicol', 'madtrex']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
@@ -4288,6 +4294,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'golem':'auto',
                        'samurai':None,
                        'ninja':'./HEPTools/lib',
+                       'ninjars':None,
                        'collier':'./HEPTools/lib',
                        'dmtcp': None,
                        'lhapdf':'lhapdf-config',
@@ -6456,6 +6463,8 @@ This implies that with decay chains:
         self.set_color_basis_mode()
 
         args = self.split_arg(line)
+        automatic_reduction = (args and args[0] in ('timing', 'profile') and
+                               not any(arg.startswith('--reduction=') for arg in args))
         # Check args validity
         param_card = self.check_check(args)
 
@@ -6519,6 +6528,13 @@ This implies that with decay chains:
                                        " must be an integer, not %s."%option[1])
             elif option[0]=='--reduction':
                 MLoptions['MLReductionLib']=[int(ir) for ir in option[1].split('|')]
+                if 2 in MLoptions['MLReductionLib']:
+                    raise self.InvalidCmd('PJFry (reduction ID 2) is retired; '
+                                          'use 8 for NinjaRS or 6 for Ninja.')
+            elif option[0]=='--timing_provenance':
+                if len(option) != 2 or option[1].lower() not in ('true', 'false'):
+                    raise self.InvalidCmd("The value of 'timing_provenance' must be True or False.")
+                options['timing_provenance'] = option[1].lower() == 'true'
             elif option[0]=='--collier_mode':
                 MLoptions['COLLIERMode']=int(option[1])
             elif option[0]=='--collier_cache':
@@ -6917,6 +6933,11 @@ This implies that with decay chains:
         # check modes for which no process could be checked at all
         not_checked = []
 
+        if automatic_reduction and myprocdef and myprocdef.get('has_born'):
+            from madgraph.various import ninjars_install
+            MLoptions['MLReductionLib'] = ninjars_install.default_reduction_library(
+                myprocdef.get('has_born'), self.options.get('ninjars'))
+
         if "_cuttools_dir" in dir(self):
             CT_dir = self._cuttools_dir
         else:
@@ -6935,10 +6956,9 @@ This implies that with decay chains:
                     MLoptions["MLReductionLib"].remove(3)
 
 
-        if "MLReductionLib" in MLoptions:
-            if 2 in MLoptions["MLReductionLib"]:
-                logger_check.warning('PJFRY not supported anymore; it will be skipped.')                    
-                MLoptions["MLReductionLib"].remove(2)
+        if 2 in MLoptions.get('MLReductionLib', []):
+            raise self.InvalidCmd('PJFry (reduction ID 2) is retired; '
+                                  'use 8 for NinjaRS or 6 for Ninja.')
                     
         if 'golem' in self.options and isinstance(self.options['golem'],str):
             TIR_dir['golem_dir']=self.options['golem']
@@ -6971,6 +6991,18 @@ This implies that with decay chains:
                 if 6 in MLoptions["MLReductionLib"]:
                     logger_check.warning('Ninja not available on your system; it will be skipped.')
                     MLoptions["MLReductionLib"].remove(6)
+
+        if isinstance(self.options.get('ninjars'), str):
+            from madgraph.various import ninjars_install
+            TIR_dir['ninjars_dir'] = self.options['ninjars']
+            if 8 in MLoptions.get('MLReductionLib', []) and not ninjars_install.is_available(
+                    self.options['ninjars']):
+                raise self.InvalidCmd("NinjaRS is unavailable or unusable at %s. "
+                                      "Run 'install ninjars --update'." %
+                                      self.options['ninjars'])
+        elif 8 in MLoptions.get('MLReductionLib', []):
+            raise self.InvalidCmd("NinjaRS is disabled. Run 'install ninjars' "
+                                  "or set ninjars to its library directory.")
         
         if args[0] in ['timing']:
             timings = process_checks.check_timing(myprocdef,
@@ -10034,6 +10066,22 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
         elif args[0] == 'looptools':
             self.install_reduction_library(force=True)
             return
+        elif args[0] == 'ninjars':
+            from madgraph.various import ninjars_install
+            prefix, config_file = self.heptools_install_target(
+                self.options['heptools_install_dir'])
+            libdir = ninjars_install.install(
+                MG5DIR, prefix,
+                arguments=install_options['options_for_HEPToolsInstaller'] + add_options,
+                fortran_compiler=self.options['fortran_compiler'],
+                jobs=self.options['nb_core'])
+            if libdir is not None:
+                self.options['ninjars'] = libdir
+                _, config_file = self.heptools_install_target(
+                    os.path.dirname(os.path.dirname(libdir)))
+                self.exec_cmd('save options %s ninjars' % config_file,
+                              printcmd=False, log=False)
+            return
         elif args[0] == 'cuttools_iregi':
             self.install_cuttools_iregi()
             return
@@ -11018,6 +11066,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     if key in self.options_madgraph:
                         self.history.append('set %s %s' % (key, self.options[key]))
 
+        # Check for the minimal required compiler version (C++20 with
+        # std::format, needed by madspace): gcc 13, LLVM clang 17,
+        # Apple clang 15
+        for warnings in [misc.check_gcc_version('13'),
+                         misc.check_clang_version('17', '15')]:
+            if warnings:
+                logger.warning(warnings)
+
         # Configure the way to open a file:
         launch_ext.open_file.configure(self.options)
         # Configure the way to compress a file:
@@ -11157,9 +11213,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 ext_program = launch_ext.MELauncher(args[1], self, unit='GeV',
                                 shell = isinstance(self, cmd.CmdShell),
                                 options=self.options,**options)
-
-        elif args[0] == 'pythia8':
-            ext_program = launch_ext.Pythia8Launcher( args[1], self, **options)
 
         elif args[0] == 'aMC@NLO':
             if options['interactive']:
@@ -13029,12 +13082,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
 
     def setup_path_for_options(self,name, args, log=True):
-        """Set the path for golem/samurai/ninja/collier options.
+        """Set the path for golem/samurai/ninja/ninjars/collier options.
         Example: set golem /PATH/TO/golem/lib
         or: set golem None
         """
         args = [name] + args[:]
-        if not (args[0] in ['ninja','collier'] and args[1]=='./HEPTools/lib'):
+        if not (args[0] in ['ninja','ninjars','collier'] and args[1]=='./HEPTools/lib'):
             if args[1] in ['None',"''",'""']:
                 self.options[args[0]] = None
             else:
@@ -13057,6 +13110,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     set2_golem = lambda self, *args, **opts : self.setup_path_for_options('golem'   , *args, **opts)
     set2_samurai = lambda self, *args, **opts : self.setup_path_for_options('samurai' , *args, **opts)  
     set2_ninja = lambda self, *args, **opts : self.setup_path_for_options('ninja'   , *args,   **opts)
+    set2_ninjars = lambda self, *args, **opts : self.setup_path_for_options('ninjars', *args, **opts)
     set2_collier = lambda self,*args, **opts : self.setup_path_for_options('collier' , *args, **opts)
 
     def set2_lhapdf(self, args, log=True):
@@ -13707,14 +13761,19 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     def help_set2_color_basis(self):
         logger.info("color_basis <value>",'$MG:color:GREEN')
         logger.info(" > (default: auto) select the color basis used for processes")
-        logger.info("   whose color structure is purely adjoint (multi-gluon).")
+        logger.info("   whose color structure is purely adjoint (all the colored")
+        logger.info("   particles are gluons, next to any number of color singlets,")
+        logger.info("   e.g. g g > h + n g in the Higgs effective theory).")
         logger.info(" > trace: the (n-1)! basis of traces of fundamental generators")
         logger.info(" > ddm:   the (n-2)! Del Duca-Dixon-Maltoni half-ladder basis")
         logger.info("          (n-1 times fewer JAMPs, (n-1)^2 times smaller color matrix)")
-        logger.info(" > auto:  ddm for the output formats which support it (madevent, mg7,")
-        logger.info("          standalone and standalone_fortran; the trace basis is still")
-        logger.info("          used next to it for the color flow of each event), trace")
-        logger.info("          otherwise (NLO, pythia8, matchbox, ...)")
+        logger.info("          for the output formats which can use it. The others keep")
+        logger.info("          the trace basis, with an info message (loop processes,")
+        logger.info("          NLO, matchbox, mg7_v5, ...)")
+        logger.info(" > auto:  ddm for the output formats which use it by default (madevent,")
+        logger.info("          mg7, standalone and standalone_fortran; the trace basis is")
+        logger.info("          still used next to it for the color flow of each event),")
+        logger.info("          trace otherwise")
 
     def set2_color_basis(self, args, log=True):
         """Set the color basis used for fully adjoint (multi-gluon) processes.
@@ -13831,7 +13890,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         elif args[0] == 'fastjet':
             raise Exception('This option is now handled by a dedicated function.')
             # set_fastjet(args[1:], log=log)
-        elif args[0] in ['golem','samurai','ninja','collier']:
+        elif args[0] in ['golem','samurai','ninja','ninjars','collier']:
             raise Exception('This option is now handled by a dedicated function.')
             # setup_path_for_options(args, log=log)
         elif args[0].startswith('lhapdf'):
@@ -14080,12 +14139,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if self._export_format in ('standalone', 'mg7', 'mg7_v5') and \
                                             'hel_recycling' not in line_options:
             line_options['hel_recycling'] = 'auto'
-        main_file_name = ""
-        try:
-            main_file_name = args[args.index('-name') + 1]
-        except Exception:
-            pass
-
 
         ################
         # ALOHA OUTPUT #
@@ -14142,7 +14195,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         config['standalone_msF'] = {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_msP'] = {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_rw'] =  {'check': False, 'exporter': 'v4',  'output':'Template'}
-        config['pythia8'] =        {'check': False, 'exporter': 'cpp', 'output':'dir'}
         config['matchbox_cpp'] =   {'check': True, 'exporter': 'cpp', 'output': 'Template'}
         config['matchbox'] =       {'check': True, 'exporter': 'v4',  'output': 'Template'}
         config['mg7_v5'] =         {'check': True, 'exporter': 'cpp', 'output': 'Template'}
@@ -14220,17 +14272,20 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         % (format, ', '.join(
                                diagram_generation.TREE_INTERFERENCE_FORMATS)))
 
-        # check
+        # check: never write into the current directory itself (e.g. 'output
+        # matrix auto', for the formats without an automatic directory name),
+        # but into a new PROC_<format>_<i> directory in it
         if os.path.realpath(self._export_dir) == os.getcwd():
             if len(args) == 0:
                 i=0
                 while 1:
-                    if os.path.exists('Pythia8_proc_%i' %i):
+                    if os.path.exists('PROC_%s_%i' % (self._export_format, i)):
                         i+=1
                     else:
                         break
-                os.mkdir('Pythia8_proc_%i' %i) 
-                self._export_dir = pjoin(self._export_dir, 'Pythia8_proc_%i' %i)
+                new_dir = 'PROC_%s_%i' % (self._export_format, i)
+                os.mkdir(new_dir)
+                self._export_dir = pjoin(self._export_dir, new_dir)
                 logger.info('Create output in %s' % self._export_dir)
             elif not args[0] in ['.', '-f']:
                 raise self.InvalidCmd('Wrong path directory to create in local directory use \'.\'')
@@ -14338,7 +14393,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             base_objects.Vertex.max_tpropa = int(self.options['max_t_for_channel'])   
 
         # Perform export and finalize right away
-        self.export(nojpeg, main_file_name, group_processes, args)
+        self.export(nojpeg, group_processes, args)
 
         # Automatically run finalize
         self.finalize(nojpeg, flaglist=flaglist)
@@ -14641,19 +14696,27 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
     # Export a matrix element
     def set_color_basis_mode(self, *exporters):
-        """Set the color basis used for fully adjoint (multi-gluon) processes.
-        The (n-2)! Del Duca-Dixon-Maltoni basis can only be used by the output
-        formats which never need a color flow decomposition, so in 'auto' mode
-        every exporter involved must support it."""
+        """Set the color basis used for fully adjoint (multi-gluon) processes,
+        from the color_basis option and what every exporter involved can do
+        with the (n-2)! Del Duca-Dixon-Maltoni basis (their ddm_color_basis):
+        'auto' uses it when all of them take it by default, 'ddm' unless one of
+        them can never use it. Without any exporter (check), 'auto' is the
+        trace basis and 'ddm' the DDM one."""
 
         mode = self.options.get('color_basis', 'auto')
         exporters = [exporter for exporter in exporters if exporter]
+        support = [getattr(exporter, 'ddm_color_basis', 'never')
+                   for exporter in exporters]
         if mode == 'auto':
-            use_ddm = bool(exporters) and \
-                all(getattr(exporter, 'support_ddm_color_basis', False)
-                    for exporter in exporters)
+            use_ddm = bool(support) and all(s == 'auto' for s in support)
+        elif mode == 'ddm':
+            use_ddm = 'never' not in support
+            if not use_ddm:
+                logger.info("color_basis ddm: output %s keeps the trace color "
+                            "basis, the only one it can use",
+                            getattr(self, '_export_format', None))
         else:
-            use_ddm = (mode == 'ddm')
+            use_ddm = False
 
         # An exporter which has to write a color flow per event also needs the
         # trace basis next to the DDM one
@@ -14665,20 +14728,37 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger.debug('Using the Del Duca-Dixon-Maltoni color basis for '
                          'fully adjoint processes (flow basis: %s)', with_flow)
 
-    def export(self, nojpeg = False, main_file_name = "", group_processes=True,
-                                                                       args=[]):
+    def report_ddm_fallbacks(self):
+        """After 'set color_basis ddm', tell the user which processes kept the
+        trace color basis and why (with 'auto' this stays at debug level)."""
+
+        if self.options.get('color_basis', 'auto') != 'ddm' or \
+           not color_amp.ddm_fallbacks:
+            return
+        reasons = collections.OrderedDict()
+        for process, reason in color_amp.ddm_fallbacks:
+            reasons.setdefault(reason, []).append(process)
+        for reason, processes in reasons.items():
+            shown = ', '.join(processes[:5])
+            if len(processes) > 5:
+                shown += ', ... (%d processes)' % len(processes)
+            logger.info('color_basis ddm: trace color basis kept for %s: %s',
+                        shown, reason)
+
+    def export(self, nojpeg=False, group_processes=True, args=[]):
         """Export a generated amplitude to file."""
 
         self.set_color_basis_mode(self._curr_exporter, self._me_curr_exporter)
         try:
-            return self._export(nojpeg, main_file_name, group_processes, args)
+            out = self._export(nojpeg, group_processes, args)
+            self.report_ddm_fallbacks()
+            return out
         finally:
             # the color basis is tied to this output, it must not leak to the
             # next command
             color_amp.set_ddm_basis(False)
 
-    def _export(self, nojpeg = False, main_file_name = "", group_processes=True,
-                                                                       args=[]):
+    def _export(self, nojpeg=False, group_processes=True, args=[]):
         """Export a generated amplitude to file, with the color basis already
         selected."""
 
@@ -14756,12 +14836,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     self._me_curr_helas_model = helas_call_writers.FortranHelasCallWriter(self._curr_model)
                 else:                    
                     self._me_curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
-
-        version = [arg[10:] for arg in args if arg.startswith('--version=')]
-        if version:
-            version = version[-1]
-        else:
-            version = '8.2'
 
         def generate_matrix_elements(self, group_processes=True):
             """Helper function to generate the matrix elements before
@@ -15065,7 +15139,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             
         cpu_time1 = time.time()
 
-        # First treat madevent and pythia8 exports, where we need to
+        # First treat madevent exports, where we need to
         # distinguish between grouped and ungrouped subprocesses
 
         # MadEvent
@@ -15121,38 +15195,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 #    misc.sprint('command history fails.', 10)
                 #    pass
 
-        # Pythia 8
-        elif self._export_format == 'pythia8':
-            # Output the process files
-            process_names = []
-            if isinstance(self._curr_matrix_elements, group_subprocs.SubProcessGroupList):
-                for (group_number, me_group) in enumerate(self._curr_matrix_elements):
-                    exporter = self._curr_exporter.generate_process_directory(\
-                            me_group.get('matrix_elements'), self._curr_helas_model,
-                            process_string = me_group.get('name'),
-                            process_number = group_number+1,
-                            version = version)
-                    process_names.append(exporter.process_name)
-            else:
-                exporter =  self._curr_exporter.generate_process_directory(\
-                            self._curr_matrix_elements, self._curr_helas_model,
-                            process_string = self._generate_info, version = version)
-                process_names.append(exporter.process_file_name)
-
-            wanted_lorentz = self._curr_matrix_elements.get_used_lorentz()
-            # Output the model parameter and ALOHA files
-            model_name, model_path = exporter.convert_model_to_pythia8(\
-                            self._curr_model, self._export_dir, wanted_lorentz=wanted_lorentz)
-
-            # Generate the main program file
-            filename, make_filename = \
-                      self._curr_exporter.generate_example_file_pythia8(path,
-                                                               model_path,
-                                                               process_names,
-                                                               exporter,
-                                                               main_file_name)
-                      
-                      
         matrix_elements = self._curr_matrix_elements.get_matrix_elements()
         if matrix_elements and any(l.get('flavor') is None for l in matrix_elements[0].get('processes')[0].get('legs')):
             [m.get_external_flavors() for m in matrix_elements]  #precompute all flavors
@@ -15168,7 +15210,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 calls = calls + self._curr_exporter.write_matrix_element_v4(\
                     writers.FortranWriter(filename),\
                     me, self._curr_helas_model)
-        elif self._export_format in ['madevent', 'pythia8']:
+        elif self._export_format == 'madevent':
             pass
         # grouping mode
         elif isinstance(self._curr_matrix_elements, group_subprocs.SubProcessGroupList) and\
@@ -15220,15 +15262,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             else:
                 logger.info("Wrote files for %d helas calls" % \
                             (calls))
-
-        if self._export_format == 'pythia8':
-            logger.info("- All necessary files for Pythia 8 generated.")
-            logger.info("- Run \"launch\" and select %s.cc," % filename)
-            logger.info("  or go to %s/examples and run" % path)
-            logger.info("      make -f %s" % make_filename)
-            logger.info("  (with process_name replaced by process name).")
-            logger.info("  You can then run ./%s to produce events for the process" % \
-                        filename)
 
         # Replace the amplitudes with the actual amplitudes from the
         # matrix elements, which allows proper diagram drawing also of
@@ -15433,10 +15466,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if self._export_format == 'NLO':
             pairs.append(('Frederix:2009yq',
                            'FKS subtraction (MadFKS)'))
-            try:
-                has_virt = bool(self._fks_multi_proc.get_virt_amplitudes())
-            except Exception:
-                has_virt = False
+            # (the virtual amplitudes are not kept by
+            # low_mem_multicore_nlo_generation, has_loops in both modes)
+            has_virt = 'has_loops' in self._curr_matrix_elements and \
+                       self._curr_matrix_elements['has_loops']
             if has_virt and self.options.get('OLP', 'MadLoop') == 'MadLoop':
                 pairs.append(('Hirschi:2011pa',
                                'one-loop matrix elements (MadLoop)'))
@@ -16418,11 +16451,9 @@ _draw_parser.add_option("", "--generate_only", default=False, action='store_true
                           help="forbid to display the generate file and only generate the eps file")
 # LAUNCH PROGRAM
 _launch_usage = "launch [DIRPATH] [options]\n" + \
-         "-- execute the madevent/standalone/standalone_fortran/pythia8/NLO output present in DIRPATH\n" + \
+         "-- execute the madevent/mg7/standalone/standalone_fortran/NLO output present in DIRPATH\n" + \
          "   By default DIRPATH is the latest created directory \n" + \
-         "   (for pythia8, it should be the Pythia 8 main directory) \n" + \
-         "   Example: launch PROC_sm_1 --name=run2 \n" + \
-         "   Example: launch ../pythia8 \n"
+         "   Example: launch PROC_sm_1 --name=run2 \n"
 _launch_parser = misc.OptionParser(usage=_launch_usage)
 _launch_parser.add_option("--allow_qed_ps", default=False, action='store_true',
                             help="Allow experimental NLO QED+PS matching by bypassing the launch restriction")

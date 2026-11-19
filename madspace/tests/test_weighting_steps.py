@@ -25,6 +25,9 @@ from test_integrand_me_outputs import python_matrix_element
 
 import madspace as ms
 
+# event streams run on a CPU context
+pytestmark = pytest.mark.cpu_only
+
 
 def true_me(momenta):
     return 1.0 + 3.0 * (momenta[:, 2, 0] / CM_ENERGY) ** 2

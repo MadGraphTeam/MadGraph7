@@ -66,6 +66,29 @@ logger = logging.getLogger('madgraph.export_fks')
 if madgraph.ordering:
     set	= misc.OrderedSet
 
+
+def get_splitting_types(fksborn):
+    """The splitting types of the FKS configurations of the FKSHelasProcess
+    fksborn, without the doubles, in order"""
+    return list(dict.fromkeys(split_type for real in fksborn.real_processes
+                              for info in real.fks_infos
+                              for split_type in info['splitting_type']))
+
+
+def add_splitting_types(splitting_types, split_types):
+    """The splitting types of proc_characteristic with those of a matrix
+    element added, as generate_directories_fks accumulates them (also used
+    by the low_mem_multicore_nlo_generation mode: the order of the result,
+    from the set of this module, goes in proc_characteristics)"""
+    return list(set(splitting_types).union(set(split_types)))
+
+
+def born_dir_name(process):
+    """The name of the P directory of the matrix element whose first born
+    process is process"""
+    return "P%s" % process.shell_string()
+
+
 # the base to compute the orders_tag
 orderstag_base = 100
 
@@ -86,7 +109,7 @@ def make_jpeg_async(args):
     devnull = os.open(os.devnull, os.O_RDWR)
   
     os.chdir(Pdir)
-    subprocess.call([os.path.join(old_pos, dir_path, 'bin', 'internal', 'gen_jpeg-pl')],
+    subprocess.call(['perl', '-w', os.path.join(old_pos, dir_path, 'bin', 'internal', 'gen_jpeg-pl')],
                     stdout = devnull)
     os.chdir(os.path.pardir)  
 
@@ -209,6 +232,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         if os.path.exists(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat')):          
                 self.MadLoopparam = banner_mod.MadLoopParam(pjoin(self.dir_path, 
                                                   'Cards', 'MadLoopParams.dat'))
+                if self.set_default_reduction_library(self.MadLoopparam):
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
                 # write the output file
                 self.MadLoopparam.write(pjoin(self.dir_path,"SubProcesses",
                                                            "MadLoopParams.dat"))
@@ -524,7 +550,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
                                     me_ntot, path=os.getcwd(),OLP='MadLoop'):
         """Generate the Pxxxxx_i directories for a subprocess in MadFKS,
-        including the necessary matrix.f and various helper files"""
+        including the necessary matrix.f and various helper files.
+        The caller lists the directories in subproc.mg and makes the info page
+        with write_born_dirs, once all of them are written (possibly in
+        parallel, in the low_mem_multicore_nlo_generation mode)"""
         proc = matrix_element.born_me['processes'][0]
 
         if not self.model:
@@ -542,10 +571,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         
         calls = 0
         
-        self.fksdirs = []
         #first make and cd the direcrory corresponding to the born process:
-        borndir = "P%s" % \
-        (matrix_element.born_me.get('processes')[0].shell_string())
+        borndir = born_dir_name(matrix_element.born_me.get('processes')[0])
         self.mkdir_born_dir(borndir, matrix_element.born_me.get('processes')[0])
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
@@ -613,9 +640,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         self.write_mc_history_files(matrix_element)
 
         # update the splitting types
-        self.proc_characteristic['splitting_types'] = list(\
-                set(self.proc_characteristic['splitting_types']).union(\
-                    split_types))
+        self.proc_characteristic['splitting_types'] = add_splitting_types(
+                self.proc_characteristic['splitting_types'], split_types)
 
         filename = 'leshouche_info.dat'
         nfksconfs,maxproc,maxflow,nexternal=\
@@ -650,11 +676,17 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               nconfigs,max_leg_number,nfksconfs,
                               fortran_model)
         
-        # For processes with only QCD splittings, write
+        # For a directory with QCD splittings, write
         # the file with the mapping of born vs real diagrams
         # Otherwise, write a dummy file
+        # (the mapping of each FKS configuration with a QCD splitting, the
+        # rb_links set by FKSProcess.link_born_reals: it does not depend on
+        # the directories written before this one. An [LOonly] directory,
+        # which has no FKS configuration, gets its trivial mapping.)
         filename = 'real_from_born_configs.inc'
-        if self.proc_characteristic['splitting_types'] == ['QCD']:
+        fks_info_list = matrix_element.get_fks_info_list()
+        if not fks_info_list or \
+           any(info['fks_info'].get('rb_links') is not None for info in fks_info_list):
             self.write_real_from_born_configs(
                               writers.FortranWriter(filename), 
                               matrix_element,
@@ -844,26 +876,36 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         if hasattr(self, 'born_support_registry'):
             born_support.worker_record(self, matrix_element, amp_split_orders)
 
-        # Return to SubProcesses dir
-        os.chdir(os.path.pardir)
-        # Add subprocess to subproc.mg
-        filename = 'subproc.mg'
-        files.append_to_file(filename,
-                             self.write_subproc,
-                             borndir)
-            
+        # (subproc.mg and the info page: write_born_dirs)
         os.chdir(cwd)
-        # Generate info page
-        gen_infohtml.make_info_html_nlo(self.dir_path)
 
         return calls, amp_split_orders
 
-    def prepare_born_support(self, matrix_elements):
+    def write_born_dirs(self, borndirs):
+        """Once all the P directories are written (possibly in parallel): the
+        list of them, in order, in subproc.mg, and the info page"""
+        with open(pjoin(self.dir_path, 'SubProcesses', 'subproc.mg'), 'a') as subproc:
+            for borndir in borndirs:
+                self.write_subproc(subproc, borndir)
+        gen_infohtml.make_info_html_nlo(self.dir_path)
+
+    def born_support_record(self, matrix_element):
+        """The HELAS tag and the compatibility signature of the
+        FKSHelasProcess matrix_element, from which prepare_born_support
+        assigns the Born providers (None instead of this method for an
+        exporter without them). In the low_mem_multicore_nlo_generation mode,
+        the process which finalizes the matrix element computes it."""
+        return born_support.context_record(self, matrix_element)
+
+    def prepare_born_support(self, records):
+        """Assign the Born providers of the P directories, before writing
+        them, from records: the name of the P directory (born_dir_name) of
+        each matrix element, followed by its born_support_record"""
         # Native providers build their own packed Born colour density. Keep
         # the ordinary Born/linked sources as their input; the standalone
         # outputs use the integrated MG7 colour-link template instead.
         self.born_color_links_in_born = False
-        born_support.prepare(self, matrix_elements)
+        born_support.prepare(self, records)
 
     #===========================================================================
     #  create the run_card 
@@ -994,14 +1036,14 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             logger.info("Generate jpeg diagrams")
             for Pdir in P_dir_list:
                 os.chdir(Pdir)
-                subprocess.call([os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_jpeg-pl')],
+                subprocess.call(['perl', '-w', os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_jpeg-pl')],
                                 stdout = devnull)
                 os.chdir(os.path.pardir)
 #
         logger.info("Generate web pages")
         # Create the WebPage using perl script
 
-        subprocess.call([os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')], \
+        subprocess.call(['perl', '-w', os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')], \
                                                                 stdout = devnull)
 
         os.chdir(os.path.pardir)
@@ -1030,7 +1072,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 logger.warning("Failed to copy " + card + ".dat to default")
 
 
-        subprocess.call([os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')],
+        subprocess.call(['perl', '-w', os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')],
                         stdout = devnull)
 
         # Run "make" to generate madevent.tar.gz file
@@ -1040,7 +1082,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             subprocess.call([os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'make_amcatnlo_tar')],
                         stdout = devnull)
 #
-        subprocess.call([os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')],
+        subprocess.call(['perl', '-w', os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')],
                         stdout = devnull)
 
         #return to the initial dir
@@ -1102,14 +1144,14 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                                 for me in matrix_elements.get('matrix_elements')],[])
 
             # Try getting the processes from the generation info directly if no ME are
-            # available (as it is the case for parallel generation
+            # available (as it is the case for parallel generation: the born
+            # processes of each matrix element, as above)
             if len(processes)==0:
-                processes = self.born_processes
+                processes = sum(self.born_processes, [])
             if len(processes)==0:
                 logger.warning(
 """MadGraph7 could not provide to Madanalysis5 the list of processes generated.
-As a result, the default card will not be tailored to the process generated.
-This typically happens when using the 'low_mem_multicore_nlo_generation' NLO generation mode.""")
+As a result, the default card will not be tailored to the process generated.""")
             # For now, simply assign all processes to each proc_defs.
             # That shouldn't really affect the default analysis card created by MA5
             self.create_default_madanalysis5_cards(
@@ -1134,7 +1176,11 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         born_me = matrix_element.born_me
         for iFKS, conf in enumerate(matrix_element.get_fks_info_list()):
             iFKS = iFKS+1
-            links = conf['fks_info']['rb_links']
+            links = conf['fks_info'].get('rb_links')
+            if links is None:
+                # an FKS configuration with another splitting than QCD, not
+                # mapped (see FKSProcess.link_born_reals)
+                continue
             max_links = max(max_links,len(links))
             for i,diags in enumerate(links):
                 if not i == diags['born_conf']:
@@ -4140,7 +4186,7 @@ Parameters              %(params)s\n\
         replace_dict['splitorders_name'] = ', '.join(split_orders)
 
         bool_dict = {True: '.true.', False: '.false.'}
-        split_types_return = set(sum([info['fks_info']['splitting_type'] for info in fks_info_list], []))
+        split_types_return = set(get_splitting_types(fksborn))
 
         # this is for processes with 'real' or 'all' as NLO mode 
         if len(fks_info_list) > 0:
@@ -5515,11 +5561,23 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                                               libpath,"lib%s.a"%tir,tir_name=tir)
             setattr(self,tir_dir,libpath)
             if libpath != "":
-                if tir in ['pjfry','ninja','golem', 'samurai','collier']:
+                if tir in ['pjfry','ninja','golem', 'samurai','collier','ninjars']:
                     # We should link dynamically when possible, so we use the original
                     # location of these libraries.
-                    link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
-                    tir_libs.append('%s/lib%s.$(libext)'%(libpath,tir))
+                    copied_ninjars = tir == 'ninjars' and self.dependencies == 'internal'
+                    if tir == 'ninjars':
+                        from madgraph.various import ninjars_install
+                        link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+                    if copied_ninjars:
+                        link_tir_libs.append('-L$(LIBDIR) -lninjars')
+                        tir_libs.append('$(LIBDIR)libninjars.a')
+                    else:
+                        link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
+                        tir_libs.append('%s/lib%s.%s' % (
+                            libpath, tir, 'a' if tir == 'ninjars' else '$(libext)'))
+                    if tir == 'ninjars':
+                        from madgraph.various import ninjars_install
+                        link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
                     # For Ninja, we must also link against OneLoop.
                     if tir in ['ninja']:
                         if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 
@@ -5529,7 +5587,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,'avh_olo'))
                         tir_libs.append('%s/lib%s.$(libext)'%(libpath,'avh_olo'))
                     # We must add the corresponding includes for these TIR
-                    if tir in ['golem','samurai','ninja','collier']:
+                    if tir in ['golem','samurai','ninja','collier','ninjars']:
                         trg_path = pjoin(os.path.dirname(libpath),'include')
                         trg_path2 = pjoin(trg_path,tir)
                         to_include = None
@@ -5539,6 +5597,9 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                         if to_include is None and os.path.isdir(trg_path2):
                             to_include = misc.find_includes_path(trg_path2,
                                                         self.include_names[tir])
+                        if to_include is None and tir == 'ninjars':
+                            to_include = misc.find_includes_path(
+                                libpath, self.include_names[tir])
                         # Special possible location for collier
                         if to_include is None and tir=='collier':
                             to_include = misc.find_includes_path(
@@ -5548,7 +5609,8 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
 'Could not find the include directory for %s, looking in %s and %s.\n' % (tir ,str(trg_path), str(trg_path2))+
 'Generation carries on but you will need to edit the include path by hand in the makefiles.')
                             to_include = '<Not_found_define_it_yourself>'
-                        tir_include.append('-I %s'%to_include)
+                        tir_include.append('-I %s' % (
+                            '$(LIBDIR)' if copied_ninjars else to_include))
                 else:
                     link_tir_libs.append('-l%s'%tir)
                     tir_libs.append('$(LIBDIR)lib%s.$(libext)'%tir)
@@ -5606,6 +5668,9 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         if os.path.exists(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat')):          
                 self.MadLoopparam = banner_mod.MadLoopParam(pjoin(self.dir_path, 
                                                   'Cards', 'MadLoopParams.dat'))
+                if self.set_default_reduction_library(self.MadLoopparam):
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
                 # write the output file
                 self.MadLoopparam.write(pjoin(self.dir_path,"SubProcesses",
                                                            "MadLoopParams.dat"))
@@ -5798,16 +5863,13 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
 class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
     """exports the EW sudakov matrix element in a standalone format
     """
-    dirstopdg = []
 
-    def prepare_born_support(self, matrix_elements):
-        """Keep Born evaluators in each standalone Sudakov library.
-
-        This exporter builds libsudpy instead of the FKS runtime and does not
-        finalize a shared Born registry. Deduplicating here would remove the
-        Born sources needed by equivalent subprocesses such as u u~ and u~ u.
-        """
-        pass
+    # No Born providers (prepare_born_support): keep Born evaluators in each
+    # standalone Sudakov library. This exporter builds libsudpy instead of
+    # the FKS runtime and does not finalize a shared Born registry.
+    # Deduplicating here would remove the Born sources needed by equivalent
+    # subprocesses such as u u~ and u~ u.
+    born_support_record = None
 
     def finalize(self, *args, **opts):
         """do the usual finalize, then call the function that writes
@@ -5822,16 +5884,23 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         template = open(os.path.join(_file_path, \
                           'iolibs/template_files/ewsudakov_pydispatcher.inc')).read()
 
+        # the P directory of each born process (see born_dir_name), with its
+        # pdgs and number of incoming particles
+        dirstopdg = [(born_dir_name(processes[0]),
+                      [l.get('id') for l in pp['legs']],
+                      [l.get('state') for l in pp['legs']].count(False)) \
+                     for processes in self.born_processes for pp in processes]
+
         replace_dict = {}
         replace_dict['path'] = os.path.join(self.dir_path, 'SubProcesses')
-        replace_dict['pdir_list'] = ", ".join(["'%s'" % dd[0] for dd in self.dirstopdg])  
+        replace_dict['pdir_list'] = ", ".join(["'%s'" % dd[0] for dd in dirstopdg])  
         replace_dict['pdg2sud'] = ",\n".join([str(self.get_pdg_tuple(dd[1], dd[2], sortfinal=True)) + \
-                ": import_lib('%s')" % dd[0] for dd in self.dirstopdg])
+                ": import_lib('%s')" % dd[0] for dd in dirstopdg])
 
         replace_dict['pdgsorted'] = ",\n".join(["%s: %s" % (
                         str(self.get_pdg_tuple(dd[1], dd[2], sortfinal=True)),
                         str(self.get_pdg_tuple(dd[1], dd[2], sortfinal=False))) \
-                                                for dd in self.dirstopdg])
+                                                for dd in dirstopdg])
 
         outfile = open(fname ,'w')
         outfile.write(misc.apply_template(template, replace_dict))
@@ -5855,7 +5924,8 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
                                     me_ntot, path=os.getcwd(),OLP='MadLoop'):
         """Generate the Pxxxxx_i directories for a subprocess in MadFKS,
-        only generating the relevant files for the EW Sudakov"""
+        only generating the relevant files for the EW Sudakov (the caller
+        then calls write_born_dirs, as for ProcessExporterFortranFKS)"""
         proc = matrix_element.born_me['processes'][0]
 
         if not self.model:
@@ -5873,10 +5943,8 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         
         calls = 0
         
-        self.fksdirs = []
         #first make and cd the direcrory corresponding to the born process:
-        borndir = "P%s" % \
-        (matrix_element.born_me.get('processes')[0].shell_string())
+        borndir = born_dir_name(matrix_element.born_me.get('processes')[0])
         self.mkdir_born_dir(borndir, matrix_element.born_me.get('processes')[0])
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
@@ -5901,11 +5969,11 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
 
         filename = 'fks_info.inc'
         # write_fks_info_list returns a set of the splitting types
-        self.proc_characteristic['splitting_types'] = list(\
-                set(self.proc_characteristic['splitting_types']).union(\
-                    self.write_fks_info_file(writers.FortranWriter(filename), 
+        self.proc_characteristic['splitting_types'] = add_splitting_types(
+                self.proc_characteristic['splitting_types'],
+                self.write_fks_info_file(writers.FortranWriter(filename), 
                                  matrix_element, 
-                                 fortran_model)))
+                                 fortran_model))
 
         filename = 'leshouche_info.dat'
         nfksconfs,maxproc,maxflow,nexternal=\
@@ -5991,20 +6059,8 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
 
         os.system('touch %s/analyse_opts' % os.path.join(self.dir_path,'SubProcesses'))
 
-        # Return to SubProcesses dir
-        os.chdir(os.path.pardir)
-        # Add subprocess to subproc.mg
-        filename = 'subproc.mg'
-        files.append_to_file(filename,
-                             self.write_subproc,
-                             borndir)
-            
+        # (subproc.mg and the info page: write_born_dirs)
         os.chdir(cwd)
-        # Generate info page
-        gen_infohtml.make_info_html_nlo(self.dir_path)
-        
-        # update the dirs to pdg information
-        self.dirstopdg.extend([(borndir, [l.get('id') for l in pp['legs']], [l.get('state') for l in pp['legs']].count(False)) for pp in matrix_element.born_me['processes']])
 
         return calls, amp_split_orders
 
@@ -6029,9 +6085,8 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
             generate_directories_fks(matrix_element, fortran_model, me_number,
                                      me_ntot, path, OLP)
 
-        borndir = "P%s" % \
-            matrix_element.born_me.get('processes')[0].shell_string()
-        born_path = os.path.join(path, borndir)
+        born_path = os.path.join(path,
+                            born_dir_name(matrix_element.born_me.get('processes')[0]))
 
         # masses of the born external legs (used by the driver to build the
         # phase-space point with RAMBO)
@@ -6053,15 +6108,23 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
             os.path.join(_file_path, 'iolibs/template_files/check_sa_fks.f'),
             os.path.join(born_path, 'check_sa_fks.f'))
 
-        if self.opt.get('fks_limits'):
-            # keep the real-emission / counterterm chain that
-            # test_soft_col_limits links; only the virtuals are never used
-            self.drop_virtuals(born_path)
-        else:
-            # strip the Born directory down to just what 'check_fks' needs
-            self.trim_born_dir(born_path)
-
+        # (trimmed by write_born_dirs)
         return result
+
+    def write_born_dirs(self, borndirs):
+        """The list of the P directories and the info page, made from all
+        their files, then remove those which the standalone checks do not
+        need"""
+        super(ProcessExporterFortranFKS_SA, self).write_born_dirs(borndirs)
+        for borndir in borndirs:
+            born_path = os.path.join(self.dir_path, 'SubProcesses', borndir)
+            if self.opt.get('fks_limits'):
+                # keep the real-emission / counterterm chain that
+                # test_soft_col_limits links; only the virtuals are never used
+                self.drop_virtuals(born_path)
+            else:
+                # strip the Born directory down to just what 'check_fks' needs
+                self.trim_born_dir(born_path)
 
     @staticmethod
     def drop_virtuals(born_path):

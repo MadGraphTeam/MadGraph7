@@ -158,9 +158,10 @@ C     NUMBER OF INDEPENDENT LOOPCOEFS FOR RANK=RANK
       ENDDO
       SELECT CASE(MLREDUCTIONLIB(I_LIB))
       CASE(2)
-C     PJFry++
-      WRITE(*,*) 'ERROR:: PJFRY++ is not interfaced.'
-      STOP
+      WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+      WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another'
+     $ //' supported backend.'
+      STOP 1
       CASE(3)
 C     IREGI
       CALL IMLOOP(CTMODE,IREGIMODE,NLOOPLINE,LOOPMAXCOEFS,RANK,PDEN

@@ -15,6 +15,9 @@ import pytest
 
 import madspace as ms
 
+# LHE output from a CPU context
+pytestmark = pytest.mark.cpu_only
+
 CM_ENERGY = 1000.0
 MU_R, MU_F1, MU_F2 = 91.188, 40.0, 60.0
 SEED = 4321
@@ -40,7 +43,10 @@ PERMUTATIONS = [[0, 1, 2, 3, 4]]
 
 
 def write_flat_pdf_grid(path, value):
-    """An lhagrid1 file with x f(x, Q) = value for every parton, x and Q."""
+    """An lhagrid1 file with x f(x, Q) = value for every parton and Q, from the
+    third x knot on. It is zero at the first two (1e-7 and 1.7e-7), so that
+    the extrapolation below the grid keeps it zero there: the events of the
+    flat matrix element at smaller x have large weights."""
     xs = np.geomspace(1e-7, 1.0, 30)
     qs = np.geomspace(1.0, 1e5, 20)
     pids = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 21]
@@ -49,8 +55,9 @@ def write_flat_pdf_grid(path, value):
         f.write(" ".join(f"{x:.12e}" for x in xs) + "\n")
         f.write(" ".join(f"{q:.12e}" for q in qs) + "\n")
         f.write(" ".join(str(pid) for pid in pids) + "\n")
+        zero = " ".join(f"{0.0:.6e}" for _ in pids) + "\n"
         row = " ".join(f"{value:.6e}" for _ in pids) + "\n"
-        f.write(row * (len(xs) * len(qs)))
+        f.write(zero * (2 * len(qs)) + row * ((len(xs) - 2) * len(qs)))
         f.write("---\n")
 
 

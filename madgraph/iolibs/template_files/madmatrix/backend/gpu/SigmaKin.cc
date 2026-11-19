@@ -25,7 +25,6 @@
 #include "MemoryAccessGs.h"
 #include "MemoryAccessIflavorVec.h"
 #include "MemoryAccessMomenta.h"
-#include "MemoryAccessNumerators.h"
 #include "MemoryAccessWavefunctions.h"
 #include "color_sum.h" // for DeviceAccessJamp
 #include "ColorData.h" // for mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
@@ -297,6 +296,18 @@ namespace madmatrix
     return 0;
   }
 
+  // Multichannel numerators of the current event (CUDA thread), see numeratorsIndex.
+  template<typename Fp>
+  class DeviceNumerators
+  {
+  public:
+    __device__ explicit DeviceNumerators( Fp* buffer )
+      : m_event( buffer + numeratorsIndex( blockDim.x * blockIdx.x + threadIdx.x, 0 ) ) {}
+    __device__ Fp& operator[]( const int idiag ) const { return m_event[idiag * neppN]; }
+  private:
+    Fp* m_event;
+  };
+
   //--------------------------------------------------------------------------
 
   // SCALAR channelId for the current event (CUDA)
@@ -394,7 +405,6 @@ namespace madmatrix
     using CI_ACCESS = DeviceAccessCouplingsFixed; // TRIVIAL access (independent couplings): buffer for one event
     using CDPF_ACCESS = CI_ACCESS;                // TRIVIAL access: the running flavor couplings gathered into dpf_value for this event
     using F_ACCESS = DeviceAccessIflavorVec;      // non-trivial access: buffer includes all events
-    using NUM_ACCESS = DeviceAccessNumerators;    // non-trivial access: buffer includes all events
     mgDebug( 0, __FUNCTION__ );
 
     // The parameters of the process, read in place (see ProcessParametersArg), under the
@@ -416,7 +426,7 @@ namespace madmatrix
       if( allihel == nullptr ) ihel = params.goodHel[ighel];
       allJamps = allJamps + ighel * nevt;
       // NB: the numerators buffer has NO helicity dimension anymore: all good-helicity blocks
-      // for a given event accumulate in place into the same [nevt][ndiagrams] slot via atomicAdd.
+      // for a given event accumulate in place into the same numerator slots via atomicAdd.
       // The denominators are no longer accumulated here (derived as the sum of numerators later).
     }
     // One helicity per event (nhel == 1 and gridDim.y == 1): the given helicity of this event
@@ -479,7 +489,6 @@ namespace madmatrix
     const fptype_momenta* momenta = allmomenta;
     const fptype* COUPs[nxcoup > 0 ? nxcoup : 1];
     for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
-    fptype_amp* numerators = &allNumerators[ievt * ndiagrams];
     // Create an array of views over the Flavor Couplings
     FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value };
 
@@ -512,7 +521,7 @@ namespace madmatrix
 
     // Numerators for the current event (CUDA); denominators are no longer
     // accumulated here: they are derived as the sum of numerators later.
-    fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
+    const DeviceNumerators numerators_sv( allNumerators );
     // Scalar iflavor for the current event. With crossing, the id is the extended
     // K*nmaxflavor + flav: flav indexes cFlavors and the flavor masks, and the row
     // K is applied by the preamble of EvaluateDiagrams.inc. Without crossing only
@@ -769,7 +778,7 @@ namespace madmatrix
   __global__ void
   normalise_output( fptype* allMEs,                    // output: allMEs[nevt], |M|^2 running_sum_over_helicities
                     const unsigned int* iflavorVec,
-                    fptype_amp* allNumerators,          // input: multichannel numerators[nevt][ndiagrams], already summed over helicities (atomicAdd)
+                    fptype_amp* allNumerators,          // input: multichannel numerators (see numeratorsIndex), already summed over helicities (atomicAdd)
                     fptype_amp* allDenominators,        // output: multichannel denominators[nevt], derived here as the sum of numerators
                     const unsigned int* allChannelIds,  // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable SDE enhancement (fix #899/#911)
                     bool storeChannelWeights,            // if true, compute final multichannel weights
@@ -805,7 +814,7 @@ namespace madmatrix
       // The numerators have already been accumulated over all good helicities in place (atomicAdd in
       // calculate_jamps), so there is no helicity dimension to sum here. The denominator is just the
       // sum of all numerators for this event: derive it once and store it for the downstream consumers.
-      fptype_amp* numerators = allNumerators + ievt * ndiagrams;
+      const DeviceNumerators numerators( allNumerators );
       fptype denominator = 0;
       for( int idiag = 0; idiag < ndiagrams; ++idiag )
         denominator += numerators[idiag];
@@ -949,16 +958,17 @@ namespace madmatrix
     // color, as on cpu/simd
     const bool validFlavor = valid_flavor_id( iflavorVec[ievt] );
     // SCALAR channelId for the current event (CUDA)
-    unsigned int channelId = gpu_channelId( allChannelIds );
+    unsigned int channelId = allChannelIds ? allChannelIds[ievt] : 0;
 
     // Event-by-event random choice of channel
-    if( allrnddiagram != nullptr )
+    if( allrnddiagram != nullptr && channelId == 0 )
     {
+      const DeviceNumerators numerators( allNumerators );
       fptype numerator_sum = 0., normalization = 0.;
       for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
       {
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-        normalization += allNumerators[ievt * ndiagrams + ichan];
+        normalization += numerators[ichan];
       }
       // No diagram weight (a zero, NaN or infinite sum): keep the last channel,
       // as on cpu/simd
@@ -967,15 +977,15 @@ namespace madmatrix
       for( unsigned int ichan = 0; okcdf && ichan < mgOnGpu::nchannels; ichan++ )
       {
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-        numerator_sum += allNumerators[ievt * ndiagrams + ichan];
+        numerator_sum += numerators[ichan];
         if( allrnddiagram[ievt] < numerator_sum / normalization )
         {
           channelId = ichan + 1;
           break;
         }
       }
-      allDiagramIdsOut[ievt] = channelId;
     }
+    if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelId;
 
     if( channelId != 0 ) // no event-by-event choice of color if channelId == 0 (fix FPE #783)
     {
@@ -1090,9 +1100,9 @@ namespace madmatrix
     gpuMemsetAsync( ghelAllJamps, 0, sizeof( fptype_amp ) * nhel * njampso * mgOnGpu::nx2 * nevt, stream );
     gpuMemsetAsync( colAllJamp2s, 0, sizeof( fptype_amp ) * ncolor_flow * nevt, stream );
     // The numerators buffer has NO helicity dimension: all good helicities accumulate in place via
-    // atomicAdd, so it is zeroed once as [nevt][ndiagrams]. The denominators are derived from the
+    // atomicAdd, so it is zeroed once (see numeratorsIndex). The denominators are derived from the
     // numerators in normalise_output, so the buffer is just [nevt].
-    gpuMemsetAsync( ghelAllNumerators, 0, sizeof( fptype_amp ) * ndiagrams * nevt, stream );
+    gpuMemsetAsync( ghelAllNumerators, 0, sizeof( fptype_amp ) * numeratorsBufferSize( nevt ), stream );
     gpuMemsetAsync( ghelAllDenominators, 0, sizeof( fptype_amp ) * nevt, stream );
     gpuMemsetAsync( ghelAllMEs, 0, sizeof( fptype ) * nhel * nevt, stream );
 
@@ -1117,7 +1127,7 @@ namespace madmatrix
         const int ihel = ( allihel != nullptr ? 0 : params.goodHel[ighel] ); // unused with allihel
         fptype_amp* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
         // NB: the numerators buffer has no helicity dimension: every helicity stream accumulates in place
-        // into the same [nevt][ndiagrams] slot via atomicAdd. The denominators are derived later.
+        // into the same numerator slots via atomicAdd. The denominators are derived later.
         gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], kparams, ihel, allihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, false );
       }
       // (2) Then compute the ME for that helicity from the color sum of QCD partial amplitudes jamps

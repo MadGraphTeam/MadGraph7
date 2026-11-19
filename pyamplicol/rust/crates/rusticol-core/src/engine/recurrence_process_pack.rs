@@ -247,7 +247,7 @@ pub(super) struct ProcessNativeExecutor {
     pub(super) coupling: Option<(f64, f64)>,
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 #[cfg_attr(target_vendor = "apple", cold)]
 pub(super) fn decode_process_executor_descriptors(

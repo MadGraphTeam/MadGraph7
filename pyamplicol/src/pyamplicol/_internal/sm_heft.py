@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from copy import deepcopy
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from pyamplicol.models.loading import CompiledModel
 
 CANONICAL_SM_HEFT_SOURCE = "built-in-sm-heft"
+DEFAULT_SM_HEFT_RESTRICTION = "default"
 SM_HEFT_ALIASES = frozenset(
     {
         CANONICAL_SM_HEFT_SOURCE,
@@ -194,6 +196,42 @@ def packaged_sm_source_path() -> Path:
     return path
 
 
+def sm_heft_restriction(value: object = None) -> str:
+    """Return the packaged SM restriction a built-in-sm-heft selector names.
+
+    ``None`` and ``"default"`` select ``restrict_default.json``; any other name
+    selects ``restrict_<name>.json`` of the packaged SM JSON model, which must
+    exist. Paths are not accepted: the overlay is defined on the packaged SM.
+    """
+
+    if value is None:
+        return DEFAULT_SM_HEFT_RESTRICTION
+    directory = packaged_sm_source_path().parent
+    if (
+        not isinstance(value, str)
+        or not re.fullmatch(r"[A-Za-z0-9_]+", value)
+        or not (directory / f"restrict_{value}.json").is_file()
+    ):
+        available = sorted(
+            path.name.removeprefix("restrict_").removesuffix(".json")
+            for path in directory.glob("restrict_*.json")
+        )
+        raise ValueError(
+            "model restrictions cannot be applied to built-in-sm-heft except by "
+            "naming one of the packaged Standard Model's restrict_<name>.json "
+            f"cards ({', '.join(available)}), not {value!r}"
+        )
+    return value
+
+
+def packaged_sm_restriction_path(restriction: object = None) -> Path:
+    """Return the packaged SM restriction card named by ``restriction``."""
+
+    return packaged_sm_source_path().with_name(
+        f"restrict_{sm_heft_restriction(restriction)}.json"
+    )
+
+
 def extend_sm_model_payload(model: Mapping[str, object]) -> dict[str, object]:
     """Return an independent SM payload with the scalar HEFT records appended."""
 
@@ -224,13 +262,13 @@ def extend_sm_model_payload(model: Mapping[str, object]) -> dict[str, object]:
     return payload
 
 
-def source_digest() -> str:
-    """Identify only the packaged SM inputs and canonical HEFT physics records."""
+def source_digest(restriction: object = None) -> str:
+    """Identify only the packaged SM inputs (the model and the selected
+    restriction card) and canonical HEFT physics records."""
 
     digest = hashlib.sha256()
     base = packaged_sm_source_path()
-    restriction = base.with_name("restrict_default.json")
-    for path in (base, restriction):
+    for path in (base, packaged_sm_restriction_path(restriction)):
         if not path.is_file():
             raise RuntimeError(f"packaged Standard Model input is missing: {path}")
         digest.update(path.name.encode("utf-8") + b"\0")
@@ -254,14 +292,16 @@ def source_digest() -> str:
 
 
 @contextmanager
-def _materialized_source() -> Iterator[tuple[Path, Path]]:
+def _materialized_source(
+    restriction_name: object = None,
+) -> Iterator[tuple[Path, Path]]:
     """Materialize the canonical overlay for the existing JSON compiler."""
 
     base = packaged_sm_source_path()
-    packaged_restriction = base.with_name("restrict_default.json")
+    packaged_restriction = packaged_sm_restriction_path(restriction_name)
     with TemporaryDirectory(prefix="pyamplicol-sm-heft-") as temporary:
         source = Path(temporary) / "sm-heft.json"
-        restriction = source.with_name("restrict_default.json")
+        restriction = source.with_name(packaged_restriction.name)
         source.write_text(
             json.dumps(
                 extend_sm_model_payload(json.loads(base.read_text(encoding="utf-8"))),
@@ -276,15 +316,20 @@ def _materialized_source() -> Iterator[tuple[Path, Path]]:
         yield source, restriction
 
 
-def _with_packaged_identity(compiled: CompiledModel) -> CompiledModel:
+def _with_packaged_identity(
+    compiled: CompiledModel, restriction: object = None
+) -> CompiledModel:
     return replace(
         compiled,
         source={
             "kind": "built-in-sm-heft",
             "source_name": None,
-            "digest": source_digest(),
+            "digest": source_digest(restriction),
             "options": {
-                "restriction": {"kind": "name", "value": "default"},
+                "restriction": {
+                    "kind": "name",
+                    "value": sm_heft_restriction(restriction),
+                },
                 "simplify": True,
             },
         },
@@ -294,28 +339,34 @@ def _with_packaged_identity(compiled: CompiledModel) -> CompiledModel:
 
 def compile_sm_heft_source(
     *,
+    restriction: object = None,
     cache_dir: Path | None = None,
     use_cache: bool = True,
     require_supported: bool = True,
 ) -> CompiledModel:
-    """Compile the packaged overlay through the canonical JSON model path."""
+    """Compile the packaged overlay through the canonical JSON model path.
+
+    ``restriction`` names a packaged SM restriction card
+    (:func:`sm_heft_restriction`); ``None`` is the default card.
+    """
 
     from pyamplicol.models.loading import compile_model_source
 
-    with _materialized_source() as (source, restriction):
+    with _materialized_source(restriction) as (source, restriction_path):
         compiled = compile_model_source(
             source,
-            restriction=str(restriction),
+            restriction=str(restriction_path),
             simplify=True,
             cache_dir=cache_dir,
             use_cache=use_cache,
             require_supported=require_supported,
         )
-    return _with_packaged_identity(compiled)
+    return _with_packaged_identity(compiled, restriction)
 
 
 def load_cached_sm_heft_source(
     *,
+    restriction: object = None,
     cache_dir: Path | None = None,
     require_supported: bool = True,
 ) -> CompiledModel | None:
@@ -323,15 +374,15 @@ def load_cached_sm_heft_source(
 
     from pyamplicol.models.loading import load_cached_model_source
 
-    with _materialized_source() as (source, restriction):
+    with _materialized_source(restriction) as (source, restriction_path):
         compiled = load_cached_model_source(
             source,
-            restriction=str(restriction),
+            restriction=str(restriction_path),
             simplify=True,
             cache_dir=cache_dir,
             require_supported=require_supported,
         )
-    return None if compiled is None else _with_packaged_identity(compiled)
+    return None if compiled is None else _with_packaged_identity(compiled, restriction)
 
 
 def _require_base_particles(payload: Mapping[str, object]) -> None:
@@ -363,11 +414,14 @@ def _require_base_particles(payload: Mapping[str, object]) -> None:
 
 __all__ = [
     "CANONICAL_SM_HEFT_SOURCE",
+    "DEFAULT_SM_HEFT_RESTRICTION",
     "SM_HEFT_ALIASES",
     "compile_sm_heft_source",
     "extend_sm_model_payload",
     "is_sm_heft_alias",
     "load_cached_sm_heft_source",
+    "packaged_sm_restriction_path",
     "packaged_sm_source_path",
+    "sm_heft_restriction",
     "source_digest",
 ]

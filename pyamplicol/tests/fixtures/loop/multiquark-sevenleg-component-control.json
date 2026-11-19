@@ -1,0 +1,142 @@
+{
+  "fixture": "multiquark-sevenleg-decimal-control/report.json",
+  "scope": "Independent diagnostic components. Bare is unmodified full MadLoop minus generated CT contribution; no timing or stability claim.",
+  "instrumentation": "Generated SKIPLOOPEVAL switch and CT interference index selection only; original export/Feynman rules unchanged. Exact diffs beside binaries. Corrected runtime cards reused.",
+  "amplitude_counts": {
+    "r2": 1659,
+    "r2_quark_two_point": 102,
+    "uv": 2616,
+    "wf": 132
+  },
+  "rows": [
+    {
+      "born": 6.362776764946489e-12,
+      "full": {
+        "finite": -4.62858452738261e-12,
+        "single_pole": -4.8515446292105985e-12,
+        "double_pole": -1.3144422513630956e-12
+      },
+      "bare": {
+        "finite": -4.588750030432205e-12,
+        "single_pole": -2.720554918667585e-12,
+        "double_pole": -1.3144422513630956e-12
+      },
+      "ct": {
+        "finite": -3.983449695040526e-14,
+        "single_pole": -2.1309897105430137e-12,
+        "double_pole": 0.0
+      },
+      "r2": {
+        "finite": -5.988990291608797e-13,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      },
+      "uv": {
+        "finite": 5.590645322105503e-13,
+        "single_pole": -2.1309897105430137e-12,
+        "double_pole": 0.0
+      },
+      "wf": {
+        "finite": -1.397661330526263e-13,
+        "single_pole": -3.9831583374640234e-14,
+        "double_pole": 0.0
+      },
+      "uv_vertex": {
+        "finite": 6.988306652631852e-13,
+        "single_pole": -2.0911581271685774e-12,
+        "double_pole": 0.0
+      },
+      "r2_quark_two_point": {
+        "finite": 3.675282319644687e-13,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      }
+    },
+    {
+      "born": 3.0115889302152735e-12,
+      "full": {
+        "finite": -1.5635971557904043e-12,
+        "single_pole": -1.8910416153270175e-12,
+        "double_pole": -6.221434257162702e-13
+      },
+      "bare": {
+        "finite": -1.524931981368165e-12,
+        "single_pole": -8.824151524230937e-13,
+        "double_pole": -6.221434257162702e-13
+      },
+      "ct": {
+        "finite": -3.8665174422239206e-14,
+        "single_pole": -1.0086264629039237e-12,
+        "double_pole": 0.0
+      },
+      "r2": {
+        "finite": -2.494833745363659e-13,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      },
+      "uv": {
+        "finite": 2.1081820011413464e-13,
+        "single_pole": -1.0086264629039237e-12,
+        "double_pole": 0.0
+      },
+      "wf": {
+        "finite": -5.2704550028534645e-14,
+        "single_pole": -1.8852831082314014e-14,
+        "double_pole": 0.0
+      },
+      "uv_vertex": {
+        "finite": 2.635227501426732e-13,
+        "single_pole": -9.897736318215743e-13,
+        "double_pole": 0.0
+      },
+      "r2_quark_two_point": {
+        "finite": 1.7824793656836756e-13,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      }
+    },
+    {
+      "born": 2.6047843248047977e-12,
+      "full": {
+        "finite": -4.69016551052548e-12,
+        "single_pole": -2.4221620930665602e-12,
+        "double_pole": -5.381044626733596e-13
+      },
+      "bare": {
+        "finite": -4.78904392220593e-12,
+        "single_pole": -1.5497806157027184e-12,
+        "double_pole": -5.381044626733596e-13
+      },
+      "ct": {
+        "finite": 9.887841168045075e-14,
+        "single_pole": -8.723814773638419e-13,
+        "double_pole": 0.0
+      },
+      "r2": {
+        "finite": -1.7388327324340738e-13,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      },
+      "uv": {
+        "finite": 2.727616849238229e-13,
+        "single_pole": -8.723814773638419e-13,
+        "double_pole": 0.0
+      },
+      "wf": {
+        "finite": -6.81904212309612e-14,
+        "single_pole": -1.6306195838585492e-14,
+        "double_pole": 0.0
+      },
+      "uv_vertex": {
+        "finite": 3.409521061547707e-13,
+        "single_pole": -8.560752815253731e-13,
+        "double_pole": 0.0
+      },
+      "r2_quark_two_point": {
+        "finite": 1.59476465549129e-13,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      }
+    }
+  ]
+}

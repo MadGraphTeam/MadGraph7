@@ -5,7 +5,7 @@
 // logic of the GPU code (indexing, crossing tables, good helicities, selection)
 // against the CPU backends; it cannot replace a real nvcc/hipcc build and run.
 // The GPU code has no __syncthreads and no shared memory, so a serial run of the
-// threads is a valid schedule; atomicAdd is then a plain addition.
+// threads is a valid schedule; atomicAdd/atomicExch are then plain host operations.
 // Compiled with clang -x cuda (__CUDA__), the same header only declares the
 // device attributes: a device-side semantic check of the sources.
 #ifndef HOST_HIP_RUNTIME_H
@@ -151,6 +151,14 @@ HOST_HIP_HD inline T atomicAdd( T* a, T v )
 {
   T old = *a;
   *a += v;
+  return old;
+}
+
+template<typename T>
+HOST_HIP_HD inline T atomicExch( T* a, T v )
+{
+  T old = *a;
+  *a = v;
   return old;
 }
 

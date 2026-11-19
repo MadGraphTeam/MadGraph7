@@ -411,7 +411,9 @@ def _write_packaged_prepared_model_asset(
         symbolica_version = str(contributor["symbolica"]["candidate_version"])
         symjit_version = str(contributor["symjit"]["candidate_version"])
     else:
-        symbolica_version = _cargo_package_version(overlay, "symbolica")
+        # Kernel-pack metadata records the Python producer distribution. Its
+        # version need not equal the compatible Rust kernel crate version.
+        symbolica_version = str(release["symbolica"]["python_version"])
         symjit_version = _symjit_version(overlay)
     dependencies = {
         "symbolica_serialization_abi": _literal_assignment(

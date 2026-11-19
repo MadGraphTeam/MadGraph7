@@ -16,6 +16,7 @@ from ...processes.core_syntax import (
     _tokenize_side,
     expand_process_variants,
 )
+from ...processes.model import require_external_leg_counts
 from .process_catalog import (
     ALL_COLOURED,
     ANTI_PARTICLE,
@@ -86,6 +87,9 @@ class ProcessEnumerator:
         self._phase_space_orders: dict[OrderTuple, list[SubprocessRecord]] = {}
         self._all_keys_sorted: list[OrderTuple] = []
         self._process_order_to_index: dict[tuple[ProcessTuple, OrderTuple], int] = {}
+        # Leading entries of an all-outgoing process tuple that are crossed
+        # initial particles: set from each enumerated request.
+        self._initial_count = 2
 
     def parse(self, process_string: str) -> ParsedProcess:
         variants = expand_process_variants(process_string)
@@ -100,8 +104,6 @@ class ProcessEnumerator:
             raise ValueError("invalid collision format; expected 'initial > final'")
 
         initial_state = _tokenize_side(parts[0].strip())
-        if len(initial_state) != 2:
-            raise ValueError("exactly two incoming particles are required")
         crossed_initial = tuple(
             ANTI_PARTICLE[p] if p not in {"p", "j"} else p for p in initial_state
         )
@@ -117,6 +119,9 @@ class ProcessEnumerator:
                 jet_count += int(jet_match.group(1))
             else:
                 rest.append(token)
+        # One initial particle (a 1 -> n decay) or two (a 2 -> n scattering):
+        # the same rule as every model-neutral process.
+        require_external_leg_counts(len(initial_state), jet_count + len(rest))
         leptons: list[str] = []
         if self.options.include_resonance:
             leptons = [p for p in rest if 11 <= abs(int(PDGS[p])) <= 16]
@@ -135,6 +140,7 @@ class ProcessEnumerator:
 
     def enumerate(self, process_string: str) -> ProcessEnumeration:
         request = self.parse(process_string)
+        self._initial_count = len(request.initial_state)
         unique_processes = self._generate_all_unique_processes(request)
         subprocesses = self._generate_all_processes(unique_processes, request)
         self._phase_space_orders = self._combine_results(
@@ -183,6 +189,7 @@ class ProcessEnumerator:
         """
 
         request = self.parse(process_string)
+        self._initial_count = len(request.initial_state)
         unique_processes = self._generate_all_unique_processes(request)
         subprocesses = self._generate_all_processes(unique_processes, request)
         records: list[SubprocessRecord] = []
@@ -278,9 +285,12 @@ class ProcessEnumerator:
     def _unique_color_order(self, proc: ProcessTuple, perm: OrderTuple) -> bool:
         zero = perm.index(0)
         perm_mapped = perm[zero:] + perm[:zero]
+        initial_count = self._initial_count
         for particle in ALL_COLOURED:
             particle_positions = [
-                i + 2 for i, part in enumerate(proc[2:]) if part == particle
+                i + initial_count
+                for i, part in enumerate(proc[initial_count:])
+                if part == particle
             ]
             previous_position = 0
             for position in particle_positions:
@@ -296,7 +306,9 @@ class ProcessEnumerator:
         zero = perm.index(0)
         perm_mapped = list(perm[zero:] + perm[:zero])
         elements_to_order = [
-            i for i in perm_mapped if proc[i] in self.massless_qcd and i > 1
+            i
+            for i in perm_mapped
+            if proc[i] in self.massless_qcd and i >= self._initial_count
         ]
         indices = [perm_mapped.index(x) for x in elements_to_order]
         for idx, value in zip(indices, sorted(elements_to_order), strict=True):
@@ -419,8 +431,8 @@ class ProcessEnumerator:
         return True
 
     def _compatible_process(self, request: ParsedProcess, proc: ProcessTuple) -> bool:
-        proc_local = list(proc[2:])
-        for i in (0, 1):
+        proc_local = list(proc[self._initial_count :])
+        for i in range(self._initial_count):
             if (
                 request.initial_state[i] not in {"p", "j"}
                 and proc[i] != request.initial_state[i]
@@ -460,7 +472,9 @@ class ProcessEnumerator:
             return set()
 
         qcd_rest = sum(1 for part in request.rest if part in self.massless_qcd)
-        for _part_index in range(request.jet_count + 2 + qcd_rest):
+        # Every initial particle here is a massless QCD parton (checked above).
+        initial_partons = len(request.initial_state)
+        for _part_index in range(request.jet_count + initial_partons + qcd_rest):
             new_processes: list[list[str]] = []
             for candidate in processes:
                 for particle in self.massless_qcd:
@@ -487,18 +501,17 @@ class ProcessEnumerator:
         self, unique_processes: set[ProcessTuple], request: ParsedProcess
     ) -> set[ProcessTuple]:
         processes: set[ProcessTuple] = set()
+        initial_count = len(request.initial_state)
         for proc in unique_processes:
-            for i, j in itertools.combinations(range(len(proc)), 2):
-                if proc[i] in self.jet and proc[j] in self.jet:
+            # Every ordered choice of initial partons (both orders of a pair).
+            for chosen in itertools.permutations(range(len(proc)), initial_count):
+                if all(proc[index] in self.jet for index in chosen):
                     remaining = [
-                        entry for k, entry in enumerate(proc) if k not in (i, j)
+                        entry for k, entry in enumerate(proc) if k not in chosen
                     ]
-                    proc1 = (proc[i], proc[j], *remaining)
-                    proc2 = (proc[j], proc[i], *remaining)
-                    if self._compatible_process(request, proc1):
-                        processes.add(proc1)
-                    if self._compatible_process(request, proc2):
-                        processes.add(proc2)
+                    candidate = (*(proc[index] for index in chosen), *remaining)
+                    if self._compatible_process(request, candidate):
+                        processes.add(candidate)
         return processes
 
     def _combine_results(
@@ -605,7 +618,9 @@ class ProcessEnumerator:
     def _identical_particle_symmetry_factor(self, proc: ProcessTuple) -> float:
         factor = 1.0
         for particle in ALL_COLOURED:
-            factor *= max(1, math.factorial(proc[2:].count(particle)))
+            factor *= max(
+                1, math.factorial(proc[self._initial_count :].count(particle))
+            )
         return factor
 
     def _check_consistency(self) -> None:
@@ -613,9 +628,11 @@ class ProcessEnumerator:
         for key in self._all_keys_sorted:
             for record in self._phase_space_orders[key]:
                 proc = (
-                    record.process[0],
-                    record.process[1],
-                    *sorted(record.process[2:], key=lambda x: SORT_PARTICLES[x]),
+                    *record.process[: self._initial_count],
+                    *sorted(
+                        record.process[self._initial_count :],
+                        key=lambda x: SORT_PARTICLES[x],
+                    ),
                 )
                 all_processes[proc] = all_processes.get(proc, 0.0) + (
                     record.identical_factor / len(record.multichannel_partners)

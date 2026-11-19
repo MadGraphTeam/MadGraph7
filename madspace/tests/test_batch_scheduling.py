@@ -6,7 +6,12 @@ batch units; device-specific job splitting happens later, at dispatch time.
 
 import math
 
+import pytest
+
 import madspace as ms
+
+# pure host-side scheduling arithmetic
+pytestmark = pytest.mark.cpu_only
 
 
 def make_config():

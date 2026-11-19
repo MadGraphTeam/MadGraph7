@@ -3,6 +3,7 @@
 #include "madspace/compgraphs.hpp"
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/custom_function.hpp"
+#include "madspace/phasespace/merging_scale.hpp"
 #include "madspace/phasespace/observable.hpp"
 
 #include <functional>
@@ -60,20 +61,33 @@ public:
         /// Whether all or any selected objects must satisfy the bound.
         CutMode mode = CutMode::all;
     };
+    /// A lower bound on the CKKW-L merging scale of the event.
+    struct MergingCut {
+        /// The merging-scale definition and its legs.
+        MergingScale scale;
+        /// Lower bound on the merging scale (ktdurham / ptlund).
+        double min;
+    };
 
-    /// @param cut_data    The cut items to apply.
-    /// @param custom_cut  Optional user-supplied cut function.
+    /// @param cut_data     The cut items to apply.
+    /// @param custom_cut   Optional user-supplied cut function.
+    /// @param merging_cut  Optional CKKW-L merging-scale cut.
     Cuts(
         const std::vector<CutItem>& cut_data,
-        const std::optional<CustomFunction>& custom_cut = std::nullopt
+        const std::optional<CustomFunction>& custom_cut = std::nullopt,
+        const std::optional<MergingCut>& merging_cut = std::nullopt
     );
     /// Build a mask with no cut items.
     /// @param particle_count  Number of external particles.
     /// @param custom_cut      Optional user-supplied cut function.
+    /// @param merging_cut     Optional CKKW-L merging-scale cut.
     Cuts(
         std::size_t particle_count,
-        const std::optional<CustomFunction>& custom_cut = std::nullopt
+        const std::optional<CustomFunction>& custom_cut = std::nullopt,
+        const std::optional<MergingCut>& merging_cut = std::nullopt
     );
+    /// The CKKW-L merging-scale cut, if any.
+    const std::optional<MergingCut>& merging_cut() const { return _merging_cut; }
     /// Largest required partonic center-of-mass energy, or 0 if unconstrained.
     double sqrt_s_min() const;
     /// Per-outgoing-particle maximum pseudorapidity (infinity where inactive).
@@ -109,6 +123,7 @@ private:
 
     std::vector<CutItem> _cut_data;
     std::optional<CustomFunction> _custom_cut;
+    std::optional<MergingCut> _merging_cut;
 };
 
 } // namespace madspace

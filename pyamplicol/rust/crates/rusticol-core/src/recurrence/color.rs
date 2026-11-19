@@ -315,7 +315,7 @@ impl LCColorPortWiring {
         let mut parent_ports = [Vec::new(), Vec::new()];
         for parent_index in self.component_parent_order {
             let parent = parents[parent_index as usize];
-            let offset = components.len() as u32;
+            let offset = crate::narrow::checked::<u32>(components.len(), "LC colour component")?;
             components.extend(parent.components().iter().cloned().map(Some));
             parent_ports[parent_index as usize] = parent
                 .result_port_bindings()
@@ -360,7 +360,8 @@ impl LCColorPortWiring {
         let mut compact = Vec::new();
         for (old_index, component) in components.into_iter().enumerate() {
             if let Some(component) = component {
-                remap[old_index] = compact.len() as u32;
+                remap[old_index] =
+                    crate::narrow::checked::<u32>(compact.len(), "LC colour component")?;
                 compact.push(component);
             }
         }
@@ -559,13 +560,15 @@ impl DynamicLCColorState {
             .rev()
             .map(LCColorComponent::reversed)
             .collect::<RusticolResult<Vec<_>>>()?;
+        let component_count =
+            crate::narrow::checked::<u32>(self.components.len(), "LC colour component")?;
         let result_port_bindings = self
             .result_port_bindings
             .iter()
             .rev()
             .map(|binding| {
                 LCColorPortBinding::new(
-                    self.components.len() as u32 - 1 - binding.component_index,
+                    component_count - 1 - binding.component_index,
                     binding.endpoint.reversed(),
                 )
             })

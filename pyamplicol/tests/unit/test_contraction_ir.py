@@ -22,7 +22,11 @@ from pyamplicol.models._physics_ir import ContractionIR
 from pyamplicol.models.base import Model, Particle
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.compiler_contractions import compile_contraction_records
-from pyamplicol.models.contracts import CompiledModelIR, CompiledParticleRecord
+from pyamplicol.models.contracts import (
+    U1_SUBTRACTION_AUXILIARY_KIND,
+    CompiledModelIR,
+    CompiledParticleRecord,
+)
 from pyamplicol.models.external import CompiledUFOModel
 from pyamplicol.models.loading import CompiledModel
 
@@ -132,7 +136,7 @@ def test_builtin_model_owns_exact_contraction_coefficients_and_bases() -> None:
     auxiliary_vector = model.direct_contraction_ir(99, 99)
     assert auxiliary_vector is not None
     assert auxiliary_vector.name == "lorentz"
-    assert auxiliary_vector.left_basis == ("auxiliary:u1-subtraction-color-flow-vector")
+    assert auxiliary_vector.left_basis == "auxiliary:" + U1_SUBTRACTION_AUXILIARY_KIND
     assert auxiliary_vector.coefficients == lorentz.coefficients
 
     antisymmetric = model.direct_contraction_ir(-21, -21)

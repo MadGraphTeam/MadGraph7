@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: 0BSD
+# Loop example: partial weights per squared coupling order of the
+# uux_ddxepem artifact (one evaluation, every sector and Born order apart,
+# and their explicit sums).
+
+schema_version = 1
+action = "evaluate"
+
+[evaluation]
+artifact = "artifacts/loop_uux_ddxepem"
+momenta = "data/loop_uux_ddxepem_momenta.json"
+mu_r2 = "1000000"
+orders = true
