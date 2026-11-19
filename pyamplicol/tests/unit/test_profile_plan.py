@@ -869,16 +869,31 @@ def test_the_scope_rules_at_their_thresholds():
     bound nothing is dropped, just above it is; rule A counts the reference
     only when asked to (invariant ii), and the stability part with workers."""
 
-    from pyamplicol.profile_plan import Known, lower_bound, rule_a_drops, rule_b_drops
+    from pyamplicol.profile_plan import (
+        Known,
+        lower_bound,
+        rule_a_drops,
+        rule_b_bound,
+        rule_b_drops,
+    )
 
     a = Known(point=0.8, chunk=0.3, reference=20.0, start=3.0)
     b = Known(point=1.0)
     with_reference = lower_bound(a, lanes=LANES, reference=True)
     assert with_reference == pytest.approx(16 * 0.3 + 0.3 + 20.0 + 0.3)
     alone = lower_bound(a, lanes=LANES, reference=False)
-    assert rule_b_drops(a, 2, lambda n: with_reference * (1 - 1e-9), lanes=LANES)
-    assert not rule_b_drops(a, 2, lambda n: with_reference, lanes=LANES)
     known = {"ninjars": a, "tirust": b}
+    both = with_reference + lower_bound(b, lanes=LANES, reference=True)
+    # Rule B on the sum of every backend's lower bound (B-1: a cheap default
+    # with a dear second backend's reference); one not measured counts 0.
+    assert rule_b_drops(known, lambda n: both * (1 - 1e-9), lanes=LANES)
+    assert not rule_b_drops(known, lambda n: both, lanes=LANES)
+    assert not rule_b_drops(
+        {"ninjars": a, "tirust": Known()}, lambda n: with_reference, lanes=LANES
+    )
+    assert rule_b_bound(known, "ninjars", lambda n: both, lanes=LANES) == (
+        pytest.approx(with_reference)
+    )
 
     def drops(bound, reference, workers=None):
         return rule_a_drops(
@@ -897,11 +912,20 @@ def test_the_scope_rules_at_their_thresholds():
     stability = lower_bound(a, lanes=LANES, reference=True, stability_workers=2)
     assert stability > with_reference
     assert not drops(stability, True, 2) and drops(stability * (1 - 1e-9), True, 2)
+    # Without the runtime timing (--stability alone) its terms are not
+    # counted; one worker leaves only its first reference point cold (B-2).
+    alone_stability = lower_bound(
+        a, lanes=LANES, reference=True, stability_workers=1, runtime=False
+    )
+    assert alone_stability == pytest.approx(5 * 0.3 + 20.0 + 4 * 0.3)
+    assert lower_bound(
+        a, lanes=LANES, reference=True, stability_workers=8, runtime=False
+    ) == pytest.approx(20.0)
     # One backend: rule A has nothing to drop; nothing known: nothing dropped.
     assert not rule_a_drops(
         {"ninjars": a}, "ninjars", lambda n: 0.0, lanes=LANES, reference=True
     )
-    assert not rule_b_drops(Known(), 2, lambda n: 0.0, lanes=LANES)
+    assert not rule_b_drops({"ninjars": Known()}, lambda n: 0.0, lanes=LANES)
 
 
 def _known_after(stage, true, known):
@@ -930,9 +954,7 @@ def _scope_path(path, mode, backends):
     known = {name: Known() for name in names}
 
     def b_drops():
-        return mode["rule_b"] and rule_b_drops(
-            known[default], len(names), bound, lanes=LANES
-        )
+        return mode["rule_b"] and rule_b_drops(known, bound, lanes=LANES)
 
     def a_drops():
         return (
@@ -945,11 +967,13 @@ def _scope_path(path, mode, backends):
                 lanes=LANES,
                 reference=mode["a_reference"],
                 stability_workers=mode["workers"],
+                runtime=mode["runtime"],
             )
         )
 
     omitted = ()
-    if path == "measured":
+    # Without the runtime timing there is no path without a measurement.
+    if path == "measured" or not mode["runtime"]:
         for position, name in enumerate(names):
             known[name] = _known_after("point", backends[name], known[name])
             if not b_drops():
@@ -960,6 +984,8 @@ def _scope_path(path, mode, backends):
     timed = mode["truth"] and not b_drops()
     if not omitted and a_drops():
         omitted = tuple(names[1:])
+    if not mode["runtime"]:
+        return timed, omitted, known
     # The runtime timing: the default backend first.
     known[default] = _known_after("chunk", backends[default], known[default])
     if timed and b_drops():
@@ -989,15 +1015,23 @@ def _scope_path(path, mode, backends):
     return timed, omitted, known
 
 
-def _true_minimum(costs, *, reference, workers):
-    """A backend's real minimal profile (what the lower bounds bound)."""
+def _true_minimum(costs, *, reference, workers, runtime=True):
+    """A backend's real minimal profile (what the lower bounds bound): a
+    stability worker's first reference point cold, its others warm."""
 
-    seconds = LANES * costs["chunk"] + costs["point"]
-    if reference:
-        seconds += costs["reference"] + costs["reference_timed"]
+    seconds = 0.0
+    if runtime:
+        seconds += LANES * costs["chunk"] + costs["point"]
+        if reference:
+            seconds += costs["reference"] + costs["reference_timed"]
     if workers is not None:
+        colds = min(workers, STABILITY_MINIMUM)
+        stream = (
+            colds * costs["reference"]
+            + (STABILITY_MINIMUM - colds) * costs["reference_timed"]
+        ) / STABILITY_MINIMUM
         seconds += stability_wall(
-            [Costs(costs["point"], None, 2.5 * costs["point"], costs["reference"], 0)],
+            [Costs(costs["point"], None, 2.5 * costs["point"], stream, 0)],
             STABILITY_MINIMUM,
             workers,
         )
@@ -1005,7 +1039,9 @@ def _true_minimum(costs, *, reference, workers):
 
 
 _BINARY64 = {"cheap": (2e-3, 6e-4), "mid": (0.8, 0.3), "dear": (200.0, 90.0)}
-_REFERENCE = {"cheap": (20.0, 15.0), "dear": (30.0, 25.0)}
+# The reference's cold (first) and warm points: "cheap" scales with the
+# binary64 point, "cold" is dear on its first point only.
+_REFERENCE = {"cheap": None, "cold": (45.0, 6.0), "dear": (30.0, 25.0)}
 
 
 def _modes():
@@ -1020,6 +1056,7 @@ def _modes():
             "asked": False,
             "rules": True,
             "truth": True,
+            "runtime": True,
         },
     )
     yield (
@@ -1032,10 +1069,24 @@ def _modes():
             "asked": False,
             "rules": True,
             "truth": True,
+            "runtime": True,
         },
     )
     yield (
-        "stability",
+        "stability alone",
+        {
+            "bound": lambda n: tolerance * 60.0,
+            "rule_b": False,
+            "a_reference": True,
+            "workers": 1,
+            "asked": False,
+            "rules": True,
+            "truth": True,
+            "runtime": False,
+        },
+    )
+    yield (
+        "runtime and stability",
         {
             "bound": lambda n: tolerance * 70.0,
             "rule_b": False,
@@ -1044,6 +1095,7 @@ def _modes():
             "asked": False,
             "rules": True,
             "truth": True,
+            "runtime": True,
         },
     )
     yield (
@@ -1056,6 +1108,7 @@ def _modes():
             "asked": False,
             "rules": True,
             "truth": True,
+            "runtime": True,
         },
     )
     yield (
@@ -1068,6 +1121,7 @@ def _modes():
             "asked": True,
             "rules": True,
             "truth": True,
+            "runtime": True,
         },
     )
     yield (
@@ -1080,28 +1134,30 @@ def _modes():
             "asked": False,
             "rules": False,
             "truth": True,
+            "runtime": True,
         },
     )
 
 
 def _cases():
+    """One backend, or two whose references may differ (the default's
+    first): the same binary64 costs, a reference at least the binary64 point
+    (a wider carrier costs at least the binary64 pass)."""
+
+    pairs = [(r,) for r in _REFERENCE] + list(itertools.product(_REFERENCE, repeat=2))
     for mode_name, mode in _modes():
-        for b64, ref, count in itertools.product(_BINARY64, _REFERENCE, (1, 2)):
+        for b64, refs in itertools.product(_BINARY64, pairs):
             point, chunk = _BINARY64[b64]
-            scale = 1.0 if ref == "dear" else point / 2.0
-            cold, warm = _REFERENCE[ref]
-            if ref == "cheap":
-                cold, warm = 10 * point, 8 * point
-            costs = {
-                "point": point,
-                "chunk": chunk,
-                "reference": cold,
-                "reference_timed": warm,
-            }
-            del scale
-            names = ("ninjars", "tirust")[:count]
-            backends = {name: dict(costs) for name in names}
-            yield (mode_name, b64, ref, count), mode, backends
+            backends = {}
+            for name, ref in zip(("ninjars", "tirust"), refs, strict=False):
+                cold, warm = _REFERENCE[ref] or (10 * point, 8 * point)
+                backends[name] = {
+                    "point": point,
+                    "chunk": chunk,
+                    "reference": max(cold, 10 * point),
+                    "reference_timed": max(warm, 8 * point),
+                }
+            yield (mode_name, b64, *refs), mode, backends
 
 
 @pytest.mark.parametrize(
@@ -1110,25 +1166,52 @@ def _cases():
     ids=lambda value: "-".join(map(str, value)) if isinstance(value, tuple) else "",
 )
 def test_the_scope_verdicts_do_not_depend_on_the_path(case, mode, backends):
-    """The same verdicts on every path (invariant iii: the measured path,
-    the path without a measurement phase; a previous profile's costs never
+    """The verdicts on every path (invariant iii: the measured path, the
+    path without a measurement phase; a previous profile's costs never
     decide, so with or without history is one of these), over cheap / mid /
-    dear binary64, cheap / dear reference, one or two backends and the
-    budget modes; every drop on a real minimum past the budget (i); rule A
-    never drops a backend for a reference rule B could drop (ii)."""
+    dear binary64, cheap / cold / dear references (the two backends' may
+    differ), one or two backends and the budget modes: rule A the same on
+    every path, rule B differing only by what the measured path measured;
+    every drop on a real minimum past the budget (i); rule A never drops a
+    backend for a reference rule B could drop (ii)."""
+
+    from pyamplicol.profile_plan import Known, lower_bound
 
     measured, measured_omitted, _ = _scope_path("measured", mode, backends)
     blind, blind_omitted, _ = _scope_path("blind", mode, backends)
-    assert (measured, measured_omitted) == (blind, blind_omitted), case
     names = list(backends)
     default = backends[names[0]]
     bound = mode["bound"]
-    if mode["truth"] and not measured:
-        assert _true_minimum(default, reference=True, workers=None) > bound(len(names))
+    assert measured_omitted == blind_omitted, case
+    # Rule B: the measured path knows more (the other backends' binary64
+    # points and references): it drops whenever the blind path does, and
+    # may drop where the blind path cannot see it (ptimereview5 B-1).
+    assert blind or not measured, case
+    for timed in (measured, blind):
+        if mode["truth"] and not timed:
+            # (i): the minimums of all backends with their reference.
+            assert sum(
+                _true_minimum(costs, reference=True, workers=None)
+                for costs in backends.values()
+            ) > bound(len(names)), case
+    if mode["rule_b"] and measured:
+        # B-1: what the measured path measured (every binary64 point and
+        # reference) summed never exceeds the bound with the references kept.
+        assert sum(
+            lower_bound(
+                Known(point=costs["point"], reference=costs["reference"]),
+                lanes=LANES,
+                reference=True,
+            )
+            for costs in backends.values()
+        ) <= bound(len(names)), case
     if measured_omitted:
         assert _true_minimum(
-            default, reference=mode["a_reference"], workers=mode["workers"]
-        ) > bound(1)
+            default,
+            reference=mode["a_reference"],
+            workers=mode["workers"],
+            runtime=mode["runtime"],
+        ) > bound(1), case
         # (ii): never for a reference rule B could drop.
         if mode["rule_b"]:
             assert _true_minimum(default, reference=False, workers=None) > bound(1)

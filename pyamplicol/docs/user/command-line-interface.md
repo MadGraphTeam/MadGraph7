@@ -875,15 +875,21 @@ took):
   the budget: the chunk call at one measured point's cost (a chunk costs
   at least one of its points), a warm-up at one point, an untimed
   reference point at its measured cold cost, a timed one at least the
-  binary64 point, a checked stability point at least one optimistic pass.
-  The bound only grows, so a drop is final, and the verdict follows the
-  measured numbers alone: the measurement, a run without one (where the
-  first backend's untimed reference point measures the reference before
-  its timed point runs), with or without a previous profile (whose costs
-  set ETAs only). Rule B is judged on the default backend, profiled first:
-  its own minimum with its reference against the budget of all backends
-  (a lower bound of theirs), so that every path decides on the same
-  numbers; its verdict holds for every backend (all multipliers or none).
+  binary64 point, a checked stability point at least one optimistic pass,
+  a stability reference point at least the cold one for the first point of
+  each worker only and one binary64 point for the others; without
+  `--runtime` the runtime timing counts nothing. A drop is final: nothing
+  un-drops it, and every bound was valid when it fired. The verdict follows
+  the measured numbers alone: the measurement, a run without one (where
+  the first backend's untimed reference point measures the reference
+  before its timed point runs), with or without a previous profile (whose
+  costs set ETAs only). Rule B is judged on the sum of every backend's
+  minimum with its reference (a backend not measured yet counts nothing)
+  against the budget of all of them, so that a backend's dear reference
+  counts even when the default's is cheap; the first backend's runtime
+  timing re-judges it on its own numbers against what the others' known
+  minimums leave; its verdict holds for every backend (all multipliers or
+  none).
   Rule A never counts a reference that rule B could leave out. The record
   and the `counts` row are re-planned from what ran. A backend profiled
   alone keeps the per-backend share it has beside the others. A notice

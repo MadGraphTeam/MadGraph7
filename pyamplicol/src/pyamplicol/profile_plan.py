@@ -381,62 +381,91 @@ def lower_bound(
     reference: bool,
     stability_workers: int | None = None,
     start: bool = False,
+    runtime: bool = True,
 ) -> float:
     """A true lower bound of a backend's minimal profile from what is known
-    (``Known``; nothing known: 0), growing only as numbers arrive: the
-    binary64 timed call of one chunk (``lanes`` x the chunk cost, else one
-    point's: a chunk's call costs at least one of its points'), its warming
-    (the entry's seconds, else one point: the warm-up is a one-point call);
-    with ``reference`` its untimed point (measured cold, else one binary64
+    (``Known``; nothing known: 0), valid whenever it is taken: with
+    ``runtime`` (the runtime timing asked) the binary64 timed call of one
+    chunk (``lanes`` x the chunk cost, else one point's: a chunk's call
+    costs at least one of its points'), its warming (the entry's seconds,
+    else one point: the warm-up is a one-point call) and, with
+    ``reference``, its untimed point (measured cold, else one binary64
     point) and its timed point (the row's, else one binary64 point: a pass
     in a wider carrier costs at least the binary64 one); with
     ``stability_workers`` the stability run's ``STABILITY_MINIMUM`` points
     on them (a checked point at least one binary64 point; a reference point
-    at least the cold one where the workers leave a dear stream cold, above
-    ``MEASURE_REPEAT_SECONDS``, else one binary64 point); with ``start`` the
+    at least one binary64 point, the cold one for the first point of each
+    worker, at most ``STABILITY_MINIMUM`` of them, where the workers leave a
+    dear stream cold, above ``MEASURE_REPEAT_SECONDS``); with ``start`` the
     start-up. A binary64 point is the cheaper of the known point and chunk
     costs."""
 
     points = [x for x in (known.chunk, known.point) if x is not None]
     point = min(points) if points else 0.0
-    call = lanes * known.chunk if known.chunk is not None else point
-    seconds = call + (known.warm if known.warm is not None else point)
-    if reference:
-        seconds += (known.reference if known.reference is not None else point) + (
-            known.reference_timed if known.reference_timed is not None else point
-        )
+    seconds = 0.0
+    if runtime:
+        call = lanes * known.chunk if known.chunk is not None else point
+        seconds += call + (known.warm if known.warm is not None else point)
+        if reference:
+            seconds += (known.reference if known.reference is not None else point) + (
+                known.reference_timed if known.reference_timed is not None else point
+            )
     if stability_workers is not None:
+        workers = max(stability_workers, 1)
         cold = known.reference
         stream = cold if cold is not None and cold > MEASURE_REPEAT_SECONDS else point
-        seconds += stability_wall(
-            [Costs(point, None, point, stream, 0.0)],
-            STABILITY_MINIMUM,
-            max(stability_workers, 1),
+        # Only a worker's first reference point is cold.
+        colds = min(workers, STABILITY_MINIMUM)
+        mean = (
+            colds * stream + (STABILITY_MINIMUM - colds) * point
+        ) / STABILITY_MINIMUM
+        seconds += max(
+            stability_wall(
+                [Costs(point, None, point, mean, 0.0)], STABILITY_MINIMUM, workers
+            ),
+            stream,
         )
     return seconds + (known.start if start else 0.0)
 
 
+def rule_b_bound(
+    known: Mapping[str, Known],
+    decider: str,
+    bound: Callable[[int], float],
+    *,
+    lanes: int,
+    start: bool = False,
+) -> float:
+    """What ``rule_b_drops`` leaves the ``decider``'s own lower bound:
+    ``bound`` of the backends of ``known`` minus the other backends' lower
+    bounds with their reference points (the decider's runtime timing
+    re-calls rule B on its own numbers against it)."""
+
+    return bound(len(known)) - sum(
+        lower_bound(k, lanes=lanes, reference=True, start=start)
+        for name, k in known.items()
+        if name != decider
+    )
+
+
 def rule_b_drops(
-    decider: Known,
-    backends: int,
+    known: Mapping[str, Known],
     bound: Callable[[int], float],
     *,
     lanes: int,
     start: bool = False,
 ) -> bool:
     """Rule B (USER 2026-11-19), the runtime timing alone: its reference is
-    left out, for every backend (all multipliers or none), when a lower
-    bound of the ``decider``'s minimum with its reference points (the
-    default backend, profiled first: on every path its numbers are the ones
-    measured when its reference is about to run) exceeds ``bound`` of the
-    ``backends`` that can serve. Invariant (i): dropped only on a lower
-    bound of the minimum of all of them (one backend's is one); the bound
-    only grows, so a drop is final; (iii) every path decides on the same
-    backend's numbers."""
+    left out, for every backend (all multipliers or none), when the sum of
+    the lower bounds of every serving backend's minimum with its reference
+    points (``known``: one not measured yet counts 0) exceeds ``bound`` of
+    them. Invariant (i): dropped only on a lower bound of the minimum of all
+    of them (a sum of lower bounds is one of the sum); a drop is final:
+    nothing un-drops it, and every bound was valid when it fired."""
 
-    return lower_bound(decider, lanes=lanes, reference=True, start=start) > bound(
-        backends
-    )
+    return bool(known) and sum(
+        lower_bound(k, lanes=lanes, reference=True, start=start) for k in known.values()
+    ) > bound(len(known))
 
 
 def rule_a_drops(
@@ -448,13 +477,16 @@ def rule_a_drops(
     reference: bool,
     stability_workers: int | None = None,
     start: bool = False,
+    runtime: bool = True,
 ) -> bool:
     """Rule A (USER 2026-11-19): the other backends of ``known`` are left out
     when a lower bound of the ``default`` backend's minimum for everything
     asked exceeds ``bound(1)``. ``reference``: its reference counted, only
     where rule B cannot leave it out (invariant ii: a cost rule B would drop
     never counts against another backend); ``stability_workers``: the
-    stability run's minimum with them. Invariant (i) as ``rule_b_drops``."""
+    stability run's minimum with them; ``runtime``: the runtime timing
+    asked (without it its terms are not counted). Invariant (i) as
+    ``rule_b_drops``."""
 
     if default not in known or len(known) < 2:
         return False
@@ -464,6 +496,7 @@ def rule_a_drops(
         reference=reference,
         stability_workers=stability_workers,
         start=start,
+        runtime=runtime,
     )
     return alone > bound(1)
 

@@ -797,6 +797,7 @@ def profile_loop(
         reference_affects_counts,
         reference_warmup,
         rule_a_drops,
+        rule_b_bound,
         rule_b_drops,
         runtime_counts,
         takes_entry,
@@ -1105,21 +1106,11 @@ def profile_loop(
         return BUDGET_TOLERANCE * (runtime_budget + stability_budget)
 
     def b_drops() -> bool:
-        """Rule B on what is known now."""
+        """Rule B on what is known now: every serving backend's lower bound
+        (one not measured yet: 0) summed."""
 
-        decider = next((b for b in serving if b == default), None) or next(
-            iter(serving), None
-        )
-        return (
-            rule_b
-            and decider is not None
-            and rule_b_drops(
-                known[decider],
-                len(serving),
-                budget_bound,
-                lanes=DEFAULT_LANES,
-                start=completion is not None,
-            )
+        return rule_b and rule_b_drops(
+            known, budget_bound, lanes=DEFAULT_LANES, start=completion is not None
         )
 
     def a_drops() -> bool:
@@ -1136,6 +1127,7 @@ def profile_loop(
                 reference=a_reference,
                 stability_workers=workers if want_stability else None,
                 start=completion is not None,
+                runtime=want_runtime,
             )
         )
 
@@ -1262,7 +1254,8 @@ def profile_loop(
             or want_stability
             or (runtime_given and completion is None)
         )
-        else ", its reference point within the budget"
+        else ", its reference point unless the minimums of every backend with "
+        "theirs exceed the budget"
         if truth.present
         else ""
     )
@@ -1339,9 +1332,9 @@ def profile_loop(
 
     if truth.present and not timed_reference:
         _notice(
-            f"the runtime minimums with their {truth.name} reference exceed the "
-            f"budget: no {truth.label} multiplier (an explicit --ground-truth "
-            "measures it)"
+            f"the runtime minimums of every backend with their {truth.name} "
+            f"reference exceed the budget: no {truth.label} multiplier (an "
+            "explicit --ground-truth measures it)"
         )
     if omitted and bench.all_backends is None:
         omit_notice()
@@ -1576,7 +1569,14 @@ def profile_loop(
                     **(
                         {
                             "scope": {
-                                "bound": budget_bound(len(serving)),
+                                # The bound less the others' known minimums.
+                                "bound": rule_b_bound(
+                                    known,
+                                    backend,
+                                    budget_bound,
+                                    lanes=DEFAULT_LANES,
+                                    start=completion is not None,
+                                ),
                                 "known": {
                                     name: getattr(known[backend], name)
                                     for name in ("point", "reference", "start")
@@ -1670,10 +1670,16 @@ def profile_loop(
                 # for any backend (all or none).
                 timed_reference = False
                 _notice(
-                    f"the runtime minimums with their {truth.name} reference "
-                    "exceed the budget (measured in the runtime timing of "
-                    f"{NAMES.get(backend, backend)}): no {truth.label} "
-                    "multiplier (an explicit --ground-truth measures it)"
+                    "the runtime minimums of every backend with their "
+                    f"{truth.name} reference exceed the budget (measured in the "
+                    f"runtime timing of {NAMES.get(backend, backend)}, "
+                    + (
+                        f"after one untimed {truth.label} point"
+                        if result.reference_point_seconds is not None
+                        else f"before its {truth.label} points"
+                    )
+                    + f"): no {truth.label} multiplier (an explicit "
+                    "--ground-truth measures it)"
                 )
             if (
                 backend == default
