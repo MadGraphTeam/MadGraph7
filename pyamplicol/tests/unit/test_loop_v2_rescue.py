@@ -222,9 +222,10 @@ def test_only_a_numerical_zero_is_not_escalated():
     assert [record.met for record in result.rescue] == [False, True, True, False]
     stopped = result.diagnostics[0]
     assert stopped.status == "rescued" and not stopped.accuracy_established
-    assert "not escalated: its estimate grew from the double level's" in (
+    assert "not escalated: its estimate grew from the double level's by 1.0e+09 " in (
         stopped.detail
     )
+    assert "(at least 4.7e+07, the square root" in stopped.detail
     assert result.values[0][0].finite == _value(1, 0, "double-double")
     # Point 1 grew by 10 only (no zero): escalated, and served.
     assert "not escalated" not in result.diagnostics[1].detail
@@ -254,6 +255,14 @@ def test_only_a_numerical_zero_is_not_escalated():
     fake = _Fake(backends, ((1e-2,), (1e9,), (1e-9,)))
     (record,) = rescue(backends, 1, fake).rescue
     assert record.level == 2 and record.met
+    # Review F1: two backends at binary64 (TIRust nearly meets the target,
+    # NinjaRS is ruined), then double-double: the growth is measured from
+    # the larger binary64 estimate (1e3 -> 1e4: 10, not 1e8 from 1e-4), so
+    # the point escalates and 57 digits serves it.
+    stack = VirtualRescuePolicy((*backends.levels, VirtualRescueLevel("arbitrary", 57)))
+    fake = _Fake(stack, ((1e-4,), (1e3,), (1e4,), (1e-9,)))
+    (record,) = rescue(stack, 1, fake).rescue
+    assert record.level == 3 and record.met
 
 
 @pytest.mark.loop_fast

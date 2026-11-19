@@ -1373,7 +1373,8 @@ evaluates, with no estimate. How a batch runs:
    are evaluated one per native call, so each carrier builds one executor and
    compiles its kernels once.
 3. Accepted points are never evaluated again. A point whose estimate grew,
-   against the next lower precision, at least by the square root of the two
+   against the next lower precision (the same backend's estimate there, else
+   the larger where two backends ran), at least by the square root of the two
    levels' unit-roundoff ratio is not escalated either: that is the
    signature of a numerical zero (its value is rounding of the size u^2 while
    its error falls like u, so its relative estimate grows like 1 / u). It

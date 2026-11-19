@@ -163,7 +163,7 @@ class _Kept:
     met: bool
     # Kept below the last level by the stopping rule (``_stalled``): the
     # lower-precision attempt whose estimate it did not improve on.
-    stalled: VirtualRescueAttempt | None = None
+    stalled: _Stall | None = None
 
 
 def rescue(
@@ -220,7 +220,7 @@ def rescue(
 
 def _stalled(
     history: list[VirtualRescueAttempt], levels: tuple[VirtualRescueLevel, ...]
-) -> VirtualRescueAttempt | None:
+) -> _Stall | None:
     """The stopping rule ("stop when no gain", USER 2026-11-18; refined by
     review B3): a point is not escalated when its estimate at its latest
     level (the last of ``history``, one attempt per level from level 0)
@@ -235,9 +235,15 @@ def _stalled(
     estimate above 1 has no order), stays flat and noisy, its error and its
     wrong value falling together (HC05 #40 point 29: 13.96 at 50 digits,
     48.8 at 57, a growth of 3.5 against the 3.2e3 needed): both escalate.
-    Returns the lower-precision attempt compared with, or None (escalate).
-    A failed attempt has no estimate and never stops a point; nor does a
-    level of the same precision (the other backend)."""
+    The argument holds for the same computation at two roundoffs: where two
+    backends ran at the next lower precision (the loop-induced default
+    stack's TIRust and NinjaRS binary64 levels), the comparison is with the
+    latest level's own effective backend when it has an estimate there, else
+    with the larger of their estimates (never the smaller, which would count
+    the gap between the backends as growth: review F1). Returns the
+    comparison (``_Stall``), or None (escalate). A failed attempt has no
+    estimate and never stops a point; nor does a level of the same
+    precision (the other backend)."""
 
     latest = history[-1]
     if latest.estimate is None:
@@ -253,18 +259,46 @@ def _stalled(
     ]
     if not lower:
         return None
-    # The next lower precision (its best estimate where two backends ran).
+    # The next lower precision. The growth argument holds for the same
+    # computation at two roundoffs: where two backends ran there, compare
+    # with the latest level's own effective backend when it has an estimate,
+    # else with the larger estimate (review F1: the smaller would add the gap
+    # between the backends to the growth).
     bits = max(attempt.precision_bits for _, attempt in lower)
-    j, below = min(
-        ((j, attempt) for j, attempt in lower if attempt.precision_bits == bits),
-        key=lambda item: cast(float, item[1].estimate),
-    )
+    candidates = [
+        (j, attempt) for j, attempt in lower if attempt.precision_bits == bits
+    ]
+    mine = _effective(latest)
+    same = [item for item in candidates if mine and _effective(item[1]) == mine]
+    j, below = max(same or candidates, key=lambda item: cast(float, item[1].estimate))
     before, after = cast(float, below.estimate), latest.estimate
     if not before or not after:
         return None
     needed = (_log2_roundoff(levels[j]) - _log2_roundoff(levels[k])) / 2
     grew = math.log2(after) - math.log2(before) if math.isfinite(after) else math.inf
-    return below if grew >= needed else None
+    return _Stall(below, grew, needed) if grew >= needed else None
+
+
+@dataclass(frozen=True, slots=True)
+class _Stall:
+    """A point the stopping rule keeps: the lower-precision attempt compared
+    with, and log2 of the estimate's growth and of the growth needed."""
+
+    attempt: VirtualRescueAttempt
+    grew: float
+    needed: float
+
+
+def _effective(attempt: VirtualRescueAttempt) -> str | None:
+    """The attempt's effective reduction backend, None when not recorded."""
+
+    return None if attempt.reduction is None else attempt.reduction.effective
+
+
+def _factor(log2: float) -> str:
+    """2^log2 as text (``inf`` beyond binary64)."""
+
+    return f"{2.0**log2:.1e}" if log2 < 1000 else "inf"
 
 
 def _log2_roundoff(level: VirtualRescueLevel) -> float:
@@ -310,7 +344,7 @@ def _attempt(
 def _detail(
     record: VirtualRescueRecord,
     metric: str,
-    stalled: VirtualRescueAttempt | None = None,
+    stalled: _Stall | None = None,
 ) -> str:
     level = f"rescue level {record.level} ({record.arithmetic})"
     value = record.attempts[-1].estimate
@@ -319,11 +353,13 @@ def _detail(
     if record.met:
         verdict = f"within the target {record.target:.1e}"
     elif stalled is not None:
-        backend = "" if stalled.reduction is None else f" {stalled.reduction.effective}"
+        below = stalled.attempt
+        backend = "" if below.reduction is None else f" {below.reduction.effective}"
         verdict = (
             f"target {record.target:.1e} not met; not escalated: its estimate "
-            f"grew from the {stalled.arithmetic}{backend} level's at least by the "
-            "square root of their unit-roundoff ratio, as a numerical zero's does"
+            f"grew from the {below.arithmetic}{backend} level's by "
+            f"{_factor(stalled.grew)} (at least {_factor(stalled.needed)}, the "
+            "square root of their unit-roundoff ratio), as a numerical zero's does"
         )
     else:
         verdict = f"target {record.target:.1e} not met at the final level"
