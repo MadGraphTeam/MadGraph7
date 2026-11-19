@@ -582,6 +582,20 @@ def _intern(table: _InternTable, value: Any) -> int:
     return index
 
 
+def _intern_mappings(data, mappings) -> int:
+    """The index of a list of helicity mappings in ``data["helicity_mappings"]``."""
+    table = data["helicity_mappings"]
+    key = tuple(
+        (m["helicity"], m["representative_id"], m["coefficient"], m["structural_zero"])
+        for m in mappings
+    )
+    index = table.positions.get(key)
+    if index is None:
+        index = table.positions[key] = len(table)
+        table.append(mappings)
+    return index
+
+
 def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
     """An oriented physical colour tensor modulo identical outgoing labels.
 
@@ -677,15 +691,18 @@ def _exported_entry(data, relabel, member, contribution, helicity_groups, mappin
             [_intern(data["helicities"], _relabelled(v, relabel)) for v in group]
             for group in helicity_groups.values()
         ],
-        "helicity_mappings": [
-            {
-                **mapping,
-                "helicity": _intern(
-                    data["helicities"], _relabelled(mapping["helicity"], relabel)
-                ),
-            }
-            for mapping in mappings
-        ],
+        "helicity_mappings": _intern_mappings(
+            data,
+            [
+                {
+                    **mapping,
+                    "helicity": _intern(
+                        data["helicities"], _relabelled(mapping["helicity"], relabel)
+                    ),
+                }
+                for mapping in mappings
+            ],
+        ),
         "runtime": entry_runtime,
         "members": [] if member is None else [member],
         "multichannels": [],
@@ -947,7 +964,7 @@ def _build_provider(
         assumptions.append(FLAVOR_BLIND_ASSUMPTION)
     data: dict[str, Any] = {
         "kind": "pyamplicol-umami-metadata",
-        "schema_version": 3,
+        "schema_version": 4,
         "provider": {
             "id": provider_id,
             "library": "libumami.so" if single else f"libumami_{provider_id}.so",
@@ -963,6 +980,8 @@ def _build_provider(
         "color_orders": _InternTable(),
         "color_flows": _InternTable(),
         "helicities": _InternTable(),
+        # the helicity mappings of the process entries, referenced by index
+        "helicity_mappings": _InternTable(),
         "runtime_processes": [],
         "aliases": [],
         "xml_header": (
@@ -1360,7 +1379,13 @@ def _build_provider(
     )
 
     # Convert to plain lists; the interning indices are only needed while building.
-    for name in ("pdg_ids", "color_orders", "color_flows", "helicities"):
+    for name in (
+        "pdg_ids",
+        "color_orders",
+        "color_flows",
+        "helicities",
+        "helicity_mappings",
+    ):
         data[name] = list(data[name])
     return data
 
@@ -1368,7 +1393,10 @@ def _build_provider(
 def _json_payload(path: str, value: Any) -> ApiBundlePayload:
     return ApiBundlePayload(
         path,
-        (json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n").encode(),
+        (
+            json.dumps(value, separators=(",", ":"), sort_keys=True, allow_nan=False)
+            + "\n"
+        ).encode(),
         "sdk-metadata",
         "application/json",
     )

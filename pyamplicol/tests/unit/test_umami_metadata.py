@@ -676,7 +676,8 @@ def test_only_certified_helicity_equivalences_are_reused(representative):
     assert entries(data)[0]["helicities"] == (
         [[0, 1]] if representative == "h:all-plus" else [[0], [1]]
     )
-    assert entries(data)[0]["helicity_mappings"] == [
+    mappings = data["helicity_mappings"][entries(data)[0]["helicity_mappings"]]
+    assert mappings == [
         {
             "helicity": index,
             "representative_id": "h:all-plus" if index == 0 else representative,
