@@ -373,14 +373,14 @@ namespace madmatrix
   // wavefunctions to local memory; the slots that hold the most reads over the longest
   // lifetimes (SharedWavefunctions.inc, by the generator) live instead in dynamic shared
   // memory, one padded record per thread, as many as fit with sharedWfBlockThreads threads
-  // per block. MGONGPU_NO_SHARED_WF turns it off.
+  // per block. MADMATRIX_NO_SHARED_WF turns it off.
 #include "SharedWavefunctions.inc"
 
   // Dynamic shared memory per block that a kernel can opt in to, by compute capability.
   constexpr size_t
   sharedWfOptinBytes( int sm )
   {
-#ifdef MGONGPU_NO_SHARED_WF
+#ifdef MADMATRIX_NO_SHARED_WF
     return 0;
 #else
     if( sm == 80 || sm == 87 ) return 166912;
@@ -638,7 +638,7 @@ namespace madmatrix
   static size_t
   sharedWfBytes( int nthreads )
   {
-#if defined __CUDACC__ && !defined MGONGPU_NO_SHARED_WF
+#if defined __CUDACC__ && !defined MADMATRIX_NO_SHARED_WF
     static std::mutex mutex;
     static std::map<int, size_t> strides; // the opt-in is per device, the cubin per architecture
     int device;
@@ -658,7 +658,7 @@ namespace madmatrix
     }
     if( stride > 0 && nthreads > sharedWfBlockThreads )
       throw std::runtime_error( "calculate_jamps: shared-memory wavefunctions are sized for " + std::to_string( sharedWfBlockThreads ) +
-                                " threads per block, got " + std::to_string( nthreads ) + ": use fewer or build with -DMGONGPU_NO_SHARED_WF" );
+                                " threads per block, got " + std::to_string( nthreads ) + ": use fewer or build with -DMADMATRIX_NO_SHARED_WF" );
     return stride * nthreads;
 #else
     return 0;

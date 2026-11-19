@@ -328,7 +328,7 @@ ifeq ($(BACKEND),cuda)
   endif
 
   ifeq ($(SHAREDWF),0)
-    GPUFLAGS += -DMGONGPU_NO_SHARED_WF
+    GPUFLAGS += -DMADMATRIX_NO_SHARED_WF
   endif
 
   # Extra build warnings
@@ -994,7 +994,7 @@ $(BUILDDIR)/SigmaKin.o : SigmaKin.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../b
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
 	@pids=; for variant in $(foreach sw,$(AUTO_SHAREDWFS),$(foreach fm,$(AUTO_FASTMATHS),$(sw).$(fm))); do \
 	  flags=; \
-	  case $(SHAREDWF).$$variant in auto.sw0.*) flags=-DMGONGPU_NO_SHARED_WF;; esac; \
+	  case $(SHAREDWF).$$variant in auto.sw0.*) flags=-DMADMATRIX_NO_SHARED_WF;; esac; \
 	  case $(FASTMATH).$$variant in auto.*.fm1) flags="$$flags -use_fast_math";; esac; \
 	  echo "$(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) $$flags -c -x $(GPULANGUAGE) $< -o $(@:.o=.$$variant.o)"; \
 	  $(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) $$flags -c -x $(GPULANGUAGE) $< -o $(@:.o=.$$variant.o) & pids="$$pids $$!"; \
