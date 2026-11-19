@@ -16,14 +16,23 @@
 //! double-double NinjaRS values at near-forward g g > h h points by up to
 //! 3e-16 relative and its fallback-guard estimates from 2.4e-19 to 4.1e-16.
 //!
-//! [`reserve`] builds the pool once per process before this library
-//! registers anything else: every operation here that registers symbols
+//! NinjaRS's master-integral evaluators are built from the caller's symbols
+//! (its `ninjars::master_argument_*` parameters, oneloopmaster's expressions
+//! and helper functions, registered lazily) instead: their instructions
+//! depend on those symbols' IDs, and so on when each master is first needed
+//! (after the same import, a double-double reduction before a 57-digit one
+//! moved the 57-digit values by 1e-75 relative).
+//!
+//! [`reserve`] builds the pool and registers the masters' symbols once per
+//! process, at fixed IDs, before this library registers anything else: every
+//! operation here that registers symbols
 //! (importing a saved state, parsing an expression, defining the scalar
 //! primitives) calls it first. Binary64 paths that touch no Symbolica state
 //! never reach it, so they still need no licence (the SDKs' licence-free
 //! tests). Without the `loop-v2` feature (no NinjaRS) it does nothing.
 
-/// Build NinjaRS's positional slot pool, once per process (see the module).
+/// Build NinjaRS's positional slot pool and register its masters' symbols,
+/// once per process (see the module).
 pub fn reserve() {
     #[cfg(feature = "loop-v2")]
     {
@@ -33,6 +42,44 @@ pub fn reserve() {
             let _unlock = crate::licence::unlock();
             // Never fails for no slots; the pool is built on this first use.
             let _ = ninjars_positional::slots(0);
+            masters();
         });
+    }
+}
+
+/// Register the symbols of NinjaRS's master-integral evaluators (its
+/// `ninjars::master_argument_*` parameters and oneloopmaster's expressions
+/// and helper functions), in one fixed order: those evaluators are built from
+/// the caller's symbols, not on positional slots, so their instructions
+/// depend on the IDs of these symbols, and the IDs on when the masters are
+/// first needed (a double-double reduction before an arbitrary-precision
+/// one, after a generation's import, moved 57-digit values by 1e-75
+/// relative). Preparing every master once registers them all; the prepared
+/// evaluators are dropped (each reduction keeps its own).
+#[cfg(feature = "loop-v2")]
+fn masters() {
+    use ninjars::MasterIntegral;
+    use symbolica::domains::float::Float;
+
+    // Arbitrary precision prepares every family from its exact expression
+    // (double-double only the tadpole tensors); the expressions, and hence
+    // the symbols, do not depend on the precision.
+    let mut masters = ninjars_symbolica::SymbolicaMasters::new(Float::with_val(64, 0));
+    let integrals = [
+        MasterIntegral::A0,
+        MasterIntegral::B0,
+        MasterIntegral::DB0,
+        MasterIntegral::C0,
+        MasterIntegral::D0,
+        MasterIntegral::B1,
+        MasterIntegral::B11,
+        MasterIntegral::B111,
+        MasterIntegral::B1111,
+    ]
+    .into_iter()
+    .chain((0..=4).map(|rank| MasterIntegral::An { rank }));
+    for integral in integrals {
+        // A family NinjaRS cannot prepare registers nothing it would use.
+        let _ = masters.prepare(integral, 1);
     }
 }

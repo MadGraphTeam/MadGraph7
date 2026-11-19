@@ -2386,6 +2386,7 @@ dependencies = [
  "libloading",
  "ninjars",
  "ninjars-positional",
+ "ninjars-symbolica",
  "num-complex",
  "pyamplicol",
  "rayon",
