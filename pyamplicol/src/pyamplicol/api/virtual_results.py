@@ -22,10 +22,11 @@ from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
 from pyamplicol.loops.v2.poles import ORIGINS
 from pyamplicol.loops.v2.stability import (
-    DEFAULT_RESCUE,
     RESCUE_ROTATION,
     Rotation,
     StabilityChecks,
+    default_rescue,
+    relative_text,
 )
 from pyamplicol.loops.v2.stability import default_rotation as _default_rotation
 from pyamplicol.models.base import CouplingOrders
@@ -110,7 +111,9 @@ class VirtualFailureDiagnostic:
 
 @dataclass(frozen=True, slots=True)
 class VirtualArithmeticSpec:
-    """Explicit carrier; decimal precision applies only to arbitrary arithmetic."""
+    """Explicit carrier; decimal precision applies only to arbitrary arithmetic,
+    None there taking the default arbitrary-precision digits (500,
+    ``loops.v2.reduction.default_arbitrary_digits``)."""
 
     arithmetic: Literal["double", "double-double", "arbitrary"]
     precision: int | None = None
@@ -119,6 +122,8 @@ class VirtualArithmeticSpec:
         if self.arithmetic not in {"double", "double-double", "arbitrary"}:
             raise ValueError("unknown virtual arithmetic")
         if self.arithmetic == "arbitrary":
+            if self.precision is None:
+                object.__setattr__(self, "precision", _default_digits())
             if type(self.precision) is not int or self.precision <= 0:
                 raise ValueError(
                     "arbitrary arithmetic requires positive decimal precision"
@@ -292,7 +297,11 @@ class VirtualStabilityEstimate:
     for a loop-induced result the pre-cancellation scale of its amplitudes,
     m-lit PLAN §2.a.8), and ``scale`` the largest E / S over them: the
     accuracy against the size of what cancelled (the ``"scale"`` metric of
-    a :class:`VirtualRescueLevel`). A value with ``|value| <= E`` is zero
+    a :class:`VirtualRescueLevel`). In arbitrary precision every ratio here
+    is formed from exponent-safe sizes and rounded last (below binary64's
+    range: 0.0, above it: inf); ``absolute`` and ``magnitude`` themselves are
+    binary64 floats, 0.0 where E or S lies below binary64's range (beyond
+    about 300 digits). A value with ``|value| <= E`` is zero
     within the estimate (m-lit Q13: zeros are numerical, never declared by
     a physics rule). For a loop-induced result
     (``contribution="loop-induced"``) the pole estimates ``single_pole`` and
@@ -448,9 +457,12 @@ def best_effort_detail(record: VirtualBestEffort) -> str:
     if record.uncertainty is None:
         tail = "no uncertainty could be estimated"
     else:
-        tail = f"relative uncertainty {record.uncertainty:.2e} ({where[record.source]})"
+        tail = (
+            f"relative uncertainty {relative_text(record.uncertainty)} "
+            f"({where[record.source]})"
+        )
     if record.backend_deviation is not None:
-        tail += f"; backend deviation {record.backend_deviation:.2e}"
+        tail += f"; backend deviation {relative_text(record.backend_deviation)}"
     if record.gram_conditioning is not None:
         tail += f"; Gram conditioning {record.gram_conditioning:.2e}"
     return f"{head}; {tail}; refusal in failures / --json"
@@ -566,6 +578,16 @@ def _carrier_bits(arithmetic: str, precision: int | None) -> int:
     return math.ceil(cast(int, precision) * math.log2(10))
 
 
+def _default_digits() -> int:
+    """The default arbitrary-precision digits (the native policy's one
+    definition, ``loops.v2.reduction.default_arbitrary_digits``; read when a
+    record is built, not at import)."""
+
+    from pyamplicol.loops.v2.reduction import default_arbitrary_digits
+
+    return default_arbitrary_digits()
+
+
 def _default_target() -> float:
     """A level's default target: the call's default target accuracy (m-lit F3
     (a), the native policy's one definition, ``loops.v2.reduction.
@@ -634,7 +656,9 @@ class VirtualRescueLevel:
     reduction: Literal["auto", "ninjars", "tirust"] = "auto"
 
     def __post_init__(self) -> None:
-        VirtualArithmeticSpec(self.arithmetic, self.precision)
+        spec = VirtualArithmeticSpec(self.arithmetic, self.precision)
+        # Arbitrary precision without digits: the default (500).
+        object.__setattr__(self, "precision", spec.precision)
         # The one validator of every reduction request (lit-api).
         object.__setattr__(self, "reduction", reduction_request(self.reduction))
         if self.reduction_check not in REDUCTION_CHECKS:
@@ -678,7 +702,7 @@ class VirtualRescueLevel:
 def _default_levels() -> tuple[VirtualRescueLevel, ...]:
     return tuple(
         VirtualRescueLevel(cast(Any, arithmetic), digits)
-        for arithmetic, digits in DEFAULT_RESCUE
+        for arithmetic, digits in default_rescue()
     )
 
 
@@ -705,14 +729,16 @@ class VirtualRescuePolicy:
     the level reached and every attempt.
 
     The default ``VirtualRescuePolicy()`` runs binary64, then double-double,
-    then 57-digit arbitrary precision, each with the default target accuracy
+    then arbitrary precision at 57 digits and at the default
+    arbitrary-precision digits (500, ``loops.v2.reduction.
+    default_arbitrary_digits``), each with the default target accuracy
     (1e-5, ``loops.v2.reduction.default_target``) on the relative estimate,
     one rotation ``"euler:0.1,0.2,0.3"`` and the rescaled reduction
-    check (``loops.v2.stability.DEFAULT_RESCUE``), every level ``"auto"``.
+    check (``loops.v2.stability.default_rescue``), every level ``"auto"``.
     For a loop-induced call whose ``"auto"`` takes TIRust with the NinjaRS
     fallback (``loops.v2.rescue.default_stack``) it is the loop-induced
     default stack: TIRust binary64 at the target, then NinjaRS binary64, then
-    the double-double and 57-digit levels (``"auto"``: TIRust with the
+    the double-double, 57- and 500-digit levels (``"auto"``: TIRust with the
     per-point NinjaRS fallback at their carrier). A call naming a backend
     runs the default ladder on that backend at every level.
     """

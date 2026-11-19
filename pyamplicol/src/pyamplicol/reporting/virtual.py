@@ -11,6 +11,7 @@ from pyamplicol.api.virtual_results import (
     VirtualScalar,
 )
 from pyamplicol.correlators import CorrelatedValue
+from pyamplicol.loops.v2.stability import relative_text
 from pyamplicol.models.base import CouplingOrders
 
 from . import palette
@@ -60,7 +61,9 @@ def _estimate_row(estimate: Any, target: float, color: bool) -> tuple[str, ...]:
     def text(value: float | None) -> str:
         if value is None:
             return "absent"
-        return palette.within(value, target, color=color, text=f"{value:.3e}")
+        return palette.within(
+            value, target, color=color, text=relative_text(value, ".3e")
+        )
 
     return (
         text(estimate.relative),
@@ -68,7 +71,9 @@ def _estimate_row(estimate: Any, target: float, color: bool) -> tuple[str, ...]:
         text(estimate.single_pole),
         text(estimate.double_pole),
         ", ".join(
-            f"{palette.paint(name, palette.ESTIMATE, color=color)} {value:.2e}"
+            palette.paint(name, palette.ESTIMATE, color=color)
+            + " "
+            + relative_text(value)
             for name, value in estimate.checks
         ),
     )

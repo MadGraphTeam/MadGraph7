@@ -640,9 +640,10 @@ def test_ground_truth_spellings():
     from pyamplicol.config import BenchmarkConfig
     from pyamplicol.config.errors import ConfigurationError
     from pyamplicol.loop_profile import GroundTruth, ground_truth
-    from pyamplicol.loops.v2.stability import DEFAULT_RESCUE
+    from pyamplicol.loops.v2.reduction import default_arbitrary_digits
 
-    default = dict(DEFAULT_RESCUE)["arbitrary"]
+    default = default_arbitrary_digits()
+    assert default == 500  # USER 2026-11-18
     assert BenchmarkConfig().ground_truth == "double-double"
     for text, expected in (
         ("double-double", GroundTruth("double-double")),

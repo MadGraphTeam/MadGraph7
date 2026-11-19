@@ -162,12 +162,12 @@ def _truth_prose(truth: GroundTruth) -> str:
 def ground_truth(text: str) -> GroundTruth:
     """The ``GroundTruth`` of a ``benchmark.ground_truth`` value (canonical
     after ``BenchmarkConfig``: "double-double", "arbitrary" or
-    "arbitrary:DIGITS"); "arbitrary" without digits takes the built-in
-    rescue's arbitrary-precision level's digits (``loops.v2.stability.
-    DEFAULT_RESCUE``, the project's truth carrier)."""
+    "arbitrary:DIGITS"); "arbitrary" without digits takes the default
+    arbitrary-precision digits (500, the native policy's one definition,
+    ``loops.v2.reduction.default_arbitrary_digits``, USER 2026-11-18)."""
 
     from pyamplicol.config.models import _ground_truth
-    from pyamplicol.loops.v2.stability import DEFAULT_RESCUE
+    from pyamplicol.loops.v2.reduction import default_arbitrary_digits
 
     canonical = _ground_truth(text)
     if canonical in ("double-double", "none"):
@@ -175,8 +175,7 @@ def ground_truth(text: str) -> GroundTruth:
     _, _, digits = canonical.partition(":")
     if digits:
         return GroundTruth("arbitrary", int(digits))
-    default = next(d for a, d in DEFAULT_RESCUE if a == "arbitrary" and d is not None)
-    return GroundTruth("arbitrary", default)
+    return GroundTruth("arbitrary", default_arbitrary_digits())
 
 
 def stable_digits(relative_error: float) -> float:

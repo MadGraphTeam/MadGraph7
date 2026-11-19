@@ -1552,7 +1552,11 @@ class EvaluationConfig:
         default=None, metadata=_setting("path", nullable=True)
     )
     process: str | None = field(default=None, metadata=_setting("str", nullable=True))
-    precision: int = field(default=16, metadata=_setting("int"))
+    # Decimal digits; None (unset) is the carrier's default: binary64's 16,
+    # or with ``arithmetic = "arbitrary"`` on a virtual artifact the default
+    # arbitrary-precision digits (500, ``loops.v2.reduction.
+    # default_arbitrary_digits``). A number given is never overridden.
+    precision: int | None = field(default=None, metadata=_setting("int", nullable=True))
     arithmetic: Literal["double", "double-double", "arbitrary"] | None = field(
         default=None,
         metadata=_setting(
@@ -1632,7 +1636,9 @@ class EvaluationConfig:
         if self.process is not None and not isinstance(self.process, str):
             raise ConfigurationError("evaluation.process must be a string or null")
         object.__setattr__(
-            self, "precision", _integer(self.precision, "evaluation.precision")
+            self,
+            "precision",
+            _optional_integer(self.precision, "evaluation.precision", minimum=1),
         )
         if self.arithmetic is not None and (
             not isinstance(self.arithmetic, str)
@@ -1768,7 +1774,7 @@ class BenchmarkConfig:
     n_core: int = field(default=10, metadata=_setting("int"))
     # The reference ("ground truth") of a loop profile (``--ground-truth``):
     # "double-double" or "arbitrary[:DIGITS]" (decimal digits; without them
-    # the built-in rescue's arbitrary-precision level's), "dd" and "arb"
+    # the default arbitrary-precision digits, 500), "dd" and "arb"
     # accepted; read by both tables (``loop_profile.ground_truth``).
     ground_truth: str = field(default="double-double", metadata=_setting("str"))
     # The runtime timing of a loop profile in the checked mode (``--checked``):

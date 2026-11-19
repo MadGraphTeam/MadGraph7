@@ -607,7 +607,8 @@ def _virtual(value: Any) -> list[Block]:
                         "points with rescued lanes when the requested checks "
                         "had no reduction check (and on TIRust's points under "
                         "a default check set): green within the target, red "
-                        "above.",
+                        "above; an estimate above 1 shows as >1 (--json keeps "
+                        "the number).",
                     ),
                     ("checks", "each check that ran and its own estimate"),
                 ],

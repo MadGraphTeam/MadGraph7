@@ -576,10 +576,14 @@ pyamplicol evaluate artifacts/virtual --process gg --momenta points.json \
 ```
 
 `--arithmetic` accepts `double`, `double-double` (DoubleFloat) or `arbitrary`.
-For arbitrary precision, add `--precision 70`, for example. These choices apply
-before model parameters are bound. Without an explicit arithmetic choice, the
-existing precision convention applies: 16 digits selects double; other requested
-precisions select arbitrary precision. DoubleFloat is always selected explicitly.
+`--arithmetic arbitrary` without `--precision` runs at the default
+arbitrary-precision digits (500, the native policy's
+`DEFAULT_ARBITRARY_DIGITS`); `--precision 70`, for example, sets the digits, and
+a number given is never overridden. These choices apply before model parameters
+are bound. Without an explicit arithmetic choice, the existing precision
+convention applies: 16 digits (the default when unset) selects double; other
+requested precisions select arbitrary precision. DoubleFloat is always selected
+explicitly.
 
 `--loop-reduction {auto,ninjars,tirust}` selects the reduction backend for the
 evaluation, overriding the artifact's default (`generate --loop-reduction`
@@ -668,7 +672,11 @@ dim summary line (`N captured warning(s) (...); see --json /
 result.warnings`), and `--json` carries `statuses` and `warnings` (per kind:
 source, kind, first message, count, where, point indices; each lane's
 `reduction.best_effort` record holds `refusal`, `uncertainty`, `source`,
-`backend_deviation` and `gram_conditioning`). `--on-failure return` preserves successful
+`backend_deviation` and `gram_conditioning`). Wherever a relative
+uncertainty or stability estimate above 1 is shown to a human (the
+evaluation's stability table, lane details, failure and cause lines) it reads
+`>1`; `--json`, the samples file and the returned records keep the number.
+`--on-failure return` preserves successful
 points and returns an unavailable whole-point row for each numerical failure
 (no best-effort evaluation): `null` in JSON, with its failure diagnostics.
 `--on-failure raise` (the default before 1.0.3) stops at the first such
@@ -1001,11 +1009,12 @@ measured `peak RAM`.
 
 **Ground truth.** `--ground-truth` (`benchmark.ground_truth`) selects the
 reference of both tables: `double-double` (`dd`, the default) or arbitrary
-precision, `arbitrary` (`arb`) at the built-in rescue's arbitrary-precision
-digits (57, `loops.v2.stability.DEFAULT_RESCUE`) or `arbitrary:DIGITS`
+precision, `arbitrary` (`arb`) at the default arbitrary-precision digits
+(500, `loops.v2.reduction.default_arbitrary_digits()`, the native policy's
+`DEFAULT_ARBITRARY_DIGITS`) or `arbitrary:DIGITS`
 (`arb:DIGITS`). It is the stability run's truth and the precision of both
 tables' multipliers, and the labels follow it: the header's `ground truth`
-row, `(arb(57) x210)`, "Stable digits of binary64 vs arb(57)". The values
+row, `(arb(500) x210)`, "Stable digits of binary64 vs arb(500)". The values
 judged are binary64's either way; a point whose reference fails is "no
 ref." as before. In arbitrary precision the stability run cross-checks
 each point's references between the backends: a reference that agrees with

@@ -46,10 +46,38 @@ enum Values {
     Text(Vec<[String; 2]>),
 }
 
+/// Real magnitudes (re-test budgets, term scales) handed back to Python:
+/// binary64, or decimal texts for the arbitrary-precision carrier, whose
+/// magnitudes lie beyond binary64's exponent range at high precision (500
+/// digits: ~1e-500; Python reads them as `loops.v2.wide.Wide`).
+#[derive(IntoPyObject)]
+enum Reals {
+    Float(Vec<f64>),
+    Text(Vec<String>),
+}
+
 /// A native carrier with its Python value conversions.
 trait Exchanged: V2Carrier {
     fn import(values: &Bound<'_, PyAny>, zero: &Self) -> PyResult<Vec<Complex<Self>>>;
     fn export(values: &[Complex<Self>], bits: u32) -> Values;
+    /// Magnitudes as decimal texts (the arbitrary-precision carrier); None:
+    /// binary64 reals (`reals`).
+    fn magnitude_texts(_values: &[Self]) -> Option<Vec<String>> {
+        None
+    }
+}
+
+/// A real's binary64 value (`Real::to_f64`).
+fn binary64<T: Exchanged + Real>(x: &T) -> f64 {
+    x.to_f64()
+}
+
+/// `values` as `Reals`: decimal texts where the carrier gives them, else
+/// binary64 (`to_f64`, as before).
+fn reals<T: Exchanged + Real>(values: &[T]) -> Reals {
+    T::magnitude_texts(values)
+        .map(Reals::Text)
+        .unwrap_or_else(|| Reals::Float(values.iter().map(|x| x.to_f64()).collect()))
 }
 
 fn exact_pairs<T: V2Carrier>(values: &Bound<'_, PyAny>, zero: &T) -> PyResult<Vec<Complex<T>>> {
@@ -103,6 +131,25 @@ impl Exchanged for Float {
                 .iter()
                 .cloned()
                 .map(|z| decimal_complex(z, bits))
+                .collect(),
+        )
+    }
+    fn magnitude_texts(values: &[Self]) -> Option<Vec<String>> {
+        // Inside binary64's range the shortest round-trip text of `to_f64()`,
+        // so that Python reads exactly that float (as before, no second
+        // rounding); outside it (zero, subnormal, overflow) 21 significant
+        // digits: a magnitude's size at any exponent.
+        Some(
+            values
+                .iter()
+                .map(|x| {
+                    let f = binary64(x);
+                    if f.is_normal() {
+                        format!("{f:e}")
+                    } else {
+                        format!("{x:.20e}")
+                    }
+                })
                 .collect(),
         )
     }
@@ -593,20 +640,20 @@ struct Evaluation {
     families: Vec<Lanes>,
     check: Option<Vec<Lanes>>,
     bare: Vec<Vec<Values>>,
-    budget: Vec<Option<Vec<Vec<f64>>>>,
+    budget: Vec<Option<Vec<Reals>>>,
     /// Amplitude-mode plans (loop-induced): per point and (loop order,
     /// column) slot `order * columns + column` the bare loop amplitude per
     /// Laurent coefficient (`PointResult::amplitudes`), else None.
     amplitudes: Option<Vec<Vec<Values>>>,
     /// Their re-test, when a check ran.
     amplitude_check: Option<Vec<Vec<Values>>>,
-    /// Per point and slot `Σ_f |ΔΩ_f| / (16π²)` per coefficient (binary64
-    /// reals), when a check ran.
-    amplitude_budget: Option<Vec<Vec<Vec<f64>>>>,
+    /// Per point and slot `Σ_f |ΔΩ_f| / (16π²)` per coefficient (`Reals`),
+    /// when a check ran.
+    amplitude_budget: Option<Vec<Vec<Reals>>>,
     /// With `term_scale`, per point and slot the term scale
-    /// `Σ_f Σ_α |N_α| |I_α| / (16π²)` per coefficient (binary64 reals;
+    /// `Σ_f Σ_α |N_α| |I_α| / (16π²)` per coefficient (`Reals`;
     /// `PointResult::amplitude_scale`), else None.
-    amplitude_scale: Option<Vec<Vec<Vec<f64>>>>,
+    amplitude_scale: Option<Vec<Vec<Reals>>>,
     /// Amplitude-mode plans with native trees and counterterms: per point
     /// the counterterm kets (`TreeInputs::kets`: rows × ket components in
     /// the counterterm program's layout), else None.
@@ -688,12 +735,7 @@ fn export_evaluation<T: Exchanged + Real>(
             .map(|r| {
                 r.amplitude_budget
                     .as_ref()
-                    .map(|budget| {
-                        budget
-                            .iter()
-                            .map(|slot| slot.iter().map(|x| x.to_f64()).collect())
-                            .collect()
-                    })
+                    .map(|budget| budget.iter().map(|slot| reals(slot)).collect())
                     .unwrap_or_default()
             })
             .collect()
@@ -702,12 +744,7 @@ fn export_evaluation<T: Exchanged + Real>(
     let amplitude_scale = scaled.then(|| {
         results
             .iter()
-            .map(|r| {
-                r.amplitude_scale
-                    .iter()
-                    .map(|slot| slot.iter().map(|x| x.to_f64()).collect())
-                    .collect()
-            })
+            .map(|r| r.amplitude_scale.iter().map(|slot| reals(slot)).collect())
             .collect()
     });
     Evaluation {
@@ -750,12 +787,9 @@ fn export_evaluation<T: Exchanged + Real>(
         budget: results
             .iter()
             .map(|r| {
-                r.budget.as_ref().map(|columns| {
-                    columns
-                        .iter()
-                        .map(|column| column.iter().map(|x| x.to_f64()).collect())
-                        .collect()
-                })
+                r.budget
+                    .as_ref()
+                    .map(|columns| columns.iter().map(|column| reals(column)).collect())
             })
             .collect(),
         refusal_measures: results

@@ -1145,7 +1145,7 @@ def test_auto_serves_every_point_when_tirust_refuses_the_plans(artifacts, monkey
 def test_the_loop_induced_default_stack_records_level_and_backend(artifacts):
     """F3 (b): ``VirtualRescuePolicy()`` on a loop-induced "auto" call is the
     loop-induced default stack, TIRust binary64 -> NinjaRS binary64 ->
-    double-double -> 57 digits; every point records the level and the
+    double-double -> 57 digits -> 500 digits; every point records the level and the
     backend that served it, a point TIRust fails at level 0 is recorded at a
     later level (the NinjaRS level when NinjaRS meets the target there).
     ``reduction="ninjars"`` with the same policy runs NinjaRS at every level

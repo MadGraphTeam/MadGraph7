@@ -377,7 +377,10 @@ artifact = "artifacts/pp_zjj_all_options"
 # permutation within each side of a concrete process. Legs never cross ">".
 # Default null.
 process = "d d~ > g z g"
-# evaluation.precision: Positive decimal-digit request. Default 16.
+# evaluation.precision: Positive decimal-digit request, or null: the carrier's
+# default, binary64's 16 digits, or with arithmetic = "arbitrary" on a virtual
+# artifact the default arbitrary-precision digits (500). A number given is
+# never overridden. Default null.
 precision = 16
 # evaluation.resolved: Return physical resolved components. Default false.
 resolved = true
@@ -547,8 +550,8 @@ n_core = 10
 # benchmark.ground_truth: Loop artifacts: the reference precision of the
 # profile (`--ground-truth`): the stability run's true values and the
 # reference time multipliers of both tables. "double-double" ("dd") or
-# arbitrary precision, "arbitrary" ("arb", at the built-in rescue's 57
-# digits) or "arbitrary:DIGITS". Default "double-double".
+# arbitrary precision, "arbitrary" ("arb", at the default arbitrary-precision
+# digits, 500) or "arbitrary:DIGITS". Default "double-double".
 ground_truth = "double-double"
 # benchmark.checked: Loop artifacts: time the checked mode (`--checked`): the
 # backends' own acceptance checks, a refused point served best-effort, the

@@ -86,8 +86,8 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
             "ground_truth): the stability run's true values and the "
             "reference-precision time multipliers; double-double (dd, the "
             "default), arbitrary precision (arb) at DIGITS decimal digits "
-            "(default: the built-in rescue's, 57), or none: no reference "
-            "pass, the stability run reports its estimates only"
+            "(default: 500, the default arbitrary-precision digits), or none: "
+            "no reference pass, the stability run reports its estimates only"
         ),
     )
     parser.add_argument(

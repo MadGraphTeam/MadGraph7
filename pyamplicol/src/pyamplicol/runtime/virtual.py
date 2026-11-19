@@ -390,7 +390,7 @@ def _ratio(error: float, scale: float) -> float:
 
     if not error:
         return 0.0
-    return error / scale if scale else math.inf
+    return float(error / scale) if scale else math.inf
 
 
 def v2_public_estimate(
@@ -419,20 +419,26 @@ def v2_public_estimate(
         else [canonical_order(sector) for sector in sectors]
     )
 
-    def floats(found: Any) -> list[float]:
+    def sizes(found: Any) -> list[Any]:
+        # As the estimate holds them: binary64 floats, or exponent-safe
+        # ``loops.v2.wide.Wide`` magnitudes in arbitrary precision.
         return [
-            0.0 if found is None else abs(float(found.coefficients[k]))
-            for k in range(width)
+            0.0 if found is None else abs(found.coefficients[k]) for k in range(width)
         ]
+
+    def floats(values: list[Any]) -> list[float]:
+        return [float(value) for value in values]
 
     def laurent(values: list[float]) -> LaurentCoefficients:
         absent = cast(VirtualScalar, None)
         return LaurentCoefficients(*values, *([absent] * (3 - width)))
 
-    error_values = [floats(errors.get(key)) for key in keys]
-    scale_values = [floats(scales.get(key)) for key in keys]
-    absolute = tuple(laurent(values) for values in error_values)
-    magnitude = tuple(laurent(values) for values in scale_values)
+    error_values = [sizes(errors.get(key)) for key in keys]
+    scale_values = [sizes(scales.get(key)) for key in keys]
+    # The public E and S are binary64 floats (below its range: 0.0); every
+    # ratio below is formed from the exact sizes first.
+    absolute = tuple(laurent(floats(values)) for values in error_values)
+    magnitude = tuple(laurent(floats(values)) for values in scale_values)
     ratios = [
         [
             _ratio(error[k], size[k])
@@ -627,6 +633,15 @@ class V2ObservablesRuntime:
                 _parameters(model_parameters) or {}
             ).items()
         }
+        # The digits that select the load-time arithmetic for a call naming
+        # none: the load's digits, else binary64's 16 (``_precision``).
+        self._carrier_digits = 16 if precision is None else precision
+        if precision is None and arithmetic == "arbitrary":
+            # Arbitrary precision without digits: the default arbitrary-
+            # precision digits (500, USER 2026-11-18); binary64's 16 else.
+            from pyamplicol.loops.v2.reduction import default_arbitrary_digits
+
+            precision = default_arbitrary_digits()
         self.default_arithmetic = arithmetic or (
             "double" if precision in (None, 16) else "arbitrary"
         )
@@ -956,7 +971,7 @@ class V2ObservablesRuntime:
 
         precision = self.default_precision if precision is None else precision
         arithmetic = arithmetic or (
-            self.default_arithmetic if precision == self.default_precision else None
+            self.default_arithmetic if precision == self._carrier_digits else None
         )
         arithmetic = arithmetic or ("double" if precision == 16 else "arbitrary")
         if arithmetic == "double":

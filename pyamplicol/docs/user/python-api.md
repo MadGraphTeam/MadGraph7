@@ -422,8 +422,9 @@ largest Laurent coefficient) exceeds the guard's limit: the call's target
 never below 1e-5, i.e. max(target, 1e-5). The point's one reason names the
 fallback, TIRust's failure, the arithmetic, the estimate and the limit,
 e.g. `auto: TIRust refused or failed the point (...); the per-point NinjaRS
-fallback's value failed its rotation check: estimate 1.4e2 >
-1e-5 = max(target 1e-5, 1e-5) (double-double)`; `on_failure="raise"`
+fallback's value failed its rotation check: estimate >1, above
+1e-5 = max(target 1e-5, 1e-5) (double-double)` (an estimate above 1 reads
+`>1`; the record keeps the number); `on_failure="raise"`
 raises `EvaluationError` with it, `"return"` returns the point as a failed
 lane (and a rescue stack escalates it), and the default `"best-effort"`
 returns it with its unchecked value as a `"best-effort"` lane. The estimate is recorded in the
@@ -750,7 +751,10 @@ With stability checks every estimate carries, besides the relative
 estimates, the absolute estimate E per sector and Laurent coefficient
 (`absolute`), the scale S it is measured against (`magnitude`, the size of
 the contributions before they cancel) and their largest ratio (`scale`). A
-value with `|value| <= E` is zero within the estimate: zeros of loop-induced
+value with `|value| <= E` is zero within the estimate (in arbitrary precision
+the ratios are formed from exponent-safe sizes, so they stay right beyond
+binary64's exponent range, e.g. at 500 digits; `absolute` and `magnitude`
+are binary64 floats and read 0.0 below it): zeros of loop-induced
 processes (Landau-Yang, Furry) are never declared by a rule, they are
 evaluated and reported this way. For a loop-induced result the pole
 estimates `single_pole` and `double_pole` are E / S as well (the poles
@@ -914,7 +918,9 @@ lane.best_effort.source       # "stability-and-recommended-checks" | "stability-
 `lane.best_effort`) holds `refusal` (one message per distinct reason class,
 with the count of the others), `uncertainty` (the relative estimate of the
 value, the `"relative"` metric: each squared-order sector against its own
-magnitude), its `source`, `backend_deviation` and `gram_conditioning`. The uncertainty always
+magnitude), its `source`, `backend_deviation` and `gram_conditioning`
+(the record keeps the numbers; a lane detail shows a relative uncertainty or
+estimate above 1 as `>1`). The uncertainty always
 includes the recommended checks (a rotation and the rescaled
 reduction-direction check, `VirtualStabilityChecks(1, True, rescaled=True)`),
 run on the refused points only, whatever checks the call asked for:
@@ -1388,6 +1394,15 @@ f64 = runtime.evaluate(points, precision=16)
 high_precision = runtime.evaluate(points, precision=80)
 ```
 
+On a virtual runtime `precision` unset is the carrier's default: binary64's 16
+digits, or with `arithmetic="arbitrary"` (at the call, or at
+`Runtime.load(..., arithmetic="arbitrary")`) the default arbitrary-precision
+digits, 500 (`loops.v2.reduction.default_arbitrary_digits()`, the native
+policy's `DEFAULT_ARBITRARY_DIGITS`); `VirtualArithmeticSpec("arbitrary")` and
+`VirtualRescueLevel("arbitrary")` take it too. A number given is never
+overridden; tree runtimes keep their own default (correlated calls: arbitrary
+arithmetic at 16 digits).
+
 For ordinary `evaluate` and `evaluate_resolved`, precision 16 uses the native
 Rusticol runtime without Symbolica computations. Package startup imports
 Symbolica to attempt registration of the pyAmpliCol library key; synchronous
@@ -1546,8 +1561,22 @@ evaluates, with no estimate. How a batch runs:
    level's evaluation, before a point counts as failed). Escalated points
    are evaluated one per native call, so each carrier builds one executor and
    compiles its kernels once.
-3. Accepted points are never evaluated again. At the last level a point that
-   evaluates keeps its value with the target marked as not met; a point that
+3. Accepted points are never evaluated again. A point whose estimate grew,
+   against the next lower precision (the same backend's estimate there, else
+   the larger where two backends ran), at least by the square root of the two
+   levels' unit-roundoff ratio is not escalated either: that is the
+   signature of a numerical zero (its value is rounding of the size u^2 while
+   its error falls like u, so its relative estimate grows like 1 / u). It
+   keeps that level's value with the target not met, and its detail says
+   `not escalated`. This stops an integrated zero (g g > z, Landau-Yang:
+   4.7e15 in binary64, 8.4e33 in double-double, a growth of 1.8e18 against
+   the 4.7e7 needed) at double-double instead of every higher level. A real
+   point escalates: its estimate falls with u, or, at a ruined point, stays
+   flat and noisy above 1 (HC05 point 29: 13.96 at 50 digits, 48.8 at 57, a
+   growth of 3.5 against the 3.2e3 needed); a failed attempt never stops a
+   point. At the last level a
+   point that evaluates keeps its value with the target marked as not met;
+   a point that
    failed at every level is returned with its best-effort value
    (`"best-effort"` lane, the default policy), else as a failed lane
    (raised only under `on_failure="raise"`).
@@ -1566,12 +1595,14 @@ failure); `result.rescue_counts` counts the lanes accepted per level, plus
 `"not met"` and `"failed"`. Without a policy `rescue` is `None`.
 
 The default `VirtualRescuePolicy()` runs binary64, then double-double, then
-57-digit arbitrary precision, each with target 1e-5 on the relative estimate,
+arbitrary precision at 57 digits and at 500 digits (the default
+arbitrary-precision digits, `loops.v2.reduction.default_arbitrary_digits()`),
+each with target 1e-5 on the relative estimate,
 one rotation `"euler:0.1,0.2,0.3"` and the rescaled reduction check, every
 level `"auto"`. For a loop-induced call requesting `"auto"` (where `"auto"`
 takes TIRust with the NinjaRS fallback) it is the **loop-induced default
 stack**: TIRust in binary64 at the target, then NinjaRS in binary64, then the
-double-double and 57-digit levels (`"auto"`: TIRust with the per-point NinjaRS
+double-double, 57- and 500-digit levels (`"auto"`: TIRust with the per-point NinjaRS
 fallback in their arithmetic). A point TIRust refuses at level 0 is recorded
 at the NinjaRS level. A call naming a backend (`reduction="ninjars"` or
 `"tirust"`) runs the default ladder on that one backend at every level (no
@@ -1602,8 +1633,15 @@ target 1e-5, the same rotation) in three ways:
 
 - the rescaled reduction check is added, because a rotation keeps every
   master integral's invariants and cannot see its own rounding;
-- the last level has 57 digits (pyAmpliCol's calibration carrier) instead of
-  1000 bits; set `VirtualRescueLevel("arbitrary", 300)` for gammaloop's;
+- arbitrary precision is two levels, 57 digits (pyAmpliCol's calibration
+  carrier) and 500 digits, instead of one at 1000 bits (set
+  `VirtualRescueLevel("arbitrary", 302)` for gammaloop's). The last level
+  serves what 57 digits gets wrong (points of a nearly vanishing box Gram
+  determinant: TIRust #40, NinjaRS #15, right at 100-150 digits); the 57-digit
+  level serves every other point that reaches arbitrary precision at a
+  fraction of the cost (one 500-digit evaluation costs 1.7 to 10 times one at
+  57 digits; on 200 HC05 `g g > x0 g g` points, 25 of the 27 that leave
+  double-double stop at 57: 770 s with the level, 1489 s without);
 - the target applies to pyAmpliCol's error estimate, which sums the deviations
   of every reduction lane with a safety factor of two, not to the spread of the
   rotated values.

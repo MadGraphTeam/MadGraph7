@@ -2144,7 +2144,7 @@ class StoredColumns:
                         (run[index], self.plan.results(run[index], wanted, group))
                         for run in runs
                     ],
-                    precision.unit_roundoff,
+                    precision.estimate_roundoff,
                     stability.reduction,
                     cross,
                 )

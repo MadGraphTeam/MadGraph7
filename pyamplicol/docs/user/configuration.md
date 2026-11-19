@@ -1924,7 +1924,7 @@ runtime = false          # --runtime: time per point and stage
 stability = true         # --stability (neither set: the runtime only)
 stability_points = 1000  # --stability-points: flat (RAMBO on diet) points (default 1000)
 n_core = 10              # --n_core / --n-core: worker processes of --stability only
-ground_truth = "double-double"  # --ground-truth: dd, arb (57 digits) or arb:DIGITS
+ground_truth = "double-double"  # --ground-truth: dd, arb (500 digits) or arb:DIGITS
 checked = false          # --checked: time the checked mode, not the optimistic pass
 
 [evaluation.phase_space]

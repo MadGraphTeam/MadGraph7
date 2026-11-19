@@ -2718,7 +2718,7 @@ class NativeExecutor:
                 out.append(result)
                 continue
             estimate = point_estimate(
-                reference, turned, stability, precision.unit_roundoff
+                reference, turned, stability, precision.estimate_roundoff
             )
             out.append(replace(result, stability=estimate))
         if failures:
