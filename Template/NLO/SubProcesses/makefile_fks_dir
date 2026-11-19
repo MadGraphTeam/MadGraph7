@@ -295,10 +295,10 @@ $(LIBDIR)aloha_object.mod: ../../Source/DHELAS/aloha_functions.f
 	@test -f ../../Source/DHELAS/aloha_object.mod || $(MAKE) -B -C ../../Source/DHELAS aloha_functions.o
 	cp -f ../../Source/DHELAS/aloha_object.mod $@
 
-# Offline reweighting uses the framed Born helper, but not the bridge's
-# virtual and real-ME wrappers. Keep their unresolved dependencies out of
-# that executable while retaining every helper reachable from sborn_frame.
-boost_to_frame.o: FFLAGS += -ffunction-sections
+# Offline reweighting uses the framed Born helper. Separate the other frame,
+# helicity and colour-linked routines so the native reweight link can drop
+# their references to the virtual, Sudakov and subtraction matrix elements.
+boost_to_frame.o born.o sborn_sf.o: FFLAGS += -ffunction-sections
 
 clean:
 	@rm -f *.o write_ajob_basic reweight_xsec_events madevent_* check_poles\
