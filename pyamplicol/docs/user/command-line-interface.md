@@ -1208,7 +1208,9 @@ without both values); `binary64_task`, `reference_task` (the reference's
 first evaluation: plain, or checked with one backend) and
 `reference_checked_task` (its checked re-run; null without one), indices
 into the table's `tasks` list of `[seconds, points]` of the task that
-evaluated the point (inside a batched call there is no per-sample time).
+evaluated the point (inside a batched call there is no per-sample time);
+`lane_rescue` (the point's lane rescue, e.g. `"reduction lanes rescued in
+double-double"`; null without one).
 Values, sectors, momenta and the reference are
 exact; the relative errors and scales carry 4 significant digits, the
 digits 3 decimals, the task seconds microseconds. Non-finite numbers are the

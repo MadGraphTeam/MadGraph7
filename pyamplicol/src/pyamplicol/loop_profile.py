@@ -4237,7 +4237,8 @@ def _sample_records(
     ``binary64_task``, ``reference_task`` (the reference's first
     evaluation: plain, or checked with one backend) and
     ``reference_checked_task`` (its checked re-run; null without one),
-    indices into ``tasks``.
+    indices into ``tasks``; ``lane_rescue`` (the point's lane rescue,
+    ``benchmarking.lane_rescue_reason``; null without one).
     Values, sectors and the reference are exact; the relative errors and
     scales carry 4 significant digits, the digits 3 decimals.
     ``progress(rows)`` as the rows are encoded."""
