@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
@@ -48,6 +49,7 @@ _U32 = np.dtype("<u4")
 _U64 = np.dtype("<u8")
 _I32 = np.dtype("<i4")
 _ALLOWED_DTYPES = frozenset(dtype.str for dtype in (_U8, _U32, _U64, _I32))
+_LOWER_SHA256: Final = re.compile(r"[0-9a-f]{64}")
 
 
 class RecurrenceColumnarInputError(ValueError):
@@ -2616,11 +2618,7 @@ def _nonempty_text(value: str, context: str) -> str:
 
 
 def _sha256_bytes(value: str, context: str) -> bytes:
-    if (
-        not isinstance(value, str)
-        or len(value) != 64
-        or any(character not in "0123456789abcdef" for character in value)
-    ):
+    if not isinstance(value, str) or _LOWER_SHA256.fullmatch(value) is None:
         raise RecurrenceColumnarInputError(f"{context} must be a lowercase SHA-256")
     return bytes.fromhex(value)
 

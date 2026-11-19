@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
@@ -123,7 +124,7 @@ _LC_COLOR_COMPONENT_OPERATIONS = frozenset(
         "close",
     }
 )
-_HEX = frozenset("0123456789abcdef")
+_LOWER_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 class RecurrenceTemplateError(ValueError):
@@ -184,11 +185,7 @@ def _digest(payload: object) -> str:
 
 
 def _require_sha256(name: str, value: object) -> str:
-    if (
-        not isinstance(value, str)
-        or len(value) != 64
-        or any(character not in _HEX for character in value)
-    ):
+    if not isinstance(value, str) or _LOWER_SHA256.fullmatch(value) is None:
         raise RecurrenceTemplateError(f"{name} must be a lowercase SHA-256")
     return value
 
