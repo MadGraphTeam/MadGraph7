@@ -378,7 +378,23 @@ impl PlanModel {
             )?;
         }
         derive::reserve("the loader's derivations need", bound.memory)?;
-        LoopProgramV4::from_file(self.file, policy)
+        // The families' parallel load (on the caller's pool) holds up to its
+        // window of families in flight beyond the sequential peak: probed
+        // too, and loaded sequentially when the allocator refuses it (the
+        // program is the same either way).
+        let window = super::family_window(super::pool_threads());
+        let window = if window > 0
+            && derive::reserve(
+                "the parallel load needs",
+                bound.in_flight_memory(window as u64),
+            )
+            .is_ok()
+        {
+            window
+        } else {
+            0
+        };
+        LoopProgramV4::from_file_with(self.file, policy, window)
     }
 
     /// [`Self::program`] without the probe of the derivations' peak (the
@@ -2157,7 +2173,10 @@ impl<'a> Reader<'a> {
         F: Fn(&mut Self, &mut T) -> RusticolResult<()> + Sync,
     {
         let threads = self.threads;
-        let chunk = len.div_ceil(8 * threads).max(1);
+        // A chunk holds at least the records below which a list decodes
+        // sequentially (PARALLEL_RECORDS): a large pool does not split a list
+        // into chunks too small to repay their cursors' states.
+        let chunk = len.div_ceil(8 * threads).max(PARALLEL_RECORDS);
         // Skip pass: every value of the section read, checked and charged
         // against the declaration before any record allocates, and the
         // cursors' state at each chunk's start.

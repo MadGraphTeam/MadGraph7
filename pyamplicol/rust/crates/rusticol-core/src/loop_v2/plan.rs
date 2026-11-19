@@ -2422,6 +2422,33 @@ fn choose_form(
     Ok((split, (fused_cost, split_cost)))
 }
 
+/// The threads of the pool the caller runs on (1 outside a pool: a load
+/// outside a pool is sequential).
+pub(super) fn pool_threads() -> usize {
+    if rayon::current_thread_index().is_some() {
+        rayon::current_num_threads()
+    } else {
+        1
+    }
+}
+
+/// The most families a parallel load on `threads` threads has in flight:
+/// one being derived and one waiting for the merge per worker (the
+/// caller merges); 0 for one thread.
+pub(super) fn family_window(threads: usize) -> usize {
+    2 * threads.saturating_sub(1)
+}
+
+/// Tests: every parallel load takes the pipeline with all its workers
+/// (`LoopProgramV4::pipeline`'s rule otherwise decides from the families'
+/// work). The program is the same either way.
+static FORCE_PIPELINE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[doc(hidden)]
+pub fn force_pipeline_for_tests(force: bool) {
+    FORCE_PIPELINE.store(force, std::sync::atomic::Ordering::Relaxed);
+}
+
 impl LoopProgramV4 {
     /// Parse and validate a plan exported by `plan_export.export_plan`,
     /// choosing kernel forms by gate G0's rule.
@@ -2475,7 +2502,17 @@ impl LoopProgramV4 {
         binary::PlanModel::from_json(json)?.program_unprobed(policy)
     }
 
-    fn from_file(mut file: PlanFile, policy: FormPolicy) -> RusticolResult<Self> {
+    fn from_file(file: PlanFile, policy: FormPolicy) -> RusticolResult<Self> {
+        Self::from_file_with(file, policy, 0)
+    }
+
+    /// [`Self::from_file`] with up to `window` families in flight in a
+    /// parallel load of the families ([`Self::pipeline`]; 0: sequential).
+    fn from_file_with(
+        mut file: PlanFile,
+        policy: FormPolicy,
+        window: usize,
+    ) -> RusticolResult<Self> {
         require(admitted_schema(file.schema), "unsupported plan schema")?;
         let amplitude = file.schema == AMPLITUDE_PLAN_SCHEMA;
         if amplitude {
@@ -2883,49 +2920,22 @@ impl LoopProgramV4 {
                 split_inputs: &mut split_inputs,
                 leaf_weights: &mut leaf_weights,
             };
-            // Inside a thread pool (the caller's bound: `LoopProgramV4::load`
-            // runs on the pool it is called on, sequentially outside one), the
-            // families are derived in parallel chunks, each worker recording
-            // its ids, and merged in family order ([`Recording::replay`]): the
-            // program is the sequential load's for any thread count. A chunk
-            // is a few families per thread (their derived tables live until
-            // merged).
-            let threads = if rayon::current_thread_index().is_some() {
-                rayon::current_num_threads()
-            } else {
-                1
-            };
-            let mut records = family_files.into_iter();
-            if threads <= 1 {
-                for f in records {
+            // Families in parallel on the caller's pool when the probe
+            // granted a window ([`Self::pipeline`]), else sequentially.
+            if window == 0 || family_files.len() < 2 {
+                for f in family_files {
                     order_count =
                         order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
                     families.push(Self::family(&f, &shared, &mut ids)?);
                 }
             } else {
-                use rayon::prelude::*;
-                let chunk = 2 * threads;
-                loop {
-                    let batch: Vec<FamilyFile> = records.by_ref().take(chunk).collect();
-                    if batch.is_empty() {
-                        break;
-                    }
-                    let derived: Vec<RusticolResult<(Family, Recording)>> = batch
-                        .par_iter()
-                        .map(|f| {
-                            let mut recording = Recording::default();
-                            Self::family(f, &shared, &mut recording)
-                                .map(|family| (family, recording))
-                        })
-                        .collect();
-                    for (f, derived) in batch.iter().zip(derived) {
-                        order_count =
-                            order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
-                        let (mut family, recording) = derived?;
-                        recording.replay(&mut family, &mut ids)?;
-                        families.push(family);
-                    }
-                }
+                order_count = order_count.max(Self::pipeline(
+                    family_files,
+                    window,
+                    &shared,
+                    &mut ids,
+                    &mut families,
+                )?);
             }
         }
         let leaf_weights = leaf_weights.values;
@@ -2997,6 +3007,211 @@ impl LoopProgramV4 {
         program.set_supports();
         program.gathers = Gathers::build(&program);
         Ok(program)
+    }
+
+    /// The families derived in parallel and merged in family order (an
+    /// ordered pipeline): worker loops on the caller's pool derive families
+    /// against a [`Recording`] of the ids they draw, into a reorder window of
+    /// at most `window` families started and not yet merged; the caller
+    /// replays each recording on the registries in family order as soon as
+    /// it is there ([`Recording::replay`]), so every id and shared list is
+    /// the sequential load's. The families' own work decides how many
+    /// workers run: the first family is derived and merged by the caller,
+    /// timing both, and as many workers derive at once as the derivation
+    /// takes replays (the running means' ratio, at least one, at most the
+    /// window's workers and the families left); the others wait on a
+    /// condition, idle. When a family derives faster than it replays, the
+    /// rest load sequentially. The first error in family order is the one
+    /// returned, and a later family's panic is raised only if the merge
+    /// reaches it (as sequentially). Returns the largest loop order + 1.
+    fn pipeline(
+        files: Vec<FamilyFile>,
+        window: usize,
+        shared: &Shared<'_>,
+        ids: &mut Registries<'_>,
+        families: &mut Vec<Family>,
+    ) -> RusticolResult<usize> {
+        use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+        use std::sync::{Condvar, Mutex};
+        use std::time::Instant;
+
+        let orders = |f: &FamilyFile| f.orders.iter().map(|&o| o + 1).max().unwrap_or(0);
+        let total = files.len();
+        let mut files = files.into_iter();
+        let mut order_count = 0;
+        // The first family on the caller: its derivation and replay times.
+        let first = files.next().expect("two families or more");
+        order_count = order_count.max(orders(&first));
+        let start = Instant::now();
+        let mut recording = Recording::default();
+        let mut family = Self::family(&first, shared, &mut recording)?;
+        let mut derive = start.elapsed().as_secs_f64();
+        drop(first);
+        let start = Instant::now();
+        recording.replay(&mut family, ids)?;
+        families.push(family);
+        let mut replay = start.elapsed().as_secs_f64();
+        let workers_most = (window / 2).max(1).min(total - 1);
+        // Workers for a derivation of `derive` s against replays of `replay` s.
+        let forced = FORCE_PIPELINE.load(std::sync::atomic::Ordering::Relaxed);
+        let wanted = |derive: f64, replay: f64| -> usize {
+            if forced || replay <= 0.0 {
+                return workers_most;
+            }
+            ((derive / replay).floor() as usize).clamp(1, workers_most)
+        };
+        if derive < replay && !forced {
+            for f in files {
+                order_count = order_count.max(orders(&f));
+                families.push(Self::family(&f, shared, ids)?);
+            }
+            return Ok(order_count);
+        }
+        type Derived = std::thread::Result<RusticolResult<(Family, Recording)>>;
+        struct State {
+            /// The next family to start (index into the rest).
+            next: usize,
+            /// The families merged so far (of the rest).
+            merged: usize,
+            /// Workers allowed to derive at once, and deriving now.
+            allowed: usize,
+            busy: usize,
+            /// No family is started any more (an error, or the end).
+            stop: bool,
+            /// Derived families waiting for the merge, by index.
+            done: BTreeMap<usize, (Derived, f64)>,
+        }
+        let rest: Vec<Mutex<Option<FamilyFile>>> = files.map(|f| Mutex::new(Some(f))).collect();
+        let count = rest.len();
+        let state = Mutex::new(State {
+            next: 0,
+            merged: 0,
+            allowed: wanted(derive, replay),
+            busy: 0,
+            stop: false,
+            done: BTreeMap::new(),
+        });
+        let (start_work, merge_work) = (Condvar::new(), Condvar::new());
+        let lock = || {
+            state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        };
+        let mut outcome: RusticolResult<()> = Ok(());
+        let mut panic = None;
+        rayon::scope(|scope| {
+            // A worker: starts the next family while the window and the
+            // allowed workers let it, else waits (asleep) for the merge.
+            let worker = |_: &rayon::Scope<'_>| {
+                loop {
+                    let index = {
+                        let mut st = lock();
+                        loop {
+                            if st.stop || st.next >= count {
+                                return;
+                            }
+                            if st.busy < st.allowed && st.next < st.merged + window {
+                                break;
+                            }
+                            st = start_work
+                                .wait(st)
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        }
+                        st.busy += 1;
+                        st.next += 1;
+                        st.next - 1
+                    };
+                    let f = rest[index]
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .take()
+                        .expect("a family is derived once");
+                    let start = Instant::now();
+                    let derived = catch_unwind(AssertUnwindSafe(|| {
+                        let mut recording = Recording::default();
+                        Self::family(&f, shared, &mut recording).map(|family| (family, recording))
+                    }));
+                    let seconds = start.elapsed().as_secs_f64();
+                    drop(f);
+                    let mut st = lock();
+                    st.busy -= 1;
+                    st.done.insert(index, (derived, seconds));
+                    merge_work.notify_one();
+                }
+            };
+            // Workers are started as the families' work allows more (never
+            // more than it uses: an idle worker waits, asleep).
+            let mut spawned = 0;
+            let mut spawn_to = |allowed: usize| {
+                while spawned < allowed {
+                    scope.spawn(worker);
+                    spawned += 1;
+                }
+            };
+            spawn_to(lock().allowed);
+            // The merge, in family order.
+            let mut merged = 1.0;
+            for index in 0..count {
+                let (derived, seconds) = {
+                    let mut st = lock();
+                    loop {
+                        if let Some(found) = st.done.remove(&index) {
+                            break found;
+                        }
+                        st = merge_work
+                            .wait(st)
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    }
+                };
+                let (mut family, recording) = match derived {
+                    Ok(Ok(found)) => found,
+                    Ok(Err(error)) => {
+                        outcome = Err(error);
+                        break;
+                    }
+                    Err(payload) => {
+                        panic = Some(payload);
+                        break;
+                    }
+                };
+                let start = Instant::now();
+                if let Err(error) = recording.replay(&mut family, ids) {
+                    outcome = Err(error);
+                    break;
+                }
+                families.push(family);
+                derive += seconds;
+                replay += start.elapsed().as_secs_f64();
+                merged += 1.0;
+                let allowed = wanted(derive / merged, replay / merged);
+                {
+                    let mut st = lock();
+                    st.merged = index + 1;
+                    let more = allowed > st.allowed;
+                    st.allowed = allowed;
+                    // The window moved by one family: one waiting worker may
+                    // start it (all, when more workers are allowed).
+                    if more {
+                        start_work.notify_all();
+                    } else {
+                        start_work.notify_one();
+                    }
+                }
+                spawn_to(allowed);
+            }
+            let mut st = lock();
+            st.stop = true;
+            start_work.notify_all();
+        });
+        if let Some(payload) = panic {
+            resume_unwind(payload);
+        }
+        outcome?;
+        // The orders of the families merged by the workers' records.
+        for family in families.iter() {
+            order_count = order_count.max(family.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
+        }
+        Ok(order_count)
     }
 
     fn family(f: &FamilyFile, shared: &Shared<'_>, ids: &mut impl Ids) -> RusticolResult<Family> {
