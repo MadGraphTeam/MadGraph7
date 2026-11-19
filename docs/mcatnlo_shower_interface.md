@@ -35,7 +35,7 @@ short-distance cross section. User documentation is in
 | Field | Meaning |
 |---|---|
 | `parton_shower` | shower of the MC counterterms; must match the run card |
-| `mcatnlo_delta` | MC@NLO-Delta: per-dipole starting scales in the LHE file |
+| `mcatnlo_delta` | MC@NLO-Delta: per-dipole starting scales in the LHE file (not with FxFx, see `docs/fxfx_delta.md`) |
 | `ickkw`, `ptj` | FxFx merging and its matrix-element cut |
 | `max_n_matched_jets` | minimum allowed FxFx `njmax`, from `proc_characteristics`; -1 if unknown in older files |
 | `qed_matching` | QED splittings are matched (`splitting_types` contains QED) |

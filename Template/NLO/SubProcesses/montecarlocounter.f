@@ -1689,8 +1689,8 @@ c     replaces each table ratio: the full exponent for a quark line and
 c     half the gluon's for each gluon line, as the table's entries. The
 c     PDF ratio R of each stopping line gains exp(C), which restores the
 c     PDF evolution from Z(t) < z < 1, outside the massless II bound
-c     Z = 1-r/2(sqrt(1+4/r)-1), r = t/mdip^2 (see "Cheap PDF boundary
-c     correction prototype" in docs/audits/delta_noemission). PYTHIA's
+c     Z = 1-r/2(sqrt(1+4/r)-1), r = t/mdip^2 (see docs/fxfx_delta.md,
+c     "Optional backward-ISR correction"). PYTHIA's
 c     ISR recoils against the other incoming parton, so IF connections
 c     carry the same scales and II mass as II ones. Returns -1 below the
 c     table's 1.01 GeV continuation, for other than (anti)proton beams,
