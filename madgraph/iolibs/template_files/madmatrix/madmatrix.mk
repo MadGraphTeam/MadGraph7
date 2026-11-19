@@ -289,6 +289,8 @@ ifeq ($(BACKEND),cuda)
   # Other NVidia-specific flags
   CUDA_OPTFLAGS = -lineinfo
   GPUFLAGS += $(CUDA_OPTFLAGS)
+  # Device code is optimised by ptxas, not by OPTFLAGS: -O1 here, to test whether it shortens the CUDA compile
+  GPUFLAGS += -Xptxas -O1
 
   # NVCC version
   ###GPUCC_VERSION = $(shell $(GPUCC) --version | grep 'Cuda compilation tools' | cut -d' ' -f5 | cut -d, -f1)
