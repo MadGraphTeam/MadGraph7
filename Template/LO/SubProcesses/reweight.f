@@ -1100,6 +1100,19 @@ c               if (iqjetstore(njets,iconfig).ne.i) fail=.true.
          enddo
          if(njets.ne.njetstore(iconfig)) fail=.true.
          if (fail) then
+c     The graph of this channel may not exist for the flavours of this event
+c     (e.g. the s-channel gluon of a merged q q~ pair for a u d~ row). It
+c     cannot be used to recluster, and cluster would then join legs that it
+c     cannot combine: the event has no weight in this channel, as when
+c     cluster fails with chcluster above.
+            if(.not.flavor_allows_graph(iconfig,flavor)) then
+               if (btest(mlevel,3))
+     $              write(*,*) 'Jets fail and graph ',iconfig,
+     $              ' does not exist for these flavours'
+               chcluster=chclusold
+               setclscales=.false.
+               return
+            endif
             if (igraphs(1).eq.iconfig) then
                open(unit=26,file='../../../error',status='unknown',err=999)
                write(*,*) 'Error: Failed despite same graph: ',iconfig
