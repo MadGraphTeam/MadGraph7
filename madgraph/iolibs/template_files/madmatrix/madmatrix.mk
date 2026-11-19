@@ -26,7 +26,7 @@ ifeq ($(HELINL),)
   override HELINL = 0
 endif
 
-# Set the default FASTMATH choice (0: IEEE-strict, i.e. no fast-math and no FP contraction)
+# Set the default FASTMATH choice (0: IEEE-strict, i.e. no fast-math and no FP contraction; auto: opt-in, CUDA only, see SigmaKin.o)
 ifeq ($(FASTMATH),)
   override FASTMATH = 1
 endif
@@ -66,8 +66,10 @@ override SUPPORTED_FASTMATHS = 0 1 auto
 ifneq ($(words $(filter $(FASTMATH), $(SUPPORTED_FASTMATHS))),1)
   $(error Invalid fastmath FASTMATH='$(FASTMATH)': supported fastmaths are $(foreach fastmath,$(SUPPORTED_FASTMATHS),'$(fastmath)'))
 endif
-ifeq ($(FASTMATH)$(filter-out cuda,$(BACKEND)),auto$(BACKEND))
-  $(error FASTMATH='auto' is implemented for BACKEND=cuda only)
+ifeq ($(FASTMATH),auto)
+  ifneq ($(BACKEND),cuda)
+    $(error FASTMATH='auto' is implemented for BACKEND=cuda only)
+  endif
 endif
 
 # Stop immediately if BACKEND=cuda but nvcc is missing
@@ -372,7 +374,7 @@ else ifeq ($(BACKEND),hip)
   # Other AMD-specific flags
   GPUFLAGS += -target x86_64-linux-gnu -DHIP_PLATFORM=amd
 
-  # Fast math (is -DHIP_FAST_MATH equivalent to -ffast-math?)
+  # -DHIP_FAST_MATH is read only on hipcc's NVIDIA path, no-op on AMD: FASTMATH=1 is the clang default (FMA contraction on).
   ifeq ($(FASTMATH),0)
     GPUFLAGS += -ffp-contract=off
   else
@@ -965,7 +967,7 @@ endif
 # FASTMATH=auto: SigmaKin.o is built with -fmad and with -use_fast_math. The approximate div/sqrt of
 # the latter make calculate_jamps spill more, which costs more than they save once its stack grows by
 # more than FASTMATH_STACK_GROWTH bytes (fast-math benchmarks on L40S and H100): then -fmad is kept.
-ifeq ($(FASTMATH),auto)
+ifeq ($(FASTMATH)$(BACKEND),autocuda)
 FASTMATH_STACK_GROWTH ?= 128
 override JAMPS_STACK = $(CUDA_HOME)/bin/cuobjdump -res-usage $(1) | awk '/Function .*calculate_jamps/ { getline; sub(/.*STACK:/, ""); if ($$1 + 0 > max) max = $$1 + 0 } END { print max + 0 }'
 $(BUILDDIR)/SigmaKin.o : SigmaKin.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG)
