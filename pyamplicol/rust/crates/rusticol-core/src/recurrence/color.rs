@@ -675,7 +675,7 @@ impl DynamicLCColorState {
 #[derive(Clone, Debug, Default)]
 pub struct DynamicLCColorStateInterner {
     states: Vec<DynamicLCColorState>,
-    ids: HashMap<DynamicLCColorState, DynamicLCColorStateId>,
+    ids: HashMap<DynamicLCColorState, DynamicLCColorStateId, crate::fx_hash::FxBuildHasher>,
 }
 
 impl DynamicLCColorStateInterner {

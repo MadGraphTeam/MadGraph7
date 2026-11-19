@@ -472,7 +472,7 @@ struct PendingCurrent {
 /// Canonical order is owned exclusively by the `currents` vector and ordered
 /// contribution maps. This index is only cloned, queried, inserted into, and
 /// pruned; its randomized iteration order is never observed.
-type TransientCurrentIdIndex = HashMap<CurrentCoreKey, u32>;
+type TransientCurrentIdIndex = HashMap<CurrentCoreKey, u32, crate::fx_hash::FxBuildHasher>;
 
 /// Exact runtime-value identity after erasing only dynamic LC colour.
 ///
@@ -2790,12 +2790,25 @@ impl SectorPosting {
     }
 }
 
+/// Colour contraction template, witness index, parent colour states and reversal mask.
+type ColorCompositionKey = (u32, usize, [DynamicLCColorStateId; 2], u8);
+
+/// Memoised witness application and target acceptance of one parent colour pair.
+#[derive(Clone, Copy, Debug)]
+enum ColorComposition {
+    NoResult,
+    Pruned,
+    Accepted(DynamicLCColorStateId),
+}
+
 #[derive(Debug)]
 struct MaterializedColorTargets {
     collect_telemetry: bool,
     non_trace_fragment_sectors: HashMap<Box<[u32]>, SectorPosting>,
     trace_component_sectors: HashMap<Box<[u32]>, SectorPosting>,
     accepted_component_forests: RefCell<HashSet<Box<[LCColorComponent]>>>,
+    compositions:
+        RefCell<HashMap<ColorCompositionKey, ColorComposition, crate::fx_hash::FxBuildHasher>>,
     acceptance_cache_hit_count: Cell<usize>,
     acceptance_cache_miss_count: Cell<usize>,
     acceptance_accept_count: Cell<usize>,
@@ -2968,12 +2981,21 @@ impl MaterializedColorTargets {
                 sector_count,
             ),
             accepted_component_forests: RefCell::new(HashSet::new()),
+            compositions: RefCell::default(),
             acceptance_cache_hit_count: Cell::new(0),
             acceptance_cache_miss_count: Cell::new(0),
             acceptance_accept_count: Cell::new(0),
             acceptance_reject_count: Cell::new(0),
             fragment_hash_lookup_count: Cell::new(0),
         })
+    }
+
+    fn composition(&self, key: &ColorCompositionKey) -> Option<ColorComposition> {
+        self.compositions.borrow().get(key).copied()
+    }
+
+    fn remember_composition(&self, key: ColorCompositionKey, composition: ColorComposition) {
+        self.compositions.borrow_mut().insert(key, composition);
     }
 
     fn accepts(&self, state: &DynamicLCColorState) -> bool {
@@ -5140,7 +5162,7 @@ fn build_recurrence_program_impl(
     let materialized_sectors = materialized_sector_ids(strategy, process_input, &replay_targets);
     let mut color_states = DynamicLCColorStateInterner::default();
     let mut currents = Vec::<PendingCurrent>::new();
-    let mut current_ids = TransientCurrentIdIndex::new();
+    let mut current_ids = TransientCurrentIdIndex::default();
     let mut currents_by_size = vec![Vec::<u32>::new(); process_input.external_legs.len()];
     let mut reflection_certificates = Vec::<PendingReflectionCertificate>::new();
 
@@ -6971,8 +6993,17 @@ fn add_transition_contributions(
         None
     };
     let mut result_core_fields = None;
+    let mut realized_pairing_rules: Option<BTreeSet<u32>> = None;
 
-    for prepared_witness in prepared.witnesses.iter() {
+    let parent_color_ids = [
+        currents[parent_ids[0] as usize]
+            .key
+            .dynamic_lc_color_state_id(),
+        currents[parent_ids[1] as usize]
+            .key
+            .dynamic_lc_color_state_id(),
+    ];
+    for (witness_index, prepared_witness) in prepared.witnesses.iter().enumerate() {
         let witness_row = prepared_witness.row;
         if witness_row.left_shape_string_id != parent_colors[0].output_color_shape_id()
             || witness_row.right_shape_string_id != parent_colors[1].output_color_shape_id()
@@ -6986,43 +7017,71 @@ fn add_transition_contributions(
         )?;
         let witness = &prepared_witness.witness;
         for reversal_mask in reversal_masks.iter().copied() {
-            let mut variant_colors = parent_colors.clone();
             let mut reversal_factor = ExactComplexRational::ONE;
             for index in 0..2 {
                 if reversal_mask & (1 << index) == 0 {
                     continue;
                 }
-                variant_colors[index] = variant_colors[index].reversed()?;
                 reversal_factor = reversal_factor.checked_mul(
                     parent_reflections[index]
                         .phase()
                         .expect("reversal mask requires a proven parent phase"),
                 )?;
             }
-            let Some(result_color) = witness.apply(&variant_colors[0], &variant_colors[1])? else {
-                continue;
+            // Composition and target acceptance depend only on this key: memoised per lane.
+            let composition_key = (
+                transition.color_contraction_template_id,
+                witness_index,
+                parent_color_ids,
+                reversal_mask,
+            );
+            let composition = if let Some(composition) = color_targets.composition(&composition_key)
+            {
+                composition
+            } else {
+                let mut variant_colors = parent_colors.clone();
+                for index in 0..2 {
+                    if reversal_mask & (1 << index) != 0 {
+                        variant_colors[index] = variant_colors[index].reversed()?;
+                    }
+                }
+                let composition = match witness.apply(&variant_colors[0], &variant_colors[1])? {
+                    None => ColorComposition::NoResult,
+                    Some(result_color)
+                        if color_targets.accepts_up_to_reflection(&result_color)? =>
+                    {
+                        ColorComposition::Accepted(color_states.intern(result_color)?)
+                    }
+                    Some(_) => ColorComposition::Pruned,
+                };
+                color_targets.remember_composition(composition_key, composition);
+                composition
             };
+            if matches!(composition, ColorComposition::NoResult) {
+                continue;
+            }
             checked_diagnostic_add(
                 &mut diagnostics.color_result_count,
                 1,
                 "recurrence color-result count",
             )?;
-            if !color_targets.accepts_up_to_reflection(&result_color)? {
+            let ColorComposition::Accepted(result_color_id) = composition else {
                 checked_diagnostic_add(
                     &mut diagnostics.color_target_prune_count,
                     1,
                     "recurrence color-target prune count",
                 )?;
                 continue;
-            }
+            };
             let result_reflection = current_reflection_candidate(
-                &result_color,
+                color_states
+                    .get(result_color_id)
+                    .ok_or_else(|| invalid("interned result color state disappeared"))?,
                 &parent_reflections,
                 local_reflection_proof,
             )?;
             #[cfg(feature = "on-the-fly-test-support")]
             let diagnostic_result_reflection = result_reflection.clone();
-            let result_color_id = color_states.intern(result_color)?;
             if merged_support_source_slots.is_none() {
                 *merged_support_source_slots = Some(merged_disjoint_support(
                     currents[parent_ids[0] as usize].key.support_source_slots(),
@@ -7065,18 +7124,24 @@ fn add_transition_contributions(
                 CurrentSourceBinding::None,
                 propagator_template_id,
             )?;
-            let realized_pairing_rule_ids = realized_pairing_rules_for_transition(
-                compatible_pairing_rules_for_current(
-                    pairing_catalog,
-                    template,
-                    transition.result_state_template_id,
-                    key.support_source_slots(),
-                )?,
-                [
-                    &currents[parent_ids[0] as usize].realized_pairing_rule_ids,
-                    &currents[parent_ids[1] as usize].realized_pairing_rule_ids,
-                ],
-            );
+            // Constant per call (result state, merged support, parents): computed once.
+            if realized_pairing_rules.is_none() {
+                realized_pairing_rules = Some(realized_pairing_rules_for_transition(
+                    compatible_pairing_rules_for_current(
+                        pairing_catalog,
+                        template,
+                        transition.result_state_template_id,
+                        key.support_source_slots(),
+                    )?,
+                    [
+                        &currents[parent_ids[0] as usize].realized_pairing_rule_ids,
+                        &currents[parent_ids[1] as usize].realized_pairing_rule_ids,
+                    ],
+                ));
+            }
+            let realized_pairing_rule_ids = realized_pairing_rules
+                .clone()
+                .expect("pairing rules were initialized above");
             // Pattern-resolved templates never merge currents of different pairing rules.
             let key = if pairing_catalog.is_some_and(|catalog| catalog.pattern_resolved()) {
                 key.with_pattern_mask(Some(realized_pairing_rule_ids.iter().copied().collect()))
@@ -13084,7 +13149,7 @@ mod tests {
             if reverse_index_insertion {
                 insertion_order.reverse();
             }
-            let mut current_ids = TransientCurrentIdIndex::new();
+            let mut current_ids = TransientCurrentIdIndex::default();
             for current_id in insertion_order {
                 assert!(
                     current_ids
@@ -15118,7 +15183,7 @@ mod tests {
             .intern(DynamicLCColorState::new(0, None, vec![]).unwrap())
             .unwrap();
         let mut currents = Vec::new();
-        let mut current_ids = TransientCurrentIdIndex::new();
+        let mut current_ids = TransientCurrentIdIndex::default();
         let mut currents_by_size = vec![Vec::new(); external_count];
         for slot in 0..external_count as u32 {
             let key = CurrentCoreKey::new(
