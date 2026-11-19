@@ -342,6 +342,18 @@ Integrand::Integrand(
                         own_grid ? "" : pdf2_prefix
                     );
                 }
+            } else if (auto eva = std::get_if<EvaFlux>(&pdf_grid)) {
+                if (pdf_grid2) {
+                    throw std::invalid_argument(
+                        "pdf_grid2 cannot be combined with EVA beams"
+                    );
+                }
+                int beam = static_cast<int>(i);
+                _eva = true;
+                _pdfs.at(i) = PartonDensity(*eva, pid_vec, beam);
+                // the two lepton beams differ (charge, polarisation, energy),
+                // so mirrored events need the other beam's density
+                _pdfs_swapped.at(i) = PartonDensity(*eva, pid_vec, 1 - beam);
             } else {
                 if (pdf_grid2) {
                     throw std::invalid_argument(
@@ -356,6 +368,21 @@ Integrand::Integrand(
                 _pdfs_swapped.at(i) = PartonDensity(custom_pdf, pid_vec, 1 - beam);
             }
         }
+    }
+    for (auto& xs : diff_xs) {
+        if (xs.eva() != _eva) {
+            throw std::invalid_argument(
+                "EVA beams need EVA differential cross sections, and vice versa"
+            );
+        }
+    }
+    if (_eva && energy_scale && energy_scale->is_mlm()) {
+        throw std::invalid_argument("EVA beams cannot be combined with MLM merging");
+    }
+    if (_eva && !(diff_xs.at(0).has_pdf(0) && diff_xs.at(0).has_pdf(1))) {
+        throw std::invalid_argument(
+            "EVA differential cross sections take both beam densities (CachedPdf)"
+        );
     }
     if (energy_scale && energy_scale->mlm_pdf_reweighting() &&
         !std::holds_alternative<std::monostate>(pdf_grid)) {
@@ -593,7 +620,7 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     ret.push_back("x1_acc", acc_float);
     ret.push_back("x2_acc", acc_float);
     ret.push_back("flavor_id", acc_int);
-    if (_mapping_chan_weights && _mapping.mirror_beams()) {
+    if ((_mapping_chan_weights || _eva) && _mapping.mirror_beams()) {
         ret.push_back("mirror_index_acc", acc_int);
     }
     ret.push_back("weight_after_cuts", acc_float);
@@ -782,6 +809,16 @@ NamedVector<Value> Integrand::build_channel_part(
     );
     weights_before_cuts.push_back(mapping_result["det"]);
     Value momenta = mapping_result["momenta"];
+    if (_eva) {
+        // The mapping hands out massless incoming momenta. EVA's W and Z are
+        // massive: on their mass shell, with the massive flux, as madevent.
+        auto& masses = _mapping.incoming_masses();
+        if (masses.size() == 2 && (masses.at(0) > 0. || masses.at(1) > 0.)) {
+            auto on_shell = fb.incoming_on_shell(momenta, masses);
+            momenta = on_shell.at(0);
+            weights_before_cuts.push_back(on_shell.at(1));
+        }
+    }
     Value x0 = mapping_result["x1"];
     Value x1 = mapping_result["x2"];
     // A dressed-lepton mapping also hands back 1-x. It has to: it samples x
@@ -1038,7 +1075,7 @@ NamedVector<Value> Integrand::build_channel_part(
     out.push_back("x1_acc", x_acc.at(0));
     out.push_back("x2_acc", x_acc.at(1));
     out.push_back("flavor_id", flavor_id);
-    if (_mapping_chan_weights && _mapping.mirror_beams()) {
+    if ((_mapping_chan_weights || _eva) && _mapping.mirror_beams()) {
         out.push_back("mirror_index_acc", fb.batch_gather(indices_acc, mirror_index));
     }
     out.push_back("weight_after_cuts", weight_after_cuts);
@@ -1418,6 +1455,16 @@ NamedVector<Value> Integrand::build_common_part(
             }
         }
         xs_args.push_back(alpha);
+        if (_diff_xs.at(0).eva()) {
+            // the densities of the helicity the matrix element picks
+            xs_args.push_back(fact_scales_acc.at(0));
+            xs_args.push_back(fact_scales_acc.at(1));
+            xs_args.push_back(
+                _mapping.mirror_beams()
+                    ? args.at("mirror_index_acc")
+                    : fb.full({static_cast<me_int_t>(0), fb.batch_size({momenta_acc})})
+            );
+        }
         return xs_args;
     };
     ValueVec xs_args = make_xs_args(pdfs_acc, alpha_qcd_acc);

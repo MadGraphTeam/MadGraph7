@@ -3172,6 +3172,90 @@ interpolate_pdf:
   vectorized: False
   desc: "Evaluates parton densities by bicubic interpolation of a log-x / log-Q2 grid, and outside of it by the continuation extrapolator of LHAPDF (zero above the last x knot). See @ref PartonDensity."
 
+incoming_on_shell:
+  inputs:
+    - name: p_ext
+      type: [float, n, 4]
+      desc: "external momenta, the two incoming ones first, along the beam axis"
+    - name: masses
+      type: [float, single, 2]
+      desc: "masses of the two incoming particles"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the same momenta with the incoming ones on their mass shell"
+    - name: flux_ratio
+      type: [float]
+      desc: "s_hat / sqrt(lambda(s_hat, m1^2, m2^2)), zero below threshold"
+  vectorized: False
+  desc: "Puts the two incoming momenta on their mass shell, with the same sum (so the same s_hat and rapidity) and the same directions, and returns the ratio of the massive flux 1/(2 sqrt(lambda)) to the massless 1/(2 s_hat), as madevent's genps.f has them for massive partons. Below the threshold (m1 + m2)^2 the momenta are unchanged and the ratio is zero."
+
+eva_density:
+  inputs:
+    - name: x
+      type: [float]
+      desc: "momentum fraction"
+    - name: q
+      type: [float]
+      desc: "factorization scale"
+    - name: helicity
+      type: [int]
+      desc: "vector-boson helicity (-1, 0, 1), any other value for the sum over helicities"
+    - name: config
+      type: [int]
+      desc: "row of params: the (vector boson, parent lepton, beam) combination; < 0 for none"
+    - name: params
+      type: [float, single, n, 11]
+      desc: "EVA parameter rows, see EvaFlux::parameters"
+  outputs:
+    - name: pdf
+      type: [float]
+      desc: "x f(x, q) of that helicity"
+  vectorized: False
+  desc: "Effective-vector-boson density of a W, Z or photon in an electron or muon (madevent's pdlabel eva). See @ref EvaFlux."
+
+eva_leg_density:
+  inputs:
+    - name: x
+      type: [float]
+      desc: "momentum fraction of the leg"
+    - name: q
+      type: [float]
+      desc: "factorization scale of the leg"
+    - name: flavor
+      type: [int]
+      desc: "flavour index of the event"
+    - name: helicity
+      type: [int]
+      desc: "helicity row picked by the matrix element"
+    - name: mirror
+      type: [int]
+      desc: "1 if the leg comes from the other beam"
+    - name: row_offsets
+      type: [int, single, a]
+      desc: "per flavour, the first entry of its rows in leg_helicities"
+    - name: row_counts
+      type: [int, single, a]
+      desc: "per flavour, its number of helicity rows"
+    - name: leg_helicities
+      type: [int, single, b]
+      desc: "per flavour and row, the helicity of the leg"
+    - name: configs
+      type: [int, single, c]
+      desc: "per flavour and orientation (2 f + mirror), the row of params, < 0 for none"
+    - name: helicity_counts
+      type: [float, single, a]
+      desc: "per flavour, the number of helicity states of the leg"
+    - name: params
+      type: [float, single, n, 11]
+      desc: "EVA parameter rows, see EvaFlux::parameters"
+  outputs:
+    - name: pdf
+      type: [float]
+      desc: "x n f_lambda(x, q) for the helicity lambda of the leg in the picked row"
+  vectorized: False
+  desc: "The EVA density of an incoming leg for the helicity its matrix element picked, times the leg's number of helicity states, so that the helicity-averaged matrix element times both gives an unbiased estimate of the helicity sum. See @ref DifferentialCrossSection."
+
 interpolate_alpha_s:
   inputs:
     - name: q

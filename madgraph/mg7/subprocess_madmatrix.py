@@ -8,7 +8,8 @@ from dataclasses import dataclass, field
 from typing import Literal, NamedTuple, TYPE_CHECKING
 
 from madgraph.mg7 import lepton_density as lepton_density_module
-from madgraph.mg7.common import logger, me_parameters, mlm_clustering_history, ms
+from madgraph.mg7.common import (interference_helicities_summed, logger, me_parameters,
+                                 mlm_clustering_history, ms)
 from madgraph.iolibs.template_files.mg7.custom_function_loader import load_surrogate
 from madgraph.mg7.observables import _flavor_options, build_observable, clean_pids, decay_products, observable_pids, pid_is_qcd
 
@@ -1335,7 +1336,8 @@ class MadgraphSubprocess:
             # both u- and d-type rows
             discrete_flavor = ms.DiscreteSampler(
                 [flavor_count], f"{prefix}.discrete_flavor",
-                [] if self.process.leptonic else [0]
+                # EVA beams have densities, so a prior
+                [] if self.process.leptonic and not self.process.eva else [0]
             )
             for context in self.process.contexts:
                 discrete_flavor.initialize_globals(context)
@@ -1370,7 +1372,66 @@ class MadgraphSubprocess:
         hadronic PDF -- but its beams do *not* keep their full energy, so the
         mapping still has to sample x. The two senses of the word part here.
         """
-        return self.process.leptonic and self.process.lepton_density is None
+        return (self.process.leptonic and self.process.lepton_density is None
+                and not self.process.eva)
+
+    def eva_flux(self):
+        """The EVA beams (ms.EvaFlux) of an EVA run, None otherwise, after
+        checking that this subprocess can have them: two incoming W, Z or
+        photons, a matrix element that picks the helicity of the event (no
+        [surrogate]), and a helicity that means something (not the helicity
+        sum of an interference)."""
+        incoming = clean_pids(self.meta["incoming"])
+        if not self.process.eva:
+            if (self.ps_leptonic and not self.process.is_decay
+                    and any(abs(pid) in (23, 24) for pid in incoming)
+                    and not getattr(self.process, "_warned_monochromatic_v", False)):
+                # a legitimate setup, but rarely the one meant
+                self.process._warned_monochromatic_v = True
+                logger.warning(
+                    "%s > %s runs with monochromatic W/Z beams of %g and %g "
+                    "GeV: for W/Z from lepton beams (madevent's pdlabel = eva) "
+                    "set beam.eva = true", self.meta["incoming"],
+                    self.meta["outgoing"], *self.process.beam_energies)
+            return None
+        options = [flav["options"][0] for flav in self.meta["flavors"]]
+        if self.unmerged_meta is not None:
+            options = [
+                self.unmerged_meta[self.meta["subprocesses"][flav["subprocess"]]]
+                ["flavors"][flav["flavor"]]["options"][0]
+                for flav in self.meta["flavors"]]
+        if len(incoming) != 2 or any(
+                abs(pid) not in (22, 23, 24) for option in options
+                for pid in option[:2]):
+            raise ValueError(
+                "beam.eva: subprocess %s > %s has an incoming particle that is "
+                "not a W, Z or photon; EVA beams need vector bosons on both "
+                "incoming legs (set beam.eva = false for other processes)"
+                % (self.meta["incoming"], self.meta["outgoing"]))
+        if self.process.surrogate is not None:
+            raise NotImplementedError(
+                "beam.eva cannot be combined with a [surrogate]: the EVA "
+                "densities need the helicity the full matrix element picks")
+        members = [self.meta] if self.unmerged_meta is None else [
+            self.unmerged_meta[index] for index in self.meta["subprocesses"]]
+        if interference_helicities_summed(self.process.run_card) and any(
+                meta.get("interference") for meta in members):
+            raise NotImplementedError(
+                "beam.eva with [generation] interference_helicity = \"summed\": "
+                "the EVA densities need the helicity of the event; use \"exact\"")
+        api = next((me for me in self.matrix_elements if me is not None), None)
+        return self.process.eva_flux(api)
+
+    def eva_helicities(self) -> list:
+        """Per flavour of the integrand, the helicity table of its matrix
+        element (the rows its helicity index counts, the incoming legs first)."""
+        tables = []
+        for flav in self.meta["flavors"]:
+            meta = self.meta
+            if self.unmerged_meta is not None:
+                meta = self.unmerged_meta[self.meta["subprocesses"][flav["subprocess"]]]
+            tables.append([[int(h) for h in row] for row in meta["helicities"]])
+        return tables
 
     @property
     def lepton_sampling_power(self) -> float:
@@ -1508,6 +1569,8 @@ class MadgraphSubprocess:
 
         cross_sections = []
         dressed = self.process.lepton_density
+        eva = self.eva_flux()
+        eva_helicities = self.eva_helicities() if eva is not None else []
         for mat in self.integrand_matrix_elements():
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()
@@ -1517,6 +1580,12 @@ class MadgraphSubprocess:
                 # lepton_density.pdf_factor for why beam 2 stays empty
                 pdf_arg = ms.CachedPdf()
                 pdf_arg2 = None
+            if eva is not None:
+                # the integrand computes the helicity sums of the densities
+                # (flavour prior, pdf1/pdf2), the cross section the densities
+                # of the helicities its matrix element picks
+                pdf_grid = eva
+                pdf_arg = pdf_arg2 = ms.CachedPdf()
             cross_sections.append(
                 ms.DifferentialCrossSection(
                     matrix_element=mat,
@@ -1526,7 +1595,8 @@ class MadgraphSubprocess:
                     cm_energy=self.process.e_cm,
                     running_coupling=None,
                     energy_scale=ms.CachedScale(),
-                    pid_options=[],
+                    # EVA reads the incoming vector bosons of each flavour
+                    pid_options=flavors if eva is not None else [],
                     pdf1=pdf_arg,
                     pdf2=pdf_arg2,
                     input_momentum_fraction=True,
@@ -1535,6 +1605,8 @@ class MadgraphSubprocess:
                     return_matrix_element=(
                         self.has_weighting_steps() or self.process.store_matrix_elements
                     ),
+                    eva=eva,
+                    eva_helicities=eva_helicities,
                 )
             )
         partial_weights = self.process.systematics_enabled()

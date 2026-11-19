@@ -12,7 +12,9 @@ DifferentialCrossSection::DifferentialCrossSection(
     const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf2,
     bool input_momentum_fraction,
     bool decay,
-    bool return_matrix_element
+    bool return_matrix_element,
+    const std::optional<EvaFlux>& eva,
+    const nested_vector3<me_int_t>& eva_helicities
 ) :
     FunctionGenerator(
         "DifferentialCrossSection",
@@ -48,6 +50,11 @@ DifferentialCrossSection::DifferentialCrossSection(
                     );
                 }
                 arg_types.push_back("alpha_s", batch_float);
+            }
+            if (eva) {
+                arg_types.push_back("fact_scale1", batch_float);
+                arg_types.push_back("fact_scale2", batch_float);
+                arg_types.push_back("mirror_index", batch_int);
             }
             return arg_types;
         }(),
@@ -100,6 +107,25 @@ DifferentialCrossSection::DifferentialCrossSection(
     };
     init_pdf(pdf1, 0);
     init_pdf(pdf2, 1);
+    if (eva) {
+        if (decay || !input_momentum_fraction ||
+            !std::holds_alternative<CachedPdf>(pdf1) ||
+            !std::holds_alternative<CachedPdf>(pdf2) ||
+            !std::holds_alternative<CachedScale>(energy_scale)) {
+            throw std::invalid_argument(
+                "EVA needs a collision with input momentum fractions, CachedPdf "
+                "on both beams and a CachedScale"
+            );
+        }
+        if (std::find(
+                outputs.begin(), outputs.end(), MatrixElement::helicity_index_out
+            ) == outputs.end()) {
+            throw std::invalid_argument(
+                "EVA needs a matrix element that returns its helicity index"
+            );
+        }
+        _eva_tables = EvaLegTables(eva.value(), pid_options, eva_helicities);
+    }
 }
 
 NamedVector<Value> DifferentialCrossSection::build_function_impl(
@@ -160,6 +186,9 @@ NamedVector<Value> DifferentialCrossSection::build_function_impl(
                 : _running_coupling.value().build_function(fb, {scales.at(0)}).at(0)
         );
     }
+    if (std::holds_alternative<CachedScale>(_energy_scale)) {
+        ++arg_index; // alpha_s
+    }
 
     auto me_result = _matrix_element.build_function(fb, matrix_args);
     auto search = std::find(
@@ -172,6 +201,33 @@ NamedVector<Value> DifferentialCrossSection::build_function_impl(
     }
     std::size_t me_index = search - _matrix_element.outputs().begin();
     Value raw_matrix_element = me_result.at(me_index);
+    if (_eva_tables) {
+        // the densities of the helicities the matrix element picked
+        auto& tables = _eva_tables.value();
+        auto& me_outputs = _matrix_element.outputs();
+        std::size_t hel_index =
+            std::find(
+                me_outputs.begin(), me_outputs.end(), MatrixElement::helicity_index_out
+            ) -
+            me_outputs.begin();
+        Value helicity = me_result.at(hel_index);
+        Value mirror = args.at(arg_index + 2);
+        for (std::size_t i = 0; i < 2; ++i) {
+            pdf_outputs.at(i) = fb.eva_leg_density(
+                x1x2.at(i),
+                args.at(arg_index + i),
+                pdf_flavor_id,
+                helicity,
+                mirror,
+                tables.row_offsets.at(i),
+                tables.row_counts.at(i),
+                tables.leg_helicities.at(i),
+                tables.configs.at(i),
+                tables.helicity_counts.at(i),
+                tables.params
+            );
+        }
+    }
     if (_decay) {
         // dGamma = |M|^2 dPhi_n / (2 M), in GeV; no GeV^-2 -> pb conversion
         // since a width is not a cross section.

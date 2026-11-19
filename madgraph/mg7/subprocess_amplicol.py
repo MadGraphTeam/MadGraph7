@@ -489,6 +489,13 @@ class AmplicolSubprocess(MadgraphSubprocess):
                 "dressed-lepton beams (beam.lepton_density) are not supported "
                 "with the AmpliCol output; use the madmatrix one"
             )
+        if self.process.eva:
+            # the same for the effective vector bosons, whose densities need
+            # the helicity the matrix element picks
+            raise NotImplementedError(
+                "EVA beams (beam.eva) are not supported with the AmpliCol "
+                "output; use the madmatrix one"
+            )
         flavors = self.meta["flavors"]
         particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
         mappings = []
