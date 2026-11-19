@@ -25,6 +25,7 @@ from pyamplicol.config import (
     RunConfig,
 )
 from pyamplicol.config.models import ON_FAILURE, reduction_request
+from pyamplicol.config.models import lane_rescue as lane_rescue_value
 from pyamplicol.config.models import reduction_target as reduction_target_value
 from pyamplicol.config.models import reduction_unchecked as reduction_unchecked_value
 from pyamplicol.reporting import ProgressSink
@@ -546,6 +547,7 @@ class Runtime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
     ) -> Runtime:
         """Load one process by stable ID, alias ID, or exact expression.
 
@@ -573,7 +575,11 @@ class Runtime:
         the reduction backends' own acceptance and refusal checks (TIRust's
         gates and method choice as method selection without the acceptance
         pass, plain PV at gate 0 as its last resort; NinjaRS with zero
-        stability thresholds; m-lit lit-unchecked).
+        stability thresholds; m-lit lit-unchecked); ``lane_rescue`` (a bool;
+        default True) is the lane rescue of every call that sets none: True
+        reduces a reduction lane the backend refuses again in a higher
+        carrier (docs/user/python-api.md, "Lane rescue of refused reduction
+        lanes"), False leaves it to fail its point.
         """
 
         path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
@@ -597,6 +603,8 @@ class Runtime:
             options["reduction_unchecked"] = reduction_unchecked_value(
                 reduction_unchecked
             )
+        if lane_rescue is not None:
+            options["lane_rescue"] = lane_rescue_value(lane_rescue)
         options.update(
             _kinematics_options(kinematics_improvement, kinematics_improvement_binary64)
         )
@@ -698,6 +706,27 @@ class Runtime:
                 "runtime backend has inconsistent contribution metadata"
             )
         return cast(Literal["tree", "virtual", "loop-induced"], kind)
+
+    def _call_precision(self, precision: int | None, arithmetic: str | None) -> int:
+        """The decimal digits of one call: ``precision`` when given (never
+        overridden), else the runtime's default; on a virtual runtime an
+        explicit ``arithmetic="arbitrary"`` without digits that the load did
+        not set (its load-time arithmetic is not arbitrary precision) takes
+        the default arbitrary-precision digits (500, ``loops.v2.reduction.
+        default_arbitrary_digits``, USER 2026-11-18), as ``Runtime.load(...,
+        arithmetic="arbitrary")`` does. A tree runtime keeps its default."""
+
+        if precision is not None:
+            return _validate_precision(precision)
+        if (
+            self._virtual
+            and arithmetic == "arbitrary"
+            and getattr(self._backend, "default_arithmetic", None) != "arbitrary"
+        ):
+            from pyamplicol.loops.v2.reduction import default_arbitrary_digits
+
+            return default_arbitrary_digits()
+        return _validate_precision(getattr(self._backend, "default_precision", 16))
 
     @property
     def _virtual(self) -> bool:
@@ -820,6 +849,7 @@ class Runtime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         """Return tree values or a typed Born-loop interference result.
 
@@ -879,7 +909,11 @@ class Runtime:
         checks stay their own settings. The requested and effective backends,
         the reason, the fallback, the target and the unchecked setting are
         in every lane diagnostic (``VirtualLaneDiagnostic.reduction``; a point
-        the fallback served records its own).
+        the fallback served records its own). ``lane_rescue`` (default: the
+        runtime's, else True) is the call's lane rescue: a reduction lane the
+        backend refuses is reduced again in a higher carrier, in the checked
+        and the unchecked mode (``VirtualLaneDiagnostic.lane_rescue`` records
+        it); False leaves it to fail its point.
         """
 
         helicity_ids = _selector_ids(
@@ -908,11 +942,7 @@ class Runtime:
             raise ValueError(
                 "color_flows and color_flow_by_point are mutually exclusive"
             )
-        precision = _validate_precision(
-            getattr(self._backend, "default_precision", 16)
-            if precision is None
-            else precision
-        )
+        precision = self._call_precision(precision, arithmetic)
         contribution = self.contribution_kind
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
@@ -924,6 +954,7 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+                lane_rescue,
             )
         )
         options.update(
@@ -1031,9 +1062,11 @@ class Runtime:
         reduction: ReductionBackend | str | None = None,
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
+        lane_rescue: bool | None = None,
     ) -> dict[str, object]:
         """Pole-selection, stability-check, reduction-backend, target
-        accuracy and unchecked-reduction options, forwarded only when set."""
+        accuracy, unchecked-reduction and lane-rescue options, forwarded only
+        when set."""
         options: dict[str, object] = {}
         if poles is not None:
             options["poles"] = pole_selection(poles)
@@ -1049,10 +1082,12 @@ class Runtime:
             options["reduction_unchecked"] = reduction_unchecked_value(
                 reduction_unchecked
             )
+        if lane_rescue is not None:
+            options["lane_rescue"] = lane_rescue_value(lane_rescue)
         if options and not self._virtual:
             raise CompatibilityError(
-                "poles, stability_checks, reduction_target, reduction_unchecked "
-                "and reduction are virtual options"
+                "poles, stability_checks, reduction_target, reduction_unchecked, "
+                "lane_rescue and reduction are virtual options"
             )
         return options
 
@@ -1167,6 +1202,7 @@ class Runtime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         return self.evaluate(
             momenta,
@@ -1185,6 +1221,7 @@ class Runtime:
             reduction_unchecked=reduction_unchecked,
             kinematics_improvement=kinematics_improvement,
             kinematics_improvement_binary64=kinematics_improvement_binary64,
+            lane_rescue=lane_rescue,
         )
 
     @_collector.paused
@@ -1207,6 +1244,7 @@ class Runtime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
         color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
@@ -1229,11 +1267,7 @@ class Runtime:
         helicity's value); other runtimes refuse it.
         """
 
-        precision = _validate_precision(
-            getattr(self._backend, "default_precision", 16)
-            if precision is None
-            else precision
-        )
+        precision = self._call_precision(precision, arithmetic)
         contribution = self.contribution_kind
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
@@ -1245,6 +1279,7 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+                lane_rescue,
             )
         )
         options.update(
@@ -1303,6 +1338,7 @@ class Runtime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
         color_resolution: Literal["contracted", "amplitude-basis"] | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
@@ -1323,6 +1359,7 @@ class Runtime:
             kinematics_improvement=kinematics_improvement,
             kinematics_improvement_binary64=kinematics_improvement_binary64,
             color_resolution=color_resolution,
+            lane_rescue=lane_rescue,
         )
 
     @_collector.paused
@@ -1386,11 +1423,7 @@ class Runtime:
             raise CompatibilityError(
                 "runtime backend does not support squared coupling-order partials"
             )
-        precision = _validate_precision(
-            getattr(self._backend, "default_precision", 16)
-            if precision is None
-            else precision
-        )
+        precision = self._call_precision(precision, None)
         result = operation(
             momenta,
             helicities=_selector_ids(
@@ -1605,6 +1638,7 @@ class Runtime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
     ) -> tuple[_pyamplicol.CorrelatedValue, ...] | VirtualEvaluation:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
@@ -1634,6 +1668,7 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+                lane_rescue,
             )
         )
         options.update(
@@ -1650,11 +1685,7 @@ class Runtime:
                 helicities=_selector_ids(
                     helicities, expected_type=HelicityConfiguration, name="helicity"
                 ),
-                precision=_validate_precision(
-                    getattr(self._backend, "default_precision", 16)
-                    if precision is None
-                    else precision
-                ),
+                precision=self._call_precision(precision, arithmetic),
                 **options,
             )
             if not isinstance(value, VirtualEvaluation) or not value.correlated:
@@ -1753,6 +1784,7 @@ class Runtime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
     ) -> (
         dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]
         | dict[str, VirtualEvaluation]
@@ -1784,6 +1816,7 @@ class Runtime:
                 reduction,
                 reduction_target,
                 reduction_unchecked,
+                lane_rescue,
             )
         )
         options.update(
@@ -1800,11 +1833,7 @@ class Runtime:
                 helicities=_selector_ids(
                     helicities, expected_type=HelicityConfiguration, name="helicity"
                 ),
-                precision=_validate_precision(
-                    getattr(self._backend, "default_precision", 16)
-                    if precision is None
-                    else precision
-                ),
+                precision=self._call_precision(precision, arithmetic),
                 **options,
             )
             if (

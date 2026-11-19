@@ -34,6 +34,7 @@ from pyamplicol.loops.model_cms import (
 )
 from pyamplicol.loops.order_names import CouplingOrderNameError, CouplingOrderNames
 from pyamplicol.loops.orders import canonical_order
+from pyamplicol.loops.v2.stability import relative_text
 from pyamplicol.models.loop_color_declaration import (
     resolve_loop_color_declaration,
     source_loop_color_declaration,
@@ -2560,7 +2561,8 @@ def _revalidate_v2_point(
             raise GenerationError(
                 f"{miss}; the binary64 virtual of {name!r} ({label}) has no "
                 "admissible stability estimate ("
-                f"{None if estimate is None else estimate.relative!r}, at most "
+                f"{'None' if estimate is None else relative_text(estimate.relative)}"
+                ", at most "
                 f"{_BINARY64_ESTIMATE_CAP:g})"
             ) from miss
         try:
@@ -2576,10 +2578,12 @@ def _revalidate_v2_point(
         except GenerationError as error:
             raise GenerationError(
                 f"{error} in binary64 against {DOUBLE_DOUBLE_DIGITS} digits, "
-                f"beyond its estimate {estimate.relative:.3g}, after: {miss}"
+                f"beyond its estimate {relative_text(estimate.relative, '.3g')}, "
+                f"after: {miss}"
             ) from miss
         record.append(
-            f"{label}: binary64 {deviation:.2g} (estimate {estimate.relative:.2g}),"
+            f"{label}: binary64 {deviation:.2g} "
+            f"(estimate {relative_text(estimate.relative, '.2g')}),"
             f" double-double {double_double:.2g}"
         )
     _LOGGER.warning(

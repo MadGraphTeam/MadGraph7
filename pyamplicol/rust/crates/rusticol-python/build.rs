@@ -5,7 +5,12 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+/// Copy the staged SDK and register every directory and file it contains as a
+/// rerun trigger: the staging path and the native-input digest do not move
+/// when only an SDK header or the archive changes, so without these Cargo
+/// would keep the previous copy in OUT_DIR and the wheel would ship it.
 fn copy_tree(source: &Path, destination: &Path) -> io::Result<()> {
+    println!("cargo:rerun-if-changed={}", source.display());
     fs::create_dir_all(destination)?;
     for entry in fs::read_dir(source)? {
         let entry = entry?;
@@ -20,6 +25,7 @@ fn copy_tree(source: &Path, destination: &Path) -> io::Result<()> {
         if file_type.is_dir() {
             copy_tree(&entry.path(), &target)?;
         } else if file_type.is_file() {
+            println!("cargo:rerun-if-changed={}", entry.path().display());
             fs::copy(entry.path(), target)?;
         } else {
             return Err(io::Error::new(

@@ -114,6 +114,7 @@ from pyamplicol.api.virtual_results import (
     VirtualEvaluation,
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
+    VirtualLaneRescue,
     VirtualPoleParts,
     VirtualReduction,
     VirtualRescuePolicy,
@@ -121,9 +122,11 @@ from pyamplicol.api.virtual_results import (
     VirtualStabilityEstimate,
     best_effort_detail,
     computes_poles,
+    rescue_text,
     splits_poles,
 )
 from pyamplicol.config import PoleSelection, R2Strategy
+from pyamplicol.config.models import lane_rescue as lane_rescue_value
 from pyamplicol.config.models import reduction_request
 from pyamplicol.config.models import reduction_target as reduction_target_value
 from pyamplicol.config.models import reduction_unchecked as reduction_unchecked_value
@@ -1348,6 +1351,24 @@ def admit(native: Any, root: Path, process_id: str) -> dict[str, Any]:
         raise ArtifactError(f"plan v4 admission failed: {error}") from error
 
 
+def admit_programs(
+    native: Any, root: Path, process_id: str
+) -> tuple[dict[str, Any], Any, Any]:
+    """``admit``, also returning the programs the admission loaded (the
+    plan's and its certified-scaleless companion's, or None): native
+    ``V2AdmittedPlan``s an executor takes instead of loading the plan member
+    again (``native_process.AdmittedPlan``), so a loaded process reads and
+    derives its plan once."""
+
+    try:
+        described, plan, scaleless = native.admit_v2_artifact_program(
+            str(root), process_id
+        )
+    except ValueError as error:
+        raise ArtifactError(f"plan v4 admission failed: {error}") from error
+    return cast(dict[str, Any], json.loads(described)), plan, scaleless
+
+
 def _select(manifest: Any, process: str | None) -> tuple[Mapping[str, Any], Any]:
     """The selected stored process record and, for a process it serves
     through a leg mapping (``mapping``: a permutation alias or a process-group
@@ -1634,6 +1655,7 @@ class V2VirtualRuntime:
         reduction_unchecked: bool | None = None,
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
+        lane_rescue: bool | None = None,
     ) -> None:
         from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
         from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
@@ -1641,6 +1663,7 @@ class V2VirtualRuntime:
         from pyamplicol.models.loading import CompiledModel
         from pyamplicol.runtime.virtual import v2_r2_strategy
 
+        from .native_process import AdmittedPlan
         from .rescue import rescue_policy
 
         # A default policy owns the carriers: refused with load-time ones.
@@ -1648,6 +1671,18 @@ class V2VirtualRuntime:
             stability, arithmetic=arithmetic, precision=precision
         )
         self._default_r2 = v2_r2_strategy(r2_strategy)
+        # The load's own request (a process member is loaded with it) and the
+        # digits that select the load-time arithmetic for a call naming none:
+        # the load's digits, else binary64's 16 (the convention before the
+        # default arbitrary digits; ``_carrier``).
+        self._load_request = (_arithmetic(arithmetic), precision)
+        self._carrier_digits = 16 if precision is None else _digits(precision)
+        if precision is None and _arithmetic(arithmetic) == "arbitrary":
+            # Arbitrary precision without digits: the default arbitrary-
+            # precision digits (500, USER 2026-11-18); binary64's 16 else.
+            from .reduction import default_arbitrary_digits
+
+            precision = default_arbitrary_digits()
         self.default_precision = 16 if precision is None else _digits(precision)
         self.default_arithmetic = _arithmetic(arithmetic) or (
             "double" if self.default_precision == 16 else "arbitrary"
@@ -1664,7 +1699,14 @@ class V2VirtualRuntime:
         selected, group_member = _select(manifest, process)
         process_id = str(selected["id"])
         native = load_loop_native()
-        admission = admit(native, root, process_id)
+        # The admitted plan program is kept for the executors, which take it
+        # instead of loading the plan member again (one load per process).
+        # The certified-scaleless companion's is not: only the "uv" and "ir"
+        # pole selections run it, and its executor loads it on their first
+        # call, as before (it would stay resident otherwise: 7 gluons
+        # +0.18 GiB after a poles="all" point).
+        admission, plan, _companion = admit_programs(native, root, process_id)
+        del _companion
         execution = _json_payload(manifest, f"processes/{process_id}/execution.json")
         physics = _json_payload(manifest, str(selected["physics_path"]))
         model_payload = _json_payload(manifest, "model/compiled-model.json")
@@ -1704,7 +1746,10 @@ class V2VirtualRuntime:
         runtime = root / "processes" / process_id / str(execution["runtime_path"])
         # File-backed (M-FINAL MF-8G-2 item 2): the plans and binary tree
         # programs stay in the PACBIN, read by the native executors.
-        self._native_process = load_native_process(runtime)
+        self._native_process = replace(
+            load_native_process(runtime), admitted=AdmittedPlan(plan)
+        )
+        del plan
         # A loop-induced process stores no observable columns: its
         # observables are quadratic forms on the amplitude vector
         # (``induced_observables``).
@@ -1793,6 +1838,11 @@ class V2VirtualRuntime:
             None
             if reduction_target is None
             else reduction_target_value(reduction_target)
+        )
+        # The lane rescue of a call that sets none (USER 2026-11-18; None:
+        # the native policy's default, on).
+        self._lane_rescue = (
+            None if lane_rescue is None else lane_rescue_value(lane_rescue)
         )
         # The unchecked setting of a call that sets none (m-lit lit-unchecked;
         # None: the native policy's default, off).
@@ -1985,8 +2035,8 @@ class V2VirtualRuntime:
                     found,
                     member=self._member,
                     mapping=self._mapping,
-                    arithmetic=self.default_arithmetic,
-                    precision=self.default_precision,
+                    arithmetic=self._load_request[0] or self.default_arithmetic,
+                    precision=self._load_request[1],
                 )
                 runtime.set_model_parameters(self._parameters)
                 # The kinematics improvement's targets: the masses this
@@ -2209,14 +2259,15 @@ class V2VirtualRuntime:
         self, arithmetic: str | None, precision: int | None
     ) -> tuple[str, Any]:
         """(public arithmetic, v2 ``Precision``) of one call: an explicit
-        arithmetic, else the load-time default at the default precision, else
+        arithmetic, else the load-time default at the digits that select it
+        (the load's, 16 when it named none: ``_carrier_digits``), else
         binary64 at 16 digits and arbitrary precision otherwise."""
 
         from .assemble import Precision
 
         digits = self.default_precision if precision is None else _digits(precision)
         carrier = _arithmetic(arithmetic) or (
-            self.default_arithmetic if digits == self.default_precision else None
+            self.default_arithmetic if digits == self._carrier_digits else None
         )
         carrier = carrier or ("double" if digits == 16 else "arbitrary")
         if carrier == "double":
@@ -2225,7 +2276,30 @@ class V2VirtualRuntime:
             return carrier, Precision.double_double()
         return carrier, Precision.arbitrary(digits)
 
-    def evaluate(
+    def _lane_rescue_of(self, chosen: object) -> bool:
+        """A call's lane rescue: its own (``lane_rescue=``), else the
+        runtime's (``Runtime.load``), else the native policy's default
+        (``reduction.default_lane_rescue``: on)."""
+
+        from .reduction import default_lane_rescue
+
+        if chosen is not None:
+            return lane_rescue_value(chosen)
+        return default_lane_rescue() if self._lane_rescue is None else self._lane_rescue
+
+    def evaluate(self, momenta: Momenta, **options: Any) -> VirtualEvaluation:
+        """``_evaluate`` (the virtual of every point) with the call's lane
+        rescue (``lane_rescue``: the call's, else the runtime's, else on;
+        ``reduction.lane_rescue``)."""
+
+        from .reduction import lane_rescue
+
+        chosen = options.pop("lane_rescue", None)
+        on = self._lane_rescue_of(chosen)
+        with lane_rescue(on):
+            return self._evaluate(momenta, **options)
+
+    def _evaluate(
         self,
         momenta: Momenta,
         *,
@@ -2760,6 +2834,8 @@ class V2VirtualRuntime:
 
         from pyamplicol.runtime.virtual import v2_public_estimate
 
+        from .reduction import rescued_checks
+
         with_poles = computes_poles(poles)
         bits = _precision_bits(carrier, setting.digits)
         detail = "accuracy is estimated only by the requested stability checks"
@@ -2858,13 +2934,27 @@ class V2VirtualRuntime:
             estimates.append(estimate)
             parts.append(self._pole_parts(result) if splits_poles(poles) else None)
             best = None if own is None else own.best_effort
+            rescue = (
+                VirtualLaneRescue.of(result.lane_rescue) if result.lane_rescue else None
+            )
+            # A rescued point names its lane rescue (review B2), as the
+            # observables runtime's diagnostics do.
+            text = (
+                detail
+                if rescue is None
+                # The clause on the estimate only when the rescaled check was
+                # added (review m-a: not with a reduction check of the call's).
+                else detail
+                + "; "
+                + rescue_text(rescue, rescued_checks(checks) is not None)
+            )
             diagnostics.append(
                 VirtualLaneDiagnostic(
                     "success" if best is None else "best-effort",
                     arithmetic,
                     bits,
                     False,
-                    detail if best is None else best_effort_detail(best),
+                    text if best is None else best_effort_detail(best),
                     failures=(
                         ()
                         if best is None
@@ -2877,6 +2967,7 @@ class V2VirtualRuntime:
                     primary_color_contraction=contraction,
                     reduction=(served or {}).get(index, reduction),
                     finiteness=result.finiteness,
+                    lane_rescue=rescue,
                 )
             )
         return VirtualEvaluation(
@@ -2980,6 +3071,8 @@ class V2VirtualRuntime:
 
         target = options.pop("reduction_target", None)
         unchecked = options.pop("reduction_unchecked", None)
+        chosen = options.pop("lane_rescue", None)
+        rescue = self._lane_rescue_of(chosen)
         kinematics = self._kinematics(
             options.pop("kinematics_improvement", None),
             options.pop("kinematics_improvement_binary64", None),
@@ -2997,11 +3090,14 @@ class V2VirtualRuntime:
             unchecked,
         )
         operation = getattr(self._observable_runtime(), name)
-        return operation(
-            *args,
-            reductions=choices,
-            **self._observable_options(precision, arithmetic, options),
-        )
+        from .reduction import lane_rescue
+
+        with lane_rescue(rescue):
+            return operation(
+                *args,
+                reductions=choices,
+                **self._observable_options(precision, arithmetic, options),
+            )
 
     def evaluate_resolved(
         self,
@@ -3104,9 +3200,75 @@ class V2VirtualRuntime:
             if self._observables is not None:
                 self._observables.set_model_parameters(parameters)
 
+    def prepare(
+        self,
+        *,
+        arithmetic: str | None = None,
+        precision: int | None = None,
+        reduction: str = "auto",
+        unchecked: bool = False,
+        poles: str | bool = "all",
+    ) -> None:
+        """Build most of what the first evaluation in a carrier
+        (``arithmetic`` and ``precision`` as for ``evaluate``) with
+        ``reduction`` builds lazily, without evaluating a point (the warm
+        entry, ``V2Executor.warm``): the carrier's native executor and tree
+        runtime, the families' walk data, the reduction backend and, through
+        one synthetic lane per (propagators, rank) class, what its first
+        reductions build (TIRust: its plans and workspaces; NinjaRS: its engine
+        of each class its lanes reach by the plan, ``runtime::warm_classes``,
+        in double-double and arbitrary precision the generic engine with the
+        cut expansions its first evaluation builds), in the ``unchecked``
+        mode of the calls to come (the binary64 engine keeps one per mode).
+
+        Left to the first call that needs it: a NinjaRS lane whose top
+        coefficients vanish at its point falls into a lower class, built then;
+        in binary64 the fast engine's exact fallback (the generic engine of
+        the lanes at its absolute thresholds) is built on its first such lane.
+        ``reduction`` is "ninjars" or "tirust", or "auto": every backend that
+        both the artifact admits and the native module serves in the carrier
+        (an "auto" call may run either). ``poles`` "uv" or "ir" also prepares
+        the certified-scaleless companion those selections run. Values are
+        unchanged; ``clear`` drops what it built. A backend the native module
+        does not serve in the carrier is ``ReductionUnavailable``."""
+
+        from .reduction import BACKENDS, native_backends
+
+        carrier, setting = self._carrier(arithmetic, precision)
+        served = native_backends(self._native)
+        if reduction == "auto":
+            admitted = BACKENDS if self._admitted is None else self._admitted
+            backends = [
+                name for name in sorted(admitted) if carrier in served.get(name, ())
+            ]
+        elif reduction in BACKENDS:
+            if carrier not in served.get(reduction, ()):
+                raise ReductionUnavailable(
+                    f"reduction {reduction!r} is not built into this native "
+                    f"module for the {carrier} carrier"
+                )
+            backends = [reduction]
+        else:
+            raise ValueError(
+                f"reduction must be 'auto' or one of {sorted(BACKENDS)}; "
+                f"got {reduction!r}"
+            )
+        with self._lock:
+            for backend in backends:
+                self._executor.prepare(
+                    setting,
+                    backend,
+                    unchecked=bool(unchecked),
+                    scaleless=poles in ("uv", "ir"),
+                )
+
     def clear(self) -> None:
         """Drop the native executors (and their master caches)."""
         with self._lock:
+            # The admitted plan program is released: the next executor loads
+            # the plan member (``AdmittedPlan.release``).
+            if self._native_process.admitted is not None:
+                self._native_process.admitted.release()
             self._executor = self._native_process.executor(
                 self._native, externals=self._externals
             )

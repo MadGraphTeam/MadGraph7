@@ -47,7 +47,9 @@ aligns Symbolica with the application's shared core and uses:
   symbolica-dev/symbolica `community` (main `238dc613`, the author's
   state-omitting evaluator saves, plus his community-only commits; see
   `dependencies/README.md`).
-- TIRust `2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1` (branch `symbolica-community-2`: main
+- TIRust `1c130a81` (main `a8dba684` + PR #43, MPFR rounded at the
+  working precision in the direct engine; `a8dba684` = `2b9ba961` + PRs #41 and #42;
+  `2b9ba961` = branch `symbolica-community-2`: main
   `a5d4afbf`, PR #35 and the move to Symbolica community, re-pinned; with per-row evaluation instead of the batch
   evaluator, on 49dc836e's direct-engine fix for plan variants at exactly
   degenerate kinematics and TIRust's scoped Symbolica library key), behind

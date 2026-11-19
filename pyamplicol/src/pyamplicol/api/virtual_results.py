@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from itertools import pairwise
@@ -22,10 +22,11 @@ from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
 from pyamplicol.loops.v2.poles import ORIGINS
 from pyamplicol.loops.v2.stability import (
-    DEFAULT_RESCUE,
     RESCUE_ROTATION,
     Rotation,
     StabilityChecks,
+    default_rescue,
+    relative_text,
 )
 from pyamplicol.loops.v2.stability import default_rotation as _default_rotation
 from pyamplicol.models.base import CouplingOrders
@@ -110,7 +111,9 @@ class VirtualFailureDiagnostic:
 
 @dataclass(frozen=True, slots=True)
 class VirtualArithmeticSpec:
-    """Explicit carrier; decimal precision applies only to arbitrary arithmetic."""
+    """Explicit carrier; decimal precision applies only to arbitrary arithmetic,
+    None there taking the default arbitrary-precision digits (500,
+    ``loops.v2.reduction.default_arbitrary_digits``)."""
 
     arithmetic: Literal["double", "double-double", "arbitrary"]
     precision: int | None = None
@@ -119,6 +122,8 @@ class VirtualArithmeticSpec:
         if self.arithmetic not in {"double", "double-double", "arbitrary"}:
             raise ValueError("unknown virtual arithmetic")
         if self.arithmetic == "arbitrary":
+            if self.precision is None:
+                object.__setattr__(self, "precision", _default_digits())
             if type(self.precision) is not int or self.precision <= 0:
                 raise ValueError(
                     "arbitrary arithmetic requires positive decimal precision"
@@ -292,7 +297,11 @@ class VirtualStabilityEstimate:
     for a loop-induced result the pre-cancellation scale of its amplitudes,
     m-lit PLAN §2.a.8), and ``scale`` the largest E / S over them: the
     accuracy against the size of what cancelled (the ``"scale"`` metric of
-    a :class:`VirtualRescueLevel`). A value with ``|value| <= E`` is zero
+    a :class:`VirtualRescueLevel`). In arbitrary precision every ratio here
+    is formed from exponent-safe sizes and rounded last (below binary64's
+    range: 0.0, above it: inf); ``absolute`` and ``magnitude`` themselves are
+    binary64 floats, 0.0 where E or S lies below binary64's range (beyond
+    about 300 digits). A value with ``|value| <= E`` is zero
     within the estimate (m-lit Q13: zeros are numerical, never declared by
     a physics rule). For a loop-induced result
     (``contribution="loop-induced"``) the pole estimates ``single_pole`` and
@@ -448,9 +457,12 @@ def best_effort_detail(record: VirtualBestEffort) -> str:
     if record.uncertainty is None:
         tail = "no uncertainty could be estimated"
     else:
-        tail = f"relative uncertainty {record.uncertainty:.2e} ({where[record.source]})"
+        tail = (
+            f"relative uncertainty {relative_text(record.uncertainty)} "
+            f"({where[record.source]})"
+        )
     if record.backend_deviation is not None:
-        tail += f"; backend deviation {record.backend_deviation:.2e}"
+        tail += f"; backend deviation {relative_text(record.backend_deviation)}"
     if record.gram_conditioning is not None:
         tail += f"; Gram conditioning {record.gram_conditioning:.2e}"
     return f"{head}; {tail}; refusal in failures / --json"
@@ -566,6 +578,16 @@ def _carrier_bits(arithmetic: str, precision: int | None) -> int:
     return math.ceil(cast(int, precision) * math.log2(10))
 
 
+def _default_digits() -> int:
+    """The default arbitrary-precision digits (the native policy's one
+    definition, ``loops.v2.reduction.default_arbitrary_digits``; read when a
+    record is built, not at import)."""
+
+    from pyamplicol.loops.v2.reduction import default_arbitrary_digits
+
+    return default_arbitrary_digits()
+
+
 def _default_target() -> float:
     """A level's default target: the call's default target accuracy (m-lit F3
     (a), the native policy's one definition, ``loops.v2.reduction.
@@ -634,7 +656,9 @@ class VirtualRescueLevel:
     reduction: Literal["auto", "ninjars", "tirust"] = "auto"
 
     def __post_init__(self) -> None:
-        VirtualArithmeticSpec(self.arithmetic, self.precision)
+        spec = VirtualArithmeticSpec(self.arithmetic, self.precision)
+        # Arbitrary precision without digits: the default (500).
+        object.__setattr__(self, "precision", spec.precision)
         # The one validator of every reduction request (lit-api).
         object.__setattr__(self, "reduction", reduction_request(self.reduction))
         if self.reduction_check not in REDUCTION_CHECKS:
@@ -678,7 +702,7 @@ class VirtualRescueLevel:
 def _default_levels() -> tuple[VirtualRescueLevel, ...]:
     return tuple(
         VirtualRescueLevel(cast(Any, arithmetic), digits)
-        for arithmetic, digits in DEFAULT_RESCUE
+        for arithmetic, digits in default_rescue()
     )
 
 
@@ -695,7 +719,9 @@ class VirtualRescuePolicy:
 
     Level 0 evaluates the whole batch. A point that fails (also in one of its
     rotated evaluations) or misses the level's target is evaluated again at
-    the next level from its original exact inputs (no value is promoted); an
+    the next level from its original exact inputs (no value is promoted,
+    except the refused lanes' binary64 coefficients, lifted exactly into the
+    lane rescue's higher-carrier reduction inside a level); an
     accepted point is never evaluated again. At the last level a point that
     evaluates keeps its value, with the target marked as not met; a point
     that fails at every level is a failed lane (raised under
@@ -703,14 +729,16 @@ class VirtualRescuePolicy:
     the level reached and every attempt.
 
     The default ``VirtualRescuePolicy()`` runs binary64, then double-double,
-    then 57-digit arbitrary precision, each with the default target accuracy
+    then arbitrary precision at 57 digits and at the default
+    arbitrary-precision digits (500, ``loops.v2.reduction.
+    default_arbitrary_digits``), each with the default target accuracy
     (1e-5, ``loops.v2.reduction.default_target``) on the relative estimate,
     one rotation ``"euler:0.1,0.2,0.3"`` and the rescaled reduction
-    check (``loops.v2.stability.DEFAULT_RESCUE``), every level ``"auto"``.
+    check (``loops.v2.stability.default_rescue``), every level ``"auto"``.
     For a loop-induced call whose ``"auto"`` takes TIRust with the NinjaRS
     fallback (``loops.v2.rescue.default_stack``) it is the loop-induced
     default stack: TIRust binary64 at the target, then NinjaRS binary64, then
-    the double-double and 57-digit levels (``"auto"``: TIRust with the
+    the double-double, 57- and 500-digit levels (``"auto"``: TIRust with the
     per-point NinjaRS fallback at their carrier). A call naming a backend
     runs the default ladder on that backend at every level.
     """
@@ -947,6 +975,104 @@ class VirtualVerificationDiagnostic:
     detail: str
 
 
+def rescue_text(rescue: VirtualLaneRescue, added: bool) -> str:
+    """A lane diagnostic's text of its lane rescue (the "detail" column):
+    "lane rescue: N lanes in <carrier>, ..." (and the moments); when the
+    rescaled reduction-direction check was ADDED to the call's checks
+    (``added``: ``reduction.rescued_checks`` of them is not None) also that
+    the point's estimate includes it, the reason it may list a check the
+    call did not ask for (review B2, m-a)."""
+
+    def count(n: int, noun: str) -> str:
+        return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+    parts = [f"{count(n, 'lane')} in {c}" for c, n in rescue.lanes]
+    parts += [f"{count(n, 'term-scale moment')} in {c}" for c, n in rescue.moments]
+    return (
+        "lane rescue: "
+        + ", ".join(parts)
+        + (
+            " (its estimate includes the rescaled reduction-direction check)"
+            if added
+            else ""
+        )
+    )
+
+
+# The prefix of a term-scale moment's carrier in the merged per-carrier
+# counts of a point (``plan_export.point_rescued``; ``VirtualLaneRescue.of``).
+MOMENTS = "moments:"
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualLaneRescue:
+    """The lane rescue of one point (USER 2026-11-18; docs/user/
+    python-api.md, "Lane rescue"): reduction lanes (one family's
+    integrals in one Laurent column) that the backend refused in the
+    evaluation's carrier and whose REDUCTION alone was redone in a higher
+    carrier, from the same coefficients lifted exactly, the result rounded
+    back into the evaluation's sum. ``lanes`` gives per carrier
+    (``"double-double"``, ``"arbitrary"``) the lanes it served, counted
+    over the point's evaluations (the reference and its rotated
+    evaluations). ``moments`` gives the same for the term scale's moments
+    of a loop-induced checked call (the unit-numerator reductions behind its
+    estimate's scale, counted apart from the lanes; review m3). The point's
+    stability estimate covers the mixed total: a rescued lane is not
+    certified by itself."""
+
+    lanes: tuple[tuple[str, int], ...]
+    moments: tuple[tuple[str, int], ...] = ()
+
+    def __post_init__(self) -> None:
+        def counts(value: object, name: str) -> tuple[tuple[str, int], ...]:
+            found = tuple(
+                (str(carrier), int(count))
+                for carrier, count in cast(Iterable[tuple[str, int]], value)
+            )
+            if any(
+                carrier not in {"double-double", "arbitrary"} or count < 1
+                for carrier, count in found
+            ):
+                raise ValueError(
+                    f"a lane rescue's {name} name double-double or arbitrary with "
+                    "at least one each"
+                )
+            return found
+
+        lanes = counts(self.lanes, "lanes")
+        moments = counts(self.moments, "moments")
+        if not lanes and not moments:
+            raise ValueError("a lane rescue serves at least one lane or moment")
+        object.__setattr__(self, "lanes", lanes)
+        object.__setattr__(self, "moments", moments)
+
+    @classmethod
+    def of(cls, counts: Iterable[tuple[str, int]]) -> VirtualLaneRescue:
+        """The record of a point's merged per-carrier counts
+        (``plan_export.point_rescued``: a moment's carrier prefixed
+        ``"moments:"``)."""
+
+        lanes = [(c, n) for c, n in counts if not c.startswith(MOMENTS)]
+        moments = [(c[len(MOMENTS) :], n) for c, n in counts if c.startswith(MOMENTS)]
+        return cls(tuple(lanes), tuple(moments))
+
+    @property
+    def count(self) -> int:
+        """The rescued lanes over every carrier (moments not counted)."""
+
+        return sum(count for _carrier, count in self.lanes)
+
+    @property
+    def carrier(self) -> str:
+        """The highest carrier that served a lane or a moment."""
+
+        return (
+            "arbitrary"
+            if any(c == "arbitrary" for c, _ in (*self.lanes, *self.moments))
+            else ("double-double")
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class VirtualLaneDiagnostic:
     """Accuracy is explicit; a finite output is not an accuracy certificate.
@@ -993,6 +1119,10 @@ class VirtualLaneDiagnostic:
     # evaluation without the binary64 switch (no improvement, values bitwise
     # as before), else the record (``"off"`` under the setting "off").
     kinematics: VirtualKinematics | None = None
+    # The lane rescue of the point (``VirtualLaneRescue``): the reduction
+    # lanes the backend refused in this carrier and a higher carrier served;
+    # None when no lane was rescued.
+    lane_rescue: VirtualLaneRescue | None = None
 
     def __post_init__(self) -> None:
         if self.status not in {

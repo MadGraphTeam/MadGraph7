@@ -25,6 +25,7 @@
 //! over its edges, their source rows and the content rows in order. A trace
 //! step's rows cover every leg, so each is a Born row: its key.
 
+use super::hash::WordMap;
 use super::{ContentFile, FamilyFile, PlanFile, invalid, require};
 use crate::RusticolResult;
 use std::collections::HashMap;
@@ -37,6 +38,9 @@ pub(super) struct RowSpace {
     stride: Vec<u64>,
     radix: Vec<u64>,
     digits: Vec<HashMap<i32, u64>>,
+    /// Per leg the key bits of its digit when every leg's helicity count is
+    /// a power of two (then a row restricts by one mask: [`Self::key_bits`]).
+    bits: Option<Vec<u64>>,
     all: u64,
     rows: usize,
 }
@@ -79,13 +83,48 @@ impl RowSpace {
                     .collect()
             })
             .collect();
+        // Power-of-two radices: each stride is a power of two too (a product
+        // of them), so a digit is the key's bits `(radix - 1) * stride`.
+        let bits = radix.iter().all(|r| r.is_power_of_two()).then(|| {
+            radix
+                .iter()
+                .zip(&stride)
+                .map(|(r, s)| (r - 1) * s)
+                .collect()
+        });
         Ok(Self {
             stride,
             radix,
             digits,
+            bits,
             all,
             rows: file.rows,
         })
+    }
+
+    /// The key bits of the legs in `mask` (power-of-two radices only, else
+    /// `None`): a row restricted to `mask` keeps exactly these bits of its
+    /// key ([`Self::restrict_with`]).
+    fn key_bits(&self, mask: u64) -> Option<u64> {
+        let bits = self.bits.as_ref()?;
+        let mut out = 0;
+        let mut legs = mask & self.all;
+        while legs != 0 {
+            out |= bits[legs.trailing_zeros() as usize];
+            legs &= legs - 1;
+        }
+        Some(out)
+    }
+
+    /// [`Self::restrict`] with `bits = self.key_bits(mask)`: a row's key
+    /// holds digits of its own legs only, so with power-of-two radices the
+    /// restricted key is the key masked (the same row, no division).
+    #[inline]
+    fn restrict_with(&self, row: Row, mask: u64, bits: Option<u64>) -> Row {
+        match bits {
+            Some(bits) => (row.0 & mask, row.1 & bits),
+            None => self.restrict(row, mask),
+        }
     }
 
     fn restrict(&self, (legs, key): Row, mask: u64) -> Row {
@@ -101,14 +140,14 @@ impl RowSpace {
     }
 
     /// Block row index of each row of a content, by its restricted row.
-    pub(super) fn content_rows(&self, content: &ContentFile) -> RusticolResult<HashMap<Row, u32>> {
+    pub(super) fn content_rows(&self, content: &ContentFile) -> RusticolResult<WordMap<Row, u32>> {
         let mask = content.mask;
         require(mask & !self.all == 0, "content legs outside the process")?;
         require(
             content.row_helicities.len() == content.rows,
             "content row helicities differ from its rows",
         )?;
-        let mut out = HashMap::with_capacity(content.rows);
+        let mut out = WordMap::with_capacity_and_hasher(content.rows, Default::default());
         for (index, helicities) in content.row_helicities.iter().enumerate() {
             require(
                 helicities.len() == mask.count_ones() as usize,
@@ -146,12 +185,12 @@ pub(super) struct DerivedSteps {
 /// Each content's rows in block-row order (the inverse of
 /// [`RowSpace::content_rows`]): the rows a dressed edge links every source
 /// row to.
-pub(super) fn content_lists(content_rows: &[HashMap<Row, u32>]) -> Vec<Vec<Row>> {
+pub(super) fn content_lists(content_rows: &[std::sync::Arc<WordMap<Row, u32>>]) -> Vec<Vec<Row>> {
     content_rows
         .iter()
         .map(|rows| {
             let mut list = vec![(0, 0); rows.len()];
-            for (&row, &index) in rows {
+            for (&row, &index) in rows.iter() {
                 list[index as usize] = row;
             }
             list
@@ -170,7 +209,7 @@ pub(super) fn derive(
     family: &FamilyFile,
     file: &PlanFile,
     space: &RowSpace,
-    content_rows: &[HashMap<Row, u32>],
+    content_rows: &[std::sync::Arc<WordMap<Row, u32>>],
     dressed: Option<&[Vec<Row>]>,
 ) -> RusticolResult<DerivedSteps> {
     let mut outputs: Vec<Option<Vec<Row>>> = vec![None; family.steps.len()];
@@ -190,7 +229,8 @@ pub(super) fn derive(
     for (index, step) in family.steps.iter().enumerate() {
         // The legs a dressed step's rows cover.
         let covered = space.all & !step.out;
-        let mut targets: HashMap<Row, u32> = HashMap::new();
+        let out_bits = space.key_bits(step.out);
+        let mut targets: WordMap<Row, u32> = WordMap::default();
         let mut order: Vec<Row> = Vec::new();
         let mut step_links = Vec::with_capacity(step.edges.len());
         for edge in &step.edges {
@@ -201,6 +241,7 @@ pub(super) fn derive(
                 .0;
             require(content < content_rows.len(), "factor content index")?;
             let mask = file.contents[content].mask;
+            let mask_bits = space.key_bits(mask);
             let source: &[Row] = match (edge.leaf, edge.child) {
                 (leaf_index, -1) if leaf_index >= 0 => &leaf,
                 (-1, child) if child >= 0 && (child as usize) < index => outputs[child as usize]
@@ -208,7 +249,11 @@ pub(super) fn derive(
                     .ok_or_else(|| invalid("a step output feeds two edges"))?,
                 _ => return Err(invalid("edge needs one leaf or one earlier child")),
             };
-            let mut links = Vec::new();
+            // Seeded: at most one link per source row; dressed: one per
+            // (source row, content row).
+            let mut links = Vec::with_capacity(
+                3 * source.len() * dressed.map_or(1, |lists| lists[content].len()),
+            );
             let mut link = |row: Row, position: usize, block: u32| -> RusticolResult<()> {
                 let next = u32::try_from(order.len()).map_err(|_| invalid("too many rows"))?;
                 let target = *targets.entry(row).or_insert_with(|| {
@@ -224,9 +269,14 @@ pub(super) fn derive(
                     // The block row of the same helicities on the content's
                     // legs, restricted to the legs the step leaves open.
                     None => {
-                        if let Some(&block) = content_rows[content].get(&space.restrict(row, mask))
+                        if let Some(&block) =
+                            content_rows[content].get(&space.restrict_with(row, mask, mask_bits))
                         {
-                            link(space.restrict(row, step.out), position, block)?;
+                            link(
+                                space.restrict_with(row, step.out, out_bits),
+                                position,
+                                block,
+                            )?;
                         }
                     }
                     // Every row of the content, joined with the source row.
@@ -270,4 +320,65 @@ pub(super) fn derive(
         derived.links.push(step_links);
     }
     Ok(derived)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A row space of legs with these helicity counts (no plan file).
+    fn space(radix: &[u64]) -> RowSpace {
+        let legs = radix.len();
+        let mut stride = vec![0; legs];
+        let mut size = 1;
+        for leg in (0..legs).rev() {
+            stride[leg] = size;
+            size *= radix[leg];
+        }
+        let bits = radix.iter().all(|r| r.is_power_of_two()).then(|| {
+            radix
+                .iter()
+                .zip(&stride)
+                .map(|(r, s)| (r - 1) * s)
+                .collect()
+        });
+        RowSpace {
+            stride,
+            radix: radix.to_vec(),
+            digits: Vec::new(),
+            bits,
+            all: (1 << legs) - 1,
+            rows: size as usize,
+        }
+    }
+
+    #[test]
+    fn a_masked_restriction_is_the_divided_one() {
+        for radix in [
+            &[2, 2, 2, 2, 2][..],
+            &[4, 2, 1, 8],
+            &[3, 2, 2],
+            &[2, 3, 1, 2],
+        ] {
+            let space = space(radix);
+            assert_eq!(
+                space.bits.is_some(),
+                radix.iter().all(|r| r.is_power_of_two())
+            );
+            for key in 0..space.rows as u64 {
+                for first in 0..=space.all {
+                    // A Born row and a row already restricted to `first`.
+                    for row in [(space.all, key), space.restrict((space.all, key), first)] {
+                        for mask in 0..=space.all {
+                            assert_eq!(
+                                space.restrict_with(row, mask, space.key_bits(mask)),
+                                space.restrict(row, mask),
+                                "radix {radix:?} row {row:?} mask {mask:b}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

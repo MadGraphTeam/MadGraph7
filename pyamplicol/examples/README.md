@@ -411,7 +411,7 @@ What each action does:
 | --- | --- | --- |
 | `generate` | writes the artifact to `--output` (default `generation.output`) | `[model]`, `[process]`, `[loop]`, `[generation]` |
 | `check` | regenerates the artifact's request in memory and checks the poles (Catani; loop-induced: finiteness) and Ward identities at seeded points; exit code 0 iff every check passed | `[check]` |
-| `evaluate` | evaluates the virtual (Born-interfered: 2 Re(B* V) per squared-order sector, with the Born; loop-induced: \|A_loop\|^2) with poles and a rotation stability estimate | `[evaluation]` |
+| `evaluate` | evaluates the virtual (Born-interfered: 2 Re(B* V) per squared-order sector, with the Born; loop-induced: \|A_loop\|^2) with poles (no stability estimate unless `[evaluation.stability_checks]` is set; the card shows the recommended set) | `[evaluation]` |
 | `profile` | times batches of points per stage (trees, dressing, scatter, reduction) | `[benchmark]` |
 
 Steering:

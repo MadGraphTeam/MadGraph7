@@ -49,8 +49,14 @@ from pyamplicol.config import R2Strategy
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
 from pyamplicol.loops.strategy import R2Selection
 from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
+from pyamplicol.loops.v2.reduction import default_arbitrary_digits
 from pyamplicol.loops.v2.rescue import rescue, rescue_policy
-from pyamplicol.loops.v2.stability import DEFAULT_RESCUE, Rotation
+from pyamplicol.loops.v2.stability import (
+    DEFAULT_RESCUE,
+    RESCUE_INTERMEDIATE_DIGITS,
+    Rotation,
+    default_rescue,
+)
 
 from .test_loop_v2_artifact import GG_PARAMETERS, _card, _fixture, _generate
 
@@ -126,7 +132,15 @@ class _Fake:
         )
 
 
-THREE = VirtualRescuePolicy()
+# The mechanics run on a three-level ladder of the default kind (binary64,
+# double-double, 57 digits); the default itself is checked below.
+THREE = VirtualRescuePolicy(
+    (
+        VirtualRescueLevel("double"),
+        VirtualRescueLevel("double-double"),
+        VirtualRescueLevel("arbitrary", 57),
+    )
+)
 
 
 @pytest.mark.loop_fast
@@ -186,6 +200,72 @@ def test_only_failed_or_unconverged_points_escalate_in_order():
 
 
 @pytest.mark.loop_fast
+def test_only_a_numerical_zero_is_not_escalated():
+    """The stopping rule (review B3): a point is not escalated when its
+    estimate grew, against the next lower precision, at least by the square
+    root of the two levels' unit-roundoff ratio (binary64 -> double-double:
+    2^25.5 = 4.7e7), a numerical zero's signature; it stays at that level
+    with the target not met. A smaller growth (a ruined point's flat, noisy
+    estimate above 1), a failed attempt, or a level of the same precision on
+    the other backend never stops a point; the last level keeps every
+    point."""
+
+    table = (
+        (1e-2, 1e-2, FAIL, 1e-2),
+        (1e7, 1e-1, 1e-1, FAIL),
+        (1e-9, 1e-9, 1e-9, 5e-2),
+    )
+    fake = _Fake(THREE, table)
+    result = rescue(THREE, 4, fake)
+    assert fake.calls == [(0, (0, 1, 2, 3)), (1, (0, 1, 2, 3)), (2, (1, 2, 3))]
+    assert [record.level for record in result.rescue] == [1, 2, 2, 2]
+    assert [record.met for record in result.rescue] == [False, True, True, False]
+    stopped = result.diagnostics[0]
+    assert stopped.status == "rescued" and not stopped.accuracy_established
+    assert "not escalated: its estimate grew from the double level's by 1.0e+09 " in (
+        stopped.detail
+    )
+    assert "(at least 4.7e+07, the square root" in stopped.detail
+    assert result.values[0][0].finite == _value(1, 0, "double-double")
+    # Point 1 grew by 10 only (no zero): escalated, and served.
+    assert "not escalated" not in result.diagnostics[1].detail
+    # Point 3 failed at level 1 and reaches the last level, which keeps it.
+    assert "not met at the final level" in result.diagnostics[3].detail
+    # HC05 #40 point 29 on the review's ladder (50, 57, 500 digits): 13.96
+    # then 48.8, a growth of 3.5 against the sqrt(10^7) = 3.2e3 needed:
+    # escalated to 500 digits, which serves it.
+    digits = VirtualRescuePolicy(
+        tuple(VirtualRescueLevel("arbitrary", d) for d in (50, 57, 500))
+    )
+    fake = _Fake(digits, ((13.96,), (48.8,), (1e-9,)))
+    (record,) = rescue(digits, 1, fake).rescue
+    assert record.level == 2 and record.met
+    # ... while a growth like g g > z's (a numerical zero) stops at 57.
+    fake = _Fake(digits, ((13.96,), (13.96 * 3.2e3,), (1e-9,)))
+    (record,) = rescue(digits, 1, fake).rescue
+    assert record.level == 1 and not record.met
+    # Two levels at the same precision (the other backend) never stop a point.
+    backends = VirtualRescuePolicy(
+        (
+            VirtualRescueLevel("double", reduction="tirust"),
+            VirtualRescueLevel("double", reduction="ninjars"),
+            VirtualRescueLevel("double-double"),
+        )
+    )
+    fake = _Fake(backends, ((1e-2,), (1e9,), (1e-9,)))
+    (record,) = rescue(backends, 1, fake).rescue
+    assert record.level == 2 and record.met
+    # Review F1: two backends at binary64 (TIRust nearly meets the target,
+    # NinjaRS is ruined), then double-double: the growth is measured from
+    # the larger binary64 estimate (1e3 -> 1e4: 10, not 1e8 from 1e-4), so
+    # the point escalates and 57 digits serves it.
+    stack = VirtualRescuePolicy((*backends.levels, VirtualRescueLevel("arbitrary", 57)))
+    fake = _Fake(stack, ((1e-4,), (1e3,), (1e4,), (1e-9,)))
+    (record,) = rescue(stack, 1, fake).rescue
+    assert record.level == 3 and record.met
+
+
+@pytest.mark.loop_fast
 def test_a_point_failing_at_every_level_is_failed_and_raises_only_on_request():
     table = ((1e-9, FAIL), (None, FAIL), (None, FAIL))
     fake = _Fake(THREE, table)
@@ -232,16 +312,26 @@ def test_a_check_free_last_level_keeps_every_point_without_an_estimate():
 
 @pytest.mark.loop_fast
 def test_policies_are_validated():
-    assert [(level.arithmetic, level.precision) for level in THREE.levels] == list(
-        DEFAULT_RESCUE
-    )
-    for level in THREE.levels:
+    # The default ladder (USER 2026-11-18): binary64, double-double, 57 digits
+    # (the intermediate level) and the default arbitrary-precision digits
+    # (500, the native policy's one definition) last.
+    default = VirtualRescuePolicy()
+    assert default_rescue() == DEFAULT_RESCUE
+    assert [(level.arithmetic, level.precision) for level in default.levels] == [
+        ("double", None),
+        ("double-double", None),
+        ("arbitrary", RESCUE_INTERMEDIATE_DIGITS),
+        ("arbitrary", default_arbitrary_digits()),
+    ]
+    assert (RESCUE_INTERMEDIATE_DIGITS, default_arbitrary_digits()) == (57, 500)
+    assert [level.precision_bits for level in default.levels] == [53, 106, 190, 1661]
+    for level in default.levels:
         assert level.target == 1e-5 and level.metric == "relative"
         assert level.rotations == (parse_rotation("euler:0.1,0.2,0.3"),)
         assert level.checks == VirtualStabilityChecks(
             level.rotations, True, rescaled=True
         )
-    assert [level.precision_bits for level in THREE.levels] == [53, 106, 190]
+    assert THREE.levels == default.levels[:3]
     assert len(VirtualRescueLevel("double", rotations=3).rotations) == 3
     VirtualRescuePolicy((VirtualRescueLevel("double-double"),))
     VirtualRescuePolicy(
@@ -262,7 +352,8 @@ def test_policies_are_validated():
     with pytest.raises(TypeError):
         VirtualRescuePolicy(VirtualRescueLevel("double"))
     for kwargs in (
-        {"arithmetic": "arbitrary"},
+        # (Arbitrary precision without digits takes the default, below.)
+        {"arithmetic": "arbitrary", "precision": 0},
         {"arithmetic": "double", "precision": 20},
         {"arithmetic": "quad"},
         {"arithmetic": "double", "target": 0},
@@ -335,6 +426,9 @@ LIGHT_POINT = [
 LIGHT_SCALE = "250000"
 # DoubleFloat on the light box against MPFR(32) (measured 2.05e-18).
 LIGHT_BOX_DOUBLE_DOUBLE = 1e-17
+# The binary64 call whose non-finite lane the lane rescue served (binary64
+# coefficients, double-double reduction) against MPFR(32).
+LIGHT_BOX_LANE_RESCUE = 1e-12
 
 
 @pytest.fixture(scope="module")
@@ -485,24 +579,47 @@ def test_a_mixed_batch_escalates_only_the_worse_points(artifact, poles):
 
 
 @pytest.mark.loop_physics
-def test_a_light_top_fails_in_binary64_and_is_rescued_in_double_double(artifact):
+def test_a_light_top_lane_is_rescued_in_binary64_and_the_point_without_it(artifact):
+    """The light box's binary64 lane is not finite (NonFiniteResult): the lane
+    rescue reduces it again in double-double inside the binary64 call (the
+    point is served in binary64 with its record); without the lane rescue
+    the point fails in binary64 and the rescue stack serves it in
+    double-double."""
+
     runtime = _load(artifact, "gg", LIGHT)
+    reference = runtime.evaluate(
+        [LIGHT_POINT], mu_r2=LIGHT_SCALE, arithmetic="arbitrary", precision=32
+    )
+    ((exact,),) = reference.values[0:1]
+    scale = max(abs(x) for x in exact)
+
+    def error(result):
+        ((mine,),) = result.values[0:1]
+        return (
+            max(abs(Decimal(str(a)) - b) for a, b in zip(mine, exact, strict=True))
+            / scale
+        )
+
     plain = runtime.evaluate([LIGHT_POINT], mu_r2=LIGHT_SCALE, on_failure="return")
+    lane = plain.diagnostics[0]
+    assert plain.valid[0] and lane.arithmetic == "double", lane.detail
+    assert lane.lane_rescue is not None and lane.lane_rescue.carrier == "double-double"
+    assert error(plain) < LIGHT_BOX_LANE_RESCUE, error(plain)
+    plain = runtime.evaluate(
+        [LIGHT_POINT], mu_r2=LIGHT_SCALE, on_failure="return", lane_rescue=False
+    )
     assert not plain.valid[0] and "NonFiniteResult" in plain.diagnostics[0].detail
     result = runtime.evaluate(
-        [LIGHT_POINT], mu_r2=LIGHT_SCALE, stability=VirtualRescuePolicy()
+        [LIGHT_POINT],
+        mu_r2=LIGHT_SCALE,
+        stability=VirtualRescuePolicy(),
+        lane_rescue=False,
     )
     (record,) = result.rescue
     assert record.level == 1 and record.met and record.arithmetic == "double-double"
     assert "NonFiniteResult" in record.attempts[0].failure
     assert result.diagnostics[0].status == "rescued"
-    reference = runtime.evaluate(
-        [LIGHT_POINT], mu_r2=LIGHT_SCALE, arithmetic="arbitrary", precision=32
-    )
-    ((mine,),), ((exact,),) = result.values[0:1], reference.values[0:1]
-    scale = max(abs(x) for x in exact)
-    error = max(abs(a - b) for a, b in zip(mine, exact, strict=True)) / scale
-    assert error < LIGHT_BOX_DOUBLE_DOUBLE, error
+    assert error(result) < LIGHT_BOX_DOUBLE_DOUBLE, error(result)
 
 
 @pytest.mark.loop_physics
@@ -597,3 +714,57 @@ def test_escalated_subsets_run_together_on_one_double_double_executor(artifact):
     assert [key for key in native if key[0] == "double-double"] == [
         ("double-double", None, DEFAULT_LANES)
     ]
+
+
+@pytest.mark.loop_fast
+def test_arbitrary_precision_without_digits_takes_the_default_digits():
+    """USER 2026-11-18 ("500 digits"): an arbitrary-precision carrier named
+    without digits takes the default arbitrary-precision digits (the native
+    policy's one definition); a number given is kept."""
+
+    from pyamplicol.api.virtual_results import VirtualArithmeticSpec
+    from pyamplicol.config import EvaluationConfig
+
+    default = default_arbitrary_digits()
+    assert default == 500
+    assert VirtualArithmeticSpec("arbitrary").precision == default
+    assert VirtualArithmeticSpec("arbitrary", 40).precision == 40
+    assert VirtualArithmeticSpec("double").precision is None
+    level = VirtualRescueLevel("arbitrary")
+    assert level.precision == default and level.precision_bits == 1661
+    assert VirtualRescueLevel("arbitrary", 80).precision == 80
+    # The configuration leaves it unset (the carrier's default).
+    assert EvaluationConfig().precision is None
+    assert EvaluationConfig(precision=70).precision == 70
+
+
+@pytest.mark.loop_physics
+def test_an_arbitrary_call_without_digits_runs_at_the_default_digits(artifact):
+    """``evaluate(..., arithmetic="arbitrary")`` and ``Runtime.load(...,
+    arithmetic="arbitrary")`` without digits resolve to the default
+    arbitrary-precision digits (500); given digits are kept (evaluated at
+    40 digits); an unset precision without arithmetic stays binary64. (No
+    500-digit evaluation here: it shifts later double-double guard estimates
+    of the same process, pre-existing; FINDINGS 2026-11-18 "ladder".)"""
+
+    points, scales = _points("gg_gg", 1)
+    runtime = _load(artifact, "gg")
+    assert runtime._call_precision(None, "arbitrary") == default_arbitrary_digits()
+    assert runtime._call_precision(None, None) == 16
+    assert runtime._call_precision(40, "arbitrary") == 40
+    given = runtime.evaluate(points, mu_r2=scales, arithmetic="arbitrary", precision=40)
+    plain = runtime.evaluate(points, mu_r2=scales)
+    assert given.diagnostics[0].precision_bits == 133
+    assert plain.diagnostics[0].precision_bits == 53
+    loaded = _load(artifact, "gg", arithmetic="arbitrary")
+    assert loaded._backend.default_precision == default_arbitrary_digits()
+    assert loaded._call_precision(None, None) == default_arbitrary_digits()
+    # A load naming arbitrary precision keeps it for a call naming digits
+    # only, 16 included (the summed evaluation on the artifact runtime, the
+    # resolved one on its observables runtime), as before the default.
+    for call in (loaded.evaluate, loaded.evaluate_resolved):
+        found = call(points, mu_r2=scales, precision=16).diagnostics[0]
+        assert (found.arithmetic, found.precision_bits) == ("arbitrary", 54), call
+    kept = _load(artifact, "gg", arithmetic="arbitrary", precision=40)
+    assert kept._call_precision(None, "arbitrary") == 40
+    assert kept.evaluate(points, mu_r2=scales).diagnostics[0].precision_bits == 133

@@ -262,6 +262,20 @@ def reduction_unchecked(value: object) -> bool:
     raise ValueError(policy()["unchecked"]["refusal"])
 
 
+def lane_rescue(value: object) -> bool:
+    """The value of the lane rescue setting (``evaluation.lane_rescue``, the
+    CLI's ``--lane-rescue`` / ``--no-lane-rescue``, ``Runtime.load`` /
+    ``evaluate(..., lane_rescue=)``; USER 2026-11-18): True (the default)
+    reduces a reduction lane the backend refuses again in a higher carrier,
+    in the checked and the unchecked mode; False leaves a refused lane to
+    fail its point (a pure binary64 evaluation, e.g. for timing). A Python
+    bool; any other type is refused."""
+
+    if isinstance(value, bool):
+        return value
+    raise ValueError("lane_rescue takes True or False")
+
+
 class PoleSelection(StrEnum):
     """Which Laurent poles a one-loop evaluation computes (design §12.4).
 
@@ -461,11 +475,19 @@ class DefaultFloat(float):
     __slots__ = ()
 
 
-def is_default(value: object) -> bool:
-    """Whether a ``BenchmarkConfig`` count or duration was left at its
-    default rather than given."""
+class DefaultStr(str):
+    """A setting left at its default (``DefaultInt``): ``benchmark.
+    ground_truth``, which a loop profile on an expensive process may leave
+    out of its runtime timing unless it was given."""
 
-    return isinstance(value, (DefaultInt, DefaultFloat))
+    __slots__ = ()
+
+
+def is_default(value: object) -> bool:
+    """Whether a ``BenchmarkConfig`` count, duration or setting was left at
+    its default rather than given."""
+
+    return isinstance(value, (DefaultInt, DefaultFloat, DefaultStr))
 
 
 _DURATION = re.compile(
@@ -1538,7 +1560,11 @@ class EvaluationConfig:
         default=None, metadata=_setting("path", nullable=True)
     )
     process: str | None = field(default=None, metadata=_setting("str", nullable=True))
-    precision: int = field(default=16, metadata=_setting("int"))
+    # Decimal digits; None (unset) is the carrier's default: binary64's 16,
+    # or with ``arithmetic = "arbitrary"`` on a virtual artifact the default
+    # arbitrary-precision digits (500, ``loops.v2.reduction.
+    # default_arbitrary_digits``). A number given is never overridden.
+    precision: int | None = field(default=None, metadata=_setting("int", nullable=True))
     arithmetic: Literal["double", "double-double", "arbitrary"] | None = field(
         default=None,
         metadata=_setting(
@@ -1579,6 +1605,10 @@ class EvaluationConfig:
     # lit-unchecked): true drops the reduction backends' own acceptance and
     # refusal checks; false, the default, keeps them.
     reduction_unchecked: bool = field(default=False, metadata=_setting("bool"))
+    # The lane rescue (``lane_rescue``; USER 2026-11-18): true (the default)
+    # reduces a refused reduction lane again in a higher carrier (checked and
+    # unchecked mode alike); false leaves it to fail its point.
+    lane_rescue: bool = field(default=True, metadata=_setting("bool"))
     # The kinematics improvement of the input points (m-lit lit-psimprove;
     # ``pyamplicol.kinematics``): "z-shift" (MadLoop's ImprovePSPoint 2 with
     # its fallback to 1, finished by the projection where MadLoop leaves the
@@ -1614,7 +1644,9 @@ class EvaluationConfig:
         if self.process is not None and not isinstance(self.process, str):
             raise ConfigurationError("evaluation.process must be a string or null")
         object.__setattr__(
-            self, "precision", _integer(self.precision, "evaluation.precision")
+            self,
+            "precision",
+            _optional_integer(self.precision, "evaluation.precision", minimum=1),
         )
         if self.arithmetic is not None and (
             not isinstance(self.arithmetic, str)
@@ -1672,6 +1704,10 @@ class EvaluationConfig:
             reduction_unchecked(self.reduction_unchecked)
         except ValueError as exc:
             raise ConfigurationError(f"evaluation.reduction_unchecked: {exc}") from exc
+        try:
+            lane_rescue(self.lane_rescue)
+        except ValueError as exc:
+            raise ConfigurationError(f"evaluation.lane_rescue: {exc}") from exc
         if self.kinematics_improvement is not None:
             from pyamplicol import kinematics
 
@@ -1743,12 +1779,14 @@ class BenchmarkConfig:
     # the usable cores; 1 runs it in-process. The result does not depend on
     # it. The runtime timing always runs on one core (one process, every
     # native pool at one thread).
-    n_core: int = field(default=10, metadata=_setting("int"))
+    n_core: int = field(default=DefaultInt(10), metadata=_setting("int"))
     # The reference ("ground truth") of a loop profile (``--ground-truth``):
     # "double-double" or "arbitrary[:DIGITS]" (decimal digits; without them
-    # the built-in rescue's arbitrary-precision level's), "dd" and "arb"
+    # the default arbitrary-precision digits, 500), "dd" and "arb"
     # accepted; read by both tables (``loop_profile.ground_truth``).
-    ground_truth: str = field(default="double-double", metadata=_setting("str"))
+    ground_truth: str = field(
+        default=DefaultStr("double-double"), metadata=_setting("str")
+    )
     # The runtime timing of a loop profile in the checked mode (``--checked``):
     # the backends' own acceptance checks, a refused point served best-effort
     # and the default backend as "auto". False (the default): one fully
@@ -1772,6 +1810,14 @@ class BenchmarkConfig:
     # core, a Monte Carlo worker's. The stability workers stay at one
     # thread each (``n_core`` is their count).
     runtime_threads: int = field(default=1, metadata=_setting("int"))
+    # Whether a loop profile times every reduction backend
+    # (``--all-backends``): None (the default) times every one unless the
+    # process's default backend alone exceeds the runtime budget at its
+    # minimal counts (then the default only, ``loop_profile``); True every
+    # one whatever the budget; False the default only.
+    all_backends: bool | None = field(
+        default=None, metadata=_setting("bool", nullable=True)
+    )
 
     def __post_init__(self) -> None:
         for name in ("runtime", "stability", "checked"):
@@ -1786,7 +1832,14 @@ class BenchmarkConfig:
                 "benchmark.runtime_threads must be a positive thread count "
                 "(1: one core, the default)"
             )
-        object.__setattr__(self, "ground_truth", _ground_truth(self.ground_truth))
+        truth = _ground_truth(self.ground_truth)
+        object.__setattr__(
+            self,
+            "ground_truth",
+            DefaultStr(truth) if isinstance(self.ground_truth, DefaultStr) else truth,
+        )
+        if self.all_backends is not None and type(self.all_backends) is not bool:
+            raise ConfigurationError("benchmark.all_backends must be a boolean")
         if self.completion_time is not None:
             object.__setattr__(
                 self, "completion_time", parse_duration(self.completion_time)

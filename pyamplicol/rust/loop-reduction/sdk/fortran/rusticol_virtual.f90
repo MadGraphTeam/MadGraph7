@@ -122,6 +122,7 @@ module rusticol_virtual
     procedure :: set_reduction
     procedure :: set_reduction_target
     procedure :: set_reduction_unchecked
+    procedure :: set_lane_rescue
     procedure :: set_on_failure
     procedure :: set_kinematics_improvement
     procedure :: set_kinematics_improvement_binary64
@@ -239,6 +240,13 @@ module rusticol_virtual
       import
       type(c_ptr), value :: handle
       integer(c_int), value :: unchecked
+      integer(c_int) :: value
+    end function
+    function c_set_lane_rescue(handle, on) &
+        bind(C, name="rusticol_virtual_set_lane_rescue") result(value)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int), value :: on
       integer(c_int) :: value
     end function
     function c_set_on_failure(handle, on_failure) &
@@ -779,6 +787,21 @@ contains
     flag = 0_c_int
     if (unchecked) flag = 1_c_int
     call finish(c_set_reduction_unchecked(handle_of(self),flag),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Lane rescue of later evaluations (the Python API's lane_rescue=;
+  ! default .true.): a refused reduction lane reduced again in a higher
+  ! carrier; .false. leaves it to fail its point.
+  subroutine set_lane_rescue(self,on,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    logical, intent(in) :: on
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    integer(c_int) :: flag
+    flag = 0_c_int
+    if (on) flag = 1_c_int
+    call finish(c_set_lane_rescue(handle_of(self),flag),ierr, &
       error_message=error_message)
   end subroutine
 

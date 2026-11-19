@@ -576,10 +576,14 @@ pyamplicol evaluate artifacts/virtual --process gg --momenta points.json \
 ```
 
 `--arithmetic` accepts `double`, `double-double` (DoubleFloat) or `arbitrary`.
-For arbitrary precision, add `--precision 70`, for example. These choices apply
-before model parameters are bound. Without an explicit arithmetic choice, the
-existing precision convention applies: 16 digits selects double; other requested
-precisions select arbitrary precision. DoubleFloat is always selected explicitly.
+`--arithmetic arbitrary` without `--precision` runs at the default
+arbitrary-precision digits (500, the native policy's
+`DEFAULT_ARBITRARY_DIGITS`); `--precision 70`, for example, sets the digits, and
+a number given is never overridden. These choices apply before model parameters
+are bound. Without an explicit arithmetic choice, the existing precision
+convention applies: 16 digits (the default when unset) selects double; other
+requested precisions select arbitrary precision. DoubleFloat is always selected
+explicitly.
 
 `--loop-reduction {auto,ninjars,tirust}` selects the reduction backend for the
 evaluation, overriding the artifact's default (`generate --loop-reduction`
@@ -619,7 +623,10 @@ serves what they refuse, NinjaRS runs with zero stability thresholds (its
 box mu-expansion's conditioning bound stays active); only points without a
 finite value or refused by that bound still fail, `auto` keeps its backend choice and
 its fallback acts on those only. It is a timing and benchmark mode with no
-accuracy certificate (the measured accuracy per process: [Python
+accuracy certificate; the lane rescue still serves the lanes the unchecked
+backend refuses (`--no-lane-rescue`, `evaluation.lane_rescue = false`, turns
+it off; [Python API](python-api.md), "Lane rescue of refused reduction
+lanes") (the measured accuracy per process: [Python
 API](python-api.md), "Unchecked reductions"). The JSON output's lane diagnostics name the requested and
 effective backends, the reason, the fallback, the target and the unchecked
 setting. A
@@ -665,7 +672,11 @@ dim summary line (`N captured warning(s) (...); see --json /
 result.warnings`), and `--json` carries `statuses` and `warnings` (per kind:
 source, kind, first message, count, where, point indices; each lane's
 `reduction.best_effort` record holds `refusal`, `uncertainty`, `source`,
-`backend_deviation` and `gram_conditioning`). `--on-failure return` preserves successful
+`backend_deviation` and `gram_conditioning`). Wherever a relative
+uncertainty or stability estimate above 1 is shown to a human (the
+evaluation's stability table, lane details, failure and cause lines) it reads
+`>1`; `--json`, the samples file and the returned records keep the number.
+`--on-failure return` preserves successful
 points and returns an unavailable whole-point row for each numerical failure
 (no best-effort evaluation): `null` in JSON, with its failure diagnostics.
 `--on-failure raise` (the default before 1.0.3) stops at the first such
@@ -813,16 +824,115 @@ took):
   measurement is back, with the time the whole command then takes (the
   header's `counts` row states the same number), and the minimums run.
 - the counts given on the command line or in a run card: honoured as given.
+  A value stated in a run card counts as given even when it equals the
+  default (`n_core = 10`, `ground_truth = "double-double"`): leave a
+  setting out of the card to keep its default behaviour. A
+  `--target-runtime` given alone is each backend's timed binary64 budget
+  (its start-up and warm-up outside it, the reference pass's budget the
+  same on top), and the counts are chosen from it: one warm-up, the
+  largest batch whose five calls fit it, the minimum calls and more while
+  it affords them (not the default batch and calls as if given).
 - neither: the default budgets, 10 s for the runtime timing of all backends
   and one minute of work per `--n_core` worker for the stability run (about
   a minute of wall time whatever `--n_core`: more workers, more points). On
   an expensive process whose minimums exceed them by more than a factor 1.5
-  the same warning says so, with the time the minimums take.
+  the same warning says so, with the time the minimums take. The
+  measurement times only what can change the counts: a backend whose share
+  of the 10 s (its start-up excluded), less the reference pass's quarter of
+  it, affords no more than its binary64 warm-up gets the minimum counts
+  whatever its reference costs, so its
+  reference is not timed there (its runtime timing's untimed reference call
+  measures it); when loading the artifact alone takes a backend's share,
+  every backend gets the minimums and there is no measurement phase at all
+  (nothing is evaluated before the runtime timing, whose warm-ups measure
+  the costs; a notice names the load time, and whether the minimums exceed
+  the budget, with their time in the `counts` row, follows from the costs
+  the timing measured).
+
+  A profile whose minimums exceed its budget also narrows what it runs
+  (USER 2026-11-19), by the `counts` row's own rule: the minimums exceed
+  the budget by more than a factor 1.5, start-ups aside. The budget is the
+  runtime timing's (the default 10 s of all backends, or a given
+  `--target-runtime` per backend) plus, with `--stability`, the stability
+  run's (one minute of wall); with `--completion-time`, what is left of it,
+  start-ups included. Counts given (`--batch-size`, `--minimum-samples`,
+  `--warmup-runs`, `--stability-points` with `--stability`) are honoured as
+  given and nothing is left out; given with `--target-runtime`, the counts
+  win.
+  - The reference of the runtime timing alone (no `--stability`): when the
+    runtime minimums of every backend with their reference points (one
+    untimed and one timed point each) exceed the budget, no reference point
+    is evaluated at all and the `(dd xN)` / `(arb(D) xN)` multiplier is not
+    shown, as with `--ground-truth none`. An explicit `--ground-truth` (any
+    value, also double-double, on the command line or in a run card) times
+    it anyway. With `--stability` the reference always runs (the true digits
+    need it), and the runtime row keeps its multiplier from its own
+    reference pass, one optimistic pass, never from the stability run's.
+  - The backends, with or without `--stability`: when the default backend
+    alone, for everything asked (its runtime minimum with the reference as
+    just decided, and the stability run's five points with their
+    reference), still exceeds the budget, only the default backend is
+    profiled, in both tables. `--all-backends` profiles every backend
+    whatever the budget (`--no-all-backends` the default only),
+    `--loop-reduction` one backend. With one backend in the stability run
+    and an arbitrary-precision ground truth, every reference is certified by
+    its own checks (there is no second backend's reference to agree with).
+  One decision, whatever the path: each rule is a function of what this
+  run has measured so far (`profile_plan.rule_b_drops`, `rule_a_drops`),
+  called again whenever a measured number arrives: each step of the
+  measurement, the first backend's runtime timing after its binary64 call
+  and after its untimed reference point, the default backend's runtime
+  row. It drops something only when a lower bound of the real cost exceeds
+  the budget: the chunk call at one measured point's cost (a chunk costs
+  at least one of its points), a warm-up at one point, an untimed
+  reference point at its measured cold cost, a timed one at least the
+  binary64 point, a checked stability point at least one optimistic pass,
+  a stability reference point at least the cold one for the first point of
+  each worker only and one binary64 point for the others; without
+  `--runtime` the runtime timing counts nothing. A drop is final: nothing
+  un-drops it, and every bound was valid when it fired. The verdict follows
+  the measured numbers alone: the measurement, a run without one (where
+  the first backend's untimed reference point measures the reference
+  before its timed point runs), with or without a previous profile (whose
+  costs set ETAs only). Rule B is judged on the sum of every backend's
+  minimum with its reference (a backend not measured yet counts nothing)
+  against the budget of all of them, so that a backend's dear reference
+  counts even when the default's is cheap; the first backend's runtime
+  timing re-judges it on its own numbers against what the others' known
+  minimums leave; its verdict holds for every backend (all multipliers or
+  none).
+  Rule A never counts a reference that rule B could leave out. The record
+  and the `counts` row are re-planned from what ran. A backend profiled
+  alone keeps the per-backend share it has beside the others. A notice
+  says what was left out (and when it was measured in a runtime timing),
+  and the `counts` row repeats it ("TIRust not profiled (--all-backends)",
+  "no dd multiplier (--ground-truth)").
+
+  The stability run starts no more worker processes than the memory holds:
+  at most three quarters of the memory available when it starts, at one
+  worker's resident size as this run measured it (the profile's own process
+  after loading the artifact and measuring every backend, or the load plus
+  each backend's increase in its runtime timing's process); the plan, its
+  ETA and rule A count those workers. When a stability task holds several
+  points (a point cheaper than a task's work), the first worker runs its
+  first task alone and its own peak sets how many follow. Fewer workers
+  than `--n_core` then run, said in a notice and in the `counts` row
+  ("stability on 3 workers (memory: 36.5 GiB each, 3/4 of 150.0 GiB
+  available)").
+  A `--n_core` given (command line or run card) is honoured, with a warning
+  when its workers do not fit. The runtime timing runs one process at a
+  time.
 
 Loading, process start-up, warm-up calls and the reference pass's minimum
 are outside the default budgets by nature; they are visible phases with
 their own estimates. The reference pass is part of the budget of the phase
-it serves. On an expensive process the binary64 warm-up is one point (when
+it serves. Where the runtime offers a warm entry (it builds what a
+carrier's first evaluation builds, without evaluating a point) and a point
+costs more than 5 s (a first call's lazy set-up, the measurement's bound),
+the binary64 timing and the reference pass warm through it instead of their
+untimed warm-up point; the timed calls are the same warm passes, and the
+`runtime setup` row says "after a warm entry". On an expensive process the
+binary64 warm-up is one point (when
 a full call would cost more than 2 s; else one full call), and a stability
 task holds about 4 s of work: a point that costs more is a task of its own,
 so a few expensive points spread over the workers instead of running one
@@ -876,7 +986,10 @@ fewer. What is timed, which the table header names: binary64, finite part
 only, **one fully optimistic pass per point** (the same pass as the reference
 multiplier's, below): each backend's unchecked reduction alone (no `auto`
 fallback), no stability checks, no rescue, no best-effort re-evaluation of a
-refused point (a point without a value is counted `failed`). `--checked`
+refused point (a point without a value is counted `failed`); a reduction lane
+the unchecked backend still refuses is rescued inside the timed call (the
+header says "refused lanes rescued"; `--no-lane-rescue` times pure binary64
+calls, such points then without a value). `--checked`
 (`benchmark.checked = true`) times the checked mode instead: the backends'
 own acceptance checks, a refused point returned with its best-effort value
 and timed as such (its unchecked re-evaluation and its uncertainty's checks
@@ -895,7 +1008,10 @@ table, after a `---` line, the failed or refused points are listed per
 backend and cause, most frequent first, in the form
 `<count> (<fraction> %) <backend> | <kind>: <cause>` (causes grouped with
 their numbers masked; also in `--json` as `failure_causes`); nothing is
-printed when nothing failed. The
+printed when nothing failed. The kind `lane rescue` counts served points
+whose refused reduction lanes were reduced again in a higher carrier
+(`reduction lanes rescued in <carrier>`; python-api.md, "Lane rescue of
+refused reduction lanes"); their time is in the timed calls. The
 second table gives the time per point in each stage group (trees: the native
 trees and counterterm kets; dressing: seeds, factors and dressing of a
 Born-interfered process, the dressing of a loop-induced one; scatter;
@@ -992,13 +1108,34 @@ measured `peak RAM`.
 
 **Ground truth.** `--ground-truth` (`benchmark.ground_truth`) selects the
 reference of both tables: `double-double` (`dd`, the default) or arbitrary
-precision, `arbitrary` (`arb`) at the built-in rescue's arbitrary-precision
-digits (57, `loops.v2.stability.DEFAULT_RESCUE`) or `arbitrary:DIGITS`
+precision, `arbitrary` (`arb`) at the default arbitrary-precision digits
+(500, `loops.v2.reduction.default_arbitrary_digits()`, the native policy's
+`DEFAULT_ARBITRARY_DIGITS`) or `arbitrary:DIGITS`
 (`arb:DIGITS`). It is the stability run's truth and the precision of both
 tables' multipliers, and the labels follow it: the header's `ground truth`
-row, `(arb(57) x210)`, "Stable digits of binary64 vs arb(57)". The values
+row, `(arb(500) x210)`, "Stable digits of binary64 vs arb(500)". The values
 judged are binary64's either way; a point whose reference fails is "no
-ref." as before. Arbitrary precision costs far more than double-double; its
+ref." as before. In arbitrary precision the stability run cross-checks
+each point's references between the backends: a reference that agrees with
+another backend's to 2^-106 relative (binary64's unit roundoff squared, the
+accuracy of the double-double truth) is trusted as it is; any other valued
+one, or the only one (the other backend failed or refused), is evaluated
+again with the recommended stability checks (`RECOMMENDED_CHECKS`) and
+counts as one whose reference fails when its estimate exceeds binary64's
+unit roundoff (2^-53: a reference exists to resolve the stable digits of a
+binary64 value down to their cap) or when two such checked references
+still differ by more than it (their estimates are contradicted); its cause
+says which. So a wrong value with status success does not become the
+truth. The cross-check compares the two reductions and their
+master-integral code; the numerators, the R2 and counterterm parts and the
+assembly are common to both backends (as they are to the binary64 value
+judged), and TIRust's masters are generated from the same OneLOop
+expressions as NinjaRS's. With one backend profiled (or the other refused)
+every reference is evaluated once, with the checks. `--json` records each
+reference's certification (`reference_certified`). The runtime table's
+multiplier stays the time of one optimistic pass; the stability table's
+reference time includes the checked evaluations. Arbitrary precision costs
+far more than double-double; its
 runtime timing is bounded as the double-double one is. `--ground-truth none`
 runs no reference at all: no reference pass (the runtime table shows the
 time alone), and the stability run evaluates binary64 with its checks only
@@ -1020,11 +1157,14 @@ of the points done per backend and precision and an estimated time to
 completion; Ctrl-C stops the run and prints the tables of the points
 evaluated so far with a one-line notice (`stability_setup.requested`,
 `measured_points`, `interrupted` in `--json`; exit code 130), a second Ctrl-C aborts.
-The runtime timing runs before the pool, one process per backend. Each backend evaluates every point in pure binary64 with the default rotation
-test (one default rotation, what `evaluation.stability_checks` gives by
-default; `evaluation.stability_checks` replaces it when set; the rescue's own
-check set, a fixed Euler rotation plus the rescaled-reduction check, is
-stronger and is not what is measured here) and again in double-double on the
+The runtime timing runs before the pool, one process per backend. Each backend evaluates every point in pure binary64 with the default
+checks: one default rotation on a point NinjaRS serves, one default rotation
+and the rescaled reduction-direction check on a point TIRust serves (per
+point under `--reduction auto`: a per-point NinjaRS fallback point keeps the
+NinjaRS set; USER 2026-11-19); `evaluation.stability_checks` replaces them
+when set, unchanged per backend (the rescue's own check set, a fixed Euler
+rotation plus the rescaled-reduction check on every level, is not what is
+measured here) and again in double-double on the
 same backend in the reference precision (`--ground-truth`; double-double by
 default), the reference. Following the measure of MadLoop
 (arXiv:1103.0621, sect. 3.4) and MadGraph5_aMC@NLO (arXiv:1405.0301, "Checks,
@@ -1044,7 +1184,14 @@ backend's own checks refuse in binary64 is measured with its best-effort
 value (the unchecked reduction's, what the default `on_failure` returns,
 status best-effort; since 1.0.3) at its true digits, its estimate being the
 call's checks' estimate of that value; it is never accepted, so it always
-counts as flagged. A point with no binary64 value at all ("no value") counts
+counts as flagged. A point whose refused lanes the lane rescue served (cause
+kind `lane rescue`) is measured like an accepted one, its estimate covering
+the mixed total. With the default checks a TIRust point's value can differ, at a rescued
+lane's rounding, from a one-rotation run (a lane refused only in the
+reduction check's frame is rescued in both frames). Lanes a backend accepts
+are never rescued, however inaccurate: such points are measured (and flagged by their estimate) as
+before (on flat 2 -> 6 gluon points 10 of the 23 points NinjaRS accepts have
+an estimate above 1e-5, 3 above 1). A point with no binary64 value at all ("no value") counts
 0 true digits (the worst end of the ranking) and has no estimate. A point with a binary64 value whose
 reference failed has an unknown truth and is left out (shown as
 "no ref."). The measured points (N in what follows) are all others.
@@ -1074,10 +1221,14 @@ time per point are in `--json`, `precision_timing`). Every worker loads the
 artifact and makes one untimed call per backend and precision before any
 timed one, so start-up costs stay out of both totals, and the points go in
 tasks of whole binary64 SIMD chunks. The binary64 calls
-include their stability checks (the default rotation test evaluates each
-point twice) while the reference evaluates each point once, so this
-multiplier is not the cost ratio of one evaluation: that is the runtime
-table's `(dd xN)`. No rescue runs: the statistics are those of pure binary64; the
+include their stability checks (the default checks evaluate each point
+again rotated, and re-reduce TIRust's points in the rescaled frame) while the
+reference evaluates each point once (with an arbitrary-precision ground truth,
+plus the checked re-runs of the references the cross-check did not certify, or
+with one backend one checked evaluation per point; each worker's first checked
+call is untimed), so this multiplier is not the cost ratio of one evaluation:
+that is the runtime table's `(dd xN)`. No rescue runs: the statistics are those
+of pure binary64; the
 reference re-run is the reference only. When a backend served points
 best-effort, a third table shows how accurate those values and their
 uncertainties are: per backend the number of best-effort points, their true
@@ -1146,11 +1297,20 @@ total's estimated relative error), `estimate_digits`, `estimate_scale`,
 best-effort value, or none); `best_effort` and its `uncertainty` (relative);
 `reason` (a refusal or failure); `reference_value` (the exact decimal text
 of the reference's total finite part at its precision; null when it failed
-or with `--ground-truth none`) and `reference_reason`; `true_relative_error`
-and `true_digits` (null without both values); `binary64_task` and
-`reference_task`, indices into the table's `tasks` list of `[seconds,
-points]` of the task that evaluated the point (inside a batched call there
-is no per-sample time). Values, sectors, momenta and the reference are
+or with `--ground-truth none`), `reference_reason` and `reference_certified`
+(an arbitrary-precision reference's certification: `"agreement"` with another
+backend's reference, `"checks"` from its checked evaluation; null for a
+reference that failed and in every run without an arbitrary-precision
+ground truth, whose records carry the column all the same: every run's
+table has the same fields); `true_relative_error` and `true_digits` (null
+without both values); `binary64_task`, `reference_task` (the reference's
+first evaluation: plain, or checked with one backend) and
+`reference_checked_task` (its checked re-run; null without one), indices
+into the table's `tasks` list of `[seconds, points]` of the task that
+evaluated the point (inside a batched call there is no per-sample time);
+`lane_rescue` (the point's lane rescue, e.g. `"reduction lanes rescued in
+double-double"`; null without one).
+Values, sectors, momenta and the reference are
 exact; the relative errors and scales carry 4 significant digits, the
 digits 3 decimals, the task seconds microseconds. Non-finite numbers are the
 texts `"inf"` / `"nan"`. `per_point` (the statuses the tables use) is a
