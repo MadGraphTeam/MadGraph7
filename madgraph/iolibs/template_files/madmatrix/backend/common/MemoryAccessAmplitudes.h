@@ -13,14 +13,14 @@
 
 #include "MemoryAccessHelpers.h"
 
-#define MGONGPU_TRIVIAL_AMPLITUDES 1
+#define MADMATRIX_TRIVIAL_AMPLITUDES 1
 
 //One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------
 
-#ifndef MGONGPU_TRIVIAL_AMPLITUDES
+#ifndef MADMATRIX_TRIVIAL_AMPLITUDES
 
   // A class describing the internal layout of memory buffers for amplitudes
   // This implementation uses an AOSOA[npagA][nx2][neppA] where nevt=npagA*neppA
@@ -39,7 +39,7 @@ namespace madmatrix
     friend class KernelAccessHelper<MemoryAccessAmplitudesBase, false, fptype_amp>;
 
     // The number of floating point components of a complex number
-    static constexpr int nx2 = mgOnGpu::nx2;
+    static constexpr int nx2 = madmatrix::nx2;
 
     //--------------------------------------------------------------------------
     // NB all KernelLaunchers assume that memory access can be decomposed as "accessField = decodeRecord( accessRecord )"
@@ -109,7 +109,7 @@ namespace madmatrix
       MemoryAccessHelper<MemoryAccessAmplitudesBase, fptype_amp>::template ieventAccessFieldConst<int>;
   };
 
-#endif // #ifndef MGONGPU_TRIVIAL_AMPLITUDES
+#endif // #ifndef MADMATRIX_TRIVIAL_AMPLITUDES
 
   //----------------------------------------------------------------------------
 
@@ -120,7 +120,7 @@ namespace madmatrix
   {
   public:
 
-#ifndef MGONGPU_TRIVIAL_AMPLITUDES
+#ifndef MADMATRIX_TRIVIAL_AMPLITUDES
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (non-const) ===> fptype_amp& kernelAccessIx2( fptype_amp* buffer, const int ix2 ) <===]
@@ -146,7 +146,7 @@ namespace madmatrix
       return reinterpret_cast<const cxtype_amp_sv*>( buffer );
     }
 
-#endif // #ifndef MGONGPU_TRIVIAL_AMPLITUDES
+#endif // #ifndef MADMATRIX_TRIVIAL_AMPLITUDES
   };
 
   //----------------------------------------------------------------------------

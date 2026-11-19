@@ -34,7 +34,7 @@ namespace madmatrix
   using Parameters_dependentCouplings::ndcoup;
 
   // As in SigmaKin.cc: the chunks index the jamp tables with it
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
   constexpr int nParity = 2;
 #else
   constexpr int nParity = 1;

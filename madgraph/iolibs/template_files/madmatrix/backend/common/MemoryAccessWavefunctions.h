@@ -13,14 +13,14 @@
 
 #include "MemoryAccessHelpers.h"
 
-#define MGONGPU_TRIVIAL_WAVEFUNCTIONS 1
+#define MADMATRIX_TRIVIAL_WAVEFUNCTIONS 1
 
 //One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------
 
-#ifndef MGONGPU_TRIVIAL_WAVEFUNCTIONS
+#ifndef MADMATRIX_TRIVIAL_WAVEFUNCTIONS
 
   // A class describing the internal layout of memory buffers for wavefunctions
   // This implementation uses an AOSOA[npagW][nw6][nx2][neppW] where nevt=npagW*neppW
@@ -39,10 +39,10 @@ namespace madmatrix
     friend class KernelAccessHelper<MemoryAccessWavefunctionsBase, false, fptype_amp>;
 
     // The number of components of a (fermion or vector) wavefunction
-    static constexpr int nw6 = mgOnGpu::nw6;
+    static constexpr int nw6 = madmatrix::nw6;
 
     // The number of floating point components of a complex number
-    static constexpr int nx2 = mgOnGpu::nx2;
+    static constexpr int nx2 = madmatrix::nx2;
 
     //--------------------------------------------------------------------------
     // NB all KernelLaunchers assume that memory access can be decomposed as "accessField = decodeRecord( accessRecord )"
@@ -114,7 +114,7 @@ namespace madmatrix
       MemoryAccessHelper<MemoryAccessWavefunctionsBase, fptype_amp>::template ieventAccessFieldConst<int, int>;
   };
 
-#endif // #ifndef MGONGPU_TRIVIAL_WAVEFUNCTIONS
+#endif // #ifndef MADMATRIX_TRIVIAL_WAVEFUNCTIONS
 
   //----------------------------------------------------------------------------
 
@@ -125,7 +125,7 @@ namespace madmatrix
   {
   public:
 
-#ifndef MGONGPU_TRIVIAL_WAVEFUNCTIONS
+#ifndef MADMATRIX_TRIVIAL_WAVEFUNCTIONS
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (non-const) ===> fptype_amp& kernelAccessIw6Ix2( fptype_amp* buffer, const int iw6, const int ix2 ) <===]
@@ -151,7 +151,7 @@ namespace madmatrix
       return reinterpret_cast<const cxtype_amp_sv*>( buffer );
     }
 
-#endif // #ifndef MGONGPU_TRIVIAL_WAVEFUNCTIONS
+#endif // #ifndef MADMATRIX_TRIVIAL_WAVEFUNCTIONS
   };
 
   //----------------------------------------------------------------------------

@@ -17,7 +17,7 @@
 
 #include "MadMatrixConfig.h"
 
-#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its MadMatrixConfig.h)
+#ifdef MADMATRIX_HAS_VECTORS_H // the simd backend (see its MadMatrixConfig.h)
 #include "MadMatrixVectors.h"
 #else
 #include "MadMatrixCxtypes.h"

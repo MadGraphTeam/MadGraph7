@@ -41,7 +41,7 @@ namespace madmatrix
   private:
 
     // The number of floating point components of a complex number
-    static constexpr int nx2 = mgOnGpu::nx2;
+    static constexpr int nx2 = madmatrix::nx2;
   };
 
   //----------------------------------------------------------------------------
@@ -58,7 +58,7 @@ namespace madmatrix
 
     // Per-flavor stride (in fptype's) between two consecutive flavor slots of a flavored coupling value buffer.
     // For fixed (independent) couplings the value is a single scalar complex (real,imag): nx2 fptype's, broadcast across the SIMD vector.
-    static constexpr int flv_stride = mgOnGpu::nx2;
+    static constexpr int flv_stride = madmatrix::nx2;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (const, SCALAR OR VECTOR) ===> cxtype_sv kernelAccessConst( const fptype* buffer ) <===]

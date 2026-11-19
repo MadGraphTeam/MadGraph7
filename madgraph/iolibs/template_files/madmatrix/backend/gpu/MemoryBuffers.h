@@ -27,7 +27,7 @@ namespace madmatrix
     // Process-independent compile-time constants
     static constexpr size_t np4 = ProcessData::np4;
     static constexpr size_t nw6 = ProcessData::nw6;
-    static constexpr size_t nx2 = mgOnGpu::nx2;
+    static constexpr size_t nx2 = madmatrix::nx2;
     // Process-dependent compile-time constants
     static constexpr size_t nparf = ProcessData::nparf;
     static constexpr size_t npar = ProcessData::npar;

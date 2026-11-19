@@ -388,7 +388,7 @@ def crossed_gpu_vs_cpu(check_name, backend, name, proc_dirs, energy, seed, nevt,
     violates C parity (chiral or electroweak couplings): on a C-symmetric one (g g > q q~,
     g g > t t~) the CPU counts each helicity row once for itself and its C mirror and draws
     between the two, the GPU orders every row, so the same random number selects other
-    rows (same frequencies). Build the CPU reference with -DMGONGPU_NOCSYM there, or
+    rows (same frequencies). Build the CPU reference with -DMADMATRIX_NOCSYM there, or
     compare helicity frequencies."""
     rng = random.Random(seed)
     problems, details = [], []

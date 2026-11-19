@@ -713,7 +713,7 @@ class UFOModelConverterGPU(UFOModelConverterCPP):
     def write_process_h_file(self, writer):
         
         replace_dict = UFOModelConverterCPP.write_process_h_file(self, None)
-        replace_dict['include_for_complex'] = '#include "mgOnGpuTypes.h"'
+        replace_dict['include_for_complex'] = '#include "MadMatrixCxtypes.h"'
         if writer:
             file = self.read_template_file(self.process_template_h) % replace_dict
             # Write the file

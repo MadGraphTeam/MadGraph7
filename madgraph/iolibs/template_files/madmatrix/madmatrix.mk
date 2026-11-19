@@ -41,7 +41,7 @@ ifneq ($(words $(filter $(BACKEND), $(SUPPORTED_BACKENDS))),1)
   $(error Invalid backend BACKEND='$(BACKEND)': supported backends are $(foreach backend,$(SUPPORTED_BACKENDS),'$(backend)'))
 endif
 
-# 3 precision macros: amp (MGONGPU_FPTYPE_*), colour (MGONGPU_FPTYPE2_*), momenta/denom (MGONGPU_FPTYPE_MOMENTA_*)
+# 3 precision macros: amp (MADMATRIX_FPTYPE_*), colour (MADMATRIX_FPTYPE2_*), momenta/denom (MADMATRIX_FPTYPE_MOMENTA_*)
 # 5 modes: d=all64, f=all32, m=color32 (colour FP32, momenta+amp FP64), v=denom64 (momenta/denom FP64, colour+amp FP32), e=doubleword expansion (compensated FP64-in-FP32 denom, see MADARITH_DOUBLEEXPANSION below)
 override SUPPORTED_FPTYPES = d f m e v
 ifneq ($(words $(filter $(FPTYPE), $(SUPPORTED_FPTYPES))),1)
@@ -575,7 +575,7 @@ ifeq ($(HRPROBE),1)
 endif
 
 # Set the build flags appropriate to each BACKEND choice (example: "make BACKEND=scalar")
-# [NB MGONGPU_PVW512 is needed because "-mprefer-vector-width=256" is not exposed in a macro]
+# [NB MADMATRIX_PVW512 is needed because "-mprefer-vector-width=256" is not exposed in a macro]
 # [See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96476]
 # [Use 'g++ <buildflags> -E -dM - < /dev/null' to check which #define's are enabled]
 ifeq ($(UNAME_P),ppc64le)
@@ -590,7 +590,7 @@ ifeq ($(UNAME_P),ppc64le)
   endif
 else ifeq ($(UNAME_M),arm64) # ARM on Apple silicon
   ifeq ($(BACKEND),scalar) # this internally undefines __ARM_NEON
-    override AVXFLAGS = -DMGONGPU_NOARMNEON
+    override AVXFLAGS = -DMADMATRIX_NOARMNEON
   else ifeq ($(BACKEND),simd_128) # __ARM_NEON is always defined on Apple silicon
     override AVXFLAGS =
   else ifeq ($(BACKEND),simd_256)
@@ -622,7 +622,7 @@ else ifneq ($(shell $(CXX) --version | grep ^nvc++),) # support nvc++ #531
   else ifeq ($(BACKEND),avx512y)
     override AVXFLAGS = -march=skylake -mprefer-vector-width=256 # AVX512 with 256 width (ymm registers) [DEFAULT for gcc]
   else ifeq ($(BACKEND),simd_512)
-    override AVXFLAGS = -march=skylake -DMGONGPU_PVW512 # AVX512 with 512 width (zmm registers)
+    override AVXFLAGS = -march=skylake -DMADMATRIX_PVW512 # AVX512 with 512 width (zmm registers)
   endif
 else
   ifeq ($(BACKEND),scalar)
@@ -634,7 +634,7 @@ else
   else ifeq ($(BACKEND),avx512y)
     override AVXFLAGS = -march=skylake-avx512 -mprefer-vector-width=256 # AVX512 with 256 width (ymm registers) [DEFAULT for gcc]
   else ifeq ($(BACKEND),simd_512)
-    override AVXFLAGS = -march=skylake-avx512 -DMGONGPU_PVW512 # AVX512 with 512 width (zmm registers)
+    override AVXFLAGS = -march=skylake-avx512 -DMADMATRIX_PVW512 # AVX512 with 512 width (zmm registers)
   endif
 endif
 # For the moment, use AVXFLAGS everywhere (in C++ builds): eventually, use them only in encapsulated implementations?
@@ -643,25 +643,25 @@ ifeq ($(GPUCC),)
 endif
 
 # Set the build flags appropriate to each FPTYPE choice (example: "make FPTYPE=f")
-# 3 precision macros: amp (MGONGPU_FPTYPE_*), colour (MGONGPU_FPTYPE2_*), momenta/denom (MGONGPU_FPTYPE_MOMENTA_*)
+# 3 precision macros: amp (MADMATRIX_FPTYPE_*), colour (MADMATRIX_FPTYPE2_*), momenta/denom (MADMATRIX_FPTYPE_MOMENTA_*)
 # 5 modes: d=all64, f=all32, m=color32 (colour FP32, momenta+amp FP64), v=denom64 (momenta/denom FP64, colour+amp FP32), e=doubleword expansion (compensated FP64-in-FP32 denom, see MADARITH_DOUBLEEXPANSION below)
 $(info FPTYPE='$(FPTYPE)')
 ifeq ($(FPTYPE),d) # all64
-  CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE
-  GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE
+  CXXFLAGS += -DMADMATRIX_FPTYPE_DOUBLE -DMADMATRIX_FPTYPE2_DOUBLE
+  GPUFLAGS += -DMADMATRIX_FPTYPE_DOUBLE -DMADMATRIX_FPTYPE2_DOUBLE
 else ifeq ($(FPTYPE),f) # all32
-  CXXFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT
-  GPUFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT
+  CXXFLAGS += -DMADMATRIX_FPTYPE_FLOAT -DMADMATRIX_FPTYPE2_FLOAT
+  GPUFLAGS += -DMADMATRIX_FPTYPE_FLOAT -DMADMATRIX_FPTYPE2_FLOAT
 else ifeq ($(FPTYPE),m) # color32: colour FP32, momenta+amp FP64
-  CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
-  GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
+  CXXFLAGS += -DMADMATRIX_FPTYPE_DOUBLE -DMADMATRIX_FPTYPE2_FLOAT
+  GPUFLAGS += -DMADMATRIX_FPTYPE_DOUBLE -DMADMATRIX_FPTYPE2_FLOAT
 else ifeq ($(FPTYPE),v) # denom64: momenta/denom FP64, colour+amp FP32
   # cppnone/cuda/hip trivial, SIMD denom ex. twice, rest narrowed 
-  GPUFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT -DMGONGPU_FPTYPE_MOMENTA_DOUBLE
-  CXXFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT -DMGONGPU_FPTYPE_MOMENTA_DOUBLE
+  GPUFLAGS += -DMADMATRIX_FPTYPE_FLOAT -DMADMATRIX_FPTYPE2_FLOAT -DMADMATRIX_FPTYPE_MOMENTA_DOUBLE
+  CXXFLAGS += -DMADMATRIX_FPTYPE_FLOAT -DMADMATRIX_FPTYPE2_FLOAT -DMADMATRIX_FPTYPE_MOMENTA_DOUBLE
 else ifeq ($(FPTYPE),e)
-  CXXFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
-  GPUFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
+  CXXFLAGS += -DMADARITH_DOUBLEEXPANSION -DMADMATRIX_FPTYPE_DOUBLE -DMADMATRIX_FPTYPE2_FLOAT
+  GPUFLAGS += -DMADARITH_DOUBLEEXPANSION -DMADMATRIX_FPTYPE_DOUBLE -DMADMATRIX_FPTYPE2_FLOAT
 else
   $(error Unknown FPTYPE='$(FPTYPE)': supported fptypes are $(foreach fptype,$(SUPPORTED_FPTYPES),'$(fptype)'))
 endif
@@ -669,8 +669,8 @@ endif
 # Set the build flags appropriate to each HELINL choice (example: "make HELINL=1")
 $(info HELINL='$(HELINL)')
 ifeq ($(HELINL),1)
-  CXXFLAGS += -DMGONGPU_INLINE_HELAMPS
-  GPUFLAGS += -DMGONGPU_INLINE_HELAMPS
+  CXXFLAGS += -DMADMATRIX_INLINE_HELAMPS
+  GPUFLAGS += -DMADMATRIX_INLINE_HELAMPS
 else ifneq ($(HELINL),0)
   $(error Unknown HELINL='$(HELINL)': only '0' and '1' are supported)
 endif
@@ -683,7 +683,7 @@ override BLASLIBFLAGS=
 
 # Set the BLASCXXFLAGS and BLASLIBFLAGS build flags appropriate to each HASBLAS choice (example: "make HASBLAS=hasNoBlas")
 ifeq ($(HASBLAS),hasNoBlas)
-  override BLASCXXFLAGS += -DMGONGPU_HAS_NO_BLAS
+  override BLASCXXFLAGS += -DMADMATRIX_HAS_NO_BLAS
 else ifeq ($(HASBLAS),hasBlas)
   ifeq ($(findstring nvcc,$(GPUCC)),nvcc) # Nvidia GPU build
     override BLASLIBFLAGS = -L$(CUDA_HOME)/lib64/ -lcublas
@@ -722,7 +722,7 @@ override CPPBLASCXXFLAGS=
 override CPPBLASLIBFLAGS=
 
 ifeq ($(CPPBLAS),hasBlas)
-  override CPPBLASCXXFLAGS += -DMGONGPU_CPP_HAS_BLAS
+  override CPPBLASCXXFLAGS += -DMADMATRIX_CPP_HAS_BLAS
   override CPPBLASLIBFLAGS += %(cpp_blas_libflags)s
 else ifneq ($(CPPBLAS),hasNoBlas)
   $(error Unknown CPPBLAS='$(CPPBLAS)': only 'hasBlas' and 'hasNoBlas' are supported)
@@ -845,10 +845,10 @@ endif
 # environment too, so they reach an mg7 build. SigmaKin.o is rebuilt when they
 # change: the compiler flags are not otherwise a dependency of the objects.
 ifneq ($(HRMAXMB),)
-CXXFLAGS += -DMGONGPU_HR_MAX_TABLE_MB=$(HRMAXMB)
+CXXFLAGS += -DMADMATRIX_HR_MAX_TABLE_MB=$(HRMAXMB)
 endif
 ifneq ($(HRNOBLAS),)
-CXXFLAGS += -DMGONGPU_HR_NO_BLAS
+CXXFLAGS += -DMADMATRIX_HR_NO_BLAS
 endif
 $(BUILDDIR)/.hrflags: FORCE_HRFLAGS
 	@mkdir -p $(BUILDDIR); if [ "$$(cat $@ 2>/dev/null)" != "$(HRMAXMB):$(HRNOBLAS)" ]; then echo "$(HRMAXMB):$(HRNOBLAS)" > $@; fi

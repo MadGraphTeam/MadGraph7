@@ -1948,7 +1948,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # Special handling in EFT for fptype=float using SIMD
         nbsmparam_indep_all_used = len( bsmparam_indep_real_used ) + 2 * len( bsmparam_indep_complex_used )
         replace_dict['max_flavor'] = max((len(ids) for ids in self.model['merged_particles'].values()), default=1)
-        replace_dict['bsmdefine'] = '#define MGONGPUCPP_NBSMINDEPPARAM_GT_0 1' if nbsmparam_indep_all_used > 0 else '#undef MGONGPUCPP_NBSMINDEPPARAM_GT_0'
+        replace_dict['bsmdefine'] = '#define MADMATRIX_NBSMINDEPPARAM_GT_0 1' if nbsmparam_indep_all_used > 0 else '#undef MADMATRIX_NBSMINDEPPARAM_GT_0'
         replace_dict['nbsmip'] = nbsmparam_indep_all_used # NB this is now done also for 'sm' processes (no check on model name, see PR #824)
         replace_dict['hasbsmip'] = '' if nbsmparam_indep_all_used > 0 else '//'
         # BSM params for aS-dependent couplings as fptype/cxtype
@@ -2332,10 +2332,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             replace_dict['cipfassign'] = ''
 
         # mdl_bsmIndepParam only exists as a symbol at all when the model has
-        # BSM params (see MGONGPUCPP_NBSMINDEPPARAM_GT_0, PR #625) - this is a
+        # BSM params (see MADMATRIX_NBSMINDEPPARAM_GT_0, PR #625) - this is a
         # pre-existing macro, not new, and must stay a #ifdef (not a runtime
         # check) since the symbol itself may not exist to name-lookup.
-        replace_dict['bsmassign'] = '''#ifdef MGONGPUCPP_NBSMINDEPPARAM_GT_0
+        replace_dict['bsmassign'] = '''#ifdef MADMATRIX_NBSMINDEPPARAM_GT_0
     if( Parameters::nBsmIndepParam > 0 ) setBsmIndepParam( m_pars->mdl_bsmIndepParam, Parameters::nBsmIndepParam );
 #endif'''
 
@@ -2811,7 +2811,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 % (ntmp, namp, ', '.join(str(row) for row in row_of_hel),
                    len(dropped), max(len(dropped), 1),
                    ', '.join('{ %d, %d }' % pair for pair in dropped) or '{ 0, 0 }',
-                   '#define MGONGPU_HR_ROWS 1 // the color flows are made row by row in hr_row\n'
+                   '#define MADMATRIX_HR_ROWS 1 // the color flows are made row by row in hr_row\n'
                    if post['mode'] == 'rows' else '',
                    cls.HR_CALLS_MARK))
         dialect = hel_recycle.CppDialect()
@@ -3235,7 +3235,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         lines.append('  // The squared order each pair of amplitude orders'
                      ' contributes to (symmetric)')
         # __device__: the GPU color sum reads them in a kernel (an empty macro
-        # on the CPU backends), as for mgOnGpu::icolamp
+        # on the CPU backends), as for madmatrix::icolamp
         lines.append('  __device__ constexpr int sqSoIndex[nampso][nampso] = {')
         lines.append(',\n'.join('    { %s }' % ', '.join(str(i) for i in row)
                                 for row in so['sqsoindex']))
@@ -4786,7 +4786,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         GPU: one event per thread, so the row is read once, and each external
         call reads its momentum straight from the input slot xperm[s] with the
         NSF sign times xic[s] -- no gather buffer, no blend."""
-        return """#ifdef MGONGPUCPP_GPUIMPL
+        return """#ifdef MADMATRIX_GPUIMPL
       // === CROSSING SYMMETRY (GPU): this event's crossing-table row ===
       // (cross_gather, the base-slot view): base slot s reads the momentum of
       // input slot xperm[s], NSF sign times xic[s]. A row out of range gathers
@@ -4810,7 +4810,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
       // base slot s takes the momentum of input slot xperm[s], NSF sign xic[s].
       // A row out of range gathers the identity; its denominator is 0.
       // (momenta precision: double for FPTYPE=v, see xblend)
-      alignas( mgOnGpu::cppAlign ) fptype_momenta xmom[npar * np4 * neppV];
+      alignas( madmatrix::cppAlign ) fptype_momenta xmom[npar * np4 * neppV];
       fptype_sv icsign[npar];
 """
     CROSSING_GATHER_LOOP = """      for( int ieppV = 0; ieppV < neppV; ++ieppV )
@@ -4904,7 +4904,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             return self._crossing_external_orig(one_call, spin, s, me, nsf)
 
         hel = None if spin == 1 else 'hel_sv[%d]' % s
-        lines = ['#ifndef MGONGPUCPP_GPUIMPL']
+        lines = ['#ifndef MADMATRIX_GPUIMPL']
         lines.append('      ' + one_call(nsf, 'aloha_x[0]', hel))
         lines.append('      ' + one_call(-nsf, 'aloha_x[1]', hel and '-' + hel))
         lines.append('      { const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
@@ -4963,7 +4963,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # [GPUFOHelasCallWriter.get_external_line is called by GPUFOHelasCallWriter.get_external]
     # [=> GPUFOHelasCallWriter.get_external is called by GPUFOHelasCallWriter.generate_helas_call]
     # [GPUFOHelasCallWriter.generate_helas_call is called by UFOHelasCallWriter.get_wavefunction_call/get_amplitude_call]
-    # (cudacpp's MGONGPU_TEST_DIVERGENCE variant of the first ipzxxx/imzxxx/
+    # (cudacpp's MADMATRIX_TEST_DIVERGENCE variant of the first ipzxxx/imzxxx/
     # ixzxxx call is gone with them: get_external_line never emits those)
     def get_external(self, wf, argument):
         if getattr(self, 'use_crossing_ic', False):
