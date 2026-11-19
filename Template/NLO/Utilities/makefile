@@ -4,7 +4,7 @@ P01=$(shell echo $(P0) | cut -d'/' -f3)
 INCLUDE=-I../SubProcesses/$(P01)
 EXTRAW=-I../Source
 FF=gfortran -g -fno-automatic -ffixed-line-length-132 -std=legacy $(INCLUDE) $(EXTRAW) 
-FILES=handling_lhe_events.o fill_MC_mshell.o extra_weights.o
+FILES=mc_context_memory.o mc_event_records.o handling_lhe_events.o fill_MC_mshell.o extra_weights.o
 FILES2=fks_phase_space_data.o madfks_plot.o setcuts.o open_output_files.o pineappl_interface_dummy.o
 TDFILES=dbook.o open_output_files_dummy_td.o 
 HWUFILES=HwU.o open_output_files_dummy_HwU.o 
@@ -20,6 +20,14 @@ all: check_events combine_plots compare_events merge_events plot_events \
 
 fks_phase_space_data.o: ../SubProcesses/fks_phase_space_data.f ../SubProcesses/$(P01)/nexternal.inc
 	$(FF) -c $<
+
+mc_context_memory.o: ../SubProcesses/mc_context_memory.f90
+	$(FF) -c $<
+
+mc_event_records.o: ../SubProcesses/mc_event_records.f90 mc_context_memory.o
+	$(FF) -c $<
+
+handling_lhe_events.o: mc_event_records.o
 
 setcuts.o: fks_phase_space_data.o
 

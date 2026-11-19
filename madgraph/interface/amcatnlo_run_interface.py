@@ -21,6 +21,7 @@ from __future__ import absolute_import
 import atexit
 import collections
 import glob
+import hashlib
 import logging
 import math
 import optparse
@@ -31,6 +32,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import traceback
 import time
 import signal
@@ -2160,6 +2162,94 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                                           'in %s. Rerun without --nocompile to update the '
                                           'executable and integration channels.' % p_dir)
 
+    def native_mint_widths(self, integration=None):
+        if integration is None:
+            integration = int(self.run_card['vector_size']) if 'vector_size' in self.run_card else 1
+        requested = int(self.run_card['nlo_gen_vector_size'])
+        if integration < 1:
+            raise aMCatNLOError('vector_size must be positive')
+        if requested < 0:
+            raise aMCatNLOError('nlo_gen_vector_size must be non-negative')
+        if not requested:
+            requested = integration if self.run_card['nlo_real_backend'] in ('cuda', 'hip') else 8
+        return integration, min(integration, requested)
+
+    def bind_native_mint_checkpoint(self, jobs, verify=False):
+        """Only completed integration grids are restartable. No live events are serialized."""
+        integration, generation = self.native_mint_widths()
+        digests = {}
+        operational = {'iseed', 'nevents', 'nevt_job', 'run_tag', 'req_acc',
+                       'req_acc_fo', 'npoints_fo_grid', 'niters_fo_grid', 'npoints_fo',
+                       'niters_fo', 'fo_lhe_weight_ratio', 'fo_lhe_postprocessing',
+                       'vector_size', 'nlo_gen_vector_size', 'nlo_real_backend'}
+        physics_card = {key: copy.deepcopy(value) for key, value in self.run_card.items()
+                        if key.lower() not in operational}
+
+        def digest(path):
+            if path not in digests:
+                try:
+                    with open(path, 'rb') as stream:
+                        result = hashlib.sha256()
+                        for block in iter(lambda: stream.read(1 << 20), b''):
+                            result.update(block)
+                except OSError as exc:
+                    raise aMCatNLOError('Cannot bind native MC checkpoint file %s: %s' % (path, exc))
+                digests[path] = result.hexdigest()
+            return digests[path]
+
+        for job in jobs:
+            old = job.get('native_mc_checkpoint')
+            if verify and old is None and integration == job.get('vecsize', 1) == 1:
+                continue
+            if verify and (not isinstance(old, dict) or old.get('version') != 1):
+                raise aMCatNLOError('These grids lack a compatible native batching checkpoint. '
+                                    'Start a fresh integration.')
+            if job.get('vecsize', 1) != integration:
+                raise aMCatNLOError('Native integration width changed. Start a fresh integration.')
+            backend = self.run_card['nlo_real_backend']
+            directory = pjoin(self.me_dir, 'SubProcesses', job['p_dir'])
+            grid = job['dirname']
+            paths = [pjoin(directory, 'madevent_mintMC'), pjoin(grid, 'mint_grids'),
+                     pjoin(grid, 'grid.MC_integer')]
+            spread = pjoin(grid, 'born_spreading.dat')
+            if os.path.exists(spread):
+                paths.append(spread)
+            for name in ('FKS_params.dat', 'MadLoopParams.dat', 'param_card.dat'):
+                paths.append(pjoin(self.me_dir, 'Cards', name))
+            for pattern in ('libnlo_real_bridge.*', 'nlo_real_backend.inc'):
+                paths.extend(glob.glob(pjoin(directory, pattern)))
+            paths.extend(glob.glob(pjoin(self.me_dir, 'lib', 'libmc_born_support.*')))
+            library_dir = pjoin(self.me_dir, 'lib')
+            overrides = {}
+            if backend != 'fortran' and os.path.isfile(pjoin(directory, 'nlo_real_backend.inc')):
+                # The generated bridge resolves explicit relative overrides in
+                # the worker's channel directory (the native process cwd).
+                for variable in ('MG7_NLO_REAL_LIBRARY_DIR', 'MG7_NLO_REAL_PARAM_CARD'):
+                    override = os.environ.get(variable, 'auto').strip()
+                    if override and override != 'auto':
+                        actual = os.path.normpath(pjoin(grid, override))
+                        overrides[variable] = os.path.relpath(actual, self.me_dir)
+                        if variable == 'MG7_NLO_REAL_LIBRARY_DIR':
+                            library_dir = actual
+                        else:
+                            paths.append(actual)
+            paths.extend(glob.glob(pjoin(library_dir, 'libmadmatrix*_%s_*' % backend)))
+            binding = dict(version=1, phase='envelopes complete; queues empty', backend=backend,
+                           integration_width=integration, generation_capacity=generation,
+                           run_card=physics_card, channel=job['channel'],
+                           files={os.path.relpath(p, self.me_dir): digest(p) for p in paths})
+            if overrides:
+                binding['bridge_overrides'] = overrides
+            if verify:
+                if old.get('binding') != binding or not isinstance(old.get('integration_seed'), int):
+                    raise aMCatNLOError('Native MC checkpoint differs from the grids, code, '
+                                        'backend, widths or physics cards. Start a fresh integration.')
+            else:
+                # --only_generation starts a new seeded event sample from this
+                # drained boundary. There is no partially consumed RNG stream.
+                job['native_mc_checkpoint'] = dict(version=1, binding=binding,
+                                                   integration_seed=self.get_randinit_seed())
+
     @staticmethod
     def fixed_order_job_identity(job):
         """A split job belongs to one subprocess, channel group and channel kind."""
@@ -2177,8 +2267,8 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
     def create_jobs_to_run(self,options,p_dirs,req_acc,run_mode,\
                            integration_step,mode,fixed_order=True):
         """Creates a list of dictionaries with all the jobs to be run"""
-        if not fixed_order and int(self.run_card['nlo_gen_vector_size']) < 0:
-            raise aMCatNLOError('nlo_gen_vector_size must be non-negative')
+        if not fixed_order:
+            integration_width, _ = self.native_mint_widths()
         jobs_to_run=[]
         real_channels_x0 = self.check_real_channels_mode(mode)
         if not options['only_generation']:
@@ -2256,9 +2346,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                         job['mint_mode']=0
                         job['run_mode']=run_mode
                         job['wgt_frac']=1.0
-                        job['vecsize']=max(
-                            1, int(self.run_card['vector_size'])
-                            if 'vector_size' in self.run_card else 1)
+                        job['vecsize']=integration_width
                         jobs_to_run.append(job)
             jobs_to_collect=copy.copy(jobs_to_run) # These are all jobs
         else:
@@ -2273,6 +2361,8 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                 raise aMCatNLOError('Cannot reconstruct jobs from saved job status in %s' % \
                                     pjoin(self.me_dir,'SubProcesses','job_status.pkl'))
             self.check_real_channels_restart(jobs_to_collect,real_channels_x0)
+            if not fixed_order:
+                self.bind_native_mint_checkpoint(jobs_to_collect,verify=True)
             # Update cross sections and determine which jobs to run next
             if fixed_order:
                 jobs_to_run,jobs_to_collect=self.collect_the_results(options,req_acc,jobs_to_run,
@@ -2356,15 +2446,8 @@ RESTART = %(mint_mode)s
             # and pass a smaller width only to the generation executable.
             input_job = job
             if job['mint_mode'] == 2:
-                requested = int(self.run_card['nlo_gen_vector_size'])
-                if requested < 0:
-                    raise aMCatNLOError('nlo_gen_vector_size must be non-negative')
-                if requested == 0:
-                    if self.run_card['nlo_real_backend'] in ('cuda', 'hip'):
-                        requested = job['vecsize']
-                    else:
-                        requested = 8
-                input_job = dict(job, vecsize=min(job['vecsize'], requested))
+                _, generation_width = self.native_mint_widths(job['vecsize'])
+                input_job = dict(job, vecsize=generation_width)
             content = \
 """-1 12      ! points, iterations
 %(accuracy)s       ! desired fractional accuracy
@@ -2478,8 +2561,17 @@ RESTART = %(mint_mode)s
         if (not fixed_order) and integration_step+1 == 2 :
             # Write the jobs_to_collect directory to file so that we
             # can restart them later (with only-generation option)
-            with open(pjoin(self.me_dir,"SubProcesses","job_status.pkl"),'wb') as f:
-                pickle.dump(jobs_to_collect,f)
+            self.bind_native_mint_checkpoint(jobs_to_collect)
+            target = pjoin(self.me_dir,'SubProcesses','job_status.pkl')
+            with tempfile.NamedTemporaryFile(dir=os.path.dirname(target), delete=False) as f:
+                try:
+                    pickle.dump(jobs_to_collect,f)
+                    f.flush()
+                    os.fsync(f.fileno())
+                    os.replace(f.name, target)
+                finally:
+                    if os.path.exists(f.name):
+                        os.unlink(f.name)
             # next step is event generation (mint_step 2)
             jobs_to_run_new,jobs_to_collect_new= \
                     self.check_the_need_to_split(jobs_to_run_new,jobs_to_collect)
@@ -5913,6 +6005,29 @@ RESTART = %(mint_mode)s
         #directory where to compile exe
         p_dirs = [d for d in \
                 open(pjoin(self.me_dir, 'SubProcesses', 'subproc.mg')).read().split('\n') if d]
+
+        if exe == 'madevent_mintMC':
+            integration, _ = self.native_mint_widths()
+            backend = self.run_card['nlo_real_backend']
+            for p_dir in p_dirs:
+                directory = pjoin(self.me_dir, 'SubProcesses', p_dir)
+                if integration > 1 and not os.path.isfile(pjoin(directory, 'mc_native_cohort.f90')):
+                    raise aMCatNLOError('This output predates native multi-point MINT. '
+                                        'Regenerate the process or use vector_size=1.')
+                offload = os.path.isfile(pjoin(directory, 'nlo_real_offload.mk'))
+                if backend != 'fortran' and not offload:
+                    raise aMCatNLOError('The selected real backend requires an output '
+                                        'generated with --me_exporter=mg7.')
+                if offload and options['nocompile'] and os.path.isfile(pjoin(directory, exe)):
+                    marker = pjoin(directory, 'nlo_real_backend.inc')
+                    try:
+                        with open(marker) as stream:
+                            compiled = re.search(r'default_backend\s*=\s*"([^"]+)"', stream.read())
+                    except OSError:
+                        compiled = None
+                    if compiled is None or compiled.group(1) != backend:
+                        raise aMCatNLOError('The compiled real backend in %s differs from the '
+                                            'run card. Rerun without --nocompile.' % p_dir)
 
         # if --nocompile option is specified, check here that all exes exists. 
         # If they exists, return

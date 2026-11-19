@@ -6311,11 +6311,11 @@ class RunCardNLO(RunCard):
         self.add_param('nevt_job', -1, include=False)
         self.add_param(
             'vector_size', 1, include=False, hidden=True,
-            comment='lockstep size for NLO real-amplitude batches')
+            comment='maximum independent native MINT draws per integration batch')
         self.add_param(
             'nlo_gen_vector_size', 0, include=False, hidden=True,
-            comment='NLO event-generation width; 0 chooses up to 8 CPU lanes '
-                    'or the integration width on GPU')
+            comment='maximum generation candidates per batch, capped by vector_size. '
+                    '0 chooses up to 8 CPU candidates or the integration capacity on GPU')
         self.add_param(
             'nlo_real_backend', 'fortran', include=False, hidden=True,
             allowed=['fortran', 'scalar', 'simd_128', 'simd_256',

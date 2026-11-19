@@ -590,35 +590,81 @@ C wrt the hard matrix element. Relevant for lepton collisions.
       end
 
       subroutine compute_real_emission(p,sudakov_damp)
-      use fks_phase_space_data, only: xi_i_fks_ev,y_ij_fks_ev
-c This subroutine computes the real-emission matrix elements and adds
-c its value to the list of weights using the add_wgt subroutine
-      use extra_weights
-      use weight_lines, only: mc_H_only,mc_S_only
-      use mint_module, only: fixed_order
+      use mc_point_state, only: native_real_emission,real_waiting
       implicit none
       include 'nexternal.inc'
-      include 'coupl.inc'
-      include 'orders.inc'
-      include 'run.inc'
-      integer orders(nsplitorders)
-      integer iamp
-      double precision s_ev,fks_Sij,p(0:3,nexternal),wgt1,fx_ev
-     $     ,sudakov_damp,real_channel_soft_fraction
-      external real_channel_soft_fraction
+      double precision p(0:3,nexternal),sudakov_damp
+      type(native_real_emission) emission
+      call compute_real_emission_prepare(p,sudakov_damp,emission)
+      if(emission%request%status.eq.real_waiting)then
+         call resolve_native_real_scalar(emission%request)
+         call compute_real_emission_finish(emission)
+      endif
+      end
+
+      subroutine compute_real_emission_prepare(p,sudakov_damp,emission)
+c Process zeroes and analytic limits immediately. Only full matrix
+c elements leave a pending request, after both cuts and the FKS gates.
+      use mc_point_state, only: native_real_emission,real_idle
+      use fks_phase_space_data, only: xi_i_fks_ev,y_ij_fks_ev
+      use weight_lines, only: mc_H_only,mc_S_only
+      implicit none
+      include 'nexternal.inc'
+      type(native_real_emission),intent(inout) :: emission
+      double precision p(0:3,nexternal),sudakov_damp,s_ev,fx_ev,fks_Sij
       external fks_Sij
-      integer            i_fks,j_fks
+      integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
-      double precision     f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
+      double precision f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
       common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
-      integer get_orders_tag
+      if(emission%request%status.ne.real_idle)
+     $     error stop 'Outstanding native real emission at prepare'
       if (f_r.eq.0d0) return
 ! Do not evaluate a real matrix element whose only records are discarded.
       if (mc_H_only.and.sudakov_damp.le.0d0) return
       if (mc_S_only.and.sudakov_damp.ge.1d0) return
       s_ev = fks_Sij(p,i_fks,j_fks,xi_i_fks_ev,y_ij_fks_ev)
       if (s_ev.le.0.d0) return
-      call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev)
+      call sreal_prepare(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev,
+     $     emission%request)
+      if(emission%request%status.eq.real_idle)then
+         call assemble_real_emission(p,sudakov_damp,s_ev)
+      else
+         emission%sector_fraction=s_ev
+         emission%sudakov=sudakov_damp
+      endif
+      end
+
+      subroutine compute_real_emission_finish(emission)
+c The caller reactivates the point and native record context first.
+      use mc_point_state, only: native_real_emission,consume_native_real
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      type(native_real_emission),intent(inout) :: emission
+      double precision fx_ev,wgt_me_born,wgt_me_real
+      common/c_wgt_ME_tree/wgt_me_born,wgt_me_real
+      call consume_native_real(emission%request,fx_ev,amp_split)
+c add_wgt retains the unregulated total for ME reweighting.
+      wgt_me_real=emission%request%total
+      call assemble_real_emission(emission%request%p,emission%sudakov,
+     $     emission%sector_fraction)
+      end
+
+      subroutine assemble_real_emission(p,sudakov_damp,s_ev)
+      use extra_weights
+      use mint_module, only: fixed_order
+      implicit none
+      include 'nexternal.inc'
+      include 'coupl.inc'
+      include 'orders.inc'
+      include 'run.inc'
+      integer orders(nsplitorders),iamp,get_orders_tag
+      double precision p(0:3,nexternal),sudakov_damp,s_ev,wgt1,
+     $     real_channel_soft_fraction
+      double precision f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
+      common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
+      external real_channel_soft_fraction
       do iamp=1, amp_split_size
         if (amp_split(iamp).eq.0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
@@ -970,6 +1016,24 @@ c value to the list of weights using the add_wgt subroutine
       end
 
       subroutine compute_native_NLOPS_weights(p,p_cms,passcuts_nbody,passcuts_n1body,probne)
+c Other consumers, including flow sums, drain this same staged calculation.
+      use mc_point_state, only: native_real_emission,real_waiting
+      implicit none
+      include 'nexternal.inc'
+      type(native_real_emission) emission
+      double precision p(0:3,nexternal),p_cms(0:3,nexternal),probne
+      logical passcuts_nbody,passcuts_n1body
+      call prepare_native_NLOPS_weights(p,p_cms,passcuts_nbody,
+     $     passcuts_n1body,probne,emission)
+      if(emission%request%status.eq.real_waiting)then
+         call resolve_native_real_scalar(emission%request)
+         call compute_real_emission_finish(emission)
+      endif
+      end
+
+      subroutine prepare_native_NLOPS_weights(p,p_cms,passcuts_nbody,
+     $     passcuts_n1body,probne,emission)
+      use mc_point_state, only: native_real_emission
       use fks_phase_space_data, only: p1_cnt
 ! Evaluate one ordinary FKS history, including its real term and its
 ! G replacement. During H repartitioning add_wgt discards S records.
@@ -980,6 +1044,7 @@ c value to the list of weights using the add_wgt subroutine
       include 'nexternal.inc'
       include 'run.inc'
       double precision p(0:3,nexternal),p_cms(0:3,nexternal),probne,replace_MC_subt
+      type(native_real_emission),intent(inout) :: emission
       logical passcuts_nbody,passcuts_n1body,h_only_save,s_only_save
       integer counter_pass,ncounter_passes
       character*4 abrv
@@ -1041,7 +1106,7 @@ c value to the list of weights using the add_wgt subroutine
          if (ickkw.eq.3) call set_FxFx_scale(-3,p)
          call set_alphaS(p)
          call include_multichannel_enhance(2)
-         call compute_real_emission(p,probne)
+         call compute_real_emission_prepare(p,probne,emission)
       endif
       end
 
@@ -1356,19 +1421,27 @@ c     iterm= -3 : only restore scales for n+1-body w/o recomputing
       common/fks_indices/i_fks,j_fks
       INTEGER              NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
-      save rewgt_mohdr_calculated,rewgt_izero_calculated,p_last_izero
-     &     ,p_last_mohdr,iterm_last_izero,iterm_last_mohdr
-     &     ,fxfx_ren_scales_izero ,fxfx_ren_scales_mohdr
-     &     ,fxfx_fac_scale_izero ,fxfx_fac_scale_mohdr
-     &     ,nfxfx_ren_scales_izero ,nfxfx_ren_scales_mohdr
-      save rewgt_izero,rewgt_mohdr
-      data rewgt_izero_calculated,rewgt_mohdr_calculated /2*.false./
       integer need_matching(nexternal),need_matching_izero(nexternal)
       integer need_matching_S(nexternal),need_matching_H(nexternal)
      $     ,need_matching_cuts(nexternal)
       common /c_need_matching/ need_matching_S,need_matching_H
      $     ,need_matching_cuts
-      save need_matching_izero
+c Each suspended MINT point owns its two Sudakov cache entries.
+      common /native_fxfx_real_cache/ p_last_izero
+     $     ,p_last_mohdr
+     $     ,fxfx_ren_scales_izero
+     $     ,fxfx_ren_scales_mohdr
+     $     ,fxfx_fac_scale_izero
+     $     ,fxfx_fac_scale_mohdr
+     $     ,rewgt_izero
+     $     ,rewgt_mohdr
+      common /native_fxfx_integer_cache/ iterm_last_izero
+     $     ,iterm_last_mohdr
+     $     ,nfxfx_ren_scales_izero
+     $     ,nfxfx_ren_scales_mohdr
+     $     ,need_matching_izero
+      common /native_fxfx_valid_cache/ rewgt_mohdr_calculated
+     $     ,rewgt_izero_calculated
       if(timing_sampled)call timing_enter(timing_clustering)
       ktscheme=1
       if (iterm.eq.0) then
@@ -4491,18 +4564,54 @@ c
       end
 
       subroutine sreal(pp,xi_i_fks,y_ij_fks,wgt)
+c Ordinary fixed-order, native, and subtraction checks share the same
+c analytic-limit and full-real branches as the resumable MC evaluator.
+      use mc_point_state, only: native_real_request,real_waiting,
+     $     consume_native_real
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      type(native_real_request) request
+      double precision pp(0:3,nexternal),xi_i_fks,y_ij_fks,wgt
+      call sreal_prepare(pp,xi_i_fks,y_ij_fks,wgt,request)
+      if(request%status.eq.real_waiting)then
+         call resolve_native_real_scalar(request)
+         call consume_native_real(request,wgt,amp_split)
+      endif
+      end
+
+      subroutine resolve_native_real_scalar(request)
+c The synchronous reference path retains frame conversion, exact-key
+c native history sharing, and diagram weights when requested.
+      use mc_point_state, only: native_real_request,real_waiting,
+     $     complete_native_real
+      implicit none
+      include 'orders.inc'
+      include 'timing_variables.inc'
+      type(native_real_request),intent(inout) :: request
+      double precision raw
+      if(request%status.ne.real_waiting) error stop
+     $     'Scalar native provider requires a pending real request'
+      if(timing_sampled)call timing_enter(timing_real)
+      call smatrix_real_frame(request%p,raw)
+      if(timing_sampled)call timing_leave(timing_real)
+      call complete_native_real(request,raw,amp_split)
+      end
+
+      subroutine sreal_prepare(pp,xi_i_fks,y_ij_fks,wgt,request)
+      use mc_point_state, only: native_real_request,request_native_real
       use fks_phase_space_data, only: shat
 c Wrapper for the n+1 contribution. Returns the n+1 matrix element
 c squared reduced by the FKS damping factor xi**2*(1-y).
 c Close to the soft or collinear limits it calls the corresponding
 c Born and multiplies with the AP splitting function or eikonal factors.
       implicit none
-      include 'timing_variables.inc'
       include "nexternal.inc"
       include "coupl.inc"
       include "fks_info.inc"
       double precision pp(0:3,nexternal),xi_i_fks,y_ij_fks
       double precision wgt
+      type(native_real_request),intent(inout) :: request
       
       INTEGER              NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
@@ -4569,17 +4678,9 @@ c has soft singularities
             amp_split(1:amp_split_size) = 0d0
          endif
       else
-         if(timing_sampled)call timing_enter(timing_real)
-         call smatrix_real_frame(pp,wgt)
-         if(timing_sampled)call timing_leave(timing_real)
-         wgt=wgt*xi_i_fks**2*(1d0-y_ij_fks)
-         amp_split(1:amp_split_size) = amp_split(1:amp_split_size)*xi_i_fks**2*(1d0-y_ij_fks)
+         call request_native_real(request,pp,xi_i_fks,y_ij_fks)
       endif
-      
-      return
       end
-
-
 
       subroutine sborncol_fsr(p,xi_i_fks,y_ij_fks,wgt)
       use fks_phase_space_data,only: resonance_momentum,resonance_mass2,resonance_recoil,p_born,shat,p_i_fks_ev,xij_aor
@@ -6663,7 +6764,6 @@ c timing statistics
       logical virtual_fold_ready,first_virtual_evaluation
       common /c_folded_virtual/ virtual_fold_ready
       double precision virt_wgt_save
-      save virt_wgt_save
 
       double precision pmass(nexternal),zero
       parameter (zero=0d0)
@@ -6701,7 +6801,7 @@ C to keep track of the various split orders
       double precision amp_split_finite_ML(amp_split_size)
       common /to_amp_split_finite/amp_split_finite_ML
       double precision amp_split_virt_save(amp_split_size)
-      save amp_split_virt_save
+      common/c_folded_virtual_value/virt_wgt_save,amp_split_virt_save
       double precision amp_split_virt(amp_split_size),
      &      amp_split_born_for_virt(amp_split_size),
      &      amp_split_avv(amp_split_size)
@@ -8228,6 +8328,7 @@ c     reset the default dynamical_scale_choice
       function ran2()
 !     Wrapper for the random numbers; needed for the NLO stuff
       use mint_module
+      use mc_decision_ledger, only: decision_mode,decision_uniform
       implicit none
       double precision ran2,x,a,b
       integer ii,jconfig
@@ -8236,6 +8337,7 @@ c     reset the default dynamical_scale_choice
       ii=0                      ! dummy argument of ntuple
       jconfig=iconfig           ! integration channel (for off-set)
       call ntuple(x,a,b,ii,jconfig)
+      if (decision_mode.ne.0) call decision_uniform(jconfig,x)
       ran2=x
       return
       end
@@ -8553,3 +8655,12 @@ c     if there are no soft singularities at all, just do something trivial
       end
 
 
+
+
+      block data native_fxfx_valid_defaults
+      implicit none
+      logical rewgt_mohdr_calculated,rewgt_izero_calculated
+      common /native_fxfx_valid_cache/ rewgt_mohdr_calculated,
+     $     rewgt_izero_calculated
+      data rewgt_mohdr_calculated,rewgt_izero_calculated /2*.false./
+      end

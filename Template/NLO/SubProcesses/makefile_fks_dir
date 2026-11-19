@@ -67,7 +67,8 @@ GENPS_OBJECTS = fks_phase_space_data.o genps_fks_helpers.o genps_fks_sampling.o 
 FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 qed_shower_support.o process_module.o scale_module.o		\
 	 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) 			\
-	 FKSParams.o real_me_chooser.o native_real_me_chooser.o chooser_functions.o recmom.o	\
+	 FKSParams.o real_me_chooser.o native_real_me_chooser.o $(patsubst %.f,%.o,$(wildcard mc_provider_worker.f)) \
+	 chooser_functions.o recmom.o	\
 	 $(GENPS_OBJECTS) resonance_recoil.o initial_recoil.o		\
 	 recoil_selection.o resonance_histories.o setcuts.o setscales.o	\
 	 $(patsubst %.f,%.o,$(wildcard b_sf_???.f)) 			\
@@ -78,12 +79,12 @@ FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 momentum_reshuffling.o						\
 	 rescale_alpha_tagged.o						\
 	 fks_Sij.o $(fastjetfortran_madfks) fks_singular.o fks_buffered.o driver.o		\
-	 montecarlocounter.o mcatnlo_delta_scales.o herwig7_scales.o		\
+	 montecarlocounter.o mc_shower_state.o mcatnlo_delta_scales.o herwig7_scales.o		\
 	 boostwdir2.o boost_to_frame.o cluster.o splitorders_stuff.o reweight_xsec.o	\
 	 iproc_map.o sudakov.o  				\
 	 MC_integer.o $(reweight_xsec_events_pdf_dummy)			\
 	 $(pineappl_interface) weight_lines.o mint_module.o virtual_approximation.o \
-	 virtual_surrogate.o polfit.o
+	 virtual_surrogate.o mc_decision_ledger.o mc_batch_trace.o mc_point_state.o polfit.o
 
 FILESSUD= driver.o fks_phase_space_data.o \
          $(patsubst %.f,%.o,$(wildcard  ewsudakov*.f)) 			\
@@ -95,14 +96,15 @@ FILESSUD= driver.o fks_phase_space_data.o \
 
 # Files needed for mintFO & mintMC
 RUN= $(FO_ANALYSE) $(FILES) cuts.o dummy_fct.o 		\
-	fill_MC_mshell.o born_hel.o open_output_files.o			\
+	fill_MC_mshell.o born_hel.o open_output_files.o mc_context_memory.o mc_event_records.o	\
 	add_write_info.o madfks_plot.o
 
 # Files for mintFO
 MINTFO= $(RUN) driver_mintFO.o handling_lhe_events.o write_event.o BinothLHA.o
 
 # Files for mintMC
-MINTMC= $(RUN) driver_mintMC.o handling_lhe_events.o write_event.o BinothLHA.o
+MINTMC= $(RUN) native_mc_point.o mc_native_cohort.o mc_event_queues.o mc_native_generation.o \
+	driver_mintMC.o handling_lhe_events.o write_event.o BinothLHA.o
 
 # Files for check_poles
 POLES= $(RUN) check_poles.o BinothLHA.o write_event.o handling_lhe_events.o
@@ -130,7 +132,7 @@ TEST= $(RUN) test_soft_col_limits.o BinothLHADummy.o write_event.o handling_lhe_
 SYM= $(RUN) BinothLHADummy.o symmetry_fks_v3.o write_ajob.o write_event.o handling_lhe_events.o
 
 # Files for event reweighting to get e.g. scale and PDF uncertainties
-RWGFILES=driver.o fks_phase_space_data.o FKSParams.o reweight_xsec_events.o handling_lhe_events.o recmom.o \
+RWGFILES=driver.o fks_phase_space_data.o FKSParams.o reweight_xsec_events.o mc_context_memory.o mc_event_records.o handling_lhe_events.o recmom.o \
 	$(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) setscales.o	\
 	cuts.o dummy_fct.o $(fastjetfortran_madfks) boostwdir2.o	\
 	$(reweight_xsec_events_pdf_dummy) fill_MC_mshell.o cluster.o	\
@@ -252,7 +254,20 @@ genps_fks_radiation.o: FKSParams.o
 driver_mintFO.o driver_mintMC.o write_event.o add_write_info.o \
     test_soft_col_limits.o symmetry_fks_v3.o: genps_fks.o
 driver_mintFO.o: process_module.o
-mint_module.o : FKSParams.o virtual_surrogate.o driver.o
+mint_module.o : FKSParams.o virtual_surrogate.o driver.o mc_decision_ledger.o mc_batch_trace.o
+mc_point_state.o: orders.inc nexternal.inc
+mc_shower_state.o: montecarlocounter.o scale_module.o process_module.o nexternal.inc born_nhel.inc nFKSconfigs.inc
+mc_event_records.o weight_lines.o mc_native_cohort.o: mc_context_memory.o
+handling_lhe_events.o write_event.o: mc_event_records.o
+native_mc_point.o: mc_point_state.o genps_fks.o weight_lines.o mc_native_context.o mc_shower_state.o mint_module.o
+mc_native_cohort.o: mint_module.o native_mc_point.o mc_native_context.o
+mc_event_queues.o: mc_event_records.o mc_decision_ledger.o mint_module.o
+mc_native_generation.o: mc_event_queues.o mc_native_cohort.o
+driver_mintMC.o: mc_native_generation.o
+driver_mintMC.o fks_singular.o: mc_point_state.o
+mc_provider_worker.o: mc_native_context.o mc_batch_trace.o
+native_real_me_chooser.o: mc_decision_ledger.o mc_batch_trace.o
+real_me_chooser.o: mc_batch_trace.o
 virtual_approximation.o : weight_lines.o mint_module.o
 fks_singular.o genps_fks.o setscales.o cuts.o fastjet_wrapper.o \
     cluster.o mc_native_runtime.o born_support.o: timing_variables.inc
@@ -313,7 +328,8 @@ endif
 
 ifneq ("$(wildcard mc_native_context.f90)","")
 mc_native_context.o: $(LIBDIR)mc_born_types.mod $(LIBDIR)mc_born_support.mod
-mc_native_context.o: FFLAGS += -ffree-line-length-none
+mc_native_context.o: mc_batch_trace.o
+mc_native_context.o: FFLAGS += -ffree-line-length-none -ffunction-sections
 mc_native_runtime.o mc_native_props.o real_me_chooser.o chooser_functions.o genps_fks.o setcuts.o fks_singular.o driver_mintMC.o weight_lines.o iproc_map.o cluster.o boost_to_frame.o: mc_native_context.o
 mc_native_runtime.o: FFLAGS += -ffixed-line-length-none
 

@@ -1,4 +1,4 @@
-"""The MC@NLO event queue serves the records of the accepted lanes unchanged."""
+"""Compile the production accepted-event service with controlled hit/miss decisions."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -7,167 +7,156 @@ import unittest
 
 from madgraph import MG5DIR
 
+TEMPLATE = Path(MG5DIR) / 'Template/NLO/SubProcesses'
 
+
+@unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
 class TestMCEventQueue(unittest.TestCase):
-
-    def test_event_state_follows_its_lane(self):
-        """Restore each lane's UNLOPS scale before writing its event."""
-        compiler = shutil.which('gfortran')
-        if not compiler:
-            self.skipTest('gfortran required')
-        source = (Path(MG5DIR)/'Template/NLO/SubProcesses/driver_mintMC.f'
-                  ).read_text()
-
-        def routine(name):
-            start = source.index('      subroutine %s(' % name)
-            return source[start:source.index('\n      end\n', start)+11]
-
-        probe = '''      module driver_vec
-      implicit none
-      double precision lane_g(2),lane_muF12(2)
-      double precision lane_scale1_lhe(2,2)
-      integer lane_ipartner_lhe(2,2)
-      end module
-
-      program probe
-      use driver_vec
-      implicit none
-      include 'nFKSconfigs.inc'
-      include 'coupl.inc'
-      integer iSorH_lhe,ifks_lhe(fks_configs),jfks_lhe(fks_configs)
-     &     ,fksfather_lhe(fks_configs),ipartner_lhe(fks_configs)
-      double precision scale1_lhe(fks_configs),scale2_lhe(fks_configs)
-      common/cto_LHE1/iSorH_lhe,ifks_lhe,jfks_lhe,
-     #                fksfather_lhe,ipartner_lhe
-      common/cto_LHE2/scale1_lhe,scale2_lhe
-      double precision muR2_current,muF12_current,
-     #                 muF22_current,QES2_current
-      common/cscales_current_values/muR2_current,muF12_current,
-     #                              muF22_current,QES2_current
-      ipartner_lhe=0
-      scale1_lhe=0d0
-      g=1d0
-      muF12_current=100d0
-      ipartner_lhe(1)=1
-      scale1_lhe(1)=10d0
-      call save_lane_event_state(1)
-      g=2d0
-      muF12_current=400d0
-      ipartner_lhe(1)=3
-      scale1_lhe(1)=30d0
-      call save_lane_event_state(2)
-      g=0d0
-      muF12_current=0d0
-      ipartner_lhe(1)=0
-      scale1_lhe(1)=0d0
-      call restore_lane_event_state(2)
-      print *,g,muF12_current,ipartner_lhe(1),scale1_lhe(1)
-      call restore_lane_event_state(1)
-      print *,g,muF12_current,ipartner_lhe(1),scale1_lhe(1)
-      end
-
-''' + routine('save_lane_event_state') + '\n' + routine('restore_lane_event_state')
-        with tempfile.TemporaryDirectory(prefix='mg7_mc_lane_state_') as tmp:
-            tmp = Path(tmp)
-            (tmp/'nexternal.inc').write_text(
-                '      integer nexternal\n      parameter (nexternal=5)\n')
-            (tmp/'nFKSconfigs.inc').write_text(
-                '      integer fks_configs\n      parameter (fks_configs=2)\n')
-            (tmp/'coupl.inc').write_text(
-                '      double precision g\n      common /test_coupl/ g\n')
-            (tmp/'probe.f').write_text(probe)
-            compiled = subprocess.run(
-                [compiler, '-ffixed-line-length-132', '-fcheck=all',
-                 'probe.f', '-o', 'probe'], cwd=tmp,
-                capture_output=True, text=True)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
-            result = subprocess.run([str(tmp/'probe')], cwd=tmp,
-                                    capture_output=True, text=True)
+    def test_empty_waves_stream_switches_owned_metadata_and_terminal_surplus(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            (work/'trials.f90').write_text(TRIALS)
+            (work/'check.f90').write_text(CHECK)
+            subprocess.run(['gfortran', '-O3', '-fno-fast-math', '-fcheck=all',
+                            TEMPLATE/'mc_decision_ledger.f90', 'trials.f90',
+                            TEMPLATE/'mc_context_memory.f90', TEMPLATE/'mc_event_records.f90', TEMPLATE/'mc_event_queues.f90',
+                            TEMPLATE/'mc_native_generation.f90', 'check.f90', '-o', 'check'],
+                           cwd=work, capture_output=True, check=True)
+            result = subprocess.run([work/'check'], cwd=work, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
-        values = [[float(value) for value in line.split()]
-                  for line in result.stdout.splitlines()]
-        self.assertEqual(values, [[2., 400., 3., 30.],
-                                  [1., 100., 1., 10.]])
-
-    def test_queued_events_are_copied_unchanged(self):
-        """Refill, rewind and serve as driver_mintMC.f does.
-
-        Every accepted lane of a batch is written to a scratch queue and the
-        queue is rewound; requests are served from it until it is empty, and
-        the next batch overwrites it from the start. The served records must
-        be the queued ones, byte for byte: lines longer than the copy buffer,
-        exactly as long as it, or with trailing blanks, and no stale record of
-        a longer earlier batch.
-        """
-        compiler = shutil.which('gfortran')
-        if not compiler:
-            self.skipTest('gfortran required')
-        source = (Path(MG5DIR)/'Template/NLO/SubProcesses/driver_mintMC.f'
-                  ).read_text()
-        start = source.index('      subroutine copy_queued_event(')
-        copy = source[start:source.index('\n      end\n', start)+11]
-
-        def event(i):
-            return ['  <event>',
-                    ' %d 66 0.1E+01' % i,
-                    'x' * 1024,
-                    'y%d' % i * 1500,
-                    '#aMCatNLO %d   ' % i,
-                    '  </event>']
-
-        # batches of accepted lanes, and the number of requests served from
-        # each before the next batch is drawn (the last one keeps a lane)
-        batches = [[1, 2, 3], [4], [5, 6]]
-        served = [3, 1, 1]
-        probe = '''      program probe
-      implicit none
-      integer lun,lout,ib,i,j,k,nbatch(3),nserve(3),length
-      character*4000 line
-      data nbatch/%s/
-      data nserve/%s/
-      open(newunit=lun,status='scratch',form='formatted')
-      open(newunit=lout,file='served.lhe',status='replace')
-      open(10,file='events.txt',status='old')
-      do ib=1,3
-         rewind(lun)
-         do i=1,nbatch(ib)
-            do j=1,6
-               read(10,'(i5,a)') length,line
-               write(lun,'(a)') line(1:length)
-            enddo
-         enddo
-         rewind(lun)
-         do k=1,nserve(ib)
-            call copy_queued_event(lun,lout)
-         enddo
-      enddo
-      close(lout)
-      end
-
-''' % (','.join(str(len(b)) for b in batches),
-       ','.join(str(n) for n in served)) + copy
-        expected = []
-        with tempfile.TemporaryDirectory(prefix='mg7_mc_queue_') as tmp:
-            tmp = Path(tmp)
-            with open(tmp/'events.txt', 'w') as stream:
-                for batch, nserve in zip(batches, served):
-                    for i in batch:
-                        for line in event(i):
-                            stream.write('%5d%s\n' % (len(line), line))
-                    for i in batch[:nserve]:
-                        expected.extend(event(i))
-            (tmp/'probe.f').write_text(probe)
-            compiled = subprocess.run(
-                [compiler, '-ffixed-line-length-132', '-fno-automatic',
-                 '-fcheck=all', 'probe.f', '-o', 'probe'], cwd=tmp,
-                capture_output=True, text=True)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
-            result = subprocess.run([str(tmp/'probe')], cwd=tmp,
-                                    capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
-            self.assertEqual((tmp/'served.lhe').read_text(),
-                             '\n'.join(expected)+'\n')
+            expected = []
+            for draw in (4, 7, 11, 6, 8, 13):
+                expected.extend(['  <event>', f'{draw} {100*draw} {700+draw}   ',
+                                 'x' * 1024, str(draw % 10) * 3000, '  </event>'])
+            self.assertEqual((work/'served.lhe').read_text(), '\n'.join(expected)+'\n')
+            self.assertIn('SURPLUS 9', result.stdout)
+            self.assertIn('SURPLUS 15', result.stdout)
 
 
-if __name__ == '__main__':
-    unittest.main()
+TRIALS = """
+module mint_module
+  use iso_fortran_env, only: int64
+  use mc_decision_ledger, only: current_draw
+  implicit none
+  integer,parameter :: ndimmax=3
+  type mint_draw
+     integer(int64) :: id
+  end type
+  integer :: wave=0,requests(3)=0,outputs(3)=0
+contains
+  subroutine increase_gen_counters_before(vn)
+    integer vn
+    requests(vn)=requests(vn)+1
+  end subroutine
+  subroutine increase_gen_counters_end(vn)
+    integer vn
+    outputs(vn)=outputs(vn)+1
+  end subroutine
+  subroutine trace_mc_draw(action)
+    character(*) action
+    write(*,'(a,1x,i0)') action,current_draw
+  end subroutine
+  subroutine generate_mc_trials(draws,evaluate,vn,accepted)
+    type(mint_draw),intent(inout) :: draws(:)
+    interface
+       subroutine evaluate(draws)
+         import mint_draw
+         type(mint_draw),intent(inout) :: draws(:)
+       end subroutine
+    end interface
+    integer vn,lane
+    logical,intent(out) :: accepted(:)
+    if (size(draws)/=3) error stop 'unexpected capacity'
+    wave=wave+1
+    do lane=1,3
+       draws(lane)%id=3*(wave-1)+lane
+    enddo
+    call evaluate(draws)
+    select case(wave)
+    case(1)
+       accepted=.false.
+    case(2,5)
+       accepted=[.true.,.false.,.true.]
+    case(3)
+       accepted=.true.
+    case(4)
+       accepted=[.false.,.true.,.false.]
+    case default
+       error stop 'drew new candidates while a matching event was queued'
+    end select
+  end subroutine
+end module
+
+module mc_native_cohort
+  use mint_module, only: mint_draw
+  implicit none
+  integer :: active=0,scale=0,partner=0
+contains
+  subroutine evaluate_native_cohort(draws)
+    type(mint_draw),intent(inout) :: draws(:)
+  end subroutine
+  subroutine restore_generation_draw(draw,slot)
+    type(mint_draw) :: draw
+    integer slot
+    if (active/=0) error stop 'previous owner still active'
+    active=draw%id
+    scale=100*active
+    partner=700+active
+  end subroutine
+  subroutine park_generation_draw(slot)
+    integer slot
+    active=0
+    scale=-1
+    partner=-2
+  end subroutine
+  subroutine release_native_cohort()
+    if (active/=0) error stop 'live weight lines on release'
+  end subroutine
+end module
+"""
+
+CHECK = """
+subroutine select_native_event(requested,x,w)
+  use mc_native_cohort
+  use mint_module, only: ndimmax
+  real(8) x(ndimmax),requested,w
+  x=[dble(active),dble(scale),dble(partner)]
+  w=requested
+end subroutine
+subroutine capture_event_record(record,x,w,putonshell,p_label)
+  use mc_event_records, only: native_event_record,begin_event_capture,end_event_capture, &
+       emit_event_line,event_capture_unit
+  use mc_decision_ledger, only: current_draw
+  implicit none
+  type(native_event_record),target,intent(inout) :: record
+  real(8),intent(in) :: x(*),w
+  logical,intent(in) :: putonshell
+  integer,intent(in) :: p_label
+  character(80) line
+  if (int(x(1))/=current_draw.or.w/=1d0.or..not.putonshell.or.p_label/=4) error stop
+  call begin_event_capture(record)
+  call emit_event_line(event_capture_unit,'  <event>')
+  write(line,'(i0,2(1x,i0))') int(x(1)),int(x(2)),int(x(3))
+  call emit_event_line(event_capture_unit,trim(line)//'   ')
+  call emit_event_line(event_capture_unit,repeat('x',1024))
+  call emit_event_line(event_capture_unit,repeat(achar(48+mod(int(x(1)),10)),3000))
+  call emit_event_line(event_capture_unit,'  </event>')
+  call end_event_capture(record)
+end subroutine
+
+program check
+  use mint_module, only: wave,requests,outputs
+  use mc_native_generation
+  implicit none
+  integer unit,i
+  character(4),parameter :: kind(6)=['novi','virt','virt','novi','virt','born']
+  integer,parameter :: vn(6)=[2,1,2,2,1,3]
+  open(newunit=unit,file='served.lhe',status='new')
+  do i=1,6
+     call write_requested_event(kind(i),vn(i),3,1d0,.true.,4,unit)
+  enddo
+  call finish_native_generation()
+  close(unit)
+  if (wave/=5.or.any(outputs/=[2,3,1]).or.any(outputs/=requests)) error stop 'wrong number of events'
+end program
+"""

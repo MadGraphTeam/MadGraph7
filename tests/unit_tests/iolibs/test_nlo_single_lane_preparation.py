@@ -1,6 +1,7 @@
 """Single-lane preparation must leave unsupported execution paths unchanged."""
 import itertools
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -14,185 +15,93 @@ from madmatrix import output as madmatrix_output
 
 
 class TestSingleLanePreparation(unittest.TestCase):
-    def test_rejected_last_fold_keeps_born_colour_fallback(self):
+    def run_fixed_probe(self, program):
         compiler = shutil.which('gfortran')
         if compiler is None:
-            self.skipTest('gfortran is required for the colour lifecycle probe')
-        directory = os.path.join(MG5DIR, 'Template', 'NLO', 'SubProcesses')
-        with open(os.path.join(directory, 'driver_mintMC.f')) as stream:
-            source = stream.read()
-        start = source.index('         call generate_momenta(nndim,iconfig,jac,x,p)',
-                             source.index('      function sigintF_vec(ifl)'))
-        end = source.index('         if (passcuts_nbody) then', start)
-        preparation = source[start:end]
-        with open(os.path.join(directory, 'add_write_info.f')) as stream:
-            source = stream.read()
-        start = source.index('      if (colour_connections(1,1).lt.0) then')
-        end = source.index('         xtarget=ran2()*sumborn', start)
-        fallback = source[start:end]
-        program = '''      module state
-      implicit none
-      double precision sborn_jamp2(2,1)
-      integer fold,prepared
-      end module
-      program probe
-      use state
-      implicit none
-      integer nndim,iconfig,izero,ivec,nFKS_picked_nbody,ickkw
-      integer nFKSprocess,i,max_bcol,iBornGraph
-      parameter(max_bcol=2)
-      integer colour_connections(2,2)
-      logical single_lane_preparation,passcuts_nbody,passcuts
-      logical icolamp(2,1,1)
-      double precision jac,x(1),p(0:3,4),p_born(0:3,3)
-      double precision vegas_wgt,p1_cnt(0:3,4,-2:2),rwgt
-      double precision born_amp2(1),sborn_amp2(1,1)
-      double precision born_jamp2(2),born_amp_split(1)
-      double precision sborn_amp_split(1,1)
-      double precision born_amp_split_cnt(1,1,1)
-      double precision sborn_amp_split_cnt(1,1,1,1)
-      double precision born_ans_cnt(1,1),sborn_ans_cnt(1,1,1)
-      double precision born_saveamp(1,1),sborn_saveamp(1,1,1)
-      double precision wgt_born,swgt_born(1),jamp2(2),sumborn
-      external passcuts
-      single_lane_preparation=.true.
-      nndim=1
-      iconfig=1
-      izero=0
-      ivec=1
-      nFKS_picked_nbody=1
-      nFKSprocess=1
-      ickkw=0
-      iBornGraph=1
-      icolamp=.true.
-      p_born=1d0
-      prepared=0
-      do fold=1,2
-c Poison the previous fold, then reject the last fold's Born cuts.
-         sborn_jamp2=-999d0
-''' + preparation + '''
-         if (passcuts_nbody.neqv.(fold.eq.1)) stop 21
-         if (prepared.ne.fold) stop 22
-         colour_connections=-1
-''' + fallback + '''
-         if (sumborn.ne.3d0*fold) stop 23
-         if (any(jamp2.ne.(/1d0,2d0/)*fold)) stop 24
-      endif
-      enddo
-      print *, 'PASS'
-      stop
- 12   stop 25
-      end
-      subroutine prepare_single_lane_cache(p,nbody,cut1,cut2)
-      use state
-      double precision p(0:3,4)
-      logical nbody,cut1,cut2
-      if (.not.(nbody.and.cut1.and.cut2)) stop 26
-      sborn_jamp2(:,1)=(/1d0,2d0/)*fold
-      prepared=prepared+1
-      end
-      logical function passcuts(p,rwgt)
-      use state
-      double precision p(*),rwgt
-      passcuts=fold.eq.1
-      end
-      subroutine generate_momenta(n,c,j,x,p)
-      integer n,c
-      double precision j,x(*),p(*)
-      end
-      subroutine compute_prefactors_nbody(w)
-      double precision w
-      end
-      subroutine set_cms_stuff(i)
-      integer i
-      end
-      subroutine set_shower_scale_noshape(p,i)
-      double precision p(*)
-      integer i
-      end
-      subroutine set_FxFx_scale(i,p,j)
-      integer i,j
-      double precision p(*)
-      end
-'''
-        with tempfile.TemporaryDirectory(prefix='mg7_generation_colour_') as tmp:
-            path = os.path.join(tmp, 'probe.f')
-            binary = os.path.join(tmp, 'probe')
-            with open(path, 'w') as stream:
-                stream.write(program)
+            self.skipTest('requires gfortran')
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'probe.f'
+            executable = Path(tmp) / 'probe'
+            path.write_text(program)
             compiled = subprocess.run([compiler, '-O0', '-fcheck=all',
-                '-ffixed-line-length-132', path, '-o', binary], cwd=tmp,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            self.assertEqual(compiled.returncode, 0, compiled.stdout)
-            run = subprocess.run([binary], stdout=subprocess.PIPE,
-                                 stderr=subprocess.STDOUT, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout)
+                '-ffixed-line-length-none', path, '-o', executable], cwd=tmp,
+                capture_output=True, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            run = subprocess.run([executable], cwd=tmp, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr + run.stdout)
             self.assertEqual(run.stdout.strip(), 'PASS')
 
-    def test_scalar_cache_defaults_preserve_generation_fold_resets(self):
-        compiler = shutil.which('gfortran')
-        if compiler is None:
-            self.skipTest('gfortran is required for the cache lifecycle probe')
-        with open(os.path.join(MG5DIR, 'Template', 'NLO', 'SubProcesses',
-                               'driver_mintMC.f')) as stream:
-            source = stream.read()
-        source = source[source.index('      function sigintF_vec(ifl)'):]
-        start = source.index('      if (firsttime) then')
-        first = source[start:source.index('      if (ifl.eq.0) then', start)]
-        start = source.index('      if (ifl.eq.0 .or. ifl.eq.1) then')
-        reset = source[start:source.index('         if (ifl.eq.0) then', start)]
-        program = '''      program probe
+    def test_event_writer_uses_selected_hard_colours_or_selected_born_flow(self):
+        source = (Path(MG5DIR)/'Template/NLO/SubProcesses/add_write_info.f').read_text()
+        start = source.index('      iflow=abs(born_flow_picked)')
+        end = source.index('      do i=1,nexpart', start)
+        self.run_fixed_probe('''      program probe
       implicit none
-      logical firsttime,single_lane_preparation,goodhel_set
-      integer policy,callback,ifl,i,counts,proc_map(0:1,0:1)
-      integer sum,ini_fin_fks,born_class_map(1)
-      integer imode
-      integer BORN_FLAVOR_INDEX_D(1),goodhel_calls(1)
-      common /reset_calls/counts
-      BORN_FLAVOR_INDEX_D=1
-      do imode=0,2
-      do policy=0,1
-         firsttime=.true.
-         single_lane_preparation=policy.eq.1
-         counts=0
-         do callback=1,12
-            ifl=mod(callback-1,3)
-''' + first + reset + '''         endif
-         enddo
-         if (policy.eq.0.and.counts.ne.8) stop 1
-         if (policy.eq.1.and.imode.ne.2.and.counts.ne.1) stop 2
-         if (policy.eq.1.and.imode.eq.2.and.counts.ne.8) stop 3
+      integer nexternal
+      parameter(nexternal=4)
+      integer jpart(7,nexternal),colour_connections(2,nexternal)
+      integer iflow,born_flow_picked,idum,i
+      logical Hevents
+      do i=1,nexternal
+         colour_connections(:,i)=(/100+i,200+i/)
+      enddo
+      Hevents=.true.
+      born_flow_picked=-2
+      do
+         jpart=-999
+''' + source[start:end] + '''
+         if(Hevents)then
+            if(any(jpart(4:5,:)/=colour_connections))stop 1
+            Hevents=.false.
+            born_flow_picked=3
+         else
+            if(any(jpart(4:5,:)/=3))stop 2
+            exit
+         endif
+      enddo
+      print *, 'PASS'
+      end
+      subroutine fill_icolor_S(flow,jpart,idum)
+      integer flow,jpart(7,4),idum
+      jpart(4:5,:)=flow
+      end
+''')
+
+    def test_fold_resets_do_not_discard_the_parked_born_sample(self):
+        source = (Path(MG5DIR)/'Template/NLO/SubProcesses/driver_mintMC.f').read_text()
+        start = source.index('      if(point%status.ne.mc_wait_real)then')
+        end = source.index('      have_sum_born=.false.', start)
+        self.run_fixed_probe('''      program probe
+      implicit none
+      type born_sample
+         logical valid
+      end type
+      type phase_space
+         type(born_sample) born
+      end type
+      type native_point
+         integer status
+         type(phase_space) outer
+         logical has_chart
+      end type
+      type(native_point) point
+      integer ifl,status,mc_wait_real
+      parameter(mc_wait_real=1)
+      logical expected
+      do status=0,1
+      do ifl=0,2
+         point%status=status
+         point%has_chart=.true.
+         point%outer%born%valid=.true.
+''' + source[start:end] + '''      endif
+         expected=status==mc_wait_real.or.ifl==2
+         if(point%has_chart.neqv.expected)stop 1
+         if(point%outer%born%valid.neqv.expected)stop 2
       enddo
       enddo
       print *, 'PASS'
       end
-      subroutine setup_proc_map(sum,map,ini)
-      integer sum,map(0:1,0:1),ini
-      map=1
-      end
-      subroutine find_iproc_map()
-      end
-      subroutine setup_event_attributes()
-      end
-      subroutine reset_storage()
-      integer counts
-      common /reset_calls/counts
-      counts=counts+1
-      end
-'''
-        with tempfile.TemporaryDirectory(prefix='mg7_cache_lifecycle_') as tmp:
-            path = os.path.join(tmp, 'probe.f')
-            binary = os.path.join(tmp, 'probe')
-            with open(path, 'w') as stream:
-                stream.write(program)
-            compiled = subprocess.run([compiler, '-O0', '-fcheck=all',
-                '-ffixed-line-length-132', path, '-o', binary], cwd=tmp,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            self.assertEqual(compiled.returncode, 0, compiled.stdout)
-            run = subprocess.run([binary], stdout=subprocess.PIPE,
-                                 stderr=subprocess.STDOUT, text=True)
-            self.assertEqual(run.returncode, 0, run.stdout)
-            self.assertEqual(run.stdout.strip(), 'PASS')
+''')
 
     def test_emitted_backend_query_ignores_bridge_initialization_and_fallback(self):
         compiler = shutil.which('gfortran')
@@ -210,8 +119,8 @@ c Poison the previous fold, then reject the last fold's Born cuts.
                     None, chooser, lum, SimpleNamespace(real_processes=[]), None, None)
             with open(chooser_path) as stream:
                 self.assertIn('MG7_NLO_REAL_IS_FORTRAN', stream.read())
-            madmatrix_output.ProcessExporterMadMatrixNLOReal._write_fortran_routing(
-                None, manifest, tmp)
+            exporter = object.__new__(madmatrix_output.ProcessExporterMadMatrixNLOReal)
+            exporter._write_fortran_routing(manifest, tmp)
             with open(chooser_path) as stream:
                 chooser = stream.read()
             default = re.search(r'(?is)(logical function '

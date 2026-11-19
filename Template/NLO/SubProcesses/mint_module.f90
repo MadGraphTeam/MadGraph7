@@ -69,7 +69,8 @@ module mint_module
   ! imports make gfortran save/restore FPU state in unrelated module users.
   use FKSParams ! contains use_poly_virtual
   use virt_surrogate, only: vs_begin_point,vs_vcomp,vs_ratio_set,vs_ratio, &
-       vs_reset,vs_solve,vs_write_grids,vs_read_grids
+       vs_reset,vs_solve,vs_write_grids,vs_read_grids,surrogate_point,capture_surrogate_point,restore_surrogate_point
+  use iso_fortran_env, only: int64
   implicit none
   integer, parameter, private :: nintervals=32    ! max number of intervals in the integration grids
   integer, parameter, public  :: ndimmax=60       ! max number of dimensions of the integral
@@ -100,6 +101,9 @@ module mint_module
 ! public variables 
   integer, public :: ncalls0,ndim,itmax,imode,n_ord_virt,nchans,iconfig,ichan,ifold_energy,ifold_yij,ifold_phi
   integer, dimension(ndimmax), public :: ifold
+  integer, public :: native_mc_capacity=1
+  integer(int64), private :: issued_draws=0,calibration_draws=0,cohorts_evaluated=0
+  integer, private :: peak_cohort=0
   integer, dimension(maxchannels), public :: iconfigs
   double precision, public :: accuracy,min_virt_fraction_mint,wgt_mult
   double precision, dimension(0:n_ave_virt,maxchannels), public :: average_virtual
@@ -133,6 +137,7 @@ module mint_module
   double precision, dimension(:), allocatable, private :: born_spread_jump
   integer, private :: born_spread_nbreak=0,born_spread_capacity=0
   logical :: only_virt,new_point,pass_cuts_check
+  integer,allocatable :: mint_schannel_order(:)
 
 ! private variables
   character(len=13), parameter, dimension(nintegrals), private :: title=(/ &
@@ -210,6 +215,30 @@ module mint_module
   double precision, allocatable, dimension(:,:), private :: rand_vec
   double precision, dimension(0:nintervals,ndimmax) :: xgrid_new
 
+  ! The MINT half of an in-flight point. Grids, sampler statistics, fitted
+  ! coefficients and RNG engines belong to the job; none is rolled back.
+  type :: mint_draw
+     integer(int64) :: id=0
+     integer :: channel=0, config=0, fold_number=1, ifl=0
+     integer :: cell(ndimmax), base_cell(ndimmax), folds(ndimmax)
+     double precision :: offset(ndimmax), coordinates(ndimmax), volume, channel_prob, envelope
+     double precision :: integrals(nintegrals)=0d0, virtual_approx(0:n_ave_virt)=0d0
+     double precision :: virtual_weight(0:n_ave_virt)=0d0, born_weight(0:n_ave_virt)=0d0
+     logical :: first=.true., passed_cuts=.false., complete=.false.
+     type(surrogate_point) :: surrogate
+     integer, allocatable :: schannel_order(:)
+     integer :: spread_bin=1, spread_sector=1
+     double precision :: spread_x=0d0, spread_y=0d0
+     integer, allocatable :: spread_by_fold(:,:)
+  end type
+
+  abstract interface
+     subroutine mc_evaluate_cohort(draws)
+       import :: mint_draw
+       type(mint_draw), intent(inout) :: draws(:)
+     end subroutine
+  end interface
+
 ! Common blocks used elsewhere in the code
   integer                                   npoints
   double precision            cross_section
@@ -245,32 +274,120 @@ module mint_module
        &,fill_ave_virt,regrid_ave_virt ,double_ave_virt&
        &,get_channel,update_channel_sampling,set_channel_probabilities,close_run_zero_res,ran3 &
        &,initialize_even_random_numbers,get_ran &
-       &,increase_gen_counters_middle,increase_gen_counters_before &
-       &,increase_gen_counters_end,check_upper_bound &
+       &,increase_gen_counters_middle,check_upper_bound &
        &,get_random_cell_flat,get_weighted_cell,initialise_mint_gen &
        &,print_gen_counters
 contains
 
-  subroutine mint(fun)
+  subroutine read_mc_job_header(unit,mode,capacity,label,events)
+    use iso_fortran_env, only: iostat_end
+    integer,intent(in) :: unit,mode
+    integer,intent(out) :: capacity,label,events
+    integer :: status,second,comment
+    character(512) :: header
+    capacity=1
+    label=0
+    events=0
+    read(unit,'(a)',iostat=status) header
+    if (status==iostat_end.and.mode/=2) return
+    if (status/=0) error stop 'Missing native MINT job header'
+    comment=index(header,'!')
+    if (comment>0) header(comment:)=' '
+    read(header,*,iostat=status) capacity
+    if (status/=0) error stop 'Invalid native MINT job header'
+    read(header,*,iostat=status) label,second
+    if (status==0) then
+       if (mode/=2) error stop 'Expected only a native MINT integration width'
+       ! The legacy first pair is a process label (which may be zero)
+       ! and an event target. Its implicit capacity is one.
+       events=second
+       capacity=1
+    else
+       if (status/=iostat_end.or.capacity<1) error stop 'Invalid native MINT vector size'
+       if (mode==2) then
+          read(unit,*,iostat=status) label,events
+          if (status/=0) error stop 'Expected native process label and number of events'
+       endif
+    endif
+    if (mode==2.and.events<0) error stop 'Negative native event count'
+  end subroutine
+
+  subroutine trace_mc_draw(action)
+    use mc_batch_trace, only: batch_trace_unit
+    use mc_decision_ledger, only: current_draw
+    character(*), intent(in) :: action
+    integer :: unit
+    unit=batch_trace_unit()
+    if (unit/=-1) write(unit,'(a,1x,i0,1x,i0)') action,imode,current_draw
+  end subroutine
+
+  subroutine begin_mc_draw()
+    use mc_decision_ledger, only: decision_begin_draw
+    call decision_begin_draw()
+    issued_draws=issued_draws+1
+    if (born_spread_calibrating) calibration_draws=calibration_draws+1
+    call trace_mc_draw('DRAW')
+  end subroutine
+
+  subroutine record_native_cohort(active)
+    integer,intent(in) :: active
+    cohorts_evaluated=cohorts_evaluated+1
+    peak_cohort=max(peak_cohort,active)
+  end subroutine
+
+  subroutine report_native_draws()
+    write(*,'(a,i0,4(1x,i0))') 'Native MINT mode/draws/calibration/cohorts/max-cohort ', &
+         imode,issued_draws,calibration_draws,cohorts_evaluated,peak_cohort
+  end subroutine
+
+  subroutine mint(fun,evaluate_cohort,capacity)
     implicit none
     integer kpoint
     double precision :: vol
     double precision, dimension(ndimmax) :: x
     integer, dimension(ndimmax) :: kfold
     double precision, external :: fun
+    procedure(mc_evaluate_cohort), optional :: evaluate_cohort
+    integer, optional, intent(in) :: capacity
+    type(mint_draw), allocatable :: draws(:)
+    integer :: active,lane
     logical :: enough_points,channel_loop_done
+    if (present(evaluate_cohort)) then
+       if (fixed_order.or..not.present(capacity)) error stop 'Native MC cohort requires an explicit capacity'
+       if (capacity<1) error stop 'Invalid native MC cohort capacity'
+       allocate(draws(capacity))
+    endif
     call initialise_mint
 10  continue
     do while (nit.lt.itmax)
        call start_iteration
 2      kpoint_iter=kpoint_iter+1
-       do kpoint=1,ncalls
+       if (present(evaluate_cohort)) then
+          do kpoint=1,ncalls,size(draws)
+             active=min(size(draws),ncalls-kpoint+1)
+             do lane=1,active
+                call collect_mint_draw(draws(lane),0)
+             enddo
+             call record_native_cohort(active)
+             call evaluate_cohort(draws(:active))
+             do lane=1,active
+                if (.not.draws(lane)%complete) error stop 'Committing an unfinished native MC draw'
+                call activate_mint_draw(draws(lane))
+                call accumulate_the_point(draws(lane)%coordinates)
+                call trace_mc_draw('COMMIT')
+             enddo
+          enddo
+       else
+        do kpoint=1,ncalls
+          if (.not.fixed_order) call begin_mc_draw()
           new_point=.true.
           call get_channel
           call get_random_x(x,vol,kfold)
           call compute_integrand(fun,x,vol)
           call accumulate_the_point(x)
-       enddo
+          if (.not.fixed_order) call trace_mc_draw('COMMIT')
+        enddo
+       endif
        call get_amount_of_points(enough_points)
        if (.not.enough_points) goto 2
        ! Only a grid reset installs the unit channel markers for this scan.
@@ -286,7 +403,7 @@ contains
     enddo
     if (imode.eq.0 .and. born_spread_active .and. &
          .not.born_spread_ready) then
-       call calibrate_born_spreading(fun)
+       call calibrate_born_spreading(fun,evaluate_cohort,capacity)
        call born_spread_write_table
        born_spread_ready=.true.
        born_spread_phase=3
@@ -302,6 +419,158 @@ contains
     endif
     call finalise_mint
   end subroutine mint
+
+  subroutine collect_mint_draw(point,stream)
+    use mc_decision_ledger, only: current_draw
+    type(mint_draw), intent(inout) :: point
+    integer, intent(in) :: stream
+    integer :: count
+    call begin_mc_draw()
+    new_point=.true.
+    point%id=current_draw
+    point%fold_number=1
+    point%ifl=0
+    point%folds=1
+    point%coordinates=0d0
+    point%envelope=0d0
+    select case(stream)
+    case(-1)
+       ! Calibration samples the current channel at its fixed post-fit grids.
+       call get_random_x(point%coordinates,point%volume,point%folds)
+    case(0)
+       call get_channel
+       call get_random_x(point%coordinates,point%volume,point%folds)
+    case(1)
+       call get_random_cell_flat(point%coordinates,point%volume)
+       point%envelope=upper_bound
+    case(2,3)
+       call get_weighted_cell(point%coordinates,point%volume)
+       point%envelope=upper_bound
+    case default
+       error stop 'Unknown native MC candidate stream'
+    end select
+    point%channel=ichan
+    point%config=iconfig
+    point%channel_prob=vol_chan
+    point%first=.true.
+    if (allocated(point%schannel_order)) deallocate(point%schannel_order)
+    point%passed_cuts=.false.
+    point%complete=.false.
+    point%integrals=0d0
+    point%virtual_weight=0d0
+    point%born_weight=0d0
+    point%surrogate=surrogate_point()
+    if (born_spread_active) then
+       count=product(ifold(:ndim))
+       if (count<1.or.count>max_fold) error stop 'Invalid fold count collecting native draw'
+       if (allocated(point%spread_by_fold)) then
+          if (size(point%spread_by_fold,2)/=count) deallocate(point%spread_by_fold)
+       endif
+       if (.not.allocated(point%spread_by_fold)) allocate(point%spread_by_fold(2,count))
+       point%spread_by_fold=1
+       point%spread_bin=1
+       point%spread_sector=1
+       point%spread_x=0d0
+       point%spread_y=0d0
+    endif
+    call capture_draw_cells(point)
+  end subroutine
+
+  subroutine capture_draw_cells(point)
+    type(mint_draw), intent(inout) :: point
+    point%cell(:ndim)=icell(:ndim)
+    point%base_cell(:ndim)=ncell(:ndim)
+    point%offset(:ndim)=rand(:ndim)
+    if (use_poly_virtual) then
+       point%virtual_approx(:n_ord_virt)=polyfit(:n_ord_virt)
+    else
+       point%virtual_approx(:n_ord_virt)=average_virtual(:n_ord_virt,ichan)
+    endif
+  end subroutine
+
+  subroutine activate_mint_draw(point)
+    use mc_decision_ledger, only: decision_context,stage_physics,stage_closing
+    type(mint_draw), intent(in) :: point
+    integer :: count
+    call decision_context(point%id,point%fold_number,merge(stage_closing,stage_physics,point%ifl==2))
+    ichan=point%channel
+    iconfig=point%config
+    vol_chan=point%channel_prob
+    upper_bound=point%envelope
+    icell(:ndim)=point%cell(:ndim)
+    ncell(:ndim)=point%base_cell(:ndim)
+    rand(:ndim)=point%offset(:ndim)
+    if (use_poly_virtual) then
+       polyfit(:n_ord_virt)=point%virtual_approx(:n_ord_virt)
+    else
+       average_virtual(:n_ord_virt,ichan)=point%virtual_approx(:n_ord_virt)
+    endif
+    new_point=point%first
+    if (allocated(point%schannel_order)) then
+       mint_schannel_order=point%schannel_order
+    elseif (allocated(mint_schannel_order)) then
+       deallocate(mint_schannel_order)
+    endif
+    pass_cuts_check=point%passed_cuts
+    f=point%integrals
+    virt_wgt_mint=point%virtual_weight
+    born_wgt_mint=point%born_weight
+    call restore_surrogate_point(point%surrogate)
+    if (born_spread_active) then
+       count=size(point%spread_by_fold,2)
+       born_spread_current_bin=point%spread_bin
+       born_spread_current_sector=point%spread_sector
+       born_spread_x=point%spread_x
+       born_spread_y=point%spread_y
+       born_spread_bin_fold(:count)=point%spread_by_fold(1,:)
+       born_spread_sector_fold(:count)=point%spread_by_fold(2,:)
+    endif
+  end subroutine
+
+  ! Called with the owner's MINT cells active, only after the native
+  ! evaluator has completely finished its current fold (including closing).
+  subroutine finish_mint_fold(point)
+    use mc_decision_ledger, only: decision_context,stage_physics,stage_closing
+    type(mint_draw),intent(inout) :: point
+    integer :: last
+    if (point%complete) error stop 'Native MINT fold already closed'
+    if (point%ifl==2) then
+       point%complete=.true.
+       return
+    endif
+    last=1
+    if (imode/=0) call nextlexi(ifold,point%folds,last)
+    if (last==0) then
+       point%fold_number=point%fold_number+1
+       point%ifl=1
+       call decision_context(point%id,point%fold_number,stage_physics)
+       call get_random_x_next_fold(point%coordinates,point%volume,point%folds)
+    else
+       point%ifl=2
+       call decision_context(point%id,point%fold_number,stage_closing)
+    endif
+  end subroutine
+
+  subroutine park_mint_draw(point)
+    type(mint_draw), intent(inout) :: point
+    integer :: count
+    point%first=new_point
+    if (allocated(mint_schannel_order)) point%schannel_order=mint_schannel_order
+    point%passed_cuts=pass_cuts_check
+    point%virtual_weight=virt_wgt_mint
+    point%born_weight=born_wgt_mint
+    call capture_surrogate_point(point%surrogate)
+    if (born_spread_active) then
+       count=size(point%spread_by_fold,2)
+       point%spread_bin=born_spread_current_bin
+       point%spread_sector=born_spread_current_sector
+       point%spread_x=born_spread_x
+       point%spread_y=born_spread_y
+       point%spread_by_fold(1,:)=born_spread_bin_fold(:count)
+       point%spread_by_fold(2,:)=born_spread_sector_fold(:count)
+    endif
+    call capture_draw_cells(point)
+  end subroutine
 
   
   subroutine mint_vec(fun)
@@ -365,11 +634,11 @@ contains
     enddo
     call finalise_mint
   end subroutine mint_vec
-  subroutine calibrate_born_spreading(fun)
+  subroutine calibrate_born_spreading(fun,evaluate_cohort,capacity)
     implicit none
     double precision, external :: fun
-    double precision :: x(ndimmax),vol
-    integer :: kfold(ndimmax),ipoint
+    procedure(mc_evaluate_cohort), optional :: evaluate_cohort
+    integer,intent(in), optional :: capacity
     logical :: old_even_rn
     born_spread_phase=1
     born_spread_calibrating=.true.
@@ -387,20 +656,12 @@ contains
     even_rn=.false.
     write(*,*) 'Training born-spreading table with ', &
          born_spread_train_points,' independent phase-space points'
-    do ipoint=1,born_spread_train_points
-       new_point=.true.
-       call get_random_x(x,vol,kfold)
-       call compute_integrand(fun,x,vol)
-    enddo
+    call sample_calibration(born_spread_train_points)
     call solve_born_spreading_table
     born_spread_phase=2
     write(*,*) 'Validating born-spreading table with ', &
          born_spread_validation_points,' independent phase-space points'
-    do ipoint=1,born_spread_validation_points
-       new_point=.true.
-       call get_random_x(x,vol,kfold)
-       call compute_integrand(fun,x,vol)
-    enddo
+    call sample_calibration(born_spread_validation_points)
     born_spread_calibrating=.false.
     even_rn=old_even_rn
     call finish_born_spreading_validation
@@ -410,6 +671,37 @@ contains
     if (allocated(born_spread_jump)) deallocate(born_spread_jump)
     born_spread_nbreak=0
     born_spread_capacity=0
+  contains
+    subroutine sample_calibration(number)
+      integer,intent(in) :: number
+      integer :: ipoint,lane,active,kfold(ndimmax)
+      double precision :: x(ndimmax),vol
+      type(mint_draw),allocatable :: draws(:)
+      if (present(evaluate_cohort)) then
+         allocate(draws(capacity))
+         do ipoint=1,number,capacity
+            active=min(capacity,number-ipoint+1)
+            do lane=1,active
+               call collect_mint_draw(draws(lane),-1)
+            enddo
+            call record_native_cohort(active)
+            call evaluate_cohort(draws(:active))
+            do lane=1,active
+               if (.not.draws(lane)%complete) error stop 'Incomplete native calibration sample'
+               call activate_mint_draw(draws(lane))
+               call trace_mc_draw('COMMIT')
+            enddo
+         enddo
+      else
+         do ipoint=1,number
+            call begin_mc_draw()
+            new_point=.true.
+            call get_random_x(x,vol,kfold)
+            call compute_integrand(fun,x,vol)
+            call trace_mc_draw('COMMIT')
+         enddo
+      endif
+    end subroutine
   end subroutine calibrate_born_spreading
 
   subroutine solve_born_spreading_table
@@ -1667,8 +1959,9 @@ contains
 
   
   subroutine compute_integrand(fun,x,vol)
+    use mc_decision_ledger, only: decision_context,current_draw,stage_physics,stage_closing
     implicit none
-    integer :: ifirst,iret
+    integer :: ifirst,iret,fold
     integer, dimension(ndimmax) :: kfold
     double precision :: dummy,vol
     double precision, dimension(nintegrals) :: f1
@@ -1678,24 +1971,32 @@ contains
     call timing_begin_point()
     ! contribution to integral
     ifirst=0
+    fold=1
     if(imode.eq.0) then
+       if (.not.fixed_order) call decision_context(current_draw,fold,stage_physics)
        dummy=fun(x,vol,ifirst,f1)
-       if (.not. fixed_order) dummy=fun(x,vol,2,f1)
+       if (.not.fixed_order) then
+          call decision_context(current_draw,fold,stage_closing)
+          dummy=fun(x,vol,2,f1)
+       endif
        f(1:nintegrals)=f1(1:nintegrals)
     else
        f(1:nintegrals)=0d0
        kfold(1:ndim)=1
 1      continue
        ! this accumulated value will not be used
+       if (.not.fixed_order) call decision_context(current_draw,fold,stage_physics)
        dummy=fun(x,vol,ifirst,f1)
        ifirst=1
        call nextlexi(ifold,kfold,iret)
        if(iret.eq.0) then
           call get_random_x_next_fold(x,vol,kfold)
+          fold=fold+1
           goto 1
        endif
        !closing call: accumulated value with correct sign
        ifirst=2
+       if (.not.fixed_order) call decision_context(current_draw,fold,stage_closing)
        dummy=fun(x,vol,ifirst,f1)
        f(1:nintegrals)=f1(1:nintegrals)
     endif
@@ -2620,6 +2921,7 @@ contains
 
 
   subroutine gen(fun,gen_mode,vn,x)
+    use mc_decision_ledger, only: decision_context,current_draw,stage_hit
     implicit none
     integer :: vn,gen_mode
     logical :: found_point
@@ -2633,6 +2935,7 @@ contains
     elseif(gen_mode.eq.1) then
        call increase_gen_counters_before(vn)
 10     continue
+       call begin_mc_draw()
        new_point=.true.
        if (vn.eq.1) then
           call get_random_cell_flat(x,vol)
@@ -2641,7 +2944,10 @@ contains
        endif
        call compute_integrand(fun,x,vol)
        call increase_gen_counters_middle(vn)
+       call decision_context(current_draw,0,stage_hit)
        call check_upper_bound(vn,found_point)
+       call trace_mc_draw('COMMIT')
+       call trace_mc_draw(merge('ACCEPT','REJECT',found_point))
        if (.not.found_point) goto 10
        call increase_gen_counters_end(vn)
     else
@@ -2649,6 +2955,31 @@ contains
        stop 1
     endif
   end subroutine gen
+
+  subroutine generate_mc_trials(draws,evaluate_cohort,vn,accepted)
+    use mc_decision_ledger, only: decision_context,current_draw,stage_hit
+    type(mint_draw),intent(inout) :: draws(:)
+    procedure(mc_evaluate_cohort) :: evaluate_cohort
+    integer,intent(in) :: vn
+    logical,intent(out) :: accepted(:)
+    integer :: lane
+    if (imode/=2.or.vn<1.or.vn>3) error stop 'Invalid MINT generation stream'
+    if (size(draws)<1.or.size(draws)/=size(accepted)) error stop 'Invalid MINT candidate batch'
+    do lane=1,size(draws)
+       call collect_mint_draw(draws(lane),vn)
+    enddo
+    call record_native_cohort(size(draws))
+    call evaluate_cohort(draws)
+    do lane=1,size(draws)
+       if (.not.draws(lane)%complete) error stop 'Testing an unfinished native MC candidate'
+       call activate_mint_draw(draws(lane))
+       call increase_gen_counters_middle(vn)
+       call decision_context(current_draw,0,stage_hit)
+       call check_upper_bound(vn,accepted(lane))
+       call trace_mc_draw('COMMIT')
+       call trace_mc_draw(merge('ACCEPT','REJECT',accepted(lane)))
+    enddo
+  end subroutine
 
 
   subroutine gen_vec(fun,gen_mode,vn,nlanes,nevaluated)

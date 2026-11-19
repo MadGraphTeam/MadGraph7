@@ -41,7 +41,11 @@ namespace
 
   struct BridgeContext
   {
+    mg7_trace_input_fn trace_input = nullptr;
+    mg7_trace_output_fn trace_output = nullptr;
     std::vector<RealLibrary> reals;
+    std::vector<unsigned int> flavours;
+    std::vector<double> units;
     std::string error;
   };
 
@@ -216,6 +220,15 @@ extern "C"
     }
   }
 
+  int mg7_nlo_real_available( const void* opaque, int real_me_id )
+  {
+    const auto* context = static_cast<const BridgeContext*>( opaque );
+    if( !context || real_me_id < 1 || static_cast<size_t>( real_me_id ) > context->reals.size() )
+      return 0;
+    const RealLibrary& real = context->reals[real_me_id - 1];
+    return real.handle && real.evaluate;
+  }
+
   static int evaluate_real( void* opaque, int real_me_id,
                              size_t event_count, const double* momenta,
                              const double* g_strong, const double* g_ew, const int32_t* flavour,
@@ -235,7 +248,8 @@ extern "C"
         return fail( context, "real ME " + std::to_string( real_me_id ) +
           " is unavailable: " + ( real.error.empty() ?
           std::string( "unknown loader error" ) : real.error ) );
-      std::vector<unsigned int> local_flavour( event_count );
+      auto& local_flavour = context->flavours;
+      local_flavour.resize( event_count );
       for( size_t event = 0; event < event_count; ++event )
       {
         if( flavour[event] < 0 || flavour[event] >= real.flavour_count )
@@ -246,13 +260,15 @@ extern "C"
       }
       // Legacy callers provide physical G and take e from the parameter card.
       // The NLO workflow supplies both couplings and requests unit blocks.
-      std::vector<double> unit;
-      if( g_ew ) unit.assign( event_count, 1. );
+      auto& unit = context->units;
+      if( g_ew ) unit.resize( event_count, 1. );
       const UmamiInputKey input_keys[] = {
         UMAMI_IN_MOMENTA, UMAMI_IN_G_STRONG, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_G_EW };
       const void* inputs[] = { momenta, g_ew ? unit.data() : g_strong, local_flavour.data(), unit.data() };
       const UmamiOutputKey output_keys[] = { UMAMI_OUT_SQUARED_ORDERS };
       void* outputs[] = { squared_orders };
+      if( context->trace_input && g_ew )
+        context->trace_input( event_count, real.particle_count, real_me_id, momenta, g_strong, *g_ew, flavour );
       const UmamiStatus status = real.evaluate(
         real.handle, event_count, event_count, 0, g_ew ? 4 : 3, input_keys, inputs,
         1, output_keys, outputs );
@@ -273,6 +289,8 @@ extern "C"
               std::pow( g_strong[event], real.qcd_power[order] ) * ew_weight;
         }
       }
+      if( context->trace_output && g_ew )
+        context->trace_output( event_count, real.squared_order_count, squared_orders );
       // Non-finite components are returned unchanged. At degenerate
       // soft/collinear points the retained Fortran real matrix element is
       // itself non-finite, and the caller must see what the Fortran path
@@ -305,6 +323,16 @@ extern "C"
   {
     return evaluate_real( context, real_me_id, count, momenta, g_strong,
                           &g_ew, flavour, squared_orders );
+  }
+
+  void mg7_nlo_real_set_trace( void* opaque, mg7_trace_input_fn input, mg7_trace_output_fn output )
+  {
+    auto* context = static_cast<BridgeContext*>( opaque );
+    if( context )
+    {
+      context->trace_input = input;
+      context->trace_output = output;
+    }
   }
 
   int mg7_nlo_real_finalize( void** opaque )

@@ -19,6 +19,29 @@ from tests.unit_tests.fks.test_momentum_maps import mc_counterterm_test_module
 from tests.unit_tests.iolibs import model_state_checks
 
 
+def write_real_cache_fixture(root, legs, slots):
+    """Use the generated cache representation and lookup in the isolated scalar router."""
+    templates = Path(support.__file__).parent/'template_files'
+    native = Path(support.__file__).resolve().parents[2]/'Template/NLO/SubProcesses'
+    types = (templates/'mc_native_provider_types.inc').read_text()
+    methods = (templates/'mc_native_provider_methods.inc').read_text()
+    lookup = re.search(r'(?ms)^integer function mc_real_cache_lookup\b.*?^end function', methods).group()
+    (root/'mc_native_context.f90').write_text(f"""module mc_native_context
+use mc_born_types
+implicit none
+integer,parameter :: provider_legs={legs},provider_orders={slots}
+logical,save :: shared_real_active=.true.
+integer,save :: shared_real_epoch=1,active_history=0
+real(8),save :: shared_real_point(0:3,provider_legs)=1d0
+integer,save :: history_permutations(provider_legs,1)=0
+{types}
+contains
+{lookup}
+end module
+""")
+    return [str(native/'mc_batch_trace.f90'),str(native/'mc_decision_ledger.f90')]
+
+
 def physical(ids, tags=None):
     tags = tags or [False]*len(ids)
     return ('restrictions', tuple((pdg, i >= 2, (), tag, None)
@@ -101,8 +124,8 @@ class TestBornRegistry(unittest.TestCase):
                 'logical get_real_diagram_weights',
                 'common/c_get_real_diagram_weights/get_real_diagram_weights'])
             support.write_fortran(root/'fks_info.inc', [
-                'integer real_flavour_index_d(3)',
-                'data real_flavour_index_d/1,2,99/'])
+                'integer real_flavor_index_d(3)',
+                'data real_flavor_index_d/1,2,99/'])
 
             # Supply the original explicit-buffer API so write_dispatchers
             # takes the production preservation path. No SMATRIX1 fallback
@@ -119,7 +142,7 @@ class TestBornRegistry(unittest.TestCase):
                 'common/test_calls/calls',
                 'common/test_selected/last_selected',
                 'calls=calls+1', 'last_selected=nfksprocess',
-                'wgt=100d0*real_flavour_index_d(nfksprocess)+p(0,1)+10d0*model_value',
+                'wgt=100d0*real_flavor_index_d(nfksprocess)+p(0,1)+10d0*model_value',
                 'ret_amp_split=[wgt,2d0*wgt]', 'end',
                 'logical function mg7_nlo_real_is_fortran()',
                 'implicit none', 'mg7_nlo_real_is_fortran=.false.', 'end'])
@@ -129,14 +152,7 @@ class TestBornRegistry(unittest.TestCase):
             self.assertRegex((root/'real_me_chooser.f').read_text(),
                              r'(?i)subroutine\s+smatrix_real_local\s*\(')
 
-            (root/'mc_native_context.f90').write_text('''module mc_native_context
-implicit none
-logical,save::shared_real_active=.true.
-integer,save::shared_real_epoch=1,active_history=0
-real(8),save::shared_real_point(0:3,4)=1d0
-integer,save::history_permutations(4,1)=0
-end module
-''')
+            trace_modules = write_real_cache_fixture(root,4,2)
             program = [
                 'program check', 'use mc_native_context', 'implicit none',
                 "include 'orders.inc'", "include 'real_matrix_weights.inc'",
@@ -195,8 +211,9 @@ end module
             types = (Path(support.__file__).resolve().parents[2]/
                      'Template/NLO/Source/BornSupport/mc_born_types.f90')
             TestBornLibrary.run_command([
-                'gfortran', '-fcheck=all', '-ffixed-line-length-none',
-                '-ffree-line-length-none', str(types), 'mc_native_context.f90',
+                'gfortran', '-fcheck=all', '-ffixed-line-length-none', '-ffunction-sections',
+                '-Wl,-dead_strip' if sys.platform == 'darwin' else '-Wl,--gc-sections',
+                '-ffree-line-length-none', str(types), *trace_modules, 'mc_native_context.f90',
                 'real_me_chooser.f', 'native_real_me_chooser.f', 'check.f',
                 '-o', 'check'], tmp)
             TestBornLibrary.run_command(['./check'], tmp)
@@ -571,15 +588,10 @@ end""".splitlines()
                 'real(8) real_amp2(2)', 'common/c_real_diagram_weights/real_amp2',
                 'logical get_real_diagram_weights',
                 'common/c_get_real_diagram_weights/get_real_diagram_weights'])
+            support.write_fortran(root/'fks_info.inc', [
+                'integer,parameter::real_flavor_index_d(2)=[1,1]'])
             native_histories.write_dispatchers(root,record,{1:record},[(1,1),(1,2)],{})
-            (root/'mc_native_context.f90').write_text('''module mc_native_context
-implicit none
-logical,save::shared_real_active=.true.
-integer,save::shared_real_epoch=1,active_history=0
-real(8),save::shared_real_point(0:3,3)
-integer,save::history_permutations(3,1)=0
-end module
-''')
+            trace_modules = write_real_cache_fixture(root,3,1)
             program = ['program check', 'use mc_native_context', 'implicit none',
                 "include 'real_matrix_weights.inc'",
                 'integer nfksprocess,calls', 'common/c_nfksprocess/nfksprocess',
@@ -614,7 +626,7 @@ end module
             support.write_fortran(root/'check.f',program)
             types = Path(support.__file__).resolve().parents[2]/'Template/NLO/Source/BornSupport/mc_born_types.f90'
             TestBornLibrary.run_command(['gfortran','-fcheck=all','-ffixed-line-length-none',
-                '-ffree-line-length-none',str(types),'mc_native_context.f90',
+                '-ffree-line-length-none',str(types),*trace_modules,'mc_native_context.f90',
                 'real_me_chooser.f','check.f','-o','check'],tmp)
             TestBornLibrary.run_command(['./check'],tmp)
 
@@ -692,6 +704,17 @@ class TestBornLibrary(unittest.TestCase):
             output = cls.work/name
             with mock.patch.object(support,'finalize',capture):
                 command('output %s -f -nojpeg' % output)
+            # The output dimension counts global squared-order slots. The
+            # number of coupling names can be different for mixed amplitudes.
+            registry = json.loads((output/'Source/BornSupport/registry.json').read_text())
+            for rec in registry['contexts']:
+                directory = output/'SubProcesses'/rec['directory']
+                text = (directory/'mc_native_context.f90').read_text()
+                nslot = int(re.search(r'provider_orders=(\d+)',text)[1])
+                generated = (directory/'orders.inc').read_text()
+                native = int(re.search(r'\bAMP_SPLIT_SIZE\s*=\s*(\d+)',generated,re.I)[1])
+                if nslot != native:
+                    raise AssertionError((rec['directory'],nslot,native))
             cls.instrument_provider_calls(output)
             cls.run_command(['make','-j2','FFLAGS=-O0 -g -fcheck=all -fbacktrace'],
                             output/'Source/BornSupport')
@@ -1193,14 +1216,18 @@ class TestBornLibrary(unittest.TestCase):
                 # Flow setup imports process state; compile its QED support
                 # dependency too, as in the production subprocess build.
                 # The runtime's channel-weight helper imports active point data.
-                paths = ['qed_shower_support.f90','process_module.f90',
+                from tests.unit_tests.fks.mint_fixture import mint_runtime_modules
+                paths = [*mint_runtime_modules(directory),
+                         '-x','f77',output/'Source/MODEL/coupl.f90','-x','none',
+                         'qed_shower_support.f90','process_module.f90',
                          'fks_phase_space_data.f','mc_native_context.f90',
                          'mc_native_runtime.f','mc_native_props.f',
                          'born_support.f','born.f','sborn_sf.f','extra_cnt_wrapper.f',
                          'native_helpers.f','native_flows.f','model_revision.f','check_native.f']
                 self.run_command(['gfortran','-O0','-g','-fcheck=all',
                     '-ffixed-line-length-none','-ffree-line-length-none','-ffunction-sections',
-                    '-I'+str(output/'lib'),str(output/'Source/timing.f'),*paths,
+                    '-I'+str(output/'lib'),'-I'+str(output/'Source/BornSupport'),
+                    str(output/'Source/timing.f'),*paths,
                     '-Wl,-dead_strip' if sys.platform == 'darwin' else '-Wl,--gc-sections',
                     '-L'+str(output/'lib'),'-lmc_born_support','-Wl,-rpath,'+self.origin+'/../../lib',
                     '-o','check_native'],directory)
@@ -1217,7 +1244,9 @@ class TestBornLibrary(unittest.TestCase):
         self.assertEqual(len(list(support_dir.glob('c*/metadata.f'))),2)
         for r in records:
             wrapper = output/'SubProcesses'/r['directory']/'born.f'
-            self.assertNotIn('SBORN_SPLITORDERS',wrapper.read_text().upper())
+            scalar_body = '\n'.join(support.routine(wrapper.read_text(),'sborn')).upper()
+            self.assertIn('CALL MC_BORN_LOCAL(', scalar_body)
+            self.assertNotIn('CALL SBORN_SPLITORDERS(', scalar_body)
         self.compare(output)
 
     def test_parallel_registry(self):

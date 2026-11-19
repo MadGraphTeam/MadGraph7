@@ -3,11 +3,17 @@ program check_born_flow_rejection
   use flow_fixture
   use mint_module
   use scale_module
+  use mc_native_points, only: native_mc_point,activate_native_point,park_native_point
+  use mc_native_context, only: native_mapping,shared_real_active
   implicit none
   character(16) :: mode
   double precision :: factor,nan,inf,answer(6),dummy,x(5),sigintF,virtual_over_born
   integer :: flow,i,old_draws,old_calls,fold,ifold_counter,nndim,ickkw,ifks,jfks
-  integer :: phase,old_rejections
+  integer :: phase,old_rejections,lane,class_labels(8)
+  logical :: physical,nbody
+  type(native_mc_point) :: lanes(8)
+  common/test_fks_classes/class_labels,physical
+  common/cnbody/nbody
   logical :: leading(3),mcatnlo_delta
   integer :: nleading
   common/c_leading_cflows/leading,nleading
@@ -29,7 +35,57 @@ program check_born_flow_rejection
   inf=ieee_value(0d0,ieee_positive_inf)
   leading=[.true.,.true.,.false.]
   nleading=2
-  if(trim(mode).eq.'selection')then
+  class_labels=1
+  physical=.false.
+  if(trim(mode)=='partition'.or.trim(mode)=='lane_reset')then
+    read(*,*) n_groups,physical,ini_fin
+    read(*,*) class_labels
+    read(*,*) group_prob
+    ! A nonidentity active subset decouples group, FKS sector and class.
+    group_labels=8
+    do lane=1,n_groups
+       group_labels(lane)=n_groups+1-lane
+    enddo
+    nndim=5
+    ickkw=0
+    mcatnlo_delta=.false.
+    ifks=5
+    jfks=3
+    abrv='born'
+    ifold=1
+    do lane=1,n_groups
+       ! The preceding native H history suspended at its full-real call.
+       ! Its unit-cut inverse map must never reach this new Born draw.
+       native_mapping=.true.
+       shared_real_active=.true.
+       call activate_native_point(lanes(lane))
+       if(native_mapping.or.shared_real_active)error stop 'Inherited an inner radiation map'
+       if(.not.allocated(pdg))error stop 'Fresh lane missing FxFx scratch'
+       if(icontr/=0)error stop 'Fresh lane inherited weights'
+       group_pick=lane
+       x=.04d0*lane
+       nbody=.false.
+       pass_cuts_check=.true.
+       new_point=.true.
+       observe_lanes=.true.
+       born_cuts=mod(lane,2)==1.or.trim(mode)=='partition'
+       lanes(lane)%outer%born%valid=.true.
+       call sigintF_advance(lanes(lane),x,1d0,0,answer)
+       if(pass_cuts_check.neqv.born_cuts)error stop 'Fresh lane cuts inherited another draw'
+       write(*,'(a,1x,i0,1x,es26.17)') 'JAC',group_labels(lane),born_jac
+       observe_lanes=.false.
+       call park_native_point(lanes(lane))
+    enddo
+    do lane=1,n_groups
+       call activate_native_point(lanes(lane))
+       if(.not.allocated(pdg))error stop 'Missing restored native weight lines'
+       born_cuts=mod(lane,2)==1.or.trim(mode)=='partition'
+       if(icontr/=merge(1,0,born_cuts))error stop 'Inherited another draw weight count'
+       call sigintF_advance(lanes(lane),x,1d0,2,answer)
+       if(any(answer/=merge(1d0,0d0,born_cuts)))error stop 'Closing wrong draw'
+       call park_native_point(lanes(lane))
+    enddo
+  elseif(trim(mode).eq.'selection')then
     uniform=0.1d0
     call get_born_flow(flow,factor)
     if(flow.ne.1.or.factor.ne.0.25d0)error stop 'changed valid first-flow draw'
@@ -302,14 +358,28 @@ double precision function ran2()
   ran2=uniform
 end function
 subroutine setup_proc_map(isum,proc_map,ini_fin)
-  integer :: isum,proc_map(0:1,0:1),ini_fin
+  use flow_fixture, only: n_groups,group_labels,chosen_ini_fin=>ini_fin
+  include 'nFKSconfigs.inc'
+  integer :: isum,proc_map(0:fks_configs,0:fks_configs),ini_fin
   isum=1
   proc_map=1
-  ini_fin=0
+  proc_map(0,0)=n_groups
+  proc_map(1:n_groups,1)=group_labels(1:n_groups)
+  ini_fin=chosen_ini_fin
 end subroutine
 subroutine get_born_nFKSprocess(i,j)
   integer :: i,j
   j=i
+end subroutine
+subroutine update_fks_dir(sector)
+  use flow_fixture, only: observe_lanes,group_pick,group_labels
+  integer sector,nFKSprocess
+  logical nbody
+  common/cnbody/nbody
+  common/c_nFKSprocess/nFKSprocess
+  if(observe_lanes.and.(.not.nbody.or.sector/=group_labels(group_pick))) &
+       error stop 'Selected incorrect n-body sector or symmetry context'
+  nFKSprocess=sector
 end subroutine
 subroutine update_vegas_x(xx,x)
   double precision :: xx(5),x(99)
@@ -317,10 +387,11 @@ subroutine update_vegas_x(xx,x)
   x(1:5)=xx
 end subroutine
 subroutine get_MC_integer(i,j,k,vol)
+  use flow_fixture, only: group_pick,group_prob
   integer :: i,j,k
   double precision :: vol
-  k=1
-  vol=1d0
+  k=group_pick
+  vol=group_prob(k)
 end subroutine
 subroutine fill_MC_integer(i,j,weight)
   use flow_fixture
@@ -379,8 +450,11 @@ subroutine include_born_flow_weight(probability,proposal)
   double precision :: probability,proposal
   if(probability.le.0d0.or.proposal.le.0d0)error stop 'invalid flow reached weight evaluation'
 end subroutine
-subroutine compute_NLOPS_flow_weights(p,pc,cb,cr,probne,valid)
+subroutine advance_native_flows(state,emission,p,pc,cb,cr,probne,valid)
+  use mc_point_state, only: native_real_emission,native_flow_cursor
   use flow_fixture
+  type(native_flow_cursor) state
+  type(native_real_emission) emission
   double precision :: p(0:3,5),pc(0:3,5),probne
   logical :: cb,cr,valid
   integer :: fold,ifold_counter
@@ -394,7 +468,9 @@ subroutine compute_NLOPS_flow_weights(p,pc,cb,cr,probne,valid)
     valid=.false.
   endif
 end subroutine
-subroutine repartition_MC_H(first,p,pl,pc,jac,vw,sw,bf,point,valid)
+subroutine advance_native_histories(h,flow_state,emission,first,p,pl,pc,jac,vw,sw,bf,point,valid)
+  use mc_native_points, only: native_history_cursor,native_flow_cursor
+  use mc_point_state, only: native_real_emission
   use, intrinsic :: ieee_arithmetic
   use flow_fixture
   use fks_phase_space
@@ -403,6 +479,9 @@ subroutine repartition_MC_H(first,p,pl,pc,jac,vw,sw,bf,point,valid)
   common/cfl/fold,ifold_counter
   double precision :: p(0:3,5),pl(0:3,5),pc(0:3,5),jac,vw,sw,bf,factor
   type(fks_phase_space_point),intent(in) :: point
+  type(native_history_cursor),intent(inout) :: h
+  type(native_flow_cursor),intent(inout) :: flow_state
+  type(native_real_emission),intent(inout) :: emission
   logical,intent(out) :: valid
   native_calls=native_calls+1
   call add_record(4d0)

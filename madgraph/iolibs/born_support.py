@@ -1095,7 +1095,7 @@ def finalize(exporter):
         histories=histories), indent=2, sort_keys=True)+'\n')
     model_lines = expand(root/'Source'/'MODEL'/'coupl.inc')
     model_lines += expand(root/'Source'/'MODEL'/'input.inc')
-    model_members, _ = common_members(model_lines)
+    model_members, full_sizes = common_members(model_lines)
     model_commons = {m.lower(): 'mcb_model_'+m.lower() for line in model_lines
                      for m in re.findall(r'(?i)common\s*/(\w+)/', line)}
     from madgraph.iolibs.model_state import build_model_state_layout
@@ -1128,7 +1128,7 @@ def finalize(exporter):
     write_build(root, support, providers, model_commons, records)
     write_model_revision_hook(root)
     for record in records:
-        write_wrappers(root, record, dynamic_members, model_layout)
+        write_wrappers(root, record, dynamic_members, model_layout, (model_members, full_sizes))
     from madgraph.iolibs import native_histories
     native_histories.export(root, records, histories)
     for record in records:
@@ -1749,7 +1749,7 @@ def explicit_onehel_calls(source):
     return source
 
 
-def write_wrappers(root, r, members, model_layout=None):
+def write_wrappers(root, r, members, model_layout=None, full_model=None):
     directory = root/'SubProcesses'/r['directory']
     # Keep the explicit-buffer executable routines beside the native scalar
     # facade. Fixed-order and standalone vector callers still use this API.
@@ -1809,13 +1809,23 @@ def write_wrappers(root, r, members, model_layout=None):
                 'call born_model_dimensions(nr,nc)',
                 'call born_resize_model_state(state,nr,nc)']
     capture += ['state%%%s_values(%s)=%s' % (kind,index,name) for name,kind,index in members]
+    # The compact Born key remains the hot path. The full caller snapshot is
+    # touched only at a native suspension boundary. Put the active registered
+    # configuration beside the generated caller so restoring an older point
+    # can reactivate the exact private Born configuration and epoch.
+    config_module = (['module mc_caller_configuration',
+                      'use mc_born_types, only: BornModelConfiguration', 'implicit none',
+                      'type(BornModelConfiguration),save::configuration',
+                      'integer(8),save::saved_revision=-1', 'end module'] if full_model else [])
+    config_import = ['use mc_caller_configuration'] if full_model else []
+    config_local = ([] if full_model else ['integer(8),save::saved_revision=-1',
+                                          'type(BornModelConfiguration),save::configuration'])
     prepare = ['subroutine mc_prepare_model_configuration(epoch)',
-               'use mc_born_support', 'use mc_born_types', 'implicit none',
+               'use mc_born_support', 'use mc_born_types', *config_import, 'implicit none',
                "include 'coupl.inc'", *expand(root/'Source/MODEL/input.inc'),
                'integer(8) epoch,current_revision,mc_born_model_revision',
                'external mc_born_model_revision',
-               'integer(8),save::saved_revision=-1',
-               'type(BornModelConfiguration),save::configuration,candidate',
+               *config_local, 'type(BornModelConfiguration),save::candidate',
                'integer status', 'logical same_configuration',
                'current_revision=mc_born_model_revision()',
                'if(saved_revision.ne.current_revision.or.configuration%epoch.eq.0)then',
@@ -1838,7 +1848,33 @@ def write_wrappers(root, r, members, model_layout=None):
                 'call born_activate_model(configuration,status)',
                 'if(status.ne.0)stop "Cannot reactivate native Born model configuration"',
                 'endif', 'epoch=configuration%epoch', 'end']
-    write_fortran(directory/'born_support.f', lines+capture+['end']+prepare)
+    full_transfer = []
+    if full_model:
+        all_members, sizes = full_model
+        common_declarations = ['use mc_born_support', 'use mc_born_types', *config_import,
+                               'implicit none', "include 'coupl.inc'", *expand(root/'Source/MODEL/input.inc')]
+        live_model_bytes = 8 * (sizes['real'] + fixed_sizes['real']) + 16 * (sizes['complex'] + fixed_sizes['complex'])
+        full_transfer = ['integer(8) function mc_live_model_bytes()', 'implicit none',
+                         'mc_live_model_bytes=%d_8' % live_model_bytes, 'end',
+                         'subroutine mc_park_full_model(state)', *common_declarations,
+                         'type(BornLiveModel),intent(inout)::state', 'integer(8) epoch',
+                         'call mc_prepare_model_configuration(epoch)',
+                         'if(state%configuration%epoch.ne.epoch)state%configuration=configuration',
+                         'state%helicity_frame=born_active_helicity_frame']
+        for kind in ('real', 'complex'):
+            full_transfer.append('if(.not.allocated(state%%%s_values))allocate(state%%%s_values(%d))' %
+                                 (kind, kind, sizes[kind]))
+        full_transfer += ['state%%%s_values(%s)=%s' % (kind,index,name) for name,kind,index in all_members]
+        full_transfer += ['end', 'subroutine mc_activate_full_model(state)', *common_declarations,
+                          'type(BornLiveModel),intent(in)::state', 'integer status',
+                          'integer(8),external::mc_born_model_revision',
+                          'if(state%configuration%epoch.le.0)error stop "Missing native caller model"']
+        full_transfer += ['%s=state%%%s_values(%s)' % (name,kind,index) for name,kind,index in all_members]
+        full_transfer += ['if(configuration%epoch.ne.state%configuration%epoch)configuration=state%configuration',
+                          'saved_revision=mc_born_model_revision()', 'call born_activate_model(configuration,status)',
+                          'if(status.ne.BORN_OK)error stop "Invalid restored native model configuration"',
+                          'born_active_helicity_frame=state%helicity_frame', 'end']
+    write_fortran(directory/'born_support.f', config_module+lines+capture+['end']+prepare+full_transfer)
     declarations = ['use mc_born_types', 'implicit none', "include 'nexternal.inc'",
                     "include 'orders.inc'", 'double precision p(0:3,nexternal-1),ans',
                     'type(BornRequest),save::request', 'type(BornResult),save::result']

@@ -21,6 +21,8 @@ class TestFKSExplicitSum(unittest.TestCase):
             'nexternal.inc': 'integer nexternal,nincoming\nparameter(nexternal=5,nincoming=2)',
             'nFKSconfigs.inc': 'integer fks_configs,fks_integrated\n'
                                'parameter(fks_configs=7,fks_integrated=6)',
+            'fks_info.inc': 'logical,parameter :: has_physical_fks_classes=.false.\n'
+                            'integer,parameter :: nborn_flavor_configs=1',
             'genps.inc': 'integer maxproc\nparameter(maxproc=1)',
             'run.inc': 'integer ickkw\ndouble precision xbk(2)\ncommon/test_run/xbk,ickkw',
             'orders.inc': 'integer nsplitorders\nparameter(nsplitorders=1)',
@@ -122,7 +124,8 @@ class TestFKSExplicitSum(unittest.TestCase):
                 'genps.inc': 'integer maxproc\nparameter(maxproc=1)',
                 'nFKSconfigs.inc': 'integer fks_configs\nparameter(fks_configs=2)',
                 'orders.inc': 'integer amp_split_size\nparameter(amp_split_size=1)',
-                'fks_info.inc': 'integer pdg_type_d(2,5),fks_i_d(2)\n'
+                'fks_info.inc': 'logical,parameter :: has_physical_fks_classes=.false.\n'
+                                'integer pdg_type_d(2,5),fks_i_d(2)\n'
                                 'common/test_fks_info/pdg_type_d,fks_i_d',
             }
             for name, source in includes.items():
@@ -140,7 +143,7 @@ class TestFKSExplicitSum(unittest.TestCase):
             result = subprocess.run([
                 shutil.which('gfortran'), '-O2', '-fcheck=all',
                 '-ffixed-line-length-132', *support, str(work / 'contexts.f90'),
-                str(TEMPLATE / 'weight_lines.f'), str(work / 'weights.f'),
+                str(TEMPLATE / 'mc_context_memory.f90'), str(TEMPLATE / 'weight_lines.f'), str(work / 'weights.f'),
                 str(ROOT / 'tests/input_files/check_fks_sum_weights.f90'),
                 '-o', str(work / 'check')], cwd=work, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -806,6 +806,15 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'analysis_dummy.f',
                      'analysis_lhe.f',
                      'mint_module.f90',
+                     'mc_decision_ledger.f90',
+                     'mc_batch_trace.f90',
+                     'mc_point_state.f',
+                     'mc_shower_state.f',
+                     'mc_context_memory.f90', 'mc_event_records.f90',
+                     'native_mc_point.f',
+                     'mc_native_cohort.f90',
+                     'mc_event_queues.f90',
+                     'mc_native_generation.f90',
                      'virtual_surrogate.f90',
                      'virtual_approximation.f',
                      'MC_integer.f',
@@ -2059,6 +2068,26 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         writer_me.writelines(text_vec)
         writer_me.writelines(text_vec_batch)
         writer_me.writelines("""
+              logical function mc_provider_can_batch(row,flav)
+              implicit none
+              integer row,flav
+              mc_provider_can_batch=.false.
+              end
+
+              subroutine mc_evaluate_provider_batch(p,g,ew,row,flav,n,
+     $             wgt,amps,ok)
+              implicit none
+              include 'nexternal.inc'
+              include 'orders.inc'
+              integer row,flav,n
+              double precision p(0:3,nexternal,n),g(n),ew
+              double precision wgt(n),amps(amp_split_size,n)
+              logical ok
+              ok=.false.
+              wgt=0d0
+              amps=0d0
+              end
+
               logical function mg7_nlo_real_is_fortran()
               implicit none
               mg7_nlo_real_is_fortran=.true.

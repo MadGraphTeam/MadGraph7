@@ -66,7 +66,7 @@ class TestPhysicalNativeHistories(unittest.TestCase):
             end program
             ''')
             build = subprocess.run(['gfortran', '-fcheck=all', '-ffixed-line-length-none',
-                str(Path(MG5DIR)/'Template/NLO/SubProcesses/weight_lines.f'),
+                str(Path(MG5DIR)/'Template/NLO/SubProcesses/mc_context_memory.f90'), str(Path(MG5DIR)/'Template/NLO/SubProcesses/weight_lines.f'),
                 'check.f90', '-o', 'check'], cwd=root, capture_output=True, text=True)
             self.assertEqual(build.returncode, 0, build.stdout+build.stderr)
             run = subprocess.run(['./check'], cwd=root, capture_output=True, text=True)

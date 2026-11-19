@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import unittest
 
+from tests.unit_tests.fks.mint_fixture import mint_runtime_modules
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -26,6 +28,7 @@ class TestMintChannels(unittest.TestCase):
         result = subprocess.run(
             ['gfortran', '-O0', '-g', '-fcheck=all', '-ffree-line-length-none',
              '-o', 'check', 'support.f90', str(ROOT / 'Template/NLO/SubProcesses/virtual_surrogate.f90'),
+             *mint_runtime_modules(cls.path),
              'mint_module.f90', 'check.f90'],
             cwd=cls.path, capture_output=True, text=True)
         if result.returncode:
@@ -73,6 +76,18 @@ class TestMintChannels(unittest.TestCase):
     def test_mc_channel_selection_keeps_legacy_probabilities(self):
         counts, = self.run_case('mc')
         self.assertAlmostEqual(int(counts[0]) / sum(map(int, counts)), .875, delta=.006)
+
+    def test_native_mint_draws_commit_in_order_including_short_tails(self):
+        with tempfile.TemporaryDirectory() as refdir, tempfile.TemporaryDirectory() as work:
+            expected = self.run_case('draw_scalar', refdir)
+            self.assertEqual(len(expected), 1)
+            self.assertEqual(self.run_case('draw_cohort', work), expected)
+
+    def test_interleaved_folds_keep_their_cells_and_generation_envelope(self):
+        self.run_case('fold_and_hit')
+
+    def test_modern_and_legacy_native_job_headers(self):
+        self.run_case('job_headers')
 
     def test_zero_moments_give_uniform_exploration(self):
         probability, = self.run_case('zero')
@@ -133,6 +148,7 @@ module integrand_state
 logical :: seed_only=.false.
 logical :: envelope_case=.false.,virtual_point=.false.
 integer :: virtual_calls=0
+logical :: saw_three=.false., saw_tail=.false.
 double precision :: virtual_share=0d0
 end module
 
@@ -143,6 +159,9 @@ use integrand_state
 implicit none
 character(len=16) :: mode
 integer :: i,j,nseed,counts(3)
+integer :: unit,width,label,events
+type(mint_draw) :: trials(3)
+logical :: hits(3)
 integer, allocatable :: seed(:)
 double precision :: estimate,total,total2,weight,point,error,u
 double precision, external :: integrand
@@ -172,6 +191,22 @@ ifold_phi=ndim
 min_virt_fraction_mint=.005d0
 wgt_mult=.5d0
 select case(mode)
+case('job_headers')
+ open(newunit=unit,status='scratch')
+ write(unit,'(a)') '3  ! integration width'
+ write(unit,'(a)') '3  ! generation width'
+ write(unit,'(a)') '0 12 ! process label, event count'
+ write(unit,'(a)') '0 24 ! legacy event job'
+ rewind(unit)
+ call read_mc_job_header(unit,1,width,label,events)
+ if (width/=3) error stop 'integration width'
+ call read_mc_job_header(unit,2,width,label,events)
+ if (width/=3.or.label/=0.or.events/=12) error stop 'explicit generation width'
+ call read_mc_job_header(unit,2,width,label,events)
+ if (width/=1.or.label/=0.or.events/=24) error stop 'legacy generation pair'
+ call read_mc_job_header(unit,0,width,label,events)
+ if (width/=1) error stop 'legacy integration'
+ close(unit)
 case('virtual_envelope')
  imode=1
  ichan=1
@@ -291,6 +326,37 @@ case('mc')
   if(abs(vol_chan-ans_chan(ichan)/8d0).gt.1d-15) stop 2
  enddo
  write(*,*) 'CHECK ',counts(1:2)
+case('fold_and_hit')
+ fixed_order=.false.
+ nlo_ps=.true.
+ nchans=1
+ imode=2
+ ifold(ndim)=2
+ do i=0,nintervals
+   xgrid(i,:ndim,1)=dble(i)/nintervals
+ enddo
+ ave_virt=0d0
+ ymax=1d0
+ ymax_virt(1)=4d0
+ call initialise_mint_gen
+ do i=1,3
+   call generate_mc_trials(trials,fold_and_hit,i,hits)
+   if (any(hits.neqv.[.true.,.false.,.true.])) error stop 'wrong trial accepted'
+ enddo
+ if (any(gen_counters(3:10)/=[9,3,3,6,2,2,2,3])) error stop 'wrong generation accounting'
+case('draw_scalar','draw_cohort')
+ fixed_order=.false.
+ nlo_ps=.true.
+ nchans=1
+ ncalls0=131
+ itmax=3
+ if (mode=='draw_cohort') then
+    call mint(integrand,run_cohort,3)
+    if (.not.saw_three.or..not.saw_tail) error stop 'expected full cohorts and tails'
+ else
+    call mint(integrand)
+ endif
+ write(*,*) 'CHECK ',ans(2,0),unc(2,0),sum(xgrid(:,1,1))
 case('zero')
  channel_moment=0d0
  call set_channel_probabilities
@@ -311,6 +377,59 @@ case('seed','recover','automatic')
  write(*,*) 'CHECK ',ans(2,0),unc(2,0),ans(2,2)
  write(*,*) 'CHECK ',channel_moment(1:2)
 end select
+contains
+subroutine fold_and_hit(draws)
+ type(mint_draw),intent(inout) :: draws(:)
+ integer lane,step
+ double precision original(size(draws)),envelope
+ ! Virtual draws use the flat-cell virtual bound; the other streams
+ ! use a product of per-dimension bounds.
+ envelope=merge(4d0,1d0,i==1)
+ do step=1,3
+   do lane=size(draws),1,-1
+      call activate_mint_draw(draws(lane))
+      if (upper_bound/=envelope) error stop 'envelope changed across draws'
+      if (draws(lane)%ifl/=step-1) error stop 'wrong native fold stage'
+      if (step==1) then
+         original(lane)=draws(lane)%coordinates(ndim)
+      else
+         if (abs(draws(lane)%coordinates(ndim)-original(lane)-0.5d0)>1d-15) error stop 'fold was redrawn'
+         if (icell(ndim)/=ncell(ndim)+nintervals/2) error stop 'wrong folded cell'
+      endif
+      if (step==3) draws(lane)%integrals(1)=merge(0d0,2*envelope,lane==2)
+      call finish_mint_fold(draws(lane))
+      call park_mint_draw(draws(lane))
+   enddo
+ enddo
+end subroutine
+
+subroutine run_cohort(draws)
+ use mc_decision_ledger, only: current_draw
+ type(mint_draw),intent(inout) :: draws(:)
+ integer lane
+ saw_three=saw_three.or.size(draws)==3
+ saw_tail=saw_tail.or.size(draws)<3
+ do lane=1,size(draws)
+   call activate_mint_draw(draws(lane))
+   if (current_draw/=draws(lane)%id) error stop 'wrong draw'
+   virt_wgt_mint(0)=dble(current_draw)
+   allocate(mint_schannel_order(-3:0))
+   mint_schannel_order=int(current_draw)*10+[0,1,2,3]
+   pass_cuts_check=.true.
+   call park_mint_draw(draws(lane))
+ enddo
+ do lane=size(draws),1,-1
+   call activate_mint_draw(draws(lane))
+   if (virt_wgt_mint(0)/=dble(draws(lane)%id)) error stop 'leaked virtual weights'
+   if (lbound(mint_schannel_order,1)/=-3.or.mint_schannel_order(-2)/=int(current_draw)*10+1) &
+        error stop 'leaked stochastic resonance ordering'
+   if (any(ncell(:ndim)/=draws(lane)%base_cell(:ndim))) error stop 'leaked cells'
+   call compute_integrand(integrand,draws(lane)%coordinates,draws(lane)%volume)
+   draws(lane)%integrals=f
+   draws(lane)%complete=.true.
+   call park_mint_draw(draws(lane))
+ enddo
+end subroutine
 end program
 
 double precision function integrand(x,vol,ifl,f)

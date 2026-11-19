@@ -463,7 +463,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
             '-ffree-line-length-none', '-I'+pjoin(output_path, 'lib'),
             '-c', 'mc_native_context.f90', '-o', 'native_context_probe.o'], cwd=subproc)
         subprocess.check_call(['make', 'timing.o'], cwd=pjoin(output_path, 'Source'))
-        return ['native_real_me_chooser.o', 'born_support.o',
+        return ['native_real_me_chooser.o', 'born_support.o', 'mc_decision_ledger.o', 'mc_batch_trace.o',
                 'native_context_probe.o', 'driver.o', '../../Source/timing.o']
 
     def _native_real_link_flags(self, output_path, subproc):

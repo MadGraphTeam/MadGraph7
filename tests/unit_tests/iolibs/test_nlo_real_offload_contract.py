@@ -28,6 +28,8 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from madgraph import MG5DIR
 from madgraph.interface import amcatnlo_run_interface
@@ -426,6 +428,72 @@ UmamiStatus umami_matrix_element(UmamiHandle, size_t, size_t, size_t,
             self.assertEqual(jobs[0]['vecsize'], 7)
         finally:
             shutil.rmtree(root)
+
+    def test_native_checkpoint_detects_changed_grids_and_preserves_legacy_scalar(self):
+        error = amcatnlo_run_interface.aMCatNLOError
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pdir = root / 'SubProcesses/P0'
+            grid = pdir / 'GF1.0'
+            grid.mkdir(parents=True)
+            cards = root / 'Cards'
+            cards.mkdir()
+            for p in [pdir/'madevent_mintMC', grid/'mint_grids', grid/'grid.MC_integer',
+                      cards/'param_card.dat', cards/'MadLoopParams.dat', cards/'FKS_params.dat']:
+                p.write_text(p.name)
+            seed = root / 'SubProcesses/randinit'
+            seed.write_text('r=42')
+            command = amcatnlo_run_interface.aMCatNLOCmd.__new__(amcatnlo_run_interface.aMCatNLOCmd)
+            command.me_dir = str(root)
+            command.stop_for_runweb = True
+            command.force_run = False
+            command.run_card = banner.RunCardNLO()
+            job = dict(p_dir='P0', dirname=str(grid), channel='1.0', vecsize=1)
+            command.bind_native_mint_checkpoint([job], verify=True)
+            self.assertNotIn('native_mc_checkpoint', job)
+            command.bind_native_mint_checkpoint([job])
+            command.bind_native_mint_checkpoint([job], verify=True)
+            self.assertEqual(job.pop('native_mc_checkpoint')['binding']['integration_width'], 1)
+            command.run_card['vector_size'] = 3
+            job['vecsize'] = 3
+            with self.assertRaisesRegex(error, 'lack a compatible'):
+                command.bind_native_mint_checkpoint([job], verify=True)
+            command.bind_native_mint_checkpoint([job])
+            seed.write_text('r=43')
+            command.run_card['nevents'] = 200
+            command.bind_native_mint_checkpoint([job], verify=True)
+            self.assertEqual(job['native_mc_checkpoint']['integration_seed'], 42)
+            cut = command.run_card['ptj']
+            command.run_card['ptj'] = cut + 1
+            with self.assertRaisesRegex(error, 'checkpoint differs'):
+                command.bind_native_mint_checkpoint([job], verify=True)
+            command.run_card['ptj'] = cut
+            command.run_card['nlo_gen_vector_size'] = 2
+            with self.assertRaisesRegex(error, 'checkpoint differs'):
+                command.bind_native_mint_checkpoint([job], verify=True)
+            command.run_card['nlo_gen_vector_size'] = 3
+            (grid/'mint_grids').write_text('different grid')
+            with self.assertRaisesRegex(error, 'checkpoint differs'):
+                command.bind_native_mint_checkpoint([job], verify=True)
+
+            (pdir/'nlo_real_backend.inc').write_text('scalar')
+            command.run_card['nlo_real_backend'] = 'scalar'
+            custom = grid/'custom'
+            custom.mkdir()
+            library = custom/'libmadmatrix_sm_PMM_B1_R1_scalar_d.so'
+            library.write_bytes(b'A')
+            (custom/'my_card.dat').write_text('first model')
+            with patch.dict(os.environ, {'MG7_NLO_REAL_LIBRARY_DIR':'custom',
+                                         'MG7_NLO_REAL_PARAM_CARD':'custom/my_card.dat'}):
+                command.bind_native_mint_checkpoint([job])
+                command.bind_native_mint_checkpoint([job], verify=True)
+                library.write_bytes(b'B')
+                with self.assertRaisesRegex(error, 'checkpoint differs'):
+                    command.bind_native_mint_checkpoint([job], verify=True)
+                library.write_bytes(b'A')
+                (custom/'my_card.dat').write_text('different model')
+                with self.assertRaisesRegex(error, 'checkpoint differs'):
+                    command.bind_native_mint_checkpoint([job], verify=True)
 
     def test_nlo_generation_width_keeps_integration_batch_and_gpu_default(self):
         """Only MC generation uses the capped CPU width in native input."""

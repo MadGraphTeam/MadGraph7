@@ -803,6 +803,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             cases.extend([
                 '  case (%d)' % row['fks_row'],
                 '    real_me_id = %d' % row['real_me_id'],
+                '    flavour = %d' % row.get('fortran_flavour_index', 1),
                 '    nlocal = %d' % nlocal,
                 '    local_to_global(1:nlocal) = (/ %s /)' % mapping,
             ])
@@ -816,7 +817,13 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '  logical, save :: bridge_available = .false.',
             '  logical, save :: real_unavailable(%d) = .false.' % real_count,
             '  logical, save :: real_evaluated(%d) = .false.' % real_count,
-            '  logical, save :: trace_batches = .false.',
+            '  logical, save :: trace_batches = .false., trace_ownership = .false.',
+            '  ! The process-local bridge consumes one synchronous batch at a time.',
+            '  ! Reuse packing storage; the logical count remains the order stride.',
+            '  real(c_double), allocatable, save :: packed_momenta(:), packed_g(:)',
+            '  real(c_double), allocatable, target, save :: packed_orders(:)',
+            '  integer(c_int32_t), allocatable, save :: packed_flavour(:)',
+            '  integer, allocatable, save :: packed_lanes(:)',
             "  include 'nlo_real_backend.inc'",
             '  character(len=64), save :: backend_name = "uninitialized"',
             '',
@@ -828,6 +835,11 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '      character(c_char), intent(in) :: param_card(*)',
             '      character(c_char), intent(in) :: library_dir(*)',
             '      character(c_char), intent(in) :: backend(*)',
+            '    end function',
+            '    integer(c_int) function mg7_nlo_real_available(handle, real_id) bind(C)',
+            '      import :: c_int, c_ptr',
+            '      type(c_ptr), value :: handle',
+            '      integer(c_int), value :: real_id',
             '    end function',
             '    integer(c_int) function mg7_nlo_real_evaluate_ew(handle, &',
             '        real_me_id, event_count, momenta, g_strong, g_ew, flavour, &',
@@ -842,6 +854,11 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '      integer(c_int32_t), intent(in) :: flavour(*)',
             '      real(c_double), intent(out) :: squared_orders(*)',
             '    end function',
+            '    subroutine mg7_nlo_real_set_trace(handle,input,output) bind(C)',
+            '      import :: c_ptr, c_funptr',
+            '      type(c_ptr), value :: handle',
+            '      type(c_funptr), value :: input, output',
+            '    end subroutine',
             '    type(c_ptr) function mg7_nlo_real_last_error(handle) bind(C)',
             '      import :: c_ptr',
             '      type(c_ptr), value :: handle',
@@ -889,6 +906,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '  end subroutine',
             '',
             '  subroutine initialize_bridge()',
+            '    use mc_batch_trace, only: batch_trace_unit,trace_umami_input,trace_umami_output,real_profile_active',
             '    character(kind=c_char, len=1024) :: param_card, library_dir',
             '    character(kind=c_char, len=64) :: backend',
             '    character(len=1024) :: env_value',
@@ -939,11 +957,26 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '      call print_bridge_error("MG7 NLO real bridge unavailable")',
             '      return',
             '    end if',
+            '    trace_ownership = batch_trace_unit() /= -1',
+            '    if (trace_ownership .or. real_profile_active) call mg7_nlo_real_set_trace(context, &',
+            '      c_funloc(trace_umami_input),c_funloc(trace_umami_output))',
             '    bridge_available = .true.',
             '    write(*,\'(A,A,A,I0)\') &',
             '      "MG7 NLO real offload initialized: backend=", &',
             '      trim(backend), ", real_libraries=", &',
             '      count(.not. real_unavailable)',
+            '  end subroutine',
+            '',
+            '  subroutine resolve_real_row(row, real_me_id, flavour, nlocal, local_to_global)',
+            '    integer, intent(in) :: row',
+            '    integer, intent(out) :: real_me_id, flavour, nlocal, local_to_global(%d)' % max_local,
+            '    real_me_id = 0',
+            '    flavour = 0',
+            '    nlocal = 0',
+            '    local_to_global = 0',
+            '    select case (row)',
+            *cases,
+            '    end select',
             '  end subroutine',
             '',
             'end module',
@@ -952,6 +985,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '    nfksprocess, real_flav_idx, g_input, success)',
             '  use, intrinsic :: iso_c_binding',
             '  use mg7_nlo_real_offload_state',
+            '  use mc_batch_trace, only: trace_mapping',
             '  implicit none',
             "  include 'nexternal.inc'",
             "  include 'orders.inc'",
@@ -965,7 +999,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '  real(c_double) :: local(%d), ans_max' % max_local,
             '  integer(c_int32_t) :: flavour(1)',
             '  integer :: local_to_global(%d)' % max_local,
-            '  integer :: real_me_id, nlocal, ipart, imu, index',
+            '  integer :: real_me_id, row_flavour, nlocal, ipart, imu, index',
             '  integer :: component_orders(nsplitorders)',
             '  complex(c_double_complex) :: gal(2)',
             '  common /weak/ gal',
@@ -973,16 +1007,8 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '  success = .false.',
             '  ret_amp_split(:) = 0d0',
             '  wgt = 0d0',
-            '  real_me_id = 0',
-            '  nlocal = 0',
-            '  local_to_global(:) = 0',
-            '  select case (nfksprocess)',
-        ])
-        source.extend(cases)
-        source.extend([
-            '  case default',
-            '    return',
-            '  end select',
+            '  call resolve_real_row(nfksprocess, real_me_id, row_flavour, nlocal, local_to_global)',
+            '  if (real_me_id == 0) return',
             '  call initialize_bridge()',
             '  if (.not. bridge_available) return',
             '  if (real_unavailable(real_me_id)) return',
@@ -1005,6 +1031,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '  ans_max = maxval(abs(local(1:nlocal)))',
             '  do index = 1, nlocal',
             '    call amp_split_pos_to_orders(local_to_global(index), component_orders)',
+            '    if (trace_ownership) call trace_mapping(index,local_to_global(index),all(component_orders <= nlo_orders))',
             '    if (any(component_orders > nlo_orders)) cycle',
             '    wgt = wgt + local(index)',
             '    if (abs(local(index)) > ans_max*1d-12) &',
@@ -1016,48 +1043,36 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
         ])
         source.extend([
             '',
-            'subroutine mg7_nlo_real_try_batch(p, g_values, &',
+            'subroutine mg7_nlo_real_try_batch(p, g_values, ew, &',
             '    ret_amp_split, wgt, active, vector_size, nfksprocess, &',
             '    real_flav_idx, success)',
             '  use, intrinsic :: iso_c_binding',
             '  use mg7_nlo_real_offload_state',
+            '  use mc_batch_trace, only: trace_mapping',
             '  implicit none',
             "  include 'nexternal.inc'",
             "  include 'orders.inc'",
             '  integer, intent(in) :: vector_size, nfksprocess',
             '  integer, intent(in) :: real_flav_idx',
             '  real(c_double), intent(in) :: p(0:3,nexternal,vector_size)',
-            '  real(c_double), intent(in) :: g_values(vector_size)',
+            '  real(c_double), intent(in) :: g_values(vector_size), ew',
             '  real(c_double), intent(out) :: &',
             '    ret_amp_split(amp_split_size,vector_size)',
             '  real(c_double), intent(out) :: wgt(vector_size)',
             '  logical, intent(in) :: active(vector_size)',
             '  logical, intent(out) :: success',
-            '  real(c_double), allocatable :: momenta(:), g_strong(:)',
-            '  real(c_double), allocatable :: local(:,:)',
-            '  integer(c_int32_t), allocatable :: flavour(:)',
-            '  integer, allocatable :: lanes(:)',
+            '  real(c_double), pointer, contiguous :: local(:,:)',
             '  integer :: local_to_global(%d)' % max_local,
-            '  integer :: real_me_id, nlocal, event_count',
+            '  integer :: real_me_id, row_flavour, nlocal, event_count',
             '  integer :: lane, event, ipart, imu, index',
             '  integer :: component_orders(nsplitorders)',
             '  real(c_double) :: ans_max',
-            '  complex(c_double_complex) :: gal(2)',
-            '  common /weak/ gal',
             '  integer(c_int) :: status',
             '  success = .false.',
             '  ret_amp_split(:,:) = 0d0',
             '  wgt(:) = 0d0',
-            '  real_me_id = 0',
-            '  nlocal = 0',
-            '  local_to_global(:) = 0',
-            '  select case (nfksprocess)',
-        ])
-        source.extend(cases)
-        source.extend([
-            '  case default',
-            '    return',
-            '  end select',
+            '  call resolve_real_row(nfksprocess, real_me_id, row_flavour, nlocal, local_to_global)',
+            '  if (real_me_id == 0) return',
             '  call initialize_bridge()',
             '  if (.not. bridge_available) return',
             '  if (real_unavailable(real_me_id)) return',
@@ -1070,43 +1085,44 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '    "MG7 NLO real batch: backend=", trim(backend_name), &',
             '    ", real_me_id=", real_me_id, ", vector_size=", &',
             '    vector_size, ", event_count=", event_count',
-            '  if (allocated(momenta)) deallocate(momenta)',
-            '  if (allocated(g_strong)) deallocate(g_strong)',
-            '  if (allocated(flavour)) deallocate(flavour)',
-            '  if (allocated(local)) deallocate(local)',
-            '  if (allocated(lanes)) deallocate(lanes)',
-            '  allocate(momenta(event_count*4*nexternal))',
-            '  allocate(g_strong(event_count), flavour(event_count))',
-            '  allocate(local(event_count,nlocal), lanes(event_count))',
+            '  if (allocated(packed_lanes)) then',
+            '    if (size(packed_lanes) < event_count) &',
+            '      deallocate(packed_lanes,packed_momenta,packed_g,packed_flavour,packed_orders)',
+            '  end if',
+            '  if (.not. allocated(packed_lanes)) then',
+            '    allocate(packed_lanes(event_count),packed_momenta(event_count*4*nexternal), &',
+            '      packed_g(event_count),packed_flavour(event_count),packed_orders(event_count*%d))' % max_local,
+            '  end if',
+            '  local(1:event_count,1:nlocal) => packed_orders(1:event_count*nlocal)',
             '  event = 0',
             '  do lane = 1, vector_size',
             '    if (.not. active(lane)) cycle',
             '    event = event + 1',
-            '    lanes(event) = lane',
-            '    g_strong(event) = g_values(lane)',
-            '    flavour(event) = int(real_flav_idx - 1, c_int32_t)',
+            '    packed_lanes(event) = lane',
+            '    packed_g(event) = g_values(lane)',
+            '    packed_flavour(event) = int(real_flav_idx - 1, c_int32_t)',
             '    do imu = 0, 3',
             '      do ipart = 1, nexternal',
-            '        momenta(event_count*(imu*nexternal+ipart-1)+event) = &',
+            '        packed_momenta(event_count*(imu*nexternal+ipart-1)+event) = &',
             '          p(imu,ipart,lane)',
             '      end do',
             '    end do',
             '  end do',
             '  local(:,:) = 0d0',
             '  status = mg7_nlo_real_evaluate_ew(context, &',
-            '    int(real_me_id,c_int), int(event_count,c_size_t), momenta, &',
-            '    g_strong, real(gal(1),c_double), flavour, local)',
+            '    int(real_me_id,c_int), int(event_count,c_size_t), packed_momenta, &',
+            '    packed_g, ew, packed_flavour, local)',
             '  if (status /= 0_c_int) then',
             '    call abort_bridge_evaluation(real_me_id)',
-            '    deallocate(momenta,g_strong,flavour,local,lanes)',
             '    return',
             '  end if',
             '  real_evaluated(real_me_id) = .true.',
             '  do event = 1, event_count',
-            '    lane = lanes(event)',
+            '    lane = packed_lanes(event)',
             '    ans_max = maxval(abs(local(event,1:nlocal)))',
             '    do index = 1, nlocal',
             '      call amp_split_pos_to_orders(local_to_global(index), component_orders)',
+            '      if (trace_ownership .and. event == 1) call trace_mapping(index,local_to_global(index),all(component_orders <= nlo_orders))',
             '      if (any(component_orders > nlo_orders)) cycle',
             '      wgt(lane) = wgt(lane) + local(event,index)',
             '      if (abs(local(event,index)) > ans_max*1d-12) &',
@@ -1115,11 +1131,37 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '    end do',
             '    if (abs(wgt(lane)) < ans_max*1d-12) wgt(lane) = 0d0',
             '  end do',
-            '  deallocate(momenta,g_strong,flavour,local,lanes)',
             '  success = .true.',
             'end subroutine',
         ])
         source.extend([
+            '',
+            'logical function mc_provider_can_batch(row, flav)',
+            '  use mg7_nlo_real_offload_state',
+            '  implicit none',
+            '  integer, intent(in) :: row, flav',
+            '  integer :: real_me_id, row_flavour, nlocal, mapping(%d)' % max_local,
+            '  mc_provider_can_batch = .false.',
+            '  call resolve_real_row(row, real_me_id, row_flavour, nlocal, mapping)',
+            '  if (real_me_id == 0 .or. flav /= row_flavour) return',
+            '  call initialize_bridge()',
+            '  if (.not. bridge_available) return',
+            '  if (real_unavailable(real_me_id)) return',
+            '  mc_provider_can_batch = mg7_nlo_real_available(context, int(real_me_id,c_int)) /= 0_c_int',
+            'end function',
+            '',
+            'subroutine mc_evaluate_provider_batch(p, g, ew, row, flav, n, wgt, amps, ok)',
+            '  implicit none',
+            "  include 'nexternal.inc'",
+            "  include 'orders.inc'",
+            '  integer, intent(in) :: row, flav, n',
+            '  real(8), intent(in) :: p(0:3,nexternal,n), g(n), ew',
+            '  real(8), intent(out) :: wgt(n), amps(amp_split_size,n)',
+            '  logical, intent(out) :: ok',
+            '  logical :: active(n)',
+            '  active = .true.',
+            '  call mg7_nlo_real_try_batch(p, g, ew, amps, wgt, active, n, row, flav, ok)',
+            'end subroutine',
             '',
             'logical function mg7_nlo_real_is_fortran()',
             '  use mg7_nlo_real_offload_state, only: default_backend',
@@ -1142,6 +1184,8 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
         if backend_query_count != 2:
             raise RuntimeError('cannot install NLO real backend query in %s' %
                                chooser_path)
+        for stub in ('mc_provider_can_batch', 'mc_evaluate_provider_batch'):
+            chooser = re.sub(r'\b%s\b' % stub, stub + '_default', chooser, flags=re.I)
         scalar = re.compile(r'(SUBROUTINE\s+SMATRIX_REAL)\s*\(', re.I)
         vector = re.compile(
             r'(RECURSIVE\s+SUBROUTINE\s+SMATRIX_REAL_VEC)\s*\(', re.I)
@@ -1164,6 +1208,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
         wrappers = """
 
       SUBROUTINE SMATRIX_REAL(P,RET_AMP_SPLIT,WGT)
+      USE MC_BATCH_TRACE, ONLY: TRACE_FORTRAN_INPUT,TRACE_FORTRAN_RESULT
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INCLUDE 'orders.inc'
@@ -1172,19 +1217,30 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
       DOUBLE PRECISION P(0:3,NEXTERNAL),RET_AMP_SPLIT(AMP_SPLIT_SIZE)
       DOUBLE PRECISION WGT
       INTEGER NFKSPROCESS
-      LOGICAL SUCCESS
+      LOGICAL SUCCESS,MG7_NLO_REAL_IS_FORTRAN
+      DOUBLE COMPLEX GAL(2)
+      COMMON/WEAK/GAL
       DOUBLE PRECISION G,ALL_G
       COMMON/C_NFKSPROCESS/NFKSPROCESS
       COMMON/STRONG/G,ALL_G
 C     The hard-channel partition needs all diagram weights. UMAMI's
 C     component result does not carry this native scalar side effect.
       IF (GET_REAL_DIAGRAM_WEIGHTS) THEN
+         CALL TRACE_FORTRAN_INPUT(NFKSPROCESS,
+     $    REAL_FLAVOR_INDEX_D(NFKSPROCESS),P,G,DBLE(GAL(1)))
          CALL SMATRIX_REAL_FORTRAN(P,RET_AMP_SPLIT,WGT)
+         CALL TRACE_FORTRAN_RESULT(WGT,RET_AMP_SPLIT,2)
          RETURN
       ENDIF
       CALL MG7_NLO_REAL_TRY(P,RET_AMP_SPLIT,WGT,NFKSPROCESS,
      $ REAL_FLAVOR_INDEX_D(NFKSPROCESS),G,SUCCESS)
-      IF (.NOT.SUCCESS) CALL SMATRIX_REAL_FORTRAN(P,RET_AMP_SPLIT,WGT)
+      IF (.NOT.SUCCESS) THEN
+         CALL TRACE_FORTRAN_INPUT(NFKSPROCESS,
+     $    REAL_FLAVOR_INDEX_D(NFKSPROCESS),P,G,DBLE(GAL(1)))
+         CALL SMATRIX_REAL_FORTRAN(P,RET_AMP_SPLIT,WGT)
+         CALL TRACE_FORTRAN_RESULT(WGT,RET_AMP_SPLIT,
+     $                         MERGE(1,3,MG7_NLO_REAL_IS_FORTRAN()))
+      ENDIF
       RETURN
       END
 
@@ -1222,8 +1278,11 @@ C     component result does not carry this native scalar side effect.
       DOUBLE PRECISION G_STRONG(VECTOR_SIZE)
       DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE,VECTOR_SIZE)
       DOUBLE PRECISION WGT(VECTOR_SIZE)
-      CALL MG7_NLO_REAL_TRY_BATCH(P,G_STRONG,RET_AMP_SPLIT,WGT,
-     $ ACTIVE,VECTOR_SIZE,NFKSPROCESS,REAL_FLAV_IDX,SUCCESS)
+      DOUBLE COMPLEX GAL(2)
+      COMMON/WEAK/GAL
+      CALL MG7_NLO_REAL_TRY_BATCH(P,G_STRONG,DBLE(GAL(1)),
+     $ RET_AMP_SPLIT,WGT,ACTIVE,VECTOR_SIZE,NFKSPROCESS,
+     $ REAL_FLAV_IDX,SUCCESS)
       IF (.NOT.SUCCESS) CALL SMATRIX_REAL_VEC_BATCH_FORTRAN(P,
      $ G_STRONG,RET_AMP_SPLIT,WGT,ACTIVE,COUP_INDEX,VECTOR_SIZE,
      $ NFKSPROCESS,REAL_FLAV_IDX)
@@ -1263,7 +1322,7 @@ C     component result does not carry this native scalar side effect.
             '../../backend/common/* ../../backend/cpu/* '
             '../../backend/simd/* ../../backend/gpu/*)',
             'FILES += nlo_real_offload.o',
-            'FKSSA += nlo_real_offload.o',
+            'FKSSA += nlo_real_offload.o mc_batch_trace.o',
             'NLO_REAL_LINKLIBS := -L$(HERE) -lnlo_real_bridge '
             "-Wl,-rpath,'$$ORIGIN' -lstdc++ -ldl",
             'LINKLIBS += $(NLO_REAL_LINKLIBS)',
@@ -1284,7 +1343,7 @@ C     component result does not carry this native scalar side effect.
             '\t@cmp -s $@.new $@ || mv $@.new $@; rm -f $@.new',
             '',
             'nlo_real_offload.o: nlo_real_offload.f90 $(NLO_REAL_STAMP) '
-            'nlo_real_backend.inc',
+            'nlo_real_backend.inc mc_batch_trace.o',
             '\t$(FC) $(FFLAGS) -ffree-line-length-none -c $< -o $@',
             '',
             '.PHONY: nlo_real_clean',
