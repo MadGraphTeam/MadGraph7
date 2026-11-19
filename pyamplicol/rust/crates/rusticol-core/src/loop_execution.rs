@@ -532,7 +532,9 @@ pub mod v2 {
                 format!(
                     "{TRACKED_PRECISION}: the point's lanes keep {kept:.1} tracked bits (their \
                      summed uncertainty against their summed moduli, largest Laurent coefficient), \
-                     {} required at {} working bits",
+                     {} required at {} working bits; an amplitude that vanishes numerically (an \
+                     integrated zero) is evaluated on the default route, with the rescue stack's \
+                     \"scale\" metric or with reduction_unchecked=True",
                     rule.required, rule.working
                 )
             })
@@ -3499,7 +3501,8 @@ pub mod v2 {
             let refusal = sums(&[regular.clone(), ruined]).refusal(RULE).unwrap();
             assert!(refusal.starts_with("NinjaRS tracked precision: the point's lanes keep "));
             assert!(
-                refusal.ends_with("64 required at 256 working bits"),
+                refusal.contains("64 required at 256 working bits; ")
+                    && refusal.ends_with("or with reduction_unchecked=True"),
                 "{refusal}"
             );
             for (bits, refused) in [(66, false), (62, true)] {

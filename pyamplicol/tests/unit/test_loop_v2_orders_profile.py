@@ -1193,16 +1193,24 @@ def test_a_stale_history_only_seeds_the_estimate(uux_ddx, tmp_path, monkeypatch)
 
 def _normalised(text: str) -> str:
     """A rendered profile without what timing changes (numbers, units,
-    bars, padding)."""
+    bars, padding, and which backend the time ratio column marks fastest:
+    two backends of nearly equal time swap it from one run to the next),
+    as its words in order: a cell near the table's width wraps at another
+    word when its numbers have more digits (the box drawing and the line
+    breaks are layout)."""
 
     import re
 
     text = re.sub(r"\x1b\[[0-9;]*m", "", text)
     text = re.sub(r"[0-9]+(\.[0-9]+)?(e[-+][0-9]+)?", "N", text)
+    text = re.sub(r"\bfastest\b", "xN", text)
     text = re.sub(r"\b(s|ms|us|KiB|MiB|GiB)\b", "U", text)
     text = re.sub(r"#+", "B", text)
     text = re.sub(r"-+", "-", text)
-    return re.sub(r" +", " ", text)
+    text = re.sub(
+        r"(?<=\s)[|+-]+(?=\s)|^[|+-]+(?=\s)|(?<=\s)[|+-]+$", " ", text, flags=re.M
+    )
+    return " ".join(text.split())
 
 
 @pytest.mark.loop_physics

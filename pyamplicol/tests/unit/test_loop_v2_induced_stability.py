@@ -71,6 +71,22 @@ def _evaluate(li, name, precision, index, checks):
     )
 
 
+def _truth(li, name, index):
+    """The 57-digit NinjaRS truth of a fixture point through the unchecked
+    reduction (``reduction.running(..., unchecked=True)``): it drops only
+    NinjaRS's acceptance tests, among them the tracked-precision test, which
+    refuses an integrated zero (g g > z: every lane is rounding noise, so
+    its lanes keep a few tracked bits of their own size); the value is the
+    one NinjaRS computes at 57 digits either way (the test never changes a
+    served value), so the estimates are still bracketed by the same truth."""
+
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.reduction import running
+
+    with running("ninjars", unchecked=True):
+        return _evaluate(li, name, Precision.arbitrary(TRUTH_DIGITS), index, None)
+
+
 def _errors(result, truth):
     """|value - truth| per sector and Laurent coefficient (Decimal)."""
 
@@ -104,7 +120,7 @@ def test_single_point_estimates_bracket_the_error(li, name, carrier):
     precision = getattr(Precision, carrier)()
     for index in range(len(_fixture(name)["points"])):
         result = _evaluate(li, name, precision, index, RECOMMENDED_CHECKS)
-        truth = _evaluate(li, name, Precision.arbitrary(TRUTH_DIGITS), index, None)
+        truth = _truth(li, name, index)
         for sector, errors in _errors(result, truth).items():
             estimate = result.stability.absolute[sector].coefficients
             for k, error in enumerate(errors):
