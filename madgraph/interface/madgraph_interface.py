@@ -6605,7 +6605,21 @@ This implies that with decay chains:
             for channel in channels[:-1]:
                 copy_args = list(args)
                 copy_args[gpd_labels[0]] = channel
+                # the options already taken off the line apply to every
+                # channel: required s-channels, forbidden particles and
+                # s-channels, the process number
+                if required_schannels.strip() and '>' in copy_args:
+                    copy_args.insert(copy_args.index('>') + 1,
+                                     required_schannels.strip() + ' >')
                 process = " ".join(["process"] + copy_args)
+                if forbidden_particles.strip():
+                    process += " / " + forbidden_particles.strip()
+                if forbidden_schannels.strip():
+                    process += " $$ " + forbidden_schannels.strip()
+                if forbidden_onsh_schannels.strip():
+                    process += " $ " + forbidden_onsh_schannels.strip()
+                if proc_number_re:
+                    process += " @%d" % proc_number
                 for order in model_orders:
                     try:
                         (order_val, order_op) = squared_orders[order]
