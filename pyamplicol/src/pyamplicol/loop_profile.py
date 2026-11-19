@@ -1029,9 +1029,20 @@ def profile_loop(
         raise
     measured_at = monitor.elapsed()
     priors: dict[str, Any] = {}
-    # The minimum runtime timing, as the notices name it.
+    # The minimum runtime timing, as the notices name it (the reference
+    # point only when no scope rule can leave it out: given, or with
+    # --stability, or counts given).
     minimum_calls = "one timed call of one chunk per backend" + (
-        " and its reference point" if truth.present else ""
+        " and its reference point"
+        if truth.present
+        and (
+            not is_default(bench.ground_truth)
+            or want_stability
+            or (runtime_given and completion is None)
+        )
+        else ", its reference point within the budget"
+        if truth.present
+        else ""
     )
     if blind:
         # The minimum counts; a previous profile's costs only for the ETA.
