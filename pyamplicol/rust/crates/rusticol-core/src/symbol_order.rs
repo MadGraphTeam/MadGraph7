@@ -27,28 +27,47 @@
 
 use symbolica::{atom::Atom, parser::ParseSettings};
 
-/// Reserve NinjaRS's symbols, once per process (see the module); the error
-/// names the slot regime NinjaRS could not get.
+/// Reserve NinjaRS's symbols, once per process (see the module); every call
+/// returns the first call's outcome, the error naming NinjaRS's cause.
 pub fn reserve() -> Result<(), String> {
     #[cfg(feature = "loop-v2")]
     {
-        // Registering symbols is Symbolica state (`crate::licence`).
-        let _unlock = crate::licence::unlock();
-        ninjars_symbolica::reserve()
-            .map(|_| ())
-            .map_err(|error| format!("NinjaRS symbol reservation: {error}"))
+        static RESERVED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+        RESERVED
+            .get_or_init(|| {
+                // Registering symbols is Symbolica state (`crate::licence`).
+                let _unlock = crate::licence::unlock();
+                ninjars_symbolica::reserve().map(|_| ()).map_err(|error| {
+                    format!(
+                        "internal error in pyAmpliCol's native library (please report it): \
+                         NinjaRS could not reserve its symbols before this library registered \
+                         others, so its double-double and arbitrary-precision results would \
+                         depend on the process history: {error}"
+                    )
+                })
+            })
+            .clone()
     }
     #[cfg(not(feature = "loop-v2"))]
     Ok(())
 }
 
 /// [`reserve`] for the operations that cannot report an error (the scalar
-/// primitives' registration): a failed reservation is a defect of this
-/// library (a symbol registration that bypassed it), never of the input.
+/// primitives' registration, which calls it before its own `Once`): a failed
+/// reservation is a defect of this library, never of the input, and every
+/// call panics with its cause.
 pub(crate) fn reserved() {
     if let Err(error) = reserve() {
         panic!("{error}");
     }
+}
+
+/// The registration ID of NinjaRS's first positional slot symbol, if the
+/// reservation happened (registers nothing). In every process it is the same
+/// ID exactly when [`reserve`] was the first registration this library made
+/// (the history tests compare it across paths).
+pub fn first_slot_id() -> Option<u32> {
+    symbolica::get_symbol!("ninjars_slot::s0").map(|symbol| symbol.get_id())
 }
 
 /// `text` parsed in `namespace` after [`reserve`]: every expression this

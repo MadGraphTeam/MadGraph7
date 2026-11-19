@@ -9,6 +9,14 @@ two copies, hence two pools: the reservation would build one while the
 reductions use the other, and NinjaRS's extended-carrier results would depend
 on the process history again, silently. Every NinjaRS pin of the workspace,
 the lock file and ``dependencies/manifest.json`` must name one revision.
+
+NinjaRS's reserved names (``ninjars-symbolica``'s ``src/master_symbols.txt``)
+are those of the oneloopmaster revision NinjaRS pins and tests: the lock must
+hold ONE ``oneloop`` package, from alphal00p/oneloopmaster at pyAmpliCol's own
+pin. A different NinjaRS pin of oneloop would add a second source; a
+``[patch]`` could move either crate silently, so no manifest may patch a
+NinjaRS crate or oneloop, and every ``ninjars*`` package comes from the
+alphal00p git source (not a path, a fork or a registry).
 """
 
 from __future__ import annotations
@@ -20,6 +28,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NINJARS = "https://github.com/alphal00p/ninjars.git"
+ONELOOP = "https://github.com/alphal00p/oneloopmaster.git"
+GUARDED = ("ninjars", "oneloop")
 
 
 def _manifests() -> list[Path]:
@@ -55,6 +65,9 @@ def test_every_ninjars_crate_has_one_source() -> None:
     sources: dict[str, set[str]] = {}
     for package in lock["package"]:
         source = package.get("source", "")
+        if package["name"].startswith("ninjars"):
+            # Not a path, a fork or a registry: alphal00p's git source only.
+            assert source.startswith(f"git+{NINJARS}?rev="), package
         if source.startswith(f"git+{NINJARS}"):
             sources.setdefault(package["name"], set()).add(source)
     assert {"ninjars", "ninjars-positional", "ninjars-symbolica"} <= set(sources)
@@ -73,3 +86,28 @@ def test_every_ninjars_crate_has_one_source() -> None:
         if entry["name"] == "ninjars"
     )
     assert entry["revision"] == revision, (entry["revision"], revision)
+
+
+def test_oneloop_has_one_source_at_the_pinned_revision() -> None:
+    lock = tomllib.loads((ROOT / "Cargo.lock").read_text())
+    (oneloop,) = (p for p in lock["package"] if p["name"] == "oneloop")
+    assert oneloop["source"].startswith(f"git+{ONELOOP}?rev="), oneloop
+    revision = re.sub(r".*#", "", oneloop["source"])
+    pins = set()
+    for path in _manifests():
+        data = tomllib.loads(path.read_text())
+        for spec in data.get("dependencies", {}).values():
+            if isinstance(spec, dict) and spec.get("git") == ONELOOP:
+                pins.add(spec["rev"])
+    assert pins == {revision}, (pins, revision)
+
+
+def test_no_manifest_patches_ninjars_or_oneloop() -> None:
+    for path in _manifests():
+        data = tomllib.loads(path.read_text())
+        for source, table in data.get("patch", {}).items():
+            for name, spec in table.items():
+                url = spec.get("git", "") if isinstance(spec, dict) else ""
+                assert not name.startswith(GUARDED), (path, source, name)
+                assert "alphal00p/ninjars" not in url, (path, source, name)
+                assert "oneloopmaster" not in url, (path, source, name)

@@ -24,8 +24,10 @@ records: the result's ``repr``) must be the same:
   symbols by 1e-28) and their fallback-guard estimates (2.4e-19 -> 4.1e-16
   in test_loop_v2_fallback_guard's SDK comparison after other tests).
 
-Each child also reports the slot regime NinjaRS obtained: two-byte variable
-slots, after every history.
+Each child also reports the slot regime NinjaRS obtained (two-byte variable
+slots, after every history) and the registration ID of NinjaRS's first slot
+symbol: the same after every history exactly when the reservation was the
+first registration on every path.
 """
 
 from __future__ import annotations
@@ -96,7 +98,9 @@ for arithmetic, precision in carriers:
         )
 from pyamplicol.loops.native import load_loop_native
 
-outputs["regime"] = load_loop_native().symbol_regime()
+native = load_loop_native()
+outputs["regime"] = native.symbol_regime()
+outputs["first_slot_id"] = native.symbol_first_slot_id()
 print(json.dumps(outputs))
 """
 
@@ -122,7 +126,8 @@ def test_outputs_do_not_depend_on_the_process_history(loop_native):
     70,000 symbols (module docstring), bitwise, with variable slots."""
 
     alone = _outputs("none")
-    assert len(alone) == 7 and alone["regime"] == "variables", alone.get("regime")
+    assert len(alone) == 8 and alone["regime"] == "variables", alone.get("regime")
+    assert isinstance(alone["first_slot_id"], int), alone["first_slot_id"]
     for history in ("500 digits", "20000-symbol import", "70000-symbol import"):
         after = _outputs(history)
         moved = sorted(key for key in alone if after[key] != alone[key])

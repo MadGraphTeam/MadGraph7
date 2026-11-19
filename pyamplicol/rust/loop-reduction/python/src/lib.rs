@@ -335,6 +335,16 @@ fn reduction_fallback_estimate(outputs: Vec<Vec<(f64, f64, f64)>>, roundoff: f64
 /// (`rusticol_core::symbol_order`): `"variables"`; an error when NinjaRS could
 /// not get two-byte variable slots. Reserves (Symbolica state) on first use;
 /// for the process-history tests.
+/// The registration ID of NinjaRS's first positional slot symbol, or None
+/// before the reservation (registers nothing): the same in every process
+/// exactly when the reservation was the first registration
+/// (`rusticol_core::symbol_order::first_slot_id`; the history tests).
+#[pyfunction]
+fn symbol_first_slot_id() -> Option<u32> {
+    let _unlock = pyamplicol::unlock();
+    rusticol_core::symbol_order::first_slot_id()
+}
+
 #[pyfunction]
 fn symbol_regime() -> PyResult<&'static str> {
     let _unlock = pyamplicol::unlock();
@@ -382,6 +392,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(reduction_tracked_refusal, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_guarded, module)?)?;
     module.add_function(wrap_pyfunction!(symbol_regime, module)?)?;
+    module.add_function(wrap_pyfunction!(symbol_first_slot_id, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_estimate, module)?)?;
     module.add_function(wrap_pyfunction!(tir_acceptance, module)?)?;
     module.add_function(wrap_pyfunction!(kinematics::kinematics_policy, module)?)?;
