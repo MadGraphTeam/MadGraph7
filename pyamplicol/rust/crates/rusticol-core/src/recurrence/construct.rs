@@ -5136,8 +5136,7 @@ fn build_recurrence_program_impl(
     let propagators = propagator_by_state(template_input)?;
     let transition_reflections = TransitionReflectionIndex::new(template_input, &template_catalog)?;
     let replay_targets = build_replay_targets(strategy, process_input, &process_catalog)?;
-    let pattern_count =
-        pattern_resolution(strategy, pairing_catalog, &replay_targets)?;
+    let pattern_count = pattern_resolution(strategy, pairing_catalog, &replay_targets)?;
     let materialized_sectors = materialized_sector_ids(strategy, process_input, &replay_targets);
     let mut color_states = DynamicLCColorStateInterner::default();
     let mut currents = Vec::<PendingCurrent>::new();
@@ -8345,6 +8344,7 @@ fn build_bulk_color_union_closures(
                         closure_pairing_certificate_ids(currents, parent_ids, pairing_catalog)?;
                     let pairing_rule =
                         pairing_rule_for_certificate(&pairing_certificate_ids, pairing_catalog)?;
+                    let pattern_id = closure_pattern_id(currents, parent_ids, pairing_catalog)?;
                     for quantum in closure
                         .quantum_flows
                         .iter()
@@ -8447,7 +8447,7 @@ fn build_bulk_color_union_closures(
                                         parents,
                                         process.external_legs.len(),
                                     )?,
-                                    pattern_id: None,
+                                    pattern_id,
                                     closure_template_id: closure.row.id,
                                     quantum_flow_template_id: quantum.template_id(),
                                     parent_current_ids: evaluator_parent_ids
@@ -11061,9 +11061,12 @@ fn pattern_resolution(
     let Some(catalog) = pairing_catalog.filter(|catalog| catalog.pattern_resolved()) else {
         return Ok(None);
     };
-    if strategy != RecurrenceStrategy::TopologyReplay {
+    // Contracted colour combines patterns before contraction; it has no replay here.
+    let contracted =
+        strategy == RecurrenceStrategy::ContractedColorUnion && replay_targets.is_empty();
+    if strategy != RecurrenceStrategy::TopologyReplay && !contracted {
         return Err(invalid(
-            "pattern-resolved recurrence requires the LC topology-replay layout",
+            "pattern-resolved recurrence requires LC topology replay or unreplayed contracted colour",
         ));
     }
     let rule_count = catalog.summary().rule_count();
@@ -11078,10 +11081,16 @@ fn pattern_resolution(
         let mut pairs = catalog
             .endpoint_pairings(*rule)?
             .iter()
-            .map(|pair| (pair.fundamental_source_slot, pair.antifundamental_source_slot))
+            .map(|pair| {
+                (
+                    pair.fundamental_source_slot,
+                    pair.antifundamental_source_slot,
+                )
+            })
             .collect::<Vec<_>>();
         pairs.sort_unstable();
-        if rule.rule_id as usize != index || rule_by_pairs.insert(pairs.clone(), rule.rule_id).is_some()
+        if rule.rule_id as usize != index
+            || rule_by_pairs.insert(pairs.clone(), rule.rule_id).is_some()
         {
             return Err(invalid(
                 "pattern-resolved pairing rules must be numbered in order with distinct pairings",
@@ -11111,9 +11120,11 @@ fn pattern_resolution(
             })?);
         }
     }
-    let identity = maps
-        .chunks(rule_pairs.len())
-        .all(|map| map.iter().enumerate().all(|(rule, image)| *image as usize == rule));
+    let identity = maps.chunks(rule_pairs.len()).all(|map| {
+        map.iter()
+            .enumerate()
+            .all(|(rule, image)| *image as usize == rule)
+    });
     Ok(Some((
         rule_count,
         (!identity).then(|| maps.into_boxed_slice()),

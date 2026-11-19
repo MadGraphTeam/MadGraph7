@@ -2330,9 +2330,13 @@ impl RecurrenceProgram {
         pattern_count: u32,
         replay_maps: Option<Box<[u32]>>,
     ) -> RusticolResult<Self> {
-        if self.strategy != RecurrenceStrategy::TopologyReplay || pattern_count == 0 {
+        let contracted = self.strategy == RecurrenceStrategy::ContractedColorUnion
+            && self.replay_targets.is_empty();
+        if (self.strategy != RecurrenceStrategy::TopologyReplay && !contracted)
+            || pattern_count == 0
+        {
             return Err(invalid(
-                "pattern-resolved programs require topology replay and at least one pattern",
+                "pattern-resolved programs require topology replay or unreplayed contracted colour, and at least one pattern",
             ));
         }
         if self

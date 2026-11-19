@@ -464,8 +464,12 @@ impl DirectDestinationPatterns {
                 Err(invalid("destination patterns require a pattern count"))
             };
         }
-        if strategy != RecurrenceStrategy::TopologyReplay {
-            return Err(invalid("destination patterns require topology replay"));
+        let contracted =
+            strategy == RecurrenceStrategy::ContractedColorUnion && replay_target_count == 0;
+        if strategy != RecurrenceStrategy::TopologyReplay && !contracted {
+            return Err(invalid(
+                "destination patterns require topology replay or unreplayed contracted colour",
+            ));
         }
         if self.destination_patterns.len() != destination_count
             || self
