@@ -65,6 +65,7 @@ pub struct KernelProof {
 const ORDERS: [[u8; 2]; 2] = [[0, 1], [1, 0]];
 
 fn parse(text: &str) -> RusticolResult<Atom> {
+    crate::symbol_order::reserve();
     // Canonical strings name every symbol with its namespace; the default
     // namespace is the Python wheel's (`E`).
     Atom::parse(text, "python", ParseSettings::default()).map_err(|error| {

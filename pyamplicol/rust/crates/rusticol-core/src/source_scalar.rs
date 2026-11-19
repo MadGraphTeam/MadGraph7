@@ -90,6 +90,7 @@ pub fn register_scalar_primitives() {
     REGISTER.call_once(|| {
         // Symbol definitions are Symbolica state (`crate::licence`).
         let _unlock = crate::licence::unlock();
+        crate::symbol_order::reserve();
         register_definitions();
     });
 }

@@ -102,6 +102,7 @@ fn read_entry(source: &mut impl Read) -> RusticolResult<(String, Vec<u8>)> {
 
 /// This crate's export header: (format version, entry bytes of `symbol`).
 fn own_entry(name: &str) -> RusticolResult<(u16, Vec<u8>)> {
+    crate::symbol_order::reserve();
     let atom = Atom::parse(name, "python", ParseSettings::default())
         .map_err(|e| invalid(format!("cannot parse the symbol {name:?}: {e}")))?;
     let Atom::Var(var) = &atom else {

@@ -166,6 +166,7 @@ pub enum CandidateError {
 pub type VariantResult = Result<Option<PolynomialCandidate>, CandidateError>;
 
 fn parse(text: &str) -> RusticolResult<Atom> {
+    crate::symbol_order::reserve();
     // Canonical strings name every symbol with its namespace; the default
     // namespace is the Python wheel's (`E`).
     Atom::parse(text, "python", ParseSettings::default()).map_err(|error| {

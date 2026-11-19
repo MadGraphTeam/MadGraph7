@@ -2385,6 +2385,7 @@ dependencies = [
  "libc",
  "libloading",
  "ninjars",
+ "ninjars-positional",
  "num-complex",
  "pyamplicol",
  "rayon",
