@@ -23,8 +23,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "fafa46e1ae81916cd8ba0c64903a3dd8af918bbe",
-      "note": "fafa46e1 = PR #20 head (feat/reserve-symbols): main 3116e5e6 (PR #16 box-Gram conditioning bound) + ninjars_symbolica::reserve (positional slot pool checked, master-integral symbols registered without compiling); pins on Symbolica community d0424f9e, the gammaloop fork ea3faaae and oneloopmaster 07fc754f; moves to the merge commit at integration"
+      "revision": "07730ba9c2956c5abaf43fca6830a930a0f85707",
+      "note": "07730ba9 = PR #20 head (feat/reserve-symbols): main f7f5e165 (PR #16 box-Gram conditioning bound, PR #19 Unstable-cause and box-Gram refusal records) + ninjars_symbolica::reserve (positional slot pool checked, master-integral symbols registered by name, nothing built); pins on Symbolica community d0424f9e, the gammaloop fork ea3faaae and oneloopmaster 07fc754f; moves to the merge commit at integration"
     },
     {
       "name": "oneloopmaster",

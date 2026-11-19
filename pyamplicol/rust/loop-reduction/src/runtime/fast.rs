@@ -154,10 +154,13 @@ impl FastReductions {
             s_matrix: matrix.as_deref(),
         };
         let mut results = Vec::with_capacity(3);
+        let mut records = Vec::with_capacity(3);
         for (index, sector) in self.sectors.iter_mut().enumerate() {
             if self.active[index] {
                 results.push(sector.evaluate(ids, input, parameters)?);
+                records.push(super::lane_status::fast_instabilities(ids.len()));
             } else {
+                records.push(vec![None; ids.len()]);
                 results.push(
                     ids.iter()
                         .map(|&id| Lane {
@@ -177,12 +180,16 @@ impl FastReductions {
             .into_iter()
             .zip(one)
             .zip(two)
-            .map(|((zero, one), two)| {
+            .enumerate()
+            .map(|(row, ((zero, one), two))| {
                 let status = [zero.status, one.status, two.status]
                     .iter()
                     .enumerate()
                     .find(|(_, s)| **s != FastStatus::Success)
-                    .map(|(i, s)| format!("epsilon sector {i}: {s:?}"))
+                    .map(|(i, &s)| {
+                        let text = super::lane_status::fast_status(s, records[i][row].as_ref());
+                        format!("epsilon sector {i}: {text}")
+                    })
                     .unwrap_or_else(|| "success".into());
                 let value = match (zero.value, one.value, two.value) {
                     (Some(a), Some(b), Some(c)) => {
