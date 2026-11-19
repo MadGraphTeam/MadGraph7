@@ -239,8 +239,10 @@ pub mod v2 {
     /// rescue carrier's reduction tracks its precision ([`TrackedPrecision`]:
     /// NinjaRS's arbitrary precision), per group and lane the tracked
     /// uncertainty of a served direct value per Laurent coefficient
-    /// ([`tracked_uncertainty`], in binary64; empty for a refused lane),
-    /// taken before it is rounded to the evaluation's carrier.
+    /// ([`tracked_uncertainty`], in binary64, in units of the evaluation
+    /// carrier's unit roundoff 2^-p, scaled in the rescue carrier so that it
+    /// never underflows; empty for a refused lane), taken before it is
+    /// rounded to the evaluation's carrier.
     pub struct RescueOutput<T> {
         pub outcomes: Reduced<T>,
         pub tracked: Option<Vec<Vec<Vec<f64>>>>,
@@ -604,6 +606,10 @@ pub mod v2 {
         /// rescue`]): the backend refused them in the evaluation's carrier
         /// and reduced them in this carrier; empty otherwise.
         pub rescued: Vec<(LaneKey, RescueCarrier)>,
+        /// The term scale's moments of the point the lane rescue served
+        /// (`(family, monomial, carrier)`; review m3: apart from the lanes,
+        /// whose keys they would share); empty otherwise.
+        pub rescued_moments: Vec<(usize, usize, RescueCarrier)>,
     }
 
     /// Development measurements of one run: seconds per stage, work counts
@@ -1513,6 +1519,9 @@ pub mod v2 {
         pending: Vec<Pending<T>>,
         /// Per point the lanes the lane rescue served.
         rescued: Vec<Vec<(LaneKey, RescueCarrier)>>,
+        /// Per point the term-scale moments the lane rescue served
+        /// (`PointResult::rescued_moments`).
+        rescued_moments: Vec<Vec<(usize, usize, RescueCarrier)>>,
         /// The term scale's refused moments the lane rescue reduces again,
         /// per (point, family, monomial): its unit-numerator lane (key column
         /// = the monomial) and the (slot, weight) pairs its moduli add to
@@ -1528,6 +1537,9 @@ pub mod v2 {
         direct: Option<String>,
         check: Option<String>,
         coefficients: Vec<Complex<T>>,
+        /// The backend's measures of the refusal (review m4: kept with the
+        /// held lane, the point's only when it stays refused).
+        measures: Vec<LaneMeasure>,
     }
 
     /// The unit-numerator lanes of a family group: per point of the group
@@ -1642,12 +1654,22 @@ pub mod v2 {
                 report.count(name, value);
             }
             let sink = &mut *self.sink;
+            // With the lane rescue, a refused lane's measures go with it
+            // (`Pending::measures`); otherwise to its point at once.
+            let mut by_lane: BTreeMap<(usize, usize), Vec<LaneMeasure>> = BTreeMap::new();
             for measured in self.backend.take_lane_measures() {
                 if let Some(&point) = groups
                     .get(measured.group)
                     .and_then(|group| group.points.get(measured.lane))
                 {
-                    sink.measures[point].push(measured.measure);
+                    if self.rescuing {
+                        by_lane
+                            .entry((measured.group, measured.lane))
+                            .or_default()
+                            .push(measured.measure);
+                    } else {
+                        sink.measures[point].push(measured.measure);
+                    }
                 }
             }
             sink.tracked = self.backend.tracked_precision();
@@ -1663,6 +1685,7 @@ pub mod v2 {
                         refused(&direct[index]),
                         check.as_ref().and_then(|c| refused(&c[index])),
                     );
+                    let measures = by_lane.remove(&(index, row)).unwrap_or_default();
                     if self.rescuing && (held.0.is_some() || held.1.is_some()) {
                         sink.pending.push(Pending {
                             point,
@@ -1672,9 +1695,11 @@ pub mod v2 {
                             coefficients: group.coefficients
                                 [row * monomials..(row + 1) * monomials]
                                 .to_vec(),
+                            measures,
                         });
                         continue;
                     }
+                    sink.measures[point].extend(measures);
                     match &direct[index][row] {
                         Ok(value) => {
                             let first = sink.families[point].len();
@@ -1736,15 +1761,27 @@ pub mod v2 {
             let width = self.options.poles.width();
             let slots = self.plan.order_count * self.plan.columns;
             let sink = &mut *self.sink;
+            // With the lane rescue, a refused moment's measures go with its
+            // held moment (`hold`); the others to their point.
+            let mut by_unit: BTreeMap<(usize, usize), Vec<LaneMeasure>> = BTreeMap::new();
             for measured in self.backend.take_lane_measures() {
                 if let Some(&point) = units
                     .get(measured.group)
                     .and_then(|unit| unit.points.get(measured.lane))
                 {
-                    sink.measures[point].push(measured.measure);
+                    if self.rescuing {
+                        by_unit
+                            .entry((measured.group, measured.lane))
+                            .or_default()
+                            .push(measured.measure);
+                    } else {
+                        sink.measures[point].push(measured.measure);
+                    }
                 }
             }
-            for ((group, unit), moments) in groups.iter().zip(&units).zip(&moments) {
+            for (index, ((group, unit), moments)) in
+                groups.iter().zip(&units).zip(&moments).enumerate()
+            {
                 let monomials = group.coefficients.len() / group.keys.len().max(1);
                 let formed = Formed::of(self.plan, group.family, self.data);
                 let mut first = 0;
@@ -1775,7 +1812,14 @@ pub mod v2 {
                             Err(status) if self.rescuing => {
                                 let slot = key.order * self.plan.columns + key.column;
                                 let weight = n.clone().norm().re;
-                                held.push((point, alpha, status.clone(), slot, weight));
+                                held.push((
+                                    point,
+                                    alpha,
+                                    first + alpha,
+                                    status.clone(),
+                                    slot,
+                                    weight,
+                                ));
                             }
                             Err(status) => sink.failures[point].push(format!(
                                 "term scale of family {} monomial {alpha}: {status}",
@@ -1802,7 +1846,14 @@ pub mod v2 {
                                     Err(status) if self.rescuing => {
                                         let slot = key.order * self.plan.columns + column;
                                         let weight = size.clone() * &n.clone().norm().re;
-                                        held.push((point, alpha, status.clone(), slot, weight));
+                                        held.push((
+                                            point,
+                                            alpha,
+                                            first + alpha,
+                                            status.clone(),
+                                            slot,
+                                            weight,
+                                        ));
                                     }
                                     Err(_) => {}
                                 }
@@ -1810,8 +1861,24 @@ pub mod v2 {
                         }
                     }
                 }
-                for (point, alpha, status, slot, weight) in held {
-                    hold(sink, point, group, alpha, monomials, &status, slot, weight);
+                for (point, alpha, lane, status, slot, weight) in held {
+                    let measures = by_unit.remove(&(index, lane)).unwrap_or_default();
+                    hold(
+                        sink, point, group, alpha, monomials, &status, slot, weight, measures,
+                    );
+                }
+                // A refused moment not held (no numerator uses it): its
+                // measures are its point's, as without the rescue.
+                let rest: Vec<(usize, usize)> = by_unit
+                    .range((index, 0)..(index + 1, 0))
+                    .map(|(k, _)| *k)
+                    .collect();
+                for key in rest {
+                    if let (Some(measures), Some(&point)) =
+                        (by_unit.remove(&key), unit.points.get(key.1))
+                    {
+                        sink.measures[point].extend(measures);
+                    }
                 }
             }
             report.time(TERM_SCALE, start);
@@ -1833,6 +1900,7 @@ pub mod v2 {
         status: &str,
         slot: usize,
         weight: T,
+        measures: Vec<LaneMeasure>,
     ) {
         let zero = weight.zero();
         let entry = sink
@@ -1854,10 +1922,12 @@ pub mod v2 {
                         coefficients: (0..monomials)
                             .map(|m| if m == alpha { one.clone() } else { nil.clone() })
                             .collect(),
+                        measures: Vec::new(),
                     },
                     Vec::new(),
                 )
             });
+        entry.0.measures.extend(measures);
         entry.1.push((slot, weight));
     }
 
@@ -2115,6 +2185,7 @@ pub mod v2 {
             tracked_sums: (0..points).map(|_| TrackedSums::default()).collect(),
             pending: Vec::new(),
             rescued: vec![Vec::new(); points],
+            rescued_moments: vec![Vec::new(); points],
             moments: BTreeMap::new(),
         };
         let carriers = match options.rescue {
@@ -2174,6 +2245,7 @@ pub mod v2 {
             mut checks,
             mut terms,
             mut rescued,
+            mut rescued_moments,
             tracked,
             tracked_sums,
             ..
@@ -2205,6 +2277,7 @@ pub mod v2 {
             failures,
             measures,
             rescued: Vec::new(),
+            rescued_moments: Vec::new(),
         };
         if plan.amplitude {
             // Amplitude-mode plans (decided once per call): the native
@@ -2230,6 +2303,7 @@ pub mod v2 {
                 let mut result =
                     amplitude_result(plan, &zero, width, lanes, tests, terms, options.raw_lanes);
                 result.rescued = std::mem::take(&mut rescued[point]);
+                result.rescued_moments = std::mem::take(&mut rescued_moments[point]);
                 results.push(result);
             }
             report.count("points", points as u64);
@@ -2290,6 +2364,7 @@ pub mod v2 {
                 failures: Vec::new(),
                 measures: Vec::new(),
                 rescued: std::mem::take(&mut rescued[point]),
+                rescued_moments: std::mem::take(&mut rescued_moments[point]),
             });
         }
         report.count("points", points as u64);
@@ -2389,7 +2464,8 @@ pub mod v2 {
         // tracked uncertainty must stay below the evaluation carrier's unit
         // roundoff of the point's summed lane sizes (largest Laurent
         // coefficient each); else those lanes count as refused at that
-        // carrier, the last of the ladder, and the point fails.
+        // carrier, the last of the ladder, and the point fails. The
+        // uncertainties are in units of 2^-bits (`RescueOutput::tracked`).
         let bits = zero.get_precision();
         for (point, (carrier, u)) in uncertain {
             let mut sizes = vec![0.0; u.len()];
@@ -2400,7 +2476,7 @@ pub mod v2 {
             }
             let largest = |v: &[f64]| v.iter().copied().fold(0.0, f64::max);
             let (u, a) = (largest(&u), largest(&sizes));
-            if u > 0.0 && u > a * 2f64.powi(-(bits as i32)) {
+            if u > 0.0 && u > a {
                 let lanes = sink.rescued[point]
                     .iter()
                     .filter(|(_, c)| *c == carrier)
@@ -2411,7 +2487,11 @@ pub mod v2 {
                      of the point's summed lane sizes (largest Laurent coefficient), {bits} \
                      required (the evaluation carrier's precision)",
                     carrier.label(),
-                    if a > 0.0 { (a / u).log2() } else { 0.0 },
+                    if a > 0.0 {
+                        (a / u).log2() + f64::from(bits)
+                    } else {
+                        0.0
+                    },
                 ));
             }
         }
@@ -2446,7 +2526,7 @@ pub mod v2 {
                     *s += weight.clone() * &z.clone().norm().re;
                 }
             }
-            sink.rescued[unit.point].push((unit.key, carrier));
+            sink.rescued_moments[unit.point].push((unit.key.family, unit.key.column, carrier));
         }
         let suffix = |attempts: &[String]| {
             if attempts.is_empty() {
@@ -2459,6 +2539,8 @@ pub mod v2 {
             let Some(attempts) = attempts else {
                 continue;
             };
+            // Refused at every carrier: its measures are its point's.
+            sink.measures[lane.point].extend(lane.measures.iter().copied());
             let (family, key) = (lane.key.family, lane.key);
             if let Some(status) = &lane.direct {
                 sink.failures[lane.point].push(format!(
@@ -2481,6 +2563,7 @@ pub mod v2 {
             let Some(attempts) = attempts else {
                 continue;
             };
+            sink.measures[unit.point].extend(unit.measures.iter().copied());
             sink.failures[unit.point].push(format!(
                 "term scale of family {} monomial {}: {}{}",
                 unit.key.family,
@@ -2795,6 +2878,7 @@ pub mod v2 {
             failures: Vec::new(),
             measures: Vec::new(),
             rescued: Vec::new(),
+            rescued_moments: Vec::new(),
         }
     }
 
@@ -2919,6 +3003,8 @@ pub mod v2 {
             /// The tracked uncertainty per Laurent coefficient each lane
             /// rescued in arbitrary precision states (`RescueOutput`).
             tracked: Option<f64>,
+            /// The shifts of every rescue group received (review m8).
+            shifts: Vec<Vec<Rational>>,
         }
 
         impl V2Backend<f64> for Rescuing {
@@ -2972,6 +3058,7 @@ pub mod v2 {
                         .map(|g| (g.family, g.points.clone(), g.coefficients.clone()))
                         .collect(),
                 ));
+                self.shifts.extend(groups.iter().map(|g| g.shifts.clone()));
                 let refused =
                     self.refuse_all || (self.refuse_dd && carrier == RescueCarrier::DoubleDouble);
                 let direct = groups
@@ -3005,6 +3092,141 @@ pub mod v2 {
             }
         }
 
+        /// Review m8: the rescue reduces at the point improved in the rescue
+        /// carrier (`RescueInputs::Improved`), not at the given one
+        /// (`Exact`): for a 1 -> 1 point whose outgoing leg is off its shell,
+        /// the improved point conserves momentum exactly, so the lanes'
+        /// shifts differ.
+        #[test]
+        fn the_rescue_reduces_at_the_improved_point() {
+            // A 2 -> 2 variant of the test plan whose second propagator
+            // carries the last leg (all momenta incoming, as the batch).
+            let text = std::str::from_utf8(PLAN)
+                .unwrap()
+                .replace(r#""legs":2"#, r#""legs":4"#)
+                .replace(
+                    r#""helicities":[[0],[0]]"#,
+                    r#""helicities":[[0],[0],[0],[0]]"#,
+                )
+                .replace("FAMILY", &FAMILY.replace("[[1,0],[2,0]]", "[[1,0],[14,0]]"));
+            let plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+            let executor = V2Executor::new(Arc::new(plan), DEFAULT_LANES, Some(1)).unwrap();
+            // p1 + p2 -> p3 + p4 massless, the last leg's z off by 1e-9 (off
+            // its shell, momentum not conserved).
+            let q = |n: i64| Rational::from(n);
+            let point = vec![
+                q(1),
+                q(0),
+                q(0),
+                q(1),
+                q(1),
+                q(0),
+                q(0),
+                q(-1),
+                q(-1),
+                q(-1),
+                q(0),
+                q(0),
+                q(-1),
+                q(1),
+                q(0),
+                Rational::from((1, 1_000_000_000)),
+            ];
+            let batch = V2Batch {
+                momenta: vec![point],
+                scales: vec![Rational::from(1)],
+                masses: vec![Rational::from(0)],
+                masses_imaginary: Vec::new(),
+                leg_masses: Vec::new(),
+                constants: vec![Complex::new(2.0, 0.0)],
+                block_rows: vec![Vec::new()],
+                born: vec![vec![Complex::new(1.0, 1.0)]],
+            };
+            let shifts = |rescue: RescueInputs| {
+                let mut backend = Rescuing::default();
+                let options = V2Options {
+                    chunk_families: 1,
+                    rescue,
+                    ..V2Options::default()
+                };
+                let (results, _) = executor
+                    .evaluate(&batch, &0.0, &mut backend, options)
+                    .unwrap();
+                assert!(results[0].failures.is_empty(), "{:?}", results[0].failures);
+                backend.shifts
+            };
+            let exact = shifts(RescueInputs::Exact);
+            let improved = shifts(RescueInputs::Improved { n_initial: 2 });
+            assert!(!exact.is_empty() && exact.len() == improved.len());
+            assert_ne!(exact, improved, "the improved point's shifts");
+        }
+
+        /// Review m8: a refused term-scale moment is rescued with the lanes
+        /// (recorded apart, `PointResult::rescued_moments`, review m3), and
+        /// refused at every carrier it fails its point (never dropped).
+        #[test]
+        fn a_refused_term_scale_moment_is_rescued_or_fails_its_point() {
+            // The amplitude-mode variant of the test plan (the term scale is a
+            // diagnostic of amplitude-mode plans).
+            let text = std::str::from_utf8(PLAN)
+                .unwrap()
+                .replace(r#""schema":4"#, r#""schema":5"#)
+                .replace(r#""columns":1,"#, r#""columns":1,"column_rows":[[0]],"#)
+                .replace("FAMILY", FAMILY);
+            let plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+            let executor = V2Executor::new(Arc::new(plan), DEFAULT_LANES, Some(1)).unwrap();
+            let momentum = |e: i64| -> Vec<Rational> {
+                [e, 0, 0, e, e, 0, 0, -e].map(Rational::from).to_vec()
+            };
+            let batch = V2Batch {
+                momenta: vec![momentum(1), momentum(2)],
+                scales: vec![Rational::from(1); 2],
+                masses: vec![Rational::from(0)],
+                masses_imaginary: Vec::new(),
+                leg_masses: Vec::new(),
+                constants: vec![Complex::new(2.0, 0.0)],
+                block_rows: vec![Vec::new(); 2],
+                born: vec![vec![Complex::new(1.0, 1.0)], vec![Complex::new(3.0, 0.0)]],
+            };
+            let run = |backend: &mut Rescuing| {
+                let options = V2Options {
+                    chunk_families: 1,
+                    term_scale: true,
+                    rescue: RescueInputs::Exact,
+                    ..V2Options::default()
+                };
+                executor.evaluate(&batch, &0.0, backend, options).unwrap()
+            };
+            let mut backend = Rescuing {
+                refuse_dd: true,
+                ..Rescuing::default()
+            };
+            let (results, _) = run(&mut backend);
+            assert!(results[0].failures.is_empty(), "{:?}", results[0].failures);
+            assert_eq!(results[0].rescued.len(), 2, "the two lanes");
+            assert!(!results[0].rescued_moments.is_empty(), "the moments, apart");
+            assert!(
+                results[0]
+                    .rescued_moments
+                    .iter()
+                    .all(|m| m.2 == RescueCarrier::Arbitrary(77))
+            );
+            assert!(results[1].rescued_moments.is_empty());
+            let mut backend = Rescuing {
+                refuse_all: true,
+                ..Rescuing::default()
+            };
+            let (results, _) = run(&mut backend);
+            assert!(
+                results[0]
+                    .failures
+                    .iter()
+                    .any(|f| f.starts_with("term scale of family")),
+                "{:?}",
+                results[0].failures
+            );
+        }
+
         /// A lane rescued in arbitrary precision whose tracked uncertainty
         /// exceeds the evaluation carrier's unit roundoff of the point's
         /// summed lane sizes is refused (the point fails with the rule's
@@ -3032,8 +3254,9 @@ pub mod v2 {
                 ..V2Options::default()
             };
             // The point's two rescued lanes have size |2 - 2i|_1 = 4 each: the
-            // bound is 8 x 2^-53.
-            let bound = 8.0 * 2f64.powi(-53);
+            // bound is 8 x 2^-53, i.e. 8 in the units of the rescue's tracked
+            // uncertainties (2^-53, `RescueOutput::tracked`).
+            let bound = 8.0;
             for (u, refused) in [(bound / 4.0, false), (bound, true)] {
                 let mut backend = Rescuing {
                     refuse_dd: true,

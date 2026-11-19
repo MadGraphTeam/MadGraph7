@@ -1353,7 +1353,10 @@ impl V2Runtime {
                 .evaluate_live(lanes, &batch, zero, backend, options, liveness)?,
         };
         // Which points the lane rescue served (`V2Runtime::rescued_last`).
-        self.rescued_last = results.iter().map(|r| !r.rescued.is_empty()).collect();
+        self.rescued_last = results
+            .iter()
+            .map(|r| !r.rescued.is_empty() || !r.rescued_moments.is_empty())
+            .collect();
         let mut out = Vec::with_capacity(results.len());
         for (index, mut result) in results.into_iter().enumerate() {
             if !result.failures.is_empty() {

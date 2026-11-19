@@ -624,6 +624,10 @@ struct Evaluation {
     /// Per point the lanes the lane rescue served, `((family, order,
     /// column), carrier)` (`PointResult::rescued`; USER 2026-11-18).
     rescued: Vec<Vec<((usize, usize, usize), &'static str)>>,
+    /// Per point the term-scale moments the lane rescue served, `((family,
+    /// monomial), carrier)` (`PointResult::rescued_moments`, apart from the
+    /// lanes).
+    rescued_moments: Vec<Vec<((usize, usize), &'static str)>>,
     report: ReportObject,
 }
 
@@ -769,6 +773,15 @@ fn export_evaluation<T: Exchanged + Real>(
                 r.rescued
                     .iter()
                     .map(|(key, carrier)| ((key.family, key.order, key.column), carrier.name()))
+                    .collect()
+            })
+            .collect(),
+        rescued_moments: results
+            .iter()
+            .map(|r| {
+                r.rescued_moments
+                    .iter()
+                    .map(|(family, monomial, carrier)| ((*family, *monomial), carrier.name()))
                     .collect()
             })
             .collect(),

@@ -407,20 +407,7 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
         check: Option<ReductionCheck>,
         zero: &T,
     ) -> RusticolResult<RescueOutput<T>> {
-        let index = match self
-            .rescue_store()
-            .0
-            .iter()
-            .position(|(c, _)| *c == carrier)
-        {
-            Some(index) => index,
-            None => {
-                let built = self.rescue_backend(carrier)?;
-                let store = self.rescue_store();
-                store.0.push((carrier, built));
-                store.0.len() - 1
-            }
-        };
+        let index = self.rescue_index(carrier)?;
         let backend = &mut self.rescue_store().0[index].1;
         match carrier {
             RescueCarrier::DoubleDouble => {
@@ -515,7 +502,10 @@ where
     // The tracked uncertainty of every served direct value, where the
     // carrier's reduction tracks its precision (NinjaRS's arbitrary
     // precision), before it is rounded (the executor's tracked-precision
-    // test of rescued lanes).
+    // test of rescued lanes), in units of the evaluation carrier's unit
+    // roundoff 2^-p (scaled in the rescue carrier: no binary64 underflow at
+    // any evaluation precision, review m2).
+    let unit = high.from_i64(2).pow(u64::from(T::bits(zero)));
     let tracked = V2Backend::<U>::tracked_precision(backend).map(|_| {
         direct
             .iter()
@@ -525,7 +515,7 @@ where
                     .map(|outcome| match outcome {
                         Ok(values) => values
                             .iter()
-                            .map(|z| tracked_uncertainty(z).to_f64())
+                            .map(|z| (tracked_uncertainty(z) * &unit).to_f64())
                             .collect(),
                         Err(_) => Vec::new(),
                     })
@@ -558,6 +548,106 @@ where
 }
 
 impl V2Backends {
+    /// The index of this backend's rescue backend in `carrier`
+    /// ([`RescueBackends`]), built on first use and kept, with this
+    /// backend's CURRENT settings (review F1, 2026-11-19): the acceptance
+    /// (TIRust: the call's target, `set_target` / `set_target_acceptance`)
+    /// and the masters (NinjaRS, `set_masters`) are set on the kept backend
+    /// at every rescue; a kept TIRust backend whose other options no longer
+    /// follow this backend's ([`Self::rescue_options`]) is built again.
+    pub fn rescue_index(&mut self, carrier: RescueCarrier) -> RusticolResult<usize> {
+        let found = self
+            .rescue_store()
+            .0
+            .iter()
+            .position(|(c, _)| *c == carrier);
+        let index = match found {
+            Some(index) if self.rescue_current(index) => index,
+            Some(index) => {
+                let built = self.rescue_backend(carrier)?;
+                self.rescue_store().0[index].1 = built;
+                index
+            }
+            None => {
+                let built = self.rescue_backend(carrier)?;
+                let store = self.rescue_store();
+                store.0.push((carrier, built));
+                store.0.len() - 1
+            }
+        };
+        self.sync_rescue(index);
+        Ok(index)
+    }
+
+    /// The options of TIRust's rescue backends for an evaluation backend
+    /// with `options`: checked, and the method choice in the extended
+    /// carriers exactly when the evaluation's has it (an expert's
+    /// `method_choice=False` keeps it off; review m7).
+    #[cfg(feature = "tir")]
+    fn rescue_options(options: &crate::v2_tir::TirOptions) -> crate::v2_tir::TirOptions {
+        crate::v2_tir::TirOptions {
+            unchecked: false,
+            extended_method_choice: options.method_choice,
+            ..*options
+        }
+    }
+
+    /// Whether kept rescue backend `index` follows this backend's options,
+    /// the acceptance aside (set in place by [`Self::sync_rescue`]).
+    fn rescue_current(&mut self, index: usize) -> bool {
+        match self {
+            Self::NinjaRs(_) => true,
+            #[cfg(feature = "tir")]
+            Self::TiRust(main) => {
+                let want = Self::rescue_options(main.options());
+                match &main.rescue.0[index].1 {
+                    Self::TiRust(kept) => {
+                        crate::v2_tir::TirOptions {
+                            acceptance: want.acceptance,
+                            ..*kept.options()
+                        } == want
+                    }
+                    Self::NinjaRs(_) => false,
+                }
+            }
+        }
+    }
+
+    /// This backend's acceptance (TIRust) or masters (NinjaRS) on its kept
+    /// rescue backend `index`.
+    fn sync_rescue(&mut self, index: usize) {
+        match self {
+            Self::NinjaRs(main) => {
+                let masters = main.masters;
+                if let Self::NinjaRs(kept) = &mut main.rescue.0[index].1 {
+                    kept.masters = masters;
+                }
+            }
+            #[cfg(feature = "tir")]
+            Self::TiRust(main) => {
+                let acceptance = main.options().acceptance;
+                if let Self::TiRust(kept) = &mut main.rescue.0[index].1 {
+                    kept.set_acceptance(acceptance);
+                }
+            }
+        }
+    }
+
+    /// The settings of kept rescue backend `index` (tests: the acceptance
+    /// of a TIRust one, the masters of a NinjaRS one).
+    #[cfg(test)]
+    fn rescue_settings(&mut self, index: usize) -> (Option<f64>, Option<PoleSelection>, bool) {
+        match &self.rescue_store().0[index].1 {
+            Self::NinjaRs(kept) => (None, Some(kept.masters), false),
+            #[cfg(feature = "tir")]
+            Self::TiRust(kept) => (
+                Some(kept.options().acceptance),
+                None,
+                kept.options().extended_method_choice,
+            ),
+        }
+    }
+
     /// The lane rescue's backends ([`RescueBackends`]).
     fn rescue_store(&mut self) -> &mut RescueBackends {
         match self {
@@ -587,13 +677,12 @@ impl V2Backends {
             }
             #[cfg(feature = "tir")]
             Self::TiRust(backend) => {
-                let mut options = *backend.options();
-                options.unchecked = false;
-                // The method choice in the rescue carriers too: a row the
-                // gates refuse there gets the method choice and its acceptance
-                // check instead of failing closed (and going on to the
-                // arbitrary-precision step).
-                options.extended_method_choice = true;
+                // Checked, with the method choice in the rescue carriers too
+                // (when the evaluation has it): a row the gates refuse there
+                // gets the method choice and its acceptance check instead of
+                // failing closed (and going on to the arbitrary-precision
+                // step).
+                let options = Self::rescue_options(backend.options());
                 Self::tirust_with(backend.plans(), carrier.bits(), options)
             }
         }
@@ -749,5 +838,57 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
                 .collect::<RusticolResult<Vec<_>>>()
         };
         Ok((read(output.direct)?, output.check.map(read).transpose()?))
+    }
+}
+
+#[cfg(test)]
+mod rescue_settings_tests {
+    use super::*;
+
+    /// Review F1: a kept rescue backend follows the evaluation backend's
+    /// later target (TIRust's acceptance) and masters (NinjaRS), and a
+    /// TIRust one is built again when another option changes (the method
+    /// choice, review m7).
+    #[cfg(feature = "tir")]
+    #[test]
+    fn kept_rescue_backends_follow_the_evaluation_backend() {
+        use crate::v2_tir::{TirOptions, acceptance_of};
+        let mut tir = V2Backends::tirust_with([(4, 4)], 53, TirOptions::for_target(1e-5))
+            .expect("TIRust backend");
+        let carrier = RescueCarrier::DoubleDouble;
+        let index = tir.rescue_index(carrier).unwrap();
+        assert_eq!(tir.rescue_settings(index).0, Some(acceptance_of(1e-5)));
+        assert!(
+            tir.rescue_settings(index).2,
+            "the method choice on by default"
+        );
+        tir.set_target(1e-12);
+        let again = tir.rescue_index(carrier).unwrap();
+        assert_eq!(again, index);
+        assert_eq!(tir.rescue_settings(index).0, Some(acceptance_of(1e-12)));
+        tir.set_target_acceptance(0.25);
+        tir.rescue_index(carrier).unwrap();
+        assert_eq!(tir.rescue_settings(index).0, Some(0.25));
+        // An expert's method_choice=false: rebuilt without it.
+        if let V2Backends::TiRust(main) = &mut tir {
+            let mut options = *main.options();
+            options.method_choice = false;
+            **main = crate::v2_tir::TirReductionBackend::with_histogram([(4, 4)], 53, options)
+                .expect("TIRust backend");
+        }
+        let index = tir.rescue_index(carrier).unwrap();
+        assert!(!tir.rescue_settings(index).2);
+    }
+
+    #[test]
+    fn a_kept_ninjars_rescue_backend_follows_the_masters() {
+        let reducer = V2Reducer::new("double", None, "fast", true).expect("NinjaRS");
+        let mut ninja = V2Backends::NinjaRs(V2ReductionBackend::new(reducer, PoleSelection::BOTH));
+        let carrier = RescueCarrier::DoubleDouble;
+        let index = ninja.rescue_index(carrier).unwrap();
+        assert_eq!(ninja.rescue_settings(index).1, Some(PoleSelection::BOTH));
+        ninja.set_masters(PoleSelection::UV).unwrap();
+        assert_eq!(ninja.rescue_index(carrier).unwrap(), index);
+        assert_eq!(ninja.rescue_settings(index).1, Some(PoleSelection::UV));
     }
 }

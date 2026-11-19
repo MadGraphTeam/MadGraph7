@@ -2189,10 +2189,12 @@ impl V2Runtime {
             .iter()
             .enumerate()
             .map(|(index, result)| {
-                !result.rescued.is_empty()
+                let served =
+                    |r: &PointResult<T>| !r.rescued.is_empty() || !r.rescued_moments.is_empty();
+                served(result)
                     || twin_results
                         .as_ref()
-                        .is_some_and(|twin| !twin[index].rescued.is_empty())
+                        .is_some_and(|twin| served(&twin[index]))
             })
             .collect();
         let mut out = Vec::with_capacity(results.len());
