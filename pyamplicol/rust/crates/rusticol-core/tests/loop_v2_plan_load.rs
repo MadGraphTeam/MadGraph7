@@ -110,6 +110,22 @@ fn the_first_error_in_family_order_is_returned_on_any_thread_count() {
         let error = on_threads(threads, || load(&plan).unwrap_err());
         assert_eq!(error, sequential, "{threads} threads");
     }
+    // A binary member of 2000 families read under a load's bound: its
+    // decode starts a pool, on which the workers run.
+    let mut plan = families_plan(2000);
+    plan["families"][1350]["leaves"][0]["seed"] = json!(7);
+    plan["families"][620]["sequence"] = json!([[0, 0]]);
+    let member = PlanModel::from_json(&serde_json::to_vec(&plan).unwrap())
+        .unwrap()
+        .binary()
+        .unwrap();
+    let read = || read_binary(&member).map(|_| ()).unwrap_err().to_string();
+    let sequential = read();
+    assert!(sequential.contains("family reading"), "{sequential}");
+    for bound in [2, 3, 8] {
+        assert_eq!(with_load_threads(bound, read), sequential, "bound {bound}");
+        assert!(load_threads_started() > 0, "bound {bound}: a parallel load");
+    }
     force_pipeline_for_tests(false);
 }
 

@@ -2441,11 +2441,12 @@ thread_local! {
 /// threads, without starting a thread pool for it: the load starts the
 /// threads its work uses, up to the bound and no more. The families'
 /// derivation starts its workers one by one as the families' work asks for
-/// them (`LoopProgramV4::pipeline`); a decoded list of `n` records uses one
-/// thread per [`binary`]'s parallel chunk of records (at most
-/// `n / PARALLEL_RECORDS`), on a pool started for the load at the first such
-/// list and grown when a later one uses more ([`load_pool`]). A cheap plan
-/// loads on the calling thread alone. The program is the same for any bound.
+/// them, on the decode's pool when it has one (`LoopProgramV4::pipeline`);
+/// a decoded list of `n` records uses one thread per [`binary`]'s parallel
+/// chunk of records (at most `n / PARALLEL_RECORDS`), on a pool started for
+/// the load at the first such list and grown when a later one uses more
+/// ([`load_pool`]). A cheap plan loads on the calling thread alone. The
+/// program is the same for any bound.
 pub fn with_load_threads<R>(threads: usize, run: impl FnOnce() -> R) -> R {
     struct Restore(usize, Option<Arc<rayon::ThreadPool>>);
     impl Drop for Restore {
@@ -2517,6 +2518,11 @@ pub(super) fn load_pool(threads: usize) -> Option<Arc<rayon::ThreadPool>> {
         load.pool = Some(Arc::clone(&pool));
         Some(pool)
     })
+}
+
+/// The pool the load on this thread started so far (its decode's), if any.
+fn load_pool_started() -> Option<Arc<rayon::ThreadPool>> {
+    LOAD.with(|load| load.borrow().pool.clone())
 }
 
 /// The threads a family load may use: the bound of a load on this thread
@@ -3119,9 +3125,10 @@ impl LoopProgramV4 {
     /// run: the first family is derived and merged by the caller, timing
     /// both, and as many workers derive at once as the derivation takes
     /// replays (the running means' ratio, at least one, at most the window's
-    /// workers and the families left). A worker thread is started only when
-    /// that count grows (a load starts no thread its families do not use);
-    /// one that is no longer allowed waits on a condition, asleep. When a
+    /// workers and the families left). A worker is started only when that
+    /// count grows (a load starts no thread its families do not use), as a
+    /// job on the pool the load's decode started, else on a thread of its
+    /// own; one that is no longer allowed waits on a condition, asleep. When a
     /// family derives faster than it replays, or no worker thread can start,
     /// the rest load sequentially. The first error in family order is the one
     /// returned, and a later family's panic is raised only if the merge
@@ -3205,7 +3212,6 @@ impl LoopProgramV4 {
         // A worker: starts the next family while the window and the
         // allowed workers let it, else waits (asleep) for the merge.
         let worker = || {
-            let _unlock = crate::licence::unlock();
             loop {
                 let index = {
                     let mut st = lock();
@@ -3242,22 +3248,30 @@ impl LoopProgramV4 {
                 merge_work.notify_one();
             }
         };
-        std::thread::scope(|scope| {
-            // Workers are threads started one by one as the families' work
-            // allows more (never more than it uses: an idle worker waits,
-            // asleep); a thread that cannot start leaves the others to it.
-            let worker = &worker;
+        // Under a load's bound, the workers run on the pool its decode started
+        // (`with_load_threads`), as jobs: the threads that decoded the plan,
+        // whose malloc arenas hold what the decode frees as the families are
+        // derived (workers on threads of their own allocate in arenas of
+        // their own: g g > 8g at 8 threads peaked 2.4 GiB higher). Workers
+        // beyond its threads, or without one, are threads of their own.
+        let pool = if rayon::current_thread_index().is_none() && load_bound().is_some() {
+            load_pool_started()
+        } else {
+            None
+        };
+        let jobs = pool.as_ref().map_or(0, |pool| pool.current_num_threads());
+        let worker = &worker;
+        let mut run = |spawn: &dyn Fn(usize) -> bool| {
+            // Workers are started one by one as the families' work allows
+            // more (never more than it uses: an idle worker waits, asleep);
+            // one that cannot start leaves the others to it.
             let mut spawned = 0;
             let mut spawn_to = |allowed: usize| {
                 while spawned < allowed {
-                    let started = std::thread::Builder::new()
-                        .name("rusticol-load".into())
-                        .spawn_scoped(scope, worker);
-                    if started.is_err() {
+                    if !spawn(spawned) {
                         break;
                     }
                     spawned += 1;
-                    load_started(1);
                 }
                 spawned
             };
@@ -3319,6 +3333,33 @@ impl LoopProgramV4 {
             let mut st = lock();
             st.stop = true;
             start_work.notify_all();
+        };
+        std::thread::scope(|threads| {
+            let thread = |_: usize| {
+                let started = std::thread::Builder::new()
+                    .name("rusticol-load".into())
+                    .spawn_scoped(threads, move || {
+                        let _unlock = crate::licence::unlock();
+                        worker()
+                    });
+                if started.is_ok() {
+                    load_started(1);
+                }
+                started.is_ok()
+            };
+            match &pool {
+                Some(pool) => pool.in_place_scope(|scope| {
+                    run(&|k| {
+                        if k < jobs {
+                            scope.spawn(move |_| worker());
+                            true
+                        } else {
+                            thread(k)
+                        }
+                    })
+                }),
+                None => run(&thread),
+            }
         });
         if let Some(payload) = panic {
             resume_unwind(payload);
