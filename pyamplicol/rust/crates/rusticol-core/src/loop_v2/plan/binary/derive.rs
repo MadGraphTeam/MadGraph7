@@ -820,6 +820,16 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     let most_rows = file.contents.iter().map(|c| c.row_helicities.len());
     let mut named = buffer::<u64>(most_rows.max().unwrap_or(0))?;
     tally.keep(file.contents.len() as u64, size_of::<Content>());
+    // The contents' shared layouts (`from_file`): at most one pair per
+    // content, each in its own `Arc`, and their index by key.
+    tally.keep(
+        (file.contents.len() as u64).saturating_mul(2),
+        size_of::<crate::loop_v2::poly::SegmentLayout>() + 2 * size_of::<usize>(),
+    );
+    tally.map_grown(
+        file.contents.len() as u64,
+        size_of::<((usize, usize, usize), (usize, usize))>(),
+    );
     for c in &file.contents {
         let (rows_here, most) = content(&mut tally, c, vertex_terms, &mut named, admitted_rank)?;
         term_rows.push(rows_here);
@@ -864,6 +874,14 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     }
     let contents = file.contents.len() as u64;
     tally.keep_grown(contents, size_of::<HashMap<Row, u32>>());
+    // The shared row maps (`from_file`): at most one `Arc` per content, the
+    // list of them and their index by key.
+    tally.keep(
+        contents,
+        size_of::<HashMap<Row, u32>>() + 2 * size_of::<usize>(),
+    );
+    tally.keep(contents, size_of::<usize>());
+    tally.map_grown(contents, size_of::<((u64, usize, usize), usize)>());
     for c in &file.contents {
         tally.map(c.row_helicities.len() as u64, size_of::<(Row, u32)>());
     }

@@ -740,13 +740,13 @@ mod warm_tests {
             #[cfg(feature = "tir")]
             V2Backends::TiRust(_) => 0,
         };
+        // Counters and seconds that recorded something (a backend may list
+        // its counters at zero).
         let statistics = V2Backend::<T>::take_statistics(backend);
+        let recorded = statistics.counts.iter().filter(|(_, n)| *n > 0).count()
+            + statistics.seconds.iter().filter(|(_, s)| *s > 0.0).count();
         let measures = V2Backend::<T>::take_lane_measures(backend).len();
-        (
-            masters,
-            statistics.counts.len() + statistics.seconds.len(),
-            measures,
-        )
+        (masters, recorded, measures)
     }
 
     #[test]
