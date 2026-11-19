@@ -376,8 +376,14 @@ def test_the_born_interfered_routes_record_the_rescue(uux_ttxgg, route):
     call = calls[route]
     checked = call(stability_checks=VirtualStabilityChecks(1))
     direct = call(stability_checks=VirtualStabilityChecks(1, True, rescaled=True))
+    plain = call(stability_checks=VirtualStabilityChecks(1), lane_rescue=False)
     served = [p for p, lane in enumerate(checked.diagnostics) if lane.lane_rescue]
-    assert served, "the fixture points include rescued ones"
+    # Exactly the points that fail without the rescue carry its record (the
+    # selected rows may refuse no lane: the resolved and correlated routes,
+    # over every row, do).
+    assert served == [p for p, lane in enumerate(plain.diagnostics) if not lane.valid]
+    if route != "helicities":
+        assert served, "the fixture points include rescued ones"
     for p in served:
         found = _estimates(checked.stability[p])
         assert found and found == _estimates(direct.stability[p]), (route, p)
