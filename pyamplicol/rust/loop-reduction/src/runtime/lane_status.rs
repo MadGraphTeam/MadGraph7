@@ -6,11 +6,14 @@
 //! bound (`ninjars::conditioning::take_box_gram_refusals`: predicted loss,
 //! precision, margin). Both are taken right after the evaluation, on its
 //! thread. The texts keep the plain status first (`Unstable`, `CutFailed {
-//! .. }`), so matching on it is unchanged:
-//! `Unstable (triangle Gram determinant 0 <= 1.82e-12)`,
-//! `Unstable (box mu-expansion conditioning 3.10e-9 > 7.60e-11)`,
-//! `CutFailed { cut_index: 3, failure: DegenerateGram } (box-Gram bound:
-//! predicted loss 348.1 bits > 189 - 28 bits)`.
+//! .. }`), so matching on it is unchanged, and the record follows it, found
+//! first and then what the test required (NinjaRS's `Display`):
+//! `Unstable (box normal: found 3.09e-11, required > 3.26e-8)`,
+//! `Unstable (box mu-expansion conditioning: predicted error 3.19e-15,
+//! allowed <= 2.36e-15)`,
+//! `CutFailed { cut_index: 0, failure: DegenerateGram } (box-Gram bound:
+//! predicted loss 295.0 bits, allowed <= 228 bits (256 - 28))`: bits of the
+//! carrier's working precision, 256 at 57 requested digits.
 
 use crate::EvaluationStatus;
 use ninjars::conditioning::{BoxGramRefusal, take_box_gram_refusals};

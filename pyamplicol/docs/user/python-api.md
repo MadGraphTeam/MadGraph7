@@ -433,8 +433,9 @@ plane contains the beam: the pentagon Gram determinant nearly vanishes) of
 pentagon families whose rank equals their propagator count (all-vector quark
 loops), NinjaRS's reduction can produce finite, badly wrong values in every
 arithmetic. Its box mu-expansion's conditioning bound refuses such lanes
-typed (`Unstable`; the generic engine's `CutFailed { SingularParameter }`),
-so under `"auto"` the fallback fails them typed (in double-double, e.g., the
+typed (`Unstable`; the generic engine's `CutFailed { SingularParameter }`;
+a binary64 lane's failure text says what the screen predicted and what it
+allows, see the residual failures below), so under `"auto"` the fallback fails them typed (in double-double, e.g., the
 measured g g > z z z points at tilts eps = 0, 1e-14 and 1e-13 out of the
 plane); the guard stays as defence in depth on what the fallback still
 serves. Without that bound (measured 2026-11-08 on the development host;
@@ -539,7 +540,9 @@ value for, the way the one-loop providers' most optimistic settings run
   (`Unstable`) when the first-order rounding estimate of its boxes'
   mu-expansion terms exceeds 2^-17 of the lane's value, the generic engine
   (double-double, arbitrary precision) refuses every flagged lane
-  (`CutFailed { SingularParameter }`), with or without the setting.
+  (`CutFailed { SingularParameter }`), with or without the setting. The
+  failure text of an `Unstable` lane names the refusing test with what was
+  found and what was required (see the residual failures below).
 * The **residual failures**, which no scheme gives a finite value for, stay
   failed points with their reasons: an exactly singular pivot (TIRust, after
   its affine-relation variants), a non-finite output (TIRust's "nonfinite
@@ -548,7 +551,14 @@ value for, the way the one-loop providers' most optimistic settings run
   TIRust's `InvalidInput` and a NinjaRS lane whose tested quantity is exactly
   zero or NaN or that its conditioning bound refuses (its `Unstable` status,
   e.g. a cut whose two momenta span a Euclidean plane, a near-planar box
-  mu-expansion). A family outside TIRust's capability stays a call-level
+  mu-expansion). The status text names the refusing test and what it found
+  against what it required, e.g. `family 58722 lane ...: Unstable (box
+  mu-expansion conditioning: predicted error 3.19e-15, allowed <= 2.36e-15)`
+  or `Unstable (box normal: found 3.09e-11, required > 3.26e-8)`; a
+  double-double or arbitrary-precision lane refused by the box-Gram bound
+  reads `CutFailed { cut_index: 0, failure: DegenerateGram } (box-Gram bound:
+  predicted loss 295.0 bits, allowed <= 228 bits (256 - 28))`, in bits of
+  the carrier's working precision (256 at 57 requested digits). A family outside TIRust's capability stays a call-level
   `ReductionUnavailable`. A served value is not thereby accurate: see below.
 * `"auto"` keeps its rule, each backend in its unchecked form: TIRust for a
   loop-induced process, NinjaRS for a Born-interfered one, TIRust without a

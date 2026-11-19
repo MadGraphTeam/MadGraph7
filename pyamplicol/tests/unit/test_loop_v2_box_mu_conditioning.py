@@ -126,4 +126,4 @@ def test_every_lane_is_refused_or_within_the_target(loop_native, carrier):
             ("zzz-stream-44", "box mu-expansion denominator"),
         ):
             status = outcomes[(name, 0)]
-            assert status.startswith(f"Unstable ({test} "), (name, status)
+            assert status.startswith(f"Unstable ({test}: "), (name, status)
