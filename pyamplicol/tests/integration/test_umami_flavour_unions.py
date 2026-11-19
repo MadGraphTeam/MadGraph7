@@ -5,7 +5,7 @@ A union member is evaluated as an assignment of its template's runtime. Its
 matrix elements, colour tags, ratios and flavour-switch weights must equal
 those of an artifact generated per flavour (strict flavour-blind classes):
 conjugated members, members with exchanged beams and a six-quark union
-included.
+included. The full-colour target may have flavour unions too.
 """
 
 from __future__ import annotations
@@ -124,17 +124,28 @@ def built(tmp_path_factory):
         "union": root / "lc-union",
         "flavour": root / "lc-flavour",
         "full": root / "full",
+        "full-union": root / "full-union",
     }
     with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
         for kind, path in artifacts.items():
             Generator(
-                _config("full" if kind == "full" else "lc", kind == "union")
+                _config(
+                    "full" if kind.startswith("full") else "lc",
+                    kind in ("union", "full-union"),
+                )
             ).generate(
                 ProcessSet.from_expressions(EXPRESSIONS, names=NAMES),
                 path,
                 model=ModelSource.from_path(prepared_model),
             )
     result = {"artifacts": artifacts, "umami": {}, "reweight": {}}
+    # (LC reference, full-colour target) of each reweight provider
+    providers = {
+        "union": ("union", "full"),
+        "flavour": ("flavour", "full"),
+        "union-full": ("union", "full-union"),
+        "flavour-full": ("flavour", "full-union"),
+    }
     for kind in ("union", "flavour"):
         build = root / f"build-{kind}"
         _make(artifacts[kind] / "API/umami", config_executable, f"BUILD_DIR={build}")
@@ -142,9 +153,10 @@ def built(tmp_path_factory):
             (data, _library(build / data["provider"]["library"]))
             for data in load_umami_metadata(artifacts[kind])
         ]
+    for kind, (reference, target) in providers.items():
         output = root / f"reweight-{kind}"
         ids = write_reweight_provider(
-            artifacts[kind], artifacts["full"], output, switch_lines=SWITCH_LINES
+            artifacts[reference], artifacts[target], output, switch_lines=SWITCH_LINES
         )
         _make(output, config_executable)
         result["reweight"][kind] = {
@@ -462,16 +474,27 @@ def _process(pdgs):
     return " ".join(names[:2]) + " > " + " ".join(names[2:])
 
 
-def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(built):
+@pytest.mark.parametrize(
+    ("kind", "per_flavour"),
+    [("union", "flavour"), ("union-full", "flavour"), ("flavour-full", "flavour")],
+)
+def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(
+    built, kind, per_flavour
+):
+    """LC unions, full-colour unions and both against per-flavour artifacts."""
+
     artifacts = built["artifacts"]
-    unions, flavours = built["umami"]["union"], built["umami"]["flavour"]
+    reference = "flavour" if kind == "flavour-full" else "union"
+    unions, flavours = built["umami"][reference], built["umami"][per_flavour]
     assert len(unions) == len(flavours) == 1
-    ((_, union),) = built["reweight"]["union"].items()
+    ((_, union),) = built["reweight"][kind].items()
     union_dir, union_sidecar, union_library = union
-    ((_, (flavour_dir, _, flavour_library)),) = built["reweight"]["flavour"].items()
+    ((_, (flavour_dir, _, flavour_library)),) = built["reweight"][per_flavour].items()
     assert union_sidecar["targets"]
     union_handle = _handle(union_library, union_dir)
     flavour_handle = _handle(flavour_library, flavour_dir)
+    lc_library = unions[0][1]
+    lc_handle = _handle(lc_library, artifacts[reference])
     try:
         densities = _densities()
         for point in _points(2):
@@ -479,6 +502,17 @@ def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(built):
             theirs = dict(_flavour_events(flavours, 0, point))
             events = [event for _, event in ours]
             other = [theirs[key] for key, _ in ours]
+            # Helicities with numerically zero amplitudes (1e-30 of the largest)
+            # have rounding-noise ratios that depend on the identical-leg order.
+            lc = np.array(
+                _call(
+                    lc_library,
+                    lc_handle,
+                    [event[:3] for event in events],
+                    helicity=[event[3] for event in events],
+                )[0]
+            )
+            kept = (lc == 0.0) | (lc > 1e-20 * lc.max())
             for switch in (False, True):
                 # unswitched events (random flavour 0): the ratio, times the
                 # summed flavours over the generated ones when switching
@@ -489,7 +523,7 @@ def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(built):
                     flavour_library, flavour_handle, other, densities, switch=switch
                 )
                 assert (a[1] == -1).all() and (b[1] == -1).all()
-                assert a[0] == pytest.approx(b[0], rel=1e-12, abs=0.0)
+                assert a[0][kept] == pytest.approx(b[0][kept], rel=1e-12, abs=0.0)
                 assert (a[0] > 0).any()
         # switched events: the target's full colour over its leading colour
         point = _points(1)[0]
@@ -514,7 +548,7 @@ def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(built):
             (
                 flavour_library,
                 flavour_handle,
-                next(iter(built["reweight"]["flavour"].values()))[1],
+                next(iter(built["reweight"][per_flavour].values()))[1],
             ),
         ):
             ratio, target, helicity, color = _ratio_call(
@@ -571,6 +605,7 @@ def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(built):
     finally:
         assert union_library.umami_free(union_handle) == 0
         assert flavour_library.umami_free(flavour_handle) == 0
+        assert lc_library.umami_free(lc_handle) == 0
 
 
 def test_switch_shares_cover_every_flavour_once(built):

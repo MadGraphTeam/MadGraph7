@@ -26,6 +26,8 @@ typedef struct {
     /* The target's runtime[j] = input[target_permutation[j]], times target_factor. */
     const size_t *target_permutation;
     double target_factor;
+    /* Flavour-union assignment of the target runtime (-1: none). */
+    int target_assignment;
 } ReweightFlavour;
 
 typedef struct {
@@ -75,6 +77,8 @@ typedef struct {
     /* target runtime[j] = input[legs[j]], times factor */
     const size_t *legs;
     double factor;
+    /* flavour-union assignment of the target runtime (-1: none) */
+    int assignment;
 } ReweightSwitchTarget;
 
 typedef struct {

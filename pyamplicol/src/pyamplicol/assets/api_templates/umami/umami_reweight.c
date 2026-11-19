@@ -712,9 +712,21 @@ static UmamiStatus evaluate_switched(Instance *instance, double const *momenta, 
             UmamiStatus status = ensure_loaded(instance, 1, t);
             if (status != UMAMI_SUCCESS) return status;
             gather_switched(instance, momenta, stride, instance->positions, kept, true);
-            status = native_error(rusticol_runtime_evaluate_selected_f64(
-                instance->target[t], instance->batch, 4 * n * kept, kept, NULL, 0, NULL, 0,
-                instance->helicities, kept, NULL, 0, instance->chunk_values, kept));
+            if (sw->targets[instance->switched[instance->positions[0]].target].assignment >= 0) {
+                /* the targets of a template process are all its assignments */
+                for (size_t i = 0; i <= kept; ++i) instance->offsets[i] = i;
+                for (size_t i = 0; i < kept; ++i)
+                    instance->assignments[i] = (uint32_t)
+                        sw->targets[instance->switched[instance->positions[i]].target].assignment;
+                status = native_error(rusticol_runtime_evaluate_assignments_f64(
+                    instance->target[t], instance->batch, 4 * n * kept, kept, instance->offsets,
+                    kept + 1, instance->assignments, kept, instance->helicities, kept, NULL, 0,
+                    0, instance->chunk_values, kept));
+            } else {
+                status = native_error(rusticol_runtime_evaluate_selected_f64(
+                    instance->target[t], instance->batch, 4 * n * kept, kept, NULL, 0, NULL, 0,
+                    instance->helicities, kept, NULL, 0, instance->chunk_values, kept));
+            }
             if (status != UMAMI_SUCCESS) return status;
             for (size_t i = 0; i < kept; ++i) {
                 SwitchedEvent *s = &instance->switched[instance->positions[i]];
@@ -780,10 +792,15 @@ static UmamiStatus evaluate_points(Instance *instance, int side, RusticolRuntime
                 if (status != UMAMI_SUCCESS) return status;
             }
         }
-        if (side == 0 && entries[start]->reference_assignment >= 0) {
+        int first = side == 0 ? entries[start]->reference_assignment
+                              : entries[start]->target_assignment;
+        if (first >= 0) {
+            /* a template's entries are all assignments */
             for (size_t i = 0; i <= size; ++i) instance->offsets[i] = i;
             for (size_t i = 0; i < size; ++i)
-                instance->assignments[i] = (uint32_t)entries[start + i]->reference_assignment;
+                instance->assignments[i] = (uint32_t)(side == 0
+                    ? entries[start + i]->reference_assignment
+                    : entries[start + i]->target_assignment);
             status = native_error(rusticol_runtime_evaluate_assignments_f64(
                 runtime, instance->batch, 4 * n * size, size, instance->offsets, size + 1,
                 instance->assignments, size, helicities + start, size, NULL, 0, 0,

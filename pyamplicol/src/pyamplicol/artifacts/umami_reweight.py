@@ -13,8 +13,8 @@ with the parton densities passed in (parameter ``flavor_switch``).
 
 A flavour-union reference evaluates its members as assignments of their
 template's runtime (one native call per template and slot permutation in the
-switch); their full-colour targets are the members' own processes of the
-target artifact.
+switch). Full-colour targets are the members' own processes of the target
+artifact, or assignments of its templates when it has flavour unions too.
 """
 
 from __future__ import annotations
@@ -398,7 +398,8 @@ def _switch_tables(
     lines: list[str],
 ) -> str:
     """C tables of the flavour switch; target_route maps a target to its target
-    process index, its legs in event slots (None: the evaluation's) and factor."""
+    process index, its legs in event slots (None: the evaluation's), factor and
+    flavour-union assignment (-1: none)."""
     for i, evaluation in enumerate(catalogue["evaluations"]):
         lines.append(_int_array(f"reweight_switch_e{i}", "size_t", evaluation["legs"]))
     lines.append("static const ReweightSwitchEvaluation reweight_switch_evaluations[] = {")
@@ -451,14 +452,16 @@ def _switch_tables(
     rows = []
     for i, target in enumerate(catalogue["targets"]):
         lines.append(_int_array(f"reweight_switch_t{i}", "int", target["colors"]))
-        index, legs, factor = target_route(target, catalogue["target_pdgs"][i])
+        index, legs, factor, assignment = target_route(
+            target, catalogue["target_pdgs"][i]
+        )
         name = f"reweight_switch_e{target['evaluation']}"
         if legs is not None:
             name = f"reweight_switch_l{i}"
             lines.append(_int_array(name, "size_t", legs))
         rows.append(
             f"    {{{target['evaluation']}, {index}, reweight_switch_t{i}, {name}, "
-            f"{float(factor)!r}}},"
+            f"{float(factor)!r}, {assignment}}},"
         )
     lines.append("static const ReweightSwitchTarget reweight_switch_targets[] = {")
     lines.extend(rows)
@@ -492,10 +495,10 @@ def _switch_tables(
 
 def _target_routes(
     targets: Sequence[Mapping[str, Any]],
-) -> list[tuple[tuple[int, ...], Mapping[str, Any], Any, list[int], float]]:
+) -> list[tuple[tuple[int, ...], Mapping[str, Any], Any, list[int], float, int]]:
     """Every physical flavour of the target artifact: (its pdgs, its runtime
-    process, artifact id, runtime slot -> own leg, factor), from the members
-    of its UMAMI entries."""
+    process, artifact id, runtime slot -> own leg, factor, flavour-union
+    assignment or -1), from the members of its UMAMI entries."""
     routes, seen = [], set()
     for document in targets:
         processes = document["runtime_processes"]
@@ -513,19 +516,31 @@ def _target_routes(
                         document["provider"]["artifact_id"],
                         [int(v) for v in runtime["permutation"]],
                         float(runtime["factor"]),
+                        _integer(runtime.get("assignment", -1)),
                     ))
     return routes
 
 
+def _has_union_targets(targets: Sequence[Mapping[str, Any]]) -> bool:
+    """Whether target flavours are assignments of flavour-union templates."""
+    return any(
+        "assignment" in member["runtime"]
+        for document in targets
+        for channel in document["channels"]
+        for entry in channel["processes"]
+        for member in entry.get("members", ())
+    )
+
+
 def _route(routes, event_pdgs: Sequence[int], incoming: int):
     """The target route of a flavour given in event slots: (process, artifact
-    id, runtime slot -> event slot, factor). Identical outgoing particles and,
-    for two beams, the beam order are interchangeable."""
+    id, runtime slot -> event slot, factor, assignment). Identical outgoing
+    particles and, for two beams, the beam order are interchangeable."""
     incoming = _integer(incoming)
     event_pdgs = [int(p) for p in event_pdgs]
     final = sorted(event_pdgs[incoming:])
     for swapped in (False, True) if incoming == 2 else (False,):
-        for pdgs, process, artifact_id, permutation, factor in routes:
+        for pdgs, process, artifact_id, permutation, factor, assignment in routes:
             initial = list(pdgs[:incoming])
             if swapped:
                 initial.reverse()
@@ -536,7 +551,8 @@ def _route(routes, event_pdgs: Sequence[int], incoming: int):
                 incoming + j
                 for j in _first_unused(event_pdgs[incoming:], pdgs[incoming:])
             ]
-            return process, artifact_id, [to_event[leg] for leg in permutation], factor
+            legs = [to_event[leg] for leg in permutation]
+            return process, artifact_id, legs, factor, assignment
     raise ValueError(f"no process of the target artifact has the flavour {event_pdgs}")
 
 
@@ -565,6 +581,14 @@ def reweight_header(
     routes = None
     # needed by flavour-union routes only
     incoming = reference["provider"].get("incoming_count")
+    # union targets: flavours without a target process of their own are assignments,
+    # and a template's own flavour is its assignment 0 (the C side needs one kind)
+    union_targets = _has_union_targets(targets)
+    templates = (
+        {route[1]["id"] for route in _target_routes(targets) if route[5] >= 0}
+        if union_targets
+        else set()
+    )
     reference_processes = reference["runtime_processes"]
     lines = [
         "/* SPDX-License-Identifier: 0BSD */",
@@ -603,13 +627,15 @@ def reweight_header(
                 _int_array(f"{prefix}_permutation", "size_t", runtime["permutation"])
             )
             target_permutation, target_factor = f"{prefix}_permutation", 1.0
-            if assignment is None:
-                match = target_lookup.get(tuple(process["pdgs"]))
+            target_assignment = -1
+            match = target_lookup.get(tuple(process["pdgs"]))
+            if assignment is None and (match is not None or not union_targets):
                 if match is None:
                     raise ValueError(
                         f"no process of the target artifact matches {process['id']!r}"
                     )
                 target, target_id = match
+                target_assignment = 0 if target["id"] in templates else -1
                 for runtime_index, exported in enumerate(runtime["helicity_export"]):
                     identifier = process["helicity_ids"][runtime_index]
                     if identifier in target["helicity_ids"]:
@@ -617,11 +643,13 @@ def reweight_header(
                             identifier
                         )
             else:
-                # A flavour-union member: its own target process, legs and factor.
+                # A flavour-union member or target: its own route, legs and factor.
                 if routes is None:
                     routes = _target_routes(targets)
                 pdgs = reference["pdg_ids"][entry["matrix_elements"][0]["pdg_ids"]]
-                target, target_id, legs, target_factor = _route(routes, pdgs, incoming)
+                target, target_id, legs, target_factor, target_assignment = _route(
+                    routes, pdgs, incoming
+                )
                 target_permutation = f"{prefix}_target_permutation"
                 lines.append(_int_array(target_permutation, "size_t", legs))
                 values = {
@@ -641,7 +669,7 @@ def reweight_header(
                 f"{prefix}_permutation, {prefix}_reference, {prefix}_target, "
                 f"{-1 if assignment is None else _integer(assignment)}, "
                 f"{_string(runtime.get('assignment_key'))}, "
-                f"{target_permutation}, {target_factor!r}}},"
+                f"{target_permutation}, {target_factor!r}, {target_assignment}}},"
             )
         lines.extend(
             [
@@ -654,19 +682,21 @@ def reweight_header(
 
     def target_route(target, pdgs):
         evaluation = catalogue["evaluations"][target["evaluation"]]
-        if evaluation.get("assignment", -1) < 0:
-            process = reference_processes[evaluation["process"]]
-            match = target_lookup.get(tuple(process["pdgs"]))
+        process = reference_processes[evaluation["process"]]
+        match = target_lookup.get(tuple(process["pdgs"]))
+        if evaluation.get("assignment", -1) < 0 and (
+            match is not None or not union_targets
+        ):
             if match is None:
                 raise ValueError(
                     f"no process of the target artifact matches {process['id']!r}"
                 )
-            return target_index(*match), None, 1.0
+            return target_index(*match), None, 1.0, (0 if match[0]["id"] in templates else -1)
         nonlocal routes
         if routes is None:
             routes = _target_routes(targets)
-        process, target_id, legs, factor = _route(routes, pdgs, incoming)
-        return target_index(process, target_id), legs, factor
+        process, target_id, legs, factor, assignment = _route(routes, pdgs, incoming)
+        return target_index(process, target_id), legs, factor, assignment
 
     switch = (
         "NULL"
