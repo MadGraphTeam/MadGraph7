@@ -2085,8 +2085,8 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # Add Arithmetics include guarded by MADARITH_DOUBLEEXPANSION (only when that path is generated)
         if arith_doubleexpansion:
             file_h = file_h.replace(
-                '#include "mgOnGpuConfig.h"',
-                '#include "mgOnGpuConfig.h"\n#ifdef MADARITH_DOUBLEEXPANSION\n#include "Arithmetics/Double.h"\n#endif'
+                '#include "MadMatrixConfig.h"',
+                '#include "MadMatrixConfig.h"\n#ifdef MADARITH_DOUBLEEXPANSION\n#include "Arithmetics/Double.h"\n#endif'
             )
         if suffix:
             # its own include guard, and its own namespace inside madmatrix:

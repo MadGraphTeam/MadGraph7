@@ -24,7 +24,7 @@
 #include "MemoryAccessIflavorVec.h"
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessWavefunctions.h"
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 namespace madmatrix
 {

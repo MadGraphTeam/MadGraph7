@@ -14,11 +14,11 @@
 #ifndef Parameters_H
 #define Parameters_H
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuCxtypes.h"
-#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its mgOnGpuConfig.h)
-#include "mgOnGpuVectors.h"
+#include "MadMatrixCxtypes.h"
+#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its MadMatrixConfig.h)
+#include "MadMatrixVectors.h"
 #endif
 
 #include "constexpr_math.h"

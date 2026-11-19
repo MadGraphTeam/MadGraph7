@@ -11,7 +11,7 @@
 
 #include "Density.h"
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "ColorData.h" // colorMatrix/colorDenom, sqSoIndex/chosenSqso
 #include "MemoryAccessMomenta.h"

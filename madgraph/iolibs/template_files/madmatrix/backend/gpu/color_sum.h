@@ -7,9 +7,9 @@
 #ifndef COLOR_SUM_H
 #define COLOR_SUM_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 
 #include "ProcessData.h"
 #include "GpuAbstraction.h"

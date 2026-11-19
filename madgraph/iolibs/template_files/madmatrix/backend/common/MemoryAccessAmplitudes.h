@@ -7,9 +7,9 @@
 #ifndef MemoryAccessAmplitudes_H
 #define MemoryAccessAmplitudes_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 
 #include "MemoryAccessHelpers.h"
 

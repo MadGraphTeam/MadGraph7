@@ -17,12 +17,12 @@
 #ifndef HelAmps_sm_H
 #define HelAmps_sm_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its mgOnGpuConfig.h)
-#include "mgOnGpuVectors.h"
+#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its MadMatrixConfig.h)
+#include "MadMatrixVectors.h"
 #else
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 #endif
 #include "MadMatrixDenom.h"
 

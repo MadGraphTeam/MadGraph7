@@ -7,10 +7,10 @@
 #ifndef MemoryAccessMatrixElements_H
 #define MemoryAccessMatrixElements_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 #include "MemoryBuffers.h" // for HostBufferMatrixElements::isaligned
 
 //One namespace. Split ber backend.

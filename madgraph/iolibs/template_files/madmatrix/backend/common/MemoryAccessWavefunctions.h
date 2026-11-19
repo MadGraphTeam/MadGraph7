@@ -7,9 +7,9 @@
 #ifndef MemoryAccessWavefunctions_H
 #define MemoryAccessWavefunctions_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 
 #include "MemoryAccessHelpers.h"
 

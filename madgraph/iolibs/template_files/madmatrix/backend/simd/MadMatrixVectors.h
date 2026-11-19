@@ -7,8 +7,8 @@
 #ifndef MGONGPUVECTORS_H
 #define MGONGPUVECTORS_H 1
 
-#include "mgOnGpuCxtypes.h"
-#include "mgOnGpuFptypes.h"
+#include "MadMatrixCxtypes.h"
+#include "MadMatrixFptypes.h"
 
 #include <cassert>
 #include <iostream>

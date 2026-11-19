@@ -7,10 +7,10 @@
 #ifndef MemoryAccessCouplingsFixed_H
 #define MemoryAccessCouplingsFixed_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuCxtypes.h"
-#include "mgOnGpuVectors.h"
+#include "MadMatrixCxtypes.h"
+#include "MadMatrixVectors.h"
 
 //#include "MemoryAccessHelpers.h"
 

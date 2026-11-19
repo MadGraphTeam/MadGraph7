@@ -11,7 +11,7 @@
 #include <string>
 
 // cpu backend: always built with a plain host compiler, never nvcc/hipcc, so the
-// GPU-backend selection macro (see gpu/mgOnGpuConfig.h) is deliberately never
+// GPU-backend selection macro (see gpu/MadMatrixConfig.h) is deliberately never
 // defined here - single-file, all-backend headers rely on that to pick branches.
 
 // Choose floating point precision (for everything but color algebra #537)

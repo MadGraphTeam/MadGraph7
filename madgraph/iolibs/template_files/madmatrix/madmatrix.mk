@@ -304,7 +304,7 @@ ifeq ($(BACKEND),cuda)
   GPUFLAGS += $(CUDA_INC) $(USE_NVTX) 
 
   # C++ standard
-  GPUFLAGS += -std=c++20 # need CUDA >= 12.0: this is enforced in mgOnGpuConfig.h
+  GPUFLAGS += -std=c++20 # need CUDA >= 12.0: this is enforced in MadMatrixConfig.h
 
   # For nvcc, use -maxrregcount to control the maximum number of registries (this does not exist in hipcc)
   # Without -maxrregcount: baseline throughput: 6.5E8 (16384 32 12) up to 7.3E8 (65536 128 12)
