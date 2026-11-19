@@ -56,7 +56,7 @@ namespace
       return false;
     }
     checkGpu( status );
-    return attributes.memoryType == hipMemoryTypeDevice || attributes.isManaged;
+    return attributes.type == hipMemoryTypeDevice || attributes.isManaged;
 #endif
   }
 
@@ -822,7 +822,7 @@ extern "C"
       !device_momenta( momenta_in );
     if( dense_nlo )
       for( std::size_t event = 0; event < count; ++event )
-        if( flavor_indices_in[event] >= ProcessData::nmaxflavor ) return UMAMI_ERROR;
+        if( flavor_indices_in[event] >= ProcessTables::ncross * ProcessData::nmaxflavor ) return UMAMI_ERROR;
     double* host_squared_orders = dense_nlo ? squared_orders_out : nullptr;
     std::size_t n_threads = 256;
     std::size_t n_blocks = ( count + n_threads - 1 ) / n_threads;

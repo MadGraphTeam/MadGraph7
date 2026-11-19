@@ -659,8 +659,11 @@ extern "C"
     const double reference_ew = g_ew_in && UmamiOrders::hasQED ? static_cast<UmamiInstance*>( handle )->process.modelParameters().ewReference() : 1.;
     if( g_ew_in && !( reference_ew > 0. ) ) return UMAMI_ERROR_UNSUPPORTED_INPUT;
     if( count == 0 ) return UMAMI_SUCCESS;
-    for( std::size_t event = 0; flavor_indices_in && event < count; ++event )
-      if( flavor_indices_in[event + offset] >= ProcessData::nmaxflavor ) return UMAMI_ERROR;
+    // The component API rejects invalid rows. Ordinary matrix-element calls
+    // keep the kernel's per-event sentinel for IDs outside the crossing table.
+    if( squared_orders_out && flavor_indices_in )
+      for( std::size_t event = 0; event < count; ++event )
+        if( flavor_indices_in[event + offset] >= ProcessTables::ncross * ProcessData::nmaxflavor ) return UMAMI_ERROR;
     // Components retain their physical helicity sum; the separate signed
     // interference-helicity estimator has no all-component output contract.
     // A change of relative order weights also changes sampling probabilities.

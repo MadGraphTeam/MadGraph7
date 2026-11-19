@@ -12,6 +12,8 @@
 #define HOST_HIP_RUNTIME_H 1
 
 #include <cstddef>
+#include <cstdint>
+#include <map>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -90,15 +92,44 @@ inline void* host_hip_alloc( size_t n )
   memset( p, 0xff, n );
   return p;
 }
+// Classify an interior momentum pointer the same way as the HIP runtime.
+enum hipMemoryType { hipMemoryTypeHost = 1, hipMemoryTypeDevice = 2 };
+struct hipPointerAttribute_t { hipMemoryType type; int isManaged; };
+inline std::map<std::uintptr_t, size_t> host_hip_device_allocations;
+inline hipError_t hipPointerGetAttributes( hipPointerAttribute_t* attr, const void* p )
+{
+  const auto address = reinterpret_cast<std::uintptr_t>( p );
+  auto it = host_hip_device_allocations.upper_bound( address );
+  if( it == host_hip_device_allocations.begin() ) return hipErrorInvalidValue;
+  --it;
+  if( address - it->first >= it->second ) return hipErrorInvalidValue;
+  *attr = { hipMemoryTypeDevice, 0 };
+  return hipSuccess;
+}
 template<typename T>
-inline hipError_t hipMalloc( T** p, size_t n ) { *p = (T*)host_hip_alloc( n ); return *p ? hipSuccess : hipErrorInvalidValue; }
+inline hipError_t hipMalloc( T** p, size_t n )
+{
+  *p = (T*)host_hip_alloc( n );
+  if( !*p ) return hipErrorInvalidValue;
+  host_hip_device_allocations[reinterpret_cast<std::uintptr_t>( *p )] = n;
+  return hipSuccess;
+}
 template<typename T>
-inline hipError_t hipHostMalloc( T** p, size_t n, unsigned int = 0 ) { return hipMalloc( p, n ); }
+inline hipError_t hipHostMalloc( T** p, size_t n, unsigned int = 0 )
+{
+  *p = (T*)host_hip_alloc( n );
+  return *p ? hipSuccess : hipErrorInvalidValue;
+}
 template<typename T>
 inline hipError_t hipMallocAsync( T** p, size_t n, hipStream_t ) { return hipMalloc( p, n ); }
-inline hipError_t hipFree( void* p ) { free( p ); return hipSuccess; }
+inline hipError_t hipFree( void* p )
+{
+  host_hip_device_allocations.erase( reinterpret_cast<std::uintptr_t>( p ) );
+  free( p );
+  return hipSuccess;
+}
 inline hipError_t hipHostFree( void* p ) { free( p ); return hipSuccess; }
-inline hipError_t hipFreeAsync( void* p, hipStream_t ) { free( p ); return hipSuccess; }
+inline hipError_t hipFreeAsync( void* p, hipStream_t ) { return hipFree( p ); }
 inline hipError_t hipMemcpy( void* d, const void* s, size_t n, hipMemcpyKind ) { memmove( d, s, n ); return hipSuccess; }
 inline hipError_t hipMemcpyAsync( void* d, const void* s, size_t n, hipMemcpyKind, hipStream_t = nullptr ) { memmove( d, s, n ); return hipSuccess; }
 inline hipError_t hipMemset( void* d, int v, size_t n ) { memset( d, v, n ); return hipSuccess; }
