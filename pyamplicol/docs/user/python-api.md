@@ -576,7 +576,10 @@ does not take the test, and the opt-in `"scale"` metric of the rescue stack
 accepts such a zero at its binary64 level; under the default `"relative"`
 metric the point is kept at the last level with the target not met, as
 before, now as `best-effort` when that level is NinjaRS in arbitrary
-precision.
+precision. The refusal's reason names these routes; an explicit NinjaRS
+arbitrary-precision value of such a zero is obtained with
+`reduction_unchecked=True`, which drops the test (and nothing else of the
+value).
 
 **Inexact inputs near forward.** Near forward, backward or threshold
 kinematics NinjaRS amplifies a point's on-shell and momentum-conservation

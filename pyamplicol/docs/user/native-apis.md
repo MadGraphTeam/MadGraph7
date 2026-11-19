@@ -1048,7 +1048,9 @@ pool is built before any is installed, so a refused thread changes nothing;
 (`RAYON_NUM_THREADS`, else every core). The values do not depend on the
 count, and two handles keep their own counts. The load at open is bounded by
 the `threads` of the TOML given to `rusticol_virtual_open_with_options`
-(else `RAYON_NUM_THREADS`, else every core).
+(else `RAYON_NUM_THREADS`, else every core); a load starts only the threads
+its work uses, up to that count (briefly up to about twice the count alive
+while its decode pool grows; [Configuration](configuration.md#threads)).
 
 The tree C API reads the same TOML with `rusticol_runtime_set_options(handle,
 toml_text)` (C++ and Fortran `set_options`): a tree runtime takes

@@ -1022,7 +1022,15 @@ affinity mask. Precedence: `threads` > `RAYON_NUM_THREADS` > every core.
 - The load is bounded too where the count is known before it: Python's
   `Runtime.load(threads=)` (or `options=` with `threads`), the CLI's
   `--threads`, the SDK's `rusticol_virtual_open_with_options` with a TOML
-  that has `threads`. `rusticol_virtual_set_threads` and
+  that has `threads` (else the load takes rayon's rule, `RAYON_NUM_THREADS`
+  else every core). A load starts only the threads its work uses, up to that
+  count: a small plan loads on the calling thread alone, a large one derives
+  its families and decodes its lists in parallel, starting workers as the
+  work asks for them. At most the count work at once; while the load's
+  decode pool grows, the threads of the pool it replaces exit
+  asynchronously, so up to about twice the count may be alive for a moment.
+  The loaded program is the same for every count.
+  `rusticol_virtual_set_threads` and
   `rusticol_virtual_set_options` on an open handle bound its later
   evaluations (its pools are rebuilt at the new size); `0` restores the
   default.

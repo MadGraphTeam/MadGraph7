@@ -321,6 +321,36 @@ struct Bounds {
     fill_points: Option<usize>,
 }
 
+/// Build the carrier's tree runtime of `trees` now unless it is built
+/// (`V2Executor.warm`; what [`Trees::bind`] builds on first use).
+fn warm_trees<T: Exchanged + Real + TreeCarrier + Send + Sync>(
+    py: Python<'_>,
+    executor: &Executor,
+    trees: &Trees,
+    zero: &T,
+) -> PyResult<()>
+where
+    Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+    TreeRuntime<T>: Send,
+{
+    let mut guard = trees
+        .runtime
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !guard
+        .as_ref()
+        .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>())
+    {
+        // On the executor's pool, as an evaluation builds it.
+        let program = &trees.program;
+        let built = py
+            .detach(|| executor.install(|| program.runtime(zero)))
+            .map_err(error)?;
+        *guard = Some(Box::new(built));
+    }
+    Ok(())
+}
+
 impl Trees {
     /// The batch's bound parameters (`TreeProgram::bind`) and the carrier's
     /// tree runtime, built on first use.
@@ -1503,7 +1533,9 @@ fn stored_tree_program_section<'py>(
 #[pymethods]
 impl V2Executor {
     /// `plan` is the plan v4: its binary member (bytes, M-FINAL MF-8G-1 item
-    /// 5), its JSON (text) or a stored member of either (`program_bytes`).
+    /// 5), its JSON (text), a stored member of either (`program_bytes`) or
+    /// the program an artifact's admission loaded (`V2AdmittedPlan`, with
+    /// `forms="rule"` and no `overlay`: shared, not loaded again).
     /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON, its
     /// binary container or a stored member (`program_bytes`),
     /// the saved exact evaluator of each kernel and of the parameter program
@@ -1556,10 +1588,20 @@ impl V2Executor {
         // (`program_bytes`); `load_with` reads either form. With `overlay`
         // (a column set's seed records, `native_observables.with_overlay`)
         // the plan with them, without forming the merged plan JSON.
-        // With `threads`, the decode runs on that many threads
-        // (`loop_artifact::on_load_threads`), not on rayon's global pool.
-        let plan = {
+        // An admitted plan (`V2AdmittedPlan`) is the program itself, loaded
+        // with the default kernel forms and no overlay.
+        let plan = if let Ok(admitted) = plan.cast::<V2AdmittedPlan>() {
+            if policy != FormPolicy::Rule || overlay.is_some() {
+                return Err(error(
+                    "an admitted plan is loaded with the rule kernel forms and no \
+                     overlay; pass the stored plan for other forms or an overlay",
+                ));
+            }
+            admitted.get().program.clone()
+        } else {
             let data = program_bytes(&plan)?;
+            // Within the executor's thread bound, the threads started as the
+            // load's work uses them (`loop_artifact::on_load_threads`).
             Arc::new(
                 rusticol_core::loop_artifact::on_load_threads(threads, || match &overlay {
                     Some(overlay) => {
@@ -1838,6 +1880,98 @@ impl V2Executor {
         )?;
         backend.set_unchecked(unchecked);
         Ok(backend.plans())
+    }
+
+    /// Build now most of what this executor's first evaluation in its carrier
+    /// would build lazily, without evaluating a point of the process (the warm
+    /// entry: `plan_export.NativeExecutor.prepare`): the carrier's tree
+    /// runtime (its kernels' evaluators, or their plane applications in
+    /// binary64), the families' walk data (and dependent columns), the
+    /// `reduction` backend as an evaluation builds it
+    /// (TIRust: its plans at the default target, unless
+    /// `prepare_reduction` set another) and, through one synthetic lane per
+    /// (propagators, rank) class its lanes reach (`runtime::warm_classes`), what
+    /// its first reductions build (NinjaRS: each class's engine, whose
+    /// generic engine builds its cut expansions on its first evaluation in
+    /// double-double and arbitrary precision; TIRust: its workspaces), in
+    /// the `unchecked` mode (None: off; `evaluate` sets the mode per call)
+    /// with every master pole kept, as `evaluate` reduces by default
+    /// (`runtime::warm_backend`). What it builds is shared with the
+    /// executors derived with the same carrier and engine
+    /// (`SharedBackends`, the tree runtime) and kept for their lifetime.
+    /// The values of every later evaluation are unchanged. Left to the first
+    /// call that needs it: NinjaRS's lower class of a lane whose top
+    /// coefficients vanish at its point, and the binary64 fast engine's exact
+    /// fallback engine (lanes at its absolute thresholds).
+    #[pyo3(signature = (reduction="ninjars", *, unchecked=None))]
+    fn warm(&mut self, py: Python<'_>, reduction: &str, unchecked: Option<bool>) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
+        let reduction = Reduction::parse(reduction).map_err(error)?;
+        if matches!(self.carrier, Carriers::Exact | Carriers::Prime) {
+            return Err(error("the exact carrier dresses numerators only"));
+        }
+        let unchecked =
+            unchecked.unwrap_or(rusticol_loop_reduction::reduction_policy::DEFAULT_UNCHECKED);
+        let bits = self.bits()?;
+        if let Some(trees) = &self.trees {
+            match self.carrier {
+                Carriers::Double => warm_trees(py, &self.executor, trees, &0.0)?,
+                Carriers::DoubleDouble => {
+                    warm_trees(py, &self.executor, trees, &DoubleFloat::from(0.0))?
+                }
+                Carriers::Arbitrary(_) => {
+                    warm_trees(py, &self.executor, trees, &Float::with_val(bits, 0))?
+                }
+                Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
+            }
+        }
+        // The families' walk data and (dressed rows) dependent columns, which
+        // the first walk and reduction of each family derive (carrier-free:
+        // shared by every executor of the plan).
+        {
+            let executor = &self.executor;
+            let plan = executor.plan();
+            py.detach(|| {
+                executor.install(|| {
+                    for family in &plan.families {
+                        family.walk.get_or_init(|| plan.walk_of(family));
+                        if plan.dressed {
+                            family.dependents.get_or_init(|| plan.dependents_of(family));
+                        }
+                    }
+                })
+            });
+        }
+        let classes: Vec<(usize, usize)> = runtime::warm_classes(self.executor.plan(), reduction)
+            .into_iter()
+            .collect();
+        let mut taken = self.backends.take();
+        let backend = backend_of(
+            &mut taken.slots,
+            self.carrier,
+            &self.engine,
+            reduction,
+            self.executor.plan(),
+        )?;
+        backend
+            .set_masters(v2::master_selection("both")?)
+            .map_err(error)?;
+        backend.set_unchecked(unchecked);
+        let carrier = self.carrier;
+        let executor = &self.executor;
+        py.detach(|| {
+            executor.install(|| match carrier {
+                Carriers::Double => runtime::warm_backend(backend, &classes, &0.0),
+                Carriers::DoubleDouble => {
+                    runtime::warm_backend(backend, &classes, &DoubleFloat::from(0.0))
+                }
+                Carriers::Arbitrary(_) => {
+                    runtime::warm_backend(backend, &classes, &Float::with_val(bits, 0))
+                }
+                Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
+            })
+        })
+        .map_err(error)
     }
 
     /// Whether the executor has a tree program (native inputs).
@@ -2340,15 +2474,91 @@ fn admit_v2_artifact(
     threads: Option<usize>,
 ) -> PyResult<String> {
     let _unlock = pyamplicol::unlock();
-    use rusticol_core::loop_artifact::{load_loop_v2_artifact_threads, loop_v2_capability};
-
-    // `threads` bounds the load's threads (None: rayon's default).
+    // `threads` bounds the load's threads (None: rayon's default rule,
+    // `loop_artifact::on_load_threads`).
     let loaded = py
         .detach(|| {
             let artifact = rusticol_core::VerifiedArtifact::open(path)?;
-            load_loop_v2_artifact_threads(&artifact, process, threads)
+            rusticol_core::loop_artifact::load_loop_v2_artifact_threads(&artifact, process, threads)
         })
         .map_err(error)?;
+    describe_admitted(&loaded)
+}
+
+/// A plan v4 program the native loader admitted and validated
+/// ([`admit_v2_artifact_program`]): the loaded program, with its derived
+/// tables (kernel forms by the default rule), that an executor takes as its
+/// `plan` instead of loading the plan member again (`V2Executor(plan=...)`).
+/// Immutable; executors built from it share it.
+#[pyclass(frozen)]
+struct V2AdmittedPlan {
+    program: Arc<LoopProgramV4>,
+    /// The stored plan's SHA-256 (the admission checked it).
+    sha256: String,
+}
+
+#[pymethods]
+impl V2AdmittedPlan {
+    /// The SHA-256 of the stored plan member this program was loaded from.
+    #[getter]
+    fn sha256(&self) -> &str {
+        &self.sha256
+    }
+
+    /// The plan's families.
+    #[getter]
+    fn families(&self) -> usize {
+        self.program.families.len()
+    }
+}
+
+/// [`admit_v2_artifact`], also returning the admitted programs (the plan's
+/// and its certified-scaleless companion's, or None) as [`V2AdmittedPlan`]s:
+/// the artifact runtime hands them to its executors, so a loaded process's
+/// plan is read and derived once (`loops/v2/artifact.py`). `threads` bounds
+/// the load's threads (None: rayon's default, `RAYON_NUM_THREADS` or the
+/// cores of the affinity mask, as the runtime's executors), started only as
+/// its work uses them (`loop_artifact::on_load_threads`): the programs are
+/// the same for any count.
+#[pyfunction]
+#[pyo3(signature = (path, process=None, threads=None))]
+fn admit_v2_artifact_program(
+    py: Python<'_>,
+    path: &str,
+    process: Option<&str>,
+    threads: Option<usize>,
+) -> PyResult<(String, V2AdmittedPlan, Option<V2AdmittedPlan>)> {
+    let _unlock = pyamplicol::unlock();
+    let loaded = py
+        .detach(|| {
+            let artifact = rusticol_core::VerifiedArtifact::open(path)?;
+            rusticol_core::loop_artifact::load_loop_v2_artifact_threads(&artifact, process, threads)
+        })
+        .map_err(error)?;
+    let described = describe_admitted(&loaded)?;
+    let scaleless = match (&loaded.scaleless_program, &loaded.scaleless_plan_sha256) {
+        (Some(program), Some(sha256)) => Some(V2AdmittedPlan {
+            program: program.clone(),
+            sha256: sha256.clone(),
+        }),
+        _ => None,
+    };
+    Ok((
+        described,
+        V2AdmittedPlan {
+            program: loaded.program.clone(),
+            sha256: loaded.plan_sha256.clone(),
+        },
+        scaleless,
+    ))
+}
+
+/// The JSON description of an admitted process ([`admit_v2_artifact`]).
+fn describe_admitted(
+    loaded: &rusticol_core::loop_artifact::LoadedLoopV2Artifact,
+) -> PyResult<String> {
+    use rusticol_core::loop_artifact::loop_v2_capability;
+
     // The admitted process's own runtime (v4 Born-interfered, v5
     // loop-induced): the loader checked it against its contribution.
     let runtime_capability = loop_v2_capability(&loaded.metadata.contribution_kind)
@@ -2809,6 +3019,8 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     module.add_function(wrap_pyfunction!(native_library_key_active, module)?)?;
     module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(admit_v2_artifact_program, module)?)?;
+    module.add_class::<V2AdmittedPlan>()?;
     module.add_function(wrap_pyfunction!(stored_tree_program_section, module)?)?;
     module.add_function(wrap_pyfunction!(evaluate_v2_artifact, module)?)
 }

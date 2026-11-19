@@ -1357,6 +1357,24 @@ def admit(
         raise ArtifactError(f"plan v4 admission failed: {error}") from error
 
 
+def admit_programs(
+    native: Any, root: Path, process_id: str, threads: int | None = None
+) -> tuple[dict[str, Any], Any, Any]:
+    """``admit``, also returning the programs the admission loaded (the
+    plan's and its certified-scaleless companion's, or None): native
+    ``V2AdmittedPlan``s an executor takes instead of loading the plan member
+    again (``native_process.AdmittedPlan``), so a loaded process reads and
+    derives its plan once."""
+
+    try:
+        described, plan, scaleless = native.admit_v2_artifact_program(
+            str(root), process_id, threads=threads
+        )
+    except ValueError as error:
+        raise ArtifactError(f"plan v4 admission failed: {error}") from error
+    return cast(dict[str, Any], json.loads(described)), plan, scaleless
+
+
 def _select(manifest: Any, process: str | None) -> tuple[Mapping[str, Any], Any]:
     """The selected stored process record and, for a process it serves
     through a leg mapping (``mapping``: a permutation alias or a process-group
@@ -1652,6 +1670,7 @@ class V2VirtualRuntime:
         from pyamplicol.models.loading import CompiledModel
         from pyamplicol.runtime.virtual import v2_r2_strategy
 
+        from .native_process import AdmittedPlan
         from .rescue import rescue_policy
 
         # A default policy owns the carriers: refused with load-time ones.
@@ -1700,7 +1719,16 @@ class V2VirtualRuntime:
             # (a count beyond the native integer is clamped anyway)
             else int(native.effective_threads(min(self._threads_requested, 2**64 - 1)))
         )
-        admission = admit(native, root, process_id, self._threads)
+        # The admitted plan program is kept for the executors, which take it
+        # instead of loading the plan member again (one load per process).
+        # The certified-scaleless companion's is not: only the "uv" and "ir"
+        # pole selections run it, and its executor loads it on their first
+        # call, as before (it would stay resident otherwise: 7 gluons
+        # +0.18 GiB after a poles="all" point).
+        admission, plan, _companion = admit_programs(
+            native, root, process_id, self._threads
+        )
+        del _companion
         execution = _json_payload(manifest, f"processes/{process_id}/execution.json")
         physics = _json_payload(manifest, str(selected["physics_path"]))
         model_payload = _json_payload(manifest, "model/compiled-model.json")
@@ -1740,7 +1768,10 @@ class V2VirtualRuntime:
         runtime = root / "processes" / process_id / str(execution["runtime_path"])
         # File-backed (M-FINAL MF-8G-2 item 2): the plans and binary tree
         # programs stay in the PACBIN, read by the native executors.
-        self._native_process = load_native_process(runtime)
+        self._native_process = replace(
+            load_native_process(runtime), admitted=AdmittedPlan(plan)
+        )
+        del plan
         # A loop-induced process stores no observable columns: its
         # observables are quadratic forms on the amplitude vector
         # (``induced_observables``).
@@ -3239,9 +3270,75 @@ class V2VirtualRuntime:
             if self._observables is not None:
                 self._observables.set_model_parameters(parameters)
 
+    def prepare(
+        self,
+        *,
+        arithmetic: str | None = None,
+        precision: int | None = None,
+        reduction: str = "auto",
+        unchecked: bool = False,
+        poles: str | bool = "all",
+    ) -> None:
+        """Build most of what the first evaluation in a carrier
+        (``arithmetic`` and ``precision`` as for ``evaluate``) with
+        ``reduction`` builds lazily, without evaluating a point (the warm
+        entry, ``V2Executor.warm``): the carrier's native executor and tree
+        runtime, the families' walk data, the reduction backend and, through
+        one synthetic lane per (propagators, rank) class, what its first
+        reductions build (TIRust: its plans and workspaces; NinjaRS: its engine
+        of each class its lanes reach by the plan, ``runtime::warm_classes``,
+        in double-double and arbitrary precision the generic engine with the
+        cut expansions its first evaluation builds), in the ``unchecked``
+        mode of the calls to come (the binary64 engine keeps one per mode).
+
+        Left to the first call that needs it: a NinjaRS lane whose top
+        coefficients vanish at its point falls into a lower class, built then;
+        in binary64 the fast engine's exact fallback (the generic engine of
+        the lanes at its absolute thresholds) is built on its first such lane.
+        ``reduction`` is "ninjars" or "tirust", or "auto": every backend that
+        both the artifact admits and the native module serves in the carrier
+        (an "auto" call may run either). ``poles`` "uv" or "ir" also prepares
+        the certified-scaleless companion those selections run. Values are
+        unchanged; ``clear`` drops what it built. A backend the native module
+        does not serve in the carrier is ``ReductionUnavailable``."""
+
+        from .reduction import BACKENDS, native_backends
+
+        carrier, setting = self._carrier(arithmetic, precision)
+        served = native_backends(self._native)
+        if reduction == "auto":
+            admitted = BACKENDS if self._admitted is None else self._admitted
+            backends = [
+                name for name in sorted(admitted) if carrier in served.get(name, ())
+            ]
+        elif reduction in BACKENDS:
+            if carrier not in served.get(reduction, ()):
+                raise ReductionUnavailable(
+                    f"reduction {reduction!r} is not built into this native "
+                    f"module for the {carrier} carrier"
+                )
+            backends = [reduction]
+        else:
+            raise ValueError(
+                f"reduction must be 'auto' or one of {sorted(BACKENDS)}; "
+                f"got {reduction!r}"
+            )
+        with self._lock:
+            for backend in backends:
+                self._executor.prepare(
+                    setting,
+                    backend,
+                    unchecked=bool(unchecked),
+                    scaleless=poles in ("uv", "ir"),
+                )
+
     def clear(self) -> None:
         """Drop the native executors (and their master caches)."""
         with self._lock:
+            # The admitted plan program is released: the next executor loads
+            # the plan member (``AdmittedPlan.release``).
+            if self._native_process.admitted is not None:
+                self._native_process.admitted.release()
             self._executor = self._native_process.executor(
                 self._native, externals=self._externals, **self._thread_options()
             )

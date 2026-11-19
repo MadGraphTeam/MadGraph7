@@ -270,16 +270,27 @@ fn v2_plan_read_pool() -> Option<bool> {
 /// of the member, and a JSON through `LoopProgramV4::load`. A diagnostic: the
 /// digest formats the program beyond the reader's bound (`program_digest`),
 /// so fail-closed probes call `v2_plan_load(data, digest=False)` instead.
+/// With `threads`, the read uses at most that many threads, started as its
+/// work uses them (`loop_artifact::on_load_threads`: the families derived in
+/// parallel and merged in family order): the digest is the same for every
+/// count.
 #[pyfunction]
-fn v2_plan_read(py: Python<'_>, data: &[u8]) -> PyResult<String> {
+#[pyo3(signature = (data, threads=None))]
+fn v2_plan_read(py: Python<'_>, data: &[u8], threads: Option<usize>) -> PyResult<String> {
     let _unlock = pyamplicol::unlock();
     py.detach(|| {
-        let program = if is_binary(data) {
-            read_binary(data)
-        } else {
-            LoopProgramV4::load(data)
-        }?;
-        Ok(program_digest(&program))
+        let read = || {
+            let program = if is_binary(data) {
+                read_binary(data)
+            } else {
+                LoopProgramV4::load(data)
+            }?;
+            Ok(program_digest(&program))
+        };
+        match threads {
+            None => read(),
+            Some(threads) => rusticol_core::loop_artifact::on_load_threads(Some(threads), read),
+        }
     })
     .map_err(|e: rusticol_core::RusticolError| error(e))
 }

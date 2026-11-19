@@ -317,9 +317,11 @@ pub fn open_loop_v2_artifact(
     load_loop_v2_artifact(&VerifiedArtifact::open(path)?, requested_process)
 }
 
-/// [`load_loop_v2_artifact`] with at most `threads` threads (None: as
-/// without a bound, rayon's default, `RAYON_NUM_THREADS` else every core;
-/// [`on_load_threads`]): the program is the same for every count.
+/// [`load_loop_v2_artifact`] with at most `threads` threads (None: rayon's
+/// default, `RAYON_NUM_THREADS` or the cores of the affinity mask, as an
+/// executor built without a thread bound; [`on_load_threads`]): the plans'
+/// families are derived in parallel, merged in family order, so the loaded
+/// programs are the sequential load's (`LoopProgramV4::load`).
 #[cfg(feature = "loop-v2")]
 pub fn load_loop_v2_artifact_threads(
     artifact: &VerifiedArtifact,
@@ -349,24 +351,43 @@ pub fn effective_threads(requested: usize) -> usize {
     requested.clamp(1, available_threads())
 }
 
-/// `run` (plan loads, an executor's construction) with at most `threads`
-/// threads ([`effective_threads`]): on a pool of that many workers (they hold pyAmpliCol's
-/// Symbolica key, as an executor's do), so the loads' parallel decoding
-/// stays on them (`loop_v2::plan::binary`'s reader takes the pool it runs
-/// in) instead of rayon's global pool. None runs `run` on the calling
-/// thread as before (rayon's default rule). A pool that cannot start runs
-/// `run` on the calling thread.
+/// `run` (plan loads) on the calling thread with at most `threads` threads
+/// (clamped to the threads the process may use, [`effective_threads`];
+/// None: rayon's default rule, [`default_load_threads`]), started only as
+/// the loads' work uses them (`loop_v2::plan::with_load_threads`: a cheap
+/// plan loads on the calling thread alone), each holding pyAmpliCol's
+/// Symbolica key as an executor's threads do; a thread that cannot start
+/// leaves its work to the others or to the calling thread
+/// ([`load_loop_v2_artifact_threads`]). Called from inside a rayon pool's
+/// worker, a load decodes on that pool's threads (the bound is then the
+/// caller's pool for the decode; the derivation's workers keep to
+/// `threads`); no production caller loads from inside a pool.
+#[cfg(feature = "loop-v2")]
 pub fn on_load_threads<R: Send>(threads: Option<usize>, run: impl FnOnce() -> R + Send) -> R {
-    let Some(threads) = threads else {
-        return run();
+    let threads = threads.map_or_else(default_load_threads, effective_threads);
+    crate::loop_v2::plan::with_load_threads(threads, run)
+}
+
+/// The threads of a rayon pool built without a count (rayon-core 1.13's
+/// rule, without starting one): `RAYON_NUM_THREADS` when it is a positive
+/// count, else (unless it is 0) the deprecated `RAYON_RS_NUM_CPUS` when
+/// positive, else `std::thread::available_parallelism` (the affinity mask
+/// and the cgroup quota), else one.
+#[cfg(feature = "loop-v2")]
+pub fn default_load_threads() -> usize {
+    let count = |name: &str| {
+        std::env::var(name)
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
     };
-    match rayon::ThreadPoolBuilder::new()
-        .num_threads(effective_threads(threads))
-        .start_handler(|_| crate::licence::unlock_thread())
-        .build()
-    {
-        Ok(pool) => pool.install(run),
-        Err(_) => run(),
+    let cores = || std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
+    match count("RAYON_NUM_THREADS") {
+        Some(threads @ 1..) => threads,
+        Some(0) => cores(),
+        _ => match count("RAYON_RS_NUM_CPUS") {
+            Some(threads @ 1..) => threads,
+            _ => cores(),
+        },
     }
 }
 

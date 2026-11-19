@@ -709,12 +709,23 @@ def _runtime_setup(
         f"{row.profile.batch}"
         for row in profiled
     )
-    warmups = sorted({row.profile.warmup for row in profiled})
+
+    def warming(profile: Any) -> str:
+        """How a stream was warmed: its untimed warm-up calls, the warm
+        entry, or the entry and the warm-ups after it."""
+
+        entry = getattr(profile, "prepared_seconds", None) is not None
+        calls = f"{profile.warmup} warm-up"
+        if not entry:
+            return calls
+        return "a warm entry" + (f" and {calls}" if profile.warmup else "")
+
+    warmups = sorted({warming(row.profile) for row in profiled})
     text = (
         f"binary64, finite part, {reduction}, on {core}; {points}, a new batch "
         f"every call; the median of each backend's timed calls"
         + (f" ({calls} points)" if calls else "")
-        + (f" after {'/'.join(map(str, warmups))} warm-up" if warmups else "")
+        + (f" after {' / '.join(warmups)}" if warmups else "")
     )
     references = [
         row.profile.reference.points
@@ -722,10 +733,18 @@ def _runtime_setup(
         if row.profile.reference is not None
     ]
     if truth is not None and truth.present and references:
+        warmed = sorted(
+            {
+                warming(row.profile.reference)
+                for row in profiled
+                if row.profile.reference is not None
+            }
+        )
         text += (
             f"; the {truth.label} multiplier from "
             + " / ".join(map(str, references))
             + " reference points"
+            + (f" after {' / '.join(warmed)}" if warmed != ["1 warm-up"] else "")
         )
     return text
 
@@ -786,7 +805,20 @@ def profile_loop(
         POST_SECONDS_PER_RECORD,
         RECORD_SECONDS_PER_INPUT,
         RECORD_SECONDS_PER_RECORD,
+        STABILITY_PRIOR,
+        Costs,
+        Known,
+        Plan,
+        binary64_warmup,
+        measurement_affects_counts,
+        minimum_counts,
+        reference_affects_counts,
+        reference_warmup,
+        rule_a_drops,
+        rule_b_bound,
+        rule_b_drops,
         runtime_counts,
+        takes_entry,
         warmup_seconds,
     )
     from pyamplicol.profile_plan import plan as plan_profile
@@ -860,6 +892,8 @@ def profile_loop(
         monitor.close(False)
         raise
     load_seconds = time.perf_counter() - load_begin
+    # This process's peak resident size once loaded (a worker's start).
+    load_peak = _own_peak_bytes()
     loading.end(runtime.physics.process_id)
     physics = runtime.physics
     contribution = runtime.contribution_kind
@@ -877,9 +911,18 @@ def profile_loop(
         )
         bench = replace(bench, runtime_threads=threads)
         config = replace(config, benchmark=bench)
+    # The runtime counts given (honoured as given); a --target-runtime given
+    # alone is each backend's timed binary64 budget, start-up and warm-up
+    # outside it, the reference on top (origin/main's meaning), the counts
+    # chosen from it (``profile_plan.target_counts``), not given.
     runtime_given = any(
         not is_default(getattr(bench, name))
-        for name in ("target_runtime", "minimum_samples", "batch_size", "warmup_runs")
+        for name in ("minimum_samples", "batch_size", "warmup_runs")
+    )
+    runtime_share = (
+        float(bench.target_runtime)
+        if completion is None and not is_default(bench.target_runtime)
+        else None
     )
     stability_given = (
         None if is_default(bench.stability_points) else int(bench.stability_points)
@@ -932,6 +975,7 @@ def profile_loop(
                 elapsed=elapsed,
                 stability_start=start,
                 runtime_counts_given=runtime_given and completion is None,
+                target=None if runtime_given else runtime_share,
                 stability_points_given=given_points,
                 tail_seconds_per_point=tail if completion is not None else 0.0,
                 runtime_target=float(bench.target_runtime),
@@ -971,23 +1015,387 @@ def profile_loop(
         rest = sum(future_of(planned_now, costs_map).values())
         provisional_end[0] = time.perf_counter() + left + rest
 
+    # An explicit --ground-truth keeps the runtime timing's reference pass.
+    is_default_truth_forced = not is_default(bench.ground_truth)
+    # The warm entry (``prepare`` of the runtime's backend, loadfast): the
+    # streams that warm through it instead of their untimed warm-up point
+    # (``profile_plan.takes_entry``), counted as such by every plan.
+    has_entry = callable(
+        getattr(getattr(runtime, "_backend", runtime), "prepare", None)
+    )
+    excess: dict[tuple[str, str], float] = {}
+
+    def entry_cost(backend: str, precision: str) -> float | None:
+        return None if history is None else history.cost(backend, f"{precision}-entry")
+
+    def warms_through_entry(backend: str, precision: str, point: float | None) -> bool:
+        """Whether this stream warms through the entry: the runtime offers
+        it, the binary64 stream only in the optimistic pass, and
+        ``takes_entry`` from the point's cost (None: unknown), the entry's
+        remembered cost and the measured first-call excess."""
+
+        if not has_entry or (precision == "binary64" and checked):
+            return False
+        return takes_entry(
+            point,
+            entry=entry_cost(backend, precision),
+            excess=excess.get((backend, precision)),
+        )
+
+    def entry_warming(backend: str, precision: str) -> float:
+        """The entry's expected seconds: remembered, else the first-call
+        excess it replaces, else none known (seconds, negligible against
+        the dear point it replaces)."""
+
+        known = entry_cost(backend, precision)
+        if known is None:
+            known = excess.get((backend, precision))
+        return 0.0 if known is None else known
+
+    def with_warming(backend: str, cost: Any) -> Any:
+        """``cost`` with its streams' warming by the entry where they take
+        it (``Costs.binary64_warm`` / ``reference_warm``)."""
+
+        call = DEFAULT_LANES * cost.binary64
+        point = warmup_seconds(call, cost.binary64)
+        return replace(
+            cost,
+            binary64_warm=entry_warming(backend, "binary64")
+            if warms_through_entry(backend, "binary64", point)
+            else None,
+            reference_warm=entry_warming(backend, "reference")
+            if cost.reference is not None
+            and warms_through_entry(backend, "reference", cost.reference)
+            else None,
+        )
+
+    # The scope rules' inputs (below, after the measurement): counts given
+    # (how many points or calls run) are honoured as given; a given
+    # --target-runtime is the runtime timing's budget (counts given with it
+    # win); --completion-time overrules every count.
+    default = DEFAULTS.get(contribution)
+    counts_given = completion is None and (
+        any(
+            not is_default(getattr(bench, name))
+            for name in ("batch_size", "minimum_samples", "warmup_runs")
+        )
+        or (want_stability and stability_given is not None)
+    )
+    target_given = runtime_share is not None and not counts_given
+    rules = not counts_given
+    timing_alone = rules and want_runtime and not want_stability
+    asked_backends = evaluation.reduction is not None or bench.all_backends is not None
+    serving = [b for b in _serving(runtime, backends) if b in backends]
+    early: list[str] = []
+    # The backends rule A (or --no-all-backends) leaves out of the runtime
+    # timing: set below, read by ``running``.
+    omitted: list[str] = []
+    # The scope rules (USER 2026-11-19; ``profile_plan.rule_b_drops`` and
+    # ``rule_a_drops``), one decision for every path: each takes ``known``,
+    # what this run has measured of every serving backend so far, and is
+    # called again whenever a measured number arrives (the measurement's
+    # steps, the decider worker after its binary64 call and after its
+    # untimed reference point, every runtime row). Invariants: (i) nothing
+    # is dropped but on a lower bound past the budget (``lower_bound``:
+    # grows only, so a drop is final); (ii) rule A never counts a reference
+    # rule B could drop; (iii) the verdict follows the measured numbers
+    # alone, whatever the path (measured, without a measurement phase, with
+    # or without history: a previous profile's costs set ETAs only); (iv)
+    # the record and the counts row are re-planned from what ran.
+    rule_b = timing_alone and truth.present and not is_default_truth_forced
+    a_reference = truth.present and not rule_b
+    known: dict[str, Known] = {b: Known(start=load_seconds + 1.0) for b in serving}
+
+    def budget_bound(count: int) -> float:
+        """The seconds the minimums of ``count`` backends may take before
+        the budget in force counts as exceeded, the counts row's rule
+        (``profile_plan.plan``), start-ups aside: ``BUDGET_TOLERANCE`` x the
+        budgets of the parts asked, the runtime timing's (the default for
+        all backends, or a given --target-runtime per backend) and the
+        stability run's (``DEFAULT_STABILITY_SECONDS_PER_CORE`` of wall);
+        with --completion-time what is left of it, start-ups in."""
+
+        if completion is not None:
+            return completion - monitor.elapsed()
+        runtime_budget = (
+            (
+                float(bench.target_runtime) * count
+                if target_given
+                else DEFAULT_RUNTIME_SECONDS
+            )
+            if want_runtime
+            else 0.0
+        )
+        stability_budget = DEFAULT_STABILITY_SECONDS_PER_CORE if want_stability else 0.0
+        return BUDGET_TOLERANCE * (runtime_budget + stability_budget)
+
+    def running() -> dict[str, Known]:
+        """``known`` of the backends that still run: rule A's left-out ones
+        (``early``, ``omitted``) are not judged by rule B."""
+
+        return {b: k for b, k in known.items() if b not in early and b not in omitted}
+
+    def b_drops() -> bool:
+        """Rule B on what is known now: every running serving backend's
+        lower bound (one not measured yet: 0) summed."""
+
+        return rule_b and rule_b_drops(
+            running(), budget_bound, lanes=DEFAULT_LANES, start=completion is not None
+        )
+
+    def a_drops() -> bool:
+        """Rule A on what is known now."""
+
+        return (
+            rules
+            and not asked_backends
+            and rule_a_drops(
+                known,
+                default,
+                budget_bound,
+                lanes=DEFAULT_LANES,
+                reference=a_reference,
+                stability_workers=workers if want_stability else None,
+                start=completion is not None,
+                runtime=want_runtime,
+            )
+        )
+
+    def learn(backend: str, **numbers: float | None) -> None:
+        """A measured number of ``backend`` arrives (``Known``'s fields)."""
+
+        if backend in known:
+            known[backend] = replace(known[backend], **numbers)
+
+    def enough(found: Mapping[str, Any]) -> bool:
+        """After each backend of the measurement (the default first): what
+        it measured is known; rule A decided by it leaves the others out,
+        unmeasured."""
+
+        for backend, cost in found.items():
+            learn(
+                backend,
+                point=cost.binary64,
+                reference=None
+                if cost.reference is None or cost.reference_estimated
+                else cost.reference,
+            )
+        if set(found) == {default} and a_drops():
+            early.extend(b for b in backends if b != default)
+            return True
+        return False
+
+    # Under the default budget a start-up that takes a backend's share
+    # leaves every backend the minimum counts whatever it costs: nothing is
+    # measured here (no evaluation in this process); each runtime timing's
+    # warm-ups measure its costs, the stability run's priors after it.
+    blind = (
+        want_runtime
+        and completion is None
+        and not runtime_given
+        and not target_given
+        and not measurement_affects_counts(
+            load_seconds + 1.0, backends=len(_serving(runtime, backends))
+        )
+    )
+
+    def reference_needed(backend: str, binary64: float, count: int) -> bool:
+        """Whether the measurement times ``backend``'s reference: its cost
+        can change the counts (rule 1; a given --target-runtime puts the
+        reference on top: only the stability run's priors need it), and
+        rule B, on what is known with this binary64 point, has not left it
+        out (m-3: the backends measured before count)."""
+
+        learn(backend, point=binary64)
+        if b_drops():
+            return False
+        if target_given:
+            return want_stability
+        return reference_affects_counts(
+            binary64,
+            load_seconds + 1.0,
+            backends=count,
+            lanes=DEFAULT_LANES,
+            warm=with_warming(
+                backend, Costs(binary64, None, 0.0, None, 0.0)
+            ).binary64_warm,
+        )
+
     try:
-        costs = _measure(
-            runtime,
-            path,
-            physics,
-            config,
-            backends,
-            truth,
-            monitor,
-            load_seconds,
-            history=history,
-            provisional=provisional,
+        costs = (
+            {}
+            if blind
+            else _measure(
+                runtime,
+                path,
+                physics,
+                config,
+                backends,
+                truth,
+                monitor,
+                load_seconds,
+                history=history,
+                provisional=provisional,
+                # Under the default budget a reference cost that cannot change
+                # the runtime counts is not timed here: each backend's runtime
+                # timing measures it with its own reference warm-up.
+                reference_needed=(
+                    reference_needed
+                    if want_runtime and completion is None and not runtime_given
+                    else None
+                ),
+                enough=enough,
+                excess=excess,
+            )
         )
     except KeyboardInterrupt:
         monitor.close(False)
         raise
-    planned, stability_start = planning(costs, monitor.elapsed())
+    measured_at = monitor.elapsed()
+    costs = {b: with_warming(b, c) for b, c in costs.items()}
+
+    def cap_workers(profiles: Sequence[Any]) -> None:
+        """The stability workers the memory holds, for the plan, its ETA and
+        rule A's stability minimum (``_stability`` applies the same rule
+        when it starts, ``_memory_record``); a --n_core given stays."""
+
+        nonlocal workers
+        from pyamplicol.profile_plan import memory_workers
+
+        if not want_stability or not is_default(bench.n_core):
+            return
+        estimate = _worker_memory(
+            load_peak, _own_peak_bytes() if costs and not blind else None, profiles
+        )
+        available = _available_memory()
+        if estimate and available is not None:
+            workers = min(workers, memory_workers(estimate, available))
+
+    cap_workers(())
+    priors: dict[str, Any] = {}
+    # The minimum runtime timing, as the notices name it (the reference
+    # point only when no scope rule can leave it out: given, or with
+    # --stability, or counts given).
+    minimum_calls = "one timed call of one chunk per backend" + (
+        " and its reference point"
+        if truth.present
+        and (
+            not is_default(bench.ground_truth)
+            or want_stability
+            or (runtime_given and completion is None)
+        )
+        else ", its reference point unless the minimums of every backend with "
+        "theirs exceed the budget"
+        if truth.present
+        else ""
+    )
+    if blind:
+        # The minimum counts; a previous profile's costs only for the ETA.
+        priors = {
+            backend: with_warming(
+                backend,
+                Costs(
+                    binary64,
+                    history.cost(backend, "reference") if truth.present else None,
+                    0.0,
+                    None,
+                    load_seconds + 1.0,
+                ),
+            )
+            for backend in backends
+            if history is not None
+            and (binary64 := history.cost(backend, "binary64")) is not None
+        }
+        planned = Plan(
+            "time budgets",
+            {
+                backend: minimum_counts(
+                    load_seconds + 1.0,
+                    lanes=DEFAULT_LANES,
+                    reference=truth.present,
+                    costs=priors.get(backend),
+                )
+                for backend in backends
+            },
+        )
+        stability_start = load_seconds + 1.0
+        # Start-ups are outside the budgets: whether the minimums exceed it
+        # is known once the runtime timing measured them (the counts row).
+        share = DEFAULT_RUNTIME_SECONDS / max(len(_serving(runtime, backends)), 1)
+        _notice(
+            "starting a process that loads the artifact takes about "
+            f"{_duration(load_seconds + 1.0)}, at least a backend's share "
+            f"({share:g} s of the {DEFAULT_RUNTIME_SECONDS:g} s runtime "
+            f"budget): running the minimums ({minimum_calls}), their costs "
+            "measured as they run"
+        )
+    else:
+        planned, stability_start = planning(costs, measured_at)
+    # The scope rules before the runtime timing, on what the measurement
+    # measured (nothing without a measurement phase).
+    for backend, cost in costs.items():
+        if cost.binary64_warm is not None:
+            learn(backend, warm=cost.binary64_warm)
+    omitted = (
+        [b for b in backends if b != default]
+        if (bench.all_backends is False and default in backends) or early or a_drops()
+        else []
+    )
+    timed_reference = truth.present and not b_drops()
+    # The backend whose runtime timing decides rule B on its own measured
+    # numbers when it is still open (all multipliers or none).
+    reference_decider = next(
+        (b for b in backends if b in serving and b not in omitted), None
+    )
+
+    def omit_notice(measured: bool = False) -> None:
+        from pyamplicol.loops.v2.reduction import NAMES
+
+        _notice(
+            f"the default backend {NAMES.get(default, default)} alone exceeds "
+            "the budget at its minimal counts"
+            + (" (measured in its runtime timing)" if measured else "")
+            + ": "
+            + ", ".join(NAMES.get(b, b) for b in omitted)
+            + " not profiled (--all-backends profiles every backend)"
+        )
+
+    if truth.present and not timed_reference:
+        _notice(
+            f"the runtime minimums of every backend with their {truth.name} "
+            f"reference exceed the budget: no {truth.label} multiplier (an "
+            "explicit --ground-truth measures it)"
+        )
+    if omitted and bench.all_backends is None:
+        omit_notice()
+    if costs and (omitted or not timed_reference):
+        # The plan of what runs, no reference; the default backend alone
+        # keeps the share it has beside the others (its row does not depend
+        # on which other rows are shown).
+        costs = {
+            b: c
+            if timed_reference
+            else replace(
+                c, reference=None, stability_reference=None, reference_estimated=False
+            )
+            for b, c in costs.items()
+        }
+        if not blind:
+            # The shares of every serving backend: one left out unmeasured
+            # (the measurement stopped) shares as the default does.
+            shares = dict(costs)
+            if default in costs:
+                for backend in omitted:
+                    if backend in serving:
+                        shares.setdefault(backend, costs[default])
+            planned, stability_start = planning(shares, measured_at)
+            planned = replace(
+                planned,
+                runtime={b: c for b, c in planned.runtime.items() if b not in omitted},
+            )
+        minimum_calls = "one timed call of one chunk per backend" + (
+            " and its reference point" if timed_reference else ""
+        )
     if not planned.feasible:
         # One number, the header's too: the whole command with the minimums.
         if completion is not None:
@@ -997,7 +1405,7 @@ def profile_loop(
                 "runtime": (
                     f"{_duration(float(bench.target_runtime))} per backend for the "
                     "runtime timing (--target-runtime)"
-                    if runtime_given
+                    if runtime_given or runtime_share is not None
                     else f"{DEFAULT_RUNTIME_SECONDS:g} s for the runtime timing"
                 ),
                 "stability": (
@@ -1013,19 +1421,25 @@ def profile_loop(
                 + ")"
             )
         unmet_stability = completion is not None or "stability" in planned.unmet
+        minimums = minimum_calls + (
+            ", five stability points per backend"
+            if want_stability and unmet_stability
+            else ""
+        )
         _notice(
-            f"{asked} cannot be met on this process: the minimums (one timed "
-            "call of one chunk per backend and its reference point"
-            + (
-                ", five stability points per backend"
-                if want_stability and unmet_stability
-                else ""
-            )
-            + f") take about {_duration(planned.minimum_seconds)} in all; "
-            "running the minimums",
+            f"{asked} cannot be met on this process: the minimums ({minimums}) "
+            f"take about {_duration(planned.minimum_seconds)} in all; running "
+            "the minimums",
             warning=True,
         )
     future = future_of(planned, costs)
+    for backend in omitted:
+        future.pop(f"runtime:{backend}", None)
+    if blind:
+        # A backend without a previous profile's costs has no estimate yet.
+        for backend in backends:
+            if backend not in priors:
+                future.pop(f"runtime:{backend}", None)
     if completion is None and (runtime_given or given_points is not None):
         # The counts given make the run as long as they are: said once, as
         # information (the user's own choice), when that is long.
@@ -1045,6 +1459,21 @@ def profile_loop(
                 f"{_duration(monitor.elapsed() + sum(future.values()))} in all "
                 "(estimated)"
             )
+    # The stability run evaluates in this process when it has one worker:
+    # ``--n_core`` 1 (or one usable core), or, without a deadline (the points
+    # given, no --completion-time), when its planned tasks are fewer than the
+    # workers (``_stability`` lowers its count to them; a single stream of
+    # up to a chunk of points is one task).
+    in_process = want_stability and (
+        workers == 1 or (stability_given is not None and completion is None)
+    )
+    if not in_process:
+        # Nothing evaluates in this process any more (the runtime timings and
+        # the stability workers load their own): its runtime is released and
+        # the allocator's free memory given back while they run (8 gluons:
+        # 23-38 GiB beside each worker's own).
+        runtime = None
+        _release_memory()
     current: list[Any] = [None]
 
     def remaining() -> tuple[float, bool] | None:
@@ -1064,6 +1493,8 @@ def profile_loop(
         rows = []
         default = DEFAULTS.get(contribution)
         for position, backend in enumerate(backends):
+            if backend in omitted:
+                continue
             # The optimistic pass: the backend alone. The checked mode: the
             # default backend as "auto" (with its per-point fallback), unless
             # one backend was asked for.
@@ -1121,15 +1552,15 @@ def profile_loop(
                 call = backend_bench.batch_size * cost.binary64
                 warmups = int(backend_bench.warmup_runs)
                 later["binary64"] = (
-                    (warmup_seconds(call, cost.binary64) + (warmups - 1) * call)
+                    (binary64_warmup(cost, call) + (warmups - 1) * call)
                     if warmups
                     else 0.0
                 ) + max(
                     float(backend_bench.target_runtime),
                     max(int(backend_bench.minimum_samples), 1) * call,
                 )
-                if truth.present and cost.reference is not None:
-                    later["reference"] = cost.reference + max(
+                if timed_reference and cost.reference is not None:
+                    later["reference"] = reference_warmup(cost) + max(
                         reference_budget, cost.reference
                     )
                 if one_thread is not None:
@@ -1157,11 +1588,45 @@ def profile_loop(
             current[0] = run
             reference = (
                 None
-                if truth.arithmetic == "none"
+                if not timed_reference
                 else {
                     **truth.options,
                     "reduction": backend,
                     "budget": max(reference_budget, 1e-9),
+                    # Rule B still open: the decider's worker re-calls it on
+                    # its own measured numbers (``benchmarking._scope_drops``)
+                    # after its binary64 call and after its untimed point.
+                    **(
+                        {
+                            "scope": {
+                                # The bound less the others' known minimums.
+                                "bound": rule_b_bound(
+                                    running(),
+                                    backend,
+                                    budget_bound,
+                                    lanes=DEFAULT_LANES,
+                                    start=completion is not None,
+                                ),
+                                "known": {
+                                    name: getattr(known[backend], name)
+                                    for name in ("point", "reference", "start")
+                                },
+                            }
+                        }
+                        if rule_b and backend == reference_decider
+                        else {}
+                    ),
+                    # Warmed through the entry (``takes_entry``; unknown
+                    # cost: the entry).
+                    "entry": warms_through_entry(
+                        backend,
+                        "reference",
+                        costs[backend].reference
+                        if backend in costs
+                        else priors[backend].reference
+                        if backend in priors
+                        else None,
+                    ),
                     **(
                         {"seconds_per_point": costs[backend].reference}
                         if backend in costs and costs[backend].reference is not None
@@ -1180,6 +1645,20 @@ def profile_loop(
                     run,
                     reference=reference,
                     one_thread=one_thread,
+                    # Whether the warm entry replaces the untimed binary64
+                    # warm-up (``takes_entry`` from its cost: the
+                    # measurement's, else a previous profile's, else
+                    # unknown).
+                    warm_entry=warms_through_entry(
+                        backend,
+                        "binary64",
+                        None
+                        if (prior := costs.get(backend) or priors.get(backend)) is None
+                        else warmup_seconds(
+                            backend_bench.batch_size * prior.binary64,
+                            prior.binary64,
+                        ),
+                    ),
                 )
             except ReductionUnavailable as error:
                 run.abort()
@@ -1201,6 +1680,48 @@ def profile_loop(
                 current[0] = None
             run.finish(result)
             rows.append(BackendRuntime(backend, result, requested=request))
+            # What this row measured is known (``Known``).
+            reference = result.reference
+            learn(
+                backend,
+                chunk=result.seconds_per_point if _served_points(result) else None,
+                warm=result.prepared_seconds,
+                reference=result.reference_point_seconds
+                if result.reference_point_seconds is not None
+                else known.get(backend, Known()).reference,
+                reference_timed=None
+                if reference is None
+                else reference.seconds_per_point,
+            )
+            if backend == reference_decider and result.reference_skipped:
+                from pyamplicol.loops.v2.reduction import NAMES
+
+                # Rule B on this backend's measured numbers: no reference
+                # for any backend (all or none).
+                timed_reference = False
+                _notice(
+                    "the runtime minimums of every backend with their "
+                    f"{truth.name} reference exceed the budget (measured in the "
+                    f"runtime timing of {NAMES.get(backend, backend)}, "
+                    + (
+                        f"after one untimed {truth.label} point"
+                        if result.reference_point_seconds is not None
+                        else f"before its {truth.label} points"
+                    )
+                    + f"): no {truth.label} multiplier (an explicit "
+                    "--ground-truth measures it)"
+                )
+            if (
+                backend == default
+                and not omitted
+                and len(serving) > 1
+                and _served_points(result)
+                and a_drops()
+            ):
+                # Rule A on the default backend's measured row, before any
+                # other backend starts (the ones after it read it here).
+                omitted = [b for b in backends if b != default]
+                omit_notice(measured=True)
         # A backend that failed every timed point is not compared (its time
         # is that of failing, not of serving the process).
         served = [
@@ -1221,6 +1742,69 @@ def profile_loop(
             )
             for row in rows
         )
+        # A reference cost the measurement left estimated: the runtime
+        # timing's measured one from now on (the stability run's priors and
+        # plan, the history).
+        timed_references = {
+            row.backend: row.profile.reference.seconds_per_point
+            for row in rows
+            if row.profile is not None
+            and row.profile.reference is not None
+            and row.backend in costs
+            and costs[row.backend].reference_estimated
+        }
+        for backend, seconds in timed_references.items():
+            costs[backend] = replace(
+                costs[backend],
+                reference=seconds,
+                stability_reference=seconds,
+                reference_estimated=False,
+            )
+        # The record, the counts row, the stability plan and the history
+        # from what ran: every runtime row's measured costs (its chunk's
+        # binary64 cost per point, its reference point, the entry where it
+        # warmed), the backends left out or refused dropped; the counts
+        # that ran stay the record's, their expected seconds re-planned.
+        ran: dict[str, Any] = {}
+        for row in rows:
+            profile = row.profile
+            if profile is None or not _served_points(profile):
+                continue
+            reference = profile.reference
+            seconds = None if reference is None else reference.seconds_per_point
+            ran[row.backend] = Costs(
+                profile.seconds_per_point,
+                seconds,
+                STABILITY_PRIOR * profile.seconds_per_point,
+                seconds,
+                load_seconds + 1.0,
+                binary64_warm=profile.prepared_seconds,
+                reference_warm=None
+                if reference is None
+                else reference.prepared_seconds,
+            )
+        if ran:
+            costs = ran
+            cap_workers(
+                [
+                    row.profile
+                    for row in rows
+                    if row.profile is not None and row.backend not in omitted
+                ]
+            )
+            replanned, stability_start = planning(costs, measured_at)
+            planned = replace(
+                replanned,
+                runtime={
+                    backend: (
+                        replace(counts, expected=replanned.runtime[backend].expected)
+                        if backend in replanned.runtime
+                        else counts
+                    )
+                    for backend, counts in planned.runtime.items()
+                    if backend not in omitted
+                },
+            )
 
     stability_rows = None
     stability_setup = None
@@ -1256,7 +1840,7 @@ def profile_loop(
             path,
             physics,
             config,
-            backends,
+            tuple(b for b in backends if b not in omitted),
             load_options=options,
             progress=progress,
             monitor=monitor,
@@ -1266,6 +1850,15 @@ def profile_loop(
             deadline=deadline if given_points is None else None,
             costs=costs,
             current=current,
+            worker_bytes=_worker_memory(
+                load_peak,
+                _own_peak_bytes() if costs and not blind else None,
+                [
+                    row.profile
+                    for row in runtime_rows or ()
+                    if row.profile is not None and row.backend not in omitted
+                ],
+            ),
             records=records,
             tail_seconds=tail if completion is not None else 0.0,
         )
@@ -1334,6 +1927,9 @@ def profile_loop(
         # The next profile's priors and whole estimate.
         history.store(
             backends,
+            # The costs this run measured (without a measurement phase, or
+            # with an estimated reference: the runtime timing's), the next
+            # profile's priors.
             costs,
             {"load": load_seconds, settings: monitor.elapsed()},
         )
@@ -1348,7 +1944,7 @@ def profile_loop(
         physics.process,
         contribution,
         DEFAULTS.get(contribution),
-        backends,
+        tuple(b for b in backends if b not in omitted),
         _runtime_setup(
             checked,
             None if points else evaluation.phase_space.seed,
@@ -1382,6 +1978,24 @@ def profile_loop(
                     and completion is None
                 ),
             },
+            # A --target-runtime given alone: the runtime budget per backend.
+            "runtime_target": runtime_share if not runtime_given else None,
+            # What the runtime timing left out on an expensive process: the
+            # backends (rule A) and the reference multiplier (rule B).
+            "omitted_backends": list(omitted),
+            "omitted_reference": (
+                truth.label
+                if truth.present
+                and want_runtime
+                and (
+                    not timed_reference
+                    or any(
+                        getattr(row.profile, "reference_skipped", False)
+                        for row in runtime_rows or ()
+                    )
+                )
+                else None
+            ),
             "runtime_counts": {
                 row.backend: {
                     "batch": row.profile.batch,
@@ -1570,6 +2184,143 @@ class _Monitor:
                     elapsed_seconds=self.elapsed(),
                 )
             )
+
+
+def _serving(runtime: Any, backends: Sequence[str]) -> list[str]:
+    """The ``backends`` this loaded runtime can serve, read without an
+    evaluation from its reduction record: those the artifact admits
+    (``admitted``: a TIR-only artifact refuses NinjaRS) and the native build
+    has (``native``); all of them when the record cannot be read. A backend
+    refused only by its first evaluation (a TIRust plan refusal) still
+    counts."""
+
+    summary = getattr(getattr(runtime, "_backend", runtime), "_reduction_summary", None)
+    try:
+        record = summary() if callable(summary) else None
+    except Exception:
+        record = None
+    if not isinstance(record, Mapping):
+        return list(backends)
+    admitted = record.get("admitted")
+    native = record.get("native")
+    return [
+        backend
+        for backend in backends
+        if (admitted is None or backend in admitted)
+        and (not isinstance(native, Mapping) or backend in native)
+    ]
+
+
+def _own_peak_bytes() -> float | None:
+    """This process's peak resident set size (VmHWM; None where unknown)."""
+
+    try:
+        with open("/proc/self/status", encoding="ascii") as status:
+            for line in status:
+                if line.startswith("VmHWM:"):
+                    return float(line.split()[1]) * 1024.0
+    except OSError:
+        pass
+    return None
+
+
+def _process_peak_bytes(pid: int | None) -> float | None:
+    """Another process's peak resident set size (VmHWM; None unknown)."""
+
+    if pid is None:
+        return None
+    try:
+        with open(f"/proc/{pid}/status", encoding="ascii") as status:
+            for line in status:
+                if line.startswith("VmHWM:"):
+                    return float(line.split()[1]) * 1024.0
+    except OSError:
+        pass
+    return None
+
+
+def _available_memory() -> float | None:
+    """The memory available to new processes now (MemAvailable, bytes; None
+    where unknown)."""
+
+    try:
+        with open("/proc/meminfo", encoding="ascii") as meminfo:
+            for line in meminfo:
+                if line.startswith("MemAvailable:"):
+                    return float(line.split()[1]) * 1024.0
+    except OSError:
+        pass
+    return None
+
+
+def _worker_memory(
+    load_peak: float | None, measured_peak: float | None, profiles: Sequence[Any]
+) -> float | None:
+    """One stability worker's resident size, loaded and warm, as this run
+    measured it: the parent's own peak when it loaded the artifact and
+    measured every backend (``measured_peak``), and the load's peak plus
+    each profiled backend's increase over it (its runtime worker's binary64
+    and reference peaks, ``profiles``): the larger; None when nothing was
+    measured."""
+
+    candidates = [] if measured_peak is None else [measured_peak]
+    peaks = []
+    for profile in profiles:
+        found = [
+            float(memory.peak_rss_bytes)
+            for memory in (
+                profile.peak_memory,
+                getattr(profile.reference, "peak_memory", None),
+            )
+            if memory is not None and memory.peak_rss_bytes is not None
+        ]
+        if found:
+            peaks.append(max(found))
+    if peaks:
+        base = load_peak or 0.0
+        candidates.append(base + sum(max(peak - base, 0.0) for peak in peaks))
+    return max(candidates) if candidates else None
+
+
+def _memory_record(
+    workers: int, worker_bytes: float | None, bench: Any
+) -> dict[str, Any] | None:
+    """The stability workers' memory: one worker's measured bytes, the
+    memory available now and how many workers fit in ``MEMORY_SHARE`` of it
+    (``profile_plan.memory_workers``); None when either is unknown."""
+
+    from pyamplicol.config.models import is_default
+    from pyamplicol.profile_plan import MEMORY_SHARE, memory_workers
+
+    available = _available_memory()
+    if not worker_bytes or available is None:
+        return None
+    return {
+        "per_worker_bytes": worker_bytes,
+        "available_bytes": available,
+        "share": MEMORY_SHARE,
+        "fits": memory_workers(worker_bytes, available),
+        "asked": workers,
+        "n_core_given": not is_default(bench.n_core),
+    }
+
+
+def _gib(value: float) -> str:
+    return f"{value / 2**30:.1f} GiB"
+
+
+def _release_memory() -> None:
+    """A full collection, then the C allocator's free memory returned to
+    the system (glibc ``malloc_trim``; nothing where it is absent): freed
+    native memory otherwise stays in this process's resident set."""
+
+    gc.collect()
+    with contextlib.suppress(Exception):
+        import ctypes
+
+        trim = getattr(ctypes.CDLL(None), "malloc_trim", None)
+        if trim is not None:
+            trim(0)
 
 
 def _per_point_text(seconds: float | None) -> str | None:
@@ -1924,10 +2675,16 @@ def _measure(
     *,
     history: _ProfileHistory | None = None,
     provisional: Callable[[dict[str, Any], float], None] | None = None,
+    reference_needed: Callable[[str, float, int], bool] | None = None,
+    enough: Callable[[Mapping[str, Any]], bool] | None = None,
+    excess: dict[tuple[str, str], float] | None = None,
 ) -> dict[str, Any]:
     """The measurement phase of a time-budgeted profile, on this process's
     loaded runtime, per backend: the binary64 cost per point of an
-    optimistic call and the reference's (none without a ground truth), each
+    optimistic call and the reference's (none without a ground truth; not
+    timed when ``reference_needed(binary64 cost, backends measured)`` is
+    False: then its prior, ``Costs.reference_estimated``, and the runtime
+    timing's reference warm-up measures it), each
     from one point (twice when it costs at most ``MEASURE_REPEAT_SECONDS``:
     a first call's lazy set-up) and, when a full SIMD chunk costs at most
     ``WARMUP_CALL_SECONDS`` at that price, from one call of a full chunk
@@ -2016,7 +2773,11 @@ def _measure(
         prior = prior_point(backend, precision)
         per_point = seconds(1, prior)
         if per_point <= MEASURE_REPEAT_SECONDS:
+            first = per_point
             per_point = seconds(1, per_point)
+            if excess is not None:
+                # The first call's lazy set-up (``profile_plan.takes_entry``).
+                excess[(backend, precision)] = max(first - per_point, 0.0)
         if per_point * len(points) <= WARMUP_CALL_SECONDS:
             per_point = seconds(len(points), per_point * len(points))
         return per_point
@@ -2107,12 +2868,25 @@ def _measure(
     costs: dict[str, Any] = {}
     done = 0
     measured: dict[str, float] = {}
+    # The backends whose reference cost is a prior (``reference_needed``).
+    estimated: set[str] = set()
     report(0)
     for backend in backends:
         name = NAMES.get(backend, backend)
         measured.clear()
         try:
             for precision in precisions:
+                if (
+                    precision == "reference"
+                    and reference_needed is not None
+                    and not reference_needed(
+                        backend, measured["binary64"], len(backends)
+                    )
+                ):
+                    estimated.add(backend)
+                    done += 1
+                    report(done)
+                    continue
                 label = "binary64" if precision == "binary64" else truth.name
                 phase.update(
                     done,
@@ -2147,19 +2921,39 @@ def _measure(
             continue
         binary64 = measured["binary64"]
         reference = measured.get("reference")
+        if backend in estimated:
+            reference = prior_point(backend, "reference")
         costs[backend] = Costs(
             binary64,
             reference,
             STABILITY_PRIOR * binary64,
             reference,
             load_seconds + 1.0,
+            reference_estimated=backend in estimated,
         )
+        if enough is not None and enough(costs):
+            # The backends after this one are not profiled (``enough``).
+            break
+    for backend in [b for b in costs if b in estimated]:
+        # A backend refused: the others' shares grew; a reference cost that
+        # can now change the counts is measured after all.
+        if reference_needed is None or reference_needed(
+            backend, costs[backend].binary64, len(costs)
+        ):
+            reference = cost(backend, "reference")
+            known[(backend, "reference")] = reference
+            costs[backend] = replace(
+                costs[backend],
+                reference=reference,
+                stability_reference=reference,
+                reference_estimated=False,
+            )
     phase.end(
         ", ".join(
             f"{NAMES.get(b, b)} {_per_point_text(c.binary64)}"
             + (
                 ""
-                if c.reference is None
+                if c.reference is None or c.reference_estimated
                 else f" ({truth.label} {_multiplier_text(c.reference / c.binary64)})"
             )
             for b, c in costs.items()
@@ -2248,10 +3042,17 @@ class _ProfileHistory:
     ) -> None:
         for backend, cost in costs.items():
             self._store.observe(f"cost:{backend}:binary64", 1e6 * float(cost.binary64))
-            if cost.reference is not None:
+            if cost.reference is not None and not cost.reference_estimated:
                 self._store.observe(
                     f"cost:{backend}:reference", 1e6 * float(cost.reference)
                 )
+            # The warm entry's seconds where it ran (``takes_entry``).
+            for precision in ("binary64", "reference"):
+                warm = getattr(cost, f"{precision}_warm", None)
+                if warm:
+                    self._store.observe(
+                        f"cost:{backend}:{precision}-entry", 1e6 * float(warm)
+                    )
         for name, value in seconds.items():
             self._store.observe(name, float(value))
         self._store.store(list(backends))
@@ -2308,6 +3109,7 @@ def _isolated_profile(
     *,
     reference: Mapping[str, Any] | None = None,
     one_thread: float | None = None,
+    warm_entry: bool = False,
 ) -> VirtualProfileResult:
     """``benchmarking.profile_virtual`` of one backend (``request``) on
     ``points`` (None: the artifact's distinct flat points) in a fresh
@@ -2346,6 +3148,7 @@ def _isolated_profile(
             request,
             None if reference is None else dict(reference),
             one_thread,
+            warm_entry,
         ),
         name="pyamplicol-loop-runtime-profile",
         daemon=True,
@@ -2408,6 +3211,7 @@ def _runtime_worker(
     request: str,
     reference: Mapping[str, Any] | None = None,
     one_thread: float | None = None,
+    warm_entry: bool = False,
 ) -> None:
     """The worker process of ``_isolated_profile``: Ctrl-C left to the
     parent, every thread pool at ``benchmark.runtime_threads`` threads
@@ -2457,6 +3261,7 @@ def _runtime_worker(
             reference=reference,
             optimistic=not benchmark.checked,
             monitor=lambda kind, payload: sender.send(("monitor", kind, payload)),
+            warm_entry=warm_entry,
         )
         if threads > 1 and one_thread is not None:
             # The gain: the same calls on one thread, after the N-thread
@@ -3220,6 +4025,7 @@ def _stability(
     current: list[Any] | None = None,
     records: bool = True,
     tail_seconds: float = 0.0,
+    worker_bytes: float | None = None,
 ) -> tuple[tuple[BackendStability, ...], Mapping[str, object]]:
     """The stability statistics of every backend (module docstring) over
     flat points, evaluated on ``benchmark.n_core`` worker processes (capped
@@ -3274,6 +4080,72 @@ def _stability(
     )
     count = max(count, 1)
     workers = max(1, min(bench.n_core, usable_cores()))
+    # As many workers as the memory holds (``profile_plan.memory_workers``:
+    # ``worker_bytes``, one worker's resident size as this run measured it,
+    # against the memory available now); a --n_core given is honoured, and
+    # warned about when it does not fit.
+    memory = _memory_record(workers, worker_bytes, bench)
+    if memory is not None and memory["fits"] < workers:
+        from pyamplicol.config.models import is_default
+
+        need = _gib(memory["per_worker_bytes"])
+        held = _gib(memory["available_bytes"])
+        if is_default(bench.n_core):
+            _notice(
+                f"the stability run starts {memory['fits']} "
+                f"worker{'s' if memory['fits'] != 1 else ''} instead of "
+                f"{workers}: each holds about {need} (measured), three quarters "
+                f"of the {held} available hold {memory['fits']}"
+            )
+            workers = int(memory["fits"])
+        else:
+            _notice(
+                f"--n_core {workers} given: its workers need about "
+                f"{_gib(workers * memory['per_worker_bytes'])} ({need} each, "
+                f"measured), more than three quarters of the {held} available",
+                warning=True,
+            )
+    # A task of several points (a stream's point cheaper than a task's
+    # work, ``task_points``) holds more than the one-point calls the
+    # estimate measured: the first worker runs its first task alone and its
+    # own peak sets the workers (``_run_pool``'s ``probe``); a task of one
+    # point is that measurement's own evaluation, nothing to probe.
+    probe = None
+    if memory is not None and workers > 1:
+        from pyamplicol.config.models import is_default
+        from pyamplicol.profile_plan import memory_workers
+
+        point_costs = [
+            seconds
+            for backend in backends
+            if (cost := (costs or {}).get(backend)) is not None
+            for seconds in (cost.stability, cost.stability_reference)
+            if seconds
+        ]
+        chunked = not point_costs or any(
+            task_points(seconds, DEFAULT_LANES) > 1 for seconds in point_costs
+        )
+        if chunked and is_default(bench.n_core):
+
+            def probe(peak: float) -> int:
+                available = _available_memory()
+                fits = (
+                    workers
+                    if available is None
+                    else min(workers, memory_workers(peak, available))
+                )
+                memory.update(
+                    probed_bytes=peak, probed_workers=fits, available_bytes=available
+                )
+                if fits < workers:
+                    _notice(
+                        f"the stability run keeps {fits} of its {workers} workers: "
+                        f"its first worker holds {_gib(peak)} after its first task, "
+                        "three quarters of the "
+                        f"{_gib(available or 0.0)} available hold {fits}"
+                    )
+                return fits
+
     # The flat points as the chunks need them (point i from seed + i), and
     # every point's inputs (the per-point record).
     inputs: dict[int, tuple[Any, Any]] = {}
@@ -3659,6 +4531,13 @@ def _stability(
     warm = (first_point[0][0], inputs[0][1])
     try:
         if workers == 1:
+            if runtime is None:
+                # Released by the caller (``profile_loop``): loaded again.
+                from pyamplicol.api import Runtime
+
+                runtime = Runtime.load(
+                    artifact, process=evaluation.process, **(load_options or {})
+                )
             _WORKER.update(
                 runtime=runtime,
                 warm=warm,
@@ -3703,6 +4582,7 @@ def _stability(
                 refuse,
                 tick,
                 first_interrupt,
+                probe=probe,
             )
     except KeyboardInterrupt:
         interrupted = True
@@ -3861,6 +4741,10 @@ def _stability(
         "evaluated_per_backend": complete,
         "interrupted": interrupted,
         "n_core": workers,
+        # The workers' memory rule (``_memory_record``; None: not measured).
+        "memory": None
+        if memory is None
+        else {**memory, "workers": int(memory.get("probed_workers", workers))},
         "seed": space.seed,
         "sqrt_s": sqrt_s[0] if sqrt_s else space.sqrt_s,
         "generator": (
@@ -3978,6 +4862,7 @@ def _run_pool(
     refuse: Any,
     tick: Any = None,
     first_interrupt: list[bool] | None = None,
+    probe: Callable[[float], int] | None = None,
 ) -> bool:
     """Run the stability tasks on ``workers`` spawned processes
     (``_stability_worker``), handing every finished task to ``harvest``;
@@ -4007,9 +4892,44 @@ def _run_pool(
     interrupted = False
     source = [tasks]
     last_tick = time.perf_counter()
+    # ``probe``: the first worker runs its first task alone (the pool spawns
+    # a process per submit while none is idle), then ``probe(its peak
+    # resident size)`` sets how many may run (``_stability``'s memory rule);
+    # fewer than ``workers``: at most that many tasks are queued, so no
+    # further process is spawned.
+    probing = [probe is not None and workers > 1]
+    limit = [workers]
+
+    def queued() -> int:
+        if probing[0]:
+            return 1
+        return 2 * workers if limit[0] >= workers else limit[0]
+
+    def measure() -> None:
+        probing[0] = False
+        peaks = [
+            peak
+            for process in list(getattr(executor, "_processes", {}).values())
+            if (peak := _process_peak_bytes(process.pid)) is not None
+        ]
+        if peaks and probe is not None:
+            limit[0] = max(1, min(workers, probe(max(peaks))))
+
+    # Tasks of a chunk not submitted yet (while probing: all but one).
+    held: list[Any] = []
+
+    def submit(task: Any) -> None:
+        backend, precision, indices, batch, scales = task
+        future = executor.submit(
+            _stability_task, backend, precision, indices, batch, scales
+        )
+        pending[future] = (backend, precision)
 
     def refill() -> None:
-        while source and len(pending) < 2 * workers:
+        while (held or source) and len(pending) < queued():
+            if held:
+                submit(held.pop(0))
+                continue
             chunk = source[0]()
             if chunk is None:
                 source.clear()
@@ -4017,15 +4937,17 @@ def _run_pool(
             if not chunk:
                 # Nothing to submit until a task is back.
                 return
-            for backend, precision, indices, batch, scales in chunk:
-                future = executor.submit(
-                    _stability_task, backend, precision, indices, batch, scales
-                )
-                pending[future] = (backend, precision)
+            # One task at a time into the pool: no process is spawned for
+            # tasks that ``queued`` does not admit yet (the probe's first
+            # worker runs alone).
+            held.extend(chunk)
 
     try:
         refill()
-        while pending:
+        while pending or held:
+            if not pending:
+                refill()
+                continue
             done, _ = futures.wait(
                 tuple(pending), timeout=0.5, return_when=futures.FIRST_COMPLETED
             )
@@ -4039,6 +4961,8 @@ def _run_pool(
                     harvest(*future.result())
                 except ReductionUnavailable as error:
                     refuse(backend, error)
+            if probing[0] and done:
+                measure()
             refill()
     except KeyboardInterrupt:
         interrupted = True

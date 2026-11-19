@@ -82,8 +82,9 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # benchmark.samples_output (`profile --samples-output`); 156:
     # benchmark.runtime_threads (`profile --runtime-threads`); 157:
     # evaluation.lane_rescue (`--lane-rescue`, USER 2026-11-18); 158:
-    # evaluation.threads (`--threads`, USER 2026-11-19).
-    assert len(FIELD_REGISTRY) == 158
+    # evaluation.threads (`--threads`, USER 2026-11-19); 159:
+    # benchmark.all_backends (`profile --all-backends`).
+    assert len(FIELD_REGISTRY) == 159
     assert FIELD_REGISTRY["evaluation.threads"].default is None
     assert FIELD_REGISTRY["evaluation.threads"].nullable
     assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()

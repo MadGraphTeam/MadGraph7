@@ -341,9 +341,13 @@ int rusticol_virtual_set_threads(rusticol_virtual_handle *handle,
 int rusticol_virtual_set_options(rusticol_virtual_handle *handle,
   const char *options_toml);
 /* rusticol_virtual_open, then rusticol_virtual_set_options with
- * options_toml (NULL: none), its threads bounding the load too; options are
- * checked before anything is loaded and a refused option opens nothing
- * (additive, ABI version 2 kept). */
+ * options_toml (NULL: none), its threads bounding the load too (clamped as
+ * rusticol_virtual_set_threads; without it, RAYON_NUM_THREADS else every
+ * core): the load starts only the threads its work uses, up to that count,
+ * at most that many working at once (about twice it may be alive for a
+ * moment while its decode pool grows); options are checked before anything
+ * is loaded and a refused option opens nothing (additive, ABI version 2
+ * kept). */
 int rusticol_virtual_open_with_options(const char *path, const char *process,
   const char *parameters_json, const char *r2_strategy,
   const char *options_toml, rusticol_virtual_handle **output);
