@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import os
 import stat
@@ -14,6 +15,18 @@ from pyamplicol.api.errors import ArtifactError
 def normalize_relative_path(value: str) -> str:
     """Return a normalized artifact path or reject unsafe input."""
 
+    if type(value) is str:
+        return _normalized_text_path(value)
+    return _normalize_relative_path_checked(value)
+
+
+# Hot on generation paths (the same payload paths are checked many times).
+@functools.lru_cache(maxsize=1 << 16)
+def _normalized_text_path(value: str) -> str:
+    return _normalize_relative_path_checked(value)
+
+
+def _normalize_relative_path_checked(value: str) -> str:
     if not isinstance(value, str) or not value:
         raise ArtifactError("artifact payload paths must be non-empty strings")
     if "\\" in value or "\x00" in value:

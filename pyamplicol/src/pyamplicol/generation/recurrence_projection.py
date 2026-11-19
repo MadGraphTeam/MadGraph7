@@ -14,7 +14,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Final
+from typing import Any, Final
 
 from ..color.plan import (
     ColorTopologyReplayCertificate,
@@ -687,7 +687,25 @@ def _physical_color_owner_plan(color_plan: GenericColorPlan) -> GenericColorPlan
     return replace(color_plan, sectors=tuple(owners))
 
 
+# Per-catalog results of _project_template_references (model-wide, read-only).
+_TEMPLATE_REFERENCES: list[tuple[RecurrenceTemplateCatalog, Any]] = []
+
+
 def _project_template_references(
+    catalog: RecurrenceTemplateCatalog,
+) -> tuple[
+    dict[tuple[str, str], int],
+    tuple[RecurrenceSemanticTemplateReferenceV1, ...],
+]:
+    for cached, result in tuple(_TEMPLATE_REFERENCES):
+        if cached is catalog:
+            return result
+    result = _project_template_references_uncached(catalog)
+    _TEMPLATE_REFERENCES[:] = [*_TEMPLATE_REFERENCES[-1:], (catalog, result)]
+    return result
+
+
+def _project_template_references_uncached(
     catalog: RecurrenceTemplateCatalog,
 ) -> tuple[
     dict[tuple[str, str], int],

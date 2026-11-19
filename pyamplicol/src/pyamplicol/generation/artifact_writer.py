@@ -1528,32 +1528,37 @@ def _write_eager_kernel_pack(
         pack_payload["recurrence_direct_template"] = None
     direct_descriptors: dict[str, bytes] = {}
     kernel_payloads: list[dict[str, object]] = []
-    for kernel in selected:
-        payload = kernel.to_dict()
-        if require_eager_direct and _requires_eager_direct_table(kernel.contract_kind):
-            manifest = _mapping(payload["f64_evaluator_manifest"])
-            if bundle.kernel_pack.backend == "jit":
-                direct_manifest, descriptor_path, descriptor = (
-                    _eager_direct_evaluator_manifest(
+    # One open archive for every payload read (reopening re-parses its directory).
+    with zipfile.ZipFile(bundle.path, "r") as archive:
+        for kernel in selected:
+            payload = kernel.to_dict()
+            if require_eager_direct and _requires_eager_direct_table(
+                kernel.contract_kind
+            ):
+                manifest = _mapping(payload["f64_evaluator_manifest"])
+                if bundle.kernel_pack.backend == "jit":
+                    direct_manifest, descriptor_path, descriptor = (
+                        _eager_direct_evaluator_manifest(
+                            bundle=bundle,
+                            kernel_id=kernel.kernel_id,
+                            input_complex_count=kernel.input_arity,
+                            output_complex_count=kernel.output_arity,
+                            manifest=manifest,
+                            archive=archive,
+                        )
+                    )
+                    direct_descriptors[descriptor_path] = descriptor
+                else:
+                    direct_manifest = _eager_native_direct_evaluator_manifest(
+                        backend=bundle.kernel_pack.backend,
                         bundle=bundle,
                         kernel_id=kernel.kernel_id,
                         input_complex_count=kernel.input_arity,
                         output_complex_count=kernel.output_arity,
                         manifest=manifest,
                     )
-                )
-                direct_descriptors[descriptor_path] = descriptor
-            else:
-                direct_manifest = _eager_native_direct_evaluator_manifest(
-                    backend=bundle.kernel_pack.backend,
-                    bundle=bundle,
-                    kernel_id=kernel.kernel_id,
-                    input_complex_count=kernel.input_arity,
-                    output_complex_count=kernel.output_arity,
-                    manifest=manifest,
-                )
-            payload["f64_evaluator_manifest"] = direct_manifest
-        kernel_payloads.append(payload)
+                payload["f64_evaluator_manifest"] = direct_manifest
+            kernel_payloads.append(payload)
     pack_payload["kernels"] = kernel_payloads
     pack_payload["kernel_variants"] = [
         variant.to_dict() for variant in selected_variants
@@ -1613,6 +1618,7 @@ def _eager_direct_evaluator_manifest(
     input_complex_count: int,
     output_complex_count: int,
     manifest: Mapping[str, object],
+    archive: zipfile.ZipFile | None = None,
 ) -> tuple[dict[str, object], str, bytes]:
     if manifest.get("kind") != "symjit-application-evaluator":
         raise ValueError(
@@ -1642,7 +1648,11 @@ def _eager_direct_evaluator_manifest(
     reader = getattr(bundle, "read_payload", None)
     if not callable(reader):  # pragma: no cover - internal type invariant
         raise TypeError("prepared model bundle cannot read evaluator payloads")
-    source = reader(application_path)
+    source = (
+        reader(application_path)
+        if archive is None
+        else reader(application_path, archive=archive)
+    )
     if not isinstance(source, bytes):  # pragma: no cover - bundle invariant
         raise TypeError("prepared model bundle returned a non-byte evaluator payload")
     started = time.perf_counter()
@@ -6098,8 +6108,13 @@ def _plain_mapping(value: Mapping[str, object]) -> dict[str, object]:
     return _deep_plain(value)
 
 
+_PLAIN_LEAVES = frozenset((str, int, float, bool, type(None)))
+
+
 def _deep_plain(value: Mapping[str, object]) -> dict[str, object]:
     def convert(item: object) -> object:
+        if type(item) in _PLAIN_LEAVES:
+            return item
         if isinstance(item, Mapping):
             return {str(key): convert(entry) for key, entry in item.items()}
         if isinstance(item, Sequence) and not isinstance(item, str | bytes):

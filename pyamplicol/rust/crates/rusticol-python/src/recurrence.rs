@@ -47,6 +47,7 @@ use serde_json::{Map as JsonMap, Value as JsonValue};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::python_error;
@@ -2332,7 +2333,56 @@ pub(super) fn canonical_json_sha256(value: &JsonValue, context: &str) -> Rustico
     )?)))
 }
 
+type DirectCatalogCacheKey = ([u8; 32], SemanticDigest, SemanticDigest, SemanticDigest);
+type DirectCatalogCacheEntry = (
+    DirectCatalogCacheKey,
+    Arc<AuthenticatedDirectTemplateCatalog>,
+);
+
+// Authenticated catalogs by (SHA-256 of the JSON, expected digests): every lowering of a
+// model passes the same catalog, so it is parsed once per process (a few recent entries).
+static DIRECT_CATALOG_CACHE: Mutex<Vec<DirectCatalogCacheEntry>> = Mutex::new(Vec::new());
+const DIRECT_CATALOG_CACHE_ENTRIES: usize = 4;
+
 fn parse_direct_template_catalog(
+    bytes: &[u8],
+    expected_pack_digest: SemanticDigest,
+    expected_template_catalog_digest: SemanticDigest,
+    expected_compiled_model_digest: SemanticDigest,
+) -> RusticolResult<Arc<AuthenticatedDirectTemplateCatalog>> {
+    let key: DirectCatalogCacheKey = (
+        Sha256::digest(bytes).into(),
+        expected_pack_digest,
+        expected_template_catalog_digest,
+        expected_compiled_model_digest,
+    );
+    {
+        let cache = DIRECT_CATALOG_CACHE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((_, catalog)) = cache.iter().find(|(cached, _)| *cached == key) {
+            return Ok(Arc::clone(catalog));
+        }
+    }
+    let catalog = Arc::new(parse_direct_template_catalog_uncached(
+        bytes,
+        expected_pack_digest,
+        expected_template_catalog_digest,
+        expected_compiled_model_digest,
+    )?);
+    let mut cache = DIRECT_CATALOG_CACHE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !cache.iter().any(|(cached, _)| *cached == key) {
+        if cache.len() == DIRECT_CATALOG_CACHE_ENTRIES {
+            cache.remove(0);
+        }
+        cache.push((key, Arc::clone(&catalog)));
+    }
+    Ok(catalog)
+}
+
+fn parse_direct_template_catalog_uncached(
     bytes: &[u8],
     expected_pack_digest: SemanticDigest,
     expected_template_catalog_digest: SemanticDigest,
@@ -5799,6 +5849,8 @@ mod direct_binding_tests {
     fn canonical_catalog_authenticates_dense_role_binding() {
         let (bytes, pack, semantic, model) = canonical_direct_catalog();
         let parsed = parse_direct_template_catalog(&bytes, pack, semantic, model).unwrap();
+        let again = parse_direct_template_catalog(&bytes, pack, semantic, model).unwrap();
+        assert!(Arc::ptr_eq(&parsed, &again));
 
         assert_eq!(parsed.catalog.direct_executor_count(), 1);
         assert_eq!(
