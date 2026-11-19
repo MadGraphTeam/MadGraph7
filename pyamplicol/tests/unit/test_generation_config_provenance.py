@@ -58,7 +58,9 @@ class _PlanningBackend:
 def _stub_candidate_artifact_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(artifact_writer, "_default_api_bundle_hook", lambda: None)
+    monkeypatch.setattr(
+        artifact_writer, "_default_api_bundle_hook", lambda *, contribution_kind: None
+    )
     monkeypatch.setattr(
         artifact_writer,
         "_target_metadata",

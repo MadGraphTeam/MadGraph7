@@ -78,14 +78,15 @@ C     These are constants related to the split orders
       INTEGER NSQUAREDSOP1
       PARAMETER (NSQUAREDSOP1=NSQUAREDSO+1)
 C     The total number of loop reduction libraries
-C     At present, there are only
-C      CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja and COLLIER
+C     CutTools, IREGI, Golem95, Samurai, Ninja, COLLIER and NinjaRS
+C      are supported.
       INTEGER NLOOPLIB
-      PARAMETER (NLOOPLIB=7)
-C     Only CutTools or possibly Ninja (if installed with qp support)
-C      provide QP
+      PARAMETER (NLOOPLIB=8)
+C     CutTools, Ninja and NinjaRS can provide QP when installed with
+C      support
       INTEGER QP_NLOOPLIB
       PARAMETER (QP_NLOOPLIB=2)
+
       INTEGER MAXSTABILITYLENGTH
       DATA MAXSTABILITYLENGTH/20/
       COMMON/MG5_1_STABILITY_TESTS/MAXSTABILITYLENGTH
@@ -193,7 +194,7 @@ C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
       DATA NEPS/0/
 C     Below are variables to bypass the checkphase and insure
 C      stability check to take place
-      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED
+      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED,BYPASS_FILTERS
       INTEGER OLD_GOODHEL(NCOMB)
       LOGICAL OLD_GOODAMP(NSQUAREDSO,NLOOPGROUPS)
       LOGICAL BYPASS_CHECK, ALWAYS_TEST_STABILITY
@@ -246,21 +247,22 @@ C     A FLAG TO DENOTE WHETHER THE CORRESPONDING LOOPLIBS ARE
 C      AVAILABLE OR NOT
       LOGICAL LOOPLIBS_AVAILABLE(NLOOPLIB)
       DATA LOOPLIBS_AVAILABLE/.TRUE.,.FALSE.,.TRUE.,.FALSE.,.FALSE.
-     $ ,.TRUE.,.TRUE./
+     $ ,.TRUE.,.TRUE.,.FALSE./
       COMMON/MG5_1_LOOPLIBS_AV/ LOOPLIBS_AVAILABLE
 C     A FLAG TO DENOTE WHETHER THE CORRESPONDING DIRECTION TESTS
 C      AVAILABLE OR NOT IN THE LOOPLIBS
       LOGICAL LOOPLIBS_DIRECTEST(NLOOPLIB)
-      DATA LOOPLIBS_DIRECTEST /.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.
-     $ ,.TRUE.,.TRUE./
+      DATA LOOPLIBS_DIRECTEST /8*.TRUE./
 C     Specifying for which reduction tool quadruple precision is
 C      available.
 C     The index 0 is dummy and simply means that the corresponding
 C      loop_library is not available
 C     in which case neither is its quadruple precision version.
-      LOGICAL LOOPLIBS_QPAVAILABLE(0:7)
-      DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.
-     $ ,.FALSE.,.FALSE.,.TRUE.,.FALSE./
+      LOGICAL LOOPLIBS_QPAVAILABLE(0:NLOOPLIB)
+      DATA LOOPLIBS_QPAVAILABLE(0:5)/.FALSE.,.TRUE.,4*.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(6)/.TRUE./
+      DATA LOOPLIBS_QPAVAILABLE(7)/.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(8)/.FALSE./
 C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED
 C      FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT
@@ -471,6 +473,7 @@ C      pmass.inc
         CALL SETMADLOOPPATH(TMP)
         CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
         CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
+        CALL ML_APPLY_LOOP_POLE_MODE()
         IF (FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION) THEN
           COLLIERCOMPUTEUVPOLES = COLLIER_UV_POLE_COMPUTATION_CHOICE
         ENDIF
@@ -507,10 +510,38 @@ C        if AUTOMATIC_CACHE_CLEARING is disabled.
 
       ENDIF
 
+C     Check every evaluation because callers may change the mode at
+C      runtime.
+      CALL ML_CHECK_LOOP_POLE_MODE()
+C     Learned zero and equivalent-helicity filters belong to the pole
+C      convention
+C     that produced them.  Diagnostic modes must include cancelling
+C      UV/IR loops.
+      BYPASS_FILTERS=BYPASS_CHECK.OR.LOOPPOLEMODE.GT.0
+C     Legacy COLLIER filters may have been trained without one pole
+C      origin.
+C     Isolate them when explicit combined poles override those
+C      switches.
+      IF (LOOPPOLEMODE.EQ.0.AND.ANY(MLREDUCTIONLIB.EQ.7)
+     $ .AND.(.NOT.COLLIERCOMPUTEUVPOLES.OR..NOT.COLLIERCOMPUTEIRPOLES))
+     $  THEN
+        BYPASS_FILTERS=.TRUE.
+      ENDIF
+
       IF (LOCAL_ML_INIT) THEN
         LOCAL_ML_INIT = .FALSE.
         QP_TOOLS_AVAILABLE=.FALSE.
         INDEX_QP_TOOLS(1:QP_NLOOPLIB+1)=0
+C       Explain an explicit NinjaRS-only request before dropping
+C        unavailable tools.
+        IF(MLREDUCTIONLIB(1).EQ.8.AND.MLREDUCTIONLIB(2)
+     $   .EQ.0.AND..NOT.LOOPLIBS_AVAILABLE(8))THEN
+          WRITE(*,*) 'NinjaRS (MLReductionLib=8) is unavailable in'
+     $     //' this generated process.'
+          WRITE(*,*) 'Run install ninjars in MadGraph, then regenerate'
+     $     //' and rebuild this process.'
+          STOP 'Requested NinjaRS backend is unavailable.'
+        ENDIF
 C       SKIP THE ONES THAT NOT AVAILABLE
         J=1
         DO I=1,NLOOPLIB
@@ -755,7 +786,7 @@ C      orders
         EVAL_DONE(I)=.FALSE.
       ENDDO
 
-      IF(.NOT.BYPASS_CHECK) THEN
+      IF(.NOT.BYPASS_FILTERS) THEN
         NTRY=NTRY+1
       ENDIF
 
@@ -781,7 +812,7 @@ C        trust the evaluation for checks.
       CHECKPHASE=(NTRY.LE.CHECKCYCLE).AND.(((.NOT.FOUNDLOOPFILTER)
      $ .AND.USELOOPFILTER).OR.(.NOT.FOUNDHELFILTER))
 
-      IF (WRITEOUTFILTERS) THEN
+      IF (WRITEOUTFILTERS.AND..NOT.BYPASS_FILTERS) THEN
         IF ((HELICITYFILTERLEVEL.NE.0).AND.(.NOT. CHECKPHASE)
      $   .AND.(.NOT.FOUNDHELFILTER)) THEN
           OPEN(1, FILE=HELFILTERFN, ERR=110, STATUS='NEW'
@@ -807,7 +838,7 @@ C        trust the evaluation for checks.
         ENDIF
       ENDIF
 
-      IF (BYPASS_CHECK) THEN
+      IF (BYPASS_FILTERS) THEN
         OLD_CHECKPHASE = CHECKPHASE
         OLD_HELDOUBLECHECKED = HELDOUBLECHECKED
         CHECKPHASE = .FALSE.
@@ -1671,7 +1702,7 @@ C      spin-2 particles are in the external states.
 
 C     Reinitialize the check phase logicals and the filters if check
 C      bypassed
-      IF (BYPASS_CHECK) THEN
+      IF (BYPASS_FILTERS) THEN
         CHECKPHASE = OLD_CHECKPHASE
         HELDOUBLECHECKED = OLD_HELDOUBLECHECKED
         DO I=1,NCOMB
@@ -2409,6 +2440,15 @@ C     --=========================================--
 C     Definition of additional access routines
 C     --=========================================--
 
+      SUBROUTINE MG5_1_SET_LOOP_POLE_MODE(MODE)
+C     Select bare loop poles: -1 legacy, 0 both, 1 UV, 2 IR, 3 none.
+C     Counterterms and rational R2 contributions are not changed.
+      IMPLICIT NONE
+      INTEGER MODE
+C     All subprocesses share MadLoop's card and initialization state.
+      CALL ML_SET_LOOP_POLE_MODE(MODE)
+      END SUBROUTINE
+
       SUBROUTINE MG5_1_COLLIER_COMPUTE_UV_POLES(ONOFF)
 C     
 C     This function can be called by the MadLoop user so as to chose
@@ -2752,7 +2792,9 @@ C      the result
 C     Returns -1 if no stab test could be performed.
 C     RET_CODE			 integer :: Return code. See below for details
 C     
-C     Return code conventions: RET_CODE = H*100 + T*10 + U
+C     Return-code format 2: RET_CODE = H*100 + T*10 + U
+C     PJFry is retired. NinjaRS uses U=2 in both precisions.
+C     Record ML_GET_RETURN_CODE_VERSION() alongside saved return codes.
 C     
 C     H == 1
 C     Stability unknown.
@@ -2780,7 +2822,8 @@ C     Not stable.
 C     U == 1
 C     Stable with CutTools in double precision.
 C     U == 2
-C     Stable with PJFry++.
+C     Stable with NinjaRS. T records whether quadruple precision was
+C      used.
 C     U == 3
 C     Stable with IREGI.
 C     U == 4
@@ -2789,8 +2832,10 @@ C     U == 5
 C     Stable with Samurai
 C     U == 6
 C     Stable with Ninja in double precision
+C     U == 7
+C     Stable with COLLIER.
 C     U == 8
-C     Stable with Ninja in quadruple precision
+C     Stable with Ninja in quadruple precision.
 C     U == 9
 C     Stable with CutTools in quadruple precision.         
 C     

@@ -41,6 +41,7 @@ import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.iolibs.file_writers as writers
 import madgraph.interface.launch_ext_program as launch_ext
 import madgraph.various.misc as misc
+from madgraph.various import ninjars_install
 import madgraph.fks.fks_base as fks_base
 import aloha
 
@@ -471,11 +472,6 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
         noclean = '-noclean' in args
         force = '-f' in args 
         nojpeg = '-nojpeg' in args
-        main_file_name = ""
-        try:
-            main_file_name = args[args.index('-name') + 1]
-        except Exception:
-            pass
         line_options = dict(arg[2:].split('=') for arg in args if arg.startswith('--') and '=' in arg)
 
         # Whatever the format we always output the quadruple precision routines
@@ -527,7 +523,7 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
         self._done_export = False
 
         # Perform export and finalize right away
-        self.ML5export(nojpeg, main_file_name)
+        self.ML5export(nojpeg)
 
         # Automatically run finalize
         self.ML5finalize(nojpeg)
@@ -548,7 +544,21 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
         opt = self.options
                 
         # Check if first time:
-        if not force and ((opt['ninja'] is None) or (os.path.isfile(pjoin(MG5DIR, opt['ninja'],'libninja.a')))): 
+        # NinjaRS is the default for Born processes, but loop-induced outputs
+        # retain 7|6|1. Do not suppress their Ninja/COLLIER installation offer
+        # just because a usable NinjaRS library happens to be installed.
+        processes = [amp.get('process') for amp in self._curr_amps]
+        if not processes and getattr(self, '_fks_multi_proc', None):
+            processes = self._fks_multi_proc.get('process_definitions')
+        ninjars_ready = bool(processes) and all(
+            proc.get('has_born') for proc in processes) and \
+            ninjars_install.is_available(opt.get('ninjars'))
+        collier_ready = isinstance(opt.get('collier'), str) and any(
+            os.path.isfile(pjoin(MG5DIR, opt['collier'], suffix))
+            for suffix in ('libcollier.a', pjoin('lib', 'libcollier.a')))
+        if not force and ((opt['ninja'] is None) or ninjars_ready or
+                collier_ready or
+                os.path.isfile(pjoin(MG5DIR, opt['ninja'], 'libninja.a'))):
             return
 
         # do not trigger the question for tests
@@ -640,7 +650,7 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
         
     
     # Export a matrix element
-    def ML5export(self, nojpeg = False, main_file_name = ""):
+    def ML5export(self, nojpeg=False):
         """Export a generated amplitude to file"""
 
         # Always use a new writer: the one of a previous output caches calls
@@ -975,7 +985,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
     
     local_installer = ['ninja', 'collier']
     required = ['cuttools', 'iregi']
-    order = ['cuttools', 'iregi', 'ninja', 'collier', 'golem']
+    order = ['cuttools', 'iregi', 'ninja', 'collier', 'golem', 'ninjars']
     bypassed = ['pjfry']
 
     @property
@@ -995,9 +1005,14 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
         
         self.code = {'ninja': 'install',
                      'collier': 'install',
+                     'ninjars': 'off',
                      'golem': 'off',
                      'cuttools': 'required',
                      'iregi': 'required'}
+        self.order = list(type(self).order)
+        if not sys.platform.startswith('linux'):
+            self.order.remove('ninjars')
+            del self.code['ninjars']
         if not self.online:
             self.code['ninja'] = 'local'
             self.code['collier'] = 'local'
@@ -1024,6 +1039,8 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
                 self.code['golem'] =  pjoin(install_dir2, 'golem95')
             if os.path.exists(pjoin(install_dir1, 'ninja')):
                 self.code['ninja'] =  pjoin(install_dir2, 'ninja','lib')
+            if 'ninjars' in self.code and os.path.isfile(pjoin(install_dir1, 'ninjars', 'lib', 'libninjars.a')):
+                self.code['ninjars'] = pjoin(install_dir1, 'ninjars', 'lib')
         
         # 1. create the question
         question, allowed_answer = self.create_question(first=True)
@@ -1045,6 +1062,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
         descript =  {'cuttools': ['cuttools','(OPP)','[0711.3596]'],
                      'iregi': ['iregi','(TIR)','[1405.0301]'],
                      'ninja': ['ninja','(OPP)','[1403.1229]'],
+                     'ninjars': ['ninjars','(OPP)','[NinjaRS]'],
                      'golem': ['golem','(TIR)','[0807.0605]'],
                      'collier': ['collier','(TIR)','[1604.06792]']} 
 
@@ -1162,6 +1180,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
 
 
     do_ninja = lambda self,line : self.apply_name('ninja', line)
+    do_ninjars = lambda self,line : self.apply_name('ninjars', line)
     do_collier = lambda self,line : self.apply_name('collier', line)
     do_golem = lambda self,line : self.apply_name('golem', line)
     do_cuttools = lambda self,line : self.apply_name('cuttools', line)
@@ -1182,6 +1201,7 @@ class AskLoopInstaller(cmd.OneLinePathCompletion):
             return self.list_completion(text, ['install', 'noinstall', 'local'], line)
     
     complete_ninja = complete_prog 
+    complete_ninjars = complete_prog
     complete_collier = complete_prog
     complete_golem = complete_prog
     complete_cuttools = complete_prog

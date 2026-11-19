@@ -1,0 +1,426 @@
+{
+  "scope": "diagnostic bare N4+R1; no UV/R2/field contributions",
+  "source": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0",
+  "ufo": "/shared/external/pyLoopAmpliCol/workspace/reference/models/loop_qcd_qed_sm",
+  "allowed_abs_pdg": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    11,
+    13,
+    15,
+    21,
+    22,
+    9000005
+  ],
+  "selections": {
+    "QCD": {
+      "born": 2,
+      "loops": 16,
+      "loop_orders": [
+        {
+          "QCD": 2,
+          "QED": 2,
+          "count": 2
+        },
+        {
+          "QCD": 4,
+          "QED": 0,
+          "count": 14
+        }
+      ],
+      "mixed_boxes": 0,
+      "UVCT_diagrams": 0,
+      "attached_CT_vertices": 0
+    },
+    "QED": {
+      "born": 2,
+      "loops": 15,
+      "loop_orders": [
+        {
+          "QCD": 0,
+          "QED": 4,
+          "count": 13
+        },
+        {
+          "QCD": 2,
+          "QED": 2,
+          "count": 2
+        }
+      ],
+      "mixed_boxes": 0,
+      "UVCT_diagrams": 0,
+      "attached_CT_vertices": 0
+    },
+    "QCD+QED": {
+      "born": 2,
+      "loops": 35,
+      "loop_orders": [
+        {
+          "QCD": 0,
+          "QED": 4,
+          "count": 13
+        },
+        {
+          "QCD": 2,
+          "QED": 2,
+          "count": 8
+        },
+        {
+          "QCD": 4,
+          "QED": 0,
+          "count": 14
+        }
+      ],
+      "mixed_boxes": 4,
+      "UVCT_diagrams": 0,
+      "attached_CT_vertices": 0
+    }
+  },
+  "parameters": {
+    "alpha_s": "0.118",
+    "alpha_inverse": "132.507",
+    "mu_R": "1000",
+    "MT": "173",
+    "other_quark_and_charged_lepton_masses": "0",
+    "all_widths": "0"
+  },
+  "split_order_names": [
+    "QCD",
+    "QED"
+  ],
+  "process": "Process: u u~ > d d~ QCD<=4 QED<=4 [ virt = QCD QED ]",
+  "normalization": "native MadLoop raw interference; no alpha extraction; initial average36",
+  "provider_speed_claim": false,
+  "native_ct_amplitudes": 0,
+  "born_order_mapping": "native forward SOINDEX_FOR_SQUARED_ORDERS; MG3.7 inverse getter has an uninitialized misspelled COMMON",
+  "structural_zero_born_orders": [
+    {
+      "QCD": 2,
+      "QED": 2
+    }
+  ],
+  "born_orders": {
+    "1": {
+      "QCD": 4,
+      "QED": 0
+    },
+    "2": {
+      "QCD": 2,
+      "QED": 2
+    },
+    "3": {
+      "QCD": 0,
+      "QED": 4
+    }
+  },
+  "loop_orders": {
+    "1": {
+      "QCD": 6,
+      "QED": 0
+    },
+    "2": {
+      "QCD": 4,
+      "QED": 2
+    },
+    "3": {
+      "QCD": 2,
+      "QED": 4
+    },
+    "4": {
+      "QCD": 0,
+      "QED": 6
+    }
+  },
+  "rows": [
+    {
+      "status": 216,
+      "accuracy": 9.3499088903364e-16,
+      "born": {
+        "1": 0.8013367806451908,
+        "2": 6.216092455583559e-18,
+        "3": 0.0007283848522738818
+      },
+      "bare": {
+        "1": {
+          "finite": -0.1976633063928772,
+          "single_pole": -0.17887451793962572,
+          "double_pole": -0.08026310265110026,
+          "accuracy": 9.114115354003604e-16
+        },
+        "2": {
+          "finite": 0.00862188681009467,
+          "single_pole": 0.004035335985489974,
+          "double_pole": -0.0010694337298828545,
+          "accuracy": 8.420777679886581e-16
+        },
+        "3": {
+          "finite": 0.00014115567561583505,
+          "single_pole": -0.00010943419092873995,
+          "double_pole": -7.295612728582664e-05,
+          "accuracy": 0.0
+        },
+        "4": {
+          "finite": -1.652715474152785e-05,
+          "single_pole": -9.081337416511256e-06,
+          "double_pole": -9.720748481434402e-07,
+          "accuracy": 0.0
+        }
+      },
+      "total": [
+        0.8020651654974646,
+        -0.18891679106190823,
+        -0.174957697482481,
+        -0.08140646458311708
+      ],
+      "by_born_order": {
+        "B20": {
+          "1": {
+            "finite": -0.1976633063928772,
+            "single_pole": -0.17887451793962572,
+            "double_pole": -0.08026310265110026,
+            "accuracy": 9.114115354003604e-16
+          },
+          "2": {
+            "finite": 0.006437638784701129,
+            "single_pole": 0.002155507125385227,
+            "double_pole": -0.0010694337298828506,
+            "accuracy": 1.0375537307814034e-15
+          },
+          "3": {
+            "finite": 0.0,
+            "single_pole": 0.0,
+            "double_pole": 0.0,
+            "accuracy": 0.0
+          },
+          "4": {
+            "finite": 0.0,
+            "single_pole": 0.0,
+            "double_pole": 0.0,
+            "accuracy": 0.0
+          }
+        },
+        "B02": {
+          "1": {
+            "finite": 0.0,
+            "single_pole": 0.0,
+            "double_pole": 0.0,
+            "accuracy": 0.0
+          },
+          "2": {
+            "finite": 0.0021842480253935455,
+            "single_pole": 0.0018798288601047488,
+            "double_pole": -1.734723475976807e-18,
+            "accuracy": 4.801985704152417e-16
+          },
+          "3": {
+            "finite": 0.00014115567561583505,
+            "single_pole": -0.00010943419092873995,
+            "double_pole": -7.295612728582664e-05,
+            "accuracy": 0.0
+          },
+          "4": {
+            "finite": -1.652715474152785e-05,
+            "single_pole": -9.081337416511256e-06,
+            "double_pole": -9.720748481434402e-07,
+            "accuracy": 0.0
+          }
+        }
+      }
+    },
+    {
+      "status": 216,
+      "accuracy": 1.2348912794481573e-15,
+      "born": {
+        "1": 0.5609010515412289,
+        "2": 5.396917480816733e-18,
+        "3": 0.0005098378602292292
+      },
+      "bare": {
+        "1": {
+          "finite": -0.028809943970075056,
+          "single_pole": -0.04415947643616963,
+          "double_pole": -0.05618069676112515,
+          "accuracy": 1.2894564662140984e-15
+        },
+        "2": {
+          "finite": 0.002728760192092959,
+          "single_pole": 0.0007268199885469152,
+          "double_pole": -0.0007485573084040731,
+          "accuracy": 3.003859471244604e-15
+        },
+        "3": {
+          "finite": 0.00013196636970480373,
+          "single_pole": -4.980334008790388e-05,
+          "double_pole": -5.106613037036503e-05,
+          "accuracy": 0.0
+        },
+        "4": {
+          "finite": -8.793332794972056e-06,
+          "single_pole": -6.754111481027491e-06,
+          "double_pole": -6.804103064649549e-07,
+          "accuracy": 3.91471779102082e-17
+        }
+      },
+      "total": [
+        0.5614108894014581,
+        -0.025958010741072266,
+        -0.04348921389919165,
+        -0.05698100061020605
+      ],
+      "by_born_order": {
+        "B20": {
+          "1": {
+            "finite": -0.028809943970075056,
+            "single_pole": -0.04415947643616963,
+            "double_pole": -0.05618069676112515,
+            "accuracy": 1.2894564662140984e-15
+          },
+          "2": {
+            "finite": 0.002463986959694048,
+            "single_pole": 0.0002411977965833731,
+            "double_pole": -0.0007485573084040707,
+            "accuracy": 2.576647949785854e-15
+          },
+          "3": {
+            "finite": 0.0,
+            "single_pole": 0.0,
+            "double_pole": 0.0,
+            "accuracy": 0.0
+          },
+          "4": {
+            "finite": 0.0,
+            "single_pole": 0.0,
+            "double_pole": 0.0,
+            "accuracy": 0.0
+          }
+        },
+        "B02": {
+          "1": {
+            "finite": 0.0,
+            "single_pole": 0.0,
+            "double_pole": 0.0,
+            "accuracy": 0.0
+          },
+          "2": {
+            "finite": 0.0002647732323989088,
+            "single_pole": 0.00048562219196354175,
+            "double_pole": 5.300543954373578e-19,
+            "accuracy": 3.636183509167979e-15
+          },
+          "3": {
+            "finite": 0.00013196636970480373,
+            "single_pole": -4.980334008790388e-05,
+            "double_pole": -5.106613037036503e-05,
+            "accuracy": 0.0
+          },
+          "4": {
+            "finite": -8.793332794972056e-06,
+            "single_pole": -6.754111481027491e-06,
+            "double_pole": -6.804103064649549e-07,
+            "accuracy": 3.91471779102082e-17
+          }
+        }
+      }
+    },
+    {
+      "status": 216,
+      "accuracy": 2.119113899951004e-15,
+      "born": {
+        "1": 0.6645231839496705,
+        "2": 3.2766998990673022e-18,
+        "3": 0.0006040264628612681
+      },
+      "bare": {
+        "1": {
+          "finite": -0.04148194344019193,
+          "single_pole": -0.05225664944170007,
+          "double_pole": -0.06655964610091233,
+          "accuracy": 2.2076573725630936e-15
+        },
+        "2": {
+          "finite": -0.001468867860657194,
+          "single_pole": -0.004280907221687575,
+          "double_pole": -0.0008868474833174889,
+          "accuracy": 6.861395354919838e-16
+        },
+        "3": {
+          "finite": 0.00011705592612044868,
+          "single_pole": -9.075030467261365e-05,
+          "double_pole": -6.0500203115075764e-05,
+          "accuracy": 0.0
+        },
+        "4": {
+          "finite": -1.6316810572707815e-05,
+          "single_pole": -9.841835971726233e-06,
+          "double_pole": -8.061108496799249e-07,
+          "accuracy": 2.3559444691291635e-17
+        }
+      },
+      "total": [
+        0.6651272104125318,
+        -0.04285007218530139,
+        -0.05663814880403198,
+        -0.06750779989819458
+      ],
+      "by_born_order": {
+        "B20": {
+          "1": {
+            "finite": -0.04148194344019193,
+            "single_pole": -0.05225664944170007,
+            "double_pole": -0.06655964610091233,
+            "accuracy": 2.2076573725630936e-15
+          },
+          "2": {
+            "finite": -0.00040728708634808183,
+            "single_pole": -0.0032973618894504564,
+            "double_pole": -0.0008868474833174819,
+            "accuracy": 1.062596872202333e-15
+          },
+          "3": {
+            "finite": 0.0,
+            "single_pole": 0.0,
+            "double_pole": 0.0,
+            "accuracy": 0.0
+          },
+          "4": {
+            "finite": 0.0,
+            "single_pole": 0.0,
+            "double_pole": 0.0,
+            "accuracy": 0.0
+          }
+        },
+        "B02": {
+          "1": {
+            "finite": 0.0,
+            "single_pole": 0.0,
+            "double_pole": 0.0,
+            "accuracy": 0.0
+          },
+          "2": {
+            "finite": -0.0010615807743091232,
+            "single_pole": -0.0009835453322371165,
+            "double_pole": -1.1082955540962933e-18,
+            "accuracy": 2.0145301760401553e-15
+          },
+          "3": {
+            "finite": 0.00011705592612044868,
+            "single_pole": -9.075030467261365e-05,
+            "double_pole": -6.0500203115075764e-05,
+            "accuracy": 0.0
+          },
+          "4": {
+            "finite": -1.6316810572707815e-05,
+            "single_pole": -9.841835971726233e-06,
+            "double_pole": -8.061108496799249e-07,
+            "accuracy": 2.3559444691291635e-17
+          }
+        }
+      }
+    }
+  ],
+  "pair_instrumentation": "Copied double/quad CREATE_LOOP_COEFS selects Born order using native amplitude-order getters before colour-weighted Born contraction. Original rules, graph factors and export unchanged; both partial contributions sum to each complete bare Laurent sector. Patches retained."
+}

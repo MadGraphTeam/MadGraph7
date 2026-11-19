@@ -145,6 +145,72 @@ See :doc:`gridpacks` for details.
     ``Events/<run_name>_NN``. If set, no run folder is created.
 
 
+[cluster]
+---------
+
+Cluster mode trains the subprocesses and generates the events in parallel batch jobs.
+It is off by default, and then this section, ``[cluster_train]`` and ``[cluster_deploy]``
+are left out of the card until ``set cluster.enable true`` (or one of their settings differs
+from the site default in ``input/default_run_card_mg7.toml``, where their defaults come from). See :doc:`cluster` for how it works.
+
+``enable`` (``false``)
+    Run on a batch system. Independent of the ``run_mode`` of the MadGraph configuration.
+
+``mode`` (``"full"``)
+    ``full`` runs both passes and combines the events. ``gridpack_only`` only trains, and
+    the merged gridpack is the result.
+
+``type`` (``"auto"``)
+    The batch system: ``condor``, ``pbs``, ``sge``, ``lsf``, ``ge``, ``slurm``,
+    ``htcaas``, ``htcaas2``, the batch system of a plugin (``new_cluster``), or
+    ``local_parallel`` to run the jobs on this machine. ``auto`` takes ``cluster_type`` of
+    the MadGraph configuration.
+
+``parallel_jobs`` (``-1``)
+    Jobs running at once with ``local_parallel``. ``-1`` uses every core. The threads of
+    each job are divided accordingly if ``cpu_thread_pool_size`` is ``-1``.
+
+``train_queue`` (``""``), ``deploy_queue`` (``""``)
+    The queue (partition) of the jobs. ``""`` takes ``cluster_queue`` of the MadGraph
+    configuration.
+
+``train_walltime`` (``""``), ``deploy_walltime`` (``""``)
+    The walltime of the jobs, in the format of the batch system. Used for ``slurm`` and
+    ``condor``.
+
+``train_extra_args`` (``""``), ``deploy_extra_args`` (``""``)
+    Further arguments of the submit command, for example ``"--gres=gpu:1"`` for
+    ``slurm``, or ``"-l select=1:ngpus=1"`` for ``pbs``. For ``condor`` they are lines of
+    the submit file separated by ``;``, for example ``"request_gpus = 1; request_memory =
+    8GB"``.
+
+``subprocesses_per_job`` (``1``)
+    The number of subprocesses (merge groups with ``merge_subprocesses``) that are
+    trained together in one job. Raise it for a process with many small subprocesses.
+
+``fix_max_weight`` (``true``)
+    ``true``: the training jobs store the maximum weight of every channel, as for a
+    gridpack with ``run_mode = "fix_max_weight"``, and all generation jobs unweight
+    against it. This is the statistically correct choice. ``false``: every generation job
+    estimates the maximum weights on its own, which saves time in the training.
+
+``events_per_job`` (``100000``)
+    The events of one generation job. The ``[generation]`` ``events`` are split into
+    ``ceil(events / events_per_job)`` jobs of almost equal size.
+
+A few more options are hidden: ``nb_retry`` (``1``, how often a failed job is submitted
+again), ``retry_wait`` (``300``, seconds a job is given to deliver its output),
+``status_update`` (``[600, 30]``, seconds between status checks), ``temp_path`` (the
+``cluster_temp_path`` of the configuration) and ``keep_job_files`` (``false``, keep the
+gridpacks of the training jobs once merged, and the event files of the generation
+jobs once combined; their logs and info.json are always kept).
+
+The devices, threads and batch sizes of the training and of the generation jobs are set
+in the ``[cluster_train]`` and ``[cluster_deploy]`` sections, for example
+``run.device = ["cuda"]`` in ``[cluster_train]`` and ``run.device = ["cpu"]`` in
+``[cluster_deploy]`` to train on GPUs and generate on CPUs. See :doc:`cluster`.
+
+
 [beam]
 ------
 
@@ -181,7 +247,16 @@ See :doc:`gridpacks` for details.
     transverse masses, :math:`H_T`. ``half_transverse_mass`` is :math:`H_T/2`.
     ``partonic_energy`` is the partonic center-of-mass energy. ``set dynamical_scale_choice
     HT/4`` is a shortcut that sets this parameter and ``scale_factor`` to give
-    :math:`H_T/4`.
+    :math:`H_T/4`. ``ckkwl`` is the clustering scale of the diagram, without the
+    :math:`\alpha_s` and PDF reweighting of MLM merging: MadEvent's default ``-1`` for a
+    CKKW-L merged sample, where Pythia8 does that reweighting. An ``[amplicol]`` event is
+    clustered along the planar diagrams of its leading-colour flow, which differ from the
+    diagrams a madmatrix event is clustered along. Under ``mlm`` and ``ckkwl`` the scales
+    are those of the clustering: the fixed scales and ``scale_factor`` are ignored.
+    For madmatrix, ``ckkwl`` scores clusterings with the hidden ``clustering_measure``, so
+    the scales of jet events differ slightly from MadEvent's ``-1``: higher with the default
+    ``"fxfx"``, lower with ``"madevent"``. The merged cross section barely changes, since Pythia8
+    redoes the :math:`\alpha_s` reweighting.
 
 ``scale_factor`` (``1.0``)
     Factor applied to the dynamical scale. Fixed scales are not affected. With the default
@@ -330,6 +405,30 @@ VEGAS grids adapt the phase-space sampling during the survey.
     are dropped. ``-1`` keeps all channels. This helps with processes that have too many
     channels.
 
+``ew_channel_reduction`` (``20``)
+    If a subprocess still has more channels than this, channels that differ only in the
+    bosons of some of their off-shell propagators are merged into one, which takes over
+    their channel weights, and redundant ones are dropped (see
+    ``ew_channel_reduction_mode``). Channels that map a flavor or a (flavor, resonance) pair
+    no kept channel does are always kept. ``-1`` keeps all channels. This is the
+    counterpart of ``drop_qcd_s_channel`` for processes with many electroweak diagrams.
+
+``ew_channel_reduction_mode`` (``"partial"``)
+    How far ``ew_channel_reduction`` goes:
+
+    - ``"t_channel"``: merge channels that differ only in the bosons of their t-channel
+      propagators (a photon, Z or W); every s-channel structure keeps its channel.
+    - ``"partial"``: merge as ``"t_channel"``, and keep only the channels with at most one
+      non-resonant s-channel propagator more than the fewest.
+    - ``"full"``: also merge channels that differ in their off-shell s-channel bosons, and
+      keep only the channels with the fewest non-resonant s-channel propagators. This
+      gives the fewest channels, but trains to lower unweighting efficiencies.
+
+``channel_reduction_with_vegas`` (``false``)
+    ``ew_channel_reduction`` is meant for MadNIS, which trains poorly with many channels.
+    By default it is skipped when the run is certain to use VEGAS: ``madnis.enable =
+    false``, or ``"auto"`` for a 2 -> 2 process. ``true`` applies it then as well.
+
 ``invariant_power`` (``0.7``)
     Exponent :math:`p` of the :math:`1/s^p` sampling of time-like invariants.
 
@@ -344,6 +443,30 @@ VEGAS grids adapt the phase-space sampling during the survey.
 ``adaptive_symmetry_sampling`` (``true``)
     Learn the probabilities of the permutations of identical particles instead of using
     equal ones.
+
+``ktdurham`` (``0.0``)
+    CKKW-L merging with Pythia8: the smallest Durham :math:`k_T` an event may have, taken
+    over the :math:`p_T` of each merging parton (hadron colliders only) and the
+    :math:`k_T = \min(p_{T,i}, p_{T,j})\,\Delta R_{ij}/D` of each pair. ``0`` disables it.
+    Pythia8's ``Merging:TMS`` defaults to this value, and ``Merging:Process`` has to be set
+    in the Pythia8 card. Only one of ``ktdurham`` and ``ptlund`` can be set, and neither
+    together with ``xqcut``. On hadron colliders the phase-space sampling starts the
+    :math:`p_T` of the merging partons at this value.
+
+``ptlund`` (``0.0``)
+    CKKW-L merging with Pythia8: the smallest Pythia8 evolution :math:`p_T` over all ISR and
+    FSR splittings that can produce a merging parton. ``0`` disables it. An ``[amplicol]``
+    subprocess usually groups flavours that split differently (quarks and gluons), which
+    this cut cannot tell apart: use ``ktdurham`` there.
+
+``dparameter`` (``0.4``)
+    :math:`D` of the hadron-collider ``ktdurham`` measure, Pythia8's ``Merging:Dparameter``.
+
+``merging_pdgs`` (``"auto"``)
+    PDG ids of the particles the ``ktdurham`` or ``ptlund`` cut applies to. ``auto`` takes,
+    as in MadEvent, all colored particles of the model (including the top and any colored
+    BSM particles); only those in the final state matter. As in MadEvent, decay-chain products are never
+    merging partons.
 
 [custom_functions]
 ------------------
@@ -666,6 +789,12 @@ Channel dropping
 ``channel_dropping_threshold`` (``0.01``), ``channel_dropping_interval`` (``100``)
     Every ``channel_dropping_interval`` batches, channels that contribute less than the
     threshold fraction of the integral are dropped.
+
+``resonance_guard`` (``true``)
+    The channel dropping never drops the last channel that maps a resonance (a propagator
+    that can go on shell, with its decay products) for a flavor. The last channel of a
+    flavor is kept in any case. Without the guard, a resonance with a small share of the cross section, such as
+    H -> W W* in a VBS process, can lose its only channel and end up undersampled.
 
 Networks
 ^^^^^^^^

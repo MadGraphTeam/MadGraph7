@@ -164,6 +164,11 @@ class CheckFKS(mg_interface.CheckValidForCmd):
     def check_output(self, args):
         """ check the validity of the line"""
 
+        # 'pythia8' is not an output any more; without this it would be taken
+        # as the name of the NLO output directory.
+        if args and args[0] == 'pythia8':
+            raise self.InvalidCmd(mg_interface.PYTHIA8_OUTPUT_DROPPED)
+
         # '--fks' requests the FKS counter-term standalone output: a lightweight
         # directory exposing the Born building blocks (Born, color-/charge-linked
         # Born, spin-correlated Born) for a single phase-space point.
@@ -962,11 +967,6 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         noclean = '-noclean' in args
         force = '-f' in args 
         nojpeg = '-nojpeg' in args
-        main_file_name = ""
-        try:
-            main_file_name = args[args.index('-name') + 1]
-        except Exception:
-            pass
 
         # For NLO, the group_subprocesses is automatically set to false
         group_processes = False
@@ -1028,7 +1028,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         self._done_export = False
 
         # Perform export and finalize right away
-        self.export(nojpeg, main_file_name, group_processes=group_processes)
+        self.export(nojpeg, group_processes=group_processes)
 
         # Pass potential new information generated during the export.
         self._curr_exporter.pass_information_from_cmd(self)
@@ -1057,9 +1057,12 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         self._export_dir = None
 
     # Export a matrix element  
-    def export(self, nojpeg = False, main_file_name = "", group_processes=False):
+    def export(self, nojpeg=False, group_processes=False):
         """Export a generated amplitude to file"""
 
+        # The FKS exporters keep the trace color basis (ddm_color_basis): this
+        # also turns off a DDM basis left on by an earlier 'check'
+        self.set_color_basis_mode(self._curr_exporter)
         self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
         if self._me_curr_exporter:
             self._me_curr_helas_model = \

@@ -1,0 +1,170 @@
+{
+  "process": "g g > g g",
+  "name": "gg_gg",
+  "source": "workspace/reference/runs/gluon-scattering-controls-optimized/report.json (validation: passed): MadLoop 3.7.0 loop_sm-no_b_mass, Recola 2.3.0 SM 2.2.3, OpenLoops 2.1.5, all with actual poles",
+  "convention": "initial spin/colour average and final identical-gluon factor 1/2; physical couplings; Cepsilon=(4pi)^epsilon/Gamma(1-epsilon)",
+  "parameters": {
+    "alpha_s": 0.118,
+    "mu": 1000.0,
+    "mt": 173.0,
+    "mb": 0.0
+  },
+  "points": [
+    [
+      [
+        500,
+        0,
+        0,
+        500
+      ],
+      [
+        500,
+        0,
+        0,
+        -500
+      ],
+      [
+        500,
+        300,
+        0,
+        400
+      ],
+      [
+        500,
+        -300,
+        0,
+        -400
+      ]
+    ],
+    [
+      [
+        650,
+        0,
+        0,
+        650
+      ],
+      [
+        650,
+        0,
+        0,
+        -650
+      ],
+      [
+        650,
+        600,
+        0,
+        250
+      ],
+      [
+        650,
+        -600,
+        0,
+        -250
+      ]
+    ],
+    [
+      [
+        500,
+        0,
+        0,
+        500
+      ],
+      [
+        500,
+        0,
+        0,
+        -500
+      ],
+      [
+        500,
+        0,
+        400,
+        -300
+      ],
+      [
+        500,
+        0,
+        -400,
+        300
+      ]
+    ]
+  ],
+  "mu_r": [
+    "1000",
+    "1000",
+    "1000"
+  ],
+  "validated_providers": [
+    "madloop",
+    "recola",
+    "openloops"
+  ],
+  "rows": [
+    {
+      "providers": {
+        "madloop": {
+          "born": 460.2623164082144,
+          "finite": -58.58344056188754,
+          "single_pole": -254.3346805900353,
+          "double_pole": -103.72628024981516
+        },
+        "recola": {
+          "born": 460.26231640821345,
+          "finite": -58.58344056188656,
+          "single_pole": -254.3346805900346,
+          "double_pole": -103.72628024981469
+        },
+        "openloops": {
+          "born": 460.2623164082144,
+          "finite": -58.58344056188647,
+          "single_pole": -254.33468059003528,
+          "double_pole": -103.72628024981529
+        }
+      }
+    },
+    {
+      "providers": {
+        "madloop": {
+          "born": 53.140970006234035,
+          "finite": 5.072833202989661,
+          "single_pole": -17.183239616950694,
+          "double_pole": -11.976029648981445
+        },
+        "recola": {
+          "born": 53.1409700062339,
+          "finite": 5.072833202989642,
+          "single_pole": -17.18323961695065,
+          "double_pole": -11.976029648981392
+        },
+        "openloops": {
+          "born": 53.14097000623399,
+          "finite": 5.0728332029896315,
+          "single_pole": -17.18323961695075,
+          "double_pole": -11.976029648981449
+        }
+      }
+    },
+    {
+      "providers": {
+        "madloop": {
+          "born": 114.54183955220358,
+          "finite": -6.541267189033993,
+          "single_pole": -55.04491824145711,
+          "double_pole": -25.81353833708991
+        },
+        "recola": {
+          "born": 114.54183955220324,
+          "finite": -6.541267189034052,
+          "single_pole": -55.04491824145718,
+          "double_pole": -25.813538337089764
+        },
+        "openloops": {
+          "born": 114.54183955220356,
+          "finite": -6.541267189034169,
+          "single_pole": -55.044918241457026,
+          "double_pole": -25.813538337089884
+        }
+      }
+    }
+  ]
+}

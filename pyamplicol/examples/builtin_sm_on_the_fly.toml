@@ -34,4 +34,3 @@ compress = false
 
 [output]
 progress = "auto"
-log_level = "info"

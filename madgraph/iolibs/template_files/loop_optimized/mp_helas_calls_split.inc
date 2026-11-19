@@ -2,7 +2,7 @@
 C       
       use %(proc_prefix)sPOLYNOMIAL_CONSTANTS
       USE ALOHA_OBJECT
-      IMPLICIT NONE
+%(terminal_ieee_use)s      IMPLICIT NONE
 C  
 C CONSTANTS
 C  
@@ -37,7 +37,7 @@ C
 C
 C LOCAL VARIABLES
 C
-	  INTEGER I,J,K
+%(terminal_ieee_declarations)s	  INTEGER I,J,K
 	  INTEGER FLAVOR(NEXTERNAL)
 	  COMMON/%(proc_prefix)sACTIVE_VIRTUAL_FLAVOR/FLAVOR
 %(virtual_flavor_mask_common)s

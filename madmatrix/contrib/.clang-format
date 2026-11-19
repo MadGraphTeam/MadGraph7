@@ -212,7 +212,7 @@ SpacesInLineCommentPrefix:
   Maximum: 1 # AV was -1
 SpacesInParentheses: true # AV was false
 SpacesInSquareBrackets: false # AV ok
-Standard: c++17 # AV was Auto
+Standard: c++20
 ###StatementAttributeLikeMacros: # AV keep defaults
 ###  - Q_EMIT
 ###StatementMacros: # AV keep defaults

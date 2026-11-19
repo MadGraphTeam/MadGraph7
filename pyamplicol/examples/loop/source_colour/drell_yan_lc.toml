@@ -1,0 +1,29 @@
+schema_version = 1
+action = "generate"
+
+[model]
+source = "workspace/models/loop-sm-colour.pyAmplicol-model.json"
+
+[process]
+entries = [{ expression = "u u~ > e- e+", name = "dy" }]
+loop_coupling_orders = ["QCD"]
+coupling_order_policy = "minimal"
+
+[color]
+accuracy = "lc"
+contraction = "direct"
+
+[loop]
+r2_strategy = "model"
+
+[generation]
+output = "workspace/artifacts/dy-lc"
+emit_api_bundle = false
+
+[generation.validation]
+post_build_validation = true
+samples = 2
+
+[evaluator]
+execution_mode = "auto"
+backend = "jit"

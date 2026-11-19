@@ -230,7 +230,7 @@ namespace
       << "                    RAMBO, identical to the Fortran/C++ 'check' drivers,\n"
       << "                    Ecms = <energy>, default 1000 GeV) and print it with\n"
       << "                    the matrix element for each flavor combination.\n"
-      << "                    With -v also prints backend/fptype/hardcodePARAM header.\n"
+      << "                    With -v also prints backend/fptype header.\n"
       << "  perf              Run #blocks*#threads events over #iterations iterations\n"
       << "                    on a single flavor index, then print performance counters.\n"
       << "                    Always prints inputs + backend/fptype header.\n"
@@ -330,12 +330,7 @@ namespace
 
   void print_run_header( std::ostream& os )
   {
-    os << "Process                     = " << XSTRINGIFY( MG_EPOCH_PROCESS_ID ) << "_" << backend_label()
-#ifdef MGONGPU_HARDCODE_PARAM
-       << " [hardcodePARAM=1]" << std::endl
-#else
-       << " [hardcodePARAM=0]" << std::endl
-#endif
+    os << "Process                     = " << XSTRINGIFY( MG_EPOCH_PROCESS_ID ) << "_" << backend_label() << std::endl
        << "FP precision                = " << fp_label() << std::endl
        << "Random number generation    = COMMON RANDOM HOST" << std::endl;
   }

@@ -34,6 +34,7 @@ SourceOrientation = Literal[
     "inclusive",
 ]
 
+
 @dataclass(frozen=True)
 class ProcessLegIR:
     """One external leg with both physical and all-outgoing conventions."""

@@ -4,7 +4,7 @@
 # Further modified by: S. Hageboeck, D. Massaro, O. Mattelaer, S. Roiser, J. Teig, A. Valassi (2020-2025).
 # Integrated with the MadGraph7 project in Feb 2026.
 
-#=== Check that the user-defined choices of BACKEND, FPTYPE, HELINL, HRDCOD are supported
+#=== Check that the user-defined choices of BACKEND, FPTYPE, HELINL are supported
 #=== Configure default values for these variables if no user-defined choices exist
 
 # Set the default BACKEND (CUDA, HIP or C++/SIMD) choice
@@ -26,17 +26,12 @@ ifeq ($(HELINL),)
   override HELINL = 0
 endif
 
-# Set the default HRDCOD (hardcode cIPD physics parameters?) choice
-ifeq ($(HRDCOD),)
-  override HRDCOD = 0
-endif
-
 # default USEBUILDDIR = 1
 ifeq ($(USEBUILDDIR),)
   override USEBUILDDIR = 1
 endif
 
-# Check that the user-defined choices of BACKEND, FPTYPE, HELINL, HRDCOD are supported
+# Check that the user-defined choices of BACKEND, FPTYPE, HELINL are supported
 # (NB: use 'filter' and 'words' instead of 'findstring' because they properly handle whitespace-separated words)
 # NB: the CPU backends are the values of the 'cpu_mode' run_card entry; 'auto' picks the
 # widest SIMD flavour supported by the host (see the resolution block further down).
@@ -58,9 +53,8 @@ ifneq ($(words $(filter $(HELINL), $(SUPPORTED_HELINLS))),1)
   $(error Invalid helinl HELINL='$(HELINL)': supported helinls are $(foreach helinl,$(SUPPORTED_HELINLS),'$(helinl)'))
 endif
 
-override SUPPORTED_HRDCODS = 0 1
-ifneq ($(words $(filter $(HRDCOD), $(SUPPORTED_HRDCODS))),1)
-  $(error Invalid hrdcod HRDCOD='$(HRDCOD)': supported hrdcods are $(foreach hrdcod,$(SUPPORTED_HRDCODS),'$(hrdcod)'))
+ifneq ($(filter-out 0,$(HRDCOD)),)
+  $(error HRDCOD=$(HRDCOD) is no longer supported: model parameters are always read at runtime (#226))
 endif
 
 # Stop immediately if BACKEND=cuda but nvcc is missing
@@ -78,11 +72,6 @@ ifeq ($(BACKEND),hip)
 endif
 
 #=== Configure MADMATRIX_BUILDDIR
-
-# Build directory "full" tag (used for build lockfiles to prevent mixing builds with different options)
-# NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...), see TAG below.
-# Resolve this lazily, after backend and host-BLAS defaults are selected.
-override DIRTAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)_cpp$(CPPBLAS)
 
 # Build directory: build.<BACKEND> by default (USEBUILDDIR=1), or current directory if USEBUILDDIR=0
 # NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after the potential 'auto' resolution
@@ -173,7 +162,7 @@ endif
 
 #=== Configure the C++ compiler
 
-CXXFLAGS = $(OPTFLAGS) -std=c++17 -Wall -Wshadow -Wextra
+CXXFLAGS = $(OPTFLAGS) -std=c++20 -Wall -Wshadow -Wextra
 ifeq ($(shell $(CXX) --version | grep ^nvc++),)
   CXXFLAGS += -ffast-math # see issue #117
 endif
@@ -315,7 +304,7 @@ ifeq ($(BACKEND),cuda)
   GPUFLAGS += $(CUDA_INC) $(USE_NVTX) 
 
   # C++ standard
-  GPUFLAGS += -std=c++17 # need CUDA >= 11.2 (see #333): this is enforced in mgOnGpuConfig.h
+  GPUFLAGS += -std=c++20 # need CUDA >= 12.0: this is enforced in mgOnGpuConfig.h
 
   # For nvcc, use -maxrregcount to control the maximum number of registries (this does not exist in hipcc)
   # Without -maxrregcount: baseline throughput: 6.5E8 (16384 32 12) up to 7.3E8 (65536 128 12)
@@ -373,7 +362,7 @@ else ifeq ($(BACKEND),hip)
   GPUFLAGS += $(HIP_INC)
 
   # C++ standard
-  GPUFLAGS += -std=c++17
+  GPUFLAGS += -std=c++20
 
 else
 
@@ -571,7 +560,7 @@ endif
 
 #-------------------------------------------------------------------------------
 
-#=== Set the CUDA/HIP/C++ compiler flags appropriate to user-defined choices of AVX, FPTYPE, HELINL, HRDCOD
+#=== Set the CUDA/HIP/C++ compiler flags appropriate to user-defined choices of AVX, FPTYPE, HELINL
 
 # Set the build flags appropriate to OMPFLAGS
 $(info OMPFLAGS=$(OMPFLAGS))
@@ -686,15 +675,6 @@ else ifneq ($(HELINL),0)
   $(error Unknown HELINL='$(HELINL)': only '0' and '1' are supported)
 endif
 
-# Set the build flags appropriate to each HRDCOD choice (example: "make HRDCOD=1")
-$(info HRDCOD='$(HRDCOD)')
-ifeq ($(HRDCOD),1)
-  CXXFLAGS += -DMGONGPU_HARDCODE_PARAM
-  GPUFLAGS += -DMGONGPU_HARDCODE_PARAM
-else ifneq ($(HRDCOD),0)
-  $(error Unknown HRDCOD='$(HRDCOD)': only '0' and '1' are supported)
-endif
-
 #=== Set the CUDA/HIP/C++ compiler and linker flags appropriate to user-defined choices of HASBLAS
 
 $(info HASBLAS=$(HASBLAS))
@@ -782,8 +762,8 @@ endif
 #=== Configure build directories and build lockfiles ===
 
 # Build lockfile "full" tag (defines full specification of object-file builds that cannot be intermixed)
-# NB: the backend name is used as-is, so it matches DIRTAG above (there is no common prefix to strip)
-override TAG = $(DIRTAG)
+# NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...)
+override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_cpp$(CPPBLAS)
 
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG

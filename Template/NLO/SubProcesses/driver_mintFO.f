@@ -47,6 +47,8 @@ c     Vegas stuff
       common/SHevents/Hevents
       character*10 dum
 c statistics for MadLoop      
+      INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
 
@@ -108,6 +110,8 @@ c
       do i=0,9
         n1(i)=0
       enddo
+      NINJARS_DP_USAGE=0
+      NINJARS_QP_USAGE=0
       
       call setrun                !Sets up run parameters
       if (ickkw.eq.-1) then
@@ -257,6 +261,9 @@ c
               write(*,*) "#Unit ",j," = ",n1(j)
            endif
          enddo
+         write(*,*) '#ReturnCodeVersion = 2'
+         write(*,*) '#NinjaRS DP = ',NINJARS_DP_USAGE
+         write(*,*) '#NinjaRS QP = ',NINJARS_QP_USAGE
       endif
 
       call cpu_time(job_finished)
@@ -340,8 +347,6 @@ c PineAPPL
       common /for_pineappl/ pineappl
       double precision       wgt_ME_born,wgt_ME_real
       common /c_wgt_ME_tree/ wgt_ME_born,wgt_ME_real
-      integer     fold,ifold_counter
-      common /cfl/fold,ifold_counter
       integer ini_fin_fks_map(0:2,0:fks_configs)
       integer physical_fks_group_count(0:2)
       integer physical_fks_group_size(fks_configs,0:2)
@@ -415,6 +420,7 @@ c Share the sampled Born within this evaluation when sectors permit it.
          pass_cuts_check=.false.
       endif
       call vs_begin_point
+      call reset_folded_virtual
       if (firsttime) then
          firsttime=.false.
          call setup_ini_fin_fks_map(ini_fin_fks_map)
@@ -432,7 +438,6 @@ c Share the sampled Born within this evaluation when sectors permit it.
          write (*,*) 'ERROR ifl not equal to zero in sigint',ifl
          stop 1
       endif
-      fold=ifl
       bsv_virt_cache(:)=0d0
       if (pineappl .and. sum) then
          write (*,*) 'WARNING: PineAPPL only possible '/

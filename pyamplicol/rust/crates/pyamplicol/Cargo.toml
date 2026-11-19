@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+
+# pyAmpliCol's Symbolica library key for its native code. The crate is named
+# after the package the key is issued for, so that Symbolica's documented
+# registration (`set_library_key!`, which binds a key to `CARGO_CRATE_NAME`)
+# accepts it; it holds the key and nothing else.
+[package]
+name = "pyamplicol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+test = false
+doctest = false
+
+[dependencies]
+symbolica.workspace = true

@@ -33,7 +33,8 @@ tests). Each test:
      entry may add cuts (``"cuts": {"<cut>.<bound>": value}``), set
      ``[phasespace] cut_decays`` (``"cut_decays": true``), set ``[beam]``
      entries (``"beam": {"ebeam1": 250.0}``, e.g. the energy of a lepton
-     collider, whose default is 500 GeV per beam) and switch MadNIS off
+     collider, whose default is 500 GeV per beam), set ``[phasespace]``
+     entries (``"phasespace": {"ktdurham": 30.0}``) and switch MadNIS off
      (``"madnis": false``, see below),
   4. runs ``bin/generate_events -f`` and reads the cross-section from the
      madspace ``Events/*/info.json`` (``process.mean`` / ``process.error``),
@@ -172,10 +173,10 @@ def _require_mg7_runtime(test):
 
 
 def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
-                   cut_decays=None, madnis=None, beam=None):
+                   cut_decays=None, madnis=None, beam=None, phasespace=None):
     """Set the event count, (optionally) neutralise the jet cuts, add the
-    entry's extra cuts and set its cut_decays, [beam] entries and MadNIS
-    switch.
+    entry's extra cuts and set its cut_decays, [beam] / [phasespace] entries
+    and MadNIS switch.
 
     The reference cross-sections were produced with FIXED scales
     (mu = 91.188 GeV) and with the NNPDF23_lo_as_0130_qed PDF set. The
@@ -218,6 +219,10 @@ def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
         t, count = re.subn(r'(?m)^%s = .*$' % re.escape(key),
                            lambda m: '%s = %s' % (key, json.dumps(value)), t)
         assert count == 1, 'no [beam] %s in %s' % (key, toml_path)
+    for key, value in (phasespace or {}).items():
+        # e.g. the CKKW-L merging cut ktdurham / ptlund
+        t, count = re.subn(r'(?m)^%s = [^#\n]*' % key, '%s = %r ' % (key, value), t)
+        assert count == 1, 'no %s in %s' % (key, toml_path)
     if madnis is not None:
         # the first `enable` after the [madnis] header ([vegas] and
         # [systematics] have one too)
@@ -335,7 +340,8 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
         toml = pjoin(run_dir, 'Cards', 'run_card.toml')
         _edit_run_card(toml, _EVENTS, entry.get('disable_jet_cuts', False),
                        entry.get('cuts'), entry.get('cut_decays'),
-                       entry.get('madnis'), entry.get('beam'))
+                       entry.get('madnis'), entry.get('beam'),
+                       entry.get('phasespace'))
 
         log = pjoin(run_dir, 'mg7_gen.log')
         with open(log, 'w') as logfh:

@@ -672,9 +672,6 @@ namespace madmatrix
     const int* cIPF_partner2 = params.IPF_partner2;
     const fptype* cIPF_value = params.IPF_value;
     [[maybe_unused]] const fptype cBWCUTOFF = params.bwcutoff; // the $-excluded propagators (ALOHA P1D tag)
-#ifndef MGONGPU_HARDCODE_PARAM
-    Parameters::current = params.model; // for the HelAmps routines that read a model parameter
-#endif
 
     // Local TEMPORARY variables for a subset of Feynman diagrams in the given C++ event
     // page (ipagV) [NB these variables are reused several times (and re-initialised each
@@ -917,9 +914,6 @@ namespace madmatrix
     const int* cIPF_partner2 = params.IPF_partner2;
     const fptype* cIPF_value = params.IPF_value;
     [[maybe_unused]] const fptype cBWCUTOFF = params.bwcutoff; // the $-excluded propagators (ALOHA P1D tag)
-#ifndef MGONGPU_HARDCODE_PARAM
-    Parameters::current = params.model; // for the HelAmps routines that read a model parameter
-#endif
     // one wavefunction slot per COPY, which is more than the nwf of one row and
     // far fewer than one row's worth per row. A big process has thousands of
     // them (g g > t t~ g g g: 4826, 1.0 MB at simd_128), more than the stack of a worker
@@ -1954,13 +1948,14 @@ namespace madmatrix
 #else
       const int vecsize = neppV;
 #endif
-      unsigned int channelIdVec[vecsize];
+      unsigned int channelIdVec[vecsize] = {};
       if( allChannelIds != nullptr )
       {
         for( int ieppV = 0; ieppV < vecsize; ++ieppV )
         {
           const int ievt = ievt00 + ieppV;
           channelIdVec[ieppV] = allChannelIds[ievt];
+          if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelIdVec[ieppV];
         }
       }
 
@@ -1970,6 +1965,8 @@ namespace madmatrix
         for( int ieppV = 0; ieppV < vecsize; ++ieppV )
         {
           const int ievt = ievt00 + ieppV;
+          // A diagram supplied by MLM takes precedence over a new random draw.
+          if( channelIdVec[ieppV] != 0 ) continue;
           fptype numerator_sum = 0., normalization = 0.;
           for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
           {
@@ -1992,7 +1989,7 @@ namespace madmatrix
               break;
             }
           }
-          allDiagramIdsOut[ievt] = channelIdVec[ieppV];
+          if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelIdVec[ieppV];
         }
       }
 

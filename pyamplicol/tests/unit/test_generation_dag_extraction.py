@@ -317,9 +317,7 @@ def test_process_preparation_reuses_complete_color_plan_for_minimal_inference(
     process = build_process_ir("d d~ > u u~")
     model = BuiltinSMModel()
     reused_plans: list[object] = []
-    infer_from_plan = (
-        service_module._infer_minimal_coupling_order_limits_from_color_plan
-    )
+    infer_from_plan = service_module._closure_totals_from_color_plan
 
     def track_inference(*args: object, **kwargs: object) -> dict[str, int]:
         reused_plans.append(kwargs["color_plan"])
@@ -330,7 +328,7 @@ def test_process_preparation_reuses_complete_color_plan_for_minimal_inference(
 
     monkeypatch.setattr(
         service_module,
-        "_infer_minimal_coupling_order_limits_from_color_plan",
+        "_closure_totals_from_color_plan",
         track_inference,
     )
     monkeypatch.setattr(
@@ -367,7 +365,7 @@ def test_process_preparation_preserves_custom_color_plan_inference_path(
 
     monkeypatch.setattr(
         service_module,
-        "_infer_minimal_coupling_order_limits_from_color_plan",
+        "_closure_totals_from_color_plan",
         reject_reuse,
     )
     monkeypatch.setattr(

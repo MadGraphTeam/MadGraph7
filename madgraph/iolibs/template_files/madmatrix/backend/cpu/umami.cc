@@ -8,6 +8,7 @@
 
 #include "ProcessData.h"
 #include "process_fingerprint.h"
+#include "ColorData.h" // diagram-to-color configuration map
 #include "ProcessTables.h" // the crossing rows (choose_good_helicities)
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
 #include "SigmaKin.h" // sigmaKin_getGoodHel/setGoodHel
@@ -470,7 +471,7 @@ extern "C"
     UmamiHandle handle,
     char const* name,
     double parameter_real,
-    [[maybe_unused]] double parameter_imag )
+    double parameter_imag )
   {
     UmamiInstance* instance = static_cast<UmamiInstance*>( handle );
     // The run card bw_cutoff (the $-excluded propagator window). Per instance, like
@@ -490,10 +491,6 @@ extern "C"
       return UMAMI_SUCCESS;
     }
     // The model parameters are the instance's own (those of its CPPProcess)
-#ifdef MGONGPU_HARDCODE_PARAM
-    // Hardcoded parameters are compile-time constants: there is nothing to set.
-    return UMAMI_ERROR_NOT_IMPLEMENTED;
-#else
     if( !instance->process.modelParameters().setParameterByName( name, parameter_real, parameter_imag ) )
       return UMAMI_ERROR_UNKNOWN_PARAMETER;
     // sigmaKin() and friends read copies of the independent parameters/couplings
@@ -508,22 +505,17 @@ extern "C"
     choose_good_helicities_for_probe( instance );
 #endif
     return UMAMI_SUCCESS;
-#endif
   }
 
   UmamiStatus umami_get_parameter(
-    [[maybe_unused]] UmamiHandle handle,
-    [[maybe_unused]] char const* name,
-    [[maybe_unused]] double* parameter_real,
-    [[maybe_unused]] double* parameter_imag )
+    UmamiHandle handle,
+    char const* name,
+    double* parameter_real,
+    double* parameter_imag )
   {
-#ifdef MGONGPU_HARDCODE_PARAM
-    return UMAMI_ERROR_NOT_IMPLEMENTED;
-#else
     if( !static_cast<UmamiInstance*>( handle )->process.modelParameters().getParameterByName( name, parameter_real, parameter_imag ) )
       return UMAMI_ERROR_UNKNOWN_PARAMETER;
     return UMAMI_SUCCESS;
-#endif
   }
 
   // Numbering of the outputs of a crossed call (crossing on, flavor index
@@ -560,7 +552,7 @@ extern "C"
     const double* random_helicity_in = nullptr;
     const double* random_diagram_in = nullptr;
     const int* helicity_in = nullptr;
-    [[maybe_unused]] const int* diagram_in = nullptr; // TODO: unused
+    const int* diagram_in = nullptr;
 
     for( std::size_t i = 0; i < input_count; ++i )
     {
@@ -600,6 +592,16 @@ extern "C"
     }
     if( !momenta_in ) return UMAMI_ERROR_MISSING_INPUT;
     if( alpha_s_in && g_strong_in ) return UMAMI_ERROR;
+    if( diagram_in )
+    {
+      for( std::size_t i_event = 0; i_event < count; ++i_event )
+      {
+        const int diagram = diagram_in[i_event + offset];
+        if( diagram < -1 || ( diagram >= 0 &&
+            ( static_cast<unsigned int>( diagram ) >= mgOnGpu::nchannels ||
+              mgOnGpu::channel2iconfig[diagram] <= 0 ) ) ) return UMAMI_ERROR;
+      }
+    }
     // UMAMI_IN_HELICITY_INDEX: evaluate each event for the one helicity it is given, an index
     // into the full helicity table [0,ncomb) (the UMAMI_OUT_HELICITY_INDEX convention), instead
     // of summing over the helicities. The |M|^2 is then the contribution of that helicity to
@@ -723,6 +725,7 @@ extern "C"
     HostBufferBase<fptype, false> squared_orders(
       capture_squared_orders ? rounded_count * ProcessData::nsqampso : 0 );
     HostBufferBase<unsigned int, false> diagram_index( rounded_count );
+    HostBufferBase<unsigned int, false> diagram_given( rounded_count );
     HostBufferBase<fptype_amp, false> numerators( rounded_count * ProcessData::ndiagrams );
     HostBufferBase<fptype_amp, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
@@ -752,6 +755,9 @@ extern "C"
       helicity_random[lane] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
       color_random[lane] = random_color_in ? random_color_in[i_event + offset] : 0.5;
       diagram_random[lane] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
+      // UMAMI uses zero-based diagram indices; the kernels use one-based indices,
+      // with zero requesting the usual sampling for this event.
+      if( diagram_in ) diagram_given[lane] = diagram_in[i_event + offset] + 1;
       g_s[lane] = g_strong_in ? g_strong_in[i_event + offset]
         : ( alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195 );
       flavor_indices[lane] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
@@ -792,7 +798,7 @@ extern "C"
       flavor_indices.data(),
       helicity_random.data(),
       color_random.data(),
-      nullptr,
+      diagram_in ? diagram_given.data() : nullptr,
       diagram_random.data(),
       matrix_elements.data(),
       helicity_index.data(),
