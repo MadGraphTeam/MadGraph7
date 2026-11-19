@@ -84,6 +84,59 @@ class TestGenerationInProcess(unittest.TestCase):
         self.assertEqual(sys.path, before)
 
 
+class TestConcurrentArtifacts(unittest.TestCase):
+    """With a license the full-colour artifact is generated in a child process
+    while this one generates the leading-colour one."""
+
+    def run_generate(self, licensed):
+        from madgraph.iolibs import amplicol_generation
+        calls = []
+        licensing = mock.Mock(_cpu_budget=lambda: 5)
+        licensing.detect_symbolica_license.return_value = mock.Mock(licensed=licensed)
+        pyamplicol = mock.Mock(licensing=licensing, __file__='pyamplicol')
+        reweight = mock.Mock()
+        reweight.write_reweight_provider.side_effect = lambda *args, **kwargs: (
+            calls.append(('reweight',)) or ['p0'])
+        children = []
+
+        class Child(object):
+            def __init__(self, artifact, accuracy, process, model, workers):
+                children.append(self)
+                calls.append(('child', os.path.basename(artifact), workers))
+
+            def wait(self):
+                calls.append(('wait',))
+
+        modules = {'pyamplicol': pyamplicol, 'pyamplicol.licensing': licensing,
+                   'pyamplicol.artifacts': mock.Mock(umami_reweight=reweight),
+                   'pyamplicol.artifacts.umami_reweight': reweight}
+        job = {'model': {'cache': '/m'}, 'processes': [{'path': '/a'}]}
+        with mock.patch.dict(sys.modules, modules), \
+                mock.patch.object(amplicol_generation, 'model_source'), \
+                mock.patch.object(amplicol_generation, 'ArtifactProcess', Child), \
+                mock.patch.object(amplicol_generation, 'generate_artifact',
+                                  lambda p, artifact, accuracy, *args, **kwargs: calls.append(
+                                      (os.path.basename(artifact), kwargs.get('workers')))):
+            self.assertEqual(amplicol_generation.generate(job), [['p0']])
+        return calls
+
+    def test_full_colour_in_a_child_process(self):
+        self.assertEqual(self.run_generate(True), [
+            ('child', 'full', 2), ('lc', 3), ('wait',), ('reweight',)])
+
+    def test_restricted_mode_generates_one_artifact_at_a_time(self):
+        self.assertEqual(self.run_generate(False),
+                         [('lc', None), ('full', None), ('reweight',)])
+
+    def test_a_failing_child_raises_with_its_output(self):
+        from madgraph.iolibs import amplicol_generation
+        with mock.patch.object(amplicol_generation, '_CHILD',
+                               'import sys; print("boom"); sys.exit(3)'):
+            child = amplicol_generation.ArtifactProcess('/a/full', 'full', {}, '/m', 1)
+            with self.assertRaisesRegex(RuntimeError, '(?s)exit code 3.*boom'):
+                child.wait()
+
+
 class TestCheckPyamplicol(unittest.TestCase):
 
     def test_stale_install_is_an_error(self):
