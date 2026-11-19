@@ -364,7 +364,10 @@ class DiagramTag(object):
         Note that the number is not taken into account if tag comparison,
         but is used only to extract leg permutations."""
         if leg.get('state'):
-            # Identify identical final state particles
+            # Identify identical final state particles (the parton returning
+            # to the proton of a GPD pair is not one of them)
+            if leg.get('gpd'):
+                return [((leg.get('id'), 0, 'gpd'), leg.get('number'))]
             return [((leg.get('id'), 0), leg.get('number'))]
         else:
             # Distinguish identical initial state particles
@@ -1370,6 +1373,9 @@ class Amplitude(base_objects.PhysicsObject):
         elif not returndiag and len(res)>0:
             res = self.apply_squared_order_constraints(res)
 
+        if any(leg.get('gpd') for leg in process.get('legs')):
+            res = self.remove_gpd_pair_vertex_diagrams(res)
+
         if diagram_filter:
             res = self.apply_user_filter(res, diagram_filter)
 
@@ -1507,6 +1513,58 @@ class Amplitude(base_objects.PhysicsObject):
                                    ' can be specified, not %s.'%str(neg_orders))
 
         return res
+
+    def remove_gpd_pair_vertex_diagrams(self, diag_list):
+        """Remove the diagrams of a GPD process in which the two partons of
+        the GPD pair meet at one vertex and continue as one massless
+        propagator: it carries the light-like 2 xi P (1/0 at t = 0). A gluon
+        there vanishes by the colour-singlet projector, a photon is the
+        Bethe-Heitler term (the elastic photon flux of the proton, i.e. gamma
+        gamma fusion), not a GPD contribution. A massive propagator (Z, H)
+        is finite and kept."""
+
+        process = self.get('process')
+        model = process.get('model')
+        gpd_numbers = frozenset(leg.get('number') for leg in process.get('legs')
+                                if leg.get('gpd'))
+        if len(gpd_numbers) != 2:
+            return diag_list
+        all_numbers = frozenset(leg.get('number') for leg in process.get('legs'))
+        rest = all_numbers - gpd_numbers
+        kept = base_objects.DiagramList()
+        removed = 0
+        for diagram in diag_list:
+            content = dict((n, frozenset([n])) for n in all_numbers)
+            bad = False
+            vertices = diagram.get('vertices')
+            for ivert, vertex in enumerate(vertices):
+                legs = vertex.get('legs')
+                if ivert == len(vertices) - 1:
+                    # the last vertex joins the remaining legs: each of them is
+                    # a propagator whose content is fixed by the others
+                    sets = [content[leg.get('number')] for leg in legs]
+                    for leg, cset in zip(legs, sets):
+                        if cset in (gpd_numbers, rest) and len(cset) > 1 and \
+                           model.get_particle(leg.get('id')).get('mass').lower() == 'zero':
+                            bad = True
+                    break
+                inputs = legs[:-1]
+                out = legs[-1]
+                cset = frozenset().union(*[content[l.get('number')] for l in inputs])
+                content[out.get('number')] = cset
+                if cset in (gpd_numbers, rest) and \
+                   model.get_particle(out.get('id')).get('mass').lower() == 'zero':
+                    bad = True
+                    break
+            if bad:
+                removed += 1
+            else:
+                kept.append(diagram)
+        if removed:
+            logger.info("GPD: removed %d diagram(s) where the GPD pair meets at "
+                        "one vertex (light-like 2 xi P exchange: Bethe-Heitler "
+                        "or zero by colour)" % removed)
+        return kept
 
     def apply_user_filter(self, diag_list, diagram_filter=True):
         """Applies the user diagram filter on the diagram list in argument.
@@ -2694,6 +2752,7 @@ class MultiProcess(base_objects.PhysicsObject):
                                           'polarization': islegs_orig[i]['polarization'],
                                           'flavor': get_flavor(i,id),
                                           'onium': islegs_orig[i]['onium'],
+                                          'gpd': islegs_orig[i]['gpd'],
                                           'offshell': islegs_orig[i]['offshell']}) \
                     for i,id in enumerate(prod)]
 
@@ -2729,7 +2788,8 @@ class MultiProcess(base_objects.PhysicsObject):
                 # `define l+ = u d~` / `define l- = u~ d`, (Q, Qx) restricted to
                 # (u, u~) and (Qx, Q) restricted to (d~, d) are NOT permutations
                 # of each other even though their merged ids are.
-                fsflavors = [tuple(sorted(get_fs_flavor(id, fsleg)))
+                fsflavors = [tuple(sorted(get_fs_flavor(id, fsleg))) +
+                             (('gpd',) if fsleg['gpd'] else ())
                              for id, fsleg in zip(prod, fslegs)]
                 tag = zip(prod, polids, fsflavors)
                 tag = sorted(tag)
@@ -2747,6 +2807,7 @@ class MultiProcess(base_objects.PhysicsObject):
                                               'polarization': fsleg['polarization'],
                                               'flavor': get_fs_flavor(id, fsleg),
                                               'onium': fsleg['onium'],
+                                              'gpd': fsleg['gpd'],
                                               'offshell': fsleg['offshell']}) \
                             for id, fsleg in zip(prod, fslegs)])
                 else:

@@ -48,6 +48,7 @@ import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.files as files
 import madgraph.iolibs.group_subprocs as group_subprocs
 import madgraph.iolibs.file_writers as writers
+import madgraph.iolibs.gpd_export as gpd_export
 import madgraph.iolibs.gen_infohtml as gen_infohtml
 import madgraph.iolibs.jamp_optimiser as jamp_optimiser
 import madgraph.iolibs.template_files as template_files
@@ -6110,6 +6111,14 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             return_replace_dict=True)
         calls = replace_dict.get('return_value', 0)
 
+        gpd_me = gpd_export.has_gpd(matrix_element)
+        if gpd_me:
+            # the GPD kernel, poles and x integration of this process
+            gpd_info = gpd_export.write_driver(dirpath, matrix_element,
+                                               replace_dict, proc_prefix)
+            gpd_export.write_check(dirpath, gpd_info, replace_dict, proc_prefix)
+            self.copy_gpd_library()
+
         self.write_f2py_matrix_wrapper(
             writers.FortranWriter(pjoin(dirpath, 'f2py_matrix_wrapper.f')),
                                   replace_dict=replace_dict)
@@ -6230,6 +6239,19 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     f.write(l)
                     if 'make_opts' in line:
                         f.write('FFLAGS += -I../../Source/DHELAS%i\n'%npwave)
+            if gpd_me:
+                with open(path2) as f:
+                    text = gpd_export.makefile_lines(f.read(), proc_prefix)
+                with open(path2, 'w') as f:
+                    f.write(text)
+        elif gpd_me:
+            path2 = pjoin(dirpath, 'makefile')
+            if os.path.lexists(path2):
+                os.remove(path2)
+            with open(pjoin(dirpath, '../makefileP')) as f:
+                text = gpd_export.makefile_lines(f.read(), proc_prefix)
+            with open(path2, 'w') as f:
+                f.write(text)
         else:
             ln('../makefileP', name='makefile', cwd=dirpath)
         # Return to original PWD
@@ -6239,6 +6261,19 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             calls = 0
         return calls
 
+
+    def copy_gpd_library(self):
+        """Source/GPD (GPD models and x integration) and Cards/gpd_card.dat
+        of a standalone output with GPD processes, built as the standalone
+        library (no PDFs)."""
+        target = pjoin(self.dir_path, 'Source', 'GPD')
+        if not os.path.isdir(target):
+            shutil.copytree(pjoin(self.mgme_dir, 'Template', 'LO', 'Source', 'GPD'),
+                            target)
+        card = pjoin(self.dir_path, 'Cards', 'gpd_card.dat')
+        if not os.path.exists(card):
+            with open(card, 'w') as fsock:
+                fsock.write(gpd_export.GPD_CARD)
 
     #===========================================================================
     # write_source_makefile
@@ -6461,6 +6496,12 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         if self.zero_tchannel_width():
             # t-channel widths are already zeroed, no fake width in standalone
             helas_calls = [call.replace(',fk_', ',') for call in helas_calls]
+
+        if gpd_export.has_gpd(matrix_element):
+            # the GPD pair: wave functions on PGPD, rescaled momentum slots
+            helas_calls = gpd_export.patch_helas_calls(helas_calls,
+                                        gpd_export.GPDInfo(matrix_element))
+            replace_dict['flavor_mask_decl'] += gpd_export.GPD_DECL
 
         replace_dict['helas_calls'] = "\n".join(helas_calls)
 

@@ -1305,6 +1305,7 @@ class LegTest(unittest.TestCase):
                       'polarization':[],
                       'flavor':[],
                       'onium': {},
+                      'gpd': {},
                       'offshell':False}
 
         self.myleg = base_objects.Leg(self.mydict)
@@ -1389,7 +1390,8 @@ class LegTest(unittest.TestCase):
     'onshell': None,
     'polarization': [],
     'flavor': [],
-    'onium': {}
+    'onium': {},
+    'gpd': {}
 }"""
         
         self.assertEqual(goal, str(self.myleg))
@@ -1458,6 +1460,7 @@ class MultiLegTest(unittest.TestCase):
                       'polarization':[],
                       'flavor':[],
                       'onium': {},
+                      'gpd': {},
                       'offshell':False}
 
         self.my_multi_leg = base_objects.MultiLeg(self.mydict)
@@ -1537,6 +1540,7 @@ class MultiLegTest(unittest.TestCase):
     'polarization': [],
     'flavor': [],
     'onium': {},
+    'gpd': {},
     'offshell': False
 }"""
         self.assertEqual(goal, str(self.my_multi_leg))

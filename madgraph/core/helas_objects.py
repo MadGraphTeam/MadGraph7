@@ -197,6 +197,10 @@ class IdentifyMETag(diagram_generation.DiagramTag):
         if onium:
             onium = (onium.get('id'), onium.get('N'), onium.get('L'),
                      onium.get('S'), onium.get('J'), onium.get('C'))
+        elif leg.get('gpd'):
+            # a GPD constituent is not an ordinary parton leg: its wave
+            # function is built on P and projected on the colour singlet
+            onium = ('gpd', leg.get('gpd').get('name'), leg.get('gpd').get('role'))
         else:
             onium = ()
         # Include also onshell, since this specifies forbidden s-channel
@@ -687,6 +691,8 @@ class HelasWavefunction(base_objects.PhysicsObject):
         # read through has_flavor(). Not part of get_sorted_keys (runtime cache).
         self.valid_flavors = set()
         self['onium'] = {}
+        # constituent of a GPD pair (see base_objects.GPD_CHANNELS)
+        self['gpd'] = {}
 
     # Customized constructor
     def __init__(self, *arguments):
@@ -768,6 +774,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     self.set('polarization', leg.get('polarization'))
                 self.set('interaction_id', interaction_id, model)
                 self.set('onium', leg.get('onium'))
+                self.set('gpd', leg.get('gpd'))
         elif arguments:
             super(HelasWavefunction, self).__init__(arguments[0])
         else:
@@ -923,6 +930,9 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 if value['C'] not in [1, 8]:
                     raise self.PhysicsObjectError( \
                       " %s is not a valid color configuration" % str(value['C']))
+
+        elif name == 'gpd':
+            base_objects.check_gpd_leg_info(value, self.PhysicsObjectError)
 
         return True
 

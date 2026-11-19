@@ -2815,6 +2815,37 @@ def polarization_to_string(polarization):
 
 
 #===============================================================================
+#===============================================================================
+# GPD pairs
+#===============================================================================
+# A GPD channel is the colour-singlet pair of partons that leaves the probed
+# proton with momentum (x+xi)P and returns to it with (x-xi)P (exclusive
+# processes in collinear factorisation with generalised parton distributions).
+# It is generated as two legs of the same parton: an incoming one ('role':
+# 'in') and an outgoing one ('role': 'out'), whose wave functions are built on
+# P inside the matrix element (see madgraph/iolibs/gpd_export.py).
+GPD_CHANNELS = {'gpd_g': 21, 'gpd_u': 2, 'gpd_d': 1, 'gpd_s': 3, 'gpd_c': 4,
+                'gpd_b': 5}
+GPD_DEFAULT_LABEL = ['gpd_g', 'gpd_u', 'gpd_d', 'gpd_s']
+
+
+def check_gpd_leg_info(value, error):
+    """Validate the 'gpd' property of a (Multi)Leg: {} or a dict with the
+    channel 'name', the 'role' ('in'|'out'), the 'parton' PDG code and the
+    pair 'index'."""
+    if not isinstance(value, dict):
+        raise error("%s is not a valid dictionary for gpd" % str(value))
+    if not value:
+        return
+    if value.get('name') not in GPD_CHANNELS:
+        raise error("%s is not a valid GPD channel" % str(value.get('name')))
+    if value.get('role') not in ('in', 'out'):
+        raise error("%s is not a valid GPD leg role" % str(value.get('role')))
+    if value.get('parton') != GPD_CHANNELS[value['name']]:
+        raise error("GPD channel %s has parton %s" % (value['name'],
+                                                       value.get('parton')))
+
+
 class Leg(PhysicsObject):
     """Leg object: id (Particle), number, I/F state, flag from_group
     """
@@ -2855,6 +2886,10 @@ class Leg(PhysicsObject):
         self['flavor'] = []
         # properties of bound state
         self['onium'] = {}
+        # constituent of a GPD pair (generalised parton distribution): the
+        # parton leaving the probed proton ('role': 'in') or returning to it
+        # ('role': 'out'), see gpd_leg_info
+        self['gpd'] = {}
 
     def filter(self, name, value):
         """Filter for valid leg property values."""
@@ -2912,13 +2947,16 @@ class Leg(PhysicsObject):
                 if value['C'] not in [1, 8]:
                     raise self.PhysicsObjectError( \
                       " %s is not a valid color configuration" % str(value['C']))
+
+        elif name == 'gpd':
+            check_gpd_leg_info(value, self.PhysicsObjectError)
                                                                     
         return True
 
     def get_sorted_keys(self):
         """Return particle property names as a nicely sorted list."""
 
-        return ['id', 'number', 'state', 'from_group', 'loop_line', 'onshell', 'polarization', 'flavor', 'onium']
+        return ['id', 'number', 'state', 'from_group', 'loop_line', 'onshell', 'polarization', 'flavor', 'onium', 'gpd']
 
     def is_fermion(self, model):
         """Returns True if the particle corresponding to the leg is a
@@ -3093,6 +3131,7 @@ class MultiLeg(PhysicsObject):
         self['polarization'] = []
         self['flavor'] = []
         self['onium'] = {}
+        self['gpd'] = {}
         self['offshell'] = False
 
     def filter(self, name, value):
@@ -3149,12 +3188,15 @@ class MultiLeg(PhysicsObject):
                 raise self.PhysicsObjectError("%s is not a valid leg state (initial|final)" % \
                                                                     str(value))
 
+        if name == 'gpd':
+            check_gpd_leg_info(value, self.PhysicsObjectError)
+
         return True
 
     def get_sorted_keys(self):
         """Return particle property names as a nicely sorted list."""
 
-        return ['ids', 'state', 'polarization', 'flavor', 'onium', 'offshell']
+        return ['ids', 'state', 'polarization', 'flavor', 'onium', 'gpd', 'offshell']
 
 #===============================================================================
 # LegList
@@ -4083,7 +4125,11 @@ class Process(PhysicsObject):
                                     for id_list in self['required_s_channels']])
                     mystr = mystr + ' > '
 
-            if leg.get('onium'):
+            if leg.get('gpd'):
+                # a GPD pair is named once, at its incoming constituent
+                if leg.get('gpd').get('role') == 'in':
+                    mystr = mystr + leg.get('gpd').get('name') + ' '
+            elif leg.get('onium'):
                 if leg.get('onium').get('index') not in onia:
                     mystr = mystr + leg.get('onium').get('name') + ' '
                     onia += [leg.get('onium').get('index')]
@@ -4230,6 +4276,11 @@ class Process(PhysicsObject):
                                     for id_list in self['required_s_channels']])
                     mystr = mystr + '> '
 
+            if leg.get('gpd'):
+                if leg.get('gpd').get('role') == 'in':
+                    mystr = mystr + leg.get('gpd').get('name') + ' '
+                prevleg = leg
+                continue
             mystr = mystr + mypart.get_name()
             if leg.get('polarization'):
                 if leg.get('polarization') in [[-1,1],[1,-1]]:
@@ -4391,7 +4442,11 @@ class Process(PhysicsObject):
                                                 for req_id in id_list]) \
                                     for id_list in self['required_s_channels']])
                     mystr = mystr + '_'
-            if leg.get('onium'):
+            if leg.get('gpd'):
+                # a GPD pair is named once, at its incoming constituent
+                if leg.get('gpd').get('role') == 'in':
+                    mystr = mystr + leg.get('gpd').get('name').replace('_', '')
+            elif leg.get('onium'):
                 # the onium is named once, at its second constituent (an
                 # incoming onium starts the list: no previous leg there)
                 if prevleg and prevleg.get('onium'):
@@ -4792,6 +4847,10 @@ class Process(PhysicsObject):
         identical_indices = collections.defaultdict(int)
         onia = []
         for leg in final_legs:
+            if leg.get('gpd'):
+                # the parton returning to the proton is not a final-state
+                # particle
+                continue
             if leg.get('onium'):
                 key = (leg.get('onium').get('id'), tuple(leg.get('polarization')))
                 if leg.get('onium').get('index') in onia:

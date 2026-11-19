@@ -6588,8 +6588,46 @@ This implies that with decay chains:
         # templates project two explicit constituents, which a merged
         # (flavour-indexed) particle cannot provide.
         if self._curr_model and self._curr_model.get('merged_particles') and \
-                self.has_fock_state(args):
+                (self.has_fock_state(args) or self.has_gpd_pair(args)):
             self.unmerge_flavors_for_onia()
+
+        # A GPD label ('gpd' = the colour-singlet g g and q qbar pairs of the
+        # probed proton) expands into one process per channel; every channel
+        # but the last is added here, the last one carries on below.
+        gpd_labels = [i for i, a in enumerate(args) if a.lower() == 'gpd']
+        if gpd_labels:
+            nini_gpd = args.index('>') if '>' in args else len(args)
+            if len(gpd_labels) > 1 or gpd_labels[0] > nini_gpd:
+                raise self.InvalidCmd("A GPD pair ('gpd') can only appear once, "
+                    "in the initial state: GPDs on both beams are not supported.")
+            channels = list(base_objects.GPD_DEFAULT_LABEL)
+            for channel in channels[:-1]:
+                copy_args = list(args)
+                copy_args[gpd_labels[0]] = channel
+                process = " ".join(["process"] + copy_args)
+                for order in model_orders:
+                    try:
+                        (order_val, order_op) = squared_orders[order]
+                    except KeyError:
+                        try:
+                            order_val = orders[order]
+                            order_op = '='
+                        except KeyError:
+                            continue
+                    process += " " + order + order_op + str(order_val)
+                if perturbation_couplings.strip():
+                    process += " [%s]" % perturbation_couplings.strip()
+                logger.info("INFO: GPD channel: " + process)
+                try:
+                    self.do_add(process)
+                except (self.InvalidCmd, MadGraph5Error) as error:
+                    if 'No amplitudes generated' in str(error) or \
+                       'no diagram' in str(error).lower():
+                        logger.info("INFO: no diagram for the GPD channel %s" % channel)
+                    else:
+                        raise
+            args = list(args)
+            args[gpd_labels[0]] = channels[-1]
 
         # Extract process
         boundstates = {}
@@ -6653,6 +6691,7 @@ This implies that with decay chains:
 
         onium_index = 0
         aloha.dual_mode = 0
+        gpd_pairs = []
         # Extract process
         for part_name in args:
             if part_name == '>':
@@ -6666,6 +6705,24 @@ This implies that with decay chains:
                 offshell = True
             else:
                 offshell = False
+
+            # a GPD channel: the parton leaving the probed proton is an
+            # incoming leg, the one returning to it an outgoing leg (added
+            # after the final state); the elastic proton itself is implicit
+            if part_name.lower() in base_objects.GPD_CHANNELS:
+                if state:
+                    raise self.InvalidCmd("A GPD pair (%s) can only be in the "
+                                          "initial state." % part_name)
+                if gpd_pairs:
+                    raise self.InvalidCmd("GPDs on both beams are not "
+                                          "supported: one GPD pair per process.")
+                parton = base_objects.GPD_CHANNELS[part_name.lower()]
+                info = {'name': part_name.lower(), 'parton': parton, 'index': 0}
+                myleglist.append(base_objects.MultiLeg({'ids': [parton],
+                                        'state': False,
+                                        'gpd': dict(info, role='in')}))
+                gpd_pairs.append(dict(info, role='out'))
+                continue
 
             # check if particle is ONIA
             is_onium = False
@@ -6990,6 +7047,16 @@ This implies that with decay chains:
                 pass
             else:
                 raise self.InvalidCmd("No particle %s in model" % part_name)
+
+        for info in gpd_pairs:
+            myleglist.append(base_objects.MultiLeg({'ids': [info['parton']],
+                                                    'state': True,
+                                                    'gpd': info}))
+        if gpd_pairs and perturbation_couplings.strip():
+            raise self.InvalidCmd(
+                "GPD processes are only supported at leading order: the "
+                "perturbation '[%s]' can not be combined with a GPD pair."
+                % perturbation_couplings.strip())
 
         # Bound states are handled by the LO exporters only: nothing in the
         # FKS/loop path reads back the 'onium' leg properties and there is no
@@ -8203,6 +8270,11 @@ This implies that with decay chains:
             if arg in names or arg in labels or arg in pdgs:
                 return True
         return False
+
+    def has_gpd_pair(self, args):
+        """True if one of the process tokens is a GPD channel or label."""
+        return any(a.lower().rstrip('*') in base_objects.GPD_CHANNELS or
+                   a.lower() == 'gpd' for a in args)
 
     def unmerge_flavors_for_onia(self):
         """Reload the current model without flavour grouping, keeping the

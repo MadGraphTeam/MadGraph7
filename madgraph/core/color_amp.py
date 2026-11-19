@@ -784,6 +784,33 @@ class ColorBasis(dict):
 
         return projector_str
 
+    def GPDColorString(self, process):
+        """The colour-singlet projector of a GPD pair (base_objects.GPD_CHANNELS)
+        in the colour strings of the process, without its normalisation (put
+        back in the matrix element): delta between the incoming and the
+        returning parton, i.e. T(in, out) for quarks (the incoming quark carries
+        the index of an outgoing antiquark) and 2 Tr(in, out) = delta_ab for
+        gluons. None for a process without GPD pair."""
+
+        legs = [l for l in process.get('legs') if l.get('gpd')]
+        if not legs:
+            return None
+        if len(legs) != 2:
+            raise ColorBasis.ColorBasisError("A GPD pair needs exactly two legs")
+        n_in = [l.get('number') for l in legs if l.get('gpd').get('role') == 'in'][0]
+        n_out = [l.get('number') for l in legs if l.get('gpd').get('role') == 'out'][0]
+        color = process.get('model').get_particle(legs[0].get('id')).get('color')
+        if color == 1:
+            return color_algebra.ColorString([color_algebra.ColorOne()])
+        elif color == 3:
+            return color_algebra.ColorString([color_algebra.T(n_in, n_out)])
+        elif color == 8:
+            projector = color_algebra.ColorString([color_algebra.Tr(n_in, n_out)])
+            projector.coeff = fractions.Fraction(2, 1)
+            return projector
+        raise ColorBasis.ColorBasisError(
+            "GPD pair of colour %d is not supported" % color)
+
     def OniaColorProjection(self, colorize_dict, pid_color_numbers):
         """Color projection for onia"""
         for (pid_charges,pid_numbers,charge) in pid_color_numbers:
@@ -824,6 +851,11 @@ class ColorBasis(dict):
                         pid_color_numbers.append([(onium_color,color),(onium_number,l.get('number')),l.get('onium').get('C')])
 
             if pid_color_numbers: self.OniaColorProjection(colorize_dict, pid_color_numbers)
+
+            gpd_projector = self.GPDColorString(amplitude.get('process'))
+            if gpd_projector is not None:
+                for col_str in colorize_dict.values():
+                    col_str.product(gpd_projector)
 
             list_color_dict.append(colorize_dict)
 
