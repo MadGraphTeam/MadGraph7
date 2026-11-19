@@ -14,7 +14,6 @@ import itertools
 import json
 import os
 from pathlib import Path
-import pickle
 import re
 
 from madgraph import MadGraph5Error
@@ -30,13 +29,6 @@ def freeze(value):
     return value
 
 
-def load_element(element):
-    if isinstance(element, str):
-        with open(element, 'rb') as stream:
-            return pickle.load(stream)
-    return element
-
-
 def evaluator_tag(amplitude):
     """Use HELAS equivalence without merging native process identities.
 
@@ -50,30 +42,35 @@ def evaluator_tag(amplitude):
     return tag
 
 
-def prepare(exporter, elements):
+def context_record(exporter, me):
+    """The HELAS tag of the FKSHelasProcess me and its compatibility
+    signature, which prepare compares. (In the low_mem_multicore_nlo_generation
+    mode, the process which finalizes the matrix element computes it.)"""
+    born = me.born_me
+    proc = born['processes'][0]
+    tag = evaluator_tag(born['base_amplitude'])
+    signature = (
+        tuple(t.get_external_numbers() for t in tag[-1]),
+        freeze(proc['split_orders']), freeze(proc['born_sq_orders']),
+        freeze(proc['squared_orders']),
+        me.ewsudakov,
+        tuple(exporter.get_den_factor_lines(me)),
+        tuple(exporter.get_ij_lines(me)),
+        freeze([i['fks_info'] for i in me.get_fks_info_list()]),
+        tuple(evaluator_tag(e['base_amplitude'])
+              for e in me.extra_cnt_me_list))
+    return (tag, signature)
+
+
+def prepare(exporter, records):
     """Assign stable context/provider IDs using the existing HELAS tags.
 
     Keep native contexts even when their evaluator is shared. A tag alone is
     insufficient: the labelled external order, splitting orders, normalization
     and extra-Born roles are part of the compatibility contract as well.
+    records holds the name of the P directory of each matrix element,
+    followed by its context_record.
     """
-    records = []
-    for element in elements:
-        me = load_element(element)
-        born = me.born_me
-        proc = born['processes'][0]
-        tag = evaluator_tag(born['base_amplitude'])
-        signature = (
-            tuple(t.get_external_numbers() for t in tag[-1]),
-            freeze(proc['split_orders']), freeze(proc['born_sq_orders']),
-            freeze(proc['squared_orders']),
-            me.ewsudakov,
-            tuple(exporter.get_den_factor_lines(me)),
-            tuple(exporter.get_ij_lines(me)),
-            freeze([i['fks_info'] for i in me.get_fks_info_list()]),
-            tuple(evaluator_tag(e['base_amplitude'])
-                  for e in me.extra_cnt_me_list))
-        records.append(('P' + proc.shell_string(), tag, signature))
     providers = []
     registry = {}
     for context, (name, tag, signature) in enumerate(sorted(records), 1):

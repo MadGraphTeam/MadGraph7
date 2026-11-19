@@ -213,7 +213,7 @@ namespace madmatrix
     // Create the "one-helicity" jamp buffer that will be used for helicity filtering
     m_pHelJamps.reset( new DeviceBufferAmp( ProcessData::njampso * mgOnGpu::nx2 * this->nevt() ) );
     // Create the "one-helicity" numerator and denominator buffers that will be used for helicity filtering
-    m_pHelNumerators.reset( new DeviceBufferSimple( this->nevt() * ProcessData::ndiagrams ) );
+    m_pHelNumerators.reset( new DeviceBufferSimple( numeratorsBufferSize( this->nevt() ) ) );
     m_pHelDenominators.reset( new DeviceBufferSimple( this->nevt() ) );
     // Decide at runtime whether to use BLAS for color sums
     // Decide at runtime whether TF32TENSOR math should be used in cuBLAS
@@ -342,8 +342,8 @@ namespace madmatrix
     m_pHelJamps.reset( new DeviceBufferAmp( static_cast<size_t>( nGoodHelAlloc ) * ProcessData::njampso * mgOnGpu::nx2 * nevt ) );
     // ... Create the numerator and denominator buffers. These no longer carry a helicity dimension:
     // ... the numerators are accumulated in place over all good helicities via atomicAdd in calculate_jamps
-    // ... ([nevt][ndiagrams]) and the denominators are derived from them ([nevt]).
-    m_pHelNumerators.reset( new DeviceBufferSimple( ProcessData::ndiagrams * nevt ) );
+    // ... (see numeratorsIndex) and the denominators are derived from them ([nevt]).
+    m_pHelNumerators.reset( new DeviceBufferSimple( numeratorsBufferSize( nevt ) ) );
     m_pHelDenominators.reset( new DeviceBufferSimple( nevt ) );
 #ifndef MGONGPU_HAS_NO_BLAS
     // Create the "many-helicity" super-buffer of temporary buffers for the cuBLAS/hipBLAS intermediate
