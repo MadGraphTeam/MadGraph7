@@ -1213,6 +1213,12 @@ def prune_global_helicity_flip_equivalent_roots(
     filtering. Keeping one proven representative with doubled helicity weight
     reduces amplitude roots, after which dead-tree pruning removes currents
     that fed only the discarded partner roots.
+
+    The pure-massless-adjoint support reads the process's initial legs
+    (``initial_leg_labels``), so the result holds for this crossing only. It
+    is never shared across crossings: the helicity-selector companion built
+    from it is an ``all-flow-union`` schedule, which schedule sharing refuses,
+    and the core binds it to its primary process digest.
     """
 
     parity_safe, vertex_inventory = _global_helicity_flip_equivalence_proof(

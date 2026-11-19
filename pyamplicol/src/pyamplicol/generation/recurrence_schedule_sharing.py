@@ -45,6 +45,9 @@ _DIRECT_BINDING_JIT = 2
 _DIRECT_BINDING_NATIVE = 3
 _DIRECT_FLAG_USES_EXACT_FACTOR = 1 << 0
 _MISSING_U32 = (1 << 32) - 1
+_PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE = (
+    "helicity-support:pure-massless-adjoint-tree-v1"
+)
 _PROCESS_VARIABLE_SEMANTIC_ROLES = frozenset(
     {
         "process",
@@ -52,7 +55,7 @@ _PROCESS_VARIABLE_SEMANTIC_ROLES = frozenset(
         "fermion-pairing-semantic",
         "fermion-pairing-topology",
         "closure-reconstruction",
-        "helicity-support:pure-massless-adjoint-tree-v1",
+        _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE,
         "helicity-equivalence:global-flip-v1",
     }
 )
@@ -1352,6 +1355,13 @@ def exact_recurrence_process_bijection(
             source_state_indices,
             source_template_changes,
         ) = source_relation
+        # The pure-massless-adjoint helicity support is side-dependent
+        # (``physical = -h`` for initial legs): never share it across a crossing.
+        if -1 in momentum_signs and (
+            _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE in _semantic_roles(root)
+            or _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE in _semantic_roles(target)
+        ):
+            return None
         sector_ids = _sector_bijection(
             root.physical_sectors,
             target.physical_sectors,
@@ -1438,6 +1448,10 @@ def exact_recurrence_process_bijection(
         )
         return result.with_digest(relation_digest)
     return None
+
+
+def _semantic_roles(logical: RecurrenceBuilderLogicalInputV1) -> set[str]:
+    return {row.role for row in logical.semantic_digests}
 
 
 def _fixed_semantic_digests_match(

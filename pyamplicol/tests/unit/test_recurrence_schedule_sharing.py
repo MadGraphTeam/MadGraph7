@@ -583,6 +583,55 @@ def test_crossed_processes_share_only_through_an_exact_bijection() -> None:
     assert second.remap == remap
 
 
+def test_crossing_bijection_refuses_the_pure_massless_adjoint_proof() -> None:
+    """The pure-gluon helicity support depends on the legs' sides: a relation
+    with a negated source momentum must not share a program carrying it."""
+
+    role = "helicity-support:pure-massless-adjoint-tree-v1"
+
+    def with_proof(
+        logical: RecurrenceBuilderLogicalInputV1,
+    ) -> RecurrenceBuilderLogicalInputV1:
+        digest = _digest(f"{logical.process_id}:{role}")
+        proof = RecurrenceSemanticDigestV1(role, digest)
+        return replace(logical, semantic_digests=(*logical.semantic_digests, proof))
+
+    root = _crossed_logical(target=False)
+    target = _crossed_logical(target=True)
+    remap = exact_recurrence_process_bijection(
+        root, target, direct_executor_count=4, parameter_slot_count=1
+    )
+    assert remap is not None and -1 in remap.source_momentum_signs
+    assert (
+        exact_recurrence_process_bijection(
+            with_proof(root),
+            with_proof(target),
+            direct_executor_count=4,
+            parameter_slot_count=1,
+        )
+        is None
+    )
+    # Companion schedules (side-dependent DAG pruning) are never shared.
+    companion = replace(with_proof(root), layout="all-flow-union")
+    assert (
+        exact_recurrence_process_bijection(
+            companion,
+            replace(with_proof(target), layout="all-flow-union"),
+            direct_executor_count=4,
+            parameter_slot_count=1,
+        )
+        is None
+    )
+    # An uncrossed relation (all signs +1) keeps sharing with the proof.
+    same = exact_recurrence_process_bijection(
+        with_proof(root),
+        with_proof(root),
+        direct_executor_count=4,
+        parameter_slot_count=1,
+    )
+    assert same is not None and set(same.source_momentum_signs) == {1}
+
+
 def _identical_gluons(count: int) -> tuple[RecurrenceExternalLegV1, ...]:
     return tuple(
         RecurrenceExternalLegV1(
