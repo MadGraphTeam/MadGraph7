@@ -686,22 +686,24 @@ def test_arbitrary_precision_without_digits_takes_the_default_digits():
 @pytest.mark.loop_physics
 def test_an_arbitrary_call_without_digits_runs_at_the_default_digits(artifact):
     """``evaluate(..., arithmetic="arbitrary")`` and ``Runtime.load(...,
-    arithmetic="arbitrary")`` without digits run at the default
-    arbitrary-precision digits (500: 1661 bits); given digits are kept; an
-    unset precision without arithmetic stays binary64."""
+    arithmetic="arbitrary")`` without digits resolve to the default
+    arbitrary-precision digits (500); given digits are kept (evaluated at
+    40 digits); an unset precision without arithmetic stays binary64. (No
+    500-digit evaluation here: it shifts later double-double guard estimates
+    of the same process, pre-existing; FINDINGS 2026-11-18 "ladder".)"""
 
     points, scales = _points("gg_gg", 1)
     runtime = _load(artifact, "gg")
-    bits = {
-        "default": runtime.evaluate(points, mu_r2=scales, arithmetic="arbitrary"),
-        "given": runtime.evaluate(
-            points, mu_r2=scales, arithmetic="arbitrary", precision=40
-        ),
-        "plain": runtime.evaluate(points, mu_r2=scales),
-    }
-    found = {name: r.diagnostics[0].precision_bits for name, r in bits.items()}
-    assert found == {"default": 1661, "given": 133, "plain": 53}, found
+    assert runtime._call_precision(None, "arbitrary") == default_arbitrary_digits()
+    assert runtime._call_precision(None, None) == 16
+    assert runtime._call_precision(40, "arbitrary") == 40
+    given = runtime.evaluate(points, mu_r2=scales, arithmetic="arbitrary", precision=40)
+    plain = runtime.evaluate(points, mu_r2=scales)
+    assert given.diagnostics[0].precision_bits == 133
+    assert plain.diagnostics[0].precision_bits == 53
     loaded = _load(artifact, "gg", arithmetic="arbitrary")
-    assert loaded.evaluate(points, mu_r2=scales).diagnostics[0].precision_bits == 1661
-    given = _load(artifact, "gg", arithmetic="arbitrary", precision=40)
-    assert given.evaluate(points, mu_r2=scales).diagnostics[0].precision_bits == 133
+    assert loaded._backend.default_precision == default_arbitrary_digits()
+    assert loaded._call_precision(None, None) == default_arbitrary_digits()
+    kept = _load(artifact, "gg", arithmetic="arbitrary", precision=40)
+    assert kept._call_precision(None, "arbitrary") == 40
+    assert kept.evaluate(points, mu_r2=scales).diagnostics[0].precision_bits == 133

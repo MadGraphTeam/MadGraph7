@@ -250,6 +250,33 @@ def test_the_rescue_of_g_g_to_z_terminates_under_either_metric(li, tmp_path):
     assert scaled.contribution == "loop-induced"
 
 
+# The 500-digit evaluations below run in a child process: an evaluation at
+# 500 digits shifts later double-double guard estimates of the same process
+# (pre-existing, origin/main too; FINDINGS 2026-11-18 "ladder"), which would
+# leak into the fallback-guard tests of a shared pytest process.
+_ZERO_CHILD = """
+import json, sys
+from pyamplicol import Runtime
+from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+output, point, scale, parameters, digits = json.loads(sys.argv[1])
+runtime = Runtime.load(output, process="gg_z", model_parameters=parameters)
+found = []
+for metric in ("relative", "scale"):
+    level = VirtualRescueLevel("arbitrary", digits, metric=metric)
+    result = runtime.evaluate(
+        [point], mu_r2=[scale], stability=VirtualRescuePolicy((level,))
+    )
+    (record,) = result.rescue
+    (estimate,) = result.stability
+    (value,) = result.values[0]
+    found.append(
+        [metric, record.met, estimate.relative, estimate.scale, level.target,
+         str(value.finite)]
+    )
+print(json.dumps(found))
+"""
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("digits", [57, 500])
 def test_g_g_to_z_reads_right_in_arbitrary_precision(li, tmp_path, digits):
@@ -261,26 +288,30 @@ def test_g_g_to_z_reads_right_in_arbitrary_precision(li, tmp_path, digits):
     floor's FLOOR_UNITS x u, meets the "scale" metric; the value is zero
     within its absolute estimate."""
 
+    import json
+    import subprocess
+    import sys
     from decimal import Decimal
-
-    from pyamplicol import Runtime
-    from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
 
     output = _generate(tmp_path, (("gg_z", "g g > z"),), _fixture("li_gg_z"))
     point, scale, parameters = li.point("li_gg_z")
-    runtime = Runtime.load(output, process="gg_z", model_parameters=parameters)
-    for metric, met in (("relative", False), ("scale", True)):
-        level = VirtualRescueLevel("arbitrary", digits, metric=metric)
-        result = runtime.evaluate(
-            [point], mu_r2=[str(scale)], stability=VirtualRescuePolicy((level,))
-        )
-        (record,) = result.rescue
-        (estimate,) = result.stability
-        assert record.met is met, (digits, metric, estimate)
-        assert estimate.relative > 1 / RESCUE_TARGET_OF_ZERO, estimate
-        assert estimate.scale <= level.target, estimate
-        (value,) = result.values[0]
-        assert abs(value.finite) < Decimal(10) ** (-digits), value
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _ZERO_CHILD,
+            json.dumps([str(output), point, str(scale), parameters, digits]),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    found = json.loads(child.stdout.strip().splitlines()[-1])
+    for metric, met, relative, scale_estimate, target, value in found:
+        assert met is (metric == "scale"), (digits, metric, found)
+        assert relative > 1 / RESCUE_TARGET_OF_ZERO, found
+        assert scale_estimate <= target, found
+        assert abs(Decimal(value)) < Decimal(10) ** (-digits), value
 
 
 # ------------------------------------------------------------ rotation check
