@@ -188,7 +188,8 @@ double-double, then arbitrary precision, from its binary64 coefficients
 records `"lane_rescue"` in its `"reduction"` diagnostics.
 `rusticol_virtual_set_threads(handle, threads)` (C++ / Fortran / Rust
 `set_threads`; 0 by default: `RAYON_NUM_THREADS`, else every core) bounds
-the handle's later evaluations to that many native threads (values
+the handle's later evaluations to that many native threads, clamped to the
+threads the process may use (`loop_artifact::effective_threads`; values
 independent of the count).
 
 Runtime options from a TOML (`Runtime::set_options`, C

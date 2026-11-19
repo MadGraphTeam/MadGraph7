@@ -16,6 +16,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -95,6 +96,14 @@ REFUSALS = [
     ),
     ("[evaluation]\nprecision = 0", "evaluation.precision must be an integer positive"),
     ("[evaluation]\nprecision = 1.5", "evaluation.precision must be an integer"),
+    (
+        "[evaluation]\nprecision = 4294967296",
+        "evaluation.precision must be at most 4294967295; got 4294967296",
+    ),
+    (
+        "[evaluation.stability_checks]\nrotations = ['x:a:b']",
+        "evaluation.stability_checks: Invalid literal for Fraction: 'a'",
+    ),
     ("[evaluation]\nthreads = 0", "evaluation.threads must be an integer positive"),
     ("[evaluation]\nthreads = 'x'", "evaluation.threads must be an integer"),
     (
@@ -318,6 +327,7 @@ def test_the_sdk_applies_every_key_of_a_toml_and_reads_it_back(ggtt):  # noqa: F
                 "cross_backend": False,
             },
             "threads": 2,
+            "threads_requested": None,
         }
         assert len(state["stability_checks"]["rotations"]) == 1
         # Atomic: a TOML with one bad key changes nothing.
@@ -475,6 +485,7 @@ def test_python_takes_every_key_as_a_keyword_and_reads_it_back(ggtt):  # noqa: F
         "kinematics_improvement": "rescaling",
         "kinematics_improvement_binary64": True,
         "threads": 3,
+        "threads_requested": None,
         "poles": "all",
         "on_failure": "best-effort",
         "stability_checks": None,
@@ -541,7 +552,8 @@ for runtime in runtimes:
     # An extended carrier too: the kinematics improvement and the generic
     # reduction engines.
     runtime.evaluate([point] * 2, mu_r2=["1000000"] * 2, arithmetic="double-double")
-print(before, threads(), json.dumps([r.inspect()["runtime_options"]["threads"] for r in runtimes]))
+counts = [r.inspect()["runtime_options"]["threads"] for r in runtimes]
+print(before, threads(), json.dumps(counts))
 """
 
 
@@ -602,3 +614,209 @@ def test_the_example_runtime_options_file_reads_alike():
         assert native[name] == python[name], name
     assert native["stability_checks"]["rotation_count"] == 1
     assert python["stability_checks"] is not None
+
+
+# ------------------------------------------------------------ thread clamp
+
+HUGE = 9223372036854775807
+
+
+def test_a_huge_thread_count_is_clamped_to_the_usable_cores(ggtt):  # noqa: F811
+    """``threads`` above the cores the process may use is clamped, not
+    refused (the native ``effective_threads``): through the C entry point and
+    through Python the call returns at once with the effective count, and the
+    read-backs keep the requested one."""
+
+    from pyamplicol import Runtime
+
+    available = _native().effective_threads(HUGE)
+    assert 1 <= available <= len(os.sched_getaffinity(0))
+    sdk = _sdk_types(_sdk())
+    handle = _open(sdk, ggtt, f"[evaluation]\nthreads = {HUGE}\n")
+    try:
+        state = _state(sdk, handle)
+        assert (state["threads"], state["threads_requested"]) == (available, HUGE)
+        assert sdk.rusticol_virtual_set_threads(handle, 2**32 - 1) == 0, _error(sdk)
+        state = _state(sdk, handle)
+        assert (state["threads"], state["threads_requested"]) == (available, 2**32 - 1)
+        found = _evaluate(sdk, handle, _floats(POINTS), [float(s) for s in SCALES])
+        assert found["statuses"]
+        assert sdk.rusticol_virtual_set_threads(handle, 1) == 0
+        state = _state(sdk, handle)
+        assert (state["threads"], state["threads_requested"]) == (1, None)
+    finally:
+        sdk.rusticol_virtual_free(handle)
+    runtime = Runtime.load(ggtt, process="ggtt", threads=10**30)
+    record = runtime.inspect()["runtime_options"]
+    assert (record["threads"], record["threads_requested"]) == (available, 10**30)
+    runtime.evaluate(POINTS, mu_r2=SCALES)
+
+
+AFFINITY_SCRIPT = r"""
+import ctypes, json, os, sys
+from pyamplicol import Runtime
+from tests.unit.test_loop_v2_sdk_extras import _sdk
+from tests.unit.test_loop_v2_sdk_induced import _evaluate
+
+def threads():
+    with open("/proc/self/status") as status:
+        return int(next(l for l in status if l.startswith("Threads:")).split()[1])
+
+artifact, mode, count = sys.argv[1], sys.argv[2], int(sys.argv[3])
+point = [[180.91015625, 0, 0, 180.91015625], [180.91015625, 0, 0, -180.91015625],
+         [180.91015625, 0, 31.74609375, 42.328125],
+         [180.91015625, 0, -31.74609375, -42.328125]]
+before = threads()
+if mode == "python":
+    runtime = Runtime.load(artifact, process="ggtt", threads=count)
+    runtime.evaluate([[[str(c) for c in p] for p in point]] * 8, mu_r2=["1000000"] * 8)
+    record = runtime.inspect()["runtime_options"]
+    effective = record["threads"]
+else:
+    sdk = _sdk()
+    sdk.rusticol_virtual_open_with_options.argtypes = [ctypes.c_char_p] * 5 + [
+        ctypes.POINTER(ctypes.c_void_p)]
+    handle = ctypes.c_void_p()
+    toml = f"[evaluation]\nthreads = {count}\n".encode()
+    assert sdk.rusticol_virtual_open_with_options(
+        artifact.encode(), b"ggtt", None, None, toml, ctypes.byref(handle)) == 0
+    _evaluate(sdk, handle, [point] * 8, [1e6] * 8)
+    effective = None
+print(json.dumps([before, threads(), effective, len(os.sched_getaffinity(0))]))
+"""
+
+
+def _affinity_run(tmp_path, ggtt, mode, count, cores=None):  # noqa: F811
+    script = tmp_path / "affinity.py"
+    script.write_text(AFFINITY_SCRIPT)
+    command = [sys.executable, str(script), str(ggtt), mode, str(count)]
+    if cores is not None:
+        command = ["taskset", "-c", cores, *command]
+    run = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=900,
+        env={**os.environ, "RAYON_NUM_THREADS": "16"},
+        cwd=Path(__file__).resolve().parents[2],
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr[-4000:]
+    return json.loads(run.stdout.strip().splitlines()[-1])
+
+
+@pytest.mark.skipif(not Path("/proc/self/status").is_file(), reason="needs procfs")
+@pytest.mark.skipif(
+    len(os.sched_getaffinity(0)) < 2 or shutil.which("taskset") is None,
+    reason="needs two cores and taskset",
+)
+def test_threads_above_the_affinity_mask_give_its_cores(ggtt, tmp_path):  # noqa: F811
+    """Under ``taskset -c 0-1`` a runtime asking for 64 threads (and a
+    handle asking for 2^63-1) runs on 2: the read-back says 2 and the
+    threads alive after a binary64 call are at most the bound's pool
+    (with ``RAYON_NUM_THREADS=16``, unbounded pools would add 16)."""
+
+    first = sorted(os.sched_getaffinity(0))[:2]
+    cores = f"{first[0]},{first[1]}"
+    before, after, effective, mask = _affinity_run(tmp_path, ggtt, "python", 64, cores)
+    assert (effective, mask) == (2, 2)
+    assert after - before <= 2 * 2, (before, after)
+    before, after, _effective, mask = _affinity_run(tmp_path, ggtt, "sdk", HUGE, cores)
+    assert mask == 2
+    assert after - before <= 2 * 2, (before, after)
+
+
+@pytest.mark.skipif(not Path("/proc/self/status").is_file(), reason="needs procfs")
+def test_the_sdk_thread_bound_counted(ggtt, tmp_path):  # noqa: F811
+    """With ``RAYON_NUM_THREADS=16``, an SDK handle opened with ``threads =
+    1`` or ``2`` evaluates on its own pool of that size (the threads alive
+    after the call: at most the pool, no pool of 16)."""
+
+    for count in (1, 2):
+        before, after, _effective, _mask = _affinity_run(tmp_path, ggtt, "sdk", count)
+        assert 1 <= after - before <= count + 1, (count, before, after)
+
+
+def test_evaluate_threads_reaches_the_runtime(ggtt, monkeypatch, capsys):  # noqa: F811
+    """``pyamplicol evaluate ARTIFACT --threads 2``: the CLI loads the
+    runtime with ``threads=2`` (its read-back says 2)."""
+
+    from pyamplicol.api import services
+    from pyamplicol.cli.main import main
+
+    loaded = []
+    original = services.Runtime.load.__func__
+
+    def load(cls, *args, **kwargs):
+        runtime = original(cls, *args, **kwargs)
+        loaded.append(
+            (kwargs.get("threads"), runtime.inspect()["runtime_options"]["threads"])
+        )
+        return runtime
+
+    monkeypatch.setattr(services.Runtime, "load", classmethod(load))
+    code = main(
+        [
+            "evaluate",
+            str(ggtt),
+            "--process",
+            "ggtt",
+            "--threads",
+            "2",
+            "--mu-r2",
+            "1000000",
+            "--poles",
+            "none",
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+    assert code == 0
+    assert loaded == [(2, 2)]
+
+
+def test_a_tree_runtime_refuses_virtual_options_at_load():
+    """As the tree C API's ``rusticol_runtime_set_options``: a virtual call
+    option named in the TOML is refused, at load, by name; the kinematics
+    keys are a tree runtime's."""
+
+    import pyamplicol
+    from pyamplicol import Runtime
+    from pyamplicol.api.errors import CompatibilityError
+
+    tree = Path(pyamplicol.__file__).parent / "assets/selftest/portable-64le/artifact"
+    with pytest.raises(
+        CompatibilityError, match="poles are options of virtual runtimes"
+    ):
+        Runtime.load(tree, options="[evaluation]\npoles = 'all'\n")
+    runtime = Runtime.load(
+        tree, options="[evaluation]\nkinematics_improvement_binary64 = false\n"
+    )
+    assert runtime.contribution_kind == "tree"
+
+
+def test_a_mistyped_options_path_says_no_such_file(tmp_path):
+    from pyamplicol.config import ConfigurationError
+    from pyamplicol.config.runtime_options import read_runtime_options
+
+    with pytest.raises(ConfigurationError, match="No such file"):
+        read_runtime_options(str(tmp_path / "no" / "opts.toml"))
+    assert read_runtime_options("[evaluation]\nthreads = 2") == {"threads": 2}
+
+
+def test_inspect_gives_the_stability_checks_as_plain_data(ggtt):  # noqa: F811
+    from pyamplicol import Runtime
+
+    runtime = Runtime.load(
+        ggtt,
+        process="ggtt",
+        options="[evaluation.stability_checks]\nrotations = ['x:3/5:4/5']\n"
+        "reduction_direction = true\n",
+    )
+    record = runtime.inspect()["runtime_options"]["stability_checks"]
+    assert json.loads(json.dumps(record)) == record
+    assert record["reduction_direction"] is True and record["rescaled"] is False
+    (matrix,) = record["rotations"]
+    assert sorted(c for row in matrix for c in row) == sorted(
+        ["1", "0", "0", "0", "3/5", "-4/5", "0", "4/5", "3/5"]
+    )

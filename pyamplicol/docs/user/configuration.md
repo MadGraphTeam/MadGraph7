@@ -937,8 +937,11 @@ Rules, the same in every interface:
   `process`, `momenta`, `mu_r2`, `mu_r2_file`, `model_parameters`,
   `resolved`, `orders`, `correlated_requests`, `helicity_ids`,
   `color_flow_ids`, `[evaluation.stability]`, `[evaluation.phase_space]`)
-  are the inputs of a command-line run, not runtime settings: the SDK and
-  `Runtime.load(options=)` accept them and do not read them. The model
+  are the inputs of a command-line run, not runtime settings: the SDK
+  ignores them (accepted, not read, not checked); `Runtime.load(options=)`
+  reads the table with the run card's rules, so it checks them as a run card
+  always did (a bad value there is refused) and then uses only the runtime
+  options. The model
   parameters keep their own route (the parameters JSON at open and
   `rusticol_virtual_update_parameters`; Python `model_parameters=` and
   `set_model_parameters`), the scale is an input of each call (`mu_r2`).
@@ -948,8 +951,14 @@ Rules, the same in every interface:
   text too ("evaluation.poles must be one of 'all', 'none', 'uv', 'ir'; got
   'x'"). Python's configuration and the native reader
   (`rusticol_loop_reduction::runtime_options`) are held equal key by key
-  (`tests/unit/test_runtime_options.py`): the same keys, values, defaults and
-  refusal texts.
+  (`tests/unit/test_runtime_options.py`): the same keys, the same accepted
+  values and defaults, and the same texts for an unknown key and for a bad
+  value of a listed key. They are two TOML parsers: a TOML syntax error is
+  worded by each parser (Python's `tomllib`, the `toml` crate), a file with
+  several errors lists them in file order in Python and in key order in the
+  SDK, and the parsers' own limits differ (a UTF-8 byte-order mark is read by
+  the SDK only; a C string ends at its first NUL byte; very deep nesting is
+  refused by the `toml` crate).
 - A key absent keeps its setting (the default, or what was set before).
   `[evaluation.stability_checks]` given replaces the checks as a whole (its
   absent keys at their defaults; an empty table: no check).
@@ -975,7 +984,9 @@ Rules, the same in every interface:
 The tree C API (`rusticol_runtime_set_options`, `rusticol.h`) reads the same
 TOML; a tree runtime takes its two evaluation-time settings,
 `kinematics_improvement` and `kinematics_improvement_binary64`, and refuses
-the virtual runtimes' options by name.
+every virtual runtime option it names, by name (so a virtual run card is not
+accepted there). `Runtime.load(tree_artifact, options=)` does the same, at
+load.
 
 #### Threads
 
@@ -987,6 +998,19 @@ lane rescue's and the extended carriers' reductions included) runs on at most
 `N` workers. Unset (the default), nothing changes from before the option:
 rayon's rule, `RAYON_NUM_THREADS` when set, else every core of the process's
 affinity mask. Precedence: `threads` > `RAYON_NUM_THREADS` > every core.
+
+- A count above the cores the process may use is **clamped**, never
+  refused: the effective count is `min(threads, available)`, where
+  `available` is what an unset `threads` uses on this machine without
+  `RAYON_NUM_THREADS` (`std::thread::available_parallelism`: the affinity
+  mask, e.g. `taskset`, and the cgroup CPU quota). A run card written on a
+  large machine works on a small one, and no pool exceeds the usable cores.
+  One native rule computes it (`rusticol_core::loop_artifact::
+  effective_threads`) for the SDKs, the pools, the load and Python. The
+  read-backs show the effective count (`threads`) and, when the clamp
+  lowered it, the requested one (`threads_requested`; null otherwise):
+  `rusticol_virtual_options_json` and `Runtime.inspect()["runtime_options"]`.
+  0 and negative counts stay refused.
 
 - Values do not depend on the count: they are bitwise the same at 1, 2, 8 or
   every core.

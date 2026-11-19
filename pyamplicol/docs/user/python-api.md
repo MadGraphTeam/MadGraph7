@@ -292,10 +292,17 @@ load-time `stability=` policy). The run card's other `[evaluation]` keys
 (`momenta`, `mu_r2`, `model_parameters`, ...) are not read: the model
 parameters keep `model_parameters=` and `set_model_parameters`, the scale is
 each call's `mu_r2`. `inspect()["runtime_options"]` lists every setting in
-effect by its run-card name.
+effect by its run-card name, as plain data (the stability checks as
+`{"rotations": [exact matrices], "reduction_direction", "rescaled",
+"cross_backend"}` or None, as the SDKs' `options_json`); `threads` is the
+effective count and `threads_requested` the requested one when it was
+clamped. A tree runtime refuses, at load, every virtual option the TOML
+names. A one-line `options` string without `=` is a path (a mistyped path
+says that no such file exists).
 
 `threads=N` bounds every native thread pool of the runtime, its load and
-every evaluation in every carrier, to `N` workers; unset, rayon's rule
+every evaluation in every carrier, to `N` workers (clamped to the cores the
+process may use: [Configuration](configuration.md#threads)); unset, rayon's rule
 applies as before (`RAYON_NUM_THREADS`, else every core). The values do not
 depend on it, and each runtime keeps its own count. A tree runtime takes
 neither `threads` nor the virtual options (`CompatibilityError`).

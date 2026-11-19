@@ -449,8 +449,8 @@ reduction_unchecked = false
 lane_rescue = true
 # evaluation.threads: v2 virtuals: the native threads of the artifact's load
 # and of every evaluation (every native pool of the runtime at that many
-# threads; values do not depend on it). Default null: RAYON_NUM_THREADS, else
-# every core.
+# threads, clamped to the cores the process may use; values do not depend on
+# it). Default null: RAYON_NUM_THREADS, else every core.
 # threads = 4
 # evaluation.kinematics_improvement: the improvement of the input points to
 # exact energy-momentum conservation and exact on-shell externals, in each

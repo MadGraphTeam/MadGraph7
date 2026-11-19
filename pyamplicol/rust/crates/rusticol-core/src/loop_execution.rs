@@ -674,11 +674,15 @@ pub mod v2 {
     /// arbitrary-precision reduction builds Symbolica expressions on these
     /// workers: pyAmpliCol's library key unlocks them for their lifetime
     /// (`crate::licence`).
+    /// An executor's thread pool (built by [`V2Executor::pool_for`]).
+    pub type ExecutorPool = rayon::ThreadPool;
+
     fn executor_pool(threads: Option<usize>) -> RusticolResult<rayon::ThreadPool> {
         let mut builder =
             rayon::ThreadPoolBuilder::new().start_handler(|_| crate::licence::unlock_thread());
         if let Some(threads) = threads {
-            builder = builder.num_threads(threads.max(1));
+            // The bound, clamped to the threads the process may use.
+            builder = builder.num_threads(crate::loop_artifact::effective_threads(threads));
         }
         builder
             .build()
@@ -747,11 +751,31 @@ pub mod v2 {
         /// again at that size (a pool of the same size is kept). The values
         /// do not depend on the count.
         pub fn set_threads(&mut self, threads: Option<usize>) -> RusticolResult<()> {
-            let wanted = threads.map(|threads| threads.max(1));
-            if wanted != Some(self.pool.current_num_threads()) {
-                self.pool = executor_pool(threads)?;
+            if let Some(pool) = self.pool_for(threads)? {
+                self.pool = pool;
             }
             Ok(())
+        }
+
+        /// The pool [`Self::set_threads`] would install for `threads` (None:
+        /// this executor's pool already has that size), built and not
+        /// installed: a caller rebuilding several executors builds every
+        /// pool first and installs them only when all are built
+        /// ([`Self::set_pool`]).
+        pub fn pool_for(
+            &self,
+            threads: Option<usize>,
+        ) -> RusticolResult<Option<rayon::ThreadPool>> {
+            let wanted = threads.map(crate::loop_artifact::effective_threads);
+            if wanted == Some(self.pool.current_num_threads()) {
+                return Ok(None);
+            }
+            executor_pool(threads).map(Some)
+        }
+
+        /// Install a pool built by [`Self::pool_for`].
+        pub fn set_pool(&mut self, pool: rayon::ThreadPool) {
+            self.pool = pool;
         }
 
         /// The threads of this executor's pool.

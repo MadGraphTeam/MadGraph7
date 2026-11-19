@@ -1033,13 +1033,18 @@ status). A key absent keeps its setting; a setter called after the TOML
 overrides the key it sets. `rusticol_virtual_options_json(handle, ...)` (C++
 / Fortran / Rust `options_json`) returns the handle's settings, every key by
 its run-card name (`"precision"` null outside arbitrary precision,
-`"threads"` null for the default, the stability checks' rotations as exact
-matrices).
+`"threads"` the effective count, null for the default, `"threads_requested"`
+the count asked for when the clamp lowered it, the stability checks'
+rotations as exact matrices).
 
 `rusticol_virtual_set_threads(handle, threads)` (C++ `set_threads(n)`,
 Fortran `set_threads(n)`, Rust `set_threads(Option<u32>)`) bounds the
 handle's later evaluations to `threads` native threads (every executor of
-the handle, in every carrier); 0, the default, keeps rayon's rule
+the handle, in every carrier), clamped to the threads the process may use
+(the affinity mask and the cgroup quota: a larger count gives the usable
+cores, never an error; [Configuration](configuration.md#threads)); every new
+pool is built before any is installed, so a refused thread changes nothing;
+0, the default, keeps rayon's rule
 (`RAYON_NUM_THREADS`, else every core). The values do not depend on the
 count, and two handles keep their own counts. The load at open is bounded by
 the `threads` of the TOML given to `rusticol_virtual_open_with_options`
@@ -1047,8 +1052,9 @@ the `threads` of the TOML given to `rusticol_virtual_open_with_options`
 
 The tree C API reads the same TOML with `rusticol_runtime_set_options(handle,
 toml_text)` (C++ and Fortran `set_options`): a tree runtime takes
-`kinematics_improvement` and `kinematics_improvement_binary64` and refuses a
-virtual runtime's option by name, changing nothing. All these symbols are
+`kinematics_improvement` and `kinematics_improvement_binary64` and refuses
+every virtual runtime option it names, by name, changing nothing (a virtual
+run card is not accepted there). All these symbols are
 additive: `rusticol_virtual_abi_version` stays 2 and `RUSTICOL_ABI_VERSION`
 1 (the project's rule: additive symbols keep the version; the packaged UMAMI
 header is unchanged).

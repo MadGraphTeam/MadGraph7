@@ -1546,6 +1546,10 @@ class EvaluationPhaseSpaceConfig:
             )
 
 
+# The largest decimal digit count of a carrier (the native u32).
+_MAX_DIGITS = 2**32 - 1
+
+
 @dataclass(frozen=True, slots=True)
 class EvaluationConfig:
     artifact: Path | None = field(
@@ -1604,7 +1608,8 @@ class EvaluationConfig:
     # The native threads of the runtime's load and of its evaluations
     # (``Runtime.load(threads=)``, the CLI's ``--threads``, the SDKs'
     # ``rusticol_virtual_set_threads``; USER 2026-11-19): every native pool
-    # of the runtime at that many threads. None (the default): rayon's rule,
+    # of the runtime at that many threads, clamped to the cores the process
+    # may use (the native ``effective_threads``). None (the default): rayon's rule,
     # ``RAYON_NUM_THREADS`` else every core, as before the option.
     threads: int | None = field(default=None, metadata=_setting("int", nullable=True))
     # The kinematics improvement of the input points (m-lit lit-psimprove;
@@ -1646,6 +1651,13 @@ class EvaluationConfig:
             "precision",
             _optional_integer(self.precision, "evaluation.precision", minimum=1),
         )
+        if self.precision is not None and self.precision > _MAX_DIGITS:
+            # The native carriers' digit count is an unsigned 32-bit integer
+            # (the SDKs' and the runtime-options reader's limit, one text).
+            raise ConfigurationError(
+                f"evaluation.precision must be at most {_MAX_DIGITS}; "
+                f"got {self.precision}"
+            )
         if self.arithmetic is not None and (
             not isinstance(self.arithmetic, str)
             or self.arithmetic not in {"double", "double-double", "arbitrary"}

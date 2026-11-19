@@ -138,10 +138,6 @@ fn tirust_capabilities(bits: u32) -> Option<String> {
     })
 }
 
-/// The reduction-backend policy, the one definition of `"auto"` (m-lit
-/// DECISIONS 2026-11-07 21:50 R7; `rusticol_loop_reduction::reduction_policy`)
-/// as JSON: `{"backends", "carriers", "defaults": {kind: backend}, "routes":
-/// {key: {"serves", "backends", "auto"}}}`, which `loops.v2.reduction` reads.
 /// The runtime options of a TOML text (`rusticol_loop_reduction::
 /// runtime_options`, the native SDKs' reader) as JSON: every option of
 /// `KEYS` by its run-card name, null where the TOML does not give it, and
@@ -188,6 +184,19 @@ fn runtime_options(text: &str, keys: bool) -> PyResult<String> {
     .to_string())
 }
 
+/// The effective thread bound of a requested count
+/// (`rusticol_core::loop_artifact::effective_threads`: clamped to the threads
+/// this process may use, the affinity mask and the cgroup quota): the one
+/// rule the Python runtime, the native SDKs and the pools share.
+#[pyfunction]
+fn effective_threads(requested: usize) -> usize {
+    rusticol_core::loop_artifact::effective_threads(requested)
+}
+
+/// The reduction-backend policy, the one definition of `"auto"` (m-lit
+/// DECISIONS 2026-11-07 21:50 R7; `rusticol_loop_reduction::reduction_policy`)
+/// as JSON: `{"backends", "carriers", "defaults": {kind: backend}, "routes":
+/// {key: {"serves", "backends", "auto"}}}`, which `loops.v2.reduction` reads.
 #[pyfunction]
 fn reduction_policy() -> String {
     let _unlock = pyamplicol::unlock();
@@ -412,6 +421,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(tirust_capabilities, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_policy, module)?)?;
     module.add_function(wrap_pyfunction!(runtime_options, module)?)?;
+    module.add_function(wrap_pyfunction!(effective_threads, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_resolve, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_auto_default, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_text, module)?)?;

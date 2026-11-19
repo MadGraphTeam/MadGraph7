@@ -79,8 +79,15 @@ def read_runtime_options(source: RuntimeOptionsSource) -> dict[str, Any]:
 def _document(source: RuntimeOptionsSource) -> Mapping[str, object]:
     if isinstance(source, Mapping):
         return source
+    # A path: a PathLike, or one line without "=" that is not a table header
+    # (a TOML text with a setting has one; a mistyped path then says "no such
+    # file" instead of failing as TOML).
     if isinstance(source, os.PathLike) or (
-        isinstance(source, str) and "\n" not in source and Path(source).is_file()
+        isinstance(source, str)
+        and source.strip()
+        and "\n" not in source
+        and "=" not in source
+        and not source.lstrip().startswith("[")
     ):
         path = Path(os.fspath(source)).expanduser()
         try:

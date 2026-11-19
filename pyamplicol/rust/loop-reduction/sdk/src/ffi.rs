@@ -284,9 +284,10 @@ pub unsafe extern "C" fn rusticol_virtual_set_options(
     })
 }
 /// The native threads of the handle's later evaluations (the run card's
-/// `evaluation.threads`): at most `threads` workers; 0 (the default) is
-/// rayon's rule, `RAYON_NUM_THREADS` else every core. The values do not
-/// depend on the count.
+/// `evaluation.threads`): at most `threads` workers, clamped to the threads
+/// the process may use (`loop_artifact::effective_threads`); 0 (the default)
+/// is rayon's rule, `RAYON_NUM_THREADS` else every core. The values do not
+/// depend on the count; on an error nothing changes.
 ///
 /// # Safety
 ///

@@ -222,6 +222,24 @@ def _validate_progress(progress: ProgressSink | None) -> None:
         raise TypeError("progress must implement ProgressSink.emit(event)")
 
 
+def _checks_record(checks: object) -> dict[str, object] | None:
+    """Stability checks as plain data (``Runtime.inspect()["runtime_options"]``,
+    the SDKs' ``options_json`` form): each rotation by its exact matrix,
+    rows of rational texts."""
+
+    if not isinstance(checks, VirtualStabilityChecks):
+        return None
+    return {
+        "rotations": [
+            [[str(entry) for entry in row] for row in rotation.matrix]
+            for rotation in cast(tuple[Any, ...], checks.rotations)
+        ],
+        "reduction_direction": checks.reduction_direction,
+        "rescaled": checks.rescaled,
+        "cross_backend": checks.cross_backend,
+    }
+
+
 def _validate_threads(value: object) -> int:
     """A thread count (``Runtime.load(threads=)``): a positive integer."""
 
@@ -693,18 +711,23 @@ class Runtime:
             **loads,
         )
         runtime = backend if isinstance(backend, cls) else cls(backend)
-        if calls:
-            given_calls = {
+        if calls and not runtime._virtual:
+            # As the tree C API's rusticol_runtime_set_options: a virtual
+            # runtime's option named is refused, at load.
+            raise CompatibilityError(
+                ", ".join(calls) + " are options of virtual runtimes; a tree "
+                "runtime takes kinematics_improvement and "
+                "kinematics_improvement_binary64"
+            )
+        # The call options that differ from a call's own default.
+        runtime._call_defaults = MappingProxyType(
+            {
                 name: value
                 for name, value in calls.items()
                 if not (name == "poles" and value == "all")
                 and not (name == "stability_checks" and value is None)
             }
-            if given_calls and not runtime._virtual:
-                raise CompatibilityError(
-                    ", ".join(given_calls) + " are virtual options"
-                )
-            runtime._call_defaults = MappingProxyType(calls)
+        )
         return runtime
 
     @property
@@ -847,7 +870,7 @@ class Runtime:
                     or "all"
                 ),
                 "on_failure": calls.get("on_failure") or "best-effort",
-                "stability_checks": calls.get("stability_checks"),
+                "stability_checks": _checks_record(calls.get("stability_checks")),
             }
         return found
 

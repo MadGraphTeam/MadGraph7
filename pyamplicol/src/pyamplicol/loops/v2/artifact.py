@@ -1690,7 +1690,16 @@ class V2VirtualRuntime:
         # The native threads of the load and of every evaluation (None:
         # rayon's rule, RAYON_NUM_THREADS else every core): the admission's
         # decode and every executor's pool (``evaluation.threads``).
-        self._threads = None if threads is None else _threads(threads)
+        # A requested count is clamped to the threads the process may use
+        # (the native rule, ``effective_threads``: the affinity mask and the
+        # cgroup quota); ``_threads`` is the effective count.
+        self._threads_requested = None if threads is None else _threads(threads)
+        self._threads = (
+            None
+            if self._threads_requested is None
+            # (a count beyond the native integer is clamped anyway)
+            else int(native.effective_threads(min(self._threads_requested, 2**64 - 1)))
+        )
         admission = admit(native, root, process_id, self._threads)
         execution = _json_payload(manifest, f"processes/{process_id}/execution.json")
         physics = _json_payload(manifest, str(selected["physics_path"]))
@@ -1896,6 +1905,12 @@ class V2VirtualRuntime:
                 self._kinematics_binary64, kinematics.default_binary64()
             ),
             "threads": self._threads,
+            # The requested count when it was clamped (None otherwise).
+            "threads_requested": (
+                None
+                if self._threads_requested == self._threads
+                else self._threads_requested
+            ),
         }
 
     def _thread_options(self) -> dict[str, int]:

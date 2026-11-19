@@ -423,6 +423,10 @@ pub struct Runtime {
     /// The stability checks of later binary64 evaluations (none by default:
     /// no estimate, no extra cost; [`Runtime::set_stability_checks`]).
     checks: StabilityChecks,
+    /// The thread bound requested last ([`Runtime::set_threads`], the
+    /// options' `threads`; None: rayon's rule); the effective one is the
+    /// native runtime's (clamped to the threads the process may use).
+    threads_requested: Option<usize>,
     /// The kinematics improvement of later evaluations (m-lit
     /// lit-psimprove; [`Runtime::set_kinematics_improvement`]): the variant
     /// (None: "off"), MadLoop's default until set.
@@ -566,6 +570,7 @@ impl Runtime {
             checks: StabilityChecks::default(),
             kinematics: Some(kinematics_improvement::DEFAULT_VARIANT),
             kinematics_binary64: kinematics_improvement::DEFAULT_BINARY64,
+            threads_requested: threads,
             history_ids,
             spin_classes,
             observables,
@@ -639,13 +644,23 @@ impl Runtime {
     }
     /// The native threads of the later evaluations (the run card's
     /// `evaluation.threads`): every executor of the runtime runs on a pool
-    /// of at most `threads` workers; None (the default) is rayon's rule,
+    /// of at most `threads` workers, clamped to the threads the process may
+    /// use (`loop_artifact::effective_threads`: the affinity mask and the
+    /// cgroup quota); None (the default) is rayon's rule,
     /// `RAYON_NUM_THREADS` else every core. The values do not depend on it.
+    /// Every pool is built first: on an error nothing changes.
     pub fn set_threads(&mut self, threads: Option<usize>) -> RusticolResult<()> {
         let Engine::V4(native) = &mut self.engine;
-        native.set_threads(threads)
+        native.set_threads(threads)?;
+        self.threads_requested = threads;
+        Ok(())
     }
-    /// The thread bound of later evaluations (None: rayon's rule).
+    /// The requested thread bound when it was clamped (None otherwise).
+    pub fn threads_requested(&self) -> Option<usize> {
+        self.threads_requested
+            .filter(|requested| Some(*requested) != self.threads())
+    }
+    /// The effective thread bound of later evaluations (None: rayon's rule).
     pub fn threads(&self) -> Option<usize> {
         let Engine::V4(native) = &self.engine;
         native.threads()
@@ -765,6 +780,7 @@ impl Runtime {
                 "cross_backend": self.checks.cross_backend(),
             },
             "threads": self.threads(),
+            "threads_requested": self.threads_requested(),
         }))
         .map_err(|error| invalid(error.to_string()))
     }

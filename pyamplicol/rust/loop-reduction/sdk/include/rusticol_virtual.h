@@ -304,10 +304,15 @@ int rusticol_virtual_set_stability_checks(rusticol_virtual_handle *handle,
   uint32_t rescaled, uint32_t cross_backend);
 /* Native threads of later evaluations (the run card's evaluation.threads,
  * the Python API's Runtime.load(threads=); additive, ABI version 2 kept):
- * every executor of the handle runs on at most `threads` workers; 0, the
- * default, is rayon's rule (RAYON_NUM_THREADS, else every core). The values
- * do not depend on the count. Two handles keep their own counts. To bound
- * the load too, give the count at open (rusticol_virtual_open_with_options). */
+ * every executor of the handle runs on at most `threads` workers, clamped to
+ * the threads the process may use (std::thread::available_parallelism: the
+ * affinity mask and the cgroup quota; RAYON_NUM_THREADS is not read for the
+ * clamp), so a count above them gives the usable cores, never a refusal; 0,
+ * the default, is rayon's rule (RAYON_NUM_THREADS, else every core). The
+ * values do not depend on the count. Two handles keep their own counts.
+ * Every new pool is built first: if the system refuses a thread
+ * (RUSTICOL_VIRTUAL_RUNTIME_ERROR), nothing changes. To bound the load too,
+ * give the count at open (rusticol_virtual_open_with_options). */
 int rusticol_virtual_set_threads(rusticol_virtual_handle *handle,
   uint32_t threads);
 /* Runtime options of later evaluations from a TOML text (additive, ABI
@@ -318,7 +323,8 @@ int rusticol_virtual_set_threads(rusticol_virtual_handle *handle,
  * the digits given else 500; without one, 16 digits are binary64 and others
  * arbitrary precision), poles, on_failure, reduction, reduction_target,
  * reduction_unchecked, lane_rescue, kinematics_improvement,
- * kinematics_improvement_binary64, threads, and the table
+ * kinematics_improvement_binary64, threads (clamped as rusticol_virtual_set_threads),
+ * and the table
  * [evaluation.stability_checks] (rotations, rotation_count,
  * reduction_direction, rescaled; given, it replaces the checks as a whole,
  * rusticol_virtual_set_stability_checks without the cross-backend check).
@@ -346,8 +352,9 @@ int rusticol_virtual_open_with_options(const char *path, const char *process,
  * "on_failure", "reduction", "reduction_target", "reduction_unchecked",
  * "lane_rescue", "kinematics_improvement", "kinematics_improvement_binary64",
  * "stability_checks" {"rotations" (exact matrices, rows of rational texts),
- * "reduction_direction", "rescaled", "cross_backend"}, "threads" (null:
- * rayon's rule). */
+ * "reduction_direction", "rescaled", "cross_backend"}, "threads" (the
+ * effective count; null: rayon's rule) and "threads_requested" (the count
+ * asked for when the clamp lowered it, else null). */
 int rusticol_virtual_options_json(const rusticol_virtual_handle *handle,
   char *output, size_t capacity, size_t *needed);
 int rusticol_virtual_shape(const rusticol_virtual_handle *handle,

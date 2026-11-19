@@ -699,14 +699,35 @@ impl Runner {
         })
     }
 
-    /// Bound the runner's later work to `threads` threads (its executors'
-    /// pools built again at that size; [`V2Runtime::set_threads`]).
-    pub(crate) fn set_threads(&mut self, threads: Option<usize>) -> RusticolResult<()> {
-        self.threads = threads;
-        for executor in self.executors.values_mut() {
-            executor.set_threads(threads)?;
+    /// The pools the runner's executors need for `threads` threads, built
+    /// and not installed (`V2Runtime::set_threads`: every pool is built
+    /// first, so that a failure changes nothing).
+    pub(crate) fn prepare_threads(
+        &self,
+        threads: Option<usize>,
+    ) -> RusticolResult<Vec<(usize, rusticol_core::loop_execution::v2::ExecutorPool)>> {
+        let mut pools = Vec::new();
+        for (lanes, executor) in &self.executors {
+            if let Some(pool) = executor.pool_for(threads)? {
+                pools.push((*lanes, pool));
+            }
         }
-        Ok(())
+        Ok(pools)
+    }
+
+    /// Install the pools of [`Self::prepare_threads`] and the bound of the
+    /// executors formed later.
+    pub(crate) fn commit_threads(
+        &mut self,
+        threads: Option<usize>,
+        pools: Vec<(usize, rusticol_core::loop_execution::v2::ExecutorPool)>,
+    ) {
+        self.threads = threads;
+        for (lanes, pool) in pools {
+            if let Some(executor) = self.executors.get_mut(&lanes) {
+                executor.set_pool(pool);
+            }
+        }
     }
 
     fn executor(&mut self, lanes: usize) -> RusticolResult<&V2Executor> {
@@ -1246,6 +1267,8 @@ impl V2Runtime {
         threads: Option<usize>,
     ) -> RusticolResult<Self> {
         let path = path.as_ref().to_path_buf();
+        // The effective bound (clamped to the threads the process may use).
+        let threads = threads.map(rusticol_core::loop_artifact::effective_threads);
         rusticol_core::loop_artifact::on_load_threads(threads, || {
             Self::open_bounded(path, process, threads)
         })
@@ -1975,19 +1998,37 @@ impl V2Runtime {
     /// every executor of the runtime (the process's, its companion's, the
     /// observable column sets') are built again at that size, the ones
     /// formed later take it. The values do not depend on the count.
+    ///
+    /// A requested count is clamped to the threads the process may use
+    /// (`loop_artifact::effective_threads`); [`Self::threads`] is the
+    /// effective count. Every new pool is built before any is installed: on
+    /// an error (the system refusing threads) nothing changes.
     pub fn set_threads(&mut self, threads: Option<usize>) -> RusticolResult<()> {
+        let threads = threads.map(rusticol_core::loop_artifact::effective_threads);
+        let process = self.process.prepare_threads(threads)?;
+        let scaleless = self
+            .scaleless
+            .as_ref()
+            .map(|runner| runner.prepare_threads(threads))
+            .transpose()?;
+        let observables = self
+            .observables
+            .as_ref()
+            .map(|observables| observables.prepare_threads(threads))
+            .transpose()?;
         self.threads = threads;
-        self.process.set_threads(threads)?;
-        if let Some(scaleless) = &mut self.scaleless {
-            scaleless.set_threads(threads)?;
+        self.process.commit_threads(threads, process);
+        if let (Some(runner), Some(pools)) = (&mut self.scaleless, scaleless) {
+            runner.commit_threads(threads, pools);
         }
-        if let Some(observables) = &mut self.observables {
-            observables.set_threads(threads)?;
+        if let (Some(stored), Some(pools)) = (&mut self.observables, observables) {
+            stored.commit_threads(threads, pools);
         }
         Ok(())
     }
 
-    /// The thread bound of the following evaluations (None: rayon's default).
+    /// The effective thread bound of the following evaluations (None:
+    /// rayon's default).
     pub fn threads(&self) -> Option<usize> {
         self.threads
     }
