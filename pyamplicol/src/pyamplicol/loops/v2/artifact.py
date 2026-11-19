@@ -1866,6 +1866,38 @@ class V2VirtualRuntime:
             for item in self._metadata["sectors"]
         )
 
+    def _runtime_options(self) -> dict[str, object]:
+        """The load-time runtime options in effect (``inspect``)."""
+
+        from pyamplicol import kinematics
+
+        from .reduction import default_lane_rescue, default_target, default_unchecked
+
+        def given(value: object, default: object) -> object:
+            return default if value is None else value
+
+        return {
+            "arithmetic": self.default_arithmetic,
+            "precision": (
+                self.default_precision
+                if self.default_arithmetic == "arbitrary"
+                else None
+            ),
+            "reduction": self._reduction_request,
+            "reduction_target": given(self._reduction_target, default_target()),
+            "reduction_unchecked": given(
+                self._reduction_unchecked, default_unchecked()
+            ),
+            "lane_rescue": given(self._lane_rescue, default_lane_rescue()),
+            "kinematics_improvement": given(
+                self._kinematics_setting, kinematics.default_setting()
+            ),
+            "kinematics_improvement_binary64": given(
+                self._kinematics_binary64, kinematics.default_binary64()
+            ),
+            "threads": self._threads,
+        }
+
     def _thread_options(self) -> dict[str, int]:
         """The executors' thread bound (``threads=``; none: rayon's rule)."""
 
@@ -2218,6 +2250,10 @@ class V2VirtualRuntime:
                     # default, the per-type default of "auto" and what the
                     # native extension serves (backend -> carriers).
                     "reduction": self._reduction_summary(),
+                    # The load-time runtime options in effect (their
+                    # defaults where none was given; ``threads`` None:
+                    # rayon's rule); ``Runtime.inspect`` adds the call options.
+                    "runtime_options": self._runtime_options(),
                     **({} if self._colour_zero is None else self._colour_zero),
                     "parameter_overrides": dict(self._parameters),
                     "scale_input": "explicit positive mu_r2, scalar or per point",

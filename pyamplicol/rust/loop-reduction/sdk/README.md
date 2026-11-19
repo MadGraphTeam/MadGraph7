@@ -186,6 +186,22 @@ API's `lane_rescue=`: a reduction lane a backend refuses is reduced again in
 double-double, then arbitrary precision, from its binary64 coefficients
 (checked and unchecked mode); 0 leaves it to fail its point; each result
 records `"lane_rescue"` in its `"reduction"` diagnostics.
+`rusticol_virtual_set_threads(handle, threads)` (C++ / Fortran / Rust
+`set_threads`; 0 by default: `RAYON_NUM_THREADS`, else every core) bounds
+the handle's later evaluations to that many native threads (values
+independent of the count).
+
+Runtime options from a TOML (`Runtime::set_options`, C
+`rusticol_virtual_set_options(handle, toml_text)`; at open, the load bounded
+by its `threads`: `Runtime::open_with_options`, C
+`rusticol_virtual_open_with_options`): the run card's `[evaluation]` table
+(a full run card is accepted; only its runtime options are read), read by
+`rusticol_loop_reduction::runtime_options` with the run card's values and
+refusal texts, every key checked first and then applied through the same
+settings as the setters above (nothing changes on an error; a setter called
+afterwards overrides its key). `Runtime::options_json` (C
+`rusticol_virtual_options_json`) reads the settings back. The keys and their
+setters: `docs/user/configuration.md`, "Runtime options".
 
 The ordinary package builds the tree and virtual APIs into one
 `librusticol_capi.a`. Its existing `_sdk` bundle carries the virtual C/C++ headers,

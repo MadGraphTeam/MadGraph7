@@ -1008,6 +1008,51 @@ error). Points the configured alternatives accept are evaluated exactly as
 before; a call whose points are all accepted only appends the policy's
 empty records to its diagnostics. Additive symbols, ABI version 2 kept.
 
+### Runtime options and threads
+
+Every runtime setting above can also be given together, as a runtime-options
+TOML (its `[evaluation]` table; a full run card works: its other tables and
+the `[evaluation]` keys that are inputs of a command-line run, such as
+`momenta`, `process`, `mu_r2` or `model_parameters`, are not read):
+`rusticol_virtual_set_options(handle, toml_text)` (C++ `set_options(text)`
+and `set_options_file(path)`, Fortran `set_options(text)`, the packaged Rust
+wrapper's `set_options(&str)` and `set_options_file(path)`) and
+`rusticol_virtual_open_with_options(path, process, parameters_json,
+r2_strategy, toml_text, &handle)` (C++ `VirtualRuntime::with_options(path,
+text, ...)`, Fortran `load(..., options_toml=text)`, Rust
+`Runtime::open_with_options`). The keys, their setters and their Python and
+CLI spellings are tabulated in
+[Configuration](configuration.md#runtime-options); they are read with the
+run card's values and refusal texts by one native reader
+(`rusticol_loop_reduction::runtime_options`). Every key is checked first, as
+its setter checks it, and then all are applied: on an error nothing changes
+and `rusticol_virtual_last_error_message` names the key
+(`RUSTICOL_VIRTUAL_INVALID_ARGUMENT` for an unknown key or a bad value; a
+setting the process or the library does not serve fails with its setter's
+status). A key absent keeps its setting; a setter called after the TOML
+overrides the key it sets. `rusticol_virtual_options_json(handle, ...)` (C++
+/ Fortran / Rust `options_json`) returns the handle's settings, every key by
+its run-card name (`"precision"` null outside arbitrary precision,
+`"threads"` null for the default, the stability checks' rotations as exact
+matrices).
+
+`rusticol_virtual_set_threads(handle, threads)` (C++ `set_threads(n)`,
+Fortran `set_threads(n)`, Rust `set_threads(Option<u32>)`) bounds the
+handle's later evaluations to `threads` native threads (every executor of
+the handle, in every carrier); 0, the default, keeps rayon's rule
+(`RAYON_NUM_THREADS`, else every core). The values do not depend on the
+count, and two handles keep their own counts. The load at open is bounded by
+the `threads` of the TOML given to `rusticol_virtual_open_with_options`
+(else `RAYON_NUM_THREADS`, else every core).
+
+The tree C API reads the same TOML with `rusticol_runtime_set_options(handle,
+toml_text)` (C++ and Fortran `set_options`): a tree runtime takes
+`kinematics_improvement` and `kinematics_improvement_binary64` and refuses a
+virtual runtime's option by name, changing nothing. All these symbols are
+additive: `rusticol_virtual_abi_version` stays 2 and `RUSTICOL_ABI_VERSION`
+1 (the project's rule: additive symbols keep the version; the packaged UMAMI
+header is unchanged).
+
 ## Common setup failures
 
 | Symptom | Resolution |

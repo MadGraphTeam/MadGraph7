@@ -90,6 +90,12 @@ These three showcase cards print colorized terminal tables by default. Add
 | `loop_gg_epemmpmm_profile.toml` | Loop-induced: time per point and per stage on both reduction backends; `--stability` for the stable-digit statistics |
 | `all_options.toml` | Every current schema field, active and commented |
 
+A runtime-options file (`data/runtime_options.toml`) holds only an
+`[evaluation]` table: the runtime settings of a loaded loop runtime, read by
+the CLI (`--card`), Python (`Runtime.load(..., options=)`) and the native SDKs
+(`rusticol_virtual_set_options`) alike (`docs/user/configuration.md`, "Runtime
+options").
+
 ## Generate Pure Gluons With Adjoint FFT
 
 This is the primary FFT example for certified pure Yang–Mills trees; the card

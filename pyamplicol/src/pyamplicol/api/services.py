@@ -834,7 +834,22 @@ class Runtime:
         result = operation()
         if not isinstance(result, Mapping):
             raise EvaluationError("runtime backend returned invalid runtime inspection")
-        return dict(result)
+        found = dict(result)
+        if isinstance(found.get("runtime_options"), Mapping):
+            # The call options of the runtime options (``Runtime.load(
+            # options=)``): what a call that names none uses.
+            calls = self._call_defaults
+            found["runtime_options"] = {
+                **found["runtime_options"],
+                "poles": str(
+                    getattr(calls.get("poles"), "value", None)
+                    or calls.get("poles")
+                    or "all"
+                ),
+                "on_failure": calls.get("on_failure") or "best-effort",
+                "stability_checks": calls.get("stability_checks"),
+            }
+        return found
 
     def export_recurrence(
         self,
