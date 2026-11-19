@@ -8,6 +8,8 @@ import struct
 from collections.abc import Sequence
 from hashlib import sha256
 
+import numpy as np
+
 from pyamplicol.color import (
     ColorContractionEntry,
     ColorContractionPlan,
@@ -125,19 +127,10 @@ def encode_recurrence_color_contraction(
         raise RecurrenceColorCodecError(
             "sector_count and component_count must be positive"
         )
-    ordered_groups = tuple(
-        _checked_u32("ordered group ID", value) for value in ordered_group_ids
-    )
-    destinations = tuple(
-        _checked_u32("Direct-Arena destination ID", value)
-        for value in destination_by_group
-    )
-    sectors = tuple(
-        _checked_u32("group sector ID", value) for value in group_sector_ids
-    )
-    components = tuple(
-        _checked_u32("group component ID", value) for value in group_component_ids
-    )
+    ordered_groups = _u32_array("ordered group ID", ordered_group_ids)
+    destinations = _u32_array("Direct-Arena destination ID", destination_by_group)
+    sectors = _u32_array("group sector ID", group_sector_ids)
+    components = _u32_array("group component ID", group_component_ids)
     owners = tuple(
         _checked_u32("physical sector owner ID", value) for value in sector_owner_ids
     )
@@ -148,7 +141,7 @@ def encode_recurrence_color_contraction(
         raise RecurrenceColorCodecError(
             "ordered group map count does not match group_count"
         )
-    if sorted(ordered_groups) != list(range(group_count)):
+    if not _is_permutation(ordered_groups):
         raise RecurrenceColorCodecError(
             "ordered group map is not a permutation of all group IDs"
         )
@@ -156,11 +149,11 @@ def encode_recurrence_color_contraction(
         raise RecurrenceColorCodecError(
             "destination map count does not match group_count"
         )
-    if len(set(destinations)) != len(destinations):
+    if len(sorted_unique(destinations)) != len(destinations):
         raise RecurrenceColorCodecError(
             "destination map contains duplicate Direct-Arena destinations"
         )
-    if any(value >= destination_count for value in destinations):
+    if destinations.size and int(destinations.max()) >= destination_count:
         raise RecurrenceColorCodecError(
             "destination map references an out-of-bounds Direct-Arena destination"
         )
@@ -174,7 +167,7 @@ def encode_recurrence_color_contraction(
     _validate_sector_owners(
         sector_count=sector_count,
         owner_by_sector=owners,
-        active_sector_ids=set(sectors),
+        active_sector_ids=set(sorted_unique(sectors).tolist()),
     )
 
     flags = _FLAG_INCLUDES_COLOR_FACTOR if plan.includes_color_factor else 0
@@ -215,24 +208,23 @@ def encode_recurrence_color_contraction(
             raise RecurrenceColorCodecError(
                 "repeated component_count does not match the explicit component_count"
             )
-        repeated_group_map = tuple(
-            _checked_u32("repeated component group ID", value)
-            for value in repeated.component_group_ids
+        repeated_group_map = _u32_array(
+            "repeated component group ID", repeated.component_group_ids
         )
         if len(repeated_group_map) != group_count:
             raise RecurrenceColorCodecError(
                 "repeated group map count does not match group_count"
             )
-        if repeated_group_map != ordered_groups:
+        if not np.array_equal(repeated_group_map, ordered_groups):
             raise RecurrenceColorCodecError(
                 "ordered group map does not match repeated local-color-major/"
                 "component-minor storage"
             )
-        if len(set(repeated_group_map)) != len(repeated_group_map):
+        if len(sorted_unique(repeated_group_map)) != len(repeated_group_map):
             raise RecurrenceColorCodecError(
                 "repeated group map contains duplicate group IDs"
             )
-        if any(value >= group_count for value in repeated_group_map):
+        if repeated_group_map.size and int(repeated_group_map.max()) >= group_count:
             raise RecurrenceColorCodecError(
                 "repeated group map references an out-of-bounds group"
             )
@@ -279,11 +271,10 @@ def encode_recurrence_color_contraction(
                 "symmetric-group component_count does not match the explicit "
                 "component_count"
             )
-        symmetric_group_map = tuple(
-            _checked_u32("symmetric-group component group ID", value)
-            for value in symmetric_group.component_group_ids
+        symmetric_group_map = _u32_array(
+            "symmetric-group component group ID", symmetric_group.component_group_ids
         )
-        if symmetric_group_map != ordered_groups:
+        if not np.array_equal(symmetric_group_map, ordered_groups):
             raise RecurrenceColorCodecError(
                 "ordered group map does not match symmetric-group local-color-major/"
                 "component-minor storage"
@@ -312,8 +303,7 @@ def encode_recurrence_color_contraction(
             local_group_count=local_group_count,
         )
         local_sector_ids = tuple(
-            sectors[symmetric_group_map[index * component_count]]
-            for index in range(local_group_count)
+            sectors[symmetric_group_map[::component_count][:local_group_count]].tolist()
         )
         if local_sector_ids != symmetric_group.local_sector_ids:
             raise RecurrenceColorCodecError(
@@ -420,18 +410,10 @@ def encode_recurrence_color_contraction(
         offset += _ENTRY.size
     for factor in exact_catalog:
         offset = _pack_exact_factor(output, offset, factor)
-    for value in ordered_groups:
-        _U32.pack_into(output, offset, value)
-        offset += _U32.size
-    for value in destinations:
-        _U32.pack_into(output, offset, value)
-        offset += _U32.size
-    for value in sectors:
-        _U32.pack_into(output, offset, value)
-        offset += _U32.size
-    for value in components:
-        _U32.pack_into(output, offset, value)
-        offset += _U32.size
+    for group_map in (ordered_groups, destinations, sectors, components):
+        packed = group_map.astype("<u4").tobytes()
+        output[offset : offset + len(packed)] = packed
+        offset += len(packed)
     for value in owners:
         _U32.pack_into(output, offset, value)
         offset += _U32.size
@@ -563,23 +545,25 @@ def _validate_group_coordinates(
     group_count: int,
     sector_count: int,
     component_count: int,
-    group_sector_ids: Sequence[int],
-    group_component_ids: Sequence[int],
+    group_sector_ids: np.ndarray,
+    group_component_ids: np.ndarray,
 ) -> None:
     if len(group_sector_ids) != group_count or len(group_component_ids) != group_count:
         raise RecurrenceColorCodecError(
             "group coordinate map count does not match group_count"
         )
-    if any(value >= sector_count for value in group_sector_ids):
+    if group_count and int(group_sector_ids.max()) >= sector_count:
         raise RecurrenceColorCodecError(
             "group sector map references an out-of-bounds physical sector"
         )
-    if any(value >= component_count for value in group_component_ids):
+    if group_count and int(group_component_ids.max()) >= component_count:
         raise RecurrenceColorCodecError(
             "group component map references an out-of-bounds resolved component"
         )
-    coordinates = tuple(zip(group_sector_ids, group_component_ids, strict=True))
-    if len(set(coordinates)) != group_count:
+    coordinates = group_sector_ids.astype(np.uint64) * np.uint64(
+        component_count
+    ) + group_component_ids.astype(np.uint64)
+    if len(sorted_unique(coordinates)) != group_count:
         raise RecurrenceColorCodecError(
             "group coordinate maps contain a duplicate sector/component pair"
         )
@@ -622,27 +606,28 @@ def _validate_sector_owners(
 
 def _validate_repeated_group_coordinates(
     *,
-    ordered_group_ids: Sequence[int],
-    group_sector_ids: Sequence[int],
-    group_component_ids: Sequence[int],
+    ordered_group_ids: np.ndarray,
+    group_sector_ids: np.ndarray,
+    group_component_ids: np.ndarray,
     sector_count: int,
     component_count: int,
     local_group_count: int,
 ) -> None:
-    row_sectors: list[int] = []
-    for local_group_id in range(local_group_count):
-        start = local_group_id * component_count
-        row = ordered_group_ids[start : start + component_count]
-        sectors = {group_sector_ids[group_id] for group_id in row}
-        components = tuple(group_component_ids[group_id] for group_id in row)
-        if len(sectors) != 1 or components != tuple(range(component_count)):
-            raise RecurrenceColorCodecError(
-                "repeated local color row does not cover one physical sector "
-                "and every component exactly once"
-            )
-        row_sectors.append(next(iter(sectors)))
-    if len(set(row_sectors)) != len(row_sectors) or any(
-        sector_id >= sector_count for sector_id in row_sectors
+    rows = ordered_group_ids[: local_group_count * component_count].reshape(
+        local_group_count, component_count
+    )
+    row_sector_matrix = group_sector_ids[rows]
+    if (
+        not (row_sector_matrix == row_sector_matrix[:, :1]).all()
+        or not (group_component_ids[rows] == np.arange(component_count)).all()
+    ):
+        raise RecurrenceColorCodecError(
+            "repeated local color row does not cover one physical sector "
+            "and every component exactly once"
+        )
+    row_sectors = row_sector_matrix[:, 0]
+    if len(sorted_unique(row_sectors)) != len(row_sectors) or (
+        row_sectors.size and int(row_sectors.max()) >= sector_count
     ):
         raise RecurrenceColorCodecError(
             "repeated local color rows do not identify unique physical sectors"
@@ -909,6 +894,40 @@ def _validate_walsh_invariance(
                             "factorization cosets are inconsistent with the "
                             "canonical color matrix"
                         )
+
+
+def _u32_array(label: str, values: Sequence[int] | np.ndarray) -> np.ndarray:
+    """``_checked_u32`` over a whole map, vectorised for integer arrays and ints."""
+
+    if isinstance(values, np.ndarray):
+        if values.ndim == 1 and values.dtype.kind in "iu":
+            if values.size and (values.min() < 0 or values.max() > 0xFFFF_FFFF):
+                raise RecurrenceColorCodecError(f"{label} exceeds the u32 domain")
+            return values.astype(np.int64, copy=False)
+    elif isinstance(values, (tuple, list)) and set(map(type, values)) <= {int}:
+        try:
+            array = np.array(values, dtype=np.int64)
+        except OverflowError:
+            pass
+        else:
+            if array.size and (array.min() < 0 or array.max() > 0xFFFF_FFFF):
+                raise RecurrenceColorCodecError(f"{label} exceeds the u32 domain")
+            return array
+    return np.array([_checked_u32(label, value) for value in values], dtype=np.int64)
+
+
+def sorted_unique(values: np.ndarray) -> np.ndarray:
+    """``np.unique`` by sorting (numpy's hash-based unique is ~10x slower here)."""
+
+    ordered = np.sort(values)
+    if len(ordered) < 2:
+        return ordered
+    return ordered[np.concatenate(([True], ordered[1:] != ordered[:-1]))]
+
+
+def _is_permutation(values: np.ndarray) -> bool:
+    identity = np.arange(len(values))
+    return np.array_equal(values, identity) or np.array_equal(np.sort(values), identity)
 
 
 def _checked_u32(label: str, value: int) -> int:
