@@ -360,7 +360,7 @@ family at runtime and therefore ignores this materialized-layout setting.
 
 ## Validation and current reuse
 
-Generation has three distinct checks; they should not be confused:
+Generation has four distinct checks; they should not be confused:
 
 1. **Artifact writing** always validates the schema, confined references,
    declared payload sizes, and digests.
@@ -370,13 +370,31 @@ Generation has three distinct checks; they should not be confused:
    [application restrictions](configuration.md#numerical-current-reuse).
 3. **Post-build validation** optionally reopens the completed artifact and
    compares native f64 optimized and resolved evaluation.
+4. **Loop-induced probes** optionally check every loop-induced process at
+   one point. They test that its poles vanish, that it satisfies the Ward
+   identity of each external gluon and photon, and, in a 't Hooft-Feynman
+   gauge request, the Goldstone-equivalence identity. They run in binary64,
+   with double-double only for a probe that fails or is refused in binary64.
+   A failure refuses the process
+   ([details](configuration.md)).
 
-Post-build validation is off by default because it does not change the written
-artifact and can be disproportionately expensive for large resolved axes.
-Enable it when an immediate runtime smoke is useful:
+Post-build validation and the loop-induced probes are off by default for the
+same reason: neither changes the written artifact (the loop-induced plan and
+its values are bitwise the same with and without the probes). Post-build
+validation can also be disproportionately expensive for large resolved axes,
+and the probes cost up to a few generations of the process. Enable post-build
+validation when an immediate runtime smoke is useful:
 
 ```console
 pyamplicol generate ... --post-build-validation
+```
+
+Enable the loop-induced probes when you generate from a new or edited loop UFO:
+they catch a missing or wrong R2 vertex (which changes only the finite part),
+a missing loop family, and wrong Goldstone-side vertices or counterterms:
+
+```console
+pyamplicol generate ... --loop-induced-probes
 ```
 
 Ordinary generation validation defaults to two deterministic samples. Current
@@ -423,6 +441,32 @@ pyamplicol generate --card otf_pp_zjj.toml
 python python/otf_pp_zjj_warm_up.py
 pyamplicol profile --card otf_pp_zjj.toml
 ```
+
+## One-loop generation: the model preparation
+
+Before it builds any tree or loop, a one-loop generation prepares the model of
+each request: the restriction card, the exact Laurent program of every
+parameter, counterterm parameter and coupling (about 2,100 declarations on the
+full QCD+QED UFO `loop_qcd_qed_sm_Gmu`), the covariant structure and the
+counterterm model its coupling orders admit. A generation forms the program
+once per model and the rest once per distinct set of order bounds and fixed
+parameters, shared by the loop-order inference of a loop-induced process,
+every process, the dry run and the optional generation-time probes. The
+program is also kept in a persistent per-user cache
+(`[model] loop_preparation_cache`, on by default;
+[details](configuration.md#model-caches-and-the-one-loop-preparation-cache)):
+the first generation of a model fills it, later ones read it. A dry run fills it
+too, but only when the compiled model is already cached (a dry run never
+compiles a UFO or JSON model; a first generation compiles it). On
+`e+ e- > g g g` with `loop_qcd_qed_sm_Gmu` the whole public generation takes
+about 50 s with the cache empty or off and about 45 s with it filled, against
+about 94 s before the preparation was shared; its model preparation (two
+preparations: the loop-order inference and the process) takes about 15 s,
+13 s filled, against 59 s before (medians of three runs on one core of a
+loaded host, the compiled model cached in every case). Most of what remains
+is the process's own generation (trees, loop families, the kernel catalogue,
+the export), which no model-level cache can prepare. The cache changes no
+artifact byte.
 
 ## Decision guide
 

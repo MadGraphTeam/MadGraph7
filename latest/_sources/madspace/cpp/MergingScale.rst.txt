@@ -1,0 +1,6 @@
+MergingScale
+============
+
+.. doxygenclass:: madspace::MergingScale
+   :members:
+   :undoc-members:

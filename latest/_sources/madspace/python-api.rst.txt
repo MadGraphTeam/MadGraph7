@@ -65,6 +65,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    python/MadnisLoss
    python/MappingChannelWeights
    python/MatrixElement
+   python/MergingScale
    python/MomentumPreprocessing
    python/MultiChannelFunction
    python/MultiChannelIntegrand
@@ -89,6 +90,8 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    python/AlphaSGrid
    python/BeamstrahlungParameters
    python/BeamstrahlungSampler
+   python/ClusteringClass
+   python/ClusteringLine
    python/CustomPdf
    python/Decay
    python/Diagram
@@ -198,6 +201,7 @@ Lower-level helpers and containers.
    :maxdepth: 1
 
    python/BeamstrahlungQTerm
+   python/MergingCut
    python/NamedTypes
    python/NamedValues
    python/PythonFunction

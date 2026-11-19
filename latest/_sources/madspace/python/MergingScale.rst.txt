@@ -1,0 +1,7 @@
+MergingScale
+============
+
+.. autoclass:: madspace.MergingScale
+   :members:
+   :undoc-members:
+   :show-inheritance:

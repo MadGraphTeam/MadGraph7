@@ -1,0 +1,6 @@
+ClusteringLine
+==============
+
+.. doxygenstruct:: madspace::ClusteringLine
+   :members:
+   :undoc-members:

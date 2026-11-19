@@ -1,0 +1,7 @@
+ClusteringLine
+==============
+
+.. autoclass:: madspace.ClusteringLine
+   :members:
+   :undoc-members:
+   :show-inheritance:

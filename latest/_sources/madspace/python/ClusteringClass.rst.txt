@@ -1,0 +1,7 @@
+ClusteringClass
+===============
+
+.. autoclass:: madspace.ClusteringClass
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Conventions for spin- and colour-correlated Born quantities" href="correlator-conventions.html"><link rel="prev" title="UMAMI and MadSpace" href="user/umami-api.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Conventions for spin- and colour-correlated Born quantities" href="correlator-conventions.html"><link rel="prev" title="Resolved recurrence export" href="reference/recurrence-export.html">
         <link rel="canonical" href="https://docs.madgraph.org/latest/pyamplicol/correlators.html">
         <link rel="prefetch" href="../_static/logo-light.png" as="image">
         <link rel="prefetch" href="../_static/logo-dark.png" as="image">
@@ -284,6 +284,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../custom_functions.html">Custom functions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../diagram_filters.html">Diagram filters</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gridpacks.html">Gridpacks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../cluster.html">Cluster mode</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../event_stream.html">Streaming events from Python</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../madevent_to_mg7.html">Coming from MadEvent</a></li>
 </ul>
@@ -348,6 +349,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/MappingChannelWeights.html">MappingChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/MatrixElement.html">MatrixElement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../madspace/python/MergingScale.html">MergingScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/MultiChannelFunction.html">MultiChannelFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
@@ -363,6 +365,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/AlphaSGrid.html">AlphaSGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/BeamstrahlungParameters.html">BeamstrahlungParameters</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/BeamstrahlungSampler.html">BeamstrahlungSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../madspace/python/ClusteringClass.html">ClusteringClass</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../madspace/python/ClusteringLine.html">ClusteringLine</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/Decay.html">Decay</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/Diagram.html">Diagram</a></li>
@@ -445,6 +449,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/weighting_groups_from_json.html">weighting_groups_from_json</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/weighting_groups_to_json.html">weighting_groups_to_json</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/BeamstrahlungQTerm.html">BeamstrahlungQTerm</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../madspace/python/MergingCut.html">MergingCut</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/NamedTypes.html">NamedTypes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/NamedValues.html">NamedValues</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/python/PythonFunction.html">PythonFunction</a></li>
@@ -498,6 +503,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/MadnisLoss.html">MadnisLoss</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/MappingChannelWeights.html">MappingChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/MatrixElement.html">MatrixElement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/MergingScale.html">MergingScale</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/MultiChannelFunction.html">MultiChannelFunction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
@@ -514,6 +520,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/AlphaSGrid.html">AlphaSGrid</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/BeamstrahlungParameters.html">BeamstrahlungParameters</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/BeamstrahlungSampler.html">BeamstrahlungSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/ClusteringClass.html">ClusteringClass</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/ClusteringLine.html">ClusteringLine</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/CustomPdf.html">CustomPdf</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/Diagram.html">Diagram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../madspace/cpp/LeptonSHatResult.html">LeptonSHatResult</a></li>
@@ -652,6 +660,7 @@
 <li class="toctree-l2"><a class="reference internal" href="user/native-apis.html">Native APIs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user/artifacts-and-portability.html">Artifacts and Portability</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user/umami-api.html">UMAMI and MadSpace</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reference/recurrence-export.html">Resolved recurrence export</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Tree-level spin and colour correlations</a></li>
 <li class="toctree-l2"><a class="reference internal" href="correlator-conventions.html">Conventions for spin- and colour-correlated Born quantities</a></li>
 </ul>
@@ -732,7 +741,12 @@ It is not restricted to NLO or NNLO. This is <strong>not</strong> a complete sub
 loop amplitudes, kinematic splitting kernels, integrated counterterms, or
 extra-dimensional spin components are supplied.</p>
 <p>The correlated path supports <strong>LC, NLC and full colour</strong> through Python and
-the native C/C++/Fortran/Rust SDKs, with the approximation selected at generation. It retains the
+the native C/C++/Fortran/Rust SDKs, with the approximation selected at generation.
+The strict accuracies <code class="docutils literal notranslate"><span class="pre">strict-lc</span></code> and <code class="docutils literal notranslate"><span class="pre">strict-nlc</span></code> (the formal 1/N_c expansion,
+<a class="reference internal" href="correlator-conventions.html#strict-colour-the-formal-1nc-expansion"><span class="std std-ref">Correlation Conventions</span></a>)
+are graded: <code class="docutils literal notranslate"><span class="pre">Runtime.evaluate_correlated_graded</span></code> and the Rust
+<code class="docutils literal notranslate"><span class="pre">NativeRuntime::evaluate_correlated_graded_f64</span></code> split each correlation by N_c
+degree, as does full colour generated with <code class="docutils literal notranslate"><span class="pre">color.graded</span> <span class="pre">=</span> <span class="pre">true</span></code>. It retains the
 complete colour basis and uses direct contraction. Ordinary uncorrelated
 generation and evaluation are unchanged.</p>
 <section id="generate-and-evaluate">
@@ -891,7 +905,10 @@ that are rounded when entering DoubleFloat, not when defining the vector.
 Both modes return <code class="docutils literal notranslate"><span class="pre">Decimal</span></code> real/imaginary parts. Supply <code class="docutils literal notranslate"><span class="pre">Decimal</span></code> momenta as
 well when kinematic input accuracy beyond binary64 is needed. Native SDK
 correlated calls are binary64 only; the Python arithmetic selection does not
-change their numerical type.</p>
+change their numerical type. A Rust program linking <code class="docutils literal notranslate"><span class="pre">rusticol-core</span></code> with its
+<code class="docutils literal notranslate"><span class="pre">symbolica-runtime</span></code> feature can also evaluate correlations natively in
+double-double and arbitrary precision
+(<a class="reference internal" href="user/native-apis.html#correlated-born-evaluations"><span class="std std-ref">Native APIs</span></a>).</p>
 <p>The nonempty set of supplied legs must match a declared class <strong>exactly</strong>.
 Here <code class="docutils literal notranslate"><span class="pre">{3}</span></code> and <code class="docutils literal notranslate"><span class="pre">{3,</span> <span class="pre">4}</span></code> are allowed, but <code class="docutils literal notranslate"><span class="pre">{4}</span></code> is not. Every declared leg must
 be a spin-1 source with four components. Batch lengths must match the number
@@ -1055,16 +1072,20 @@ closed basis.</p>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">CorrelatorConfig.to_json_dict()</span></code> and <code class="docutils literal notranslate"><span class="pre">from_json_dict()</span></code> use this same schema.
-A splitting step uses <code class="docutils literal notranslate"><span class="pre">{&quot;kind&quot;:</span> <span class="pre">&quot;split-gluon&quot;,</span> <span class="pre">&quot;parent&quot;:</span> <span class="pre">-1,</span> <span class="pre">&quot;quark&quot;:</span> <span class="pre">-2,</span> <span class="pre">&quot;antiquark&quot;:</span> <span class="pre">-3}</span></code>. The CLI option prepares the artifact;
-numerical vector setting and correlated evaluation use Python or the native
-SDKs rather than the CLI <code class="docutils literal notranslate"><span class="pre">evaluate</span></code> command.</p>
+A splitting step uses <code class="docutils literal notranslate"><span class="pre">{&quot;kind&quot;:</span> <span class="pre">&quot;split-gluon&quot;,</span> <span class="pre">&quot;parent&quot;:</span> <span class="pre">-1,</span> <span class="pre">&quot;quark&quot;:</span> <span class="pre">-2,</span> <span class="pre">&quot;antiquark&quot;:</span> <span class="pre">-3}</span></code>. The generation CLI option prepares the artifact.
+Numerical evaluation uses <code class="docutils literal notranslate"><span class="pre">evaluate</span> <span class="pre">--correlated-requests</span> <span class="pre">requests.json</span></code>, the
+Python API or the native SDKs. The request file maps labels to colour IDs and
+exact spin vectors and evaluates all named requests over one batch; see
+<a class="reference internal" href="user/command-line-interface.html#correlated-requests"><span class="std std-ref">correlated CLI requests</span></a>.</p>
 </section>
 <section id="native-correlated-evaluations">
 <h2>Native correlated evaluations<a class="headerlink" href="#native-correlated-evaluations" title="Link to this heading">¶</a></h2>
 <p>The <code class="docutils literal notranslate"><span class="pre">correlators</span></code> development branch provides binary64 correlated evaluation
 in C, C++, Fortran and standalone Rust. These entry points use RustiCol and do
 not load Python or Symbolica. Python’s separate executor supports
-double-double and arbitrary precision. See <a class="reference internal" href="user/native-apis.html#correlated-born-evaluations"><span class="std std-ref">Native APIs</span></a>
+double-double and arbitrary precision, and so does RustiCol’s
+<code class="docutils literal notranslate"><span class="pre">NativeRuntime::evaluate_correlated_many_with_precision</span></code> (feature
+<code class="docutils literal notranslate"><span class="pre">symbolica-runtime</span></code>). See <a class="reference internal" href="user/native-apis.html#correlated-born-evaluations"><span class="std std-ref">Native APIs</span></a>
 for the language-specific owned request types, catalogue enumeration, spin
 setter and result indexing.</p>
 <p>The complete native examples evaluate the Born overlap, a mixed
@@ -1146,7 +1167,8 @@ amplitudes and disables helicity-specific zero/parity reductions and current
 reuse that would invalidate arbitrary source vectors. Python correlated
 evaluation uses a separate exact executor over retained Symbolica evaluator
 states. Native SDK correlated evaluation uses RustiCol’s binary64 coherent
-amplitude executor. Both share amplitudes and unchanged stages between
+amplitude executor; its double-double and arbitrary-precision counterpart
+evaluates the retained exact stage evaluators. Both share amplitudes and unchanged stages between
 requests and contract the generation-time colour matrices directly; neither
 uses FFT or physical-helicity reductions for the correlated result.</p>
 <p>FFT, recurrence, on-the-fly execution, replay-based reductions, nonidentity
@@ -1181,14 +1203,14 @@ orientations, signs, and phases before comparing individual ordered entries.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="user/umami-api.html">
+          <a class="prev-page" href="reference/recurrence-export.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">UMAMI and MadSpace</div>
+                <div class="title">Resolved recurrence export</div>
                 
               </div>
             </a>

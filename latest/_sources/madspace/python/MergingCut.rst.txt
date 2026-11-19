@@ -1,0 +1,7 @@
+MergingCut
+==========
+
+.. autoclass:: madspace.MergingCut
+   :members:
+   :undoc-members:
+   :show-inheritance:

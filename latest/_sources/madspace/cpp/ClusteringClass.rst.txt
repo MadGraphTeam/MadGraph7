@@ -1,0 +1,6 @@
+ClusteringClass
+===============
+
+.. doxygenstruct:: madspace::ClusteringClass
+   :members:
+   :undoc-members:
