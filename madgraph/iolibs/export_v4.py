@@ -6500,12 +6500,13 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
         if gpd_export.has_gpd(matrix_element):
             # the GPD pair: wave functions on PGPD, rescaled momentum slots
+            gpd_dual = matrix_element.get_npwave() > 0
             helas_calls = gpd_export.patch_helas_calls(helas_calls,
-                                        gpd_export.GPDInfo(matrix_element))
+                                        gpd_export.GPDInfo(matrix_element), dual=gpd_dual)
             replace_dict['flavor_mask_decl'] += gpd_export.gpd_decl(proc_prefix,
                     matrix_element.get_amplitude_slots()[1]
                     if self.get_amplitude_slot_map(matrix_element)
-                    else matrix_element.get_number_of_amplitudes())
+                    else matrix_element.get_number_of_amplitudes(), dual=gpd_dual)
 
         replace_dict['helas_calls'] = "\n".join(helas_calls)
 

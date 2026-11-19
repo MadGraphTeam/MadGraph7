@@ -12,6 +12,7 @@ C
 C     Models (GPD_MODEL):
 C       0  toy   analytic functions for the tests (not physics)
 C       3  toy2  H = 1 - x^2, E = Ht = Et = 0 (closed-form convolutions)
+C       4  toy3  smooth, all four GPDs non-zero (i0-extrapolated references)
 C       1  dd    Radyushkin double distributions on the forward PDFs at MU
 C                (Source/GPD/gpd_dd.f; madevent only)
 C       2  grid  table read from GPD_GRIDFILE (placeholder for user GPDs,
@@ -48,6 +49,12 @@ C     (madevent sets GPD_INITIALISED from the run card before any call).
       GPD_NMASK = 0
       CALL GPD_READ_CARD()
       GPD_INITIALISED = 1
+C     the x quadrature cannot do better than ~1e-10 in double precision
+C     (cancellations between graphs near the poles)
+      IF (GPD_XTOL.LT.1D-10) THEN
+        WRITE(*,*) 'GPD: gpd_xtol', GPD_XTOL, ' raised to 1e-10'
+        GPD_XTOL = 1D-10
+      ENDIF
       WRITE(*,'(A,I2,A,I2,A,I2,A,2F8.4)') ' GPD: model', GPD_MODEL,
      &  '  x integration (0 quadrature, 1 mc)', GPD_XMODE,
      &  '  t model', GPD_TMODEL, '  slopes g, q', GPD_TSLOPEG,
@@ -86,7 +93,9 @@ C     'value = name' lines of gpd_card.dat (standalone outputs).
         NAME = ADJUSTL(LINE(IEQ+1:))
         IF (VAL(1:1).EQ."'") VAL = VAL(2:INDEX(VAL(2:),"'"))
         IF (NAME.EQ.'gpd_model') THEN
-          IF (INDEX(VAL,'toy2').GT.0) THEN
+          IF (INDEX(VAL,'toy3').GT.0) THEN
+            GPD_MODEL = 4
+          ELSE IF (INDEX(VAL,'toy2').GT.0) THEN
             GPD_MODEL = 3
           ELSE IF (INDEX(VAL,'toy').GT.0) THEN
             GPD_MODEL = 0
@@ -155,6 +164,13 @@ C     'value = name' lines of gpd_card.dat (standalone outputs).
       ELSE IF (GPD_MODEL.EQ.3) THEN
 C       toy2: H = 1 - x^2 for every parton, E = Ht = Et = 0 (closed forms)
         G(1) = 1D0 - X*X
+      ELSE IF (GPD_MODEL.EQ.4) THEN
+C       toy3: smooth (no kink at -+xi), all four non-zero, H and E even,
+C       Ht and Et odd in x: references by i0 regularisation and extrapolation
+        G(1) = (1D0 - X*X)**2*(1D0 + 0.5D0*X*X)
+        G(2) = 0.3D0*(1D0 - X*X)**2
+        G(3) = X*(1D0 - X*X)**2
+        G(4) = 0.2D0*X*(1D0 - X*X)**2
       ENDIF
       CALL GPD_TFACTOR(IPART, X, XI, T, FT)
       G = G*FT

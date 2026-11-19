@@ -3,7 +3,8 @@ C     probed proton), filled by GPD_INIT from the run card (madevent) or
 C     from Cards/gpd_card.dat (standalone).
 C
 C     GPD_MODEL : 0 toy (analytic, tests), 1 dd (double-distribution Ansatz
-C                 on the forward PDFs, madevent only), 2 grid (user table)
+C                 on the forward PDFs, madevent only), 2 grid (user table),
+C                 3 toy2 (H = 1 - x^2), 4 toy3 (smooth, all four GPDs)
 C     GPD_BG, GPD_BS, GPD_BV : DD profile powers b of gluon, sea, valence
 C     GPD_TMODEL: 0 no t dependence, 1 exp(B t), 2 Regge exp(B t) |beta|^(-alpha' t)
 C     GPD_TSLOPEG, GPD_TSLOPEQ : B (GeV^-2) of gluons and quarks

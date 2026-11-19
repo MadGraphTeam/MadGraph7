@@ -224,7 +224,12 @@ C         component that vanishes is rounding noise, not a scale)
         IF (DIMAG(APOLE(I)).EQ.0D0) THEN
           DREL = DDMAX/SCALE
           IF (DREL.GT.DPWORST) DPWORST = DREL
-          IF (DREL.GT.GPD_DPTOL) IERR = 1
+          IF (DREL.GT.GPD_DPTOL) THEN
+            IF (IERR.NE.1) WRITE(*,'(A,F14.10,A,F12.8,A,ES9.2)')
+     &        ' GPD: double pole at x =', AR, ' (xi =', XI,
+     &        '), relative size', DREL
+            IERR = 1
+          ENDIF
         ENDIF
         CALL GPD_EVAL(IPART, AR, XI, T, MU, G4)
         GPOLE(:,I) = G4
@@ -349,7 +354,7 @@ C     breakpoints (-1, -xi, xi, the poles, 1).
       INTEGER N
       COMPLEX*16 C(N,4)
       COMPLEX*16, ALLOCATABLE :: RK(:,:), RG(:,:), TOT(:,:), ADD(:,:)
-      DOUBLE PRECISION HW(MAXPOLE+6), A, B, SIZE
+      DOUBLE PRECISION HW(MAXPOLE+6), A, B, SIZE, U0
       LOGICAL ISPOLE(MAXPOLE+6)
       INTEGER IB, I
       ALLOCATE(RK(N,4), RG(N,4), TOT(N,4), ADD(N,4))
@@ -382,10 +387,23 @@ C     the absolute scale of the tolerance: a coarse first pass
           TOT = TOT + RK
         ENDIF
       ENDDO
+C     the windows: the inner part u < U0 = 1e-2 h by two-point Gauss (exact
+C     to cubic order in u; a pole on the kink of the GPD at -+xi makes the
+C     window integrand linear there; the next singularity is >= 2h away, so
+C     the rule is exact to ~1e-14), so that the integrand is never taken
+C     where a double pole that cancels between graphs leaves rounding noise
+C     of size eps D/u^2 (eta_c gamma: 1e-9 at U0 = 1e-5 h, 2e-12 at 1e-2 h)
       DO IB = 2, NBREAK-1
         IF (.NOT.ISPOLE(IB)) CYCLE
-        CALL GPD_ADAPT(KERNEL, 0D0, HW(IB), N, SIZE, 1, BREAKS(IB), RK)
+        U0 = 1D-2*HW(IB)
+        CALL GPD_ADAPT(KERNEL, U0, HW(IB), N, SIZE, 1, BREAKS(IB), RK)
         TOT = TOT + RK
+        CALL GPD_XINTEGRAND2(KERNEL, U0*(0.5D0-0.5D0/SQRT(3D0)), N,
+     &       RG, 1, BREAKS(IB))
+        TOT = TOT + 0.5D0*U0*RG
+        CALL GPD_XINTEGRAND2(KERNEL, U0*(0.5D0+0.5D0/SQRT(3D0)), N,
+     &       RG, 1, BREAKS(IB))
+        TOT = TOT + 0.5D0*U0*RG
       ENDDO
       C = TOT + ADD
       DEALLOCATE(RK, RG, TOT, ADD)
@@ -415,8 +433,10 @@ C     f(XC+u) + f(XC-u) on u in [A0,B0] (ISYM=1).
         NS = NS - 1
         CALL GPD_GK15(KERNEL, A, B, N, RK, RG, ISYM, XC)
         ERR = MAXVAL(ABS(RK-RG))
-        IF (ERR.LE.GPD_XTOL*SIZE*MAX((B-A)/2D0,1D-3) .OR. (B-A).LT.1D-13
-     &      .OR. NS.GE.MAXSTACK-2) THEN
+C       (no bisection below 1e-9 of the interval: below that the error
+C       estimate is rounding, and refining further only accumulates it)
+        IF (ERR.LE.GPD_XTOL*SIZE*MAX((B-A)/2D0,1D-3) .OR.
+     &      (B-A).LT.1D-9*(B0-A0) .OR. NS.GE.MAXSTACK-2) THEN
           RES = RES + RK
         ELSE
           NS = NS + 1

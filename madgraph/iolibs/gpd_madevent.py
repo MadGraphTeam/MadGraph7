@@ -452,8 +452,8 @@ def finish_output(exporter, dir_path):
     if not os.path.exists(card):
         with open(card, 'w') as fsock:
             fsock.write(gpd_export.GPD_CARD.replace(
-                "toy      = gpd_model           ! toy | grid (dd needs the PDFs of madevent)",
-                "dd       = gpd_model           ! dd | toy | toy2 | grid"))
+                "toy      = gpd_model           ! toy | toy2 | toy3 | grid (dd needs the PDFs of madevent)",
+                "dd       = gpd_model           ! dd | toy | toy2 | toy3 | grid"))
     mk = pjoin(dir_path, 'SubProcesses', 'makefile')
     text = open(mk).read()
     if '-lgpd' not in text:

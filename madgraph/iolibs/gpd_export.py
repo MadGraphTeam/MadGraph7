@@ -58,8 +58,16 @@ C     masked (GPD_AMASK = 0) while a residue is taken
       COMMON/%(prefix)sGPD_AMASKC/GPD_AMASK"""
 
 
-def gpd_decl(proc_prefix, nslots):
-    return GPD_DECL + GPD_MASK_DECL % {'prefix': proc_prefix, 'nslots': nslots}
+GPD_DUAL_DECL = """
+C     P-wave onia (dual numbers): the GPD momentum as a dual with no
+C     derivative parts, for the dual HELAS routines
+      TYPE(DUAL) PGPDD(0:3)
+      INTEGER IGPD"""
+
+
+def gpd_decl(proc_prefix, nslots, dual=False):
+    return GPD_DECL + (GPD_DUAL_DECL if dual else '') + \
+        GPD_MASK_DECL % {'prefix': proc_prefix, 'nslots': nslots}
 
 
 def has_gpd(matrix_element):
@@ -287,13 +295,18 @@ class GPDInfo(object):
         return "\n".join(lines)
 
 
-def patch_helas_calls(helas_calls, info):
+def patch_helas_calls(helas_calls, info, dual=False):
     """The external wave functions of the GPD legs are built on PGPD and their
     momentum slots rescaled by x+xi (in) and x-xi (out); every amplitude is
-    multiplied by its mask entry (residues per pole group)."""
-    pattern = re.compile(r'^(\s*CALL\s+\w+\()P\(0,(\d+)\)(,.*,W\((\d+)\)\))\s*$')
+    multiplied by its mask entry (residues per pole group). With P-wave onia
+    (dual numbers, dual=True) the wave functions take the dual copy PGPDD."""
+    pattern = re.compile(r'^(\s*CALL\s+\w+\()P(?:_ONIA)?\(0,(\d+)\)(,.*,W\((\d+)\)\))\s*$')
     amp_pattern = re.compile(r'^\s*CALL\s+\w+\(.*,AMP\((\d+)\)\)\s*$')
+    pname = 'PGPDD' if dual else 'PGPD'
     out = []
+    if dual:
+        # (blank before the parenthesis: the onia exporter rewrites 'P(0' later)
+        out += ["DO IGPD = 0, 3", "PGPDD(IGPD)%COMP (:) = 0D0", "PGPDD(IGPD)%COMP (0) = PGPD(IGPD)", "ENDDO"]
     found = set()
     for call in helas_calls:
         amatch = amp_pattern.match(call)
@@ -304,7 +317,7 @@ def patch_helas_calls(helas_calls, info):
         match = pattern.match(call)
         if match and int(match.group(2)) in (info.n_in, info.n_out):
             leg = int(match.group(2))
-            out.append("%sPGPD(0)%s" % (match.group(1), match.group(3)))
+            out.append("%s%s(0)%s" % (match.group(1), pname, match.group(3)))
             scale = 'CGPD_IN' if leg == info.n_in else 'CGPD_OUT'
             out.append("W(%s)%%P = W(%s)%%P*%s" % (match.group(4), match.group(4),
                                                   scale))
@@ -439,9 +452,11 @@ C     pole that does not cancel.
      &     NP, AP, SP, IERR)
       IERRLAST = IERR
       IF (IERR.EQ.1) THEN
-        WRITE(*,*) 'GPD: %(process)s has a double pole at x = +-xi that does'
-        WRITE(*,*) '     not cancel (end-point divergence): collinear'
-        WRITE(*,*) '     factorisation fails at LO for this process. xi =', XIIN
+        WRITE(*,*) 'GPD: %(process)s has a double pole that does not'
+        WRITE(*,*) '     cancel. At x = +-xi this is an end-point divergence:'
+        WRITE(*,*) '     collinear factorisation fails at LO for this process.'
+        WRITE(*,*) '     Inside (-xi, xi) or (xi, 1) (P-wave onia) it is not'
+        WRITE(*,*) '     supported yet. xi =', XIIN
         STOP 1
       ENDIF
       IF (USEMC.EQ.1) THEN
@@ -743,7 +758,7 @@ GPD_CARD = """#*****************************************************************
 #   GPD settings of a standalone output (madgraph/iolibs/gpd_export.py)
 #   format: value = name    (as the run card)
 #*********************************************************************
-  toy      = gpd_model           ! toy | grid (dd needs the PDFs of madevent)
+  toy      = gpd_model           ! toy | toy2 | toy3 | grid (dd needs the PDFs of madevent)
   ''       = gpd_grid            ! table of the grid model
   0        = gpd_tmodel          ! 0 none, 1 exp(B t), 2 Regge exp(B t)|x|^(-alpha' t)
   0.0      = gpd_tslope_g        ! B of gluons (GeV^-2), amplitude level
@@ -765,8 +780,8 @@ def makefile_lines(base_text, proc_prefix=''):
     """The subprocess makefile of a GPD matrix element: gpd_driver.o in the
     process, libgpd linked, and the check_gpd program."""
     text = base_text.replace("PROCESS=  matrix.o", "PROCESS=  matrix.o gpd_driver.o")
-    text = text.replace("LINKLIBS =  -L$(LIBDIR) -ldhelas -lmodel",
-                        "LINKLIBS =  -L$(LIBDIR) -lgpd -ldhelas -lmodel")
+    # -ldhelas, or -ldhelas<n> with P-wave onia (dual numbers)
+    text = re.sub(r"LINKLIBS =  -L\$\(LIBDIR\) -ldhelas", "LINKLIBS =  -L$(LIBDIR) -lgpd -ldhelas", text)
     text = text.replace("F_INCLUDE = -I$(ROOT_DIR)/Source/DHELAS",
                         "F_INCLUDE = -I$(ROOT_DIR)/Source/GPD -I$(ROOT_DIR)/Source/DHELAS")
     text += """
