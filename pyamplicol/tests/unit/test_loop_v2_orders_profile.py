@@ -1599,6 +1599,7 @@ def test_an_exceeded_budget_times_the_default_backend_alone(
 def test_a_default_budget_keeps_every_backend_and_the_multiplier(uux_ddx):
     """On a cheap process with the default budget nothing is left out."""
 
+    from pyamplicol.api import Runtime
     from pyamplicol.config import resolve_config
     from pyamplicol.loop_profile import profile_loop
 
@@ -1615,11 +1616,15 @@ def test_a_default_budget_keeps_every_backend_and_the_multiplier(uux_ddx):
     assert all(p is not None and p.reference is not None for p in rows.values())
     assert report.plan["omitted_backends"] == []
     assert report.plan["omitted_reference"] is None
-    # No warm entry ran: no prepared_seconds key at either level (m-c).
+    # The prepared_seconds key at either level only where the warm entry
+    # ran, with its seconds, never as null (m-c; a runtime without the entry
+    # has none, one with it warms through it, profile_plan.takes_entry).
+    has_entry = callable(getattr(Runtime.load(uux_ddx)._backend, "prepare", None))
     for profile in rows.values():
         document = profile.cli_json()
-        assert "prepared_seconds" not in document
-        assert "prepared_seconds" not in document["reference"]
+        for level in (document, document["reference"]):
+            assert ("prepared_seconds" in level) <= has_entry
+            assert level.get("prepared_seconds", 1.0) is not None
 
 
 @pytest.mark.parametrize(
