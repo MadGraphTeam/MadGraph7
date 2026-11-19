@@ -96,11 +96,13 @@ def _process_row(process: Mapping[str, Any], prefix: str, lines: list[str]) -> s
 
 
 def _int_array(name: str, ctype: str, values: Sequence[int]) -> str:
-    return (
-        f"static const {ctype} {name}[] = {{"
-        + ", ".join(str(_integer(v)) for v in values or [-1])
-        + "};"
-    )
+    values = values or [-1]
+    # plain ints need no per-value check (the hot path of large providers)
+    if all(type(v) is int for v in values):
+        text = ", ".join(map(str, values))
+    else:
+        text = ", ".join(str(_integer(v)) for v in values)
+    return f"static const {ctype} {name}[] = {{" + text + "};"
 
 
 def quark_lines(pdgs: Sequence[int]) -> int:
@@ -220,7 +222,9 @@ def switch_catalogue(
                     flows[index][member["color_id"]] = member["color_flows"]
     flow_ids = {index: sorted(table) for index, table in flows.items()}
     color_flows = [list(map(list, flow)) for flow in reference["color_flows"]]
-    color_index = {json.dumps(flow): i for i, flow in enumerate(color_flows)}
+    color_index = {tuple(map(tuple, flow)): i for i, flow in enumerate(color_flows)}
+    # the colour flows of a target per (runtime, legs, conjugated)
+    target_colors: dict[tuple, list[int]] = {}
     evaluations: dict[tuple, int] = {}
     described: list[tuple] = []
     orderings, targets, target_pdgs, seen = [], [], [], set()
@@ -285,19 +289,21 @@ def switch_catalogue(
                 target = -1
                 if lines >= switch_lines:
                     target = len(targets)
-                    colors = []
-                    for flow_id in flow_ids[rep]:
-                        tags = color_flows[flows[rep][flow_id]]
-                        slot_tags = [[0, 0] for _ in legs]
-                        for j, slot in enumerate(legs):
-                            pair = list(tags[j])
-                            slot_tags[slot] = pair[::-1] if conjugated else pair
-                        text = json.dumps(slot_tags)
-                        if text not in color_index:
-                            color_index[text] = len(color_flows)
-                            color_flows.append(slot_tags)
-                        colors.append(color_index[text])
-                    targets.append({"evaluation": evaluation, "colors": colors})
+                    colors = target_colors.get((rep, legs, conjugated))
+                    if colors is None:
+                        colors = target_colors[rep, legs, conjugated] = []
+                        for flow_id in flow_ids[rep]:
+                            tags = color_flows[flows[rep][flow_id]]
+                            slot_tags = [[0, 0] for _ in legs]
+                            for j, slot in enumerate(legs):
+                                pair = list(tags[j])
+                                slot_tags[slot] = pair[::-1] if conjugated else pair
+                            key = tuple(map(tuple, slot_tags))
+                            if key not in color_index:
+                                color_index[key] = len(color_flows)
+                                color_flows.append(slot_tags)
+                            colors.append(color_index[key])
+                    targets.append({"evaluation": evaluation, "colors": list(colors)})
                     target_pdgs.append([*initial, *order])
                 orderings.append({
                     "evaluation": evaluation,
@@ -577,11 +583,27 @@ def reweight_header(
     ]
     lines.extend(["static const ReweightProcess reweight_references[] = {", *rows, "};"])
 
+    known: dict[int, int] = {}
+
     def target_index(target, target_id) -> int:
+        if id(target) in known:
+            return known[id(target)]
         if target not in target_processes:
             target_processes.append(target)
             target_ids.append(target_id)
-        return target_processes.index(target)
+        known[id(target)] = target_processes.index(target)
+        return known[id(target)]
+
+    # the index of each helicity id of a target process (its first occurrence)
+    positions: dict[int, dict[str, int]] = {}
+
+    def helicity_positions(target) -> dict[str, int]:
+        if id(target) not in positions:
+            table: dict[str, int] = {}
+            for index, identifier in enumerate(target["helicity_ids"]):
+                table.setdefault(identifier, index)
+            positions[id(target)] = table
+        return positions[id(target)]
 
     exported_count = len(reference["helicities"])
     channel_rows = []
@@ -610,12 +632,11 @@ def reweight_header(
                         f"no process of the target artifact matches {process['id']!r}"
                     )
                 target, target_id = match
+                target_helicities = helicity_positions(target)
                 for runtime_index, exported in enumerate(runtime["helicity_export"]):
                     identifier = process["helicity_ids"][runtime_index]
-                    if identifier in target["helicity_ids"]:
-                        target_helicity[exported] = target["helicity_ids"].index(
-                            identifier
-                        )
+                    if identifier in target_helicities:
+                        target_helicity[exported] = target_helicities[identifier]
             else:
                 # A flavour-union member: its own target process, legs and factor.
                 if routes is None:
