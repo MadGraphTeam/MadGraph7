@@ -108,8 +108,8 @@ use rusticol_core::VerifiedArtifact;
 pub use rusticol_core::kinematics_improvement;
 use rusticol_core::loop_artifact::{
     LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact,
-    LoopV2ExecutionMetadata, LoopV2NativeTrees, is_loop_v2_manifest, load_loop_v2_artifact,
-    read_loop_v2_native_inputs, read_loop_v2_observables,
+    LoopV2ExecutionMetadata, LoopV2NativeTrees, is_loop_v2_manifest, read_loop_v2_native_inputs,
+    read_loop_v2_observables,
 };
 use rusticol_core::loop_execution::v2::{
     Contraction, LaneKey, LaneMeasure, MeasureKind, PointResult, Poles, V2Executor, V2Options,
@@ -1229,7 +1229,11 @@ impl V2Runtime {
     ) -> RusticolResult<Self> {
         let path = path.as_ref().to_path_buf();
         let verified = VerifiedArtifact::open(&path)?;
-        let artifact = load_loop_v2_artifact(&verified, process)?;
+        // The load on the runtime's thread bound (the program is the same
+        // for any count: `load_loop_v2_artifact_threads`).
+        let artifact = rusticol_core::loop_artifact::load_loop_v2_artifact_threads(
+            &verified, process, threads,
+        )?;
         let externals = model_externals(&verified)?;
         let native = read_loop_v2_native_inputs(&verified, &artifact)?.ok_or_else(|| {
             invalid("the process has no native point inputs; regenerate the artifact")

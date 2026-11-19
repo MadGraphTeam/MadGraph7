@@ -2426,17 +2426,24 @@ impl V2AdmittedPlan {
 /// [`admit_v2_artifact`], also returning the admitted programs (the plan's
 /// and its certified-scaleless companion's, or None) as [`V2AdmittedPlan`]s:
 /// the artifact runtime hands them to its executors, so a loaded process's
-/// plan is read and derived once (`loops/v2/artifact.py`).
+/// plan is read and derived once (`loops/v2/artifact.py`). `threads` is the
+/// load's thread pool (None: rayon's default, `RAYON_NUM_THREADS` or every
+/// core, as the runtime's executors; `loop_artifact::
+/// load_loop_v2_artifact_threads`): the programs are the same for any count.
 #[pyfunction]
-#[pyo3(signature = (path, process=None))]
+#[pyo3(signature = (path, process=None, threads=None))]
 fn admit_v2_artifact_program(
     py: Python<'_>,
     path: &str,
     process: Option<&str>,
+    threads: Option<usize>,
 ) -> PyResult<(String, V2AdmittedPlan, Option<V2AdmittedPlan>)> {
     let _unlock = pyamplicol::unlock();
     let loaded = py
-        .detach(|| rusticol_core::loop_artifact::open_loop_v2_artifact(path, process))
+        .detach(|| {
+            let artifact = rusticol_core::VerifiedArtifact::open(path)?;
+            rusticol_core::loop_artifact::load_loop_v2_artifact_threads(&artifact, process, threads)
+        })
         .map_err(error)?;
     let described = describe_admitted(&loaded)?;
     let scaleless = match (&loaded.scaleless_program, &loaded.scaleless_plan_sha256) {

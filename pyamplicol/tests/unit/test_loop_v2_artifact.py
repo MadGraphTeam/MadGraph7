@@ -957,6 +957,25 @@ def test_prepare_auto_warms_only_the_backends_the_native_module_serves(
 
 
 @pytest.mark.loop_physics
+def test_a_plan_loads_to_the_same_program_on_any_thread_count(
+    quark_controls, loop_native
+):
+    """The loader derives the families in parallel inside a thread pool and
+    merges them in family order: the loaded program (its tables' digest,
+    every id and shared list) is the sequential load's at every count."""
+
+    from pyamplicol.loops.v2.artifact import load_native_process
+
+    runtime = quark_controls / "processes" / "uudd" / "loop-runtime.pacbin"
+    plan = load_native_process(runtime).plan.bytes()
+    digests = {
+        threads: loop_native.v2_plan_read(plan, threads) for threads in (1, 2, 3, 8)
+    }
+    assert len(set(digests.values())) == 1, digests
+    assert digests[1] == loop_native.v2_plan_read(plan)
+
+
+@pytest.mark.loop_physics
 def test_public_particle_veto_equals_njet_five_flavours(
     loop_sm_compiled_model, loop_native, tmp_path
 ):

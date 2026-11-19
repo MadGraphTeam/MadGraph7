@@ -317,6 +317,40 @@ pub fn open_loop_v2_artifact(
     load_loop_v2_artifact(&VerifiedArtifact::open(path)?, requested_process)
 }
 
+/// [`load_loop_v2_artifact`] on a thread pool of `threads` threads (None:
+/// rayon's default, `RAYON_NUM_THREADS` or every core, as an executor built
+/// without a thread bound): the plans' families are derived in parallel
+/// there, merged in family order, so the loaded programs are the
+/// sequential load's (`LoopProgramV4::load`); one thread loads on the
+/// calling thread. A pool that cannot start loads sequentially.
+#[cfg(feature = "loop-v2")]
+pub fn load_loop_v2_artifact_threads(
+    artifact: &VerifiedArtifact,
+    requested_process: Option<&str>,
+    threads: Option<usize>,
+) -> RusticolResult<LoadedLoopV2Artifact> {
+    on_load_threads(threads, || {
+        load_loop_v2_artifact(artifact, requested_process)
+    })
+}
+
+/// `run` on a thread pool of `threads` threads (None: rayon's default), its
+/// threads holding pyAmpliCol's Symbolica key as an executor's do; on the
+/// calling thread for one thread or when the pool cannot start
+/// ([`load_loop_v2_artifact_threads`]).
+#[cfg(feature = "loop-v2")]
+pub fn on_load_threads<R: Send>(threads: Option<usize>, run: impl FnOnce() -> R + Send) -> R {
+    let mut builder =
+        rayon::ThreadPoolBuilder::new().start_handler(|_| crate::licence::unlock_thread());
+    if let Some(threads) = threads {
+        builder = builder.num_threads(threads.max(1));
+    }
+    match builder.build() {
+        Ok(pool) if pool.current_num_threads() > 1 => pool.install(run),
+        _ => run(),
+    }
+}
+
 /// Admit one plan v4 process: the envelope, its execution and physics
 /// declarations, the plan member and its digest, and the validated program,
 /// whose families, reduction buckets, legs, helicity rows and sectors must

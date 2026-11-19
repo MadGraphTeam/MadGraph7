@@ -1881,6 +1881,169 @@ impl SplitInputs {
     }
 }
 
+/// The ids a family's load draws (products tables, interned link lists,
+/// split inputs, leaf weights), each by first use. The sequential load draws
+/// them from the plan's registries ([`Registries`]); a parallel worker records
+/// its calls with ids of its own ([`Recording`]), which the merge replays on
+/// the registries in family order ([`Recording::replay`]), so every id, every
+/// shared list and every table is the sequential load's whatever the threads.
+trait Ids {
+    fn table(&mut self, rank: usize, degree: usize) -> usize;
+    fn intern(&mut self, links: PackedLinks) -> SharedLinks;
+    fn instance(&mut self, vertex: usize, shift: u64) -> usize;
+    fn current(&mut self, content: usize, term: usize) -> usize;
+    fn leaf_weight(&mut self, text: &str) -> RusticolResult<u32>;
+}
+
+/// The plan's registries (the sequential load's [`Ids`]).
+struct Registries<'r> {
+    tables: &'r mut Tables,
+    split_inputs: &'r mut SplitInputs,
+    leaf_weights: &'r mut LeafWeights,
+}
+
+impl Ids for Registries<'_> {
+    fn table(&mut self, rank: usize, degree: usize) -> usize {
+        self.tables.get(rank, degree)
+    }
+
+    fn intern(&mut self, links: PackedLinks) -> SharedLinks {
+        self.tables.links.intern(links)
+    }
+
+    fn instance(&mut self, vertex: usize, shift: u64) -> usize {
+        self.split_inputs.instance(vertex, shift)
+    }
+
+    fn current(&mut self, content: usize, term: usize) -> usize {
+        self.split_inputs.current(content, term)
+    }
+
+    fn leaf_weight(&mut self, text: &str) -> RusticolResult<u32> {
+        self.leaf_weights.get(text)
+    }
+}
+
+/// One recorded call of a parallel worker ([`Recording`]).
+enum Call {
+    Table(usize, usize),
+    Intern(SharedLinks),
+    Instance(usize, u64),
+    Current(usize, usize),
+    Leaf(String),
+}
+
+/// A parallel worker's [`Ids`]: per call a local id (one per distinct key,
+/// as the registries give one), and the calls in order.
+#[derive(Default)]
+struct Recording {
+    calls: Vec<Call>,
+    tables: WordMap<(usize, usize), usize>,
+    instances: WordMap<(usize, u64), usize>,
+    currents: WordMap<(usize, usize), usize>,
+    leaves: HashMap<String, u32>,
+}
+
+impl Ids for Recording {
+    fn table(&mut self, rank: usize, degree: usize) -> usize {
+        self.calls.push(Call::Table(rank, degree));
+        let next = self.tables.len();
+        *self.tables.entry((rank, degree)).or_insert(next)
+    }
+
+    fn intern(&mut self, links: PackedLinks) -> SharedLinks {
+        let links = Arc::new(links);
+        self.calls.push(Call::Intern(Arc::clone(&links)));
+        links
+    }
+
+    fn instance(&mut self, vertex: usize, shift: u64) -> usize {
+        self.calls.push(Call::Instance(vertex, shift));
+        let next = self.instances.len();
+        *self.instances.entry((vertex, shift)).or_insert(next)
+    }
+
+    fn current(&mut self, content: usize, term: usize) -> usize {
+        self.calls.push(Call::Current(content, term));
+        let next = self.currents.len();
+        *self.currents.entry((content, term)).or_insert(next)
+    }
+
+    fn leaf_weight(&mut self, text: &str) -> RusticolResult<u32> {
+        if let Some(&found) = self.leaves.get(text) {
+            self.calls.push(Call::Leaf(text.to_owned()));
+            return Ok(found);
+        }
+        // Parsed as the registries parse a weight's first use (the same
+        // refusal at the same leaf).
+        exact(text)?;
+        let next = u32::try_from(self.leaves.len()).map_err(|_| invalid("leaf weights"))?;
+        self.leaves.insert(text.to_owned(), next);
+        self.calls.push(Call::Leaf(text.to_owned()));
+        Ok(next)
+    }
+}
+
+impl Recording {
+    /// Replay the calls on `ids` in their order and give `family` the ids
+    /// (and shared link lists) they return.
+    fn replay(self, family: &mut Family, ids: &mut impl Ids) -> RusticolResult<()> {
+        let mut tables = vec![usize::MAX; self.tables.len()];
+        let mut instances = vec![usize::MAX; self.instances.len()];
+        let mut currents = vec![usize::MAX; self.currents.len()];
+        let mut leaves = vec![u32::MAX; self.leaves.len()];
+        let mut interned: WordMap<usize, SharedLinks> = WordMap::default();
+        for call in self.calls {
+            match call {
+                Call::Table(rank, degree) => {
+                    tables[self.tables[&(rank, degree)]] = ids.table(rank, degree);
+                }
+                Call::Intern(links) => {
+                    let global = ids.intern((*links).clone());
+                    interned.insert(Arc::as_ptr(&links) as usize, global);
+                }
+                Call::Instance(vertex, shift) => {
+                    instances[self.instances[&(vertex, shift)]] = ids.instance(vertex, shift);
+                }
+                Call::Current(content, term) => {
+                    currents[self.currents[&(content, term)]] = ids.current(content, term);
+                }
+                Call::Leaf(text) => {
+                    leaves[self.leaves[text.as_str()] as usize] = ids.leaf_weight(&text)?;
+                }
+            }
+        }
+        for leaf in &mut family.leaves {
+            leaf.weight = leaves[leaf.weight as usize];
+        }
+        for step in &mut family.steps {
+            for edge in &mut step.edges {
+                edge.products = tables[edge.products];
+            }
+            if let Some(split) = &mut step.split {
+                for group in &mut split.groups {
+                    group.products = tables[group.products];
+                    group.instance = instances[group.instance];
+                }
+                for part in split.parts.iter_mut().flatten() {
+                    part.current = currents[part.current];
+                    part.links = Arc::clone(&interned[&(Arc::as_ptr(&part.links) as usize)]);
+                }
+            }
+        }
+        // The family's sets of split inputs, in the registries' ids.
+        let mut vertices = BTreeSet::new();
+        let mut used = BTreeSet::new();
+        for split in family.steps.iter().filter_map(|step| step.split.as_ref()) {
+            vertices.extend(split.groups.iter().map(|group| group.instance));
+            used.extend(split.parts.iter().flatten().map(|part| part.current));
+        }
+        family.vertices = vertices.into_iter().collect();
+        family.currents = used.into_iter().collect();
+        Ok(())
+    }
+}
+
 impl Tables {
     fn get(&mut self, rank: usize, degree: usize) -> usize {
         *self.index.entry((rank, degree)).or_insert_with(|| {
@@ -2139,7 +2302,7 @@ fn split_candidate(
     s: &StepShape,
     edges: &[Edge],
     shared: &Shared<'_>,
-    tables: &mut Tables,
+    ids: &mut impl Ids,
 ) -> RusticolResult<Option<(SplitStep, StepCost)>> {
     let rank_in = if s.seeded { 0 } else { s.rank_in };
     let splits = edges.iter().all(|edge| {
@@ -2179,7 +2342,7 @@ fn split_candidate(
                     vertex,
                     shift,
                     instance: 0,
-                    products: tables.get(rank_in, shape.degree),
+                    products: ids.table(rank_in, shape.degree),
                     targets: Vec::new(),
                 });
                 targets.push(Vec::new());
@@ -2206,7 +2369,7 @@ fn split_candidate(
                 term: t,
                 current: 0,
                 group,
-                links: tables.links.intern(links),
+                links: ids.intern(links),
             });
         }
         parts.push(edge_parts);
@@ -2235,11 +2398,10 @@ fn choose_form(
     shape: &StepShape,
     edges: &[Edge],
     shared: &Shared<'_>,
-    tables: &mut Tables,
-    split_inputs: &mut SplitInputs,
+    ids: &mut impl Ids,
 ) -> RusticolResult<FormChoice> {
     let fused_cost = fused_cost(shape.seeded, shape.d_alpha, edges, shared.contents);
-    let candidate = split_candidate(shape, edges, shared, tables)?;
+    let candidate = split_candidate(shape, edges, shared, ids)?;
     let split_cost = candidate.as_ref().map(|(_, cost)| *cost);
     let split = match (shared.policy, candidate) {
         (_, None) | (FormPolicy::Fused, _) => None,
@@ -2250,10 +2412,10 @@ fn choose_form(
     };
     let split = split.map(|mut split| {
         for group in &mut split.groups {
-            group.instance = split_inputs.instance(group.vertex, group.shift);
+            group.instance = ids.instance(group.vertex, group.shift);
         }
         for part in split.parts.iter_mut().flatten() {
-            part.current = split_inputs.current(part.content, part.term);
+            part.current = ids.current(part.content, part.term);
         }
         split
     });
@@ -2715,15 +2877,56 @@ impl LoopProgramV4 {
             dressed: dressed.then_some(content_lists.as_slice()),
         };
         let mut leaf_weights = LeafWeights::default();
-        for f in family_files {
-            order_count = order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
-            families.push(Self::family(
-                &f,
-                &shared,
-                &mut tables,
-                &mut split_inputs,
-                &mut leaf_weights,
-            )?);
+        {
+            let mut ids = Registries {
+                tables: &mut tables,
+                split_inputs: &mut split_inputs,
+                leaf_weights: &mut leaf_weights,
+            };
+            // Inside a thread pool (the caller's bound: `LoopProgramV4::load`
+            // runs on the pool it is called on, sequentially outside one), the
+            // families are derived in parallel chunks, each worker recording
+            // its ids, and merged in family order ([`Recording::replay`]): the
+            // program is the sequential load's for any thread count. A chunk
+            // is a few families per thread (their derived tables live until
+            // merged).
+            let threads = if rayon::current_thread_index().is_some() {
+                rayon::current_num_threads()
+            } else {
+                1
+            };
+            let mut records = family_files.into_iter();
+            if threads <= 1 {
+                for f in records {
+                    order_count =
+                        order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
+                    families.push(Self::family(&f, &shared, &mut ids)?);
+                }
+            } else {
+                use rayon::prelude::*;
+                let chunk = 2 * threads;
+                loop {
+                    let batch: Vec<FamilyFile> = records.by_ref().take(chunk).collect();
+                    if batch.is_empty() {
+                        break;
+                    }
+                    let derived: Vec<RusticolResult<(Family, Recording)>> = batch
+                        .par_iter()
+                        .map(|f| {
+                            let mut recording = Recording::default();
+                            Self::family(f, &shared, &mut recording)
+                                .map(|family| (family, recording))
+                        })
+                        .collect();
+                    for (f, derived) in batch.iter().zip(derived) {
+                        order_count =
+                            order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
+                        let (mut family, recording) = derived?;
+                        recording.replay(&mut family, &mut ids)?;
+                        families.push(family);
+                    }
+                }
+            }
         }
         let leaf_weights = leaf_weights.values;
         let forward = file
@@ -2796,13 +2999,7 @@ impl LoopProgramV4 {
         Ok(program)
     }
 
-    fn family(
-        f: &FamilyFile,
-        shared: &Shared<'_>,
-        tables: &mut Tables,
-        split_inputs: &mut SplitInputs,
-        leaf_weights: &mut LeafWeights,
-    ) -> RusticolResult<Family> {
+    fn family(f: &FamilyFile, shared: &Shared<'_>, ids: &mut impl Ids) -> RusticolResult<Family> {
         let (file, contents, seeds) = (shared.file, shared.contents, shared.seeds);
         let full = super::bounds::check_legs(file.legs).map_err(invalid)?;
         let mut covered = 0u64;
@@ -2824,7 +3021,7 @@ impl LoopProgramV4 {
                 require(leaf.seed < seeds, "leaf seed index")?;
                 Ok(Leaf {
                     seed: u32::try_from(leaf.seed).map_err(|_| invalid("leaf seed index"))?,
-                    weight: leaf_weights.get(&leaf.weight)?,
+                    weight: ids.leaf_weight(&leaf.weight)?,
                 })
             })
             .collect::<RusticolResult<Vec<_>>>()?;
@@ -2929,7 +3126,7 @@ impl LoopProgramV4 {
                     factor: e.factor,
                     content,
                     source_rank,
-                    products: tables.get(source_rank, c.degree),
+                    products: ids.table(source_rank, c.degree),
                     links: expand_links(links, object_columns)?,
                 });
             }
@@ -2949,7 +3146,7 @@ impl LoopProgramV4 {
                 d_alpha: s.d_alpha,
                 rank_in: s.rank_in,
             };
-            let (split, costs) = choose_form(&shape, &edges, shared, tables, split_inputs)?;
+            let (split, costs) = choose_form(&shape, &edges, shared, ids)?;
             release_split_links(&mut edges, &split);
             match &split {
                 None => factors.extend(edges.iter().map(|edge| edge.factor)),
@@ -3255,7 +3452,12 @@ impl LoopProgramV4 {
                 d_alpha: s.d_alpha,
                 rank_in: s.rank_in,
             };
-            let (split, costs) = choose_form(&shape, &edges, shared, tables, split_inputs)?;
+            let mut ids = Registries {
+                tables,
+                split_inputs,
+                leaf_weights: &mut LeafWeights::default(),
+            };
+            let (split, costs) = choose_form(&shape, &edges, shared, &mut ids)?;
             release_split_links(&mut edges, &split);
             states.push(MergedState {
                 step: Step {
