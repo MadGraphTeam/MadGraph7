@@ -1835,11 +1835,18 @@ def test_the_plan_counts_the_warm_entry_not_a_point(uux_ddx, monkeypatch):
     monkeypatch.setattr(Runtime, "evaluate", slow)
     monkeypatch.setattr(Runtime, "load", classmethod(with_entry))
     monkeypatch.setattr(lp, "_isolated_profile", in_process)
+    # The ground truth given: rule B closed, the references take the entry
+    # (with rule B open they warm by their untimed point, which the
+    # measurement's cold point bounds).
     config = resolve_config(
         {
             "action": "benchmark",
             "evaluation": {"artifact": str(uux_ddx)},
-            "benchmark": {"runtime": True, "n_core": 1},
+            "benchmark": {
+                "runtime": True,
+                "n_core": 1,
+                "ground_truth": "double-double",
+            },
         }
     ).effective
     report = lp.profile_loop(uux_ddx, config)

@@ -1032,9 +1032,14 @@ def profile_loop(
         """Whether this stream warms through the entry: the runtime offers
         it, the binary64 stream only in the optimistic pass, and
         ``takes_entry`` from the point's cost (None: unknown), the entry's
-        remembered cost and the measured first-call excess."""
+        remembered cost and the measured first-call excess. With rule B
+        open no reference warms through it: its untimed point, which the
+        measurement's cold point bounds, lets rule B drop the multiplier
+        before it runs."""
 
         if not has_entry or (precision == "binary64" and checked):
+            return False
+        if precision == "reference" and rule_b:
             return False
         return takes_entry(
             point,

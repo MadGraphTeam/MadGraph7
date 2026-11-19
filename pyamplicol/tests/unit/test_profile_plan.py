@@ -978,7 +978,7 @@ def _known_after(stage, true, known):
     k = known or Known()
     numbers = {stage: true[stage]}
     if stage == "point":
-        numbers.update(warm_entry=true["entry"], reference_entry=true["entry"])
+        numbers.update(warm_entry=true["entry"], reference_entry=true["ref_entry"])
     if stage == "chunk":
         numbers["warm_entry"] = true["entry"]
         if true["entry"]:
@@ -992,7 +992,7 @@ def _reference_warms(known, true, *, scope):
     the untimed point measures it), else the untimed point (m-4). The
     updated ``known`` and whether the entry warmed it."""
 
-    if true["entry"] and (known.reference is not None or not scope):
+    if true["ref_entry"] and (known.reference is not None or not scope):
         return replace(
             known, reference_entry=True, reference_warm=true["reference_warm"]
         ), True
@@ -1016,6 +1016,11 @@ def _scope_path(path, mode, backends):
     default = names[0]
     bound = mode["bound"]
     known = {name: Known() for name in names}
+    # With rule B open no reference warms through the entry.
+    backends = {
+        name: {**costs, "ref_entry": costs["entry"] and not mode["rule_b"]}
+        for name, costs in backends.items()
+    }
 
     def b_drops():
         # Judged on the backends rule A has not left out.
@@ -1056,7 +1061,7 @@ def _scope_path(path, mode, backends):
     known[default] = _known_after("chunk", backends[default], known[default])
     # Whether each backend's reference warms through the entry on this path
     # (the default's decided below; the others' timings have no scope).
-    through = {name: backends[name]["entry"] for name in names}
+    through = {name: backends[name]["ref_entry"] for name in names}
     if timed and b_drops():
         timed = False
     elif timed:
@@ -1289,7 +1294,7 @@ def test_the_scope_verdicts_do_not_depend_on_the_path(case, mode, backends):
                     point=costs["point"],
                     reference=costs["reference"],
                     warm_entry=costs["entry"],
-                    reference_entry=costs["entry"],
+                    reference_entry=costs["entry"] and not mode["rule_b"],
                 ),
                 lanes=LANES,
                 reference=True,
