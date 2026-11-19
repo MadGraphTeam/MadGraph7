@@ -74,6 +74,11 @@ void op_matrix_element(
             instruction.output_alloc_hints[i]
         );
         output_ptrs[i] = output.data();
+        if (me_index != 0xBADCAFE && output_keys[i] == UMAMI_OUT_SQUARED_ORDERS &&
+            (shape.size() != 2 || static_cast<std::size_t>(shape[1]) !=
+                instruction.runtime.context().matrix_element(me_index).squared_order_count())) {
+            throw std::invalid_argument("squared order output extent differs from the provider");
+        }
         if (me_index == 0xBADCAFE) {
             // flat dummy matrix element for testing
             switch (output_keys[i]) {
@@ -86,6 +91,7 @@ void op_matrix_element(
                     1.0
                 );
                 break;
+            case UMAMI_OUT_SQUARED_ORDERS:
             case UMAMI_OUT_DIAGRAM_AMP2:
                 thrust::fill_n(
                     thrust_par.on(device.stream()),
