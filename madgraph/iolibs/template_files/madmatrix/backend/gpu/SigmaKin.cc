@@ -506,6 +506,7 @@ namespace madmatrix
     cxtype_amp_sv amp_sv[1];      // invariant amplitude for one given Feynman diagram
     ALOHAOBJ aloha_obj[nwf];
     for( int iwf = 0; iwf < nwf; iwf++ ) aloha_obj[iwf] = ALOHAOBJ{ pvec_sv[iwf], w_sv[iwf] };
+#ifdef __CUDA_ARCH__
     if constexpr( nSharedWf > 0 )
     {
       extern __shared__ __align__( 16 ) unsigned char sharedWfRaw[];
@@ -514,6 +515,7 @@ namespace madmatrix
 #pragma unroll
       for( int k = 0; k < nSharedWf; k++ ) aloha_obj[sharedWfSlots[k]] = ALOHAOBJ{ sharedWf->pvec[k], sharedWf->w[k] };
     }
+#endif
     fptype_amp* amp_fp = reinterpret_cast<fptype_amp*>( amp_sv );
 
     // special temporary ALOHAOBJ to hold F/Vtmp values in the combined vertex functions
