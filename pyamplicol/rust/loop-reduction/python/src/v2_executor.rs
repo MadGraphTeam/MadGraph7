@@ -915,10 +915,10 @@ fn backend_of<'a>(
                     Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
                 }
                 .map_err(error)?;
-                V2Backends::NinjaRs(V2ReductionBackend {
+                V2Backends::NinjaRs(V2ReductionBackend::new(
                     reducer,
-                    masters: v2::master_selection("both")?,
-                })
+                    v2::master_selection("both")?,
+                ))
             }
             Reduction::TiRust => V2Backends::tirust(
                 runtime::plan_histogram(plan),
@@ -1821,8 +1821,8 @@ impl V2Executor {
         Ok(backend.plans())
     }
 
-    /// Build now what this executor's first evaluation in its carrier would
-    /// build lazily, without evaluating a point of the process (the warm
+    /// Build now most of what this executor's first evaluation in its carrier
+    /// would build lazily, without evaluating a point of the process (the warm
     /// entry: `plan_export.NativeExecutor.prepare`): the carrier's tree
     /// runtime (its kernels' evaluators, or their plane applications in
     /// binary64), the families' walk data (and dependent columns), the
@@ -1838,7 +1838,10 @@ impl V2Executor {
     /// (`runtime::warm_backend`). What it builds is shared with the
     /// executors derived with the same carrier and engine
     /// (`SharedBackends`, the tree runtime) and kept for their lifetime.
-    /// The values of every later evaluation are unchanged.
+    /// The values of every later evaluation are unchanged. Left to the first
+    /// call that needs it: NinjaRS's lower class of a lane whose top
+    /// coefficients vanish at its point, and the binary64 fast engine's exact
+    /// fallback engine (lanes at its absolute thresholds).
     #[pyo3(signature = (reduction="ninjars", *, unchecked=None))]
     fn warm(&mut self, py: Python<'_>, reduction: &str, unchecked: Option<bool>) -> PyResult<()> {
         let _unlock = pyamplicol::unlock();

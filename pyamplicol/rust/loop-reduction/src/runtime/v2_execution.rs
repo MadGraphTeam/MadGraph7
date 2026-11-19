@@ -367,6 +367,12 @@ pub struct V2ReductionBackend {
     pub masters: PoleSelection,
 }
 
+impl V2ReductionBackend {
+    pub fn new(reducer: V2Reducer, masters: PoleSelection) -> Self {
+        Self { reducer, masters }
+    }
+}
+
 fn failure(error: impl std::fmt::Display) -> RusticolError {
     RusticolError::evaluation(format!("v2 reduction: {error}"))
 }
@@ -550,7 +556,8 @@ pub fn warm_classes(
 /// `take_lane_measures`), so the next call reports and caches only its own
 /// lanes. A later reduction's values do not depend on it: every lane's
 /// outcome is a function of its own inputs (the engines' caches are keyed by
-/// them).
+/// them). Not built: the binary64 fast engine's exact fallback (its lanes
+/// stay below the absolute thresholds that route a lane to it).
 pub fn warm<T>(backend: &mut V2Backends, classes: &[(usize, usize)], zero: &T) -> RusticolResult<()>
 where
     T: TypedBatch + rusticol_core::loop_v2::dress::Carrier,
@@ -669,10 +676,10 @@ mod warm_tests {
     use symbolica::domains::float::DoubleFloat;
 
     fn ninjars(arithmetic: &str, engine: &str) -> V2Backends {
-        V2Backends::NinjaRs(V2ReductionBackend {
-            reducer: V2Reducer::new(arithmetic, None, engine, true).expect("reducer"),
-            masters: PoleSelection::BOTH,
-        })
+        V2Backends::NinjaRs(V2ReductionBackend::new(
+            V2Reducer::new(arithmetic, None, engine, true).expect("reducer"),
+            PoleSelection::BOTH,
+        ))
     }
 
     /// The outcomes of `lanes` reduced by `backend`, as text (exact: the
@@ -687,8 +694,13 @@ mod warm_tests {
         format!("{:?}", out.0)
     }
 
-    fn check<T>(make: impl Fn() -> V2Backends, zero: &T, classes: &[(usize, usize)], lower: bool)
-    where
+    fn check<T>(
+        make: impl Fn() -> V2Backends,
+        zero: &T,
+        classes: &[(usize, usize)],
+        lower: bool,
+        sensitive: bool,
+    ) where
         T: TypedBatch + rusticol_core::loop_v2::dress::Carrier,
         V2Backends: V2Backend<T>,
     {
@@ -701,11 +713,40 @@ mod warm_tests {
             })
             .map(|(n, rank)| synthetic_lane(n, rank, zero, 3).expect("lane"))
             .collect();
-        let cold = reduced(&mut make(), &lanes);
+        let mut plain = make();
+        let cold = reduced(&mut plain, &lanes);
+        // A reduction fills the master cache and the counters (binary64 fast
+        // engine): what the warm must leave empty.
+        let (masters, statistics, _) = residue::<T>(&mut plain);
+        if sensitive {
+            assert!(masters > 0 && statistics > 0, "{masters} {statistics}");
+        }
         let mut warmed = make();
         warm(&mut warmed, classes, zero).expect("warm");
+        assert_eq!(residue::<T>(&mut warmed), (0, 0, 0), "the warm resets");
         assert_eq!(reduced(&mut warmed, &lanes), cold);
         assert!(cold.contains("Ok("), "the test lanes reduce: {cold}");
+    }
+
+    /// The cached master rows (NinjaRS), the counters and seconds taken and
+    /// the lane measures taken, of a backend.
+    fn residue<T>(backend: &mut V2Backends) -> (usize, usize, usize)
+    where
+        T: TypedBatch,
+        V2Backends: V2Backend<T>,
+    {
+        let masters = match &*backend {
+            V2Backends::NinjaRs(backend) => backend.reducer.cached_masters(),
+            #[cfg(feature = "tir")]
+            V2Backends::TiRust(_) => 0,
+        };
+        let statistics = V2Backend::<T>::take_statistics(backend);
+        let measures = V2Backend::<T>::take_lane_measures(backend).len();
+        (
+            masters,
+            statistics.counts.len() + statistics.seconds.len(),
+            measures,
+        )
     }
 
     #[test]
@@ -714,12 +755,13 @@ mod warm_tests {
         let classes = [(2, 2), (3, 3), (4, 4)];
         // NinjaRS buckets a lane by its true rank: lanes below the
         // declared ranks too.
-        check(|| ninjars("double", "fast"), &0.0, &classes, true);
+        check(|| ninjars("double", "fast"), &0.0, &classes, true, true);
         check(
             || ninjars("double-double", "generic"),
             &DoubleFloat::from(0.0),
             &classes,
             true,
+            false,
         );
         #[cfg(feature = "tir")]
         {
@@ -732,7 +774,7 @@ mod warm_tests {
                 )
                 .expect("tirust")
             };
-            check(tir, &0.0, &classes, false);
+            check(tir, &0.0, &classes, false, false);
         }
     }
 }
