@@ -3495,6 +3495,7 @@ class Event(list):
                 self.pop(to_remove)
                 
             if fks_i > 1: # final-state recoil
+                new_p = FourMomentum()
 
                 # Re-scale the energy of fks_i to make it on-shell
                 for ip,part in enumerate(self):
