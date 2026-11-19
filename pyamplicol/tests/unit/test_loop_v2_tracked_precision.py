@@ -44,7 +44,13 @@ def test_full_precision_lanes_pass_and_a_ruined_lane_fails(loop_native):
     ruined = _lane((3.0, 0, 4, 256), (0, 0, 256, 256), (0, 0, 256, 256))
     reason = rule([regular, ruined], 256)
     assert reason.startswith(REASON), reason
-    assert reason.endswith("64 required at 256 working bits"), reason
+    assert "64 required at 256 working bits; " in reason, reason
+    # The remedy for an amplitude that vanishes numerically (follow-up 4).
+    assert reason.endswith(
+        "an amplitude that vanishes numerically (an integrated zero) is evaluated "
+        'on the default route, with the rescue stack\'s "scale" metric or with '
+        "reduction_unchecked=True"
+    ), reason
     # A lost imaginary part counts as well; so does a pole coefficient.
     imaginary = _lane((1.0, 0.5, 256, 30), (0, 0, 256, 256), (0, 0, 256, 256))
     assert rule([regular, imaginary], 256) is not None
@@ -69,7 +75,7 @@ def test_the_threshold_is_ninjars_rule_at_the_working_precision(
         reason = rule(lanes, working)
         assert (reason is not None) is refused, (working, bits, reason)
         if refused:
-            assert reason.endswith(f"{required} required at {working} working bits")
+            assert f"{required} required at {working} working bits; " in reason
 
 
 def test_vanishing_families_and_poles_weigh_by_their_size(loop_native):

@@ -1292,7 +1292,7 @@ mod tests {
         let refusal = reducer.tracked_refusal(&coarse).unwrap();
         assert!(
             refusal.starts_with("NinjaRS tracked precision: the point's lanes keep 2")
-                && refusal.ends_with("64 required at 256 working bits"),
+                && refusal.contains("64 required at 256 working bits; "),
             "{refusal}"
         );
         // Both points together: the coarse lane is as large as the exact one.
