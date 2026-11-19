@@ -42,6 +42,10 @@ logger = logging.getLogger('madgraph.export_amplicol')
 pjoin = os.path.join
 
 MODEL_FILE = 'amplicol_model.pyamplicol-model'
+# JIT optimisation level of the evaluators of the compiled model
+MODEL_JIT_OPTIMIZATION = 2
+# directory of the compiled models shared by all outputs, 'off' to disable it
+MODEL_CACHE_ENV = 'MG7_AMPLICOL_MODEL_CACHE'
 # the pyamplicol that generated the output, checked before compiling
 PYAMPLICOL_RECORD = 'amplicol_pyamplicol.json'
 
@@ -257,8 +261,10 @@ def max_matched_jets(proc_defs, model):
 
 def model_job(model, cache_path, pyamplicol=None):
     """The UFO model of the output with its restriction, compiled for
-    pyamplicol once per output and again when the model, its restriction or
-    pyamplicol change: the cache is keyed by a sidecar json file."""
+    pyamplicol once per model, restriction, pyamplicol and compile settings:
+    shared by the outputs through the cache of model_cache_dir and copied into
+    the output, whose sidecar json file records the key."""
+    import platform
     path = model.get('modelpath')
     reference = model.get('name')
     # the suffix after the UFO directory name, which may itself contain '-'
@@ -272,13 +278,68 @@ def model_job(model, cache_path, pyamplicol=None):
     sources = {'model': os.path.realpath(path), 'restriction': restriction,
                'restriction_card': file_hash(pjoin(path, 'restrict_default.dat')
                                              if restriction == 'default' else restriction),
+               'model_files': ufo_hash(path),
+               'jit_optimization_level': MODEL_JIT_OPTIMIZATION,
+               'platform': '%s-%s' % (sys.platform, platform.machine()),
                'pyamplicol': pyamplicol}
     key = hashlib.sha256(json.dumps(sources, sort_keys=True).encode()).hexdigest()
     key_file = os.path.splitext(cache_path)[0] + '.json'
-    if not (os.path.exists(cache_path) and cached_model_key(key_file) == key):
+    shared = model_cache_dir()
+    if not (os.path.exists(cache_path) and cached_model_key(key_file) == key) and \
+            not (shared and shared_model(shared, key)):
         logger.info('Compiling the model %s for AmpliCol' % reference)
     return {'path': path, 'restriction': restriction, 'cache': cache_path,
-            'key': key, 'key_file': key_file, 'sources': sources}
+            'key': key, 'key_file': key_file, 'sources': sources,
+            'shared_cache': shared,
+            'jit_optimization_level': MODEL_JIT_OPTIMIZATION}
+
+
+def model_cache_dir():
+    """The directory of the compiled models shared by the outputs:
+    $MG7_AMPLICOL_MODEL_CACHE, None if that is 'off', by default mg7_models in
+    the cache of pyamplicol ($PYAMPLICOL_CACHE_DIR or the user cache directory)."""
+    configured = os.environ.get(MODEL_CACHE_ENV)
+    if configured:
+        if configured.strip().lower() in ('off', 'none', 'no', 'false', '0'):
+            return None
+        return os.path.abspath(os.path.expanduser(configured))
+    root = os.environ.get('PYAMPLICOL_CACHE_DIR')
+    if root:
+        root = os.path.expanduser(root)
+    else:
+        try:
+            from platformdirs import user_cache_path
+            root = str(user_cache_path('pyamplicol'))
+        except ImportError:
+            root = os.path.join(os.path.expanduser('~'), '.cache', 'pyamplicol')
+    return os.path.abspath(pjoin(root, 'mg7_models'))
+
+
+def shared_model(cache_dir, key):
+    """The compiled model of ``key`` in the shared cache, None unless its
+    sidecar json file records that key and the size of the model file."""
+    path = pjoin(cache_dir, key + '.pyamplicol-model')
+    try:
+        with open(pjoin(cache_dir, key + '.json')) as stream:
+            record = json.load(stream)
+        if record.get('key') == key and os.path.getsize(path) == record.get('size'):
+            return path
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None
+
+
+def ufo_hash(path):
+    """The sha256 of the python files of a UFO model."""
+    digest = hashlib.sha256()
+    try:
+        names = sorted(name for name in os.listdir(path) if name.endswith('.py'))
+    except OSError:
+        return None
+    for name in names:
+        with open(pjoin(path, name), 'rb') as stream:
+            digest.update(name.encode() + b'\0' + stream.read() + b'\0')
+    return digest.hexdigest()
 
 
 def file_hash(path):

@@ -140,7 +140,7 @@ class TestModelJob(unittest.TestCase):
 
 class TestModelCache(unittest.TestCase):
     """The compiled model is reused only for the same model, restriction and
-    pyamplicol."""
+    pyamplicol, from the output or from the cache shared by the outputs."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -148,11 +148,12 @@ class TestModelCache(unittest.TestCase):
         self.path = os.path.join(self.tmp, 'sm')
         os.mkdir(self.path)
         self.cache = os.path.join(self.tmp, export_amplicol.MODEL_FILE)
+        self.shared = os.path.join(self.tmp, 'shared')
         self.compiled = []
         source = mock.Mock()
         source.compile.side_effect = lambda prepared_output, evaluator: (
             self.compiled.append(prepared_output),
-            open(prepared_output, 'w').close())
+            open(prepared_output, 'w').write('model'))
         self.pyamplicol = mock.Mock()
         self.pyamplicol.ModelSource.from_path.return_value = source
         config = mock.Mock()
@@ -160,10 +161,14 @@ class TestModelCache(unittest.TestCase):
                                                 'pyamplicol.config': config})
         patcher.start()
         self.addCleanup(patcher.stop)
+        environment = mock.patch.dict(
+            os.environ, {export_amplicol.MODEL_CACHE_ENV: self.shared})
+        environment.start()
+        self.addCleanup(environment.stop)
 
-    def compile(self, version):
+    def compile(self, version, cache=None):
         from madgraph.iolibs import amplicol_generation
-        job = export_amplicol.model_job(FakeModel(self.path, 'sm'), self.cache,
+        job = export_amplicol.model_job(FakeModel(self.path, 'sm'), cache or self.cache,
                                         {'version': version, 'source_hash': 'h'})
         amplicol_generation.model_source(self.pyamplicol, json.loads(json.dumps(job)))
         return job
@@ -187,6 +192,44 @@ class TestModelCache(unittest.TestCase):
             stream.write('b')
         self.compile('1')
         self.assertEqual(len(self.compiled), 2)
+
+    def test_cache_is_rebuilt_for_another_model_file(self):
+        with open(os.path.join(self.path, 'couplings.py'), 'w') as stream:
+            stream.write('a')
+        self.compile('1')
+        with open(os.path.join(self.path, 'couplings.py'), 'w') as stream:
+            stream.write('b')
+        self.compile('1')
+        self.assertEqual(len(self.compiled), 2)
+
+    def test_outputs_share_the_compiled_model(self):
+        first = os.path.join(self.tmp, 'a', export_amplicol.MODEL_FILE)
+        second = os.path.join(self.tmp, 'b', export_amplicol.MODEL_FILE)
+        os.makedirs(os.path.dirname(first))
+        os.makedirs(os.path.dirname(second))
+        job = self.compile('1', first)
+        self.compile('1', second)
+        self.assertEqual(len(self.compiled), 1)
+        self.assertTrue(self.compiled[0].startswith(self.shared))
+        with open(second) as stream:
+            self.assertEqual(stream.read(), 'model')
+        self.assertEqual(sorted(os.listdir(self.shared)),
+                         [job['key'] + '.json', job['key'] + '.pyamplicol-model'])
+
+    def test_a_truncated_shared_model_is_compiled_again(self):
+        job = self.compile('1', os.path.join(self.tmp, 'a.pyamplicol-model'))
+        with open(os.path.join(self.shared, job['key'] + '.pyamplicol-model'), 'w'):
+            pass
+        self.compile('1')
+        self.assertEqual(len(self.compiled), 2)
+
+    def test_the_shared_cache_can_be_disabled(self):
+        with mock.patch.dict(os.environ, {export_amplicol.MODEL_CACHE_ENV: 'off'}):
+            self.assertIsNone(export_amplicol.model_cache_dir())
+            self.compile('1')
+            self.compile('1', os.path.join(self.tmp, 'a.pyamplicol-model'))
+        self.assertEqual(self.compiled, [self.cache, os.path.join(self.tmp, 'a.pyamplicol-model')])
+        self.assertFalse(os.path.exists(self.shared))
 
 
 class TestMaxMatchedJets(unittest.TestCase):
