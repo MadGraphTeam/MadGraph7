@@ -1,21 +1,19 @@
 # TIRust–MadLoop handoff
 
-**Status: NOT COMPLETE.** Backend 9 is implemented and requalified on the shared
+**Status: in review.** Backend 9 is implemented and requalified on the shared
 host for TIRust `main` `1c130a81` (huashengshao/TIRust#43), with the bridge's
 method choice off and its shifted DP check pass (campaign `tirust-1c130a81-1`).
 No accepted TIRust value is wrong in the stress set any more: the EW t t̄ γ
-threshold defect of `tirust-2b9ba961-1` is fixed. One thing is open before PR
-#437 merges:
-
-- **Precise local timing acceptance**, which is Hua-Sheng's local TODO.
+threshold defect of `tirust-2b9ba961-1` is fixed. Only the review of PR #437 is
+open. A precise local timing is no longer a condition for merging (Hua-Sheng,
+2026-11-19); the cost figures below are the shared-host measurements.
 
 Hua-Sheng took PR #437 out of draft and requested ValentinHirschi's review on
-2026-11-16; the PR description lists both open items. Olivier Mattelaer and Theo
-Heimel were added as reviewers on 2026-11-17. NinjaRS PR #315 merged into `main`
-on 2026-11-16, so #437 now targets `main`. Do not mark the
-integration goal complete before the timing is done.
+2026-11-16. Olivier Mattelaer and Theo Heimel were added as reviewers on
+2026-11-17. NinjaRS PR #315 merged into `main` on 2026-11-16, so #437 now
+targets `main`.
 
-Updated 2026-11-18. The benchmark workspace `docs/benchmarkfolder` (report,
+Updated 2026-11-19. The benchmark workspace `docs/benchmarkfolder` (report,
 campaigns, `CURRENT_STATUS.md`) is no longer in the branch. It is a release
 bundle, restored with `python3 -B tools/tirust_benchmark_bundle.py restore`; see
 [`docs/tirust-benchmarks.md`](docs/tirust-benchmarks.md). Paths below under
@@ -108,7 +106,7 @@ Details and links are in `CURRENT_STATUS.md`. The previous campaigns
   ordinary points. The cache diagnostic passes 61/61, including the QP
   check-pass cache.
 - **Stress (38 points):** TIRust accepts 28 and refuses 10. **No accepted TIRust
-  value is wrong.** Two lane outcomes block, both outside TIRust:
+  value is wrong.** Two lane outcomes were flagged, both outside TIRust:
   - **t t̄ γ threshold (fixed):** `tirust-2b9ba961-1` accepted a DP value 1.1%
     off with a claimed accuracy of 6.5e-9. The binary64 kinematics fix that point
     only to about 1%. The two DP evaluations now disagree, and MadLoop rescues the
@@ -116,8 +114,11 @@ Details and links are in `CURRENT_STATUS.md`. The previous campaigns
     of five independent values. The 9|6|7|1 chain returns the same value.
   - **Chain, wrong fallback value:** at EW μ⁺μ⁻ and CMS `forward-1e-06` small
     Gram, TIRust refuses correctly, and the chain returns CutTools QP (329) with
-    exactly half of the universal double pole. MadLoop's `OSThres` projection
-    zeroes a small invariant there, which changes the integral.
+    half of the universal double pole. Current `main` (`fabaad5172`) with its
+    default chain returns the same bits; with the stock `MLStabThres = 1e-3` it
+    returns COLLIER's DP value with the double pole 3.4% low, and so does the
+    9|6|7|1 chain (MadGraphTeam/MadGraph7#494). Lowering `OSThres` to 1e-14
+    changes neither value, so the `OSThres` projection is not the cause.
   - Every other accepted TIRust value agrees with the reference. Seven refusals
     are at points where every reducer fails. At CMS `forward-1e-08`, CutTools
     hangs.
@@ -136,7 +137,8 @@ Details and links are in `CURRENT_STATUS.md`. The previous campaigns
   replay, within the run-to-run spread.
 - **Helicity filters:** since `madloop_ninjars`, MadLoop learns and applies
   helicity filters with `LoopPoleMode = 0`, which baseline `9228fc58` bypasses.
-  This matters for the local paired timing (see its handoff).
+  A paired timing against that baseline must separate the two (see the
+  campaign's `timing-handoff-1/`).
 - **Provisional profile:** not rerun on the final pins; the rehearsal measured
   TIRust/NinjaRS 1.177 on stock O3 Zggg.
 - **Report:** the workspace's `benchmark.pdf` appends 6 current-source
@@ -150,14 +152,11 @@ Details and links are in `CURRENT_STATUS.md`. The previous campaigns
 
 ## Remaining work
 
-1. **Hua-Sheng's local timing.** Follow
-   `campaigns/tirust-1c130a81-1/timing-handoff-1/LOCAL_TIMING_TODO.md` in the
-   workspace.
-   Gate: the upper 95% paired candidate/baseline bound is ≤ 1.05 for every main
-   process, plus existing-backend regressions.
-2. **Shared-host profile** (optional): rerun the stock O3 Zggg profile on the
-   final pin when the host is quiet.
-3. **A later pin or bridge change**, if the upstream session proposes one:
+1. **Shared-host profile** (optional): rerun the stock O3 Zggg profile on the
+   final pin when the host is quiet. A paired local timing
+   (`campaigns/tirust-1c130a81-1/timing-handoff-1/LOCAL_TIMING_TODO.md` in the
+   workspace) is optional too; it is not a merge condition.
+2. **A later pin or bridge change**, if the upstream session proposes one:
    - follow [`tools/tirust_pin/README.md`](tools/tirust_pin/README.md): export
      the commit, hand-merge the poles-only patch if needed, then run
      `regen_poles_patch.sh` and `pinbump.py`; move `vendor/tirust/pole-kernels`
@@ -187,13 +186,14 @@ Details and links are in `CURRENT_STATUS.md`. The previous campaigns
      ```
    - publish it, then repin `tools/tirust_benchmark_bundle.json` and
      `docs/tirust-benchmarks.md`.
-4. **Outside TIRust.**
-   - MadLoop's `OSThres` projection should not zero physically nonzero
-     invariants. TIRust's refusal of such inputs is correct; CutTools returns a
-     wrong value there.
-   - A CutTools STOP or hang is a MadLoop/CutTools limitation; it can abort a
-     TIRust-first chain that falls back to CutTools.
-5. **Review.** PR #437 targets `main` and is in review with Valentin Hirschi,
+3. **Outside TIRust.**
+   - At forward small-Gram points, CutTools' QP value has half the IR double
+     pole, and COLLIER's DP value passes the stock 1e-3 check with a double pole
+     about 3% low. `main`'s default chain returns one of them; TIRust refuses
+     these points (MadGraphTeam/MadGraph7#494).
+   - A CutTools STOP or hang is a MadLoop/CutTools limitation, on `main` too; it
+     can abort a TIRust-first chain that falls back to CutTools.
+4. **Review.** PR #437 targets `main` and is in review with Valentin Hirschi,
    Olivier Mattelaer and Theo Heimel. Olivier removed the campaigns from the
    branch (`27d068d990`); the rest of the benchmark folder moved to the release
    bundle, as the NinjaRS PR did.

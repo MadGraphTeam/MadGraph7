@@ -31,7 +31,7 @@ version 1 and the files it adds.
 
 The benchmark tools (`tools/tirust_*`) read and write the workspace
 `docs/benchmarkfolder`, which git ignores. Restore it before a requalification,
-the local timing or a report build:
+a timing run or a report build:
 
 ```sh
 python3 -B tools/tirust_benchmark_bundle.py restore
@@ -63,8 +63,7 @@ the bundle has the details.
   the point only to about 1%, the bridge's shifted check pass now makes MadLoop
   rescue the point in quadruple precision. The previous campaign accepted a
   double-precision value 1.1% off there.
-
-## Open before merge
-
-- **Local timing acceptance** on a quiet machine, using campaign
-  `tirust-1c130a81-1`.
+- **Cost:** with method choice off, TIRust takes 5.5% (stock `check profile`)
+  to 22% (default card) more time per Zggg point, measured on paired replays
+  on the shared host. A precise local timing is optional and not a merge
+  condition; the bundle's `LOCAL_FINAL_VALIDATION_TODO.md` describes it.

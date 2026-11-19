@@ -5,7 +5,7 @@ The benchmark workspace ``docs/benchmarkfolder`` (campaigns, physical cards,
 frozen points, report sources and evidence) is not part of the MadGraph source
 tree. It is distributed as a release asset (see ``docs/tirust-benchmarks.md``)
 and restored into a checkout, where it is ignored by git, before a
-requalification, the local timing or a report build.
+requalification, a timing run or a report build.
 
   build    --revision REV --output DIR [--include DIR] [--name NAME]
            Archive docs/benchmarkfolder at REV byte for byte, overlay the files
