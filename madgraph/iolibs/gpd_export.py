@@ -946,3 +946,289 @@ gpd2py.so: f2py_gpd.f libgpdme.$(dylibext) makefile
 	touch gpd2py.so
 """
     return text
+
+
+# ------------------------------------------------------------------------------
+# coherent standalone output: the GPD channels of one physical process
+# ------------------------------------------------------------------------------
+INCLUDE_RE = re.compile(r"^\s*INCLUDE\s+'([^']+)'\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def inline_files(text, files):
+    """Replace INCLUDE 'name' by the content of files[name] (a path)."""
+    def repl(match):
+        name = match.group(1)
+        if name in files:
+            return open(files[name]).read()
+        return match.group(0)
+    return INCLUDE_RE.sub(repl, text)
+
+
+def process_key(proc):
+    """The physical process of a GPD channel: the initial state with the pair
+    in place of the GPD legs, the final state without the outgoing GPD leg
+    (onia by their Fock state), the process number."""
+    legs = proc.get('legs')
+    ini = []
+    for leg in legs:
+        if leg.get('state'):
+            continue
+        ini.append('pair' if leg.get('gpd') else leg.get('id'))
+    fin = []
+    for leg in legs:
+        if not leg.get('state') or leg.get('gpd'):
+            continue
+        onium = leg.get('onium')
+        fin.append((leg.get('id'), onium.get('id') if onium else 0,
+                    onium.get('index') if onium else -1))
+    return (tuple(ini), tuple(fin), proc.get('id'))
+
+
+def write_channel_files(sa, pdir, channel_mes, fortran_model, prefixes, gpd_inc, post=None):
+    """For every channel (a HelasMatrixElement), its matrix element and GPD
+    driver with the routine prefix, the process-specific includes inlined,
+    in pdir as <name>; returns [(info, namp)] and the file names. post(text)
+    adapts the text (madevent couplings). Shared by the madevent shadow
+    groups and the coherent standalone directories."""
+    tmp = pjoin(pdir, 'gpd_tmp')
+    if not os.path.isdir(tmp):
+        os.mkdir(tmp)
+    out = []
+    try:
+        for me_c, (prefix, name) in zip(channel_mes, prefixes):
+            files = {}
+            for inc, writer_fct in (('onia.inc', sa.write_onia_file if me_c.get_nonia() else None),
+                                    ('pmassonia.inc', sa.write_pmassonia_file if me_c.get_nonia() else None),
+                                    ('pmass.inc', sa.write_pmass_file)):
+                if writer_fct is None:
+                    continue
+                path = pjoin(tmp, inc)
+                writer_fct(writers_module().FortranWriter(path), me_c)
+                files[inc] = path
+            files['gpd.inc'] = gpd_inc
+            path = pjoin(tmp, 'nexternal.inc')
+            sa.write_nexternal_file(writers_module().FortranWriter(path), *me_c.get_nexternal_ninitial())
+            files['nexternal.inc'] = path
+            mpath = pjoin(tmp, 'matrix.f')
+            replace_dict = sa.write_matrix_element_v4(writers_module().FortranWriter(mpath), me_c,
+                                                      fortran_model, proc_prefix=prefix,
+                                                      return_replace_dict=True)
+            info = write_driver(tmp, me_c, replace_dict, prefix)
+            text = inline_files(open(mpath).read(), files)
+            text += "\n" + inline_files(open(pjoin(tmp, 'gpd_driver.f')).read(), files)
+            if post:
+                text = post(text, files)
+            with open(pjoin(pdir, name), 'w') as fsock:
+                fsock.write(text)
+            out.append((info, replace_dict['ncolor'] * len(info.helicity_map())))
+    finally:
+        for f in os.listdir(tmp):
+            os.remove(pjoin(tmp, f))
+        os.rmdir(tmp)
+    return out
+
+
+def writers_module():
+    import madgraph.iolibs.file_writers as file_writers
+    return file_writers
+
+
+COHERENT_SA_TEMPLATE = """C ======================================================================
+C     Coherent GPD process %(process)s (standalone output,
+C     madgraph/iolibs/gpd_export.py): the CFFs of the GPD channels
+C       %(channels)s
+C     (files gpdc<k>.f, routines C<k>_*) summed per helicity and colour
+C     flow, as in eq. (2.8), then squared with the proton spin sums. Each
+C     channel also has its own directory, with the diagnostics.
+C ======================================================================
+      SUBROUTINE GPD_CFF(PIN, XIIN, TIN, MUIN, C, C2)
+C     The coherent generalised CFFs C(NAMP,4) (H, E, Ht, Et) at the
+C     physical point; C2: the second Monte Carlo replica (= C by quadrature).
+      IMPLICIT NONE
+      INTEGER NPHYS, NAMP
+      PARAMETER (NPHYS=%(nphys)d, NAMP=%(namp)d)
+      REAL*8 PIN(0:3,NPHYS), XIIN, TIN, MUIN
+      COMPLEX*16 C(NAMP,4), C2(NAMP,4), CK(NAMP,4), CK2(NAMP,4)
+      COMPLEX*16 CLAST(NAMP,4)
+      INTEGER IERRLAST
+      COMMON/GPD_LAST/CLAST, IERRLAST
+      C = (0D0,0D0)
+      C2 = (0D0,0D0)
+%(channel_calls)s
+      CLAST = C
+      IERRLAST = 0
+      END
+
+      SUBROUTINE SMATRIX_GPD(PIN, XIIN, TIN, MUIN, ANS)
+C     |M|^2 of the coherent process, averaged over the initial spins (the
+C     proton one included) and summed over the final ones.
+      IMPLICIT NONE
+      INTEGER NPHYS, NAMP
+      PARAMETER (NPHYS=%(nphys)d, NAMP=%(namp)d)
+      REAL*8 PIN(0:3,NPHYS), XIIN, TIN, MUIN, ANS
+      COMPLEX*16 C(NAMP,4), C2(NAMP,4)
+      REAL*8 %(prefix1)sGPD_SQUARE
+      CALL GPD_CFF(PIN, XIIN, TIN, MUIN, C, C2)
+      ANS = %(prefix1)sGPD_SQUARE(C, C2, XIIN, TIN)
+      END
+
+      SUBROUTINE GPD_CFF_CHANNEL(K, PIN, XIIN, TIN, MUIN, C, C2)
+C     The CFFs of channel K alone (%(channel_list)s).
+      IMPLICIT NONE
+      INTEGER NPHYS, NAMP, K
+      PARAMETER (NPHYS=%(nphys)d, NAMP=%(namp)d)
+      REAL*8 PIN(0:3,NPHYS), XIIN, TIN, MUIN
+      COMPLEX*16 C(NAMP,4), C2(NAMP,4)
+      C = (0D0,0D0)
+      C2 = (0D0,0D0)
+%(channel_select)s
+      END
+"""
+
+F2PY_COHERENT_TEMPLATE = """C     f2py wrappers of the coherent GPD process (madgraph/iolibs/gpd_export.py),
+C     built by 'make gpd2py.so' and used from this directory (Cards in ../../):
+C       import gpd2py
+C       gpd2py.py_gpd_init()
+C       me2 = gpd2py.py_smatrix_gpd(p, xi, t, mu)   # p(0:3, NPHYS), pair = 2 xi P
+C       c = gpd2py.py_gpd_cff(p, xi, t, mu)         # coherent CFFs (NAMP, 4)
+C       ck = gpd2py.py_gpd_cff_channel(k, p, xi, t, mu)   # channel k alone
+C     channels: %(channel_list)s
+      SUBROUTINE PY_GPD_INIT()
+      IMPLICIT NONE
+      INTEGER MOM_RESH_TYPE
+      COMMON/TO_MOM_RESH_TYPE/MOM_RESH_TYPE
+      MOM_RESH_TYPE = 1
+      CALL SETPARA('../../Cards/param_card.dat')
+%(setonia)s
+      CALL GPD_INIT()
+      END
+
+      SUBROUTINE PY_SMATRIX_GPD(P, XI, T, MU, ANS)
+      IMPLICIT NONE
+      INTEGER NPHYS
+      PARAMETER (NPHYS=%(nphys)d)
+CF2PY INTENT(IN) :: P(0:3,NPHYS)
+CF2PY INTENT(IN) :: XI, T, MU
+CF2PY INTENT(OUT) :: ANS
+      REAL*8 P(0:3,NPHYS), XI, T, MU, ANS
+      CALL SMATRIX_GPD(P, XI, T, MU, ANS)
+      END
+
+      SUBROUTINE PY_GPD_CFF(P, XI, T, MU, C)
+      IMPLICIT NONE
+      INTEGER NPHYS, NAMP
+      PARAMETER (NPHYS=%(nphys)d, NAMP=%(namp)d)
+CF2PY INTENT(IN) :: P(0:3,NPHYS)
+CF2PY INTENT(IN) :: XI, T, MU
+CF2PY INTENT(OUT) :: C(NAMP,4)
+      REAL*8 P(0:3,NPHYS), XI, T, MU
+      COMPLEX*16 C(NAMP,4), C2(NAMP,4)
+      CALL GPD_CFF(P, XI, T, MU, C, C2)
+      END
+
+      SUBROUTINE PY_GPD_CFF_CHANNEL(K, P, XI, T, MU, C)
+      IMPLICIT NONE
+      INTEGER NPHYS, NAMP, K
+      PARAMETER (NPHYS=%(nphys)d, NAMP=%(namp)d)
+CF2PY INTENT(IN) :: K
+CF2PY INTENT(IN) :: P(0:3,NPHYS)
+CF2PY INTENT(IN) :: XI, T, MU
+CF2PY INTENT(OUT) :: C(NAMP,4)
+      REAL*8 P(0:3,NPHYS), XI, T, MU
+      COMPLEX*16 C(NAMP,4), C2(NAMP,4)
+      CALL GPD_CFF_CHANNEL(K, P, XI, T, MU, C, C2)
+      END
+"""
+
+
+def write_coherent_standalone(exporter, matrix_elements, fortran_model):
+    """After a standalone output: one more directory per physical GPD process
+    with several channels (e.g. 'a gpd > X': gpd_g, gpd_u, gpd_d, gpd_s),
+    P<n>_..gpd.., whose SMATRIX_GPD sums the channels coherently. The
+    channel directories stay (diagnostics: dump_gpd, mc_gpd)."""
+    import collections
+    import madgraph.core.helas_objects as helas_objects
+    import madgraph.iolibs.export_v4 as export_v4
+    groups = collections.OrderedDict()
+    for me in matrix_elements:
+        if has_gpd(me):
+            groups.setdefault(process_key(me.get('processes')[0]), []).append(me)
+    sub = pjoin(exporter.dir_path, 'SubProcesses')
+    gpd_inc = pjoin(exporter.dir_path, 'Source', 'GPD', 'gpd.inc')
+    made = []
+    for key, mes in groups.items():
+        if len(mes) < 2:
+            continue
+        procs = [me.get('processes')[0] for me in mes]
+        first = "P%s" % procs[0].shell_string()
+        name = re.sub(r'gpd[gudscbt]', 'gpd', first, count=1)
+        if name == first:
+            name = first + '_coherent'
+        pdir = pjoin(sub, name)
+        if os.path.isdir(pdir):
+            import shutil
+            shutil.rmtree(pdir)
+        os.mkdir(pdir)
+        sa_opt = dict(exporter.opt)
+        sa = export_v4.ProcessExporterFortranSA(exporter.dir_path, sa_opt)
+        sa.model = exporter.model
+        sa.cmd_options = getattr(exporter, 'cmd_options', {}) or {}
+        prefixes = [('C%d_' % k, 'gpdc%d.f' % k) for k in range(1, len(mes) + 1)]
+        channel_mes = [helas_objects.HelasMatrixElement(me.get('base_amplitude')) for me in mes]
+        res = write_channel_files(sa, pdir, channel_mes, fortran_model, prefixes, gpd_inc)
+        namps = set(n for _, n in res)
+        if len(namps) != 1:
+            logger_warning("GPD: the channels of %s have different colour or helicity layouts: "
+                           "no coherent standalone directory" % procs[0].nice_string())
+            import shutil
+            shutil.rmtree(pdir)
+            continue
+        info = res[0][0]
+        namp = namps.pop()
+        onia = any(i.onia for i, _ in res)
+        chan_names = [p.nice_string(prefix=False) for p in procs]
+        fmt = {'process': physical_string(procs[0]), 'channels': "\nC       ".join(chan_names),
+               'channel_list': ", ".join("%d: %s" % (k, i.channel) for k, (i, _) in enumerate(res, start=1)),
+               'nphys': info.nphys, 'namp': namp, 'prefix1': prefixes[0][0],
+               'channel_calls': "\n".join(
+                   "      CALL %sGPD_CFF(PIN, XIIN, TIN, MUIN, CK, CK2)\n"
+                   "      C = C + CK\n      C2 = C2 + CK2" % p for p, _ in prefixes),
+               'channel_select': "\n".join(
+                   "      IF (K.EQ.%d) CALL %sGPD_CFF(PIN, XIIN, TIN, MUIN, C, C2)" % (k, p)
+                   for k, (p, _) in enumerate(prefixes, start=1)),
+               'setonia': "      CALL SETONIA('../../Cards/onia_card.dat')" if onia else ''}
+        with open(pjoin(pdir, 'gpd_coherent.f'), 'w') as fsock:
+            fsock.write(COHERENT_SA_TEMPLATE % fmt)
+        check = CHECK_TEMPLATE % {'prefix': '', 'nphys': info.nphys,
+                                  'phys_in': info.me_to_phys[info.me_in], 'namp': namp}
+        check += ("\n      SUBROUTINE SETONIA_IF_NEEDED()\n      CALL SETONIA('onia_card.dat')\n      END\n"
+                  if onia else "\n      SUBROUTINE SETONIA_IF_NEEDED()\n      END\n")
+        with open(pjoin(pdir, 'check_gpd.f'), 'w') as fsock:
+            fsock.write(check)
+        with open(pjoin(pdir, 'f2py_gpd.f'), 'w') as fsock:
+            fsock.write(F2PY_COHERENT_TEMPLATE % fmt)
+        # the makefile of the first channel, on the channel files
+        with open(pjoin(sub, first, 'makefile')) as fsock:
+            text = fsock.read()
+        objs = " ".join("gpdc%d.o" % k for k in range(1, len(mes) + 1)) + " gpd_coherent.o"
+        text = re.sub(r'^PROCESS=.*$', 'PROCESS= ' + objs, text, count=1, flags=re.M)
+        # (no matrix.f here to locate the directory from)
+        text = re.sub(r'^PDIR_FULL\s*:?=.*$', 'PDIR_FULL:=$(abspath $(HERE))', text, count=1, flags=re.M)
+        with open(pjoin(pdir, 'makefile'), 'w') as fsock:
+            fsock.write(text)
+        for inc in ('coupl.inc', 'ldme.inc'):
+            if os.path.exists(pjoin(sub, inc)):
+                os.symlink(pjoin('..', inc), pjoin(pdir, inc))
+        made.append(name)
+    return made
+
+
+def physical_string(proc):
+    """'a gpd > Jpsi(1|3S11)': the process with the pair as 'gpd'."""
+    s = proc.nice_string(prefix=False)
+    return re.sub(r'\bgpd_[gudscbt]\b', 'gpd', s)
+
+
+def logger_warning(msg):
+    import logging
+    logging.getLogger('madgraph.export_v4').warning(msg)

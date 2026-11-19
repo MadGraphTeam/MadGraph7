@@ -76,6 +76,7 @@ import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.export_cpp as export_cpp
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.gpd_madevent as gpd_madevent
+import madgraph.iolibs.gpd_export as gpd_export
 import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.files as files
@@ -13522,6 +13523,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if getattr(self._curr_exporter, 'gpd_extra', None):
             # GPD processes in madevent: card, beams, libraries
             gpd_madevent.finish_output(self._curr_exporter, self._export_dir)
+        elif self._export_format == 'standalone_fortran' and self._curr_matrix_elements and \
+                any(gpd_export.has_gpd(me) for me in
+                    self._curr_matrix_elements.get_matrix_elements()):
+            # GPD processes with several channels: their coherent sum
+            made = gpd_export.write_coherent_standalone(
+                self._curr_exporter, self._curr_matrix_elements.get_matrix_elements(),
+                self._curr_helas_model)
+            for name in made:
+                logger.info("GPD: coherent sum of the channels in SubProcesses/%s" % name)
 
         # Record into the generated directory the references that are already
         # known at generation time (framework, model, ALOHA/HELAS, UFO format).

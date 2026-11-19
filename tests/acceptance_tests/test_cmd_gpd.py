@@ -110,6 +110,51 @@ class TestCmdGPD(unittest.TestCase):
             ref = jpsi_closed_form(xi)
             self.assertLess(abs(val - ref) / ref, 1e-8, "xi=%g: %s against %s" % (xi, val, ref))
 
+    def test_gpd_coherent_standalone(self):
+        """'a gpd > Jpsi(1|3S11) / z w+ w-' in standalone: the coherent
+        directory (P1_agpd_...) sums the CFFs of the four channels per
+        helicity; its |M|^2 equals the square, with the proton weights, of
+        the CFFs of the channel directories summed by hand (1e-12), and it
+        differs from the sum of the channel |M|^2 (the interference)."""
+        cmd = self.new_cmd()
+        cmd.exec_cmd('generate a gpd > Jpsi(1|3S11) / z w+ w-')
+        cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
+        sub = pjoin(self.out_dir, 'SubProcesses')
+        coh = [d for d in os.listdir(sub) if d.startswith('P') and '_agpd_' in d]
+        chans = sorted(d for d in os.listdir(sub) if d.startswith('P') and '_agpd' in d and d not in coh)
+        self.assertEqual(len(coh), 1)
+        self.assertEqual(len(chans), 4)
+        xi, t = 0.3, -0.2
+        res = {}
+        for d in coh + chans:
+            pdir = pjoin(sub, d)
+            with open(pjoin(pdir, 'gpd_points.dat'), 'w') as f:
+                f.write("%.17e %.17e %.17e\n" % (xi, t, 2.0))
+                for v in jpsi_point(xi):
+                    f.write(" ".join("%.17e" % c for c in v) + "\n")
+            subprocess.check_call(['make', 'check_gpd'], cwd=pdir, stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL)
+            out = subprocess.check_output(['./check_gpd'], cwd=pdir).decode()
+            me2 = [float(l.split()[1]) for l in out.splitlines() if l.startswith('ME2')][0]
+            cff = []
+            for l in out.splitlines():
+                if l.startswith('CFF'):
+                    v = [float(a) for a in l.split()[2:]]
+                    cff.append([complex(v[2 * g], v[2 * g + 1]) for g in range(4)])
+            res[d] = (me2, cff)
+        mp = 0.93827208816
+        tm = t / (4 * mp * mp)
+        total = 0.0
+        for k in range(len(res[coh[0]][1])):
+            h, e, ht, et = (sum(res[d][1][k][g] for d in chans) for g in range(4))
+            total += 2 * ((1 - xi * xi) * (abs(h) ** 2 + abs(ht) ** 2) - (xi * xi + tm) * abs(e) ** 2
+                          - xi * xi * tm * abs(et) ** 2
+                          - 2 * xi * xi * ((h * e.conjugate()).real + (ht * et.conjugate()).real))
+        total /= 4.0
+        self.assertLess(abs(res[coh[0]][0] / total - 1), 1e-12)
+        incoherent = sum(res[d][0] for d in chans)
+        self.assertGreater(abs(res[coh[0]][0] / incoherent - 1), 1e-4)
+
     def test_gpd_madevent(self):
         """pp -> p J/psi p at 13.6 TeV (toy2, exp(2.25 t) per amplitude, both
         photon emitters): madevent against the gamma-UPC EDFF flux convolved

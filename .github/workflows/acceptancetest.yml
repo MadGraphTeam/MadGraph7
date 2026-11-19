@@ -816,6 +816,7 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_gpd_standalone -pA -t0 -l INFO
+            ./tests/test_manager.py test_gpd_coherent_standalone -pA -t0 -l INFO
             ./tests/test_manager.py test_gpd_madevent -pA -t0 -l INFO
             ./tests/test_manager.py test_gpd_refusals -pA -t0 -l INFO
 
