@@ -10,12 +10,13 @@
 use super::native_runtime::crossing_negative_mask;
 use super::*;
 
-/// Append a union assignment with an explicit permutation and pattern subset.
+/// Append a union assignment with an explicit permutation and signed pattern subset.
 fn push_test_assignment(
     runtime: &mut NativeRuntime,
     pdgs: Vec<i32>,
     permutation: Vec<usize>,
     patterns: Vec<u32>,
+    signs: Vec<i32>,
 ) -> u32 {
     let assignments = runtime
         .flavour_union_assignments
@@ -32,7 +33,7 @@ fn push_test_assignment(
             denominator: 1,
         },
         false,
-        vec![1; patterns.len()],
+        signs,
         patterns,
         pattern_count,
     )
@@ -110,7 +111,19 @@ fn crossing_prototype_evaluates_signed_template_momenta_when_cases_are_supplied(
             .filter(|(_, s)| s.as_i64() == Some(-1))
             .fold(0_u64, |m, (r, _)| m | (1 << r));
         assert_eq!(mask, expected_mask, "{name}: sigma");
-        let id = push_test_assignment(&mut runtime, pdgs, permutation, patterns.clone());
+        // Optional sign control (the driver's --flip-signs); +1 per pattern otherwise.
+        let signs = case.get("pattern_signs").map_or_else(
+            || vec![1; patterns.len()],
+            |signs| {
+                signs
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_i64().unwrap() as i32)
+                    .collect()
+            },
+        );
+        let id = push_test_assignment(&mut runtime, pdgs, permutation, patterns.clone(), signs);
         let momenta = case["momenta"]
             .as_array()
             .unwrap()
@@ -167,7 +180,8 @@ fn crossing_prototype_evaluates_signed_template_momenta_when_cases_are_supplied(
             .expect_err("identity assignment at signed momenta");
         assert!(error.to_string().contains("energy"), "{name}: {error}");
         assert!(canary.iter().all(|v| *v == 7.0));
-        // Mixed crossings in one point are refused.
+        // Mixed crossings in one point are refused, the output untouched.
+        let mut mixed_canary = [7.0, 7.0];
         let mixed = runtime.evaluate_assignments_f64_into(
             &momenta[..4 * n],
             1,
@@ -176,7 +190,7 @@ fn crossing_prototype_evaluates_signed_template_momenta_when_cases_are_supplied(
             None,
             None,
             AssignmentOutputMode::Total,
-            &mut [7.0, 7.0],
+            &mut mixed_canary,
         );
         assert!(
             mixed
@@ -184,6 +198,7 @@ fn crossing_prototype_evaluates_signed_template_momenta_when_cases_are_supplied(
                 .to_string()
                 .contains("different crossings")
         );
+        assert_eq!(mixed_canary, [7.0, 7.0]);
         results.push(serde_json::json!({
             "name": name,
             "patterns": patterns,
