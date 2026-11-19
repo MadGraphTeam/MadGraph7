@@ -155,6 +155,11 @@ def points():
     return x.flatten(), q.flatten()
 
 
+def to_numpy(tensor):
+    """Host copy of a torch tensor, which may live on the GPU."""
+    return tensor.detach().cpu().numpy()
+
+
 def madspace_values(path):
     context = default_context()
     pdf_grid = ms.PdfGrid(os.path.join(path, f"{SET_NAME}_0000.dat"))
@@ -180,7 +185,7 @@ def madspace_values(path):
         alpha_s = ms.RunningCoupling(alpha_s_grid, PREFIX)(
             torch.tensor(ALPHA_S_QS, dtype=torch.float64)
         )
-        return np.asarray(densities), np.asarray(alpha_s)
+        return to_numpy(densities), to_numpy(alpha_s)
     finally:
         for name in names:
             if context.global_exists(name):
@@ -245,7 +250,7 @@ def test_above_the_last_x_knot(test_set):
         x = torch.tensor([1.5, 1.5, 1.5], dtype=torch.float64)
         q = torch.tensor([0.5, 10.0, 1e6], dtype=torch.float64)
         result = ms.PartonDensity(grid, PIDS, False, PREFIX)(x, q)
-        assert np.all(np.asarray(result) == 0.0)
+        assert np.all(to_numpy(result) == 0.0)
     finally:
         for name in ("pdf_logx", "pdf_logq2", "pdf_coefficients"):
             if context.global_exists(f"{PREFIX}.{name}"):

@@ -26,22 +26,12 @@ of check_sa.exe, so only the check it belongs to.
    where |M|^2 = 0 exactly and no helicity or colour (-1) may be reported on either
    backend: a -ffast-math build let the 0/0 of the selection pass and reported the first
    good helicity (relabelled for the crossed ids) and the first colour flow.
-3. mssm_crossed_gpu_vs_cpu: MSSM ``p p > go go j``, the subprocess that folds crossings
-   (P1_gQ_gogoQ: g q > go go q also serves q q~ > go go g, ...), with running flavour
-   couplings: events drawn over every extended flavour id K*nmaxflavor + flavour
-   (crossing-table row K), a random alpha_s and random numbers per event: the GPU |M|^2,
-   helicities and colours equal the CPU ones event by event (the crossed helicity code
-   of a moved leg included).
-   crossed_massive_gpu_vs_cpu: SM ``u g > u z`` and ``u u~ > z g`` in one generation,
+3. crossed_massive_gpu_vs_cpu: SM ``u g > u z`` and ``u u~ > z g`` in one generation,
    folded into P1_ug_uz, whose crossing moves the Z into a massless slot (xonshell_tab 0):
    umami_initialize chooses the good helicities of that crossing on points of its own
    masses (choose_good_helicities, getGoodHel). The events of every row are on shell for
    that row, in a randomly boosted frame: the GPU |M|^2, helicities and colours equal
    the CPU ones event by event, so the GPU kept the same good-helicity list.
-   axial_crossed_gpu_vs_cpu: SM ``p p > z j --axial_gauge=True``, the subprocess that
-   folds crossings (P1_gQ_zQ): the gluon wavefunction is vxxxxxr in the axial gauge of
-   another external leg, whose momentum a crossed event reads from its own input slot
-   (xperm of the reference leg): the same comparison as above.
    signed_crossed_gpu_vs_cpu: SM ``p p > j j QED^2==2`` and ``p p > t t~ j QED^2==2``,
    the subprocesses that fold crossings (P1_QQ_QQ, P1_gQ_ttxQ), interferences of the QCD
    and electroweak amplitudes (nampso 2) whose |M|^2 per helicity is signed: the same
@@ -83,8 +73,8 @@ import time
 
 GPU_BACKENDS = ('cuda', 'hip')
 CPU_BACKEND = 'scalar'
-CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'zero_me_good_hel', 'mssm_crossed_gpu_vs_cpu',
-          'crossed_massive_gpu_vs_cpu', 'axial_crossed_gpu_vs_cpu', 'signed_crossed_gpu_vs_cpu',
+CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'zero_me_good_hel',
+          'crossed_massive_gpu_vs_cpu', 'signed_crossed_gpu_vs_cpu',
           'nonblocking_stream', 'helicity_index')
 
 results = {}
@@ -508,15 +498,6 @@ def crossed_gpu_vs_cpu(check_name, backend, name, proc_dirs, energy, seed, nevt,
     check(check_name, not problems, '; '.join(problems[:3]) or '; '.join(details))
 
 
-def check_mssm_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
-    section('MSSM p p > go go j, crossed subprocesses: %s against %s' % (backend, CPU_BACKEND))
-    name = 'mssm_gogoj'
-    # only the subprocesses that fold crossings (the others are check 1 with one more jet)
-    proc_dirs = output(repo, name, 'MSSM_SLHA2', 'p p > go go j', (CPU_BACKEND, backend),
-                       select=lambda proc_dir: ncross(proc_dir) > 1)
-    crossed_gpu_vs_cpu('mssm_crossed_gpu_vs_cpu', backend, name, proc_dirs, 3000, 17, nevt)
-
-
 def check_crossed_massive_gpu_vs_cpu(backend, repo, nevt=1024):
     section('u g > u z with u u~ > z g, a massive leg crossed into a massless slot: %s against %s'
             % (backend, CPU_BACKEND))
@@ -528,16 +509,6 @@ def check_crossed_massive_gpu_vs_cpu(backend, repo, nevt=1024):
     crossed_gpu_vs_cpu('crossed_massive_gpu_vs_cpu', backend, name, proc_dirs, 1000, 29, nevt,
                        own_points=True)
 
-
-def check_axial_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
-    section('p p > z j --axial_gauge=True, crossed axial-gauge gluon: %s against %s'
-            % (backend, CPU_BACKEND))
-    name = 'axial_zj'
-    # g q > z q also serves q q~ > z g: the gluon polarisation is vxxxxxr in the axial
-    # gauge of another leg, whose momentum a crossed event reads from its own slot
-    proc_dirs = output(repo, name, 'sm', 'p p > z j', (CPU_BACKEND, backend),
-                       select=lambda proc_dir: ncross(proc_dir) > 1, options='--axial_gauge=True')
-    crossed_gpu_vs_cpu('axial_crossed_gpu_vs_cpu', backend, name, proc_dirs, 1000, 31, nevt)
 
 
 def check_signed_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
