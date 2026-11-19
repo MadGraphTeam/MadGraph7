@@ -11,6 +11,7 @@ C     quark (x > -xi) and the antiquark (x < xi) of flavour q.
 C
 C     Models (GPD_MODEL):
 C       0  toy   analytic functions for the tests (not physics)
+C       3  toy2  H = 1 - x^2, E = Ht = Et = 0 (closed-form convolutions)
 C       1  dd    Radyushkin double distributions on the forward PDFs at MU
 C                (Source/GPD/gpd_dd.f; madevent only)
 C       2  grid  table read from GPD_GRIDFILE (placeholder for user GPDs,
@@ -72,7 +73,9 @@ C     'value = name' lines of gpd_card.dat (standalone outputs).
         NAME = ADJUSTL(LINE(IEQ+1:))
         IF (VAL(1:1).EQ."'") VAL = VAL(2:INDEX(VAL(2:),"'"))
         IF (NAME.EQ.'gpd_model') THEN
-          IF (INDEX(VAL,'toy').GT.0) THEN
+          IF (INDEX(VAL,'toy2').GT.0) THEN
+            GPD_MODEL = 3
+          ELSE IF (INDEX(VAL,'toy').GT.0) THEN
             GPD_MODEL = 0
           ELSE IF (INDEX(VAL,'dd').GT.0) THEN
             GPD_MODEL = 1
@@ -130,6 +133,9 @@ C     'value = name' lines of gpd_card.dat (standalone outputs).
         RETURN
       ELSE IF (GPD_MODEL.EQ.2) THEN
         CALL GPD_GRID(IPART, X, XI, MU, G)
+      ELSE IF (GPD_MODEL.EQ.3) THEN
+C       toy2: H = 1 - x^2 for every parton, E = Ht = Et = 0 (closed forms)
+        G(1) = 1D0 - X*X
       ENDIF
       CALL GPD_TFACTOR(IPART, X, XI, T, FT)
       G = G*FT
