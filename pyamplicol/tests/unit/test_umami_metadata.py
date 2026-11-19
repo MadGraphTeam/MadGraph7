@@ -673,7 +673,7 @@ def test_only_certified_helicity_equivalences_are_reused(representative):
     h.update(id="h:all-minus", values=[-1] * 4, representative_id=representative)
     p.physics["helicities"].append(h)
     (data,) = export(p)
-    assert entries(data)[0]["helicities"] == (
+    assert data["helicity_groups"][entries(data)[0]["helicities"]] == (
         [[0, 1]] if representative == "h:all-plus" else [[0], [1]]
     )
     mappings = data["helicity_mappings"][entries(data)[0]["helicity_mappings"]]

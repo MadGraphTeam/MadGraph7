@@ -601,21 +601,26 @@ def _intern_vector(table: _InternTable, values: list) -> int:
     return index
 
 
-def _intern_mappings(data, mappings) -> int:
-    """The index of a list of helicity mappings in ``data["helicity_mappings"]``."""
+def _intern_mappings(data, mappings, helicities) -> int:
+    """The index in ``data["helicity_mappings"]`` of ``mappings`` with their
+    helicities replaced by ``helicities`` (built only when new)."""
     table = data["helicity_mappings"]
     key = tuple(
-        (m["helicity"], m["representative_id"], m["coefficient"], m["structural_zero"])
-        for m in mappings
+        (h, m["representative_id"], m["coefficient"], m["structural_zero"])
+        for m, h in zip(mappings, helicities, strict=True)
     )
     index = table.positions.get(key)
     if index is None:
         index = table.positions[key] = len(table)
-        table.append(mappings)
+        table.append(
+            [{**m, "helicity": h} for m, h in zip(mappings, helicities, strict=True)]
+        )
     return index
 
 
-def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
+def _identical_orbit(
+    order, flow, pdgs, incoming, helicities, word_size, domains=None
+):
     """An oriented physical colour tensor modulo identical outgoing labels.
 
     Equal keys induce the explicit bijection between the two complete orders.
@@ -641,7 +646,9 @@ def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
 
     def helicity_domain(candidate):
         values = _picker(candidate)
-        return tuple(sorted(values(h["values"]) for h in helicities))
+        domain = tuple(sorted(values(h["values"]) for h in helicities))
+        # one object per distinct domain (orbit keys are held to the end)
+        return domain if domains is None else domains.setdefault(domain, domain)
 
     starts = [0]
     if flow is not None and word_size:
@@ -687,8 +694,8 @@ def _add_terms(entry, terms):
 
 
 def _exported_helicities(data, relabel, helicity_groups, mappings, cache):
-    """The relabelled helicity groups and the mappings index of a source, once
-    per relabelling in ``cache``."""
+    """The indices of the relabelled helicity groups and mappings of a source,
+    once per relabelling in ``cache``."""
     if None not in cache:
         # the distinct helicities of the source, and the groups and mappings by them
         positions: dict[tuple, int] = {}
@@ -717,18 +724,12 @@ def _exported_helicities(data, relabel, helicity_groups, mappings, cache):
                 index = table.positions[vector] = len(table)
                 table.append(list(vector))
             indices.append(index)
+        groups = [[indices[k] for k in group] for group in group_positions]
         cache[key] = (
-            [[indices[k] for k in group] for group in group_positions],
-            _intern_mappings(
-                data,
-                [
-                    {**m, "helicity": indices[k]}
-                    for m, k in zip(mappings, mapping_positions, strict=True)
-                ],
-            ),
+            _intern(data["helicity_groups"], groups),
+            _intern_mappings(data, mappings, [indices[k] for k in mapping_positions]),
         )
-    groups, mappings_index = cache[key]
-    return [list(group) for group in groups], mappings_index
+    return cache[key]
 
 
 def _exported_entry(
@@ -892,7 +893,7 @@ def _export_helicities(data, runtime_helicities):
                 for runtime_leg, input_leg in enumerate(permutation):
                     ordered[input_leg] = values[runtime_leg]
                 exported.append(_intern_vector(data["helicities"], ordered))
-        runtime["helicity_export"] = list(cache[key])
+        runtime["helicity_export"] = cache[key]  # shared, never modified
 
 
 def build_umami_metadata(
@@ -1043,7 +1044,8 @@ def _build_provider(
         "color_orders": _InternTable(),
         "color_flows": _InternTable(),
         "helicities": _InternTable(),
-        # the helicity mappings of the process entries, referenced by index
+        # the helicity groups and mappings of the process entries, by index
+        "helicity_groups": _InternTable(),
         "helicity_mappings": _InternTable(),
         "runtime_processes": [],
         "aliases": [],
@@ -1052,6 +1054,7 @@ def _build_provider(
         ),
     }
     structural_representatives: dict[str, dict] = {}
+    helicity_domains: dict[tuple, tuple] = {}
     orbit_entries: dict[tuple, tuple[list[tuple[dict, list[int]]], list[int], dict]] = {}
     channel_patterns: dict[tuple, list[int]] = {}
     leg_masses = data["provider"]["masses"]
@@ -1301,6 +1304,7 @@ def _build_provider(
                 incoming,
                 helicities,
                 len(word),
+                helicity_domains,
             )
 
             orbit = (source_id, orbit_key)
@@ -1449,6 +1453,7 @@ def _build_provider(
         "color_orders",
         "color_flows",
         "helicities",
+        "helicity_groups",
         "helicity_mappings",
     ):
         data[name] = list(data[name])
