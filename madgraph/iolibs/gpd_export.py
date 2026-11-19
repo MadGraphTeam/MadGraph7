@@ -341,14 +341,25 @@ C     madgraph/iolibs/gpd_export.py. Physical legs (SMATRIX_GPD): the GPD
 C     pair is leg %(phys_in)d with momentum 2 xi P; NPHYS = %(nphys)d.
 C ======================================================================
       SUBROUTINE %(prefix)sGPD_SET_POINT(PIN, XIIN, TIN, MUIN)
+C     The physical point (the pair 2 xi P as leg %(phys_in)d). With onia, the
+C     momenta are first reshuffled onto the constituent masses (the onium
+C     prescription of MadGraph7, mom_resh_type, on the physical legs): both
+C     incoming momenta stay along the beam axis, so the pair stays 2 xi P'
+C     with P' = (pair)/(2 xi): xi and t keep their physical values (the GPD
+C     is taken there), the hard part sees P'. RESHFAIL: no such momenta.
       IMPLICIT NONE
       INTEGER NPHYS
       PARAMETER (NPHYS=%(nphys)d)
       REAL*8 PIN(0:3,NPHYS), XIIN, TIN, MUIN
       REAL*8 PPHYS(0:3,NPHYS), XI, T, MU
       COMMON/%(prefix)sGPD_POINT/PPHYS, XI, T, MU
+      LOGICAL RESHFAIL
+      COMMON/%(prefix)sGPD_RESH/RESHFAIL
 %(gpd_decl)s
+%(resh_decl)s
       PPHYS = PIN
+      RESHFAIL = .FALSE.
+%(resh_code)s
       XI = XIIN
       T = TIN
       MU = MUIN
@@ -445,8 +456,19 @@ C     pole that does not cancel.
       COMPLEX*16 CLAST(NAMP,4)
       INTEGER IERRLAST
       COMMON/%(prefix)sGPD_LAST/CLAST, IERRLAST
+      LOGICAL RESHFAIL
+      COMMON/%(prefix)sGPD_RESH/RESHFAIL
       CALL GPD_INIT()
       CALL %(prefix)sGPD_SET_POINT(PIN, XIIN, TIN, MUIN)
+      IF (RESHFAIL) THEN
+C       no momenta with the constituent masses (as an onium process of
+C       MadGraph7 does, the matrix element is zero there)
+        C = (0D0,0D0)
+        C2 = (0D0,0D0)
+        CLAST = (0D0,0D0)
+        IERRLAST = 0
+        RETURN
+      ENDIF
       CALL %(prefix)sGPD_POLES(NP, AP, SP)
       CALL GPD_XSETUP(%(prefix)sGPD_KERNEL, NAMP, XIIN, TIN, MUIN, %(parton)d,
      &     NP, AP, SP, IERR)
@@ -556,6 +578,48 @@ JAMP_DECL_ONIA = """      COMPLEX*16 LAST_JAMP(NCOLOR)
       COMMON/%(prefix)sONIA_LAST_JAMP/LAST_JAMP, LAST_LDME"""
 
 
+def reshuffle_code(info, proc_prefix):
+    """(declarations, code, routine) of the onium reshuffling in
+    GPD_SET_POINT: the targets masses of the physical legs (an onium: the sum
+    of its constituent masses) and GPD_RESHUFFLE, the shared body of
+    RESHUFFLE_MOMENTA (onia_reshuffle_momenta.inc) on the physical legs."""
+    if not info.onia:
+        return '', '', ''
+    wfs = dict((wf.get('number_external'), wf) for wf in info.ext)
+    lines, onia = [], []
+    for ime in range(1, info.nme + 1):
+        if ime == info.me_out:
+            continue
+        consts = sorted(c for c, m in info.const_to_me.items() if m == ime)
+        masses = [wfs[c].get('mass') for c in consts]
+        expr = "+".join("0D0" if m.lower() == 'zero' else "ABS(%s)" % m for m in masses)
+        lines.append("      PMT(%d) = %s" % (info.me_to_phys[ime], expr))
+        if len(consts) == 2:
+            onia.append(info.me_to_phys[ime])
+    decl = ("      REAL*8 PMT(NPHYS)\n"
+            "      LOGICAL RESH_FAILED\n"
+            "      COMMON/TO_RESH_FAILED/RESH_FAILED\n"
+            "      INCLUDE 'coupl.inc'")
+    code = "\n".join(lines) + ("\n      CALL %sGPD_RESHUFFLE(PIN, PMT, PPHYS)\n"
+                               "      RESHFAIL = RESH_FAILED" % proc_prefix)
+    with open(pjoin(os.path.dirname(os.path.abspath(__file__)), 'template_files',
+                    'onia_reshuffle_momenta.inc')) as fsock:
+        body = fsock.read()
+    includes = "      INCLUDE 'nexternal.inc'\n      INCLUDE 'onia.inc'\n"
+    if includes not in body:
+        raise base_objects.PhysicsObject.PhysicsObjectError(
+            "GPD: the onium reshuffling template has changed")
+    legs = ("      INTEGER NEXTERNAL, NINCOMING, NONIA\n"
+            "      PARAMETER (NEXTERNAL=%d, NINCOMING=2, NONIA=%d)\n"
+            "      INTEGER ONIA(NONIA)\n"
+            "      DATA ONIA /%s/\n" % (info.nphys, len(onia), ",".join(str(i) for i in onia)))
+    routine = ("\n      SUBROUTINE %sGPD_RESHUFFLE(P,PMASS,P_RESH)\n"
+               "C     RESHUFFLE_MOMENTA of the onium processes on the physical legs of\n"
+               "C     the GPD process (the pair, massless, as the second incoming leg)\n"
+               % proc_prefix) + body.replace(includes, legs)
+    return decl, code, routine
+
+
 def write_driver(path, matrix_element, replace_dict, proc_prefix=''):
     """Write gpd_driver.f of the matrix element in the directory path."""
     info = GPDInfo(matrix_element)
@@ -596,7 +660,8 @@ def write_driver(path, matrix_element, replace_dict, proc_prefix=''):
     else:
         fmt['jamp_call'] = JAMP_CALL_PLAIN % fmt
         fmt['kernel_decl'] = JAMP_DECL_PLAIN % fmt
-    text = DRIVER_TEMPLATE % fmt
+    fmt['resh_decl'], fmt['resh_code'], resh_routine = reshuffle_code(info, proc_prefix)
+    text = DRIVER_TEMPLATE % fmt + resh_routine
     with open(pjoin(path, 'gpd_driver.f'), 'w') as fsock:
         fsock.write(text)
     return info
@@ -613,6 +678,9 @@ C     writes |M|^2 and the CFFs of every helicity and colour flow.
       COMPLEX*16 CLAST(NAMP,4)
       INTEGER IERRLAST, I, K, IOS
       COMMON/%(prefix)sGPD_LAST/CLAST, IERRLAST
+      INTEGER MOM_RESH_TYPE
+      COMMON/TO_MOM_RESH_TYPE/MOM_RESH_TYPE
+      MOM_RESH_TYPE = 1
       CALL SETPARA('param_card.dat')
       CALL SETONIA_IF_NEEDED()
       OPEN(11, FILE='gpd_points.dat', STATUS='OLD')
@@ -644,6 +712,9 @@ C     restricted to the diagrams of each x-carrying propagator.
       REAL*8 P(0:3,NPHYS), XI, T, MU, X
       COMPLEX*16 AV(NAMP), AA(NAMP), AP(MAXP)
       INTEGER SP(MAXP), NP, I, IOS
+      INTEGER MOM_RESH_TYPE
+      COMMON/TO_MOM_RESH_TYPE/MOM_RESH_TYPE
+      MOM_RESH_TYPE = 1
       CALL SETPARA('param_card.dat')
       CALL SETONIA_IF_NEEDED()
       OPEN(11, FILE='gpd_points.dat', STATUS='OLD')
@@ -691,6 +762,9 @@ C     |M|^2 over N pairs (x, x') (uniform r in (0,1), mapped by GPD_XMAP).
       PARAMETER (NPHYS=%(nphys)d)
       REAL*8 P(0:3,NPHYS), XI, T, MU, ANS, QUAD, S1, S2, R(2)
       INTEGER I, N
+      INTEGER MOM_RESH_TYPE
+      COMMON/TO_MOM_RESH_TYPE/MOM_RESH_TYPE
+      MOM_RESH_TYPE = 1
       CALL SETPARA('param_card.dat')
       CALL SETONIA_IF_NEEDED()
       OPEN(11, FILE='gpd_points.dat', STATUS='OLD')
@@ -769,6 +843,9 @@ C       av, aa = gpd2py.py_gpd_kernel(p, xi, t, mu, x)   # kernel at one x
 C     A process refused at run time (double pole) stops the interpreter.
       SUBROUTINE PY_GPD_INIT()
       IMPLICIT NONE
+      INTEGER MOM_RESH_TYPE
+      COMMON/TO_MOM_RESH_TYPE/MOM_RESH_TYPE
+      MOM_RESH_TYPE = 1
       CALL SETPARA('../../Cards/param_card.dat')
 %(setonia)s
       CALL GPD_INIT()

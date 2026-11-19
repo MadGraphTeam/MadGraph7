@@ -46,9 +46,10 @@ def jpsi_closed_form(xi, mc=1.55, aewm1=132.507, a_s=0.118, ldme=1.16):
     return 32 * math.pi ** 2 / 3 * alpha * a_s ** 2 * (2 / 3) ** 2 * r2 * (1 - xi * xi) * abs(h) ** 2 / mc ** 3
 
 
-def jpsi_point(xi, mc=1.55, pz=50.0):
-    """gamma along -z, the pair 2 xi P along +z (P = (pz,0,0,pz)), J/psi."""
-    M = 2 * mc
+def jpsi_point(xi, mc=1.55, pz=50.0, M=None):
+    """gamma along -z, the pair 2 xi P along +z (P = (pz,0,0,pz)), J/psi of
+    mass M (default 2 mc)."""
+    M = M or 2 * mc
     qP = M * M / (4 * xi)
     eq = qP / (2 * pz)
     q = [eq, 0.0, 0.0, -eq]
@@ -85,17 +86,20 @@ class TestCmdGPD(unittest.TestCase):
 
     def test_gpd_standalone(self):
         """gamma p -> J/psi p (gluon GPD, toy2): the standalone |M|^2 against
-        the closed form of appendix B at three xi (1e-8)."""
+        the closed form of appendix B at three xi (1e-8), with the J/psi at
+        2 m_c and at its PDG mass (the onium reshuffling scales the hard
+        momenta at fixed xi, which leaves the closed form unchanged)."""
         cmd = self.new_cmd()
         cmd.exec_cmd('generate a gpd_g > Jpsi(1|3S11)')
         cmd.exec_cmd('output standalone_fortran %s -f' % self.out_dir)
         set_gpd_card(pjoin(self.out_dir, 'Cards', 'gpd_card.dat'), {'gpd_model': 'toy2'})
         pdir = glob.glob(pjoin(self.out_dir, 'SubProcesses', 'P[0-9]*_*'))[0]
-        xis = (0.3, 0.05, 0.002)
+        xis = (0.3, 0.05, 0.002, 0.3, 0.05)
+        masses = (3.1, 3.1, 3.1, 3.0969, 3.0969)
         with open(pjoin(pdir, 'gpd_points.dat'), 'w') as f:
-            for xi in xis:
+            for xi, M in zip(xis, masses):
                 f.write("%.17e %.17e %.17e\n" % (xi, 0.0, 3.1))
-                for v in jpsi_point(xi):
+                for v in jpsi_point(xi, M=M):
                     f.write(" ".join("%.17e" % c for c in v) + "\n")
         subprocess.check_call(['make', 'check_gpd'], cwd=pdir, stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL)
