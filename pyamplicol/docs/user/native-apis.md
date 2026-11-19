@@ -947,7 +947,10 @@ binary64 coefficients and the point improved in that carrier, in the checked
 and the unchecked mode ([Python API](python-api.md), "Lane rescue of refused
 reduction lanes"); 0 leaves such a lane to fail its point; each result
 records `"lane_rescue"` in its `"reduction"` diagnostics; any other value is
-an invalid argument.
+an invalid argument. With stability checks that lack the
+reduction-direction check, a point with rescued lanes gets the estimate of
+the checks with the rescaled reduction-direction check added, as in the
+Python API.
 Additive symbols, ABI version 2 kept. The unchecked setting
 `rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++
 `set_reduction_unchecked(bool)`, Fortran `set_reduction_unchecked(logical)`,

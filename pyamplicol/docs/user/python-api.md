@@ -801,14 +801,16 @@ When the call runs stability checks without the reduction-direction check
 (for instance `VirtualStabilityChecks(1)`, one rotation, the default of
 `evaluation.stability_checks`), a point with rescued lanes is evaluated
 again, on such points only, with the call's checks and the rescaled
-reduction-direction check of the recommended set, and returns that
+reduction-direction check of the recommended set, on the backend that
+served it (the call's, or its per-point fallback's), and returns that
 estimate (its `checks` then include `reduction-rescaled`; its value is
 unchanged): one rotation does not see the reduction error of a rescued
 TIRust point's other lanes (true error above the one-rotation estimate on
-162 of 185 such g g > g g g points; none above the extended estimate),
-exactly as a best-effort value's uncertainty includes the recommended
-checks. Other points keep the call's checks. The standalone SDKs do not
-extend it yet.
+162 of 185 such g g > g g g points and on 30 of 100 such g g > g g g g
+points; above the extended estimate on 1 of 185, by 3 %, and on none of
+the 100), exactly as a best-effort value's uncertainty includes the
+recommended checks. Other points keep the call's checks. The standalone
+SDKs' binary64 checks do the same (equal estimates).
 
 `lane.lane_rescue` (a `VirtualLaneRescue`, `None` without one) gives per
 carrier the lanes it served (`lanes`, e.g. `(("double-double", 3),)`,
