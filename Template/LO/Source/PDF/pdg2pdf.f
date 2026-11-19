@@ -10,6 +10,8 @@ c      if set to -1/-2 it meand that ipdg should not be flipped even if ih<0
 c      useful for re-weighting
 c***************************************************************************
       implicit none
+      double precision gpd_photon_flux
+      external gpd_photon_flux
 c
 c     Arguments
 c
@@ -72,6 +74,22 @@ c     collider configuration
 
       if (iabs(ih).eq.9) then
          pdg2pdf = 1d0
+         return
+      endif
+
+c     GPD beam (lpp = 5, madgraph/iolibs/gpd_madevent.py): the GPD pair (the
+c     shadow Z, pdg 23) carries the light-cone fraction x with the factor
+c     x/(16 pi^2) of the phase space of the outgoing proton; a photon comes
+c     from the elastic flux of the proton (gpd_photon_flux, PhotonFlux.f):
+c     gamma-UPC EDFF by default, ChFF or the EPA on request.
+      if (iabs(ih).eq.5) then
+         if (ipdg.eq.23) then
+            pdg2pdf = x/(16d0*3.14159265358979323846d0**2)
+         elseif (ipdg.eq.7 .or. ipdg.eq.22) then
+            pdg2pdf = gpd_photon_flux(x, xmu, iabs(beamid))
+         else
+            pdg2pdf = 0d0
+         endif
          return
       endif
 

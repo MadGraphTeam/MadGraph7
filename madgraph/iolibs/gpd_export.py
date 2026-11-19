@@ -414,26 +414,24 @@ C     The x-carrying propagators of every diagram: momentum K + sigma x P.
 %(pole_lines)s
       END
 
-      SUBROUTINE %(prefix)sSMATRIX_GPD(PIN, XIIN, TIN, MUIN, ANS)
-C     |M|^2 of the GPD process, averaged over the initial spins (the proton
-C     one included) and summed over the final ones, with the x integral of
-C     the selected mode (gpd_x_integration: quadrature here, the Monte Carlo
-C     replicas are set by GPD_SET_XMC), at the physical point PIN (NPHYS
-C     legs, the pair being leg %(phys_in)d with momentum 2 xi P = zeta p),
-C     skewness XIIN, momentum transfer TIN (GeV^2) and scale MUIN (GeV).
+      SUBROUTINE %(prefix)sGPD_CFF(PIN, XIIN, TIN, MUIN, C, C2)
+C     The generalised CFFs C(NAMP,4) of this channel at the physical point
+C     PIN: by quadrature in x (C2 = C), or, with USEMC = 1, as the two
+C     Monte Carlo replicas at RMC1 (C) and RMC2 (C2). Stops on a double
+C     pole that does not cancel.
       IMPLICIT NONE
       INCLUDE 'gpd.inc'
       INTEGER NPHYS, NCOLOR, NHPHYS, NAMP, MAXP
       PARAMETER (NPHYS=%(nphys)d, NCOLOR=%(ncolor)d, NHPHYS=%(nhphys)d)
       PARAMETER (NAMP=NCOLOR*NHPHYS, MAXP=%(maxp)d)
-      REAL*8 PIN(0:3,NPHYS), XIIN, TIN, MUIN, ANS
+      REAL*8 PIN(0:3,NPHYS), XIIN, TIN, MUIN
+      COMPLEX*16 C(NAMP,4), C2(NAMP,4)
       EXTERNAL %(prefix)sGPD_KERNEL
-      COMPLEX*16 AP(MAXP), C(NAMP,4), C2(NAMP,4)
+      COMPLEX*16 AP(MAXP)
       INTEGER SP(MAXP), NP, IERR
       COMPLEX*16 CLAST(NAMP,4)
       INTEGER IERRLAST
       COMMON/%(prefix)sGPD_LAST/CLAST, IERRLAST
-      REAL*8 %(prefix)sGPD_SQUARE
       CALL GPD_INIT()
       CALL %(prefix)sGPD_SET_POINT(PIN, XIIN, TIN, MUIN)
       CALL %(prefix)sGPD_POLES(NP, AP, SP)
@@ -454,6 +452,22 @@ C     skewness XIIN, momentum transfer TIN (GeV^2) and scale MUIN (GeV).
         C2 = C
       ENDIF
       CLAST = C
+      END
+
+      SUBROUTINE %(prefix)sSMATRIX_GPD(PIN, XIIN, TIN, MUIN, ANS)
+C     |M|^2 of the GPD process, averaged over the initial spins (the proton
+C     one included) and summed over the final ones, with the x integral of
+C     the selected mode, at the physical point PIN (NPHYS legs, the pair
+C     being leg %(phys_in)d with momentum 2 xi P = zeta p), skewness XIIN,
+C     momentum transfer TIN (GeV^2) and scale MUIN (GeV).
+      IMPLICIT NONE
+      INTEGER NPHYS, NCOLOR, NHPHYS, NAMP
+      PARAMETER (NPHYS=%(nphys)d, NCOLOR=%(ncolor)d, NHPHYS=%(nhphys)d)
+      PARAMETER (NAMP=NCOLOR*NHPHYS)
+      REAL*8 PIN(0:3,NPHYS), XIIN, TIN, MUIN, ANS
+      COMPLEX*16 C(NAMP,4), C2(NAMP,4)
+      REAL*8 %(prefix)sGPD_SQUARE
+      CALL %(prefix)sGPD_CFF(PIN, XIIN, TIN, MUIN, C, C2)
       ANS = %(prefix)sGPD_SQUARE(C, C2, XIIN, TIN)
       END
 
@@ -740,6 +754,10 @@ GPD_CARD = """#*****************************************************************
   1e-8     = gpd_xtol            ! relative tolerance of the x quadrature
   0.05     = gpd_epsres          ! residue step (fraction of the pole spacing)
   1e-3     = gpd_dptol           ! tolerance of the double-pole detector
+  2.0      = gpd_t_range         ! madevent: |t| up to |t_min| + this (GeV^2)
+  4.0      = gpd_t_bmap          ! madevent: importance map exp(-B|t|) of the t integral
+  1.0      = gpd_survival        ! constant gap-survival factor (gamma-UPC _nob fluxes)
+  edff     = gpd_flux            ! madevent photon flux of an lpp = 5 proton: edff | chff (gamma-UPC) | iww (EPA)
 """
 
 

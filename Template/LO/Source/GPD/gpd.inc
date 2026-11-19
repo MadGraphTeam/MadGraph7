@@ -17,9 +17,13 @@ C     GPD_GRIDFILE : file of the grid model
       DOUBLE PRECISION GPD_BG, GPD_BS, GPD_BV
       DOUBLE PRECISION GPD_TSLOPEG, GPD_TSLOPEQ, GPD_ALPHAPG, GPD_ALPHAPQ
       DOUBLE PRECISION GPD_XTOL, GPD_EPSRES, GPD_DPTOL
+C     madevent: the t integral runs over |t| in [|t_min|, |t_min| + GPD_TRANGE]
+C     with the map exp(-GPD_BMAP |t|); GPD_SURVIVAL multiplies the cross section
+      DOUBLE PRECISION GPD_TRANGE, GPD_BMAP, GPD_SURVIVAL
       CHARACTER*256 GPD_GRIDFILE
       COMMON/GPD_SETTINGS/GPD_BG, GPD_BS, GPD_BV, GPD_TSLOPEG, GPD_TSLOPEQ,
      &     GPD_ALPHAPG, GPD_ALPHAPQ, GPD_XTOL, GPD_EPSRES, GPD_DPTOL,
+     &     GPD_TRANGE, GPD_BMAP, GPD_SURVIVAL,
      &     GPD_MODEL, GPD_TMODEL, GPD_XMODE, GPD_INITIALISED, GPD_BEAM,
      &     GPD_GRIDFILE
 C     The two Monte Carlo replicas x, x' (madevent, gpd_x_integration = mc):

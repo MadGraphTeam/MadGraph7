@@ -75,6 +75,7 @@ import madgraph.core.helas_objects as helas_objects
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.export_cpp as export_cpp
 import madgraph.iolibs.export_v4 as export_v4
+import madgraph.iolibs.gpd_madevent as gpd_madevent
 import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.files as files
@@ -13127,6 +13128,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     grouping_criteria = self._curr_exporter.grouped_mode
                     if grouping_criteria == 'gpu':
                         grouping_criteria = 'madevent'
+                    if self._export_format == 'madevent' and any(
+                            gpd_madevent.is_gpd_amplitude(a) for a in non_dc_amps):
+                        # GPD processes: one shadow process per physical
+                        # process (madgraph/iolibs/gpd_madevent.py)
+                        non_dc_amps = gpd_madevent.make_shadows(non_dc_amps,
+                                                                self._curr_model)
                     if non_dc_amps:
                         subproc_groups.extend(\
                           group_subprocs.SubProcessGroup.group_amplitudes(\
@@ -13411,6 +13418,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # these processes
             wanted_lorentz = self._curr_matrix_elements.get_used_lorentz()
             wanted_couplings = self._curr_matrix_elements.get_used_couplings()
+            # the GPD channels behind the shadow processes of madevent
+            gpd_extra = getattr(self._curr_exporter, 'gpd_extra', None)
+            if gpd_extra:
+                wanted_lorentz = misc.make_unique(wanted_lorentz + gpd_extra['lorentz'])
+                wanted_couplings = misc.make_unique(wanted_couplings + gpd_extra['couplings'])
 
             # the P1N (amplitude split) routines: madevent's helicity recycling,
             # and the C++ one of a madmatrix output asked for --hel_recycling
@@ -13493,6 +13505,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                                     self.options,
                                     flaglist,
                                     **add_options)
+        if getattr(self._curr_exporter, 'gpd_extra', None):
+            # GPD processes in madevent: card, beams, libraries
+            gpd_madevent.finish_output(self._curr_exporter, self._export_dir)
 
         # Record into the generated directory the references that are already
         # known at generation time (framework, model, ALOHA/HELAS, UFO format).

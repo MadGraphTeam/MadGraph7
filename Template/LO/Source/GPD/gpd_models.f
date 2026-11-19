@@ -40,11 +40,18 @@ C     (madevent sets GPD_INITIALISED from the run card before any call).
       GPD_EPSRES = 5D-2
       GPD_DPTOL = 1D-3
       GPD_GRIDFILE = ''
+      GPD_TRANGE = 2D0
+      GPD_BMAP = 4D0
+      GPD_SURVIVAL = 1D0
       GPD_BEAM = 2
       USEMC = 0
       GPD_NMASK = 0
       CALL GPD_READ_CARD()
       GPD_INITIALISED = 1
+      WRITE(*,'(A,I2,A,I2,A,I2,A,2F8.4)') ' GPD: model', GPD_MODEL,
+     &  '  x integration (0 quadrature, 1 mc)', GPD_XMODE,
+     &  '  t model', GPD_TMODEL, '  slopes g, q', GPD_TSLOPEG,
+     &  GPD_TSLOPEQ
       END
 
       SUBROUTINE GPD_READ_CARD()
@@ -118,6 +125,12 @@ C     'value = name' lines of gpd_card.dat (standalone outputs).
           READ(VAL,*) GPD_EPSRES
         ELSE IF (NAME.EQ.'gpd_dptol') THEN
           READ(VAL,*) GPD_DPTOL
+        ELSE IF (NAME.EQ.'gpd_t_range') THEN
+          READ(VAL,*) GPD_TRANGE
+        ELSE IF (NAME.EQ.'gpd_t_bmap') THEN
+          READ(VAL,*) GPD_BMAP
+        ELSE IF (NAME.EQ.'gpd_survival') THEN
+          READ(VAL,*) GPD_SURVIVAL
         ENDIF
       ENDDO
       CLOSE(LUN)

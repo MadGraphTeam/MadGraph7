@@ -17,3 +17,14 @@
        stop 2
        return
        end
+
+
+       double precision function gammaupc_single_flux(x, ebeam, ichff)
+       implicit none
+       double precision x, ebeam
+       integer ichff
+       write(*,*) "WRONG gamma UPC linked (pdlabel edff or chff needed)"
+       gammaupc_single_flux = 0d0
+       stop 3
+       return
+       end

@@ -312,3 +312,23 @@ c     write(*,*) 'running gamma-UPC'
       RAI=RRR/GeVm12fm1
       return
       end
+
+      double precision function gammaupc_single_flux(x, ebeam, ichff)
+c     The single-photon number density dN/dx of an elastic proton of energy
+c     ebeam (gamma-UPC, without the survival factor of hadronic overlap):
+c     EDFF (ichff = 0) or ChFF (ichff = 1). Used by GPD processes, where the
+c     other proton is probed by its GPDs (Source/PDF/pdg2pdf.f, lpp = 5).
+      use ElasticPhotonPhotonFlux
+      implicit none
+      double precision x, ebeam, gamma
+      integer ichff
+      double precision mproton
+      parameter (mproton=0.938272081d0)
+      gamma = ebeam/mproton
+      if (ichff.eq.1) then
+         gammaupc_single_flux = PhotonFlux_proton_ChFF_nob(x, gamma)
+      else
+         gammaupc_single_flux = PhotonFlux_proton_EDFF_nob(x, gamma)
+      endif
+      return
+      end

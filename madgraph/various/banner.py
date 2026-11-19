@@ -4139,6 +4139,9 @@ class RunCard(ConfigFile):
 
     def get_idbmup(self, lpp, beam=1):
         """return the particle colliding pdg code"""
+        if lpp == 5:
+             # the proton of a GPD process (it radiates a photon or is probed)
+             return 2212
         if lpp in (1,2, -1,-2):
              target = 2212
              if 'nb_proton1' in self:
@@ -4771,12 +4774,12 @@ class RunCardLO(RunCard):
         self.add_param("bypass_check", [], typelist=str, include=False, hidden=True,
                        allowed=['partonshower'], comment="list of check that can be bypassed manually.")
         self.add_param("python_seed", -2, include=False, hidden=True, comment="controlling python seed [handling in particular the final unweighting].\n -1 means use default from random module.\n -2 means set to same value as iseed")
-        self.add_param("lpp1", 1, fortran_name="lpp(1)", allowed=[-1,1,0,2,3,9,-2,-3,4,-4],
+        self.add_param("lpp1", 1, fortran_name="lpp(1)", allowed=[-1,1,0,2,3,9,-2,-3,4,-4,5],
                        shortcut={'p':1,"p~":-1,'e-':3,'e+':-3,'mu-':4,'mu+':-4, 'no':0},
-                        comment='first beam energy distribution:\n 0: fixed energy\n 1: PDF of proton\n -1: PDF of antiproton\n 2:elastic photon from proton, +/-3:PDF of electron/positron, +/-4:PDF of muon/antimuon, 9: PLUGIN MODE')
-        self.add_param("lpp2", 1, fortran_name="lpp(2)", allowed=[-1,1,0,2,3,9,-2,-3,4,-4],
+                        comment='first beam energy distribution:\n 0: fixed energy\n 1: PDF of proton\n -1: PDF of antiproton\n 2:elastic photon from proton, +/-3:PDF of electron/positron, +/-4:PDF of muon/antimuon, 5: proton of GPD processes (elastic photon or GPD pair), 9: PLUGIN MODE')
+        self.add_param("lpp2", 1, fortran_name="lpp(2)", allowed=[-1,1,0,2,3,9,-2,-3,4,-4,5],
                        shortcut={'p':1,"p~":-1,'e-':3,'e+':-3,'mu-':4,'mu+':-4, 'no':0},
-                       comment='second beam energy distribution:\n 0: fixed energy\n 1: PDF of proton\n -1: PDF of antiproton\n 2:elastic photon from proton, +/-3:PDF of electron/positron, +/-4:PDF of muon/antimuon, 9: PLUGIN MODE')
+                       comment='second beam energy distribution:\n 0: fixed energy\n 1: PDF of proton\n -1: PDF of antiproton\n 2:elastic photon from proton, +/-3:PDF of electron/positron, +/-4:PDF of muon/antimuon, 5: proton of GPD processes (elastic photon or GPD pair), 9: PLUGIN MODE')
         self.add_param("ebeam1", 6500.0, fortran_name="ebeam(1)", energy=True)
         self.add_param("ebeam2", 6500.0, fortran_name="ebeam(2)", energy=True)
         self.add_param("polbeam1", 0.0, fortran_name="pb1", hidden=True,
@@ -5165,6 +5168,11 @@ class RunCardLO(RunCard):
                     logger.warning("%s \'%s\' not compatible with %s \'%s\'. Changing %s to eva" % (lpp, self[lpp], pdlabelX, self[pdlabelX], pdlabelX))
                     self.set(pdlabelX, 'eva')
                     mod = True
+            elif abs(self[lpp]) == 5:
+                # the proton of GPD processes: its pdlabel names the proton
+                # PDFs of the double-distribution GPDs; the photon flux is
+                # 'gpd_flux' of gpd_card.dat (gamma-UPC EDFF by default)
+                pass
             elif abs(self[lpp]) == 2:
                 if self[pdlabelX] not in ['none','chff','edff','iww']:
                     logger.warning("%s \'%s\' not compatible with %s \'%s\'. Changing %s to edff" % (lpp, self[lpp], pdlabelX, self[pdlabelX], pdlabelX))

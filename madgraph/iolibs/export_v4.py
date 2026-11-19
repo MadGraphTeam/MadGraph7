@@ -49,6 +49,7 @@ import madgraph.iolibs.files as files
 import madgraph.iolibs.group_subprocs as group_subprocs
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.gpd_export as gpd_export
+import madgraph.iolibs.gpd_madevent as gpd_madevent
 import madgraph.iolibs.gen_infohtml as gen_infohtml
 import madgraph.iolibs.jamp_optimiser as jamp_optimiser
 import madgraph.iolibs.template_files as template_files
@@ -10720,7 +10721,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         # that nothing is inherited from the group written before.
         contains_onia = matrix_elements[0].get_nonia() > 0
         aloha.dual_mode = matrix_elements[0].get_npwave() if contains_onia else 0
-        if contains_onia:
+        gpd_group = gpd_madevent.is_shadow_group(matrix_elements)
+        if contains_onia or gpd_group:
             self.opt['hel_recycling'] = False
 
         # Add the driver.f, all grouped ME's must share the same number of 
@@ -11003,6 +11005,11 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             self.link_files_in_SubProcess(pjoin(pathdir,subprocdir), False)
         else:
             self.link_files_in_SubProcess(pjoin(pathdir,subprocdir))
+
+        if gpd_group:
+            # the GPD channels behind the shadow processes of this group
+            gpd_madevent.finish_group(self, pjoin(pathdir, subprocdir),
+                                      subproc_group, fortran_model)
 
         #import nexternal/leshouch in Source
         ln('nexternal.inc', '../../Source', log=False)

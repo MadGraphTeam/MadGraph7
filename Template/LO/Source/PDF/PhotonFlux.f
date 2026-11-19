@@ -143,3 +143,55 @@ C     set correct PDF normalisation
       return
       end
 
+
+
+      double precision function gpd_photon_flux(x, xmu, beamid)
+c     The photon of a GPD process (lpp = 5): the single-photon flux of an
+c     elastic proton, chosen by 'gpd_flux' of Cards/gpd_card.dat: edff
+c     (gamma-UPC EDFF, default), chff (gamma-UPC ChFF) or iww (EPA). The
+c     pdlabel of an lpp = 5 beam names the proton PDFs of its GPDs.
+      implicit none
+      double precision x, xmu
+      integer beamid
+      integer lpp(2)
+      double precision ebeam(2),xbk(2),q2fact(2)
+      common/to_collider/ebeam,xbk,q2fact,lpp
+      double precision gammaupc_single_flux, epa_proton
+      external gammaupc_single_flux, epa_proton
+      integer iflux, ios, ieq, k
+      logical init, ex
+      character*256 line, fname(3)
+      data init/.true./, iflux/0/
+      data fname/'../../../Cards/gpd_card.dat', '../../Cards/gpd_card.dat',
+     &     'gpd_card.dat'/
+      save init, iflux
+      if (init) then
+         init = .false.
+         do k = 1, 3
+            inquire(file=fname(k), exist=ex)
+            if (ex) exit
+         enddo
+         if (ex) then
+            open(88, file=fname(k), status='old')
+            do
+               read(88, '(a)', iostat=ios) line
+               if (ios.ne.0) exit
+               if (index(line,'#').gt.0) line = line(1:index(line,'#')-1)
+               if (index(line,'!').gt.0) line = line(1:index(line,'!')-1)
+               ieq = index(line, '=')
+               if (ieq.eq.0) cycle
+               if (adjustl(line(ieq+1:)).ne.'gpd_flux') cycle
+               if (index(line(1:ieq), 'chff').gt.0) iflux = 1
+               if (index(line(1:ieq), 'iww').gt.0) iflux = 2
+            enddo
+            close(88)
+         endif
+      endif
+      if (iflux.eq.1) then
+         gpd_photon_flux = gammaupc_single_flux(x, ebeam(beamid), 1)
+      elseif (iflux.eq.2) then
+         gpd_photon_flux = epa_proton(x, xmu*xmu, beamid)
+      else
+         gpd_photon_flux = gammaupc_single_flux(x, ebeam(beamid), 0)
+      endif
+      end
