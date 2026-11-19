@@ -69,24 +69,6 @@ class TestGenerationInProcess(unittest.TestCase):
                          [False, True, False, True])
         self.assertTrue(all(c['process']['flavor_blind_strict'] for c in configs))
 
-    def test_generate_passes_flavor_unions_to_both_artifacts(self):
-        from madgraph.iolibs import amplicol_generation
-        calls = []
-        licensing = mock.Mock()
-        licensing.detect_symbolica_license.return_value.licensed = True
-        artifacts = mock.Mock()
-        modules = {'pyamplicol': mock.Mock(), 'pyamplicol.artifacts': artifacts,
-                   'pyamplicol.licensing': licensing}
-        job = {'model': {}, 'flavor_unions': True,
-               'processes': [{'path': '/tmp/p0'}]}
-        with mock.patch.dict(sys.modules, modules), \
-                mock.patch.object(amplicol_generation, 'model_source'), \
-                mock.patch.object(amplicol_generation, 'generate_artifact',
-                                  lambda *args, **kwargs: calls.append(
-                                      (args[2], kwargs['flavor_unions']))):
-            amplicol_generation.generate(job)
-        self.assertEqual(calls, [('lc', True), ('full', True)])
-
     def test_failure_raises(self):
         def fail(job):
             raise RuntimeError('boom')
@@ -101,6 +83,77 @@ class TestGenerationInProcess(unittest.TestCase):
             return []
         self.run_export(change)
         self.assertEqual(sys.path, before)
+
+
+class TestConcurrentArtifacts(unittest.TestCase):
+    """With a license the full-colour artifact is generated in a child process
+    while this one generates the leading-colour one."""
+
+    def run_generate(self, licensed, unions=True):
+        from madgraph.iolibs import amplicol_generation
+        calls = []
+        licensing = mock.Mock(_cpu_budget=lambda: 5)
+        licensing.detect_symbolica_license.return_value = mock.Mock(licensed=licensed)
+        pyamplicol = mock.Mock(licensing=licensing, __file__='pyamplicol')
+        reweight = mock.Mock()
+        reweight.write_reweight_provider.side_effect = lambda *args, **kwargs: (
+            calls.append(('reweight',)) or ['p0'])
+        children = []
+
+        class Child(object):
+            def __init__(self, artifact, accuracy, process, model, workers,
+                         flavor_unions=False):
+                children.append(self)
+                calls.append(('child', os.path.basename(artifact), workers, flavor_unions))
+
+            def wait(self):
+                calls.append(('wait',))
+
+        modules = {'pyamplicol': pyamplicol, 'pyamplicol.licensing': licensing,
+                   'pyamplicol.artifacts': mock.Mock(umami_reweight=reweight),
+                   'pyamplicol.artifacts.umami_reweight': reweight}
+        job = {'model': {'cache': '/m'}, 'processes': [{'path': '/a'}],
+               'flavor_unions': unions}
+        with mock.patch.dict(sys.modules, modules), \
+                mock.patch.object(amplicol_generation, 'model_source'), \
+                mock.patch.object(amplicol_generation, 'ArtifactProcess', Child), \
+                mock.patch.object(amplicol_generation, 'generate_artifact',
+                                  lambda p, artifact, accuracy, *args, **kwargs: calls.append(
+                                      (os.path.basename(artifact), kwargs.get('workers'),
+                                       kwargs.get('flavor_unions')))):
+            self.assertEqual(amplicol_generation.generate(job), [['p0']])
+        return calls
+
+    def test_full_colour_in_a_child_process(self):
+        self.assertEqual(self.run_generate(True), [
+            ('child', 'full', 2, True), ('lc', 3, True), ('wait',), ('reweight',)])
+
+    def test_restricted_mode_generates_one_artifact_at_a_time(self):
+        self.assertEqual(self.run_generate(False),
+                         [('lc', None, True), ('full', None, True), ('reweight',)])
+
+    def test_unions_off_reach_both_artifacts(self):
+        self.assertEqual(self.run_generate(True, unions=False), [
+            ('child', 'full', 2, False), ('lc', 3, False), ('wait',), ('reweight',)])
+
+    def test_generate_child_passes_flavor_unions(self):
+        from madgraph.iolibs import amplicol_generation
+        calls = []
+        with mock.patch.dict(sys.modules, {'pyamplicol': mock.Mock()}), \
+                mock.patch.object(amplicol_generation, 'generate_artifact',
+                                  lambda *args, **kwargs: calls.append(kwargs)):
+            amplicol_generation.generate_child({
+                'artifact': '/a/full', 'accuracy': 'full', 'process': {},
+                'model': '/m', 'workers': 2, 'flavor_unions': True})
+        self.assertEqual(calls, [{'workers': 2, 'flavor_unions': True}])
+
+    def test_a_failing_child_raises_with_its_output(self):
+        from madgraph.iolibs import amplicol_generation
+        with mock.patch.object(amplicol_generation, '_CHILD',
+                               'import sys; print("boom"); sys.exit(3)'):
+            child = amplicol_generation.ArtifactProcess('/a/full', 'full', {}, '/m', 1)
+            with self.assertRaisesRegex(RuntimeError, '(?s)exit code 3.*boom'):
+                child.wait()
 
 
 class TestCheckPyamplicol(unittest.TestCase):
@@ -159,7 +212,7 @@ class TestModelJob(unittest.TestCase):
 
 class TestModelCache(unittest.TestCase):
     """The compiled model is reused only for the same model, restriction and
-    pyamplicol."""
+    pyamplicol, from the output or from the cache shared by the outputs."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -167,11 +220,12 @@ class TestModelCache(unittest.TestCase):
         self.path = os.path.join(self.tmp, 'sm')
         os.mkdir(self.path)
         self.cache = os.path.join(self.tmp, export_amplicol.MODEL_FILE)
+        self.shared = os.path.join(self.tmp, 'shared')
         self.compiled = []
         source = mock.Mock()
         source.compile.side_effect = lambda prepared_output, evaluator: (
             self.compiled.append(prepared_output),
-            open(prepared_output, 'w').close())
+            open(prepared_output, 'w').write('model'))
         self.pyamplicol = mock.Mock()
         self.pyamplicol.ModelSource.from_path.return_value = source
         config = mock.Mock()
@@ -179,10 +233,14 @@ class TestModelCache(unittest.TestCase):
                                                 'pyamplicol.config': config})
         patcher.start()
         self.addCleanup(patcher.stop)
+        environment = mock.patch.dict(
+            os.environ, {export_amplicol.MODEL_CACHE_ENV: self.shared})
+        environment.start()
+        self.addCleanup(environment.stop)
 
-    def compile(self, version):
+    def compile(self, version, cache=None):
         from madgraph.iolibs import amplicol_generation
-        job = export_amplicol.model_job(FakeModel(self.path, 'sm'), self.cache,
+        job = export_amplicol.model_job(FakeModel(self.path, 'sm'), cache or self.cache,
                                         {'version': version, 'source_hash': 'h'})
         amplicol_generation.model_source(self.pyamplicol, json.loads(json.dumps(job)))
         return job
@@ -206,6 +264,44 @@ class TestModelCache(unittest.TestCase):
             stream.write('b')
         self.compile('1')
         self.assertEqual(len(self.compiled), 2)
+
+    def test_cache_is_rebuilt_for_another_model_file(self):
+        with open(os.path.join(self.path, 'couplings.py'), 'w') as stream:
+            stream.write('a')
+        self.compile('1')
+        with open(os.path.join(self.path, 'couplings.py'), 'w') as stream:
+            stream.write('b')
+        self.compile('1')
+        self.assertEqual(len(self.compiled), 2)
+
+    def test_outputs_share_the_compiled_model(self):
+        first = os.path.join(self.tmp, 'a', export_amplicol.MODEL_FILE)
+        second = os.path.join(self.tmp, 'b', export_amplicol.MODEL_FILE)
+        os.makedirs(os.path.dirname(first))
+        os.makedirs(os.path.dirname(second))
+        job = self.compile('1', first)
+        self.compile('1', second)
+        self.assertEqual(len(self.compiled), 1)
+        self.assertTrue(self.compiled[0].startswith(self.shared))
+        with open(second) as stream:
+            self.assertEqual(stream.read(), 'model')
+        self.assertEqual(sorted(os.listdir(self.shared)),
+                         [job['key'] + '.json', job['key'] + '.pyamplicol-model'])
+
+    def test_a_truncated_shared_model_is_compiled_again(self):
+        job = self.compile('1', os.path.join(self.tmp, 'a.pyamplicol-model'))
+        with open(os.path.join(self.shared, job['key'] + '.pyamplicol-model'), 'w'):
+            pass
+        self.compile('1')
+        self.assertEqual(len(self.compiled), 2)
+
+    def test_the_shared_cache_can_be_disabled(self):
+        with mock.patch.dict(os.environ, {export_amplicol.MODEL_CACHE_ENV: 'off'}):
+            self.assertIsNone(export_amplicol.model_cache_dir())
+            self.compile('1')
+            self.compile('1', os.path.join(self.tmp, 'a.pyamplicol-model'))
+        self.assertEqual(self.compiled, [self.cache, os.path.join(self.tmp, 'a.pyamplicol-model')])
+        self.assertFalse(os.path.exists(self.shared))
 
 
 class TestMaxMatchedJets(unittest.TestCase):
