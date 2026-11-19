@@ -71,10 +71,10 @@ jobs:
       nevents: ${{ inputs.nevents || '1000' }}
       # 30 min, not 20 as on lemaitre4: the runner set-up and checkout are sometimes slow here
       time_limit: ${{ inputs.time_limit || '00:30:00' }}
-      # A100 (40 and 80 GB) or H200 nodes only, not the slower GPUs of the partition (V100, A10,
-      # L40s, RTX, ...). An empty extra_sbatch input also gets this constraint: there is no way
+      # A100 (40 and 80 GB) nodes only, not the other GPUs of the partition (V100, A10, L40s,
+      # RTX, H200, ...). An empty extra_sbatch input also gets this constraint: there is no way
       # to request any GPU of the partition from the Run workflow form
-      extra_sbatch: ${{ inputs.extra_sbatch || '--constraint=TeslaA100|TeslaA100_80|TeslaH200' }}
+      extra_sbatch: ${{ inputs.extra_sbatch || '--constraint=TeslaA100|TeslaA100_80' }}
       keep_workdir: ${{ inputs.keep_workdir || false }}
       # on push (no inputs) always; on "Run workflow" as ticked (default ticked)
       interference: ${{ github.event_name == 'push' || inputs.interference }}
