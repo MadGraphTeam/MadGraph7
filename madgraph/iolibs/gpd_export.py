@@ -51,6 +51,16 @@ C     CGPD_IN = x+xi and CGPD_OUT = x-xi (madgraph/iolibs/gpd_export.py)
       REAL*8 PGPD(0:3), CGPD_IN, CGPD_OUT
       COMMON/GPD_KIN/PGPD, CGPD_IN, CGPD_OUT"""
 
+GPD_MASK_DECL = """
+C     GPD residues per pole group: the amplitudes of the other diagrams are
+C     masked (GPD_AMASK = 0) while a residue is taken
+      REAL*8 GPD_AMASK(%(nslots)d)
+      COMMON/%(prefix)sGPD_AMASKC/GPD_AMASK"""
+
+
+def gpd_decl(proc_prefix, nslots):
+    return GPD_DECL + GPD_MASK_DECL % {'prefix': proc_prefix, 'nslots': nslots}
+
 
 def has_gpd(matrix_element):
     """True if the matrix element has a GPD pair."""
@@ -181,35 +191,62 @@ class GPDInfo(object):
     # -------------------------------------------------------------- poles --
     def pole_list(self):
         """The x-dependent propagators: [(signed constituent legs, sigma,
-        mass, width, name)], deduplicated."""
+        mass, width, name, amplitude numbers)], deduplicated; the amplitude
+        numbers are those of the diagrams whose tree contains it (the
+        residue of its pole is taken on those only)."""
 
-        def externals(wf):
+        def externals(wf, memo):
+            key = id(wf)
+            if key in memo:
+                return memo[key]
             if not wf.get('mothers'):
-                return frozenset([wf.get('number_external')])
-            out = frozenset()
-            for mother in wf.get('mothers'):
-                out = out | externals(mother)
+                out = frozenset([wf.get('number_external')])
+            else:
+                out = frozenset()
+                for mother in wf.get('mothers'):
+                    out = out | externals(mother, memo)
+            memo[key] = out
             return out
 
+        def internal_wfs(obj, acc):
+            for mother in obj.get('mothers'):
+                if mother.get('mothers'):
+                    if id(mother) not in acc:
+                        acc[id(mother)] = mother
+                        internal_wfs(mother, acc)
+            return acc
+
+        memo = {}
         seen = {}
+        order = []
         for diagram in self.me.get('diagrams'):
-            for wf in diagram.get('wavefunctions'):
-                if not wf.get('mothers'):
-                    continue
-                legs = externals(wf)
-                has_in = self.n_in in legs
-                has_out = self.n_out in legs
-                if has_in == has_out:
-                    continue
-                part = wf.get('particle')
-                mass = part.get('mass')
-                width = part.get('width')
-                key = (legs, mass.lower(), width.lower())
-                if key in seen:
-                    continue
-                sigma = 1 if has_in else -1
-                seen[key] = (sorted(legs), sigma, mass, width, part.get('name'))
-        return list(seen.values())
+            for amp in diagram.get('amplitudes'):
+                for wf in internal_wfs(amp, {}).values():
+                    legs = externals(wf, memo)
+                    has_in = self.n_in in legs
+                    has_out = self.n_out in legs
+                    if has_in == has_out:
+                        continue
+                    part = wf.get('particle')
+                    mass = part.get('mass')
+                    width = part.get('width')
+                    key = (legs, mass.lower(), width.lower())
+                    if key not in seen:
+                        sigma = 1 if has_in else -1
+                        seen[key] = [sorted(legs), sigma, mass, width, part.get('name'), set()]
+                        order.append(key)
+                    seen[key][5].add(amp.get('number'))
+        return [tuple(seen[key][:5]) + (sorted(seen[key][5]),) for key in order]
+
+    def amplitude_slots(self):
+        """{amplitude number: AMP entry} (AMP is recycled with quartic merges)."""
+        slots = None
+        try:
+            if self.me.get_quartic_amplitude_merges():
+                slots = self.me.get_amplitude_slots()[0]
+        except Exception:
+            slots = None
+        return slots
 
     def leg_sign(self, j):
         """+1 for an incoming leg (momentum flows in), -1 outgoing."""
@@ -220,7 +257,7 @@ class GPDInfo(object):
         """Fortran lines of GPD_POLES: K_i and sigma_i of every x-carrying
         propagator, handed to GPD_POLE_ADD."""
         lines = []
-        for legs, sigma, mass, width, name in self.pole_list():
+        for legs, sigma, mass, width, name, amps in self.pole_list():
             terms = []
             for j in legs:
                 if j in (self.n_in, self.n_out):
@@ -252,11 +289,18 @@ class GPDInfo(object):
 
 def patch_helas_calls(helas_calls, info):
     """The external wave functions of the GPD legs are built on PGPD and their
-    momentum slots rescaled by x+xi (in) and x-xi (out)."""
+    momentum slots rescaled by x+xi (in) and x-xi (out); every amplitude is
+    multiplied by its mask entry (residues per pole group)."""
     pattern = re.compile(r'^(\s*CALL\s+\w+\()P\(0,(\d+)\)(,.*,W\((\d+)\)\))\s*$')
+    amp_pattern = re.compile(r'^\s*CALL\s+\w+\(.*,AMP\((\d+)\)\)\s*$')
     out = []
     found = set()
     for call in helas_calls:
+        amatch = amp_pattern.match(call)
+        if amatch:
+            out.append(call)
+            out.append("AMP(%s) = AMP(%s)*GPD_AMASK(%s)" % ((amatch.group(1),) * 3))
+            continue
         match = pattern.match(call)
         if match and int(match.group(2)) in (info.n_in, info.n_out):
             leg = int(match.group(2))
@@ -301,7 +345,8 @@ C ======================================================================
       SUBROUTINE %(prefix)sGPD_KERNEL(X, N, AV, AA)
 C     The projected colour-flow amplitudes at X, for every helicity
 C     configuration IH of the non-GPD legs: AV(IC + NCOLOR*(IH-1)) with the
-C     vector, AA with the axial helicity weight of the GPD pair.
+C     vector, AA with the axial helicity weight of the GPD pair. With
+C     GPD_NMASK > 0, only the diagrams of the listed propagators.
       USE ALOHA_OBJECT
       IMPLICIT NONE
       INTEGER NPHYS, NME, NCOLOR, NHPHYS, NCOMB, NGRAPHS
@@ -321,10 +366,25 @@ C     vector, AA with the axial helicity weight of the GPD pair.
       INTEGER JC(NME), IH, L, I, IHEL
       COMPLEX*16 JAMP(NCOLOR), JL(NCOLOR,2)
 %(kernel_decl)s
+      INCLUDE 'gpd.inc'
+      INTEGER NPOLEMAX, MAXPA, M, IA
+      PARAMETER (NPOLEMAX=%(npoledim)d, MAXPA=%(maxpa)d)
+      INTEGER POLENA(NPOLEMAX), POLEAMPS(MAXPA,NPOLEMAX)
+%(poleamps_data)s
       NORM = %(norm)s
       JC = 1
       CGPD_IN = X + XI
       CGPD_OUT = X - XI
+      IF (GPD_NMASK.EQ.0) THEN
+        GPD_AMASK = 1D0
+      ELSE
+        GPD_AMASK = 0D0
+        DO M = 1, GPD_NMASK
+          DO IA = 1, POLENA(GPD_MASKIDS(M))
+            GPD_AMASK(POLEAMPS(IA,GPD_MASKIDS(M))) = 1D0
+          ENDDO
+        ENDDO
+      ENDIF
 %(me_momenta)s
       DO IH = 1, NHPHYS
         DO L = 1, 2
@@ -484,11 +544,23 @@ def write_driver(path, matrix_element, replace_dict, proc_prefix=''):
            'ncomb': replace_dict['ncomb'], 'ngraphs': replace_dict['ngraphs'],
            'namp_dim': replace_dict.get('namp_dim', 'NGRAPHS'),
            'helmap_data': "\n".join(lines),
-           'gpd_decl': GPD_DECL, 'norm': info.spin_colour_norm(),
+           'gpd_decl': gpd_decl(proc_prefix, replace_dict['ngraphs']),
+           'norm': info.spin_colour_norm(),
            'me_momenta': info.me_momenta_lines(),
            'pole_lines': info.gpd_pole_lines(),
            'maxp': max(1, len(poles)) + 2,
            'iden': info.denominator()}
+    slots = info.amplitude_slots()
+    amp_lists = [[(slots[a] if slots else a) for a in p[5]] for p in poles]
+    fmt['npoledim'] = max(1, len(poles))
+    fmt['maxpa'] = max([1] + [len(a) for a in amp_lists])
+    data = []
+    for ip, amps in enumerate(amp_lists, start=1):
+        data.append("      DATA POLENA(%d) /%d/" % (ip, len(amps)))
+        if amps:
+            data.append("      DATA (POLEAMPS(IA,%d),IA=1,%d) /%s/" % (ip, len(amps),
+                                                         ",".join(str(a) for a in amps)))
+    fmt['poleamps_data'] = "\n".join(data)
     if info.onia:
         fmt['jamp_call'] = JAMP_CALL_ONIA % fmt
         fmt['kernel_decl'] = JAMP_DECL_ONIA % fmt
@@ -531,6 +603,99 @@ C     writes |M|^2 and the CFFs of every helicity and colour flow.
 """
 
 
+DUMP_TEMPLATE = """      PROGRAM DUMP_GPD
+C     Diagnostics: for the first point of gpd_points.dat, the poles of
+C     GPD_POLES and the kernel at every x of gpd_xlist.dat, whole and
+C     restricted to the diagrams of each x-carrying propagator.
+      IMPLICIT NONE
+      INCLUDE 'gpd.inc'
+      INTEGER M
+      INTEGER NPHYS, NAMP, MAXP
+      PARAMETER (NPHYS=%(nphys)d, NAMP=%(namp)d, MAXP=200)
+      REAL*8 P(0:3,NPHYS), XI, T, MU, X
+      COMPLEX*16 AV(NAMP), AA(NAMP), AP(MAXP)
+      INTEGER SP(MAXP), NP, I, IOS
+      CALL SETPARA('param_card.dat')
+      CALL SETONIA_IF_NEEDED()
+      OPEN(11, FILE='gpd_points.dat', STATUS='OLD')
+      READ(11, *) XI, T, MU
+      DO I = 1, NPHYS
+        READ(11, *) P(0,I), P(1,I), P(2,I), P(3,I)
+      ENDDO
+      CLOSE(11)
+      CALL %(prefix)sGPD_SET_POINT(P, XI, T, MU)
+      CALL %(prefix)sGPD_POLES(NP, AP, SP)
+      DO I = 1, NP
+        WRITE(*,'(A,2ES26.16E3,I3)') 'POLE ', AP(I), SP(I)
+      ENDDO
+      CALL GPD_INIT()
+      DO M = 0, NP
+C       M = 0: the whole kernel; M > 0: the diagrams of propagator M only
+        GPD_NMASK = MIN(M, 1)
+        GPD_MASKIDS(1) = M
+        WRITE(*,'(A,I4)') 'MASK ', M
+        OPEN(12, FILE='gpd_xlist.dat', STATUS='OLD')
+        DO
+          READ(12, *, IOSTAT=IOS) X
+          IF (IOS.NE.0) EXIT
+          CALL %(prefix)sGPD_KERNEL(X, NAMP, AV, AA)
+          WRITE(*,'(A,ES26.16E3)') 'X ', X
+          DO I = 1, NAMP
+            WRITE(*,'(A,I4,4ES26.16E3)') 'K ', I, AV(I), AA(I)
+          ENDDO
+        ENDDO
+        CLOSE(12)
+      ENDDO
+      GPD_NMASK = 0
+      END
+"""
+
+
+MC_TEMPLATE = """      PROGRAM MC_GPD
+C     Diagnostics: the Monte Carlo two-replica x integration against the
+C     quadrature, at the first point of gpd_points.dat. Reads N from
+C     gpd_mc.dat; prints the quadrature |M|^2 and the mean and error of
+C     |M|^2 over N pairs (x, x') (uniform r in (0,1), mapped by GPD_XMAP).
+      IMPLICIT NONE
+      INCLUDE 'gpd.inc'
+      INTEGER NPHYS
+      PARAMETER (NPHYS=%(nphys)d)
+      REAL*8 P(0:3,NPHYS), XI, T, MU, ANS, QUAD, S1, S2, R(2)
+      INTEGER I, N
+      CALL SETPARA('param_card.dat')
+      CALL SETONIA_IF_NEEDED()
+      OPEN(11, FILE='gpd_points.dat', STATUS='OLD')
+      READ(11, *) XI, T, MU
+      DO I = 1, NPHYS
+        READ(11, *) P(0,I), P(1,I), P(2,I), P(3,I)
+      ENDDO
+      CLOSE(11)
+      OPEN(12, FILE='gpd_mc.dat', STATUS='OLD')
+      READ(12, *) N
+      CLOSE(12)
+      CALL GPD_INIT()
+      USEMC = 0
+      CALL %(prefix)sSMATRIX_GPD(P, XI, T, MU, QUAD)
+      WRITE(*,'(A,ES26.16E3)') 'QUAD ', QUAD
+      USEMC = 1
+      S1 = 0D0
+      S2 = 0D0
+      DO I = 1, N
+        CALL RANDOM_NUMBER(R)
+        RMC1 = R(1)
+        RMC2 = R(2)
+        CALL %(prefix)sSMATRIX_GPD(P, XI, T, MU, ANS)
+        S1 = S1 + ANS
+        S2 = S2 + ANS*ANS
+      ENDDO
+      USEMC = 0
+      S1 = S1/N
+      S2 = SQRT(MAX(S2/N - S1*S1, 0D0)/N)
+      WRITE(*,'(A,2ES26.16E3)') 'MC ', S1, S2
+      END
+"""
+
+
 def write_check(path, info, replace_dict, proc_prefix=''):
     nhphys = len(info.helicity_map())
     text = CHECK_TEMPLATE % {'prefix': proc_prefix, 'nphys': info.nphys,
@@ -549,6 +714,15 @@ def write_check(path, info, replace_dict, proc_prefix=''):
 """
     with open(pjoin(path, 'check_gpd.f'), 'w') as fsock:
         fsock.write(text)
+    dump = DUMP_TEMPLATE % {'prefix': proc_prefix, 'nphys': info.nphys,
+                            'namp': replace_dict['ncolor'] * nhphys}
+    dump += text[text.index('      SUBROUTINE SETONIA_IF_NEEDED()'):]
+    with open(pjoin(path, 'dump_gpd.f'), 'w') as fsock:
+        fsock.write(dump)
+    mc = MC_TEMPLATE % {'prefix': proc_prefix, 'nphys': info.nphys}
+    mc += text[text.index('      SUBROUTINE SETONIA_IF_NEEDED()'):]
+    with open(pjoin(path, 'mc_gpd.f'), 'w') as fsock:
+        fsock.write(mc)
 
 
 GPD_CARD = """#*********************************************************************
@@ -580,6 +754,12 @@ def makefile_lines(base_text, proc_prefix=''):
     text += """
 check_gpd: $(LIBS) $(PROCESS) check_gpd.o makefile $(LIBDIR)/libgpd.$(libext)
 	$(FC) $(FFLAGS) -o check_gpd $(PROCESS) check_gpd.o $(LINKLIBS)
+
+mc_gpd: $(LIBS) $(PROCESS) mc_gpd.o makefile $(LIBDIR)/libgpd.$(libext)
+	$(FC) $(FFLAGS) -o mc_gpd $(PROCESS) mc_gpd.o $(LINKLIBS)
+
+dump_gpd: $(LIBS) $(PROCESS) dump_gpd.o makefile $(LIBDIR)/libgpd.$(libext)
+	$(FC) $(FFLAGS) -o dump_gpd $(PROCESS) dump_gpd.o $(LINKLIBS)
 
 $(LIBDIR)/libgpd.$(libext):
 	$(MAKE) -C "$(LIBDIR)/../Source/GPD" standalone

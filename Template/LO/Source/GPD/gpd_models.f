@@ -40,6 +40,7 @@ C     (madevent sets GPD_INITIALISED from the run card before any call).
       GPD_DPTOL = 1D-3
       GPD_GRIDFILE = ''
       USEMC = 0
+      GPD_NMASK = 0
       CALL GPD_READ_CARD()
       GPD_INITIALISED = 1
       END
@@ -64,10 +65,12 @@ C     'value = name' lines of gpd_card.dat (standalone outputs).
         READ(LUN, '(A)', IOSTAT=IOS) LINE
         IF (IOS.NE.0) EXIT
         IF (INDEX(LINE,'#').GT.0) LINE = LINE(1:INDEX(LINE,'#')-1)
+        IF (INDEX(LINE,'!').GT.0) LINE = LINE(1:INDEX(LINE,'!')-1)
         IEQ = INDEX(LINE, '=')
         IF (IEQ.EQ.0) CYCLE
         VAL = ADJUSTL(LINE(1:IEQ-1))
         NAME = ADJUSTL(LINE(IEQ+1:))
+        IF (VAL(1:1).EQ."'") VAL = VAL(2:INDEX(VAL(2:),"'"))
         IF (NAME.EQ.'gpd_model') THEN
           IF (INDEX(VAL,'toy').GT.0) THEN
             GPD_MODEL = 0

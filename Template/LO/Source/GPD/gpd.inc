@@ -26,3 +26,9 @@ C     USEMC = 1 when RMC1, RMC2 in (0,1) are set for the current event.
       DOUBLE PRECISION RMC1, RMC2
       INTEGER USEMC
       COMMON/GPD_XMC_POINT/RMC1, RMC2, USEMC
+C     Residues per pole group: while GPD_NMASK > 0, the kernel keeps only the
+C     diagrams of the x-carrying propagators GPD_MASKIDS(1:GPD_NMASK) of the
+C     process (gpd_driver.f): coincident poles with opposite i0 signs (e.g.
+C     gamma q -> gamma gamma q) have separate residues.
+      INTEGER GPD_NMASK, GPD_MASKIDS(400)
+      COMMON/GPD_MASK/GPD_NMASK, GPD_MASKIDS

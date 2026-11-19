@@ -41,6 +41,11 @@ C ======================================================================
 C     breakpoints of the quadrature
       INTEGER NBREAK
       DOUBLE PRECISION BREAKS(MAXPOLE+6)
+C     pole groups: the propagators (indices of the process list) of every
+C     group; GRPFULL: the residue is taken on the whole amplitude (the
+C     gluon prefactor poles)
+      INTEGER GRPN(MAXPOLE), GRPM(MAXPOLE,MAXPOLE)
+      LOGICAL GRPFULL(MAXPOLE)
       END MODULE GPD_XINT_MOD
 
 C ----------------------------------------------------------------------
@@ -101,9 +106,13 @@ C     are added here. IERR=1: a double pole that does not cancel.
       ALLOCATE(RESV(N,MAXPOLE), RESA(N,MAXPOLE))
       ALLOCATE(VP1(N),AP1(N),VM1(N),AM1(N),VP2(N),AP2(N),VM2(N),AM2(N))
       ALLOCATE(RV3(N,3),RA3(N,3),DV3(N,3),DA3(N,3))
-C     the pole list: the given ones (duplicates merged), then +-xi
+C     the pole groups: the given propagators grouped by position and i0
+C     sign (coincident poles with opposite signs stay apart: their residues
+C     are taken on their own diagrams), then, for a gluon, the poles of
+C     1/((x+xi-i0)(x-xi+i0)), whose residues need the whole amplitude
       NPOLES = 0
       DO I = 1, NP + 2
+        IF (I.GT.NP .AND. .NOT.GLUONC) CYCLE
         IF (I.LE.NP) THEN
           IF (ABS(DBLE(AP(I))).GE.1D0-1D-12) CYCLE
           IF (ABS(DIMAG(AP(I))).GT.0.25D0) CYCLE
@@ -111,25 +120,41 @@ C     the pole list: the given ones (duplicates merged), then +-xi
         DUP = .FALSE.
         DO J = 1, NPOLES
           IF (I.LE.NP) THEN
-            IF (ABS(APOLE(J)-AP(I)).LT.1D-10*MAX(1D0,ABS(AP(I)))) DUP=.TRUE.
-          ELSE IF (I.EQ.NP+1) THEN
-            IF (ABS(APOLE(J)+XI).LT.1D-10) DUP = .TRUE.
+            IF (ABS(APOLE(J)-AP(I)).LT.1D-10*MAX(1D0,ABS(AP(I))) .AND.
+     &          (SPOLE(J).EQ.SP(I) .OR. GRPFULL(J))) THEN
+              DUP = .TRUE.
+              GRPN(J) = GRPN(J) + 1
+              GRPM(GRPN(J),J) = I
+            ENDIF
           ELSE
-            IF (ABS(APOLE(J)-XI).LT.1D-10) DUP = .TRUE.
+            AR = -XI
+            IF (I.EQ.NP+2) AR = XI
+            IF (ABS(APOLE(J)-AR).LT.1D-10) THEN
+              DUP = .TRUE.
+              GRPFULL(J) = .TRUE.
+              SPOLE(J) = -1
+              IF (I.EQ.NP+2) SPOLE(J) = 1
+            ENDIF
           ENDIF
         ENDDO
         IF (DUP) CYCLE
         NPOLES = NPOLES + 1
         IF (NPOLES.GT.MAXPOLE) STOP 'GPD_XSETUP: too many poles'
+        GRPN(NPOLES) = 0
+        GRPFULL(NPOLES) = .FALSE.
         IF (I.LE.NP) THEN
           APOLE(NPOLES) = AP(I)
           SPOLE(NPOLES) = SP(I)
+          GRPN(NPOLES) = 1
+          GRPM(1,NPOLES) = I
         ELSE IF (I.EQ.NP+1) THEN
           APOLE(NPOLES) = DCMPLX(-XI, 0D0)
           SPOLE(NPOLES) = -1
+          GRPFULL(NPOLES) = .TRUE.
         ELSE
           APOLE(NPOLES) = DCMPLX(XI, 0D0)
           SPOLE(NPOLES) = 1
+          GRPFULL(NPOLES) = .TRUE.
         ENDIF
       ENDDO
 C     residues and double-pole coefficients, from (x-a)B and (x-a)^2 B at
@@ -142,6 +167,7 @@ C       the step: a fraction of the distance to the nearest pole or end
         DMIN = MIN(1D0-AR, 1D0+AR)
         DO J = 1, NPOLES
           IF (J.EQ.I) CYCLE
+          IF (ABS(DBLE(APOLE(J))-AR).LT.1D-10) CYCLE
           DMIN = MIN(DMIN, ABS(DBLE(APOLE(J))-AR))
         ENDDO
         IF (DMIN.LE.0D0) THEN
@@ -154,6 +180,10 @@ C       the step: a fraction of the distance to the nearest pole or end
         RA3 = (0D0,0D0)
         DV3 = (0D0,0D0)
         DA3 = (0D0,0D0)
+        IF (.NOT.GRPFULL(I)) THEN
+          GPD_NMASK = GRPN(I)
+          GPD_MASKIDS(1:GRPN(I)) = GRPM(1:GRPN(I),I)
+        ENDIF
         DO L = 1, 3
           EPS2 = EPS1/2D0**(L-1)
           CALL GPD_XKERNEL(KERNEL, AR+EPS2, N, VP1, AP1)
@@ -163,6 +193,7 @@ C       the step: a fraction of the distance to the nearest pole or end
           DV3(:,L) = 0.5D0*EPS2**2*(VP1 + VM1)
           DA3(:,L) = 0.5D0*EPS2**2*(AP1 + AM1)
         ENDDO
+        GPD_NMASK = 0
         DDMAX = 0D0
         SCALE = 1D-300
         DO K = 1, N
