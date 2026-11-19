@@ -2823,6 +2823,16 @@ class VirtualProfileResult:
     # about 1 on one core (below 1 when the host took the core from it),
     # approaching N on N native threads.
     cpu_per_wall: float | None = None
+    # The seconds of the binary64 warm entry when it replaced the untimed
+    # warm-up point (``_prepared``; None: none ran).
+    prepared_seconds: float | None = None
+    # The reference pass was asked for but left out (its timed calls, or
+    # all of it): rule B on this backend's measured numbers
+    # (``reference["scope"]``, ``_scope_drops``).
+    reference_skipped: bool = False
+    # The untimed reference point's seconds when one ran (a measured cold
+    # point: what rule B learns from it).
+    reference_point_seconds: float | None = None
     # With N > 1 native threads (``profile --runtime-threads``): the time per
     # point of the same calls' points on one thread (a short timing of its
     # own, ``one_thread_profile``) and its timed calls; None: not measured.
@@ -2837,6 +2847,20 @@ class VirtualProfileResult:
         if self.one_thread_seconds_per_point is None:
             out.pop("one_thread_seconds_per_point")
             out.pop("one_thread_calls")
+        if self.prepared_seconds is None:
+            # No warm entry ran: the document as before it existed.
+            out.pop("prepared_seconds")
+        reference = self.reference
+        if reference is not None and reference.prepared_seconds is None:
+            out["reference"] = {
+                item.name: getattr(reference, item.name)
+                for item in fields(reference)
+                if item.name != "prepared_seconds"
+            }
+        if not self.reference_skipped:
+            out.pop("reference_skipped")
+        if self.reference_point_seconds is None:
+            out.pop("reference_point_seconds")
         return out
 
 
@@ -2869,6 +2893,9 @@ class PrecisionTiming:
     # ones in the same process (their state resident).
     peak_memory: PeakMemory | None = None
     digits: int | None = None
+    # The seconds of the carrier's warm entry when it replaced the untimed
+    # warm-up call (``_prepared``; None: no warm entry ran).
+    prepared_seconds: float | None = None
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -3007,6 +3034,7 @@ def profile_virtual(
     artifact: os.PathLike[str] | str | None = None,
     optimistic: bool = False,
     monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
+    warm_entry: bool = False,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
     (``VirtualProfileResult``) on ``points`` (default: the distinct flat
@@ -3131,16 +3159,40 @@ def profile_virtual(
     # expensive process that call alone takes minutes.
     report(0, bench.warmup_runs + max(bench.minimum_samples, 1), None, ())
     with peak_memory() as peak:
-        profile = _profile_virtual_calls(
-            runtime, batches, bench, options, scales, report
+        # The optimistic pass's warm entry instead of its untimed warm-up
+        # point (``warm_entry``: the caller's ``profile_plan.takes_entry``),
+        # inside the peak's region as the warm-up call would be.
+        prepared = (
+            _prepared(runtime, options, options.get("reduction"))
+            if warm_entry and optimistic and bench.warmup_runs > 0
+            else None
         )
-    profile = replace(profile, peak_memory=peak.result)
+        # The binary64 calls' warm-ups (one fewer after the entry); the
+        # reference pass keeps its own (``_reference_timing``).
+        calls = (
+            bench
+            if prepared is None
+            else replace(bench, warmup_runs=bench.warmup_runs - 1)
+        )
+        profile = _profile_virtual_calls(
+            runtime, batches, calls, options, scales, report
+        )
+    profile = replace(profile, peak_memory=peak.result, prepared_seconds=prepared)
     if monitor is not None:
         monitor("binary64-result", {"profile": profile})
     timing = None
-    if reference is not None:
+    scope = None if reference is None else reference.get("scope")
+
+    def drops(reference_point: float | None = None) -> bool:
+        return scope is not None and _scope_drops(
+            profile, scope, bench.batch_size, reference_point
+        )
+
+    skipped = reference is not None and drops()
+    point_seconds = None
+    if reference is not None and not skipped:
         with peak_memory() as reference_peak:
-            timing = _reference_timing(
+            timing, point_seconds = _reference_pass(
                 runtime,
                 batches,
                 bench,
@@ -3149,9 +3201,46 @@ def profile_virtual(
                 reference,
                 binary64=profile.seconds_per_point,
                 monitor=monitor,
+                stop=drops if scope is not None else None,
             )
-        timing = replace(timing, peak_memory=reference_peak.result)
-    return replace(profile, reference=timing)
+        if timing is None:
+            skipped = True
+        else:
+            timing = replace(timing, peak_memory=reference_peak.result)
+    return replace(
+        profile,
+        reference=timing,
+        reference_skipped=skipped,
+        reference_point_seconds=point_seconds,
+    )
+
+
+def _scope_drops(
+    profile: VirtualProfileResult,
+    scope: Mapping[str, Any],
+    batch: int,
+    reference_point: float | None = None,
+) -> bool:
+    """Rule B re-called by the decider's runtime timing on its own measured
+    numbers (``profile_plan.rule_b_drops``): this backend's ``Known`` from the
+    parent's (``scope["known"]``) with its measured binary64 chunk, its warm
+    entry and, after its untimed reference point, that point's seconds."""
+
+    from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
+    from pyamplicol.profile_plan import Known, lower_bound
+
+    given = dict(scope.get("known") or {})
+    known = Known(
+        point=given.get("point"),
+        chunk=profile.seconds_per_point,
+        warm=profile.prepared_seconds,
+        reference=reference_point
+        if reference_point is not None
+        else given.get("reference"),
+        start=float(given.get("start") or 0.0),
+    )
+    total = lower_bound(known, lanes=min(DEFAULT_LANES, max(batch, 1)), reference=True)
+    return total > float(scope["bound"])
 
 
 def one_thread_profile(
@@ -3273,6 +3362,8 @@ def _reference_calls(
     call: Callable[[int, int], float],
     progress: Callable[[int, int, float | None, Sequence[float]], None] | None,
     prior: float | None,
+    *,
+    stop: Callable[[float], bool] | None = None,
 ) -> tuple[list[float], int]:
     """The reference pass's protocol (``_reference_timing``): one untimed
     call of one point (``warmup``: the carrier's first call builds what it
@@ -3293,9 +3384,13 @@ def _reference_calls(
         return max(len(walls) + int(room // estimate), len(walls), 1)
 
     def fitted(per_point: float | None) -> int:
+        # What the budget affords, down to a power of two (no padded lane in
+        # any carrier: binary64's chunk is one, the extended carriers run a
+        # batch in chunks of the widths of its binary digits).
         if per_point is None or per_point <= 0.0:
             return size
-        return max(1, min(size, int(budget // per_point)))
+        affords = max(1, min(size, int(budget // per_point)))
+        return 1 << (affords.bit_length() - 1)
 
     done = 0
     per_point = prior
@@ -3309,6 +3404,9 @@ def _reference_calls(
         # call's fixed cost counted in full).
         per_point = call(0, 1)
         done = 1
+        if stop is not None and stop(per_point):
+            # The untimed point says the budget is exceeded: no timed call.
+            return [], 0
         chunk = fitted(per_point)
         estimate = per_point * chunk
         total = 1 + planned((), estimate)
@@ -3348,6 +3446,34 @@ def _reference_timing(
     binary64: float | None = None,
     monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
 ) -> PrecisionTiming:
+    """``_reference_pass`` without a scope: its timing."""
+
+    timing, _ = _reference_pass(
+        runtime,
+        batches,
+        bench,
+        reduction,
+        scales,
+        reference,
+        binary64=binary64,
+        monitor=monitor,
+    )
+    assert timing is not None
+    return timing
+
+
+def _reference_pass(
+    runtime: Any,
+    batches: _PointBatches,
+    bench: BenchmarkConfig,
+    reduction: str | None,
+    scales: Callable[[Momenta], Any],
+    reference: Mapping[str, Any],
+    *,
+    binary64: float | None = None,
+    monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
+    stop: Callable[[float], bool] | None = None,
+) -> tuple[PrecisionTiming | None, float | None]:
     """The reference carrier's time per point (``PrecisionTiming``): one
     fully optimistic pass per point, the unchecked reduction of the
     profiled backend alone (``reduction``, "auto" resolved to the runtime's
@@ -3376,7 +3502,7 @@ def _reference_timing(
         **{
             k: v
             for k, v in reference.items()
-            if k not in ("points", "budget", "seconds_per_point")
+            if k not in ("points", "budget", "seconds_per_point", "scope", "entry")
         },
     }
     backend = _single_backend(runtime, reference.get("reduction", reduction))
@@ -3433,7 +3559,29 @@ def _reference_timing(
                 },
             )
 
-    walls, size = _reference_calls(budget, warm, size, call, report, prior)
+    prepared = None
+    scope = reference.get("scope")
+    # With rule B open and this reference's cost unknown, its untimed point
+    # (not the entry) measures it (``stop``).
+    unknown = scope is not None and (scope.get("known") or {}).get("reference") is None
+    if warm and reference.get("entry") and not unknown:
+        # The warm entry instead of the untimed point (the caller's
+        # ``profile_plan.takes_entry``).
+        report(0, 1, prior, ())
+        prepared = _prepared(runtime, options, backend)
+        warm = prepared is None
+    first: list[float] = []
+
+    def stopped(per_point: float) -> bool:
+        first.append(per_point)
+        return stop is not None and stop(per_point)
+
+    walls, size = _reference_calls(
+        budget, warm, size, call, report, prior, stop=stopped if warm else None
+    )
+    point = first[0] if first else None
+    if not walls:
+        return None, point
     return PrecisionTiming(
         arithmetic,
         size,
@@ -3446,7 +3594,36 @@ def _reference_timing(
         sum(reasons.values()),
         tuple(sorted(reasons.items(), key=lambda item: (-item[1], item[0]))),
         digits=cast("int | None", options.get("precision")),
-    )
+        prepared_seconds=prepared,
+    ), point
+
+
+def _prepared(
+    runtime: Any,
+    options: Mapping[str, Any],
+    backend: str | None,
+) -> float | None:
+    """The warm entry of a stream (``prepare`` of the runtime's backend: it
+    builds what the carrier's first evaluation with ``backend`` builds
+    lazily, without a point, in the unchecked mode of ``options``) in place
+    of its untimed warm-up point. Its seconds, or None when it did not run
+    (no entry, an unknown backend, or the entry failed: the point then
+    warms)."""
+
+    prepare = getattr(getattr(runtime, "_backend", runtime), "prepare", None)
+    if not callable(prepare) or backend is None:
+        return None
+    carrier = {k: options[k] for k in ("arithmetic", "precision") if k in options}
+    begin = time.perf_counter()
+    try:
+        prepare(
+            **carrier,
+            reduction=backend,
+            unchecked=bool(options.get("reduction_unchecked")),
+        )
+    except Exception:
+        return None
+    return time.perf_counter() - begin
 
 
 def _single_backend(runtime: Any, reduction: str | None) -> str | None:

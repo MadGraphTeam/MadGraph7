@@ -77,6 +77,18 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--all-backends",
+        dest="benchmark.all_backends",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: time every reduction backend whatever the "
+            "runtime budget (benchmark.all_backends; default: every one "
+            "unless the process's default backend alone exceeds the budget "
+            "at its minimal counts; --no-all-backends: the default only)"
+        ),
+    )
+    parser.add_argument(
         "--ground-truth",
         dest="benchmark.ground_truth",
         default=argparse.SUPPRESS,
@@ -87,7 +99,9 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
             "reference-precision time multipliers; double-double (dd, the "
             "default), arbitrary precision (arb) at DIGITS decimal digits "
             "(default: 500, the default arbitrary-precision digits), or none: "
-            "no reference pass, the stability run reports its estimates only"
+            "no reference pass, the stability run reports its estimates only. "
+            "Given (any value), the runtime timing measures the multiplier "
+            "even when its minimal counts exceed the runtime budget"
         ),
     )
     parser.add_argument(

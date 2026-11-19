@@ -824,16 +824,115 @@ took):
   measurement is back, with the time the whole command then takes (the
   header's `counts` row states the same number), and the minimums run.
 - the counts given on the command line or in a run card: honoured as given.
+  A value stated in a run card counts as given even when it equals the
+  default (`n_core = 10`, `ground_truth = "double-double"`): leave a
+  setting out of the card to keep its default behaviour. A
+  `--target-runtime` given alone is each backend's timed binary64 budget
+  (its start-up and warm-up outside it, the reference pass's budget the
+  same on top), and the counts are chosen from it: one warm-up, the
+  largest batch whose five calls fit it, the minimum calls and more while
+  it affords them (not the default batch and calls as if given).
 - neither: the default budgets, 10 s for the runtime timing of all backends
   and one minute of work per `--n_core` worker for the stability run (about
   a minute of wall time whatever `--n_core`: more workers, more points). On
   an expensive process whose minimums exceed them by more than a factor 1.5
-  the same warning says so, with the time the minimums take.
+  the same warning says so, with the time the minimums take. The
+  measurement times only what can change the counts: a backend whose share
+  of the 10 s (its start-up excluded), less the reference pass's quarter of
+  it, affords no more than its binary64 warm-up gets the minimum counts
+  whatever its reference costs, so its
+  reference is not timed there (its runtime timing's untimed reference call
+  measures it); when loading the artifact alone takes a backend's share,
+  every backend gets the minimums and there is no measurement phase at all
+  (nothing is evaluated before the runtime timing, whose warm-ups measure
+  the costs; a notice names the load time, and whether the minimums exceed
+  the budget, with their time in the `counts` row, follows from the costs
+  the timing measured).
+
+  A profile whose minimums exceed its budget also narrows what it runs
+  (USER 2026-11-19), by the `counts` row's own rule: the minimums exceed
+  the budget by more than a factor 1.5, start-ups aside. The budget is the
+  runtime timing's (the default 10 s of all backends, or a given
+  `--target-runtime` per backend) plus, with `--stability`, the stability
+  run's (one minute of wall); with `--completion-time`, what is left of it,
+  start-ups included. Counts given (`--batch-size`, `--minimum-samples`,
+  `--warmup-runs`, `--stability-points` with `--stability`) are honoured as
+  given and nothing is left out; given with `--target-runtime`, the counts
+  win.
+  - The reference of the runtime timing alone (no `--stability`): when the
+    runtime minimums of every backend with their reference points (one
+    untimed and one timed point each) exceed the budget, no reference point
+    is evaluated at all and the `(dd xN)` / `(arb(D) xN)` multiplier is not
+    shown, as with `--ground-truth none`. An explicit `--ground-truth` (any
+    value, also double-double, on the command line or in a run card) times
+    it anyway. With `--stability` the reference always runs (the true digits
+    need it), and the runtime row keeps its multiplier from its own
+    reference pass, one optimistic pass, never from the stability run's.
+  - The backends, with or without `--stability`: when the default backend
+    alone, for everything asked (its runtime minimum with the reference as
+    just decided, and the stability run's five points with their
+    reference), still exceeds the budget, only the default backend is
+    profiled, in both tables. `--all-backends` profiles every backend
+    whatever the budget (`--no-all-backends` the default only),
+    `--loop-reduction` one backend. With one backend in the stability run
+    and an arbitrary-precision ground truth, every reference is certified by
+    its own checks (there is no second backend's reference to agree with).
+  One decision, whatever the path: each rule is a function of what this
+  run has measured so far (`profile_plan.rule_b_drops`, `rule_a_drops`),
+  called again whenever a measured number arrives: each step of the
+  measurement, the first backend's runtime timing after its binary64 call
+  and after its untimed reference point, the default backend's runtime
+  row. It drops something only when a lower bound of the real cost exceeds
+  the budget: the chunk call at one measured point's cost (a chunk costs
+  at least one of its points), a warm-up at one point, an untimed
+  reference point at its measured cold cost, a timed one at least the
+  binary64 point, a checked stability point at least one optimistic pass,
+  a stability reference point at least the cold one for the first point of
+  each worker only and one binary64 point for the others; without
+  `--runtime` the runtime timing counts nothing. A drop is final: nothing
+  un-drops it, and every bound was valid when it fired. The verdict follows
+  the measured numbers alone: the measurement, a run without one (where
+  the first backend's untimed reference point measures the reference
+  before its timed point runs), with or without a previous profile (whose
+  costs set ETAs only). Rule B is judged on the sum of every backend's
+  minimum with its reference (a backend not measured yet counts nothing)
+  against the budget of all of them, so that a backend's dear reference
+  counts even when the default's is cheap; the first backend's runtime
+  timing re-judges it on its own numbers against what the others' known
+  minimums leave; its verdict holds for every backend (all multipliers or
+  none).
+  Rule A never counts a reference that rule B could leave out. The record
+  and the `counts` row are re-planned from what ran. A backend profiled
+  alone keeps the per-backend share it has beside the others. A notice
+  says what was left out (and when it was measured in a runtime timing),
+  and the `counts` row repeats it ("TIRust not profiled (--all-backends)",
+  "no dd multiplier (--ground-truth)").
+
+  The stability run starts no more worker processes than the memory holds:
+  at most three quarters of the memory available when it starts, at one
+  worker's resident size as this run measured it (the profile's own process
+  after loading the artifact and measuring every backend, or the load plus
+  each backend's increase in its runtime timing's process); the plan, its
+  ETA and rule A count those workers. When a stability task holds several
+  points (a point cheaper than a task's work), the first worker runs its
+  first task alone and its own peak sets how many follow. Fewer workers
+  than `--n_core` then run, said in a notice and in the `counts` row
+  ("stability on 3 workers (memory: 36.5 GiB each, 3/4 of 150.0 GiB
+  available)").
+  A `--n_core` given (command line or run card) is honoured, with a warning
+  when its workers do not fit. The runtime timing runs one process at a
+  time.
 
 Loading, process start-up, warm-up calls and the reference pass's minimum
 are outside the default budgets by nature; they are visible phases with
 their own estimates. The reference pass is part of the budget of the phase
-it serves. On an expensive process the binary64 warm-up is one point (when
+it serves. Where the runtime offers a warm entry (it builds what a
+carrier's first evaluation builds, without evaluating a point) and a point
+costs more than 5 s (a first call's lazy set-up, the measurement's bound),
+the binary64 timing and the reference pass warm through it instead of their
+untimed warm-up point; the timed calls are the same warm passes, and the
+`runtime setup` row says "after a warm entry". On an expensive process the
+binary64 warm-up is one point (when
 a full call would cost more than 2 s; else one full call), and a stability
 task holds about 4 s of work: a point that costs more is a task of its own,
 so a few expensive points spread over the workers instead of running one
