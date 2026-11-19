@@ -538,27 +538,36 @@ def _has_union_targets(targets: Sequence[Mapping[str, Any]]) -> bool:
     )
 
 
-def _route(routes, event_pdgs: Sequence[int], incoming: int):
+def _route_index(routes, incoming: int) -> dict:
+    """Routes keyed by (initial pdgs, sorted final pdgs); the first route of a
+    key wins, as in a scan of the route list."""
+    incoming = _integer(incoming)
+    index: dict = {}
+    for route in routes:
+        pdgs = route[0]
+        index.setdefault((pdgs[:incoming], tuple(sorted(pdgs[incoming:]))), route)
+    return index
+
+
+def _route(index, event_pdgs: Sequence[int], incoming: int):
     """The target route of a flavour given in event slots: (process, artifact
     id, runtime slot -> event slot, factor, assignment). Identical outgoing
     particles and, for two beams, the beam order are interchangeable."""
     incoming = _integer(incoming)
     event_pdgs = [int(p) for p in event_pdgs]
-    final = sorted(event_pdgs[incoming:])
+    final = tuple(sorted(event_pdgs[incoming:]))
+    initial = tuple(event_pdgs[:incoming])
     for swapped in (False, True) if incoming == 2 else (False,):
-        for pdgs, process, artifact_id, permutation, factor, assignment in routes:
-            initial = list(pdgs[:incoming])
-            if swapped:
-                initial.reverse()
-            if initial != event_pdgs[:incoming] or sorted(pdgs[incoming:]) != final:
-                continue
-            to_event = [1 - leg if swapped else leg for leg in range(incoming)]
-            to_event += [
-                incoming + j
-                for j in _first_unused(event_pdgs[incoming:], pdgs[incoming:])
-            ]
-            legs = [to_event[leg] for leg in permutation]
-            return process, artifact_id, legs, factor, assignment
+        route = index.get((initial[::-1] if swapped else initial, final))
+        if route is None:
+            continue
+        pdgs, process, artifact_id, permutation, factor, assignment = route
+        to_event = [1 - leg if swapped else leg for leg in range(incoming)]
+        to_event += [
+            incoming + j for j in _first_unused(event_pdgs[incoming:], pdgs[incoming:])
+        ]
+        legs = [to_event[leg] for leg in permutation]
+        return process, artifact_id, legs, factor, assignment
     raise ValueError(f"no process of the target artifact has the flavour {event_pdgs}")
 
 
@@ -590,11 +599,18 @@ def reweight_header(
     # union targets: flavours without a target process of their own are assignments,
     # and a template's own flavour is its assignment 0 (the C side needs one kind)
     union_targets = _has_union_targets(targets)
+    target_routes = _target_routes(targets) if union_targets else None
     templates = (
-        {route[1]["id"] for route in _target_routes(targets) if route[5] >= 0}
+        {route[1]["id"] for route in target_routes if route[5] >= 0}
         if union_targets
         else set()
     )
+
+    def route_index():
+        nonlocal routes
+        if routes is None:
+            routes = _route_index(target_routes or _target_routes(targets), incoming)
+        return routes
     reference_processes = reference["runtime_processes"]
     lines = [
         "/* SPDX-License-Identifier: 0BSD */",
@@ -665,11 +681,9 @@ def reweight_header(
                         target_helicity[exported] = target_helicities[identifier]
             else:
                 # A flavour-union member or target: its own route, legs and factor.
-                if routes is None:
-                    routes = _target_routes(targets)
                 pdgs = reference["pdg_ids"][entry["matrix_elements"][0]["pdg_ids"]]
                 target, target_id, legs, target_factor, target_assignment = _route(
-                    routes, pdgs, incoming
+                    route_index(), pdgs, incoming
                 )
                 target_permutation = f"{prefix}_target_permutation"
                 lines.append(_int_array(target_permutation, "size_t", legs))
@@ -713,10 +727,9 @@ def reweight_header(
                     f"no process of the target artifact matches {process['id']!r}"
                 )
             return target_index(*match), None, 1.0, (0 if match[0]["id"] in templates else -1)
-        nonlocal routes
-        if routes is None:
-            routes = _target_routes(targets)
-        process, target_id, legs, factor, assignment = _route(routes, pdgs, incoming)
+        process, target_id, legs, factor, assignment = _route(
+            route_index(), pdgs, incoming
+        )
         return target_index(process, target_id), legs, factor, assignment
 
     switch = (
