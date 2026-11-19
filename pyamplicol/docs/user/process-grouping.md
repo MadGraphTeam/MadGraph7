@@ -251,6 +251,14 @@ minimal coupling-order envelope. The check works as follows:
   Lorentz structure is chiral when exchanging its left- and right-handed
   projectors changes it, or when it contains `gamma5`. A built-in electroweak
   current is chiral when its left- and right-handed couplings differ.
+- The conjugated relation keeps momenta and helicities, so it needs charge
+  conjugation (C), not CP: every allowed vertex needs an allowed vertex on its
+  antiparticles with the identical structure and coupling (the coupling
+  only, for the built-in SM's oriented vertex kinds). A complex off-diagonal
+  vector coupling (`d~ s Z'` with `g_ds != g_sd`) breaks it, while vertices
+  whose particles are their own conjugates, such as `[d~ d g]`, pass. A
+  vertex of such self-conjugate particles with a Levi-Civita (`Epsilon`)
+  Lorentz structure is refused, since its C parity is not checked.
 
 A member that fails the check gets a warning, stored as its `warning` field in
 `process-groups.json`. The warnings are also logged once on the

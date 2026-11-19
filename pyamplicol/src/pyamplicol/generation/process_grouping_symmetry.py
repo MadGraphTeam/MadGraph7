@@ -13,12 +13,20 @@ generated with onto themselves, which this module checks locally:
   in the same order and the same structure and coupling: Lorentz and colour
   expressions and resolved coupling for compiled models, kernel kind and
   coupling for the built-in SM.
-* Charge conjugation with unchanged helicities is a symmetry of vector-like
-  interactions only. It is accepted when the conjugate of every allowed
-  vertex is allowed and no allowed vertex couples fermions chirally: a
-  Lorentz structure that changes when its left- and right-handed projectors
-  are exchanged (or contains ``gamma5``), or a built-in electroweak current
-  with different left- and right-handed couplings.
+* Charge conjugation with unchanged momenta and helicities (C, not CP) is
+  accepted when no allowed vertex couples fermions chirally (a Lorentz
+  structure that changes when its left- and right-handed projectors are
+  exchanged, or contains ``gamma5``; a built-in electroweak current with
+  different left- and right-handed couplings) and every allowed vertex has a
+  C image: a vertex on its antiparticles with the identical signature
+  (Lorentz and colour structure in the model's own leg convention, and the
+  same coupling expression, e.g. ``g_ds == g_sd`` for an off-diagonal
+  vector). A self-conjugate particle multiset such as ``(q~, q, g)`` is its
+  own image; there C acts within the vertex, which the chirality test covers,
+  except for Levi-Civita (``Epsilon``) structures, which are refused because
+  their C parity is not checked. Hermiticity is not C: the conjugate
+  coupling is not compared with the complex conjugate (UFO couplings carry
+  the Feynman factor ``i``).
 
 Allowed vertices are those whose coupling orders fit ``process.max_coupling_orders``
 and, under the default ``minimal`` coupling-order policy, the representative's
@@ -47,6 +55,10 @@ class SymmetryVertex:
     signature: Hashable
     """Structure and coupling that a symmetry must preserve."""
     chiral: bool = False
+    epsilon: bool = False
+    """Lorentz structure with a Levi-Civita tensor (C parity not checked)."""
+    c_signature: Hashable = None
+    """What the C image must repeat; ``None`` means ``signature``."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +66,10 @@ class _AllowedVertices:
     by_particles: Mapping[tuple[int, ...], Counter[Hashable]]
     multisets: frozenset[tuple[int, ...]]
     chiral: tuple[tuple[int, ...], ...]
+    epsilon: tuple[tuple[int, ...], ...] = ()
+    c_signatures: Mapping[tuple[int, ...], Counter[Hashable]] = field(
+        default_factory=dict
+    )
 
 
 def _orders_allowed(
@@ -67,6 +83,7 @@ def _orders_allowed(
 
 
 _PROJECTOR = re.compile(r"(proj)([mp])", re.IGNORECASE)
+_EPSILON = re.compile(r"\bepsilon\b", re.IGNORECASE)
 _EXCHANGED_PROJECTOR = {"m": "p", "p": "m", "M": "P", "P": "M"}
 
 
@@ -118,6 +135,7 @@ class VertexSymmetryTable:
                     couplings.get(term.coupling, term.coupling_expression),
                 ),
                 chiral=_lorentz_is_chiral(term.lorentz_expression),
+                epsilon=_EPSILON.search(term.lorentz_expression) is not None,
             )
             for term in model.vertex_terms
         ]
@@ -142,6 +160,9 @@ class VertexSymmetryTable:
                     # couplings.
                     chiral=rule.expression_head == "fermion_gauge_weyl_current"
                     and vertex.coupling[0] != vertex.coupling[1],
+                    # Kinds are oriented current rules whose conjugates the model
+                    # pairs by construction: C compares the coupling only.
+                    c_signature=tuple(vertex.coupling),
                 )
             )
         antiparticles = {
@@ -162,16 +183,25 @@ class VertexSymmetryTable:
         upper = dict(key)
         by_particles: dict[tuple[int, ...], Counter[Hashable]] = {}
         chiral: dict[tuple[int, ...], None] = {}
+        epsilon: dict[tuple[int, ...], None] = {}
+        c_signatures: dict[tuple[int, ...], Counter[Hashable]] = {}
         for vertex in self.vertices:
             if not _orders_allowed(vertex.orders, upper):
                 continue
             by_particles.setdefault(vertex.particles, Counter())[vertex.signature] += 1
+            c_signatures.setdefault(vertex.particles, Counter())[
+                vertex.signature if vertex.c_signature is None else vertex.c_signature
+            ] += 1
             if vertex.chiral:
                 chiral.setdefault(vertex.particles, None)
+            if vertex.epsilon:
+                epsilon.setdefault(vertex.particles, None)
         result = _AllowedVertices(
             by_particles=by_particles,
             multisets=frozenset(tuple(sorted(particles)) for particles in by_particles),
             chiral=tuple(chiral),
+            epsilon=tuple(epsilon),
+            c_signatures=c_signatures,
         )
         self._allowed[key] = result
         return result
@@ -269,6 +299,37 @@ class VertexSymmetryTable:
                 "charge conjugation has no allowed image of the vertex "
                 f"{_vertex_text(table, missing)}"
             )
+        return self._c_image_reason(allowed, table)
+
+    def _c_image_reason(
+        self, allowed: _AllowedVertices, table: ParticleTable
+    ) -> str | None:
+        """The C condition per allowed vertex: an identical-signature image."""
+
+        for particles, signatures in allowed.c_signatures.items():
+            image = tuple(self._antiparticle(pdg) for pdg in particles)
+            if sorted(image) == sorted(particles):
+                if particles in allowed.epsilon:
+                    vertex = _vertex_text(table, particles)
+                    return (
+                        "charge conjugation is not checked for the Levi-Civita "
+                        f"structure of the allowed vertex {vertex}"
+                    )
+                continue
+            # The image in the model's own leg order: some allowed ordering of it
+            # must carry the same Lorentz, colour and coupling signatures.
+            candidates = [
+                other
+                for other in allowed.c_signatures
+                if sorted(other) == sorted(image)
+            ]
+            if not any(
+                allowed.c_signatures[other] == signatures for other in candidates
+            ):
+                return (
+                    "charge conjugation changes the coupling or structure of the "
+                    f"allowed vertex {_vertex_text(table, particles)}"
+                )
         return None
 
     def relation_warning(
