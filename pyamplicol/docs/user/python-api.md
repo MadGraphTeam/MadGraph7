@@ -365,6 +365,30 @@ Stability checks are off by default (no estimate is returned then); the
 reduction backends' own acceptance and refusal checks stay on unless
 `reduction_unchecked=True`.
 
+**Default checks per backend** (USER 2026-11-19: the rescaled reduction check
+"for TIRust as part of the default stability stack"). Where pyAmpliCol chooses
+the checks for the caller, a point TIRust serves runs one rotation **and** the
+rescaled reduction-direction check, a point NinjaRS serves exactly what it ran
+before; checks a caller gives are never changed (an explicit
+`VirtualStabilityChecks(1)` on TIRust stays one rotation, apart from the
+lane-rescue rule below). The defaults are:
+
+| where | NinjaRS-served point | TIRust-served point |
+|---|---|---|
+| `evaluate` / CLI `evaluate` without `stability_checks` | no checks (no estimate) | no checks (no estimate) |
+| every level of `VirtualRescuePolicy()` and of the loop-induced default stack | one rotation + rescaled reduction check | one rotation + rescaled reduction check |
+| best-effort uncertainty (`VirtualBestEffort`) | the call's checks with the recommended ones | the call's checks with the recommended ones |
+| `profile --stability` without `evaluation.stability_checks` | one default rotation | one default rotation + rescaled reduction check |
+| SDK (`rusticol_virtual_set_stability_checks` not called) | no checks | no checks |
+
+Under `"auto"` the set follows the backend that serves each point (a
+per-point NinjaRS fallback point keeps the NinjaRS set;
+`loops.v2.reduction.default_checks` / `backend_checks`). Why: one rotation
+alone under-states the error of accepted TIRust points (true error above the
+one-rotation estimate on 144 of 200 flat g g > g g g points, up to 1.1e4
+times, and on 24 of 50 g g > g g g g points; with the reduction check on none
+of them).
+
 The reduction backend is chosen once per call (`reduction="auto"`, `"ninjars"`
 or `"tirust"` on `Runtime.load` and on every evaluation; default: the
 artifact's `[loop] reduction`): `"auto"` takes TIRust for a loop-induced and
@@ -798,8 +822,8 @@ the reduction-direction re-test) is formed on the mixed total as for any
 point.
 
 When the call runs stability checks without the reduction-direction check
-(for instance `VirtualStabilityChecks(1)`, one rotation, the default of
-`evaluation.stability_checks`), a point with rescued lanes is evaluated
+(for instance an explicit `VirtualStabilityChecks(1)`, one rotation, or the
+NinjaRS default set of `profile --stability`), a point with rescued lanes is evaluated
 again, on such points only, with the call's checks and the rescaled
 reduction-direction check of the recommended set, on the backend that
 served it (the call's, or its per-point fallback's), and returns that
@@ -868,9 +892,10 @@ public `stability` estimate stays that of the call's own checks);
 ones; `"recommended-checks"`: the call asked for no checks (the public
 result then carries no estimate); `"none"`: no estimate could be formed,
 `uncertainty` is None, said so in the lane's detail, never invented. Why:
-one rotation alone (the profile cards' check set) under-states the error of
-an unchecked TIRust value of a Born-interfered process. Measured with the
-shipped profile cards' check set (one default rotation; explicit TIRust,
+one rotation alone (the profile cards' check set before 2026-11-19, whose
+default now adds the rescaled reduction check on TIRust's points) under-states
+the error of an unchecked TIRust value of a Born-interfered process. Measured
+with the shipped profile cards' check set then (one default rotation; explicit TIRust,
 binary64, flat points seed 1 at sqrt(s) = 1000, truth = double-double), the
 one-rotation estimate covered the true error of 220 of 722 u u~ > t t~ g g
 best-effort points and 39 of 65 u u~ > d d~ e+ e- ones; with the

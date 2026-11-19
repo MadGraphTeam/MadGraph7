@@ -122,6 +122,7 @@ from pyamplicol.api.virtual_results import (
     VirtualStabilityEstimate,
     best_effort_detail,
     computes_poles,
+    rescue_text,
     splits_poles,
 )
 from pyamplicol.config import PoleSelection, R2Strategy
@@ -2889,13 +2890,23 @@ class V2VirtualRuntime:
             estimates.append(estimate)
             parts.append(self._pole_parts(result) if splits_poles(poles) else None)
             best = None if own is None else own.best_effort
+            rescue = (
+                VirtualLaneRescue.of(result.lane_rescue) if result.lane_rescue else None
+            )
+            # A rescued point names its lane rescue (review B2), as the
+            # observables runtime's diagnostics do.
+            text = (
+                detail
+                if rescue is None
+                else detail + "; " + rescue_text(rescue, checks.enabled)
+            )
             diagnostics.append(
                 VirtualLaneDiagnostic(
                     "success" if best is None else "best-effort",
                     arithmetic,
                     bits,
                     False,
-                    detail if best is None else best_effort_detail(best),
+                    text if best is None else best_effort_detail(best),
                     failures=(
                         ()
                         if best is None
@@ -2908,11 +2919,7 @@ class V2VirtualRuntime:
                     primary_color_contraction=contraction,
                     reduction=(served or {}).get(index, reduction),
                     finiteness=result.finiteness,
-                    lane_rescue=(
-                        VirtualLaneRescue(result.lane_rescue)
-                        if result.lane_rescue
-                        else None
-                    ),
+                    lane_rescue=rescue,
                 )
             )
         return VirtualEvaluation(

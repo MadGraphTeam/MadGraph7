@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from itertools import pairwise
@@ -947,6 +947,31 @@ class VirtualVerificationDiagnostic:
     detail: str
 
 
+def rescue_text(rescue: VirtualLaneRescue, checked: bool) -> str:
+    """A lane diagnostic's text of its lane rescue (the "detail" column):
+    "lane rescue: N lanes in <carrier>, ..." (and the moments); with
+    stability checks (``checked``) also that the point's estimate includes
+    the rescaled reduction-direction check (``reduction.rescued_checks``),
+    the reason it may list a check the call did not ask for (review B2)."""
+
+    parts = [f"{n} lanes in {c}" for c, n in rescue.lanes]
+    parts += [f"{n} term-scale moments in {c}" for c, n in rescue.moments]
+    return (
+        "lane rescue: "
+        + ", ".join(parts)
+        + (
+            " (its estimate includes the rescaled reduction-direction check)"
+            if checked
+            else ""
+        )
+    )
+
+
+# The prefix of a term-scale moment's carrier in the merged per-carrier
+# counts of a point (``plan_export.point_rescued``; ``VirtualLaneRescue.of``).
+MOMENTS = "moments:"
+
+
 @dataclass(frozen=True, slots=True)
 class VirtualLaneRescue:
     """The lane rescue of one point (USER 2026-11-18; docs/user/
@@ -957,35 +982,61 @@ class VirtualLaneRescue:
     back into the evaluation's sum. ``lanes`` gives per carrier
     (``"double-double"``, ``"arbitrary"``) the lanes it served, counted
     over the point's evaluations (the reference and its rotated
-    evaluations). The point's stability estimate covers the mixed total:
-    a rescued lane is not certified by itself."""
+    evaluations). ``moments`` gives the same for the term scale's moments
+    of a loop-induced checked call (the unit-numerator reductions behind its
+    estimate's scale, counted apart from the lanes; review m3). The point's
+    stability estimate covers the mixed total: a rescued lane is not
+    certified by itself."""
 
     lanes: tuple[tuple[str, int], ...]
+    moments: tuple[tuple[str, int], ...] = ()
 
     def __post_init__(self) -> None:
-        lanes = tuple((str(carrier), int(count)) for carrier, count in self.lanes)
-        if not lanes or any(
-            carrier not in {"double-double", "arbitrary"} or count < 1
-            for carrier, count in lanes
-        ):
-            raise ValueError(
-                "a lane rescue names double-double or arbitrary with at least one lane"
+        def counts(value: object, name: str) -> tuple[tuple[str, int], ...]:
+            found = tuple(
+                (str(carrier), int(count))
+                for carrier, count in cast(Iterable[tuple[str, int]], value)
             )
+            if any(
+                carrier not in {"double-double", "arbitrary"} or count < 1
+                for carrier, count in found
+            ):
+                raise ValueError(
+                    f"a lane rescue's {name} name double-double or arbitrary with "
+                    "at least one each"
+                )
+            return found
+
+        lanes = counts(self.lanes, "lanes")
+        moments = counts(self.moments, "moments")
+        if not lanes and not moments:
+            raise ValueError("a lane rescue serves at least one lane or moment")
         object.__setattr__(self, "lanes", lanes)
+        object.__setattr__(self, "moments", moments)
+
+    @classmethod
+    def of(cls, counts: Iterable[tuple[str, int]]) -> VirtualLaneRescue:
+        """The record of a point's merged per-carrier counts
+        (``plan_export.point_rescued``: a moment's carrier prefixed
+        ``"moments:"``)."""
+
+        lanes = [(c, n) for c, n in counts if not c.startswith(MOMENTS)]
+        moments = [(c[len(MOMENTS) :], n) for c, n in counts if c.startswith(MOMENTS)]
+        return cls(tuple(lanes), tuple(moments))
 
     @property
     def count(self) -> int:
-        """The rescued lanes over every carrier."""
+        """The rescued lanes over every carrier (moments not counted)."""
 
         return sum(count for _carrier, count in self.lanes)
 
     @property
     def carrier(self) -> str:
-        """The highest carrier that served a lane."""
+        """The highest carrier that served a lane or a moment."""
 
         return (
             "arbitrary"
-            if any(c == "arbitrary" for c, _ in self.lanes)
+            if any(c == "arbitrary" for c, _ in (*self.lanes, *self.moments))
             else ("double-double")
         )
 

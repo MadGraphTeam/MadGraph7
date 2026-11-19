@@ -2072,7 +2072,7 @@ class StoredColumns:
             _rotated_point,
             _rotated_spin,
         )
-        from .plan_export import FailedPoints, relabelled
+        from .plan_export import FailedPoints, RescuedOutputs, merged_rescue, relabelled
         from .stability import ROTATION, StabilityChecks
 
         if ward is not None:
@@ -2152,7 +2152,13 @@ class StoredColumns:
                 result = {rename.get(key, key): v for key, v in result.items()}
             if member is not None:
                 result = {_member_key(member, key): v for key, v in result.items()}
-            out.append(result)
+            # The point's lane rescue over its reference and rotated
+            # evaluations (review B1).
+            out.append(
+                RescuedOutputs(
+                    result, merged_rescue([reference, *(run[index] for run in runs)])
+                )
+            )
         if failures:
             raise FailedPoints(out, failures)
         return out

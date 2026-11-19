@@ -1023,7 +1023,12 @@ class InducedColumns:
         executor refuses one it does not run)."""
 
         from .observables import _member_key, _rotated_point, _rotated_spin
-        from .plan_export import FailedPoints, point_estimate
+        from .plan_export import (
+            FailedPoints,
+            RescuedOutputs,
+            merged_rescue,
+            point_estimate,
+        )
         from .stability import StabilityChecks
 
         if ward is not None:
@@ -1157,7 +1162,13 @@ class InducedColumns:
                 if member is not None and self.resolved:
                     key = _member_key(member, key)
                 result[key] = value
-            out.append(result)
+            # The point's lane rescue over its reference and rotated
+            # evaluations (review B1).
+            out.append(
+                RescuedOutputs(
+                    result, merged_rescue([reference, *(run[index] for run in rotated)])
+                )
+            )
         if failures:
             raise FailedPoints(out, failures)
         return out

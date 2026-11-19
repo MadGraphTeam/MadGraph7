@@ -286,8 +286,10 @@ def _profile(report: Any) -> list[Block]:
                     (
                         None,
                         "--ground-truth none: each flat point is evaluated in "
-                        "binary64 only, with the default rotation test; no "
-                        "reference, so no true digits. " + _MADLOOP,
+                        "binary64 only, with its stability estimate ("
+                        + setup.get("estimate", "the default checks")
+                        + "); no reference, so no true digits. "
+                        + _MADLOOP,
                     ),
                     (
                         "percentile",
@@ -355,9 +357,10 @@ def _profile(report: Any) -> list[Block]:
                     ("class", "the number of points between this and the previous row"),
                     (
                         "|est-true|",
-                        "how far the binary64 estimate of the digits (one default "
-                        "rotation of the point) is from the true digits: minimum, "
-                        "median and maximum over the class",
+                        "how far the binary64 estimate of the digits ("
+                        + setup.get("estimate", "the default checks")
+                        + ") is from the true digits: minimum, median and maximum "
+                        "over the class",
                     ),
                     (
                         "est-true med",
@@ -386,8 +389,9 @@ def _profile(report: Any) -> list[Block]:
                     (
                         "time",
                         "the wall time of the backend's binary64 calls with "
-                        "their stability checks (the default rotation test "
-                        "evaluates each point twice), summed over the workers "
+                        "their stability checks (the default checks evaluate "
+                        "each point again rotated, and re-reduce TIRust's points "
+                        "in the rescaled frame), summed over the workers "
                         "(each on one core, one thread per pool), "
                         "after each worker's untimed start-up (loading, first "
                         f"calls); '({label} xN)': its {name} reference calls "

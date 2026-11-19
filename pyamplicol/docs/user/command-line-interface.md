@@ -1029,11 +1029,14 @@ of the points done per backend and precision and an estimated time to
 completion; Ctrl-C stops the run and prints the tables of the points
 evaluated so far with a one-line notice (`stability_setup.requested`,
 `measured_points`, `interrupted` in `--json`; exit code 130), a second Ctrl-C aborts.
-The runtime timing runs before the pool, one process per backend. Each backend evaluates every point in pure binary64 with the default rotation
-test (one default rotation, what `evaluation.stability_checks` gives by
-default; `evaluation.stability_checks` replaces it when set; the rescue's own
-check set, a fixed Euler rotation plus the rescaled-reduction check, is
-stronger and is not what is measured here) and again in double-double on the
+The runtime timing runs before the pool, one process per backend. Each backend evaluates every point in pure binary64 with the default
+checks: one default rotation on a point NinjaRS serves, one default rotation
+and the rescaled reduction-direction check on a point TIRust serves (per
+point under `--reduction auto`: a per-point NinjaRS fallback point keeps the
+NinjaRS set; USER 2026-11-19); `evaluation.stability_checks` replaces them
+when set, unchanged per backend (the rescue's own check set, a fixed Euler
+rotation plus the rescaled-reduction check on every level, is not what is
+measured here) and again in double-double on the
 same backend in the reference precision (`--ground-truth`; double-double by
 default), the reference. Following the measure of MadLoop
 (arXiv:1103.0621, sect. 3.4) and MadGraph5_aMC@NLO (arXiv:1405.0301, "Checks,
@@ -1085,8 +1088,9 @@ time per point are in `--json`, `precision_timing`). Every worker loads the
 artifact and makes one untimed call per backend and precision before any
 timed one, so start-up costs stay out of both totals, and the points go in
 tasks of whole binary64 SIMD chunks. The binary64 calls
-include their stability checks (the default rotation test evaluates each
-point twice) while the reference evaluates each point once, so this
+include their stability checks (the default checks evaluate each point
+again rotated, and re-reduce TIRust's points in the rescaled frame) while the
+reference evaluates each point once, so this
 multiplier is not the cost ratio of one evaluation: that is the runtime
 table's `(dd xN)`. No rescue runs: the statistics are those of pure binary64; the
 reference re-run is the reference only. When a backend served points

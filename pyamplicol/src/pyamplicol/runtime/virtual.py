@@ -40,6 +40,7 @@ from pyamplicol.api.virtual_results import (
     best_effort_detail,
     computes_poles,
     pole_selection,
+    rescue_text,
     splits_poles,
 )
 from pyamplicol.config import PoleSelection, R2Strategy
@@ -1040,7 +1041,7 @@ class V2ObservablesRuntime:
                 ),
                 reduction=reduction,
             )
-        rescue = VirtualLaneRescue(lane_rescue) if lane_rescue else None
+        rescue = VirtualLaneRescue.of(lane_rescue) if lane_rescue else None
         return VirtualLaneDiagnostic(
             "success",
             arithmetic,  # type: ignore[arg-type]
@@ -1052,12 +1053,7 @@ class V2ObservablesRuntime:
                 if checked
                 else "no stability check requested"
             )
-            + (
-                ""
-                if rescue is None
-                else "; lane rescue: "
-                + ", ".join(f"{n} lanes in {c}" for c, n in rescue.lanes)
-            ),
+            + ("" if rescue is None else "; " + rescue_text(rescue, checked)),
             reduction=reduction,
             lane_rescue=rescue,
         )
@@ -1816,6 +1812,7 @@ class V2ObservablesRuntime:
                     index,
                     reductions=reductions,
                     served=served,
+                    lane_rescue=getattr(result, "lane_rescue", ()),
                 )
             )
             estimates.append(

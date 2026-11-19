@@ -34,10 +34,12 @@ digits of a value v against a reference r is -log10(|v - r| / |r|).
   point the backend refused or failed in binary64 has no value: 0 true
   digits (it ranks at the worst end) and no estimate.
 - ESTIMATED digits: the binary64 call's own stability estimate with the
-  default rotation test (``VirtualStabilityChecks(1)``: one default
-  rotation, what an evaluation's ``evaluation.stability_checks`` default
-  gives; the rescue's own check set is stronger), its absolute finite-part
-  errors summed over the sectors relative to the total.
+  DEFAULT checks (``DEFAULT_ESTIMATE``; ``evaluation.stability_checks``
+  instead when set): one default rotation (``VirtualStabilityChecks(1)``)
+  on a point NinjaRS serves, one default rotation and the rescaled
+  reduction-direction check on a point TIRust serves (USER 2026-11-19,
+  ``reduction.default_checks``; per point under ``"auto"``), its absolute
+  finite-part errors summed over the sectors relative to the total.
 
 Both are read on the finite part of the total (the sum over the
 squared-order sectors; the poles are not computed) and capped to binary64's
@@ -2547,6 +2549,7 @@ def _stability_worker(
     backends: Sequence[str] = (),
     truth: GroundTruth | None = None,
     cold: Sequence[tuple[str, str]] = (),
+    defaulted: bool = False,
 ) -> None:
     """Initialise a stability worker process: one thread per pool, Ctrl-C
     left to the parent (which collects what finished and stops the
@@ -2565,6 +2568,7 @@ def _stability_worker(
         runtime=Runtime.load(artifact, process=process, **options),
         warm=warm,
         checks=checks,
+        defaulted=defaulted,
         truth=truth or GroundTruth("double-double"),
     )
     _warm_up(backends, cold)
@@ -2664,14 +2668,20 @@ def _stability_records(
     state = _WORKER
     common = {"mu_r2": scales, "poles": "none", "reduction": backend}
     if precision == "binary64":
+        from pyamplicol.loops.v2.reduction import default_checks
+
         # A point the backend refuses keeps its best-effort value (the
-        # default policy, m-lit ux-besteffort), measured as such.
-        result = state["runtime"].evaluate(
-            list(batch),
-            stability_checks=state["checks"],
-            on_failure="best-effort",
-            **common,
-        )
+        # default policy, m-lit ux-besteffort), measured as such. Without
+        # ``evaluation.stability_checks`` the checks are the DEFAULT set
+        # (``reduction.default_checks``): one default rotation, and on a
+        # point TIRust serves the rescaled reduction-direction check too.
+        with default_checks() if state.get("defaulted") else contextlib.nullcontext():
+            result = state["runtime"].evaluate(
+                list(batch),
+                stability_checks=state["checks"],
+                on_failure="best-effort",
+                **common,
+            )
         records: list[tuple[Any, ...]] = []
         from pyamplicol.benchmarking import lane_rescue_reason
 
@@ -3019,6 +3029,15 @@ class _StabilityProgress:
 _PRECISIONS = ("binary64", "reference")
 
 
+# What the default estimate of a stability row is (the setup record, the
+# field descriptions; ``reduction.default_checks``).
+DEFAULT_ESTIMATE = (
+    "the default checks: one default rotation on the points NinjaRS serves, "
+    "one default rotation and the rescaled reduction-direction check on the "
+    "points TIRust serves"
+)
+
+
 def _stability(
     runtime: Any,
     artifact: Path,
@@ -3071,6 +3090,9 @@ def _stability(
     space = evaluation.phase_space
     configured = evaluation.stability_checks.to_checks()
     checks = configured if configured is not None else VirtualStabilityChecks(1)
+    # The default set follows the serving backend (``reduction.default_checks``:
+    # TIRust's points add the rescaled reduction-direction check).
+    defaulted = configured is None
     target = (
         evaluation.reduction_target
         if evaluation.reduction_target is not None
@@ -3283,7 +3305,13 @@ def _stability(
     warm = (first_point[0][0], inputs[0][1])
     try:
         if workers == 1:
-            _WORKER.update(runtime=runtime, warm=warm, checks=checks, truth=truth)
+            _WORKER.update(
+                runtime=runtime,
+                warm=warm,
+                checks=checks,
+                defaulted=defaulted,
+                truth=truth,
+            )
             try:
                 _warm_up(backends, cold)
                 while (tasks := next_tasks()) is not None:
@@ -3313,6 +3341,7 @@ def _stability(
                     tuple(backends),
                     truth,
                     cold,
+                    defaulted,
                 ),
                 next_tasks,
                 harvest,
@@ -3490,12 +3519,11 @@ def _stability(
         ),
         "ground_truth": truth.record(),
         "estimate": (
-            "the binary64 call's own estimate, "
+            "the binary64 call's own estimate with "
             + (
                 "evaluation.stability_checks"
                 if configured is not None
-                else "the default rotation test (one default rotation; "
-                "the rescue's check set is not measured)"
+                else DEFAULT_ESTIMATE
             )
         ),
         "target": target,

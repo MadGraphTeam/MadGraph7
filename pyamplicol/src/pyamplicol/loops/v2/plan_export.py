@@ -2055,16 +2055,41 @@ def point_rescued(
     output: Mapping[str, Any], extra: Mapping[str, Any] | None, index: int
 ) -> tuple[tuple[str, int], ...]:
     """The lane rescue of point ``index`` of a native executor output
-    (``"rescued"``: its rescued lanes and their carriers) and of its
-    companion's (``extra``): per carrier the lanes it served."""
+    (``"rescued"``: its rescued lanes and their carriers;
+    ``"rescued_moments"``: its rescued term-scale moments, counted apart,
+    their carrier prefixed ``virtual_results.MOMENTS``) and of its
+    companion's (``extra``): per carrier the lanes (and moments) it served."""
+
+    from pyamplicol.api.virtual_results import MOMENTS
 
     counts: dict[str, int] = {}
     for part in (output, extra):
-        rescued = None if part is None else part.get("rescued")
-        if rescued is not None:
-            for _lane, carrier in rescued[index]:
-                counts[carrier] = counts.get(carrier, 0) + 1
+        for name, prefix in (("rescued", ""), ("rescued_moments", MOMENTS)):
+            rescued = None if part is None else part.get(name)
+            if rescued is not None:
+                for _lane, carrier in rescued[index]:
+                    key = prefix + carrier
+                    counts[key] = counts.get(key, 0) + 1
     return tuple(sorted(counts.items()))
+
+
+class RescuedOutputs(dict):  # type: ignore[type-arg]
+    """The outputs of one point of a mapping route (resolved, correlated and
+    selected evaluations: output key -> ``PointResult``) with the point's
+    lane rescue (``lane_rescue``: ``merged_rescue`` over its reference and
+    rotated evaluations; review B1), read by the lane diagnostics and the
+    estimate extension (``reduction._rescued_estimates``)."""
+
+    __slots__ = ("lane_rescue",)
+
+    def __init__(
+        self, items: Any = (), lane_rescue: tuple[tuple[str, int], ...] = ()
+    ) -> None:
+        super().__init__(items)
+        self.lane_rescue = tuple(lane_rescue)
+
+    def __reduce__(self) -> Any:
+        return (RescuedOutputs, (dict(self), self.lane_rescue))
 
 
 def merged_rescue(
