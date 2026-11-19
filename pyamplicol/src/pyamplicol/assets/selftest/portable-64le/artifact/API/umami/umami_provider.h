@@ -14,6 +14,8 @@ typedef struct {
     const char *key;
     const int *pdgs;
     const char *alpha_s_name;
+    /* ME(alpha_s) = (alpha_s / alpha_s_0)^alpha_s_power ME(alpha_s_0), -1 if unproven. */
+    int alpha_s_power;
     const char *color_accuracy;
     size_t helicity_count;
     const char *const *helicity_ids;
