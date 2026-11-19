@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import tempfile
@@ -12,7 +13,7 @@ import types
 import unittest
 from unittest import mock
 
-from madgraph import MadGraph5Error
+from madgraph import MadGraph5Error, MG5DIR
 from madgraph.interface.madgraph_interface import MadGraphCmd
 from madgraph.iolibs.export_fks import ProcessOptimizedExporterFortranFKS
 from madgraph.loop.loop_exporters import LoopProcessOptimizedExporterFortranSA
@@ -557,6 +558,20 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
         self.assertEqual(reread['MLReductionLib'], '8|6|1')
         self.assertFalse(reread['UseQPIntegrandForNinjaRS'])
         self.assertEqual(card._ID_reduction_tool_map[8], 'NinjaRS')
+
+
+class TestNinjaRSVendoredLock(unittest.TestCase):
+    def test_locked_psm_assembly_does_not_request_an_executable_stack(self):
+        # psm < 0.1.29 assembles its stack-switching routines without a
+        # .note.GNU-stack section, so every shared library that links
+        # libninjars.a requests an executable stack, and glibc >= 2.41 refuses
+        # to dlopen it (MadLoop's f2py modules). pest 2.9.3-2.9.4 pin psm 0.1.24.
+        lock = (Path(MG5DIR) / 'vendor' / 'ninjars' / 'Cargo.lock').read_text()
+        versions = re.findall(r'^name = "psm"\nversion = "([^"]+)"$', lock, re.M)
+        self.assertTrue(versions, 'psm is no longer locked; remove this check')
+        for version in versions:
+            self.assertGreaterEqual(tuple(map(int, version.split('.'))), (0, 1, 29),
+                                    'psm %s has no .note.GNU-stack section' % version)
 
 
 if __name__ == '__main__':
