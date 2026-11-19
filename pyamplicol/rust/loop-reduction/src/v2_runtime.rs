@@ -596,7 +596,7 @@ impl V2Precision {
     /// NinjaRS, or TIRust (its plans built for `plan`'s (propagators, rank)
     /// histogram at the carrier's precision, the other plans' on first use;
     /// its acceptance from the target accuracy `target`).
-    fn backend(
+    pub(crate) fn backend(
         self,
         reduction: Reduction,
         plan: &LoopProgramV4,

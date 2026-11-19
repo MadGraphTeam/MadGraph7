@@ -367,12 +367,6 @@ pub struct V2ReductionBackend {
     pub masters: PoleSelection,
 }
 
-impl V2ReductionBackend {
-    pub fn new(reducer: V2Reducer, masters: PoleSelection) -> Self {
-        Self { reducer, masters }
-    }
-}
-
 fn failure(error: impl std::fmt::Display) -> RusticolError {
     RusticolError::evaluation(format!("v2 reduction: {error}"))
 }
@@ -675,11 +669,24 @@ mod warm_tests {
     use super::*;
     use symbolica::domains::float::DoubleFloat;
 
-    fn ninjars(arithmetic: &str, engine: &str) -> V2Backends {
-        V2Backends::NinjaRs(V2ReductionBackend::new(
-            V2Reducer::new(arithmetic, None, engine, true).expect("reducer"),
-            PoleSelection::BOTH,
-        ))
+    /// A NinjaRS backend as the runtime builds it (`V2Precision::backend`:
+    /// binary64's fast engine, double-double's generic one, every master
+    /// pole kept).
+    fn ninjars(precision: crate::v2_runtime::V2Precision) -> V2Backends {
+        let plan = rusticol_core::loop_v2::plan::LoopProgramV4::load(
+            br#"{"schema":4,"legs":1,"rows":1,"helicities":[[1]],"columns":1,"average":1,
+                "born_components":1,"constants":0,"masses":1,"block_rows":[],"kernels":[],
+                "contents":[],"factors":[],"seed_classes":[],"seeds":[],"families":[],
+                "forward":null,"merged":null}"#,
+        )
+        .expect("plan");
+        precision
+            .backend(
+                Reduction::NinjaRs,
+                &plan,
+                crate::reduction_policy::DEFAULT_TARGET,
+            )
+            .expect("backend")
     }
 
     /// The outcomes of `lanes` reduced by `backend`, as text (exact: the
@@ -755,9 +762,15 @@ mod warm_tests {
         let classes = [(2, 2), (3, 3), (4, 4)];
         // NinjaRS buckets a lane by its true rank: lanes below the
         // declared ranks too.
-        check(|| ninjars("double", "fast"), &0.0, &classes, true, true);
         check(
-            || ninjars("double-double", "generic"),
+            || ninjars(crate::v2_runtime::V2Precision::Double),
+            &0.0,
+            &classes,
+            true,
+            true,
+        );
+        check(
+            || ninjars(crate::v2_runtime::V2Precision::DoubleDouble),
             &DoubleFloat::from(0.0),
             &classes,
             true,

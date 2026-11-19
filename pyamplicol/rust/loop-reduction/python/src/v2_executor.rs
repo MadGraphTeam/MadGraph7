@@ -915,10 +915,10 @@ fn backend_of<'a>(
                     Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
                 }
                 .map_err(error)?;
-                V2Backends::NinjaRs(V2ReductionBackend::new(
+                V2Backends::NinjaRs(V2ReductionBackend {
                     reducer,
-                    v2::master_selection("both")?,
-                ))
+                    masters: v2::master_selection("both")?,
+                })
             }
             Reduction::TiRust => V2Backends::tirust(
                 runtime::plan_histogram(plan),
