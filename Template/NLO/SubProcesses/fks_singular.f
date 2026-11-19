@@ -3449,8 +3449,7 @@ c various FKS configurations can be summed together.
       integer iproc_save(fks_configs),eto(maxproc,fks_configs),
      &     etoi(maxproc,fks_configs),maxproc_found
       common/cproc_combination/iproc_save,eto,etoi,maxproc_found
-      collect_born_spread=(born_spread_phase.eq.1.or.
-     $                     born_spread_phase.eq.2)
+      collect_born_spread=point_evaluation%born_spread_samples
       if (collect_born_spread) then
          nfolds=product(ifold(1:ndim))
          call allocate_born_spread_lines(nfolds)
@@ -3529,11 +3528,21 @@ c will be updated later
             do j=1,niproc(i_soft)
                do jj=1,iproc_save(nFKS(i))
                   if (eto(jj,nFKS(i)).eq.j) then
+c Record the final routed signed scalar BEFORE grouping or ABS. The
+c contribution's stored fold and outer-owner tag survive native histories;
+c j is precisely the canonical flavour used by the existing S route.
+                     if(point_evaluation%learning_probe.and.
+     $                    itype(i).ne.14)
+     $                    call sector_learning_add_contribution(
+     $                    learning_owner(i),ifold_cnt(i),j,
+     $                    parton_iproc(jj,i))
 c When computing upper bounding envelope (imode.eq.1) do not include the
 c virtual corrections. Exception: when computing only the virtual, do
 c include it here!
                      if (itype(i).eq.14 .and. imode.eq.1 .and. .not.
      $                    only_virt) exit
+                     call sector_learning_split_add(learning_owner(i),j,
+     $                    parton_iproc(jj,i))
                      unwgt(j,i_soft)=unwgt(j,i_soft)+parton_iproc(jj,i)
                      if (itype(i).eq.2) then
                         if (collect_born_spread) then
@@ -3775,11 +3784,15 @@ c on the imode we should or should not include the virtual corrections.
             sigint=sigint+wgts(1,i)
             max_weight=max(max_weight,abs(wgts(1,i)))
             if (group_size(i).eq.0) cycle
+            tmp_wgt=0d0
             do j=1,niproc(i)
                sigint_ABS=sigint_ABS+abs(unwgt(j,i))
                sigint1=sigint1+unwgt(j,i) ! for consistency check
                max_weight=max(max_weight,abs(unwgt(j,i)))
+               tmp_wgt=tmp_wgt+abs(unwgt(j,i))
             enddo
+            if (H_event(i)) call sector_learning_split_add_h(
+     $           learning_owner(i),tmp_wgt)
          enddo
 ! Check before the consistency test: overflow is a rejected numerical
 ! point, not evidence of an inconsistent subtraction prescription.
@@ -3853,7 +3866,8 @@ c n1body_wgt is used for the importance sampling over FKS directories
 ! Reject before the Born-spreading observations as well as before MINT.
       if (.not.all(ieee_is_finite(f)).or.
      $    .not.ieee_is_finite(n1body_wgt)) goto 900
-      if (born_spread_phase.eq.1.or.born_spread_phase.eq.2) then
+      call sector_learning_split_close(f(1))
+      if (point_evaluation%born_spread_samples) then
          found_s_sample=.false.
          do i=1,icontr
             if (H_event(i).or.group_size(i).eq.0) cycle
@@ -6850,7 +6864,7 @@ c     helicity contributions for the Q-terms of collinear limit.
  547  continue
       collect_surrogate=VirtTrickSurrogate.ge.1.and.
      $     first_virtual_evaluation
-     $     .and.born_spread_phase.ne.1.and.born_spread_phase.ne.2
+     $     .and..not.point_evaluation%born_spread_samples
       if (first_virtual_evaluation) call vs_clear_links
 c Separate virtual events need only the colour links from this loop.
       if (abrv.eq.'virt'.and.(.not.collect_surrogate.or.
@@ -6893,7 +6907,7 @@ C wgt includes the gs/w^2
                      if (collect_surrogate.and.iord.eq.qcd_pos)
      $                    call vs_add_link(p_born,QES2,i_fks,m,n,wgt)
                      if (abrv.eq.'virt') cycle
-                     call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
+                     call cached_eikonal_Ireg(p,m,n,xicut_used,eikIreg)
                      contr=contr+wgt*eikIreg
                      do k=1,amp_split_size
                         amp_split_bsv(k) = amp_split_bsv(k) - 2d0 *
@@ -6973,7 +6987,8 @@ c polynomial when the channel's fit has not been selected.
          if (abrv.eq.'virt') vs_fvirt=1d0
          ! Training and validation keep the Born-based approximate
          ! virtual below, but exclude the one-loop residual from the fit.
-         if (born_spread_phase.ne.1.and.born_spread_phase.ne.2) then
+         ! Sector-learning probes do not record it either (type 14).
+         if (point_evaluation%integration) then
           if ((ran2().le.virtual_fraction(ichan) .and.
      $         abrv(1:3).ne.'nov').or.abrv(1:4).eq.'virt') then
             if(timing_sampled)call timing_enter(timing_virtual)
@@ -7180,6 +7195,55 @@ c         stop
       return
       end
 
+
+
+      subroutine cached_eikonal_Ireg(p,m,n,xicut_used,eikIreg)
+c I(reg) is a scalar function of the physical Born state. A learning
+c probe caches its link table across the probe's radiation folds; other
+c points evaluate each link once. Native contexts can replace active
+c state, so every input read by the scalar kernel is compared on every call.
+      use fks_phase_space_data, only: shat
+      use mint_module, only: point_evaluation
+      implicit none
+      include 'nexternal.inc'
+      include 'q_es.inc'
+      double precision p(0:3,nexternal),xicut_used,eikIreg,
+     $     pmass(nexternal)
+      integer m,n
+      logical eikonal_point_ready,link_ready(nexternal,nexternal)
+      double precision cached_p(0:3,nexternal),cached_mass(nexternal),
+     $     cached_shat,cached_qes2,cached_xicut,
+     $     link_value(nexternal,nexternal)
+      save eikonal_point_ready,link_ready,link_value,cached_p,
+     $     cached_mass,cached_shat,cached_qes2,cached_xicut
+      data eikonal_point_ready /.false./
+
+      if (.not.point_evaluation%learning_probe) then
+         call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
+         return
+      endif
+      include 'pmass.inc'
+c Separate tests: the cached inputs are undefined before the first fill.
+      if (eikonal_point_ready) eikonal_point_ready=
+     $     all(cached_p.eq.p).and.all(cached_mass.eq.pmass).and.
+     $     cached_shat.eq.shat.and.cached_qes2.eq.QES2.and.
+     $     cached_xicut.eq.xicut_used
+      if (.not.eikonal_point_ready) then
+         link_ready=.false.
+         cached_p=p
+         cached_mass=pmass
+         cached_shat=shat
+         cached_qes2=QES2
+         cached_xicut=xicut_used
+         eikonal_point_ready=.true.
+      endif
+      if (.not.link_ready(m,n)) then
+         call eikonal_Ireg(p,m,n,xicut_used,link_value(m,n))
+         link_ready(m,n)=.true.
+      endif
+      eikIreg=link_value(m,n)
+      return
+      end
 
 
       subroutine eikonal_Ireg(p,m,n,xicut_used,eikIreg)
@@ -8348,6 +8412,7 @@ c     reset the default dynamical_scale_choice
       use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
       use fks_phase_space_data, only: p_born
       use weight_lines, only: rejected_born_flow_points
+      use mint_module, only: point_evaluation
       implicit none
       include 'born_nhel.inc'
       double precision flow_weights(max_bcol),sumborn
@@ -8371,6 +8436,8 @@ c     reset the default dynamical_scale_choice
       return
  900  continue
       sumborn=0d0
+c Learning probes count their rejections separately.
+      if(.not.point_evaluation%rejection_stats)return
       rejected_born_flow_points=rejected_born_flow_points+1
       if(rejected_born_flow_points.le.5.or.
      $     mod(rejected_born_flow_points,100).eq.0)then

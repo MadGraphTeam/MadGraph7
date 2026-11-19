@@ -2,8 +2,10 @@ module flow_fixture
   use weight_lines
   implicit none
   double precision :: values(3)=[1d0,3d0,0d0],uniform=0.5d0,last_grid_weight=-1d0
-  integer :: draws=0,born_calls=0,fail_native_fold=0
+  integer :: draws=0,born_calls=0,fail_native_fold=0,surrogate_fit_calls=0
   integer :: nlo_calls=0,s_only_calls=0,native_calls=0
+  integer :: sector_draws=0
+  double precision :: last_prefactor_weight=1d0
   logical :: real_point_active=.false.,born_cuts=.true.
   logical :: outer_no_endpoint=.false.,real_no_endpoint=.false.
   logical :: no_event_projection=.false.
@@ -11,9 +13,13 @@ module flow_fixture
   integer :: fail_weight_fold=0,fail_weight_stage=0
   double precision :: bad_weight=0d0
 contains
-  subroutine add_record(value)
+  subroutine add_record(value,kind,owner)
     double precision :: value
+    integer :: kind,owner
     icontr=icontr+1
+    itype(icontr)=kind
+    nFKS(icontr)=owner
+    event_nFKS(icontr)=owner
     wgt(:,icontr)=value
     wgts(1,icontr)=value
     niproc(icontr)=1
@@ -30,19 +36,20 @@ module fks_phase_space
   use fks_phase_space_data
   use flow_fixture, only: outer_no_endpoint,real_no_endpoint,no_event_projection
   implicit none
-  type born_fixture
+  type fks_born_point
     logical :: valid=.false.,event_projection=.true.
     double precision :: p(0:3,4)=1d0,xbjrk(2)=0.2d0
   end type
   type fks_phase_space_point
     double precision :: p(0:3,5)=1d0,p_lab(0:3,5)=1d0,p_cms(0:3,5)=1d0
-    type(born_fixture) :: born
+    type(fks_born_point) :: born
   end type
 contains
-  subroutine generate_born_contribution(ndim,config,jac,x,point)
+  subroutine generate_born_contribution(ndim,config,jac,x,point,cached_born)
     integer :: ndim,config
     double precision :: jac,x(99)
     type(fks_phase_space_point) :: point
+    type(fks_born_point),optional :: cached_born
     integer :: i_fks,j_fks
     common/fks_indices/i_fks,j_fks
     point=fks_phase_space_point()
@@ -51,11 +58,13 @@ contains
     p1_cnt=1d0
     p1_cnt(:,i_fks,0)=0d0
     if(outer_no_endpoint)p1_cnt(0,1,0)=-99d0
+    if(present(cached_born))cached_born=point%born
   end subroutine
-  subroutine generate_real_phase_space(ndim,config,jac,x,point)
+  subroutine generate_real_phase_space(ndim,config,jac,x,point,cached_born)
     integer :: ndim,config
     double precision :: jac,x(99)
     type(fks_phase_space_point) :: point
+    type(fks_born_point),optional :: cached_born
     integer :: i_fks,j_fks
     common/fks_indices/i_fks,j_fks
     point=fks_phase_space_point()
@@ -64,6 +73,7 @@ contains
     p1_cnt(:,i_fks,0)=0d0
     ! The reference sector itself, at the same radiation coordinates.
     if(real_no_endpoint)p1_cnt(0,1,0)=-99d0
+    if(present(cached_born))cached_born=point%born
   end subroutine
 end module
 
@@ -84,15 +94,48 @@ end module
 
 module mint_module
   use FKSParams
+  use flow_fixture,only: sector_draws
+  ! The production evaluation modes, not a copy.
+  use mint_evaluation
   implicit none
-  integer,parameter :: ndimmax=5,nintegrals=6,max_fold=8
+  integer,parameter :: ndimmax=5,nintegrals=6,max_fold=32
   integer :: iconfig=1,ndim=5,ifold(5)=[1,1,3,1,1]
   integer :: ifold_energy=3,ifold_yij=4,ifold_phi=5
-  integer :: born_spread_current_bin=1,born_spread_bin_fold(8),born_spread_sector_fold(8)
+  integer :: born_spread_current_bin=1,born_spread_bin_fold(32),born_spread_sector_fold(32)
   integer :: born_spread_phase=0
+  logical :: sector_learning_active=.false.
+  integer :: learning_registers=0,learning_begins=0,learning_selects=0,learning_rejects=0
+  integer :: learning_selected_slot=0
   logical :: new_point=.true.,pass_cuts_check=.false.
   double precision :: virt_wgt_mint(0:1)=0d0,born_wgt_mint(0:1)=0d0
 contains
+  subroutine sector_learning_begin_point
+    if(.not.point_evaluation%learning_probe)return
+    learning_begins=learning_begins+1
+    learning_selected_slot=0
+  end subroutine
+  subroutine sector_learning_select_slot(slot)
+    integer :: slot
+    if(.not.sector_learning_active)return
+    if(learning_selected_slot.ne.0.and.slot.ne.learning_selected_slot)error stop 'probe changed Born slot'
+    learning_selected_slot=slot
+    learning_selects=learning_selects+1
+  end subroutine
+  subroutine sector_learning_reject_point
+    if(point_evaluation%learning_probe)learning_rejects=learning_rejects+1
+  end subroutine
+  subroutine resample_sector_radiation(x,updated,ratio,sector_id)
+    ! Like production, a function of the point and the sector only.
+    double precision :: x(ndimmax),updated(ndimmax),ratio
+    integer :: sector_id
+    updated=x
+    ratio=1d0
+    if(sector_learning_active)then
+      sector_draws=sector_draws+1
+      updated(3:4)=[x(3)+0.1d0*sector_id,0.3d0]
+      ratio=2d0
+    endif
+  end subroutine
   subroutine born_spread_set_point(x,y)
     double precision :: x,y
   end subroutine
@@ -116,6 +159,21 @@ end module
 module scale_module
   implicit none
   integer :: born_flow_picked=0
-  double precision :: emsca_H(1,8,5,5)=1d0
+  double precision :: emsca_H(1,32,5,5)=1d0
   double precision :: shower_scale_n1body(5,5)=1d0,shower_scale_nbody(4,4)=1d0
 end module
+
+subroutine register_sector_learning_layout(slot,n,sectors)
+  use mint_module,only: learning_registers,sector_learning_active
+  integer :: slot,n,sectors(n)
+  if(.not.sector_learning_active)return
+  if(slot.ne.1.or.n.ne.1.or.any(sectors.ne.1))error stop 'bad complete slot registration'
+  learning_registers=learning_registers+1
+end subroutine
+
+subroutine virt_surrogate_fit_point
+  use flow_fixture,only: surrogate_fit_calls
+  ! Production fits only points with the exact virtual (vs_vcomp), which a
+  ! probe never evaluates (test_learning_probe_virtual); count the calls.
+  surrogate_fit_calls=surrogate_fit_calls+1
+end subroutine

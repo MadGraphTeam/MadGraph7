@@ -70,6 +70,10 @@ module mint_module
   use FKSParams ! contains use_poly_virtual
   use virt_surrogate, only: vs_begin_point,vs_vcomp,vs_ratio_set,vs_ratio, &
        vs_reset,vs_solve,vs_write_grids,vs_read_grids
+  ! Integration points and side evaluations (point_evaluation).
+  use mint_evaluation
+  ! FKSSectorLearning; its hooks into the grids and the integrand are below.
+  use sector_learning
   implicit none
   integer, parameter, private :: nintervals=32    ! max number of intervals in the integration grids
   integer, parameter, public  :: ndimmax=60       ! max number of dimensions of the integral
@@ -107,7 +111,20 @@ module mint_module
   double precision, dimension(maxchannels), public :: virtual_fraction
   double precision, dimension(nintegrals,0:maxchannels), public :: ans,unc
   logical, public :: born_spread_active=.false.,born_spread_ready=.false.
-  logical, private :: born_spread_calibrating=.false.
+
+  ! The per-point state a side evaluation between two integration points
+  ! leaves as the last point set it (save_point_state, restore_point_state).
+  type,private :: mint_point_state
+     integer :: ifold(ndimmax),ncell(ndimmax),icell(ndimmax),ichan,iconfig,sl_current
+     double precision :: f(nintegrals),rand(ndimmax),vol_chan,hwu_values(2)
+     double precision :: average_virtual(0:n_ave_virt,maxchannels),polyfit(0:n_ave_virt)
+     logical :: even_rn,pass_cuts_check,new_point
+     type(evaluation_mode) :: evaluation
+  end type mint_point_state
+  ! The learning probes' own ranmar state (swap_probe_random_numbers).
+  double precision,private :: probe_ranu(97)=0d0,probe_ranc=0d0,probe_rancd=0d0,probe_rancm=0d0
+  integer,private :: probe_iranmr=0,probe_jranmr=0
+  logical,private :: probe_rng_ready=.false.
   integer, public :: born_spread_phase=0,born_spread_current_bin=1
   integer, public :: born_spread_bin_fold(max_fold)=1
   integer, public :: born_spread_current_sector=1
@@ -175,7 +192,6 @@ module mint_module
                                                    'V 16         ', & ! 37
                                                    'B 16         '/)  ! 38
 
-
   integer, private :: nit,nit_included,kpoint_iter,nint_used,nint_used_virt,min_it,ncalls,pass_cuts_point,ng,npg,k
   integer, dimension(ndimmax), private :: icell,ncell
   integer, dimension(nintegrals), private :: non_zero_point,ntotcalls
@@ -216,6 +232,9 @@ module mint_module
   public :: mint,gen,read_grids_from_file,get_mint_wgt
   public :: born_spread_configure,born_spread_set_point
   public :: born_spread_observe_sample,born_spread_get_factor
+  public :: sector_learning_begin_point,sector_learning_select_slot
+  public :: sector_learning_add_contribution,sector_learning_reject_point
+  public :: sector_learning_tile_displacement
   public :: born_spread_load_table,born_spread_write_table
   private :: initialise_mint,setup_basic_mint &
        &,update_accumulated_results,prepare_next_iteration &
@@ -243,7 +262,584 @@ module mint_module
        &,increase_gen_counters_end,check_upper_bound &
        &,get_random_cell_flat,get_weighted_cell,initialise_mint_gen &
        &,print_gen_counters
+
 contains
+
+  subroutine sl_require_matched111()
+    ! Learned maps act on the unfolded radiation coordinates of one point.
+    if(born_spread_active.or.any(ifold(1:ndim).ne.1)) &
+         error stop 'Sector learning requires folding 1 1 1 and Born spreading off'
+  end subroutine sl_require_matched111
+
+  subroutine flat_grid_position(x,kdim,cell,width,u)
+    ! Adaptive-grid cell of x in dimension kdim of the current channel, its
+    ! width, and the flat (unit-measure) coordinate u of x.
+    double precision,intent(in) :: x
+    integer,intent(in) :: kdim
+    integer,intent(out) :: cell
+    double precision,intent(out) :: width,u
+    integer :: upper,middle
+    ! First cell whose upper edge reaches x (the grid is increasing).
+    cell=1;upper=nint_used
+    do while(cell.lt.upper)
+       middle=(cell+upper)/2
+       if(xgrid(middle,kdim,ichan).ge.x)then
+          upper=middle
+       else
+          cell=middle+1
+       endif
+    enddo
+    width=xgrid(cell,kdim,ichan)-xgrid(cell-1,kdim,ichan)
+    u=(cell-1+(x-xgrid(cell-1,kdim,ichan))/width)/nint_used
+  end subroutine flat_grid_position
+
+  subroutine sector_learning_tile_displacement(x_original,geometry,permutation,delta)
+    double precision,intent(in) :: x_original(ndimmax)
+    integer,intent(in) :: geometry(3),permutation(sl_nodes)
+    double precision,intent(out) :: delta(3)
+    integer :: digit(3),target(3),axis,kdim,cell,node,remainder
+    double precision :: width,u
+    if(any(geometry.lt.1).or.product(geometry).ne.sl_nodes)error stop 'Invalid learned tile geometry'
+    digit=0
+    delta=0d0
+    do axis=1,3
+       if(geometry(axis).eq.1)cycle
+       kdim=ndim-3+axis
+       call flat_grid_position(x_original(kdim),kdim,cell,width,u)
+       if(width.le.0d0)error stop 'Invalid adaptive grid for learned tile'
+       digit(axis)=min(int(u*geometry(axis)),geometry(axis)-1)
+    enddo
+    node=1+(digit(1)*geometry(2)+digit(2))*geometry(3)+digit(3)
+    remainder=permutation(node)-1
+    if(remainder.lt.0.or.remainder.ge.sl_nodes)error stop 'Invalid production learned tile'
+    do axis=3,1,-1
+       target(axis)=mod(remainder,geometry(axis))
+       remainder=remainder/geometry(axis)
+    enddo
+    delta=dble(target-digit)/dble(geometry)
+  end subroutine sector_learning_tile_displacement
+
+  subroutine sector_learning_begin_point()
+    ! Ordinary MINT0 points split their ABS weight over the grid (sl_split_*);
+    ! learning probes record their Born and sector parts (sl_point_*).
+    sl_split_point=sector_learning_active.and.imode.eq.0.and.point_evaluation%integration
+    sl_split_valid=.false.
+    if(sl_split_point)then
+       if(allocated(sl_split_b))sl_split_b=0d0
+       if(allocated(sl_split_r))sl_split_r=0d0
+       if(allocated(sl_split_h))sl_split_h=0d0
+       if(allocated(sl_split_cell))sl_split_cell=0
+       sl_split_h0=0d0
+       sl_split_abs=0d0
+    endif
+    if(.not.point_evaluation%learning_probe)return
+    if(allocated(sl_point_b))sl_point_b=0d0
+    if(allocated(sl_point_r))sl_point_r=0d0
+    sl_point_slot=0
+    sl_point_flavours=0
+    sl_point_rejected=.false.
+  end subroutine sector_learning_begin_point
+
+  subroutine sector_learning_reject_point()
+    sl_split_valid=.false.
+    if(point_evaluation%learning_probe)sl_point_rejected=.true.
+  end subroutine sector_learning_reject_point
+
+  subroutine add_abs_weight(acc)
+    ! Add the point's ABS weight f(1) to the grid accumulator acc, in the
+    ! sampled cells; with learned maps, in the xi/y dimensions the Born
+    ! part there and each sector's part where that sector was evaluated.
+    double precision,intent(inout) :: acc(0:,:,:)
+    integer :: kdim,i,cell
+    do kdim=1,ndim
+       if(sl_split_valid.and.(kdim.eq.ndim-2.or.kdim.eq.ndim-1))then
+          acc(icell(kdim),kdim,ichan)=acc(icell(kdim),kdim,ichan)+sl_split_share0
+          do i=1,size(sl_entries(sl_current)%ids)
+             if(sl_split_share(i).eq.0d0)cycle
+             cell=sl_split_cell(kdim-ndim+3,i)
+             if(cell.lt.1)cell=icell(kdim)
+             acc(cell,kdim,ichan)=acc(cell,kdim,ichan)+sl_split_share(i)
+          enddo
+       else
+          acc(icell(kdim),kdim,ichan)=acc(icell(kdim),kdim,ichan)+f(1)
+       endif
+    enddo
+  end subroutine add_abs_weight
+
+  subroutine sector_learning_select_slot(slot)
+    integer,intent(in) :: slot
+    integer :: i
+    if(.not.sector_learning_active)return
+    sl_current=0
+    if(allocated(sl_entries))then
+       do i=1,size(sl_entries)
+          if(sl_entries(i)%slot.eq.slot)sl_current=i
+       enddo
+    endif
+    if(sl_current.eq.0)error stop 'Unregistered learned sector Born slot'
+    if(point_evaluation%learning_probe)then
+       if(sl_point_slot.ne.0.and.sl_point_slot.ne.sl_current)error stop 'Learning orbit changes Born slot'
+       sl_point_slot=sl_current
+    endif
+  end subroutine sector_learning_select_slot
+
+  subroutine sector_learning_add_contribution(owner,fold,canonical_flavour,value)
+    ! A probe's S contribution at one fold; owner is its outer sector, 0
+    ! for the Born part (learning_owner).
+    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+    integer,intent(in) :: owner,fold,canonical_flavour
+    double precision,intent(in) :: value
+    double precision,allocatable :: grown_b(:,:),grown_r(:,:,:)
+    integer :: nf,ns,previous_f,previous_s,i
+    if(.not.point_evaluation%learning_probe)return
+    if(sl_current.eq.0.or.owner.lt.0.or.fold.lt.1.or.fold.gt.sl_nodes.or.canonical_flavour.lt.1.or. &
+         .not.ieee_is_finite(value))error stop 'Invalid learned sector contribution'
+    nf=canonical_flavour
+    ns=size(sl_entries(sl_current)%ids)
+    previous_f=0
+    previous_s=0
+    if(allocated(sl_point_b))then
+       previous_f=size(sl_point_b,1)
+       previous_s=size(sl_point_r,3)
+    endif
+    if(nf.gt.previous_f.or.ns.gt.previous_s)then
+       allocate(grown_b(max(nf,previous_f),sl_nodes),source=0d0)
+       allocate(grown_r(max(nf,previous_f),sl_nodes,max(ns,previous_s)),source=0d0)
+       if(previous_f.gt.0)then
+          grown_b(1:previous_f,:)=sl_point_b
+          grown_r(1:previous_f,:,1:previous_s)=sl_point_r
+       endif
+       call move_alloc(grown_b,sl_point_b)
+       call move_alloc(grown_r,sl_point_r)
+    endif
+    sl_point_flavours=max(sl_point_flavours,nf)
+    if(owner.eq.0)then
+       sl_point_b(nf,fold)=sl_point_b(nf,fold)+value
+    else
+       i=sl_sector_index(owner)
+       if(i.eq.0)error stop 'Unknown learned sector contribution owner'
+       sl_point_r(nf,fold,i)=sl_point_r(nf,fold,i)+value
+    endif
+  end subroutine sector_learning_add_contribution
+
+  subroutine sl_unified_add_phase(sector,shift,x_original)
+    integer,intent(in) :: sector
+    double precision,intent(out) :: shift(2)
+    double precision,intent(in) :: x_original(ndimmax)
+    integer :: index
+    double precision :: delta(3)
+    if(sl_current.lt.1)error stop 'Missing unified Born slot'
+    index=sl_sector_index(sector)
+    if(index.eq.0)error stop 'Unknown unified outer sector'
+    shift=dble(unified_slots(sl_current)%qcodes(:,index))/4d0
+    if(point_evaluation%learning_probe)return
+    if(imode.ne.0.and..not.sl_ready)error stop 'Missing frozen unified map in production'
+    call sector_learning_tile_displacement(x_original,[4,4,1],sl_entries(sl_current)%permutations(:,index),delta)
+    shift=modulo(shift+delta(1:2),1d0)
+  end subroutine sl_unified_add_phase
+
+  subroutine sl_epoch_replay_begin_iteration()
+    type(epoch_replay_bank_entry),allocatable :: current(:)
+    integer :: i,n,nf,nt
+    call sl_unified_ensure()
+    n=0
+    if(allocated(sl_entries))n=size(sl_entries)
+    allocate(current(n))
+    do i=1,n
+       nf=sl_entries(i)%nflavours;nt=sl_entries(i)%ntrain
+       if(nt.eq.0.or.nf.eq.0)cycle
+       current(i)%nf=nf;current(i)%nt=nt
+       current(i)%b=sl_entries(i)%b(1:nf,:,1:nt)
+       current(i)%r=sl_entries(i)%r(1:nf,:,:,1:nt)
+    enddo
+    ! This also replaces positive history by empty after an empty epoch.
+    call move_alloc(current,epoch_replay_previous)
+    ! Open the new epoch: snapshot the grid, reset the probe banks.
+    if(online_epoch.eq.0)then
+       online_budget=FKSSectorLearningBudget
+       write(*,*)'ONLINE MINT0: mixed-map ABS summaries are TRAINING heuristics; MINT1 recomputes final normalization.'
+       write(*,*)'ONLINE policy: (4,4,1) probes; budget:',online_budget,' probe cost:',sl_probe_cost, &
+            ' ordinary points; stride16 warmup64.'
+       if(sector_learning_archive)open(newunit=online_unit,file='sector_learning_online.bin', &
+            access='stream',form='unformatted',status='replace')
+    endif
+    online_epoch=online_epoch+1
+    online_nint_before=nint_used
+    ! The grid accounting exists only for the archive audit, which checks
+    ! that ordinary points alone feed the grid.
+    if(sector_learning_archive)then
+       online_grid_before=xgrid(0:nint_used,1:ndim,1:nchans)
+       online_base_acc=xacc(0:nint_used,1:ndim,1:nchans)
+       online_base_hits=nhits(1:nint_used,1:ndim,1:nchans)
+       if(allocated(online_ordinary_acc))deallocate(online_ordinary_acc,online_ordinary_hits)
+       allocate(online_ordinary_acc(0:nint_used,ndim,nchans),online_ordinary_hits(nint_used,ndim,nchans))
+       online_ordinary_acc=0d0
+       online_ordinary_hits=0
+    endif
+    if(allocated(sl_entries))then
+       do i=1,size(sl_entries)
+          if(allocated(sl_entries(i)%b))deallocate(sl_entries(i)%b,sl_entries(i)%r)
+          sl_entries(i)%ntrain=0
+          sl_entries(i)%nflavours=0
+          online_slots(i)%before=sl_entries(i)%permutations
+          online_slots(i)%oldgx=online_slots(i)%gx
+          online_slots(i)%oldgy=online_slots(i)%gy
+       enddo
+    endif
+    if(.not.allocated(unified_slots))return
+    do i=1,size(unified_slots)
+       unified_slots(i)%fit_status=0;unified_slots(i)%selected_orientation=0
+       unified_slots(i)%primary_gx=0;unified_slots(i)%primary_gy=0;unified_slots(i)%primary_selected=0
+       unified_slots(i)%alternative_gx=0;unified_slots(i)%alternative_gy=0;unified_slots(i)%alternative_selected=0
+       unified_slots(i)%primary=unified_fit_attempt()
+       unified_slots(i)%alternative=unified_fit_attempt()
+    enddo
+  end subroutine sl_epoch_replay_begin_iteration
+
+  subroutine sl_epoch_replay_fit_epoch()
+    integer :: i,nf,nt,ns,gx,gy,k
+    integer,allocatable :: a(:,:),bmap(:,:)
+    double precision :: before,aa,bb,dummy
+    double precision,allocatable :: fit_b(:,:,:),fit_r(:,:,:,:)
+    call sl_unified_ensure()
+    if(sector_learning_archive)then
+       if(any(xgrid(0:online_nint_before,1:ndim,1:nchans).ne.online_grid_before)) &
+            error stop 'Grid changed inside online iteration'
+       online_total_acc=xacc(0:nint_used,1:ndim,1:nchans)
+       online_total_hits=nhits(1:nint_used,1:ndim,1:nchans)
+       if(any(online_total_hits.ne.online_base_hits+online_ordinary_hits)) &
+            error stop 'Unified grid hit accounting differs'
+       if(maxval(abs(online_total_acc-online_base_acc-online_ordinary_acc)).gt. &
+            1d-10*max(1d0,maxval(abs(online_total_acc))))error stop 'Unified grid accounting differs'
+    endif
+    if(.not.allocated(sl_entries))return
+    do i=1,size(sl_entries)
+       nf=sl_entries(i)%nflavours;nt=sl_entries(i)%ntrain;ns=size(sl_entries(i)%ids)
+       online_slots(i)%total_samples=online_slots(i)%total_samples+nt
+       online_slots(i)%loss_before=0d0;online_slots(i)%loss_after=0d0
+       online_slots(i)%alternative_x=0d0;online_slots(i)%alternative_y=0d0
+       if(nt.eq.0.or.nf.eq.0)cycle
+       unified_slots(i)%fit_status=1
+       gx=online_slots(i)%gx;gy=online_slots(i)%gy;k=gx*gy
+       if(nt.ge.64.and.online_epoch.ge.3)then
+          gx=4;gy=4
+       elseif(nt.ge.32.and.online_epoch.ge.2.and.k.lt.8)then
+          gx=4;gy=2
+       elseif(nt.ge.16.and.k.lt.4)then
+          gx=2;gy=2
+       endif
+       ! Each capacity needs four probes per tile. A slot without a fit
+       ! builds its replay bank only for the archive's loss diagnostic.
+       if(gx*gy.lt.4.or.nt.lt.4*gx*gy)then
+          if(sector_learning_archive)then
+             call sl_epoch_replay_build_bank(i,fit_b,fit_r)
+             block
+               double precision :: losses(size(fit_b,3))
+               call sl_tile_losses_unchecked(fit_b,fit_r,sl_entries(i)%permutations,losses)
+               online_slots(i)%loss_before=sum(losses);online_slots(i)%loss_after=sum(losses)
+             end block
+             deallocate(fit_b,fit_r)
+          endif
+          cycle
+       endif
+       call sl_epoch_replay_build_bank(i,fit_b,fit_r)
+       allocate(a(sl_nodes,ns),bmap(sl_nodes,ns))
+       unified_slots(i)%fit_status=2;unified_slots(i)%selected_orientation=1
+       unified_slots(i)%primary_gx=gx;unified_slots(i)%primary_gy=gy
+       call sector_learning_unified_fit(fit_b,fit_r, &
+            sl_entries(i)%permutations,gx,gy,unified_slots(i)%qcodes,a,before,aa, &
+            unified_slots(i)%primary_selected,unified_slots(i)%primary)
+       online_slots(i)%loss_before=before
+       if(gx*gy.eq.8.and.k.lt.8)then
+          unified_slots(i)%alternative_gx=2;unified_slots(i)%alternative_gy=4
+          call sector_learning_unified_fit(fit_b,fit_r, &
+               sl_entries(i)%permutations,2,4,unified_slots(i)%qcodes,bmap,dummy,bb, &
+               unified_slots(i)%alternative_selected,unified_slots(i)%alternative)
+          online_slots(i)%alternative_x=aa;online_slots(i)%alternative_y=bb
+          if(bb.lt.aa)then
+             gx=2;gy=4;a=bmap;aa=bb;unified_slots(i)%selected_orientation=2
+          endif
+       endif
+       online_slots(i)%gx=gx;online_slots(i)%gy=gy
+       online_slots(i)%loss_after=aa;sl_entries(i)%permutations=a
+       deallocate(a,bmap,fit_b,fit_r)
+    enddo
+  end subroutine sl_epoch_replay_fit_epoch
+
+  subroutine sl_epoch_replay_write_epoch()
+    integer :: i,nf,ns,nt,nlegs
+    if(.not.allocated(sl_entries))return
+    if(.not.sector_learning_archive)goto 10
+    write(online_unit)73110620,sl_format_version,sl_method_id,online_epoch,online_nint_before,nint_used, &
+         ndim,nchans,size(sl_entries),online_ordinary_calls,online_probes,online_record_rejections
+    write(online_unit)online_grid_before,xgrid(0:nint_used,1:ndim,1:nchans)
+    write(online_unit)online_base_acc,online_total_acc,online_ordinary_acc
+    write(online_unit)online_base_hits,online_total_hits,online_ordinary_hits
+    do i=1,size(sl_entries)
+       nf=sl_entries(i)%nflavours;ns=size(sl_entries(i)%ids);nt=sl_entries(i)%ntrain
+       nlegs=size(sl_entries(i)%pdgs,2)
+       ! The final 0 is the (always empty) legacy tile-trace length.
+       write(online_unit)sl_entries(i)%slot,nf,ns,nt,nlegs,online_slots(i)%oldgx,online_slots(i)%oldgy, &
+            online_slots(i)%gx,online_slots(i)%gy,online_slots(i)%total_samples,0
+       write(online_unit)sl_entries(i)%ids,sl_entries(i)%providers,sl_entries(i)%groups,sl_entries(i)%pdgs, &
+            online_slots(i)%before,sl_entries(i)%permutations
+       write(online_unit)online_slots(i)%loss_before,online_slots(i)%loss_after, &
+            online_slots(i)%alternative_x,online_slots(i)%alternative_y
+       call sl_unified_write_extension(online_unit,i)
+       if(nt.gt.0)write(online_unit)sl_entries(i)%b(1:nf,:,1:nt),sl_entries(i)%r(1:nf,:,:,1:nt)
+    enddo
+    flush(online_unit)
+10  continue
+    write(*,*)'ONLINE epoch:',online_epoch,' ordinary/probes/rejects:',online_ordinary_calls, &
+         online_probes,online_record_rejections
+  end subroutine sl_epoch_replay_write_epoch
+
+  subroutine sl_epoch_replay_finish()
+    integer :: i
+    call sl_unified_ensure()
+    if(.not.allocated(sl_entries))error stop 'Online MINT0 observed no Born layouts'
+    if(sector_learning_archive)then
+       write(online_unit)-73110620
+       close(online_unit);online_unit=0
+    endif
+    sl_grid_nint=nint_used;sl_grid_ndim=ndim;sl_grid_nchans=nchans
+    sl_grid_snapshot=xgrid(0:nint_used,1:ndim,1:nchans)
+    sl_ready=.true.
+    do i=1,size(sl_entries)
+       if(allocated(sl_entries(i)%b))deallocate(sl_entries(i)%b,sl_entries(i)%r)
+    enddo
+    write(*,*)'ONLINE frozen final map; no separate calibration; normalization deferred to MINT1.'
+  end subroutine sl_epoch_replay_finish
+
+  subroutine sl_epoch_replay_read_table(unit)
+    use,intrinsic :: ieee_arithmetic,only:ieee_is_finite
+    integer,intent(in) :: unit
+    character(len=8192) :: line
+    character(len=64) :: marker,tag
+    integer :: ios,version,mode,count_entries,i,s,slot,ns,nlegs,nf,gx,gy,total,read_slot,read_index,node,c,d,n
+    integer :: warm,stride,cost
+    double precision :: budget
+    integer :: gauge,gauge_version,phase_passes,tile_passes,selection_version,expected_gauge
+    integer,allocatable :: expected_q(:,:)
+    rewind(unit)
+    do
+       read(unit,'(a)',iostat=ios)line
+       if(ios.ne.0)error stop 'Missing SCL10 header'
+       line=adjustl(line)
+       if(index(line,'SCL10 H').eq.1)exit
+       if(index(line,'SCL').eq.1)error stop 'Unexpected learning metadata before SCL10'
+    enddo
+    ! The version comes first: another version may have another layout.
+    read(line,*,iostat=ios)marker,tag,version
+    if(ios.ne.0)error stop 'Malformed SCL10 header'
+    ! Expected after a code update, so reported like a setting mismatch.
+    if(version.ne.sl_format_version)then
+       write(*,*)'ERROR: SCL10 table from another code version; rerun MINT0.'
+       stop 1
+    endif
+    call sl_epoch_replay_validate_line(line,'H',18)
+    read(line,*,iostat=ios)marker,tag,version,mode,count_entries,sl_grid_nint,sl_grid_ndim,sl_grid_nchans, &
+         online_epoch,online_ordinary_calls,online_probes,online_record_rejections, &
+         warm,stride,gauge_version,phase_passes,tile_passes,selection_version
+    if(ios.ne.0.or.mode.ne.sl_method_id.or.count_entries.lt.1.or. &
+         sl_grid_nint.ne.nintervals.or.sl_grid_ndim.ne.ndim.or.sl_grid_nchans.ne.nchans.or. &
+         min(online_epoch,online_ordinary_calls,online_record_rejections).lt.0.or. &
+         online_record_rejections.gt.online_probes.or.count_entries.gt.100000.or. &
+         warm.ne.64.or.stride.ne.16) &
+         error stop 'Malformed SCL10 header'
+    if(gauge_version.ne.1.or.phase_passes.ne.3.or.tile_passes.ne.3.or.selection_version.ne.1) &
+         error stop 'Unknown unified map convention'
+    read(unit,'(a)',iostat=ios)line
+    if(ios.ne.0)error stop 'Missing SCL10 budget'
+    call sl_epoch_replay_validate_line(line,'B',4)
+    read(line,*,iostat=ios)marker,tag,budget,cost
+    if(ios.ne.0.or..not.ieee_is_finite(budget).or..not.(budget.gt.0d0.and.budget.le.1d0).or. &
+         cost.ne.sl_probe_cost) &
+         error stop 'Malformed SCL10 budget'
+    ! The budget only steered the MINT0 probes; keep the training value.
+    online_budget=budget
+    if(allocated(sl_entries))deallocate(sl_entries)
+    if(allocated(online_slots))deallocate(online_slots)
+    if(allocated(unified_slots))deallocate(unified_slots)
+    allocate(sl_entries(count_entries),online_slots(count_entries),unified_slots(count_entries))
+    do i=1,count_entries
+       read(unit,'(a)',iostat=ios)line
+       if(ios.ne.0)error stop 'Missing SCL10 slot'
+       call sl_epoch_replay_validate_line(line,'L',10)
+       read(line,*,iostat=ios)marker,tag,slot,ns,nlegs,nf,gx,gy,total,gauge
+       if(ios.ne.0.or.min(slot,ns,nlegs).lt.1.or. &
+            min(nf,total).lt.0.or..not.((gx.eq.1.and.gy.eq.1).or.sl_valid_capacity(gx,gy))) &
+            error stop 'Malformed SCL10 slot'
+       if(gauge.ne.0.and.gauge.ne.1)error stop 'Malformed unified gauge kind'
+       unified_slots(i)%gauge=gauge
+       allocate(unified_slots(i)%qcodes(2,ns))
+       if(i.gt.1)then
+          if(any(sl_entries(1:i-1)%slot.eq.slot))error stop 'Duplicate SCL10 slot'
+       endif
+       sl_entries(i)%slot=slot;sl_entries(i)%nflavours=nf
+       online_slots(i)%gx=gx;online_slots(i)%gy=gy;online_slots(i)%total_samples=total
+       allocate(sl_entries(i)%ids(ns),sl_entries(i)%providers(ns),sl_entries(i)%groups(ns), &
+            sl_entries(i)%pdgs(ns,nlegs),sl_entries(i)%permutations(sl_nodes,ns))
+       do s=1,ns
+          read(unit,'(a)',iostat=ios)line
+          if(ios.ne.0)error stop 'Missing SCL10 sector'
+          call sl_epoch_replay_validate_line(line,'R',9+nlegs)
+          read(line,*,iostat=ios)marker,tag,read_slot,read_index,sl_entries(i)%ids(s), &
+               sl_entries(i)%providers(s),sl_entries(i)%groups(s),sl_entries(i)%pdgs(s,:),unified_slots(i)%qcodes(:,s)
+          if(ios.ne.0.or.read_slot.ne.slot.or.read_index.ne.s.or. &
+               min(sl_entries(i)%ids(s),sl_entries(i)%providers(s),sl_entries(i)%groups(s)).lt.1) &
+               error stop 'Malformed SCL10 sector'
+          read(unit,'(a)',iostat=ios)line
+          if(ios.ne.0)error stop 'Missing SCL10 permutation'
+          call sl_epoch_replay_validate_line(line,'P',20)
+          read(line,*,iostat=ios)marker,tag,read_slot,read_index,sl_entries(i)%permutations(:,s)
+          if(ios.ne.0.or.read_slot.ne.slot.or.read_index.ne.s) &
+               error stop 'Malformed SCL10 permutation'
+          if(.not.sl_is_bijection(sl_entries(i)%permutations(:,s)))error stop 'SCL10 map not bijective'
+          if(gx.eq.1.and.gy.eq.1)then
+             if(any(sl_entries(i)%permutations(:,s).ne.[(node,node=1,sl_nodes)])) &
+                  error stop 'Nonidentity SCL10 map with identity capacity'
+          elseif(.not.sl_map_representable(sl_entries(i)%permutations(:,s),gx,gy))then
+             error stop 'SCL10 capacity does not represent map'
+          endif
+       enddo
+       if(any([(count(sl_entries(i)%ids.eq.sl_entries(i)%ids(s)).ne.1,s=1,ns)])) &
+            error stop 'Duplicate SCL10 sector'
+       call sl_unified_check_groups(sl_entries(i)%ids,sl_entries(i)%providers, &
+            sl_entries(i)%pdgs,sl_entries(i)%groups)
+       allocate(expected_q(2,ns))
+       call sector_learning_unified_gauge(sl_entries(i)%ids,expected_gauge,expected_q)
+       if(expected_gauge.ne.gauge.or.any(expected_q.ne.unified_slots(i)%qcodes)) &
+            error stop 'Saved unified gauge differs from outer IDs'
+       deallocate(expected_q)
+       online_slots(i)%before=sl_entries(i)%permutations
+    enddo
+    if(allocated(sl_grid_snapshot))deallocate(sl_grid_snapshot)
+    allocate(sl_grid_snapshot(0:sl_grid_nint,sl_grid_ndim,sl_grid_nchans))
+    do c=1,sl_grid_nchans
+       do d=1,sl_grid_ndim
+          read(unit,'(a)',iostat=ios)line
+          if(ios.ne.0)error stop 'Missing SCL10 grid'
+          call sl_epoch_replay_validate_line(line,'G',sl_grid_nint+6)
+          read(line,*,iostat=ios)marker,tag,read_slot,read_index,n,sl_grid_snapshot(:,d,c)
+          ! Check n before it indexes the row: Fortran does not short-circuit.
+          if(ios.ne.0.or.read_slot.ne.c.or.read_index.ne.d.or. &
+               n.ne.sl_grid_nint)error stop 'Malformed SCL10 grid'
+          if(.not.all(ieee_is_finite(sl_grid_snapshot(:,d,c))).or. &
+               sl_grid_snapshot(0,d,c).ne.0d0.or.sl_grid_snapshot(n,d,c).ne.1d0.or. &
+               any(sl_grid_snapshot(1:n,d,c).le.sl_grid_snapshot(0:n-1,d,c)))error stop 'Malformed SCL10 grid'
+       enddo
+    enddo
+    do
+       read(unit,'(a)',iostat=ios)line
+       if(ios.lt.0)exit
+       if(ios.ne.0.or.len_trim(line).ne.0)error stop 'Trailing unified learning metadata'
+    enddo
+    sl_ready=.true.;rewind(unit)
+  end subroutine sl_epoch_replay_read_table
+
+  subroutine sl_online_observe_ordinary()
+    ! Called once an ordinary MINT0 point is accumulated.
+    integer :: d
+    online_ordinary_calls=online_ordinary_calls+1
+    if(.not.sector_learning_archive)return
+    ! The same per-cell split as the grid (add_point_to_grids).
+    call add_abs_weight(online_ordinary_acc)
+    do d=1,ndim
+       online_ordinary_hits(icell(d),d,ichan)=online_ordinary_hits(icell(d),d,ichan)+1
+    enddo
+  end subroutine sl_online_observe_ordinary
+
+  subroutine save_point_state(state)
+    type(mint_point_state),intent(out) :: state
+    state%ifold=ifold;state%ncell=ncell;state%icell=icell;state%ichan=ichan
+    state%iconfig=iconfig;state%sl_current=sl_current;state%f=f;state%rand=rand
+    state%vol_chan=vol_chan;state%hwu_values=HwU_values
+    state%average_virtual=average_virtual;state%polyfit=polyfit;state%even_rn=even_rn
+    state%pass_cuts_check=pass_cuts_check;state%new_point=new_point
+    state%evaluation=point_evaluation
+  end subroutine save_point_state
+
+  subroutine restore_point_state(state)
+    type(mint_point_state),intent(in) :: state
+    ifold=state%ifold;ncell=state%ncell;icell=state%icell;ichan=state%ichan
+    iconfig=state%iconfig;sl_current=state%sl_current;f=state%f;rand=state%rand
+    vol_chan=state%vol_chan;HwU_values=state%hwu_values
+    average_virtual=state%average_virtual;polyfit=state%polyfit;even_rn=state%even_rn
+    pass_cuts_check=state%pass_cuts_check;new_point=state%new_point
+    point_evaluation=state%evaluation
+  end subroutine restore_point_state
+
+  subroutine swap_probe_random_numbers()
+    ! Exchange the ranmar state (ran2) with the learning probes' own stream.
+    ! That stream is seeded once, from the ordinary stream at the first
+    ! probe (a fixed number of ordinary points into MINT0), so the run's
+    ! seed fixes both streams.
+    double precision :: ranu(97),ranc,rancd,rancm,su(97),sc,scd,scm
+    integer :: iranmr,jranmr,si,sj
+    common/raset1/ranu,ranc,rancd,rancm
+    common/raset2/iranmr,jranmr
+    if(.not.probe_rng_ready)then
+       probe_ranu=ranu;probe_ranc=ranc;probe_rancd=rancd;probe_rancm=rancm
+       probe_iranmr=iranmr;probe_jranmr=jranmr
+       call rmarin(int(ranu(1)*31328d0),int(ranu(2)*30081d0))
+       su=ranu;ranu=probe_ranu;probe_ranu=su
+       sc=ranc;ranc=probe_ranc;probe_ranc=sc
+       scd=rancd;rancd=probe_rancd;probe_rancd=scd
+       scm=rancm;rancm=probe_rancm;probe_rancm=scm
+       si=iranmr;iranmr=probe_iranmr;probe_iranmr=si
+       sj=jranmr;jranmr=probe_jranmr;probe_jranmr=sj
+       probe_rng_ready=.true.
+    endif
+    su=ranu;ranu=probe_ranu;probe_ranu=su
+    sc=ranc;ranc=probe_ranc;probe_ranc=sc
+    scd=rancd;rancd=probe_rancd;probe_rancd=scd
+    scm=rancm;rancm=probe_rancm;probe_rancm=scm
+    si=iranmr;iranmr=probe_iranmr;probe_iranmr=si
+    sj=jranmr;jranmr=probe_jranmr;probe_jranmr=sj
+  end subroutine swap_probe_random_numbers
+
+  subroutine sl_unified_maybe_probe(fun)
+    double precision,external :: fun
+    type(mint_point_state) :: saved
+    integer :: folds(ndimmax)
+    double precision :: x(ndimmax),vol
+    if(online_ordinary_calls.lt.64.or.mod(online_ordinary_calls,16).ne.0)return
+    ! Admission counts points only, so the probes, maps, grids and events
+    ! are fixed by the seed: a probe costs sl_probe_cost ordinary points.
+    if(sl_probe_cost*online_probes.ge.online_budget*online_ordinary_calls)return
+    if(mod(nint_used,4).ne.0.or.mod(nint_used_virt,4).ne.0)return
+    ! The probe leaves the per-point state as the last ordinary point set it.
+    call save_point_state(saved)
+    ifold=1; ifold(ndim-2:ndim)=[4,4,1]; even_rn=.false.
+    point_evaluation=learning_probe_evaluation; new_point=.true.
+    ! Probes draw from their own stream: the ordinary points' random numbers
+    ! do not depend on how many probes the budget admits.
+    call swap_probe_random_numbers()
+    call get_random_x(x,vol,folds)
+    call compute_integrand(fun,x,vol)
+    call swap_probe_random_numbers()
+    online_probes=online_probes+1
+    if(sl_point_rejected)then
+       online_record_rejections=online_record_rejections+1
+    else
+       call sl_append_orbit()
+    endif
+    call restore_point_state(saved)
+  end subroutine sl_unified_maybe_probe
+
+  subroutine sl_verify_grid()
+    if(.not.sector_learning_active)return
+    if(.not.sl_ready.or..not.allocated(sl_grid_snapshot))error stop 'Missing learned grid provenance'
+    ! read_grids_from_file consumes the full fixed-size file grid before
+    ! either MINT1 or GEN initializes nint_used in its fresh process.
+    ! Verify the dimensions that were actually read, without changing
+    ! the legacy startup state or accepting a partial training grid.
+    if(sl_grid_nint.ne.nintervals.or.sl_grid_ndim.ne.ndim.or.sl_grid_nchans.ne.nchans) &
+         error stop 'Learned adaptive grid dimensions differ from saved setup'
+    if(any(sl_grid_snapshot.ne.xgrid(0:nintervals,1:ndim,1:nchans))) &
+         error stop 'Learned phase table belongs to a different adaptive grid'
+  end subroutine sl_verify_grid
 
   subroutine mint(fun)
     implicit none
@@ -252,17 +848,28 @@ contains
     double precision, dimension(ndimmax) :: x
     integer, dimension(ndimmax) :: kfold
     double precision, external :: fun
-    logical :: enough_points,channel_loop_done
+    logical :: enough_points,channel_loop_done,sl_train
     call initialise_mint
+    ! Sector maps are trained only in MINT0; later steps use the frozen table.
+    sl_train=sector_learning_active.and.imode.eq.0
+    if(sector_learning_active)then
+       call sl_require_matched111()
+       if(imode.eq.0.and.sl_ready)error stop 'A trained sector table cannot be refitted in a MINT0 restart'
+    endif
 10  continue
     do while (nit.lt.itmax)
        call start_iteration
+       if(sl_train)call sl_epoch_replay_begin_iteration()
 2      kpoint_iter=kpoint_iter+1
        do kpoint=1,ncalls
           new_point=.true.
           call get_random_x(x,vol,kfold)
           call compute_integrand(fun,x,vol)
           call accumulate_the_point(x)
+          if(sl_train)then
+             call sl_online_observe_ordinary()
+             call sl_unified_maybe_probe(fun)
+          endif
        enddo
        call get_amount_of_points(enough_points)
        if (.not.enough_points) goto 2
@@ -275,7 +882,9 @@ contains
        else
           call combine_results_channels
        endif
+       if(sl_train)call sl_epoch_replay_fit_epoch()
        call update_accumulated_results
+       if(sl_train)call sl_epoch_replay_write_epoch()
     enddo
     if (imode.eq.0 .and. born_spread_active .and. &
          .not.born_spread_ready) then
@@ -293,6 +902,7 @@ contains
        write(*,*) 'Restarting MINT with the normalized born-spreading table'
        goto 10
     endif
+    if(sl_train)call sl_epoch_replay_finish()
     call finalise_mint
   end subroutine mint
 
@@ -303,7 +913,7 @@ contains
     integer :: kfold(ndimmax),ipoint
     logical :: old_even_rn
     born_spread_phase=1
-    born_spread_calibrating=.true.
+    point_evaluation=born_spread_evaluation
     born_spread_training_count=0
     born_spread_validation_count=0
     born_spread_mean_delta=0d0
@@ -332,7 +942,7 @@ contains
        call get_random_x(x,vol,kfold)
        call compute_integrand(fun,x,vol)
     enddo
-    born_spread_calibrating=.false.
+    point_evaluation=integration_evaluation
     even_rn=old_even_rn
     call finish_born_spreading_validation
     call deallocate_born_spread_lines
@@ -684,7 +1294,6 @@ contains
     integer, intent(in) :: nexternal,nincoming,nfks,ndim_in
     born_spread_active=enabled
     born_spread_ready=.false.
-    born_spread_calibrating=.false.
     born_spread_phase=0
     if (allocated(born_spread_factor)) deallocate(born_spread_factor)
     if (allocated(born_spread_deriv0)) deallocate(born_spread_deriv0)
@@ -1126,7 +1735,6 @@ contains
     endif
   end subroutine combine_final_three_iterations
 
-
   subroutine print_results_accumulated_three_iterations
     implicit none
     integer :: i
@@ -1146,7 +1754,6 @@ contains
     write(*,'(a,1x,e10.4)') 'accumulated result over the last 3 iterations Chi^2 per DoF =' &
          ,chi2_l3(1)
   end subroutine print_results_accumulated_three_iterations
-
 
   
   subroutine update_virtual_fraction
@@ -1439,9 +2046,7 @@ contains
     double precision, dimension(ndimmax) :: x
     double precision :: virtual,born,ratio
 ! accumulate the function in xacc(icell(kdim),kdim) to adjust the grid later
-    do kdim=1,ndim
-       xacc(icell(kdim),kdim,ichan) = xacc(icell(kdim),kdim,ichan) + f(1)
-    enddo
+    call add_abs_weight(xacc)
 ! Set the Born contribution (to compute the average_virtual) to zero if
 ! the virtual was not computed for this phase-space point. Compensate by
 ! including the virtual_fraction.
@@ -1583,7 +2188,7 @@ contains
     call timing_begin_point()
     ! contribution to integral
     ifirst=0
-    if(imode.eq.0) then
+    if(imode.eq.0.and..not.point_evaluation%all_folds) then
        dummy=fun(x,vol,ifirst,f1)
        if (.not. fixed_order) dummy=fun(x,vol,2,f1)
        f(1:nintegrals)=f1(1:nintegrals)
@@ -1614,20 +2219,51 @@ contains
     double precision, dimension(ndimmax),intent(in) :: x
     double precision,intent(out) :: vol
     integer :: kdim,icell
-    double precision :: dx
+    double precision :: dx,u
     ! This assumes we are in channel 'ichan'
     vol=1d0/vol_chan * wgt_mult
     do kdim=1,ndim
-       ! determine the cell
-       icell=1
-       do while (xgrid(icell,kdim,ichan).lt.x(kdim))
-          icell=icell+1
-       enddo
-       ! compute wgt
-       dx=xgrid(icell,kdim,ichan)-xgrid(icell-1,kdim,ichan)
+       call flat_grid_position(x(kdim),kdim,icell,dx,u)
        vol=vol*dx*nint_used/ifold(kdim)
     enddo
   end subroutine get_mint_wgt
+
+  subroutine resample_sector_radiation(x_in,x_out,weight_ratio,sector_id)
+    ! Give an outer FKS sector its own radiation sample: translate the flat
+    ! adaptive-grid xi/y coordinates by the sector's static quarter-period
+    ! Sobol gauge composed with its learned tile map. The translation is a
+    ! function of the latent MINT coordinates, with no additional RNG, and
+    ! the exact binary offsets preserve the integration measure.
+    implicit none
+    double precision,intent(in) :: x_in(ndimmax)
+    double precision,intent(out) :: x_out(ndimmax),weight_ratio
+    integer,intent(in) :: sector_id
+    integer :: kdim,old_cell,new_cell
+    double precision :: old_dx,new_dx,shift(2),u,fraction
+    integer :: index
+    x_out=x_in
+    weight_ratio=1d0
+    ! The sector's gauge offset composed with its learned tile displacement.
+    call sl_unified_add_phase(sector_id,shift,x_in)
+    index=0
+    if(sl_split_point)then
+       call sl_split_ensure(0)
+       index=sl_split_index(sector_id)
+    endif
+    do kdim=ndim-2,ndim-1
+       call flat_grid_position(x_in(kdim),kdim,old_cell,old_dx,u)
+       if(index.gt.0)sl_split_cell(kdim-ndim+3,index)=old_cell
+       ! Preserve a zero-shift sector exactly, including endpoints.
+       if(shift(kdim-ndim+3).eq.0d0)cycle
+       u=modulo(u+shift(kdim-ndim+3),1d0)
+       new_cell=min(int(u*nint_used)+1,nint_used)
+       fraction=u*nint_used-(new_cell-1)
+       new_dx=xgrid(new_cell,kdim,ichan)-xgrid(new_cell-1,kdim,ichan)
+       x_out(kdim)=xgrid(new_cell-1,kdim,ichan)+fraction*new_dx
+       weight_ratio=weight_ratio*new_dx/old_dx
+       if(index.gt.0)sl_split_cell(kdim-ndim+3,index)=new_cell
+    enddo
+  end subroutine resample_sector_radiation
   
   subroutine get_random_x(x,vol,kfold)
     implicit none
@@ -1658,7 +2294,7 @@ contains
        dx=xgrid(icell(kdim),kdim,ichan)-xgrid(icell(kdim)-1,kdim,ichan)
        vol=vol*dx*nintcurr
        x(kdim)=xgrid(icell(kdim)-1,kdim,ichan)+rand(kdim)*dx
-       if(imode.eq.0.and..not.born_spread_calibrating) &
+       if(imode.eq.0.and.point_evaluation%integration) &
             nhits(icell(kdim),kdim,ichan)= &
             nhits(icell(kdim),kdim,ichan)+1
     enddo
@@ -1947,6 +2583,12 @@ contains
     enddo
     if (use_poly_virtual) call save_polyfit(12)
     if (VirtTrickSurrogate.ge.1) call vs_write_grids(12,nchans)
+    ! Learned sector maps also act during MINT0 training: store the frozen
+    ! table at every step. A zero-result grid (close_run_zero_res, possibly
+    ! before training ends) has none: read_grids_from_file stops before
+    ! it would be used.
+    if(sector_learning_active.and.(any(ans(1,1:nchans).ne.0d0).or. &
+         any(unc(1,1:nchans).ne.0d0)))call sl_epoch_replay_write_table(12)
     close (12)
   end subroutine write_grids_to_file
   
@@ -1959,10 +2601,11 @@ contains
     double precision :: saved_moment
     character(len=3) :: dummy
     character(len=4096) :: marker
-    logical :: saved_surrogate
+    logical :: saved_surrogate,saved_learning,zero_result
     character(len=512) :: channel_info
     open (unit=12, file='mint_grids',status='old')
     saved_surrogate=.false.
+    saved_learning=.false.
     call vs_reset
     do
        read(12,'(a)',iostat=ios) marker
@@ -1973,7 +2616,10 @@ contains
        endif
        marker=adjustl(marker)
        if (marker(1:3).eq.'VSU') saved_surrogate=.true.
+       ! Any learning metadata marks a learned grid; its table is checked strictly.
+       if (marker(1:3).eq.'SCL') saved_learning=.true.
     enddo
+    if(sector_learning_active)call sl_require_matched111()
     rewind(12)
     ans(1,0)=0d0
     unc(1,0)=0d0
@@ -2029,10 +2675,23 @@ contains
     ! Older grids have no VSU rows and keep the grid/polynomial fallback.
     ! Consume saved rows even when the fitted surrogate has been disabled.
     if (saved_surrogate) call vs_read_grids(12,nchans,VirtTrickSurrogate.ge.1)
+    zero_result=imode.ne.0.and.ans(1,0).eq.0d0.and.unc(1,0).eq.0d0
+    ! Zero-result grids carry no frozen sector table (write_grids_to_file).
+    if(.not.zero_result)then
+       if(saved_learning.neqv.sector_learning_active)then
+          write(*,*) 'FKSSectorLearning differs from the saved MINT training.'
+          write(*,*) 'Rerun integration and grid setup before restarting.'
+          stop 1
+       endif
+       if(sector_learning_active)then
+          call sl_epoch_replay_read_table(12)
+          call sl_verify_grid
+       endif
+    endif
     close (12)
 ! check for zero cross-section: if restoring grids corresponding to
 ! sigma=0, just terminate the run
-    if (imode.ne.0.and.ans(1,0).eq.0d0.and.unc(1,0).eq.0d0) then
+    if (zero_result) then
        call initplot()
        call close_run_zero_res
        stop 0
@@ -2270,7 +2929,6 @@ contains
     ave_virt_acc(1:nint_used_virt,1:ndim-3,k_ord_virt,1:nchans)=0d0
   end subroutine regrid_ave_virt
 
-
   subroutine double_ave_virt(k_ord_virt)
     implicit none
     integer :: kdim,i,k_ord_virt,kchan
@@ -2303,7 +2961,6 @@ contains
        enddo
     enddo
   end subroutine double_ave_virt
-
 
   subroutine update_channel_sampling
     implicit none
@@ -2392,7 +3049,6 @@ contains
     endif
   end subroutine get_channel
 
-
   subroutine close_run_zero_res
     implicit none
     integer :: kchan
@@ -2472,10 +3128,6 @@ contains
        endif
     endif
   end function get_ran
-
-
-
-
 
   subroutine gen(fun,gen_mode,vn,x)
     implicit none

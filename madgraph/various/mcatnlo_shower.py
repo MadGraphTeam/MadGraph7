@@ -94,6 +94,61 @@ def read_fks_param(path, name, default=None):
     return default
 
 
+def _list_directed_item(record):
+    """The first value of a Fortran list-directed record: its characters
+    before the first blank, comma or slash ('' for a null value)."""
+    return re.split(r'[\s,/]', record.strip(), maxsplit=1)[0]
+
+
+def _fks_param_items(path, name):
+    """The values of '#name' in an FKS_params.dat card as FKSParamReader
+    reads them: the key is the first item of a record and its value the
+    first item of the next non-blank record, without a repeat count 'r*'.
+    Null values, which keep the previous one, are left out."""
+    if not path or not os.path.isfile(path):
+        return
+    with open(path) as card:
+        records = iter(card)
+        for record in records:
+            if _list_directed_item(record) != '#' + name:
+                continue
+            for record in records:
+                if record.strip():
+                    break
+            else:
+                return
+            item = re.sub(r'^\d+\*', '', _list_directed_item(record))
+            if item:
+                yield item
+
+
+def read_fks_logical(path, name, default):
+    """The logical '#name' of an FKS_params.dat card, read list-directed as
+    FKSParamReader does: an optional '.', then T or F in either case. A
+    repeated key takes its last value. A value that the Fortran read
+    rejects raises ValueError."""
+    value = default
+    for item in _fks_param_items(path, name):
+        match = re.match(r'\.?([tTfF])', item)
+        if not match:
+            raise ValueError('#%s must be .true. or .false., not %r' % (name, item))
+        value = match.group(1) in 'tT'
+    return value
+
+
+def read_fks_real(path, name, default):
+    """The real '#name' of an FKS_params.dat card, read list-directed as
+    FKSParamReader does (Fortran exponents such as 2d-1 included). A
+    repeated key takes its last value; an invalid value raises ValueError."""
+    value = default
+    for item in _fks_param_items(path, name):
+        try:
+            value = float(re.sub(r'[dDqQ]', 'e', item))
+        except ValueError:
+            raise ValueError('#%s must be a number, not %r' % (name, item))
+    return value
+
+
 def pythia8_mmaxgamma(fks_params):
     """#Pythia8MMaxGamma of an FKS_params.dat card (10 GeV if absent), with
     the validation of FKSParams.f90: a number in [0.001, 5000] GeV."""

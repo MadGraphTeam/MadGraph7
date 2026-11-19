@@ -141,23 +141,40 @@ c cnbody is true, so this entry must not mean "Born momenta only".
 
 
       subroutine generate_born_contribution(ndim,iconfig,wgt,x,
-     $     point)
+     $     point,cached_born)
 c Born/virtual integration still uses the regulated FKS soft-endpoint
 c measure and massive-branch support. Keep that adapter distinct from
 c sampling a plain Born point, whose measure contains no radiation.
+c A valid optional cached Born is reused under the same rules as below.
       implicit none
       include 'timing_variables.inc'
       integer ndim,iconfig
       double precision wgt,x(99)
       type(fks_phase_space_point),intent(out) :: point
+      type(fks_born_point),intent(inout),optional :: cached_born
 
       if(timing_sampled)call timing_enter(timing_phase_space)
+c point is intent(out): without a valid cache the Born is resampled.
+      if(present(cached_born))then
+         if(cached_born%valid)point%born=cached_born
+      endif
       call initialize_fks_phase_space(iconfig)
       call generate_prepared_fks_point(ndim,x,.true.,wgt,
      $     point)
+      if(present(cached_born))call keep_cached_born(point,cached_born)
       if(timing_sampled)call timing_leave(timing_phase_space)
       return
       end subroutine generate_born_contribution
+
+
+      subroutine keep_cached_born(point,cached_born)
+c A Born sample reused across radiation trials must not depend on them:
+c without event projection it does, so the cache is left empty.
+      implicit none
+      type(fks_phase_space_point),intent(in) :: point
+      type(fks_born_point),intent(out) :: cached_born
+      if(point%born%event_projection)cached_born=point%born
+      end subroutine keep_cached_born
 
 
       subroutine generate_born_event(ndim,iconfig,wgt,x,
@@ -220,19 +237,26 @@ c must use generate_born_contribution instead.
 
 
       subroutine generate_real_phase_space(ndim,iconfig,wgt,x,
-     $     point)
+     $     point,cached_born)
 c Reuse the caller's sampled Born point only when its sampling context
 c agrees. Otherwise sample a new one, including the coupled lepton map.
+c A valid optional cached Born replaces the caller's; it is updated after.
       implicit none
       include 'timing_variables.inc'
       integer ndim,iconfig
       double precision wgt,x(99)
       type(fks_phase_space_point),intent(inout) :: point
+      type(fks_born_point),intent(inout),optional :: cached_born
 
       if(timing_sampled)call timing_enter(timing_phase_space)
+      if(present(cached_born))then
+c An empty cache keeps the caller's Born, which may still match.
+         if(cached_born%valid)point%born=cached_born
+      endif
       call initialize_fks_phase_space(iconfig)
       call generate_prepared_fks_point(ndim,x,.false.,wgt,
      $     point)
+      if(present(cached_born))call keep_cached_born(point,cached_born)
       if(timing_sampled)call timing_leave(timing_phase_space)
       return
       end subroutine generate_real_phase_space

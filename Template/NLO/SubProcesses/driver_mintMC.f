@@ -23,6 +23,7 @@ C
 C     LOCAL
 C
       integer i,j,nndim,nevts,p_label
+      double precision x_event(ndimmax)
 
       integer lunlhe
       parameter (lunlhe=98)
@@ -138,6 +139,18 @@ c
       write(*,*) "getting user params"
       call get_user_params(ncalls0,itmax,
      &     ixi_i,iphi_i,iy_ij,SHsep,nevts,p_label,event_weight)
+c Learned maps reshape the S-event radiation of complete NLO runs; LO
+c and partial runs skip the sector loop that the probes record.
+      sector_learning_active=FKSSectorLearning.and.abrv.eq.'all'
+      if(FKSSectorLearning.and..not.sector_learning_active)
+     $     write(*,*) 'FKSSectorLearning applies to abrv=all only: ',
+     $     'ignored for abrv=',abrv
+      if(sector_learning_active.and.(.not.FKSExplicitSum.or.
+     $     .not.MCSubtractionAtFixedFlow))then
+         write(*,*) 'FKSSectorLearning requires FKSExplicitSum and ',
+     $        'MCSubtractionAtFixedFlow'
+         stop 1
+      endif
 c Only do the reweighting when actually generating the events
       if (imode.eq.2) then
          doreweight=do_rwgt_scale.or.do_rwgt_pdf.or.store_rwgt_info
@@ -201,8 +214,10 @@ c     Prepare the MINT folding
       ! Also put all the n-body process dependent stuff here. It does
       ! not depend on PS point or FKS config, so all global information.
       call init_process_module_nbody_wrapper()
-      call init_scale_module(nexternal,shower_scale_factor,fks_configs
-     $     ,product(ifold(1:ndim)))
+c Learning probes evaluate sl_nodes folds of one point during MINT0.
+      call init_scale_module(nexternal,shower_scale_factor,fks_configs,
+     $     max(product(ifold(1:ndim)),
+     $     merge(sl_nodes,1,sector_learning_active)))
          
       
 c*************************************************************
@@ -300,7 +315,9 @@ c Randomly pick the contribution that will be written in the event file
                weight=event_weight*inv_bias
             endif
             call fill_rwgt_lines
-            call finalize_event(x_save(1,ifold_picked),weight,lunlhe
+            call get_event_coordinates(x_event,ifold_picked,
+     $           iFKS_picked,Hevents)
+            call finalize_event(x_event,weight,lunlhe
      $           ,putonshell,p_label)
          enddo
          call deallocate_weight_lines
@@ -647,7 +664,7 @@ c
       function sigintF(xx,vegas_wgt,ifl,f)
       use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
       use fks_phase_space_data, only: p_born,p1_cnt
-      use fks_phase_space, only: fks_phase_space_point,
+      use fks_phase_space, only: fks_phase_space_point,fks_born_point,
      $     generate_born_contribution,generate_real_phase_space
       use mc_native_context, only: mc_begin_real_point,mc_end_real_point
       use FKSParams, only: MCSubtractionAtFixedFlow
@@ -666,8 +683,7 @@ c
       include 'mc_histories.inc'
       logical firsttime,passcuts,passcuts_native_born,
      $     passcuts_nbody,passcuts_n1body
-      logical rejected_point,weights_valid,born_cuts_for_flow,
-     $     calibrating_spread,folded
+      logical rejected_point,weights_valid,born_cuts_for_flow,folded
       save folded
       save rejected_point
       data rejected_point/.false./
@@ -700,6 +716,9 @@ c fold is unused; it keeps the /cfl/ layout shared with other files.
       integer ifold_picked
       double precision x_save(ndimmax,max_fold)
       common /c_vegas_x_fold/x_save,ifold_picked
+      double precision x_sector(ndimmax),sector_wgt_ratio,
+     $     sector_vegas_wgt
+      logical s_only_point
       integer icolup_s(2,nexternal-1),icolup_h(2,nexternal)
       common /colour_connections/ icolup_s,icolup_h
       integer fks_father
@@ -710,6 +729,7 @@ c fold is unused; it keeps the /cfl/ layout shared with other files.
 ! The same flow is used throughout the folds, so keep its draw probability.
       save born_flow_factor
       type(fks_phase_space_point) phase_space
+      type(fks_born_point),save :: fold_born(fks_configs)
       logical have_sum_born
       double precision sum_born(0:3,nexternal-1),sum_xbjrk(2)
       double precision p_born_flow(0:3,nexternal),born_ref_scale
@@ -727,11 +747,14 @@ c fold is unused; it keeps the /cfl/ layout shared with other files.
          end subroutine
       end interface
 c
-c Each fold owns its Born sample; compatible sectors can reuse it.
+c Each fold owns its Born sample; compatible sectors can reuse it. Sector
+c learning also reuses the typed Born inputs across a probe's folds;
+c radiation and endpoint data are always regenerated.
       phase_space%born%valid=.false.
       have_sum_born=.false.
-      calibrating_spread=born_spread_phase.eq.1.or.
-     $                   born_spread_phase.eq.2
+c Side evaluations (Born-spreading calibration, learning probes) fit S
+c weights only.
+      s_only_point=.not.point_evaluation%h_events
       if (new_point .and. ifl.ne.2) then
          pass_cuts_check=.false.
       endif
@@ -747,6 +770,10 @@ c For the S-events, we can combine processes when they give identical
 c processes at the Born. Make sure we check that we get indeed identical
 c IRPOC's
          call find_iproc_map()
+         do i=1,proc_map(0,0)
+            call register_sector_learning_layout(i,proc_map(i,0),
+     $           proc_map(i,1:proc_map(i,0)))
+         enddo
 c For FxFx matching with pythia8, set the correct attributes
 c for the <event> tag in the LHEF file. "npNLO" are the number of Born
 c partons in this multiplicity when running the code at NLO accuracy
@@ -757,6 +784,7 @@ c "npNLO".
 
       if (ifl.eq.0) then
          ifold_counter=1
+         call sector_learning_begin_point
          rejected_point=.false.
          nonfinite_contribution=.false.
          nonfinite_type=0
@@ -778,6 +806,7 @@ c "npNLO".
             call vs_begin_point
             call reset_folded_virtual
             born_flow_picked=0
+            fold_born%valid=.false.
          endif
          MCcntcalled=0
          wgt_me_real=0d0
@@ -793,6 +822,7 @@ c "npNLO".
          born_spread_sector_fold(ifold_counter)=1
          if (ifl.eq.0)
      &        call get_MC_integer(1,proc_map(0,0),proc_map(0,1),vol1)
+         call sector_learning_select_slot(proc_map(0,1))
 
 c The nbody contributions
          if (abrv.eq.'real') goto 11
@@ -820,8 +850,9 @@ c Also the Born needs to be included in the Importance Sampling over the
 c FKS configurations (for the shower scale) (multiply by
 c 1/proc_map(0,0)*vol1)
          jac=jac/(proc_map(0,0)*vol1)
+c Each sector reuses its Born sample across the folds of a point.
          call generate_born_contribution(nndim,iconfig,jac,x_local,
-     $        phase_space)
+     $        phase_space,fold_born(nFKS_picked_nbody))
          p=phase_space%p
          p_lab=phase_space%p_lab
          p_cms=phase_space%p_cms
@@ -952,8 +983,17 @@ c the active Born. Starting scales still belong to the shared sample.
             icolup_s(1,1)=-1    ! set colour connection to -1: i.e., complete_xmcsubt has not been called
 ! Apply the outer-sector sampling weight to the counterevents as well.
             jacPS=1d0/vol1
+            sector_vegas_wgt=vegas_wgt
+            if (sector_learning_active) then
+c Each outer sector gets its own learned radiation sample; H events
+c replay it (get_event_coordinates).
+               call resample_sector_radiation(xx,x_sector,
+     $              sector_wgt_ratio,iFKS)
+               x_local(ndim-2:ndim-1)=x_sector(ndim-2:ndim-1)
+               sector_vegas_wgt=vegas_wgt*sector_wgt_ratio
+            endif
             call generate_real_phase_space(nndim,iconfig,jacPS,
-     $           x_local,phase_space)
+     $           x_local,phase_space,fold_born(iFKS))
             p=phase_space%p
             p_lab=phase_space%p_lab
             p_cms=phase_space%p_cms
@@ -1017,7 +1057,7 @@ c Check the sampled Born before native H histories change active data.
                endif
             endif
 c Compute the n1-body prefactors
-            call compute_prefactors_n1body(vegas_wgt,jac)
+            call compute_prefactors_n1body(sector_vegas_wgt,jac)
 ! This flow was drawn with q_c=p_c at the common outer Born point.
             if (MCSubtractionAtFixedFlow)
      $           call include_born_flow_weight(born_flow_factor,
@@ -1053,10 +1093,10 @@ c check if event or counter-event passes cuts
 ! history retains its own counterevents and regulated factors; FxFx H
 ! weights and scales below are taken from the common outer real state.
             call mc_begin_real_point(p)
-! Calibration fits S weights only. Retain their (1-P) real term and G
-! replacements, but omit H records and the complete inner H-history sum.
-! Outside calibration, suppress outer H only when it will be rebuilt.
-            mc_S_only=calibrating_spread.or.
+! Calibration and learning probes use S weights only. Retain their (1-P)
+! real term and G replacements, but omit H records and the complete inner
+! H-history sum. Otherwise suppress outer H only when it will be rebuilt.
+            mc_S_only=s_only_point.or.
      $           (MCExplicitKLSum.and.abrv.ne.'real'.and.
      $           p(0,1).gt.0d0.and.jacPS.gt.0d0.and.MC_HIST_COUNT.gt.0)
             call compute_NLOPS_flow_weights(p,p_cms,passcuts_nbody,passcuts_n1body,probne,weights_valid)
@@ -1065,10 +1105,10 @@ c check if event or counter-event passes cuts
                call mc_end_real_point()
                goto 900
             endif
-            if (MCExplicitKLSum.and..not.calibrating_spread.and.
+            if (MCExplicitKLSum.and..not.s_only_point.and.
      $           abrv.ne.'real') then
                call repartition_MC_H(first_native_H,p,p_lab,
-     $              p_cms,jacPS,vegas_wgt,1d0/vol1,born_flow_factor,
+     $              p_cms,jacPS,sector_vegas_wgt,1d0/vol1,born_flow_factor,
      $              phase_space,weights_valid)
                if(.not.weights_valid)then
                   call mc_end_real_point()
@@ -1118,16 +1158,22 @@ c Sum the contributions that can be summed before taking the ABS value
          call sum_identical_contributions
          call fill_mint_function_NLOPS(f,n1body_wgt)
          if(nonfinite_contribution)goto 900
-         call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
-c Use the final, finite PDF/bias weights of the complete point for the fit.
+c Learning probes observe the frozen Born-slot model.
+         if(point_evaluation%channel_grid)
+     $        call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
+c Use the final, finite PDF/bias weights of the complete point for the fit
+c (nothing to fit without the exact virtual, as for side evaluations).
          call virt_surrogate_fit_point
       endif
 
       return
  900  continue
+      if(.not.rejected_point)call sector_learning_reject_point
 ! Nothing from this point may enter integration, unweighting, or the
 ! Born-spreading fit, including records made before the failure.
-      if(nonfinite_contribution.and..not.rejected_point)then
+! Learning probes count their rejections separately (online_record_rejections).
+      if(nonfinite_contribution.and..not.rejected_point.and.
+     $     point_evaluation%rejection_stats)then
          rejected_nonfinite_points=rejected_nonfinite_points+1
          if(rejected_nonfinite_points.le.5.or.
      $        mod(rejected_nonfinite_points,100).eq.0)then
@@ -1152,7 +1198,8 @@ c Use the final, finite PDF/bias weights of the complete point for the fit.
       virtual_over_born=0d0
       pass_cuts_check=.false.
       f=0d0
-      if(ifl.eq.2)call fill_MC_integer(1,proc_map(0,1),0d0)
+      if(ifl.eq.2.and.point_evaluation%channel_grid)
+     $     call fill_MC_integer(1,proc_map(0,1),0d0)
       return
       contains
       subroutine check_event_projection(sector_sum)
@@ -2092,6 +2139,58 @@ c     include all quarks (except top quark) and the gluon.
          nattr=0
       endif
       return
+      end
+
+
+      subroutine get_event_coordinates(x,selected_fold,selected_sector,
+     $     is_H_event)
+c Replay the radiation of the selected outer sector for H events. With
+c the learned maps and the grid frozen, it is a function of the fold's
+c integration point. The common Born coordinates and S-event output
+c retain the original draw.
+      use mint_module
+      implicit none
+      double precision x(ndimmax),x_save(ndimmax,max_fold),
+     $     x_sector(ndimmax),ratio
+      integer selected_fold,selected_sector,ifold_picked
+      logical is_H_event
+      common /c_vegas_x_fold/x_save,ifold_picked
+      x=x_save(:,selected_fold)
+      if(sector_learning_active.and.is_H_event)then
+         call resample_sector_radiation(x_save(:,selected_fold),
+     $        x_sector,ratio,selected_sector)
+         x(ndim-2:ndim-1)=x_sector(ndim-2:ndim-1)
+      endif
+      end
+
+
+      subroutine register_sector_learning_layout(slot,n,sectors)
+c Register every immutable outer layout before integration/table use.
+c The learner's real-ME groups use full ordered PDGs and the explicit
+c local evaluator ID. A missing provider is never silently guessed.
+      use mint_module, only: sector_learning_register_layout,
+     $     sector_learning_active
+      implicit none
+      include 'nexternal.inc'
+      include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
+      include 'real_channels.inc'
+      integer slot,n,sectors(n),providers(n),pdgs(n,nexternal)
+      integer k,sector
+      if(.not.sector_learning_active)return
+      do k=1,n
+         sector=sectors(k)
+         if(sector.lt.1.or.sector.gt.fks_configs.or.
+     $        sector.gt.size(real_sector_me))then
+            write(*,*)
+     $           'Missing exact sector/provider metadata for learning',
+     $           sector
+            stop 1
+         endif
+         providers(k)=real_sector_me(sector)
+         pdgs(k,:)=pdg_type_d(sector,:)
+      enddo
+      call sector_learning_register_layout(slot,sectors,providers,pdgs)
       end
 
 

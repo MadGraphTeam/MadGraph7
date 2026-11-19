@@ -20,6 +20,8 @@ class TestIEEEScope(unittest.TestCase):
             result = subprocess.run([
                 'gfortran', '-O', '-c', 'params.f90',
                 str(TEMPLATE / 'virtual_surrogate.f90'),
+                str(TEMPLATE / 'mint_evaluation.f90'),
+                str(TEMPLATE / 'sector_learning.f90'),
                 str(TEMPLATE / 'mint_module.f90'),
                 str(TEMPLATE / 'qed_shower_support.f90'),
                 str(TEMPLATE.parent / 'Source/BornSupport/mc_born_types.f90')],

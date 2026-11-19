@@ -33,7 +33,10 @@ class TestSampledTiming(unittest.TestCase):
             'module mint_timing_fixture\nimplicit none\n'
             'integer,parameter :: ndimmax=2,nintegrals=2\n'
             'integer :: ndim=2,imode=0,ifold(2)=1\n'
-            'logical :: fixed_order=.false.\nreal(8) :: f(2)\ncontains\n' + routine +
+            'logical :: fixed_order=.false.\n'
+            'type evaluation_mode\nlogical :: all_folds=.false.\nend type\n'
+            'type(evaluation_mode) :: point_evaluation\n'
+            'real(8) :: f(2)\ncontains\n' + routine +
             '\nsubroutine nextlexi(folds,indices,iret)\n'
             'integer :: folds(2),indices(2),iret\niret=1\nend subroutine\n'
             'subroutine get_random_x_next_fold(x,vol,kfold)\n'

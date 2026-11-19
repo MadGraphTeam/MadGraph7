@@ -1,5 +1,22 @@
+module restart_modes
+  ! Calibration points must be Born-spreading side evaluations and every
+  ! other point an integration point, also after calibration.
+  use mint_module, only: evaluation_mode
+  implicit none
+  integer :: calibration_calls=0
+contains
+  logical function same_mode(a,b)
+    type(evaluation_mode),intent(in) :: a,b
+    same_mode=(a%integration.eqv.b%integration).and.(a%h_events.eqv.b%h_events).and. &
+         (a%channel_grid.eqv.b%channel_grid).and.(a%rejection_stats.eqv.b%rejection_stats).and. &
+         (a%all_folds.eqv.b%all_folds).and.(a%born_spread_samples.eqv.b%born_spread_samples).and. &
+         (a%learning_probe.eqv.b%learning_probe)
+  end function same_mode
+end module restart_modes
+
 program check_restart
   use mint_module
+  use restart_modes
   implicit none
   character(len=16) :: arg
   integer :: enabled,i
@@ -34,14 +51,24 @@ program check_restart
   if (abs(ans(2,0)-expected).gt.0.1d0*expected) stop 1
   if (unc(2,0).le.0d0.or.unc(2,0).gt.0.1d0*expected) stop 2
   if (born_spread_ready.neqv.(enabled.eq.1)) stop 3
+  if ((enabled.eq.1).neqv.(calibration_calls.gt.0)) stop 6
+  if (.not.same_mode(point_evaluation,integration_evaluation)) stop 7
   write(*,*) 'PASS MINT restart normalization',ans(2,0),unc(2,0)
 end program check_restart
 
 double precision function integrand(x,vol,ifl,weights)
-  use mint_module, only: ndimmax,nintegrals,pass_cuts_check
+  use mint_module, only: ndimmax,nintegrals,pass_cuts_check,point_evaluation, &
+       born_spread_phase,born_spread_evaluation,integration_evaluation
+  use restart_modes
   implicit none
   double precision :: x(ndimmax),vol,weights(nintegrals)
   integer :: ifl
+  if (born_spread_phase.eq.1.or.born_spread_phase.eq.2) then
+     if (.not.same_mode(point_evaluation,born_spread_evaluation)) stop 4
+     calibration_calls=calibration_calls+1
+  elseif (.not.same_mode(point_evaluation,integration_evaluation)) then
+     stop 5
+  endif
   weights=0d0
   weights(1)=(2d0+x(1))*vol
   weights(2)=weights(1)

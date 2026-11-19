@@ -82,7 +82,7 @@ FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 boostwdir2.o boost_to_frame.o cluster.o splitorders_stuff.o reweight_xsec.o	\
 	 iproc_map.o sudakov.o  				\
 	 MC_integer.o $(reweight_xsec_events_pdf_dummy)			\
-	 $(pineappl_interface) weight_lines.o mint_module.o virtual_approximation.o \
+	 $(pineappl_interface) weight_lines.o mint_evaluation.o sector_learning.o mint_module.o virtual_approximation.o \
 	 virtual_surrogate.o polfit.o
 
 FILESSUD= fks_phase_space_data.o \
@@ -162,7 +162,7 @@ gensym: $(SYM)
 	rm fks_singular.o
 	strip gensym
 
-test_soft_col_limits: $(TEST) mint_module.o
+test_soft_col_limits: $(TEST) mint_evaluation.o sector_learning.o mint_module.o
 	$(FC) $(LDFLAGS) -o test_soft_col_limits $(TEST) $(APPLLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
 	rm test_soft_col_limits.o
 	strip test_soft_col_limits
@@ -246,7 +246,7 @@ genps_fks_radiation.o: FKSParams.o
 driver_mintFO.o driver_mintMC.o write_event.o add_write_info.o \
     test_soft_col_limits.o symmetry_fks_v3.o: genps_fks.o
 driver_mintFO.o: process_module.o
-mint_module.o : FKSParams.o virtual_surrogate.o
+mint_module.o : FKSParams.o virtual_surrogate.o mint_evaluation.o sector_learning.o
 virtual_approximation.o : weight_lines.o mint_module.o
 fks_singular.o genps_fks.o setscales.o cuts.o fastjet_wrapper.o \
     cluster.o mc_native_runtime.o born_support.o: timing_variables.inc

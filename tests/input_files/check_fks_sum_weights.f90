@@ -80,6 +80,7 @@ program check_fks_sum_weights
   ! These invalid points must return before the Born-spreading fit;
   ! no training storage is allocated, so observing them is also an error.
   born_spread_phase=1
+  point_evaluation=born_spread_evaluation
   do mode=1,3
     nonfinite_contribution=.false.
     wgts(1,1:5)=parton_iproc(1,1:5)

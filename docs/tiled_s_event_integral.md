@@ -1,0 +1,162 @@
+# Tiled S-event integral (`FKSSectorLearning`)
+
+An opt-in MC@NLO sampler that reduces negative S-event weights at folding
+`(1,1,1)`. It is off by default, and with `FKSSectorLearning=.false.` runs
+are identical to `main`.
+
+## What it does
+
+With explicit FKS-sector summation, every S event sums the Born/virtual
+part and the real-emission part of each outer FKS sector. With learning on,
+each outer sector gets its own radiation sample: its flat adaptive-grid ξ/y
+coordinates are translated by a static per-sector offset, and each outer
+sector of each Born slot gets a bijection of 16 tiles (a 4×4 split of these
+coordinates). For a sampled radiation point, the sector's tile is moved to
+its mapped tile; the position inside the tile, φ and the Born point are
+unchanged. MINT's adaptive-grid Jacobian ratio is applied, so each sector
+integral is preserved; only the correlations between sector samples within
+one S event change.
+
+The maps are learned inside ordinary MINT0:
+
+- At regular points (after 64 ordinary calls, every 16th), a probe evaluates
+  one Born point at all 16 nodes of a (4,4,1) stencil. Admission counts
+  points, not CPU time: a probe counts as 11 ordinary MINT0 points (its
+  measured CPU is 9.6 to 11.9 ordinary points), and one is admitted while
+  11 × probes stays below `FKSSectorLearningBudget` × ordinary points, so
+  one probe per 55 ordinary points at the default budget. A probe
+  stores the routed S contributions before the absolute value, split into
+  the Born part `B` and per-sector parts `R`, per canonical flavour. The
+  separately generated virtual-residual lane (type 14) is excluded, so
+  probes evaluate neither the exact one-loop virtual nor any H-event
+  contribution. A probe is a side evaluation between two MINT0 points, with
+  its own fold loop (`learning_probe_evaluation` in `mint_module`); neither
+  the grid, the MC-integer channel weights nor the virtual surrogate see it.
+- At each iteration boundary, the maps are refitted to minimise the negative
+  part of the summed S weight,
+  `Σ max(-B(node) - Σ_s R_s(P_s(node)), 0)`, over the current bank of probes
+  plus the immediately preceding bank at half weight (scaled by
+  `N_current / (2 N_previous)`). Each sector's deployed offset is a static
+  quarter-period gauge (the sector's Sobol offset when all sectors of the
+  slot have quarter-aligned offsets, zero otherwise) composed with its tile
+  map. The
+  fit tries three starts (the current maps, the identity, and the maps that
+  cancel the gauge), refines each with tile translations and per-sector
+  assignment passes, and keeps the lowest loss. Map capacity grows from 4
+  to 8 to 16 tiles once enough probes support it.
+- Probes only train the maps: ordinary points alone adapt the grid and
+  determine the integral and its error.
+- Each sector of an ordinary point is evaluated in its own ξ/y grid cells,
+  so in those two dimensions the point's ABS weight is split before it
+  enters the grid: the Born part goes to the sampled cells, each sector's
+  part (its H events and its share of the S event) to the cells where that
+  sector was evaluated. An S event `|B + Σ_s R_s|` is shared in proportion
+  to `|B|` and the `|R_s|`. Without the split the grid adapts to the sum at
+  the sampled cells, which matches none of the shifted sectors, and MINT1
+  and event generation need many more points.
+
+The final maps are frozen. MINT1 recomputes the normalisation and event
+generation uses the frozen maps; no extra matrix elements are evaluated
+after MINT0.
+
+## Use
+
+In `Cards/FKS_params.dat`:
+
+```text
+#FKSSectorLearning
+.true.
+#FKSSectorLearningBudget
+0.20d0
+```
+
+It requires `FKSExplicitSum` and `MCSubtractionAtFixedFlow` (both `.true.`
+by default). In `Cards/run_card.dat`: `folding = 1, 1, 1` and
+`born_spreading = False` (checked before MINT0 starts).
+
+Learning applies to complete MC@NLO runs. At LO (`aMC@LO`, `noshowerLO`,
+`[LOonly]`) and in fixed-order runs, `FKSSectorLearning` is ignored.
+
+Run fresh MINT0 and MINT1 before generation whenever the method or credit
+changes. `mint_grids` stores the frozen maps (`SCL10` table); MINT1 and
+generation verify the setting, the fold counts and the adaptive grid
+against it, and stop with "rerun MINT0" on a table written by another code
+version. With `sector_learning_archive` set in `mint_module` (the tests
+do this), MINT0 also writes `sector_learning_online.bin`, a binary
+per-iteration record of the probes, fits and grid accumulators for auditing;
+production runs neither write nor read it, and do not keep its grid
+accounting. No CPU time enters the learning: a run is fixed by its seed, and
+runs with the same seed give identical grids, `SCL10` tables and events.
+Probes draw from their own random-number stream, seeded from the run's, so
+the ordinary points' random numbers do not depend on how many probes the
+budget admits.
+
+## Measured effect
+
+Five runs per process on `main` (2c7fcbd705) and on this branch (46f27f9310)
+with `FKSSectorLearning` at the default budget of .20, seeds 271828, 314159,
+161803, 141421 and 173205. Each run generates 50,000 unshowered events at
+13 TeV with folding 111, `born_spreading = False`, no `mcatnlo_delta` and
+otherwise identical cards: NNPDF4.0 NLO (its nf=4 set for W+bb),
+`dynamical_scale_choice = 3`, ptj > 10 GeV for W+jet and single top, and
+mll > 30 GeV for Drell–Yan. Means over the five runs; ± is the standard
+error of the mean.
+
+| Process | Negative weights among S events, main | Negative weights among S events, learning | Negative weights among all events, main → learning | Events for equal precision | CPU for 50,000 events | CPU for equal precision |
+|---|---:|---:|---:|---:|---:|---:|
+| Drell–Yan | 5.31 ± 0.02% | 0.35 ± 0.02% | 7.24% → 3.42% | 0.84 | 1.10 | 0.93 |
+| Top pair | 5.23 ± 0.06% | 0.47 ± 0.06% | 21.23% → 19.16% | 0.87 | 1.05 | 0.92 |
+| W+jet | 27.36 ± 0.09% | 16.24 ± 0.11% | 26.56% → 19.59% | 0.59 | 0.92 | 0.54 |
+| t-channel single top, 5FS | 7.20 ± 0.08% | 2.66 ± 0.10% | 27.86% → 26.47% | 0.89 | 1.18 | 1.04 |
+| W+bb, 4FS | 8.88 ± 0.08% | 4.59 ± 0.09% | 15.89% → 13.70% | 0.88 | 1.72 | 1.52 |
+
+The first three columns are percentages of events with a negative weight,
+among the S events and among all 50,000 events; every event carries the same
+absolute weight. The last three columns are ratios, learning over `main`.
+"Events for equal precision" is the ratio of (1 − 2f)², with f the fraction
+of negative events: the number of unweighted events needed for the same
+statistical precision, which is what counts when showering and detector
+simulation dominate the cost. CPU is the total of MINT0, MINT1 and event
+generation, with both arms running side by side on one machine; "CPU for
+equal precision" is the product of the two ratios. Cross sections agree
+within their errors. The fraction of negative H events is unchanged; there
+are slightly more H events because the absolute S integral is smaller. Runs
+are fixed by their seeds: rerunning the Drell–Yan job with seed 271828
+reproduces its events exactly.
+
+W+bb remains expensive: MINT1 needs 2.2 times as many points as on `main`
+and event generation 1.5 times as many points per event; single top needs
+1.2 times as many in both. The budget fixes the number of probes, not the
+total run time. Showered samples were not studied.
+
+In the research implementation this branch was taken from, a budget of .10
+was also tested and not adopted: Drell–Yan worsened significantly and W+jet
+MINT0 CPU increased. That study also found that part of the remaining
+negative S weight comes from the Born-based virtual-residual lane, which the
+radiation maps cannot move: about 48% in top pair and 58% in W+bb.
+
+## Code
+
+`Template/NLO/SubProcesses/sector_learning.f90` holds the learning state,
+the probe records, the map fits, the epoch replay bank, the grid-split
+shares and the `SCL10` table writer; it uses no MINT state. `mint_module.f90`
+holds the hooks that need MINT's grids or integrand: probes, resampling,
+grid accumulation, epoch boundaries and table reading. Probes and
+Born-spreading calibration points are side evaluations
+(`point_evaluation` in `mint_module`): S weights only, outside the grid
+hits; probes also leave the MC-integer grid and the rejection statistics
+alone.
+
+## Tests
+
+`test_epoch_replay_reference`, `test_epoch_replay_fortran`,
+`test_epoch_replay_iteration` and `test_sector_learning_capture` check the
+replay bank construction, the fitting routines against an independent
+pure-Python reference (`tests/input_files/tiled_s_event_reference.py`, which
+certifies assignment optimality with dual potentials), a complete
+MINT0/MINT1/generation fixture with restarts and wrong-setting guards, the
+audited `sector_learning_online.bin` records (including the count-based
+probe admission), that a much slower integrand trains to byte-identical
+files, and the driver hooks that capture probe contributions. `test_sector_learning_grid_split` checks how an
+ordinary point's ABS weight is split over the ξ/y grid cells. They need
+neither NumPy nor SciPy.

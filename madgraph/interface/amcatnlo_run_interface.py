@@ -127,6 +127,36 @@ def stdhep_status(me_dir, mg5_path=None):
     return 'missing', None
 
 
+def sector_learning_card_error(fks_params, run_card, subprocess_dirs=()):
+    """Why the cards cannot train FKSSectorLearning maps, or None. MINT0
+    always runs at folding 1 1 1, so the Fortran sees the run-card folding
+    only after the training step has been spent. Learning is ignored when
+    every subprocess is [LOonly] (marked by parton_lum_0.f, as for
+    check_poles): the driver then integrates the Born alone."""
+    if subprocess_dirs and all(os.path.exists(pjoin(d, 'parton_lum_0.f'))
+                               for d in subprocess_dirs):
+        return None
+    def flag(name, default):
+        # As FKSParamReader reads it; an invalid value would stop every job.
+        return mcatnlo_shower.read_fks_logical(fks_params, name, default)
+    try:
+        if not flag('FKSSectorLearning', False):
+            return None
+        if list(run_card['folding']) != [1, 1, 1] or \
+                ('born_spreading' in run_card and run_card['born_spreading']):
+            return ('FKSSectorLearning (Cards/FKS_params.dat) requires folding = 1, 1, 1 '
+                    'and born_spreading = False in the run_card.')
+        if not (flag('FKSExplicitSum', True) and flag('MCSubtractionAtFixedFlow', True)):
+            return ('FKSSectorLearning requires FKSExplicitSum and MCSubtractionAtFixedFlow '
+                    '(Cards/FKS_params.dat).')
+        budget = mcatnlo_shower.read_fks_real(fks_params, 'FKSSectorLearningBudget', .2)
+        if not 0. < budget <= 1.:
+            return 'FKSSectorLearningBudget (Cards/FKS_params.dat) must be in (0,1].'
+    except ValueError as error:
+        return 'Cards/FKS_params.dat: %s' % error
+    return None
+
+
 def derive_shower_seed(iseed, job=1):
     """Reproducible shower seed in Pythia8's range [1, 900000000]."""
     return (abs(int(iseed)) * 69069 + 1013904223 + int(job) - 1) % 900000000 + 1
@@ -2019,6 +2049,13 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                 raise aMCatNLOError('%s is not a valid parton shower. '\
                                     'Please use one of the following: %s' \
                                     % (shower, ', '.join(shower_list)))
+
+            if mode_dict[mode] == 'all':
+                error = sector_learning_card_error(
+                    pjoin(self.me_dir, 'Cards', 'FKS_params.dat'), self.run_card,
+                    [pjoin(self.me_dir, 'SubProcesses', d) for d in p_dirs])
+                if error:
+                    raise aMCatNLOError(error)
 
             if mode in ['aMC@NLO', 'aMC@LO']:
                 logger.info('Doing %s matched to parton shower' % mode[4:])
