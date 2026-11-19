@@ -1078,7 +1078,13 @@ def profile_loop(
     # the runtime timing measures them (``reference_over``, the default
     # backend's row).
     default = DEFAULTS.get(contribution)
-    timing_alone = want_runtime and not want_stability
+    # Counts given are honoured as given: the rules apply under the default
+    # budget and --completion-time (which overrules every count).
+    timing_alone = (
+        want_runtime
+        and not want_stability
+        and not (runtime_given and completion is None)
+    )
     force_reference = is_default_truth_forced
     asked_backends = evaluation.reduction is not None or bench.all_backends is not None
     serving = [b for b in _serving(runtime, backends) if b in backends]
@@ -1092,18 +1098,14 @@ def profile_loop(
     def budget_bound(count: int) -> float:
         """The seconds the runtime minimums of ``count`` backends may take
         before the budget in force counts as exceeded, the counts row's
-        rule (``profile_plan.plan``): the default budget (all backends) or
-        --target-runtime per backend within ``BUDGET_TOLERANCE``, start-ups
-        aside; with --completion-time what is left of it, start-ups in."""
+        rule (``profile_plan.plan``): the default runtime budget (all
+        backends) within ``BUDGET_TOLERANCE``, start-ups aside; with
+        --completion-time what is left of it, start-ups in."""
 
+        del count  # one budget for the backends together
         if completion is not None:
             return completion - measured_at
-        budget = (
-            float(bench.target_runtime) * count
-            if runtime_given
-            else DEFAULT_RUNTIME_SECONDS
-        )
-        return BUDGET_TOLERANCE * budget
+        return BUDGET_TOLERANCE * DEFAULT_RUNTIME_SECONDS
 
     # The backends measured (a refusing one dropped), else a previous
     # profile's costs when it holds every serving backend's.

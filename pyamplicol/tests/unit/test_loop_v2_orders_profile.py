@@ -1363,7 +1363,12 @@ def test_a_cost_that_cannot_change_the_counts_is_not_measured(
         {
             "action": "benchmark",
             "evaluation": {"artifact": str(uux_ddx)},
-            "benchmark": {"runtime": True, "n_core": 1},
+            # Given: the reference is timed whatever the absurd prior says.
+            "benchmark": {
+                "runtime": True,
+                "n_core": 1,
+                "ground_truth": "double-double",
+            },
         }
     ).effective
     report = profile_loop(uux_ddx, config)
@@ -1529,6 +1534,7 @@ def test_the_warm_entry_replaces_a_dear_binary64_warm_up(uux_ddx, point_seconds)
         ({"ground_truth": "double-double"}, True),
         ({"ground_truth": "double-double"}, False),
         ({"stability": True, "stability_points": 4}, True),
+        ({"target_runtime": 1e-6}, True),
     ],
 )
 def test_an_exceeded_budget_times_the_default_backend_alone(
@@ -1540,7 +1546,8 @@ def test_an_exceeded_budget_times_the_default_backend_alone(
     the start-up takes the share), from the runtime timing's own costs; the
     record and the counts row name what was left out. --all-backends keeps
     every backend, an explicit --ground-truth the multiplier, --stability
-    both (its true digits need the reference)."""
+    both (its true digits need the reference), and counts given are
+    honoured as given."""
 
     import pyamplicol.profile_plan as plan_module
     from pyamplicol.config import resolve_config
@@ -1561,7 +1568,8 @@ def test_an_exceeded_budget_times_the_default_backend_alone(
     ).effective
     report = profile_loop(uux_ddx, config)
     rows = {row.backend: row.profile for row in report.runtime or ()}
-    stability = given.get("stability", False)
+    # Counts given (--target-runtime) are honoured as given.
+    stability = given.get("stability", False) or "target_runtime" in given
     forced = "ground_truth" in given
     every = given.get("all_backends") or stability
     assert set(rows) == ({"ninjars", "tirust"} if every else {"ninjars"})

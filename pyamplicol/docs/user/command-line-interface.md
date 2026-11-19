@@ -832,9 +832,9 @@ took):
 
   The runtime timing alone (no `--stability`) then also narrows what it
   times, by the `counts` row's own rule (the minimums exceed the budget in
-  force by more than a factor 1.5: the default 10 s of all backends, or
-  `--target-runtime` per backend; with `--completion-time` what is left of
-  it, start-ups included). First the reference: when the minimums of every
+  force by more than a factor 1.5: the default 10 s of all backends; with
+  `--completion-time` what is left of it, start-ups included; counts given
+  are honoured as given). First the reference: when the minimums of every
   backend with their reference points (one untimed and one timed point
   each) exceed it, no reference point is evaluated at all, and the `(dd xN)`
   / `(arb(D) xN)` multiplier is not shown, as with `--ground-truth none`;
