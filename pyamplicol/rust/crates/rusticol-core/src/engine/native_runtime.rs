@@ -2580,6 +2580,30 @@ impl NativeRuntime {
                 assignment_ids.len() * width
             )));
         }
+        // Energy signs before any lane: crossed slots (sigma = -1) carry negated momenta.
+        let initial_count = self
+            .flavour_union_relabelling
+            .as_ref()
+            .map(|relabelling| relabelling.initial_count)
+            .ok_or_else(|| {
+                RusticolError::integrity("flavour-union template lost its side split")
+            })?;
+        let negative = assignments
+            .iter()
+            .map(|assignment| crossing_negative_mask(&assignment.permutation, initial_count))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        for point in 0..point_count {
+            let requested = &assignment_ids[request_offsets[point]..request_offsets[point + 1]];
+            let first = negative[requested[0] as usize];
+            if requested.iter().any(|id| negative[*id as usize] != first) {
+                return Err(RusticolError::invalid_argument(format!(
+                    "point {point} requests assignments of different crossings; repeat the point per crossing"
+                )));
+            }
+        }
+        validate_energy_signs(momenta, self.runtime.external_count, |point| {
+            negative[assignment_ids[request_offsets[point]] as usize]
+        })?;
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
             let NativeExecutionLane::Recurrence(lane) = &mut self.execution_lane else {
@@ -3258,6 +3282,7 @@ impl NativeRuntime {
                 momenta.len()
             )));
         }
+        validate_energy_signs(momenta, self.runtime.external_count, |_| 0)?;
         let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
         let mut selector_scratch = std::mem::take(&mut self.point_selector_scratch);
         let result = (|| {
@@ -3335,7 +3360,7 @@ impl NativeRuntime {
         momenta: &[f64],
         point_count: usize,
     ) -> Result<Vec<f64>, RusticolError> {
-        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        validate_physical_momenta(momenta, point_count, self.runtime.external_count)?;
         let mut output = vec![0.0; point_count];
         let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
         let result = (|| {
@@ -3359,7 +3384,7 @@ impl NativeRuntime {
         point_count: usize,
         output: &mut [f64],
     ) -> RusticolResult<()> {
-        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        validate_physical_momenta(momenta, point_count, self.runtime.external_count)?;
         if output.len() != point_count {
             return Err(RusticolError::invalid_argument(format!(
                 "evaluation output has length {}, expected {point_count}",
@@ -3396,7 +3421,7 @@ impl NativeRuntime {
             ));
         }
         plan.ensure_matches(self)?;
-        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        validate_physical_momenta(momenta, point_count, self.runtime.external_count)?;
         if output.len() != point_count {
             return Err(RusticolError::invalid_argument(format!(
                 "evaluation output has length {}, expected {point_count}",
@@ -3531,7 +3556,7 @@ impl NativeRuntime {
         totals: &mut [f64],
         partials: &mut [f64],
     ) -> RusticolResult<()> {
-        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        validate_physical_momenta(momenta, point_count, self.runtime.external_count)?;
         if totals.len() != point_count {
             return Err(RusticolError::invalid_argument(format!(
                 "evaluation output has length {}, expected {point_count}",
@@ -3598,7 +3623,7 @@ impl NativeRuntime {
         color_by_point: Option<&[u32]>,
         output: &mut [f64],
     ) -> RusticolResult<()> {
-        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        validate_physical_momenta(momenta, point_count, self.runtime.external_count)?;
         if output.len() != point_count {
             return Err(RusticolError::invalid_argument(format!(
                 "evaluation output has length {}, expected {point_count}",
@@ -4282,7 +4307,7 @@ impl NativeRuntime {
                 "arena profile repetitions must be positive",
             ));
         }
-        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        validate_physical_momenta(momenta, point_count, self.runtime.external_count)?;
         let compiled_lane = match &self.execution_lane {
             NativeExecutionLane::Compiled => {
                 let snapshot = compiled_direct_profile_snapshot(&self.runtime)?;
@@ -5039,7 +5064,7 @@ impl NativeRuntime {
     ) -> Result<NativeResolvedEvaluation, RusticolError> {
         self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
         self.record_resolved_warnings(helicity_ids, color_ids)?;
-        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        validate_physical_momenta(momenta, point_count, self.runtime.external_count)?;
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if let NativeExecutionLane::OnTheFly(runtime) = &mut self.execution_lane {
             let selected_helicities = selector_set(helicity_ids, "helicity")?;
@@ -5793,6 +5818,7 @@ impl NativeRuntime {
                 self.runtime.external_count
             )));
         }
+        validate_energy_signs(momenta, self.runtime.external_count, |_| 0)?;
         let mut batch = Vec::with_capacity(point_count);
         for point_values in momenta.chunks_exact(values_per_point) {
             let point = point_values
@@ -5838,6 +5864,22 @@ impl NativeRuntime {
     ) -> RusticolResult<Vec<Vec<[Float; 4]>>> {
         let values_per_point =
             validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        // Energy signs at binary64 resolution; the sign of a parsed decimal is exact.
+        let energies = momenta
+            .iter()
+            .enumerate()
+            .map(|(index, value)| {
+                if index % 4 != 0 {
+                    return Ok(1.0);
+                }
+                value.parse::<f64>().map_err(|error| {
+                    RusticolError::invalid_argument(format!(
+                        "could not parse momentum energy {value:?}: {error}"
+                    ))
+                })
+            })
+            .collect::<RusticolResult<Vec<f64>>>()?;
+        validate_energy_signs(&energies, self.runtime.external_count, |_| 0)?;
         let mut batch = Vec::with_capacity(point_count);
         for point_values in momenta.chunks_exact(values_per_point) {
             let mut point = Vec::with_capacity(self.runtime.external_count);
@@ -5990,6 +6032,67 @@ fn validate_flat_momentum_shape(
         )));
     }
     Ok(values_per_point)
+}
+
+/// Bit `r` set iff template slot `r` and its member leg `permutation[r]` lie on
+/// different sides (sigma_r = -1); members share the template's initial count.
+pub(super) fn crossing_negative_mask(
+    permutation: &[usize],
+    initial_count: usize,
+) -> RusticolResult<u64> {
+    if permutation.len() > 64 {
+        return Err(RusticolError::compatibility(
+            "flavour-union assignments support at most 64 external legs",
+        ));
+    }
+    Ok(permutation
+        .iter()
+        .enumerate()
+        .filter(|(slot, leg)| (*slot < initial_count) != (**leg < initial_count))
+        .fold(0, |mask, (slot, _)| mask | (1 << slot)))
+}
+
+/// Shape check plus physical energies: every E finite and positive. Weyl kernels
+/// no longer zero wrongly signed states, so such momenta must be refused.
+pub(super) fn validate_physical_momenta(
+    momenta: &[f64],
+    point_count: usize,
+    external_count: usize,
+) -> RusticolResult<usize> {
+    let values_per_point =
+        validate_flat_momentum_shape(momenta.len(), point_count, external_count)?;
+    validate_energy_signs(momenta, external_count, |_| 0)?;
+    Ok(values_per_point)
+}
+
+/// Leg `r` of point `p` must have a finite, nonzero energy, negative iff bit `r`
+/// of `negative(p)` is set (a crossed slot); checked before any output write.
+pub(super) fn validate_energy_signs(
+    momenta: &[f64],
+    external_count: usize,
+    negative: impl Fn(usize) -> u64,
+) -> RusticolResult<()> {
+    if external_count == 0 {
+        return Ok(());
+    }
+    for (point, values) in momenta.chunks_exact(4 * external_count).enumerate() {
+        let mask = negative(point);
+        for leg in 0..external_count {
+            let energy = values[4 * leg];
+            let crossed = u32::try_from(leg)
+                .ok()
+                .and_then(|shift| mask.checked_shr(shift))
+                .is_some_and(|bits| bits & 1 == 1);
+            if !energy.is_finite() || energy == 0.0 || (energy < 0.0) != crossed {
+                return Err(RusticolError::invalid_argument(format!(
+                    "momentum of point {point}, leg {leg} has energy {energy}: expected a finite {} \
+                     energy (physical momenta; crossed slots of an assignment are negated)",
+                    if crossed { "negative" } else { "positive" }
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(feature = "symbolica-runtime")]
@@ -6224,5 +6327,35 @@ mod runtime_capability_cutover_tests {
             assert!(error.to_string().contains("legacy eager plan-v2"));
             assert!(error.to_string().contains("regenerate"));
         }
+    }
+}
+
+#[cfg(test)]
+mod momentum_sign_tests {
+    use super::*;
+
+    #[test]
+    fn physical_momenta_need_finite_positive_energies() {
+        let good = [5.0, 0.0, 0.0, 5.0, 5.0, 0.0, 0.0, -5.0];
+        assert!(validate_physical_momenta(&good, 1, 2).is_ok());
+        for energy in [0.0, -0.0, -5.0, f64::NAN, f64::INFINITY] {
+            let mut bad = good;
+            bad[4] = energy;
+            let error = validate_physical_momenta(&bad, 1, 2).expect_err("bad energy");
+            assert!(error.to_string().contains("leg 1"), "{error}");
+        }
+    }
+
+    #[test]
+    fn crossed_slots_expect_negative_energies() {
+        // Template slots 0, 1 initial; member legs: slot 1 -> final leg 2, slot 2 -> initial leg 1.
+        let mask = crossing_negative_mask(&[0, 2, 1, 3], 2).unwrap();
+        assert_eq!(mask, 0b0110);
+        let signed = [
+            5.0, 0.0, 0.0, 5.0, -5.0, 1.0, 0.0, 0.0, -5.0, 0.0, 0.0, -5.0, 5.0, -1.0, 0.0, 0.0,
+        ];
+        assert!(validate_energy_signs(&signed, 4, |_| mask).is_ok());
+        assert!(validate_energy_signs(&signed, 4, |_| 0).is_err());
+        assert_eq!(crossing_negative_mask(&[1, 0, 3, 2], 2).unwrap(), 0);
     }
 }

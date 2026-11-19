@@ -69,9 +69,13 @@ impl<'a> ResolvedSourceWavefunction<'a> {
         };
         let kind = match (family, dimension) {
             (GenericWavefunctionFamilyManifest::Scalar, 1) => ResolvedSourceKind::Scalar,
-            (GenericWavefunctionFamilyManifest::Fermion, 2) => ResolvedSourceKind::Weyl {
-                antiparticle: source_is_antiparticle(source)?,
-            },
+            (GenericWavefunctionFamilyManifest::Fermion, 2)
+                if matches!(state.chirality, 1 | -1) =>
+            {
+                ResolvedSourceKind::Weyl {
+                    antiparticle: source_is_antiparticle(source)?,
+                }
+            }
             (GenericWavefunctionFamilyManifest::Fermion, 4) => ResolvedSourceKind::Dirac {
                 antiparticle: source_is_antiparticle(source)?,
                 mass: mass(),
@@ -667,6 +671,9 @@ impl ExecutionRuntime {
                 )));
             }
             let chirality = state.chirality;
+            if !matches!(chirality, 1 | -1) {
+                return Err(unsupported_source_wavefunction(source));
+            }
             let wave = if source_is_antiparticle(source)? {
                 ext_antiquark_weyl_generic(&momentum, state.helicity, chirality)
             } else {

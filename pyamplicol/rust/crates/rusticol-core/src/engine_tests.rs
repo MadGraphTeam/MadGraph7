@@ -4672,6 +4672,15 @@ fn native_runtime_clear_is_a_noop_outside_the_on_the_fly_lane() {
     );
 }
 
+/// Flat momenta of the given length with every energy 1 (physical, at rest):
+/// the evaluation entry points refuse nonpositive energies.
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+fn physical_test_momenta(len: usize) -> Vec<f64> {
+    (0..len)
+        .map(|index| if index % 4 == 0 { 1.0 } else { 0.0 })
+        .collect()
+}
+
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 fn scalar_on_the_fly_native_runtime() -> NativeRuntime {
     scalar_on_the_fly_native_runtime_with_color_contraction(None)
@@ -4795,7 +4804,7 @@ fn scalar_on_the_fly_native_runtime_with_color_contraction(
 fn on_the_fly_warmed_fixed_selection_is_allocation_free_and_last_family_only() {
     let mut runtime = scalar_on_the_fly_native_runtime();
     let point_count = 2;
-    let momenta = vec![0.0; point_count * 2 * 4];
+    let momenta = physical_test_momenta(point_count * 2 * 4);
     let color = ["flow:singlet".to_string()];
     let selection_a = ["h:+0,+0".to_string()];
     let selection_b = ["h:+1,+1".to_string()];
@@ -4922,7 +4931,7 @@ fn on_the_fly_unprofiled_lc_and_contracted_match_profiles_and_allocate_nothing()
         }
         let label = if contracted { "contracted" } else { "LC" };
         let point_count = 2;
-        let momenta = vec![0.0; point_count * 2 * 4];
+        let momenta = physical_test_momenta(point_count * 2 * 4);
         let helicities = ["h:+0,+0".to_string()];
         let color = ["flow:singlet".to_string()];
         let colors = (!contracted).then_some(color.as_slice());
@@ -5042,7 +5051,7 @@ fn on_the_fly_runtime_state_census_is_observational() {
     assert_eq!(retained_state(&runtime), cold_state);
 
     let point_count = 2;
-    let momenta = vec![0.0; point_count * 2 * 4];
+    let momenta = physical_test_momenta(point_count * 2 * 4);
     let first = runtime
         .evaluate_f64_with_selectors(&momenta, point_count, None, None, None, None)
         .unwrap();
@@ -5067,7 +5076,7 @@ fn on_the_fly_contracted_color_selectors_fail_at_the_common_public_boundary() {
     // by authenticated public accuracy.  No contracted request may reach the
     // compact structural planner.
     runtime.runtime.color_accuracy = "full".to_string();
-    let momenta = vec![0.0; 2 * 4];
+    let momenta = physical_test_momenta(2 * 4);
     let color_by_point = [0_u32];
     let error = runtime
         .evaluate_f64_with_selectors(&momenta, 1, None, None, None, Some(&color_by_point))
@@ -5090,7 +5099,7 @@ fn on_the_fly_contracted_later_tile_failure_clears_both_selection_caches() {
     let mut runtime = scalar_on_the_fly_native_runtime_with_color_contraction(Some(contraction));
     runtime.runtime.color_accuracy = "full".to_string();
     let point_count = 2;
-    let momenta = vec![0.0; point_count * 2 * 4];
+    let momenta = physical_test_momenta(point_count * 2 * 4);
     let selection_a = ["h:+0,+0".to_string()];
     let selection_b = ["h:+1,+1".to_string()];
 
@@ -5140,7 +5149,7 @@ fn on_the_fly_contracted_streaming_bounds_live_outcomes_and_retains_one_family()
     };
     let mut runtime = scalar_on_the_fly_native_runtime_with_color_contraction(Some(contraction));
     runtime.runtime.color_accuracy = "full".to_string();
-    let momenta = vec![0.0; 2 * 4];
+    let momenta = physical_test_momenta(2 * 4);
 
     let values = runtime
         .evaluate_f64_with_selectors(&momenta, 1, None, None, None, None)
@@ -5168,7 +5177,7 @@ fn on_the_fly_warm_up_reports_ordered_phases_and_reuses_the_committed_family() {
     };
     let mut runtime = scalar_on_the_fly_native_runtime_with_color_contraction(Some(contraction));
     runtime.runtime.color_accuracy = "full".to_string();
-    let momenta = vec![0.0; 2 * 4];
+    let momenta = physical_test_momenta(2 * 4);
     let mut events = Vec::new();
     let mut observer = |event: &NativeOnTheFlyWarmUpEvent| {
         assert_eq!(event.schema_version, 1);
@@ -5224,7 +5233,7 @@ fn on_the_fly_warm_up_reports_ordered_phases_and_reuses_the_committed_family() {
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[test]
 fn on_the_fly_lc_warm_up_streams_intermediate_progress_and_matches_ordinary_evaluation() {
-    let momenta = vec![0.0; 2 * 4];
+    let momenta = physical_test_momenta(2 * 4);
     let mut warmed = scalar_on_the_fly_native_runtime();
     let mut events = Vec::new();
     let mut observer = |event: &NativeOnTheFlyWarmUpEvent| {
@@ -5289,7 +5298,7 @@ fn on_the_fly_warm_up_core_override_preserves_nonzero_results_and_cache() {
             runtime.runtime.color_accuracy = color_accuracy.to_string();
             runtime
         };
-        let momenta = [0.0; 2 * 4];
+        let momenta = physical_test_momenta(2 * 4);
         let mut serial = make_runtime();
         serial
             .warm_up_f64(&momenta, None, None, Some(1), None)
@@ -5369,7 +5378,7 @@ fn on_the_fly_warm_up_core_override_preserves_nonzero_results_and_cache() {
 #[test]
 fn on_the_fly_warm_up_rejects_zero_cores_without_changing_cache() {
     let mut runtime = scalar_on_the_fly_native_runtime();
-    let momenta = [0.0; 2 * 4];
+    let momenta = physical_test_momenta(2 * 4);
     let cold = runtime.on_the_fly_runtime_state_census_json().unwrap();
     let error = runtime
         .warm_up_f64(&momenta, None, None, Some(0), None)
@@ -5410,7 +5419,7 @@ fn on_the_fly_contracted_midstream_warm_up_cancellation_rolls_back_to_retained_s
     };
     let mut runtime = scalar_on_the_fly_native_runtime_with_color_contraction(Some(contraction));
     runtime.runtime.color_accuracy = "full".to_string();
-    let momenta = vec![0.0; 2 * 4];
+    let momenta = physical_test_momenta(2 * 4);
     let retained_helicity = ["h:+0,+0".to_string()];
     runtime
         .warm_up_on_the_fly_f64_with_selectors(&momenta, Some(&retained_helicity), None, None, None)
@@ -5451,7 +5460,7 @@ fn on_the_fly_contracted_midstream_warm_up_cancellation_rolls_back_to_retained_s
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[test]
 fn on_the_fly_warm_up_terminal_notification_is_non_cancellable_after_commit() {
-    let momenta = vec![0.0; 2 * 4];
+    let momenta = physical_test_momenta(2 * 4);
     let mut runtime = scalar_on_the_fly_native_runtime();
     let terminal_delivery_count = std::cell::Cell::new(0);
     let mut failing_terminal = |event: &NativeOnTheFlyWarmUpEvent| {
@@ -5488,7 +5497,7 @@ fn on_the_fly_warm_up_terminal_notification_is_non_cancellable_after_commit() {
 #[test]
 fn on_the_fly_warm_up_native_boundary_rejects_invalid_lane_and_selectors() {
     let mut compiled = zero_native_runtime();
-    let compiled_momenta = vec![0.0; compiled.external_count() * 4];
+    let compiled_momenta = physical_test_momenta(compiled.external_count() * 4);
     let error = compiled
         .warm_up_on_the_fly_f64_with_selectors(&compiled_momenta, None, None, None, None)
         .unwrap_err();
@@ -5504,7 +5513,7 @@ fn on_the_fly_warm_up_native_boundary_rejects_invalid_lane_and_selectors() {
     };
     let mut contracted = scalar_on_the_fly_native_runtime_with_color_contraction(Some(contraction));
     contracted.runtime.color_accuracy = "full".to_string();
-    let momenta = vec![0.0; contracted.external_count() * 4];
+    let momenta = physical_test_momenta(contracted.external_count() * 4);
     let color = ["color:contracted".to_string()];
     let error = contracted
         .warm_up_on_the_fly_f64_with_selectors(&momenta, None, Some(&color), None, None)
@@ -5523,7 +5532,7 @@ fn on_the_fly_warm_up_native_boundary_rejects_invalid_lane_and_selectors() {
 #[test]
 fn on_the_fly_warm_up_cancellation_preserves_the_last_committed_selection() {
     let mut runtime = scalar_on_the_fly_native_runtime();
-    let momenta = vec![0.0; 2 * 4];
+    let momenta = physical_test_momenta(2 * 4);
     let color = ["flow:singlet".to_string()];
     let selection_a = ["h:+0,+0".to_string()];
     let selection_b = ["h:+1,+1".to_string()];
@@ -5571,7 +5580,13 @@ fn on_the_fly_warm_up_cancellation_preserves_the_last_committed_selection() {
 fn on_the_fly_warm_up_rejects_more_than_one_point() {
     let mut runtime = scalar_on_the_fly_native_runtime();
     let error = runtime
-        .warm_up_on_the_fly_f64_with_selectors(&[0.0; 2 * 2 * 4], None, None, None, None)
+        .warm_up_on_the_fly_f64_with_selectors(
+            &physical_test_momenta(2 * 2 * 4),
+            None,
+            None,
+            None,
+            None,
+        )
         .unwrap_err();
     assert!(error.to_string().contains("exactly one point"));
 }
@@ -5609,7 +5624,7 @@ fn on_the_fly_public_paths_vectorize_with_a_last_family_only_cache() {
 
     let mut runtime = scalar_on_the_fly_native_runtime();
     let point_count = 6;
-    let momenta = vec![0.0; point_count * 2 * 4];
+    let momenta = physical_test_momenta(point_count * 2 * 4);
     let cold_census = census(&runtime);
     assert_eq!(
         cold_census["kind"],

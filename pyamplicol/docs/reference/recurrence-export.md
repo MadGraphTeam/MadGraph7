@@ -139,7 +139,9 @@ remain in this axis even when they require no instructions.
 
 Source families are `scalar`, `weyl`, `dirac`, `vector`, and `spin2`.
 Orientations are `particle`, `antiparticle`, and `self_conjugate`. Source
-helicity and chirality have already been crossed. Source formulas use
+helicity and chirality have already been crossed. `weyl` derives helicity =
+chirality·sgn(E); the stored helicity is informational (since
+`rusticol-batched-f64-v2`; v1 returned zero when they disagreed). Source formulas use
 `mass.re`; `mass.im` records the parameter's imaginary component but is not
 used by these wavefunctions. A nonempty `embedding` scatters the source
 formula's components into the arena; a null

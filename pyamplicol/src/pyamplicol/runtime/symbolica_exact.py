@@ -3457,9 +3457,19 @@ def _particle_mass(
     return _decimal(record.get("mass", 0), "particle mass")
 
 
+def _weyl_helicity(momentum: Sequence[Decimal], chirality: int) -> int:
+    """A massless Weyl state's helicity: chirality * sgn(E), as the native kernels."""
+
+    if chirality not in (1, -1):
+        raise ArtifactError("Weyl source chirality must be +1 or -1")
+    return chirality if momentum[0] > 0 else -chirality
+
+
 def _quark_weyl(
     momentum: Sequence[Decimal], helicity: int, chirality: int
 ) -> tuple[_ComplexDecimal, _ComplexDecimal]:
+    # The passed helicity is informational; it is derived from chirality and sgn(E).
+    helicity = _weyl_helicity(momentum, chirality)
     energy, px, py, pz = momentum
     if energy > 0:
         sq = (
@@ -3467,38 +3477,31 @@ def _quark_weyl(
             if px == 0 and py == 0 and pz < 0
             else _sqrt(energy + pz, "Weyl source")
         )
-        chi1 = (sq, _ZERO)
         chi2 = (
             (-Decimal(helicity) * _sqrt(_TWO * energy, "Weyl source"), _ZERO)
             if sq == 0
             else (Decimal(helicity) * px / sq, -py / sq)
         )
-        if helicity == 1 and chirality == 1:
-            return chi1, chi2
-        if helicity == -1 and chirality == -1:
-            return chi2, chi1
-        return _complex_zero(), _complex_zero()
-    sq = (
-        _ZERO
-        if px == 0 and py == 0 and pz > 0
-        else -_sqrt(-(energy + pz), "Weyl source")
-    )
+    else:
+        sq = (
+            _ZERO
+            if px == 0 and py == 0 and pz > 0
+            else -_sqrt(-(energy + pz), "Weyl source")
+        )
+        chi2 = (
+            (-Decimal(helicity) * _sqrt(_TWO * abs(energy), "Weyl source"), _ZERO)
+            if sq == 0
+            else (Decimal(helicity) * px / sq, py / sq)
+        )
     chi1 = (sq, _ZERO)
-    chi2 = (
-        (-Decimal(helicity) * _sqrt(_TWO * abs(energy), "Weyl source"), _ZERO)
-        if sq == 0
-        else (Decimal(helicity) * px / sq, py / sq)
-    )
-    if helicity == -1 and chirality == 1:
-        return chi1, chi2
-    if helicity == 1 and chirality == -1:
-        return chi2, chi1
-    return _complex_zero(), _complex_zero()
+    return (chi1, chi2) if chirality == 1 else (chi2, chi1)
 
 
 def _antiquark_weyl(
     momentum: Sequence[Decimal], helicity: int, chirality: int
 ) -> tuple[_ComplexDecimal, _ComplexDecimal]:
+    # The passed helicity is informational, as in _quark_weyl.
+    helicity = _weyl_helicity(momentum, chirality)
     energy, px, py, pz = momentum
     if energy > 0:
         sq = (
@@ -3506,33 +3509,24 @@ def _antiquark_weyl(
             if px == 0 and py == 0 and pz < 0
             else -_sqrt(energy + pz, "Weyl source")
         )
-        chi1 = (sq, _ZERO)
         chi2 = (
             (-Decimal(helicity) * _sqrt(_TWO * energy, "Weyl source"), _ZERO)
             if sq == 0
             else (-Decimal(helicity) * px / sq, py / sq)
         )
-        if helicity == 1 and chirality == 1:
-            return chi2, chi1
-        if helicity == -1 and chirality == -1:
-            return chi1, chi2
-        return _complex_zero(), _complex_zero()
-    sq = (
-        _ZERO
-        if px == 0 and py == 0 and pz > 0
-        else _sqrt(-(energy + pz), "Weyl source")
-    )
+    else:
+        sq = (
+            _ZERO
+            if px == 0 and py == 0 and pz > 0
+            else _sqrt(-(energy + pz), "Weyl source")
+        )
+        chi2 = (
+            (-Decimal(helicity) * _sqrt(_TWO * abs(energy), "Weyl source"), _ZERO)
+            if sq == 0
+            else (-Decimal(helicity) * px / sq, -py / sq)
+        )
     chi1 = (sq, _ZERO)
-    chi2 = (
-        (-Decimal(helicity) * _sqrt(_TWO * abs(energy), "Weyl source"), _ZERO)
-        if sq == 0
-        else (-Decimal(helicity) * px / sq, -py / sq)
-    )
-    if helicity == -1 and chirality == 1:
-        return chi2, chi1
-    if helicity == 1 and chirality == -1:
-        return chi1, chi2
-    return _complex_zero(), _complex_zero()
+    return (chi2, chi1) if chirality == 1 else (chi1, chi2)
 
 
 def _massless_chirality(momentum: Sequence[Decimal], helicity: int) -> int:

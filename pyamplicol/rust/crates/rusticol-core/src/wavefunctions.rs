@@ -800,70 +800,68 @@ where
 
 pub(super) fn ext_quark_weyl_array(
     momentum: [f64; 4],
-    helicity: i32,
+    _helicity: i32,
     chirality: i32,
 ) -> [Complex<f64>; 2] {
+    // A massless Weyl state's helicity is chirality * sgn(E); the passed helicity is informational.
+    debug_assert!(chirality == 1 || chirality == -1);
     let [energy, px, py, pz] = momentum;
-    if energy > 0.0 {
+    let helicity = if energy > 0.0 { chirality } else { -chirality };
+    let (chi1, chi2) = if energy > 0.0 {
         let sqp0p3 = if px == 0.0 && py == 0.0 && pz < 0.0 {
             0.0
         } else {
             (energy + pz).max(0.0).sqrt()
         };
-        let chi1 = c64(sqp0p3, 0.0);
         let chi2 = if sqp0p3 == 0.0 {
             c64(-(helicity as f64) * (2.0 * energy).sqrt(), 0.0)
         } else {
             c64(helicity as f64 * px / sqp0p3, -py / sqp0p3)
         };
-        if helicity == 1 && chirality == 1 {
-            return [chi1, chi2];
-        }
-        if helicity == -1 && chirality == -1 {
-            return [chi2, chi1];
-        }
-        return [c64(0.0, 0.0), c64(0.0, 0.0)];
-    }
-    let sqp0p3 = if px == 0.0 && py == 0.0 && pz > 0.0 {
-        0.0
+        (c64(sqp0p3, 0.0), chi2)
     } else {
-        -(-(energy + pz)).max(0.0).sqrt()
+        let sqp0p3 = if px == 0.0 && py == 0.0 && pz > 0.0 {
+            0.0
+        } else {
+            -(-(energy + pz)).max(0.0).sqrt()
+        };
+        let chi2 = if sqp0p3 == 0.0 {
+            c64(-(helicity as f64) * (2.0 * energy.abs()).sqrt(), 0.0)
+        } else {
+            c64(-(helicity as f64) * (-px) / sqp0p3, py / sqp0p3)
+        };
+        (c64(sqp0p3, 0.0), chi2)
     };
-    let chi1 = c64(sqp0p3, 0.0);
-    let chi2 = if sqp0p3 == 0.0 {
-        c64(-(helicity as f64) * (2.0 * energy.abs()).sqrt(), 0.0)
-    } else {
-        c64(-(helicity as f64) * (-px) / sqp0p3, py / sqp0p3)
-    };
-    if helicity == -1 && chirality == 1 {
+    if chirality == 1 {
         [chi1, chi2]
-    } else if helicity == 1 && chirality == -1 {
-        [chi2, chi1]
     } else {
-        [c64(0.0, 0.0), c64(0.0, 0.0)]
+        [chi2, chi1]
     }
 }
 
 #[cfg(feature = "symbolica-runtime")]
 pub(super) fn ext_quark_weyl_generic<T>(
     momentum: &[T; 4],
-    helicity: i32,
+    _helicity: i32,
     chirality: i32,
 ) -> Vec<Complex<T>>
 where
     T: Real + RealLike + From<f64> + PartialOrd + Clone,
 {
+    // Helicity = chirality * sgn(E), as ext_quark_weyl_array.
+    debug_assert!(chirality == 1 || chirality == -1);
     let energy = momentum[0].clone();
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
-    if energy > T::new_zero() {
+    let positive = energy > T::new_zero();
+    let helicity = if positive { chirality } else { -chirality };
+    let (chi1, chi2) = if positive {
         let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz < T::new_zero() {
             T::new_zero()
         } else {
             t_max(&(energy.clone() + pz.clone()), &T::new_zero()).sqrt()
         };
-        let chi1 = c_generic(sqp0p3.clone(), T::new_zero());
         let chi2 = if is_zero(&sqp0p3) {
             c_generic(
                 -energy.from_i64(helicity as i64) * (energy.from_i64(2) * energy.clone()).sqrt(),
@@ -875,106 +873,97 @@ where
                 -py.clone() / sqp0p3.clone(),
             )
         };
-        if helicity == 1 && chirality == 1 {
-            return vec![chi1, chi2];
-        }
-        if helicity == -1 && chirality == -1 {
-            return vec![chi2, chi1];
-        }
-        return vec![complex_zero(), complex_zero()];
-    }
-    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
-        T::new_zero()
+        (c_generic(sqp0p3, T::new_zero()), chi2)
     } else {
-        -t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
+        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
+            T::new_zero()
+        } else {
+            -t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
+        };
+        let chi2 = if is_zero(&sqp0p3) {
+            c_generic(
+                -energy.from_i64(helicity as i64) * (energy.from_i64(2) * energy.norm()).sqrt(),
+                T::new_zero(),
+            )
+        } else {
+            c_generic(
+                -energy.from_i64(helicity as i64) * (-px.clone()) / sqp0p3.clone(),
+                py.clone() / sqp0p3.clone(),
+            )
+        };
+        (c_generic(sqp0p3, T::new_zero()), chi2)
     };
-    let chi1 = c_generic(sqp0p3.clone(), T::new_zero());
-    let chi2 = if is_zero(&sqp0p3) {
-        c_generic(
-            -energy.from_i64(helicity as i64) * (energy.from_i64(2) * energy.norm()).sqrt(),
-            T::new_zero(),
-        )
-    } else {
-        c_generic(
-            -energy.from_i64(helicity as i64) * (-px.clone()) / sqp0p3.clone(),
-            py.clone() / sqp0p3.clone(),
-        )
-    };
-    if helicity == -1 && chirality == 1 {
+    if chirality == 1 {
         vec![chi1, chi2]
-    } else if helicity == 1 && chirality == -1 {
-        vec![chi2, chi1]
     } else {
-        vec![complex_zero(), complex_zero()]
+        vec![chi2, chi1]
     }
 }
 
 pub(super) fn ext_antiquark_weyl_array(
     momentum: [f64; 4],
-    helicity: i32,
+    _helicity: i32,
     chirality: i32,
 ) -> [Complex<f64>; 2] {
+    // Helicity = chirality * sgn(E), as ext_quark_weyl_array.
+    debug_assert!(chirality == 1 || chirality == -1);
     let [energy, px, py, pz] = momentum;
-    if energy > 0.0 {
+    let helicity = if energy > 0.0 { chirality } else { -chirality };
+    let (chi1, chi2) = if energy > 0.0 {
         let sqp0p3 = if px == 0.0 && py == 0.0 && pz < 0.0 {
             0.0
         } else {
             -(energy + pz).max(0.0).sqrt()
         };
-        let chi1 = c64(sqp0p3, 0.0);
         let chi2 = if sqp0p3 == 0.0 {
             c64(-(helicity as f64) * (2.0 * energy).sqrt(), 0.0)
         } else {
             c64(-(helicity as f64) * px / sqp0p3, py / sqp0p3)
         };
-        if helicity == 1 && chirality == 1 {
-            return [chi2, chi1];
-        }
-        if helicity == -1 && chirality == -1 {
-            return [chi1, chi2];
-        }
-        return [c64(0.0, 0.0), c64(0.0, 0.0)];
-    }
-    let sqp0p3 = if px == 0.0 && py == 0.0 && pz > 0.0 {
-        0.0
+        (c64(sqp0p3, 0.0), chi2)
     } else {
-        (-(energy + pz)).max(0.0).sqrt()
+        let sqp0p3 = if px == 0.0 && py == 0.0 && pz > 0.0 {
+            0.0
+        } else {
+            (-(energy + pz)).max(0.0).sqrt()
+        };
+        let chi2 = if sqp0p3 == 0.0 {
+            c64(-(helicity as f64) * (2.0 * energy.abs()).sqrt(), 0.0)
+        } else {
+            c64(helicity as f64 * (-px) / sqp0p3, -py / sqp0p3)
+        };
+        (c64(sqp0p3, 0.0), chi2)
     };
-    let chi1 = c64(sqp0p3, 0.0);
-    let chi2 = if sqp0p3 == 0.0 {
-        c64(-(helicity as f64) * (2.0 * energy.abs()).sqrt(), 0.0)
-    } else {
-        c64(helicity as f64 * (-px) / sqp0p3, -py / sqp0p3)
-    };
-    if helicity == -1 && chirality == 1 {
+    if chirality == 1 {
         [chi2, chi1]
-    } else if helicity == 1 && chirality == -1 {
-        [chi1, chi2]
     } else {
-        [c64(0.0, 0.0), c64(0.0, 0.0)]
+        [chi1, chi2]
     }
 }
 
 #[cfg(feature = "symbolica-runtime")]
 pub(super) fn ext_antiquark_weyl_generic<T>(
     momentum: &[T; 4],
-    helicity: i32,
+    _helicity: i32,
     chirality: i32,
 ) -> Vec<Complex<T>>
 where
     T: Real + RealLike + From<f64> + PartialOrd + Clone,
 {
+    // Helicity = chirality * sgn(E), as ext_quark_weyl_array.
+    debug_assert!(chirality == 1 || chirality == -1);
     let energy = momentum[0].clone();
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
-    if energy > T::new_zero() {
+    let positive = energy > T::new_zero();
+    let helicity = if positive { chirality } else { -chirality };
+    let (chi1, chi2) = if positive {
         let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz < T::new_zero() {
             T::new_zero()
         } else {
             -t_max(&(energy.clone() + pz.clone()), &T::new_zero()).sqrt()
         };
-        let chi1 = c_generic(sqp0p3.clone(), T::new_zero());
         let chi2 = if is_zero(&sqp0p3) {
             c_generic(
                 -energy.from_i64(helicity as i64) * (energy.from_i64(2) * energy.clone()).sqrt(),
@@ -986,37 +975,30 @@ where
                 py.clone() / sqp0p3.clone(),
             )
         };
-        if helicity == 1 && chirality == 1 {
-            return vec![chi2, chi1];
-        }
-        if helicity == -1 && chirality == -1 {
-            return vec![chi1, chi2];
-        }
-        return vec![complex_zero(), complex_zero()];
-    }
-    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
-        T::new_zero()
+        (c_generic(sqp0p3, T::new_zero()), chi2)
     } else {
-        t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
+        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
+            T::new_zero()
+        } else {
+            t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
+        };
+        let chi2 = if is_zero(&sqp0p3) {
+            c_generic(
+                -energy.from_i64(helicity as i64) * (energy.from_i64(2) * energy.norm()).sqrt(),
+                T::new_zero(),
+            )
+        } else {
+            c_generic(
+                energy.from_i64(helicity as i64) * (-px.clone()) / sqp0p3.clone(),
+                -py.clone() / sqp0p3.clone(),
+            )
+        };
+        (c_generic(sqp0p3, T::new_zero()), chi2)
     };
-    let chi1 = c_generic(sqp0p3.clone(), T::new_zero());
-    let chi2 = if is_zero(&sqp0p3) {
-        c_generic(
-            -energy.from_i64(helicity as i64) * (energy.from_i64(2) * energy.norm()).sqrt(),
-            T::new_zero(),
-        )
-    } else {
-        c_generic(
-            energy.from_i64(helicity as i64) * (-px.clone()) / sqp0p3.clone(),
-            -py.clone() / sqp0p3.clone(),
-        )
-    };
-    if helicity == -1 && chirality == 1 {
+    if chirality == 1 {
         vec![chi2, chi1]
-    } else if helicity == 1 && chirality == -1 {
-        vec![chi1, chi2]
     } else {
-        vec![complex_zero(), complex_zero()]
+        vec![chi1, chi2]
     }
 }
 
@@ -1175,4 +1157,187 @@ where
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod weyl_covariance_tests {
+    //! WP-A: the Weyl kernels derive helicity = chirality * sgn(E). Every state the
+    //! old kernels did not zero is bitwise unchanged; the zeroed ones become the crossed state.
+    use super::{Complex, c64, ext_antiquark_weyl_array, ext_quark_weyl_array, negate};
+
+    // The kernels before WP-A (reference, zero for h != c*sgn(E)).
+    fn old_quark(momentum: [f64; 4], helicity: i32, chirality: i32) -> [Complex<f64>; 2] {
+        let [energy, px, py, pz] = momentum;
+        let zero = [c64(0.0, 0.0), c64(0.0, 0.0)];
+        if energy > 0.0 {
+            let sq = if px == 0.0 && py == 0.0 && pz < 0.0 {
+                0.0
+            } else {
+                (energy + pz).max(0.0).sqrt()
+            };
+            let chi1 = c64(sq, 0.0);
+            let chi2 = if sq == 0.0 {
+                c64(-(helicity as f64) * (2.0 * energy).sqrt(), 0.0)
+            } else {
+                c64(helicity as f64 * px / sq, -py / sq)
+            };
+            return match (helicity, chirality) {
+                (1, 1) => [chi1, chi2],
+                (-1, -1) => [chi2, chi1],
+                _ => zero,
+            };
+        }
+        let sq = if px == 0.0 && py == 0.0 && pz > 0.0 {
+            0.0
+        } else {
+            -(-(energy + pz)).max(0.0).sqrt()
+        };
+        let chi1 = c64(sq, 0.0);
+        let chi2 = if sq == 0.0 {
+            c64(-(helicity as f64) * (2.0 * energy.abs()).sqrt(), 0.0)
+        } else {
+            c64(-(helicity as f64) * (-px) / sq, py / sq)
+        };
+        match (helicity, chirality) {
+            (-1, 1) => [chi1, chi2],
+            (1, -1) => [chi2, chi1],
+            _ => zero,
+        }
+    }
+
+    fn old_antiquark(momentum: [f64; 4], helicity: i32, chirality: i32) -> [Complex<f64>; 2] {
+        let [energy, px, py, pz] = momentum;
+        let zero = [c64(0.0, 0.0), c64(0.0, 0.0)];
+        if energy > 0.0 {
+            let sq = if px == 0.0 && py == 0.0 && pz < 0.0 {
+                0.0
+            } else {
+                -(energy + pz).max(0.0).sqrt()
+            };
+            let chi1 = c64(sq, 0.0);
+            let chi2 = if sq == 0.0 {
+                c64(-(helicity as f64) * (2.0 * energy).sqrt(), 0.0)
+            } else {
+                c64(-(helicity as f64) * px / sq, py / sq)
+            };
+            return match (helicity, chirality) {
+                (1, 1) => [chi2, chi1],
+                (-1, -1) => [chi1, chi2],
+                _ => zero,
+            };
+        }
+        let sq = if px == 0.0 && py == 0.0 && pz > 0.0 {
+            0.0
+        } else {
+            (-(energy + pz)).max(0.0).sqrt()
+        };
+        let chi1 = c64(sq, 0.0);
+        let chi2 = if sq == 0.0 {
+            c64(-(helicity as f64) * (2.0 * energy.abs()).sqrt(), 0.0)
+        } else {
+            c64(helicity as f64 * (-px) / sq, -py / sq)
+        };
+        match (helicity, chirality) {
+            (-1, 1) => [chi2, chi1],
+            (1, -1) => [chi1, chi2],
+            _ => zero,
+        }
+    }
+
+    /// Random massless momenta (E > 0) plus the beam-axis special cases.
+    fn momenta() -> Vec<[f64; 4]> {
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut uniform = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state >> 11) as f64 / (1_u64 << 53) as f64
+        };
+        let mut out = vec![
+            [7.0, 0.0, 0.0, 7.0],
+            [7.0, 0.0, 0.0, -7.0],
+            [3.5, 0.0, 0.0, 3.5],
+            [0.25, 0.0, 0.0, -0.25],
+        ];
+        for _ in 0..200 {
+            let energy = 0.1 + 500.0 * uniform();
+            let cos = 2.0 * uniform() - 1.0;
+            let phi = std::f64::consts::TAU * uniform();
+            let sin = (1.0 - cos * cos).max(0.0).sqrt();
+            out.push([
+                energy,
+                energy * sin * phi.cos(),
+                energy * sin * phi.sin(),
+                energy * cos,
+            ]);
+        }
+        out
+    }
+
+    type Kernel = fn([f64; 4], i32, i32) -> [Complex<f64>; 2];
+
+    #[test]
+    fn weyl_kernels_derive_helicity_from_chirality_and_energy_sign() {
+        let pairs: [(Kernel, Kernel); 2] = [
+            (ext_quark_weyl_array, old_quark),
+            (ext_antiquark_weyl_array, old_antiquark),
+        ];
+        let bits = |wave: [Complex<f64>; 2]| wave.map(|z| (z.re.to_bits(), z.im.to_bits()));
+        for (new, old) in pairs {
+            for momentum in momenta() {
+                for chirality in [-1, 1] {
+                    let expected = old(momentum, chirality, chirality);
+                    let crossed = old(negate(momentum), -chirality, chirality);
+                    assert!(expected.iter().any(|z| *z != c64(0.0, 0.0)));
+                    assert!(crossed.iter().any(|z| *z != c64(0.0, 0.0)));
+                    for helicity in [-1, 0, 1] {
+                        assert_eq!(bits(new(momentum, helicity, chirality)), bits(expected));
+                        assert_eq!(
+                            bits(new(negate(momentum), helicity, chirality)),
+                            bits(crossed)
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    #[test]
+    fn generic_weyl_kernels_equal_the_binary64_ones() {
+        use super::{ext_antiquark_weyl_generic, ext_quark_weyl_generic};
+        use symbolica::domains::float::{DoubleFloat, RealLike};
+
+        let close = |left: &[Complex<DoubleFloat>], right: [Complex<f64>; 2]| {
+            for (l, r) in left.iter().zip(right) {
+                let scale = 1.0 + r.re.abs() + r.im.abs();
+                assert!(
+                    (l.re.to_f64() - r.re).abs() <= 1.0e-14 * scale,
+                    "{l:?} {r:?}"
+                );
+                assert!(
+                    (l.im.to_f64() - r.im).abs() <= 1.0e-14 * scale,
+                    "{l:?} {r:?}"
+                );
+            }
+        };
+        for momentum in momenta() {
+            for sign in [1.0, -1.0] {
+                let p = momentum.map(|x| sign * x);
+                let wide = p.map(DoubleFloat::from);
+                for chirality in [-1, 1] {
+                    for helicity in [-1, 1] {
+                        close(
+                            &ext_quark_weyl_generic(&wide, helicity, chirality),
+                            ext_quark_weyl_array(p, helicity, chirality),
+                        );
+                        close(
+                            &ext_antiquark_weyl_generic(&wide, helicity, chirality),
+                            ext_antiquark_weyl_array(p, helicity, chirality),
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

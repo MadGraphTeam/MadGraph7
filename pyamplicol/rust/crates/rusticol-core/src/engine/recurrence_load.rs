@@ -4716,6 +4716,12 @@ fn direct_source_template_spec(
         .checked_mul(crossing.spin_state_factor)
         .ok_or_else(|| RusticolError::integrity("recurrence source spin state overflows"))?;
     let family = direct_source_family(&source.source_ir)?;
+    // Weyl kernels derive helicity = chirality * sgn(E): chirality must be +-1.
+    if family == DirectSourceWavefunctionFamily::WeylFermion && !matches!(chirality, 1 | -1) {
+        return Err(RusticolError::integrity(
+            "recurrence Weyl source chirality is not +1 or -1",
+        ));
+    }
     let orientation = match source.source_ir.identity.orientation {
         RecurrenceSourceOrientation::Particle => DirectSourceOrientation::Particle,
         RecurrenceSourceOrientation::Antiparticle => DirectSourceOrientation::Antiparticle,

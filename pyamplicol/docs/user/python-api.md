@@ -323,6 +323,10 @@ Input shape is:
 (point, external particle, [E, px, py, pz])
 ```
 
+Momenta are physical: every binary64 entry point refuses a point whose
+energies are not finite and positive, since a massless quark source fed a
+negated momentum is the crossed state rather than zero.
+
 At LC, resolved shape is `(point, helicity, color_flow)`. At NLC/full,
 the color dimension has length one because color is contracted. A one-loop
 virtual's `evaluate_resolved(helicities=...)` returns the selected rows only

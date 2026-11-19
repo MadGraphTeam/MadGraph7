@@ -151,7 +151,7 @@ pub struct RecurrenceExportProgram {
 /// The arithmetic contract of every exported program. The golden vectors of
 /// `recurrence_export_golden.rs` pin its bits: a change to the exported
 /// arithmetic must bump this string and regenerate them.
-pub(crate) const EXECUTION_SEMANTICS: &str = "rusticol-batched-f64-v1";
+pub(crate) const EXECUTION_SEMANTICS: &str = "rusticol-batched-f64-v2";
 
 struct ExportContext {
     artifact: VerifiedArtifact,

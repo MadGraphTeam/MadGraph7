@@ -789,6 +789,7 @@ fn evaluate_many(
             "correlated momenta must be finite with shape [point][external leg][4]",
         ));
     }
+    super::native_runtime::validate_energy_signs(momenta, native.runtime.external_count, |_| 0)?;
     let correlated = native.correlated.as_ref().expect("initialized");
     if helicity_ids.is_some_and(|ids| {
         ids.iter()

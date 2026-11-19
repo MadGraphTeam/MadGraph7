@@ -364,7 +364,8 @@ int rusticol_runtime_evaluate_correlated_many_f64(
     double *output, size_t output_capacity
 );
 
-/* Ordinary momenta use [point][external particle][E, px, py, pz]. */
+/* Ordinary momenta use [point][external particle][E, px, py, pz]. They are
+ * physical: every energy must be finite and positive, else the call fails. */
 int rusticol_runtime_evaluate_f64(
     RusticolRuntimeHandle *handle,
     const double *momenta,
