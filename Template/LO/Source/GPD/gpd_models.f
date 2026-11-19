@@ -40,6 +40,7 @@ C     (madevent sets GPD_INITIALISED from the run card before any call).
       GPD_EPSRES = 5D-2
       GPD_DPTOL = 1D-3
       GPD_GRIDFILE = ''
+      GPD_BEAM = 2
       USEMC = 0
       GPD_NMASK = 0
       CALL GPD_READ_CARD()
@@ -58,9 +59,14 @@ C     'value = name' lines of gpd_card.dat (standalone outputs).
       IF (EX) THEN
         OPEN(LUN, FILE='../../Cards/gpd_card.dat', STATUS='OLD')
       ELSE
-        INQUIRE(FILE='gpd_card.dat', EXIST=EX)
-        IF (.NOT.EX) RETURN
-        OPEN(LUN, FILE='gpd_card.dat', STATUS='OLD')
+        INQUIRE(FILE='../../../Cards/gpd_card.dat', EXIST=EX)
+        IF (EX) THEN
+          OPEN(LUN, FILE='../../../Cards/gpd_card.dat', STATUS='OLD')
+        ELSE
+          INQUIRE(FILE='gpd_card.dat', EXIST=EX)
+          IF (.NOT.EX) RETURN
+          OPEN(LUN, FILE='gpd_card.dat', STATUS='OLD')
+        ENDIF
       ENDIF
       DO
         READ(LUN, '(A)', IOSTAT=IOS) LINE

@@ -13,14 +13,15 @@ C     GPD_XTOL  : relative tolerance of the quadrature
 C     GPD_EPSRES: step of the numerical residues (relative to the pole spacing)
 C     GPD_DPTOL : relative tolerance of the double-pole detector
 C     GPD_GRIDFILE : file of the grid model
-      INTEGER GPD_MODEL, GPD_TMODEL, GPD_XMODE, GPD_INITIALISED
+      INTEGER GPD_MODEL, GPD_TMODEL, GPD_XMODE, GPD_INITIALISED, GPD_BEAM
       DOUBLE PRECISION GPD_BG, GPD_BS, GPD_BV
       DOUBLE PRECISION GPD_TSLOPEG, GPD_TSLOPEQ, GPD_ALPHAPG, GPD_ALPHAPQ
       DOUBLE PRECISION GPD_XTOL, GPD_EPSRES, GPD_DPTOL
       CHARACTER*256 GPD_GRIDFILE
       COMMON/GPD_SETTINGS/GPD_BG, GPD_BS, GPD_BV, GPD_TSLOPEG, GPD_TSLOPEQ,
      &     GPD_ALPHAPG, GPD_ALPHAPQ, GPD_XTOL, GPD_EPSRES, GPD_DPTOL,
-     &     GPD_MODEL, GPD_TMODEL, GPD_XMODE, GPD_INITIALISED, GPD_GRIDFILE
+     &     GPD_MODEL, GPD_TMODEL, GPD_XMODE, GPD_INITIALISED, GPD_BEAM,
+     &     GPD_GRIDFILE
 C     The two Monte Carlo replicas x, x' (madevent, gpd_x_integration = mc):
 C     USEMC = 1 when RMC1, RMC2 in (0,1) are set for the current event.
       DOUBLE PRECISION RMC1, RMC2
