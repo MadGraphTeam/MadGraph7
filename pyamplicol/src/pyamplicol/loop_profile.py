@@ -871,6 +871,8 @@ def profile_loop(
         monitor.close(False)
         raise
     load_seconds = time.perf_counter() - load_begin
+    # This process's peak resident size once loaded (a worker's start).
+    load_peak = _own_peak_bytes()
     loading.end(runtime.physics.process_id)
     physics = runtime.physics
     contribution = runtime.contribution_kind
@@ -1764,6 +1766,15 @@ def profile_loop(
             deadline=deadline if given_points is None else None,
             costs=costs,
             current=current,
+            worker_bytes=_worker_memory(
+                load_peak,
+                _own_peak_bytes() if costs and not blind else None,
+                [
+                    row.profile
+                    for row in runtime_rows or ()
+                    if row.profile is not None and row.backend not in omitted
+                ],
+            ),
             records=records,
             tail_seconds=tail if completion is not None else 0.0,
         )
@@ -2101,6 +2112,89 @@ def _serving(runtime: Any, backends: Sequence[str]) -> list[str]:
         if (admitted is None or backend in admitted)
         and (not isinstance(native, Mapping) or backend in native)
     ]
+
+
+def _own_peak_bytes() -> float | None:
+    """This process's peak resident set size (VmHWM; None where unknown)."""
+
+    try:
+        with open("/proc/self/status", encoding="ascii") as status:
+            for line in status:
+                if line.startswith("VmHWM:"):
+                    return float(line.split()[1]) * 1024.0
+    except OSError:
+        pass
+    return None
+
+
+def _available_memory() -> float | None:
+    """The memory available to new processes now (MemAvailable, bytes; None
+    where unknown)."""
+
+    try:
+        with open("/proc/meminfo", encoding="ascii") as meminfo:
+            for line in meminfo:
+                if line.startswith("MemAvailable:"):
+                    return float(line.split()[1]) * 1024.0
+    except OSError:
+        pass
+    return None
+
+
+def _worker_memory(
+    load_peak: float | None, measured_peak: float | None, profiles: Sequence[Any]
+) -> float | None:
+    """One stability worker's resident size, loaded and warm, as this run
+    measured it: the parent's own peak when it loaded the artifact and
+    measured every backend (``measured_peak``), and the load's peak plus
+    each profiled backend's increase over it (its runtime worker's binary64
+    and reference peaks, ``profiles``): the larger; None when nothing was
+    measured."""
+
+    candidates = [] if measured_peak is None else [measured_peak]
+    peaks = []
+    for profile in profiles:
+        found = [
+            float(memory.peak_rss_bytes)
+            for memory in (
+                profile.peak_memory,
+                getattr(profile.reference, "peak_memory", None),
+            )
+            if memory is not None and memory.peak_rss_bytes is not None
+        ]
+        if found:
+            peaks.append(max(found))
+    if peaks:
+        base = load_peak or 0.0
+        candidates.append(base + sum(max(peak - base, 0.0) for peak in peaks))
+    return max(candidates) if candidates else None
+
+
+def _memory_record(
+    workers: int, worker_bytes: float | None, bench: Any
+) -> dict[str, Any] | None:
+    """The stability workers' memory: one worker's measured bytes, the
+    memory available now and how many workers fit in ``MEMORY_SHARE`` of it
+    (``profile_plan.memory_workers``); None when either is unknown."""
+
+    from pyamplicol.config.models import is_default
+    from pyamplicol.profile_plan import MEMORY_SHARE, memory_workers
+
+    available = _available_memory()
+    if not worker_bytes or available is None:
+        return None
+    return {
+        "per_worker_bytes": worker_bytes,
+        "available_bytes": available,
+        "share": MEMORY_SHARE,
+        "fits": memory_workers(worker_bytes, available),
+        "asked": workers,
+        "n_core_given": not is_default(bench.n_core),
+    }
+
+
+def _gib(value: float) -> str:
+    return f"{value / 2**30:.1f} GiB"
 
 
 def _release_memory() -> None:
@@ -3794,6 +3888,7 @@ def _stability(
     current: list[Any] | None = None,
     records: bool = True,
     tail_seconds: float = 0.0,
+    worker_bytes: float | None = None,
 ) -> tuple[tuple[BackendStability, ...], Mapping[str, object]]:
     """The stability statistics of every backend (module docstring) over
     flat points, evaluated on ``benchmark.n_core`` worker processes (capped
@@ -3845,6 +3940,30 @@ def _stability(
     )
     count = max(count, 1)
     workers = max(1, min(bench.n_core, usable_cores()))
+    # As many workers as the memory holds (``profile_plan.memory_workers``:
+    # ``worker_bytes``, one worker's resident size as this run measured it,
+    # against the memory available now); a --n_core given is honoured, and
+    # warned about when it does not fit.
+    memory = _memory_record(workers, worker_bytes, bench)
+    if memory is not None and memory["fits"] < workers:
+        from pyamplicol.config.models import is_default
+
+        need = _gib(memory["per_worker_bytes"])
+        held = _gib(memory["available_bytes"])
+        if is_default(bench.n_core):
+            _notice(
+                f"the stability run starts {memory['fits']} workers instead of "
+                f"{workers}: each holds about {need} (measured), "
+                f"{held} available"
+            )
+            workers = int(memory["fits"])
+        else:
+            _notice(
+                f"--n_core {workers} given: its workers need about "
+                f"{_gib(workers * memory['per_worker_bytes'])} ({need} each, "
+                f"measured), {held} available",
+                warning=True,
+            )
     # The flat points as the chunks need them (point i from seed + i), and
     # every point's inputs (the per-point record).
     inputs: dict[int, tuple[Any, Any]] = {}
@@ -4429,6 +4548,8 @@ def _stability(
         "evaluated_per_backend": complete,
         "interrupted": interrupted,
         "n_core": workers,
+        # The workers' memory rule (``_memory_record``; None: not measured).
+        "memory": None if memory is None else {**memory, "workers": workers},
         "seed": space.seed,
         "sqrt_s": sqrt_s[0] if sqrt_s else space.sqrt_s,
         "generator": (

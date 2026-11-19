@@ -1751,7 +1751,7 @@ class BenchmarkConfig:
     # the usable cores; 1 runs it in-process. The result does not depend on
     # it. The runtime timing always runs on one core (one process, every
     # native pool at one thread).
-    n_core: int = field(default=10, metadata=_setting("int"))
+    n_core: int = field(default=DefaultInt(10), metadata=_setting("int"))
     # The reference ("ground truth") of a loop profile (``--ground-truth``):
     # "double-double" or "arbitrary[:DIGITS]" (decimal digits; without them
     # the built-in rescue's arbitrary-precision level's), "dd" and "arb"

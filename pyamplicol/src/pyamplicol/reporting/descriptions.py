@@ -186,7 +186,10 @@ def _profile(report: Any) -> list[Block]:
                     "backend alone still exceeds it, every table holds that "
                     "backend only ('TIRust not profiled': --all-backends, or "
                     "--loop-reduction, chooses); counts given are honoured "
-                    "as given",
+                    "as given; 'stability on N workers': fewer than --n_core "
+                    "because three quarters of the memory available hold only "
+                    "N at one worker's measured size (a --n_core given is "
+                    "honoured, said when it does not fit)",
                 ),
                 (
                     "ground truth",

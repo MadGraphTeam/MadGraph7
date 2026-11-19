@@ -867,6 +867,17 @@ took):
   `counts` row repeats it ("TIRust not profiled (--all-backends)", "no dd
   multiplier (--ground-truth)").
 
+  The stability run starts no more worker processes than the memory holds:
+  at most three quarters of the memory available when it starts, at one
+  worker's resident size as this run measured it (the profile's own process
+  after loading the artifact and measuring every backend, or the load plus
+  each backend's increase in its runtime timing's process). Fewer workers
+  than `--n_core` then run, said in a notice and in the `counts` row
+  ("stability on 3 workers (memory: 36.5 GiB each, 150.0 GiB available)").
+  A `--n_core` given (command line or run card) is honoured, with a warning
+  when its workers do not fit. The runtime timing runs one process at a
+  time.
+
 Loading, process start-up, warm-up calls and the reference pass's minimum
 are outside the default budgets by nature; they are visible phases with
 their own estimates. The reference pass is part of the budget of the phase

@@ -148,7 +148,7 @@ def _counts_cell(report: Any, color: bool) -> str | None:
                 palette.RECOVERED,
                 color=color,
             )
-        return text + _omitted_text(plan, color)
+        return text + _omitted_text(plan, color) + _workers_text(report, color)
     given = plan.get("given") or {}
     if rule == "counts" and not all(
         given.get(part, True) for part in ("runtime", "stability")
@@ -185,7 +185,29 @@ def _counts_cell(report: Any, color: bool) -> str | None:
             palette.RECOVERED,
             color=color,
         )
-    return text + _omitted_text(plan, color)
+    return text + _omitted_text(plan, color) + _workers_text(report, color)
+
+
+def _workers_text(report: Any, color: bool) -> str:
+    """The stability run's workers when the memory set them: fewer than
+    --n_core (or a --n_core given that does not fit), with one worker's
+    measured memory and the memory available."""
+
+    setup = getattr(report, "stability_setup", None) or {}
+    memory = setup.get("memory") or {}
+    workers, asked = memory.get("workers"), memory.get("asked")
+    if not memory or workers is None or memory.get("fits", workers) >= asked:
+        return ""
+    each = float(memory["per_worker_bytes"]) / 2**30
+    held = float(memory["available_bytes"]) / 2**30
+    text = (
+        f"; stability on {workers} workers (memory: {each:.1f} GiB each, "
+        f"{held:.1f} GiB available)"
+        if workers < asked
+        else f"; --n_core {asked} needs {asked * each:.1f} GiB, "
+        f"{held:.1f} GiB available"
+    )
+    return palette.paint(text, palette.RECOVERED, color=color)
 
 
 def _omitted_text(plan: Any, color: bool) -> str:

@@ -1801,3 +1801,47 @@ def test_the_plan_counts_the_warm_entry_not_a_point(uux_ddx, monkeypatch):
     # warm-up point the entry replaced would add 2 x 3 s.
     assert report.plan["minimum_seconds"] <= report.seconds + 3.0
     assert "after a warm entry" in (report.runtime_setup or "")
+
+
+@pytest.mark.parametrize("n_core", [None, 4])
+def test_the_stability_workers_fit_the_memory(uux_ddx, monkeypatch, caplog, n_core):
+    """The stability run starts no more workers than ``MEMORY_SHARE`` of the
+    memory available holds at one worker's measured resident size (stubbed:
+    1 GB each, 3 GB available: 2 of the 4 usable cores); a --n_core given
+    is honoured and warned about; the counts row says so."""
+
+    import logging
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.config import resolve_config
+    from pyamplicol.profile_plan import memory_workers
+    from pyamplicol.reporting.loop_profile import _counts_cell
+
+    assert memory_workers(1e9, 3e9) == 2 and memory_workers(1e9, 1e8) == 1
+    monkeypatch.setattr(lp, "usable_cores", lambda: 4)
+    monkeypatch.setattr(lp, "_own_peak_bytes", lambda: 1e9)
+    monkeypatch.setattr(lp, "_available_memory", lambda: 3e9)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {
+                "stability": True,
+                "ground_truth": "none",
+                **({} if n_core is None else {"n_core": n_core}),
+            },
+        }
+    ).effective
+    with caplog.at_level(logging.INFO, logger="pyamplicol.profile"):
+        report = lp.profile_loop(uux_ddx, config)
+    setup = report.stability_setup
+    memory = setup["memory"]
+    assert memory["fits"] == 2 and memory["asked"] == 4
+    assert setup["n_core"] == (2 if n_core is None else 4)
+    text = _counts_cell(report, False) or ""
+    if n_core is None:
+        assert "stability on 2 workers (memory: 0.9 GiB each" in text
+        assert any("starts 2 workers instead of 4" in r.message for r in caplog.records)
+    else:
+        assert "--n_core 4 needs 3.7 GiB" in text
+        assert any("--n_core 4 given" in r.message for r in caplog.records)

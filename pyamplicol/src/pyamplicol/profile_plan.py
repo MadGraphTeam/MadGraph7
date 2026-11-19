@@ -50,6 +50,10 @@ BUDGET_TOLERANCE = 1.5
 POST_SECONDS_PER_RECORD = 30e-6
 RECORD_SECONDS_PER_RECORD = 20e-6
 RECORD_SECONDS_PER_INPUT = 20e-6
+# The share of the memory available when a stage starts its worker
+# processes that their resident sets may take (``memory_workers``): the rest
+# for the host's other processes and the per-worker estimate's error.
+MEMORY_SHARE = 0.75
 # The calls a stable median is planned on when the budget affords them.
 STABLE_CALLS = 5
 # With --runtime-threads N > 1: the share of a backend's binary64 budget for
@@ -216,6 +220,18 @@ def takes_entry(
     if excess is not None:
         return point > excess
     return True
+
+
+def memory_workers(
+    per_worker: float, available: float, *, share: float = MEMORY_SHARE
+) -> int:
+    """The worker processes that fit in ``share`` of the ``available``
+    memory (bytes) at ``per_worker`` bytes each (a worker's resident size
+    loaded and warm, as measured), at least one."""
+
+    if per_worker <= 0.0:
+        return 1 << 30
+    return max(1, int(share * max(available, 0.0) // per_worker))
 
 
 def task_points(point_seconds: float, points: int) -> int:
@@ -716,6 +732,7 @@ __all__ = [
     "DEFAULT_RUNTIME_SECONDS",
     "DEFAULT_STABILITY_SECONDS_PER_CORE",
     "MEASURE_REPEAT_SECONDS",
+    "MEMORY_SHARE",
     "ONE_THREAD_SHARE",
     "POST_SECONDS_PER_RECORD",
     "RECORD_SECONDS_PER_INPUT",
@@ -731,6 +748,7 @@ __all__ = [
     "affordable_chunk",
     "binary64_warmup",
     "measurement_affects_counts",
+    "memory_workers",
     "minimum_counts",
     "plan",
     "reference_affects_counts",
