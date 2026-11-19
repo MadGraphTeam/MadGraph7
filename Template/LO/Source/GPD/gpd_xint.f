@@ -418,12 +418,19 @@ C     f(XC+u) + f(XC-u) on u in [A0,B0] (ISYM=1).
       INTEGER N, ISYM
       DOUBLE PRECISION A0, B0, SIZE, XC
       COMPLEX*16 RES(N,4)
-      INTEGER MAXSTACK
+      INTEGER MAXSTACK, MAXCALL
       PARAMETER (MAXSTACK=4000)
+C     intervals per window before the refinement stops (an integrand that
+C     never meets the tolerance would otherwise take ~2^30 of them)
+      PARAMETER (MAXCALL=20000)
       DOUBLE PRECISION SA(MAXSTACK), SB(MAXSTACK), A, B, ERR
       COMPLEX*16 RK(N,4), RG(N,4)
-      INTEGER NS
+      INTEGER NS, NCALL
+      LOGICAL WARNNAN, WARNCAP
+      DATA WARNNAN/.FALSE./, WARNCAP/.FALSE./
+      SAVE WARNNAN, WARNCAP
       RES = (0D0,0D0)
+      NCALL = 0
       NS = 1
       SA(1) = A0
       SB(1) = B0
@@ -432,11 +439,28 @@ C     f(XC+u) + f(XC-u) on u in [A0,B0] (ISYM=1).
         B = SB(NS)
         NS = NS - 1
         CALL GPD_GK15(KERNEL, A, B, N, RK, RG, ISYM, XC)
+        NCALL = NCALL + 1
         ERR = MAXVAL(ABS(RK-RG))
+        IF (ERR.NE.ERR) THEN
+C         a NaN integrand: no refinement can help, return it at once
+          IF (.NOT.WARNNAN) THEN
+            WRITE(*,*) 'GPD: NaN in the x integrand on [', A, ',', B,
+     &        ']; the x integral is NaN'
+            WARNNAN = .TRUE.
+          ENDIF
+          RES = RK
+          RETURN
+        ENDIF
+        IF (NCALL.EQ.MAXCALL .AND. .NOT.WARNCAP) THEN
+          WRITE(*,*) 'GPD: the x quadrature stopped refining after',
+     &      MAXCALL, ' intervals of a window (gpd_xtol not reached)'
+          WARNCAP = .TRUE.
+        ENDIF
 C       (no bisection below 1e-9 of the interval: below that the error
 C       estimate is rounding, and refining further only accumulates it)
         IF (ERR.LE.GPD_XTOL*SIZE*MAX((B-A)/2D0,1D-3) .OR.
-     &      (B-A).LT.1D-9*(B0-A0) .OR. NS.GE.MAXSTACK-2) THEN
+     &      (B-A).LT.1D-9*(B0-A0) .OR. NS.GE.MAXSTACK-2 .OR.
+     &      NCALL.GE.MAXCALL) THEN
           RES = RES + RK
         ELSE
           NS = NS + 1
@@ -549,8 +573,12 @@ C     i0 sign s = sign(SIG P.K): 1/(x - a + i s 0).
       INTEGER NP, SP(*)
       COMPLEX*16 AP(*)
       DOUBLE PRECISION PK, KK, A
-      PK = SIG*(P(0)*K(0) - P(1)*K(1) - P(2)*K(2) - P(3)*K(3))
-      KK = K(0)**2 - K(1)**2 - K(2)**2 - K(3)**2
+C     light-cone forms of P.K and K^2 (exact identities): in a frame
+C     boosted along z they keep the digits that P(0)K(0) - P(3)K(3) and
+C     K(0)^2 - K(3)^2 cancel
+      PK = SIG*(0.5D0*((P(0)+P(3))*(K(0)-K(3)) + (P(0)-P(3))*(K(0)+K(3)))
+     &     - P(1)*K(1) - P(2)*K(2))
+      KK = (K(0)-K(3))*(K(0)+K(3)) - K(1)**2 - K(2)**2
       IF (PK.EQ.0D0) RETURN
       A = -(KK - M*M)/(2D0*PK)
       NP = NP + 1

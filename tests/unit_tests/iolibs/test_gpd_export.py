@@ -93,6 +93,41 @@ class GPDExportTest(unittest.TestCase):
         for pole in info.pole_list():
             self.assertEqual(len(set([info.n_in, info.n_out]) & set(pole[0])), 1)
 
+    def test_structural_poles(self):
+        """A propagator next to a GPD leg whose other legs are one external
+        leg of its own mass has its pole exactly at -sigma xi: it is placed
+        there in GPD_POLES (in a strongly boosted frame K^2 loses the digits
+        that locate it). gamma q -> gamma gamma q has only such poles; in
+        gamma q -> gamma e+ e- q the propagators with two other legs have
+        kinematics-dependent poles and stay computed."""
+        info = gpd_export.GPDInfo(self.matrix_element('a gpd_u > a a'))
+        poles = info.pole_list()
+        self.assertTrue(all(info.is_structural_pole(p[0], p[2], p[3]) for p in poles))
+        lines = info.gpd_pole_lines()
+        self.assertEqual(lines.count('AP(NP) = DCMPLX(-XI, 0D0)'),
+                         len([p for p in poles if p[1] > 0]))
+        self.assertEqual(lines.count('AP(NP) = DCMPLX(XI, 0D0)'),
+                         len([p for p in poles if p[1] < 0]))
+        self.assertEqual(lines.count('NP0 = NP'), len(poles))
+        info = gpd_export.GPDInfo(self.matrix_element('a gpd_u > a e+ e- / z'))
+        kinds = [info.is_structural_pole(p[0], p[2], p[3]) for p in info.pole_list()]
+        self.assertIn(True, kinds)
+        self.assertIn(False, kinds)
+        for p, structural in zip(info.pole_list(), kinds):
+            others = [j for j in p[0] if j not in (info.n_in, info.n_out)]
+            self.assertEqual(structural, len(others) == 1)
+
+    def test_skip_matrix_reshuffle(self):
+        """The matrix element of a GPD channel does not reshuffle the kernel
+        momenta again (GPD_SET_POINT did it on the physical legs)."""
+        text = ("      PMASS_RESH = 0.D0\n"
+                "      CALL C2_RESHUFFLE_MOMENTA(P,PMASS_RESH,P_RESH)\n"
+                "      IF (RESH_FAILED) THEN\n")
+        out = gpd_export.skip_matrix_reshuffle(text, 'C2_')
+        self.assertNotIn('CALL C2_RESHUFFLE_MOMENTA', out)
+        self.assertIn('      P_RESH = P\n      RESH_FAILED = .FALSE.\n', out)
+        self.assertEqual(gpd_export.skip_matrix_reshuffle(text, 'C1_'), text)
+
     def calls(self, line):
         me = self.matrix_element(line)
         writer = helas_call_writers.FortranUFOHelasCallWriter(self.cmd._curr_model)

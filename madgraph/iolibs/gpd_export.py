@@ -261,9 +261,22 @@ class GPDInfo(object):
         wf = [w for w in self.ext if w.get('number_external') == j][0]
         return 1 if wf.get('leg_state') == False else -1
 
+    def is_structural_pole(self, legs, mass, width):
+        """A propagator next to a GPD leg whose other legs are one external
+        leg j of its own mass (no width): (p_j + xi P + x P)^2 = m_j^2 at
+        x = -sigma xi exactly. Its pole is placed there, not computed from
+        K^2, which loses the digits of a strongly boosted frame."""
+        others = [j for j in legs if j not in (self.n_in, self.n_out)]
+        if len(others) != 1 or width.lower() != 'zero':
+            return False
+        wf = [w for w in self.ext if w.get('number_external') == others[0]][0]
+        leg_mass = self.model.get('particle_dict')[wf.get('pdg_code')].get('mass')
+        return leg_mass.lower() == mass.lower()
+
     def gpd_pole_lines(self):
         """Fortran lines of GPD_POLES: K_i and sigma_i of every x-carrying
-        propagator, handed to GPD_POLE_ADD."""
+        propagator, handed to GPD_POLE_ADD; the structural poles (see
+        is_structural_pole) put exactly at -sigma xi."""
         lines = []
         for legs, sigma, mass, width, name, amps in self.pole_list():
             terms = []
@@ -277,8 +290,14 @@ class GPDInfo(object):
             lines.append("      K(:) = " + "".join(terms).lstrip('+'))
             m = "0D0" if mass.lower() == 'zero' else "ABS(%s)" % mass
             w = "0D0" if width.lower() == 'zero' else "ABS(%s)" % width
+            if self.is_structural_pole(legs, mass, width):
+                lines.append("      NP0 = NP")
             lines.append("      CALL GPD_POLE_ADD(K, %dD0, %s, %s, PGPD, NP, AP, SP)"
                          % (sigma, m, w))
+            if self.is_structural_pole(legs, mass, width):
+                lines.append("C     structural: an external leg of the propagator's mass")
+                lines.append("      IF (NP.GT.NP0) AP(NP) = DCMPLX(%sXI, 0D0)"
+                             % ('-' if sigma > 0 else ''))
         return "\n".join(lines)
 
     # ---------------------------------------------------------- the kernel --
@@ -428,7 +447,7 @@ C     The x-carrying propagators of every diagram: momentum K + sigma x P.
       IMPLICIT NONE
       INTEGER NPHYS
       PARAMETER (NPHYS=%(nphys)d)
-      INTEGER NP, SP(*)
+      INTEGER NP, SP(*), NP0
       COMPLEX*16 AP(*)
       REAL*8 PPHYS(0:3,NPHYS), XI, T, MU, K(0:3)
       COMMON/%(prefix)sGPD_POINT/PPHYS, XI, T, MU
@@ -1226,6 +1245,25 @@ def write_coherent_standalone(exporter, matrix_elements, fortran_model):
                 os.symlink(pjoin('..', inc), pjoin(pdir, inc))
         made.append(name)
     return made
+
+
+MATRIX_RESHUFFLE_SKIP = """C     GPD process: GPD_SET_POINT (gpd_driver.f) has already reshuffled the
+C     physical legs onto the constituent masses. The kernel momenta, with
+C     the pair at (x+xi)P and (x-xi)P, are not physical and are not
+C     reshuffled again: MATRIX's test of the onium masses (1e-11) fails on
+C     rounding in strongly boosted frames, and the reshuffling of these
+C     momenta gives NaN.
+      P_RESH = P
+      RESH_FAILED = .FALSE."""
+
+
+def skip_matrix_reshuffle(text, proc_prefix=''):
+    """The onia matrix element of a GPD channel without its own momentum
+    reshuffling (done once on the physical legs by GPD_SET_POINT)."""
+    call = "      CALL %sRESHUFFLE_MOMENTA(P,PMASS_RESH,P_RESH)" % proc_prefix
+    if call not in text:
+        return text
+    return text.replace(call, MATRIX_RESHUFFLE_SKIP, 1)
 
 
 def physical_string(proc):

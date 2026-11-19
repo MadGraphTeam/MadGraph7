@@ -6744,6 +6744,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             path = replace_dict['template_file']
             content = open(path).read()
             content = content % replace_dict
+            if gpd_export.has_gpd(matrix_element):
+                # GPD channels: the onium reshuffling is done once, on the
+                # physical legs (gpd_driver.f), not on the kernel momenta
+                content = gpd_export.skip_matrix_reshuffle(content, replace_dict['proc_prefix'])
             # Write the file
             writer.writelines(content)
             # Add the helper functions.
