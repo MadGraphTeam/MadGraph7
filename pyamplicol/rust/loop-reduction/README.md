@@ -31,7 +31,10 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `ac66cf6c551465f6c63490e112bb41596c2fd821` (branch
+- NinjaRS `1f97452722a96c630ab8242e660193372449af59` (PR #19:
+  main `3116e5e6` = `ac66cf6c` + PR #16, the box-Gram
+  conditioning bound of the generic engine, + the records of why a lane is
+  refused, shown in the lane status texts; `ac66cf6c` = branch
   `symbolica-community-2`: main `b51b7465`'s crate sources, i.e. per-row evaluation
   without the batch evaluator on main `cf28d8e0` (its scoped Symbolica library
   licence, the box mu-expansion's conditioning bound, UV/IR pole selection

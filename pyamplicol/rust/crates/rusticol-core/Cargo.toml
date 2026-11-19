@@ -40,7 +40,7 @@ brotli = { version = "8.0", optional = true }
 flate2 = { workspace = true, optional = true }
 libloading = { version = "0.9", optional = true }
 libc.workspace = true
-ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "ac66cf6c551465f6c63490e112bb41596c2fd821", optional = true }
+ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "1f97452722a96c630ab8242e660193372449af59", optional = true }
 # The loop consumer's TIRust pin (rusticol-loop-reduction's `iregi-rust`, the
 # same revision): its capability query only (feature `tir`).
 iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1", optional = true }
