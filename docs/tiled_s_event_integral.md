@@ -102,30 +102,32 @@ otherwise identical cards: NNPDF4.0 NLO (its nf=4 set for W+bb),
 mll > 30 GeV for Drell–Yan. Means over the five runs; ± is the standard
 error of the mean.
 
-| Process | Negative S events, main | Negative S events, learning | All negative events, main → learning | Events for equal precision | CPU for 50,000 events | CPU for equal precision |
+| Process | Negative weights among S events, main | Negative weights among S events, learning | Negative weights among all events, main → learning | Events for equal precision | CPU for 50,000 events | CPU for equal precision |
 |---|---:|---:|---:|---:|---:|---:|
-| Drell–Yan | 2,162 ± 7 | 141 ± 6 | 3,620 → 1,712 | 0.84 | 1.10 | 0.93 |
-| Top pair | 1,894 ± 23 | 164 ± 22 | 10,617 → 9,580 | 0.87 | 1.05 | 0.92 |
-| W+jet | 9,340 ± 40 | 4,808 ± 40 | 13,282 → 9,794 | 0.59 | 0.92 | 0.54 |
-| t-channel single top, 5FS | 2,197 ± 24 | 782 ± 31 | 13,932 → 13,236 | 0.89 | 1.18 | 1.04 |
-| W+bb, 4FS | 2,727 ± 31 | 1,349 ± 27 | 7,946 → 6,848 | 0.88 | 1.72 | 1.52 |
+| Drell–Yan | 5.31 ± 0.02% | 0.35 ± 0.02% | 7.24% → 3.42% | 0.84 | 1.10 | 0.93 |
+| Top pair | 5.23 ± 0.06% | 0.47 ± 0.06% | 21.23% → 19.16% | 0.87 | 1.05 | 0.92 |
+| W+jet | 27.36 ± 0.09% | 16.24 ± 0.11% | 26.56% → 19.59% | 0.59 | 0.92 | 0.54 |
+| t-channel single top, 5FS | 7.20 ± 0.08% | 2.66 ± 0.10% | 27.86% → 26.47% | 0.89 | 1.18 | 1.04 |
+| W+bb, 4FS | 8.88 ± 0.08% | 4.59 ± 0.09% | 15.89% → 13.70% | 0.88 | 1.72 | 1.52 |
 
-The last three columns are ratios, learning over `main`. "Events for equal
-precision" is the ratio of (1 − 2f)², with f the fraction of negative events:
-the number of unweighted events needed for the same statistical precision,
-which is what counts when showering and detector simulation dominate the
-cost. CPU is the total of MINT0, MINT1 and event generation, with both arms
-running side by side on one machine; "CPU for equal precision" is the
-product of the two ratios. Cross sections agree within their errors. The
-fraction of negative H events is unchanged; there are slightly more H events
-because the absolute S integral is smaller. Runs are fixed by their seeds:
-rerunning the Drell–Yan job with seed 271828 reproduces its events exactly.
+The first three columns are percentages of events with a negative weight,
+among the S events and among all 50,000 events; every event carries the same
+absolute weight. The last three columns are ratios, learning over `main`.
+"Events for equal precision" is the ratio of (1 − 2f)², with f the fraction
+of negative events: the number of unweighted events needed for the same
+statistical precision, which is what counts when showering and detector
+simulation dominate the cost. CPU is the total of MINT0, MINT1 and event
+generation, with both arms running side by side on one machine; "CPU for
+equal precision" is the product of the two ratios. Cross sections agree
+within their errors. The fraction of negative H events is unchanged; there
+are slightly more H events because the absolute S integral is smaller. Runs
+are fixed by their seeds: rerunning the Drell–Yan job with seed 271828
+reproduces its events exactly.
 
 W+bb remains expensive: MINT1 needs 2.2 times as many points as on `main`
 and event generation 1.5 times as many points per event; single top needs
-1.2 times as many in both. The budget fixes
-the number of probes, not the total run time. Showered
-samples were not studied.
+1.2 times as many in both. The budget fixes the number of probes, not the
+total run time. Showered samples were not studied.
 
 In the research implementation this branch was taken from, a budget of .10
 was also tested and not adopted: Drell–Yan worsened significantly and W+jet
