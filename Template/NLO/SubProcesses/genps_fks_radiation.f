@@ -2399,14 +2399,14 @@ c A soft endpoint instead represents the coefficient of dw/w.
      $     partner,mass,xreal,pborn,xbar,w,pass)
 c Invariant IF projection. Use unchanged spectators for a small xBorn:
 c subtracting the emitted momentum from a large incoming vector is unstable.
-      use fks_phase_space_helpers, only: dot,rho,null_pair_kt
+      use fks_phase_space_helpers, only: dot,rho
       use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
       implicit none
       integer i_fks,j_fks,partner,i,ib
       double precision p(0:3,nexternal),mass,xreal,
      $     pborn(0:3,nexternal-1),xbar,w,unchanged(0:3),
      $     mother(0:3),denom,z,nf,ni,pfk,paf,pak,kp,km,jp,jm,
-     $     pp,pm,trans(2)
+     $     pp,pm
       integer idir
       logical pass
       pass=.false.
@@ -2424,6 +2424,22 @@ c subtracting the emitted momentum from a large incoming vector is unstable.
          if(i.ne.i_fks.and.i.ne.partner)
      $        unchanged=unchanged-p(:,i)
       enddo
+c w = k.f/(p_a.(k+f)) from unit-vector differences, without cancellation
+c for a soft or collinear emission or partner, as in the counterterm.
+c For a null partner the Born still follows from the momentum balance.
+      nf=rho(p(:,partner))
+      ni=rho(p(:,i_fks))
+      if(nf.le.0d0.or.ni.le.0d0)return
+      pfk=p(0,i_fks)*(mass**2/(p(0,partner)+nf)+
+     $     nf*sum((p(1:3,partner)/nf-p(1:3,i_fks)/ni)**2)/2d0)
+      paf=p(0,j_fks)*(mass**2/(p(0,partner)+nf)+
+     $     nf*sum((p(1:3,partner)/nf-
+     $     p(1:3,j_fks)/p(0,j_fks))**2)/2d0)
+      pak=p(0,j_fks)*p(0,i_fks)*
+     $     sum((p(1:3,j_fks)/p(0,j_fks)-p(1:3,i_fks)/ni)**2)/2d0
+      w=pfk/(paf+pak)
+      if(w.lt.-1d-10.or.w.ge.1d0)return
+      w=max(0d0,w)
       if(mass.eq.0d0)then
          idir=3-2*j_fks
          call null_recoil_components(p(:,i_fks),idir,kp,km,pass)
@@ -2441,11 +2457,6 @@ c subtracting the emitted momentum from a large incoming vector is unstable.
      $        (2d0*p(0,j_fks))
          if(z.le.0d0.or.z.gt.1d0+1d-10)return
          z=min(1d0,z)
-c The relative transverse momentum, and w=1-z, cancel in the balance for
-c soft or collinear daughters: take them from the light-cone components.
-         trans=null_pair_kt(km,p(1:2,i_fks),jm,p(1:2,partner))
-         w=sum(trans**2)*pm/(2d0*p(0,j_fks)*km*jm)
-         if(w.ge.1d0)return
          xbar=xreal*z
          ib=0
          do i=1,nexternal
@@ -2465,21 +2476,6 @@ c its subtraction can spuriously put z above one for a soft final jet.
       z=(mass**2-dot(unchanged,unchanged))/denom
       if(z.le.0d0.or.z.gt.1d0+1d-10)return
       z=min(1d0,z)
-c Preserve the small pair invariant also when the emitted parton is
-c hard and its massless final partner is soft and collinear to it.
-      nf=rho(p(:,partner))
-      ni=rho(p(:,i_fks))
-      if(nf.le.0d0.or.ni.le.0d0)return
-      pfk=p(0,i_fks)*(mass**2/(p(0,partner)+nf)+
-     $     nf*sum((p(1:3,partner)/nf-p(1:3,i_fks)/ni)**2)/2d0)
-      paf=p(0,j_fks)*(mass**2/(p(0,partner)+nf)+
-     $     nf*sum((p(1:3,partner)/nf-
-     $     p(1:3,j_fks)/p(0,j_fks))**2)/2d0)
-      pak=p(0,j_fks)*p(0,i_fks)*
-     $     sum((p(1:3,j_fks)/p(0,j_fks)-p(1:3,i_fks)/ni)**2)/2d0
-      w=pfk/(paf+pak)
-      if(w.lt.-1d-10.or.w.ge.1d0)return
-      w=max(0d0,w)
       if(w.lt.1d-5)z=1d0-w
       xbar=xreal*z
       mother=unchanged+z*p(:,j_fks)

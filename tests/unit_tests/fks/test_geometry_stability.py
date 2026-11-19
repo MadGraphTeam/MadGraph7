@@ -296,13 +296,12 @@ end program
             km, jm = Fraction(km), Fraction(jm)
             kp = sum(Fraction(x)**2 for x in kt) / km
             jp = sum(Fraction(x)**2 for x in jt) / jm
-            exact = (kp + jp) * (km + jm) - sum(
+            mass2 = (kp + jp) * (km + jm) - sum(
                 (Fraction(a) + Fraction(b))**2 for a, b in zip(kt, jt))
-            expected.append((km, jm, exact, tol))
-        for row, (km, jm, exact, tol) in zip(self.run_cases(cases), expected):
-            mass2 = sum(Fraction(x)**2 for x in row) * (km + jm)**2 / (km * jm)
-            self.assertGreater(exact, 0)
-            self.assertLess(abs(mass2 / exact - 1), tol)
+            # |rel|^2 = (k+j)^2 km jm/(km+jm)^2
+            expected.append((mass2 * km * jm / (km + jm)**2, tol))
+        for row, (exact, tol) in zip(self.run_cases(cases), expected):
+            self.assertLess(abs(sum(Fraction(x)**2 for x in row) / exact - 1), tol)
 
 
 if __name__ == "__main__":

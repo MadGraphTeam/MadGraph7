@@ -116,9 +116,6 @@ program check_initial_recoil
   elseif(mode.eq.'extreme')then
     native=1
     native_mapping=.true.
-    ! The azimuth of nearly collinear or ultra-soft daughters is known only
-    ! to ~eps/angle, so the generic-point spin-phase checks do not apply.
-    spin_checks=.false.
     do masscase=0,1
       mj=80d0*masscase
       do beam=1,2
@@ -131,13 +128,15 @@ program check_initial_recoil
               if(mj.gt.0d0.and.extreme_x(ir).gt.0.5d0)cycle
               do iy=1,size(extreme_y)
                 rnd=[extreme_x(ir),extreme_y(iy),0.317d0]
+                ! The azimuth of nearly collinear daughters is known only to
+                ! ~eps/angle: the generic-point spin-phase checks do not apply.
+                spin_checks=extreme_y(iy).gt.1d-4
                 call forward(-100,p,jac,ps)
                 if(.not.pass)then
                   write(*,*)'rejected',mj,beam,xbar,rnd
                   error stop 'extreme FI map rejected'
                 endif
                 call invariants(p)
-                ratio0=ratio
                 call production_roundtrip()
               enddo
             enddo
