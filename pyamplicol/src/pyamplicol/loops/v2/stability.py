@@ -520,7 +520,9 @@ def __getattr__(name: str) -> Any:
 # ``reduction_policy::DEFAULT_TARGET``, 1e-5, read on first use by
 # ``loops.v2.reduction.default_target``). ``DEFAULT_RESCUE`` (module
 # ``__getattr__`` above) is ``default_rescue()``, formed on use: importing
-# this module loads no native extension.
+# this module loads no native extension. It is read-only: assigning
+# ``DEFAULT_RESCUE`` (here or in ``api.virtual_results``) changes nothing;
+# pass a ``VirtualRescuePolicy`` with the levels wanted instead.
 RESCUE_ROTATION = "euler:0.1,0.2,0.3"
 RESCUE_INTERMEDIATE_DIGITS = 57
 DEFAULT_RESCUE: tuple[tuple[str, int | None], ...]

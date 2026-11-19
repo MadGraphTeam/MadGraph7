@@ -70,3 +70,63 @@ def test_magnitude_is_float_abs_outside_arbitrary_precision():
         float(x) * float(y) + 2.5 * float(x)
     )
     assert float(Wide.of(y) ** 0.5) == math.sqrt(float(y))
+
+
+@pytest.mark.loop_fast
+def test_the_wide_guard_mirror_is_the_native_rule(loop_native):
+    """The fallback guard's exponent-safe mirror (``reduction.
+    _wide_fallback_estimate``, every arbitrary-precision carrier) is the
+    native rule (``reduction_policy::fallback_estimate``) wherever binary64
+    holds the inputs: bitwise on random outputs (ragged sectors, vanishing
+    outputs at the floor, zeros, NaN)."""
+
+    import random
+
+    from pyamplicol.loops.v2.reduction import _wide_fallback_estimate
+
+    native = loop_native.reduction_fallback_estimate
+    rng = random.Random(5)
+    for _ in range(4000):
+        u = rng.choice([2.0**-53, 2.0**-104, 0.5e-56])
+        outputs = []
+        for _o in range(rng.randint(1, 4)):
+            sectors = []
+            for _s in range(rng.randint(1, 3)):
+                scale = 10 ** rng.uniform(-30, 5)
+                kind = rng.random()
+                size = (
+                    0.0
+                    if kind < 0.1
+                    else scale * u * rng.uniform(0, 20)
+                    if kind < 0.3
+                    else 10 ** rng.uniform(-40, 5)
+                )
+                error = 0.0 if rng.random() < 0.1 else 10 ** rng.uniform(-60, 0) * scale
+                if rng.random() < 0.01:
+                    error = math.nan
+                sectors.append((size, error, scale))
+            outputs.append(sectors)
+        expected = float(native(outputs, u))
+        found = _wide_fallback_estimate(
+            [[tuple(Wide(x) for x in sector) for sector in out] for out in outputs],
+            Wide(u),
+        )
+        assert (math.isnan(expected) and math.isnan(found)) or found == expected
+
+
+@pytest.mark.loop_fast
+def test_wide_edges():
+    """Powers match binary64's own inside its range (libm pow, as the float
+    path), a negative base takes an integer power with its exponent, a
+    foreign type is not compared silently, equal values hash equal."""
+
+    for value in (3.7e-5, 0.81, 2.5e7):
+        assert float(Wide(value) ** 0.5) == value**0.5
+    assert math.isclose(float(Wide(-1.0, -3000) ** 2 / Wide(1.0, -6000)), 1.0)
+    assert float(Wide(-2.0) ** 3) == -8.0
+    with pytest.raises(ValueError):
+        Wide(-4.0) ** 0.5
+    with pytest.raises(TypeError):
+        Wide(1.0) < Decimal(2)  # noqa: B015
+    assert hash(Wide(1.0)) == hash(1.0) and hash(Wide(0.0)) == hash(0.0)
+    assert {Wide(0.25): 1}[0.25] == 1

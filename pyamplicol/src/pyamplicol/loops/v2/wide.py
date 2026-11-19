@@ -172,11 +172,25 @@ class Wide:
         return other / self
 
     def __pow__(self, power: float) -> Wide:
-        if not self.m or not math.isfinite(self.m) or self.m < 0:
+        if not self.m or not math.isfinite(self.m):
             return Wide(self.m**power)
+        if self.m < 0:
+            # A negative base: an integer power only (magnitudes never need
+            # one; float would give a complex number).
+            if not float(power).is_integer():
+                raise ValueError("a negative Wide takes an integer power only")
+            out = abs(self) ** power
+            return -out if int(power) % 2 else out
+        rounded = float(self)
+        if _normal(rounded):
+            found = rounded**power
+            if _normal(found):
+                # Inside binary64's range: binary64's own power (libm pow),
+                # bitwise the float path.
+                return Wide(found)
         if power == 0.5:
             # The square root, correctly rounded (an even exponent halves
-            # exactly): bitwise binary64's sqrt inside its range.
+            # exactly).
             if self.e % 2:
                 return Wide(math.sqrt(2.0 * self.m), (self.e - 1) // 2)
             return Wide(math.sqrt(self.m), self.e // 2)
@@ -212,26 +226,41 @@ class Wide:
 
     def __eq__(self, other: object) -> bool:
         found = self._compare(other)
-        return found is not NotImplemented and found == 0
+        if found is NotImplemented:
+            return NotImplemented
+        return found == 0
 
     def __hash__(self) -> int:
+        # Equal values hash equal: a ``Wide`` inside binary64's range as its
+        # float.
+        rounded = float(self)
+        if rounded == 0.0 or _normal(rounded) or not math.isfinite(self.m):
+            return hash(rounded)
         return hash((self.m, self.e))
 
     def __lt__(self, other: Any) -> bool:
         found = self._compare(other)
-        return found is not NotImplemented and found == -1
+        if found is NotImplemented:
+            return NotImplemented
+        return found == -1
 
     def __le__(self, other: Any) -> bool:
         found = self._compare(other)
-        return found is not NotImplemented and found in (-1, 0)
+        if found is NotImplemented:
+            return NotImplemented
+        return found in (-1, 0)
 
     def __gt__(self, other: Any) -> bool:
         found = self._compare(other)
-        return found is not NotImplemented and found == 1
+        if found is NotImplemented:
+            return NotImplemented
+        return found == 1
 
     def __ge__(self, other: Any) -> bool:
         found = self._compare(other)
-        return found is not NotImplemented and found in (1, 0)
+        if found is NotImplemented:
+            return NotImplemented
+        return found in (1, 0)
 
 
 def _wide(value: Any) -> Any:
