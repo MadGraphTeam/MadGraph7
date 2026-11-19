@@ -12,6 +12,9 @@ import pytest
 
 import madspace as ms
 
+# docstrings only, nothing runs on a device
+pytestmark = pytest.mark.cpu_only
+
 # One representative keyword-argument set per in-scope class. Every key here is
 # a parameter the class comment documents; the call must accept all of them.
 CASES = {
