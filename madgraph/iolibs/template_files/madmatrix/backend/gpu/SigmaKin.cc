@@ -32,6 +32,10 @@
 
 #include <cfloat>
 #include <cmath>
+#include <map>
+#include <mutex>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace madmatrix
@@ -363,6 +367,73 @@ namespace madmatrix
 // built for cuda/hip is the plain matrix element (madmatrix.mk says so).
 #define MG_HR_PROBE_AMP( NAMP )
 
+  //--------------------------------------------------------------------------
+
+  // Shared-memory wavefunctions. calculate_jamps runs at the 255-register cap and spills
+  // wavefunctions to local memory; the slots that hold the most reads over the longest
+  // lifetimes (SharedWavefunctions.inc, by the generator) live instead in dynamic shared
+  // memory, one padded record per thread, as many as fit with sharedWfBlockThreads threads
+  // per block. MADMATRIX_NO_SHARED_WF turns it off.
+#include "SharedWavefunctions.inc"
+
+  // Dynamic shared memory per block that a kernel can opt in to, by compute capability.
+  constexpr size_t
+  sharedWfOptinBytes( int sm )
+  {
+#ifdef MADMATRIX_NO_SHARED_WF
+    return 0;
+#else
+    if( sm == 80 || sm == 87 ) return 166912;
+    if( sm >= 90 && sm < 120 ) return 232448;
+    return 101376;
+#endif
+  }
+
+  constexpr int sharedWfBlockThreads = 256; // as umami launches; more threads per block are refused
+  constexpr size_t sharedWfSlotBytes = np4 * sizeof( fptype_momenta_sv ) + nw6 * sizeof( cxtype_amp_sv );
+
+  // Odd multiple of 16 bytes: the records of consecutive threads start in different banks.
+  constexpr size_t
+  sharedWfStride( int nslots )
+  {
+    const size_t chunks = ( nslots * sharedWfSlotBytes + 15 ) / 16;
+    return ( chunks % 2 ? chunks : chunks + 1 ) * 16;
+  }
+
+  constexpr int
+  sharedWfCount( int sm )
+  {
+    // FP64 on a 99 KB part lost 8% (L40S, g g > t t~ g g): the shared memory shrinks L1.
+    if( sharedWfOptinBytes( sm ) < 128 * 1024 && sizeof( fptype_amp ) == 8 ) return 0;
+    int nslots = 0;
+    while( nslots < nSharedWfSlots && sharedWfStride( nslots + 1 ) * sharedWfBlockThreads <= sharedWfOptinBytes( sm ) ) nslots++;
+    return nslots;
+  }
+
+#ifdef __CUDA_ARCH__
+  constexpr int nSharedWf = sharedWfCount( __CUDA_ARCH__ / 10 );
+#else
+  constexpr int nSharedWf = 0; // host and HIP passes: the size comes from dSharedWfStride
+#endif
+
+  struct SharedWfRecord
+  {
+    fptype_momenta_sv pvec[nSharedWf > 0 ? nSharedWf : 1][np4];
+    cxtype_amp_sv w[nSharedWf > 0 ? nSharedWf : 1][nw6];
+  };
+
+  constexpr size_t sharedWfStrideBytes = nSharedWf > 0 ? sharedWfStride( nSharedWf ) : 0;
+
+  // Bytes per thread of the cubin the device runs (also PTX compiled for a newer GPU): the host reads it back.
+  __device__ const size_t dSharedWfStride = sharedWfStrideBytes;
+
+#ifdef __CUDA_ARCH__
+  // Every amplitude: without it the compiler keeps the shared values in registers as well.
+#define SHWF_RELOAD() asm volatile( "" ::: "memory" )
+#else
+#define SHWF_RELOAD()
+#endif
+
   // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams.
   // Also compute running sums over helicities adding jamp2, numerator, denominator
   // (NB: this function no longer handles matrix elements as the color sum has now been
@@ -435,6 +506,16 @@ namespace madmatrix
     cxtype_amp_sv amp_sv[1];      // invariant amplitude for one given Feynman diagram
     ALOHAOBJ aloha_obj[nwf];
     for( int iwf = 0; iwf < nwf; iwf++ ) aloha_obj[iwf] = ALOHAOBJ{ pvec_sv[iwf], w_sv[iwf] };
+#ifdef __CUDA_ARCH__
+    if constexpr( nSharedWf > 0 )
+    {
+      extern __shared__ __align__( 16 ) unsigned char sharedWfRaw[];
+      SharedWfRecord* sharedWf = reinterpret_cast<SharedWfRecord*>( sharedWfRaw + threadIdx.x * sharedWfStrideBytes );
+      // Unrolled: a runtime index into aloha_obj would put all of it in local memory.
+#pragma unroll
+      for( int k = 0; k < nSharedWf; k++ ) aloha_obj[sharedWfSlots[k]] = ALOHAOBJ{ sharedWf->pvec[k], sharedWf->w[k] };
+    }
+#endif
     fptype_amp* amp_fp = reinterpret_cast<fptype_amp*>( amp_sv );
 
     // special temporary ALOHAOBJ to hold F/Vtmp values in the combined vertex functions
@@ -551,6 +632,40 @@ namespace madmatrix
 
 #undef NUM_ATOMIC_ADD
 #undef MG_HR_PROBE_AMP
+#undef SHWF_RELOAD
+
+  //--------------------------------------------------------------------------
+
+  // Dynamic shared memory of calculate_jamps for nthreads per block on the current device.
+  static size_t
+  sharedWfBytes( int nthreads )
+  {
+#if defined __CUDACC__ && !defined MADMATRIX_NO_SHARED_WF
+    static std::mutex mutex;
+    static std::map<int, size_t> strides; // the opt-in is per device, the cubin per architecture
+    int device;
+    checkGpu( cudaGetDevice( &device ) );
+    size_t stride;
+    {
+      std::lock_guard<std::mutex> lock( mutex );
+      auto it = strides.find( device );
+      if( it == strides.end() )
+      {
+        gpuMemcpyFromSymbol( &stride, dSharedWfStride, sizeof( stride ) );
+        if( stride > 0 )
+          checkGpu( cudaFuncSetAttribute( calculate_jamps, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)( stride * sharedWfBlockThreads ) ) );
+        it = strides.emplace( device, stride ).first;
+      }
+      stride = it->second;
+    }
+    if( stride > 0 && nthreads > sharedWfBlockThreads )
+      throw std::runtime_error( "calculate_jamps: shared-memory wavefunctions are sized for " + std::to_string( sharedWfBlockThreads ) +
+                                " threads per block, got " + std::to_string( nthreads ) + ": use fewer or build with -DMADMATRIX_NO_SHARED_WF" );
+    return stride * nthreads;
+#else
+    return 0;
+#endif
+  }
 
   //--------------------------------------------------------------------------
 
@@ -660,7 +775,7 @@ namespace madmatrix
       gpuMemset( allMEs, 0, maxtry * sizeof( fptype ) );
       // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
       constexpr fptype_amp_sv* allJamp2s = nullptr; // no need for color selection during helicity filtering
-      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, params, ihel, nullptr, scanMomenta, scanCouplings, devFlavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, nOneHel, false );
+      gpuLaunchKernelSharedMem( calculate_jamps, gpublocks, gputhreads, sharedWfBytes( gputhreads ), params, ihel, nullptr, scanMomenta, scanCouplings, devFlavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, nOneHel, false );
       gpuLaunchKernel( color_sum_kernel, gpublocks, gputhreads, allMEs, allJamps, nOneHel, 0 );
       gpuMemcpy( hstMEs, allMEs, maxtry * sizeof( fptype ), gpuMemcpyDeviceToHost );
       for( int ievt = 0; ievt < maxtry; ++ievt )
@@ -1108,7 +1223,7 @@ namespace madmatrix
     bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
     if( nhel > 0 && async )
     {
-      gpuLaunchKernel2D( calculate_jamps, gpublocks, nhel, gputhreads, ghelStreams[0], kparams, 0, allihel, allmomenta, allcouplings, iflavorVec, ghelAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, true );
+      gpuLaunchKernel2DSharedMem( calculate_jamps, gpublocks, nhel, gputhreads, sharedWfBytes( gputhreads ), ghelStreams[0], kparams, 0, allihel, allmomenta, allcouplings, iflavorVec, ghelAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, true );
       color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, nhel, gpublocks, gputhreads, true );
     }
     else if( nhel > 0 )
@@ -1119,7 +1234,7 @@ namespace madmatrix
         fptype_amp* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
         // NB: the numerators buffer has no helicity dimension: every helicity stream accumulates in place
         // into the same [nevt][ndiagrams] slot via atomicAdd. The denominators are derived later.
-        gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], kparams, ihel, allihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, false );
+        gpuLaunchKernelStreamSharedMem( calculate_jamps, gpublocks, gputhreads, sharedWfBytes( gputhreads ), ghelStreams[ighel], kparams, ihel, allihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, false );
       }
       // (2) Then compute the ME for that helicity from the color sum of QCD partial amplitudes jamps
       color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, nhel, gpublocks, gputhreads, false );
