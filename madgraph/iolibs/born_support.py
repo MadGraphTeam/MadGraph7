@@ -503,7 +503,7 @@ def explicit_helas_dependencies(root):
     routines, names = [], set()
     declaration = re.compile(r'\s*(?:double\s+(?:precision|complex)|'
                              r'(?:real|complex|integer|logical)(?:\*\d+)?|'
-                             r'type\s*\(\s*(?:aloha|aloha2d)\s*\))'
+                             r'type\s*\(\s*(?:mp_)?(?:aloha|aloha2d)\s*\))'
                              r'\s*(?:::)?\s+(.+)', re.I)
     prepared, aloha_records = [], set()
     start = re.compile(r'\s*(?:[\w*]+\s+)*?(?:subroutine|function)\s+(\w+)', re.I)
@@ -529,7 +529,10 @@ def explicit_helas_dependencies(root):
                 # The built-in module carries record definitions only. No
                 # module variables, initializers, pointers or procedures may
                 # smuggle model inputs past the argument dependency proof.
-                match = re.fullmatch(r'\s*type\s+(aloha|aloha2d)\s*', line)
+                # Outputs with MadLoop virtuals install aloha_functions_loop.f,
+                # which also defines the quadruple-precision records
+                # MP_ALOHA/MP_ALOHA2D (complex*32 members).
+                match = re.fullmatch(r'\s*type\s+((?:mp_)?(?:aloha|aloha2d))\s*', line)
                 if match and record is None:
                     record = match[1]
                     aloha_records.add(record)
@@ -538,7 +541,7 @@ def explicit_helas_dependencies(root):
                 elif re.fullmatch(r'\s*end\s*module(?:\s+aloha_object)?\s*', line) and record is None:
                     module = False
                 elif record and (line.strip() == 'sequence' or re.fullmatch(
-                        r'\s*(?:double\s+(?:precision|complex)|integer)\s*::\s*'
+                        r'\s*(?:double\s+(?:precision|complex)|complex\*32|integer)\s*::\s*'
                         r'\w+(?:\([0-9,:+\- ]+\))?\s*', line)):
                     pass
                 elif line.strip():
