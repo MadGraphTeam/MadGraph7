@@ -170,15 +170,21 @@ def output(repo, name, model, process, backends, select=None, defines=(), option
         if not proc_dirs:
             raise RuntimeError('no selected subprocess directory for %s' % process)
     jobs = os.environ.get('SLURM_CPUS_PER_TASK', '4')
-    for proc_dir in proc_dirs:
-        for backend in backends:
-            log = '%s_%s_%s_make.log' % (name, os.path.basename(proc_dir), backend)
-            # check_sa.exe is relinked for the backend of each make (its libraries carry
-            # the backend in their name)
-            if run(['make', '-j', jobs, 'BACKEND=' + backend, 'FPTYPE=d'],
-                   cwd=proc_dir, log=log) != 0:
-                raise RuntimeError('make failed, see %s' % log)
-            shutil.copy(os.path.join(proc_dir, 'check_sa.exe'),
+    # The selected subprocesses are built at once by SubProcesses/makefile, which spreads the
+    # -j slots over all of them (and builds the common library once, first). One backend at
+    # a time: each links check_sa.exe in the subprocess directory, kept as
+    # check_sa_<backend>.exe (removed first, so that a stale one is never kept)
+    targets = [os.path.basename(proc_dir) for proc_dir in proc_dirs]
+    for backend in backends:
+        for proc_dir in proc_dirs:
+            if os.path.exists(os.path.join(proc_dir, 'check_sa.exe')):
+                os.remove(os.path.join(proc_dir, 'check_sa.exe'))
+        log = '%s_%s_make.log' % (name, backend)
+        if run(['make', '-j', jobs, 'BACKEND=' + backend, 'FPTYPE=d'] + targets,
+               cwd=os.path.join(name, 'SubProcesses'), log=log) != 0:
+            raise RuntimeError('make failed, see %s' % log)
+        for proc_dir in proc_dirs:
+            shutil.move(os.path.join(proc_dir, 'check_sa.exe'),
                         os.path.join(proc_dir, 'check_sa_%s.exe' % backend))
     return proc_dirs
 

@@ -168,12 +168,27 @@ check_sa_devices() {
     local tag=$1 kind=$2 out=$3 pdir name dev ret worst gpu=$BACKEND
     # (BACKEND=cpu, the laptop try-out of this script, is no madmatrix backend)
     if [ "$gpu" = cpu ]; then gpu=scalar; fi
+    # Every P dir is built at once by SubProcesses/makefile, which spreads the -j slots over
+    # all of them (and builds the common library once, first). One backend at a time: both
+    # link check_sa.exe in the P dir, kept as check_sa_<dev>.exe. -k: a P dir that does not
+    # build fails alone, below.
+    for dev in "$gpu" scalar; do
+        rm -f "$out"/SubProcesses/P*/check_sa.exe
+        make -k -C "$out/SubProcesses" -j"${SLURM_CPUS_PER_TASK:-4}" BACKEND=$dev FPTYPE=d \
+             > "${tag}_sa_${kind}_make.$dev.log" 2>&1
+        for pdir in "$out"/SubProcesses/P*/; do
+            if [ -x "$pdir/check_sa.exe" ]; then mv "$pdir/check_sa.exe" "$pdir/check_sa_$dev.exe"; fi
+        done
+    done
     for pdir in "$out"/SubProcesses/P*/; do
         name=${tag}_sa_${kind}_$(basename "$pdir")
         for dev in "$gpu" scalar; do
+            if [ ! -x "$pdir/check_sa_$dev.exe" ]; then
+                record "$name" FAIL "check_sa.exe not built for $dev (see ${tag}_sa_${kind}_make.$dev.log)"
+                continue 2
+            fi
             ret=0
-            (cd "$pdir" && make -j"${SLURM_CPUS_PER_TASK:-4}" BACKEND=$dev FPTYPE=d check_sa.exe \
-                 && timeout "$RUN_TIMEOUT" ./check_sa.exe) > "$name.$dev.log" 2>&1 || ret=$?
+            (cd "$pdir" && timeout "$RUN_TIMEOUT" "./check_sa_$dev.exe") > "$name.$dev.log" 2>&1 || ret=$?
             if [ "$ret" -ne 0 ]; then
                 record "$name" FAIL "check_sa.exe on $dev: exit $ret (see $name.$dev.log)"
                 continue 2

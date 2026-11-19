@@ -67,6 +67,11 @@ jobs:
       # the fallbacks are the defaults, used on push (no inputs) or when left empty
       modules: ${{ inputs.modules || 'PyTorch CUDA Python foss' }}
       gres: ${{ inputs.gres || 'gpu:1' }}
+      # half of an A100 or H200 node (64 cores, 2 GPUs; the larger H200 nodes have 128) and
+      # half of the smallest one's memory (192 GB): the CI is mostly compilation, built over
+      # all the P dirs at once
+      cpus: '32'
+      mem: '64G'
       gpu_arch: ${{ inputs.gpu_arch }}
       nevents: ${{ inputs.nevents || '1000' }}
       # 30 min, not 20 as on lemaitre4: the runner set-up and checkout are sometimes slow here
