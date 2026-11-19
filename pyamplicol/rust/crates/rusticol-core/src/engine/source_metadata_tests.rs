@@ -775,3 +775,38 @@ fn high_precision_sources_use_typed_orientation_crossing_and_phase() {
     assert_eq!(output, expected);
     assert_ne!(output, unexpected);
 }
+
+#[test]
+fn weyl_sources_refuse_a_chirality_other_than_plus_minus_one() {
+    // Weyl kernels derive helicity = chirality * sgn(E): no zero path is left.
+    let mut source = source_record(900, -900, "particle", "fermion", 2);
+    source.leg_label = 1;
+    for chirality in [0, 2, -3] {
+        let state = GenericSourceStateIrManifest {
+            helicity: 1,
+            chirality,
+            spin_state: GenericSourceSpinStateManifest::Scalar(1),
+        };
+        let error =
+            sources::ResolvedSourceWavefunction::new(&source, &state, 1, &BTreeMap::new(), 2)
+                .err()
+                .expect("chirality outside +-1");
+        assert!(error.to_string().contains("not implemented"), "{error}");
+        #[cfg(feature = "symbolica-runtime")]
+        {
+            let point = [[5.0, 0.0, 0.0, 5.0].map(DoubleFloat::from)];
+            let zero = || Complex::new(DoubleFloat::from(0.0), DoubleFloat::from(0.0));
+            let mut output = vec![zero(), zero()];
+            let error = ExecutionRuntime::write_source_wavefunction_generic_with_state(
+                &source,
+                &state,
+                1,
+                &BTreeMap::new(),
+                &point,
+                &mut output,
+            )
+            .expect_err("generic chirality outside +-1");
+            assert!(error.to_string().contains("not implemented"), "{error}");
+        }
+    }
+}

@@ -164,6 +164,14 @@ momenta = [[
 The fourth-vector convention is `[E, px, py, pz]`. The particle axis follows
 the expression passed to `Runtime.load()`.
 
+Momenta are physical. Every evaluation, native or exact, refuses a point
+with an energy that is not finite and positive: a massless quark source
+fed a negated momentum is the crossed state rather than zero. For
+`evaluate_assignments`, energies are negative exactly on the template
+slots that the requested assignment moves across the initial/final split
+(none for generated artifacts), and one point may not request
+assignments of different crossings.
+
 The CLI reads the same shape from JSON:
 
 ```console

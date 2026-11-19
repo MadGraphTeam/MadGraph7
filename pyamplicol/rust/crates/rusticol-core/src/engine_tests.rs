@@ -6503,3 +6503,112 @@ fn native_profile_accumulates_compiled_accounting() {
     assert_eq!(profile.evaluator_backend_call_count, 44);
     assert_eq!(profile.observed_scratch_reallocation_count, 55);
 }
+
+#[test]
+fn assignment_sign_checks_refuse_before_any_lane_and_leave_the_output_untouched() {
+    let manifest = alias_test_physics("lc");
+    let mut execution = empty_generic_runtime();
+    execution.external_count = 5;
+    execution.physics = Some(Arc::new(PhysicsRuntime::new(manifest.clone()).unwrap()));
+    let pdgs = vec![1, -1, 22, 23, 21];
+    let assignment = |id: &str, permutation: Vec<usize>| {
+        NativeUnionAssignment::new(
+            id.to_owned(),
+            id.to_owned(),
+            pdgs.clone(),
+            permutation,
+            NativeRationalFactor {
+                numerator: 1,
+                denominator: 1,
+            },
+            false,
+            vec![1],
+            vec![0],
+            1,
+        )
+        .unwrap()
+    };
+    // Assignment 1 sends initial template slot 0 to final leg 2 (and back).
+    let assignments = vec![
+        assignment("template", vec![0, 1, 2, 3, 4]),
+        assignment("crossed", vec![2, 1, 0, 3, 4]),
+    ];
+    let mut runtime = NativeRuntime {
+        root: PathBuf::new(),
+        artifact_id: "0".repeat(64),
+        runtime: execution,
+        execution_lane: NativeExecutionLane::Compiled,
+        process: "d d~ > a z g".to_string(),
+        process_key: "p0".to_string(),
+        representative_process_id: "p0".to_string(),
+        external_permutation: vec![0, 1, 2, 3, 4],
+        input_crossing_map: None,
+        permutation_alias_of: None,
+        final_state_permutation_alias_of: None,
+        physics_v1: native_runtime::LazyProcessPhysicsV1::loaded(manifest),
+        warnings_muted: false,
+        warned_kinds: BTreeSet::new(),
+        pending_warnings: Vec::new(),
+        point_selector_scratch: PointSelectorExecutionScratch::default(),
+        selector_simd_lane_width: 1,
+        correlated: None,
+        flavour_union_assignments: Some(assignments.into()),
+        flavour_union_relabelling: Some(Box::new(NativeUnionRelabelling {
+            template_pdgs: pdgs.clone(),
+            initial_count: 2,
+            pattern_pairs: None,
+            pattern_by_pairs: BTreeMap::new(),
+            derived: BTreeMap::new(),
+        })),
+        process_group: None,
+    };
+    let physical = (0..5)
+        .flat_map(|_| [5.0, 0.0, 0.0, 5.0])
+        .collect::<Vec<f64>>();
+    let mut crossed = physical.clone();
+    for slot in [0, 2] {
+        for component in &mut crossed[4 * slot..4 * slot + 4] {
+            *component = -*component;
+        }
+    }
+    let mut evaluate = |momenta: &[f64], offsets: &[usize], ids: &[u32]| {
+        let mut output = vec![7.0; ids.len()];
+        let error = runtime
+            .evaluate_assignments_f64_into(
+                momenta,
+                offsets.len() - 1,
+                offsets,
+                ids,
+                None,
+                None,
+                AssignmentOutputMode::Total,
+                &mut output,
+            )
+            .expect_err("no lane evaluates here")
+            .to_string();
+        assert!(output.iter().all(|value| *value == 7.0), "{error}");
+        error
+    };
+    // One point mixing crossings, a crossed slot fed a positive energy, and an
+    // uncrossed one fed a negative energy are refused before any lane.
+    assert!(evaluate(&physical, &[0, 2], &[0, 1]).contains("different crossings"));
+    let unsigned = evaluate(&physical, &[0, 1], &[1]);
+    assert!(
+        unsigned.contains("leg 0") && unsigned.contains("negative"),
+        "{unsigned}"
+    );
+    let negated = evaluate(&crossed, &[0, 1], &[0]);
+    assert!(
+        negated.contains("leg 0") && negated.contains("positive"),
+        "{negated}"
+    );
+    // Per-point crossings: both points pass the sign check and reach the lane.
+    let both = [physical.clone(), crossed.clone()].concat();
+    let lane = evaluate(&both, &[0, 1, 2], &[0, 1]);
+    assert!(
+        !lane.contains("energy") && !lane.contains("crossings"),
+        "{lane}"
+    );
+    let swapped = evaluate(&both, &[0, 1, 2], &[1, 0]);
+    assert!(swapped.contains("point 0"), "{swapped}");
+}

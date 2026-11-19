@@ -5864,22 +5864,6 @@ impl NativeRuntime {
     ) -> RusticolResult<Vec<Vec<[Float; 4]>>> {
         let values_per_point =
             validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
-        // Energy signs at binary64 resolution; the sign of a parsed decimal is exact.
-        let energies = momenta
-            .iter()
-            .enumerate()
-            .map(|(index, value)| {
-                if index % 4 != 0 {
-                    return Ok(1.0);
-                }
-                value.parse::<f64>().map_err(|error| {
-                    RusticolError::invalid_argument(format!(
-                        "could not parse momentum energy {value:?}: {error}"
-                    ))
-                })
-            })
-            .collect::<RusticolResult<Vec<f64>>>()?;
-        validate_energy_signs(&energies, self.runtime.external_count, |_| 0)?;
         let mut batch = Vec::with_capacity(point_count);
         for point_values in momenta.chunks_exact(values_per_point) {
             let mut point = Vec::with_capacity(self.runtime.external_count);
@@ -5903,6 +5887,7 @@ impl NativeRuntime {
             }
             batch.push(point);
         }
+        validate_float_energy_signs(&batch)?;
         apply_input_crossing_map_generic(
             &batch,
             self.runtime.external_count,
@@ -6088,6 +6073,24 @@ pub(super) fn validate_energy_signs(
                     "momentum of point {point}, leg {leg} has energy {energy}: expected a finite {} \
                      energy (physical momenta; crossed slots of an assignment are negated)",
                     if crossed { "negative" } else { "positive" }
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `validate_energy_signs` for parsed decimals, read at their own precision (a
+/// positive energy below or above the binary64 range is accepted).
+#[cfg(feature = "symbolica-runtime")]
+pub(super) fn validate_float_energy_signs(batch: &[Vec<[Float; 4]>]) -> RusticolResult<()> {
+    for (point, legs) in batch.iter().enumerate() {
+        for (leg, momentum) in legs.iter().enumerate() {
+            let energy = &momentum[0];
+            if !energy.is_finite() || !(-energy.clone()).is_negative() {
+                return Err(RusticolError::invalid_argument(format!(
+                    "momentum of point {point}, leg {leg} has energy {energy}: expected a finite \
+                     positive energy (physical momenta)"
                 )));
             }
         }
@@ -6357,5 +6360,35 @@ mod momentum_sign_tests {
         assert!(validate_energy_signs(&signed, 4, |_| mask).is_ok());
         assert!(validate_energy_signs(&signed, 4, |_| 0).is_err());
         assert_eq!(crossing_negative_mask(&[1, 0, 3, 2], 2).unwrap(), 0);
+        // A crossed slot fed an unnegated (positive) energy is refused too.
+        let unsigned = signed.map(f64::abs);
+        let error = validate_energy_signs(&unsigned, 4, |_| mask).expect_err("unsigned");
+        assert!(error.to_string().contains("leg 1"), "{error}");
+        assert!(error.to_string().contains("negative"), "{error}");
+        // Masks are per point: point 0 uncrossed, point 1 crossed.
+        let two_points = [unsigned, signed].concat();
+        let per_point = |point: usize| if point == 0 { 0 } else { mask };
+        assert!(validate_energy_signs(&two_points, 4, per_point).is_ok());
+        let swapped = |point: usize| if point == 0 { mask } else { 0 };
+        assert!(validate_energy_signs(&two_points, 4, swapped).is_err());
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    #[test]
+    fn decimal_energies_are_signed_at_their_own_precision() {
+        let point = |energy: &str| {
+            vec![[energy, "0", "0", "1"].map(|value| Float::parse(value, Some(200)).unwrap())]
+        };
+        // Positive energies outside the binary64 range stay positive.
+        for energy in ["1e-400", "1e400", "5"] {
+            assert!(
+                validate_float_energy_signs(&[point(energy)]).is_ok(),
+                "{energy}"
+            );
+        }
+        for energy in ["0", "-0", "-1e-400", "-5", "inf", "nan"] {
+            let error = validate_float_energy_signs(&[point(energy)]).expect_err(energy);
+            assert!(error.to_string().contains("energy"), "{error}");
+        }
     }
 }

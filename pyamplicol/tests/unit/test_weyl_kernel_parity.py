@@ -16,7 +16,12 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol.runtime.symbolica_exact import _antiquark_weyl, _quark_weyl
+from pyamplicol.api.errors import ArtifactError, EvaluationError
+from pyamplicol.runtime.symbolica_exact import (
+    _antiquark_weyl,
+    _prepare_points,
+    _quark_weyl,
+)
 
 _FIXTURE = (
     Path(__file__).resolve().parents[2]
@@ -61,3 +66,25 @@ def test_exact_weyl_sources_match_the_native_golden_bits(
             scale = 1.0 + abs(native)
             assert abs(value - native) <= 2.0e-15 * scale, (point, component)
             assert (value == 0) == (native == 0)
+
+
+@pytest.mark.parametrize("kernel", [_quark_weyl, _antiquark_weyl])
+@pytest.mark.parametrize("chirality", [0, 2, -3])
+def test_exact_weyl_sources_refuse_a_chirality_other_than_plus_minus_one(
+    kernel: object, chirality: int
+) -> None:
+    momentum = [Decimal(5), Decimal(0), Decimal(0), Decimal(5)]
+    with pytest.raises(ArtifactError, match="chirality"):
+        kernel(momentum, 1, chirality)  # type: ignore[operator]
+
+
+@pytest.mark.parametrize("energy", ["0", "-0", "-5"])
+def test_exact_lanes_refuse_non_positive_energies(energy: str) -> None:
+    physics = {"external_particles": [{}, {}]}
+    point = [["5", "0", "0", "5"], ["5", "0", "0", "-5"]]
+    assert _prepare_points([point], physics, None)[0][1][0] == Decimal(5)
+    point[1][0] = energy
+    with pytest.raises(EvaluationError, match="point 0 leg 1 has energy"):
+        _prepare_points([point], physics, None)
+    # The on-shell projection diagnostic reads unphysical inputs as they are.
+    assert _prepare_points([point], physics, None, physical=False)

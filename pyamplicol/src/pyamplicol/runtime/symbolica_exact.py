@@ -2832,7 +2832,8 @@ def _diagnostic_project_onshell_points(
         tuple[_DiagnosticMassBinding, ...],
         _diagnostic_input_order(artifact_mass_bindings, permutation),
     )
-    points = _prepare_points(momenta, physics, None)
+    # A diagnostic projection only; its projected points are checked when evaluated.
+    points = _prepare_points(momenta, physics, None, physical=False)
     working_precision = _working_precision(precision)
     projected_points = []
     point_metadata = []
@@ -2919,6 +2920,8 @@ def _prepare_points(
     momenta: Momenta,
     physics: Mapping[str, object],
     permutation: tuple[int, ...] | None,
+    *,
+    physical: bool = True,
 ) -> tuple[tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...], ...]:
     particles = physics.get("external_particles")
     if isinstance(particles, str | bytes) or not isinstance(particles, Sequence):
@@ -2951,6 +2954,12 @@ def _prepare_points(
                     ),
                 )
             )
+            # As the native lanes: a Weyl source at E < 0 is the crossed state, not 0.
+            if physical and legs[-1][0] <= 0:
+                raise EvaluationError(
+                    f"point {point_index} leg {leg_index} has energy {legs[-1][0]}: "
+                    "expected a finite positive energy (physical momenta)"
+                )
         if permutation is not None:
             legs = [legs[alias_index] for alias_index in permutation]
         prepared.append(tuple(legs))

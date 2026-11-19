@@ -114,7 +114,11 @@ The ID list and full JSON histories follow generation order, including
 `"born"`. C/C++/Rust indices are zero-based; Fortran array indices are
 one-based. Requests follow caller order and points follow input order.
 Different requests share amplitudes and unchanged spin-dependent stages in
-one call. All momenta use `[point][external particle][E,px,py,pz]`.
+one call. All momenta use `[point][external particle][E,px,py,pz]` and are
+physical: every native entry point refuses a point with an energy that is
+not finite and positive, before writing any output (a massless quark fed a
+negated momentum would be the crossed state, not zero). The higher-precision
+entry points read the sign of each decimal energy at its own precision.
 
 For example, using the registered `"T13"` dipole from the correlation guide:
 

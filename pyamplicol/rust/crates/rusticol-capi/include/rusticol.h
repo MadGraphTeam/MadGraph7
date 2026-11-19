@@ -22,6 +22,14 @@ enum rusticol_status {
 
 typedef struct RusticolRuntimeHandle RusticolRuntimeHandle;
 
+/* Physical momenta: every entry point taking binary64 momenta (evaluate,
+ * selected, resolved, orders, assignments, correlated, warm-up and profiles)
+ * refuses a point with an energy that is not finite and positive, before any
+ * output write, since a massless quark fed a negated momentum is the crossed
+ * state rather than zero. rusticol_runtime_evaluate_assignments_f64 states
+ * its own per-slot rule.
+ */
+
 /* One literal complex spin source on a one-based public external leg.
  * components use [point][E,px,py,pz][real,imag], with 8 doubles per point.
  * point_count=1 broadcasts; otherwise it must match the evaluation batch.
@@ -328,7 +336,7 @@ int rusticol_runtime_warm_up_f64_with_cores(
     RusticolWarmUpResult *output
 );
 
-/* Momenta use [point][external particle][E, px, py, pz]. */
+/* Momenta use [point][external particle][E, px, py, pz], physical as above. */
 /* Correlation queries read the selected process's generation-time catalogue.
  * They may lazily initialize correlated metadata, but do not evaluate an ME.
  * String queries include the trailing NUL in required; NULL/0 queries size.
@@ -365,7 +373,7 @@ int rusticol_runtime_evaluate_correlated_many_f64(
 );
 
 /* Ordinary momenta use [point][external particle][E, px, py, pz]. They are
- * physical: every energy must be finite and positive, else the call fails. */
+ * physical (every energy finite and positive), else the call fails. */
 int rusticol_runtime_evaluate_f64(
     RusticolRuntimeHandle *handle,
     const double *momenta,
@@ -413,7 +421,10 @@ int rusticol_runtime_evaluate_selected_f64(
  * process's legs; colour j is the template's execution flow j, so a row whose
  * assignment is conjugated relative to the loaded process holds the charge
  * conjugate physical flow. A single-assignment request equals loading that
- * member bitwise.
+ * member bitwise. Energies are finite and nonzero, negative exactly on the
+ * template slots that the requested assignment's permutation moves across the
+ * initial/final split (none in generated artifacts, so all positive there);
+ * all assignments requested at one point must share that crossing.
  */
 int rusticol_runtime_evaluate_assignments_f64(
     RusticolRuntimeHandle *handle,

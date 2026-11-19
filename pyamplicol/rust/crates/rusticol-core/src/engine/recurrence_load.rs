@@ -5422,6 +5422,29 @@ mod binding_decode_tests {
     }
 
     #[test]
+    fn weyl_source_templates_refuse_a_chirality_other_than_plus_minus_one() {
+        let slots = BTreeMap::from([(
+            "MF".into(),
+            RuntimeParameterSlots {
+                real: 0,
+                imaginary: None,
+            },
+        )]);
+        for chirality in [0, 2] {
+            let mut metadata = source_domain_metadata();
+            metadata.source_templates[0].chirality = chirality;
+            let fermion = crossed_fermion(0, 1, -chirality);
+            let error =
+                build_on_the_fly_source_domains_from_specs([fermion], 4, 4, &metadata, &slots)
+                    .expect_err("Weyl chirality outside +-1");
+            assert!(
+                error.to_string().contains("chirality is not +1 or -1"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
     fn compact_sources_reject_one_key_with_conflicting_crossed_semantics() {
         let metadata = source_domain_metadata();
         let slots = BTreeMap::from([(

@@ -423,10 +423,7 @@ def _physics() -> dict[str, object]:
 
 
 def _momenta(*energies: int) -> list[list[tuple[int, int, int, int]]]:
-    return [
-        [(energy, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0)]
-        for energy in energies
-    ]
+    return [[(energy, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0)] for energy in energies]
 
 
 def _producer() -> dict[str, object]:
