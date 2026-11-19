@@ -775,6 +775,7 @@ def profile_loop(
         POST_SECONDS_PER_RECORD,
         RECORD_SECONDS_PER_INPUT,
         RECORD_SECONDS_PER_RECORD,
+        STABILITY_MINIMUM,
         STABILITY_PRIOR,
         Costs,
         Plan,
@@ -783,6 +784,7 @@ def profile_loop(
         reference_affects_counts,
         runtime_counts,
         scope_minimum,
+        stability_wall,
         timing_scope,
         warmup_seconds,
     )
@@ -1083,19 +1085,26 @@ def profile_loop(
         )
     else:
         planned, stability_start = planning(costs, measured_at)
-    # The runtime timing alone on an expensive process (USER 2026-11-19):
-    # ``timed_reference`` (rule B) and ``omitted`` (rule A), decided from the
-    # costs known now (the measurement, else a previous profile's), else as
-    # the runtime timing measures them (``reference_over``, the default
-    # backend's row).
+    # A profile whose minimums exceed its budget (USER 2026-11-19): the
+    # runtime timing alone times no reference (rule B, ``timed_reference``)
+    # and any profile the default backend only when that one alone exceeds
+    # it (rule A, ``omitted``), decided from the costs known now (the
+    # measurement, else a previous profile's), else as the runtime timing
+    # measures them (``reference_over``, the default backend's row).
     default = DEFAULTS.get(contribution)
-    # Counts given are honoured as given: the rules apply under the default
-    # budget and --completion-time (which overrules every count).
-    timing_alone = (
-        want_runtime
-        and not want_stability
-        and not (runtime_given and completion is None)
+    # Counts given (how many points or calls run) are honoured as given; a
+    # given --target-runtime is the runtime timing's budget (counts given
+    # with it win); --completion-time overrules every count.
+    counts_given = completion is None and (
+        any(
+            not is_default(getattr(bench, name))
+            for name in ("batch_size", "minimum_samples", "warmup_runs")
+        )
+        or (want_stability and stability_given is not None)
     )
+    target_given = completion is None and not is_default(bench.target_runtime)
+    rules = not counts_given
+    timing_alone = rules and want_runtime and not want_stability
     force_reference = is_default_truth_forced
     asked_backends = evaluation.reduction is not None or bench.all_backends is not None
     serving = [b for b in _serving(runtime, backends) if b in backends]
@@ -1107,16 +1116,38 @@ def profile_loop(
     )
 
     def budget_bound(count: int) -> float:
-        """The seconds the runtime minimums of ``count`` backends may take
-        before the budget in force counts as exceeded, the counts row's
-        rule (``profile_plan.plan``): the default runtime budget (all
-        backends) within ``BUDGET_TOLERANCE``, start-ups aside; with
-        --completion-time what is left of it, start-ups in."""
+        """The seconds the minimums of ``count`` backends may take before
+        the budget in force counts as exceeded, the counts row's rule
+        (``profile_plan.plan``), start-ups aside: ``BUDGET_TOLERANCE`` x the
+        budgets of the parts asked, the runtime timing's (the default for
+        all backends, or a given --target-runtime per backend) and the
+        stability run's (``DEFAULT_STABILITY_SECONDS_PER_CORE`` of wall);
+        with --completion-time what is left of it, start-ups in."""
 
-        del count  # one budget for the backends together
         if completion is not None:
             return completion - measured_at
-        return BUDGET_TOLERANCE * DEFAULT_RUNTIME_SECONDS
+        runtime_budget = (
+            (
+                float(bench.target_runtime) * count
+                if target_given
+                else DEFAULT_RUNTIME_SECONDS
+            )
+            if want_runtime
+            else 0.0
+        )
+        stability_budget = DEFAULT_STABILITY_SECONDS_PER_CORE if want_stability else 0.0
+        return BUDGET_TOLERANCE * (runtime_budget + stability_budget)
+
+    def stability_minimum(cost: Any) -> float:
+        """A backend's stability-run minimum (``STABILITY_MINIMUM`` points
+        with its reference, on the workers; its start with
+        --completion-time), 0 without --stability."""
+
+        if not want_stability:
+            return 0.0
+        return stability_wall([cost], STABILITY_MINIMUM, workers) + (
+            stability_start if completion is not None else 0.0
+        )
 
     # The backends measured (a refusing one dropped), else a previous
     # profile's costs when it holds every serving backend's.
@@ -1127,7 +1158,7 @@ def profile_loop(
         if serving and all(b in priors for b in serving)
         else {}
     )
-    decided = bool(timing_alone and estimates)
+    decided = bool(rules and estimates)
     if decided:
         timed_reference, found = timing_scope(
             estimates,
@@ -1137,7 +1168,10 @@ def profile_loop(
             reference=timed_reference,
             force_reference=force_reference,
             asked_backends=asked_backends,
+            runtime=want_runtime,
+            reference_rule=timing_alone,
             start=completion is not None,
+            extra={b: stability_minimum(c) for b, c in estimates.items()},
         )
         if found:
             omitted = [b for b in backends if b != default]
@@ -1155,7 +1189,7 @@ def profile_loop(
 
         _notice(
             f"the default backend {NAMES.get(default, default)} alone exceeds "
-            "the runtime budget at its minimal counts: "
+            "the budget at its minimal counts: "
             + ", ".join(NAMES.get(b, b) for b in omitted)
             + " not profiled (--all-backends profiles every backend)"
         )
@@ -1436,7 +1470,7 @@ def profile_loop(
             run.finish(result)
             rows.append(BackendRuntime(backend, result, requested=request))
             if (
-                timing_alone
+                rules
                 and not decided
                 and not asked_backends
                 and not omitted
@@ -1451,13 +1485,15 @@ def profile_loop(
                     None
                     if result.reference is None
                     else result.reference.seconds_per_point,
-                    0.0,
-                    None,
+                    STABILITY_PRIOR * result.seconds_per_point,
+                    None
+                    if result.reference is None
+                    else result.reference.seconds_per_point,
                     0.0,
                 )
                 if scope_minimum(
                     measured, lanes=DEFAULT_LANES, reference=True
-                ) > budget_bound(1):
+                ) + stability_minimum(measured) > budget_bound(1):
                     omitted = [b for b in backends if b != default]
                     omit_notice()
         # A backend that failed every timed point is not compared (its time
@@ -1569,7 +1605,7 @@ def profile_loop(
             path,
             physics,
             config,
-            backends,
+            tuple(b for b in backends if b not in omitted),
             load_options=options,
             progress=progress,
             monitor=monitor,

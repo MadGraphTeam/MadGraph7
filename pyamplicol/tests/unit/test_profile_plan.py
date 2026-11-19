@@ -910,3 +910,37 @@ def test_the_timing_scope_rules_at_their_thresholds():
     assert scope(1e-9, 1e-9, asked=True) == (False, ())
     # No reference asked (--ground-truth none): rule B is moot.
     assert scope(1e-9, alone, reference=False) == (False, ())
+
+
+def test_the_backend_rule_counts_the_stability_run():
+    """Rule A judges the default backend's minimum for everything asked:
+    its runtime minimum (with the reference) and the stability run's
+    (``extra``); without the runtime timing, the stability part alone; the
+    reference rule is the runtime timing alone's (``reference_rule``)."""
+
+    from pyamplicol.profile_plan import scope_minimum, timing_scope
+
+    costs = {"ninjars": _costs(0.5, 30.0), "tirust": _costs(1.0, 10.0)}
+    runtime = scope_minimum(costs["ninjars"], lanes=LANES, reference=True)
+    stability = {"ninjars": 40.0, "tirust": 90.0}
+
+    def scope(bound, *, runtime_asked=True):
+        return timing_scope(
+            costs,
+            "ninjars",
+            lambda n: bound,
+            lanes=LANES,
+            reference=True,
+            force_reference=False,
+            asked_backends=False,
+            runtime=runtime_asked,
+            reference_rule=False,
+            extra=stability,
+        )
+
+    total = runtime + stability["ninjars"]
+    assert scope(total) == (True, ())
+    assert scope(total * (1 - 1e-9)) == (True, ("tirust",))
+    # The stability run alone (no --runtime).
+    assert scope(40.0, runtime_asked=False) == (True, ())
+    assert scope(40.0 * (1 - 1e-9), runtime_asked=False) == (True, ("tirust",))

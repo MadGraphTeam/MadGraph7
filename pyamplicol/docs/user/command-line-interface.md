@@ -830,29 +830,42 @@ took):
   the budget, with their time in the `counts` row, follows from the costs
   the timing measured).
 
-  The runtime timing alone (no `--stability`) then also narrows what it
-  times, by the `counts` row's own rule (the minimums exceed the budget in
-  force by more than a factor 1.5: the default 10 s of all backends; with
-  `--completion-time` what is left of it, start-ups included; counts given
-  are honoured as given). First the reference: when the minimums of every
-  backend with their reference points (one untimed and one timed point
-  each) exceed it, no reference point is evaluated at all, and the `(dd xN)`
-  / `(arb(D) xN)` multiplier is not shown, as with `--ground-truth none`;
-  an explicit `--ground-truth` (any value, also double-double, on the
-  command line or in a run card) times it anyway. Then the backends: when
-  the default backend alone, with the reference as just decided, still
-  exceeds it, only the default backend is profiled; `--all-backends` times
-  every backend whatever the budget (`--no-all-backends` the default only),
-  `--loop-reduction` one backend. The costs are the measurement's, else a
-  previous profile's of the artifact, else (no measurement phase) the
-  runtime timing's own: a backend's reference pass is left out when its
-  binary64 minimum at the measured cost and its reference at its prior
-  (60 times binary64 in double-double) exceed the budget, and the other
-  backends when the default backend's measured minimum does. A notice says
-  what was left out, and the `counts` row repeats it ("TIRust not profiled
-  (--all-backends)", "no dd multiplier (--ground-truth)"). With
-  `--stability` every backend and its reference run: the stability run's
-  true digits need them.
+  A profile whose minimums exceed its budget also narrows what it runs
+  (USER 2026-11-19), by the `counts` row's own rule: the minimums exceed
+  the budget by more than a factor 1.5, start-ups aside. The budget is the
+  runtime timing's (the default 10 s of all backends, or a given
+  `--target-runtime` per backend) plus, with `--stability`, the stability
+  run's (one minute of wall); with `--completion-time`, what is left of it,
+  start-ups included. Counts given (`--batch-size`, `--minimum-samples`,
+  `--warmup-runs`, `--stability-points` with `--stability`) are honoured as
+  given and nothing is left out; given with `--target-runtime`, the counts
+  win.
+  - The reference of the runtime timing alone (no `--stability`): when the
+    runtime minimums of every backend with their reference points (one
+    untimed and one timed point each) exceed the budget, no reference point
+    is evaluated at all and the `(dd xN)` / `(arb(D) xN)` multiplier is not
+    shown, as with `--ground-truth none`. An explicit `--ground-truth` (any
+    value, also double-double, on the command line or in a run card) times
+    it anyway. With `--stability` the reference always runs (the true digits
+    need it), and the runtime row keeps its multiplier from its own
+    reference pass, one optimistic pass, never from the stability run's.
+  - The backends, with or without `--stability`: when the default backend
+    alone, for everything asked (its runtime minimum with the reference as
+    just decided, and the stability run's five points with their
+    reference), still exceeds the budget, only the default backend is
+    profiled, in both tables. `--all-backends` profiles every backend
+    whatever the budget (`--no-all-backends` the default only),
+    `--loop-reduction` one backend. With one backend in the stability run
+    and an arbitrary-precision ground truth, every reference is certified by
+    its own checks (there is no second backend's reference to agree with).
+  The costs are the measurement's, else a previous profile's of the
+  artifact, else (no measurement phase) the runtime timing's own: a
+  backend's reference pass is left out when its binary64 minimum at the
+  measured cost and its reference at its prior (60 times binary64 in
+  double-double) exceed the budget, and the other backends when the default
+  backend's measured minimum does. A notice says what was left out, and the
+  `counts` row repeats it ("TIRust not profiled (--all-backends)", "no dd
+  multiplier (--ground-truth)").
 
 Loading, process start-up, warm-up calls and the reference pass's minimum
 are outside the default budgets by nature; they are visible phases with

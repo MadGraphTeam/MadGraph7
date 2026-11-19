@@ -296,23 +296,31 @@ def timing_scope(
     reference: bool,
     force_reference: bool,
     asked_backends: bool,
+    runtime: bool = True,
+    reference_rule: bool = True,
     start: bool = False,
+    extra: Mapping[str, float] | None = None,
 ) -> tuple[bool, tuple[str, ...]]:
-    """What a runtime timing alone (no stability run) times on a process
-    whose minimums exceed its budget (USER 2026-11-19), from the backends'
-    ``costs`` (those that can serve) and ``bound(n)``, the seconds the
-    minimums of n backends may take before the budget counts as exceeded:
-    first the reference (rule B): none when the minimums of every backend
-    with their reference points (``scope_minimum``) exceed ``bound`` of
-    them, unless ``force_reference``; then the backends (rule A): the
-    ``default`` alone when its minimum, with the reference as just decided,
-    exceeds ``bound(1)``, unless ``asked_backends``. The reference's
+    """What a profile whose minimums exceed its budget runs (USER
+    2026-11-19), from the backends' ``costs`` (those that can serve) and
+    ``bound(n)``, the seconds the minimums of n backends may take before the
+    budget counts as exceeded. First the reference of the runtime timing
+    (rule B, ``reference_rule``: the runtime timing alone): none when the
+    runtime minimums of every backend with their reference points
+    (``scope_minimum``) exceed ``bound`` of them, unless ``force_reference``.
+    Then the backends (rule A): the ``default`` alone when its minimum for
+    everything asked (its runtime minimum when ``runtime``, with the
+    reference as just decided, and ``extra[default]``: the stability run's
+    minimum) exceeds ``bound(1)``, unless ``asked_backends``. The reference's
     decision (True: timed) and the backends left out."""
 
     names = list(costs)
+    extra = extra or {}
     timed = reference
     if (
-        timed
+        reference_rule
+        and runtime
+        and timed
         and not force_reference
         and names
         and sum(
@@ -323,14 +331,14 @@ def timing_scope(
     ):
         timed = False
     omitted: tuple[str, ...] = ()
-    if (
-        not asked_backends
-        and default in costs
-        and len(names) > 1
-        and scope_minimum(costs[default], lanes=lanes, reference=timed, start=start)
-        > bound(1)
-    ):
-        omitted = tuple(b for b in names if b != default)
+    if not asked_backends and default in costs and len(names) > 1:
+        alone = extra.get(default, 0.0) + (
+            scope_minimum(costs[default], lanes=lanes, reference=timed, start=start)
+            if runtime
+            else 0.0
+        )
+        if alone > bound(1):
+            omitted = tuple(b for b in names if b != default)
     return timed, omitted
 
 

@@ -1535,6 +1535,8 @@ def test_the_warm_entry_replaces_a_dear_binary64_warm_up(uux_ddx, point_seconds)
         ({"ground_truth": "double-double"}, False),
         ({"stability": True, "stability_points": 4}, True),
         ({"target_runtime": 1e-6}, True),
+        ({"target_runtime": 1e-6, "batch_size": 16}, True),
+        ({"batch_size": 16}, True),
     ],
 )
 def test_an_exceeded_budget_times_the_default_backend_alone(
@@ -1568,8 +1570,9 @@ def test_an_exceeded_budget_times_the_default_backend_alone(
     ).effective
     report = profile_loop(uux_ddx, config)
     rows = {row.backend: row.profile for row in report.runtime or ()}
-    # Counts given (--target-runtime) are honoured as given.
-    stability = given.get("stability", False) or "target_runtime" in given
+    # Counts given (--batch-size, --stability-points) are honoured as
+    # given; a given --target-runtime is a budget (1e-6 s: exceeded).
+    stability = given.get("stability", False) or "batch_size" in given
     forced = "ground_truth" in given
     every = given.get("all_backends") or stability
     assert set(rows) == ({"ninjars", "tirust"} if every else {"ninjars"})
@@ -1604,3 +1607,72 @@ def test_a_default_budget_keeps_every_backend_and_the_multiplier(uux_ddx):
     assert all(p is not None and p.reference is not None for p in rows.values())
     assert report.plan["omitted_backends"] == []
     assert report.plan["omitted_reference"] is None
+
+
+@pytest.mark.parametrize(
+    "given",
+    [{}, {"all_backends": True}, {"reduction": "tirust"}, {"runtime": True}],
+)
+def test_an_exceeded_budget_with_the_stability_run(uux_ddx, monkeypatch, given):
+    """Rule A with --stability: when the default backend's minimum for
+    everything asked (forced budgets: 1 ms each) exceeds the budget, both
+    tables hold the default backend only, its reference still run (the true
+    digits need it); --all-backends and --loop-reduction keep the user's
+    choice; with --runtime too, the runtime row keeps its multiplier."""
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    monkeypatch.setattr(plan_module, "DEFAULT_RUNTIME_SECONDS", 1e-3)
+    monkeypatch.setattr(plan_module, "DEFAULT_STABILITY_SECONDS_PER_CORE", 1e-3)
+    given = dict(given)
+    reduction = given.pop("reduction", None)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)}
+            | ({"reduction": reduction} if reduction else {}),
+            "benchmark": {"stability": True, "n_core": 1, **given},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    expected = (
+        {reduction}
+        if reduction
+        else {"ninjars", "tirust"}
+        if given.get("all_backends")
+        else {"ninjars"}
+    )
+    assert {row.backend for row in report.stability or ()} == expected
+    assert set(report.backends) == expected
+    if given.get("runtime"):
+        rows = {row.backend: row.profile for row in report.runtime or ()}
+        assert set(rows) == expected
+        assert all(p is not None and p.reference is not None for p in rows.values())
+    assert report.plan["omitted_backends"] == (
+        ["tirust"] if expected == {"ninjars"} else []
+    )
+    assert report.plan["omitted_reference"] is None
+
+
+def test_a_default_budget_with_the_stability_run_keeps_both(uux_ddx):
+    """On a cheap process at the default budgets --runtime --stability
+    keeps both backends in both tables and the multiplier."""
+
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "stability": True, "n_core": 1},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    assert {row.backend for row in report.stability or ()} == {"ninjars", "tirust"}
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    assert set(rows) == {"ninjars", "tirust"}
+    assert all(p is not None and p.reference is not None for p in rows.values())
+    assert report.plan["omitted_backends"] == []
